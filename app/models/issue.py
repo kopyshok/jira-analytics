@@ -5,7 +5,7 @@ from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import TimestampMixin, SyncedMixin, generate_uuid
+from app.models.base import SyncedMixin, generate_uuid
 from app.database import Base
 
 if TYPE_CHECKING:
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from app.models.worklog import Worklog
 
 
-class Issue(Base, TimestampMixin, SyncedMixin):
+class Issue(Base, SyncedMixin):
     """Jira issue model.
     
     Represents tasks, bugs, stories, epics, and subtasks.

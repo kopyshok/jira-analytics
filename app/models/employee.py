@@ -5,11 +5,11 @@ from typing import Optional
 from sqlalchemy import Boolean, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import TimestampMixin, SyncedMixin, generate_uuid
+from app.models.base import SyncedMixin, generate_uuid
 from app.database import Base
 
 
-class Employee(Base, TimestampMixin, SyncedMixin):
+class Employee(Base, SyncedMixin):
     """Employee/Jira user model.
     
     Maps to Jira user accounts. Created automatically during sync
