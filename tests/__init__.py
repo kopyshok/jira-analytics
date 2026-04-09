@@ -1,0 +1,1 @@
+"""Jira Analytics test suite."""
