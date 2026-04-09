@@ -6,7 +6,7 @@ from typing import Optional, TYPE_CHECKING
 from sqlalchemy import ForeignKey, Integer, String, Text, Float, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import TimestampMixin, SyncedMixin, generate_uuid
+from app.models.base import SyncedMixin, generate_uuid
 from app.database import Base
 
 if TYPE_CHECKING:
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from app.models.issue import Issue
 
 
-class Worklog(Base, TimestampMixin, SyncedMixin):
+class Worklog(Base, SyncedMixin):
     """Worklog model - time logged by employees on issues.
     
     This is the primary fact table for analytics. Each row represents
