@@ -1,28 +1,19 @@
 # Core
-fastapi>=0.110.0
+fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
-pydantic>=2.6.0
-pydantic-settings>=2.2.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
 
 # Database
 sqlalchemy>=2.0.25
 alembic>=1.13.0
 
-# HTTP client (for Jira API)
-httpx>=0.27.0
+# HTTP client for Jira API
+httpx>=0.26.0
 
-# Date/time utilities
-python-dateutil>=2.8.2
-
-# Export libraries (M5)
-python-pptx>=0.6.21
-openpyxl>=3.1.2
-reportlab>=4.1.0
-
-# Development
-pytest>=8.0.0
+# Testing
+pytest>=7.4.0
 pytest-asyncio>=0.23.0
 
-# Linting & formatting
-ruff>=0.2.0
-mypy>=1.8.0
+# Development
+python-dotenv>=1.0.0
