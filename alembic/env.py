@@ -15,7 +15,18 @@ from app.models import (
     Project,
     Issue,
     Worklog,
+    Comment,
     SyncState,
+    ScopeProject,
+    ScopeRoot,
+    CategoryMapping,
+    CategoryOverride,
+    WorklogQualityRule,
+    Vacation,
+    MonthlyCapacityRule,
+    BacklogItem,
+    PlanningScenario,
+    ScenarioAllocation,
 )
 
 config = context.config

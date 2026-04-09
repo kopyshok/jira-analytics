@@ -11,7 +11,9 @@ from app.connectors.schemas import (
     JiraProjectSchema,
     JiraIssueSchema,
     JiraWorklogSchema,
+    JiraCommentSchema,
     JiraSearchResponseSchema,
+    JiraCommentsResponseSchema,
 )
 
 __all__ = [
@@ -23,5 +25,7 @@ __all__ = [
     "JiraProjectSchema",
     "JiraIssueSchema",
     "JiraWorklogSchema",
+    "JiraCommentSchema",
     "JiraSearchResponseSchema",
+    "JiraCommentsResponseSchema",
 ]

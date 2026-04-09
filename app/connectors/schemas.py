@@ -190,6 +190,76 @@ class JiraWorklogSchema(BaseModel):
         extra = "ignore"
 
 
+# === Comment schemas ===
+
+class JiraCommentAuthorSchema(BaseModel):
+    """Comment author."""
+
+    accountId: str
+    displayName: str
+    emailAddress: Optional[str] = None
+
+
+class JiraCommentSchema(BaseModel):
+    """Jira comment from API response."""
+
+    id: str
+    author: JiraCommentAuthorSchema
+    body: Optional[Any] = None  # Can be string or ADF
+    created: Optional[str] = None
+    updated: Optional[str] = None
+
+    @property
+    def body_text(self) -> Optional[str]:
+        """Extract plain text from comment body."""
+        if self.body is None:
+            return None
+        if isinstance(self.body, str):
+            return self.body
+        if isinstance(self.body, dict):
+            return self._extract_adf_text(self.body)
+        return str(self.body)
+
+    @property
+    def created_datetime(self) -> Optional[datetime]:
+        """Parse created timestamp."""
+        if not self.created:
+            return None
+        created_str = self.created.replace("+0000", "+00:00")
+        if "." in created_str:
+            base, tz = created_str.rsplit("+", 1) if "+" in created_str else (created_str.rsplit("-", 1))
+            if "." in base:
+                base = base.split(".")[0]
+            created_str = f"{base}+{tz}" if "+" in self.created else f"{base}-{tz}"
+        return datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+
+    def _extract_adf_text(self, node: dict) -> str:
+        """Recursively extract text from ADF."""
+        text_parts = []
+        if node.get("type") == "text":
+            text_parts.append(node.get("text", ""))
+        for child in node.get("content", []):
+            if isinstance(child, dict):
+                text_parts.append(self._extract_adf_text(child))
+        return " ".join(text_parts).strip()
+
+    class Config:
+        extra = "ignore"
+
+
+class JiraCommentsResponseSchema(BaseModel):
+    """Paginated comments response."""
+
+    startAt: int = 0
+    maxResults: int = 50
+    total: int = 0
+    comments: List[JiraCommentSchema] = Field(default_factory=list)
+
+    @property
+    def has_more(self) -> bool:
+        return self.startAt + len(self.comments) < self.total
+
+
 # === Paginated response schemas ===
 
 class JiraSearchResponseSchema(BaseModel):

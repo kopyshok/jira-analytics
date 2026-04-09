@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.endpoints import sync
+from app.api.endpoints import sync, scope
 
 api_router = APIRouter()
 
@@ -16,12 +16,14 @@ async def root():
         "health": "/health",
         "endpoints": {
             "sync": "/api/v1/sync",
+            "scope": "/api/v1/scope",
         },
     }
 
 
 # Include routers
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
+api_router.include_router(scope.router, prefix="/scope", tags=["scope"])
 
 # Future:
 # from app.api.endpoints import employees, projects, worklogs, analytics, planning

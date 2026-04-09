@@ -11,6 +11,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.worklog import Worklog
+    from app.models.comment import Comment
 
 
 class Issue(Base, SyncedMixin):
@@ -57,6 +58,7 @@ class Issue(Base, SyncedMixin):
         backref="children",
     )
     worklogs: Mapped[List["Worklog"]] = relationship(back_populates="issue")
+    comments: Mapped[List["Comment"]] = relationship(back_populates="issue")
 
     def __repr__(self) -> str:
         return f"<Issue {self.key}: {self.summary[:30]}>"

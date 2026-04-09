@@ -13,9 +13,11 @@ from app.connectors.schemas import (
     JiraProjectSchema,
     JiraIssueSchema,
     JiraWorklogSchema,
+    JiraCommentSchema,
     JiraSearchResponseSchema,
     JiraWorklogsResponseSchema,
     JiraProjectsResponseSchema,
+    JiraCommentsResponseSchema,
 )
 
 
@@ -318,6 +320,41 @@ class JiraClient:
                 break
             start_at += max_results
     
+    # === Comment methods ===
+
+    async def get_comments_for_issue(
+        self,
+        issue_id: str,
+        start_at: int = 0,
+        max_results: int = 100,
+    ) -> JiraCommentsResponseSchema:
+        """Get comments for a specific issue."""
+        data = await self._request(
+            "GET",
+            f"/issue/{issue_id}/comment",
+            params={"startAt": start_at, "maxResults": max_results},
+        )
+        return JiraCommentsResponseSchema(**data)
+
+    async def iter_comments_for_issue(
+        self,
+        issue_id: str,
+        max_results: int = 100,
+    ) -> AsyncIterator[JiraCommentSchema]:
+        """Iterate through all comments for an issue."""
+        start_at = 0
+        while True:
+            response = await self.get_comments_for_issue(
+                issue_id=issue_id,
+                start_at=start_at,
+                max_results=max_results,
+            )
+            for comment in response.comments:
+                yield comment
+            if not response.has_more:
+                break
+            start_at += max_results
+
     async def get_worklogs_updated_since(
         self,
         since: datetime,

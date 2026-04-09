@@ -1,0 +1,40 @@
+"""PlanningScenario model - quarterly planning scenarios."""
+
+from datetime import datetime
+from typing import Optional, List, TYPE_CHECKING
+
+from sqlalchemy import Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import TimestampMixin, generate_uuid
+from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.scenario_allocation import ScenarioAllocation
+
+
+class PlanningScenario(Base, TimestampMixin):
+    """Сценарий квартального планирования.
+
+    Хранение нескольких расчётов квартального набора задач
+    с возможностью сравнения.
+    """
+
+    __tablename__ = "planning_scenarios"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=generate_uuid
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quarter: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True
+    )  # e.g., "Q1", "Q2"
+    year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Relationships
+    allocations: Mapped[List["ScenarioAllocation"]] = relationship(
+        back_populates="scenario"
+    )
+
+    def __repr__(self) -> str:
+        return f"<PlanningScenario {self.name}>"

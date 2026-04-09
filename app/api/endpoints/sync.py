@@ -176,6 +176,25 @@ async def sync_worklogs(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/comments", response_model=SyncResponse)
+async def sync_comments(db: Session = Depends(get_db)):
+    """Синхронизация комментариев к задачам из Jira."""
+    try:
+        async with JiraClient() as jira:
+            service = SyncService(db, jira)
+            count = await service.sync_comments()
+
+            return SyncResponse(
+                status="completed",
+                message=f"Synced {count} comments",
+                stats=service.stats.to_dict(),
+            )
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/full", response_model=SyncResponse)
 async def full_sync(
     request: SyncRequest = None,

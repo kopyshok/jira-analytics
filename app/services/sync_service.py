@@ -11,9 +11,13 @@ from app.connectors.schemas import (
     JiraProjectSchema,
     JiraIssueSchema,
     JiraWorklogSchema,
+    JiraCommentSchema,
     JiraUserSchema,
 )
-from app.models import Employee, Project, Issue, Worklog, SyncState
+from app.models import (
+    Employee, Project, Issue, Worklog, Comment,
+    SyncState, ScopeProject,
+)
 from app.repositories.base import BaseRepository
 
 
@@ -30,6 +34,8 @@ class SyncStats:
         self.issues_created = 0
         self.worklogs_synced = 0
         self.worklogs_created = 0
+        self.comments_synced = 0
+        self.comments_created = 0
         self.employees_synced = 0
         self.employees_created = 0
         self.errors: List[str] = []
@@ -49,6 +55,7 @@ class SyncStats:
             "projects": {"synced": self.projects_synced, "created": self.projects_created},
             "issues": {"synced": self.issues_synced, "created": self.issues_created},
             "worklogs": {"synced": self.worklogs_synced, "created": self.worklogs_created},
+            "comments": {"synced": self.comments_synced, "created": self.comments_created},
             "employees": {"synced": self.employees_synced, "created": self.employees_created},
             "errors": self.errors,
             "duration_seconds": self.duration_seconds,
@@ -74,8 +81,22 @@ class SyncService:
         self.project_repo = BaseRepository(Project, db)
         self.issue_repo = BaseRepository(Issue, db)
         self.worklog_repo = BaseRepository(Worklog, db)
+        self.comment_repo = BaseRepository(Comment, db)
         self.sync_state_repo = BaseRepository(SyncState, db)
+        self.scope_project_repo = BaseRepository(ScopeProject, db)
     
+    def _get_scope_project_keys(self) -> List[str]:
+        """Получить список разрешённых ключей проектов из scope_projects.
+
+        Если scope не настроен, возвращает пустой список.
+        """
+        scope_projects = self.scope_project_repo.get_all(limit=1000)
+        return [
+            sp.jira_project_key
+            for sp in scope_projects
+            if sp.is_enabled
+        ]
+
     def _get_sync_state(self, entity_name: str) -> Optional[SyncState]:
         """Get sync state for entity."""
         return self.sync_state_repo.get_by_field("entity_name", entity_name)
@@ -145,23 +166,32 @@ class SyncService:
         )
     
     async def sync_projects(self) -> int:
-        """Sync all projects from Jira."""
+        """Синхронизация проектов из Jira.
+
+        Загружает только проекты, включённые в scope_projects.
+        Если scope не настроен — загружает все проекты.
+        """
         logger.info("Starting projects sync...")
         count = 0
-        
+        scope_keys = self._get_scope_project_keys()
+
         async for jira_project in self.jira.iter_projects():
+            # Фильтрация по scope: пропускаем проекты вне scope
+            if scope_keys and jira_project.key not in scope_keys:
+                continue
+
             project, created = self._upsert_project(jira_project)
             if created:
                 self.stats.projects_created += 1
             self.stats.projects_synced += 1
             count += 1
-            
+
             if count % 10 == 0:
                 logger.debug(f"Synced {count} projects...")
-        
+
         self._update_sync_state("projects", datetime.utcnow())
         self.db.commit()
-        
+
         logger.info(f"Projects sync complete: {count} synced, {self.stats.projects_created} created")
         return count
     
@@ -205,15 +235,17 @@ class SyncService:
         project_keys: Optional[List[str]] = None,
         incremental: bool = True,
     ) -> int:
-        """Sync issues from Jira.
-        
-        Args:
-            project_keys: List of project keys to sync. If None, syncs all.
-            incremental: If True, only sync issues updated since last sync.
+        """Синхронизация задач из Jira.
+
+        Если project_keys не передан, использует scope_projects.
+        Если scope пуст, загружает все локальные проекты.
         """
         logger.info(f"Starting issues sync (incremental={incremental})...")
-        
-        # Get projects to sync
+
+        # Get projects to sync: explicit keys > scope > all local
+        if not project_keys:
+            project_keys = self._get_scope_project_keys()
+
         if project_keys:
             projects = [
                 self.project_repo.get_by_field("key", key)
@@ -374,6 +406,93 @@ class SyncService:
         logger.info(f"Worklogs sync complete: {count} synced, {self.stats.worklogs_created} created")
         return count
     
+    # === Comment sync ===
+
+    def _upsert_comment(
+        self,
+        jira_comment: JiraCommentSchema,
+        issue_id: str,
+        author_id: Optional[str] = None,
+    ) -> Tuple[Comment, bool]:
+        """Upsert comment from Jira."""
+        data = {
+            "jira_comment_id": jira_comment.id,
+            "body": jira_comment.body_text,
+            "jira_created_at": jira_comment.created_datetime,
+            "issue_id": issue_id,
+            "author_id": author_id,
+            "synced_at": datetime.utcnow(),
+        }
+        return self.comment_repo.upsert_by_field(
+            "jira_comment_id",
+            jira_comment.id,
+            data,
+        )
+
+    async def sync_comments(
+        self,
+        issue_keys: Optional[List[str]] = None,
+        limit_issues: int = 1000,
+    ) -> int:
+        """Синхронизация комментариев к задачам.
+
+        Args:
+            issue_keys: Конкретные ключи задач. Если None — все локальные задачи.
+            limit_issues: Макс. количество задач для обработки.
+        """
+        logger.info("Starting comments sync...")
+
+        if issue_keys:
+            issues = [
+                self.issue_repo.get_by_field("key", key)
+                for key in issue_keys
+            ]
+            issues = [i for i in issues if i]
+        else:
+            issues = self.issue_repo.get_all(limit=limit_issues)
+
+        logger.info(f"Syncing comments for {len(issues)} issues...")
+
+        count = 0
+        for idx, issue in enumerate(issues):
+            try:
+                async for jira_comment in self.jira.iter_comments_for_issue(
+                    issue_id=issue.jira_issue_id
+                ):
+                    # Ensure author exists as employee
+                    author_schema = JiraUserSchema(
+                        accountId=jira_comment.author.accountId,
+                        displayName=jira_comment.author.displayName,
+                        emailAddress=jira_comment.author.emailAddress,
+                        active=True,
+                    )
+                    employee = self._ensure_employee(author_schema)
+
+                    comment, created = self._upsert_comment(
+                        jira_comment,
+                        issue.id,
+                        employee.id,
+                    )
+                    if created:
+                        self.stats.comments_created += 1
+                    self.stats.comments_synced += 1
+                    count += 1
+
+            except Exception as e:
+                error_msg = f"Error syncing comments for {issue.key}: {e}"
+                logger.error(error_msg)
+                self.stats.errors.append(error_msg)
+
+            if (idx + 1) % 20 == 0:
+                logger.debug(f"Processed comments for {idx + 1}/{len(issues)} issues...")
+                self.db.commit()
+
+        self._update_sync_state("comments", datetime.utcnow())
+        self.db.commit()
+
+        logger.info(f"Comments sync complete: {count} synced, {self.stats.comments_created} created")
+        return count
+
     # === Full sync ===
     
     async def full_sync(
@@ -381,27 +500,31 @@ class SyncService:
         project_keys: Optional[List[str]] = None,
         incremental: bool = True,
     ) -> SyncStats:
-        """Run full synchronization in correct order.
-        
-        Order: Projects -> Issues -> Worklogs
-        (Employees are created on-demand when referenced)
+        """Полная синхронизация в правильном порядке.
+
+        Порядок: Projects -> Issues -> Worklogs -> Comments
+        (Employees создаются автоматически при встрече)
+        Фильтрация по scope_projects, если project_keys не передан.
         """
         logger.info("Starting full sync...")
         self.stats = SyncStats()
-        
+
         try:
-            # 1. Sync projects
+            # 1. Sync projects (filtered by scope)
             await self.sync_projects()
-            
-            # 2. Sync issues
+
+            # 2. Sync issues (filtered by scope)
             await self.sync_issues(
                 project_keys=project_keys,
                 incremental=incremental,
             )
-            
+
             # 3. Sync worklogs
             await self.sync_worklogs()
-            
+
+            # 4. Sync comments
+            await self.sync_comments()
+
         except Exception as e:
             error_msg = f"Full sync failed: {e}"
             logger.error(error_msg)
@@ -409,6 +532,6 @@ class SyncService:
             raise
         finally:
             self.stats.finish()
-        
+
         logger.info(f"Full sync complete in {self.stats.duration_seconds:.1f}s")
         return self.stats

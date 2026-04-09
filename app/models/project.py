@@ -10,6 +10,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.issue import Issue
+    from app.models.backlog_item import BacklogItem
 
 
 class Project(Base, SyncedMixin):
@@ -35,6 +36,7 @@ class Project(Base, SyncedMixin):
 
     # Relationships
     issues: Mapped[List["Issue"]] = relationship(back_populates="project")
+    backlog_items: Mapped[List["BacklogItem"]] = relationship(back_populates="project")
 
     def __repr__(self) -> str:
         return f"<Project {self.key}: {self.name}>"

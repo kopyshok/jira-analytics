@@ -5,7 +5,18 @@ from app.models.employee import Employee
 from app.models.project import Project
 from app.models.issue import Issue
 from app.models.worklog import Worklog
+from app.models.comment import Comment
 from app.models.sync_state import SyncState
+from app.models.scope_project import ScopeProject
+from app.models.scope_root import ScopeRoot
+from app.models.category_mapping import CategoryMapping
+from app.models.category_override import CategoryOverride
+from app.models.worklog_quality_rule import WorklogQualityRule
+from app.models.vacation import Vacation
+from app.models.monthly_capacity_rule import MonthlyCapacityRule
+from app.models.backlog_item import BacklogItem
+from app.models.planning_scenario import PlanningScenario
+from app.models.scenario_allocation import ScenarioAllocation
 
 __all__ = [
     "TimestampMixin",
@@ -15,5 +26,16 @@ __all__ = [
     "Project",
     "Issue",
     "Worklog",
+    "Comment",
     "SyncState",
+    "ScopeProject",
+    "ScopeRoot",
+    "CategoryMapping",
+    "CategoryOverride",
+    "WorklogQualityRule",
+    "Vacation",
+    "MonthlyCapacityRule",
+    "BacklogItem",
+    "PlanningScenario",
+    "ScenarioAllocation",
 ]
