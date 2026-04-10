@@ -30,11 +30,11 @@ Connector Layer → Service Layer → Repository Layer → Database
 ```
 jira-analytics/
 ├── app/
-│   ├── api/endpoints/     # FastAPI роутеры (sync, scope, analytics, mapping, capacity)
+│   ├── api/endpoints/     # FastAPI роутеры (sync, scope, analytics, mapping, capacity, backlog, planning)
 │   ├── connectors/        # Jira HTTP клиент + Pydantic schemas
 │   ├── models/            # SQLAlchemy модели (16 таблиц)
 │   ├── repositories/      # Абстракция доступа к данным
-│   ├── services/          # Бизнес-логика (sync, category_resolver, mapping, analytics, capacity)
+│   ├── services/          # Бизнес-логика (sync, category_resolver, mapping, analytics, capacity, planning)
 │   ├── config.py          # Pydantic Settings
 │   ├── database.py        # Engine + Session + Base
 │   └── main.py            # FastAPI app
@@ -83,9 +83,9 @@ uvicorn app.main:app --reload --port 8000
 ### Планирование
 - **vacations** — отпуска сотрудников (employee_id, start_date, end_date, hours_total)
 - **monthly_capacity_rules** — процентные вычеты от нормы часов (month, year, percent_of_norm)
-- **backlog_items** — квартальный бэклог (title, project_id, quarter, estimate_hours, priority)
+- **backlog_items** — квартальный бэклог (title, project_id, quarter, year, estimate_hours, priority)
 - **planning_scenarios** — сценарии планирования (name, quarter, year)
-- **scenario_allocations** — результаты сценариев (scenario_id, backlog_item_id, planned_hours)
+- **scenario_allocations** — результаты сценариев (scenario_id, backlog_item_id, planned_hours, included_flag)
 
 ## Управленческие категории работ
 
@@ -152,6 +152,20 @@ DELETE /api/v1/capacity/rules/{id}
 GET    /api/v1/capacity/monthly/{employee_id}?year=&month=
 GET    /api/v1/capacity/quarter/{employee_id}?year=&quarter=
 GET    /api/v1/capacity/team?year=&quarter=  # Активная команда за квартал
+
+# Backlog (квартальный бэклог задач-кандидатов)
+GET    /api/v1/backlog?year=&quarter=&project_id=   # Список (сорт: priority, None в конец)
+POST   /api/v1/backlog                              # Создать элемент
+GET    /api/v1/backlog/{id}                         # Получить элемент
+PATCH  /api/v1/backlog/{id}                         # Частичное обновление
+DELETE /api/v1/backlog/{id}
+
+# Planning (сценарии квартального планирования)
+GET    /api/v1/planning/scenarios?year=&quarter=    # Список сценариев
+GET    /api/v1/planning/scenarios/{id}              # Один сценарий
+DELETE /api/v1/planning/scenarios/{id}              # Удалить сценарий + его раскладки
+GET    /api/v1/planning/scenarios/{id}/allocations  # Сохранённые раскладки
+POST   /api/v1/planning/scenarios/generate          # Сгенерировать новый сценарий (greedy)
 ```
 
 ## Roadmap
@@ -159,10 +173,10 @@ GET    /api/v1/capacity/team?year=&quarter=  # Активная команда �
 - [x] **M1** — Технический каркас (FastAPI, SQLite, SQLAlchemy, Alembic, конфигурация)
 - [x] **M2** — Загрузка Jira (авторизация, sync issues/worklogs/comments/users, scope_projects)
 - [x] **M3** — Аналитика факта (CategoryResolver, MappingService, AnalyticsService: отчёты по людям/проектам/категориям/периодам и контекстные переключения)
-- [ ] **M4** — Planning
+- [x] **M4** — Planning
   - [x] CapacityService: производственный календарь (пн-пт), отпуска, `monthly_capacity_rules`, monthly/quarter/team ёмкость
-  - [ ] Backlog items CRUD
-  - [ ] Planning scenarios (жадная раскладка по приоритету с учётом team capacity)
+  - [x] Backlog items CRUD (фильтры по year/quarter/project, сортировка по priority)
+  - [x] Planning scenarios (жадная раскладка по приоритету с учётом team capacity)
 - [ ] **M5** — Экспорты и polish (PDF, Excel, PPTX, фильтры интерфейса)
 
 ## Принципы кода
@@ -200,6 +214,9 @@ Base URL: https://example.atlassian.net
 
 ### CapacityService
 Формула: `available = workdays × hours_per_day − vacation_hours − mandatory_hours`, с клампом `max(0.0, ...)`. Производственный календарь MVP — просто понедельник-пятница (`weekday() < 5`), без российских праздников. Отпуска пересекаются с месяцем через `max(start, month_start)` / `min(end, month_end)`. `mandatory_hours = norm × percent_of_norm / 100` берётся из `monthly_capacity_rules`. Квартал = три месяца по `QUARTER_MONTHS = {1:(1,2,3), ...}`.
+
+### PlanningService
+Жадная раскладка бэклога по приоритету. Ёмкость квартала = сумма `total_available_hours` активной команды из `CapacityService.team_quarter_capacity`. Сортировка: `(priority is None, priority, estimate_hours, title)` — меньше priority раньше, `None`-priority в конец. Задачи берутся **целиком** (не дробим): если `estimate_hours` помещается в остаток — включаем, иначе пропускаем (`reason="no_capacity_left"`). Пустая/нулевая оценка → `reason="no_estimate"`, пропуск. `ScenarioAllocation` сохраняется и для включённых, и для пропущенных задач (различаются по `included_flag`). Коммитит внутри себя — тесты опираются на очистку в `conftest`. Формат квартала в БД: `"Q1"`..`"Q4"` (строка), в API принимаем число `1..4`. `backlog_items.year + quarter` фильтруются автоматически, либо можно передать явный `backlog_item_ids`.
 
 ### Тестовые фикстуры (tests/conftest.py)
 `engine` — session-scoped in-memory SQLite. `db_session` — function-scoped, **после каждого теста явно удаляет строки из всех таблиц** (`table.delete()` в reverse-order), потому что сервисы вроде `MappingService` коммитят внутри себя, и обычный `rollback()` на commit'нутых данных не сработает. Если добавляете сервис, который коммитит — НЕ ослабляйте эту очистку.
