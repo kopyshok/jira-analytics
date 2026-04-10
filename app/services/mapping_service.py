@@ -1,0 +1,176 @@
+"""Сервис массового пересчёта категорий.
+
+Применяет правила резолвинга ко всем задачам и worklog,
+обновляет denormalized поле Issue.category и таблицу category_mappings.
+"""
+
+import logging
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.models import Issue, Worklog, CategoryMapping
+from app.repositories.base import BaseRepository
+from app.services.category_resolver import CategoryResolver
+
+
+logger = logging.getLogger("jira_analytics.mapping")
+
+
+class MappingStats:
+    """Статистика пересчёта мэппинга."""
+
+    def __init__(self):
+        self.issues_processed = 0
+        self.worklogs_processed = 0
+        self.mappings_created = 0
+        self.mappings_updated = 0
+        self.started_at = datetime.utcnow()
+        self.finished_at: Optional[datetime] = None
+
+    def finish(self):
+        self.finished_at = datetime.utcnow()
+
+    @property
+    def duration_seconds(self) -> float:
+        end = self.finished_at or datetime.utcnow()
+        return (end - self.started_at).total_seconds()
+
+    def to_dict(self) -> dict:
+        return {
+            "issues_processed": self.issues_processed,
+            "worklogs_processed": self.worklogs_processed,
+            "mappings_created": self.mappings_created,
+            "mappings_updated": self.mappings_updated,
+            "duration_seconds": self.duration_seconds,
+        }
+
+
+class MappingService:
+    """Сервис пересчёта категорий для задач и worklog."""
+
+    def __init__(self, db: Session):
+        self.db = db
+        self.resolver = CategoryResolver(db)
+        self.mapping_repo = BaseRepository(CategoryMapping, db)
+        self.stats = MappingStats()
+
+    def _upsert_mapping(
+        self,
+        entity_type: str,
+        entity_id: str,
+        category: str,
+        source_rule: str,
+    ) -> None:
+        """Создать или обновить запись в category_mappings."""
+        existing = (
+            self.db.query(CategoryMapping)
+            .filter(
+                CategoryMapping.entity_type == entity_type,
+                CategoryMapping.entity_id == entity_id,
+            )
+            .one_or_none()
+        )
+
+        if existing:
+            if (
+                existing.category != category
+                or existing.source_rule != source_rule
+            ):
+                existing.category = category
+                existing.source_rule = source_rule
+                self.stats.mappings_updated += 1
+        else:
+            mapping = CategoryMapping(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                category=category,
+                source_rule=source_rule,
+            )
+            self.db.add(mapping)
+            self.stats.mappings_created += 1
+
+    def recalculate_issues(self) -> int:
+        """Пересчитать категории всех задач.
+
+        Обновляет denormalized поле Issue.category и category_mappings.
+        """
+        logger.info("Recalculating categories for all issues...")
+
+        issues = self.db.query(Issue).all()
+        count = 0
+
+        for issue in issues:
+            resolution = self.resolver.resolve_for_issue(issue)
+
+            # Обновляем denormalized поле
+            if issue.category != resolution.category_code:
+                issue.category = resolution.category_code
+
+            # Обновляем category_mappings
+            self._upsert_mapping(
+                entity_type="issue",
+                entity_id=issue.id,
+                category=resolution.category_code,
+                source_rule=resolution.source,
+            )
+
+            count += 1
+            if count % 100 == 0:
+                self.db.flush()
+                logger.debug(f"Processed {count}/{len(issues)} issues")
+
+        self.stats.issues_processed = count
+        self.db.commit()
+        logger.info(f"Issue categories recalculated: {count}")
+        return count
+
+    def recalculate_worklogs(self) -> int:
+        """Пересчитать категории для worklog.
+
+        Применяет правила качества к каждому worklog
+        и создаёт записи в category_mappings.
+        """
+        logger.info("Recalculating categories for worklogs...")
+
+        worklogs = self.db.query(Worklog).all()
+        count = 0
+
+        for worklog in worklogs:
+            resolution = self.resolver.resolve_for_worklog(worklog)
+
+            self._upsert_mapping(
+                entity_type="worklog",
+                entity_id=worklog.id,
+                category=resolution.category_code,
+                source_rule=resolution.source,
+            )
+
+            count += 1
+            if count % 200 == 0:
+                self.db.flush()
+                logger.debug(f"Processed {count}/{len(worklogs)} worklogs")
+
+        self.stats.worklogs_processed = count
+        self.db.commit()
+        logger.info(f"Worklog categories recalculated: {count}")
+        return count
+
+    def recalculate_all(self) -> MappingStats:
+        """Полный пересчёт: сначала задачи, затем worklog.
+
+        Важно пересчитывать в этом порядке, т.к. worklog категория
+        может зависеть от категории задачи.
+        """
+        logger.info("Starting full mapping recalculation...")
+        self.stats = MappingStats()
+
+        try:
+            self.recalculate_issues()
+            self.recalculate_worklogs()
+        finally:
+            self.stats.finish()
+
+        logger.info(f"Mapping recalculation complete in {self.stats.duration_seconds:.1f}s")
+        return self.stats

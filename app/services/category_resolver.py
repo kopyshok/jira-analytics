@@ -1,0 +1,134 @@
+"""Сервис определения категории задачи по иерархии и правилам.
+
+Приоритет определения категории:
+1. Явное переопределение задачи (CategoryOverride)
+2. Ближайший настроенный корневой эпик/задача (ScopeRoot) — идём вверх по parent_id
+3. Правила качества данных (применяются к worklog)
+4. Категория «незаполненные / сомнительные worklog» (fallback)
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.models import Issue, ScopeRoot, CategoryOverride, Worklog
+from app.services.categories import CategoryCode, MappingSource
+
+
+@dataclass
+class CategoryResolution:
+    """Результат резолвинга категории для задачи или worklog."""
+
+    category_code: str
+    source: str  # MappingSource
+    source_entity_key: Optional[str] = None  # Ключ задачи-источника (для scope_root)
+
+
+class CategoryResolver:
+    """Резолвер категории задачи.
+
+    Кэширует scope_roots и overrides в памяти на время работы экземпляра,
+    чтобы не ходить в БД за каждой задачей.
+    """
+
+    def __init__(self, db: Session):
+        self.db = db
+        self._overrides: dict[str, str] = {}          # jira_issue_key -> category_code
+        self._roots_by_key: dict[str, str] = {}       # jira_issue_key -> category_code
+        self._loaded = False
+
+    def _load_caches(self) -> None:
+        """Загрузить scope_roots и category_overrides в память."""
+        if self._loaded:
+            return
+
+        overrides = self.db.query(CategoryOverride).all()
+        self._overrides = {o.jira_issue_key: o.category_code for o in overrides}
+
+        roots = (
+            self.db.query(ScopeRoot)
+            .filter(ScopeRoot.is_enabled == True)  # noqa: E712
+            .all()
+        )
+        self._roots_by_key = {r.jira_issue_key: r.category_code for r in roots}
+
+        self._loaded = True
+
+    def resolve_for_issue(self, issue: Issue) -> CategoryResolution:
+        """Определить категорию для задачи.
+
+        Обходит иерархию вверх по parent_id в поисках корневого эпика.
+        """
+        self._load_caches()
+
+        # 1. Явное переопределение
+        if issue.key in self._overrides:
+            return CategoryResolution(
+                category_code=self._overrides[issue.key],
+                source=MappingSource.OVERRIDE,
+                source_entity_key=issue.key,
+            )
+
+        # 2. Поиск корневого эпика вверх по иерархии
+        current: Optional[Issue] = issue
+        visited: set[str] = set()
+
+        while current is not None and current.id not in visited:
+            visited.add(current.id)
+
+            # Проверяем переопределения на промежуточных уровнях
+            if current.key in self._overrides and current.id != issue.id:
+                return CategoryResolution(
+                    category_code=self._overrides[current.key],
+                    source=MappingSource.OVERRIDE,
+                    source_entity_key=current.key,
+                )
+
+            # Проверяем scope_root
+            if current.key in self._roots_by_key:
+                return CategoryResolution(
+                    category_code=self._roots_by_key[current.key],
+                    source=MappingSource.SCOPE_ROOT,
+                    source_entity_key=current.key,
+                )
+
+            # Идём к родителю
+            if current.parent_id:
+                current = self.db.get(Issue, current.parent_id)
+            else:
+                current = None
+
+        # 3. Fallback — «незаполненные / сомнительные»
+        return CategoryResolution(
+            category_code=CategoryCode.UNFILLED_WORKLOG,
+            source=MappingSource.FALLBACK,
+        )
+
+    def resolve_for_worklog(
+        self,
+        worklog: Worklog,
+        min_comment_length: int = 5,
+    ) -> CategoryResolution:
+        """Определить категорию для worklog.
+
+        Сначала применяет правила качества: если комментарий отсутствует
+        или слишком короткий, worklog попадает в «сомнительные».
+        Иначе использует категорию задачи.
+        """
+        # Правило качества: пустой или слишком короткий комментарий
+        comment = (worklog.comment_text or "").strip()
+        if len(comment) < min_comment_length:
+            return CategoryResolution(
+                category_code=CategoryCode.UNFILLED_WORKLOG,
+                source=MappingSource.QUALITY_RULE,
+            )
+
+        # Иначе — категория задачи
+        if worklog.issue:
+            return self.resolve_for_issue(worklog.issue)
+
+        return CategoryResolution(
+            category_code=CategoryCode.UNFILLED_WORKLOG,
+            source=MappingSource.FALLBACK,
+        )

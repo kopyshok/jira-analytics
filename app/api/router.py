@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.endpoints import sync, scope
+from app.api.endpoints import sync, scope, analytics, mapping, capacity
 
 api_router = APIRouter()
 
@@ -17,6 +17,9 @@ async def root():
         "endpoints": {
             "sync": "/api/v1/sync",
             "scope": "/api/v1/scope",
+            "analytics": "/api/v1/analytics",
+            "mapping": "/api/v1/mapping",
+            "capacity": "/api/v1/capacity",
         },
     }
 
@@ -24,6 +27,9 @@ async def root():
 # Include routers
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
 api_router.include_router(scope.router, prefix="/scope", tags=["scope"])
+api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(mapping.router, prefix="/mapping", tags=["mapping"])
+api_router.include_router(capacity.router, prefix="/capacity", tags=["capacity"])
 
 # Future:
 # from app.api.endpoints import employees, projects, worklogs, analytics, planning

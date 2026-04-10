@@ -32,7 +32,12 @@ def engine(test_settings):
 
 @pytest.fixture
 def db_session(engine):
-    """Create a new database session for each test."""
+    """Create a new database session for each test.
+
+    Cleans all tables after each test so that services which call
+    ``commit()`` internally (e.g. MappingService) do not leak state
+    between tests.
+    """
     TestingSessionLocal = sessionmaker(
         autocommit=False,
         autoflush=False,
@@ -44,3 +49,6 @@ def db_session(engine):
     finally:
         session.rollback()
         session.close()
+        with engine.begin() as conn:
+            for table in reversed(Base.metadata.sorted_tables):
+                conn.execute(table.delete())
