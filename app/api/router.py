@@ -2,7 +2,15 @@
 
 from fastapi import APIRouter
 
-from app.api.endpoints import sync, scope, analytics, mapping, capacity
+from app.api.endpoints import (
+    analytics,
+    backlog,
+    capacity,
+    mapping,
+    planning,
+    scope,
+    sync,
+)
 
 api_router = APIRouter()
 
@@ -20,6 +28,8 @@ async def root():
             "analytics": "/api/v1/analytics",
             "mapping": "/api/v1/mapping",
             "capacity": "/api/v1/capacity",
+            "backlog": "/api/v1/backlog",
+            "planning": "/api/v1/planning",
         },
     }
 
@@ -30,11 +40,5 @@ api_router.include_router(scope.router, prefix="/scope", tags=["scope"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(mapping.router, prefix="/mapping", tags=["mapping"])
 api_router.include_router(capacity.router, prefix="/capacity", tags=["capacity"])
-
-# Future:
-# from app.api.endpoints import employees, projects, worklogs, analytics, planning
-# api_router.include_router(employees.router, prefix="/employees", tags=["employees"])
-# api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
-# api_router.include_router(worklogs.router, prefix="/worklogs", tags=["worklogs"])
-# api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
-# api_router.include_router(planning.router, prefix="/planning", tags=["planning"])
+api_router.include_router(backlog.router, prefix="/backlog", tags=["backlog"])
+api_router.include_router(planning.router, prefix="/planning", tags=["planning"])

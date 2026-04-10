@@ -32,6 +32,7 @@ class BacklogItem(Base, TimestampMixin):
     quarter: Mapped[Optional[str]] = mapped_column(
         String(10), nullable=True
     )  # e.g., "Q1", "Q2"
+    year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     estimate_hours: Mapped[Optional[float]] = mapped_column(
         Float, nullable=True
     )
