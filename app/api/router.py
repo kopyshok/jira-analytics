@@ -6,6 +6,7 @@ from app.api.endpoints import (
     analytics,
     backlog,
     capacity,
+    exports,
     mapping,
     planning,
     scope,
@@ -30,6 +31,7 @@ async def root():
             "capacity": "/api/v1/capacity",
             "backlog": "/api/v1/backlog",
             "planning": "/api/v1/planning",
+            "exports": "/api/v1/exports",
         },
     }
 
@@ -42,3 +44,4 @@ api_router.include_router(mapping.router, prefix="/mapping", tags=["mapping"])
 api_router.include_router(capacity.router, prefix="/capacity", tags=["capacity"])
 api_router.include_router(backlog.router, prefix="/backlog", tags=["backlog"])
 api_router.include_router(planning.router, prefix="/planning", tags=["planning"])
+api_router.include_router(exports.router, prefix="/exports", tags=["exports"])

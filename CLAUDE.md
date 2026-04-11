@@ -30,11 +30,11 @@ Connector Layer → Service Layer → Repository Layer → Database
 ```
 jira-analytics/
 ├── app/
-│   ├── api/endpoints/     # FastAPI роутеры (sync, scope, analytics, mapping, capacity, backlog, planning)
+│   ├── api/endpoints/     # FastAPI роутеры (sync, scope, analytics, mapping, capacity, backlog, planning, exports)
 │   ├── connectors/        # Jira HTTP клиент + Pydantic schemas
 │   ├── models/            # SQLAlchemy модели (16 таблиц)
 │   ├── repositories/      # Абстракция доступа к данным
-│   ├── services/          # Бизнес-логика (sync, category_resolver, mapping, analytics, capacity, planning)
+│   ├── services/          # Бизнес-логика (sync, category_resolver, mapping, analytics, capacity, planning, export)
 │   ├── config.py          # Pydantic Settings
 │   ├── database.py        # Engine + Session + Base
 │   └── main.py            # FastAPI app
@@ -166,6 +166,12 @@ GET    /api/v1/planning/scenarios/{id}              # Один сценарий
 DELETE /api/v1/planning/scenarios/{id}              # Удалить сценарий + его раскладки
 GET    /api/v1/planning/scenarios/{id}/allocations  # Сохранённые раскладки
 POST   /api/v1/planning/scenarios/generate          # Сгенерировать новый сценарий (greedy)
+
+# Exports (отчёты в xlsx/pdf/pptx)
+GET /api/v1/exports/analytics.xlsx?start=&end=      # Аналитика: многолистовой xlsx
+GET /api/v1/exports/analytics.pdf?start=&end=       # Аналитика: PDF
+GET /api/v1/exports/scenarios/{id}.xlsx             # Сценарий: xlsx (сводка + раскладка)
+GET /api/v1/exports/scenarios/{id}.pptx             # Сценарий: презентация
 ```
 
 ## Roadmap
@@ -177,7 +183,9 @@ POST   /api/v1/planning/scenarios/generate          # Сгенерировать
   - [x] CapacityService: производственный календарь (пн-пт), отпуска, `monthly_capacity_rules`, monthly/quarter/team ёмкость
   - [x] Backlog items CRUD (фильтры по year/quarter/project, сортировка по priority)
   - [x] Planning scenarios (жадная раскладка по приоритету с учётом team capacity)
-- [ ] **M5** — Экспорты и polish (PDF, Excel, PPTX, фильтры интерфейса)
+- [x] **M5** — Экспорты
+  - [x] ExportService: аналитика → xlsx/pdf, сценарий → xlsx/pptx
+  - [x] /api/v1/exports endpoints (Response с корректными MIME и Content-Disposition)
 
 ## Принципы кода
 
@@ -214,6 +222,9 @@ Base URL: https://example.atlassian.net
 
 ### CapacityService
 Формула: `available = workdays × hours_per_day − vacation_hours − mandatory_hours`, с клампом `max(0.0, ...)`. Производственный календарь MVP — просто понедельник-пятница (`weekday() < 5`), без российских праздников. Отпуска пересекаются с месяцем через `max(start, month_start)` / `min(end, month_end)`. `mandatory_hours = norm × percent_of_norm / 100` берётся из `monthly_capacity_rules`. Квартал = три месяца по `QUARTER_MONTHS = {1:(1,2,3), ...}`.
+
+### ExportService
+Собирает готовые байты xlsx/pdf/pptx, эндпоинты оборачивают в `Response` с нужным MIME и `Content-Disposition: attachment`. `openpyxl`/`reportlab`/`pptx` импортируются **лениво внутри методов**, чтобы отсутствие одной библиотеки не ломало импорт модуля. Аналитика переиспользует `AnalyticsService` и отчёты за период (start/end). Экспорт сценария переиспользует `PlanningService._team_capacity_hours` для расчёта ёмкости — поэтому цифры в экспорте совпадают с теми, что показывает POST `/planning/scenarios/generate`. Для scenario-xlsx/pptx данные раскладки и сводка загружаются одним запросом через `_load_scenario_rows` (join `ScenarioAllocation` ↔ `BacklogItem`), пропущенные задачи сортируются после включённых. Тесты smoke-только: открываем файл обратно соответствующей библиотекой и сверяем ключевые артефакты (листы, заголовки, текст слайдов); layout не валидируем.
 
 ### PlanningService
 Жадная раскладка бэклога по приоритету. Ёмкость квартала = сумма `total_available_hours` активной команды из `CapacityService.team_quarter_capacity`. Сортировка: `(priority is None, priority, estimate_hours, title)` — меньше priority раньше, `None`-priority в конец. Задачи берутся **целиком** (не дробим): если `estimate_hours` помещается в остаток — включаем, иначе пропускаем (`reason="no_capacity_left"`). Пустая/нулевая оценка → `reason="no_estimate"`, пропуск. `ScenarioAllocation` сохраняется и для включённых, и для пропущенных задач (различаются по `included_flag`). Коммитит внутри себя — тесты опираются на очистку в `conftest`. Формат квартала в БД: `"Q1"`..`"Q4"` (строка), в API принимаем число `1..4`. `backlog_items.year + quarter` фильтруются автоматически, либо можно передать явный `backlog_item_ids`.

@@ -11,6 +11,11 @@ alembic>=1.13.0
 # HTTP client for Jira API
 httpx>=0.26.0
 
+# Exports (M5)
+openpyxl>=3.1.0
+reportlab>=4.0.0
+python-pptx>=1.0.0
+
 # Testing
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
