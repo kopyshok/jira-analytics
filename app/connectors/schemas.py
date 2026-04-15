@@ -1,9 +1,26 @@
 """Pydantic schemas for Jira API responses."""
 
+import re
 from datetime import datetime
 from typing import Optional, List, Any
 
 from pydantic import BaseModel, Field, field_validator
+
+
+_JIRA_TZ_RE = re.compile(r"([+-])(\d{2})(\d{2})$")
+_JIRA_FRACTION_RE = re.compile(r"\.\d+")
+
+
+def _parse_jira_datetime(value: str) -> datetime:
+    """Распарсить дату из Jira (формат ``2024-01-15T10:30:00.000+0300``).
+
+    Python 3.10 ``datetime.fromisoformat`` не принимает таймзону без двоеточия
+    и дробные секунды произвольной длины, поэтому нормализуем строку вручную.
+    """
+    s = value.replace("Z", "+00:00")
+    s = _JIRA_FRACTION_RE.sub("", s)
+    s = _JIRA_TZ_RE.sub(r"\1\2:\3", s)
+    return datetime.fromisoformat(s)
 
 
 # === User / Author schemas ===
@@ -153,16 +170,8 @@ class JiraWorklogSchema(BaseModel):
     
     @property
     def started_datetime(self) -> datetime:
-        """Parse started timestamp."""
-        # Jira format: "2024-01-15T10:30:00.000+0300"
-        started_str = self.started.replace("+0000", "+00:00")
-        if "." in started_str:
-            # Handle milliseconds
-            base, tz = started_str.rsplit("+", 1) if "+" in started_str else (started_str.rsplit("-", 1))
-            if "." in base:
-                base = base.split(".")[0]
-            started_str = f"{base}+{tz}" if "+" in self.started else f"{base}-{tz}"
-        return datetime.fromisoformat(started_str.replace("Z", "+00:00"))
+        """Распарсить started из Jira (например, ``2024-01-15T10:30:00.000+0300``)."""
+        return _parse_jira_datetime(self.started)
     
     @property
     def comment_text(self) -> Optional[str]:
@@ -222,16 +231,10 @@ class JiraCommentSchema(BaseModel):
 
     @property
     def created_datetime(self) -> Optional[datetime]:
-        """Parse created timestamp."""
+        """Распарсить created из Jira (формат с таймзоной без двоеточия)."""
         if not self.created:
             return None
-        created_str = self.created.replace("+0000", "+00:00")
-        if "." in created_str:
-            base, tz = created_str.rsplit("+", 1) if "+" in created_str else (created_str.rsplit("-", 1))
-            if "." in base:
-                base = base.split(".")[0]
-            created_str = f"{base}+{tz}" if "+" in self.created else f"{base}-{tz}"
-        return datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+        return _parse_jira_datetime(self.created)
 
     def _extract_adf_text(self, node: dict) -> str:
         """Recursively extract text from ADF."""

@@ -162,39 +162,41 @@ class AnalyticsService:
     ) -> list[AggregateRow]:
         """Часы по периодам: day, week, month.
 
-        Использует SQLite-совместимый strftime. Для PostgreSQL потребуется
-        замена на date_trunc в будущем.
+        Группировка выполняется в Python: тянем сырые ``started_at`` и
+        агрегируем. Так сервис остаётся независимым от диалекта БД
+        (в SQLite нет ``date_trunc``, в PostgreSQL — нет ``strftime``).
         """
-        fmt_map = {
-            "day": "%Y-%m-%d",
-            "week": "%Y-W%W",
-            "month": "%Y-%m",
-        }
-        fmt = fmt_map.get(period, "%Y-%m-%d")
-
-        # SQLite strftime (portable через func.strftime)
-        period_expr = func.strftime(fmt, Worklog.started_at)
-
-        query = (
-            self.db.query(
-                period_expr.label("period"),
-                func.sum(Worklog.hours).label("total_hours"),
-                func.count(Worklog.id).label("cnt"),
-            )
-            .group_by(period_expr)
-            .order_by(period_expr)
-        )
+        query = self.db.query(Worklog.started_at, Worklog.hours)
         query = self._apply_date_filter(query, start, end)
 
-        return [
+        buckets: dict[str, list[float]] = {}
+        for started_at, hours in query.all():
+            if started_at is None:
+                continue
+            key = self._period_key(started_at, period)
+            buckets.setdefault(key, []).append(float(hours or 0))
+
+        rows = [
             AggregateRow(
-                key=row.period,
-                label=row.period,
-                total_hours=float(row.total_hours or 0),
-                worklog_count=int(row.cnt),
+                key=key,
+                label=key,
+                total_hours=sum(values),
+                worklog_count=len(values),
             )
-            for row in query.all()
+            for key, values in buckets.items()
         ]
+        rows.sort(key=lambda r: r.key)
+        return rows
+
+    @staticmethod
+    def _period_key(ts: datetime, period: str) -> str:
+        """Ключ группировки для даты по периоду day/week/month."""
+        if period == "month":
+            return f"{ts.year:04d}-{ts.month:02d}"
+        if period == "week":
+            iso_year, iso_week, _ = ts.isocalendar()
+            return f"{iso_year:04d}-W{iso_week:02d}"
+        return f"{ts.year:04d}-{ts.month:02d}-{ts.day:02d}"
 
     # === Контекстные переключения ===
 

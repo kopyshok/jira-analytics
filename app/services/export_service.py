@@ -291,7 +291,7 @@ class ExportService:
             table_rows = [["Наименование", "Часы", "Worklog"]] + [
                 [r.label, f"{r.total_hours:.2f}", str(r.worklog_count)]
                 for r in rows
-            ] or [["(нет данных)", "", ""]]
+            ]
             if len(table_rows) == 1:
                 table_rows.append(["(нет данных)", "", ""])
             story.append(self._pdf_table(table_rows, colors))

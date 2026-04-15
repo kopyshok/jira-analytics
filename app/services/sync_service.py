@@ -271,6 +271,7 @@ class SyncService:
                 logger.info(f"Incremental sync since {since}")
         
         count = 0
+        unresolved_parents: List[Tuple[str, str]] = []  # (child_issue_id, parent_key)
         async for jira_issue in self.jira.get_issues_updated_since(
             project_keys=keys,
             since=since,
@@ -280,29 +281,49 @@ class SyncService:
             if not project:
                 logger.warning(f"Project not found for issue {jira_issue.key}")
                 continue
-            
+
             # Handle parent (for subtasks)
             parent_id = None
-            if jira_issue.fields.parent_key:
-                parent = self.issue_repo.get_by_field("key", jira_issue.fields.parent_key)
+            parent_key = jira_issue.fields.parent_key
+            if parent_key:
+                parent = self.issue_repo.get_by_field("key", parent_key)
                 if parent:
                     parent_id = parent.id
-            
+
             # Ensure creator exists as employee
             if jira_issue.fields.creator:
                 self._ensure_employee(jira_issue.fields.creator)
-            
+
             # Upsert issue
             issue, created = self._upsert_issue(jira_issue, project.id, parent_id)
             if created:
                 self.stats.issues_created += 1
             self.stats.issues_synced += 1
             count += 1
-            
+
+            # Отложенно свяжем, если родитель ещё не подтянут (обычно эпик
+            # приходит позже подзадачи в выдаче /search).
+            if parent_key and parent_id is None:
+                unresolved_parents.append((issue.id, parent_key))
+
             if count % 50 == 0:
                 logger.debug(f"Synced {count} issues...")
                 self.db.commit()  # Periodic commit
-        
+
+        # Второй проход: теперь все эпики уже в базе, достроим parent_id.
+        if unresolved_parents:
+            resolved = 0
+            for child_id, parent_key in unresolved_parents:
+                parent = self.issue_repo.get_by_field("key", parent_key)
+                if not parent:
+                    continue
+                child = self.issue_repo.get(child_id)
+                if child and child.parent_id != parent.id:
+                    child.parent_id = parent.id
+                    resolved += 1
+            if resolved:
+                logger.info(f"Linked {resolved} issues to their parents in second pass")
+
         self._update_sync_state("issues", datetime.utcnow())
         self.db.commit()
         
@@ -341,17 +362,18 @@ class SyncService:
     async def sync_worklogs(
         self,
         issue_keys: Optional[List[str]] = None,
-        limit_issues: int = 1000,
+        limit_issues: Optional[int] = None,
     ) -> int:
         """Sync worklogs for issues.
-        
+
         Args:
             issue_keys: Specific issue keys to sync worklogs for.
-                       If None, syncs worklogs for recently updated issues.
-            limit_issues: Max number of issues to process.
+                       If None, syncs worklogs for all locally synced issues.
+            limit_issues: Опционально — верхний предел числа задач. Если не
+                задан, обходим весь бэклог задач (без тихого ограничения).
         """
         logger.info("Starting worklogs sync...")
-        
+
         # Get issues to sync worklogs for
         if issue_keys:
             issues = [
@@ -360,8 +382,10 @@ class SyncService:
             ]
             issues = [i for i in issues if i]
         else:
-            # Get recently synced issues
-            issues = self.issue_repo.get_all(limit=limit_issues)
+            query = self.db.query(Issue)
+            if limit_issues is not None:
+                query = query.limit(limit_issues)
+            issues = query.all()
         
         logger.info(f"Syncing worklogs for {len(issues)} issues...")
         
@@ -432,13 +456,14 @@ class SyncService:
     async def sync_comments(
         self,
         issue_keys: Optional[List[str]] = None,
-        limit_issues: int = 1000,
+        limit_issues: Optional[int] = None,
     ) -> int:
         """Синхронизация комментариев к задачам.
 
         Args:
             issue_keys: Конкретные ключи задач. Если None — все локальные задачи.
-            limit_issues: Макс. количество задач для обработки.
+            limit_issues: Опциональный верхний предел числа задач. Без значения
+                обходим все локальные задачи (без тихого ограничения).
         """
         logger.info("Starting comments sync...")
 
@@ -449,7 +474,10 @@ class SyncService:
             ]
             issues = [i for i in issues if i]
         else:
-            issues = self.issue_repo.get_all(limit=limit_issues)
+            query = self.db.query(Issue)
+            if limit_issues is not None:
+                query = query.limit(limit_issues)
+            issues = query.all()
 
         logger.info(f"Syncing comments for {len(issues)} issues...")
 

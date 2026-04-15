@@ -1,9 +1,10 @@
 """Tests for Jira schemas."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from app.connectors.schemas import (
+    JiraCommentSchema,
     JiraUserSchema,
     JiraProjectSchema,
     JiraWorklogSchema,
@@ -103,13 +104,58 @@ class TestJiraWorklogSchema:
             "timeSpentSeconds": 3600,
         }
         worklog = JiraWorklogSchema(**data)
-        
+
         dt = worklog.started_datetime
         assert dt.year == 2024
         assert dt.month == 1
         assert dt.day == 15
         assert dt.hour == 10
         assert dt.minute == 30
+        assert dt.utcoffset() == timedelta(0)
+
+    def test_worklog_datetime_moscow_offset(self):
+        """Регрессия: таймзона без двоеточия (+0300) должна парситься на Python 3.10."""
+        data = {
+            "id": "123",
+            "issueId": "456",
+            "author": {"accountId": "user1", "displayName": "John"},
+            "started": "2024-01-15T10:30:00.000+0300",
+            "timeSpentSeconds": 3600,
+        }
+        worklog = JiraWorklogSchema(**data)
+
+        dt = worklog.started_datetime
+        assert dt.hour == 10
+        assert dt.minute == 30
+        assert dt.utcoffset() == timedelta(hours=3)
+
+    def test_worklog_datetime_negative_offset(self):
+        """Отрицательная таймзона тоже должна парситься."""
+        data = {
+            "id": "123",
+            "issueId": "456",
+            "author": {"accountId": "user1", "displayName": "John"},
+            "started": "2024-01-15T10:30:00.000-0500",
+            "timeSpentSeconds": 3600,
+        }
+        worklog = JiraWorklogSchema(**data)
+
+        dt = worklog.started_datetime
+        assert dt.utcoffset() == timedelta(hours=-5)
+
+    def test_worklog_datetime_zulu(self):
+        """Формат с Z (UTC) должен парситься."""
+        data = {
+            "id": "123",
+            "issueId": "456",
+            "author": {"accountId": "user1", "displayName": "John"},
+            "started": "2024-01-15T10:30:00Z",
+            "timeSpentSeconds": 3600,
+        }
+        worklog = JiraWorklogSchema(**data)
+
+        dt = worklog.started_datetime
+        assert dt.utcoffset() == timedelta(0)
     
     def test_worklog_with_adf_comment(self):
         """Test extracting text from ADF format comment."""
@@ -140,6 +186,33 @@ class TestJiraWorklogSchema:
         
         assert "Working on" in worklog.comment_text
         assert "feature X" in worklog.comment_text
+
+
+class TestJiraCommentSchema:
+    """Tests for JiraCommentSchema."""
+
+    def test_comment_created_datetime_moscow_offset(self):
+        data = {
+            "id": "c1",
+            "author": {"accountId": "u1", "displayName": "John"},
+            "body": "hello",
+            "created": "2024-01-15T10:30:00.000+0300",
+        }
+        comment = JiraCommentSchema(**data)
+
+        dt = comment.created_datetime
+        assert dt is not None
+        assert dt.hour == 10
+        assert dt.utcoffset() == timedelta(hours=3)
+
+    def test_comment_created_none(self):
+        data = {
+            "id": "c1",
+            "author": {"accountId": "u1", "displayName": "John"},
+            "body": "hello",
+        }
+        comment = JiraCommentSchema(**data)
+        assert comment.created_datetime is None
 
 
 class TestJiraIssueSchema:

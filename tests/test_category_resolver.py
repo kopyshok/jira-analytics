@@ -11,6 +11,7 @@ from app.models import (
     Project,
     ScopeRoot,
     Worklog,
+    WorklogQualityRule,
 )
 from app.services.categories import CategoryCode, MappingSource
 from app.services.category_resolver import CategoryResolver
@@ -198,6 +199,65 @@ class TestResolveForWorklog:
 
         assert result.category_code == CategoryCode.UNFILLED_WORKLOG
         assert result.source == MappingSource.QUALITY_RULE
+
+    def test_custom_min_comment_length_from_quality_rule(
+        self, db_session, project, employee
+    ):
+        """Порог длины комментария берётся из worklog_quality_rules."""
+        issue = _make_issue(db_session, project, "PRJ-1")
+        db_session.add(
+            ScopeRoot(
+                category_code=CategoryCode.TECH_DEBT,
+                jira_issue_key="PRJ-1",
+                is_enabled=True,
+            )
+        )
+        db_session.add(
+            WorklogQualityRule(
+                rule_code="min_comment_length",
+                threshold_value=20.0,
+                is_enabled=True,
+            )
+        )
+        db_session.flush()
+
+        # Комментарий длиной 10 символов — дефолт 5 бы пропустил, кастомный 20 — нет.
+        worklog = self._make_worklog(db_session, issue, employee, "ten chars!")
+
+        result = CategoryResolver(db_session).resolve_for_worklog(worklog)
+
+        assert result.category_code == CategoryCode.UNFILLED_WORKLOG
+        assert result.source == MappingSource.QUALITY_RULE
+
+    def test_disabled_quality_rule_falls_back_to_default(
+        self, db_session, project, employee
+    ):
+        """Выключенное правило → используется дефолт 5."""
+        issue = _make_issue(db_session, project, "PRJ-1")
+        db_session.add(
+            ScopeRoot(
+                category_code=CategoryCode.TECH_DEBT,
+                jira_issue_key="PRJ-1",
+                is_enabled=True,
+            )
+        )
+        db_session.add(
+            WorklogQualityRule(
+                rule_code="min_comment_length",
+                threshold_value=100.0,
+                is_enabled=False,
+            )
+        )
+        db_session.flush()
+
+        worklog = self._make_worklog(
+            db_session, issue, employee, "ten chars!"
+        )
+
+        result = CategoryResolver(db_session).resolve_for_worklog(worklog)
+
+        assert result.category_code == CategoryCode.TECH_DEBT
+        assert result.source == MappingSource.SCOPE_ROOT
 
     def test_good_comment_inherits_from_issue(
         self, db_session, project, employee

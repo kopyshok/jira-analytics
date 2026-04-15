@@ -12,8 +12,18 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Issue, ScopeRoot, CategoryOverride, Worklog
+from app.models import (
+    CategoryOverride,
+    Issue,
+    ScopeRoot,
+    Worklog,
+    WorklogQualityRule,
+)
 from app.services.categories import CategoryCode, MappingSource
+
+
+DEFAULT_MIN_COMMENT_LENGTH = 5
+MIN_COMMENT_LENGTH_RULE_CODE = "min_comment_length"
 
 
 @dataclass
@@ -36,10 +46,11 @@ class CategoryResolver:
         self.db = db
         self._overrides: dict[str, str] = {}          # jira_issue_key -> category_code
         self._roots_by_key: dict[str, str] = {}       # jira_issue_key -> category_code
+        self._min_comment_length: int = DEFAULT_MIN_COMMENT_LENGTH
         self._loaded = False
 
     def _load_caches(self) -> None:
-        """Загрузить scope_roots и category_overrides в память."""
+        """Загрузить scope_roots, category_overrides и worklog_quality_rules."""
         if self._loaded:
             return
 
@@ -52,6 +63,19 @@ class CategoryResolver:
             .all()
         )
         self._roots_by_key = {r.jira_issue_key: r.category_code for r in roots}
+
+        min_len_rule = (
+            self.db.query(WorklogQualityRule)
+            .filter(
+                WorklogQualityRule.rule_code == MIN_COMMENT_LENGTH_RULE_CODE,
+                WorklogQualityRule.is_enabled == True,  # noqa: E712
+            )
+            .first()
+        )
+        if min_len_rule and min_len_rule.threshold_value is not None:
+            self._min_comment_length = int(min_len_rule.threshold_value)
+        else:
+            self._min_comment_length = DEFAULT_MIN_COMMENT_LENGTH
 
         self._loaded = True
 
@@ -108,17 +132,29 @@ class CategoryResolver:
     def resolve_for_worklog(
         self,
         worklog: Worklog,
-        min_comment_length: int = 5,
+        min_comment_length: Optional[int] = None,
     ) -> CategoryResolution:
         """Определить категорию для worklog.
 
         Сначала применяет правила качества: если комментарий отсутствует
         или слишком короткий, worklog попадает в «сомнительные».
         Иначе использует категорию задачи.
+
+        Порог длины комментария берётся из таблицы ``worklog_quality_rules``
+        (rule_code=``min_comment_length``). Аргумент ``min_comment_length``
+        оставлен как override для тестов и вызовов ad-hoc.
         """
+        self._load_caches()
+
+        threshold = (
+            min_comment_length
+            if min_comment_length is not None
+            else self._min_comment_length
+        )
+
         # Правило качества: пустой или слишком короткий комментарий
         comment = (worklog.comment_text or "").strip()
-        if len(comment) < min_comment_length:
+        if len(comment) < threshold:
             return CategoryResolution(
                 category_code=CategoryCode.UNFILLED_WORKLOG,
                 source=MappingSource.QUALITY_RULE,

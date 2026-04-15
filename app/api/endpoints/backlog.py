@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import BacklogItem
+from app.models import BacklogItem, ScenarioAllocation
 from app.repositories.base import BaseRepository
 
 
@@ -136,11 +136,31 @@ async def delete_backlog_item(
     item_id: str,
     db: Session = Depends(get_db),
 ):
-    """Удалить элемент бэклога."""
+    """Удалить элемент бэклога.
+
+    Если элемент уже используется в сохранённом сценарии планирования,
+    возвращаем 409 — пусть пользователь сначала удалит сценарий.
+    """
     repo = BaseRepository(BacklogItem, db)
     item = repo.get(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Backlog item not found")
+
+    has_allocations = (
+        db.query(ScenarioAllocation)
+        .filter(ScenarioAllocation.backlog_item_id == item_id)
+        .first()
+        is not None
+    )
+    if has_allocations:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Backlog item is referenced by one or more planning scenarios; "
+                "delete those scenarios first."
+            ),
+        )
+
     repo.delete(item)
     db.commit()
     return {"status": "deleted", "id": item_id}
