@@ -49,7 +49,7 @@ export default function BacklogPage() {
   };
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Space>
         <QuarterYearSelect />
         <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>Добавить</Button>

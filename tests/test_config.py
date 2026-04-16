@@ -24,3 +24,17 @@ def test_cors_origins_accept_comma_separated_values():
         "http://localhost:3000",
         "http://localhost:5173",
     ]
+
+
+def test_cors_origins_accept_comma_separated_env(monkeypatch):
+    monkeypatch.setenv(
+        "CORS_ORIGINS",
+        "http://localhost:5174,http://127.0.0.1:5174",
+    )
+
+    settings = Settings()
+
+    assert settings.cors_origins == [
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]

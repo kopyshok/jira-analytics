@@ -1,6 +1,5 @@
 import { Suspense, type ReactNode } from 'react';
 import { createBrowserRouter } from 'react-router';
-import { Flex, Spin } from 'antd';
 import AppLayout from './components/Layout/AppLayout';
 import {
   AnalyticsPage,
@@ -16,9 +15,9 @@ function page(element: ReactNode) {
   return (
     <Suspense
       fallback={
-        <Flex justify="center" align="center" style={{ minHeight: 240 }}>
-          <Spin />
-        </Flex>
+        <div style={{ minHeight: 240, display: 'grid', placeItems: 'center' }}>
+          Загрузка...
+        </div>
       }
     >
       {element}

@@ -18,7 +18,7 @@ function ProjectsTab() {
   const [key, setKey] = useState('');
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Space>
         <Input placeholder="Ключ проекта (напр. PROJ)" value={key} onChange={(e) => setKey(e.target.value)} style={{ width: 250 }} />
         <Button
@@ -66,7 +66,7 @@ function RootsTab() {
   const [category, setCategory] = useState<string>('');
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Space>
         <Input placeholder="Ключ задачи (напр. PROJ-123)" value={issueKey} onChange={(e) => setIssueKey(e.target.value)} style={{ width: 200 }} />
         <Select placeholder="Категория" value={category || undefined} onChange={setCategory} options={categoryOptions} style={{ width: 300 }} />
@@ -115,7 +115,7 @@ function OverridesTab() {
   const [category, setCategory] = useState<string>('');
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Space>
         <Input placeholder="Ключ задачи" value={issueKey} onChange={(e) => setIssueKey(e.target.value)} style={{ width: 200 }} />
         <Select placeholder="Категория" value={category || undefined} onChange={setCategory} options={categoryOptions} style={{ width: 300 }} />
