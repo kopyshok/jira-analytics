@@ -155,9 +155,10 @@ cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 ## Frontend Architecture
 
 - All state is server state via TanStack Query (staleTime 30s, retry 1) — no Redux/Zustand
-- Ant Design 6 with Russian locale (`antd/locale/ru_RU`)
+- Ant Design 6 with Russian locale (`antd/locale/ru_RU`), `darkAlgorithm` theme
 - Route-level lazy loading via `lazyPages.tsx`; Quarter/Year via URL search params, not global state
 - Responsive grid: Ant Design `Col` with `xs/sm/lg` breakpoints; Sider auto-collapses on `lg`
+- **Dark theme** (dark-dashboard style): tokens in `DARK_THEME` and `CHART_COLORS` (`utils/constants.ts`), configured in `main.tsx` via `ConfigProvider theme`. Page bg `#0d1c33`, cards `#0f2340`, sidebar `#091527`, primary cyan `#00c9c8`
 - E2E: Playwright with isolated `data/e2e.db` on non-standard ports (:8010 backend, :5174 frontend), no Jira credentials needed
 
 ## CI

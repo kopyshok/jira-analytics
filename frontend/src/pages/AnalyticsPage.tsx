@@ -7,7 +7,7 @@ import DateRangeSelect from '../components/shared/DateRangeSelect';
 import ExportButtons from '../components/shared/ExportButtons';
 import { useHoursByEmployee, useHoursByProject, useHoursByCategory, useHoursByPeriod, useContextSwitching, useEmployeesForFilter, useProjectsForFilter } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
-import { CATEGORY_LABELS, CATEGORY_COLORS } from '../utils/constants';
+import { CATEGORY_LABELS, CATEGORY_COLORS, CHART_COLORS, DARK_THEME } from '../utils/constants';
 import { formatHours } from '../utils/format';
 import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
 
@@ -81,11 +81,11 @@ function HoursBarChart({ data, loading }: { data?: AggregateRowResponse[]; loadi
   return (
     <ResponsiveContainer width="100%" height={400}>
       <BarChart data={data} margin={{ left: 20, bottom: 60 }}>
-        <CartesianGrid strokeDasharray="3 3" />
+        <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
         <XAxis dataKey="label" angle={-45} textAnchor="end" interval={0} height={80} />
         <YAxis />
         <Tooltip formatter={tooltipFmt} />
-        <Bar dataKey="total_hours" fill="#1890ff" name="Часы" />
+        <Bar dataKey="total_hours" fill={CHART_COLORS.blue} name="Часы" />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -185,12 +185,12 @@ function PeriodTab({ start, end, period, onPeriodChange, employeeId, projectKey 
       <Segmented options={[{ label: 'День', value: 'day' }, { label: 'Неделя', value: 'week' }, { label: 'Месяц', value: 'month' }]} value={period} onChange={v => onPeriodChange(v as 'day' | 'week' | 'month')} style={{ marginBottom: 16 }} />
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
+          <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
           <XAxis dataKey="label" />
           <YAxis />
           <Tooltip formatter={tooltipFmt} />
           <Legend />
-          <Line type="monotone" dataKey="total_hours" stroke="#1890ff" name="Часы" />
+          <Line type="monotone" dataKey="total_hours" stroke={CHART_COLORS.cyan} name="Часы" />
         </LineChart>
       </ResponsiveContainer>
     </>
