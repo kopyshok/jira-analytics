@@ -30,7 +30,7 @@ No application-layer module depends on SQLite-specific features.
 ## Project Structure
 
 - `app/` — backend: `api/endpoints/`, `connectors/`, `models/`, `repositories/`, `services/`, `config.py`, `database.py`, `main.py`
-- `frontend/src/` — React SPA: `api/`, `hooks/`, `pages/` (7), `components/`, `types/`, `utils/`
+- `frontend/src/` — React SPA: `api/`, `hooks/`, `pages/` (6 routable), `components/`, `types/`, `utils/`
 - `frontend/e2e/` — Playwright E2E tests (isolated `data/e2e.db`)
 - `alembic/` — DB migrations
 - `tests/` — pytest backend tests
@@ -49,6 +49,8 @@ No application-layer module depends on SQLite-specific features.
 10 routers: sync, scope, analytics, mapping, capacity, backlog, planning, exports, employees, projects.
 Full list: see `app/api/router.py`. Key patterns:
 - CRUD: GET list + POST create, GET|PATCH|DELETE by id (backlog, capacity, scope)
+- Browse: GET `/sync/jira-projects`, `/sync/jira-epics` — live Jira catalog with `in_scope` flags
+- Batch: POST `/scope/projects/batch` — add/remove multiple projects at once
 - Exports: GET `/exports/analytics.xlsx|pdf`, `/exports/scenarios/{id}.xlsx|pptx`
 - Planning: POST `/planning/scenarios/generate` (greedy allocation)
 
@@ -101,6 +103,10 @@ Incremental sync via `sync_state.last_sync` per entity; JQL `updated >= "timesta
 Rate limiting: 100ms delay between requests + exponential backoff on HTTP 429.
 Batch size: 100 issues per Jira API request.
 
+### Jira API (Atlassian Cloud)
+Issue search uses `GET /rest/api/3/search/jql` — the old `GET /search` endpoint returns **410 Gone**.
+The new endpoint may omit `total` in the response; pagination uses `len(issues) >= maxResults` heuristic (see `JiraSearchResponseSchema.has_more`).
+
 ### Test Fixtures (tests/conftest.py)
 `engine` — session-scoped in-memory SQLite.
 `db_session` — function-scoped; **after each test explicitly deletes rows from all tables** (`table.delete()` in reverse order), because services like `MappingService` commit internally and a plain `rollback()` won't undo committed data.
@@ -141,8 +147,8 @@ py -3.10 scripts/local_smoke.py
 .\scripts\e2e-local.ps1 -InstallBrowsers  # first run
 .\scripts\e2e-local.ps1
 
-# Makefile shortcuts
-make dev | run | test | migrate | clean
+# Makefile shortcuts (make help for full list)
+make dev | run | test | lint | format | migrate | migration msg='...' | clean | reset
 
 # Frontend
 cd frontend && npm install
@@ -159,6 +165,8 @@ cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 - Route-level lazy loading via `lazyPages.tsx`; Quarter/Year via URL search params, not global state
 - Responsive grid: Ant Design `Col` with `xs/sm/lg` breakpoints; Sider auto-collapses on `lg`
 - **Dark theme** (dark-dashboard style): tokens in `DARK_THEME` and `CHART_COLORS` (`utils/constants.ts`), configured in `main.tsx` via `ConfigProvider theme`. Page bg `#0d1c33`, cards `#0f2340`, sidebar `#091527`, primary cyan `#00c9c8`
+- **Error tracking**: `errorStore.ts` captures API errors (network + HTTP); `BugReportButton` (FloatButton) shows reactive badge via `useSyncExternalStore`, copies markdown bug report to clipboard. Wired into `api/client.ts` interceptors.
+- **Merged Sync+Scope page**: `/scope` route redirects to `/sync`; SyncPage includes project browser, scope management, and sync controls in tabs
 - E2E: Playwright with isolated `data/e2e.db` on non-standard ports (:8010 backend, :5174 frontend), no Jira credentials needed
 
 ## CI

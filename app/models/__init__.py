@@ -17,6 +17,8 @@ from app.models.monthly_capacity_rule import MonthlyCapacityRule
 from app.models.backlog_item import BacklogItem
 from app.models.planning_scenario import PlanningScenario
 from app.models.scenario_allocation import ScenarioAllocation
+from app.models.app_setting import AppSetting
+from app.models.category import Category
 
 __all__ = [
     "TimestampMixin",
@@ -38,4 +40,6 @@ __all__ = [
     "BacklogItem",
     "PlanningScenario",
     "ScenarioAllocation",
+    "AppSetting",
+    "Category",
 ]

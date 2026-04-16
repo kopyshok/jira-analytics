@@ -7,7 +7,8 @@ import DateRangeSelect from '../components/shared/DateRangeSelect';
 import ExportButtons from '../components/shared/ExportButtons';
 import { useHoursByEmployee, useHoursByProject, useHoursByCategory, useHoursByPeriod, useContextSwitching, useEmployeesForFilter, useProjectsForFilter } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
-import { CATEGORY_LABELS, CATEGORY_COLORS, CHART_COLORS, DARK_THEME } from '../utils/constants';
+import { CHART_COLORS, DARK_THEME } from '../utils/constants';
+import { useCategories } from '../hooks/useCategories';
 import { formatHours } from '../utils/format';
 import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
 
@@ -134,6 +135,7 @@ function ProjectTab({ start, end, employeeId, projectKey }: { start?: string; en
 }
 
 function CategoryTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
+  const { labels: catLabels, colors: catColors } = useCategories();
   const { data, isLoading, isError, error } = useHoursByCategory(start, end, employeeId, projectKey);
   if (isLoading) return <Spin />;
   if (isError) return <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon />;
@@ -141,8 +143,8 @@ function CategoryTab({ start, end, employeeId, projectKey }: { start?: string; e
 
   const chartData = data.map((d) => ({
     ...d,
-    label: CATEGORY_LABELS[d.key] || d.label,
-    fill: CATEGORY_COLORS[d.key] || '#8884d8',
+    label: catLabels[d.key] || d.label,
+    fill: catColors[d.key] || '#8884d8',
   }));
 
   return (
@@ -161,7 +163,7 @@ function CategoryTab({ start, end, employeeId, projectKey }: { start?: string; e
         size="small"
         pagination={false}
         columns={[
-          { title: 'Категория', dataIndex: 'key', render: (v: string) => CATEGORY_LABELS[v] || v },
+          { title: 'Категория', dataIndex: 'key', render: (v: string) => catLabels[v] || v },
           { title: 'Часы', dataIndex: 'total_hours', render: formatHours, sorter: (a, b) => a.total_hours - b.total_hours },
           { title: 'Ворклогов', dataIndex: 'worklog_count', sorter: (a, b) => a.worklog_count - b.worklog_count },
         ]}

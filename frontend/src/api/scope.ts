@@ -1,10 +1,12 @@
 import { api } from './client';
-import type { ScopeProjectResponse, ScopeRootResponse, CategoryOverrideResponse } from '../types/api';
+import type { ScopeProjectResponse, ScopeRootResponse, CategoryOverrideResponse, ScopeProjectBatchResponse } from '../types/api';
 
 // Scope Projects
 export const getScopeProjects = () => api.get<ScopeProjectResponse[]>('/scope/projects');
 export const addScopeProject = (data: { jira_project_key: string }) => api.post<ScopeProjectResponse>('/scope/projects', data);
 export const removeScopeProject = (key: string) => api.del(`/scope/projects/${key}`);
+export const batchScopeProjects = (data: { add: string[]; remove: string[] }) =>
+  api.post<ScopeProjectBatchResponse>('/scope/projects/batch', data);
 
 // Scope Roots
 export const getScopeRoots = () => api.get<ScopeRootResponse[]>('/scope/roots');
