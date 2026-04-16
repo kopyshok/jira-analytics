@@ -13,7 +13,7 @@ import type { BacklogItemResponse } from '../types/api';
 
 function DragHandle({ id }: { id: string }) {
   const { attributes, listeners } = useSortable({ id });
-  return <HolderOutlined style={{ cursor: 'grab', color: '#999' }} {...attributes} {...listeners} />;
+  return <HolderOutlined style={{ cursor: 'grab', color: '#8faec8' }} {...attributes} {...listeners} />;
 }
 
 function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-row-key'?: string }) {
