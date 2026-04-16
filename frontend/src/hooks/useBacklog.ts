@@ -1,0 +1,30 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getBacklogItems, createBacklogItem, updateBacklogItem, deleteBacklogItem } from '../api/backlog';
+import { getProjects } from '../api/projects';
+
+export const useProjects = () =>
+  useQuery({ queryKey: ['projects'], queryFn: getProjects });
+
+export const useBacklogItems = (year?: string, quarter?: string) =>
+  useQuery({
+    queryKey: ['backlog', year, quarter],
+    queryFn: () => getBacklogItems(year, quarter),
+  });
+
+export const useCreateBacklogItem = () => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: createBacklogItem, onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }) });
+};
+
+export const useUpdateBacklogItem = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updateBacklogItem>[1] }) => updateBacklogItem(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }),
+  });
+};
+
+export const useDeleteBacklogItem = () => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: deleteBacklogItem, onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }) });
+};

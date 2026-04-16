@@ -13,7 +13,7 @@ Single-user mode for a project manager.
 - **Backend:** Python 3.10+ (`py -3.10` on Windows) + FastAPI + SQLAlchemy 2.0 + Alembic
 - **Database:** SQLite (MVP) → PostgreSQL (future)
 - **HTTP Client:** httpx (async)
-- **Frontend:** React + TypeScript (future)
+- **Frontend:** React 19 + TypeScript 6 + Vite 8 + Ant Design 6 + TanStack Query + Recharts
 
 > On Windows use `py -3.10 -m pytest` — pytest is not installed under the default Python 3.14.
 
@@ -32,7 +32,7 @@ No application-layer module depends on SQLite-specific features.
 ```
 jira-analytics/
 ├── app/
-│   ├── api/endpoints/     # FastAPI routers (sync, scope, analytics, mapping, capacity, backlog, planning, exports)
+│   ├── api/endpoints/     # FastAPI routers (sync, scope, analytics, mapping, capacity, backlog, planning, exports, employees, projects)
 │   ├── connectors/        # Jira HTTP client + Pydantic schemas
 │   ├── models/            # SQLAlchemy models (16 tables)
 │   ├── repositories/      # Data access layer
@@ -40,6 +40,13 @@ jira-analytics/
 │   ├── config.py          # Pydantic Settings
 │   ├── database.py        # Engine + Session + Base
 │   └── main.py            # FastAPI app
+├── frontend/              # React + TypeScript SPA
+│   ├── src/api/           # API client + domain modules
+│   ├── src/hooks/         # TanStack Query hooks per domain
+│   ├── src/pages/         # 7 pages (Dashboard, Analytics, Sync, Scope, Capacity, Backlog, Planning)
+│   ├── src/components/    # UI components by feature area
+│   ├── src/types/api.ts   # TS interfaces mirroring Pydantic schemas
+│   └── src/utils/         # Constants (category labels/colors), formatters
 ├── alembic/               # DB migrations
 ├── tests/                 # pytest + pytest-asyncio
 └── data/                  # SQLite file (gitignored)
@@ -87,6 +94,10 @@ Administrative Waste, Internal Communications, Unfilled/Questionable Worklogs, T
 ```
 GET  /health
 GET  /api/v1/
+
+# Reference data
+GET  /api/v1/employees?is_active=
+GET  /api/v1/projects?is_active=
 
 # Sync
 GET  /api/v1/sync/test-connection
@@ -143,6 +154,13 @@ GET /api/v1/exports/scenarios/{id}.xlsx|pptx
 - Docstrings in Russian for business logic
 - UUID string keys (`String(36)`) for all tables
 - Standard timestamps: `created_at`, `updated_at`, `synced_at`
+
+## Runtime Configuration
+
+- Backend settings are loaded by `app.config.Settings` from `.env`.
+- `DEBUG` prefers boolean values, but `dev/debug/local` map to `true` and `prod/production/release` map to `false`.
+- `CORS_ORIGINS` accepts either a JSON array or a comma-separated list.
+- The frontend API base URL is configured with `VITE_API_BASE_URL`; default is `http://localhost:8000/api/v1`.
 
 ## Key Architecture Details
 
@@ -211,4 +229,20 @@ uvicorn app.main:app --reload --port 8000
 
 # Makefile shortcuts
 make dev | run | test | migrate | clean
+
+# Frontend
+cd frontend && npm install
+cd frontend && npm run dev     # dev server at :5173
+cd frontend && npm run lint
+cd frontend && npm run build   # production build
 ```
+
+## Frontend Architecture
+
+- **State:** TanStack Query (React Query) — all state is server state, no Redux/Zustand
+- **UI:** Ant Design 6 with Russian locale (`antd/locale/ru_RU`)
+- **Charts:** Recharts (BarChart, PieChart, LineChart)
+- **Routing:** React Router v7, 7 pages
+- **API client:** thin fetch wrapper at `frontend/src/api/client.ts`, base URL from `VITE_API_BASE_URL`
+- **Quarter/Year:** URL search params (`?year=&quarter=`), not global state
+- **Hooks pattern:** one file per API domain in `frontend/src/hooks/`, wraps API calls in `useQuery`/`useMutation`
