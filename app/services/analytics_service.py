@@ -61,6 +61,8 @@ class AnalyticsService:
         self,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
+        employee_id: Optional[str] = None,
+        project_key: Optional[str] = None,
     ) -> list[AggregateRow]:
         """Часы по сотрудникам за период."""
         query = (
@@ -75,6 +77,15 @@ class AnalyticsService:
             .order_by(func.sum(Worklog.hours).desc())
         )
         query = self._apply_date_filter(query, start, end)
+        if employee_id:
+            query = query.filter(Worklog.employee_id == employee_id)
+        if project_key:
+            query = (
+                query
+                .join(Issue, Worklog.issue_id == Issue.id)
+                .join(Project, Issue.project_id == Project.id)
+                .filter(Project.key == project_key)
+            )
 
         return [
             AggregateRow(
@@ -90,6 +101,8 @@ class AnalyticsService:
         self,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
+        employee_id: Optional[str] = None,
+        project_key: Optional[str] = None,
     ) -> list[AggregateRow]:
         """Часы по проектам за период."""
         query = (
@@ -105,6 +118,10 @@ class AnalyticsService:
             .order_by(func.sum(Worklog.hours).desc())
         )
         query = self._apply_date_filter(query, start, end)
+        if employee_id:
+            query = query.filter(Worklog.employee_id == employee_id)
+        if project_key:
+            query = query.filter(Project.key == project_key)
 
         return [
             AggregateRow(
@@ -120,6 +137,8 @@ class AnalyticsService:
         self,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
+        employee_id: Optional[str] = None,
+        project_key: Optional[str] = None,
     ) -> list[AggregateRow]:
         """Часы по категориям за период.
 
@@ -143,6 +162,15 @@ class AnalyticsService:
             .order_by(func.sum(Worklog.hours).desc())
         )
         query = self._apply_date_filter(query, start, end)
+        if employee_id:
+            query = query.filter(Worklog.employee_id == employee_id)
+        if project_key:
+            query = (
+                query
+                .join(Issue, Worklog.issue_id == Issue.id)
+                .join(Project, Issue.project_id == Project.id)
+                .filter(Project.key == project_key)
+            )
 
         return [
             AggregateRow(
@@ -159,6 +187,8 @@ class AnalyticsService:
         period: str = "day",
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
+        employee_id: Optional[str] = None,
+        project_key: Optional[str] = None,
     ) -> list[AggregateRow]:
         """Часы по периодам: day, week, month.
 
@@ -168,6 +198,15 @@ class AnalyticsService:
         """
         query = self.db.query(Worklog.started_at, Worklog.hours)
         query = self._apply_date_filter(query, start, end)
+        if employee_id:
+            query = query.filter(Worklog.employee_id == employee_id)
+        if project_key:
+            query = (
+                query
+                .join(Issue, Worklog.issue_id == Issue.id)
+                .join(Project, Issue.project_id == Project.id)
+                .filter(Project.key == project_key)
+            )
 
         buckets: dict[str, list[float]] = {}
         for started_at, hours in query.all():
@@ -204,6 +243,8 @@ class AnalyticsService:
         self,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
+        employee_id: Optional[str] = None,
+        project_key: Optional[str] = None,
     ) -> list[ContextSwitchRow]:
         """Метрика контекстных переключений.
 
@@ -219,6 +260,14 @@ class AnalyticsService:
             .order_by(Worklog.employee_id, Worklog.started_at)
         )
         query = self._apply_date_filter(query, start, end)
+        if employee_id:
+            query = query.filter(Worklog.employee_id == employee_id)
+        if project_key:
+            query = (
+                query
+                .join(Project, Issue.project_id == Project.id)
+                .filter(Project.key == project_key)
+            )
 
         # category_mappings для worklog загружаем одним запросом
         mapping_rows = (
