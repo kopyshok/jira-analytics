@@ -6,9 +6,7 @@ import {
   useScopeRoots, useAddScopeRoot, useRemoveScopeRoot,
   useOverrides, useAddOverride, useRemoveOverride,
 } from '../hooks/useScope';
-import { CATEGORY_LABELS } from '../utils/constants';
-
-const categoryOptions = Object.entries(CATEGORY_LABELS).map(([value, label]) => ({ value, label }));
+import { useCategories } from '../hooks/useCategories';
 
 function ProjectsTab() {
   const { notification } = App.useApp();
@@ -64,6 +62,7 @@ function RootsTab() {
   const remove = useRemoveScopeRoot();
   const [issueKey, setIssueKey] = useState('');
   const [category, setCategory] = useState<string>('');
+  const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
@@ -91,7 +90,7 @@ function RootsTab() {
         size="small"
         columns={[
           { title: 'Задача', dataIndex: 'jira_issue_key' },
-          { title: 'Категория', dataIndex: 'category_code', render: (v: string) => CATEGORY_LABELS[v] || v },
+          { title: 'Категория', dataIndex: 'category_code', render: (v: string) => categoryLabels[v] || v },
           {
             title: '', width: 50,
             render: (_, r) => (
@@ -113,6 +112,7 @@ function OverridesTab() {
   const remove = useRemoveOverride();
   const [issueKey, setIssueKey] = useState('');
   const [category, setCategory] = useState<string>('');
+  const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
@@ -140,7 +140,7 @@ function OverridesTab() {
         size="small"
         columns={[
           { title: 'Задача', dataIndex: 'jira_issue_key' },
-          { title: 'Категория', dataIndex: 'category_code', render: (v: string) => CATEGORY_LABELS[v] || v },
+          { title: 'Категория', dataIndex: 'category_code', render: (v: string) => categoryLabels[v] || v },
           { title: 'Комментарий', dataIndex: 'comment' },
           {
             title: '', width: 50,

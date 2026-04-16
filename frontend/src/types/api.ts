@@ -14,6 +14,32 @@ export interface ProjectResponse {
   is_active: boolean;
 }
 
+// === Categories ===
+
+export interface CategoryResponse {
+  id: string;
+  code: string;
+  label: string;
+  color: string | null;
+  sort_order: number;
+  is_system: boolean;
+}
+
+// === Settings ===
+
+export interface JiraSettingsResponse {
+  email: string | null;
+  base_url: string | null;
+  has_token: boolean;
+}
+
+export interface JiraTestResponse {
+  connected: boolean;
+  user_name: string | null;
+  user_email: string | null;
+  error: string | null;
+}
+
 // === Sync ===
 
 export interface ConnectionTestResponse {
@@ -36,6 +62,47 @@ export interface SyncStatusResponse {
   last_error: string | null;
 }
 
+// === Jira Browse ===
+
+export interface JiraProjectItem {
+  id: string;
+  key: string;
+  name: string;
+  project_type: string | null;
+  in_scope: boolean;
+}
+
+export interface JiraEpicItem {
+  key: string;
+  summary: string;
+  issue_type: string;
+  status: string;
+}
+
+// === Issue Tree ===
+
+export interface IssueTreeNode {
+  id: string;
+  key: string;
+  summary: string;
+  issue_type: string;
+  status: string;
+  project_key: string;
+  parent_key: string | null;
+  assigned_category: string | null;
+  category: string | null;
+  include_in_analysis: boolean;
+  children: IssueTreeNode[];
+}
+
+// === Jira Fields ===
+
+export interface JiraFieldItem {
+  id: string;
+  name: string;
+  custom: boolean;
+}
+
 // === Scope ===
 
 export interface ScopeProjectResponse {
@@ -43,6 +110,11 @@ export interface ScopeProjectResponse {
   jira_project_key: string;
   jira_project_id: string | null;
   is_enabled: boolean;
+}
+
+export interface ScopeProjectBatchResponse {
+  added: number;
+  removed: number;
 }
 
 export interface ScopeRootResponse {

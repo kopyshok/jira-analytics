@@ -41,14 +41,29 @@ class JiraRateLimitError(JiraClientError):
 
 class JiraClient:
     """Async HTTP client for Jira Cloud REST API v3.
-    
+
     Features:
     - Basic authentication with email + API token
     - Automatic pagination
     - Rate limiting with exponential backoff
     - Incremental sync support via JQL updated >= filter
     """
-    
+
+    @classmethod
+    def from_db(cls, db) -> "JiraClient":
+        """Создать клиент с credentials из app_settings (fallback на .env)."""
+        from app.models.app_setting import AppSetting
+
+        def _get(key: str) -> Optional[str]:
+            row = db.query(AppSetting).filter(AppSetting.key == key).first()
+            return row.value if row else None
+
+        return cls(
+            base_url=_get("jira_base_url"),
+            email=_get("jira_email"),
+            api_token=_get("jira_api_token"),
+        )
+
     def __init__(
         self,
         base_url: Optional[str] = None,
@@ -58,7 +73,7 @@ class JiraClient:
         max_retries: int = 3,
     ):
         settings = get_settings()
-        
+
         self.base_url = (base_url or settings.jira_base_url or "").rstrip("/")
         self.email = email or settings.jira_email
         self.api_token = api_token or settings.jira_api_token
@@ -225,16 +240,16 @@ class JiraClient:
         max_results: int = 100,
         fields: Optional[List[str]] = None,
     ) -> JiraSearchResponseSchema:
-        """Search issues using JQL."""
+        """Search issues using JQL (GET /search/jql — old GET /search returns 410)."""
         default_fields = [
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
         ]
-        
+
         data = await self._request(
             "GET",
-            "/search",
+            "/search/jql",
             params={
                 "jql": jql,
                 "startAt": start_at,
@@ -372,6 +387,49 @@ class JiraClient:
             "Bulk worklog API will be added in future version."
         )
     
+    # === Field discovery methods ===
+
+    async def get_fields(self) -> list[dict]:
+        """Получить список всех полей Jira (включая кастомные)."""
+        data = await self._request("GET", "/field")
+        return data
+
+    async def get_field_distinct_values(
+        self,
+        field_id: str,
+        max_issues: int = 1000,
+    ) -> list[str]:
+        """Получить уникальные значения кастомного поля по задачам."""
+        jql = f'"{field_id}" is not EMPTY ORDER BY updated DESC'
+        values: set[str] = set()
+        start_at = 0
+        while start_at < max_issues:
+            response = await self.search_issues(
+                jql=jql,
+                start_at=start_at,
+                max_results=100,
+                fields=[field_id],
+            )
+            for issue in response.issues:
+                raw = issue.fields._extra.get(field_id)
+                if raw is None:
+                    continue
+                # Handle select/multi-select fields (dict with 'value' key)
+                if isinstance(raw, dict) and "value" in raw:
+                    values.add(raw["value"])
+                elif isinstance(raw, list):
+                    for item in raw:
+                        if isinstance(item, dict) and "value" in item:
+                            values.add(item["value"])
+                        elif isinstance(item, str):
+                            values.add(item)
+                elif isinstance(raw, str):
+                    values.add(raw)
+            if not response.has_more:
+                break
+            start_at += 100
+        return sorted(values)
+
     # === Utility methods ===
     
     async def test_connection(self) -> bool:

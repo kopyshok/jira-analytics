@@ -2,7 +2,7 @@
 
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import SyncedMixin, generate_uuid
@@ -49,6 +49,11 @@ class Issue(Base, SyncedMixin):
     # Analytics fields (populated during mapping phase)
     category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # development, testing, management, etc.
     estimated_hours: Mapped[Optional[float]] = mapped_column(nullable=True)
+
+    # User-configurable fields
+    team: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=True)
 
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="issues")

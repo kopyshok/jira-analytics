@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router';
 import { Layout, Typography } from 'antd';
 import SideMenu from './SideMenu';
+import BugReportButton from '../BugReportButton';
 import { DARK_THEME } from '../../utils/constants';
 
 const { Header, Sider, Content } = Layout;
@@ -29,6 +30,7 @@ export default function AppLayout() {
           <Outlet />
         </Content>
       </Layout>
+      <BugReportButton />
     </Layout>
   );
 }
