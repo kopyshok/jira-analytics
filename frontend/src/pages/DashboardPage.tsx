@@ -1,19 +1,22 @@
 import { useState } from 'react';
-import { Card, Row, Col, Statistic, Spin, Empty, Table, Tag, Collapse, Space, Select, Button } from 'antd';
+import { Card, Row, Col, Statistic, Spin, Empty, Table, Tag, Collapse, Space, Select, Button, App } from 'antd';
 import {
   ClockCircleOutlined,
   TeamOutlined,
   ProjectOutlined,
   SwapOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
+import { useNavigate } from 'react-router';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   BarChart, Bar,
 } from 'recharts';
 import DateRangeSelect from '../components/shared/DateRangeSelect';
-import { useSyncStatus } from '../hooks/useSync';
+import ExportButtons from '../components/shared/ExportButtons';
+import { useSyncStatus, useSyncMutation } from '../hooks/useSync';
 import {
   useHoursByCategory,
   useHoursByPeriod,
@@ -23,6 +26,7 @@ import {
   useEmployeesForFilter,
   useProjectsForFilter,
 } from '../hooks/useAnalytics';
+import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
 import { CATEGORY_LABELS, CATEGORY_COLORS } from '../utils/constants';
 import { formatHours, formatDate } from '../utils/format';
 import type { SyncStatusResponse } from '../types/api';
@@ -30,6 +34,8 @@ import type { SyncStatusResponse } from '../types/api';
 const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
 
 export default function DashboardPage() {
+  const { notification } = App.useApp();
+  const navigate = useNavigate();
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [employeeId, setEmployeeId] = useState<string | undefined>();
   const [projectKey, setProjectKey] = useState<string | undefined>();
@@ -42,6 +48,7 @@ export default function DashboardPage() {
   const hasFilters = !!employeeId || !!projectKey || !!dates;
 
   const { data: syncStatus, isLoading: syncLoading } = useSyncStatus();
+  const syncFull = useSyncMutation('full');
   const { data: categories } = useHoursByCategory(start, end, employeeId, projectKey);
   const { data: trend } = useHoursByPeriod('week', start, end, employeeId, projectKey);
   const { data: employees } = useHoursByEmployee(start, end, employeeId, projectKey);
@@ -101,12 +108,26 @@ export default function DashboardPage() {
             Сбросить
           </Button>
         )}
+        <ExportButtons
+          onXlsx={() => downloadAnalyticsXlsx(start, end)}
+          onPdf={() => downloadAnalyticsPdf(start, end)}
+        />
+        <Button
+          icon={<SyncOutlined spin={syncFull.isPending} />}
+          loading={syncFull.isPending}
+          onClick={() => syncFull.mutate(undefined, {
+            onSuccess: (res) => notification.success({ title: 'Синхронизация завершена', description: res.message }),
+            onError: (e) => notification.error({ title: 'Ошибка синхронизации', description: e.message }),
+          })}
+        >
+          Синхронизация
+        </Button>
       </Space>
 
-      {/* KPI cards */}
+      {/* KPI cards — clickable, navigate to analytics tab */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable onClick={() => navigate('/analytics?tab=category')}>
             <Statistic
               title="Всего часов"
               value={formatHours(totalHours)}
@@ -116,7 +137,7 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable onClick={() => navigate('/analytics?tab=employee')}>
             <Statistic
               title="Сотрудников"
               value={employeeCount}
@@ -125,7 +146,7 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable onClick={() => navigate('/analytics?tab=project')}>
             <Statistic
               title="Проектов"
               value={projectCount}
@@ -134,7 +155,7 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable onClick={() => navigate('/analytics?tab=switching')}>
             <Statistic
               title="Ср. переключений"
               value={avgSwitches.toFixed(1)}
