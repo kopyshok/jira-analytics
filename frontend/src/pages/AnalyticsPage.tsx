@@ -27,7 +27,7 @@ export default function AnalyticsPage() {
   const hasFilters = !!employeeId || !!projectKey || !!dates;
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Space wrap>
         <DateRangeSelect value={dates} onChange={setDates} />
         <Select
