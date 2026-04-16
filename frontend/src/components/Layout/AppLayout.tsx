@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router';
 import { Layout, Typography } from 'antd';
 import SideMenu from './SideMenu';
+import { DARK_THEME } from '../../utils/constants';
 
 const { Header, Sider, Content } = Layout;
 
@@ -12,19 +13,19 @@ export default function AppLayout() {
     <Layout style={{ minHeight: '100vh' }}>
       <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} breakpoint="lg">
         <div style={{ height: 32, margin: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography.Text strong style={{ color: '#fff', fontSize: collapsed ? 14 : 16, whiteSpace: 'nowrap' }}>
+          <Typography.Text strong style={{ color: DARK_THEME.cyanPrimary, fontSize: collapsed ? 14 : 16, whiteSpace: 'nowrap', letterSpacing: 1, textTransform: 'uppercase' }}>
             {collapsed ? 'JA' : 'Jira Analytics'}
           </Typography.Text>
         </div>
         <SideMenu />
       </Sider>
       <Layout>
-        <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center' }}>
-          <Typography.Title level={4} style={{ margin: 0 }}>
+        <Header style={{ padding: '0 24px', display: 'flex', alignItems: 'center', borderBottom: `1px solid ${DARK_THEME.border}` }}>
+          <Typography.Title level={4} style={{ margin: 0, color: DARK_THEME.textPrimary }}>
             Анализ Jira и планирование
           </Typography.Title>
         </Header>
-        <Content style={{ margin: 16, padding: 24, background: '#fff', borderRadius: 8, minHeight: 280 }}>
+        <Content style={{ margin: 16, padding: 24, background: DARK_THEME.cardBg, borderRadius: 8, minHeight: 280, border: `1px solid ${DARK_THEME.border}` }}>
           <Outlet />
         </Content>
       </Layout>

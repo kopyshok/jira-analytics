@@ -9,14 +9,45 @@ export const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export const CATEGORY_COLORS: Record<string, string> = {
-  support_consultation: '#1890ff',
-  business_analysis: '#52c41a',
-  meetings: '#faad14',
-  admin_losses: '#f5222d',
-  internal_communications: '#722ed1',
-  tech_debt: '#13c2c2',
-  unfilled_worklog: '#d9d9d9',
+  support_consultation: '#378ADD',
+  business_analysis: '#1D9E75',
+  meetings: '#EF9F27',
+  admin_losses: '#E24B4A',
+  internal_communications: '#7F77DD',
+  tech_debt: '#00c9c8',
+  unfilled_worklog: '#888780',
 };
+
+/** Dark-dashboard chart colors */
+export const CHART_COLORS = {
+  blue: '#378ADD',
+  green: '#1D9E75',
+  orange: '#EF9F27',
+  red: '#E24B4A',
+  purple: '#7F77DD',
+  cyan: '#00c9c8',
+  cyanSecondary: '#4db8e8',
+  yellow: '#f5c842',
+  neutral: '#888780',
+} as const;
+
+/** Dark-dashboard theme tokens */
+export const DARK_THEME = {
+  pageBg: '#0d1c33',
+  sidebarBg: '#091527',
+  cardBg: '#0f2340',
+  darkAccent: '#0a2a44',
+  border: '#1e3356',
+  darkRows: '#152740',
+  cyanPrimary: '#00c9c8',
+  cyanSecondary: '#4db8e8',
+  yellow: '#f5c842',
+  textPrimary: '#e8f0fa',
+  textSecondary: '#c5d8ee',
+  textMuted: '#8faec8',
+  textHint: '#6b8aaa',
+  textDim: '#4a6a8a',
+} as const;
 
 export const QUARTER_MONTHS: Record<number, number[]> = {
   1: [1, 2, 3],

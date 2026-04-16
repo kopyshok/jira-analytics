@@ -9,6 +9,7 @@ import { useQuarterYear } from '../hooks/useQuarterYear';
 import { useTeamCapacity } from '../hooks/useCapacity';
 import { downloadScenarioXlsx, downloadScenarioPptx } from '../api/exports';
 import { formatHours } from '../utils/format';
+import { CHART_COLORS, DARK_THEME } from '../utils/constants';
 import type { ScenarioResponse, PlanningResultResponse, AllocationResponse } from '../types/api';
 
 export default function PlanningPage() {
@@ -98,14 +99,14 @@ export default function PlanningPage() {
             {capacityChartData?.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={capacityChartData} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="name" width={140} />
                   <Tooltip formatter={(v: unknown) => `${v} ч`} />
                   <Legend />
-                  <Bar dataKey="available" stackId="a" fill="#52c41a" name="Доступно" />
-                  <Bar dataKey="mandatory" stackId="a" fill="#faad14" name="Обяз. задачи" />
-                  <Bar dataKey="vacation" stackId="a" fill="#1890ff" name="Отпуск" />
+                  <Bar dataKey="available" stackId="a" fill={CHART_COLORS.green} name="Доступно" />
+                  <Bar dataKey="mandatory" stackId="a" fill={CHART_COLORS.orange} name="Обяз. задачи" />
+                  <Bar dataKey="vacation" stackId="a" fill={CHART_COLORS.blue} name="Отпуск" />
                 </BarChart>
               </ResponsiveContainer>
             ) : <Empty description="Нет данных о ёмкости" />}

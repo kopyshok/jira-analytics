@@ -27,7 +27,7 @@ import {
   useProjectsForFilter,
 } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
-import { CATEGORY_LABELS, CATEGORY_COLORS } from '../utils/constants';
+import { CATEGORY_LABELS, CATEGORY_COLORS, CHART_COLORS, DARK_THEME } from '../utils/constants';
 import { formatHours, formatDate } from '../utils/format';
 import type { SyncStatusResponse } from '../types/api';
 
@@ -172,11 +172,11 @@ export default function DashboardPage() {
             {top5employees?.length ? (
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={top5employees} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="label" width={140} />
                   <Tooltip formatter={tooltipFmt} />
-                  <Bar dataKey="total_hours" fill="#1890ff" name="Часы" />
+                  <Bar dataKey="total_hours" fill={CHART_COLORS.blue} name="Часы" />
                 </BarChart>
               </ResponsiveContainer>
             ) : <Empty description="Нет данных" />}
@@ -187,11 +187,11 @@ export default function DashboardPage() {
             {top5projects?.length ? (
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={top5projects} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="label" width={140} />
                   <Tooltip formatter={tooltipFmt} />
-                  <Bar dataKey="total_hours" fill="#52c41a" name="Часы" />
+                  <Bar dataKey="total_hours" fill={CHART_COLORS.green} name="Часы" />
                 </BarChart>
               </ResponsiveContainer>
             ) : <Empty description="Нет данных" />}
@@ -220,11 +220,11 @@ export default function DashboardPage() {
             {trend?.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={trend}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
                   <XAxis dataKey="label" />
                   <YAxis />
                   <Tooltip formatter={tooltipFmt} />
-                  <Line type="monotone" dataKey="total_hours" stroke="#1890ff" />
+                  <Line type="monotone" dataKey="total_hours" stroke={CHART_COLORS.cyan} />
                 </LineChart>
               </ResponsiveContainer>
             ) : <Empty description="Нет данных" />}
