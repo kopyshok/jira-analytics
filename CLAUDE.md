@@ -30,29 +30,30 @@ No application-layer module depends on SQLite-specific features.
 ## Project Structure
 
 - `app/` — backend: `api/endpoints/`, `connectors/`, `models/`, `repositories/`, `services/`, `config.py`, `database.py`, `main.py`
-- `frontend/src/` — React SPA: `api/`, `hooks/`, `pages/` (6 routable), `components/`, `types/`, `utils/`
-- `frontend/e2e/` — Playwright E2E tests (isolated `data/e2e.db`)
+- `frontend/src/` — React SPA: `api/`, `hooks/`, `pages/` (7 routable: Dashboard, Sync, Analytics, Capacity, Backlog, Planning, Scope→redirects to Sync), `components/`, `types/`, `utils/`
+- `frontend/e2e/` — Playwright E2E tests (isolated `data/e2e.db`); specs: `navigation`, `dashboard`, `crud-flows`, `export-downloads`
 - `alembic/` — DB migrations
-- `tests/` — pytest backend tests
-- `scripts/` — smoke, E2E, seed scripts
+- `tests/` — pytest backend tests (services, schemas, reference endpoints, config, models)
+- `scripts/` — `local_smoke.py`, `smoke-local.ps1`, `e2e-local.ps1`, `seed_e2e.py` (creates `data/e2e.db` with `E2E Analyst` employee + `E2E` project)
 
 ## Database Schema
 
-16 tables in 4 groups — see `app/models/` for full definitions:
-- **Core (Jira sync):** employees, projects, issues, worklogs, comments, sync_state
-- **Scope config:** scope_projects, scope_roots, category_overrides, worklog_quality_rules
-- **Category mapping:** category_mappings
-- **Planning:** vacations, monthly_capacity_rules, backlog_items, planning_scenarios, scenario_allocations
+18 tables in 5 groups — `app/models/__init__.py` is source of truth:
+- **Core (Jira sync):** Employee, Project, Issue, Worklog, Comment, SyncState
+- **Scope / category config:** ScopeProject, ScopeRoot, CategoryOverride, WorklogQualityRule, CategoryMapping, Category
+- **Planning:** Vacation, MonthlyCapacityRule, BacklogItem, PlanningScenario, ScenarioAllocation
+- **App state:** AppSetting (flat key-value store — see next section)
 
 ## API Endpoints
 
-10 routers: sync, scope, analytics, mapping, capacity, backlog, planning, exports, employees, projects.
-Full list: see `app/api/router.py`. Key patterns:
-- CRUD: GET list + POST create, GET|PATCH|DELETE by id (backlog, capacity, scope)
-- Browse: GET `/sync/jira-projects`, `/sync/jira-epics` — live Jira catalog with `in_scope` flags
-- Batch: POST `/scope/projects/batch` — add/remove multiple projects at once
-- Exports: GET `/exports/analytics.xlsx|pdf`, `/exports/scenarios/{id}.xlsx|pptx`
-- Planning: POST `/planning/scenarios/generate` (greedy allocation)
+13 routers — `app/api/router.py` is source of truth. Patterns:
+- **CRUD:** GET list + POST create, GET|PATCH|DELETE by id (backlog, capacity, scope, categories)
+- **Browse Jira (live):** `/sync/jira-projects`, `/sync/jira-epics`, `/sync/jira-fields`, `/sync/jira-teams` — no DB write, proxy Jira with `in_scope` flags; `/jira-projects?team=X` uses per-project JQL probe (see SyncService notes)
+- **Settings:** `/settings/jira` (GET|PUT, redacts token), `/settings/jira/test` (no save), `/settings/generic` (PUT) + `/settings/generic/{key}` (GET) — used for arbitrary runtime keys like `jira_team_field_id`, `jira_participating_teams_field_id`
+- **Batch:** `/scope/projects/batch` — add/remove multiple at once
+- **Exports:** `/exports/analytics.xlsx|pdf`, `/exports/scenarios/{id}.xlsx|pptx`
+- **Planning:** `/planning/scenarios/generate` (greedy allocation)
+- **Issue tree:** `/issues/tree`, `/issues/{id}/category`, `/issues/{id}/include` (drives CategoryConfigTab)
 
 ## Code Principles
 
@@ -67,6 +68,7 @@ Full list: see `app/api/router.py`. Key patterns:
 ## Runtime Configuration
 
 - Backend settings are loaded by `app.config.Settings` from `.env`.
+- **Jira credentials resolution order: AppSetting (DB) → `.env` fallback.** UI writes `jira_email`/`jira_api_token`/`jira_base_url` into AppSetting via `/settings/jira`; `.env` only kicks in for dev/CI when DB is empty.
 - `DEBUG` prefers boolean values, but `dev/debug/local` map to `true` and `prod/production/release` map to `false`.
 - `CORS_ORIGINS` accepts either a JSON array or a comma-separated list.
 - The frontend API base URL is configured with `VITE_API_BASE_URL`; default is `http://localhost:8000/api/v1`.
@@ -103,9 +105,21 @@ Incremental sync via `sync_state.last_sync` per entity; JQL `updated >= "timesta
 Rate limiting: 100ms delay between requests + exponential backoff on HTTP 429.
 Batch size: 100 issues per Jira API request.
 
+### AppSetting store
+Flat key-value table. Known keys: `jira_email`, `jira_api_token`, `jira_base_url` (credentials), `jira_team_field_id`, `jira_participating_teams_field_id` (custom field IDs for team filter). Helpers `_get_setting`/`_set_setting` in `app/api/endpoints/settings.py` do get-or-insert. Settings endpoint always commits internally.
+
 ### Jira API (Atlassian Cloud)
 Issue search uses `GET /rest/api/3/search/jql` — the old `GET /search` endpoint returns **410 Gone**.
 The new endpoint may omit `total` in the response; pagination uses `len(issues) >= maxResults` heuristic (see `JiraSearchResponseSchema.has_more`).
+Pydantic response schema **requires** `summary/issuetype/status/project` — any call to `search_issues` must include them in `fields=` even when only probing existence.
+
+### Jira field discovery
+`JiraClient.get_field_configured_options(field_id)` is the **primary source** for distinct values of a select field — fetches `/field/{id}/context` + `/field/{ctxId}/option` (fast, complete, 46 teams vs. 22 via scan).
+`get_field_distinct_values` falls back to a JQL scan (limited to 1000 recent issues, misses teams on stale issues) if contexts are unavailable.
+`/sync/jira-teams` returns sorted union across both configured team fields.
+
+### Team filter on `/sync/jira-projects`
+Team filter cannot be a single global JQL (`ORDER BY project` + 1000-issue cap groups all results under the first project). Instead: iterate projects, probe each with `project = "K" AND (field1 = X OR field2 = X)` via `search_issues(max_results=1)`. Cost ~200ms × N projects but correct.
 
 ### Test Fixtures (tests/conftest.py)
 `engine` — session-scoped in-memory SQLite.
@@ -166,7 +180,7 @@ cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 - Responsive grid: Ant Design `Col` with `xs/sm/lg` breakpoints; Sider auto-collapses on `lg`
 - **Dark theme** (dark-dashboard style): tokens in `DARK_THEME` and `CHART_COLORS` (`utils/constants.ts`), configured in `main.tsx` via `ConfigProvider theme`. Page bg `#0d1c33`, cards `#0f2340`, sidebar `#091527`, primary cyan `#00c9c8`
 - **Error tracking**: `errorStore.ts` captures API errors (network + HTTP); `BugReportButton` (FloatButton) shows reactive badge via `useSyncExternalStore`, copies markdown bug report to clipboard. Wired into `api/client.ts` interceptors.
-- **Merged Sync+Scope page**: `/scope` route redirects to `/sync`; SyncPage includes project browser, scope management, and sync controls in tabs
+- **Merged Sync+Scope page** (`SyncPage.tsx`): `/scope` redirects to `/sync`. Three tabs — `TaskSectionsTab` (project browser with pending add/remove sets + batch save, two load modes: «Загрузить из Jira» respects team filter, «Загрузить все ключи» bypasses it), `CategoryConfigTab` (issue tree with inline category Select + include-in-analysis checkbox), `SyncControls` (manual full-sync / worklogs triggers). Team filter Select reads from `useJiraTeams` (populated from `/settings/generic/jira_team_field_id` + `jira_participating_teams_field_id`)
 - E2E: Playwright with isolated `data/e2e.db` on non-standard ports (:8010 backend, :5174 frontend), no Jira credentials needed
 
 ## CI

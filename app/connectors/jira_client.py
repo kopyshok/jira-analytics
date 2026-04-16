@@ -394,21 +394,65 @@ class JiraClient:
         data = await self._request("GET", "/field")
         return data
 
+    async def get_field_configured_options(self, field_id: str) -> list[str]:
+        """Получить все сконфигурированные опции select/multi-select поля.
+
+        Обходит все контексты поля и возвращает объединение включённых опций.
+        Возвращает пустой список, если поле не имеет опций (user/team picker и т.п.).
+        """
+        values: set[str] = set()
+        try:
+            contexts = await self._request("GET", f"/field/{field_id}/context")
+        except JiraClientError:
+            return []
+        for ctx in contexts.get("values", []):
+            ctx_id = ctx.get("id")
+            if not ctx_id:
+                continue
+            start_at = 0
+            while True:
+                page = await self._request(
+                    "GET",
+                    f"/field/{field_id}/context/{ctx_id}/option",
+                    params={"startAt": start_at, "maxResults": 100},
+                )
+                for opt in page.get("values", []):
+                    if opt.get("disabled"):
+                        continue
+                    val = opt.get("value")
+                    if val:
+                        values.add(val)
+                if page.get("isLast", True):
+                    break
+                start_at += 100
+        return sorted(values)
+
     async def get_field_distinct_values(
         self,
         field_id: str,
         max_issues: int = 1000,
     ) -> list[str]:
-        """Получить уникальные значения кастомного поля по задачам."""
+        """Получить уникальные значения кастомного поля.
+
+        Сначала пытаемся через сконфигурированные опции поля — это полный список
+        и быстрее. Если опций нет (поле типа user/team picker), сканируем задачи.
+        """
+        options = await self.get_field_configured_options(field_id)
+        if options:
+            return options
+
         jql = f'"{field_id}" is not EMPTY ORDER BY updated DESC'
         values: set[str] = set()
         start_at = 0
+        # Мы просим только нужное кастомное поле, но Pydantic-схема ответа
+        # требует базовые поля (summary/issuetype/status/project) — включаем их.
+        required_fields = ["summary", "issuetype", "status", "project", field_id]
         while start_at < max_issues:
             response = await self.search_issues(
                 jql=jql,
                 start_at=start_at,
                 max_results=100,
-                fields=[field_id],
+                fields=required_fields,
             )
             for issue in response.issues:
                 raw = issue.fields._extra.get(field_id)

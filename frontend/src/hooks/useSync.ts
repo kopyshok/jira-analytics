@@ -79,7 +79,6 @@ export const useBatchScopeProjects = () => {
     mutationFn: batchScopeProjects,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['scope', 'projects'] });
-      qc.invalidateQueries({ queryKey: ['jira', 'projects'] });
     },
   });
 };

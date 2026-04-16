@@ -12,3 +12,6 @@ export const testJiraCredentials = (body: { email: string; api_token: string; ba
 
 export const saveGenericSetting = (key: string, value: string) =>
   api.put<{ key: string; ok: boolean }>('/settings/generic', { key, value });
+
+export const getGenericSetting = (key: string) =>
+  api.get<{ key: string; value: string | null }>(`/settings/generic/${key}`);
