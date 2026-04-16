@@ -95,6 +95,12 @@ Greedy backlog allocation by priority — items taken **whole** (no partial allo
 Quarter stored as `"Q1"`.."Q4"` (string); API accepts integer `1..4`.
 Commits internally — tests rely on conftest cleanup.
 
+### SyncService
+Dependency order: Projects → Issues (need projects) → Worklogs (need issues + auto-create employees).
+Incremental sync via `sync_state.last_sync` per entity; JQL `updated >= "timestamp"` for deltas.
+Rate limiting: 100ms delay between requests + exponential backoff on HTTP 429.
+Batch size: 100 issues per Jira API request.
+
 ### Test Fixtures (tests/conftest.py)
 `engine` — session-scoped in-memory SQLite.
 `db_session` — function-scoped; **after each test explicitly deletes rows from all tables** (`table.delete()` in reverse order), because services like `MappingService` commit internally and a plain `rollback()` won't undo committed data.
@@ -148,7 +154,15 @@ cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 
 ## Frontend Architecture
 
-- All state is server state via TanStack Query — no Redux/Zustand
+- All state is server state via TanStack Query (staleTime 30s, retry 1) — no Redux/Zustand
 - Ant Design 6 with Russian locale (`antd/locale/ru_RU`)
-- Route-level lazy loading; Quarter/Year via URL search params, not global state
-- E2E: Playwright with isolated `data/e2e.db`, no Jira credentials needed
+- Route-level lazy loading via `lazyPages.tsx`; Quarter/Year via URL search params, not global state
+- Responsive grid: Ant Design `Col` with `xs/sm/lg` breakpoints; Sider auto-collapses on `lg`
+- E2E: Playwright with isolated `data/e2e.db` on non-standard ports (:8010 backend, :5174 frontend), no Jira credentials needed
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push/PR:
+1. `pytest` (Python 3.10)
+2. Frontend lint + build (Node 20)
+3. Playwright E2E
