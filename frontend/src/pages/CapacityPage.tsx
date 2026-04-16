@@ -42,7 +42,7 @@ function VacationsTab() {
   const employeeMap = new Map(employees?.map((e) => [e.id, e.display_name]));
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>Добавить отпуск</Button>
       <Modal title="Новый отпуск" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={add.isPending}>
         <Form form={form} layout="vertical" onFinish={(vals) => {
@@ -97,7 +97,7 @@ function RulesTab() {
   const [form] = Form.useForm();
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>Добавить правило</Button>
       <Modal title="Новое правило ёмкости" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={add.isPending}>
         <Form form={form} layout="vertical" onFinish={(vals) => {
@@ -143,7 +143,7 @@ function RulesTab() {
 
 export default function CapacityPage() {
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <QuarterYearSelect />
       <Tabs items={[
         { key: 'team', label: 'Команда', children: <TeamTab /> },

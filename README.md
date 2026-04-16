@@ -30,6 +30,9 @@ npm run dev
 
 # Smoke-проверка локального запуска (PowerShell, из корня проекта)
 .\scripts\smoke-local.ps1
+
+# Browser E2E без Jira-зависимости (первый запуск скачает Chromium)
+.\scripts\e2e-local.ps1 -InstallBrowsers
 ```
 
 API: http://localhost:8000  
@@ -59,6 +62,31 @@ backend/frontend dev-серверы, проверяет ключевые URL и 
 
 ```powershell
 .\scripts\smoke-local.ps1 -NoStart
+```
+
+## 🎭 Browser E2E
+
+Playwright E2E запускает backend на отдельной SQLite-базе `data/e2e.db`,
+поднимает Vite frontend, проходит по основным разделам SPA и падает при
+browser `console.error` или `pageerror`. Jira credentials для этого не нужны.
+
+Первый запуск:
+
+```powershell
+.\scripts\e2e-local.ps1 -InstallBrowsers
+```
+
+Повторные запуски:
+
+```powershell
+.\scripts\e2e-local.ps1
+```
+
+То же из `frontend/`:
+
+```bash
+npm run e2e:install
+npm run e2e
 ```
 
 ## 🔧 Настройка Jira Cloud
@@ -222,12 +250,14 @@ npm install
 npm run lint
 npm run build
 npm run dev
+npm run e2e
 ```
 
 Smoke:
 
 ```powershell
 .\scripts\smoke-local.ps1
+.\scripts\e2e-local.ps1
 ```
 
 ## 📋 Roadmap
@@ -240,7 +270,8 @@ Smoke:
 - [ ] **M6** — Стабилизация frontend, smoke/E2E проверки, удобный onboarding
   - [x] Frontend route-level lazy loading для уменьшения стартового bundle
   - [x] Локальный smoke-runner для backend + frontend
-  - [ ] Browser E2E-сценарии для основных пользовательских потоков
+  - [x] Browser E2E для основных SPA-маршрутов без Jira credentials
+  - [ ] E2E для CRUD-потоков планирования на seed-данных
 
 ## 📄 Лицензия
 

@@ -34,7 +34,7 @@ export default function PlanningPage() {
   const capacityPercent = result ? Math.round((result.total_planned_hours / result.total_capacity_hours) * 100) : 0;
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Space>
         <QuarterYearSelect />
         <Button icon={<PlusOutlined />} type="primary" onClick={() => { form.resetFields(); setOpen(true); }}>
@@ -83,7 +83,7 @@ export default function PlanningPage() {
 
       {result && (
         <Card title={`Результат: ${result.scenario_name}`}>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
             <Space size="large">
               <div>
                 <div style={{ marginBottom: 8 }}>Загрузка ёмкости</div>
