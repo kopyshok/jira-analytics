@@ -104,8 +104,8 @@ export default function DashboardPage() {
       </Space>
 
       {/* KPI cards */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={6}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Всего часов"
@@ -115,7 +115,7 @@ export default function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Сотрудников"
@@ -124,7 +124,7 @@ export default function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Проектов"
@@ -133,7 +133,7 @@ export default function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Ср. переключений"
@@ -145,8 +145,8 @@ export default function DashboardPage() {
       </Row>
 
       {/* Top-5 employees & Top-5 projects */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={12}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} lg={12}>
           <Card title="Топ-5 сотрудников по часам">
             {top5employees?.length ? (
               <ResponsiveContainer width="100%" height={250}>
@@ -161,7 +161,7 @@ export default function DashboardPage() {
             ) : <Empty description="Нет данных" />}
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} lg={12}>
           <Card title="Топ-5 проектов по часам">
             {top5projects?.length ? (
               <ResponsiveContainer width="100%" height={250}>
@@ -179,8 +179,8 @@ export default function DashboardPage() {
       </Row>
 
       {/* Category pie + weekly trend */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={12}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} lg={12}>
           <Card title="Распределение по категориям">
             {pieData?.length ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -194,7 +194,7 @@ export default function DashboardPage() {
             ) : <Empty description="Нет данных" />}
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} lg={12}>
           <Card title="Динамика (по неделям)">
             {trend?.length ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -222,6 +222,7 @@ export default function DashboardPage() {
               rowKey="entity"
               pagination={false}
               size="small"
+              scroll={{ x: true }}
               columns={[
                 { title: 'Сущность', dataIndex: 'entity' },
                 { title: 'Последняя синхронизация', dataIndex: 'last_sync', render: (v: string | null) => formatDate(v) },
