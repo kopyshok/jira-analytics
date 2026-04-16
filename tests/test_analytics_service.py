@@ -260,3 +260,93 @@ class TestContextSwitching:
         assert by_name["Alice"].switches == 0
         # Bob: only Jan 5 Beta => no switch
         assert by_name["Bob"].switches == 0
+
+
+class TestEmployeeFilter:
+    """Фильтр employee_id сужает результаты до одного сотрудника."""
+
+    def test_hours_by_employee(self, db_session, setup_data):
+        alice = setup_data["alice"]
+        rows = AnalyticsService(db_session).hours_by_employee(employee_id=alice.id)
+        assert len(rows) == 1
+        assert rows[0].label == "Alice"
+        assert rows[0].total_hours == 6.0
+
+    def test_hours_by_project(self, db_session, setup_data):
+        # Alice: 2+3=5h на Alpha, 1h на Beta
+        alice = setup_data["alice"]
+        rows = AnalyticsService(db_session).hours_by_project(employee_id=alice.id)
+        by_name = {r.label: r for r in rows}
+        assert by_name["Alpha"].total_hours == 5.0
+        assert by_name["Beta"].total_hours == 1.0
+        assert "Bob" not in {r.label for r in rows}
+
+    def test_hours_by_category(self, db_session, setup_data):
+        # Alice: wl1(tech_debt 2h), wl2(tech_debt 3h), wl3(meetings 1h)
+        alice = setup_data["alice"]
+        rows = AnalyticsService(db_session).hours_by_category(employee_id=alice.id)
+        by_key = {r.key: r for r in rows}
+        assert by_key[CategoryCode.TECH_DEBT].total_hours == 5.0
+        assert by_key[CategoryCode.MEETINGS].total_hours == 1.0
+        assert CategoryCode.SUPPORT_CONSULTATION not in by_key  # только у Bob
+
+    def test_hours_by_period(self, db_session, setup_data):
+        # Alice: Jan5=2h, Jan6=3h, Jan7=1h
+        alice = setup_data["alice"]
+        rows = AnalyticsService(db_session).hours_by_period(period="day", employee_id=alice.id)
+        by_day = {r.key: r.total_hours for r in rows}
+        assert by_day["2026-01-05"] == 2.0
+        assert by_day["2026-01-06"] == 3.0
+        assert by_day["2026-01-07"] == 1.0
+        assert "2026-01-08" not in by_day  # Bob only
+
+    def test_context_switching(self, db_session, setup_data):
+        alice = setup_data["alice"]
+        rows = AnalyticsService(db_session).context_switching(employee_id=alice.id)
+        assert len(rows) == 1
+        assert rows[0].employee_name == "Alice"
+
+
+class TestProjectFilter:
+    """Фильтр project_key сужает результаты до одного проекта."""
+
+    def test_hours_by_project(self, db_session, setup_data):
+        # AAA: Alice 5h + Bob 2h = 7h
+        rows = AnalyticsService(db_session).hours_by_project(project_key="AAA")
+        assert len(rows) == 1
+        assert rows[0].label == "Alpha"
+        assert rows[0].total_hours == 7.0
+
+    def test_hours_by_employee(self, db_session, setup_data):
+        # AAA worklogs: Alice wl1(2h) + wl2(3h) = 5h, Bob wl5(2h)
+        rows = AnalyticsService(db_session).hours_by_employee(project_key="AAA")
+        by_name = {r.label: r for r in rows}
+        assert by_name["Alice"].total_hours == 5.0
+        assert by_name["Bob"].total_hours == 2.0
+
+    def test_hours_by_category(self, db_session, setup_data):
+        # AAA: wl1(tech_debt 2h), wl2(tech_debt 3h), wl5(support 2h) — wl3/wl4 из BBB не входят
+        rows = AnalyticsService(db_session).hours_by_category(project_key="AAA")
+        by_key = {r.key: r for r in rows}
+        assert by_key[CategoryCode.TECH_DEBT].total_hours == 5.0
+        assert by_key[CategoryCode.SUPPORT_CONSULTATION].total_hours == 2.0
+        assert CategoryCode.MEETINGS not in by_key  # wl3 и wl4 — из BBB
+
+    def test_hours_by_period(self, db_session, setup_data):
+        # AAA: Jan5=2h(wl1), Jan6=3h(wl2), Jan8=2h(wl5)
+        rows = AnalyticsService(db_session).hours_by_period(period="day", project_key="AAA")
+        by_day = {r.key: r.total_hours for r in rows}
+        assert by_day["2026-01-05"] == 2.0
+        assert by_day["2026-01-06"] == 3.0
+        assert by_day["2026-01-08"] == 2.0
+        assert "2026-01-07" not in by_day  # wl3 — BBB
+
+    def test_context_switching(self, db_session, setup_data):
+        # AAA: Alice wl1(AAA-1 Jan5) + wl2(AAA-2 Jan6) — оба Alpha, 0 switches
+        #       Bob wl5(AAA-1 Jan8) — один worklog, 0 switches
+        rows = AnalyticsService(db_session).context_switching(project_key="AAA")
+        by_name = {r.employee_name: r for r in rows}
+        assert by_name["Alice"].total_worklogs == 2
+        assert by_name["Alice"].switches == 0
+        assert by_name["Bob"].total_worklogs == 1
+        assert by_name["Bob"].switches == 0
