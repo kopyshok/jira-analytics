@@ -84,7 +84,7 @@ class JiraPrioritySchema(BaseModel):
 
 class JiraIssueFieldsSchema(BaseModel):
     """Issue fields from API response."""
-    
+
     summary: str
     description: Optional[Any] = None  # Can be string or ADF
     issuetype: JiraIssueTypeSchema
@@ -96,14 +96,24 @@ class JiraIssueFieldsSchema(BaseModel):
     assignee: Optional[JiraUserSchema] = None
     created: Optional[str] = None
     updated: Optional[str] = None
-    
+    _extra: dict = {}
+
+    def __init__(self, **data):
+        known = {
+            "summary", "description", "issuetype", "status", "priority",
+            "project", "parent", "creator", "assignee", "created", "updated",
+        }
+        extra = {k: v for k, v in data.items() if k not in known}
+        super().__init__(**{k: v for k, v in data.items() if k in known})
+        object.__setattr__(self, "_extra", extra)
+
     @property
     def parent_key(self) -> Optional[str]:
         """Get parent issue key if exists."""
         if self.parent:
             return self.parent.get("key")
         return None
-    
+
     @property
     def description_text(self) -> Optional[str]:
         """Extract plain text from description (handles ADF format)."""
@@ -115,7 +125,7 @@ class JiraIssueFieldsSchema(BaseModel):
         if isinstance(self.description, dict):
             return self._extract_adf_text(self.description)
         return str(self.description)
-    
+
     def _extract_adf_text(self, node: dict) -> str:
         """Recursively extract text from Atlassian Document Format."""
         text_parts = []
@@ -125,7 +135,7 @@ class JiraIssueFieldsSchema(BaseModel):
             if isinstance(child, dict):
                 text_parts.append(self._extract_adf_text(child))
         return " ".join(text_parts).strip()
-    
+
     class Config:
         extra = "ignore"
 
@@ -266,17 +276,23 @@ class JiraCommentsResponseSchema(BaseModel):
 # === Paginated response schemas ===
 
 class JiraSearchResponseSchema(BaseModel):
-    """Paginated search response for issues."""
-    
+    """Paginated search response for issues.
+
+    New ``GET /search/jql`` may omit ``total``.  When absent, we assume
+    there are more pages if the number of returned issues equals ``maxResults``.
+    """
+
     startAt: int = 0
     maxResults: int = 50
-    total: int = 0
+    total: Optional[int] = None
     issues: List[JiraIssueSchema] = Field(default_factory=list)
-    
+
     @property
     def has_more(self) -> bool:
         """Check if there are more results."""
-        return self.startAt + len(self.issues) < self.total
+        if self.total is not None:
+            return self.startAt + len(self.issues) < self.total
+        return len(self.issues) >= self.maxResults
 
 
 class JiraWorklogsResponseSchema(BaseModel):

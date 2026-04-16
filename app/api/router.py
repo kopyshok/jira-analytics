@@ -6,12 +6,15 @@ from app.api.endpoints import (
     analytics,
     backlog,
     capacity,
+    categories,
     employees,
     exports,
+    issue_config,
     mapping,
     planning,
     projects,
     scope,
+    settings,
     sync,
 )
 
@@ -36,6 +39,8 @@ async def root():
             "backlog": "/api/v1/backlog",
             "planning": "/api/v1/planning",
             "exports": "/api/v1/exports",
+            "settings": "/api/v1/settings",
+            "categories": "/api/v1/categories",
         },
     }
 
@@ -51,3 +56,6 @@ api_router.include_router(capacity.router, prefix="/capacity", tags=["capacity"]
 api_router.include_router(backlog.router, prefix="/backlog", tags=["backlog"])
 api_router.include_router(planning.router, prefix="/planning", tags=["planning"])
 api_router.include_router(exports.router, prefix="/exports", tags=["exports"])
+api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
+api_router.include_router(categories.router, prefix="/categories", tags=["categories"])
+api_router.include_router(issue_config.router, prefix="/issues", tags=["issues"])

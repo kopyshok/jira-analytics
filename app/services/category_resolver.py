@@ -19,7 +19,7 @@ from app.models import (
     Worklog,
     WorklogQualityRule,
 )
-from app.services.categories import CategoryCode, MappingSource
+from app.services.categories import MappingSource, UNFILLED_WORKLOG_CODE
 
 
 DEFAULT_MIN_COMMENT_LENGTH = 5
@@ -82,34 +82,47 @@ class CategoryResolver:
     def resolve_for_issue(self, issue: Issue) -> CategoryResolution:
         """Определить категорию для задачи.
 
-        Обходит иерархию вверх по parent_id в поисках корневого эпика.
+        Приоритет:
+        1. assigned_category на самой задаче
+        2. Ближайший предок с assigned_category (наследование)
+        3. Явное переопределение (CategoryOverride)
+        4. Scope root (walk up parent chain)
+        5. Fallback
         """
         self._load_caches()
 
-        # 1. Явное переопределение
-        if issue.key in self._overrides:
+        # 1. Прямое назначение на задаче
+        if issue.assigned_category:
             return CategoryResolution(
-                category_code=self._overrides[issue.key],
-                source=MappingSource.OVERRIDE,
+                category_code=issue.assigned_category,
+                source=MappingSource.ASSIGNED,
                 source_entity_key=issue.key,
             )
 
-        # 2. Поиск корневого эпика вверх по иерархии
+        # 2. Обход иерархии вверх
         current: Optional[Issue] = issue
         visited: set[str] = set()
 
         while current is not None and current.id not in visited:
             visited.add(current.id)
 
-            # Проверяем переопределения на промежуточных уровнях
-            if current.key in self._overrides and current.id != issue.id:
+            # assigned_category на предке
+            if current.id != issue.id and current.assigned_category:
+                return CategoryResolution(
+                    category_code=current.assigned_category,
+                    source=MappingSource.ASSIGNED,
+                    source_entity_key=current.key,
+                )
+
+            # Явное переопределение (category_overrides)
+            if current.key in self._overrides:
                 return CategoryResolution(
                     category_code=self._overrides[current.key],
                     source=MappingSource.OVERRIDE,
                     source_entity_key=current.key,
                 )
 
-            # Проверяем scope_root
+            # Scope root
             if current.key in self._roots_by_key:
                 return CategoryResolution(
                     category_code=self._roots_by_key[current.key],
@@ -125,7 +138,7 @@ class CategoryResolver:
 
         # 3. Fallback — «незаполненные / сомнительные»
         return CategoryResolution(
-            category_code=CategoryCode.UNFILLED_WORKLOG,
+            category_code=UNFILLED_WORKLOG_CODE,
             source=MappingSource.FALLBACK,
         )
 
@@ -156,7 +169,7 @@ class CategoryResolver:
         comment = (worklog.comment_text or "").strip()
         if len(comment) < threshold:
             return CategoryResolution(
-                category_code=CategoryCode.UNFILLED_WORKLOG,
+                category_code=UNFILLED_WORKLOG_CODE,
                 source=MappingSource.QUALITY_RULE,
             )
 
@@ -165,6 +178,6 @@ class CategoryResolver:
             return self.resolve_for_issue(worklog.issue)
 
         return CategoryResolution(
-            category_code=CategoryCode.UNFILLED_WORKLOG,
+            category_code=UNFILLED_WORKLOG_CODE,
             source=MappingSource.FALLBACK,
         )

@@ -28,6 +28,17 @@ class ScopeProjectCreate(BaseModel):
     is_enabled: bool = True
 
 
+class ScopeProjectBatchRequest(BaseModel):
+    """Batch-добавление/удаление проектов из scope."""
+    add: List[str] = []
+    remove: List[str] = []
+
+
+class ScopeProjectBatchResponse(BaseModel):
+    added: int = 0
+    removed: int = 0
+
+
 class ScopeProjectResponse(BaseModel):
     id: str
     jira_project_key: str
@@ -101,6 +112,31 @@ async def add_scope_project(
     project = repo.create(data.model_dump())
     db.commit()
     return project
+
+
+@router.post("/projects/batch", response_model=ScopeProjectBatchResponse)
+async def batch_scope_projects(
+    data: ScopeProjectBatchRequest,
+    db: Session = Depends(get_db),
+):
+    """Добавить и/или удалить несколько проектов за один запрос."""
+    repo = BaseRepository(ScopeProject, db)
+    added = 0
+    removed = 0
+
+    for key in data.add:
+        if not repo.get_by_field("jira_project_key", key):
+            repo.create({"jira_project_key": key, "is_enabled": True})
+            added += 1
+
+    for key in data.remove:
+        existing = repo.get_by_field("jira_project_key", key)
+        if existing:
+            repo.delete(existing)
+            removed += 1
+
+    db.commit()
+    return ScopeProjectBatchResponse(added=added, removed=removed)
 
 
 @router.delete("/projects/{project_key}")

@@ -45,6 +45,23 @@ class SyncStatusResponse(BaseModel):
     last_error: Optional[str] = None
 
 
+class JiraProjectItem(BaseModel):
+    """Проект Jira для browse-списка."""
+    id: str
+    key: str
+    name: str
+    project_type: Optional[str] = None
+    in_scope: bool = False
+
+
+class JiraEpicItem(BaseModel):
+    """Эпик/задача из Jira для browse-списка."""
+    key: str
+    summary: str
+    issue_type: str
+    status: str
+
+
 # === Background task for async sync ===
 
 async def run_sync_task(
@@ -54,7 +71,7 @@ async def run_sync_task(
 ):
     """Background task to run full sync."""
     try:
-        async with JiraClient() as jira:
+        async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira)
             await service.full_sync(
                 project_keys=project_keys,
@@ -69,16 +86,16 @@ async def run_sync_task(
 # === Endpoints ===
 
 @router.get("/test-connection", response_model=ConnectionTestResponse)
-async def test_jira_connection():
+async def test_jira_connection(db: Session = Depends(get_db)):
     """Test connection to Jira Cloud.
-    
+
     Verifies that:
     - Jira credentials are configured
     - API token is valid
     - User has access
     """
     try:
-        async with JiraClient() as jira:
+        async with JiraClient.from_db(db) as jira:
             user = await jira.get_myself()
             return ConnectionTestResponse(
                 connected=True,
@@ -105,7 +122,7 @@ async def sync_projects(db: Session = Depends(get_db)):
     Run this first before syncing issues.
     """
     try:
-        async with JiraClient() as jira:
+        async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira)
             count = await service.sync_projects()
             
@@ -135,7 +152,7 @@ async def sync_issues(
     request = request or SyncRequest()
     
     try:
-        async with JiraClient() as jira:
+        async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira)
             count = await service.sync_issues(
                 project_keys=request.project_keys,
@@ -161,7 +178,7 @@ async def sync_worklogs(db: Session = Depends(get_db)):
     Consider running as background task for large datasets.
     """
     try:
-        async with JiraClient() as jira:
+        async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira)
             count = await service.sync_worklogs()
             
@@ -180,7 +197,7 @@ async def sync_worklogs(db: Session = Depends(get_db)):
 async def sync_comments(db: Session = Depends(get_db)):
     """Синхронизация комментариев к задачам из Jira."""
     try:
-        async with JiraClient() as jira:
+        async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira)
             count = await service.sync_comments()
 
@@ -224,31 +241,172 @@ async def full_sync(
         )
     
     try:
-        async with JiraClient() as jira:
+        async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira)
             stats = await service.full_sync(
                 project_keys=request.project_keys,
                 incremental=request.incremental,
             )
-            
-            return SyncResponse(
-                status="completed",
-                message=f"Full sync completed in {stats.duration_seconds:.1f}s",
-                stats=stats.to_dict(),
-            )
+
+        # Auto-recalculate mappings after full sync
+        from app.services.mapping_service import MappingService
+        mapping_svc = MappingService(db)
+        mapping_svc.recalculate_all()
+
+        return SyncResponse(
+            status="completed",
+            message=f"Full sync completed in {stats.duration_seconds:.1f}s",
+            stats=stats.to_dict(),
+        )
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/jira-projects", response_model=List[JiraProjectItem])
+async def browse_jira_projects(
+    search: Optional[str] = None,
+    team: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Список проектов из Jira Cloud для выбора в scope.
+
+    Возвращает все проекты с флагом ``in_scope`` — уже добавлен в scope или нет.
+    Опциональный ``search`` фильтрует по key/name (case-insensitive).
+    Опциональный ``team`` фильтрует проекты по задачам с этой командой.
+    """
+    from app.models import ScopeProject
+    from app.models.app_setting import AppSetting
+
+    try:
+        async with JiraClient.from_db(db) as jira:
+            scope_keys: set[str] = {
+                sp.jira_project_key
+                for sp in db.query(ScopeProject).all()
+            }
+
+            # If team filter is specified, find projects via issues with that team
+            team_project_keys: set[str] | None = None
+            if team:
+                field_row = db.query(AppSetting).filter(AppSetting.key == "jira_team_field_id").first()
+                if field_row and field_row.value:
+                    team_project_keys = set()
+                    jql = f'"{field_row.value}" = "{team}" ORDER BY project ASC'
+                    async for issue in jira.iter_issues(jql=jql, max_results=100, fields=["project"]):
+                        team_project_keys.add(issue.fields.project.key)
+
+            projects: list[JiraProjectItem] = []
+            async for p in jira.iter_projects(max_results=50):
+                if team_project_keys is not None and p.key not in team_project_keys:
+                    continue
+                if search:
+                    q = search.lower()
+                    if q not in p.key.lower() and q not in p.name.lower():
+                        continue
+                projects.append(JiraProjectItem(
+                    id=p.id,
+                    key=p.key,
+                    name=p.name,
+                    project_type=p.projectTypeKey,
+                    in_scope=p.key in scope_keys,
+                ))
+
+            projects.sort(key=lambda x: x.key)
+            return projects
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+
+@router.get("/jira-epics", response_model=List[JiraEpicItem])
+async def browse_jira_epics(
+    project_key: str,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Эпики и верхнеуровневые задачи проекта из Jira.
+
+    Отдаёт задачи типа Epic + задачи без parent (потенциальные корни).
+    ``search`` фильтрует по summary (case-insensitive).
+    """
+    try:
+        async with JiraClient.from_db(db) as jira:
+            jql = (
+                f'project = "{project_key}" '
+                f'AND (issuetype = Epic OR "Parent Link" is EMPTY) '
+                f"ORDER BY key ASC"
+            )
+            items: list[JiraEpicItem] = []
+            async for issue in jira.iter_issues(jql=jql, max_results=100):
+                summary = issue.fields.summary
+                if search and search.lower() not in summary.lower():
+                    continue
+                items.append(JiraEpicItem(
+                    key=issue.key,
+                    summary=summary,
+                    issue_type=issue.fields.issuetype.name,
+                    status=issue.fields.status.name,
+                ))
+            return items
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+
+class JiraFieldItem(BaseModel):
+    """Поле Jira для выбора в настройках."""
+    id: str
+    name: str
+    custom: bool = False
+
+
+@router.get("/jira-fields", response_model=List[JiraFieldItem])
+async def browse_jira_fields(db: Session = Depends(get_db)):
+    """Список полей Jira (включая кастомные) для настройки team-поля."""
+    try:
+        async with JiraClient.from_db(db) as jira:
+            fields = await jira.get_fields()
+            return [
+                JiraFieldItem(
+                    id=f["id"],
+                    name=f.get("name", f["id"]),
+                    custom=f.get("custom", False),
+                )
+                for f in fields
+            ]
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+
+@router.get("/jira-teams", response_model=List[str])
+async def browse_jira_teams(db: Session = Depends(get_db)):
+    """Уникальные значения поля 'Продуктовая команда' из Jira.
+
+    Использует настройку ``jira_team_field_id`` из app_settings.
+    """
+    from app.models.app_setting import AppSetting
+
+    row = db.query(AppSetting).filter(AppSetting.key == "jira_team_field_id").first()
+    if not row or not row.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Поле 'Продуктовая команда' не настроено. Укажите jira_team_field_id в настройках.",
+        )
+
+    try:
+        async with JiraClient.from_db(db) as jira:
+            values = await jira.get_field_distinct_values(row.value)
+            return values
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+
 @router.get("/status", response_model=List[SyncStatusResponse])
 async def get_sync_status(db: Session = Depends(get_db)):
     """Get sync status for all entities."""
     from app.models import SyncState
-    
+
     states = db.query(SyncState).all()
-    
+
     return [
         SyncStatusResponse(
             entity=state.entity_name,

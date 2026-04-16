@@ -27,7 +27,8 @@ import {
   useProjectsForFilter,
 } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
-import { CATEGORY_LABELS, CATEGORY_COLORS, CHART_COLORS, DARK_THEME } from '../utils/constants';
+import { CHART_COLORS, DARK_THEME } from '../utils/constants';
+import { useCategories } from '../hooks/useCategories';
 import { formatHours, formatDate } from '../utils/format';
 import type { SyncStatusResponse } from '../types/api';
 
@@ -37,6 +38,7 @@ export default function DashboardPage() {
   const { notification } = App.useApp();
   const navigate = useNavigate();
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const { labels: catLabels, colors: catColors } = useCategories();
   const [employeeId, setEmployeeId] = useState<string | undefined>();
   const [projectKey, setProjectKey] = useState<string | undefined>();
 
@@ -64,8 +66,8 @@ export default function DashboardPage() {
 
   const pieData = categories?.map((d) => ({
     ...d,
-    label: CATEGORY_LABELS[d.key] || d.label,
-    fill: CATEGORY_COLORS[d.key] || '#8884d8',
+    label: catLabels[d.key] || d.label,
+    fill: catColors[d.key] || '#8884d8',
   }));
 
   const top5employees = employees

@@ -16,7 +16,7 @@ from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping
-from app.services.categories import CategoryCode, CATEGORY_LABELS
+from app.services.categories import CATEGORY_LABELS, get_category_labels
 
 
 @dataclass
@@ -54,6 +54,11 @@ class AnalyticsService:
         if end:
             query = query.filter(Worklog.started_at <= end)
         return query
+
+    @staticmethod
+    def _exclude_non_analysis(query):
+        """Исключить задачи с include_in_analysis=False (join Issue уже должен быть)."""
+        return query.filter(Issue.include_in_analysis != False)  # noqa: E712
 
     # === Агрегаты ===
 
@@ -175,7 +180,7 @@ class AnalyticsService:
         return [
             AggregateRow(
                 key=row.category,
-                label=CATEGORY_LABELS.get(row.category, row.category),
+                label=get_category_labels(self.db).get(row.category, row.category),
                 total_hours=float(row.total_hours or 0),
                 worklog_count=int(row.cnt),
             )

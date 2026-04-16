@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from 'react';
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, Navigate } from 'react-router';
 import AppLayout from './components/Layout/AppLayout';
 import {
   AnalyticsPage,
@@ -7,7 +7,6 @@ import {
   CapacityPage,
   DashboardPage,
   PlanningPage,
-  ScopePage,
   SyncPage,
 } from './pages/lazyPages';
 
@@ -33,7 +32,7 @@ export const router = createBrowserRouter([
       { index: true, element: page(<DashboardPage />) },
       { path: 'analytics', element: page(<AnalyticsPage />) },
       { path: 'sync', element: page(<SyncPage />) },
-      { path: 'scope', element: page(<ScopePage />) },
+      { path: 'scope', element: <Navigate to="/sync" replace /> },
       { path: 'capacity', element: page(<CapacityPage />) },
       { path: 'backlog', element: page(<BacklogPage />) },
       { path: 'planning', element: page(<PlanningPage />) },
