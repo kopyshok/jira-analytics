@@ -18,7 +18,7 @@ export default function AnalyticsPage() {
   const end = dates?.[1]?.format('YYYY-MM-DD');
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Space>
         <DateRangeSelect value={dates} onChange={setDates} />
         <ExportButtons

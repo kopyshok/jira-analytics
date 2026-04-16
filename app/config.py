@@ -2,10 +2,10 @@
 
 import json
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, NoDecode
 
 
 class Settings(BaseSettings):
@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/jira_analytics.db"
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
 
     # Jira Cloud credentials
     jira_base_url: Optional[str] = None

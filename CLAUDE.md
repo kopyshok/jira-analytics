@@ -232,6 +232,10 @@ py -3.10 scripts/local_smoke.py
 # PowerShell wrapper:
 .\scripts\smoke-local.ps1
 
+# Browser E2E (uses data/e2e.db; no Jira credentials required)
+.\scripts\e2e-local.ps1 -InstallBrowsers  # first run
+.\scripts\e2e-local.ps1
+
 # Makefile shortcuts
 make dev | run | test | migrate | clean
 
@@ -240,6 +244,7 @@ cd frontend && npm install
 cd frontend && npm run dev     # dev server at :5173
 cd frontend && npm run lint
 cd frontend && npm run build   # production build
+cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 ```
 
 ## Frontend Architecture
@@ -252,3 +257,4 @@ cd frontend && npm run build   # production build
 - **API client:** thin fetch wrapper at `frontend/src/api/client.ts`, base URL from `VITE_API_BASE_URL`
 - **Quarter/Year:** URL search params (`?year=&quarter=`), not global state
 - **Hooks pattern:** one file per API domain in `frontend/src/hooks/`, wraps API calls in `useQuery`/`useMutation`
+- **E2E:** Playwright under `frontend/e2e`, isolated SQLite database at `data/e2e.db`, no Jira calls

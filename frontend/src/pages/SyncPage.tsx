@@ -60,9 +60,9 @@ export default function SyncPage() {
   ];
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Card title="Подключение к Jira">
-        <Space direction="vertical">
+        <Space orientation="vertical">
           <Button icon={<ApiOutlined />} onClick={handleTest} loading={testing}>
             Проверить подключение
           </Button>
