@@ -27,8 +27,8 @@ function ProjectsTab() {
           disabled={!key.trim()}
           loading={add.isPending}
           onClick={() => add.mutate({ jira_project_key: key.trim() }, {
-            onSuccess: () => { setKey(''); notification.success({ message: 'Проект добавлен' }); },
-            onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+            onSuccess: () => { setKey(''); notification.success({ title: 'Проект добавлен' }); },
+            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
           })}
         >
           Добавить
@@ -76,8 +76,8 @@ function RootsTab() {
           disabled={!issueKey.trim() || !category}
           loading={add.isPending}
           onClick={() => add.mutate({ jira_issue_key: issueKey.trim(), category_code: category }, {
-            onSuccess: () => { setIssueKey(''); setCategory(''); notification.success({ message: 'Корень добавлен' }); },
-            onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+            onSuccess: () => { setIssueKey(''); setCategory(''); notification.success({ title: 'Корень добавлен' }); },
+            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
           })}
         >
           Добавить
@@ -125,8 +125,8 @@ function OverridesTab() {
           disabled={!issueKey.trim() || !category}
           loading={add.isPending}
           onClick={() => add.mutate({ jira_issue_key: issueKey.trim(), category_code: category }, {
-            onSuccess: () => { setIssueKey(''); setCategory(''); notification.success({ message: 'Переопределение добавлено' }); },
-            onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+            onSuccess: () => { setIssueKey(''); setCategory(''); notification.success({ title: 'Переопределение добавлено' }); },
+            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
           })}
         >
           Добавить

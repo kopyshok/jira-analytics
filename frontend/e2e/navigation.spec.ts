@@ -1,31 +1,8 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
-
-type ConsoleTracker = {
-  errors: string[];
-};
-
-function trackConsoleErrors(page: Page): ConsoleTracker {
-  const tracker: ConsoleTracker = { errors: [] };
-
-  page.on('console', (message) => {
-    if (message.type() === 'error') {
-      tracker.errors.push(message.text());
-    }
-  });
-
-  page.on('pageerror', (error) => {
-    tracker.errors.push(error.message);
-  });
-
-  return tracker;
-}
-
-async function expectVisible(locator: Locator) {
-  await expect(locator).toBeVisible();
-}
+import { expect, test } from '@playwright/test';
+import { expectNoBrowserErrors, expectVisible, trackBrowserErrors } from './helpers';
 
 test('main product routes render without browser errors', async ({ page }) => {
-  const consoleTracker = trackConsoleErrors(page);
+  const browserErrors = trackBrowserErrors(page);
 
   await page.goto('/');
   await expectVisible(page.getByText('Всего часов'));
@@ -61,6 +38,5 @@ test('main product routes render without browser errors', async ({ page }) => {
   await expectVisible(page.getByRole('button', { name: 'Сгенерировать сценарий' }));
   await expectVisible(page.getByText('Сценарии'));
 
-  await page.waitForTimeout(300);
-  expect(consoleTracker.errors).toEqual([]);
+  await expectNoBrowserErrors(browserErrors);
 });

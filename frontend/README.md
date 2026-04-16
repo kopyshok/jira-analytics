@@ -45,13 +45,15 @@ Full-stack smoke from the repository root:
 
 `npm run e2e` starts the backend on `127.0.0.1:8010` with an isolated
 SQLite database at `data/e2e.db`, starts Vite on `127.0.0.1:5174`, then
-checks the main SPA routes in Chromium. Jira credentials are not required.
+checks the main SPA routes and CRUD flows in Chromium. The E2E database is
+rebuilt on each run and seeded with `E2E Analyst` plus `E2E Project`. Jira
+credentials are not required.
 
 ## Structure
 
 ```text
 src/api/          fetch client and API modules
-e2e/             Playwright browser smoke for main product routes
+e2e/              Playwright browser checks for routes and CRUD flows
 src/hooks/        TanStack Query hooks and shared URL-param hooks
 src/pages/        lazy-loaded Dashboard, analytics, sync, scope, capacity, backlog, planning
 src/components/   layout and shared UI components

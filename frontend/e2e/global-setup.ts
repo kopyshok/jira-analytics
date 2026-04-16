@@ -50,4 +50,5 @@ export default async function globalSetup() {
   rmSync(`${dbPath}-wal`, { force: true });
 
   runPythonModule(['-m', 'alembic', 'upgrade', 'head']);
+  runPythonModule(['scripts/seed_e2e.py']);
 }

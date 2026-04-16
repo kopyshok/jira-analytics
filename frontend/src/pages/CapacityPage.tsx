@@ -51,8 +51,8 @@ function VacationsTab() {
             start_date: vals.dates[0].format('YYYY-MM-DD'),
             end_date: vals.dates[1].format('YYYY-MM-DD'),
           }, {
-            onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ message: 'Отпуск добавлен' }); },
-            onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+            onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ title: 'Отпуск добавлен' }); },
+            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
           });
         }}>
           <Form.Item name="employee_id" label="Сотрудник" rules={[{ required: true }]}>
@@ -102,8 +102,8 @@ function RulesTab() {
       <Modal title="Новое правило ёмкости" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={add.isPending}>
         <Form form={form} layout="vertical" onFinish={(vals) => {
           add.mutate(vals, {
-            onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ message: 'Правило добавлено' }); },
-            onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+            onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ title: 'Правило добавлено' }); },
+            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
           });
         }}>
           <Form.Item name="year" label="Год" rules={[{ required: true }]} initialValue={new Date().getFullYear()}>
