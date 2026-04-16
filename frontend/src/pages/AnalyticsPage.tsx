@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Tabs, Table, Space, Spin, Empty } from 'antd';
+import { Tabs, Table, Space, Spin, Empty, Select, Segmented, Alert, Button } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import DateRangeSelect from '../components/shared/DateRangeSelect';
 import ExportButtons from '../components/shared/ExportButtons';
-import { useHoursByEmployee, useHoursByProject, useHoursByCategory, useHoursByPeriod, useContextSwitching } from '../hooks/useAnalytics';
+import { useHoursByEmployee, useHoursByProject, useHoursByCategory, useHoursByPeriod, useContextSwitching, useEmployeesForFilter, useProjectsForFilter } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
 import { CATEGORY_LABELS, CATEGORY_COLORS } from '../utils/constants';
 import { formatHours } from '../utils/format';
@@ -14,24 +14,58 @@ const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
 
 export default function AnalyticsPage() {
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [employeeId, setEmployeeId] = useState<string | undefined>();
+  const [projectKey, setProjectKey] = useState<string | undefined>();
+  const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
+
   const start = dates?.[0]?.format('YYYY-MM-DD');
   const end = dates?.[1]?.format('YYYY-MM-DD');
 
+  const { data: employees } = useEmployeesForFilter();
+  const { data: projects } = useProjectsForFilter();
+
+  const hasFilters = !!employeeId || !!projectKey || !!dates;
+
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <Space>
+      <Space wrap>
         <DateRangeSelect value={dates} onChange={setDates} />
+        <Select
+          allowClear
+          placeholder="Все сотрудники"
+          style={{ minWidth: 180 }}
+          value={employeeId}
+          onChange={setEmployeeId}
+          options={employees?.map(e => ({ value: e.id, label: e.display_name }))}
+          showSearch
+          optionFilterProp="label"
+        />
+        <Select
+          allowClear
+          placeholder="Все проекты"
+          style={{ minWidth: 160 }}
+          value={projectKey}
+          onChange={setProjectKey}
+          options={projects?.map(p => ({ value: p.key, label: p.name }))}
+          showSearch
+          optionFilterProp="label"
+        />
+        {hasFilters && (
+          <Button onClick={() => { setEmployeeId(undefined); setProjectKey(undefined); setDates(null); }}>
+            Сбросить
+          </Button>
+        )}
         <ExportButtons
           onXlsx={() => downloadAnalyticsXlsx(start, end)}
           onPdf={() => downloadAnalyticsPdf(start, end)}
         />
       </Space>
       <Tabs items={[
-        { key: 'employee', label: 'По сотрудникам', children: <EmployeeTab start={start} end={end} /> },
-        { key: 'project', label: 'По проектам', children: <ProjectTab start={start} end={end} /> },
-        { key: 'category', label: 'По категориям', children: <CategoryTab start={start} end={end} /> },
-        { key: 'period', label: 'По периодам', children: <PeriodTab start={start} end={end} /> },
-        { key: 'switching', label: 'Переключения контекста', children: <SwitchingTab start={start} end={end} /> },
+        { key: 'employee', label: 'По сотрудникам', children: <EmployeeTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
+        { key: 'project', label: 'По проектам', children: <ProjectTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
+        { key: 'category', label: 'По категориям', children: <CategoryTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
+        { key: 'period', label: 'По периодам', children: <PeriodTab start={start} end={end} period={period} onPeriodChange={setPeriod} employeeId={employeeId} projectKey={projectKey} /> },
+        { key: 'switching', label: 'Переключения контекста', children: <SwitchingTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
       ]} />
     </Space>
   );
@@ -53,10 +87,11 @@ function HoursBarChart({ data, loading }: { data?: AggregateRowResponse[]; loadi
   );
 }
 
-function EmployeeTab({ start, end }: { start?: string; end?: string }) {
-  const { data, isLoading } = useHoursByEmployee(start, end);
+function EmployeeTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
+  const { data, isLoading, isError, error } = useHoursByEmployee(start, end, employeeId, projectKey);
   return (
     <>
+      {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
       <HoursBarChart data={data} loading={isLoading} />
       <Table<AggregateRowResponse>
         dataSource={data}
@@ -73,10 +108,11 @@ function EmployeeTab({ start, end }: { start?: string; end?: string }) {
   );
 }
 
-function ProjectTab({ start, end }: { start?: string; end?: string }) {
-  const { data, isLoading } = useHoursByProject(start, end);
+function ProjectTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
+  const { data, isLoading, isError, error } = useHoursByProject(start, end, employeeId, projectKey);
   return (
     <>
+      {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
       <HoursBarChart data={data} loading={isLoading} />
       <Table<AggregateRowResponse>
         dataSource={data}
@@ -93,9 +129,10 @@ function ProjectTab({ start, end }: { start?: string; end?: string }) {
   );
 }
 
-function CategoryTab({ start, end }: { start?: string; end?: string }) {
-  const { data, isLoading } = useHoursByCategory(start, end);
+function CategoryTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
+  const { data, isLoading, isError, error } = useHoursByCategory(start, end, employeeId, projectKey);
   if (isLoading) return <Spin />;
+  if (isError) return <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon />;
   if (!data?.length) return <Empty description="Нет данных" />;
 
   const chartData = data.map((d) => ({
@@ -129,40 +166,52 @@ function CategoryTab({ start, end }: { start?: string; end?: string }) {
   );
 }
 
-function PeriodTab({ start, end }: { start?: string; end?: string }) {
-  const { data, isLoading } = useHoursByPeriod('week', start, end);
+function PeriodTab({ start, end, period, onPeriodChange, employeeId, projectKey }: { start?: string; end?: string; period: 'day' | 'week' | 'month'; onPeriodChange: (v: 'day' | 'week' | 'month') => void; employeeId?: string; projectKey?: string }) {
+  const { data, isLoading, isError, error } = useHoursByPeriod(period, start, end, employeeId, projectKey);
   if (isLoading) return <Spin />;
-  if (!data?.length) return <Empty description="Нет данных" />;
+  if (isError) return <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon />;
+  if (!data?.length) return (
+    <>
+      <Segmented options={[{ label: 'День', value: 'day' }, { label: 'Неделя', value: 'week' }, { label: 'Месяц', value: 'month' }]} value={period} onChange={v => onPeriodChange(v as 'day' | 'week' | 'month')} style={{ marginBottom: 16 }} />
+      <Empty description="Нет данных" />
+    </>
+  );
   return (
-    <ResponsiveContainer width="100%" height={400}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="label" />
-        <YAxis />
-        <Tooltip formatter={tooltipFmt} />
-        <Legend />
-        <Line type="monotone" dataKey="total_hours" stroke="#1890ff" name="Часы" />
-      </LineChart>
-    </ResponsiveContainer>
+    <>
+      <Segmented options={[{ label: 'День', value: 'day' }, { label: 'Неделя', value: 'week' }, { label: 'Месяц', value: 'month' }]} value={period} onChange={v => onPeriodChange(v as 'day' | 'week' | 'month')} style={{ marginBottom: 16 }} />
+      <ResponsiveContainer width="100%" height={400}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" />
+          <YAxis />
+          <Tooltip formatter={tooltipFmt} />
+          <Legend />
+          <Line type="monotone" dataKey="total_hours" stroke="#1890ff" name="Часы" />
+        </LineChart>
+      </ResponsiveContainer>
+    </>
   );
 }
 
-function SwitchingTab({ start, end }: { start?: string; end?: string }) {
-  const { data, isLoading } = useContextSwitching(start, end);
+function SwitchingTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
+  const { data, isLoading, isError, error } = useContextSwitching(start, end, employeeId, projectKey);
   return (
-    <Table<ContextSwitchRowResponse>
-      dataSource={data}
-      rowKey="employee_id"
-      loading={isLoading}
-      size="small"
-      pagination={false}
-      columns={[
-        { title: 'Сотрудник', dataIndex: 'employee_name' },
-        { title: 'Ворклогов', dataIndex: 'total_worklogs', sorter: (a, b) => a.total_worklogs - b.total_worklogs },
-        { title: 'Проектов', dataIndex: 'distinct_projects', sorter: (a, b) => a.distinct_projects - b.distinct_projects },
-        { title: 'Категорий', dataIndex: 'distinct_categories', sorter: (a, b) => a.distinct_categories - b.distinct_categories },
-        { title: 'Переключений', dataIndex: 'switches', sorter: (a, b) => a.switches - b.switches },
-      ]}
-    />
+    <>
+      {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
+      <Table<ContextSwitchRowResponse>
+        dataSource={data}
+        rowKey="employee_id"
+        loading={isLoading}
+        size="small"
+        pagination={false}
+        columns={[
+          { title: 'Сотрудник', dataIndex: 'employee_name' },
+          { title: 'Ворклогов', dataIndex: 'total_worklogs', sorter: (a, b) => a.total_worklogs - b.total_worklogs },
+          { title: 'Проектов', dataIndex: 'distinct_projects', sorter: (a, b) => a.distinct_projects - b.distinct_projects },
+          { title: 'Категорий', dataIndex: 'distinct_categories', sorter: (a, b) => a.distinct_categories - b.distinct_categories },
+          { title: 'Переключений', dataIndex: 'switches', sorter: (a, b) => a.switches - b.switches },
+        ]}
+      />
+    </>
   );
 }

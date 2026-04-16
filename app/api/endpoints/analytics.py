@@ -43,11 +43,13 @@ class ContextSwitchRowResponse(BaseModel):
 async def hours_by_employee(
     start: Optional[datetime] = Query(None, description="Начало периода (ISO)"),
     end: Optional[datetime] = Query(None, description="Конец периода (ISO)"),
+    employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
+    project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     db: Session = Depends(get_db),
 ):
     """Часы по сотрудникам за период."""
     service = AnalyticsService(db)
-    rows = service.hours_by_employee(start=start, end=end)
+    rows = service.hours_by_employee(start=start, end=end, employee_id=employee_id, project_key=project_key)
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -55,11 +57,13 @@ async def hours_by_employee(
 async def hours_by_project(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
+    employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
+    project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     db: Session = Depends(get_db),
 ):
     """Часы по проектам за период."""
     service = AnalyticsService(db)
-    rows = service.hours_by_project(start=start, end=end)
+    rows = service.hours_by_project(start=start, end=end, employee_id=employee_id, project_key=project_key)
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -67,11 +71,13 @@ async def hours_by_project(
 async def hours_by_category(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
+    employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
+    project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     db: Session = Depends(get_db),
 ):
     """Часы по управленческим категориям работ."""
     service = AnalyticsService(db)
-    rows = service.hours_by_category(start=start, end=end)
+    rows = service.hours_by_category(start=start, end=end, employee_id=employee_id, project_key=project_key)
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -80,11 +86,13 @@ async def hours_by_period(
     period: str = Query("day", pattern="^(day|week|month)$"),
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
+    employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
+    project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     db: Session = Depends(get_db),
 ):
     """Часы по периодам: day, week, month."""
     service = AnalyticsService(db)
-    rows = service.hours_by_period(period=period, start=start, end=end)
+    rows = service.hours_by_period(period=period, start=start, end=end, employee_id=employee_id, project_key=project_key)
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -92,9 +100,11 @@ async def hours_by_period(
 async def context_switching(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
+    employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
+    project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     db: Session = Depends(get_db),
 ):
     """Метрика контекстных переключений по сотрудникам."""
     service = AnalyticsService(db)
-    rows = service.context_switching(start=start, end=end)
+    rows = service.context_switching(start=start, end=end, employee_id=employee_id, project_key=project_key)
     return [ContextSwitchRowResponse(**row.__dict__) for row in rows]
