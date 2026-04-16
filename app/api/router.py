@@ -6,9 +6,11 @@ from app.api.endpoints import (
     analytics,
     backlog,
     capacity,
+    employees,
     exports,
     mapping,
     planning,
+    projects,
     scope,
     sync,
 )
@@ -24,6 +26,8 @@ async def root():
         "docs": "/docs",
         "health": "/health",
         "endpoints": {
+            "employees": "/api/v1/employees",
+            "projects": "/api/v1/projects",
             "sync": "/api/v1/sync",
             "scope": "/api/v1/scope",
             "analytics": "/api/v1/analytics",
@@ -37,6 +41,8 @@ async def root():
 
 
 # Include routers
+api_router.include_router(employees.router, prefix="/employees", tags=["employees"])
+api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
 api_router.include_router(scope.router, prefix="/scope", tags=["scope"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
