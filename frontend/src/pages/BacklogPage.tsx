@@ -1,11 +1,32 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Table, Button, Space, Popconfirm, App, Modal, Form, Input, InputNumber, Select } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, HolderOutlined } from '@ant-design/icons';
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import { useBacklogItems, useCreateBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjects } from '../hooks/useBacklog';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import type { BacklogItemResponse } from '../types/api';
+
+function DragHandle({ id }: { id: string }) {
+  const { attributes, listeners } = useSortable({ id });
+  return <HolderOutlined style={{ cursor: 'grab', color: '#999' }} {...attributes} {...listeners} />;
+}
+
+function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-row-key'?: string }) {
+  const id = props['data-row-key'] ?? '';
+  const { setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <tr
+      {...props}
+      ref={setNodeRef}
+      style={{ ...props.style, transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+    />
+  );
+}
 
 export default function BacklogPage() {
   const { notification } = App.useApp();
@@ -48,6 +69,19 @@ export default function BacklogPage() {
     }
   };
 
+  const sorted = data?.slice().sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+  const handleDragEnd = useCallback(({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id || !sorted) return;
+
+    const oldIndex = sorted.findIndex((i) => i.id === active.id);
+    const newIndex = sorted.findIndex((i) => i.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newPriority = newIndex + 1;
+    update.mutate({ id: String(active.id), data: { priority: newPriority } });
+  }, [sorted, update]);
+
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Space>
@@ -78,30 +112,39 @@ export default function BacklogPage() {
         </Form>
       </Modal>
 
-      <Table<BacklogItemResponse>
-        dataSource={data}
-        rowKey="id"
-        loading={isLoading}
-        pagination={false}
-        size="small"
-        columns={[
-          { title: '#', dataIndex: 'priority', width: 60, sorter: (a, b) => (a.priority ?? 999) - (b.priority ?? 999) },
-          { title: 'Название', dataIndex: 'title' },
-          { title: 'Проект', dataIndex: 'project_id', render: (id: string | null) => id ? (projectMap.get(id)?.key || id) : '—' },
-          { title: 'Оценка (ч)', dataIndex: 'estimate_hours', render: (v: number | null) => v != null ? formatHours(v) : '—' },
-          {
-            title: 'Действия', width: 100,
-            render: (_, r) => (
-              <Space>
-                <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
-                <Popconfirm title="Удалить?" onConfirm={() => del.mutate(r.id, { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) })}>
-                  <Button icon={<DeleteOutlined />} size="small" danger />
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
-      />
+      <DndContext collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
+        <SortableContext items={sorted?.map((i) => i.id) ?? []} strategy={verticalListSortingStrategy}>
+          <Table<BacklogItemResponse>
+            dataSource={sorted}
+            rowKey="id"
+            loading={isLoading}
+            pagination={false}
+            size="small"
+            components={{ body: { row: SortableRow } }}
+            columns={[
+              {
+                title: '', width: 40,
+                render: (_, r) => <DragHandle id={r.id} />,
+              },
+              { title: '#', dataIndex: 'priority', width: 60 },
+              { title: 'Название', dataIndex: 'title' },
+              { title: 'Проект', dataIndex: 'project_id', render: (id: string | null) => id ? (projectMap.get(id)?.key || id) : '—' },
+              { title: 'Оценка (ч)', dataIndex: 'estimate_hours', render: (v: number | null) => v != null ? formatHours(v) : '—' },
+              {
+                title: 'Действия', width: 100,
+                render: (_, r) => (
+                  <Space>
+                    <Button icon={<EditOutlined />} size="small" onClick={(e) => { e.stopPropagation(); openEdit(r); }} />
+                    <Popconfirm title="Удалить?" onConfirm={() => del.mutate(r.id, { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) })}>
+                      <Button icon={<DeleteOutlined />} size="small" danger onClick={(e) => e.stopPropagation()} />
+                    </Popconfirm>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </SortableContext>
+      </DndContext>
     </Space>
   );
 }

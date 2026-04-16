@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Tabs, Table, Space, Spin, Empty, Select, Segmented, Alert, Button } from 'antd';
 import type { Dayjs } from 'dayjs';
+import { useSearchParams } from 'react-router';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import DateRangeSelect from '../components/shared/DateRangeSelect';
 import ExportButtons from '../components/shared/ExportButtons';
@@ -13,10 +14,13 @@ import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/ap
 const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
 
 export default function AnalyticsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [employeeId, setEmployeeId] = useState<string | undefined>();
   const [projectKey, setProjectKey] = useState<string | undefined>();
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
+
+  const activeTab = searchParams.get('tab') || 'employee';
 
   const start = dates?.[0]?.format('YYYY-MM-DD');
   const end = dates?.[1]?.format('YYYY-MM-DD');
@@ -60,7 +64,7 @@ export default function AnalyticsPage() {
           onPdf={() => downloadAnalyticsPdf(start, end)}
         />
       </Space>
-      <Tabs items={[
+      <Tabs activeKey={activeTab} onChange={(key) => setSearchParams({ tab: key })} items={[
         { key: 'employee', label: 'По сотрудникам', children: <EmployeeTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
         { key: 'project', label: 'По проектам', children: <ProjectTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
         { key: 'category', label: 'По категориям', children: <CategoryTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },

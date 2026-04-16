@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Space, Card, Table, Button, Tag, Popconfirm, App, Modal, Form, Input, Progress } from 'antd';
+import { Space, Card, Table, Button, Tag, Popconfirm, App, Modal, Form, Input, Progress, Row, Col, Empty } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import ExportButtons from '../components/shared/ExportButtons';
 import { useScenarios, useGenerateScenario, useDeleteScenario } from '../hooks/usePlanning';
 import { useQuarterYear } from '../hooks/useQuarterYear';
+import { useTeamCapacity } from '../hooks/useCapacity';
 import { downloadScenarioXlsx, downloadScenarioPptx } from '../api/exports';
 import { formatHours } from '../utils/format';
 import type { ScenarioResponse, PlanningResultResponse, AllocationResponse } from '../types/api';
@@ -13,6 +15,7 @@ export default function PlanningPage() {
   const { notification } = App.useApp();
   const { year, quarter } = useQuarterYear();
   const { data: scenarios, isLoading } = useScenarios(year, quarter);
+  const { data: teamCapacity } = useTeamCapacity(year, quarter);
   const generate = useGenerateScenario();
   const del = useDeleteScenario();
   const [open, setOpen] = useState(false);
@@ -33,6 +36,13 @@ export default function PlanningPage() {
 
   const capacityPercent = result ? Math.round((result.total_planned_hours / result.total_capacity_hours) * 100) : 0;
 
+  const capacityChartData = teamCapacity?.map((e) => ({
+    name: e.employee_name,
+    available: Number(e.total_available_hours.toFixed(1)),
+    mandatory: Number(e.total_mandatory_hours.toFixed(1)),
+    vacation: Number(e.total_vacation_hours.toFixed(1)),
+  }));
+
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <Space>
@@ -51,35 +61,57 @@ export default function PlanningPage() {
         </Form>
       </Modal>
 
-      <Card title="Сценарии">
-        <Table<ScenarioResponse>
-          dataSource={scenarios}
-          rowKey="id"
-          loading={isLoading}
-          pagination={false}
-          size="small"
-          columns={[
-            { title: 'Название', dataIndex: 'name' },
-            { title: 'Квартал', dataIndex: 'quarter' },
-            { title: 'Год', dataIndex: 'year' },
-            {
-              title: 'Действия',
-              width: 200,
-              render: (_, r) => (
-                <Space>
-                  <ExportButtons
-                    onXlsx={() => downloadScenarioXlsx(r.id)}
-                    onPptx={() => downloadScenarioPptx(r.id)}
-                  />
-                  <Popconfirm title="Удалить?" onConfirm={() => del.mutate(r.id)}>
-                    <Button icon={<DeleteOutlined />} size="small" danger />
-                  </Popconfirm>
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </Card>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <Card title="Сценарии">
+            <Table<ScenarioResponse>
+              dataSource={scenarios}
+              rowKey="id"
+              loading={isLoading}
+              pagination={false}
+              size="small"
+              columns={[
+                { title: 'Название', dataIndex: 'name' },
+                { title: 'Квартал', dataIndex: 'quarter' },
+                { title: 'Год', dataIndex: 'year' },
+                {
+                  title: 'Действия',
+                  width: 200,
+                  render: (_, r) => (
+                    <Space>
+                      <ExportButtons
+                        onXlsx={() => downloadScenarioXlsx(r.id)}
+                        onPptx={() => downloadScenarioPptx(r.id)}
+                      />
+                      <Popconfirm title="Удалить?" onConfirm={() => del.mutate(r.id)}>
+                        <Button icon={<DeleteOutlined />} size="small" danger />
+                      </Popconfirm>
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card title="Загрузка команды (квартал)">
+            {capacityChartData?.length ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={capacityChartData} layout="vertical" margin={{ left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis type="category" dataKey="name" width={140} />
+                  <Tooltip formatter={(v: unknown) => `${v} ч`} />
+                  <Legend />
+                  <Bar dataKey="available" stackId="a" fill="#52c41a" name="Доступно" />
+                  <Bar dataKey="mandatory" stackId="a" fill="#faad14" name="Обяз. задачи" />
+                  <Bar dataKey="vacation" stackId="a" fill="#1890ff" name="Отпуск" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <Empty description="Нет данных о ёмкости" />}
+          </Card>
+        </Col>
+      </Row>
 
       {result && (
         <Card title={`Результат: ${result.scenario_name}`}>
