@@ -1,15 +1,18 @@
-import { Card, Row, Col, Statistic, Spin, Empty, Table, Tag, Collapse } from 'antd';
+import { useState } from 'react';
+import { Card, Row, Col, Statistic, Spin, Empty, Table, Tag, Collapse, Space, Select, Button } from 'antd';
 import {
   ClockCircleOutlined,
   TeamOutlined,
   ProjectOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
+import type { Dayjs } from 'dayjs';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   BarChart, Bar,
 } from 'recharts';
+import DateRangeSelect from '../components/shared/DateRangeSelect';
 import { useSyncStatus } from '../hooks/useSync';
 import {
   useHoursByCategory,
@@ -17,6 +20,8 @@ import {
   useHoursByEmployee,
   useHoursByProject,
   useContextSwitching,
+  useEmployeesForFilter,
+  useProjectsForFilter,
 } from '../hooks/useAnalytics';
 import { CATEGORY_LABELS, CATEGORY_COLORS } from '../utils/constants';
 import { formatHours, formatDate } from '../utils/format';
@@ -25,12 +30,23 @@ import type { SyncStatusResponse } from '../types/api';
 const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
 
 export default function DashboardPage() {
+  const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [employeeId, setEmployeeId] = useState<string | undefined>();
+  const [projectKey, setProjectKey] = useState<string | undefined>();
+
+  const start = dates?.[0]?.format('YYYY-MM-DD');
+  const end = dates?.[1]?.format('YYYY-MM-DD');
+
+  const { data: filterEmployees } = useEmployeesForFilter();
+  const { data: filterProjects } = useProjectsForFilter();
+  const hasFilters = !!employeeId || !!projectKey || !!dates;
+
   const { data: syncStatus, isLoading: syncLoading } = useSyncStatus();
-  const { data: categories } = useHoursByCategory();
-  const { data: trend } = useHoursByPeriod('week');
-  const { data: employees } = useHoursByEmployee();
-  const { data: projects } = useHoursByProject();
-  const { data: switching } = useContextSwitching();
+  const { data: categories } = useHoursByCategory(start, end, employeeId, projectKey);
+  const { data: trend } = useHoursByPeriod('week', start, end, employeeId, projectKey);
+  const { data: employees } = useHoursByEmployee(start, end, employeeId, projectKey);
+  const { data: projects } = useHoursByProject(start, end, employeeId, projectKey);
+  const { data: switching } = useContextSwitching(start, end, employeeId, projectKey);
 
   const totalHours = categories?.reduce((s, r) => s + r.total_hours, 0) ?? 0;
   const employeeCount = employees?.length ?? 0;
@@ -57,6 +73,36 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* Filters */}
+      <Space wrap style={{ marginBottom: 24 }}>
+        <DateRangeSelect value={dates} onChange={setDates} />
+        <Select
+          allowClear
+          placeholder="Все сотрудники"
+          style={{ minWidth: 180 }}
+          value={employeeId}
+          onChange={setEmployeeId}
+          options={filterEmployees?.map(e => ({ value: e.id, label: e.display_name }))}
+          showSearch
+          optionFilterProp="label"
+        />
+        <Select
+          allowClear
+          placeholder="Все проекты"
+          style={{ minWidth: 160 }}
+          value={projectKey}
+          onChange={setProjectKey}
+          options={filterProjects?.map(p => ({ value: p.key, label: p.name }))}
+          showSearch
+          optionFilterProp="label"
+        />
+        {hasFilters && (
+          <Button onClick={() => { setEmployeeId(undefined); setProjectKey(undefined); setDates(null); }}>
+            Сбросить
+          </Button>
+        )}
+      </Space>
+
       {/* KPI cards */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>
