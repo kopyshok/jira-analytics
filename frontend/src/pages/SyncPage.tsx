@@ -34,8 +34,8 @@ export default function SyncPage() {
         icon={<SyncOutlined spin={mutation.isPending} />}
         loading={mutation.isPending}
         onClick={() => mutation.mutate(undefined, {
-          onSuccess: (res) => notification.success({ message: label, description: res.message }),
-          onError: (e) => notification.error({ message: `Ошибка: ${label}`, description: e.message }),
+          onSuccess: (res) => notification.success({ title: label, description: res.message }),
+          onError: (e) => notification.error({ title: `Ошибка: ${label}`, description: e.message }),
         })}
       >
         {label}
@@ -91,8 +91,8 @@ export default function SyncPage() {
           <Button
             icon={<ReloadOutlined />}
             onClick={() => recalculate.mutate(undefined, {
-              onSuccess: (res) => notification.success({ message: 'Маппинг', description: res.message }),
-              onError: (e) => notification.error({ message: 'Ошибка маппинга', description: e.message }),
+              onSuccess: (res) => notification.success({ title: 'Маппинг', description: res.message }),
+              onError: (e) => notification.error({ title: 'Ошибка маппинга', description: e.message }),
             })}
             loading={recalculate.isPending}
           >

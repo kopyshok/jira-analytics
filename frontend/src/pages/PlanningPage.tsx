@@ -25,9 +25,9 @@ export default function PlanningPage() {
         setOpen(false);
         form.resetFields();
         setResult(res);
-        notification.success({ message: `Сценарий "${res.scenario_name}" создан` });
+        notification.success({ title: `Сценарий "${res.scenario_name}" создан` });
       },
-      onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+      onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
     });
   };
 

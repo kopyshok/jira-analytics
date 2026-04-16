@@ -232,7 +232,7 @@ py -3.10 scripts/local_smoke.py
 # PowerShell wrapper:
 .\scripts\smoke-local.ps1
 
-# Browser E2E (uses data/e2e.db; no Jira credentials required)
+# Browser E2E (uses seeded data/e2e.db; no Jira credentials required)
 .\scripts\e2e-local.ps1 -InstallBrowsers  # first run
 .\scripts\e2e-local.ps1
 
@@ -258,3 +258,4 @@ cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 - **Quarter/Year:** URL search params (`?year=&quarter=`), not global state
 - **Hooks pattern:** one file per API domain in `frontend/src/hooks/`, wraps API calls in `useQuery`/`useMutation`
 - **E2E:** Playwright under `frontend/e2e`, isolated SQLite database at `data/e2e.db`, no Jira calls
+- **E2E seed:** `scripts/seed_e2e.py` inserts `E2E Analyst` and `E2E Project` after migrations; CRUD tests create and delete their own Scope/Capacity/Backlog/Planning rows

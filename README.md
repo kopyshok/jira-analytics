@@ -69,6 +69,8 @@ backend/frontend dev-серверы, проверяет ключевые URL и 
 Playwright E2E запускает backend на отдельной SQLite-базе `data/e2e.db`,
 поднимает Vite frontend, проходит по основным разделам SPA и падает при
 browser `console.error` или `pageerror`. Jira credentials для этого не нужны.
+Перед запуском база пересоздаётся, применяются Alembic-миграции и seed:
+сотрудник `E2E Analyst` и проект `E2E`.
 
 Первый запуск:
 
@@ -271,7 +273,8 @@ Smoke:
   - [x] Frontend route-level lazy loading для уменьшения стартового bundle
   - [x] Локальный smoke-runner для backend + frontend
   - [x] Browser E2E для основных SPA-маршрутов без Jira credentials
-  - [ ] E2E для CRUD-потоков планирования на seed-данных
+  - [x] E2E для CRUD-потоков Scope/Capacity/Backlog/Planning на seed-данных
+  - [ ] E2E для export/download сценариев
 
 ## 📄 Лицензия
 

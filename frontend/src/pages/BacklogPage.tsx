@@ -37,13 +37,13 @@ export default function BacklogPage() {
   const handleSubmit = (vals: Record<string, unknown>) => {
     if (editing) {
       update.mutate({ id: editing.id, data: vals }, {
-        onSuccess: () => { setOpen(false); notification.success({ message: 'Обновлено' }); },
-        onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+        onSuccess: () => { setOpen(false); notification.success({ title: 'Обновлено' }); },
+        onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
       });
     } else {
       create.mutate(vals as Parameters<typeof create.mutate>[0], {
-        onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ message: 'Создано' }); },
-        onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+        onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ title: 'Создано' }); },
+        onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
       });
     }
   };
@@ -94,7 +94,7 @@ export default function BacklogPage() {
             render: (_, r) => (
               <Space>
                 <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
-                <Popconfirm title="Удалить?" onConfirm={() => del.mutate(r.id, { onError: (e) => notification.error({ message: 'Ошибка', description: e.message }) })}>
+                <Popconfirm title="Удалить?" onConfirm={() => del.mutate(r.id, { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) })}>
                   <Button icon={<DeleteOutlined />} size="small" danger />
                 </Popconfirm>
               </Space>
