@@ -1,25 +1,43 @@
+import { Suspense, type ReactNode } from 'react';
 import { createBrowserRouter } from 'react-router';
+import { Flex, Spin } from 'antd';
 import AppLayout from './components/Layout/AppLayout';
-import DashboardPage from './pages/DashboardPage';
-import AnalyticsPage from './pages/AnalyticsPage';
-import SyncPage from './pages/SyncPage';
-import ScopePage from './pages/ScopePage';
-import CapacityPage from './pages/CapacityPage';
-import BacklogPage from './pages/BacklogPage';
-import PlanningPage from './pages/PlanningPage';
+import {
+  AnalyticsPage,
+  BacklogPage,
+  CapacityPage,
+  DashboardPage,
+  PlanningPage,
+  ScopePage,
+  SyncPage,
+} from './pages/lazyPages';
+
+function page(element: ReactNode) {
+  return (
+    <Suspense
+      fallback={
+        <Flex justify="center" align="center" style={{ minHeight: 240 }}>
+          <Spin />
+        </Flex>
+      }
+    >
+      {element}
+    </Suspense>
+  );
+}
 
 export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: 'analytics', element: <AnalyticsPage /> },
-      { path: 'sync', element: <SyncPage /> },
-      { path: 'scope', element: <ScopePage /> },
-      { path: 'capacity', element: <CapacityPage /> },
-      { path: 'backlog', element: <BacklogPage /> },
-      { path: 'planning', element: <PlanningPage /> },
+      { index: true, element: page(<DashboardPage />) },
+      { path: 'analytics', element: page(<AnalyticsPage />) },
+      { path: 'sync', element: page(<SyncPage />) },
+      { path: 'scope', element: page(<ScopePage />) },
+      { path: 'capacity', element: page(<CapacityPage />) },
+      { path: 'backlog', element: page(<BacklogPage />) },
+      { path: 'planning', element: page(<PlanningPage />) },
     ],
   },
 ]);
