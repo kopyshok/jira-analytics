@@ -1,9 +1,10 @@
 """Application configuration."""
 
-import os
+import json
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -31,6 +32,43 @@ class Settings(BaseSettings):
     jira_request_delay: float = 0.1  # 100ms between requests
     jira_max_retries: int = 3
     jira_batch_size: int = 100  # Issues per request
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug_aliases(cls, value: Any) -> Any:
+        """Accept environment-style aliases for the debug flag."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"debug", "dev", "development", "local"}:
+                return True
+            if normalized in {"release", "prod", "production"}:
+                return False
+        return value
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> Any:
+        """Accept either JSON array or comma-separated CORS origins."""
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip()
+        if not normalized:
+            return []
+
+        if normalized.startswith("["):
+            try:
+                parsed = json.loads(normalized)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                return parsed
+
+        return [
+            origin.strip()
+            for origin in normalized.split(",")
+            if origin.strip()
+        ]
 
     class Config:
         env_file = ".env"

@@ -19,12 +19,19 @@ cp .env.example .env
 # Миграции
 make migrate
 
-# Запуск
+# Запуск backend
 make run
+
+# Запуск frontend (в отдельном терминале)
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
 ```
 
 API: http://localhost:8000  
-Документация: http://localhost:8000/docs
+Документация: http://localhost:8000/docs  
+Frontend: http://localhost:5173
 
 ## 🔧 Настройка Jira Cloud
 
@@ -38,9 +45,18 @@ API: http://localhost:8000
 ### 2. Настройка .env
 
 ```env
+DEBUG=true
+DATABASE_URL=sqlite:///./data/jira_analytics.db
+CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
 JIRA_BASE_URL=https://your-domain.atlassian.net
 JIRA_EMAIL=your-email@example.com
 JIRA_API_TOKEN=your-api-token-here
+```
+
+Frontend читает URL API из `frontend/.env`:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000/api/v1
 ```
 
 ### 3. Проверка соединения
@@ -55,10 +71,13 @@ curl http://localhost:8000/api/v1/sync/test-connection
 
 | Endpoint | Метод | Описание |
 |----------|-------|----------|
+| `/api/v1/employees` | GET | Список сотрудников |
+| `/api/v1/projects` | GET | Список проектов |
 | `/api/v1/sync/test-connection` | GET | Проверка соединения с Jira |
 | `/api/v1/sync/projects` | POST | Синхронизация проектов |
 | `/api/v1/sync/issues` | POST | Синхронизация задач |
 | `/api/v1/sync/worklogs` | POST | Синхронизация worklogs |
+| `/api/v1/sync/comments` | POST | Синхронизация комментариев |
 | `/api/v1/sync/full` | POST | Полная синхронизация |
 | `/api/v1/sync/status` | GET | Статус синхронизации |
 
@@ -85,26 +104,20 @@ curl -X POST http://localhost:8000/api/v1/sync/full
 ```
 jira-analytics/
 ├── app/
-│   ├── api/
-│   │   ├── endpoints/
-│   │   │   └── sync.py       # Sync API endpoints
-│   │   └── router.py
-│   ├── connectors/
-│   │   ├── jira_client.py    # Jira HTTP client
-│   │   └── schemas.py        # Pydantic schemas for Jira API
-│   ├── models/
-│   │   ├── employee.py
-│   │   ├── project.py
-│   │   ├── issue.py
-│   │   ├── worklog.py
-│   │   └── sync_state.py
-│   ├── repositories/
-│   │   └── base.py           # Generic repository
-│   ├── services/
-│   │   └── sync_service.py   # Sync orchestration
-│   ├── config.py
-│   ├── database.py
-│   └── main.py
+│   ├── api/endpoints/        # FastAPI routers
+│   ├── connectors/           # Jira HTTP client + schemas
+│   ├── models/               # SQLAlchemy models
+│   ├── repositories/         # Data access layer
+│   ├── services/             # Business logic
+│   ├── config.py             # Settings from env
+│   ├── database.py           # Engine + Session + Base
+│   └── main.py               # FastAPI app
+├── frontend/                 # React + TypeScript SPA
+│   ├── src/api/              # API client + domain modules
+│   ├── src/hooks/            # TanStack Query hooks
+│   ├── src/pages/            # Application pages
+│   ├── src/components/       # Shared and layout components
+│   └── src/types/            # API TypeScript interfaces
 ├── alembic/
 │   └── versions/
 ├── tests/
@@ -173,6 +186,16 @@ make test     # Запустить тесты
 make clean    # Очистить кэш и временные файлы
 ```
 
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run lint
+npm run build
+npm run dev
+```
+
 ## 📋 Roadmap
 
 - [x] **M1** — Технический каркас: FastAPI, SQLite, SQLAlchemy, Alembic
@@ -180,6 +203,7 @@ make clean    # Очистить кэш и временные файлы
 - [x] **M3** — Факт-аналитика: категории, мэппинг, отчёты
 - [x] **M4** — Планирование: календарь, отпуска, ёмкость, бэклог, сценарии
 - [x] **M5** — Экспорты: xlsx/pdf для аналитики, xlsx/pptx для сценариев
+- [ ] **M6** — Стабилизация frontend, smoke/E2E проверки, удобный onboarding
 
 ## 📄 Лицензия
 
