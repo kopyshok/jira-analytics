@@ -8,8 +8,9 @@ import {
   CheckOutlined, CloseOutlined,
   SaveOutlined, SettingOutlined,
 } from '@ant-design/icons';
-import { testConnection } from '../api/sync';
-import { useJiraSettings, useSaveJiraSettings, useTestJiraCredentials, useSaveGenericSetting } from '../hooks/useSettings';
+import { useQueryClient } from '@tanstack/react-query';
+import { testConnection, getJiraProjects } from '../api/sync';
+import { useJiraSettings, useSaveJiraSettings, useTestJiraCredentials, useSaveGenericSetting, useGenericSetting } from '../hooks/useSettings';
 import {
   useSyncStatus, useSyncMutation, useRecalculateMapping,
   useJiraProjects, useBatchScopeProjects,
@@ -146,15 +147,21 @@ function ConnectionCard() {
 
 function TaskSectionsTab() {
   const { notification, message } = App.useApp();
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedTeam, setSelectedTeam] = useState<string | undefined>();
+  const [loadingAll, setLoadingAll] = useState(false);
   const jiraProjects = useJiraProjects(search, selectedTeam);
   const scopeProjects = useScopeProjects();
   const batchMutation = useBatchScopeProjects();
   const jiraTeams = useJiraTeams();
   const jiraFields = useJiraFields();
   const saveFieldSetting = useSaveGenericSetting();
+  const productField = useGenericSetting('jira_team_field_id');
+  const participatingField = useGenericSetting('jira_participating_teams_field_id');
   const [showFieldModal, setShowFieldModal] = useState(false);
+  const [productFieldDraft, setProductFieldDraft] = useState<string | undefined>();
+  const [participatingFieldDraft, setParticipatingFieldDraft] = useState<string | undefined>();
 
   // Track pending changes before save
   const [pendingAdd, setPendingAdd] = useState<Set<string>>(new Set());
@@ -203,8 +210,6 @@ function TaskSectionsTab() {
           notification.success({ message: 'Scope обновлён', description: `Добавлено: ${res.added}, удалено: ${res.removed}` });
           setPendingAdd(new Set());
           setPendingRemove(new Set());
-          // Refresh project list to get updated in_scope flags
-          jiraProjects.refetch();
         },
         onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
       },
@@ -234,16 +239,43 @@ function TaskSectionsTab() {
     { title: 'Тип', dataIndex: 'project_type', key: 'project_type', width: 120 },
   ];
 
-  const handleSelectField = (fieldId: string) => {
-    saveFieldSetting.mutate(
-      { key: 'jira_team_field_id', value: fieldId },
-      {
-        onSuccess: () => {
-          message.success('Поле команды сохранено');
-          setShowFieldModal(false);
-        },
-      },
-    );
+  const openFieldModal = () => {
+    jiraFields.refetch();
+    setProductFieldDraft(productField.data?.value ?? undefined);
+    setParticipatingFieldDraft(participatingField.data?.value ?? undefined);
+    setShowFieldModal(true);
+  };
+
+  const handleLoadAll = async () => {
+    setSelectedTeam(undefined);
+    setSearch('');
+    setLoadingAll(true);
+    try {
+      const data = await getJiraProjects(undefined, undefined);
+      qc.setQueryData(['jira', 'projects', '', undefined], data);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setLoadingAll(false);
+    }
+  };
+
+  const handleSaveFields = async () => {
+    try {
+      await saveFieldSetting.mutateAsync({
+        key: 'jira_team_field_id',
+        value: productFieldDraft ?? '',
+      });
+      await saveFieldSetting.mutateAsync({
+        key: 'jira_participating_teams_field_id',
+        value: participatingFieldDraft ?? '',
+      });
+      message.success('Поля команды сохранены');
+      setShowFieldModal(false);
+      jiraTeams.refetch();
+    } catch (e) {
+      message.error((e as Error).message);
+    }
   };
 
   return (
@@ -255,9 +287,9 @@ function TaskSectionsTab() {
           <Button
             icon={<SettingOutlined />}
             size="small"
-            onClick={() => { jiraFields.refetch(); setShowFieldModal(true); }}
+            onClick={openFieldModal}
           >
-            Настройка поля команды
+            Настройка полей команды
           </Button>
           {hasPending && (
             <>
@@ -286,15 +318,15 @@ function TaskSectionsTab() {
       <Space direction="vertical" style={{ width: '100%' }}>
         <Space wrap>
           <Select
-            placeholder="Продуктовая команда"
+            placeholder="Команда (продуктовая или участвующая)"
             value={selectedTeam}
             onChange={setSelectedTeam}
             allowClear
-            style={{ width: 280 }}
+            style={{ width: 320 }}
             options={(jiraTeams.data ?? []).map(t => ({ value: t, label: t }))}
             onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
             loading={jiraTeams.isFetching}
-            notFoundContent={jiraTeams.isError ? 'Настройте поле команды' : undefined}
+            notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
           />
           <Input
             placeholder="Поиск по ключу или названию"
@@ -305,49 +337,78 @@ function TaskSectionsTab() {
             allowClear
           />
           <Button
-            icon={<SyncOutlined spin={jiraProjects.isFetching} />}
+            icon={<SyncOutlined spin={jiraProjects.isFetching && !loadingAll} />}
             onClick={() => jiraProjects.refetch()}
-            loading={jiraProjects.isFetching}
+            loading={jiraProjects.isFetching && !loadingAll}
           >
             Загрузить из Jira
+          </Button>
+          <Button
+            icon={<SyncOutlined spin={loadingAll} />}
+            onClick={handleLoadAll}
+            loading={loadingAll}
+          >
+            Загрузить все ключи
           </Button>
         </Space>
         <Table<JiraProjectItem>
           dataSource={dataSource}
           columns={columns}
           rowKey="key"
-          loading={jiraProjects.isFetching}
-          pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: ['15', '50', '100'] }}
+          loading={jiraProjects.isFetching || loadingAll}
+          pagination={{ defaultPageSize: 15, showSizeChanger: true, pageSizeOptions: ['15', '50', '100'] }}
           size="small"
         />
       </Space>
 
       <Modal
-        title="Выбор поля 'Продуктовая команда'"
+        title="Настройка полей команды"
         open={showFieldModal}
         onCancel={() => setShowFieldModal(false)}
-        footer={null}
-        width={600}
+        onOk={handleSaveFields}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={saveFieldSetting.isPending}
+        width={640}
       >
-        <Table
-          dataSource={(jiraFields.data ?? []).filter(f => f.custom)}
-          rowKey="id"
-          loading={jiraFields.isFetching}
-          pagination={{ pageSize: 10 }}
-          size="small"
-          columns={[
-            { title: 'ID', dataIndex: 'id', width: 180 },
-            { title: 'Название', dataIndex: 'name' },
-            {
-              title: '', width: 80,
-              render: (_, r: { id: string }) => (
-                <Button size="small" type="link" onClick={() => handleSelectField(r.id)}>
-                  Выбрать
-                </Button>
-              ),
-            },
-          ]}
-        />
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Text type="secondary">
+            Фильтр команд в списке проектов объединяет оба поля через ИЛИ.
+            Можно оставить только одно из полей — второе будет проигнорировано.
+          </Text>
+          <div>
+            <Text strong>Продуктовая команда</Text>
+            <Select
+              placeholder="Выберите поле Jira"
+              value={productFieldDraft}
+              onChange={setProductFieldDraft}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              loading={jiraFields.isFetching}
+              style={{ width: '100%', marginTop: 6 }}
+              options={(jiraFields.data ?? [])
+                .filter(f => f.custom)
+                .map(f => ({ value: f.id, label: `${f.name} (${f.id})` }))}
+            />
+          </div>
+          <div>
+            <Text strong>Участвующие команды</Text>
+            <Select
+              placeholder="Выберите поле Jira"
+              value={participatingFieldDraft}
+              onChange={setParticipatingFieldDraft}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              loading={jiraFields.isFetching}
+              style={{ width: '100%', marginTop: 6 }}
+              options={(jiraFields.data ?? [])
+                .filter(f => f.custom)
+                .map(f => ({ value: f.id, label: `${f.name} (${f.id})` }))}
+            />
+          </div>
+        </Space>
       </Modal>
     </Card>
   );

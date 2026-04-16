@@ -101,6 +101,12 @@ async def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db
     return {"key": body.key, "ok": True}
 
 
+@router.get("/generic/{key}")
+async def get_generic_setting(key: str, db: Session = Depends(get_db)):
+    """Прочитать произвольную настройку по ключу."""
+    return {"key": key, "value": _get_setting(db, key)}
+
+
 @router.post("/jira/test", response_model=JiraTestResponse)
 async def test_jira_credentials(body: JiraTestRequest):
     """Проверить подключение к Jira с указанными credentials (без сохранения)."""

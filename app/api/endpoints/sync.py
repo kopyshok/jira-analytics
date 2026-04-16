@@ -286,24 +286,36 @@ async def browse_jira_projects(
                 for sp in db.query(ScopeProject).all()
             }
 
-            # If team filter is specified, find projects via issues with that team
-            team_project_keys: set[str] | None = None
+            # If team filter is specified, we will probe each project separately
+            # (matches both "product team" and "participating teams" fields via OR).
+            # Сканирование всех задач команды неприемлемо по времени — при ORDER BY
+            # project ASC лимит перебором выедается задачами одного проекта.
+            team_field_ids: list[str] = []
             if team:
-                field_row = db.query(AppSetting).filter(AppSetting.key == "jira_team_field_id").first()
-                if field_row and field_row.value:
-                    team_project_keys = set()
-                    jql = f'"{field_row.value}" = "{team}" ORDER BY project ASC'
-                    async for issue in jira.iter_issues(jql=jql, max_results=100, fields=["project"]):
-                        team_project_keys.add(issue.fields.project.key)
+                product_row = db.query(AppSetting).filter(AppSetting.key == "jira_team_field_id").first()
+                participating_row = db.query(AppSetting).filter(AppSetting.key == "jira_participating_teams_field_id").first()
+                team_field_ids = [r.value for r in (product_row, participating_row) if r and r.value]
+
+            async def project_has_team(project_key: str) -> bool:
+                if not team or not team_field_ids:
+                    return True
+                clauses = " OR ".join(f'"{fid}" = "{team}"' for fid in team_field_ids)
+                jql = f'project = "{project_key}" AND ({clauses})'
+                response = await jira.search_issues(
+                    jql=jql,
+                    max_results=1,
+                    fields=["summary", "issuetype", "status", "project"],
+                )
+                return len(response.issues) > 0
 
             projects: list[JiraProjectItem] = []
             async for p in jira.iter_projects(max_results=50):
-                if team_project_keys is not None and p.key not in team_project_keys:
-                    continue
                 if search:
                     q = search.lower()
                     if q not in p.key.lower() and q not in p.name.lower():
                         continue
+                if team and team_field_ids and not await project_has_team(p.key):
+                    continue
                 projects.append(JiraProjectItem(
                     id=p.id,
                     key=p.key,
@@ -379,23 +391,32 @@ async def browse_jira_fields(db: Session = Depends(get_db)):
 
 @router.get("/jira-teams", response_model=List[str])
 async def browse_jira_teams(db: Session = Depends(get_db)):
-    """Уникальные значения поля 'Продуктовая команда' из Jira.
+    """Уникальные значения полей 'Продуктовая команда' и 'Участвующие команды' из Jira.
 
-    Использует настройку ``jira_team_field_id`` из app_settings.
+    Использует настройки ``jira_team_field_id`` и
+    ``jira_participating_teams_field_id`` — объединяет значения из обоих полей.
     """
     from app.models.app_setting import AppSetting
 
-    row = db.query(AppSetting).filter(AppSetting.key == "jira_team_field_id").first()
-    if not row or not row.value:
+    rows = (
+        db.query(AppSetting)
+        .filter(AppSetting.key.in_(("jira_team_field_id", "jira_participating_teams_field_id")))
+        .all()
+    )
+    field_ids = [r.value for r in rows if r.value]
+    if not field_ids:
         raise HTTPException(
             status_code=400,
-            detail="Поле 'Продуктовая команда' не настроено. Укажите jira_team_field_id в настройках.",
+            detail="Поля команды не настроены. Укажите jira_team_field_id и/или jira_participating_teams_field_id.",
         )
 
     try:
         async with JiraClient.from_db(db) as jira:
-            values = await jira.get_field_distinct_values(row.value)
-            return values
+            merged: set[str] = set()
+            for fid in field_ids:
+                values = await jira.get_field_distinct_values(fid)
+                merged.update(values)
+            return sorted(merged)
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
 
