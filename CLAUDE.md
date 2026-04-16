@@ -227,6 +227,11 @@ ruff format app/
 # Run server
 uvicorn app.main:app --reload --port 8000
 
+# Local full-stack smoke (starts missing servers and stops only its own)
+py -3.10 scripts/local_smoke.py
+# PowerShell wrapper:
+.\scripts\smoke-local.ps1
+
 # Makefile shortcuts
 make dev | run | test | migrate | clean
 
@@ -243,6 +248,7 @@ cd frontend && npm run build   # production build
 - **UI:** Ant Design 6 with Russian locale (`antd/locale/ru_RU`)
 - **Charts:** Recharts (BarChart, PieChart, LineChart)
 - **Routing:** React Router v7, 7 pages
+- **Bundle:** route-level lazy loading for pages; AppLayout stays in the entry chunk
 - **API client:** thin fetch wrapper at `frontend/src/api/client.ts`, base URL from `VITE_API_BASE_URL`
 - **Quarter/Year:** URL search params (`?year=&quarter=`), not global state
 - **Hooks pattern:** one file per API domain in `frontend/src/hooks/`, wraps API calls in `useQuery`/`useMutation`

@@ -27,11 +27,39 @@ cd frontend
 cp .env.example .env
 npm install
 npm run dev
+
+# Smoke-проверка локального запуска (PowerShell, из корня проекта)
+.\scripts\smoke-local.ps1
 ```
 
 API: http://localhost:8000  
 Документация: http://localhost:8000/docs  
 Frontend: http://localhost:5173
+
+## 🧪 Рабочий локальный smoke
+
+Для M6 добавлен smoke-runner, который применяет миграции, поднимает отсутствующие
+backend/frontend dev-серверы, проверяет ключевые URL и останавливает только
+те процессы, которые запустил сам:
+
+```powershell
+.\scripts\smoke-local.ps1
+```
+
+Проверяются:
+
+- `GET /health`
+- `GET /api/v1/`
+- `GET /api/v1/projects`
+- `GET /api/v1/employees`
+- frontend `/`
+- Vite module `/src/main.tsx`
+
+Если серверы уже запущены, скрипт переиспользует их:
+
+```powershell
+.\scripts\smoke-local.ps1 -NoStart
+```
 
 ## 🔧 Настройка Jira Cloud
 
@@ -196,6 +224,12 @@ npm run build
 npm run dev
 ```
 
+Smoke:
+
+```powershell
+.\scripts\smoke-local.ps1
+```
+
 ## 📋 Roadmap
 
 - [x] **M1** — Технический каркас: FastAPI, SQLite, SQLAlchemy, Alembic
@@ -204,6 +238,9 @@ npm run dev
 - [x] **M4** — Планирование: календарь, отпуска, ёмкость, бэклог, сценарии
 - [x] **M5** — Экспорты: xlsx/pdf для аналитики, xlsx/pptx для сценариев
 - [ ] **M6** — Стабилизация frontend, smoke/E2E проверки, удобный onboarding
+  - [x] Frontend route-level lazy loading для уменьшения стартового bundle
+  - [x] Локальный smoke-runner для backend + frontend
+  - [ ] Browser E2E-сценарии для основных пользовательских потоков
 
 ## 📄 Лицензия
 

@@ -34,12 +34,18 @@ npm run lint
 npm run build
 ```
 
+Full-stack smoke from the repository root:
+
+```powershell
+.\scripts\smoke-local.ps1
+```
+
 ## Structure
 
 ```text
 src/api/          fetch client and API modules
 src/hooks/        TanStack Query hooks and shared URL-param hooks
-src/pages/        Dashboard, analytics, sync, scope, capacity, backlog, planning
+src/pages/        lazy-loaded Dashboard, analytics, sync, scope, capacity, backlog, planning
 src/components/   layout and shared UI components
 src/types/        TypeScript interfaces mirrored from backend responses
 src/utils/        formatters and constants
