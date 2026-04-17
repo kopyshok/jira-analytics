@@ -569,7 +569,7 @@ function CategoryConfigTab() {
         return { ...n, __depth: depth, children: kids.length > 0 ? kids : undefined };
       })
       .filter(n => {
-        if (n.id === '__orphans__') return (n.children?.length ?? 0) > 0;
+        if (n.issue_type === 'group') return (n.children?.length ?? 0) > 0;
         if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
         // Context ancestors never self-match — они лишь якори для детей.
         if (n.is_context) return (n.children?.length ?? 0) > 0;
@@ -584,7 +584,7 @@ function CategoryConfigTab() {
     let n = 0;
     const walk = (arr: TreeNodeWithChildren[]) => {
       arr.forEach(node => {
-        if (node.id !== '__orphans__' && !node.is_context) {
+        if (node.issue_type !== 'group' && !node.is_context) {
           const hasCat = !!effectiveAssigned(node as IssueTreeNode);
           if (wantSorted ? hasCat : !hasCat) n++;
         }
@@ -710,7 +710,7 @@ function CategoryConfigTab() {
       key: 'key',
       width: widths.key,
       render: (key: string, record: IssueTreeNode) => {
-        if (record.id === '__orphans__' || !key) return null;
+        if (record.issue_type === 'group' || !key) return null;
         if (!jiraBaseUrl) return <Text strong>{key}</Text>;
         return (
           <Typography.Link href={`${jiraBaseUrl}/browse/${key}`} target="_blank" rel="noreferrer">
@@ -744,7 +744,7 @@ function CategoryConfigTab() {
         return ta - tb;
       },
       render: (iso: string | null, record: IssueTreeNode) => {
-        if (record.id === '__orphans__') return null;
+        if (record.issue_type === 'group') return null;
         if (!iso) return <Text type="secondary">—</Text>;
         const days = daysSince(iso);
         let ageColor: string = DARK_THEME.textMuted;
@@ -767,7 +767,7 @@ function CategoryConfigTab() {
       key: 'category',
       width: widths.category,
       render: (_: unknown, record: IssueTreeNode) => {
-        if (record.id === '__orphans__') return null;
+        if (record.issue_type === 'group') return null;
         if (record.is_context) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
         const pending = pendingCats.has(record.id);
         const value = pending ? (pendingCats.get(record.id) ?? undefined) : (record.assigned_category || undefined);
@@ -794,7 +794,7 @@ function CategoryConfigTab() {
       key: 'include',
       width: widths.include,
       render: (_: unknown, record: IssueTreeNode) => {
-        if (record.id === '__orphans__') return null;
+        if (record.issue_type === 'group') return null;
         return (
           <Checkbox
             checked={record.include_in_analysis}
@@ -816,7 +816,7 @@ function CategoryConfigTab() {
     onChange: (keys: React.Key[]) => setSelectedIds(keys.map(String)),
     checkStrictly: false,
     getCheckboxProps: (record: TreeNodeWithChildren) => ({
-      disabled: record.id === '__orphans__' || !!record.is_context,
+      disabled: record.issue_type === 'group' || !!record.is_context,
     }),
   };
 
@@ -827,7 +827,7 @@ function CategoryConfigTab() {
     const out: string[] = [];
     const walk = (nodes: IssueTreeNode[]) => {
       nodes.forEach(n => {
-        if (n.id !== '__orphans__' && n.key) out.push(n.key);
+        if (n.issue_type !== 'group' && n.key) out.push(n.key);
         walk(n.children);
       });
     };
