@@ -256,3 +256,28 @@ export interface StoredAllocationResponse {
   planned_hours: number | null;
   included_flag: boolean;
 }
+
+// === Hierarchy rules ===
+
+export interface HierarchyRule {
+  id: string;
+  priority: number;
+  project_key: string | null;
+  issue_type: string | null;
+  require_no_parent: boolean;
+  is_container: boolean;
+  is_enabled: boolean;
+  description: string | null;
+}
+
+export interface HierarchyRuleCreate {
+  priority: number;
+  project_key: string | null;
+  issue_type: string | null;
+  require_no_parent: boolean;
+  is_container: boolean;
+  is_enabled: boolean;
+  description: string | null;
+}
+
+export type HierarchyRuleUpdate = Partial<HierarchyRuleCreate>;
