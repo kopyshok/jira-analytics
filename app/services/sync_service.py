@@ -273,6 +273,9 @@ class SyncService:
         participating_teams: Optional[List[str]] = None,
     ) -> Tuple[Issue, bool]:
         """Upsert issue from Jira."""
+        status_category = None
+        if jira_issue.fields.status.statusCategory:
+            status_category = jira_issue.fields.status.statusCategory.get("key")
         data = {
             "jira_issue_id": jira_issue.id,
             "key": jira_issue.key,
@@ -280,6 +283,7 @@ class SyncService:
             "description": jira_issue.fields.description_text,
             "issue_type": jira_issue.fields.issuetype.name,
             "status": jira_issue.fields.status.name,
+            "status_category": status_category,
             "priority": jira_issue.fields.priority.name if jira_issue.fields.priority else None,
             "project_id": project_id,
             "parent_id": parent_id,

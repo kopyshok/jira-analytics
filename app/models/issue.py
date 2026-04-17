@@ -38,6 +38,9 @@ class Issue(Base, SyncedMixin):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     issue_type: Mapped[str] = mapped_column(String(50), nullable=False)  # Task, Bug, Story, Epic
     status: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Jira statusCategory.key: 'new' | 'indeterminate' | 'done' (nullable for
+    # older installs). Нужна чтобы красить бейджи в то же, что показывает Jira.
+    status_category: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     priority: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Foreign keys

@@ -500,6 +500,20 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
 type InnerTab = 'stack' | 'active' | 'archive_target' | 'archive';
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 
+// Маппинг Jira statusCategory.key → цвет AntD Tag. Плюс строковые overrides
+// для специальных статусов ("Отменено" попадает в категорию 'done' в Jira,
+// но визуально это не done — красим в grey).
+function statusTagColor(statusName: string, category: string | null): string {
+  const lower = (statusName || '').toLowerCase();
+  if (lower.includes('отмен') || lower.includes('cancel') || lower.includes('reject')) return 'default';
+  switch (category) {
+    case 'done': return 'success';
+    case 'indeterminate': return 'processing';
+    case 'new': return 'default';
+    default: return 'default';
+  }
+}
+
 function matchesTab(effective: string | null, tab: InnerTab): boolean {
   switch (tab) {
     case 'stack': return effective === null;
@@ -777,7 +791,8 @@ function CategoryConfigTab() {
       dataIndex: 'status',
       key: 'status',
       width: widths.status,
-      render: (v: string) => v ? <Tag>{v}</Tag> : null,
+      render: (v: string, record: IssueTreeNode) =>
+        v ? <Tag color={statusTagColor(v, record.status_category)}>{v}</Tag> : null,
     },
     {
       title: 'Статус изменён',

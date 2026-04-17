@@ -40,6 +40,7 @@ class IssueTreeNode(BaseModel):
     summary: str
     issue_type: str
     status: str
+    status_category: Optional[str] = None
     project_key: str
     parent_key: Optional[str] = None
     assigned_category: Optional[str] = None
@@ -145,6 +146,7 @@ async def get_issue_tree(
             summary=issue.summary,
             issue_type=issue.issue_type,
             status=issue.status,
+            status_category=issue.status_category,
             project_key=project_key_by_id.get(issue.project_id, ""),
             parent_key=by_id[issue.parent_id].key if issue.parent_id and issue.parent_id in by_id else None,
             assigned_category=issue.assigned_category,

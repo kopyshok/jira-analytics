@@ -87,6 +87,7 @@ export interface IssueTreeNode {
   summary: string;
   issue_type: string;
   status: string;
+  status_category: string | null;
   project_key: string;
   parent_key: string | null;
   assigned_category: string | null;
