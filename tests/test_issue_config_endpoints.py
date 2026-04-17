@@ -202,6 +202,41 @@ def test_tree_pulls_in_ancestor_of_different_team_as_context(client, db_session)
     assert leaf["is_context"] is False
 
 
+def test_tree_groups_childless_non_epic_roots_into_operations(client, db_session):
+    """Bare «Задача» без parent и без детей уходит в __operations__."""
+    project = Project(jira_project_id="30001", key="AD", name="Ad project", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    db_session.add_all([
+        Issue(
+            jira_issue_id="70001", key="AD-1",
+            summary="Standalone ops task",
+            issue_type="Задача", status="Готово",
+            project_id=project.id, include_in_analysis=True,
+        ),
+        Issue(
+            jira_issue_id="70002", key="AD-2",
+            summary="Empty epic", issue_type="Эпик", status="Open",
+            project_id=project.id, include_in_analysis=True,
+        ),
+    ])
+    db_session.flush()
+
+    response = client.get("/api/v1/issues/tree?project_keys=AD")
+    roots = response.json()
+    keys = [r["key"] or r["id"] for r in roots]
+    assert "AD-2" in keys
+    # Operations group should appear with AD-1 inside
+    ops = next((r for r in roots if r["id"] == "__operations__"), None)
+    assert ops is not None, roots
+    assert ops["issue_type"] == "group"
+    inside = [c["key"] for c in ops["children"]]
+    assert inside == ["AD-1"]
+    # AD-1 must NOT appear as standalone root
+    assert "AD-1" not in keys
+
+
 def test_tree_without_filter_does_not_flag_context(client, db_session):
     project = Project(jira_project_id="20002", key="AD", name="Ad project", is_active=True)
     db_session.add(project)

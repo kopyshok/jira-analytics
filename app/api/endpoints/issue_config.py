@@ -15,6 +15,20 @@ router = APIRouter()
 
 ARCHIVE_CATEGORY_CODE = "archive"
 
+# Типы-контейнеры — могут иметь дочерние задачи. Всё остальное, что оказалось
+# на верхнем уровне без детей (чистая оперативная заявка без эпика), уедет в
+# виртуальную группу «Операционная работа (без эпика)» — чтобы дерево не
+# расплывалось сотнями одиночных root-строк.
+CONTAINER_ISSUE_TYPES = {
+    "Эпик", "Epic",
+    "Инициатива",
+    "Инициатива (E-com)",
+    "Инициатива (Ритейл)",
+    "Инициатива (Финансы)",
+    "История", "Story",
+    "Цель",
+}
+
 
 # --- Schemas ---
 
@@ -162,7 +176,35 @@ async def get_issue_tree(
         )
         roots.insert(0, orphan_group)
 
-    return roots
+    # Разделяем top-level: контейнеры (эпики/инициативы/истории) и всё,
+    # что с детьми — остаются корнями; бездетные не-контейнеры (чистые
+    # оперативные заявки без эпика) уходят в отдельную виртуальную группу.
+    operations: list[IssueTreeNode] = []
+    roots_keep: list[IssueTreeNode] = []
+    for r in roots:
+        if r.issue_type == "group":
+            roots_keep.append(r)
+            continue
+        is_container = r.issue_type in CONTAINER_ISSUE_TYPES
+        has_kids = bool(r.children)
+        if not is_container and not has_kids and not r.is_context:
+            operations.append(r)
+        else:
+            roots_keep.append(r)
+
+    if operations:
+        ops_group = IssueTreeNode(
+            id="__operations__",
+            key="",
+            summary="Операционная работа (без эпика)",
+            issue_type="group",
+            status="",
+            project_key="",
+            children=operations,
+        )
+        roots_keep.append(ops_group)
+
+    return roots_keep
 
 
 @router.put("/{issue_id}/category")
