@@ -9,3 +9,9 @@ export const setIssueCategory = (issueId: string, categoryCode: string | null) =
 
 export const setIssueInclude = (issueId: string, include: boolean, recursive: boolean = false) =>
   api.put<{ ok: boolean }>(`/issues/${issueId}/include`, { include, recursive });
+
+export const batchSetCategory = (issueIds: string[], categoryCode: string | null) =>
+  api.put<{ ok: boolean; updated: number }>('/issues/batch-category', {
+    issue_ids: issueIds,
+    category_code: categoryCode,
+  });

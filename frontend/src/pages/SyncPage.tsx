@@ -24,7 +24,7 @@ import {
 import { formatDate } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
-import { useIssueTree, useSetIssueCategory, useSetIssueInclude } from '../hooks/useIssueTree';
+import { useIssueTree, useSetIssueInclude, useBatchSetCategory } from '../hooks/useIssueTree';
 import type { IssueTreeNode } from '../types/api';
 import type {
   SyncStatusResponse,
@@ -474,13 +474,19 @@ function ResizableTitle({ onResize, width, ...rest }: ResizableTitleProps) {
 type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & { children?: TreeNodeWithChildren[] };
 
 function CategoryConfigTab() {
-  const { notification } = App.useApp();
+  const { notification, message } = App.useApp();
   const qc = useQueryClient();
   const [selectedTeam, setSelectedTeam] = useState<string | undefined>();
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 110, summary: 380, status: 140, category: 260, include: 80,
   });
+  const [innerTab, setInnerTab] = useState<'stack' | 'sorted'>('stack');
+  const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState<string | undefined>();
+
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
   const issueTreeParams = useMemo(
@@ -491,11 +497,17 @@ function CategoryConfigTab() {
   const jiraTeams = useJiraTeams();
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
-  const setCategoryMut = useSetIssueCategory();
   const setIncludeMut = useSetIssueInclude();
+  const batchCategoryMut = useBatchSetCategory();
   const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
   const treeQueryKey = useMemo(() => ['issues', 'tree', issueTreeParams], [issueTreeParams]);
+
+  // Effective assigned category (server + pending)
+  const effectiveAssigned = (node: IssueTreeNode): string | null | undefined => {
+    if (pendingCats.has(node.id)) return pendingCats.get(node.id);
+    return node.assigned_category ?? null;
+  };
 
   // Unique statuses from loaded data (for status filter dropdown)
   const uniqueStatuses = useMemo(() => {
@@ -507,31 +519,35 @@ function CategoryConfigTab() {
     return Array.from(s).sort();
   }, [issueTree.data]);
 
-  // Flatten tree + apply status filter (keeps parents whose children survive)
-  const flattenTree = (nodes: IssueTreeNode[]): TreeNodeWithChildren[] => {
-    return nodes
+  // Filter: status + tab (stack = no effective category; sorted = has effective category)
+  const buildTabData = (wantSorted: boolean): TreeNodeWithChildren[] => {
+    const walk = (nodes: IssueTreeNode[]): TreeNodeWithChildren[] => nodes
       .map(n => {
-        const kidsFiltered = flattenTree(n.children);
-        return { ...n, children: kidsFiltered.length > 0 ? kidsFiltered : undefined };
+        const kids = walk(n.children);
+        return { ...n, children: kids.length > 0 ? kids : undefined };
       })
       .filter(n => {
-        // Keep if status not hidden OR has visible children OR is the orphan group
         if (n.id === '__orphans__') return (n.children?.length ?? 0) > 0;
-        return !hiddenStatuses.includes(n.status) || (n.children?.length ?? 0) > 0;
+        if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
+        const hasCat = !!effectiveAssigned(n as IssueTreeNode);
+        const selfMatches = wantSorted ? hasCat : !hasCat;
+        return selfMatches || (n.children?.length ?? 0) > 0;
       });
+    return walk(issueTree.data ?? []);
   };
 
-  const treeData = useMemo(
-    () => flattenTree(issueTree.data ?? []),
+  const stackData = useMemo(
+    () => buildTabData(false),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [issueTree.data, hiddenStatuses],
+    [issueTree.data, hiddenStatuses, pendingCats],
+  );
+  const sortedData = useMemo(
+    () => buildTabData(true),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [issueTree.data, hiddenStatuses, pendingCats],
   );
 
-  const getDisplayCategory = (node: IssueTreeNode) => {
-    if (node.assigned_category) return { code: node.assigned_category, inherited: false };
-    if (node.category) return { code: node.category, inherited: true };
-    return null;
-  };
+  const tabData = innerTab === 'stack' ? stackData : sortedData;
 
   // Optimistic toggle for include_in_analysis
   const toggleInclude = (record: IssueTreeNode, checked: boolean) => {
@@ -563,6 +579,46 @@ function CategoryConfigTab() {
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
       setWidths(w => ({ ...w, [colKey]: size.width }));
     };
+
+  const setPendingCategory = (issueId: string, code: string | null) => {
+    setPendingCats(prev => {
+      const next = new Map(prev);
+      next.set(issueId, code);
+      return next;
+    });
+  };
+
+  const applyBulkCategory = () => {
+    if (!bulkCategory || selectedIds.length === 0) return;
+    setPendingCats(prev => {
+      const next = new Map(prev);
+      selectedIds.forEach(id => next.set(id, bulkCategory));
+      return next;
+    });
+    setBulkModalOpen(false);
+    setBulkCategory(undefined);
+    setSelectedIds([]);
+  };
+
+  const savePending = async () => {
+    // Group by category code
+    const groups = new Map<string | null, string[]>();
+    pendingCats.forEach((code, id) => {
+      const arr = groups.get(code) ?? [];
+      arr.push(id);
+      groups.set(code, arr);
+    });
+    try {
+      for (const [code, ids] of groups) {
+        await batchCategoryMut.mutateAsync({ issueIds: ids, categoryCode: code });
+      }
+      const total = pendingCats.size;
+      setPendingCats(new Map());
+      message.success(`Сохранено категорий: ${total}`);
+    } catch (e) {
+      notification.error({ message: 'Ошибка сохранения', description: (e as Error).message });
+    }
+  };
 
   const baseColumns = [
     {
@@ -600,20 +656,20 @@ function CategoryConfigTab() {
       width: widths.category,
       render: (_: unknown, record: IssueTreeNode) => {
         if (record.id === '__orphans__') return null;
-        const display = getDisplayCategory(record);
+        const pending = pendingCats.has(record.id);
+        const value = pending ? (pendingCats.get(record.id) ?? undefined) : (record.assigned_category || undefined);
+        const inherited = !value && record.category;
         return (
           <Select
-            placeholder={display?.inherited ? categoryLabels[display.code] || display.code : 'Не назначена'}
-            value={record.assigned_category || undefined}
-            onChange={(val) => setCategoryMut.mutate(
-              { issueId: record.id, categoryCode: val || null },
-              { onError: (e) => notification.error({ message: 'Ошибка', description: e.message }) },
-            )}
+            placeholder={inherited ? categoryLabels[record.category!] || record.category! : 'Не назначена'}
+            value={value}
+            onChange={(val) => setPendingCategory(record.id, val || null)}
             allowClear
             size="small"
             style={{
               width: '100%',
-              opacity: display?.inherited && !record.assigned_category ? 0.6 : 1,
+              opacity: inherited && !value ? 0.6 : 1,
+              boxShadow: pending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
             }}
             options={categoryOptions}
           />
@@ -640,6 +696,17 @@ function CategoryConfigTab() {
     ...col,
     onHeaderCell: () => ({ width: col.width, onResize: handleResize(col.key) }),
   }));
+
+  const rowSelection = {
+    selectedRowKeys: selectedIds,
+    onChange: (keys: React.Key[]) => setSelectedIds(keys.map(String)),
+    checkStrictly: false,
+    getCheckboxProps: (record: TreeNodeWithChildren) => ({
+      disabled: record.id === '__orphans__',
+    }),
+  };
+
+  const hasPending = pendingCats.size > 0;
 
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
@@ -672,18 +739,77 @@ function CategoryConfigTab() {
         >
           Получить перечень задач
         </Button>
+        <Button
+          icon={<CheckOutlined />}
+          disabled={selectedIds.length === 0}
+          onClick={() => setBulkModalOpen(true)}
+        >
+          Установить категорию отмеченным ({selectedIds.length})
+        </Button>
+        {hasPending && (
+          <>
+            <Tag color="blue">Изменений: {pendingCats.size}</Tag>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              loading={batchCategoryMut.isPending}
+              onClick={savePending}
+            >
+              Сохранить
+            </Button>
+            <Button
+              icon={<CloseOutlined />}
+              onClick={() => setPendingCats(new Map())}
+            >
+              Отмена
+            </Button>
+          </>
+        )}
       </Space>
+      <Tabs
+        activeKey={innerTab}
+        onChange={(k) => setInnerTab(k as 'stack' | 'sorted')}
+        items={[
+          { key: 'stack', label: `Стек задач к разбору (${stackData.length})` },
+          { key: 'sorted', label: `Разобранные (${sortedData.length})` },
+        ]}
+      />
       <Table<TreeNodeWithChildren>
-        dataSource={treeData}
+        dataSource={tabData}
         columns={columns as never}
         components={{ header: { cell: ResizableTitle } }}
         rowKey="id"
+        rowSelection={rowSelection}
         loading={issueTree.isFetching}
         pagination={false}
         size="small"
         expandable={{ defaultExpandAllRows: false }}
         scroll={{ y: 600 }}
       />
+      <Modal
+        title={`Установить категорию для ${selectedIds.length} задач`}
+        open={bulkModalOpen}
+        onCancel={() => { setBulkModalOpen(false); setBulkCategory(undefined); }}
+        onOk={applyBulkCategory}
+        okText="Применить"
+        cancelText="Отмена"
+        okButtonProps={{ disabled: !bulkCategory }}
+      >
+        <Text type="secondary">
+          Категория будет отмечена как «к сохранению». Для применения нажмите «Сохранить».
+        </Text>
+        <div style={{ marginTop: 12 }}>
+          <Select
+            placeholder="Выберите категорию"
+            value={bulkCategory}
+            onChange={setBulkCategory}
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+            options={categoryOptions}
+          />
+        </div>
+      </Modal>
     </Space>
   );
 }

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getIssueTree, setIssueCategory, setIssueInclude } from '../api/issues';
+import { getIssueTree, setIssueCategory, setIssueInclude, batchSetCategory } from '../api/issues';
 
 export function useIssueTree(params?: { project_keys?: string; team?: string }) {
   return useQuery({
@@ -24,6 +24,15 @@ export function useSetIssueInclude() {
   return useMutation({
     mutationFn: ({ issueId, include, recursive }: { issueId: string; include: boolean; recursive?: boolean }) =>
       setIssueInclude(issueId, include, recursive),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
+  });
+}
+
+export function useBatchSetCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ issueIds, categoryCode }: { issueIds: string[]; categoryCode: string | null }) =>
+      batchSetCategory(issueIds, categoryCode),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
   });
 }
