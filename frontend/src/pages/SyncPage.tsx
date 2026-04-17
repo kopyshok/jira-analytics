@@ -12,9 +12,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import { useJiraSettings, useSaveGenericSetting, useGenericSetting } from '../hooks/useSettings';
-import ConnectionCard from '../components/ConnectionCard';
-import ScopeOverview from '../components/ScopeOverview';
-import TaskSectionsTab from '../components/TaskSectionsTab';
 import {
   useSyncStatus, useSyncMutation, useRecalculateMapping,
   useJiraTeams, useRefreshIssuesByKeys, useSyncTeams,
@@ -1009,17 +1006,11 @@ function SyncControls() {
 
 export default function SyncPage() {
   return (
-    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <ConnectionCard />
-      <ScopeOverview />
-      <Tabs
-        items={[
-          { key: 'projects', label: 'Разделы задач', children: <TaskSectionsTab /> },
-          { key: 'categories', label: 'Настройка категорий задач', children: <CategoryConfigTab /> },
-          { key: 'sync', label: 'Синхронизация', children: <SyncControls /> },
-        ]}
-        defaultActiveKey="projects"
-      />
-    </Space>
+    <Tabs
+      items={[
+        { key: 'categories', label: 'Категоризация задач', children: <CategoryConfigTab /> },
+        { key: 'sync', label: 'Синхронизация', children: <SyncControls /> },
+      ]}
+    />
   );
 }
