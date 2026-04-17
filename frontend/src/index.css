@@ -10,6 +10,15 @@ body {
 ::-webkit-scrollbar-thumb { background: #1e3356; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #4db8e8; }
 
+/* Issue-tree depth tints (CategoryConfigTab) */
+.tree-row-depth-0 > td { background-color: transparent !important; }
+.tree-row-depth-1 > td { background-color: rgba(0, 201, 200, 0.04) !important; }
+.tree-row-depth-2 > td { background-color: rgba(0, 201, 200, 0.08) !important; }
+.tree-row-depth-3 > td { background-color: rgba(0, 201, 200, 0.12) !important; }
+.tree-row-depth-4 > td { background-color: rgba(0, 201, 200, 0.16) !important; }
+.tree-row-depth-5 > td { background-color: rgba(0, 201, 200, 0.20) !important; }
+.tree-row-has-children > td { font-weight: 600; }
+
 /* Recharts tooltip dark override */
 .recharts-default-tooltip {
   background: #0f2340 !important;

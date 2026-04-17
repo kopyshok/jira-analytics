@@ -471,7 +471,10 @@ function ResizableTitle({ onResize, width, ...rest }: ResizableTitleProps) {
   );
 }
 
-type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & { children?: TreeNodeWithChildren[] };
+type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
+  children?: TreeNodeWithChildren[];
+  __depth?: number;
+};
 
 function CategoryConfigTab() {
   const { notification, message } = App.useApp();
@@ -522,12 +525,13 @@ function CategoryConfigTab() {
     return Array.from(s).sort();
   }, [issueTree.data]);
 
-  // Filter: status + tab (stack = no effective category; sorted = has effective category)
+  // Filter: status + tab (stack = no effective category; sorted = has effective category).
+  // Annotates __depth so rows can be tinted per hierarchy level.
   const buildTabData = (wantSorted: boolean): TreeNodeWithChildren[] => {
-    const walk = (nodes: IssueTreeNode[]): TreeNodeWithChildren[] => nodes
+    const walk = (nodes: IssueTreeNode[], depth: number): TreeNodeWithChildren[] => nodes
       .map(n => {
-        const kids = walk(n.children);
-        return { ...n, children: kids.length > 0 ? kids : undefined };
+        const kids = walk(n.children, depth + 1);
+        return { ...n, __depth: depth, children: kids.length > 0 ? kids : undefined };
       })
       .filter(n => {
         if (n.id === '__orphans__') return (n.children?.length ?? 0) > 0;
@@ -536,7 +540,7 @@ function CategoryConfigTab() {
         const selfMatches = wantSorted ? hasCat : !hasCat;
         return selfMatches || (n.children?.length ?? 0) > 0;
       });
-    return walk(issueTree.data ?? []);
+    return walk(issueTree.data ?? [], 0);
   };
 
   const stackData = useMemo(
@@ -821,6 +825,11 @@ function CategoryConfigTab() {
         components={{ header: { cell: ResizableTitle } }}
         rowKey="id"
         rowSelection={rowSelection}
+        rowClassName={(record) => {
+          const depth = Math.min(record.__depth ?? 0, 5);
+          const hasKids = (record.children?.length ?? 0) > 0;
+          return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}`;
+        }}
         loading={issueTree.isFetching}
         pagination={false}
         size="small"
