@@ -6,3 +6,4 @@ export const SyncPage = lazy(() => import('./SyncPage'));
 export const CapacityPage = lazy(() => import('./CapacityPage'));
 export const BacklogPage = lazy(() => import('./BacklogPage'));
 export const PlanningPage = lazy(() => import('./PlanningPage'));
+export const SettingsPage = lazy(() => import('./SettingsPage'));

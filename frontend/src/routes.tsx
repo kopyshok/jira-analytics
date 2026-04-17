@@ -7,6 +7,7 @@ import {
   CapacityPage,
   DashboardPage,
   PlanningPage,
+  SettingsPage,
   SyncPage,
 } from './pages/lazyPages';
 
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
       { path: 'capacity', element: page(<CapacityPage />) },
       { path: 'backlog', element: page(<BacklogPage />) },
       { path: 'planning', element: page(<PlanningPage />) },
+      { path: 'settings', element: page(<SettingsPage />) },
     ],
   },
 ]);

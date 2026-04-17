@@ -7,11 +7,13 @@ import {
   TeamOutlined,
   UnorderedListOutlined,
   FundProjectionScreenOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 
 const items = [
   { key: '/', icon: <DashboardOutlined />, label: 'Обзор' },
   { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
+  { key: '/settings', icon: <SettingOutlined />, label: 'Настройки' },
   { key: '/sync', icon: <SyncOutlined />, label: 'Jira и Scope' },
   { key: '/capacity', icon: <TeamOutlined />, label: 'Ёмкость' },
   { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Бэклог' },
