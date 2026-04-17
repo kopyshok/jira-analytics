@@ -39,8 +39,8 @@ No application-layer module depends on SQLite-specific features.
 ## Database Schema
 
 18 tables in 5 groups — `app/models/__init__.py` is source of truth:
-- **Core (Jira sync):** Employee, Project, Issue (incl. `team`, `participating_teams` as JSON text, `assigned_category`, `include_in_analysis`), Worklog, Comment, SyncState
-- **Scope / category config:** ScopeProject, ScopeRoot, CategoryOverride, WorklogQualityRule, CategoryMapping, Category (user-editable, seeded with 9 entries incl. `archive` + `initiatives_rfa`)
+- **Core (Jira sync):** Employee, Project, Issue (user/Jira-metadata fields: `team`, `participating_teams` (JSON text), `assigned_category`, `include_in_analysis`, `status_category` (Jira `new|indeterminate|done`), `status_changed_at` (from `statuscategorychangedate`), `goals` (comma-joined `customfield_11421`)), Worklog, Comment, SyncState
+- **Scope / category config:** ScopeProject, ScopeRoot, CategoryOverride, WorklogQualityRule, CategoryMapping, Category (user-editable, seeded with 10 entries incl. `archive`, `archive_target`, `initiatives_rfa` — both archive codes in `ARCHIVE_CATEGORY_CODES` auto-drop `include_in_analysis` in single/batch category endpoints)
 - **Planning:** Vacation, MonthlyCapacityRule, BacklogItem, PlanningScenario, ScenarioAllocation
 - **App state:** AppSetting (flat key-value store — see next section)
 
@@ -49,11 +49,12 @@ No application-layer module depends on SQLite-specific features.
 13 routers — `app/api/router.py` is source of truth. Patterns:
 - **CRUD:** GET list + POST create, GET|PATCH|DELETE by id (backlog, capacity, scope, categories)
 - **Browse Jira (live):** `/sync/jira-projects`, `/sync/jira-epics`, `/sync/jira-fields`, `/sync/jira-teams` — no DB write, proxy Jira with `in_scope` flags; `/jira-projects?team=X` uses per-project JQL probe (see SyncService notes)
-- **Settings:** `/settings/jira` (GET|PUT, redacts token), `/settings/jira/test` (no save), `/settings/generic` (PUT) + `/settings/generic/{key}` (GET) — used for arbitrary runtime keys like `jira_team_field_id`, `jira_participating_teams_field_id`
+- **Settings:** `/settings/jira` (GET|PUT, redacts token), `/settings/jira/test` (no save), `/settings/generic` (PUT) + `/settings/generic/{key}` (GET) — used for arbitrary runtime keys (see AppSetting store)
 - **Batch:** `/scope/projects/batch` — add/remove multiple at once
 - **Exports:** `/exports/analytics.xlsx|pdf`, `/exports/scenarios/{id}.xlsx|pptx`
 - **Planning:** `/planning/scenarios/generate` (greedy allocation)
-- **Issue tree:** `/issues/tree?project_keys=A,B&teams=T1,T2` (SQL-filtered by DB fields, teams OR'd), `/issues/{id}/category`, `/issues/{id}/include`, `/issues/batch-category` (drives CategoryConfigTab)
+- **Targeted sync:** `POST /sync/issues/refresh` with `{jira_keys: [...]}` — re-reads only those keys in JQL `key in (...)` batches of 100, updates only rows that already exist locally (skips unknowns). Used by «Обновить с Jira» to dot-fill new fields without the 30-minute full resync.
+- **Issue tree:** `/issues/tree?project_keys=A,B&teams=T1,T2` (SQL-filtered by DB fields, teams OR'd); response includes **virtual group nodes** with `issue_type: 'group'` — `__orphans__` (parent_id set but parent excluded from DB) and `__operations__` (root leaf-type issues without children, i.e. childless non-Epic/Инициатива/История/Story/Цель roots). Also auto-pulls **ancestor context**: parents that fall outside the team filter get included with `is_context=true` so hierarchies stay legible; frontend renders them read-only. Mutations: `/issues/{id}/category`, `/issues/{id}/include`, `/issues/batch-category` (drives CategoryConfigTab). Archive codes (`archive`, `archive_target`) auto-drop `include_in_analysis` and are returned in `archived_ids`.
 
 ## Code Principles
 
@@ -105,10 +106,21 @@ Incremental sync via `sync_state.last_sync` per entity; JQL `updated >= "timesta
 Rate limiting: 100ms delay between requests + exponential backoff on HTTP 429.
 Batch size: 100 issues per Jira API request.
 
-**Team field extraction:** `sync_issues` reads `jira_team_field_id` and `jira_participating_teams_field_id` from AppSetting; appends them to `fields=` on every Jira request. Values land in `JiraIssueFieldsSchema._extra`. Helper `_extract_team_values(extra, field_id)` handles the three return shapes (`{value: X}`, `[{value: X}, ...]`, plain string). Written to `Issue.team` (first value) and `Issue.participating_teams` (JSON-serialized list). Issues where the field is `null` get `team=None` and `participating_teams='[]'` — expected for old/pre-field issues.
+**Custom field extraction:** `sync_issues` reads `jira_team_field_id`, `jira_participating_teams_field_id`, `jira_goals_field_id` from AppSetting and appends them to `fields=` on every Jira request. Values land in `JiraIssueFieldsSchema._extra`. Helper `_extract_team_values(extra, field_id)` handles the three shapes (`{value: X}`, `[{value: X}, ...]`, plain string) and powers team + goals. Written to `Issue.team` (first value), `Issue.participating_teams` (JSON-serialized list), `Issue.goals` (comma-joined string). `null` fields → `team=None`, `participating_teams='[]'`, `goals=None`.
+
+**Per-upsert Jira metadata:** `_upsert_issue` also captures `status_category` from `status.statusCategory.key` and `status_changed_at` from `statuscategorychangedate` (parsed via `_parse_jira_datetime` into naive UTC).
+
+**Targeted refresh:** `refresh_issues_by_keys(jira_keys)` re-reads given keys in JQL `key in (...)` batches of 100 using `iter_issues`, skips unknowns, reuses `_upsert_issue` — so any new field lands on the existing set without a full resync.
+
+**ORM caveat:** after `db.commit()` the session expires attributes; touching them afterwards triggers a reload on a potentially thread-rotated connection (reproduced in tests: `:memory:` SQLite + TestClient async endpoints). In endpoints, **snapshot the fields you need into locals before the commit** (see `issue_config.set_issue_category`).
 
 ### AppSetting store
-Flat key-value table. Known keys: `jira_email`, `jira_api_token`, `jira_base_url` (credentials), `jira_team_field_id`, `jira_participating_teams_field_id` (custom field IDs for team filter). Helpers `_get_setting`/`_set_setting` in `app/api/endpoints/settings.py` do get-or-insert. Settings endpoint always commits internally.
+Flat key-value table. Known keys:
+- **Credentials:** `jira_email`, `jira_api_token`, `jira_base_url`
+- **Jira custom field IDs:** `jira_team_field_id`, `jira_participating_teams_field_id`, `jira_goals_field_id` (seeded to `customfield_11421` by migration 012)
+- **UI persistence:** `ui_team_projects` (TaskSectionsTab single team), `ui_teams_categories` (CategoryConfigTab multi-team, comma-joined) — hydrated on mount, written on every change so selections survive reloads.
+
+Helpers `_get_setting`/`_set_setting` in `app/api/endpoints/settings.py` do get-or-insert. Settings endpoint always commits internally.
 
 ### Jira API (Atlassian Cloud)
 Issue search uses `GET /rest/api/3/search/jql` — the old `GET /search` endpoint returns **410 Gone**.
@@ -184,7 +196,13 @@ cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 - **Dark theme** (dark-dashboard style): tokens in `DARK_THEME` and `CHART_COLORS` (`utils/constants.ts`), configured in `main.tsx` via `ConfigProvider theme`. Page bg `#0d1c33`, cards `#0f2340`, sidebar `#091527`, primary cyan `#00c9c8`
 - **Error tracking**: `errorStore.ts` captures API errors (network + HTTP); `BugReportButton` (FloatButton) shows reactive badge via `useSyncExternalStore`, copies markdown bug report to clipboard. Wired into `api/client.ts` interceptors.
 - **Merged Sync+Scope page** (`SyncPage.tsx`): `/scope` redirects to `/sync`. Three tabs — `TaskSectionsTab` (project browser with pending add/remove sets + batch save, two load modes: «Загрузить из Jira» respects team filter, «Загрузить все ключи» bypasses it), `CategoryConfigTab` (see next bullet), `SyncControls` («Обновить» = incremental default, «Полная синхронизация» = `incremental:false`, secondary; worklogs separately). Team filter Select reads from `useJiraTeams` (populated from `/settings/generic/jira_team_field_id` + `jira_participating_teams_field_id`)
-- **CategoryConfigTab**: multi-team Select (`teams=A,B,C` OR'd in SQL), «Скрытые статусы» (default hides `Отменено`), cancellable «Получить перечень задач» (cancel via `queryClient.cancelQueries` → AbortSignal → `fetch`). Two nested sub-tabs: «Стек задач к разбору» (no effective assigned_category) / «Разобранные». Row selection with `checkStrictly:false` cascades parent→children; «Установить категорию отмеченным» opens a modal → writes to `pendingCats` Map. Category Select no longer autosaves — it stages into `pendingCats`; «Сохранить» batches PUTs via `/issues/batch-category` grouped by code. Key column is a Jira deep link (`${base_url}/browse/{key}`). Columns are resizable via `react-resizable` with widths held in local state
+- **CategoryConfigTab**: multi-team Select (`teams=A,B,C` OR'd in SQL, persisted via `ui_teams_categories` AppSetting), «Скрытые статусы» (default hides `Отменено`), cancellable «Получить перечень задач» (cancel via `queryClient.cancelQueries` → AbortSignal → `fetch`), «Обновить с Jira (N)» (targeted `/sync/issues/refresh` on all non-group keys in the loaded tree). **Four nested tabs** routed by effective category (own pending/assigned OR inherited from nearest ancestor — categorizing an epic drops its whole subtree out of «Стек»):
+  * `stack` — без категории
+  * `active` — с категорией, не архивная
+  * `archive_target` — «Архив квартальных задач»
+  * `archive` — «Архив прочих задач»
+
+  `matchesTab(effective, tab)` drives both filter and count. Row selection with `checkStrictly:false` cascades parent→children, disabled for group-nodes and `is_context` rows. «Установить категорию отмеченным» opens a modal → writes to `pendingCats` Map. Category Select stages into `pendingCats`; «Сохранить» batches PUTs via `/issues/batch-category` grouped by code and patches the tree cache locally (archive codes also clear `include_in_analysis`). Row tint deepens per depth level (`.tree-row-depth-0..5`) and italicizes context rows (`.tree-row-context`). Key column is a Jira deep link (`${base_url}/browse/{key}`); status tag uses `statusTagColor` mapping Jira `statusCategory` + name-override for cancel-like statuses; «Статус изменён» sortable with date + «N д назад» age thresholds (≥180d yellow, ≥365d red); «Цели» sortable purple tag per comma-value. Columns resizable via `react-resizable`.
 - **API client AbortSignal**: `api.get(path, params, signal?)` threads AbortSignal into `fetch`. TanStack Query's queryFn context signal flows in via `useQuery({ queryFn: ({signal}) => ... })` in `useIssueTree`. `AbortError` skipped in `errorStore` so cancels don't flood the bug panel
 - E2E: Playwright with isolated `data/e2e.db` on non-standard ports (:8010 backend, :5174 frontend), no Jira credentials needed
 
