@@ -3,7 +3,13 @@ import { pushError } from '../utils/errorStore';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
 
-async function request<T>(method: string, path: string, body?: unknown, params?: Record<string, string | undefined>): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  params?: Record<string, string | undefined>,
+  signal?: AbortSignal,
+): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
@@ -17,8 +23,10 @@ async function request<T>(method: string, path: string, body?: unknown, params?:
       method,
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
   } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
     pushError({
       ts: new Date().toISOString(), method, url: url.toString(),
       status: null, detail: (e as Error).message,
@@ -41,7 +49,8 @@ async function request<T>(method: string, path: string, body?: unknown, params?:
 }
 
 export const api = {
-  get: <T>(path: string, params?: Record<string, string | undefined>) => request<T>('GET', path, undefined, params),
+  get: <T>(path: string, params?: Record<string, string | undefined>, signal?: AbortSignal) =>
+    request<T>('GET', path, undefined, params, signal),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),

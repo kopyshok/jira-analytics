@@ -1,10 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getIssueTree, setIssueCategory, setIssueInclude, batchSetCategory } from '../api/issues';
 
-export function useIssueTree(params?: { project_keys?: string; team?: string }) {
+export function useIssueTree(params?: { project_keys?: string; teams?: string }) {
   return useQuery({
     queryKey: ['issues', 'tree', params],
-    queryFn: () => getIssueTree(params),
+    queryFn: ({ signal }) => getIssueTree(params, signal),
     enabled: false,  // manual trigger via refetch
     retry: false,
   });

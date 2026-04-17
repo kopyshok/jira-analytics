@@ -49,20 +49,16 @@ class BatchCategoryRequest(BaseModel):
 @router.get("/tree", response_model=List[IssueTreeNode])
 async def get_issue_tree(
     project_keys: Optional[str] = None,
-    team: Optional[str] = None,
+    teams: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Иерархическое дерево задач из БД.
 
     Фильтры:
     - project_keys — через запятую (PROJ1,PROJ2)
-    - team — SQL-фильтр по ``Issue.team`` (продуктовая команда) ИЛИ
-      ``Issue.participating_teams`` (JSON-массив участвующих команд). Поля
-      заполняются при синхронизации из custom fields, настроенных в
-      ``jira_team_field_id`` / ``jira_participating_teams_field_id``.
-
-    Возвращает дерево, свёрнутое до 1-го уровня на фронте.
-    Задачи без родителя (сироты) группируются в виртуальную группу.
+    - teams — через запятую (Team A,Team B); объединяется через OR.
+      SQL-фильтр по ``Issue.team`` (продуктовая) ИЛИ
+      ``Issue.participating_teams`` (JSON-массив).
     """
     query = db.query(Issue).join(Project, Issue.project_id == Project.id)
 
@@ -71,15 +67,15 @@ async def get_issue_tree(
         if scope_keys:
             query = query.filter(Project.key.in_(scope_keys))
 
-    if team:
-        # JSON-сериализованное имя: ["Team A","Team B"] → подстрока '"Team A"'
-        team_json_literal = json.dumps(team, ensure_ascii=False)
-        query = query.filter(
-            or_(
-                Issue.team == team,
-                Issue.participating_teams.like(f"%{team_json_literal}%"),
-            )
-        )
+    if teams:
+        team_list = [t.strip() for t in teams.split(",") if t.strip()]
+        if team_list:
+            clauses = []
+            for t in team_list:
+                t_json = json.dumps(t, ensure_ascii=False)
+                clauses.append(Issue.team == t)
+                clauses.append(Issue.participating_teams.like(f"%{t_json}%"))
+            query = query.filter(or_(*clauses))
 
     issues = query.all()
 

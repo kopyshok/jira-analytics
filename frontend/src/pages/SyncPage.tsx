@@ -476,7 +476,7 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & { children?: TreeN
 function CategoryConfigTab() {
   const { notification, message } = App.useApp();
   const qc = useQueryClient();
-  const [selectedTeam, setSelectedTeam] = useState<string | undefined>();
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 110, summary: 380, status: 140, category: 260, include: 80,
@@ -490,8 +490,11 @@ function CategoryConfigTab() {
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
   const issueTreeParams = useMemo(
-    () => ({ project_keys: scopeKeys || undefined, team: selectedTeam }),
-    [scopeKeys, selectedTeam],
+    () => ({
+      project_keys: scopeKeys || undefined,
+      teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+    }),
+    [scopeKeys, selectedTeams],
   );
   const issueTree = useIssueTree(issueTreeParams);
   const jiraTeams = useJiraTeams();
@@ -712,11 +715,15 @@ function CategoryConfigTab() {
     <Space direction="vertical" style={{ width: '100%' }}>
       <Space wrap>
         <Select
-          placeholder="Продуктовая команда"
-          value={selectedTeam}
-          onChange={setSelectedTeam}
+          mode="multiple"
+          placeholder="Продуктовые команды"
+          value={selectedTeams}
+          onChange={setSelectedTeams}
           allowClear
-          style={{ width: 280 }}
+          showSearch
+          optionFilterProp="label"
+          style={{ minWidth: 360 }}
+          maxTagCount="responsive"
           options={(jiraTeams.data ?? []).map(t => ({ value: t, label: t }))}
           onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
           loading={jiraTeams.isFetching}
@@ -731,14 +738,24 @@ function CategoryConfigTab() {
           options={uniqueStatuses.map(s => ({ value: s, label: s }))}
           maxTagCount="responsive"
         />
-        <Button
-          type="primary"
-          icon={<SyncOutlined spin={issueTree.isFetching} />}
-          onClick={() => issueTree.refetch()}
-          loading={issueTree.isFetching}
-        >
-          Получить перечень задач
-        </Button>
+        {issueTree.isFetching ? (
+          <Button
+            danger
+            icon={<CloseOutlined />}
+            onClick={() => qc.cancelQueries({ queryKey: treeQueryKey })}
+          >
+            Отменить загрузку
+          </Button>
+        ) : (
+          <Button
+            type="primary"
+            icon={<SyncOutlined />}
+            disabled={selectedTeams.length === 0}
+            onClick={() => issueTree.refetch()}
+          >
+            Получить перечень задач
+          </Button>
+        )}
         <Button
           icon={<CheckOutlined />}
           disabled={selectedIds.length === 0}
