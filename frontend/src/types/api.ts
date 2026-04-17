@@ -57,6 +57,7 @@ export interface SyncResponse {
 
 export interface SyncStatusResponse {
   entity: string;
+  scope: string;
   last_sync: string | null;
   cursor: string | null;
   last_error: string | null;

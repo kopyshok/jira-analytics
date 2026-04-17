@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   testConnection, syncProjects, syncIssues, syncWorklogs, syncComments, syncFull,
-  refreshIssuesByKeys,
+  refreshIssuesByKeys, syncTeams,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
 } from '../api/sync';
 import { batchScopeProjects } from '../api/scope';
@@ -35,6 +35,17 @@ export const useRefreshIssuesByKeys = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (jiraKeys: string[]) => refreshIssuesByKeys(jiraKeys),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+      qc.invalidateQueries({ queryKey: ['sync', 'status'] });
+    },
+  });
+};
+
+export const useSyncTeams = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (teams: string[]) => syncTeams(teams),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
       qc.invalidateQueries({ queryKey: ['sync', 'status'] });

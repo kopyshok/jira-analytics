@@ -27,6 +27,11 @@ class RefreshIssuesRequest(BaseModel):
     jira_keys: List[str]
 
 
+class SyncTeamsRequest(BaseModel):
+    """Синхронизация задач по списку продуктовых команд."""
+    teams: List[str]
+
+
 class SyncResponse(BaseModel):
     """Sync operation response."""
     status: str
@@ -43,8 +48,13 @@ class ConnectionTestResponse(BaseModel):
 
 
 class SyncStatusResponse(BaseModel):
-    """Sync status from database."""
+    """Sync status from database.
+
+    ``scope`` is empty ``""`` for the global per-entity cursor and carries
+    the team name for per-team cursors (written by ``POST /sync/teams``).
+    """
     entity: str
+    scope: str = ""
     last_sync: Optional[str] = None
     cursor: Optional[str] = None
     last_error: Optional[str] = None
@@ -200,6 +210,51 @@ async def refresh_issues(
             )
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/teams", response_model=SyncResponse)
+async def sync_teams(
+    request: SyncTeamsRequest,
+    db: Session = Depends(get_db),
+):
+    """Быстрая синхронизация новых/изменённых задач выбранных команд.
+
+    Для каждой команды ведётся отдельный курсор в ``sync_state
+    (entity_name="issues", scope=<team>)``. На вход — список названий
+    команд (значения team-поля Jira). Курсор двигается только при
+    успехе; ошибка по одной команде не ломает остальные.
+    """
+    if not request.teams:
+        return SyncResponse(status="noop", message="Список команд пуст")
+
+    try:
+        async with JiraClient.from_db(db) as jira:
+            service = SyncService(db, jira)
+            report = await service.sync_team_issues(request.teams)
+            total_matched = sum(int(r.get("matched", 0)) for r in report.values())
+            total_created = sum(int(r.get("created", 0)) for r in report.values())
+            errors = {t: r["error"] for t, r in report.items() if r.get("error")}
+            if errors:
+                summary = (
+                    f"Команд синхронизировано с ошибками: {len(errors)}. "
+                    f"Всего задач обновлено: {total_matched}, создано: {total_created}."
+                )
+            else:
+                summary = (
+                    f"Команд синхронизировано: {len(report)}. "
+                    f"Задач обновлено: {total_matched}, создано: {total_created}."
+                )
+            return SyncResponse(
+                status="completed",
+                message=summary,
+                stats={"per_team": report},
+            )
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -465,6 +520,7 @@ async def get_sync_status(db: Session = Depends(get_db)):
     return [
         SyncStatusResponse(
             entity=state.entity_name,
+            scope=state.scope or "",
             last_sync=state.last_success_at.isoformat() if state.last_success_at else None,
             cursor=state.cursor_value,
             last_error=state.last_error,
