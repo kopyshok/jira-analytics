@@ -141,6 +141,34 @@ def test_batch_category_archive_reports_archived_ids(client, project_and_issues,
         assert issue.include_in_analysis is False
 
 
+def test_set_category_archive_target_also_auto_excludes(client, project_and_issues, db_session):
+    """archive_target — вторая архив-категория, ведёт себя как archive."""
+    _, issues = project_and_issues
+    target = issues[0]
+
+    response = client.put(
+        f"/api/v1/issues/{target.id}/category",
+        json={"category_code": "archive_target"},
+    )
+    body = response.json()
+    assert body["assigned_category"] == "archive_target"
+    assert body["include_in_analysis"] is False
+    assert body["auto_excluded"] is True
+
+
+def test_batch_category_archive_target_reports_archived_ids(client, project_and_issues, db_session):
+    _, issues = project_and_issues
+    ids = [issues[0].id, issues[1].id]
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={"issue_ids": ids, "category_code": "archive_target"},
+    )
+    body = response.json()
+    assert body["updated"] == 2
+    assert sorted(body["archived_ids"]) == sorted(ids)
+
+
 def test_batch_category_non_archive_returns_empty_archived_ids(client, project_and_issues):
     _, issues = project_and_issues
 

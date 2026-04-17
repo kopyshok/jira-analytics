@@ -13,7 +13,9 @@ from app.models import Issue, Project
 
 router = APIRouter()
 
-ARCHIVE_CATEGORY_CODE = "archive"
+# Коды категорий, которые автоматически исключают задачу из анализа.
+# Используются для single/batch category endpoints.
+ARCHIVE_CATEGORY_CODES = {"archive", "archive_target"}
 
 # Типы-контейнеры — могут иметь дочерние задачи. Всё остальное, что оказалось
 # на верхнем уровне без детей (чистая оперативная заявка без эпика), уедет в
@@ -215,16 +217,17 @@ async def set_issue_category(
 ):
     """Назначить категорию на задачу.
 
-    Категория ``archive`` дополнительно снимает ``include_in_analysis`` —
-    архивные задачи не участвуют в аналитике. Обратная операция (смена
-    категории с архива на другую) флаг НЕ восстанавливает автоматически.
+    Архивные категории (``archive``, ``archive_target``) дополнительно
+    снимают ``include_in_analysis`` — такие задачи не участвуют в
+    аналитике. Обратная операция (смена категории на не-архивную) флаг
+    НЕ восстанавливает автоматически.
     """
     issue = db.get(Issue, issue_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
     issue.assigned_category = body.category_code
     auto_excluded = False
-    if body.category_code == ARCHIVE_CATEGORY_CODE and issue.include_in_analysis:
+    if body.category_code in ARCHIVE_CATEGORY_CODES and issue.include_in_analysis:
         issue.include_in_analysis = False
         auto_excluded = True
     # Snapshot attributes before commit — commit() expires them and a
@@ -280,12 +283,13 @@ async def batch_set_category(
 ):
     """Пакетное назначение категории на несколько задач.
 
-    При назначении ``archive`` возвращает ``archived_ids`` — список задач,
-    у которых одновременно снялся ``include_in_analysis``.
+    При назначении любой архивной категории (``archive``, ``archive_target``)
+    возвращает ``archived_ids`` — список задач, у которых одновременно
+    снялся ``include_in_analysis``.
     """
     updated = 0
     archived_ids: list[str] = []
-    is_archive = body.category_code == ARCHIVE_CATEGORY_CODE
+    is_archive = body.category_code in ARCHIVE_CATEGORY_CODES
     for issue_id in body.issue_ids:
         issue = db.get(Issue, issue_id)
         if issue:

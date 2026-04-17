@@ -497,6 +497,18 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
   __inheritedAssigned?: string | null;
 };
 
+type InnerTab = 'stack' | 'active' | 'archive_target' | 'archive';
+const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
+
+function matchesTab(effective: string | null, tab: InnerTab): boolean {
+  switch (tab) {
+    case 'stack': return effective === null;
+    case 'active': return effective !== null && !ARCHIVE_CODES.has(effective);
+    case 'archive_target': return effective === 'archive_target';
+    case 'archive': return effective === 'archive';
+  }
+}
+
 function CategoryConfigTab() {
   const { notification, message } = App.useApp();
   const qc = useQueryClient();
@@ -522,7 +534,7 @@ function CategoryConfigTab() {
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 110, summary: 380, status: 140, statusChanged: 150, category: 260, include: 80,
   });
-  const [innerTab, setInnerTab] = useState<'stack' | 'sorted'>('stack');
+  const [innerTab, setInnerTab] = useState<InnerTab>('stack');
   const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
@@ -564,10 +576,17 @@ function CategoryConfigTab() {
     return Array.from(s).sort();
   }, [issueTree.data]);
 
-  // Filter: status + tab (stack = no effective category; sorted = has effective category).
-  // Annotates __depth + __inheritedAssigned so rows can be tinted per level and
-  // categorized descendants of a categorized parent fall out of the stack.
-  const buildTabData = (wantSorted: boolean): TreeNodeWithChildren[] => {
+  // Effective category for a node = own (pending/assigned) OR nearest ancestor's
+  // assigned_category. Used to route nodes into the right tab.
+  const effectiveFor = (n: TreeNodeWithChildren): string | null => {
+    const own = effectiveAssigned(n as IssueTreeNode);
+    if (own) return own;
+    return n.__inheritedAssigned ?? null;
+  };
+
+  // Builds the tree for a given tab: node is kept if it self-matches the tab
+  // OR any of its descendants does. Annotates __depth + __inheritedAssigned.
+  const buildTabData = (tab: InnerTab): TreeNodeWithChildren[] => {
     const walk = (
       nodes: IssueTreeNode[],
       depth: number,
@@ -587,26 +606,19 @@ function CategoryConfigTab() {
       .filter(n => {
         if (n.issue_type === 'group') return (n.children?.length ?? 0) > 0;
         if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
-        // Context ancestors never self-match — они лишь якори для детей.
         if (n.is_context) return (n.children?.length ?? 0) > 0;
-        const own = !!effectiveAssigned(n as IssueTreeNode);
-        const inherited = !!n.__inheritedAssigned;
-        const hasCat = own || inherited;
-        const selfMatches = wantSorted ? hasCat : !hasCat;
+        const selfMatches = matchesTab(effectiveFor(n), tab);
         return selfMatches || (n.children?.length ?? 0) > 0;
       });
     return walk(issueTree.data ?? [], 0, null);
   };
 
-  const countTriage = (nodes: TreeNodeWithChildren[], wantSorted: boolean): number => {
+  const countTriage = (nodes: TreeNodeWithChildren[], tab: InnerTab): number => {
     let n = 0;
     const walk = (arr: TreeNodeWithChildren[]) => {
       arr.forEach(node => {
         if (node.issue_type !== 'group' && !node.is_context) {
-          const own = !!effectiveAssigned(node as IssueTreeNode);
-          const inherited = !!node.__inheritedAssigned;
-          const hasCat = own || inherited;
-          if (wantSorted ? hasCat : !hasCat) n++;
+          if (matchesTab(effectiveFor(node), tab)) n++;
         }
         if (node.children) walk(node.children);
       });
@@ -616,17 +628,31 @@ function CategoryConfigTab() {
   };
 
   const stackData = useMemo(
-    () => buildTabData(false),
+    () => buildTabData('stack'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [issueTree.data, hiddenStatuses, pendingCats],
   );
-  const sortedData = useMemo(
-    () => buildTabData(true),
+  const activeData = useMemo(
+    () => buildTabData('active'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [issueTree.data, hiddenStatuses, pendingCats],
+  );
+  const archiveTargetData = useMemo(
+    () => buildTabData('archive_target'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [issueTree.data, hiddenStatuses, pendingCats],
+  );
+  const archiveData = useMemo(
+    () => buildTabData('archive'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [issueTree.data, hiddenStatuses, pendingCats],
   );
 
-  const tabData = innerTab === 'stack' ? stackData : sortedData;
+  const tabData =
+    innerTab === 'stack' ? stackData
+    : innerTab === 'active' ? activeData
+    : innerTab === 'archive_target' ? archiveTargetData
+    : archiveData;
 
   // Optimistic toggle for include_in_analysis
   const toggleInclude = (record: IssueTreeNode, checked: boolean) => {
@@ -971,10 +997,12 @@ function CategoryConfigTab() {
       </Space>
       <Tabs
         activeKey={innerTab}
-        onChange={(k) => setInnerTab(k as 'stack' | 'sorted')}
+        onChange={(k) => setInnerTab(k as InnerTab)}
         items={[
-          { key: 'stack', label: `Стек задач к разбору (${countTriage(stackData, false)})` },
-          { key: 'sorted', label: `Разобранные (${countTriage(sortedData, true)})` },
+          { key: 'stack', label: `Стек задач к разбору (${countTriage(stackData, 'stack')})` },
+          { key: 'active', label: `Активный стек (${countTriage(activeData, 'active')})` },
+          { key: 'archive_target', label: `Архив квартальных задач (${countTriage(archiveTargetData, 'archive_target')})` },
+          { key: 'archive', label: `Архив прочих задач (${countTriage(archiveData, 'archive')})` },
         ]}
       />
       <Table<TreeNodeWithChildren>
