@@ -7,6 +7,8 @@ export const syncIssues = (body?: { project_keys?: string[]; incremental?: boole
 export const syncWorklogs = () => api.post<SyncResponse>('/sync/worklogs');
 export const syncComments = () => api.post<SyncResponse>('/sync/comments');
 export const syncFull = (body?: { project_keys?: string[]; incremental?: boolean }) => api.post<SyncResponse>('/sync/full', body);
+export const refreshIssuesByKeys = (jiraKeys: string[]) =>
+  api.post<SyncResponse>('/sync/issues/refresh', { jira_keys: jiraKeys });
 export const getSyncStatus = () => api.get<SyncStatusResponse[]>('/sync/status');
 
 // Browse Jira

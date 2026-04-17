@@ -22,6 +22,11 @@ class SyncRequest(BaseModel):
     incremental: bool = True
 
 
+class RefreshIssuesRequest(BaseModel):
+    """Точечная синхронизация по списку ключей Jira."""
+    jira_keys: List[str]
+
+
 class SyncResponse(BaseModel):
     """Sync operation response."""
     status: str
@@ -163,6 +168,35 @@ async def sync_issues(
                 status="completed",
                 message=f"Synced {count} issues",
                 stats=service.stats.to_dict(),
+            )
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/issues/refresh", response_model=SyncResponse)
+async def refresh_issues(
+    request: RefreshIssuesRequest,
+    db: Session = Depends(get_db),
+):
+    """Перечитать с Jira конкретные задачи по ключам.
+
+    Обновляет только те задачи, что уже существуют локально; новые не
+    создаёт. Нужно чтобы дотащить новое поле (``status_changed_at`` и т.п.)
+    на текущий видимый набор задач без полной пересинхронизации.
+    """
+    if not request.jira_keys:
+        return SyncResponse(status="noop", message="Список ключей пуст")
+
+    try:
+        async with JiraClient.from_db(db) as jira:
+            service = SyncService(db, jira)
+            matched, total = await service.refresh_issues_by_keys(request.jira_keys)
+            return SyncResponse(
+                status="completed",
+                message=f"Обновлено {matched} из {total} задач",
+                stats={"matched": matched, "requested": total},
             )
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")

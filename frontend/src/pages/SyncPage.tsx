@@ -16,7 +16,7 @@ import { useJiraSettings, useSaveJiraSettings, useTestJiraCredentials, useSaveGe
 import {
   useSyncStatus, useSyncMutation, useRecalculateMapping,
   useJiraProjects, useBatchScopeProjects,
-  useJiraTeams, useJiraFields,
+  useJiraTeams, useJiraFields, useRefreshIssuesByKeys,
 } from '../hooks/useSync';
 import {
   useScopeProjects, useRemoveScopeProject,
@@ -539,6 +539,7 @@ function CategoryConfigTab() {
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const setIncludeMut = useSetIssueInclude();
   const batchCategoryMut = useBatchSetCategory();
+  const refreshMut = useRefreshIssuesByKeys();
   const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
   const treeQueryKey = useMemo(() => ['issues', 'tree', issueTreeParams], [issueTreeParams]);
@@ -802,6 +803,33 @@ function CategoryConfigTab() {
 
   const hasPending = pendingCats.size > 0;
 
+  // Keys of all loaded, non-orphan, non-group nodes — for targeted refresh.
+  const loadedKeys = useMemo(() => {
+    const out: string[] = [];
+    const walk = (nodes: IssueTreeNode[]) => {
+      nodes.forEach(n => {
+        if (n.id !== '__orphans__' && n.key) out.push(n.key);
+        walk(n.children);
+      });
+    };
+    walk(issueTree.data ?? []);
+    return out;
+  }, [issueTree.data]);
+
+  const handleRefreshVisible = () => {
+    if (loadedKeys.length === 0) return;
+    refreshMut.mutate(loadedKeys, {
+      onSuccess: (res) => {
+        notification.success({
+          message: 'Обновление с Jira завершено',
+          description: res.message,
+        });
+        issueTree.refetch();
+      },
+      onError: (e) => notification.error({ message: 'Ошибка обновления', description: e.message }),
+    });
+  };
+
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
       <Space wrap>
@@ -854,6 +882,29 @@ function CategoryConfigTab() {
         >
           Установить категорию отмеченным ({selectedIds.length})
         </Button>
+        <Popconfirm
+          title="Обновить с Jira видимые задачи"
+          description={
+            <div style={{ maxWidth: 320 }}>
+              Перечитает с Jira {loadedKeys.length} загруженных задач,
+              не создавая новых. Нужно чтобы подтянуть «Статус изменён»
+              и другие поля у уже существующих задач.
+            </div>
+          }
+          icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+          okText="Запустить"
+          cancelText="Отмена"
+          onConfirm={handleRefreshVisible}
+          disabled={loadedKeys.length === 0 || refreshMut.isPending}
+        >
+          <Button
+            icon={<ReloadOutlined spin={refreshMut.isPending} />}
+            disabled={loadedKeys.length === 0 || refreshMut.isPending}
+            loading={refreshMut.isPending}
+          >
+            Обновить с Jira ({loadedKeys.length})
+          </Button>
+        </Popconfirm>
         {hasPending && (
           <>
             <Tag color="blue">Изменений: {pendingCats.size}</Tag>
