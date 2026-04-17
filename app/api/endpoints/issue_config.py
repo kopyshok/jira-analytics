@@ -47,6 +47,7 @@ class IssueTreeNode(BaseModel):
     category: Optional[str] = None
     include_in_analysis: bool = True
     status_changed_at: Optional[str] = None
+    goals: Optional[str] = None
     # True для задач-предков, дотащенных для контекста. Они не попали
     # под текущий фильтр (например, другая команда), но нужны чтобы
     # иерархия читалась. В UI такие строки показываются серыми, без
@@ -153,6 +154,7 @@ async def get_issue_tree(
             category=issue.category,
             include_in_analysis=issue.include_in_analysis if issue.include_in_analysis is not None else True,
             status_changed_at=issue.status_changed_at.isoformat() if issue.status_changed_at else None,
+            goals=issue.goals or None,
             is_context=issue.id in context_ids,
         )
         node_map[issue.id] = node

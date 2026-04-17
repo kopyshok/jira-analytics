@@ -546,7 +546,7 @@ function CategoryConfigTab() {
   };
 
   const [widths, setWidths] = useState<Record<string, number>>({
-    key: 110, summary: 380, status: 140, statusChanged: 150, category: 260, include: 80,
+    key: 110, summary: 380, status: 140, statusChanged: 150, goals: 110, category: 260, include: 80,
   });
   const [innerTab, setInnerTab] = useState<InnerTab>('stack');
   const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
@@ -819,6 +819,24 @@ function CategoryConfigTab() {
             {days !== null && (
               <Text style={{ fontSize: 11, color: ageColor }}>{days} д назад</Text>
             )}
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Цели',
+      dataIndex: 'goals',
+      key: 'goals',
+      width: widths.goals,
+      sorter: (a: IssueTreeNode, b: IssueTreeNode) => (a.goals ?? '').localeCompare(b.goals ?? ''),
+      render: (v: string | null, record: IssueTreeNode) => {
+        if (record.issue_type === 'group') return null;
+        if (!v) return <Text type="secondary">—</Text>;
+        return (
+          <Space size={4} wrap>
+            {v.split(',').map(s => s.trim()).filter(Boolean).map(tag => (
+              <Tag key={tag} color="purple">{tag}</Tag>
+            ))}
           </Space>
         );
       },

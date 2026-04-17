@@ -58,6 +58,10 @@ class Issue(Base, SyncedMixin):
     # User-configurable fields
     team: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     participating_teams: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Jira custom «Цели» (customfield_11421 by default) — напр. «3кв25».
+    # Тянется через AppSetting.jira_goals_field_id, сохраняется плоской
+    # строкой (comma-joined для multi-select).
+    goals: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=True)
 

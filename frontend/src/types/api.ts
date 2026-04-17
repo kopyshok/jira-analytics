@@ -94,6 +94,7 @@ export interface IssueTreeNode {
   category: string | null;
   include_in_analysis: boolean;
   status_changed_at: string | null;
+  goals: string | null;
   is_context: boolean;
   children: IssueTreeNode[];
 }
