@@ -9,6 +9,7 @@ from app.api.endpoints import (
     categories,
     employees,
     exports,
+    hierarchy_rules as hierarchy_rules_endpoints,
     issue_config,
     mapping,
     planning,
@@ -59,3 +60,8 @@ api_router.include_router(exports.router, prefix="/exports", tags=["exports"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(categories.router, prefix="/categories", tags=["categories"])
 api_router.include_router(issue_config.router, prefix="/issues", tags=["issues"])
+api_router.include_router(
+    hierarchy_rules_endpoints.router,
+    prefix="/hierarchy-rules",
+    tags=["hierarchy-rules"],
+)
