@@ -1,6 +1,6 @@
 """Sync service - orchestrates Jira data synchronization."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Tuple, Any
 import json
 import logging
@@ -53,6 +53,26 @@ def _extract_team_values(extra: dict, field_id: Optional[str]) -> List[str]:
                 out.append(item)
         return out
     return []
+
+
+def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
+    """Parse Jira timestamp (ISO 8601 with timezone, e.g. ``2026-04-17T10:48:33.357+0000``).
+
+    Returns a naive UTC datetime for storage (SQLite has no timezone type).
+    """
+    if not raw:
+        return None
+    try:
+        # Python 3.10 fromisoformat can't handle ±HHMM without colon — normalize.
+        normalized = raw
+        if len(raw) >= 5 and (raw[-5] in "+-") and raw[-3] != ":":
+            normalized = raw[:-2] + ":" + raw[-2:]
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except (ValueError, TypeError):
+        return None
 
 
 logger = logging.getLogger("jira_analytics.sync")
@@ -263,6 +283,7 @@ class SyncService:
             "priority": jira_issue.fields.priority.name if jira_issue.fields.priority else None,
             "project_id": project_id,
             "parent_id": parent_id,
+            "status_changed_at": _parse_jira_datetime(jira_issue.fields.statuscategorychangedate),
             "synced_at": datetime.utcnow(),
         }
         if team is not None:

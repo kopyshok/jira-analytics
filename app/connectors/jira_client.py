@@ -315,6 +315,7 @@ class JiraClient:
                 "summary", "description", "issuetype", "status",
                 "priority", "project", "parent", "creator",
                 "assignee", "created", "updated",
+                "statuscategorychangedate",
             ]
             fields = default_fields + list(extra_fields)
 

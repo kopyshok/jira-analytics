@@ -92,6 +92,7 @@ export interface IssueTreeNode {
   assigned_category: string | null;
   category: string | null;
   include_in_analysis: boolean;
+  status_changed_at: string | null;
   children: IssueTreeNode[];
 }
 

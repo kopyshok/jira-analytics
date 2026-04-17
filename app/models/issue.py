@@ -2,7 +2,9 @@
 
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import SyncedMixin, generate_uuid
@@ -55,6 +57,9 @@ class Issue(Base, SyncedMixin):
     participating_teams: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=True)
+
+    # Jira metadata for triage (e.g. «какие Done висят давно — в архив»)
+    status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="issues")

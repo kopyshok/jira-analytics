@@ -21,7 +21,7 @@ import {
 import {
   useScopeProjects, useRemoveScopeProject,
 } from '../hooks/useScope';
-import { formatDate } from '../utils/format';
+import { formatDate, formatDateOnly, daysSince } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { useIssueTree, useSetIssueInclude, useBatchSetCategory } from '../hooks/useIssueTree';
@@ -516,7 +516,7 @@ function CategoryConfigTab() {
   };
 
   const [widths, setWidths] = useState<Record<string, number>>({
-    key: 110, summary: 380, status: 140, category: 260, include: 80,
+    key: 110, summary: 380, status: 140, statusChanged: 150, category: 260, include: 80,
   });
   const [innerTab, setInnerTab] = useState<'stack' | 'sorted'>('stack');
   const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
@@ -714,6 +714,35 @@ function CategoryConfigTab() {
       key: 'status',
       width: widths.status,
       render: (v: string) => v ? <Tag>{v}</Tag> : null,
+    },
+    {
+      title: 'Статус изменён',
+      dataIndex: 'status_changed_at',
+      key: 'statusChanged',
+      width: widths.statusChanged,
+      sorter: (a: IssueTreeNode, b: IssueTreeNode) => {
+        const ta = a.status_changed_at ? new Date(a.status_changed_at).getTime() : 0;
+        const tb = b.status_changed_at ? new Date(b.status_changed_at).getTime() : 0;
+        return ta - tb;
+      },
+      render: (iso: string | null, record: IssueTreeNode) => {
+        if (record.id === '__orphans__') return null;
+        if (!iso) return <Text type="secondary">—</Text>;
+        const days = daysSince(iso);
+        let ageColor: string = DARK_THEME.textMuted;
+        if (days !== null) {
+          if (days >= 365) ageColor = '#ff7875';
+          else if (days >= 180) ageColor = DARK_THEME.yellow;
+        }
+        return (
+          <Space direction="vertical" size={0} style={{ lineHeight: 1.1 }}>
+            <Text style={{ fontSize: 12 }}>{formatDateOnly(iso)}</Text>
+            {days !== null && (
+              <Text style={{ fontSize: 11, color: ageColor }}>{days} д назад</Text>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Категория',
