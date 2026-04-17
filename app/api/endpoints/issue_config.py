@@ -29,6 +29,7 @@ class IssueTreeNode(BaseModel):
     assigned_category: Optional[str] = None
     category: Optional[str] = None
     include_in_analysis: bool = True
+    status_changed_at: Optional[str] = None
     children: List["IssueTreeNode"] = []
 
 
@@ -102,6 +103,7 @@ async def get_issue_tree(
             assigned_category=issue.assigned_category,
             category=issue.category,
             include_in_analysis=issue.include_in_analysis if issue.include_in_analysis is not None else True,
+            status_changed_at=issue.status_changed_at.isoformat() if issue.status_changed_at else None,
         )
         node_map[issue.id] = node
 

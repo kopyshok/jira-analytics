@@ -96,12 +96,14 @@ class JiraIssueFieldsSchema(BaseModel):
     assignee: Optional[JiraUserSchema] = None
     created: Optional[str] = None
     updated: Optional[str] = None
+    statuscategorychangedate: Optional[str] = None
     _extra: dict = {}
 
     def __init__(self, **data):
         known = {
             "summary", "description", "issuetype", "status", "priority",
             "project", "parent", "creator", "assignee", "created", "updated",
+            "statuscategorychangedate",
         }
         extra = {k: v for k, v in data.items() if k not in known}
         super().__init__(**{k: v for k, v in data.items() if k in known})
