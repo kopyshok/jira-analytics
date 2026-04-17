@@ -706,6 +706,26 @@ function CategoryConfigTab() {
     return walk(issueTree.data ?? [], 0, null);
   };
 
+  // Count of all descendant tasks in the raw loaded tree — not filtered by
+  // tab / hidden status / category. Virtual group nodes don't count as
+  // tasks. Recomputed only when the server-side tree changes, not on
+  // pendingCats flips.
+  const descendantCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    const dfs = (node: IssueTreeNode): number => {
+      let count = 0;
+      for (const child of node.children) {
+        const childSubtree = dfs(child);
+        if (child.issue_type !== 'group') count += 1;
+        count += childSubtree;
+      }
+      map.set(node.id, count);
+      return count;
+    };
+    (issueTree.data ?? []).forEach(dfs);
+    return map;
+  }, [issueTree.data]);
+
   const countTriage = (nodes: TreeNodeWithChildren[], tab: InnerTab): number => {
     let n = 0;
     const walk = (arr: TreeNodeWithChildren[]) => {
@@ -914,7 +934,23 @@ function CategoryConfigTab() {
         dataIndex: 'summary',
         key: 'summary',
         width: widths.summary,
-        render: (s: string) => <Text>{s}</Text>,
+        render: (s: string, record: TreeNodeWithChildren) => {
+          const count = descendantCounts.get(record.id) ?? 0;
+          return (
+            <span>
+              <Text>{s}</Text>
+              {count > 0 && (
+                <Tag
+                  color="default"
+                  style={{ marginLeft: 6, fontSize: 11 }}
+                  title="Всего подчинённых задач в иерархии (без фильтров)"
+                >
+                  {count}
+                </Tag>
+              )}
+            </span>
+          );
+        },
       },
       {
         title: 'Статус',
@@ -1014,7 +1050,7 @@ function CategoryConfigTab() {
     }));
   }, [
     widths, jiraBaseUrl,
-    pendingCats, categoryOptions, categoryLabels,
+    pendingCats, categoryOptions, categoryLabels, descendantCounts,
     setPendingCategory, toggleInclude, handleResize,
   ]);
 
