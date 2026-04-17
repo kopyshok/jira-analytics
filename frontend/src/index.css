@@ -18,6 +18,9 @@ body {
 .tree-row-depth-4 > td { background-color: rgba(0, 201, 200, 0.16) !important; }
 .tree-row-depth-5 > td { background-color: rgba(0, 201, 200, 0.20) !important; }
 .tree-row-has-children > td { font-weight: 600; }
+/* Context rows — ancestors pulled in to anchor the hierarchy but not
+   under the current filter. Dim and make read-only. */
+.tree-row-context > td { opacity: 0.55; font-style: italic; }
 
 /* Recharts tooltip dark override */
 .recharts-default-tooltip {

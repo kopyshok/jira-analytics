@@ -30,6 +30,11 @@ class IssueTreeNode(BaseModel):
     category: Optional[str] = None
     include_in_analysis: bool = True
     status_changed_at: Optional[str] = None
+    # True для задач-предков, дотащенных для контекста. Они не попали
+    # под текущий фильтр (например, другая команда), но нужны чтобы
+    # иерархия читалась. В UI такие строки показываются серыми, без
+    # возможности править категорию или чекбокс.
+    is_context: bool = False
     children: List["IssueTreeNode"] = []
 
 
@@ -80,13 +85,39 @@ async def get_issue_tree(
                 clauses.append(Issue.participating_teams.like(f"%{t_json}%"))
             query = query.filter(or_(*clauses))
 
-    issues = query.all()
+    matched_issues = query.all()
+    matched_ids = {i.id for i in matched_issues}
 
-    # Build lookup
+    # Дотащим предков, которые не попали под фильтр, чтобы иерархия была
+    # читаемой. Такие задачи помечаются ``is_context=True`` — UI отключит
+    # редактирование, но покажет их как якоря дерева.
+    context_ids: set[str] = set()
+    frontier: set[str] = {
+        i.parent_id for i in matched_issues
+        if i.parent_id and i.parent_id not in matched_ids
+    }
+    ancestors: list[Issue] = []
+    while frontier:
+        batch = db.query(Issue).filter(Issue.id.in_(frontier)).all()
+        next_frontier: set[str] = set()
+        for a in batch:
+            if a.id in context_ids or a.id in matched_ids:
+                continue
+            context_ids.add(a.id)
+            ancestors.append(a)
+            if a.parent_id and a.parent_id not in matched_ids and a.parent_id not in context_ids:
+                next_frontier.add(a.parent_id)
+        frontier = next_frontier
+
+    issues = list(matched_issues) + ancestors
+
+    # Preload project keys once to avoid N+1 lookups.
+    project_ids = {i.project_id for i in issues if i.project_id}
+    projects = db.query(Project).filter(Project.id.in_(project_ids)).all() if project_ids else []
+    project_key_by_id = {p.id: p.key for p in projects}
+
     by_id: dict[str, Issue] = {i.id: i for i in issues}
-    by_key: dict[str, Issue] = {i.key: i for i in issues}
 
-    # Build tree
     roots: list[IssueTreeNode] = []
     orphans: list[IssueTreeNode] = []
     node_map: dict[str, IssueTreeNode] = {}
@@ -98,12 +129,13 @@ async def get_issue_tree(
             summary=issue.summary,
             issue_type=issue.issue_type,
             status=issue.status,
-            project_key=db.get(Project, issue.project_id).key if issue.project_id else "",
+            project_key=project_key_by_id.get(issue.project_id, ""),
             parent_key=by_id[issue.parent_id].key if issue.parent_id and issue.parent_id in by_id else None,
             assigned_category=issue.assigned_category,
             category=issue.category,
             include_in_analysis=issue.include_in_analysis if issue.include_in_analysis is not None else True,
             status_changed_at=issue.status_changed_at.isoformat() if issue.status_changed_at else None,
+            is_context=issue.id in context_ids,
         )
         node_map[issue.id] = node
 
@@ -112,13 +144,12 @@ async def get_issue_tree(
         if issue.parent_id and issue.parent_id in node_map:
             node_map[issue.parent_id].children.append(node)
         elif issue.parent_id and issue.parent_id not in node_map:
-            # Parent exists but not in filtered set — orphan
+            # Parent exists in DB but not returned (parent of ancestor we
+            # chose not to climb further). Orphan group — rare edge case.
             orphans.append(node)
         else:
-            # No parent — top-level
             roots.append(node)
 
-    # Add orphan group if any
     if orphans:
         orphan_group = IssueTreeNode(
             id="__orphans__",

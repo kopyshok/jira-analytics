@@ -571,11 +571,28 @@ function CategoryConfigTab() {
       .filter(n => {
         if (n.id === '__orphans__') return (n.children?.length ?? 0) > 0;
         if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
+        // Context ancestors never self-match — они лишь якори для детей.
+        if (n.is_context) return (n.children?.length ?? 0) > 0;
         const hasCat = !!effectiveAssigned(n as IssueTreeNode);
         const selfMatches = wantSorted ? hasCat : !hasCat;
         return selfMatches || (n.children?.length ?? 0) > 0;
       });
     return walk(issueTree.data ?? [], 0);
+  };
+
+  const countTriage = (nodes: TreeNodeWithChildren[], wantSorted: boolean): number => {
+    let n = 0;
+    const walk = (arr: TreeNodeWithChildren[]) => {
+      arr.forEach(node => {
+        if (node.id !== '__orphans__' && !node.is_context) {
+          const hasCat = !!effectiveAssigned(node as IssueTreeNode);
+          if (wantSorted ? hasCat : !hasCat) n++;
+        }
+        if (node.children) walk(node.children);
+      });
+    };
+    walk(nodes);
+    return n;
   };
 
   const stackData = useMemo(
@@ -751,6 +768,7 @@ function CategoryConfigTab() {
       width: widths.category,
       render: (_: unknown, record: IssueTreeNode) => {
         if (record.id === '__orphans__') return null;
+        if (record.is_context) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
         const pending = pendingCats.has(record.id);
         const value = pending ? (pendingCats.get(record.id) ?? undefined) : (record.assigned_category || undefined);
         const inherited = !value && record.category;
@@ -780,6 +798,7 @@ function CategoryConfigTab() {
         return (
           <Checkbox
             checked={record.include_in_analysis}
+            disabled={record.is_context}
             onChange={(e) => toggleInclude(record, e.target.checked)}
           />
         );
@@ -797,7 +816,7 @@ function CategoryConfigTab() {
     onChange: (keys: React.Key[]) => setSelectedIds(keys.map(String)),
     checkStrictly: false,
     getCheckboxProps: (record: TreeNodeWithChildren) => ({
-      disabled: record.id === '__orphans__',
+      disabled: record.id === '__orphans__' || !!record.is_context,
     }),
   };
 
@@ -929,8 +948,8 @@ function CategoryConfigTab() {
         activeKey={innerTab}
         onChange={(k) => setInnerTab(k as 'stack' | 'sorted')}
         items={[
-          { key: 'stack', label: `Стек задач к разбору (${stackData.length})` },
-          { key: 'sorted', label: `Разобранные (${sortedData.length})` },
+          { key: 'stack', label: `Стек задач к разбору (${countTriage(stackData, false)})` },
+          { key: 'sorted', label: `Разобранные (${countTriage(sortedData, true)})` },
         ]}
       />
       <Table<TreeNodeWithChildren>
@@ -942,7 +961,8 @@ function CategoryConfigTab() {
         rowClassName={(record) => {
           const depth = Math.min(record.__depth ?? 0, 5);
           const hasKids = (record.children?.length ?? 0) > 0;
-          return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}`;
+          const ctx = record.is_context ? ' tree-row-context' : '';
+          return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}${ctx}`;
         }}
         loading={issueTree.isFetching}
         pagination={false}

@@ -152,3 +152,91 @@ def test_batch_category_non_archive_returns_empty_archived_ids(client, project_a
     body = response.json()
     assert body["updated"] == 1
     assert body["archived_ids"] == []
+
+
+def test_tree_pulls_in_ancestor_of_different_team_as_context(client, db_session):
+    """Родитель с другой командой дотаскивается как context (AD-357 сценарий)."""
+    project = Project(jira_project_id="20001", key="AD", name="Ad project", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    parent = Issue(
+        jira_issue_id="50001",
+        key="AD-227",
+        summary="Epic in team A",
+        issue_type="Epic",
+        status="Open",
+        project_id=project.id,
+        team="Team A",
+        include_in_analysis=True,
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    child = Issue(
+        jira_issue_id="50002",
+        key="AD-357",
+        summary="Subtask in team B",
+        issue_type="Task",
+        status="Open",
+        project_id=project.id,
+        parent_id=parent.id,
+        team="Team B",
+        include_in_analysis=True,
+    )
+    db_session.add(child)
+    db_session.flush()
+
+    response = client.get("/api/v1/issues/tree?project_keys=AD&teams=Team B")
+    assert response.status_code == 200
+    roots = response.json()
+
+    # AD-227 should appear at root as context (since AD-357 matches and needs parent)
+    assert len(roots) == 1, roots
+    root = roots[0]
+    assert root["key"] == "AD-227"
+    assert root["is_context"] is True
+    assert len(root["children"]) == 1
+    leaf = root["children"][0]
+    assert leaf["key"] == "AD-357"
+    assert leaf["is_context"] is False
+
+
+def test_tree_without_filter_does_not_flag_context(client, db_session):
+    project = Project(jira_project_id="20002", key="AD", name="Ad project", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    parent = Issue(
+        jira_issue_id="60001",
+        key="AD-1",
+        summary="Epic",
+        issue_type="Epic",
+        status="Open",
+        project_id=project.id,
+        team="Team A",
+        include_in_analysis=True,
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    child = Issue(
+        jira_issue_id="60002",
+        key="AD-2",
+        summary="Child",
+        issue_type="Task",
+        status="Open",
+        project_id=project.id,
+        parent_id=parent.id,
+        team="Team A",
+        include_in_analysis=True,
+    )
+    db_session.add(child)
+    db_session.flush()
+
+    response = client.get("/api/v1/issues/tree?project_keys=AD")
+    roots = response.json()
+    assert len(roots) == 1
+    assert roots[0]["key"] == "AD-1"
+    assert roots[0]["is_context"] is False
+    assert roots[0]["children"][0]["is_context"] is False
