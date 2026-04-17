@@ -145,9 +145,10 @@ alembic revision --autogenerate -m "description"
 alembic upgrade head
 alembic downgrade -1
 
-# Lint / format
-ruff check app/
-ruff format app/
+# Lint / format (make lint also runs mypy app/)
+ruff check app/ tests/
+mypy app/
+ruff format app/ tests/
 
 # Run server
 uvicorn app.main:app --reload --port 8000
