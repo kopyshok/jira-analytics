@@ -13,6 +13,8 @@ from app.models import Issue, Project
 
 router = APIRouter()
 
+ARCHIVE_CATEGORY_CODE = "archive"
+
 
 # --- Schemas ---
 
@@ -136,13 +138,34 @@ async def set_issue_category(
     body: SetCategoryRequest,
     db: Session = Depends(get_db),
 ):
-    """Назначить категорию на задачу."""
+    """Назначить категорию на задачу.
+
+    Категория ``archive`` дополнительно снимает ``include_in_analysis`` —
+    архивные задачи не участвуют в аналитике. Обратная операция (смена
+    категории с архива на другую) флаг НЕ восстанавливает автоматически.
+    """
     issue = db.get(Issue, issue_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
     issue.assigned_category = body.category_code
+    auto_excluded = False
+    if body.category_code == ARCHIVE_CATEGORY_CODE and issue.include_in_analysis:
+        issue.include_in_analysis = False
+        auto_excluded = True
+    # Snapshot attributes before commit — commit() expires them and a
+    # subsequent access would trigger a reload on a potentially rotated
+    # connection.
+    key = issue.key
+    assigned_category = issue.assigned_category
+    include_in_analysis = issue.include_in_analysis
     db.commit()
-    return {"ok": True, "key": issue.key, "assigned_category": issue.assigned_category}
+    return {
+        "ok": True,
+        "key": key,
+        "assigned_category": assigned_category,
+        "include_in_analysis": include_in_analysis,
+        "auto_excluded": auto_excluded,
+    }
 
 
 @router.put("/{issue_id}/include")
@@ -161,8 +184,10 @@ async def set_issue_include(
     if body.recursive:
         _set_include_recursive(db, issue.id, body.include)
 
+    key = issue.key
+    include_in_analysis = issue.include_in_analysis
     db.commit()
-    return {"ok": True, "key": issue.key, "include_in_analysis": issue.include_in_analysis}
+    return {"ok": True, "key": key, "include_in_analysis": include_in_analysis}
 
 
 def _set_include_recursive(db: Session, parent_id: str, include: bool) -> None:
@@ -178,12 +203,21 @@ async def batch_set_category(
     body: BatchCategoryRequest,
     db: Session = Depends(get_db),
 ):
-    """Пакетное назначение категории на несколько задач."""
+    """Пакетное назначение категории на несколько задач.
+
+    При назначении ``archive`` возвращает ``archived_ids`` — список задач,
+    у которых одновременно снялся ``include_in_analysis``.
+    """
     updated = 0
+    archived_ids: list[str] = []
+    is_archive = body.category_code == ARCHIVE_CATEGORY_CODE
     for issue_id in body.issue_ids:
         issue = db.get(Issue, issue_id)
         if issue:
             issue.assigned_category = body.category_code
+            if is_archive and issue.include_in_analysis:
+                issue.include_in_analysis = False
+                archived_ids.append(issue.id)
             updated += 1
     db.commit()
-    return {"ok": True, "updated": updated}
+    return {"ok": True, "updated": updated, "archived_ids": archived_ids}

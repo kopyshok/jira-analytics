@@ -1,12 +1,12 @@
 import { useState, useMemo, type HTMLAttributes, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App, Input, Switch,
-  Tabs, Select, Typography, Modal, Checkbox,
+  Tabs, Select, Typography, Modal, Checkbox, Popconfirm,
 } from 'antd';
 import {
   SyncOutlined, ApiOutlined, ReloadOutlined, SearchOutlined,
   CheckOutlined, CloseOutlined,
-  SaveOutlined, SettingOutlined,
+  SaveOutlined, SettingOutlined, ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { Resizable } from 'react-resizable';
@@ -612,12 +612,36 @@ function CategoryConfigTab() {
       groups.set(code, arr);
     });
     try {
+      const archivedIds = new Set<string>();
+      const assignments = new Map<string, string | null>();
       for (const [code, ids] of groups) {
-        await batchCategoryMut.mutateAsync({ issueIds: ids, categoryCode: code });
+        const res = await batchCategoryMut.mutateAsync({ issueIds: ids, categoryCode: code });
+        ids.forEach(id => assignments.set(id, code));
+        res.archived_ids.forEach(id => archivedIds.add(id));
       }
+      // Patch the local tree cache so UI reflects saved state without a refetch.
+      const patchTree = (nodes: IssueTreeNode[]): IssueTreeNode[] => nodes.map(n => {
+        const nextAssigned = assignments.has(n.id) ? assignments.get(n.id) ?? null : n.assigned_category;
+        const nextInclude = archivedIds.has(n.id) ? false : n.include_in_analysis;
+        return {
+          ...n,
+          assigned_category: nextAssigned,
+          include_in_analysis: nextInclude,
+          children: patchTree(n.children),
+        };
+      });
+      qc.setQueryData<IssueTreeNode[]>(treeQueryKey, (old) => old ? patchTree(old) : old);
+
       const total = pendingCats.size;
       setPendingCats(new Map());
-      message.success(`Сохранено категорий: ${total}`);
+      if (archivedIds.size > 0) {
+        notification.success({
+          message: `Сохранено категорий: ${total}`,
+          description: `В архив перемещено: ${archivedIds.size} — автоматически исключены из анализа.`,
+        });
+      } else {
+        message.success(`Сохранено категорий: ${total}`);
+      }
     } catch (e) {
       notification.error({ message: 'Ошибка сохранения', description: (e as Error).message });
     }
@@ -902,13 +926,27 @@ function SyncControls() {
             >
               Обновить
             </Button>
-            <Button
-              icon={<SyncOutlined spin={fullSyncMut.isPending} />}
-              loading={fullSyncMut.isPending}
-              onClick={handleFullSync}
+            <Popconfirm
+              title="Полная синхронизация"
+              description={
+                <div style={{ maxWidth: 320 }}>
+                  Перечитает все задачи из Jira заново (десятки минут, ~115k+ тасков).
+                  В повседневке используйте «Обновить» — она тянет только изменившееся.
+                </div>
+              }
+              icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+              okText="Запустить"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true }}
+              onConfirm={handleFullSync}
             >
-              Полная синхронизация
-            </Button>
+              <Button
+                icon={<SyncOutlined spin={fullSyncMut.isPending} />}
+                loading={fullSyncMut.isPending}
+              >
+                Полная синхронизация
+              </Button>
+            </Popconfirm>
             <Button
               icon={<SyncOutlined spin={worklogsMut.isPending || commentsMut.isPending} />}
               loading={worklogsMut.isPending || commentsMut.isPending}
