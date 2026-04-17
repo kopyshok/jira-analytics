@@ -491,6 +491,10 @@ function ResizableTitle({ onResize, width, ...rest }: ResizableTitleProps) {
 type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
   children?: TreeNodeWithChildren[];
   __depth?: number;
+  // Ближайший assigned_category предка (уже с учётом pending). Дети наследуют
+  // категорию эпика визуально, иначе PRJ-9882 (archive) остаётся в «стеке»,
+  // потому что его 24 ребёнка без собственной категории якорят его.
+  __inheritedAssigned?: string | null;
 };
 
 function CategoryConfigTab() {
@@ -561,23 +565,37 @@ function CategoryConfigTab() {
   }, [issueTree.data]);
 
   // Filter: status + tab (stack = no effective category; sorted = has effective category).
-  // Annotates __depth so rows can be tinted per hierarchy level.
+  // Annotates __depth + __inheritedAssigned so rows can be tinted per level and
+  // categorized descendants of a categorized parent fall out of the stack.
   const buildTabData = (wantSorted: boolean): TreeNodeWithChildren[] => {
-    const walk = (nodes: IssueTreeNode[], depth: number): TreeNodeWithChildren[] => nodes
+    const walk = (
+      nodes: IssueTreeNode[],
+      depth: number,
+      parentAssigned: string | null,
+    ): TreeNodeWithChildren[] => nodes
       .map(n => {
-        const kids = walk(n.children, depth + 1);
-        return { ...n, __depth: depth, children: kids.length > 0 ? kids : undefined };
+        const own = effectiveAssigned(n) ?? null;
+        const passDown = own ?? parentAssigned;
+        const kids = walk(n.children, depth + 1, passDown);
+        return {
+          ...n,
+          __depth: depth,
+          __inheritedAssigned: parentAssigned,
+          children: kids.length > 0 ? kids : undefined,
+        };
       })
       .filter(n => {
         if (n.issue_type === 'group') return (n.children?.length ?? 0) > 0;
         if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
         // Context ancestors never self-match — они лишь якори для детей.
         if (n.is_context) return (n.children?.length ?? 0) > 0;
-        const hasCat = !!effectiveAssigned(n as IssueTreeNode);
+        const own = !!effectiveAssigned(n as IssueTreeNode);
+        const inherited = !!n.__inheritedAssigned;
+        const hasCat = own || inherited;
         const selfMatches = wantSorted ? hasCat : !hasCat;
         return selfMatches || (n.children?.length ?? 0) > 0;
       });
-    return walk(issueTree.data ?? [], 0);
+    return walk(issueTree.data ?? [], 0, null);
   };
 
   const countTriage = (nodes: TreeNodeWithChildren[], wantSorted: boolean): number => {
@@ -585,7 +603,9 @@ function CategoryConfigTab() {
     const walk = (arr: TreeNodeWithChildren[]) => {
       arr.forEach(node => {
         if (node.issue_type !== 'group' && !node.is_context) {
-          const hasCat = !!effectiveAssigned(node as IssueTreeNode);
+          const own = !!effectiveAssigned(node as IssueTreeNode);
+          const inherited = !!node.__inheritedAssigned;
+          const hasCat = own || inherited;
           if (wantSorted ? hasCat : !hasCat) n++;
         }
         if (node.children) walk(node.children);
@@ -766,22 +786,27 @@ function CategoryConfigTab() {
       title: 'Категория',
       key: 'category',
       width: widths.category,
-      render: (_: unknown, record: IssueTreeNode) => {
+      render: (_: unknown, record: TreeNodeWithChildren) => {
         if (record.issue_type === 'group') return null;
         if (record.is_context) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
         const pending = pendingCats.has(record.id);
         const value = pending ? (pendingCats.get(record.id) ?? undefined) : (record.assigned_category || undefined);
-        const inherited = !value && record.category;
+        const ancestorCat = !value ? record.__inheritedAssigned : null;
+        const derivedCat = !value && !ancestorCat ? record.category : null;
+        const placeholderCode = ancestorCat ?? derivedCat;
+        const placeholderLabel = placeholderCode
+          ? (ancestorCat ? '↑ ' : '') + (categoryLabels[placeholderCode] || placeholderCode)
+          : 'Не назначена';
         return (
           <Select
-            placeholder={inherited ? categoryLabels[record.category!] || record.category! : 'Не назначена'}
+            placeholder={placeholderLabel}
             value={value}
             onChange={(val) => setPendingCategory(record.id, val || null)}
             allowClear
             size="small"
             style={{
               width: '100%',
-              opacity: inherited && !value ? 0.6 : 1,
+              opacity: !value && placeholderCode ? 0.6 : 1,
               boxShadow: pending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
             }}
             options={categoryOptions}
