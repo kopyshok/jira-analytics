@@ -586,6 +586,7 @@ function SyncControls() {
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key);
 
   const fullSyncMut = useSyncMutation('full');
+  const incrementalSyncMut = useSyncMutation('full');
   const worklogsMut = useSyncMutation('worklogs');
   const commentsMut = useSyncMutation('comments');
 
@@ -594,6 +595,14 @@ function SyncControls() {
     fullSyncMut.mutate(body, {
       onSuccess: (res) => notification.success({ message: 'Полная синхронизация', description: res.message }),
       onError: (e) => notification.error({ message: 'Ошибка синхронизации', description: e.message }),
+    });
+  };
+
+  const handleIncrementalSync = () => {
+    const body = { project_keys: scopeKeys.length > 0 ? scopeKeys : undefined, incremental: true };
+    incrementalSyncMut.mutate(body, {
+      onSuccess: (res) => notification.success({ message: 'Обновление', description: res.message }),
+      onError: (e) => notification.error({ message: 'Ошибка обновления', description: e.message }),
     });
   };
 
@@ -632,6 +641,13 @@ function SyncControls() {
           <Space wrap>
             <Button
               type="primary"
+              icon={<SyncOutlined spin={incrementalSyncMut.isPending} />}
+              loading={incrementalSyncMut.isPending}
+              onClick={handleIncrementalSync}
+            >
+              Обновить
+            </Button>
+            <Button
               icon={<SyncOutlined spin={fullSyncMut.isPending} />}
               loading={fullSyncMut.isPending}
               onClick={handleFullSync}
