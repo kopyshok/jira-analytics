@@ -276,6 +276,25 @@ Smoke:
   - [x] Browser E2E для основных SPA-маршрутов без Jira credentials
   - [x] E2E для CRUD-потоков Scope/Capacity/Backlog/Planning на seed-данных
   - [x] E2E для export/download сценариев
+- [x] **M7** — Triage-флоу: вкладка «Настройка категорий задач»
+  - [x] Dark-тема (`darkAlgorithm`, токены `DARK_THEME`/`CHART_COLORS`) и баг-репортер (`BugReportButton` + `errorStore`)
+  - [x] Объединённая страница Sync+Scope: `TaskSectionsTab`, `CategoryConfigTab`, `SyncControls`; `/scope` → редирект на `/sync`
+  - [x] Live-browse Jira: `/sync/jira-projects|jira-epics|jira-fields|jira-teams` с `in_scope`-флагами; фильтр по команде через per-project JQL probe
+  - [x] AppSetting store для credentials, кастомных полей и UI-персистенса (`ui_team_projects`, `ui_teams_categories`)
+  - [x] Sync кастомных полей: `team` + `participating_teams` (`customfield_11526`), `goals` (`customfield_11421`) — конфигурируемо через AppSetting
+  - [x] Атрибуты статуса: `status_category` (`statusCategory.key`) и `status_changed_at` (`statuscategorychangedate`); теги статусов по цветам; бэкфилл 115k записей
+  - [x] `/issues/tree` с ancestor-context (`is_context=true`), виртуальные группы `__orphans__` и `__operations__`
+  - [x] Наследование `assigned_category` по дереву — категоризация эпика уводит поддерево из «Стек»
+  - [x] 4 таба в CategoryConfigTab: Стек / Активный / Архив квартальных (`archive_target`) / Архив прочих (`archive`); оба архив-кода авто-снимают `include_in_analysis`
+  - [x] Targeted refresh `POST /sync/issues/refresh` и кнопка «Обновить с Jira (N)» — перечитывает видимые задачи без полного resync
+  - [x] Batch-категоризация `/issues/batch-category`, staged pending-cats с локальным патчем кэша дерева
+  - [x] Сортируемые колонки «Статус изменён» (age-подсветка ≥180/≥365 дней) и «Цели» (фиолетовые теги per-value)
+
+### ⏸️ Отложено
+
+- [ ] **Run vs Change аналитика** — sync `customfield_11506` и разрез «оперативка vs разработка» на Dashboard/Analytics. Делаем когда PM вернётся к теме.
+- [ ] **Отдельное поле `participating_teams`** — сейчас указывает на тот же `customfield_11526`, что и product team. Перенастроить через `PUT /settings/generic/jira_participating_teams_field_id`, когда появится отдельное поле в Jira.
+- [ ] **Pre-existing failing test** — `tests/test_sync_service.py::TestSyncIssuesParentLinking::test_subtask_before_parent_is_linked_after_second_pass` падает на `fake_iter() got unexpected keyword 'extra_fields'` (мок не обновлён под новую сигнатуру `get_issues_updated_since`).
 
 ## 📄 Лицензия
 
