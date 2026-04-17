@@ -271,6 +271,7 @@ class SyncService:
         parent_id: Optional[str] = None,
         team: Optional[str] = None,
         participating_teams: Optional[List[str]] = None,
+        goals: Optional[str] = None,
     ) -> Tuple[Issue, bool]:
         """Upsert issue from Jira."""
         status_category = None
@@ -294,6 +295,8 @@ class SyncService:
             data["team"] = team
         if participating_teams is not None:
             data["participating_teams"] = json.dumps(participating_teams, ensure_ascii=False)
+        if goals is not None:
+            data["goals"] = goals
         return self.issue_repo.upsert_by_field(
             "jira_issue_id",
             jira_issue.id,
@@ -340,11 +343,12 @@ class SyncService:
                 since = state.last_success_at
                 logger.info(f"Incremental sync since {since}")
 
-        # Read team field IDs from AppSetting — if configured, request them from Jira
+        # Read team/goals field IDs from AppSetting — if configured, request them from Jira
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
+        goals_field_id = self._get_setting("jira_goals_field_id")
         extra_fields = [
-            fid for fid in (product_field_id, participating_field_id) if fid
+            fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
         ]
 
         count = 0
@@ -372,9 +376,10 @@ class SyncService:
             if jira_issue.fields.creator:
                 self._ensure_employee(jira_issue.fields.creator)
 
-            # Extract team values from custom fields if configured
+            # Extract team/goals values from custom fields if configured
             team_val: Optional[str] = None
             participating_vals: Optional[List[str]] = None
+            goals_val: Optional[str] = None
             if extra_fields:
                 extra = jira_issue.fields._extra
                 if product_field_id:
@@ -382,11 +387,15 @@ class SyncService:
                     team_val = prod[0] if prod else None
                 if participating_field_id:
                     participating_vals = _extract_team_values(extra, participating_field_id)
+                if goals_field_id:
+                    goals_list = _extract_team_values(extra, goals_field_id)
+                    goals_val = ", ".join(goals_list) if goals_list else ""
 
             # Upsert issue
             issue, created = self._upsert_issue(
                 jira_issue, project.id, parent_id,
                 team=team_val, participating_teams=participating_vals,
+                goals=goals_val,
             )
             if created:
                 self.stats.issues_created += 1
@@ -437,8 +446,9 @@ class SyncService:
 
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
+        goals_field_id = self._get_setting("jira_goals_field_id")
         extra_fields = [
-            fid for fid in (product_field_id, participating_field_id) if fid
+            fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
         ]
         base_fields = [
             "summary", "description", "issuetype", "status",
@@ -483,6 +493,7 @@ class SyncService:
 
                 team_val: Optional[str] = None
                 participating_vals: Optional[List[str]] = None
+                goals_val: Optional[str] = None
                 if extra_fields:
                     extra = jira_issue.fields._extra
                     if product_field_id:
@@ -490,10 +501,14 @@ class SyncService:
                         team_val = prod[0] if prod else None
                     if participating_field_id:
                         participating_vals = _extract_team_values(extra, participating_field_id)
+                    if goals_field_id:
+                        goals_list = _extract_team_values(extra, goals_field_id)
+                        goals_val = ", ".join(goals_list) if goals_list else ""
 
                 self._upsert_issue(
                     jira_issue, project.id, parent_id,
                     team=team_val, participating_teams=participating_vals,
+                    goals=goals_val,
                 )
                 matched += 1
 
