@@ -478,6 +478,28 @@ async def browse_jira_fields(db: Session = Depends(get_db)):
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
 
 
+@router.get("/jira-issuetypes", response_model=List[str])
+async def browse_jira_issuetypes(db: Session = Depends(get_db)):
+    """Уникальные имена типов задач из Jira (каталог issuetype).
+
+    Используется фронтом для выпадающих списков в настройках (например,
+    Правила иерархии). Если в Jira несколько контекстов одного типа с тем
+    же именем — схлопываем по имени, чтобы список соответствовал
+    ``Issue.issue_type`` (в БД хранится имя).
+    """
+    try:
+        async with JiraClient.from_db(db) as jira:
+            types = await jira.get_issue_types()
+            names: set[str] = set()
+            for t in types:
+                name = t.get("name")
+                if name:
+                    names.add(name)
+            return sorted(names)
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+
 @router.get("/jira-teams", response_model=List[str])
 async def browse_jira_teams(db: Session = Depends(get_db)):
     """Уникальные значения полей 'Продуктовая команда' и 'Участвующие команды' из Jira.

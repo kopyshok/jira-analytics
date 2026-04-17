@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Table, Button, Space, Tag, Drawer, Form, Input, Switch, InputNumber, Popconfirm, App, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { Table, Button, Space, Tag, Drawer, Form, Input, Select, Switch, InputNumber, Popconfirm, App, Typography } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import {
   useHierarchyRules,
@@ -8,6 +8,8 @@ import {
   useDeleteHierarchyRule,
   useReorderHierarchyRules,
 } from '../hooks/useHierarchyRules';
+import { useProjects } from '../hooks/useBacklog';
+import { useJiraIssueTypes } from '../hooks/useSync';
 import type { HierarchyRule, HierarchyRuleCreate } from '../types/api';
 
 const { Text } = Typography;
@@ -31,6 +33,22 @@ export default function HierarchyRulesTab() {
   const updateMut = useUpdateHierarchyRule();
   const deleteMut = useDeleteHierarchyRule();
   const reorderMut = useReorderHierarchyRules();
+  const projects = useProjects();
+  const issueTypes = useJiraIssueTypes();
+
+  const projectOptions = useMemo(
+    () => (projects.data ?? []).map(p => ({ value: p.key, label: `${p.key} — ${p.name}` })),
+    [projects.data],
+  );
+  // Jira может отдать меньше типов, чем встречается в уже сохранённых правилах
+  // (seed-правила могут ссылаться на тип, который в Jira отсутствует или ещё
+  // не прогружен). Объединяем каталог Jira с типами из уже существующих
+  // правил — так select не «теряет» текущее значение при редактировании.
+  const typeOptions = useMemo(() => {
+    const jira = new Set(issueTypes.data ?? []);
+    (rules.data ?? []).forEach(r => { if (r.issue_type) jira.add(r.issue_type); });
+    return Array.from(jira).sort().map(t => ({ value: t, label: t }));
+  }, [issueTypes.data, rules.data]);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -159,17 +177,32 @@ export default function HierarchyRulesTab() {
             />
           </Form.Item>
           <Form.Item label="Проект (пусто = любой)">
-            <Input
-              value={form.project_key ?? ''}
-              onChange={e => setForm(f => ({ ...f, project_key: e.target.value || null }))}
-              placeholder="PRJ"
+            <Select
+              value={form.project_key ?? undefined}
+              onChange={v => setForm(f => ({ ...f, project_key: v ?? null }))}
+              allowClear
+              showSearch
+              placeholder="Любой проект"
+              options={projectOptions}
+              loading={projects.isLoading}
+              optionFilterProp="label"
+              style={{ width: '100%' }}
             />
           </Form.Item>
-          <Form.Item label="Тип задачи (пусто = любой)">
-            <Input
-              value={form.issue_type ?? ''}
-              onChange={e => setForm(f => ({ ...f, issue_type: e.target.value || null }))}
-              placeholder="Эпик"
+          <Form.Item
+            label="Тип задачи (пусто = любой)"
+            extra={issueTypes.isError ? <Text type="warning">Не удалось получить типы из Jira — проверь подключение</Text> : undefined}
+          >
+            <Select
+              value={form.issue_type ?? undefined}
+              onChange={v => setForm(f => ({ ...f, issue_type: v ?? null }))}
+              allowClear
+              showSearch
+              placeholder="Любой тип"
+              options={typeOptions}
+              loading={issueTypes.isLoading}
+              optionFilterProp="label"
+              style={{ width: '100%' }}
             />
           </Form.Item>
           <Form.Item label="Только при отсутствии родителя">

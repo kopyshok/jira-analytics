@@ -40,6 +40,10 @@ class IssueTreeNode(BaseModel):
     # иерархия читалась. В UI такие строки показываются серыми, без
     # возможности править категорию или чекбокс.
     is_context: bool = False
+    # Совпал ли узел с контейнерным правилом из hierarchy_rule. Такие
+    # типы (Эпик, Main box и т.п.) являются родителями по определению —
+    # категоризации не подлежат, UI блокирует Select.
+    is_container: bool = False
     children: List["IssueTreeNode"] = []
 
 
@@ -123,11 +127,22 @@ async def get_issue_tree(
 
     by_id: dict[str, Issue] = {i.id: i for i in issues}
 
+    # Правила иерархии нужны для классификации узлов на контейнерные
+    # (родительские по типу — Эпик, Main box и т.п.) и прочие. Грузим один
+    # раз, применяем к каждому issue.
+    rules = load_rules(db)
+
     roots: list[IssueTreeNode] = []
     orphans: list[IssueTreeNode] = []
     node_map: dict[str, IssueTreeNode] = {}
 
     for issue in issues:
+        project_key = project_key_by_id.get(issue.project_id, "")
+        is_container_node = classify(rules, EvaluationInput(
+            project_key=project_key,
+            issue_type=issue.issue_type,
+            has_parent=bool(issue.parent_id),
+        ))
         node = IssueTreeNode(
             id=issue.id,
             key=issue.key,
@@ -135,7 +150,7 @@ async def get_issue_tree(
             issue_type=issue.issue_type,
             status=issue.status,
             status_category=issue.status_category,
-            project_key=project_key_by_id.get(issue.project_id, ""),
+            project_key=project_key,
             parent_key=by_id[issue.parent_id].key if issue.parent_id and issue.parent_id in by_id else None,
             assigned_category=issue.assigned_category,
             category=issue.category,
@@ -143,6 +158,7 @@ async def get_issue_tree(
             status_changed_at=issue.status_changed_at.isoformat() if issue.status_changed_at else None,
             goals=issue.goals or None,
             is_context=issue.id in context_ids,
+            is_container=is_container_node,
         )
         node_map[issue.id] = node
 
@@ -172,20 +188,14 @@ async def get_issue_tree(
     # Разделяем top-level: контейнеры (по правилам из hierarchy_rules) и всё,
     # что с детьми — остаются корнями; бездетные не-контейнеры (чистые
     # оперативные заявки без эпика) уходят в отдельную виртуальную группу.
-    rules = load_rules(db)
     operations: list[IssueTreeNode] = []
     roots_keep: list[IssueTreeNode] = []
     for r in roots:
         if r.issue_type == "group":
             roots_keep.append(r)
             continue
-        is_container = classify(rules, EvaluationInput(
-            project_key=r.project_key,
-            issue_type=r.issue_type,
-            has_parent=False,
-        ))
         has_kids = bool(r.children)
-        if not is_container and not has_kids and not r.is_context:
+        if not r.is_container and not has_kids and not r.is_context:
             operations.append(r)
         else:
             roots_keep.append(r)
@@ -205,6 +215,17 @@ async def get_issue_tree(
     return roots_keep
 
 
+def _issue_is_container(db: Session, issue: Issue) -> bool:
+    """True если issue совпал с контейнерным правилом (Эпик, Main box и т.п.)."""
+    project = db.get(Project, issue.project_id) if issue.project_id else None
+    project_key = project.key if project else ""
+    return classify(load_rules(db), EvaluationInput(
+        project_key=project_key,
+        issue_type=issue.issue_type,
+        has_parent=bool(issue.parent_id),
+    ))
+
+
 @router.put("/{issue_id}/category")
 async def set_issue_category(
     issue_id: str,
@@ -217,10 +238,22 @@ async def set_issue_category(
     снимают ``include_in_analysis`` — такие задачи не участвуют в
     аналитике. Обратная операция (смена категории на не-архивную) флаг
     НЕ восстанавливает автоматически.
+
+    Контейнерные типы (совпали с правилом ``is_container=True`` —
+    Эпик, Main box и т.п.) категорию не получают: они — родители по
+    определению, работа живёт в детях. Запрос 422 с пояснением.
     """
     issue = db.get(Issue, issue_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+    if body.category_code and _issue_is_container(db, issue):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Тип «{issue.issue_type}» является родительским "
+                "(правило иерархии): категория не назначается."
+            ),
+        )
     issue.assigned_category = body.category_code
     auto_excluded = False
     if body.category_code in ARCHIVE_CATEGORY_CODES and issue.include_in_analysis:
@@ -282,17 +315,42 @@ async def batch_set_category(
     При назначении любой архивной категории (``archive``, ``archive_target``)
     возвращает ``archived_ids`` — список задач, у которых одновременно
     снялся ``include_in_analysis``.
+
+    Контейнерные задачи (Эпик, Main box и т.п. — правило ``is_container``)
+    пропускаются и возвращаются в ``skipped_containers``. Это важно когда
+    пользователь батчем присваивает категорию через каскад чекбоксов:
+    родители-контейнеры просто игнорируются, а работа на их потомках
+    помечается корректно.
     """
     updated = 0
     archived_ids: list[str] = []
+    skipped_containers: list[str] = []
     is_archive = body.category_code in ARCHIVE_CATEGORY_CODES
+    # Правила грузим один раз на весь батч.
+    rules = load_rules(db)
     for issue_id in body.issue_ids:
         issue = db.get(Issue, issue_id)
-        if issue:
-            issue.assigned_category = body.category_code
-            if is_archive and issue.include_in_analysis:
-                issue.include_in_analysis = False
-                archived_ids.append(issue.id)
-            updated += 1
+        if not issue:
+            continue
+        if body.category_code:
+            project = db.get(Project, issue.project_id) if issue.project_id else None
+            project_key = project.key if project else ""
+            if classify(rules, EvaluationInput(
+                project_key=project_key,
+                issue_type=issue.issue_type,
+                has_parent=bool(issue.parent_id),
+            )):
+                skipped_containers.append(issue.id)
+                continue
+        issue.assigned_category = body.category_code
+        if is_archive and issue.include_in_analysis:
+            issue.include_in_analysis = False
+            archived_ids.append(issue.id)
+        updated += 1
     db.commit()
-    return {"ok": True, "updated": updated, "archived_ids": archived_ids}
+    return {
+        "ok": True,
+        "updated": updated,
+        "archived_ids": archived_ids,
+        "skipped_containers": skipped_containers,
+    }

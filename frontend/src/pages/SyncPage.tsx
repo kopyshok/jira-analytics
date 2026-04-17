@@ -101,6 +101,7 @@ type CategoryCellProps = {
   issueId: string;
   isGroup: boolean;
   isContext: boolean;
+  isContainer: boolean;
   hasPending: boolean;
   pendingValue: string | undefined;
   assignedValue: string | undefined;
@@ -112,13 +113,14 @@ type CategoryCellProps = {
 };
 
 const CategoryCell = memo(function CategoryCell({
-  issueId, isGroup, isContext,
+  issueId, isGroup, isContext, isContainer,
   hasPending, pendingValue, assignedValue,
   inheritedAssigned, derivedCategory,
   categoryOptions, categoryLabels, onChange,
 }: CategoryCellProps) {
   if (isGroup) return null;
   if (isContext) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
+  if (isContainer) return <Text type="secondary" style={{ fontSize: 11 }} italic>родительский тип</Text>;
   const value = hasPending ? pendingValue : assignedValue;
   const ancestorCat = !value ? inheritedAssigned ?? null : null;
   const derivedCat = !value && !ancestorCat ? derivedCategory : null;
@@ -444,10 +446,15 @@ function CategoryConfigTab() {
     });
     try {
       const archivedIds = new Set<string>();
+      const skippedContainers = new Set<string>();
       const assignments = new Map<string, string | null>();
       for (const [code, ids] of groups) {
         const res = await batchCategoryMut.mutateAsync({ issueIds: ids, categoryCode: code });
-        ids.forEach(id => assignments.set(id, code));
+        const skippedForGroup = new Set(res.skipped_containers ?? []);
+        skippedForGroup.forEach(id => skippedContainers.add(id));
+        ids.forEach(id => {
+          if (!skippedForGroup.has(id)) assignments.set(id, code);
+        });
         res.archived_ids.forEach(id => archivedIds.add(id));
       }
       // Patch the local tree cache so UI reflects saved state without a refetch.
@@ -463,12 +470,15 @@ function CategoryConfigTab() {
       });
       qc.setQueryData<IssueTreeNode[]>(treeQueryKey, (old) => old ? patchTree(old) : old);
 
-      const total = pendingCats.size;
+      const total = assignments.size;
       setPendingCats(new Map());
-      if (archivedIds.size > 0) {
+      const parts: string[] = [];
+      if (archivedIds.size > 0) parts.push(`в архив: ${archivedIds.size}`);
+      if (skippedContainers.size > 0) parts.push(`пропущено родителей: ${skippedContainers.size}`);
+      if (parts.length > 0) {
         notification.success({
           message: `Сохранено категорий: ${total}`,
-          description: `В архив перемещено: ${archivedIds.size} — автоматически исключены из анализа.`,
+          description: parts.join(' · '),
         });
       } else {
         message.success(`Сохранено категорий: ${total}`);
@@ -585,6 +595,7 @@ function CategoryConfigTab() {
             issueId={record.id}
             isGroup={record.issue_type === 'group'}
             isContext={!!record.is_context}
+            isContainer={!!record.is_container}
             hasPending={pendingCats.has(record.id)}
             pendingValue={pendingCats.get(record.id) ?? undefined}
             assignedValue={record.assigned_category || undefined}

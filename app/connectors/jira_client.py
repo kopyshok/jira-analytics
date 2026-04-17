@@ -416,6 +416,11 @@ class JiraClient:
         data = await self._request("GET", "/field")
         return data
 
+    async def get_issue_types(self) -> list[dict]:
+        """Получить все типы задач Jira (каталог issuetype)."""
+        data = await self._request("GET", "/issuetype")
+        return data
+
     async def get_field_configured_options(self, field_id: str) -> list[str]:
         """Получить все сконфигурированные опции select/multi-select поля.
 

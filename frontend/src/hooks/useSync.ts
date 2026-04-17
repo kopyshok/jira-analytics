@@ -3,6 +3,7 @@ import {
   testConnection, syncProjects, syncIssues, syncWorklogs, syncComments, syncFull,
   refreshIssuesByKeys, syncTeams,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
+  getJiraIssueTypes,
 } from '../api/sync';
 import { batchScopeProjects } from '../api/scope';
 import { recalculateAll } from '../api/mapping';
@@ -85,6 +86,14 @@ export const useJiraTeams = () =>
     enabled: false,
     retry: false,
     staleTime: 60_000,
+  });
+
+export const useJiraIssueTypes = () =>
+  useQuery({
+    queryKey: ['jira', 'issuetypes'],
+    queryFn: getJiraIssueTypes,
+    retry: false,
+    staleTime: 300_000,
   });
 
 export const useJiraEpics = (projectKey: string, search?: string) =>

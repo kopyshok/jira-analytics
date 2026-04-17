@@ -24,5 +24,7 @@ export const getJiraFields = () =>
   api.get<JiraFieldItem[]>('/sync/jira-fields');
 export const getJiraTeams = () =>
   api.get<string[]>('/sync/jira-teams');
+export const getJiraIssueTypes = () =>
+  api.get<string[]>('/sync/jira-issuetypes');
 
 import type { JiraFieldItem } from '../types/api';

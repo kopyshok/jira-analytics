@@ -97,6 +97,7 @@ export interface IssueTreeNode {
   status_changed_at: string | null;
   goals: string | null;
   is_context: boolean;
+  is_container: boolean;
   children: IssueTreeNode[];
 }
 

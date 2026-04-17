@@ -11,7 +11,7 @@ from app.models.hierarchy_rule import HierarchyRule
 
 
 def _seed_hierarchy_rules(db_session):
-    """Insert the 12 default hierarchy rules (same as migration 014 seed).
+    """Insert the default hierarchy rules (migrations 014 + 015 seed).
 
     Conftest wipes hierarchy_rule between tests, so any test that relies on
     classification behaviour must call this before issuing tree requests.
@@ -30,6 +30,7 @@ def _seed_hierarchy_rules(db_session):
         (50, None, 'История', False, True, None),
         (50, None, 'Story', False, True, None),
         (50, None, 'Цель', False, True, None),
+        (50, None, 'Main box', False, True, 'Main box — всегда контейнер'),
     ]
     for priority, project, itype, np, ic, desc in seeds:
         db_session.add(HierarchyRule(
@@ -212,6 +213,116 @@ def test_batch_category_non_archive_returns_empty_archived_ids(client, project_a
     body = response.json()
     assert body["updated"] == 1
     assert body["archived_ids"] == []
+
+
+def test_set_category_rejected_for_container_type(client, db_session):
+    """Main box / Эпик — контейнеры по правилам иерархии, категорию не получают."""
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80001", key="AD", name="Ad", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    main_box = Issue(
+        jira_issue_id="80001-1", key="AD-10",
+        summary="Main box parent", issue_type="Main box", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add(main_box)
+    db_session.flush()
+
+    response = client.put(
+        f"/api/v1/issues/{main_box.id}/category",
+        json={"category_code": "development"},
+    )
+    assert response.status_code == 422
+    assert "родитель" in response.json()["detail"].lower()
+
+    db_session.expire_all()
+    persisted = db_session.get(Issue, main_box.id)
+    assert persisted.assigned_category is None
+
+
+def test_set_category_none_on_container_is_allowed(client, db_session):
+    """Сброс категории (None) на контейнере не блокируется — нечего сбрасывать, но и ломать не надо."""
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80002", key="AD", name="Ad", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    epic = Issue(
+        jira_issue_id="80002-1", key="AD-11",
+        summary="Epic", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add(epic)
+    db_session.flush()
+
+    response = client.put(
+        f"/api/v1/issues/{epic.id}/category",
+        json={"category_code": None},
+    )
+    assert response.status_code == 200
+
+
+def test_batch_category_skips_containers(client, db_session):
+    """Контейнеры (Эпик, Main box) пропускаются при батч-назначении категории."""
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80003", key="AD", name="Ad", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    container = Issue(
+        jira_issue_id="80003-1", key="AD-12",
+        summary="Epic", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    leaf = Issue(
+        jira_issue_id="80003-2", key="AD-13",
+        summary="Leaf", issue_type="Task", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add_all([container, leaf])
+    db_session.flush()
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={"issue_ids": [container.id, leaf.id], "category_code": "development"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["updated"] == 1
+    assert body["skipped_containers"] == [container.id]
+
+    db_session.expire_all()
+    assert db_session.get(Issue, container.id).assigned_category is None
+    assert db_session.get(Issue, leaf.id).assigned_category == "development"
+
+
+def test_tree_response_includes_is_container_flag(client, db_session):
+    """IssueTreeNode.is_container = True для Эпика / Main box."""
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80004", key="OS", name="OS", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    epic = Issue(
+        jira_issue_id="80004-1", key="OS-10",
+        summary="Epic", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add(epic)
+    db_session.flush()
+    child = Issue(
+        jira_issue_id="80004-2", key="OS-11",
+        summary="Child", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=epic.id, include_in_analysis=True,
+    )
+    db_session.add(child)
+    db_session.flush()
+
+    response = client.get("/api/v1/issues/tree?project_keys=OS")
+    roots = response.json()
+    assert len(roots) == 1
+    assert roots[0]["key"] == "OS-10"
+    assert roots[0]["is_container"] is True
+    assert roots[0]["children"][0]["key"] == "OS-11"
+    assert roots[0]["children"][0]["is_container"] is False
 
 
 def test_tree_pulls_in_ancestor_of_different_team_as_context(client, db_session):

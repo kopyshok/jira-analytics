@@ -24,6 +24,7 @@ export interface BatchCategoryResponse {
   ok: boolean;
   updated: number;
   archived_ids: string[];
+  skipped_containers: string[];
 }
 
 export const batchSetCategory = (issueIds: string[], categoryCode: string | null) =>
