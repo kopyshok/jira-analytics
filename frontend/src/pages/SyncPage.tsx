@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type HTMLAttributes, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App, Input, Switch,
   Tabs, Select, Typography, Modal, Checkbox,
@@ -9,6 +9,8 @@ import {
   SaveOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { testConnection, getJiraProjects } from '../api/sync';
 import { useJiraSettings, useSaveJiraSettings, useTestJiraCredentials, useSaveGenericSetting, useGenericSetting } from '../hooks/useSettings';
 import {
@@ -444,57 +446,158 @@ function ScopeOverview() {
 
 // ─── Category config tab (tree) ─────────────────────────────────
 
+type ResizableTitleProps = HTMLAttributes<HTMLTableCellElement> & {
+  width?: number;
+  onResize?: (e: SyntheticEvent, data: { size: { width: number; height: number } }) => void;
+};
+
+function ResizableTitle({ onResize, width, ...rest }: ResizableTitleProps) {
+  if (!width) return <th {...rest} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...rest} />
+    </Resizable>
+  );
+}
+
+type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & { children?: TreeNodeWithChildren[] };
+
 function CategoryConfigTab() {
   const { notification } = App.useApp();
+  const qc = useQueryClient();
   const [selectedTeam, setSelectedTeam] = useState<string | undefined>();
+  const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
+  const [widths, setWidths] = useState<Record<string, number>>({
+    key: 110, summary: 380, status: 140, category: 260, include: 80,
+  });
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
-  const issueTree = useIssueTree({ project_keys: scopeKeys || undefined, team: selectedTeam });
+  const issueTreeParams = useMemo(
+    () => ({ project_keys: scopeKeys || undefined, team: selectedTeam }),
+    [scopeKeys, selectedTeam],
+  );
+  const issueTree = useIssueTree(issueTreeParams);
   const jiraTeams = useJiraTeams();
+  const jiraSettings = useJiraSettings();
+  const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const setCategoryMut = useSetIssueCategory();
   const setIncludeMut = useSetIssueInclude();
   const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
-  // Flatten tree for Ant Design expandable table
-  const flattenTree = (nodes: IssueTreeNode[]): (IssueTreeNode & { _children?: IssueTreeNode[] })[] => {
-    return nodes.map(n => ({
-      ...n,
-      children: n.children.length > 0 ? flattenTree(n.children) : undefined,
-      _children: n.children,
-    })) as (IssueTreeNode & { _children?: IssueTreeNode[] })[];
+  const treeQueryKey = useMemo(() => ['issues', 'tree', issueTreeParams], [issueTreeParams]);
+
+  // Unique statuses from loaded data (for status filter dropdown)
+  const uniqueStatuses = useMemo(() => {
+    const s = new Set<string>();
+    const walk = (nodes: IssueTreeNode[]) => {
+      nodes.forEach(n => { if (n.status) s.add(n.status); walk(n.children); });
+    };
+    walk(issueTree.data ?? []);
+    return Array.from(s).sort();
+  }, [issueTree.data]);
+
+  // Flatten tree + apply status filter (keeps parents whose children survive)
+  const flattenTree = (nodes: IssueTreeNode[]): TreeNodeWithChildren[] => {
+    return nodes
+      .map(n => {
+        const kidsFiltered = flattenTree(n.children);
+        return { ...n, children: kidsFiltered.length > 0 ? kidsFiltered : undefined };
+      })
+      .filter(n => {
+        // Keep if status not hidden OR has visible children OR is the orphan group
+        if (n.id === '__orphans__') return (n.children?.length ?? 0) > 0;
+        return !hiddenStatuses.includes(n.status) || (n.children?.length ?? 0) > 0;
+      });
   };
 
-  const treeData = useMemo(() => flattenTree(issueTree.data ?? []), [issueTree.data]);
+  const treeData = useMemo(
+    () => flattenTree(issueTree.data ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [issueTree.data, hiddenStatuses],
+  );
 
-  // Find inherited category by walking up (simple: show assigned_category or category)
   const getDisplayCategory = (node: IssueTreeNode) => {
     if (node.assigned_category) return { code: node.assigned_category, inherited: false };
     if (node.category) return { code: node.category, inherited: true };
     return null;
   };
 
-  const columns = [
+  // Optimistic toggle for include_in_analysis
+  const toggleInclude = (record: IssueTreeNode, checked: boolean) => {
+    const recursive = (record.children?.length ?? 0) > 0;
+    const patchSubtree = (node: IssueTreeNode): IssueTreeNode => ({
+      ...node,
+      include_in_analysis: checked,
+      children: node.children.map(patchSubtree),
+    });
+    const patchTree = (nodes: IssueTreeNode[]): IssueTreeNode[] => nodes.map(n => {
+      if (n.id === record.id) {
+        return recursive ? patchSubtree(n) : { ...n, include_in_analysis: checked };
+      }
+      return { ...n, children: patchTree(n.children) };
+    });
+    qc.setQueryData<IssueTreeNode[]>(treeQueryKey, (old) => old ? patchTree(old) : old);
+    setIncludeMut.mutate(
+      { issueId: record.id, include: checked, recursive },
+      {
+        onError: (err) => {
+          notification.error({ message: 'Ошибка', description: err.message });
+          issueTree.refetch();
+        },
+      },
+    );
+  };
+
+  const handleResize = (colKey: string) =>
+    (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
+      setWidths(w => ({ ...w, [colKey]: size.width }));
+    };
+
+  const baseColumns = [
     {
-      title: 'Задача',
+      title: 'Ключ',
+      dataIndex: 'key',
+      key: 'key',
+      width: widths.key,
+      render: (key: string, record: IssueTreeNode) => {
+        if (record.id === '__orphans__' || !key) return null;
+        if (!jiraBaseUrl) return <Text strong>{key}</Text>;
+        return (
+          <Typography.Link href={`${jiraBaseUrl}/browse/${key}`} target="_blank" rel="noreferrer">
+            {key}
+          </Typography.Link>
+        );
+      },
+    },
+    {
+      title: 'Название',
+      dataIndex: 'summary',
       key: 'summary',
-      render: (_: unknown, record: IssueTreeNode) => (
-        <span>
-          {record.key && <Text strong style={{ marginRight: 8 }}>{record.key}</Text>}
-          <Text>{record.summary}</Text>
-        </span>
-      ),
+      width: widths.summary,
+      render: (s: string) => <Text>{s}</Text>,
     },
     {
       title: 'Статус',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
+      width: widths.status,
       render: (v: string) => v ? <Tag>{v}</Tag> : null,
     },
     {
       title: 'Категория',
       key: 'category',
-      width: 280,
+      width: widths.category,
       render: (_: unknown, record: IssueTreeNode) => {
         if (record.id === '__orphans__') return null;
         const display = getDisplayCategory(record);
@@ -520,25 +623,23 @@ function CategoryConfigTab() {
     {
       title: 'В анализ',
       key: 'include',
-      width: 80,
+      width: widths.include,
       render: (_: unknown, record: IssueTreeNode) => {
         if (record.id === '__orphans__') return null;
         return (
           <Checkbox
             checked={record.include_in_analysis}
-            onChange={(e) => setIncludeMut.mutate(
-              {
-                issueId: record.id,
-                include: e.target.checked,
-                recursive: (record.children?.length ?? 0) > 0,
-              },
-              { onError: (err) => notification.error({ message: 'Ошибка', description: err.message }) },
-            )}
+            onChange={(e) => toggleInclude(record, e.target.checked)}
           />
         );
       },
     },
   ];
+
+  const columns = baseColumns.map(col => ({
+    ...col,
+    onHeaderCell: () => ({ width: col.width, onResize: handleResize(col.key) }),
+  }));
 
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
@@ -553,6 +654,16 @@ function CategoryConfigTab() {
           onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
           loading={jiraTeams.isFetching}
         />
+        <Select
+          mode="multiple"
+          placeholder="Скрытые статусы"
+          value={hiddenStatuses}
+          onChange={setHiddenStatuses}
+          allowClear
+          style={{ minWidth: 280 }}
+          options={uniqueStatuses.map(s => ({ value: s, label: s }))}
+          maxTagCount="responsive"
+        />
         <Button
           type="primary"
           icon={<SyncOutlined spin={issueTree.isFetching} />}
@@ -562,9 +673,10 @@ function CategoryConfigTab() {
           Получить перечень задач
         </Button>
       </Space>
-      <Table
+      <Table<TreeNodeWithChildren>
         dataSource={treeData}
-        columns={columns}
+        columns={columns as never}
+        components={{ header: { cell: ResizableTitle } }}
         rowKey="id"
         loading={issueTree.isFetching}
         pagination={false}
