@@ -292,19 +292,33 @@ class JiraClient:
         project_keys: List[str],
         since: Optional[datetime] = None,
         max_results: int = 100,
+        extra_fields: Optional[List[str]] = None,
     ) -> AsyncIterator[JiraIssueSchema]:
-        """Get issues updated since a given timestamp (incremental sync)."""
+        """Get issues updated since a given timestamp (incremental sync).
+
+        ``extra_fields`` — дополнительные кастомные поля (например, ID полей команды),
+        добавляются к стандартному списку и попадают в ``JiraIssueFieldsSchema._extra``.
+        """
         projects_jql = ", ".join(f'"{k}"' for k in project_keys)
         jql = f"project in ({projects_jql})"
-        
+
         if since:
             # Format: "2024-01-15 10:30"
             since_str = since.strftime("%Y-%m-%d %H:%M")
             jql += f' AND updated >= "{since_str}"'
-        
+
         jql += " ORDER BY updated ASC"
-        
-        async for issue in self.iter_issues(jql=jql, max_results=max_results):
+
+        fields = None
+        if extra_fields:
+            default_fields = [
+                "summary", "description", "issuetype", "status",
+                "priority", "project", "parent", "creator",
+                "assignee", "created", "updated",
+            ]
+            fields = default_fields + list(extra_fields)
+
+        async for issue in self.iter_issues(jql=jql, max_results=max_results, fields=fields):
             yield issue
     
     # === Worklog methods ===

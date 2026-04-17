@@ -1,7 +1,8 @@
 """Sync service - orchestrates Jira data synchronization."""
 
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
+import json
 import logging
 
 from sqlalchemy.orm import Session
@@ -18,7 +19,40 @@ from app.models import (
     Employee, Project, Issue, Worklog, Comment,
     SyncState, ScopeProject,
 )
+from app.models.app_setting import AppSetting
 from app.repositories.base import BaseRepository
+
+
+def _extract_team_values(extra: dict, field_id: Optional[str]) -> List[str]:
+    """Вытащить значения team-поля из raw ``fields`` (см. JiraIssueFieldsSchema._extra).
+
+    Jira кастомные поля команды встречаются в трёх формах:
+    - ``None`` — не установлено
+    - ``{"value": "Team A"}`` — single-select
+    - ``[{"value": "Team A"}, {"value": "Team B"}]`` — multi-select
+    - ``"Team A"`` — plain text (редко)
+    """
+    if not field_id:
+        return []
+    value = extra.get(field_id)
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        v = value.get("value")
+        return [v] if v else []
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            if isinstance(item, dict):
+                v = item.get("value")
+                if v:
+                    out.append(v)
+            elif isinstance(item, str):
+                out.append(item)
+        return out
+    return []
 
 
 logger = logging.getLogger("jira_analytics.sync")
@@ -100,6 +134,11 @@ class SyncService:
     def _get_sync_state(self, entity_name: str) -> Optional[SyncState]:
         """Get sync state for entity."""
         return self.sync_state_repo.get_by_field("entity_name", entity_name)
+
+    def _get_setting(self, key: str) -> Optional[str]:
+        """Прочитать значение из AppSetting."""
+        row = self.db.query(AppSetting).filter(AppSetting.key == key).first()
+        return row.value if row else None
     
     def _update_sync_state(
         self,
@@ -210,6 +249,8 @@ class SyncService:
         jira_issue: JiraIssueSchema,
         project_id: str,
         parent_id: Optional[str] = None,
+        team: Optional[str] = None,
+        participating_teams: Optional[List[str]] = None,
     ) -> Tuple[Issue, bool]:
         """Upsert issue from Jira."""
         data = {
@@ -224,6 +265,10 @@ class SyncService:
             "parent_id": parent_id,
             "synced_at": datetime.utcnow(),
         }
+        if team is not None:
+            data["team"] = team
+        if participating_teams is not None:
+            data["participating_teams"] = json.dumps(participating_teams, ensure_ascii=False)
         return self.issue_repo.upsert_by_field(
             "jira_issue_id",
             jira_issue.id,
@@ -258,10 +303,10 @@ class SyncService:
         if not projects:
             logger.warning("No projects to sync")
             return 0
-        
+
         keys = [p.key for p in projects]
         logger.info(f"Syncing issues for {len(keys)} projects: {keys[:5]}...")
-        
+
         # Get last sync time for incremental
         since = None
         if incremental:
@@ -269,12 +314,20 @@ class SyncService:
             if state and state.last_success_at:
                 since = state.last_success_at
                 logger.info(f"Incremental sync since {since}")
-        
+
+        # Read team field IDs from AppSetting — if configured, request them from Jira
+        product_field_id = self._get_setting("jira_team_field_id")
+        participating_field_id = self._get_setting("jira_participating_teams_field_id")
+        extra_fields = [
+            fid for fid in (product_field_id, participating_field_id) if fid
+        ]
+
         count = 0
         unresolved_parents: List[Tuple[str, str]] = []  # (child_issue_id, parent_key)
         async for jira_issue in self.jira.get_issues_updated_since(
             project_keys=keys,
             since=since,
+            extra_fields=extra_fields,
         ):
             # Find local project
             project = self._get_project_by_jira_id(jira_issue.fields.project.id)
@@ -294,8 +347,22 @@ class SyncService:
             if jira_issue.fields.creator:
                 self._ensure_employee(jira_issue.fields.creator)
 
+            # Extract team values from custom fields if configured
+            team_val: Optional[str] = None
+            participating_vals: Optional[List[str]] = None
+            if extra_fields:
+                extra = jira_issue.fields._extra
+                if product_field_id:
+                    prod = _extract_team_values(extra, product_field_id)
+                    team_val = prod[0] if prod else None
+                if participating_field_id:
+                    participating_vals = _extract_team_values(extra, participating_field_id)
+
             # Upsert issue
-            issue, created = self._upsert_issue(jira_issue, project.id, parent_id)
+            issue, created = self._upsert_issue(
+                jira_issue, project.id, parent_id,
+                team=team_val, participating_teams=participating_vals,
+            )
             if created:
                 self.stats.issues_created += 1
             self.stats.issues_synced += 1
