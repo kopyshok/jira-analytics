@@ -414,10 +414,91 @@ class SyncService:
 
         self._update_sync_state("issues", datetime.utcnow())
         self.db.commit()
-        
+
         logger.info(f"Issues sync complete: {count} synced, {self.stats.issues_created} created")
         return count
-    
+
+    async def refresh_issues_by_keys(self, jira_keys: List[str]) -> Tuple[int, int]:
+        """Точечная синхронизация: перечитать с Jira только переданные ключи.
+
+        Полезно, когда нужно дотащить новое поле (например,
+        ``status_changed_at``) по уже существующему набору задач без
+        полной пересинхронизации. Новые задачи НЕ создаются — если
+        ключа нет локально, он молча пропускается.
+
+        Returns ``(matched, total_requested)``.
+        """
+        if not jira_keys:
+            return 0, 0
+
+        product_field_id = self._get_setting("jira_team_field_id")
+        participating_field_id = self._get_setting("jira_participating_teams_field_id")
+        extra_fields = [
+            fid for fid in (product_field_id, participating_field_id) if fid
+        ]
+        base_fields = [
+            "summary", "description", "issuetype", "status",
+            "priority", "project", "parent", "creator",
+            "assignee", "created", "updated",
+            "statuscategorychangedate",
+        ]
+        fields = base_fields + list(extra_fields)
+
+        BATCH = 100
+        matched = 0
+        total = len(jira_keys)
+        logger.info(f"Refreshing {total} issues by key (batch={BATCH})")
+
+        for i in range(0, total, BATCH):
+            batch = jira_keys[i:i + BATCH]
+            keys_jql = ", ".join(f'"{k}"' for k in batch)
+            jql = f"key in ({keys_jql})"
+
+            async for jira_issue in self.jira.iter_issues(
+                jql=jql,
+                max_results=BATCH,
+                fields=fields,
+            ):
+                existing = self.issue_repo.get_by_field("jira_issue_id", jira_issue.id)
+                if not existing:
+                    continue
+
+                project = self._get_project_by_jira_id(jira_issue.fields.project.id)
+                if not project:
+                    continue
+
+                parent_id = None
+                parent_key = jira_issue.fields.parent_key
+                if parent_key:
+                    parent = self.issue_repo.get_by_field("key", parent_key)
+                    if parent:
+                        parent_id = parent.id
+
+                if jira_issue.fields.creator:
+                    self._ensure_employee(jira_issue.fields.creator)
+
+                team_val: Optional[str] = None
+                participating_vals: Optional[List[str]] = None
+                if extra_fields:
+                    extra = jira_issue.fields._extra
+                    if product_field_id:
+                        prod = _extract_team_values(extra, product_field_id)
+                        team_val = prod[0] if prod else None
+                    if participating_field_id:
+                        participating_vals = _extract_team_values(extra, participating_field_id)
+
+                self._upsert_issue(
+                    jira_issue, project.id, parent_id,
+                    team=team_val, participating_teams=participating_vals,
+                )
+                matched += 1
+
+            self.db.commit()
+            logger.debug(f"Refreshed {matched} issues so far ({i + len(batch)}/{total} keys processed)")
+
+        logger.info(f"Refresh complete: {matched} of {total} updated")
+        return matched, total
+
     # === Worklog sync ===
     
     def _get_employee_by_jira_id(self, jira_account_id: str) -> Optional[Employee]:
