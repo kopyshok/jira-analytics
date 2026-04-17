@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, type HTMLAttributes, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App, Input, Switch,
   Tabs, Select, Typography, Modal, Checkbox, Popconfirm,
@@ -16,7 +16,7 @@ import { useJiraSettings, useSaveJiraSettings, useTestJiraCredentials, useSaveGe
 import {
   useSyncStatus, useSyncMutation, useRecalculateMapping,
   useJiraProjects, useBatchScopeProjects,
-  useJiraTeams, useJiraFields, useRefreshIssuesByKeys,
+  useJiraTeams, useJiraFields, useRefreshIssuesByKeys, useSyncTeams,
 } from '../hooks/useSync';
 import {
   useScopeProjects, useRemoveScopeProject,
@@ -523,6 +523,84 @@ function matchesTab(effective: string | null, tab: InnerTab): boolean {
   }
 }
 
+// ─── Memoised table cells ────────────────────────────────────────
+// Cell rerenders are driven by primitive per-row props, not the whole
+// record — so selecting a checkbox (which only flips rowSelection)
+// never re-enters these components.
+
+type CategoryCellProps = {
+  issueId: string;
+  isGroup: boolean;
+  isContext: boolean;
+  hasPending: boolean;
+  pendingValue: string | undefined;
+  assignedValue: string | undefined;
+  inheritedAssigned: string | null | undefined;
+  derivedCategory: string | null;
+  categoryOptions: { value: string; label: string }[];
+  categoryLabels: Record<string, string>;
+  onChange: (issueId: string, code: string | null) => void;
+};
+
+const CategoryCell = memo(function CategoryCell({
+  issueId, isGroup, isContext,
+  hasPending, pendingValue, assignedValue,
+  inheritedAssigned, derivedCategory,
+  categoryOptions, categoryLabels, onChange,
+}: CategoryCellProps) {
+  if (isGroup) return null;
+  if (isContext) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
+  const value = hasPending ? pendingValue : assignedValue;
+  const ancestorCat = !value ? inheritedAssigned ?? null : null;
+  const derivedCat = !value && !ancestorCat ? derivedCategory : null;
+  const placeholderCode = ancestorCat ?? derivedCat;
+  const placeholderLabel = placeholderCode
+    ? (ancestorCat ? '↑ ' : '') + (categoryLabels[placeholderCode] || placeholderCode)
+    : 'Не назначена';
+  return (
+    <Select
+      placeholder={placeholderLabel}
+      value={value}
+      onChange={(val) => onChange(issueId, val || null)}
+      allowClear
+      size="small"
+      style={{
+        width: '100%',
+        opacity: !value && placeholderCode ? 0.6 : 1,
+        boxShadow: hasPending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
+      }}
+      options={categoryOptions}
+    />
+  );
+});
+
+type IncludeCellProps = {
+  issueId: string;
+  isGroup: boolean;
+  isContext: boolean;
+  checked: boolean;
+  onToggle: (issueId: string, checked: boolean) => void;
+};
+
+const IncludeCell = memo(function IncludeCell({
+  issueId, isGroup, isContext, checked, onToggle,
+}: IncludeCellProps) {
+  if (isGroup) return null;
+  return (
+    <Checkbox
+      checked={checked}
+      disabled={isContext}
+      onChange={(e) => onToggle(issueId, e.target.checked)}
+    />
+  );
+});
+
+// Constant Table props — lifted out of render so every click doesn't
+// hand AntD a fresh object reference.
+const tableComponents = { header: { cell: ResizableTitle } };
+const tableExpandable = { defaultExpandAllRows: false };
+const tableScroll = { y: 600 };
+
 function CategoryConfigTab() {
   const { notification, message } = App.useApp();
   const qc = useQueryClient();
@@ -570,6 +648,7 @@ function CategoryConfigTab() {
   const setIncludeMut = useSetIssueInclude();
   const batchCategoryMut = useBatchSetCategory();
   const refreshMut = useRefreshIssuesByKeys();
+  const syncTeamsMut = useSyncTeams();
   const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
   const treeQueryKey = useMemo(() => ['issues', 'tree', issueTreeParams], [issueTreeParams]);
@@ -668,23 +747,48 @@ function CategoryConfigTab() {
     : innerTab === 'archive_target' ? archiveTargetData
     : archiveData;
 
-  // Optimistic toggle for include_in_analysis
-  const toggleInclude = (record: IssueTreeNode, checked: boolean) => {
-    const recursive = (record.children?.length ?? 0) > 0;
+  // Counts walk the whole tree — memoise per tab so selectedIds changes
+  // don't re-trigger four tree walks. countTriage closes over pendingCats
+  // (via effectiveFor/effectiveAssigned), so we match the buildTabData
+  // deps pattern: whenever pendingCats changes, tabData is rebuilt too.
+  const stackCount = useMemo(() => countTriage(stackData, 'stack'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stackData]);
+  const activeCount = useMemo(() => countTriage(activeData, 'active'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeData]);
+  const archiveTargetCount = useMemo(() => countTriage(archiveTargetData, 'archive_target'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [archiveTargetData]);
+  const archiveCount = useMemo(() => countTriage(archiveData, 'archive'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [archiveData]);
+
+  const tabItems = useMemo(() => [
+    { key: 'stack', label: `Стек задач к разбору (${stackCount})` },
+    { key: 'active', label: `Активный стек (${activeCount})` },
+    { key: 'archive_target', label: `Архив квартальных задач (${archiveTargetCount})` },
+    { key: 'archive', label: `Архив прочих задач (${archiveCount})` },
+  ], [stackCount, activeCount, archiveTargetCount, archiveCount]);
+
+  // Optimistic toggle for include_in_analysis.
+  // Takes (issueId, hasChildren) instead of full record so memoized cells
+  // can pass only primitives and benefit from React.memo equality.
+  const toggleInclude = useCallback((issueId: string, hasChildren: boolean, checked: boolean) => {
     const patchSubtree = (node: IssueTreeNode): IssueTreeNode => ({
       ...node,
       include_in_analysis: checked,
       children: node.children.map(patchSubtree),
     });
     const patchTree = (nodes: IssueTreeNode[]): IssueTreeNode[] => nodes.map(n => {
-      if (n.id === record.id) {
-        return recursive ? patchSubtree(n) : { ...n, include_in_analysis: checked };
+      if (n.id === issueId) {
+        return hasChildren ? patchSubtree(n) : { ...n, include_in_analysis: checked };
       }
       return { ...n, children: patchTree(n.children) };
     });
     qc.setQueryData<IssueTreeNode[]>(treeQueryKey, (old) => old ? patchTree(old) : old);
     setIncludeMut.mutate(
-      { issueId: record.id, include: checked, recursive },
+      { issueId, include: checked, recursive: hasChildren },
       {
         onError: (err) => {
           notification.error({ message: 'Ошибка', description: err.message });
@@ -692,26 +796,48 @@ function CategoryConfigTab() {
         },
       },
     );
-  };
+  }, [qc, treeQueryKey, setIncludeMut, notification, issueTree]);
 
-  const handleResize = (colKey: string) =>
+  const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
       setWidths(w => ({ ...w, [colKey]: size.width }));
-    };
+    },
+  []);
 
-  const setPendingCategory = (issueId: string, code: string | null) => {
+  const setPendingCategory = useCallback((issueId: string, code: string | null) => {
     setPendingCats(prev => {
       const next = new Map(prev);
       next.set(issueId, code);
       return next;
     });
-  };
+  }, []);
+
+  // Ids of context rows — ancestor rows outside the team filter, surfaced
+  // only to keep hierarchy readable. The user can tick their checkbox as a
+  // bulk-select gesture (cascade picks up descendants), but the context row
+  // itself must never receive a category.
+  const contextIdSet = useMemo(() => {
+    const out = new Set<string>();
+    const walk = (nodes: IssueTreeNode[]) => {
+      nodes.forEach(n => {
+        if (n.is_context) out.add(n.id);
+        walk(n.children);
+      });
+    };
+    walk(issueTree.data ?? []);
+    return out;
+  }, [issueTree.data]);
+
+  const applicableSelectedIds = useMemo(
+    () => selectedIds.filter(id => !contextIdSet.has(id)),
+    [selectedIds, contextIdSet],
+  );
 
   const applyBulkCategory = () => {
-    if (!bulkCategory || selectedIds.length === 0) return;
+    if (!bulkCategory || applicableSelectedIds.length === 0) return;
     setPendingCats(prev => {
       const next = new Map(prev);
-      selectedIds.forEach(id => next.set(id, bulkCategory));
+      applicableSelectedIds.forEach(id => next.set(id, bulkCategory));
       return next;
     });
     setBulkModalOpen(false);
@@ -763,146 +889,154 @@ function CategoryConfigTab() {
     }
   };
 
-  const baseColumns = [
-    {
-      title: 'Ключ',
-      dataIndex: 'key',
-      key: 'key',
-      width: widths.key,
-      render: (key: string, record: IssueTreeNode) => {
-        if (record.issue_type === 'group' || !key) return null;
-        if (!jiraBaseUrl) return <Text strong>{key}</Text>;
-        return (
-          <Typography.Link href={`${jiraBaseUrl}/browse/${key}`} target="_blank" rel="noreferrer">
-            {key}
-          </Typography.Link>
-        );
+  // Memoised columns — stable across selectedIds changes, rebuilds only
+  // when the inputs actually affecting cell output change. This is the
+  // main fix for checkbox-click latency on large trees.
+  const columns = useMemo(() => {
+    const base = [
+      {
+        title: 'Ключ',
+        dataIndex: 'key',
+        key: 'key',
+        width: widths.key,
+        render: (key: string, record: IssueTreeNode) => {
+          if (record.issue_type === 'group' || !key) return null;
+          if (!jiraBaseUrl) return <Text strong>{key}</Text>;
+          return (
+            <Typography.Link href={`${jiraBaseUrl}/browse/${key}`} target="_blank" rel="noreferrer">
+              {key}
+            </Typography.Link>
+          );
+        },
       },
-    },
-    {
-      title: 'Название',
-      dataIndex: 'summary',
-      key: 'summary',
-      width: widths.summary,
-      render: (s: string) => <Text>{s}</Text>,
-    },
-    {
-      title: 'Статус',
-      dataIndex: 'status',
-      key: 'status',
-      width: widths.status,
-      render: (v: string, record: IssueTreeNode) =>
-        v ? <Tag color={statusTagColor(v, record.status_category)}>{v}</Tag> : null,
-    },
-    {
-      title: 'Статус изменён',
-      dataIndex: 'status_changed_at',
-      key: 'statusChanged',
-      width: widths.statusChanged,
-      sorter: (a: IssueTreeNode, b: IssueTreeNode) => {
-        const ta = a.status_changed_at ? new Date(a.status_changed_at).getTime() : 0;
-        const tb = b.status_changed_at ? new Date(b.status_changed_at).getTime() : 0;
-        return ta - tb;
+      {
+        title: 'Название',
+        dataIndex: 'summary',
+        key: 'summary',
+        width: widths.summary,
+        render: (s: string) => <Text>{s}</Text>,
       },
-      render: (iso: string | null, record: IssueTreeNode) => {
-        if (record.issue_type === 'group') return null;
-        if (!iso) return <Text type="secondary">—</Text>;
-        const days = daysSince(iso);
-        let ageColor: string = DARK_THEME.textMuted;
-        if (days !== null) {
-          if (days >= 365) ageColor = '#ff7875';
-          else if (days >= 180) ageColor = DARK_THEME.yellow;
-        }
-        return (
-          <Space direction="vertical" size={0} style={{ lineHeight: 1.1 }}>
-            <Text style={{ fontSize: 12 }}>{formatDateOnly(iso)}</Text>
-            {days !== null && (
-              <Text style={{ fontSize: 11, color: ageColor }}>{days} д назад</Text>
-            )}
-          </Space>
-        );
+      {
+        title: 'Статус',
+        dataIndex: 'status',
+        key: 'status',
+        width: widths.status,
+        render: (v: string, record: IssueTreeNode) =>
+          v ? <Tag color={statusTagColor(v, record.status_category)}>{v}</Tag> : null,
       },
-    },
-    {
-      title: 'Цели',
-      dataIndex: 'goals',
-      key: 'goals',
-      width: widths.goals,
-      sorter: (a: IssueTreeNode, b: IssueTreeNode) => (a.goals ?? '').localeCompare(b.goals ?? ''),
-      render: (v: string | null, record: IssueTreeNode) => {
-        if (record.issue_type === 'group') return null;
-        if (!v) return <Text type="secondary">—</Text>;
-        return (
-          <Space size={4} wrap>
-            {v.split(',').map(s => s.trim()).filter(Boolean).map(tag => (
-              <Tag key={tag} color="purple">{tag}</Tag>
-            ))}
-          </Space>
-        );
+      {
+        title: 'Статус изменён',
+        dataIndex: 'status_changed_at',
+        key: 'statusChanged',
+        width: widths.statusChanged,
+        sorter: (a: IssueTreeNode, b: IssueTreeNode) => {
+          const ta = a.status_changed_at ? new Date(a.status_changed_at).getTime() : 0;
+          const tb = b.status_changed_at ? new Date(b.status_changed_at).getTime() : 0;
+          return ta - tb;
+        },
+        render: (iso: string | null, record: IssueTreeNode) => {
+          if (record.issue_type === 'group') return null;
+          if (!iso) return <Text type="secondary">—</Text>;
+          const days = daysSince(iso);
+          let ageColor: string = DARK_THEME.textMuted;
+          if (days !== null) {
+            if (days >= 365) ageColor = '#ff7875';
+            else if (days >= 180) ageColor = DARK_THEME.yellow;
+          }
+          return (
+            <Space direction="vertical" size={0} style={{ lineHeight: 1.1 }}>
+              <Text style={{ fontSize: 12 }}>{formatDateOnly(iso)}</Text>
+              {days !== null && (
+                <Text style={{ fontSize: 11, color: ageColor }}>{days} д назад</Text>
+              )}
+            </Space>
+          );
+        },
       },
-    },
-    {
-      title: 'Категория',
-      key: 'category',
-      width: widths.category,
-      render: (_: unknown, record: TreeNodeWithChildren) => {
-        if (record.issue_type === 'group') return null;
-        if (record.is_context) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
-        const pending = pendingCats.has(record.id);
-        const value = pending ? (pendingCats.get(record.id) ?? undefined) : (record.assigned_category || undefined);
-        const ancestorCat = !value ? record.__inheritedAssigned : null;
-        const derivedCat = !value && !ancestorCat ? record.category : null;
-        const placeholderCode = ancestorCat ?? derivedCat;
-        const placeholderLabel = placeholderCode
-          ? (ancestorCat ? '↑ ' : '') + (categoryLabels[placeholderCode] || placeholderCode)
-          : 'Не назначена';
-        return (
-          <Select
-            placeholder={placeholderLabel}
-            value={value}
-            onChange={(val) => setPendingCategory(record.id, val || null)}
-            allowClear
-            size="small"
-            style={{
-              width: '100%',
-              opacity: !value && placeholderCode ? 0.6 : 1,
-              boxShadow: pending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
-            }}
-            options={categoryOptions}
+      {
+        title: 'Цели',
+        dataIndex: 'goals',
+        key: 'goals',
+        width: widths.goals,
+        sorter: (a: IssueTreeNode, b: IssueTreeNode) => (a.goals ?? '').localeCompare(b.goals ?? ''),
+        render: (v: string | null, record: IssueTreeNode) => {
+          if (record.issue_type === 'group') return null;
+          if (!v) return <Text type="secondary">—</Text>;
+          return (
+            <Space size={4} wrap>
+              {v.split(',').map(s => s.trim()).filter(Boolean).map(tag => (
+                <Tag key={tag} color="purple">{tag}</Tag>
+              ))}
+            </Space>
+          );
+        },
+      },
+      {
+        title: 'Категория',
+        key: 'category',
+        width: widths.category,
+        render: (_: unknown, record: TreeNodeWithChildren) => (
+          <CategoryCell
+            issueId={record.id}
+            isGroup={record.issue_type === 'group'}
+            isContext={!!record.is_context}
+            hasPending={pendingCats.has(record.id)}
+            pendingValue={pendingCats.get(record.id) ?? undefined}
+            assignedValue={record.assigned_category || undefined}
+            inheritedAssigned={record.__inheritedAssigned}
+            derivedCategory={record.category}
+            categoryOptions={categoryOptions}
+            categoryLabels={categoryLabels}
+            onChange={setPendingCategory}
           />
-        );
+        ),
       },
-    },
-    {
-      title: 'В анализ',
-      key: 'include',
-      width: widths.include,
-      render: (_: unknown, record: IssueTreeNode) => {
-        if (record.issue_type === 'group') return null;
-        return (
-          <Checkbox
+      {
+        title: 'В анализ',
+        key: 'include',
+        width: widths.include,
+        render: (_: unknown, record: TreeNodeWithChildren) => (
+          <IncludeCell
+            issueId={record.id}
+            isGroup={record.issue_type === 'group'}
+            isContext={!!record.is_context}
             checked={record.include_in_analysis}
-            disabled={record.is_context}
-            onChange={(e) => toggleInclude(record, e.target.checked)}
+            onToggle={(id, checked) =>
+              toggleInclude(id, (record.children?.length ?? 0) > 0, checked)
+            }
           />
-        );
+        ),
       },
-    },
-  ];
+    ];
+    return base.map(col => ({
+      ...col,
+      onHeaderCell: () => ({ width: col.width, onResize: handleResize(col.key) }),
+    }));
+  }, [
+    widths, jiraBaseUrl,
+    pendingCats, categoryOptions, categoryLabels,
+    setPendingCategory, toggleInclude, handleResize,
+  ]);
 
-  const columns = baseColumns.map(col => ({
-    ...col,
-    onHeaderCell: () => ({ width: col.width, onResize: handleResize(col.key) }),
-  }));
-
-  const rowSelection = {
+  // rowSelection is stable across everything but selectedIds changes, so
+  // AntD updates only the checkbox column internally.
+  // Context rows are selectable (as a cascade handle for their subtree),
+  // but the apply step filters them out so they don't pick up a category.
+  const rowSelection = useMemo(() => ({
     selectedRowKeys: selectedIds,
     onChange: (keys: React.Key[]) => setSelectedIds(keys.map(String)),
     checkStrictly: false,
     getCheckboxProps: (record: TreeNodeWithChildren) => ({
-      disabled: record.issue_type === 'group' || !!record.is_context,
+      disabled: record.issue_type === 'group',
     }),
-  };
+  }), [selectedIds]);
+
+  const rowClassName = useCallback((record: TreeNodeWithChildren) => {
+    const depth = Math.min(record.__depth ?? 0, 5);
+    const hasKids = (record.children?.length ?? 0) > 0;
+    const ctx = record.is_context ? ' tree-row-context' : '';
+    return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}${ctx}`;
+  }, []);
 
   const hasPending = pendingCats.size > 0;
 
@@ -978,12 +1112,49 @@ function CategoryConfigTab() {
             Получить перечень задач
           </Button>
         )}
+        <Popconfirm
+          title="Быстрая синхронизация команд"
+          description={
+            <div style={{ maxWidth: 340 }}>
+              Подтянет с Jira новые и изменённые задачи выбранных команд
+              за прошедший период. У каждой команды свой курсор —
+              повторный запуск грузит только свежее.
+            </div>
+          }
+          icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+          okText="Запустить"
+          cancelText="Отмена"
+          onConfirm={() => {
+            syncTeamsMut.mutate(selectedTeams, {
+              onSuccess: (res) => {
+                notification.success({
+                  message: 'Синхронизация команд',
+                  description: res.message,
+                });
+                issueTree.refetch();
+              },
+              onError: (e) => notification.error({
+                message: 'Ошибка синхронизации команд',
+                description: e.message,
+              }),
+            });
+          }}
+          disabled={selectedTeams.length === 0 || syncTeamsMut.isPending}
+        >
+          <Button
+            icon={<ReloadOutlined spin={syncTeamsMut.isPending} />}
+            disabled={selectedTeams.length === 0 || syncTeamsMut.isPending}
+            loading={syncTeamsMut.isPending}
+          >
+            Обновить команды ({selectedTeams.length})
+          </Button>
+        </Popconfirm>
         <Button
           icon={<CheckOutlined />}
-          disabled={selectedIds.length === 0}
+          disabled={applicableSelectedIds.length === 0}
           onClick={() => setBulkModalOpen(true)}
         >
-          Установить категорию отмеченным ({selectedIds.length})
+          Установить категорию отмеченным ({applicableSelectedIds.length})
         </Button>
         <Popconfirm
           title="Обновить с Jira видимые задачи"
@@ -1031,33 +1202,23 @@ function CategoryConfigTab() {
       <Tabs
         activeKey={innerTab}
         onChange={(k) => setInnerTab(k as InnerTab)}
-        items={[
-          { key: 'stack', label: `Стек задач к разбору (${countTriage(stackData, 'stack')})` },
-          { key: 'active', label: `Активный стек (${countTriage(activeData, 'active')})` },
-          { key: 'archive_target', label: `Архив квартальных задач (${countTriage(archiveTargetData, 'archive_target')})` },
-          { key: 'archive', label: `Архив прочих задач (${countTriage(archiveData, 'archive')})` },
-        ]}
+        items={tabItems}
       />
       <Table<TreeNodeWithChildren>
         dataSource={tabData}
         columns={columns as never}
-        components={{ header: { cell: ResizableTitle } }}
+        components={tableComponents}
         rowKey="id"
         rowSelection={rowSelection}
-        rowClassName={(record) => {
-          const depth = Math.min(record.__depth ?? 0, 5);
-          const hasKids = (record.children?.length ?? 0) > 0;
-          const ctx = record.is_context ? ' tree-row-context' : '';
-          return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}${ctx}`;
-        }}
+        rowClassName={rowClassName}
         loading={issueTree.isFetching}
         pagination={false}
         size="small"
-        expandable={{ defaultExpandAllRows: false }}
-        scroll={{ y: 600 }}
+        expandable={tableExpandable}
+        scroll={tableScroll}
       />
       <Modal
-        title={`Установить категорию для ${selectedIds.length} задач`}
+        title={`Установить категорию для ${applicableSelectedIds.length} задач`}
         open={bulkModalOpen}
         onCancel={() => { setBulkModalOpen(false); setBulkCategory(undefined); }}
         onOk={applyBulkCategory}
@@ -1067,6 +1228,13 @@ function CategoryConfigTab() {
       >
         <Text type="secondary">
           Категория будет отмечена как «к сохранению». Для применения нажмите «Сохранить».
+          {selectedIds.length > applicableSelectedIds.length && (
+            <>
+              <br />
+              Контекстные строки (родители вне фильтра команды) пропускаются — отмечено
+              {' '}{selectedIds.length - applicableSelectedIds.length}, категорию получат {applicableSelectedIds.length}.
+            </>
+          )}
         </Text>
         <div style={{ marginTop: 12 }}>
           <Select
@@ -1127,7 +1295,14 @@ function SyncControls() {
   };
 
   const statusColumns = [
-    { title: 'Сущность', dataIndex: 'entity', key: 'entity' },
+    {
+      title: 'Сущность',
+      key: 'entity',
+      render: (_: unknown, record: SyncStatusResponse) =>
+        record.scope
+          ? <>{record.entity} <Tag color="geekblue">{record.scope}</Tag></>
+          : record.entity,
+    },
     {
       title: 'Последняя синхронизация',
       dataIndex: 'last_sync',
@@ -1212,7 +1387,7 @@ function SyncControls() {
         <Table<SyncStatusResponse>
           dataSource={statuses}
           columns={statusColumns}
-          rowKey="entity"
+          rowKey={(r) => `${r.entity}::${r.scope}`}
           loading={isLoading}
           pagination={false}
           size="small"

@@ -151,26 +151,38 @@ class SyncService:
             if sp.is_enabled
         ]
 
-    def _get_sync_state(self, entity_name: str) -> Optional[SyncState]:
-        """Get sync state for entity."""
-        return self.sync_state_repo.get_by_field("entity_name", entity_name)
+    def _get_sync_state(self, entity_name: str, scope: str = "") -> Optional[SyncState]:
+        """Get sync state for ``(entity_name, scope)``.
+
+        ``scope=""`` is the global cursor (the old pre-013 behaviour).
+        Non-empty ``scope`` indicates a per-team (or other discriminator)
+        cursor — e.g. ``scope="Team X"``.
+        """
+        from sqlalchemy import select
+        stmt = select(SyncState).where(
+            SyncState.entity_name == entity_name,
+            SyncState.scope == scope,
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def _get_setting(self, key: str) -> Optional[str]:
         """Прочитать значение из AppSetting."""
         row = self.db.query(AppSetting).filter(AppSetting.key == key).first()
         return row.value if row else None
-    
+
     def _update_sync_state(
         self,
         entity_name: str,
         last_success: datetime,
         cursor: Optional[str] = None,
         error: Optional[str] = None,
+        scope: str = "",
     ):
-        """Update or create sync state."""
-        state = self._get_sync_state(entity_name)
+        """Update or create sync state row for ``(entity_name, scope)``."""
+        state = self._get_sync_state(entity_name, scope)
         data = {
             "entity_name": entity_name,
+            "scope": scope,
             "last_success_at": last_success,
             "cursor_value": cursor,
             "last_error": error,
@@ -517,6 +529,160 @@ class SyncService:
 
         logger.info(f"Refresh complete: {matched} of {total} updated")
         return matched, total
+
+    async def sync_team_issues(self, teams: List[str]) -> dict:
+        """Подтянуть новые/изменённые задачи выбранных команд за день.
+
+        Для каждой команды строим JQL вида
+        ``project in (scope) AND (cf[X]="team" OR cf[Y]="team")
+        AND updated >= "<team-cursor>"`` и идём по страницам Jira.
+        Курсор хранится в ``sync_state(entity_name="issues", scope=<team>)``
+        и обновляется только на успех. Новые задачи создаются, изменённые —
+        апдейтятся через штатный ``_upsert_issue``.
+
+        Returns dict ``{team_name: {"matched": N, "created": M, "since": iso|null}}``.
+        """
+        if not teams:
+            return {}
+
+        product_field_id = self._get_setting("jira_team_field_id")
+        participating_field_id = self._get_setting("jira_participating_teams_field_id")
+        goals_field_id = self._get_setting("jira_goals_field_id")
+        extra_fields = [
+            fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
+        ]
+
+        # Dedupe field ids when product/participating point to the same column
+        # (common in this tenant — both = customfield_11526).
+        team_field_ids: list[str] = []
+        for fid in (product_field_id, participating_field_id):
+            if fid and fid not in team_field_ids:
+                team_field_ids.append(fid)
+        if not team_field_ids:
+            raise ValueError(
+                "Не настроены поля команды в AppSetting "
+                "('jira_team_field_id' / 'jira_participating_teams_field_id')"
+            )
+
+        scope_keys = self._get_scope_project_keys()
+        if not scope_keys:
+            raise ValueError("Scope проектов пуст — нечего синхронизировать")
+
+        base_fields = [
+            "summary", "description", "issuetype", "status",
+            "priority", "project", "parent", "creator",
+            "assignee", "created", "updated",
+            "statuscategorychangedate",
+        ]
+        request_fields = base_fields + list(extra_fields)
+
+        projects_jql = ", ".join(f'"{k}"' for k in scope_keys)
+
+        report: dict = {}
+        for team in teams:
+            state = self._get_sync_state("issues", scope=team)
+            since = state.last_success_at if state else None
+            run_start = datetime.utcnow()
+
+            team_escaped = team.replace('"', '\\"')
+            cf_clauses = [self._team_jql_clause(fid, team_escaped) for fid in team_field_ids]
+            team_clause = cf_clauses[0] if len(cf_clauses) == 1 else "(" + " OR ".join(cf_clauses) + ")"
+            jql = f"project in ({projects_jql}) AND {team_clause}"
+            if since:
+                jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
+            jql += " ORDER BY updated ASC"
+
+            logger.info(f"Team sync [{team}]: JQL={jql!r}")
+            matched = 0
+            created = 0
+            try:
+                async for jira_issue in self.jira.iter_issues(
+                    jql=jql,
+                    max_results=100,
+                    fields=request_fields,
+                ):
+                    project = self._get_project_by_jira_id(jira_issue.fields.project.id)
+                    if not project:
+                        continue
+
+                    parent_id = None
+                    parent_key = jira_issue.fields.parent_key
+                    if parent_key:
+                        parent = self.issue_repo.get_by_field("key", parent_key)
+                        if parent:
+                            parent_id = parent.id
+
+                    if jira_issue.fields.creator:
+                        self._ensure_employee(jira_issue.fields.creator)
+
+                    team_val: Optional[str] = None
+                    participating_vals: Optional[List[str]] = None
+                    goals_val: Optional[str] = None
+                    extra = jira_issue.fields._extra
+                    if product_field_id:
+                        prod = _extract_team_values(extra, product_field_id)
+                        team_val = prod[0] if prod else None
+                    if participating_field_id:
+                        participating_vals = _extract_team_values(extra, participating_field_id)
+                    if goals_field_id:
+                        goals_list = _extract_team_values(extra, goals_field_id)
+                        goals_val = ", ".join(goals_list) if goals_list else ""
+
+                    _, was_created = self._upsert_issue(
+                        jira_issue, project.id, parent_id,
+                        team=team_val, participating_teams=participating_vals,
+                        goals=goals_val,
+                    )
+                    matched += 1
+                    if was_created:
+                        created += 1
+
+                    if matched % 50 == 0:
+                        self.db.commit()
+                # Successful run — move cursor forward. Buffer by 1 minute to
+                # cover any issue whose `updated` lands in the same minute as
+                # run_start (Jira JQL compares at minute granularity).
+                buffered = run_start.replace(second=0, microsecond=0)
+                # subtract 60s
+                from datetime import timedelta
+                cursor = buffered - timedelta(minutes=1)
+                self._update_sync_state(
+                    "issues", cursor, scope=team, error=None,
+                )
+                self.db.commit()
+                report[team] = {
+                    "matched": matched,
+                    "created": created,
+                    "since": since.isoformat() if since else None,
+                }
+            except Exception as exc:  # keep running for other teams
+                logger.exception(f"Team sync [{team}] failed")
+                self.db.rollback()
+                # Record the error on the team's cursor row (don't move it).
+                prev_since = state.last_success_at if state else None
+                self._update_sync_state(
+                    "issues",
+                    prev_since or datetime.utcfromtimestamp(0),
+                    scope=team,
+                    error=str(exc)[:2000],
+                )
+                self.db.commit()
+                report[team] = {"matched": matched, "created": created, "error": str(exc)}
+
+        return report
+
+    @staticmethod
+    def _team_jql_clause(field_id: str, team_value: str) -> str:
+        """Build a JQL equality clause for a Jira custom team field.
+
+        ``field_id`` is the AppSetting value (e.g. ``"customfield_11526"``);
+        Jira JQL expects ``cf[11526]`` numeric notation. Falls back to the
+        raw id in quotes if parsing fails — works for named fields.
+        """
+        numeric = field_id.split("_")[-1]
+        if numeric.isdigit():
+            return f'cf[{numeric}] = "{team_value}"'
+        return f'"{field_id}" = "{team_value}"'
 
     # === Worklog sync ===
     
