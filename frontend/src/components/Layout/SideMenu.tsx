@@ -14,7 +14,7 @@ const items = [
   { key: '/', icon: <DashboardOutlined />, label: 'Обзор' },
   { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
   { key: '/settings', icon: <SettingOutlined />, label: 'Настройки' },
-  { key: '/sync', icon: <SyncOutlined />, label: 'Jira и Scope' },
+  { key: '/sync', icon: <SyncOutlined />, label: 'Задачи и Синхронизация' },
   { key: '/capacity', icon: <TeamOutlined />, label: 'Ёмкость' },
   { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Бэклог' },
   { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Планирование' },
