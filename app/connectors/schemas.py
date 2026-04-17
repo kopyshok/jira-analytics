@@ -278,18 +278,25 @@ class JiraCommentsResponseSchema(BaseModel):
 class JiraSearchResponseSchema(BaseModel):
     """Paginated search response for issues.
 
-    New ``GET /search/jql`` may omit ``total``.  When absent, we assume
-    there are more pages if the number of returned issues equals ``maxResults``.
+    New ``GET /search/jql`` is cursor-based: response carries ``nextPageToken``
+    and ``isLast`` instead of ``startAt``/``total``.  Subsequent requests must
+    pass ``nextPageToken``; ``startAt`` is ignored.
     """
 
     startAt: int = 0
     maxResults: int = 50
     total: Optional[int] = None
     issues: List[JiraIssueSchema] = Field(default_factory=list)
+    nextPageToken: Optional[str] = None
+    isLast: Optional[bool] = None
 
     @property
     def has_more(self) -> bool:
         """Check if there are more results."""
+        if self.isLast is not None:
+            return not self.isLast
+        if self.nextPageToken is not None:
+            return True
         if self.total is not None:
             return self.startAt + len(self.issues) < self.total
         return len(self.issues) >= self.maxResults

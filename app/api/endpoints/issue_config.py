@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Issue, Project
+from app.models.app_setting import AppSetting
+from app.connectors.jira_client import JiraClient, JiraClientError
 
 router = APIRouter()
 
@@ -54,20 +56,53 @@ async def get_issue_tree(
 
     Фильтры:
     - project_keys — через запятую (PROJ1,PROJ2)
-    - team — значение поля team на задаче
+    - team — живой JQL-запрос к Jira через поля ``jira_team_field_id`` и
+      ``jira_participating_teams_field_id`` (OR), затем фильтр БД по полученным ключам
 
     Возвращает дерево, свёрнутое до 1-го уровня на фронте.
     Задачи без родителя (сироты) группируются в виртуальную группу.
     """
     query = db.query(Issue).join(Project, Issue.project_id == Project.id)
 
+    scope_keys: list[str] = []
     if project_keys:
-        keys = [k.strip() for k in project_keys.split(",") if k.strip()]
-        if keys:
-            query = query.filter(Project.key.in_(keys))
+        scope_keys = [k.strip() for k in project_keys.split(",") if k.strip()]
+        if scope_keys:
+            query = query.filter(Project.key.in_(scope_keys))
 
     if team:
-        query = query.filter(Issue.team == team)
+        rows = (
+            db.query(AppSetting)
+            .filter(AppSetting.key.in_(("jira_team_field_id", "jira_participating_teams_field_id")))
+            .all()
+        )
+        field_ids = [r.value for r in rows if r.value]
+        if not field_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Поля команды не настроены. Укажите jira_team_field_id и/или jira_participating_teams_field_id.",
+            )
+
+        team_clauses = " OR ".join(f'"{fid}" = "{team}"' for fid in field_ids)
+        project_clause = ""
+        if scope_keys:
+            projects_jql = ", ".join(f'"{k}"' for k in scope_keys)
+            project_clause = f"project IN ({projects_jql}) AND "
+        jql = f"{project_clause}({team_clauses})"
+
+        try:
+            async with JiraClient.from_db(db) as jira:
+                matching_keys: set[str] = set()
+                async for issue in jira.iter_issues(
+                    jql=jql,
+                    max_results=100,
+                    fields=["summary", "issuetype", "status", "project"],
+                ):
+                    matching_keys.add(issue.key)
+        except JiraClientError as e:
+            raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+        query = query.filter(Issue.key.in_(matching_keys))
 
     issues = query.all()
 

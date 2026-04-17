@@ -239,46 +239,53 @@ class JiraClient:
         start_at: int = 0,
         max_results: int = 100,
         fields: Optional[List[str]] = None,
+        next_page_token: Optional[str] = None,
     ) -> JiraSearchResponseSchema:
-        """Search issues using JQL (GET /search/jql — old GET /search returns 410)."""
+        """Search issues using JQL (GET /search/jql — cursor-based; startAt ignored).
+
+        Pass ``next_page_token`` from the previous response to fetch the next page.
+        """
         default_fields = [
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
         ]
 
-        data = await self._request(
-            "GET",
-            "/search/jql",
-            params={
-                "jql": jql,
-                "startAt": start_at,
-                "maxResults": max_results,
-                "fields": ",".join(fields or default_fields),
-            },
-        )
+        params: dict = {
+            "jql": jql,
+            "maxResults": max_results,
+            "fields": ",".join(fields or default_fields),
+        }
+        if next_page_token:
+            params["nextPageToken"] = next_page_token
+        else:
+            params["startAt"] = start_at
+
+        data = await self._request("GET", "/search/jql", params=params)
         return JiraSearchResponseSchema(**data)
-    
+
     async def iter_issues(
         self,
         jql: str,
         max_results: int = 100,
         fields: Optional[List[str]] = None,
     ) -> AsyncIterator[JiraIssueSchema]:
-        """Iterate through issues matching JQL."""
-        start_at = 0
+        """Iterate through issues matching JQL (cursor-based pagination)."""
+        next_page_token: Optional[str] = None
         while True:
             response = await self.search_issues(
                 jql=jql,
-                start_at=start_at,
                 max_results=max_results,
                 fields=fields,
+                next_page_token=next_page_token,
             )
             for issue in response.issues:
                 yield issue
             if not response.has_more:
                 break
-            start_at += max_results
+            next_page_token = response.nextPageToken
+            if not next_page_token:
+                break
     
     async def get_issues_updated_since(
         self,
