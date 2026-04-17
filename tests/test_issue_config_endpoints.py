@@ -1,11 +1,43 @@
 """Issue-config endpoint tests — category assignment and include flag."""
 
 import pytest
+from datetime import datetime
 from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
 from app.models import Issue, Project
+from app.models.hierarchy_rule import HierarchyRule
+
+
+def _seed_hierarchy_rules(db_session):
+    """Insert the 12 default hierarchy rules (same as migration 014 seed).
+
+    Conftest wipes hierarchy_rule between tests, so any test that relies on
+    classification behaviour must call this before issuing tree requests.
+    Uses flush (not commit) to keep the connection open on the in-memory DB.
+    """
+    seeds = [
+        (10, 'ITL', None, True, True, 'ITL без родителя — контейнер'),
+        (10, 'RFA', None, False, True, 'RFA всегда контейнер'),
+        (10, 'PRJ', None, False, True, 'PRJ всегда контейнер'),
+        (50, None, 'Эпик', False, True, None),
+        (50, None, 'Epic', False, True, None),
+        (50, None, 'Инициатива', False, True, None),
+        (50, None, 'Инициатива (E-com)', False, True, None),
+        (50, None, 'Инициатива (Ритейл)', False, True, None),
+        (50, None, 'Инициатива (Финансы)', False, True, None),
+        (50, None, 'История', False, True, None),
+        (50, None, 'Story', False, True, None),
+        (50, None, 'Цель', False, True, None),
+    ]
+    for priority, project, itype, np, ic, desc in seeds:
+        db_session.add(HierarchyRule(
+            priority=priority, project_key=project, issue_type=itype,
+            require_no_parent=np, is_container=ic, is_enabled=True,
+            description=desc,
+        ))
+    db_session.flush()
 
 
 @pytest.fixture
@@ -232,6 +264,7 @@ def test_tree_pulls_in_ancestor_of_different_team_as_context(client, db_session)
 
 def test_tree_groups_childless_non_epic_roots_into_operations(client, db_session):
     """Bare «Задача» без parent и без детей уходит в __operations__."""
+    _seed_hierarchy_rules(db_session)
     project = Project(jira_project_id="30001", key="AD", name="Ad project", is_active=True)
     db_session.add(project)
     db_session.flush()
@@ -303,3 +336,91 @@ def test_tree_without_filter_does_not_flag_context(client, db_session):
     assert roots[0]["key"] == "AD-1"
     assert roots[0]["is_context"] is False
     assert roots[0]["children"][0]["is_context"] is False
+
+
+class TestTreeWithHierarchyRules:
+    def _seed_rules(self, db_session):
+        """Re-seed the 12 default hierarchy rules that migration 014 installs.
+
+        Conftest wipes hierarchy_rule between tests, so these tests insert
+        the exact seed set from migration 014 before asserting.
+        """
+        _seed_hierarchy_rules(db_session)
+
+    def _make_client(self, db_session):
+        """Return a TestClient that shares db_session with the test."""
+        def override_get_db():
+            yield db_session
+
+        app.dependency_overrides[get_db] = override_get_db
+        return TestClient(app)
+
+    def _make_issue(self, db_session, project, key, issue_type, parent=None):
+        issue = Issue(
+            jira_issue_id=f"jid-{key}",
+            key=key,
+            summary=key,
+            issue_type=issue_type,
+            status="В работе",
+            project_id=project.id,
+            parent_id=parent.id if parent else None,
+            synced_at=datetime.utcnow(),
+        )
+        db_session.add(issue)
+        db_session.flush()
+        return issue
+
+    def test_itl_root_no_parent_stays_as_root_via_seed(self, db_session):
+        self._seed_rules(db_session)
+        proj = Project(jira_project_id="p-itl", key="ITL", name="ITL")
+        db_session.add(proj)
+        db_session.flush()
+        self._make_issue(db_session, proj, "ITL-1", "Задача")
+        db_session.flush()
+
+        c = self._make_client(db_session)
+        resp = c.get("/api/v1/issues/tree?project_keys=ITL")
+        data = resp.json()
+
+        root_keys = [n["key"] for n in data]
+        assert "ITL-1" in root_keys
+        ops = next((n for n in data if n["id"] == "__operations__"), None)
+        if ops is not None:
+            assert not any(c_node["key"] == "ITL-1" for c_node in ops["children"])
+
+    def test_leaf_root_without_matching_rule_goes_to_operations(self, db_session):
+        self._seed_rules(db_session)
+        proj = Project(jira_project_id="p-os", key="OS", name="OS")
+        db_session.add(proj)
+        db_session.flush()
+        self._make_issue(db_session, proj, "OS-1", "Задача")
+        db_session.flush()
+
+        c = self._make_client(db_session)
+        resp = c.get("/api/v1/issues/tree?project_keys=OS")
+        data = resp.json()
+
+        root_keys = [n["key"] for n in data]
+        assert "OS-1" not in root_keys
+        ops = next(n for n in data if n["id"] == "__operations__")
+        assert any(c_node["key"] == "OS-1" for c_node in ops["children"])
+
+    def test_disabled_rule_not_applied(self, db_session):
+        self._seed_rules(db_session)
+        # Disable the ITL seed rule; ITL leaf now collapses into operations.
+        db_session.query(HierarchyRule).filter(
+            HierarchyRule.project_key == "ITL"
+        ).update({"is_enabled": False})
+        db_session.flush()
+
+        proj = Project(jira_project_id="p-itl2", key="ITL", name="ITL")
+        db_session.add(proj)
+        db_session.flush()
+        self._make_issue(db_session, proj, "ITL-2", "Задача")
+        db_session.flush()
+
+        c = self._make_client(db_session)
+        resp = c.get("/api/v1/issues/tree?project_keys=ITL")
+        data = resp.json()
+        ops = next(n for n in data if n["id"] == "__operations__")
+        assert any(c_node["key"] == "ITL-2" for c_node in ops["children"])

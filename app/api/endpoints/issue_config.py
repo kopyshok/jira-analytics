@@ -10,26 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Issue, Project
+from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 
 router = APIRouter()
 
 # Коды категорий, которые автоматически исключают задачу из анализа.
 # Используются для single/batch category endpoints.
 ARCHIVE_CATEGORY_CODES = {"archive", "archive_target"}
-
-# Типы-контейнеры — могут иметь дочерние задачи. Всё остальное, что оказалось
-# на верхнем уровне без детей (чистая оперативная заявка без эпика), уедет в
-# виртуальную группу «Операционная работа (без эпика)» — чтобы дерево не
-# расплывалось сотнями одиночных root-строк.
-CONTAINER_ISSUE_TYPES = {
-    "Эпик", "Epic",
-    "Инициатива",
-    "Инициатива (E-com)",
-    "Инициатива (Ритейл)",
-    "Инициатива (Финансы)",
-    "История", "Story",
-    "Цель",
-}
 
 
 # --- Schemas ---
@@ -182,16 +169,21 @@ async def get_issue_tree(
         )
         roots.insert(0, orphan_group)
 
-    # Разделяем top-level: контейнеры (эпики/инициативы/истории) и всё,
+    # Разделяем top-level: контейнеры (по правилам из hierarchy_rules) и всё,
     # что с детьми — остаются корнями; бездетные не-контейнеры (чистые
     # оперативные заявки без эпика) уходят в отдельную виртуальную группу.
+    rules = load_rules(db)
     operations: list[IssueTreeNode] = []
     roots_keep: list[IssueTreeNode] = []
     for r in roots:
         if r.issue_type == "group":
             roots_keep.append(r)
             continue
-        is_container = r.issue_type in CONTAINER_ISSUE_TYPES
+        is_container = classify(rules, EvaluationInput(
+            project_key=r.project_key,
+            issue_type=r.issue_type,
+            has_parent=False,
+        ))
         has_kids = bool(r.children)
         if not is_container and not has_kids and not r.is_context:
             operations.append(r)
