@@ -1,4 +1,4 @@
-import { useState, useMemo, type HTMLAttributes, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, type HTMLAttributes, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App, Input, Switch,
   Tabs, Select, Typography, Modal, Checkbox, Popconfirm,
@@ -152,6 +152,7 @@ function TaskSectionsTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedTeam, setSelectedTeam] = useState<string | undefined>();
+  const [teamHydrated, setTeamHydrated] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const jiraProjects = useJiraProjects(search, selectedTeam);
   const scopeProjects = useScopeProjects();
@@ -159,11 +160,27 @@ function TaskSectionsTab() {
   const jiraTeams = useJiraTeams();
   const jiraFields = useJiraFields();
   const saveFieldSetting = useSaveGenericSetting();
+  const saveUiSetting = useSaveGenericSetting();
+  const storedTeam = useGenericSetting('ui_team_projects');
   const productField = useGenericSetting('jira_team_field_id');
   const participatingField = useGenericSetting('jira_participating_teams_field_id');
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [productFieldDraft, setProductFieldDraft] = useState<string | undefined>();
   const [participatingFieldDraft, setParticipatingFieldDraft] = useState<string | undefined>();
+
+  // Hydrate team selection from AppSetting once on first load; subsequent
+  // changes are persisted immediately.
+  useEffect(() => {
+    if (teamHydrated || storedTeam.data === undefined) return;
+    const val = storedTeam.data?.value;
+    if (val) setSelectedTeam(val);
+    setTeamHydrated(true);
+  }, [teamHydrated, storedTeam.data]);
+
+  const handleTeamChange = (val: string | undefined) => {
+    setSelectedTeam(val);
+    saveUiSetting.mutate({ key: 'ui_team_projects', value: val ?? '' });
+  };
 
   // Track pending changes before save
   const [pendingAdd, setPendingAdd] = useState<Set<string>>(new Set());
@@ -249,7 +266,7 @@ function TaskSectionsTab() {
   };
 
   const handleLoadAll = async () => {
-    setSelectedTeam(undefined);
+    handleTeamChange(undefined);
     setSearch('');
     setLoadingAll(true);
     try {
@@ -322,7 +339,7 @@ function TaskSectionsTab() {
           <Select
             placeholder="Команда (продуктовая или участвующая)"
             value={selectedTeam}
-            onChange={setSelectedTeam}
+            onChange={handleTeamChange}
             allowClear
             style={{ width: 320 }}
             options={(jiraTeams.data ?? []).map(t => ({ value: t, label: t }))}
@@ -480,7 +497,24 @@ function CategoryConfigTab() {
   const { notification, message } = App.useApp();
   const qc = useQueryClient();
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [teamsHydrated, setTeamsHydrated] = useState(false);
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
+  const storedTeams = useGenericSetting('ui_teams_categories');
+  const saveUiSetting = useSaveGenericSetting();
+
+  // Hydrate once from AppSetting; changes are persisted via handleTeamsChange.
+  useEffect(() => {
+    if (teamsHydrated || storedTeams.data === undefined) return;
+    const val = storedTeams.data?.value;
+    if (val) setSelectedTeams(val.split(',').filter(Boolean));
+    setTeamsHydrated(true);
+  }, [teamsHydrated, storedTeams.data]);
+
+  const handleTeamsChange = (val: string[]) => {
+    setSelectedTeams(val);
+    saveUiSetting.mutate({ key: 'ui_teams_categories', value: val.join(',') });
+  };
+
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 110, summary: 380, status: 140, category: 260, include: 80,
   });
@@ -746,7 +780,7 @@ function CategoryConfigTab() {
           mode="multiple"
           placeholder="Продуктовые команды"
           value={selectedTeams}
-          onChange={setSelectedTeams}
+          onChange={handleTeamsChange}
           allowClear
           showSearch
           optionFilterProp="label"
