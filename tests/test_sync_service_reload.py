@@ -42,8 +42,12 @@ def sample_data(db_session):
 
 
 def test_reload_deletes_only_rows_at_or_after_since(db_session, sample_data):
+    async def iter_issues_empty(jql, **_):
+        return
+        yield  # pragma: no cover
+
     jira = MagicMock()
-    jira.iter_issues = AsyncMock(return_value=iter([]))  # no new data
+    jira.iter_issues = iter_issues_empty
     service = SyncService(db_session, jira_client=jira)
 
     stats = service.reload_worklogs_since(date(2026, 1, 1))
@@ -52,3 +56,65 @@ def test_reload_deletes_only_rows_at_or_after_since(db_session, sample_data):
     assert stats.deleted == 1
     remaining_ids = {w.jira_worklog_id for w in db_session.query(Worklog).all()}
     assert remaining_ids == {"10"}
+
+
+def test_reload_repulls_and_inserts_new_rows(db_session, sample_data):
+    """Удалили пост-since → перечитали issue'ы из JQL → вставили новые worklog'и."""
+    from datetime import timezone
+
+    jira_issue_payload = MagicMock()
+    jira_issue_payload.id = "1001"
+    jira_issue_payload.key = "PRJ-1"
+
+    worklog_payload = MagicMock()
+    worklog_payload.id = "30"
+    worklog_payload.started = datetime(2026, 2, 10, 9, 0, tzinfo=timezone.utc)
+    worklog_payload.time_spent_seconds = 7200
+    worklog_payload.author.account_id = "a1"
+    worklog_payload.author.display_name = "Иванов"
+    worklog_payload.author.email_address = "ivanov@example.com"
+    worklog_payload.author.active = True
+    worklog_payload.comment = "fix"
+
+    async def iter_issues_mock(jql, **_):
+        assert "worklogDate" in jql
+        yield jira_issue_payload
+
+    async def iter_worklogs_mock(_):
+        yield worklog_payload
+
+    jira = MagicMock()
+    jira.iter_issues = iter_issues_mock
+    jira.iter_worklogs_for_issue = iter_worklogs_mock
+
+    service = SyncService(db_session, jira_client=jira)
+    stats = service.reload_worklogs_since(date(2026, 1, 1))
+
+    assert stats.issues_scanned == 1
+    assert stats.worklogs_inserted == 1
+    keys = {w.jira_worklog_id for w in db_session.query(Worklog).all()}
+    assert keys == {"10", "30"}  # old kept, new inserted
+
+
+def test_reload_skips_unknown_issues(db_session, sample_data):
+    """Если Jira вернула issue, которой нет в локальной БД — пропускаем."""
+    jira_issue_payload = MagicMock()
+    jira_issue_payload.id = "9999"  # not in DB
+    jira_issue_payload.key = "UNK-1"
+
+    async def iter_issues_mock(jql, **_):
+        yield jira_issue_payload
+
+    async def iter_worklogs_mock(_):
+        raise AssertionError("should not be called for unknown issue")
+        yield  # pragma: no cover
+
+    jira = MagicMock()
+    jira.iter_issues = iter_issues_mock
+    jira.iter_worklogs_for_issue = iter_worklogs_mock
+
+    service = SyncService(db_session, jira_client=jira)
+    stats = service.reload_worklogs_since(date(2026, 1, 1))
+
+    assert stats.issues_scanned == 0  # unknown not counted
+    assert stats.worklogs_inserted == 0
