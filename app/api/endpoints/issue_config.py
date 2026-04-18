@@ -226,6 +226,20 @@ def _issue_is_container(db: Session, issue: Issue) -> bool:
     ))
 
 
+def _issue_blocks_categorization(db: Session, issue: Issue) -> bool:
+    """Категория блокируется только если задача — контейнер И у неё есть дети.
+
+    Контейнер без детей — фактический лист (например, ITL без подзадач),
+    его категоризация допустима.
+    """
+    if not _issue_is_container(db, issue):
+        return False
+    has_children = (
+        db.query(Issue.id).filter(Issue.parent_id == issue.id).first() is not None
+    )
+    return has_children
+
+
 @router.put("/{issue_id}/category")
 async def set_issue_category(
     issue_id: str,
@@ -239,14 +253,14 @@ async def set_issue_category(
     аналитике. Обратная операция (смена категории на не-архивную) флаг
     НЕ восстанавливает автоматически.
 
-    Контейнерные типы (совпали с правилом ``is_container=True`` —
-    Эпик, Main box и т.п.) категорию не получают: они — родители по
-    определению, работа живёт в детях. Запрос 422 с пояснением.
+    Контейнерные типы (Эпик, Main box и т.п.) категорию не получают
+    ТОЛЬКО если у них есть дочерние задачи: работа живёт в детях.
+    Контейнер без детей — фактический лист, ему категория назначается.
     """
     issue = db.get(Issue, issue_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
-    if body.category_code and _issue_is_container(db, issue):
+    if body.category_code and _issue_blocks_categorization(db, issue):
         raise HTTPException(
             status_code=422,
             detail=(
@@ -317,10 +331,9 @@ async def batch_set_category(
     снялся ``include_in_analysis``.
 
     Контейнерные задачи (Эпик, Main box и т.п. — правило ``is_container``)
-    пропускаются и возвращаются в ``skipped_containers``. Это важно когда
-    пользователь батчем присваивает категорию через каскад чекбоксов:
-    родители-контейнеры просто игнорируются, а работа на их потомках
-    помечается корректно.
+    пропускаются **только если у них есть дочерние задачи**: работа живёт
+    в детях, а сам контейнер не категоризируется. Контейнер без детей —
+    фактический лист, категория применяется обычным образом.
     """
     updated = 0
     archived_ids: list[str] = []
@@ -328,6 +341,17 @@ async def batch_set_category(
     is_archive = body.category_code in ARCHIVE_CATEGORY_CODES
     # Правила грузим один раз на весь батч.
     rules = load_rules(db)
+    # has_children для всех запрошенных id — одним запросом, чтобы не
+    # N+1-ить в цикле.
+    ids_with_children: set[str] = set()
+    if body.category_code and body.issue_ids:
+        rows = (
+            db.query(Issue.parent_id)
+            .filter(Issue.parent_id.in_(body.issue_ids))
+            .distinct()
+            .all()
+        )
+        ids_with_children = {r[0] for r in rows if r[0]}
     for issue_id in body.issue_ids:
         issue = db.get(Issue, issue_id)
         if not issue:
@@ -335,11 +359,12 @@ async def batch_set_category(
         if body.category_code:
             project = db.get(Project, issue.project_id) if issue.project_id else None
             project_key = project.key if project else ""
-            if classify(rules, EvaluationInput(
+            is_container = classify(rules, EvaluationInput(
                 project_key=project_key,
                 issue_type=issue.issue_type,
                 has_parent=bool(issue.parent_id),
-            )):
+            ))
+            if is_container and issue.id in ids_with_children:
                 skipped_containers.append(issue.id)
                 continue
         issue.assigned_category = body.category_code

@@ -102,6 +102,7 @@ type CategoryCellProps = {
   isGroup: boolean;
   isContext: boolean;
   isContainer: boolean;
+  hasChildren: boolean;
   hasPending: boolean;
   pendingValue: string | undefined;
   assignedValue: string | undefined;
@@ -113,14 +114,16 @@ type CategoryCellProps = {
 };
 
 const CategoryCell = memo(function CategoryCell({
-  issueId, isGroup, isContext, isContainer,
+  issueId, isGroup, isContext, isContainer, hasChildren,
   hasPending, pendingValue, assignedValue,
   inheritedAssigned, derivedCategory,
   categoryOptions, categoryLabels, onChange,
 }: CategoryCellProps) {
   if (isGroup) return null;
   if (isContext) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
-  if (isContainer) return <Text type="secondary" style={{ fontSize: 11 }} italic>родительский тип</Text>;
+  if (isContainer && hasChildren) {
+    return <Text type="secondary" style={{ fontSize: 11 }} italic>родительский тип</Text>;
+  }
   const value = hasPending ? pendingValue : assignedValue;
   const ancestorCat = !value ? inheritedAssigned ?? null : null;
   const derivedCat = !value && !ancestorCat ? derivedCategory : null;
@@ -596,6 +599,7 @@ function CategoryConfigTab() {
             isGroup={record.issue_type === 'group'}
             isContext={!!record.is_context}
             isContainer={!!record.is_container}
+            hasChildren={(record.children?.length ?? 0) > 0}
             hasPending={pendingCats.has(record.id)}
             pendingValue={pendingCats.get(record.id) ?? undefined}
             assignedValue={record.assigned_category || undefined}

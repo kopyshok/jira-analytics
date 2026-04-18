@@ -215,8 +215,8 @@ def test_batch_category_non_archive_returns_empty_archived_ids(client, project_a
     assert body["archived_ids"] == []
 
 
-def test_set_category_rejected_for_container_type(client, db_session):
-    """Main box / Эпик — контейнеры по правилам иерархии, категорию не получают."""
+def test_set_category_rejected_for_container_with_children(client, db_session):
+    """Контейнер С детьми (Main box / Эпик) категорию не получает — работа в детях."""
     _seed_hierarchy_rules(db_session)
     project = Project(jira_project_id="80001", key="AD", name="Ad", is_active=True)
     db_session.add(project)
@@ -227,6 +227,13 @@ def test_set_category_rejected_for_container_type(client, db_session):
         project_id=project.id, include_in_analysis=True,
     )
     db_session.add(main_box)
+    db_session.flush()
+    child = Issue(
+        jira_issue_id="80001-2", key="AD-10-1",
+        summary="Child", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=main_box.id, include_in_analysis=True,
+    )
+    db_session.add(child)
     db_session.flush()
 
     response = client.put(
@@ -239,6 +246,29 @@ def test_set_category_rejected_for_container_type(client, db_session):
     db_session.expire_all()
     persisted = db_session.get(Issue, main_box.id)
     assert persisted.assigned_category is None
+
+
+def test_set_category_allowed_for_childless_container(client, db_session):
+    """Контейнер без детей — фактический лист, категория назначается."""
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80004", key="AD", name="Ad", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    leaf_epic = Issue(
+        jira_issue_id="80004-1", key="AD-14",
+        summary="Childless epic", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add(leaf_epic)
+    db_session.flush()
+
+    response = client.put(
+        f"/api/v1/issues/{leaf_epic.id}/category",
+        json={"category_code": "development"},
+    )
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(Issue, leaf_epic.id).assigned_category == "development"
 
 
 def test_set_category_none_on_container_is_allowed(client, db_session):
@@ -262,37 +292,53 @@ def test_set_category_none_on_container_is_allowed(client, db_session):
     assert response.status_code == 200
 
 
-def test_batch_category_skips_containers(client, db_session):
-    """Контейнеры (Эпик, Main box) пропускаются при батч-назначении категории."""
+def test_batch_category_skips_containers_with_children(client, db_session):
+    """Контейнеры с детьми пропускаются; контейнеры без детей — категоризируются."""
     _seed_hierarchy_rules(db_session)
     project = Project(jira_project_id="80003", key="AD", name="Ad", is_active=True)
     db_session.add(project)
     db_session.flush()
-    container = Issue(
+    container_with_kids = Issue(
         jira_issue_id="80003-1", key="AD-12",
-        summary="Epic", issue_type="Эпик", status="Open",
+        summary="Epic parent", issue_type="Эпик", status="Open",
         project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add(container_with_kids)
+    db_session.flush()
+    child = Issue(
+        jira_issue_id="80003-1a", key="AD-12-1",
+        summary="Child", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=container_with_kids.id, include_in_analysis=True,
     )
     leaf = Issue(
         jira_issue_id="80003-2", key="AD-13",
-        summary="Leaf", issue_type="Task", status="Open",
+        summary="Leaf task", issue_type="Task", status="Open",
         project_id=project.id, include_in_analysis=True,
     )
-    db_session.add_all([container, leaf])
+    childless_epic = Issue(
+        jira_issue_id="80003-3", key="AD-14",
+        summary="Childless epic", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add_all([child, leaf, childless_epic])
     db_session.flush()
 
     response = client.put(
         "/api/v1/issues/batch-category",
-        json={"issue_ids": [container.id, leaf.id], "category_code": "development"},
+        json={
+            "issue_ids": [container_with_kids.id, leaf.id, childless_epic.id],
+            "category_code": "development",
+        },
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["updated"] == 1
-    assert body["skipped_containers"] == [container.id]
+    assert body["updated"] == 2
+    assert body["skipped_containers"] == [container_with_kids.id]
 
     db_session.expire_all()
-    assert db_session.get(Issue, container.id).assigned_category is None
+    assert db_session.get(Issue, container_with_kids.id).assigned_category is None
     assert db_session.get(Issue, leaf.id).assigned_category == "development"
+    assert db_session.get(Issue, childless_epic.id).assigned_category == "development"
 
 
 def test_tree_response_includes_is_container_flag(client, db_session):
