@@ -66,8 +66,9 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
   __inheritedAssigned?: string | null;
 };
 
-type InnerTab = 'stack' | 'active' | 'archive_target' | 'archive';
+type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
+const INITIATIVES_CODE = 'initiatives_rfa';
 
 // Маппинг Jira statusCategory.key → цвет AntD Tag. Плюс строковые overrides
 // для специальных статусов ("Отменено" попадает в категорию 'done' в Jira,
@@ -86,7 +87,13 @@ function statusTagColor(statusName: string, category: string | null): string {
 function matchesTab(effective: string | null, tab: InnerTab): boolean {
   switch (tab) {
     case 'stack': return effective === null;
-    case 'active': return effective !== null && !ARCHIVE_CODES.has(effective);
+    case 'active':
+      return (
+        effective !== null
+        && !ARCHIVE_CODES.has(effective)
+        && effective !== INITIATIVES_CODE
+      );
+    case 'initiatives': return effective === INITIATIVES_CODE;
     case 'archive_target': return effective === 'archive_target';
     case 'archive': return effective === 'archive';
   }
@@ -319,6 +326,11 @@ function CategoryConfigTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [issueTree.data, hiddenStatuses, pendingCats],
   );
+  const initiativesData = useMemo(
+    () => buildTabData('initiatives'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [issueTree.data, hiddenStatuses, pendingCats],
+  );
   const archiveTargetData = useMemo(
     () => buildTabData('archive_target'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,6 +345,7 @@ function CategoryConfigTab() {
   const tabData =
     innerTab === 'stack' ? stackData
     : innerTab === 'active' ? activeData
+    : innerTab === 'initiatives' ? initiativesData
     : innerTab === 'archive_target' ? archiveTargetData
     : archiveData;
 
@@ -346,6 +359,9 @@ function CategoryConfigTab() {
   const activeCount = useMemo(() => countTriage(activeData, 'active'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeData]);
+  const initiativesCount = useMemo(() => countTriage(initiativesData, 'initiatives'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initiativesData]);
   const archiveTargetCount = useMemo(() => countTriage(archiveTargetData, 'archive_target'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [archiveTargetData]);
@@ -356,9 +372,10 @@ function CategoryConfigTab() {
   const tabItems = useMemo(() => [
     { key: 'stack', label: `Стек задач к разбору (${stackCount})` },
     { key: 'active', label: `Активный стек (${activeCount})` },
+    { key: 'initiatives', label: `Бэклог инициатив (${initiativesCount})` },
     { key: 'archive_target', label: `Архив квартальных задач (${archiveTargetCount})` },
     { key: 'archive', label: `Архив прочих задач (${archiveCount})` },
-  ], [stackCount, activeCount, archiveTargetCount, archiveCount]);
+  ], [stackCount, activeCount, initiativesCount, archiveTargetCount, archiveCount]);
 
   // Optimistic toggle for include_in_analysis.
   // Takes (issueId, hasChildren) instead of full record so memoized cells
