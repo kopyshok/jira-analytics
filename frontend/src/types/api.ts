@@ -242,6 +242,19 @@ export interface QuarterCapacityResponse {
   total_fact_hours: number;
 }
 
+export interface CategoryBreakdownResponse {
+  employee_id: string;
+  employee_name: string;
+  by_bucket: {
+    active_stack: number;
+    initiatives: number;
+    archive_target: number;
+    archive_other: number;
+    uncategorized: number;
+  };
+  total_hours: number;
+}
+
 // === Backlog ===
 
 export interface BacklogItemResponse {

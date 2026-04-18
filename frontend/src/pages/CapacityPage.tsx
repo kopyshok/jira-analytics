@@ -3,12 +3,12 @@ import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, S
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
-import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira } from '../hooks/useCapacity';
+import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown } from '../hooks/useCapacity';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
-import type { QuarterCapacityResponse, VacationResponse, CapacityRuleResponse, JiraUserSearchResult } from '../types/api';
+import type { QuarterCapacityResponse, VacationResponse, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse } from '../types/api';
 
 const { Text } = Typography;
 
@@ -329,12 +329,41 @@ function RulesTab() {
   );
 }
 
+function BreakdownTab() {
+  const { year, quarter } = useQuarterYear();
+  const { data, isLoading } = useCategoryBreakdown(Number(year), Number(quarter));
+  return (
+    <Table<CategoryBreakdownResponse>
+      dataSource={data}
+      rowKey="employee_id"
+      loading={isLoading}
+      pagination={false}
+      size="small"
+      columns={[
+        { title: 'Сотрудник', dataIndex: 'employee_name', fixed: 'left' as const, width: 200 },
+        { title: 'Активный стек',
+          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.active_stack) },
+        { title: 'Инициативы',
+          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.initiatives) },
+        { title: 'Архив квартальных',
+          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.archive_target) },
+        { title: 'Архив прочих',
+          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.archive_other) },
+        { title: 'Без категории',
+          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.uncategorized) },
+        { title: 'Итого', dataIndex: 'total_hours', render: formatHours },
+      ]}
+    />
+  );
+}
+
 export default function CapacityPage() {
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <QuarterYearSelect />
       <Tabs items={[
         { key: 'team', label: 'Команда', children: <TeamTab /> },
+        { key: 'breakdown', label: 'Распределение', children: <BreakdownTab /> },
         { key: 'vacations', label: 'Отпуска', children: <VacationsTab /> },
         { key: 'rules', label: 'Правила', children: <RulesTab /> },
       ]} />

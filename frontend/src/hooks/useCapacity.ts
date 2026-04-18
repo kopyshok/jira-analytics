@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getVacations, addVacation, removeVacation, getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity } from '../api/capacity';
+import { getVacations, addVacation, removeVacation, getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity, getCategoryBreakdown } from '../api/capacity';
 import { getEmployees, recalcActiveEmployees, addEmployeeFromJira } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
 import type {
@@ -42,6 +42,13 @@ export const useTeamCapacity = (year: string, quarter: string) =>
     queryKey: ['capacity', 'team', year, quarter],
     queryFn: () => getTeamCapacity(year, quarter),
     enabled: !!year && !!quarter,
+  });
+
+export const useCategoryBreakdown = (year: number, quarter: number) =>
+  useQuery({
+    queryKey: ['capacity', 'breakdown', year, quarter],
+    queryFn: () => getCategoryBreakdown(year, quarter),
+    staleTime: 30_000,
   });
 
 export const useRecalcActiveEmployees = () => {
