@@ -63,6 +63,16 @@ export interface SyncStatusResponse {
   last_error: string | null;
 }
 
+export interface WorklogReloadRequest {
+  since: string;   // YYYY-MM-DD
+}
+
+export interface WorklogReloadResponse {
+  deleted: number;
+  issues_scanned: number;
+  worklogs_inserted: number;
+}
+
 // === Jira Browse ===
 
 export interface JiraProjectItem {

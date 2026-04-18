@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   testConnection, syncProjects, syncIssues, syncWorklogs, syncComments, syncFull,
-  refreshIssuesByKeys, syncTeams,
+  refreshIssuesByKeys, syncTeams, reloadWorklogs,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
   getJiraIssueTypes,
 } from '../api/sync';
 import { batchScopeProjects } from '../api/scope';
 import { recalculateAll } from '../api/mapping';
+import type { WorklogReloadRequest, WorklogReloadResponse } from '../types/api';
 
 export const useConnectionTest = () =>
   useQuery({ queryKey: ['sync', 'connection'], queryFn: testConnection, retry: false, enabled: false });
@@ -50,6 +51,17 @@ export const useSyncTeams = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
       qc.invalidateQueries({ queryKey: ['sync', 'status'] });
+    },
+  });
+};
+
+export const useReloadWorklogs = () => {
+  const qc = useQueryClient();
+  return useMutation<WorklogReloadResponse, Error, WorklogReloadRequest>({
+    mutationFn: reloadWorklogs,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
     },
   });
 };

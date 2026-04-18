@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App,
-  Tabs, Select, Typography, Modal, Checkbox, Popconfirm,
+  Tabs, Select, Typography, Modal, Checkbox, Popconfirm, DatePicker,
 } from 'antd';
 import {
   SyncOutlined, ReloadOutlined,
@@ -11,10 +11,11 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useJiraSettings, useSaveGenericSetting, useGenericSetting } from '../hooks/useSettings';
 import {
   useSyncStatus, useSyncMutation, useRecalculateMapping,
-  useJiraTeams, useRefreshIssuesByKeys, useSyncTeams,
+  useJiraTeams, useRefreshIssuesByKeys, useSyncTeams, useReloadWorklogs,
 } from '../hooks/useSync';
 import {
   useScopeProjects,
@@ -985,6 +986,32 @@ function SyncControls() {
   const worklogsMut = useSyncMutation('worklogs');
   const commentsMut = useSyncMutation('comments');
 
+  const reloadSince = useGenericSetting('worklog_reload_since_date');
+  const saveReloadSince = useSaveGenericSetting();
+  const reload = useReloadWorklogs();
+  const initialSince: Dayjs = reloadSince.data?.value
+    ? dayjs(reloadSince.data.value)
+    : dayjs('2026-01-01');
+  const [sinceDate, setSinceDate] = useState<Dayjs>(initialSince);
+
+  useEffect(() => {
+    if (reloadSince.data?.value) setSinceDate(dayjs(reloadSince.data.value));
+  }, [reloadSince.data?.value]);
+
+  const handleReload = () => {
+    const iso = sinceDate.format('YYYY-MM-DD');
+    reload.mutate({ since: iso }, {
+      onSuccess: (stats) => {
+        notification.success({
+          message: "Worklog'и перезагружены",
+          description: `Удалено: ${stats.deleted}, issues: ${stats.issues_scanned}, вставлено: ${stats.worklogs_inserted}`,
+        });
+        saveReloadSince.mutate({ key: 'worklog_reload_since_date', value: iso });
+      },
+      onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+    });
+  };
+
   const handleFullSync = () => {
     const body = { project_keys: scopeKeys.length > 0 ? scopeKeys : undefined, incremental: false };
     fullSyncMut.mutate(body, {
@@ -1077,6 +1104,21 @@ function SyncControls() {
             >
               Ворклоги
             </Button>
+          </Space>
+          <Space wrap>
+            <DatePicker
+              value={sinceDate}
+              onChange={(d) => { if (d) setSinceDate(d); }}
+              format="DD.MM.YYYY"
+            />
+            <Popconfirm
+              title={`Удалить все worklog'и с ${sinceDate.format('DD.MM.YYYY')} и перечитать?`}
+              onConfirm={handleReload}
+            >
+              <Button loading={reload.isPending} icon={<ReloadOutlined />}>
+                Перезагрузить worklog'и с даты
+              </Button>
+            </Popconfirm>
           </Space>
           {scopeKeys.length > 0 && (
             <Text type="secondary" style={{ fontSize: 12 }}>

@@ -1,10 +1,16 @@
 import { api } from './client';
-import type { ConnectionTestResponse, SyncResponse, SyncStatusResponse, JiraProjectItem, JiraEpicItem } from '../types/api';
+import type {
+  ConnectionTestResponse, SyncResponse, SyncStatusResponse,
+  JiraProjectItem, JiraEpicItem,
+  WorklogReloadRequest, WorklogReloadResponse,
+} from '../types/api';
 
 export const testConnection = () => api.get<ConnectionTestResponse>('/sync/test-connection');
 export const syncProjects = () => api.post<SyncResponse>('/sync/projects');
 export const syncIssues = (body?: { project_keys?: string[]; incremental?: boolean }) => api.post<SyncResponse>('/sync/issues', body);
 export const syncWorklogs = () => api.post<SyncResponse>('/sync/worklogs');
+export const reloadWorklogs = (req: WorklogReloadRequest) =>
+  api.post<WorklogReloadResponse>('/sync/worklogs/reload', req);
 export const syncComments = () => api.post<SyncResponse>('/sync/comments');
 export const syncFull = (body?: { project_keys?: string[]; incremental?: boolean }) => api.post<SyncResponse>('/sync/full', body);
 export const refreshIssuesByKeys = (jiraKeys: string[]) =>
