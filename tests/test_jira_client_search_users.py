@@ -27,8 +27,6 @@ async def test_search_users_parses_response():
     client = JiraClient(
         base_url="https://x.atlassian.net", email="e", api_token="t"
     )
-    # Patch the private request helper — whatever existing methods call.
-    # Inspect the class first; `_request` or similar is common. Adapt.
     client._request = AsyncMock(return_value=fake_response)
 
     users = await client.search_users("ив")

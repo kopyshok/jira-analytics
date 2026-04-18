@@ -211,16 +211,16 @@ class SyncService:
     def _upsert_employee(self, jira_user: JiraUserSchema) -> Tuple[Employee, bool]:
         """Upsert employee from Jira user."""
         data = {
-            "jira_account_id": jira_user.accountId,
-            "display_name": jira_user.displayName,
-            "email": jira_user.emailAddress,
-            "is_active": jira_user.active,
-            "avatar_url": jira_user.avatar_48,
+            "jira_account_id": jira_user.jira_account_id,
+            "display_name": jira_user.display_name,
+            "email": jira_user.email,
+            "is_active": jira_user.is_active,
+            "avatar_url": jira_user.avatar_url,
             "synced_at": datetime.utcnow(),
         }
         return self.employee_repo.upsert_by_field(
             "jira_account_id",
-            jira_user.accountId,
+            jira_user.jira_account_id,
             data,
         )
     

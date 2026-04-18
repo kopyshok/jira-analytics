@@ -127,8 +127,8 @@ async def test_jira_connection(db: Session = Depends(get_db)):
             user = await jira.get_myself()
             return ConnectionTestResponse(
                 connected=True,
-                user_name=user.displayName,
-                user_email=user.emailAddress,
+                user_name=user.display_name,
+                user_email=user.email,
             )
     except JiraAuthError as e:
         return ConnectionTestResponse(

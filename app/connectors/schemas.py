@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import Optional, List, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 _JIRA_TZ_RE = re.compile(r"([+-])(\d{2})(\d{2})$")
@@ -28,35 +28,25 @@ def _parse_jira_datetime(value: str) -> datetime:
 class JiraUserSchema(BaseModel):
     """Jira user from API response."""
 
-    accountId: str
-    displayName: str
-    emailAddress: Optional[str] = None
-    avatarUrls: Optional[dict] = None
-    active: bool = True
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    jira_account_id: str = Field(alias="accountId")
+    display_name: str = Field(alias="displayName")
+    email: Optional[str] = Field(default=None, alias="emailAddress")
+    is_active: bool = Field(default=True, alias="active")
+    avatar_urls: Optional[dict] = Field(default=None, alias="avatarUrls")
 
     @property
-    def avatar_48(self) -> Optional[str]:
-        """Get 48x48 avatar URL."""
-        if self.avatarUrls:
-            return self.avatarUrls.get("48x48")
+    def avatar_url(self) -> Optional[str]:
+        """Preferred avatar URL (48x48)."""
+        if self.avatar_urls:
+            return self.avatar_urls.get("48x48")
         return None
 
-    # Snake_case aliases for Employee-shaped consumers (autocomplete API, UI).
+    # Back-compat alias for any existing code still referring to avatar_48
     @property
-    def jira_account_id(self) -> str:
-        return self.accountId
-
-    @property
-    def display_name(self) -> str:
-        return self.displayName
-
-    @property
-    def email(self) -> Optional[str]:
-        return self.emailAddress
-
-    @property
-    def is_active(self) -> bool:
-        return self.active
+    def avatar_48(self) -> Optional[str]:
+        return self.avatar_url
 
 
 # === Project schemas ===

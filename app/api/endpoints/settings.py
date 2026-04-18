@@ -119,8 +119,8 @@ async def test_jira_credentials(body: JiraTestRequest):
             user = await jira.get_myself()
             return JiraTestResponse(
                 connected=True,
-                user_name=user.displayName,
-                user_email=user.emailAddress,
+                user_name=user.display_name,
+                user_email=user.email,
             )
     except JiraAuthError as e:
         return JiraTestResponse(connected=False, error=f"Ошибка аутентификации: {e}")

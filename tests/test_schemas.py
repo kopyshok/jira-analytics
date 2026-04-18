@@ -31,13 +31,13 @@ class TestJiraUserSchema:
             }
         }
         user = JiraUserSchema(**data)
-        
-        assert user.accountId == "abc123"
-        assert user.displayName == "John Doe"
-        assert user.emailAddress == "john@example.com"
-        assert user.active is True
+
+        assert user.jira_account_id == "abc123"
+        assert user.display_name == "John Doe"
+        assert user.email == "john@example.com"
+        assert user.is_active is True
         assert user.avatar_48 == "https://example.com/avatar.png"
-    
+
     def test_user_without_email(self):
         """Test user without email (common for service accounts)."""
         data = {
@@ -46,8 +46,8 @@ class TestJiraUserSchema:
             "active": True,
         }
         user = JiraUserSchema(**data)
-        
-        assert user.emailAddress is None
+
+        assert user.email is None
         assert user.avatar_48 is None
 
 
