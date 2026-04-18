@@ -1,10 +1,15 @@
 """Tests for CapacityService."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
-from app.models import Employee, MonthlyCapacityRule, Vacation
+from app.models import (
+    Employee,
+    MonthlyCapacityRule,
+    ProductionCalendarDay,
+    Vacation,
+)
 from app.services.capacity_service import (
     CapacityService,
     DEFAULT_HOURS_PER_DAY,
@@ -261,3 +266,40 @@ class TestHoursPerDayOverride:
 
         assert result.norm_hours == 22 * 6.0
         assert DEFAULT_HOURS_PER_DAY == 8.0
+
+
+def _naive_weekday_count(start: date, end: date) -> int:
+    n, d = 0, start
+    while d <= end:
+        if d.weekday() < 5:
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
+class TestWorkdayCalendarIntegration:
+    def test_holidays_reduce_workday_count(self, db_session, employee):
+        holiday_dates = [date(2026, 1, d) for d in range(1, 9)]
+        for d in holiday_dates:
+            db_session.add(ProductionCalendarDay(
+                date=d, is_workday=False, kind="holiday",
+                note="НГ", source="xmlcalendar",
+            ))
+        db_session.commit()
+
+        svc = CapacityService(db_session)
+        got = svc._workdays_in_range(date(2026, 1, 1), date(2026, 1, 31))
+
+        baseline = _naive_weekday_count(date(2026, 1, 1), date(2026, 1, 31))
+        weekday_holidays = sum(1 for d in holiday_dates if d.weekday() < 5)
+        assert got == baseline - weekday_holidays
+
+    def test_weekend_overridden_to_workday(self, db_session, employee):
+        db_session.add(ProductionCalendarDay(
+            date=date(2026, 3, 7), is_workday=True,
+            kind="workday_moved", note="перенос", source="xmlcalendar",
+        ))
+        db_session.commit()
+        svc = CapacityService(db_session)
+        got = svc._workdays_in_range(date(2026, 3, 7), date(2026, 3, 7))
+        assert got == 1
