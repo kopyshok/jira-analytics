@@ -314,6 +314,8 @@ async def reload_worklogs(
             stats = await service.reload_worklogs_since(req.since)
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     _set_setting(db, "worklog_reload_since_date", req.since.isoformat())
     db.commit()
