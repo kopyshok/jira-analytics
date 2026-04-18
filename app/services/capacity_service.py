@@ -22,6 +22,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import Employee, MonthlyCapacityRule, Vacation
+from app.services.production_calendar_service import ProductionCalendarService
 
 
 DEFAULT_HOURS_PER_DAY = 8.0
@@ -68,21 +69,35 @@ class QuarterCapacity:
 class CapacityService:
     """Сервис расчёта ёмкости на месяц/квартал."""
 
-    def __init__(self, db: Session, hours_per_day: float = DEFAULT_HOURS_PER_DAY):
+    def __init__(
+        self,
+        db: Session,
+        hours_per_day: float = DEFAULT_HOURS_PER_DAY,
+        production_calendar: Optional[ProductionCalendarService] = None,
+    ):
         self.db = db
         self.hours_per_day = hours_per_day
+        self.production_calendar = (
+            production_calendar or ProductionCalendarService(db)
+        )
 
     # === Календарь ===
 
-    @staticmethod
-    def _workdays_in_range(start: date, end: date) -> int:
-        """Количество рабочих дней (пн-пт) в интервале [start, end]."""
+    def _workdays_in_range(self, start: date, end: date) -> int:
+        """Количество рабочих дней в интервале [start, end].
+
+        Использует ProductionCalendarService: переопределения из таблицы
+        ``production_calendar_day`` (праздники, переносы) применяются поверх
+        правила по умолчанию ``weekday() < 5``.
+        """
         if end < start:
             return 0
+        overrides = self.production_calendar.workdays_in_range_map(start, end)
         days = 0
         current = start
         while current <= end:
-            if current.weekday() < 5:
+            is_wd = overrides.get(current, current.weekday() < 5)
+            if is_wd:
                 days += 1
             current += timedelta(days=1)
         return days
