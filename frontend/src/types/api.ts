@@ -7,6 +7,12 @@ export interface EmployeeResponse {
   is_active: boolean;
 }
 
+export interface RecalcActiveResponse {
+  activated: number;
+  deactivated: number;
+  total_active: number;
+}
+
 export interface ProjectResponse {
   id: string;
   key: string;

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getVacations, addVacation, removeVacation, getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity } from '../api/capacity';
-import { getEmployees } from '../api/employees';
+import { getEmployees, recalcActiveEmployees } from '../api/employees';
+import type { RecalcActiveResponse } from '../types/api';
 
 export const useEmployees = () =>
   useQuery({ queryKey: ['employees'], queryFn: () => getEmployees() });
@@ -37,3 +38,14 @@ export const useTeamCapacity = (year: string, quarter: string) =>
     queryFn: () => getTeamCapacity(year, quarter),
     enabled: !!year && !!quarter,
   });
+
+export const useRecalcActiveEmployees = () => {
+  const qc = useQueryClient();
+  return useMutation<RecalcActiveResponse, Error, void>({
+    mutationFn: recalcActiveEmployees,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};

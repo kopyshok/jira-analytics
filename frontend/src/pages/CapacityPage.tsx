@@ -1,18 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
-import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees } from '../hooks/useCapacity';
+import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees } from '../hooks/useCapacity';
+import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
 import type { QuarterCapacityResponse, VacationResponse, CapacityRuleResponse } from '../types/api';
 
 function TeamTab() {
+  const { notification } = App.useApp();
   const { year, quarter } = useQuarterYear();
   const { data, isLoading } = useTeamCapacity(year, quarter);
+  const { data: employees } = useEmployees();
+  const recalc = useRecalcActiveEmployees();
+
+  const stored = useGenericSetting('ui_capacity_team_filter');
+  const saveStored = useSaveGenericSetting();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (hydrated || stored.data === undefined) return;
+    const val = stored.data?.value;
+    if (val) setSelectedIds(val.split(',').filter(Boolean));
+    setHydrated(true);
+  }, [hydrated, stored.data]);
+
+  const handleFilterChange = (val: string[]) => {
+    setSelectedIds(val);
+    saveStored.mutate({ key: 'ui_capacity_team_filter', value: val.join(',') });
+  };
+
   const months = QUARTER_MONTHS[Number(quarter)] || [];
+  const visibleData = selectedIds.length === 0
+    ? data
+    : data?.filter(r => selectedIds.includes(r.employee_id));
 
   const columns = [
     { title: 'Сотрудник', dataIndex: 'employee_name', fixed: 'left' as const, width: 200 },
@@ -27,7 +52,49 @@ function TeamTab() {
     { title: 'Итого', dataIndex: 'total_available_hours', render: formatHours },
   ];
 
-  return <Table<QuarterCapacityResponse> dataSource={data} rowKey="employee_id" loading={isLoading} columns={columns} pagination={false} size="small" scroll={{ x: 800 }} />;
+  return (
+    <Space orientation="vertical" style={{ width: '100%' }}>
+      <Space wrap>
+        <Select
+          mode="multiple"
+          allowClear
+          placeholder="Фильтр по сотруднику"
+          style={{ minWidth: 260 }}
+          value={selectedIds}
+          onChange={handleFilterChange}
+          showSearch
+          optionFilterProp="label"
+          options={(employees ?? [])
+            .filter(e => e.is_active)
+            .map(e => ({ value: e.id, label: e.display_name }))}
+        />
+        <Popconfirm
+          title="Пересчитать состав по worklog'ам активных задач?"
+          okText="Пересчитать"
+          cancelText="Отмена"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => recalc.mutate(undefined, {
+            onSuccess: (s) => notification.success({
+              message: 'Состав обновлён',
+              description: `Активировано: ${s.activated}, деактивировано: ${s.deactivated}, всего активных: ${s.total_active}`,
+            }),
+            onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+          })}
+        >
+          <Button loading={recalc.isPending}>Пересчитать состав</Button>
+        </Popconfirm>
+      </Space>
+      <Table<QuarterCapacityResponse>
+        dataSource={visibleData}
+        rowKey="employee_id"
+        loading={isLoading}
+        columns={columns}
+        pagination={false}
+        size="small"
+        scroll={{ x: 800 }}
+      />
+    </Space>
+  );
 }
 
 function VacationsTab() {
