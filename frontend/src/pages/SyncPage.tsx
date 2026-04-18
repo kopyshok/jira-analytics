@@ -989,14 +989,15 @@ function SyncControls() {
   const reloadSince = useGenericSetting('worklog_reload_since_date');
   const saveReloadSince = useSaveGenericSetting();
   const reload = useReloadWorklogs();
-  const initialSince: Dayjs = reloadSince.data?.value
-    ? dayjs(reloadSince.data.value)
-    : dayjs('2026-01-01');
-  const [sinceDate, setSinceDate] = useState<Dayjs>(initialSince);
+  const [sinceDate, setSinceDate] = useState<Dayjs>(() => dayjs('2026-01-01'));
+  const [sinceHydrated, setSinceHydrated] = useState(false);
 
   useEffect(() => {
-    if (reloadSince.data?.value) setSinceDate(dayjs(reloadSince.data.value));
-  }, [reloadSince.data?.value]);
+    if (sinceHydrated || reloadSince.data === undefined) return;
+    const val = reloadSince.data?.value;
+    if (val) setSinceDate(dayjs(val));
+    setSinceHydrated(true);
+  }, [sinceHydrated, reloadSince.data]);
 
   const handleReload = () => {
     const iso = sinceDate.format('YYYY-MM-DD');
@@ -1108,11 +1109,15 @@ function SyncControls() {
           <Space wrap>
             <DatePicker
               value={sinceDate}
-              onChange={(d) => { if (d) setSinceDate(d); }}
+              onChange={(d) => d && setSinceDate(d)}
               format="DD.MM.YYYY"
+              allowClear={false}
             />
             <Popconfirm
               title={`Удалить все worklog'и с ${sinceDate.format('DD.MM.YYYY')} и перечитать?`}
+              okButtonProps={{ danger: true }}
+              okText="Перезагрузить"
+              cancelText="Отмена"
               onConfirm={handleReload}
             >
               <Button loading={reload.isPending} icon={<ReloadOutlined />}>
