@@ -279,3 +279,76 @@ class CapacityService:
             self.quarter_capacity(emp.id, year, quarter)
             for emp in employees
         ]
+
+    def category_breakdown(
+        self, year: int, quarter: int
+    ) -> list["EmployeeCategoryBreakdown"]:
+        """Факт-часы сотрудника за квартал, разложенные по 5 бакетам категорий."""
+        from sqlalchemy import func
+        from app.models import Employee, Issue, Worklog
+
+        if quarter not in QUARTER_MONTHS:
+            raise ValueError(f"Quarter must be 1..4, got {quarter}")
+        months = QUARTER_MONTHS[quarter]
+        start = date(year, months[0], 1)
+        if months[-1] == 12:
+            end_exclusive = date(year + 1, 1, 1)
+        else:
+            end_exclusive = date(year, months[-1] + 1, 1)
+
+        rows = (
+            self.db.query(
+                Employee.id, Employee.display_name,
+                Issue.assigned_category,
+                func.coalesce(func.sum(Worklog.hours), 0.0).label("h"),
+            )
+            .join(Worklog, Worklog.employee_id == Employee.id)
+            .join(Issue, Worklog.issue_id == Issue.id)
+            .filter(
+                Employee.is_active.is_(True),
+                Worklog.started_at >= datetime.combine(start, datetime.min.time()),
+                Worklog.started_at <  datetime.combine(end_exclusive, datetime.min.time()),
+            )
+            .group_by(Employee.id, Employee.display_name, Issue.assigned_category)
+            .all()
+        )
+
+        per_employee: dict[str, EmployeeCategoryBreakdown] = {}
+        for emp_id, name, code, hours in rows:
+            row = per_employee.setdefault(
+                emp_id,
+                EmployeeCategoryBreakdown(
+                    employee_id=emp_id, employee_name=name,
+                    by_bucket={b: 0.0 for b in BUCKETS},
+                    total_hours=0.0,
+                ),
+            )
+            bucket = _bucket_for(code)
+            row.by_bucket[bucket] += float(hours)
+            row.total_hours += float(hours)
+
+        return list(per_employee.values())
+
+
+BUCKETS = ("active_stack", "initiatives", "archive_target",
+           "archive_other", "uncategorized")
+
+
+@dataclass
+class EmployeeCategoryBreakdown:
+    employee_id: str
+    employee_name: str
+    by_bucket: dict[str, float]
+    total_hours: float
+
+
+def _bucket_for(code: str | None) -> str:
+    if code is None:
+        return "uncategorized"
+    if code == "archive":
+        return "archive_other"
+    if code == "archive_target":
+        return "archive_target"
+    if code == "initiatives_rfa":
+        return "initiatives"
+    return "active_stack"
