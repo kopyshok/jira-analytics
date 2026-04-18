@@ -27,19 +27,36 @@ def _parse_jira_datetime(value: str) -> datetime:
 
 class JiraUserSchema(BaseModel):
     """Jira user from API response."""
-    
+
     accountId: str
     displayName: str
     emailAddress: Optional[str] = None
     avatarUrls: Optional[dict] = None
     active: bool = True
-    
+
     @property
     def avatar_48(self) -> Optional[str]:
         """Get 48x48 avatar URL."""
         if self.avatarUrls:
             return self.avatarUrls.get("48x48")
         return None
+
+    # Snake_case aliases for Employee-shaped consumers (autocomplete API, UI).
+    @property
+    def jira_account_id(self) -> str:
+        return self.accountId
+
+    @property
+    def display_name(self) -> str:
+        return self.displayName
+
+    @property
+    def email(self) -> Optional[str]:
+        return self.emailAddress
+
+    @property
+    def is_active(self) -> bool:
+        return self.active
 
 
 # === Project schemas ===
