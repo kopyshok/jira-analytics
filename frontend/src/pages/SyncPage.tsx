@@ -64,6 +64,10 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
   // категорию эпика визуально, иначе PRJ-9882 (archive) остаётся в «стеке»,
   // потому что его 24 ребёнка без собственной категории якорят его.
   __inheritedAssigned?: string | null;
+  // Были ли у узла дочерние задачи в исходном дереве с бэкенда (до фильтра
+  // по вкладке). Нужно, чтобы заблокированные контейнеры (is_container +
+  // kids) не попадали в «Стек» self-матчем — они категоризацию не получают.
+  __hasRawChildren?: boolean;
 };
 
 type InnerTab = 'stack' | 'active' | 'archive_target' | 'archive';
@@ -262,11 +266,13 @@ function CategoryConfigTab() {
       .map(n => {
         const own = effectiveAssigned(n) ?? null;
         const passDown = own ?? parentAssigned;
+        const rawHasChildren = (n.children?.length ?? 0) > 0;
         const kids = walk(n.children, depth + 1, passDown);
         return {
           ...n,
           __depth: depth,
           __inheritedAssigned: parentAssigned,
+          __hasRawChildren: rawHasChildren,
           children: kids.length > 0 ? kids : undefined,
         };
       })
@@ -274,7 +280,8 @@ function CategoryConfigTab() {
         if (n.issue_type === 'group') return (n.children?.length ?? 0) > 0;
         if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
         if (n.is_context) return (n.children?.length ?? 0) > 0;
-        const selfMatches = matchesTab(effectiveFor(n), tab);
+        const isBlockedContainer = !!n.is_container && !!n.__hasRawChildren;
+        const selfMatches = !isBlockedContainer && matchesTab(effectiveFor(n), tab);
         return selfMatches || (n.children?.length ?? 0) > 0;
       });
     return walk(issueTree.data ?? [], 0, null);
@@ -305,7 +312,8 @@ function CategoryConfigTab() {
     const walk = (arr: TreeNodeWithChildren[]) => {
       arr.forEach(node => {
         if (node.issue_type !== 'group' && !node.is_context) {
-          if (matchesTab(effectiveFor(node), tab)) n++;
+          const isBlockedContainer = !!node.is_container && !!node.__hasRawChildren;
+          if (!isBlockedContainer && matchesTab(effectiveFor(node), tab)) n++;
         }
         if (node.children) walk(node.children);
       });
