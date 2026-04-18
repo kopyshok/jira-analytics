@@ -3,6 +3,7 @@ import type {
   ConnectionTestResponse, SyncResponse, SyncStatusResponse,
   JiraProjectItem, JiraEpicItem,
   WorklogReloadRequest, WorklogReloadResponse,
+  JiraUserSearchResult,
 } from '../types/api';
 
 export const testConnection = () => api.get<ConnectionTestResponse>('/sync/test-connection');
@@ -32,5 +33,8 @@ export const getJiraTeams = () =>
   api.get<string[]>('/sync/jira-teams');
 export const getJiraIssueTypes = () =>
   api.get<string[]>('/sync/jira-issuetypes');
+
+export const searchJiraUsers = (query: string) =>
+  api.get<JiraUserSearchResult[]>('/jira/users/search', { query });
 
 import type { JiraFieldItem } from '../types/api';

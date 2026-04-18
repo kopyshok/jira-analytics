@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal } from 'antd';
+import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal, AutoComplete, Typography } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
-import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees } from '../hooks/useCapacity';
+import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira } from '../hooks/useCapacity';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
-import type { QuarterCapacityResponse, VacationResponse, CapacityRuleResponse } from '../types/api';
+import type { QuarterCapacityResponse, VacationResponse, CapacityRuleResponse, JiraUserSearchResult } from '../types/api';
+
+const { Text } = Typography;
 
 function TeamTab() {
   const { notification } = App.useApp();
@@ -42,6 +44,34 @@ function TeamTab() {
   const handleFilterChange = (val: string[]) => {
     setSelectedIds(val);
     saveStored.mutate({ key: 'ui_capacity_team_filter', value: val.join(',') });
+  };
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const searchRes = useSearchJiraUsers(debouncedQuery);
+  const addMut = useAddEmployeeFromJira();
+
+  const handlePick = (user: JiraUserSearchResult) => {
+    addMut.mutate({
+      jira_account_id: user.jira_account_id,
+      display_name: user.display_name,
+      email: user.email,
+      is_active: true,
+      avatar_url: user.avatar_url,
+    }, {
+      onSuccess: () => {
+        notification.success({ title: `Добавлен: ${user.display_name}` });
+        setAddOpen(false);
+        setQuery('');
+      },
+      onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
+    });
   };
 
   const months = QUARTER_MONTHS[Number(quarter)] || [];
@@ -93,6 +123,9 @@ function TeamTab() {
         >
           <Button loading={recalc.isPending}>Пересчитать состав</Button>
         </Popconfirm>
+        <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
+          Добавить сотрудника
+        </Button>
       </Space>
       <Table<QuarterCapacityResponse>
         dataSource={visibleData}
@@ -103,6 +136,26 @@ function TeamTab() {
         size="small"
         scroll={{ x: 800 }}
       />
+      <Modal
+        title="Добавить сотрудника из Jira"
+        open={addOpen}
+        onCancel={() => setAddOpen(false)}
+        footer={null}
+      >
+        <AutoComplete
+          style={{ width: '100%' }}
+          value={query}
+          onChange={setQuery}
+          placeholder="Имя или e-mail (от 2 символов)"
+          options={(searchRes.data ?? []).map(u => ({
+            value: u.jira_account_id,
+            label: `${u.display_name}${u.email ? ` · ${u.email}` : ''}`,
+            user: u,
+          }))}
+          onSelect={(_, opt) => handlePick((opt as { user: JiraUserSearchResult }).user)}
+        />
+        {searchRes.isFetching && <Text type="secondary">Ищу…</Text>}
+      </Modal>
     </Space>
   );
 }
