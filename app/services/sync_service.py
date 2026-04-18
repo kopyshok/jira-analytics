@@ -1,6 +1,7 @@
 """Sync service - orchestrates Jira data synchronization."""
 
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from typing import Optional, List, Tuple, Any
 import json
 import logging
@@ -80,6 +81,15 @@ logger = logging.getLogger("jira_analytics.sync")
 # Sentinel, чтобы отличать «поле не передано» от «поле передано с пустым значением».
 # None как «пусто» теперь валидный сигнал «очистить в БД».
 _UNSET: Any = object()
+
+
+@dataclass
+class ReloadStats:
+    """Результат жёсткой перезагрузки worklog'ов по periods."""
+
+    deleted: int = 0
+    issues_scanned: int = 0
+    worklogs_inserted: int = 0
 
 
 class SyncStats:
@@ -926,3 +936,18 @@ class SyncService:
 
         logger.info(f"Full sync complete in {self.stats.duration_seconds:.1f}s")
         return self.stats
+
+    def reload_worklogs_since(self, since: date) -> ReloadStats:
+        """Удаляет worklog'и с ``started_at >= since`` и перечитывает их
+        из Jira, бьющийся по JQL ``worklogDate >= since``.
+
+        Идемпотентно; не трогает ``sync_state.last_sync``.
+        """
+        since_dt = datetime.combine(since, datetime.min.time())
+        deleted = (
+            self.db.query(Worklog)
+            .filter(Worklog.started_at >= since_dt)
+            .delete(synchronize_session=False)
+        )
+        self.db.commit()
+        return ReloadStats(deleted=deleted)
