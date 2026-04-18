@@ -1,5 +1,6 @@
 """Sync API endpoints."""
 
+from datetime import date
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -45,6 +46,18 @@ class ConnectionTestResponse(BaseModel):
     user_name: Optional[str] = None
     user_email: Optional[str] = None
     error: Optional[str] = None
+
+
+class WorklogReloadRequest(BaseModel):
+    """Запрос на жёсткую перезагрузку worklog'ов с указанной даты."""
+    since: date
+
+
+class WorklogReloadResponse(BaseModel):
+    """Результат перезагрузки worklog'ов."""
+    deleted: int
+    issues_scanned: int
+    worklogs_inserted: int
 
 
 class SyncStatusResponse(BaseModel):
@@ -280,6 +293,36 @@ async def sync_worklogs(db: Session = Depends(get_db)):
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/worklogs/reload", response_model=WorklogReloadResponse)
+async def reload_worklogs(
+    req: WorklogReloadRequest,
+    db: Session = Depends(get_db),
+):
+    """Жёсткая перезагрузка worklog'ов с указанной даты по ``started_at``.
+
+    Удаляет все записи, у которых ``started_at >= since`` и перечитывает их
+    из Jira через JQL ``worklogDate >= since``. Сохраняет дату в AppSetting
+    ``worklog_reload_since_date``.
+    """
+    from app.api.endpoints.settings import _set_setting
+
+    try:
+        async with JiraClient.from_db(db) as jira:
+            service = SyncService(db, jira)
+            stats = await service.reload_worklogs_since(req.since)
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+    _set_setting(db, "worklog_reload_since_date", req.since.isoformat())
+    db.commit()
+
+    return WorklogReloadResponse(
+        deleted=stats.deleted,
+        issues_scanned=stats.issues_scanned,
+        worklogs_inserted=stats.worklogs_inserted,
+    )
 
 
 @router.post("/comments", response_model=SyncResponse)
