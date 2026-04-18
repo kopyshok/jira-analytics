@@ -3,6 +3,7 @@ import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, S
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
+import PageHeader from '../components/shared/PageHeader';
 import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown } from '../hooks/useCapacity';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
@@ -360,7 +361,12 @@ function BreakdownTab() {
 export default function CapacityPage() {
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <QuarterYearSelect />
+      <PageHeader
+        eyebrow="Планирование"
+        title="Ёмкость команды"
+        subtitle="План · факт · отпуска · правила обязательной загрузки"
+        actions={<QuarterYearSelect />}
+      />
       <Tabs items={[
         { key: 'team', label: 'Команда', children: <TeamTab /> },
         { key: 'breakdown', label: 'Распределение', children: <BreakdownTab /> },

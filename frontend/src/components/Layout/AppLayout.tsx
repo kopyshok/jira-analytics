@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router';
-import { Layout, Typography } from 'antd';
+import { Layout } from 'antd';
 import SideMenu from './SideMenu';
+import LogoMark from './LogoMark';
+import SyncIndicator from './SyncIndicator';
 import BugReportButton from '../BugReportButton';
 import { DARK_THEME } from '../../utils/constants';
 
@@ -11,22 +13,51 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} breakpoint="lg">
-        <div style={{ height: 32, margin: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography.Text strong style={{ color: DARK_THEME.cyanPrimary, fontSize: collapsed ? 14 : 16, whiteSpace: 'nowrap', letterSpacing: 1, textTransform: 'uppercase' }}>
-            {collapsed ? 'JA' : 'Jira Analytics'}
-          </Typography.Text>
-        </div>
+    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+      <Sider
+        collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        breakpoint="lg"
+        width={232}
+        style={{ borderRight: `1px solid ${DARK_THEME.border}` }}
+      >
+        <LogoMark collapsed={collapsed} />
         <SideMenu />
       </Sider>
-      <Layout>
-        <Header style={{ padding: '0 24px', display: 'flex', alignItems: 'center', borderBottom: `1px solid ${DARK_THEME.border}` }}>
-          <Typography.Title level={4} style={{ margin: 0, color: DARK_THEME.textPrimary }}>
-            Анализ Jira и планирование
-          </Typography.Title>
+      <Layout style={{ background: 'transparent' }}>
+        <Header
+          style={{
+            padding: '0 28px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: `1px solid ${DARK_THEME.border}`,
+            background: 'rgba(9, 21, 39, 0.65)',
+            backdropFilter: 'blur(8px)',
+            height: 56,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              color: DARK_THEME.textMuted,
+              fontWeight: 600,
+            }}
+          >
+            Анализ Jira · Планирование квартала
+          </div>
+          <SyncIndicator />
         </Header>
-        <Content style={{ margin: 16, padding: 24, background: DARK_THEME.cardBg, borderRadius: 8, minHeight: 280, border: `1px solid ${DARK_THEME.border}` }}>
+        <Content
+          style={{
+            padding: '28px 32px 48px',
+            minHeight: 280,
+            background: 'transparent',
+          }}
+        >
           <Outlet />
         </Content>
       </Layout>

@@ -9,15 +9,37 @@ import {
   FundProjectionScreenOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
+import type { MenuProps } from 'antd';
 
-const items = [
-  { key: '/', icon: <DashboardOutlined />, label: 'Обзор' },
-  { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
-  { key: '/settings', icon: <SettingOutlined />, label: 'Настройки' },
-  { key: '/sync', icon: <SyncOutlined />, label: 'Задачи и Синхронизация' },
-  { key: '/capacity', icon: <TeamOutlined />, label: 'Ёмкость' },
-  { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Бэклог' },
-  { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Планирование' },
+const items: MenuProps['items'] = [
+  {
+    key: 'grp-overview',
+    type: 'group',
+    label: 'ОБЗОР',
+    children: [
+      { key: '/', icon: <DashboardOutlined />, label: 'Дашборд' },
+      { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
+    ],
+  },
+  {
+    key: 'grp-data',
+    type: 'group',
+    label: 'ДАННЫЕ',
+    children: [
+      { key: '/sync', icon: <SyncOutlined />, label: 'Задачи / синк' },
+      { key: '/settings', icon: <SettingOutlined />, label: 'Настройки' },
+    ],
+  },
+  {
+    key: 'grp-planning',
+    type: 'group',
+    label: 'ПЛАНИРОВАНИЕ',
+    children: [
+      { key: '/capacity', icon: <TeamOutlined />, label: 'Ёмкость' },
+      { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Бэклог' },
+      { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Сценарии' },
+    ],
+  },
 ];
 
 export default function SideMenu() {
@@ -31,6 +53,7 @@ export default function SideMenu() {
       selectedKeys={[location.pathname]}
       items={items}
       onClick={({ key }) => navigate(key)}
+      style={{ border: 'none', paddingTop: 8 }}
     />
   );
 }

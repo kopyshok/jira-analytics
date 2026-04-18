@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import DateRangeSelect from '../components/shared/DateRangeSelect';
 import ExportButtons from '../components/shared/ExportButtons';
+import PageHeader from '../components/shared/PageHeader';
 import { useSyncStatus, useSyncMutation } from '../hooks/useSync';
 import {
   useHoursByCategory,
@@ -82,6 +83,15 @@ export default function DashboardPage() {
 
   return (
     <div>
+      <PageHeader
+        eyebrow="Обзор"
+        title="Дашборд"
+        subtitle={
+          totalHours > 0
+            ? `${formatHours(totalHours)} ч · ${employeeCount} сотрудников · ${projectCount} проектов`
+            : 'Нет данных за выбранный период'
+        }
+      />
       {/* Filters */}
       <Space wrap style={{ marginBottom: 24 }}>
         <DateRangeSelect value={dates} onChange={setDates} />

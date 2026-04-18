@@ -4,6 +4,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import ExportButtons from '../components/shared/ExportButtons';
+import PageHeader from '../components/shared/PageHeader';
 import { useScenarios, useGenerateScenario, useDeleteScenario } from '../hooks/usePlanning';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { useTeamCapacity } from '../hooks/useCapacity';
@@ -46,12 +47,19 @@ export default function PlanningPage() {
 
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <Space>
-        <QuarterYearSelect />
-        <Button icon={<PlusOutlined />} type="primary" onClick={() => { form.resetFields(); setOpen(true); }}>
-          Сгенерировать сценарий
-        </Button>
-      </Space>
+      <PageHeader
+        eyebrow="Планирование"
+        title="Сценарии"
+        subtitle="Greedy-распределение бэклога по ёмкости команды"
+        actions={
+          <Space>
+            <QuarterYearSelect />
+            <Button icon={<PlusOutlined />} type="primary" onClick={() => { form.resetFields(); setOpen(true); }}>
+              Сгенерировать сценарий
+            </Button>
+          </Space>
+        }
+      />
 
       <Modal title="Новый сценарий" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={generate.isPending}>
         <Form form={form} layout="vertical" onFinish={handleGenerate}>

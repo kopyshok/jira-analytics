@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import DateRangeSelect from '../components/shared/DateRangeSelect';
 import ExportButtons from '../components/shared/ExportButtons';
+import PageHeader from '../components/shared/PageHeader';
 import { useHoursByEmployee, useHoursByProject, useHoursByCategory, useHoursByPeriod, useContextSwitching, useEmployeesForFilter, useProjectsForFilter } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
 import { CHART_COLORS, DARK_THEME } from '../utils/constants';
@@ -33,6 +34,11 @@ export default function AnalyticsPage() {
 
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+      <PageHeader
+        eyebrow="Аналитика"
+        title="Распределение трудозатрат"
+        subtitle="Часы по сотрудникам, проектам, категориям и периодам"
+      />
       <Space wrap>
         <DateRangeSelect value={dates} onChange={setDates} />
         <Select

@@ -24,6 +24,7 @@ import { formatDate, formatDateOnly, daysSince } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { useIssueTree, useSetIssueInclude, useBatchSetCategory } from '../hooks/useIssueTree';
+import PageHeader from '../components/shared/PageHeader';
 import type { IssueTreeNode } from '../types/api';
 import type {
   SyncStatusResponse,
@@ -1167,11 +1168,18 @@ function SyncControls() {
 
 export default function SyncPage() {
   return (
-    <Tabs
-      items={[
-        { key: 'categories', label: 'Категоризация задач', children: <CategoryConfigTab /> },
-        { key: 'sync', label: 'Синхронизация', children: <SyncControls /> },
-      ]}
-    />
+    <>
+      <PageHeader
+        eyebrow="Данные"
+        title="Задачи · Синхронизация"
+        subtitle="Категоризация задач в древовидной структуре и управление синхронизацией с Jira"
+      />
+      <Tabs
+        items={[
+          { key: 'categories', label: 'Категоризация задач', children: <CategoryConfigTab /> },
+          { key: 'sync', label: 'Синхронизация', children: <SyncControls /> },
+        ]}
+      />
+    </>
   );
 }

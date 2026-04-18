@@ -24,6 +24,7 @@ import ConnectionCard from '../components/ConnectionCard';
 import ScopeAdmin from '../components/ScopeAdmin';
 import JiraFieldsCard from '../components/JiraFieldsCard';
 import HierarchyRulesTab from '../components/HierarchyRulesTab';
+import PageHeader from '../components/shared/PageHeader';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -55,17 +56,24 @@ export default function SettingsPage() {
   };
 
   return (
-    <Tabs
-      activeKey={activeKey}
-      onChange={onChange}
-      items={[
-        { key: 'connection', label: 'Подключение к Jira', children: <ConnectionCard /> },
-        { key: 'scope', label: 'Проекты в scope', children: <ScopeAdmin /> },
-        { key: 'fields', label: 'Поля Jira', children: <JiraFieldsCard /> },
-        { key: 'hierarchy', label: 'Правила иерархии', children: <HierarchyRulesTab /> },
-        { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
-      ]}
-    />
+    <>
+      <PageHeader
+        eyebrow="Данные"
+        title="Настройки"
+        subtitle="Подключение к Jira, scope проектов, поля, правила иерархии, производственный календарь"
+      />
+      <Tabs
+        activeKey={activeKey}
+        onChange={onChange}
+        items={[
+          { key: 'connection', label: 'Подключение к Jira', children: <ConnectionCard /> },
+          { key: 'scope', label: 'Проекты в scope', children: <ScopeAdmin /> },
+          { key: 'fields', label: 'Поля Jira', children: <JiraFieldsCard /> },
+          { key: 'hierarchy', label: 'Правила иерархии', children: <HierarchyRulesTab /> },
+          { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
+        ]}
+      />
+    </>
   );
 }
 

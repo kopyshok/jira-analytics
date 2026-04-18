@@ -6,6 +6,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
+import PageHeader from '../components/shared/PageHeader';
 import { useBacklogItems, useCreateBacklogItem, useUpdateBacklogItem, useDeleteBacklogItem, useProjects } from '../hooks/useBacklog';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
@@ -84,10 +85,17 @@ export default function BacklogPage() {
 
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <Space>
-        <QuarterYearSelect />
-        <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>Добавить</Button>
-      </Space>
+      <PageHeader
+        eyebrow="Планирование"
+        title="Бэклог квартала"
+        subtitle="Список инициатив с оценкой и приоритетом — drag-n-drop для пересортировки"
+        actions={
+          <Space>
+            <QuarterYearSelect />
+            <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>Добавить</Button>
+          </Space>
+        }
+      />
 
       <Modal title={editing ? 'Редактирование' : 'Новый элемент'} open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={create.isPending || update.isPending}>
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
