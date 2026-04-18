@@ -937,7 +937,7 @@ class SyncService:
         logger.info(f"Full sync complete in {self.stats.duration_seconds:.1f}s")
         return self.stats
 
-    def reload_worklogs_since(self, since: date) -> ReloadStats:
+    async def reload_worklogs_since(self, since: date) -> ReloadStats:
         """Удаляет worklog'и с ``started_at >= since`` и перечитывает их
         из Jira по JQL ``worklogDate >= since``.
 
@@ -945,9 +945,8 @@ class SyncService:
         пропускаются, чтобы не расширять scope молча. Не трогает
         ``sync_state.last_sync``.
         """
-        import asyncio
-
         since_dt = datetime.combine(since, datetime.min.time())
+        since_dt_aware = since_dt.replace(tzinfo=timezone.utc)
         deleted = (
             self.db.query(Worklog)
             .filter(Worklog.started_at >= since_dt)
@@ -958,113 +957,37 @@ class SyncService:
         stats = ReloadStats(deleted=deleted)
         jql = f'worklogDate >= "{since.isoformat()}"'
 
-        async def run() -> None:
-            async for jira_issue in self.jira.iter_issues(
-                jql,
-                fields=["summary", "issuetype", "status", "project"],
-                max_results=100,
-            ):
-                local = (
-                    self.db.query(Issue)
-                    .filter(Issue.jira_issue_id == jira_issue.id)
-                    .one_or_none()
-                )
-                if local is None:
+        async for jira_issue in self.jira.iter_issues(
+            jql,
+            fields=["summary", "issuetype", "status", "project"],
+            max_results=100,
+        ):
+            local = (
+                self.db.query(Issue)
+                .filter(Issue.jira_issue_id == jira_issue.id)
+                .one_or_none()
+            )
+            if local is None:
+                continue
+            stats.issues_scanned += 1
+            async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
+                started = wl.started_datetime
+                if started.tzinfo is None:
+                    started_aware = started.replace(tzinfo=timezone.utc)
+                else:
+                    started_aware = started
+                if started_aware < since_dt_aware:
                     continue
-                stats.issues_scanned += 1
-                async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
-                    started = self._normalize_worklog_started(wl.started)
-                    if started is None or started < since_dt:
-                        continue
-                    employee = self._ensure_employee_from_worklog_author(wl.author)
-                    inserted = self._upsert_worklog_from_reload(wl, local, employee, started)
-                    if inserted:
-                        stats.worklogs_inserted += 1
-                self.db.commit()
+                author_schema = JiraUserSchema(
+                    accountId=wl.author.accountId,
+                    displayName=wl.author.displayName,
+                    emailAddress=wl.author.emailAddress,
+                    active=True,
+                )
+                employee = self._ensure_employee(author_schema)
+                _, created = self._upsert_worklog(wl, local.id, employee.id)
+                if created:
+                    stats.worklogs_inserted += 1
+            self.db.commit()
 
-        asyncio.run(run())
         return stats
-
-    @staticmethod
-    def _normalize_worklog_started(raw: Any) -> Optional[datetime]:
-        """Привести ``started`` из Jira к naive UTC ``datetime``.
-
-        Принимает либо готовый ``datetime`` (aware/naive), либо ISO-строку.
-        """
-        if raw is None:
-            return None
-        if isinstance(raw, datetime):
-            if raw.tzinfo is not None:
-                return raw.astimezone(timezone.utc).replace(tzinfo=None)
-            return raw
-        if isinstance(raw, str):
-            return _parse_jira_datetime(raw)
-        return None
-
-    def _ensure_employee_from_worklog_author(self, author: Any) -> Employee:
-        """Найти/создать сотрудника по автору worklog'а.
-
-        Работает со схемой ``JiraWorklogAuthorSchema`` (camelCase) и с её
-        snake_case формой (mock в тестах). Поиск идёт по ``jira_account_id``;
-        если сотрудника нет — создаём.
-        """
-        def _pick_str(*names: str) -> Optional[str]:
-            for name in names:
-                val = getattr(author, name, None)
-                if isinstance(val, str):
-                    return val
-            return None
-
-        account_id = _pick_str("account_id", "accountId")
-        display_name = _pick_str("display_name", "displayName")
-        email = _pick_str("email_address", "emailAddress")
-        active_raw = getattr(author, "active", True)
-        active = bool(active_raw) if isinstance(active_raw, bool) else True
-
-        existing = self.employee_repo.get_by_field("jira_account_id", account_id)
-        if existing:
-            return existing
-        data = {
-            "jira_account_id": account_id,
-            "display_name": display_name,
-            "email": email,
-            "is_active": active,
-            "synced_at": datetime.utcnow(),
-        }
-        return self.employee_repo.create(data)
-
-    def _upsert_worklog_from_reload(
-        self,
-        wl: Any,
-        issue: Issue,
-        employee: Employee,
-        started_at: datetime,
-    ) -> bool:
-        """Upsert worklog при reload; возвращает True если строка создана."""
-        seconds: int = 0
-        for name in ("time_spent_seconds", "timeSpentSeconds"):
-            val = getattr(wl, name, None)
-            if isinstance(val, int):
-                seconds = val
-                break
-        hours = seconds / 3600 if seconds else 0.0
-        comment_raw = getattr(wl, "comment", None)
-        comment_text = comment_raw if isinstance(comment_raw, (str, type(None))) else None
-        worklog_id = getattr(wl, "id", None)
-        if not isinstance(worklog_id, str):
-            worklog_id = str(worklog_id)
-
-        data = {
-            "jira_worklog_id": worklog_id,
-            "started_at": started_at,
-            "hours": hours,
-            "time_spent_seconds": seconds,
-            "comment_text": comment_text,
-            "issue_id": issue.id,
-            "employee_id": employee.id,
-            "synced_at": datetime.utcnow(),
-        }
-        _, inserted = self.worklog_repo.upsert_by_field(
-            "jira_worklog_id", worklog_id, data,
-        )
-        return inserted
