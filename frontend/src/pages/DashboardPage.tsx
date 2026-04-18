@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Row, Col, Statistic, Spin, Empty, Table, Tag, Collapse, Space, Select, Button, App } from 'antd';
+import { Card, Row, Col, Spin, Empty, Table, Tag, Collapse, Space, Select, Button, App } from 'antd';
 import {
   ClockCircleOutlined,
   TeamOutlined,
@@ -17,6 +17,7 @@ import {
 import DateRangeSelect from '../components/shared/DateRangeSelect';
 import ExportButtons from '../components/shared/ExportButtons';
 import PageHeader from '../components/shared/PageHeader';
+import KpiCard from '../components/shared/KpiCard';
 import { useSyncStatus, useSyncMutation } from '../hooks/useSync';
 import {
   useHoursByCategory,
@@ -64,6 +65,18 @@ export default function DashboardPage() {
   const avgSwitches = switching?.length
     ? switching.reduce((s, r) => s + r.switches, 0) / switching.length
     : 0;
+
+  const trendSeries = trend?.map(t => t.total_hours) ?? [];
+  const hoursDelta = (() => {
+    if (trendSeries.length < 4) return null;
+    const half = Math.floor(trendSeries.length / 2);
+    const first = trendSeries.slice(0, half).reduce((a, b) => a + b, 0);
+    const last = trendSeries.slice(half).reduce((a, b) => a + b, 0);
+    if (first === 0) return null;
+    const pct = ((last - first) / first) * 100;
+    const dir = Math.abs(pct) < 1 ? 'flat' : pct > 0 ? 'up' : 'down';
+    return { value: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, direction: dir as 'up' | 'down' | 'flat' };
+  })();
 
   const pieData = categories?.map((d) => ({
     ...d,
@@ -139,41 +152,43 @@ export default function DashboardPage() {
       {/* KPI cards — clickable, navigate to analytics tab */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/analytics?tab=category')}>
-            <Statistic
-              title="Всего часов"
-              value={formatHours(totalHours)}
-              suffix="ч"
-              prefix={<ClockCircleOutlined />}
-            />
-          </Card>
+          <KpiCard
+            eyebrow="Всего часов"
+            value={formatHours(totalHours)}
+            suffix="ч"
+            icon={<ClockCircleOutlined />}
+            series={trendSeries.length >= 2 ? trendSeries : undefined}
+            delta={hoursDelta}
+            onClick={() => navigate('/analytics?tab=category')}
+            accent={DARK_THEME.cyanPrimary}
+          />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/analytics?tab=employee')}>
-            <Statistic
-              title="Сотрудников"
-              value={employeeCount}
-              prefix={<TeamOutlined />}
-            />
-          </Card>
+          <KpiCard
+            eyebrow="Сотрудников"
+            value={employeeCount}
+            icon={<TeamOutlined />}
+            onClick={() => navigate('/analytics?tab=employee')}
+            accent={CHART_COLORS.cyanSecondary}
+          />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/analytics?tab=project')}>
-            <Statistic
-              title="Проектов"
-              value={projectCount}
-              prefix={<ProjectOutlined />}
-            />
-          </Card>
+          <KpiCard
+            eyebrow="Проектов"
+            value={projectCount}
+            icon={<ProjectOutlined />}
+            onClick={() => navigate('/analytics?tab=project')}
+            accent={CHART_COLORS.green}
+          />
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable onClick={() => navigate('/analytics?tab=switching')}>
-            <Statistic
-              title="Ср. переключений"
-              value={avgSwitches.toFixed(1)}
-              prefix={<SwapOutlined />}
-            />
-          </Card>
+          <KpiCard
+            eyebrow="Ср. переключений"
+            value={avgSwitches.toFixed(1)}
+            icon={<SwapOutlined />}
+            onClick={() => navigate('/analytics?tab=switching')}
+            accent={CHART_COLORS.purple}
+          />
         </Col>
       </Row>
 
@@ -184,11 +199,17 @@ export default function DashboardPage() {
             {top5employees?.length ? (
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={top5employees} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
+                  <defs>
+                    <linearGradient id="grad-employees" x1="0" x2="1" y1="0" y2="0">
+                      <stop offset="0%" stopColor={CHART_COLORS.blue} stopOpacity={0.25} />
+                      <stop offset="100%" stopColor={CHART_COLORS.blue} stopOpacity={0.95} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid horizontal={false} stroke={DARK_THEME.border} />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="label" width={140} />
-                  <Tooltip formatter={tooltipFmt} />
-                  <Bar dataKey="total_hours" fill={CHART_COLORS.blue} name="Часы" />
+                  <Tooltip formatter={tooltipFmt} cursor={{ fill: 'rgba(0,201,200,0.06)' }} />
+                  <Bar dataKey="total_hours" fill="url(#grad-employees)" name="Часы" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : <Empty description="Нет данных" />}
@@ -199,11 +220,17 @@ export default function DashboardPage() {
             {top5projects?.length ? (
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={top5projects} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
+                  <defs>
+                    <linearGradient id="grad-projects" x1="0" x2="1" y1="0" y2="0">
+                      <stop offset="0%" stopColor={CHART_COLORS.green} stopOpacity={0.25} />
+                      <stop offset="100%" stopColor={CHART_COLORS.green} stopOpacity={0.95} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid horizontal={false} stroke={DARK_THEME.border} />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="label" width={140} />
-                  <Tooltip formatter={tooltipFmt} />
-                  <Bar dataKey="total_hours" fill={CHART_COLORS.green} name="Часы" />
+                  <Tooltip formatter={tooltipFmt} cursor={{ fill: 'rgba(0,201,200,0.06)' }} />
+                  <Bar dataKey="total_hours" fill="url(#grad-projects)" name="Часы" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : <Empty description="Нет данных" />}
@@ -232,11 +259,25 @@ export default function DashboardPage() {
             {trend?.length ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={trend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
+                  <defs>
+                    <linearGradient id="grad-trend" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor={CHART_COLORS.cyan} stopOpacity={0.35} />
+                      <stop offset="100%" stopColor={CHART_COLORS.cyan} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke={DARK_THEME.border} />
                   <XAxis dataKey="label" />
                   <YAxis />
-                  <Tooltip formatter={tooltipFmt} />
-                  <Line type="monotone" dataKey="total_hours" stroke={CHART_COLORS.cyan} />
+                  <Tooltip formatter={tooltipFmt} cursor={{ stroke: DARK_THEME.cyanPrimary, strokeDasharray: '3 3' }} />
+                  <Line
+                    type="monotone"
+                    dataKey="total_hours"
+                    stroke={CHART_COLORS.cyan}
+                    strokeWidth={2}
+                    dot={{ fill: CHART_COLORS.cyan, r: 3 }}
+                    activeDot={{ r: 5, fill: DARK_THEME.textPrimary, stroke: CHART_COLORS.cyan, strokeWidth: 2 }}
+                    fill="url(#grad-trend)"
+                  />
                 </LineChart>
               </ResponsiveContainer>
             ) : <Empty description="Нет данных" />}
