@@ -216,7 +216,13 @@ async def get_issue_tree(
 
 
 def _issue_is_container(db: Session, issue: Issue) -> bool:
-    """True если issue совпал с контейнерным правилом (Эпик, Main box и т.п.)."""
+    """True если issue совпал с контейнерным правилом (Эпик, Main box и т.п.).
+
+    Флаг остаётся в ответе дерева для компоновки (контейнер без детей —
+    всё равно корень, а не попадает в ``__operations__``), но категоризацию
+    он больше не блокирует: пользователь может присвоить категорию эпику,
+    и все потомки наследуют её через ``CategoryResolver`` (ancestor chain).
+    """
     project = db.get(Project, issue.project_id) if issue.project_id else None
     project_key = project.key if project else ""
     return classify(load_rules(db), EvaluationInput(
@@ -224,20 +230,6 @@ def _issue_is_container(db: Session, issue: Issue) -> bool:
         issue_type=issue.issue_type,
         has_parent=bool(issue.parent_id),
     ))
-
-
-def _issue_blocks_categorization(db: Session, issue: Issue) -> bool:
-    """Категория блокируется только если задача — контейнер И у неё есть дети.
-
-    Контейнер без детей — фактический лист (например, ITL без подзадач),
-    его категоризация допустима.
-    """
-    if not _issue_is_container(db, issue):
-        return False
-    has_children = (
-        db.query(Issue.id).filter(Issue.parent_id == issue.id).first() is not None
-    )
-    return has_children
 
 
 @router.put("/{issue_id}/category")
@@ -253,21 +245,14 @@ async def set_issue_category(
     аналитике. Обратная операция (смена категории на не-архивную) флаг
     НЕ восстанавливает автоматически.
 
-    Контейнерные типы (Эпик, Main box и т.п.) категорию не получают
-    ТОЛЬКО если у них есть дочерние задачи: работа живёт в детях.
-    Контейнер без детей — фактический лист, ему категория назначается.
+    Любая задача (включая контейнерные типы — Эпик, Main box, RFA-инициативы)
+    может получить категорию напрямую: потомки наследуют её через
+    ``CategoryResolver`` (walk up по ``parent_id``), так что один клик на
+    эпике — и всё поддерево оказывается в целевой категории.
     """
     issue = db.get(Issue, issue_id)
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
-    if body.category_code and _issue_blocks_categorization(db, issue):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Тип «{issue.issue_type}» является родительским "
-                "(правило иерархии): категория не назначается."
-            ),
-        )
     issue.assigned_category = body.category_code
     auto_excluded = False
     if body.category_code in ARCHIVE_CATEGORY_CODES and issue.include_in_analysis:
@@ -330,43 +315,21 @@ async def batch_set_category(
     возвращает ``archived_ids`` — список задач, у которых одновременно
     снялся ``include_in_analysis``.
 
-    Контейнерные задачи (Эпик, Main box и т.п. — правило ``is_container``)
-    пропускаются **только если у них есть дочерние задачи**: работа живёт
-    в детях, а сам контейнер не категоризируется. Контейнер без детей —
-    фактический лист, категория применяется обычным образом.
+    Контейнерные задачи (Эпик, Main box, RFA-инициативы) больше не
+    пропускаются: потомки унаследуют категорию через ``CategoryResolver``
+    walk-up, так что установка категории на эпике = вся подветка уходит
+    в ту же категорию.
+
+    ``skipped_containers`` остаётся в ответе (всегда пустой) для обратной
+    совместимости с фронтом.
     """
     updated = 0
     archived_ids: list[str] = []
-    skipped_containers: list[str] = []
     is_archive = body.category_code in ARCHIVE_CATEGORY_CODES
-    # Правила грузим один раз на весь батч.
-    rules = load_rules(db)
-    # has_children для всех запрошенных id — одним запросом, чтобы не
-    # N+1-ить в цикле.
-    ids_with_children: set[str] = set()
-    if body.category_code and body.issue_ids:
-        rows = (
-            db.query(Issue.parent_id)
-            .filter(Issue.parent_id.in_(body.issue_ids))
-            .distinct()
-            .all()
-        )
-        ids_with_children = {r[0] for r in rows if r[0]}
     for issue_id in body.issue_ids:
         issue = db.get(Issue, issue_id)
         if not issue:
             continue
-        if body.category_code:
-            project = db.get(Project, issue.project_id) if issue.project_id else None
-            project_key = project.key if project else ""
-            is_container = classify(rules, EvaluationInput(
-                project_key=project_key,
-                issue_type=issue.issue_type,
-                has_parent=bool(issue.parent_id),
-            ))
-            if is_container and issue.id in ids_with_children:
-                skipped_containers.append(issue.id)
-                continue
         issue.assigned_category = body.category_code
         if is_archive and issue.include_in_analysis:
             issue.include_in_analysis = False
@@ -377,5 +340,5 @@ async def batch_set_category(
         "ok": True,
         "updated": updated,
         "archived_ids": archived_ids,
-        "skipped_containers": skipped_containers,
+        "skipped_containers": [],
     }

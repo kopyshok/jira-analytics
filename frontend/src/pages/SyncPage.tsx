@@ -64,10 +64,6 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
   // категорию эпика визуально, иначе PRJ-9882 (archive) остаётся в «стеке»,
   // потому что его 24 ребёнка без собственной категории якорят его.
   __inheritedAssigned?: string | null;
-  // Были ли у узла дочерние задачи в исходном дереве с бэкенда (до фильтра
-  // по вкладке). Нужно, чтобы заблокированные контейнеры (is_container +
-  // kids) не попадали в «Стек» self-матчем — они категоризацию не получают.
-  __hasRawChildren?: boolean;
 };
 
 type InnerTab = 'stack' | 'active' | 'archive_target' | 'archive';
@@ -105,8 +101,6 @@ type CategoryCellProps = {
   issueId: string;
   isGroup: boolean;
   isContext: boolean;
-  isContainer: boolean;
-  hasChildren: boolean;
   hasPending: boolean;
   pendingValue: string | undefined;
   assignedValue: string | undefined;
@@ -118,16 +112,13 @@ type CategoryCellProps = {
 };
 
 const CategoryCell = memo(function CategoryCell({
-  issueId, isGroup, isContext, isContainer, hasChildren,
+  issueId, isGroup, isContext,
   hasPending, pendingValue, assignedValue,
   inheritedAssigned, derivedCategory,
   categoryOptions, categoryLabels, onChange,
 }: CategoryCellProps) {
   if (isGroup) return null;
   if (isContext) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
-  if (isContainer && hasChildren) {
-    return <Text type="secondary" style={{ fontSize: 11 }} italic>родительский тип</Text>;
-  }
   const value = hasPending ? pendingValue : assignedValue;
   const ancestorCat = !value ? inheritedAssigned ?? null : null;
   const derivedCat = !value && !ancestorCat ? derivedCategory : null;
@@ -266,13 +257,11 @@ function CategoryConfigTab() {
       .map(n => {
         const own = effectiveAssigned(n) ?? null;
         const passDown = own ?? parentAssigned;
-        const rawHasChildren = (n.children?.length ?? 0) > 0;
         const kids = walk(n.children, depth + 1, passDown);
         return {
           ...n,
           __depth: depth,
           __inheritedAssigned: parentAssigned,
-          __hasRawChildren: rawHasChildren,
           children: kids.length > 0 ? kids : undefined,
         };
       })
@@ -280,8 +269,7 @@ function CategoryConfigTab() {
         if (n.issue_type === 'group') return (n.children?.length ?? 0) > 0;
         if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
         if (n.is_context) return (n.children?.length ?? 0) > 0;
-        const isBlockedContainer = !!n.is_container && !!n.__hasRawChildren;
-        const selfMatches = !isBlockedContainer && matchesTab(effectiveFor(n), tab);
+        const selfMatches = matchesTab(effectiveFor(n), tab);
         return selfMatches || (n.children?.length ?? 0) > 0;
       });
     return walk(issueTree.data ?? [], 0, null);
@@ -312,8 +300,7 @@ function CategoryConfigTab() {
     const walk = (arr: TreeNodeWithChildren[]) => {
       arr.forEach(node => {
         if (node.issue_type !== 'group' && !node.is_context) {
-          const isBlockedContainer = !!node.is_container && !!node.__hasRawChildren;
-          if (!isBlockedContainer && matchesTab(effectiveFor(node), tab)) n++;
+          if (matchesTab(effectiveFor(node), tab)) n++;
         }
         if (node.children) walk(node.children);
       });
@@ -606,8 +593,6 @@ function CategoryConfigTab() {
             issueId={record.id}
             isGroup={record.issue_type === 'group'}
             isContext={!!record.is_context}
-            isContainer={!!record.is_container}
-            hasChildren={(record.children?.length ?? 0) > 0}
             hasPending={pendingCats.has(record.id)}
             pendingValue={pendingCats.get(record.id) ?? undefined}
             assignedValue={record.assigned_category || undefined}
