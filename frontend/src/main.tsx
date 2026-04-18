@@ -5,7 +5,7 @@ import { RouterProvider } from 'react-router';
 import { App as AntApp, ConfigProvider, theme } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import { router } from './routes';
-import { DARK_THEME } from './utils/constants';
+import { DARK_THEME, FONTS } from './utils/constants';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -32,6 +32,9 @@ createRoot(document.getElementById('root')!).render(
           colorTextQuaternary: DARK_THEME.textHint,
           borderRadius: 8,
           colorLink: DARK_THEME.cyanSecondary,
+          fontFamily: FONTS.body,
+          fontFamilyCode: FONTS.mono,
+          fontSize: 14,
         },
         components: {
           Layout: {
@@ -62,6 +65,10 @@ createRoot(document.getElementById('root')!).render(
           },
           Statistic: {
             colorTextDescription: DARK_THEME.textMuted,
+            contentFontSize: 32,
+          },
+          Typography: {
+            fontWeightStrong: 700,
           },
           Tabs: {
             inkBarColor: DARK_THEME.cyanPrimary,
