@@ -186,6 +186,24 @@ class JiraClient:
         )
         return [JiraUserSchema(**user) for user in data]
     
+    async def search_users(
+        self,
+        query: str,
+        max_results: int = 20,
+    ) -> List[JiraUserSchema]:
+        """Поиск пользователей Jira по имени/e-mail.
+
+        Использует ``/rest/api/3/user/search`` (не путать с
+        ``/rest/api/3/users/search``, который возвращает всех пользователей,
+        включая ботов и inactive). Для UI-автокомплита нужен query-based.
+        """
+        raw = await self._request(
+            "GET",
+            "/user/search",
+            params={"query": query, "maxResults": max_results},
+        )
+        return [JiraUserSchema.model_validate(item) for item in raw]
+
     async def iter_users(self, max_results: int = 50) -> AsyncIterator[JiraUserSchema]:
         """Iterate through all users with pagination."""
         start_at = 0
