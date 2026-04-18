@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback, memo, type HTMLAttributes, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App,
   Tabs, Select, Typography, Modal, Checkbox, Popconfirm,
@@ -174,7 +174,6 @@ const IncludeCell = memo(function IncludeCell({
 // Constant Table props — lifted out of render so every click doesn't
 // hand AntD a fresh object reference.
 const tableComponents = { header: { cell: ResizableTitle } };
-const tableExpandable = { defaultExpandAllRows: false };
 const tableScroll = { y: 600 };
 
 function CategoryConfigTab() {
@@ -348,6 +347,34 @@ function CategoryConfigTab() {
     : innerTab === 'initiatives' ? initiativesData
     : innerTab === 'archive_target' ? archiveTargetData
     : archiveData;
+
+  // Контекстные строки (родители вне фильтра команды) при загрузке автоматически
+  // раскрываем вместе со всей цепочкой предков — пользователю нужно сразу видеть
+  // реальную задачу внутри фильтра. Пользователь может свернуть вручную; сброс
+  // только при смене вкладки / фильтра команды / перезагрузке дерева — правки
+  // pendingCats expansion не трогают.
+  const [expandedRowKeys, setExpandedRowKeys] = useState<readonly Key[]>([]);
+  useEffect(() => {
+    const keys = new Set<string>();
+    const walk = (nodes: TreeNodeWithChildren[], ancestors: string[]) => {
+      nodes.forEach(n => {
+        if (n.is_context) {
+          keys.add(n.id);
+          ancestors.forEach(a => keys.add(a));
+        }
+        if (n.children?.length) walk(n.children, [...ancestors, n.id]);
+      });
+    };
+    walk(tabData, []);
+    setExpandedRowKeys(Array.from(keys));
+    // tabData умышленно не в зависимостях: он пересобирается на каждом pendingCats-
+    // клике, а сброс раскрытия нам нужен только на структурных изменениях.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issueTree.data, innerTab, selectedTeams, hiddenStatuses]);
+  const tableExpandable = useMemo(
+    () => ({ expandedRowKeys, onExpandedRowsChange: setExpandedRowKeys }),
+    [expandedRowKeys],
+  );
 
   // Counts walk the whole tree — memoise per tab so selectedIds changes
   // don't re-trigger four tree walks. countTriage closes over pendingCats
