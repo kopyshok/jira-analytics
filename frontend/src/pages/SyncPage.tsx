@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, memo, type HTMLAttributes, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App,
   Tabs, Select, Typography, Modal, Checkbox, Popconfirm,
@@ -707,6 +707,19 @@ function CategoryConfigTab() {
   const handleRefreshAll = () => runRefresh(loadedKeys);
   const handleRefreshVisible = () => runRefresh(visibleKeys);
 
+  // Автозагрузка дерева при открытии страницы, если выбрана хотя бы одна
+  // команда (persisted в AppSetting). Срабатывает один раз за монтирование,
+  // чтобы не мешать ручному переключению фильтров.
+  const autoLoadedRef = useRef(false);
+  useEffect(() => {
+    if (autoLoadedRef.current) return;
+    if (!teamsHydrated) return;
+    if (selectedTeams.length === 0) return;
+    autoLoadedRef.current = true;
+    issueTree.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamsHydrated, selectedTeams]);
+
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
       <Space wrap>
@@ -752,6 +765,34 @@ function CategoryConfigTab() {
             Получить перечень задач
           </Button>
         )}
+        <Button
+          icon={<CheckOutlined />}
+          disabled={applicableSelectedIds.length === 0}
+          onClick={() => setBulkModalOpen(true)}
+        >
+          Установить категорию отмеченным ({applicableSelectedIds.length})
+        </Button>
+        {hasPending && (
+          <>
+            <Tag color="blue">Изменений: {pendingCats.size}</Tag>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              loading={batchCategoryMut.isPending}
+              onClick={savePending}
+            >
+              Сохранить
+            </Button>
+            <Button
+              icon={<CloseOutlined />}
+              onClick={() => setPendingCats(new Map())}
+            >
+              Отмена
+            </Button>
+          </>
+        )}
+      </Space>
+      <Space wrap>
         <Popconfirm
           title="Быстрая синхронизация команд"
           description={
@@ -789,13 +830,6 @@ function CategoryConfigTab() {
             Получить данные с Jira по указанной команде ({selectedTeams.length})
           </Button>
         </Popconfirm>
-        <Button
-          icon={<CheckOutlined />}
-          disabled={applicableSelectedIds.length === 0}
-          onClick={() => setBulkModalOpen(true)}
-        >
-          Установить категорию отмеченным ({applicableSelectedIds.length})
-        </Button>
         <Popconfirm
           title="Обновить с Jira все задачи"
           description={
@@ -842,25 +876,6 @@ function CategoryConfigTab() {
             Обновить с Jira видимые задачи ({visibleKeys.length})
           </Button>
         </Popconfirm>
-        {hasPending && (
-          <>
-            <Tag color="blue">Изменений: {pendingCats.size}</Tag>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={batchCategoryMut.isPending}
-              onClick={savePending}
-            >
-              Сохранить
-            </Button>
-            <Button
-              icon={<CloseOutlined />}
-              onClick={() => setPendingCats(new Map())}
-            >
-              Отмена
-            </Button>
-          </>
-        )}
       </Space>
       <Tabs
         activeKey={innerTab}
