@@ -303,3 +303,60 @@ class TestWorkdayCalendarIntegration:
         svc = CapacityService(db_session)
         got = svc._workdays_in_range(date(2026, 3, 7), date(2026, 3, 7))
         assert got == 1
+
+
+from datetime import datetime
+
+from app.models import Issue, Project, Worklog
+
+
+class TestMonthlyCapacityFact:
+    def test_fact_hours_sums_worklogs_in_month(self, db_session, employee):
+        proj = Project(id="p", jira_project_id="10", key="P", name="P")
+        issue = Issue(id="i", jira_issue_id="1", key="P-1", summary="x",
+                      project_id=proj.id, issue_type="Task", status="В работе")
+        db_session.add_all([proj, issue])
+        db_session.flush()
+        db_session.add_all([
+            Worklog(id="w1", jira_worklog_id="1", issue_id=issue.id,
+                    employee_id=employee.id,
+                    started_at=datetime(2026, 1, 15, 10, 0),
+                    hours=4.0, time_spent_seconds=14400),
+            Worklog(id="w2", jira_worklog_id="2", issue_id=issue.id,
+                    employee_id=employee.id,
+                    started_at=datetime(2026, 1, 20, 10, 0),
+                    hours=3.0, time_spent_seconds=10800),
+            Worklog(id="w3", jira_worklog_id="3", issue_id=issue.id,
+                    employee_id=employee.id,
+                    started_at=datetime(2026, 2, 1, 10, 0),
+                    hours=2.0, time_spent_seconds=7200),
+        ])
+        db_session.commit()
+
+        svc = CapacityService(db_session)
+        mc = svc.monthly_capacity(employee.id, 2026, 1)
+        assert mc.fact_hours == 7.0
+
+    def test_fact_hours_zero_when_no_worklogs(self, db_session, employee):
+        svc = CapacityService(db_session)
+        mc = svc.monthly_capacity(employee.id, 2026, 3)
+        assert mc.fact_hours == 0.0
+
+    def test_quarter_fact_sums_months(self, db_session, employee):
+        proj = Project(id="pp", jira_project_id="20", key="PP", name="PP")
+        issue = Issue(id="ii", jira_issue_id="2", key="PP-1", summary="x",
+                      project_id=proj.id, issue_type="Task", status="В работе")
+        db_session.add_all([proj, issue])
+        db_session.flush()
+        for month, day, h in [(1, 10, 5.0), (2, 10, 4.0), (3, 10, 3.0)]:
+            db_session.add(Worklog(
+                id=f"w{month}", jira_worklog_id=f"k{month}",
+                issue_id=issue.id, employee_id=employee.id,
+                started_at=datetime(2026, month, day, 10, 0),
+                hours=h, time_spent_seconds=int(h * 3600),
+            ))
+        db_session.commit()
+
+        svc = CapacityService(db_session)
+        qc = svc.quarter_capacity(employee.id, 2026, 1)
+        assert qc.total_fact_hours == 12.0

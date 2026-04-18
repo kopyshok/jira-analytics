@@ -16,12 +16,13 @@
 
 from calendar import monthrange
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Employee, MonthlyCapacityRule, Vacation
+from app.models import Employee, MonthlyCapacityRule, Vacation, Worklog
 from app.services.production_calendar_service import ProductionCalendarService
 
 
@@ -49,6 +50,7 @@ class MonthlyCapacity:
     vacation_hours: float
     mandatory_hours: float
     available_hours: float
+    fact_hours: float = 0.0
 
 
 @dataclass
@@ -64,6 +66,7 @@ class QuarterCapacity:
     total_vacation_hours: float = 0.0
     total_mandatory_hours: float = 0.0
     total_available_hours: float = 0.0
+    total_fact_hours: float = 0.0
 
 
 class CapacityService:
@@ -192,6 +195,24 @@ class CapacityService:
         )
         available = max(0.0, norm_hours - vacation_hours - mandatory_hours)
 
+        month_start = date(year, month, 1)
+        if month == 12:
+            next_month_start = date(year + 1, 1, 1)
+        else:
+            next_month_start = date(year, month + 1, 1)
+
+        fact = self.db.query(
+            func.coalesce(func.sum(Worklog.hours), 0.0)
+        ).filter(
+            Worklog.employee_id == employee_id,
+            Worklog.started_at >= datetime.combine(
+                month_start, datetime.min.time()
+            ),
+            Worklog.started_at < datetime.combine(
+                next_month_start, datetime.min.time()
+            ),
+        ).scalar() or 0.0
+
         return MonthlyCapacity(
             employee_id=employee.id,
             employee_name=employee.display_name,
@@ -202,6 +223,7 @@ class CapacityService:
             vacation_hours=vacation_hours,
             mandatory_hours=mandatory_hours,
             available_hours=available,
+            fact_hours=float(fact),
         )
 
     def quarter_capacity(
@@ -230,6 +252,8 @@ class CapacityService:
             result.total_vacation_hours += monthly.vacation_hours
             result.total_mandatory_hours += monthly.mandatory_hours
             result.total_available_hours += monthly.available_hours
+
+        result.total_fact_hours = sum(m.fact_hours for m in result.months)
 
         return result
 
