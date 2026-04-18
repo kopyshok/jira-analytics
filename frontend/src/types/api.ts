@@ -2,9 +2,27 @@
 
 export interface EmployeeResponse {
   id: string;
+  jira_account_id: string;
+  display_name: string;
+  email: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+}
+
+export interface JiraUserSearchResult {
+  jira_account_id: string;
   display_name: string;
   email: string | null;
   is_active: boolean;
+  avatar_url: string | null;
+}
+
+export interface EmployeeFromJiraRequest {
+  jira_account_id: string;
+  display_name: string;
+  email: string | null;
+  is_active: boolean;
+  avatar_url: string | null;
 }
 
 export interface RecalcActiveResponse {
