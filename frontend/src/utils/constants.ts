@@ -42,11 +42,23 @@ export const DARK_THEME = {
   cyanPrimary: '#00c9c8',
   cyanSecondary: '#4db8e8',
   yellow: '#f5c842',
+  /** Warm accent — reserved for critical signals (errors, overrun, stale sync) */
+  amber: '#f5a524',
+  amberDim: '#b87b18',
+  /** Positive delta (growth, completion) */
+  success: '#1D9E75',
   textPrimary: '#e8f0fa',
   textSecondary: '#c5d8ee',
   textMuted: '#8faec8',
   textHint: '#6b8aaa',
   textDim: '#4a6a8a',
+} as const;
+
+/** Typography stack — distinctive, not system-font slop */
+export const FONTS = {
+  display: "'Fraunces', 'Georgia', serif",
+  body: "'Manrope', -apple-system, 'Segoe UI', sans-serif",
+  mono: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
 } as const;
 
 export const QUARTER_MONTHS: Record<number, number[]> = {

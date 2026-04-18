@@ -1,16 +1,117 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #0d1c33;
+/* ---------- Global typography ---------- */
+:root {
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Manrope', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+  --color-page: #0d1c33;
+  --color-sidebar: #091527;
+  --color-card: #0f2340;
+  --color-border: #1e3356;
+  --color-cyan: #00c9c8;
+  --color-cyan-2: #4db8e8;
+  --color-amber: #f5a524;
+  --color-text: #e8f0fa;
+  --color-text-muted: #8faec8;
 }
 
-/* Dark-dashboard scrollbar */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #091527; }
-::-webkit-scrollbar-thumb { background: #1e3356; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #4db8e8; }
+html, body, #root {
+  margin: 0;
+  padding: 0;
+}
 
-/* Issue-tree depth tints (CategoryConfigTab) */
+body {
+  font-family: var(--font-body);
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  font-weight: 450;
+  letter-spacing: -0.005em;
+  color: var(--color-text);
+  background: var(--color-page);
+  min-height: 100vh;
+  position: relative;
+}
+
+/* ---------- Atmospheric background (two soft gradient pools + grain) ---------- */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 800px 600px at 15% 10%, rgba(0, 201, 200, 0.07), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 85% 90%, rgba(127, 119, 221, 0.06), transparent 60%),
+    radial-gradient(ellipse 500px 400px at 50% 50%, rgba(245, 165, 36, 0.025), transparent 70%);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+#root { position: relative; z-index: 1; }
+
+/* ---------- Scrollbar ---------- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-sidebar); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-cyan-2); }
+
+/* ---------- Display typography — bigger headings get the serif ---------- */
+.ant-typography.page-title,
+h1.page-title {
+  font-family: var(--font-display) !important;
+  font-weight: 600;
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--color-text);
+}
+
+.page-subtitle {
+  font-family: var(--font-body);
+  font-weight: 450;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  letter-spacing: 0;
+  margin-top: 4px;
+}
+
+/* Numbers in Statistic — tabular mono for alignment */
+.ant-statistic-content-value,
+.ant-statistic-content-suffix,
+.ant-statistic-content-prefix {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.ant-statistic-title {
+  font-family: var(--font-body);
+  font-size: 12px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted) !important;
+  font-weight: 600;
+}
+
+/* Jira keys always mono */
+.jira-key,
+code,
+kbd,
+.ant-typography code {
+  font-family: var(--font-mono) !important;
+}
+
+/* ---------- Issue-tree depth tints (CategoryConfigTab) ---------- */
 .tree-row-depth-0 > td { background-color: transparent !important; }
 .tree-row-depth-1 > td { background-color: rgba(0, 201, 200, 0.04) !important; }
 .tree-row-depth-2 > td { background-color: rgba(0, 201, 200, 0.08) !important; }
@@ -18,19 +119,40 @@ body {
 .tree-row-depth-4 > td { background-color: rgba(0, 201, 200, 0.16) !important; }
 .tree-row-depth-5 > td { background-color: rgba(0, 201, 200, 0.20) !important; }
 .tree-row-has-children > td { font-weight: 600; }
-/* Context rows — ancestors pulled in to anchor the hierarchy but not
-   under the current filter. Dim and make read-only. */
 .tree-row-context > td { opacity: 0.55; font-style: italic; }
 
-/* Recharts tooltip dark override */
+/* ---------- Recharts dark overrides ---------- */
 .recharts-default-tooltip {
-  background: #0f2340 !important;
-  border: 1px solid #1e3356 !important;
-  border-radius: 6px !important;
+  background: rgba(15, 35, 64, 0.96) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(8px);
+  font-family: var(--font-body) !important;
 }
 .recharts-tooltip-label {
-  color: #e8f0fa !important;
+  color: var(--color-text) !important;
+  font-weight: 600;
+  margin-bottom: 4px !important;
 }
-.recharts-cartesian-grid line {
-  stroke: #1e3356 !important;
+.recharts-tooltip-item {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+}
+.recharts-cartesian-grid line { stroke: var(--color-border) !important; }
+.recharts-cartesian-axis-tick-value {
+  font-family: var(--font-mono) !important;
+  font-size: 11px !important;
+  fill: var(--color-text-muted) !important;
+}
+
+/* ---------- KPI card subtle lift on hover ---------- */
+.kpi-card {
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  cursor: pointer;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-cyan) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 201, 200, 0.2);
 }
