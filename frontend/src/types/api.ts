@@ -226,6 +226,7 @@ export interface MonthlyCapacityResponse {
   vacation_hours: number;
   mandatory_hours: number;
   available_hours: number;
+  fact_hours: number;
 }
 
 export interface QuarterCapacityResponse {
@@ -238,6 +239,7 @@ export interface QuarterCapacityResponse {
   total_vacation_hours: number;
   total_mandatory_hours: number;
   total_available_hours: number;
+  total_fact_hours: number;
 }
 
 // === Backlog ===

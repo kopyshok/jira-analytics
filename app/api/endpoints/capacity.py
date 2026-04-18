@@ -74,6 +74,7 @@ class MonthlyCapacityResponse(BaseModel):
     vacation_hours: float
     mandatory_hours: float
     available_hours: float
+    fact_hours: float = 0.0
 
     @classmethod
     def from_dataclass(cls, data: MonthlyCapacity) -> "MonthlyCapacityResponse":
@@ -90,6 +91,7 @@ class QuarterCapacityResponse(BaseModel):
     total_vacation_hours: float
     total_mandatory_hours: float
     total_available_hours: float
+    total_fact_hours: float = 0.0
 
     @classmethod
     def from_dataclass(cls, data: QuarterCapacity) -> "QuarterCapacityResponse":
@@ -105,6 +107,7 @@ class QuarterCapacityResponse(BaseModel):
             total_vacation_hours=data.total_vacation_hours,
             total_mandatory_hours=data.total_mandatory_hours,
             total_available_hours=data.total_available_hours,
+            total_fact_hours=data.total_fact_hours,
         )
 
 
