@@ -77,6 +77,10 @@ def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
 
 logger = logging.getLogger("jira_analytics.sync")
 
+# Sentinel, чтобы отличать «поле не передано» от «поле передано с пустым значением».
+# None как «пусто» теперь валидный сигнал «очистить в БД».
+_UNSET: Any = object()
+
 
 class SyncStats:
     """Statistics for a sync operation."""
@@ -281,11 +285,17 @@ class SyncService:
         jira_issue: JiraIssueSchema,
         project_id: str,
         parent_id: Optional[str] = None,
-        team: Optional[str] = None,
-        participating_teams: Optional[List[str]] = None,
-        goals: Optional[str] = None,
+        team: Any = _UNSET,
+        participating_teams: Any = _UNSET,
+        goals: Any = _UNSET,
     ) -> Tuple[Issue, bool]:
-        """Upsert issue from Jira."""
+        """Upsert issue from Jira.
+
+        ``team`` / ``participating_teams`` / ``goals`` принимают ``_UNSET``
+        чтобы означать «колонку не трогать». Явный ``None`` / ``[]`` / ``""``
+        от вызывающего — это «очистить значение в БД» (когда поле
+        очищено в Jira).
+        """
         status_category = None
         if jira_issue.fields.status.statusCategory:
             status_category = jira_issue.fields.status.statusCategory.get("key")
@@ -303,11 +313,13 @@ class SyncService:
             "status_changed_at": _parse_jira_datetime(jira_issue.fields.statuscategorychangedate),
             "synced_at": datetime.utcnow(),
         }
-        if team is not None:
+        if team is not _UNSET:
             data["team"] = team
-        if participating_teams is not None:
-            data["participating_teams"] = json.dumps(participating_teams, ensure_ascii=False)
-        if goals is not None:
+        if participating_teams is not _UNSET:
+            data["participating_teams"] = json.dumps(
+                participating_teams or [], ensure_ascii=False
+            )
+        if goals is not _UNSET:
             data["goals"] = goals
         return self.issue_repo.upsert_by_field(
             "jira_issue_id",
@@ -388,26 +400,27 @@ class SyncService:
             if jira_issue.fields.creator:
                 self._ensure_employee(jira_issue.fields.creator)
 
-            # Extract team/goals values from custom fields if configured
-            team_val: Optional[str] = None
-            participating_vals: Optional[List[str]] = None
-            goals_val: Optional[str] = None
+            # Собираем только те поля, что реально сконфигурированы,
+            # чтобы не затирать колонки в БД, когда админ не задал field_id.
+            # Пустое значение в Jira (None / []) сюда приходит как явный
+            # сигнал «очистить» — см. _upsert_issue.
+            extra_kwargs: dict[str, Any] = {}
             if extra_fields:
                 extra = jira_issue.fields._extra
                 if product_field_id:
                     prod = _extract_team_values(extra, product_field_id)
-                    team_val = prod[0] if prod else None
+                    extra_kwargs["team"] = prod[0] if prod else None
                 if participating_field_id:
-                    participating_vals = _extract_team_values(extra, participating_field_id)
+                    extra_kwargs["participating_teams"] = _extract_team_values(
+                        extra, participating_field_id
+                    )
                 if goals_field_id:
                     goals_list = _extract_team_values(extra, goals_field_id)
-                    goals_val = ", ".join(goals_list) if goals_list else ""
+                    extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
 
             # Upsert issue
             issue, created = self._upsert_issue(
-                jira_issue, project.id, parent_id,
-                team=team_val, participating_teams=participating_vals,
-                goals=goals_val,
+                jira_issue, project.id, parent_id, **extra_kwargs,
             )
             if created:
                 self.stats.issues_created += 1
@@ -503,24 +516,22 @@ class SyncService:
                 if jira_issue.fields.creator:
                     self._ensure_employee(jira_issue.fields.creator)
 
-                team_val: Optional[str] = None
-                participating_vals: Optional[List[str]] = None
-                goals_val: Optional[str] = None
+                extra_kwargs: dict[str, Any] = {}
                 if extra_fields:
                     extra = jira_issue.fields._extra
                     if product_field_id:
                         prod = _extract_team_values(extra, product_field_id)
-                        team_val = prod[0] if prod else None
+                        extra_kwargs["team"] = prod[0] if prod else None
                     if participating_field_id:
-                        participating_vals = _extract_team_values(extra, participating_field_id)
+                        extra_kwargs["participating_teams"] = _extract_team_values(
+                            extra, participating_field_id
+                        )
                     if goals_field_id:
                         goals_list = _extract_team_values(extra, goals_field_id)
-                        goals_val = ", ".join(goals_list) if goals_list else ""
+                        extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
 
                 self._upsert_issue(
-                    jira_issue, project.id, parent_id,
-                    team=team_val, participating_teams=participating_vals,
-                    goals=goals_val,
+                    jira_issue, project.id, parent_id, **extra_kwargs,
                 )
                 matched += 1
 
@@ -615,23 +626,21 @@ class SyncService:
                     if jira_issue.fields.creator:
                         self._ensure_employee(jira_issue.fields.creator)
 
-                    team_val: Optional[str] = None
-                    participating_vals: Optional[List[str]] = None
-                    goals_val: Optional[str] = None
+                    extra_kwargs: dict[str, Any] = {}
                     extra = jira_issue.fields._extra
                     if product_field_id:
                         prod = _extract_team_values(extra, product_field_id)
-                        team_val = prod[0] if prod else None
+                        extra_kwargs["team"] = prod[0] if prod else None
                     if participating_field_id:
-                        participating_vals = _extract_team_values(extra, participating_field_id)
+                        extra_kwargs["participating_teams"] = _extract_team_values(
+                            extra, participating_field_id
+                        )
                     if goals_field_id:
                         goals_list = _extract_team_values(extra, goals_field_id)
-                        goals_val = ", ".join(goals_list) if goals_list else ""
+                        extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
 
                     _, was_created = self._upsert_issue(
-                        jira_issue, project.id, parent_id,
-                        team=team_val, participating_teams=participating_vals,
-                        goals=goals_val,
+                        jira_issue, project.id, parent_id, **extra_kwargs,
                     )
                     matched += 1
                     if was_created:
