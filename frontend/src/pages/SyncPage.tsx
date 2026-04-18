@@ -669,9 +669,31 @@ function CategoryConfigTab() {
     return out;
   }, [issueTree.data]);
 
-  const handleRefreshVisible = () => {
-    if (loadedKeys.length === 0) return;
-    refreshMut.mutate(loadedKeys, {
+  // Keys of nodes strictly matching the active inner tab — same population
+  // as the count shown on the tab label (group/context excluded).
+  const visibleKeys = useMemo(() => {
+    const out: string[] = [];
+    const walk = (nodes: TreeNodeWithChildren[]) => {
+      nodes.forEach(n => {
+        if (
+          n.issue_type !== 'group'
+          && !n.is_context
+          && n.key
+          && matchesTab(effectiveFor(n), innerTab)
+        ) {
+          out.push(n.key);
+        }
+        if (n.children) walk(n.children);
+      });
+    };
+    walk(tabData);
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabData, innerTab]);
+
+  const runRefresh = (keys: string[]) => {
+    if (keys.length === 0) return;
+    refreshMut.mutate(keys, {
       onSuccess: (res) => {
         notification.success({
           message: 'Обновление с Jira завершено',
@@ -682,6 +704,8 @@ function CategoryConfigTab() {
       onError: (e) => notification.error({ message: 'Ошибка обновления', description: e.message }),
     });
   };
+  const handleRefreshAll = () => runRefresh(loadedKeys);
+  const handleRefreshVisible = () => runRefresh(visibleKeys);
 
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
@@ -762,7 +786,7 @@ function CategoryConfigTab() {
             disabled={selectedTeams.length === 0 || syncTeamsMut.isPending}
             loading={syncTeamsMut.isPending}
           >
-            Обновить команды ({selectedTeams.length})
+            Получить данные с Jira по указанной команде ({selectedTeams.length})
           </Button>
         </Popconfirm>
         <Button
@@ -773,7 +797,7 @@ function CategoryConfigTab() {
           Установить категорию отмеченным ({applicableSelectedIds.length})
         </Button>
         <Popconfirm
-          title="Обновить с Jira видимые задачи"
+          title="Обновить с Jira все задачи"
           description={
             <div style={{ maxWidth: 320 }}>
               Перечитает с Jira {loadedKeys.length} загруженных задач,
@@ -784,7 +808,7 @@ function CategoryConfigTab() {
           icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
           okText="Запустить"
           cancelText="Отмена"
-          onConfirm={handleRefreshVisible}
+          onConfirm={handleRefreshAll}
           disabled={loadedKeys.length === 0 || refreshMut.isPending}
         >
           <Button
@@ -792,7 +816,30 @@ function CategoryConfigTab() {
             disabled={loadedKeys.length === 0 || refreshMut.isPending}
             loading={refreshMut.isPending}
           >
-            Обновить с Jira ({loadedKeys.length})
+            Обновить с Jira все задачи ({loadedKeys.length})
+          </Button>
+        </Popconfirm>
+        <Popconfirm
+          title="Обновить с Jira видимые задачи"
+          description={
+            <div style={{ maxWidth: 320 }}>
+              Перечитает с Jira {visibleKeys.length} задач текущей подвкладки
+              (как в счётчике её заголовка). Родительские и контекстные
+              узлы не обновляются.
+            </div>
+          }
+          icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+          okText="Запустить"
+          cancelText="Отмена"
+          onConfirm={handleRefreshVisible}
+          disabled={visibleKeys.length === 0 || refreshMut.isPending}
+        >
+          <Button
+            icon={<ReloadOutlined spin={refreshMut.isPending} />}
+            disabled={visibleKeys.length === 0 || refreshMut.isPending}
+            loading={refreshMut.isPending}
+          >
+            Обновить с Jira видимые задачи ({visibleKeys.length})
           </Button>
         </Popconfirm>
         {hasPending && (
