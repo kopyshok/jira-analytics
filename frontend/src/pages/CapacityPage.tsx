@@ -79,17 +79,75 @@ function TeamTab() {
     ? data
     : data?.filter(r => selectedIds.includes(r.employee_id));
 
+  const pctColor = (plan: number, fact: number): string | undefined => {
+    if (plan <= 0) return undefined;
+    const pct = (fact / plan) * 100;
+    if (pct >= 100) return 'var(--ant-color-success, #52c41a)';
+    if (pct < 50) return 'var(--ant-color-text-secondary, #999)';
+    return undefined;
+  };
+
+  const pctText = (plan: number, fact: number): string => {
+    if (plan <= 0) return '—';
+    return `${Math.round((fact / plan) * 100)}%`;
+  };
+
+  const monthGroup = (m: number) => ({
+    title: MONTH_NAMES[m],
+    children: [
+      {
+        title: 'План',
+        key: `m${m}_plan`,
+        width: 80,
+        render: (_: unknown, r: QuarterCapacityResponse) => {
+          const mc = r.months.find((x) => x.month === m);
+          return mc ? formatHours(mc.available_hours) : '—';
+        },
+      },
+      {
+        title: 'Факт',
+        key: `m${m}_fact`,
+        width: 80,
+        render: (_: unknown, r: QuarterCapacityResponse) => {
+          const mc = r.months.find((x) => x.month === m);
+          return mc ? formatHours(mc.fact_hours) : '—';
+        },
+      },
+      {
+        title: '%',
+        key: `m${m}_pct`,
+        width: 60,
+        render: (_: unknown, r: QuarterCapacityResponse) => {
+          const mc = r.months.find((x) => x.month === m);
+          if (!mc) return '—';
+          return (
+            <span style={{ color: pctColor(mc.available_hours, mc.fact_hours) }}>
+              {pctText(mc.available_hours, mc.fact_hours)}
+            </span>
+          );
+        },
+      },
+    ],
+  });
+
   const columns = [
     { title: 'Сотрудник', dataIndex: 'employee_name', fixed: 'left' as const, width: 200 },
-    ...months.map((m) => ({
-      title: MONTH_NAMES[m],
-      key: `m${m}`,
-      render: (_: unknown, r: QuarterCapacityResponse) => {
-        const mc = r.months.find((x) => x.month === m);
-        return mc ? formatHours(mc.available_hours) : '—';
-      },
-    })),
-    { title: 'Итого', dataIndex: 'total_available_hours', render: formatHours },
+    ...months.map(monthGroup),
+    {
+      title: 'Итого',
+      children: [
+        { title: 'План', dataIndex: 'total_available_hours', render: formatHours, width: 90 },
+        { title: 'Факт', dataIndex: 'total_fact_hours', render: formatHours, width: 90 },
+        {
+          title: '%', width: 70,
+          render: (_: unknown, r: QuarterCapacityResponse) => (
+            <span style={{ color: pctColor(r.total_available_hours, r.total_fact_hours) }}>
+              {pctText(r.total_available_hours, r.total_fact_hours)}
+            </span>
+          ),
+        },
+      ],
+    },
   ];
 
   return (
@@ -134,7 +192,7 @@ function TeamTab() {
         columns={columns}
         pagination={false}
         size="small"
-        scroll={{ x: 800 }}
+        scroll={{ x: 1400 }}
       />
       <Modal
         title="Добавить сотрудника из Jira"
