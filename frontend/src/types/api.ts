@@ -316,3 +316,26 @@ export interface HierarchyRuleCreate {
 }
 
 export type HierarchyRuleUpdate = Partial<HierarchyRuleCreate>;
+
+// === Production calendar ===
+
+export interface ProductionCalendarDayResponse {
+  date: string;         // YYYY-MM-DD
+  is_workday: boolean;
+  kind: string;
+  note: string | null;
+  source: 'xmlcalendar' | 'manual';
+}
+
+export interface ProductionCalendarUpsertRequest {
+  date: string;
+  is_workday: boolean;
+  kind: string;
+  note: string | null;
+}
+
+export interface ProductionCalendarSyncResponse {
+  inserted: number;
+  updated: number;
+  skipped_manual: number;
+}
