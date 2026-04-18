@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,11 @@ from app.services.sync_service import SyncService, SyncStats
 
 
 router = APIRouter()
+
+# Отдельный роутер для браузинга пользователей Jira — монтируется в
+# ``app.api.router`` под префиксом ``/jira`` (чтобы URL был
+# ``/api/v1/jira/users/search`` без ``/sync``).
+jira_router = APIRouter()
 
 
 # === Request/Response schemas ===
@@ -593,4 +598,38 @@ async def get_sync_status(db: Session = Depends(get_db)):
             last_error=state.last_error,
         )
         for state in states
+    ]
+
+
+# === /jira/users/search (jira_router) ===
+
+
+class JiraUserResponse(BaseModel):
+    jira_account_id: str
+    display_name: str
+    email: Optional[str] = None
+    is_active: bool
+    avatar_url: Optional[str] = None
+
+
+@jira_router.get("/users/search", response_model=List[JiraUserResponse])
+async def search_jira_users(
+    query: str = Query(..., min_length=2),
+    db: Session = Depends(get_db),
+):
+    """Поиск пользователей Jira по подстроке (минимум 2 символа).
+
+    Возвращает до 20 совпадений без записи в БД.
+    """
+    async with JiraClient.from_db(db) as jira:
+        users = await jira.search_users(query, max_results=20)
+    return [
+        JiraUserResponse(
+            jira_account_id=u.jira_account_id,
+            display_name=u.display_name,
+            email=u.email,
+            is_active=u.is_active,
+            avatar_url=u.avatar_url,
+        )
+        for u in users
     ]

@@ -50,6 +50,7 @@ async def root():
 api_router.include_router(employees.router, prefix="/employees", tags=["employees"])
 api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
+api_router.include_router(sync.jira_router, prefix="/jira", tags=["jira"])
 api_router.include_router(scope.router, prefix="/scope", tags=["scope"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(mapping.router, prefix="/mapping", tags=["mapping"])
