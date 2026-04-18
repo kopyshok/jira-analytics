@@ -20,6 +20,7 @@ from app.models.scenario_allocation import ScenarioAllocation
 from app.models.app_setting import AppSetting
 from app.models.category import Category
 from app.models.hierarchy_rule import HierarchyRule
+from app.models.production_calendar_day import ProductionCalendarDay
 
 __all__ = [
     "TimestampMixin",
@@ -44,4 +45,5 @@ __all__ = [
     "AppSetting",
     "Category",
     "HierarchyRule",
+    "ProductionCalendarDay",
 ]
