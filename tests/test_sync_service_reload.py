@@ -1,10 +1,12 @@
 """Тесты точечной перезагрузки worklog'ов по дате starts."""
 
 from datetime import date, datetime
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
+from app.connectors.schemas import JiraWorklogAuthorSchema, JiraWorklogSchema
 from app.models import Employee, Issue, Project, Worklog
 from app.services.sync_service import SyncService, ReloadStats
 
@@ -41,7 +43,7 @@ def sample_data(db_session):
             "old": old, "new": new}
 
 
-def test_reload_deletes_only_rows_at_or_after_since(db_session, sample_data):
+async def test_reload_deletes_only_rows_at_or_after_since(db_session, sample_data):
     async def iter_issues_empty(jql, **_):
         return
         yield  # pragma: no cover
@@ -50,7 +52,7 @@ def test_reload_deletes_only_rows_at_or_after_since(db_session, sample_data):
     jira.iter_issues = iter_issues_empty
     service = SyncService(db_session, jira_client=jira)
 
-    stats = service.reload_worklogs_since(date(2026, 1, 1))
+    stats = await service.reload_worklogs_since(date(2026, 1, 1))
 
     assert isinstance(stats, ReloadStats)
     assert stats.deleted == 1
@@ -58,23 +60,25 @@ def test_reload_deletes_only_rows_at_or_after_since(db_session, sample_data):
     assert remaining_ids == {"10"}
 
 
-def test_reload_repulls_and_inserts_new_rows(db_session, sample_data):
+async def test_reload_repulls_and_inserts_new_rows(db_session, sample_data):
     """Удалили пост-since → перечитали issue'ы из JQL → вставили новые worklog'и."""
-    from datetime import timezone
+    jira_issue_payload = SimpleNamespace(id="1001", key="PRJ-1")
 
-    jira_issue_payload = MagicMock()
-    jira_issue_payload.id = "1001"
-    jira_issue_payload.key = "PRJ-1"
-
-    worklog_payload = MagicMock()
-    worklog_payload.id = "30"
-    worklog_payload.started = datetime(2026, 2, 10, 9, 0, tzinfo=timezone.utc)
-    worklog_payload.time_spent_seconds = 7200
-    worklog_payload.author.account_id = "a1"
-    worklog_payload.author.display_name = "Иванов"
-    worklog_payload.author.email_address = "ivanov@example.com"
-    worklog_payload.author.active = True
-    worklog_payload.comment = "fix"
+    author = JiraWorklogAuthorSchema(
+        accountId="a1",
+        displayName="Иванов",
+        emailAddress="ivanov@example.com",
+    )
+    worklog_payload = JiraWorklogSchema(
+        id="30",
+        issueId="1001",
+        author=author,
+        started="2026-02-10T09:00:00.000+0000",
+        timeSpentSeconds=7200,
+        comment="fix",
+        created="2026-02-10T09:00:00.000+0000",
+        updated="2026-02-10T09:00:00.000+0000",
+    )
 
     async def iter_issues_mock(jql, **_):
         assert "worklogDate" in jql
@@ -88,7 +92,7 @@ def test_reload_repulls_and_inserts_new_rows(db_session, sample_data):
     jira.iter_worklogs_for_issue = iter_worklogs_mock
 
     service = SyncService(db_session, jira_client=jira)
-    stats = service.reload_worklogs_since(date(2026, 1, 1))
+    stats = await service.reload_worklogs_since(date(2026, 1, 1))
 
     assert stats.issues_scanned == 1
     assert stats.worklogs_inserted == 1
@@ -96,11 +100,9 @@ def test_reload_repulls_and_inserts_new_rows(db_session, sample_data):
     assert keys == {"10", "30"}  # old kept, new inserted
 
 
-def test_reload_skips_unknown_issues(db_session, sample_data):
+async def test_reload_skips_unknown_issues(db_session, sample_data):
     """Если Jira вернула issue, которой нет в локальной БД — пропускаем."""
-    jira_issue_payload = MagicMock()
-    jira_issue_payload.id = "9999"  # not in DB
-    jira_issue_payload.key = "UNK-1"
+    jira_issue_payload = SimpleNamespace(id="9999", key="UNK-1")  # not in DB
 
     async def iter_issues_mock(jql, **_):
         yield jira_issue_payload
@@ -114,7 +116,7 @@ def test_reload_skips_unknown_issues(db_session, sample_data):
     jira.iter_worklogs_for_issue = iter_worklogs_mock
 
     service = SyncService(db_session, jira_client=jira)
-    stats = service.reload_worklogs_since(date(2026, 1, 1))
+    stats = await service.reload_worklogs_since(date(2026, 1, 1))
 
     assert stats.issues_scanned == 0  # unknown not counted
     assert stats.worklogs_inserted == 0
