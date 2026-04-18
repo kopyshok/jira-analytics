@@ -29,6 +29,16 @@ function TeamTab() {
     setHydrated(true);
   }, [hydrated, stored.data]);
 
+  useEffect(() => {
+    if (!hydrated || !employees || selectedIds.length === 0) return;
+    const activeIds = new Set(employees.filter(e => e.is_active).map(e => e.id));
+    const filtered = selectedIds.filter(id => activeIds.has(id));
+    if (filtered.length !== selectedIds.length) {
+      setSelectedIds(filtered);
+      saveStored.mutate({ key: 'ui_capacity_team_filter', value: filtered.join(',') });
+    }
+  }, [hydrated, employees, selectedIds, saveStored]);
+
   const handleFilterChange = (val: string[]) => {
     setSelectedIds(val);
     saveStored.mutate({ key: 'ui_capacity_team_filter', value: val.join(',') });
@@ -75,10 +85,10 @@ function TeamTab() {
           okButtonProps={{ danger: true }}
           onConfirm={() => recalc.mutate(undefined, {
             onSuccess: (s) => notification.success({
-              message: 'Состав обновлён',
+              title: 'Состав обновлён',
               description: `Активировано: ${s.activated}, деактивировано: ${s.deactivated}, всего активных: ${s.total_active}`,
             }),
-            onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
           })}
         >
           <Button loading={recalc.isPending}>Пересчитать состав</Button>
