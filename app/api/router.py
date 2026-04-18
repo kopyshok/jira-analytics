@@ -13,6 +13,7 @@ from app.api.endpoints import (
     issue_config,
     mapping,
     planning,
+    production_calendar,
     projects,
     scope,
     settings,
@@ -65,4 +66,9 @@ api_router.include_router(
     hierarchy_rules_endpoints.router,
     prefix="/hierarchy-rules",
     tags=["hierarchy-rules"],
+)
+api_router.include_router(
+    production_calendar.router,
+    prefix="/production-calendar",
+    tags=["production_calendar"],
 )
