@@ -38,6 +38,7 @@ export default function SyncIndicator() {
         border: `1px solid ${DARK_THEME.border}`,
         background: DARK_THEME.darkAccent,
         fontSize: 12,
+        lineHeight: 1,
         color: text,
         whiteSpace: 'nowrap',
       }}

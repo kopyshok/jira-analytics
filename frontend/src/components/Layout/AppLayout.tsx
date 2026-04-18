@@ -36,6 +36,7 @@ export default function AppLayout() {
             background: 'rgba(9, 21, 39, 0.65)',
             backdropFilter: 'blur(8px)',
             height: 56,
+            lineHeight: '56px',
           }}
         >
           <div

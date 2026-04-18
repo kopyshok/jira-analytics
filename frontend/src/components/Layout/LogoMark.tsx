@@ -15,8 +15,10 @@ export default function LogoMark({ collapsed = false }: Props) {
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        padding: '20px 16px 18px',
+        height: 56,
+        padding: '0 16px',
         borderBottom: `1px solid ${DARK_THEME.border}`,
+        boxSizing: 'border-box',
       }}
     >
       <svg width="28" height="28" viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
