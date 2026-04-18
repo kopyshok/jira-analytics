@@ -21,6 +21,15 @@ from app.services.capacity_service import (
 )
 
 
+# === Schemas: category breakdown ===
+
+class CategoryBreakdownResponse(BaseModel):
+    employee_id: str
+    employee_name: str
+    by_bucket: dict[str, float]
+    total_hours: float
+
+
 router = APIRouter()
 
 
@@ -265,3 +274,26 @@ async def get_team_quarter_capacity(
     service = CapacityService(db)
     results = service.team_quarter_capacity(year, quarter)
     return [QuarterCapacityResponse.from_dataclass(r) for r in results]
+
+
+@router.get(
+    "/team/category-breakdown",
+    response_model=List[CategoryBreakdownResponse],
+)
+def team_category_breakdown(
+    year: int = Query(...),
+    quarter: int = Query(..., ge=1, le=4),
+    db: Session = Depends(get_db),
+):
+    """Факт-часы команды за квартал по 5 бакетам категорий."""
+    svc = CapacityService(db)
+    rows = svc.category_breakdown(year, quarter)
+    return [
+        CategoryBreakdownResponse(
+            employee_id=r.employee_id,
+            employee_name=r.employee_name,
+            by_bucket=r.by_bucket,
+            total_hours=r.total_hours,
+        )
+        for r in rows
+    ]
