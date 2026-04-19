@@ -24,9 +24,9 @@ function TeamTab() {
   const recalc = useRecalcActiveEmployees();
   const setTeam = useSetEmployeeTeam();
   const autoDetect = useAutoDetectTeams();
-  const { data: jiraTeams } = useJiraTeams();
+  const jiraTeams = useJiraTeams();
 
-  const teamOptions = (jiraTeams ?? []).map(t => ({ value: t, label: t }));
+  const teamOptions = (jiraTeams.data ?? []).map(t => ({ value: t, label: t }));
 
   const storedEmp = useGenericSetting('ui_capacity_team_filter');
   const storedTeams = useGenericSetting('ui_capacity_team_filter_teams');
@@ -219,6 +219,9 @@ function TeamTab() {
             value={currentTeam}
             options={teamOptions}
             onChange={(val) => setTeam.mutate({ id: r.employee_id, team: val ?? null })}
+            onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
+            loading={jiraTeams.isFetching}
+            notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
             showSearch optionFilterProp="label"
           />
         </Space>
@@ -257,6 +260,9 @@ function TeamTab() {
           value={selectedTeams}
           onChange={(v) => { setSelectedTeams(v); persist('ui_capacity_team_filter_teams', v.join(',')); }}
           options={[...teamOptions, { value: '__none__', label: 'Без команды' }]}
+          onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
+          loading={jiraTeams.isFetching}
+          notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
           showSearch optionFilterProp="label"
         />
         <Select mode="multiple" allowClear placeholder="Фильтр по сотруднику"
