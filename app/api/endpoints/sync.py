@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
-from app.services.sync_service import SyncService, SyncStats, ReloadStats
+from app.services.sync_service import SyncService, SyncStats, ReloadStats, UpdateStats
 
 
 router = APIRouter()
@@ -88,6 +88,12 @@ class WorklogReloadResponse(BaseModel):
     deleted: int
     issues_scanned: int
     worklogs_inserted: int
+
+
+class WorklogUpdateRequest(BaseModel):
+    """Запрос на мягкое обновление ворклогов (upsert, без удаления)."""
+    since: date
+    teams: Optional[List[str]] = None
 
 
 class SyncStatusResponse(BaseModel):
@@ -422,6 +428,80 @@ async def reload_worklogs_stream(
                     "deleted": stats.deleted,
                     "issues_scanned": stats.issues_scanned,
                     "worklogs_inserted": stats.worklogs_inserted,
+                })
+            except asyncio.CancelledError:
+                await queue.put({"type": "cancelled"})
+                raise
+            except JiraClientError as e:
+                await queue.put({"type": "error", "detail": f"Jira error: {e}"})
+            except Exception as e:
+                await queue.put({"type": "error", "detail": str(e)})
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                if event["type"] in ("done", "error", "cancelled"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await task
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.post("/worklogs/update/stream")
+async def update_worklogs_stream(
+    req: WorklogUpdateRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """SSE-стрим мягкого обновления ворклогов.
+
+    Два прохода:
+    1. Ведро A — ``updated >= since`` JQL, upsert по известным Issue;
+    2. Ведро B (если ``teams`` указан) — ``worklogAuthor`` по сотрудникам
+       перечисленных команд; неизвестные Issue создаются с
+       ``out_of_scope=True``.
+
+    События: ``progress`` после каждого issue, ``done`` — финальные stats,
+    ``error`` — ошибка, ``cancelled`` — клиент отключился.
+    """
+
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(stats: UpdateStats, current_key: Optional[str]) -> None:
+            await queue.put({
+                "type": "progress",
+                "bucket_a_issues_scanned": stats.bucket_a_issues_scanned,
+                "bucket_a_worklogs_upserted": stats.bucket_a_worklogs_upserted,
+                "bucket_b_issues_scanned": stats.bucket_b_issues_scanned,
+                "bucket_b_worklogs_upserted": stats.bucket_b_worklogs_upserted,
+                "bucket_b_out_of_scope_created": stats.bucket_b_out_of_scope_created,
+                "current_key": current_key,
+            })
+
+        async def run() -> None:
+            try:
+                async with JiraClient.from_db(db) as jira:
+                    service = SyncService(
+                        db, jira,
+                        cancel_check=_disconnect_checker(http_request),
+                    )
+                    stats = await service.update_worklogs_since(
+                        req.since, teams=req.teams, on_progress=on_progress,
+                    )
+                await queue.put({
+                    "type": "done",
+                    "bucket_a_issues_scanned": stats.bucket_a_issues_scanned,
+                    "bucket_a_worklogs_upserted": stats.bucket_a_worklogs_upserted,
+                    "bucket_b_issues_scanned": stats.bucket_b_issues_scanned,
+                    "bucket_b_worklogs_upserted": stats.bucket_b_worklogs_upserted,
+                    "bucket_b_out_of_scope_created": stats.bucket_b_out_of_scope_created,
                 })
             except asyncio.CancelledError:
                 await queue.put({"type": "cancelled"})
