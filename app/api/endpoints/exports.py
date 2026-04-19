@@ -72,6 +72,26 @@ async def export_analytics_pdf(
     )
 
 
+# === Capacity ===
+
+@router.get(
+    "/capacity.xlsx",
+    responses={200: {"content": {XLSX_MIME: {}}}},
+)
+async def export_capacity_xlsx(
+    year: int = Query(...),
+    quarter: int = Query(..., ge=1, le=4),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Capacity квартала в xlsx, группировка по командам."""
+    blob = ExportService(db).export_capacity_xlsx(year, quarter)
+    return Response(
+        content=blob,
+        media_type=XLSX_MIME,
+        headers=_attachment_headers(f"capacity_Q{quarter}_{year}.xlsx"),
+    )
+
+
 # === Planning scenarios ===
 
 @router.get(

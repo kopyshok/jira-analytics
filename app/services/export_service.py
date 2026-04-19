@@ -349,6 +349,95 @@ class ExportService:
         )
         return table
 
+    # === Capacity: Excel ===
+
+    def export_capacity_xlsx(self, year: int, quarter: int) -> bytes:
+        """Excel-выгрузка квартальной ёмкости команды с группировкой по команде."""
+        from io import BytesIO
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+
+        from app.services.capacity_service import CapacityService
+
+        MONTH_LABELS = {
+            1: "Янв", 2: "Фев", 3: "Мар", 4: "Апр", 5: "Май", 6: "Июн",
+            7: "Июл", 8: "Авг", 9: "Сен", 10: "Окт", 11: "Ноя", 12: "Дек",
+        }
+        Q = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
+
+        rows = CapacityService(self.db).team_quarter_capacity(year, quarter)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"Capacity Q{quarter} {year}"
+
+        bold = Font(bold=True)
+        team_fill = PatternFill("solid", fgColor="FFF2E8")
+        right = Alignment(horizontal="right")
+
+        months = Q[quarter]
+        header: list = ["Сотрудник"]
+        for m in months:
+            header += [f"{MONTH_LABELS[m]} План", f"{MONTH_LABELS[m]} Факт", f"{MONTH_LABELS[m]} %"]
+        header += ["Итого План", "Итого Факт", "Итого %"]
+        ws.append(header)
+        for c in ws[1]:
+            c.font = bold
+
+        groups: dict[str, list] = {}
+        for r in rows:
+            key = r.team or "__none__"
+            groups.setdefault(key, []).append(r)
+        ordered_keys = sorted([k for k in groups if k != "__none__"])
+        if "__none__" in groups:
+            ordered_keys.append("__none__")
+
+        def _pct(plan: float, fact: float) -> str:
+            return f"{round(fact / plan * 100)}%" if plan > 0 else "—"
+
+        def _month_value(r, m, attr):
+            mc = next((x for x in r.months if x.month == m), None)
+            return getattr(mc, attr) if mc else 0.0
+
+        for k in ordered_keys:
+            members = groups[k]
+            label = "Без команды" if k == "__none__" else k
+
+            team_plan_per_m = [sum(_month_value(r, m, "available_hours") for r in members) for m in months]
+            team_fact_per_m = [sum(_month_value(r, m, "fact_hours") for r in members) for m in months]
+
+            team_row: list = [label]
+            for plan, fact in zip(team_plan_per_m, team_fact_per_m):
+                team_row += [round(plan, 1), round(fact, 1), _pct(plan, fact)]
+            total_plan = sum(r.total_available_hours for r in members)
+            total_fact = sum(r.total_fact_hours for r in members)
+            team_row += [round(total_plan, 1), round(total_fact, 1), _pct(total_plan, total_fact)]
+            ws.append(team_row)
+            for c in ws[ws.max_row]:
+                c.font = bold
+                c.fill = team_fill
+
+            for r in members:
+                emp_row: list = [r.employee_name]
+                for m in months:
+                    mc = next((x for x in r.months if x.month == m), None)
+                    if mc is None:
+                        emp_row += ["", "", ""]
+                    else:
+                        emp_row += [round(mc.available_hours, 1), round(mc.fact_hours, 1), _pct(mc.available_hours, mc.fact_hours)]
+                emp_row += [round(r.total_available_hours, 1), round(r.total_fact_hours, 1), _pct(r.total_available_hours, r.total_fact_hours)]
+                ws.append(emp_row)
+                for c in ws[ws.max_row][1:]:
+                    c.alignment = right
+
+        ws.column_dimensions["A"].width = 28
+        for col_letter in "BCDEFGHIJKLM":
+            ws.column_dimensions[col_letter].width = 12
+
+        buf = BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
     # === Scenario: Excel ===
 
     def build_scenario_xlsx(self, scenario_id: str) -> bytes:
