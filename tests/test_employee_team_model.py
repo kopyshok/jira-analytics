@@ -153,3 +153,74 @@ class TestEmployeeTeamService:
         svc.remove_team(emp.id, "B")
         db_session.refresh(emp)
         assert emp.team == "A"  # B removed, A was only remaining → auto-primary
+
+    def test_replace_teams_non_empty_with_primary(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "Old")
+        rows = svc.replace_teams(emp.id, ["A", "B", "C"], primary="B")
+        names = sorted(r.team for r in rows)
+        assert names == ["A", "B", "C"]
+        primaries = [r for r in rows if r.is_primary]
+        assert len(primaries) == 1
+        assert primaries[0].team == "B"
+        db_session.refresh(emp)
+        assert emp.team == "B"
+
+    def test_replace_teams_primary_defaults_to_first(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        rows = svc.replace_teams(emp.id, ["X", "Y"])
+        primary = next(r for r in rows if r.is_primary)
+        assert primary.team == "X"
+        db_session.refresh(emp)
+        assert emp.team == "X"
+
+    def test_replace_teams_primary_not_in_list_falls_back_to_first(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        rows = svc.replace_teams(emp.id, ["A", "B"], primary="Nope")
+        primary = next(r for r in rows if r.is_primary)
+        assert primary.team == "A"
+        db_session.refresh(emp)
+        assert emp.team == "A"
+
+    def test_replace_teams_empty_clears_all(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "A")
+        svc.add_team(emp.id, "B")
+        rows = svc.replace_teams(emp.id, [])
+        assert rows == []
+        db_session.refresh(emp)
+        assert emp.team is None
+
+    def test_add_team_idempotent_same_team(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        first = svc.add_team(emp.id, "A")
+        second = svc.add_team(emp.id, "A")
+        # Same row, no duplicate
+        assert first.id == second.id
+        assert db_session.query(EmployeeTeam).filter_by(employee_id=emp.id).count() == 1
+        assert second.is_primary is True  # First team always primary
+
+    def test_add_team_idempotent_promotes_to_primary(self, db_session):
+        """Если добавить уже существующую команду с is_primary=True — она должна
+        стать primary (идемпотентный промоут)."""
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "A")
+        svc.add_team(emp.id, "B")  # A is primary
+        # Re-add B with is_primary=True — should promote
+        result = svc.add_team(emp.id, "B", is_primary=True)
+        assert result.is_primary is True
+        # Verify DB state
+        a = db_session.query(EmployeeTeam).filter_by(employee_id=emp.id, team="A").one()
+        assert a.is_primary is False

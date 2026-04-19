@@ -121,6 +121,7 @@ class EmployeeTeamService:
         if existing is not None:
             if is_primary and not existing.is_primary:
                 self.set_primary(employee_id, team)
+                self.db.refresh(existing)
             return existing
 
         has_any = (
@@ -209,6 +210,7 @@ class EmployeeTeamService:
                 team=t,
                 is_primary=(t == chosen_primary),
             ))
+        self.db.flush()
         self._recompute_legacy_team(employee_id)
         self.db.commit()
         return self.list_teams(employee_id)
