@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal, AutoComplete, Typography, Switch } from 'antd';
+import { useState, useEffect, useMemo } from 'react';
+import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useSetEmployeeTeam, useAutoDetectTeams, useCopyRules } from '../hooks/useCapacity';
+import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useAutoDetectTeams, useCopyRules, useReplaceEmployeeTeams, useSetPrimaryTeam } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
@@ -12,7 +12,7 @@ import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
-import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse } from '../types/api';
+import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem } from '../types/api';
 
 const { Text } = Typography;
 
@@ -22,9 +22,16 @@ function TeamTab() {
   const { data, isLoading } = useTeamCapacity(year, quarter);
   const { data: employees } = useEmployees();
   const recalc = useRecalcActiveEmployees();
-  const setTeam = useSetEmployeeTeam();
+  const replaceTeams = useReplaceEmployeeTeams();
+  const setPrimary = useSetPrimaryTeam();
   const autoDetect = useAutoDetectTeams();
   const jiraTeams = useJiraTeams();
+  const employeesFull = useEmployees({ withTeams: true });
+  const teamsByEmpId = useMemo(() => {
+    const m = new Map<string, EmployeeTeamItem[]>();
+    (employeesFull.data ?? []).forEach(e => m.set(e.id, e.teams ?? []));
+    return m;
+  }, [employeesFull.data]);
 
   const teamOptions = (jiraTeams.data ?? []).map(t => ({ value: t, label: t }));
 
@@ -202,27 +209,58 @@ function TeamTab() {
   });
 
   const nameColumn = {
-    title: 'Сотрудник', key: 'name', fixed: 'left' as const, width: 280,
+    title: 'Сотрудник', key: 'name', fixed: 'left' as const, width: 380,
     render: (_: unknown, r: TreeRow) => {
       if ('isTeam' in r) {
         return <span style={{ fontWeight: 600 }}>{r.employee_name} <Text type="secondary">· {r.children.length}</Text></span>;
       }
-      const currentTeam = r.team ?? undefined;
+      const teams = teamsByEmpId.get(r.employee_id) ?? [];
+      const primary = teams.find(t => t.is_primary)?.team;
+      const value = teams.map(t => t.team);
       return (
         <Space>
           <span>{r.employee_name}</span>
           <Select
-            size="small"
-            style={{ minWidth: 140 }}
-            placeholder="Без команды"
+            mode="multiple"
             allowClear
-            value={currentTeam}
+            size="small"
+            style={{ width: 260 }}
+            placeholder="Команды"
+            value={value}
             options={teamOptions}
-            onChange={(val) => setTeam.mutate({ id: r.employee_id, team: val ?? null })}
+            onChange={(next: string[]) => replaceTeams.mutate({
+              employeeId: r.employee_id,
+              teams: next,
+              primary: next.includes(primary ?? '') ? primary : next[0],
+            })}
             onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
             loading={jiraTeams.isFetching}
-            notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
-            showSearch optionFilterProp="label"
+            tagRender={(props) => {
+              const isPrimary = props.value === primary;
+              return (
+                <Tag
+                  color={isPrimary ? 'gold' : 'default'}
+                  closable={props.closable}
+                  onClose={props.onClose}
+                  style={{ marginInlineEnd: 4, cursor: 'pointer' }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={() => {
+                    if (!isPrimary) {
+                      setPrimary.mutate({
+                        employeeId: r.employee_id,
+                        team: String(props.value),
+                      });
+                    }
+                  }}
+                  title={isPrimary ? 'Основная команда' : 'Клик — сделать основной'}
+                >
+                  {isPrimary ? '★ ' : ''}{props.label ?? String(props.value)}
+                </Tag>
+              );
+            }}
           />
         </Space>
       );
