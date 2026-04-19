@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Employee, EmployeeTeam
+from app.models import Employee, EMPLOYEE_ROLES, EmployeeTeam
 from app.services.employee_team_service import EmployeeTeamService
 
 
@@ -33,10 +33,17 @@ class EmployeeResponse(BaseModel):
     email: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool
+    role: Optional[str] = None  # код роли из EMPLOYEE_ROLES
     team: Optional[str] = None  # legacy: имя primary team
     teams: Optional[List[EmployeeTeamItem]] = None  # присутствует только если with_teams=true
 
     model_config = {"from_attributes": True}
+
+
+class EmployeePatchRequest(BaseModel):
+    """Частичное обновление сотрудника (пока только role)."""
+
+    role: Optional[str] = None  # None → сбросить роль
 
 
 class EmployeeFromJiraRequest(BaseModel):
@@ -148,6 +155,37 @@ def auto_detect_teams(db: Session = Depends(get_db)):
         skipped=summary.skipped,
         details=summary.details,
     )
+
+
+# ─── Partial update (role, …) ───
+
+
+@router.patch("/{employee_id}", response_model=EmployeeResponse)
+def patch_employee(
+    employee_id: str,
+    req: EmployeePatchRequest,
+    db: Session = Depends(get_db),
+):
+    """Частично обновить поля сотрудника. Сейчас поддерживается `role`."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    data = req.model_dump(exclude_unset=True)
+    if "role" in data:
+        role = data["role"]
+        if role is not None and role not in EMPLOYEE_ROLES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown role {role!r}. Allowed: {list(EMPLOYEE_ROLES)}",
+            )
+        emp.role = role
+
+    # Snapshot before commit — see CLAUDE.md ORM caveat.
+    response = EmployeeResponse.model_validate(emp)
+    response.teams = None
+    db.commit()
+    return response
 
 
 # ─── Legacy single-team endpoint (deprecated, kept for compat) ───

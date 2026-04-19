@@ -1,3 +1,21 @@
+import type { EmployeeRole } from '../types/api';
+
+export const EMPLOYEE_ROLE_LABELS: Record<EmployeeRole, string> = {
+  programmer: 'Программист',
+  consultant: 'Консультант',
+  tester: 'Тестировщик',
+  analyst: 'Аналитик',
+  project_manager: 'Руководитель проектов',
+};
+
+export const EMPLOYEE_ROLES: EmployeeRole[] = [
+  'programmer',
+  'consultant',
+  'tester',
+  'analyst',
+  'project_manager',
+];
+
 export const CATEGORY_LABELS: Record<string, string> = {
   support_consultation: 'Сопровождение и консультация',
   business_analysis: 'Анализ/развитие бизнес-процессов',

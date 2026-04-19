@@ -4,15 +4,15 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useAutoDetectTeams, useCopyRules, useReplaceEmployeeTeams, useSetPrimaryTeam } from '../hooks/useCapacity';
+import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useAutoDetectTeams, useCopyRules, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
-import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
-import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem } from '../types/api';
+import { QUARTER_MONTHS, MONTH_NAMES, EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '../utils/constants';
+import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem, EmployeeRole } from '../types/api';
 
 const { Text } = Typography;
 
@@ -24,6 +24,7 @@ function TeamTab() {
   const recalc = useRecalcActiveEmployees();
   const replaceTeams = useReplaceEmployeeTeams();
   const setPrimary = useSetPrimaryTeam();
+  const updateRole = useUpdateEmployeeRole();
   const autoDetect = useAutoDetectTeams();
   const jiraTeams = useJiraTeams();
   const employeesFull = useEmployees({ withTeams: true });
@@ -32,6 +33,13 @@ function TeamTab() {
     (employeesFull.data ?? []).forEach(e => m.set(e.id, e.teams ?? []));
     return m;
   }, [employeesFull.data]);
+  const roleByEmpId = useMemo(() => {
+    const m = new Map<string, EmployeeRole | null>();
+    (employeesFull.data ?? []).forEach(e => m.set(e.id, e.role ?? null));
+    return m;
+  }, [employeesFull.data]);
+
+  const roleOptions = EMPLOYEE_ROLES.map(r => ({ value: r, label: EMPLOYEE_ROLE_LABELS[r] }));
 
   const teamOptions = (jiraTeams.data ?? []).map(t => ({ value: t, label: t }));
 
@@ -215,7 +223,7 @@ function TeamTab() {
   });
 
   const nameColumn = {
-    title: 'Сотрудник', key: 'name', fixed: 'left' as const, width: 380,
+    title: 'Сотрудник', key: 'name', fixed: 'left' as const, width: 560,
     render: (_: unknown, r: TreeRow) => {
       if ('isTeam' in r) {
         return <span style={{ fontWeight: 600 }}>{r.employee_name} <Text type="secondary">· {r.children.length}</Text></span>;
@@ -223,9 +231,21 @@ function TeamTab() {
       const teams = teamsByEmpId.get(r.employee_id) ?? [];
       const primary = teams.find(t => t.is_primary)?.team;
       const value = teams.map(t => t.team);
+      const role = roleByEmpId.get(r.employee_id) ?? null;
       return (
         <Space>
           <span>{r.employee_name}</span>
+          <Select
+            allowClear
+            size="small"
+            style={{ width: 150 }}
+            placeholder="Роль"
+            value={role}
+            options={roleOptions}
+            onChange={(next: EmployeeRole | null) =>
+              updateRole.mutate({ employeeId: r.employee_id, role: next ?? null })
+            }
+          />
           <Select
             mode="multiple"
             allowClear

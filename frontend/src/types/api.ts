@@ -5,6 +5,13 @@ export interface EmployeeTeamItem {
   is_primary: boolean;
 }
 
+export type EmployeeRole =
+  | 'programmer'
+  | 'consultant'
+  | 'tester'
+  | 'analyst'
+  | 'project_manager';
+
 export interface EmployeeResponse {
   id: string;
   jira_account_id: string;
@@ -12,6 +19,7 @@ export interface EmployeeResponse {
   email: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  role: EmployeeRole | null;
   team: string | null;  // legacy: имя primary team
   teams?: EmployeeTeamItem[];  // присутствует только если запросили with_teams=true
 }
