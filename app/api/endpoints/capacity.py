@@ -5,14 +5,14 @@
 """
 
 from datetime import date
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import MonthlyCapacityRule, Absence as Vacation
+from app.models import MonthlyCapacityRule, Absence
 from app.repositories.base import BaseRepository
 from app.services.capacity_service import (
     CapacityService,
@@ -33,20 +33,25 @@ class CategoryBreakdownResponse(BaseModel):
 router = APIRouter()
 
 
-# === Schemas: vacations ===
+# === Schemas: absences ===
 
-class VacationCreate(BaseModel):
+AbsenceReason = Literal["vacation", "sick", "day_off", "other"]
+
+
+class AbsenceCreate(BaseModel):
     employee_id: str
     start_date: date
     end_date: date
+    reason: AbsenceReason = "vacation"
     hours_total: Optional[float] = None
 
 
-class VacationResponse(BaseModel):
+class AbsenceResponse(BaseModel):
     id: str
     employee_id: str
     start_date: date
     end_date: date
+    reason: AbsenceReason
     hours_total: Optional[float] = None
 
     class Config:
@@ -120,50 +125,64 @@ class QuarterCapacityResponse(BaseModel):
         )
 
 
-# === Vacations CRUD ===
+# === Absences CRUD ===
 
-@router.get("/vacations", response_model=List[VacationResponse])
-async def list_vacations(
+@router.get("/absences", response_model=List[AbsenceResponse])
+async def list_absences(
     employee_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """Список отпусков (опционально — по сотруднику)."""
-    query = db.query(Vacation)
+    """Список отсутствий (опционально — по сотруднику)."""
+    query = db.query(Absence)
     if employee_id:
-        query = query.filter(Vacation.employee_id == employee_id)
-    return query.order_by(Vacation.start_date).all()
+        query = query.filter(Absence.employee_id == employee_id)
+    return query.order_by(Absence.start_date).all()
 
 
-@router.post("/vacations", response_model=VacationResponse, status_code=201)
-async def create_vacation(
-    data: VacationCreate,
+@router.post("/absences", response_model=AbsenceResponse, status_code=201)
+async def create_absence(
+    data: AbsenceCreate,
     db: Session = Depends(get_db),
 ):
-    """Добавить отпуск."""
+    """Добавить отсутствие (отпуск / больничный / отгул / прочее)."""
     if data.end_date < data.start_date:
         raise HTTPException(
             status_code=400,
             detail="end_date must be >= start_date",
         )
-    repo = BaseRepository(Vacation, db)
-    vacation = repo.create(data.model_dump())
+    repo = BaseRepository(Absence, db)
+    absence = repo.create(data.model_dump())
+    # Snapshot before commit — avoid expired-attribute reload on worker thread
+    absence_id = absence.id
+    employee_id = absence.employee_id
+    start_date = absence.start_date
+    end_date = absence.end_date
+    reason = absence.reason
+    hours_total = absence.hours_total
     db.commit()
-    return vacation
+    return AbsenceResponse(
+        id=absence_id,
+        employee_id=employee_id,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        hours_total=hours_total,
+    )
 
 
-@router.delete("/vacations/{vacation_id}")
-async def delete_vacation(
-    vacation_id: str,
+@router.delete("/absences/{absence_id}")
+async def delete_absence(
+    absence_id: str,
     db: Session = Depends(get_db),
 ):
-    """Удалить отпуск."""
-    repo = BaseRepository(Vacation, db)
-    existing = repo.get(vacation_id)
+    """Удалить отсутствие."""
+    repo = BaseRepository(Absence, db)
+    existing = repo.get(absence_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Vacation not found")
+        raise HTTPException(status_code=404, detail="Absence not found")
     repo.delete(existing)
     db.commit()
-    return {"status": "deleted", "id": vacation_id}
+    return {"status": "deleted", "id": absence_id}
 
 
 # === Monthly capacity rules CRUD ===
