@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity, getCategoryBreakdown } from '../api/capacity';
-import { getEmployees, recalcActiveEmployees, addEmployeeFromJira } from '../api/employees';
+import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
 import { api } from '../api/client';
 import type {
@@ -9,8 +9,15 @@ import type {
   EmployeeResponse,
 } from '../types/api';
 
-export const useEmployees = () =>
-  useQuery({ queryKey: ['employees'], queryFn: () => getEmployees() });
+export const useEmployees = (params?: { withTeams?: boolean; isActive?: boolean }) =>
+  useQuery({
+    queryKey: ['employees', params?.withTeams ?? false, params?.isActive ?? null],
+    queryFn: () => getEmployees({
+      with_teams: params?.withTeams,
+      is_active: params?.isActive,
+    }),
+    staleTime: 30_000,
+  });
 
 export const useCapacityRules = () =>
   useQuery({ queryKey: ['capacity', 'rules'], queryFn: () => getCapacityRules() });
@@ -102,5 +109,32 @@ export const useCopyRules = () => {
     mutationFn: (body: { from_year: number; from_quarter: number; to_year: number; to_quarter: number }) =>
       api.post<{ created: number }>('/capacity/rules/copy-to-quarter', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['capacity', 'rules'] }),
+  });
+};
+
+export const useReplaceEmployeeTeams = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ employeeId, teams, primary }: {
+      employeeId: string;
+      teams: string[];
+      primary?: string;
+    }) => replaceEmployeeTeams(employeeId, { teams, primary }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+export const useSetPrimaryTeam = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ employeeId, team }: { employeeId: string; team: string }) =>
+      setEmployeePrimaryTeam(employeeId, team),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
   });
 };
