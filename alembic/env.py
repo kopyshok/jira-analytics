@@ -22,7 +22,7 @@ from app.models import (
     CategoryMapping,
     CategoryOverride,
     WorklogQualityRule,
-    Vacation,
+    Absence,
     MonthlyCapacityRule,
     BacklogItem,
     PlanningScenario,
