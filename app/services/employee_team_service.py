@@ -65,6 +65,13 @@ class EmployeeTeamService:
         return rows[0].team
 
     def auto_detect_all_missing(self) -> AutoDetectSummary:
+        """Массово проставить primary team для сотрудников без membership.
+
+        «Missing» = `employee_teams` для сотрудника пуст (а не `Employee.team IS NULL`):
+        legacy-колонка — derived source, единственный источник истины — M:N-таблица.
+        Назначение идёт через `add_team`, чтобы сохранить single-primary invariant
+        и синхронно обновить `Employee.team`.
+        """
         assigned = 0
         skipped = 0
         details: list[dict] = []
@@ -74,17 +81,23 @@ class EmployeeTeamService:
             .all()
         )
         for emp in employees:
-            if emp.team:
+            has_any = (
+                self.db.query(EmployeeTeam)
+                .filter(EmployeeTeam.employee_id == emp.id)
+                .count()
+            ) > 0
+            if has_any:
                 skipped += 1
                 continue
             team = self.auto_detect_team(emp.id)
             if team is None:
                 skipped += 1
                 continue
-            emp.team = team
+            # `add_team` коммитит сам, делает первый team primary автоматически,
+            # и обновляет `Employee.team` через `_recompute_legacy_team`.
+            self.add_team(emp.id, team)
             assigned += 1
             details.append({"employee_id": emp.id, "team": team})
-        self.db.commit()
         return AutoDetectSummary(assigned=assigned, skipped=skipped, details=details)
 
     def _recompute_legacy_team(self, employee_id: str) -> None:
