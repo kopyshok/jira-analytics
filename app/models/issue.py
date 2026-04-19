@@ -64,6 +64,11 @@ class Issue(Base, SyncedMixin):
     goals: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=True)
+    # Задача попала в БД только через worklog автора (Bucket B) — не входит в
+    # основной scope проекта. Используется для фильтрации в аналитике.
+    out_of_scope: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True,
+    )
 
     # Jira metadata for triage (e.g. «какие Done висят давно — в архив»)
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
