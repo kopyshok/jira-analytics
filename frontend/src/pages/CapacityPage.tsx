@@ -4,7 +4,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useSetEmployeeTeam, useAutoDetectTeams } from '../hooks/useCapacity';
+import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useSetEmployeeTeam, useAutoDetectTeams, useCopyRules } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
@@ -452,15 +452,48 @@ function AbsencesTab() {
 
 function RulesTab() {
   const { notification } = App.useApp();
+  const { year, quarter } = useQuarterYear();
   const { data, isLoading } = useCapacityRules();
   const add = useAddCapacityRule();
   const remove = useRemoveCapacityRule();
+  const copy = useCopyRules();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
+  const next = () => {
+    const q = Number(quarter);
+    return q === 4 ? { y: Number(year) + 1, q: 1 } : { y: Number(year), q: q + 1 };
+  };
+  const { y: toYear, q: toQuarter } = next();
+
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
-      <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>Добавить правило</Button>
+      <Space>
+        <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>Добавить правило</Button>
+        <Popconfirm
+          title={`Скопировать правила из Q${quarter} ${year} в Q${toQuarter} ${toYear}?`}
+          okText="Скопировать" cancelText="Отмена"
+          onConfirm={() => copy.mutate(
+            { from_year: Number(year), from_quarter: Number(quarter), to_year: toYear, to_quarter: toQuarter },
+            {
+              onSuccess: (s) => notification.success({
+                title: 'Скопировано',
+                description: `Создано правил: ${s.created}`,
+              }),
+              onError: (e: Error) => {
+                const msg = e.message || 'Ошибка';
+                if (msg.includes('conflicts')) {
+                  notification.warning({ title: 'Конфликт', description: msg });
+                } else {
+                  notification.error({ title: 'Ошибка', description: msg });
+                }
+              },
+            },
+          )}
+        >
+          <Button loading={copy.isPending}>Скопировать в следующий квартал</Button>
+        </Popconfirm>
+      </Space>
       <Modal title="Новое правило ёмкости" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={add.isPending}>
         <Form form={form} layout="vertical" onFinish={(vals) => {
           add.mutate(vals, {
