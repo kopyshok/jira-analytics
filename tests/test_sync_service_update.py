@@ -155,3 +155,105 @@ async def test_update_upserts_changed_started_at(db_session, issue):
     wls = db_session.query(Worklog).filter_by(jira_worklog_id="wl-1").all()
     assert len(wls) == 1
     assert wls[0].started_at == datetime(2026, 2, 5, 14, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_bucket_b_creates_out_of_scope_issue(db_session):
+    """Ворклог сотрудника команды на чужой задаче → создаётся Issue(out_of_scope=True)."""
+    from app.models import EmployeeTeam
+
+    emp = Employee(
+        id="e-1", jira_account_id="acc-1", display_name="A",
+        is_active=True, synced_at=datetime.utcnow(),
+    )
+    db_session.add(emp)
+    db_session.add(EmployeeTeam(
+        id="et-1", employee_id="e-1", team="Alpha", is_primary=True,
+    ))
+    db_session.commit()
+
+    jira = MagicMock()
+    a_calls: list[str] = []
+    b_calls: list[str] = []
+
+    async def fake_iter_issues(jql, fields=None, max_results=100):
+        if "worklogAuthor" in jql:
+            b_calls.append(jql)
+            yield _fake_issue("30000", "OTHER-1")
+        else:
+            a_calls.append(jql)
+            if False:
+                yield
+
+    async def fake_iter_worklogs_for_issue(jira_issue_id):
+        yield _fake_worklog("wl-b", "2026-02-10T10:00:00", author_id="acc-1")
+
+    jira.iter_issues = fake_iter_issues
+    jira.iter_worklogs_for_issue = fake_iter_worklogs_for_issue
+
+    svc = SyncService(db_session, jira)
+    stats = await svc.update_worklogs_since(date(2026, 2, 1), teams=["Alpha"])
+
+    assert stats.bucket_b_out_of_scope_created == 1
+    assert stats.bucket_b_worklogs_upserted == 1
+    created = db_session.query(Issue).filter_by(jira_issue_id="30000").one()
+    assert created.out_of_scope is True
+    assert created.key == "OTHER-1"
+    assert created.project_id is not None
+
+
+@pytest.mark.asyncio
+async def test_bucket_b_does_not_clobber_in_scope(db_session, issue):
+    """Existing in-scope issue (out_of_scope=False) остаётся in-scope даже если
+    Ведро B находит по ней ворклоги нашего сотрудника."""
+    from app.models import EmployeeTeam
+
+    emp = Employee(
+        id="e-1", jira_account_id="acc-1", display_name="A",
+        is_active=True, synced_at=datetime.utcnow(),
+    )
+    db_session.add(emp)
+    db_session.add(EmployeeTeam(
+        id="et-1", employee_id="e-1", team="Alpha", is_primary=True,
+    ))
+    db_session.commit()
+
+    jira = MagicMock()
+
+    async def fake_iter_issues(jql, fields=None, max_results=100):
+        if "worklogAuthor" in jql:
+            yield _fake_issue("20000", "PRJ-1")  # EXISTS in DB as in-scope
+        else:
+            if False:
+                yield
+
+    async def fake_iter_worklogs_for_issue(jira_issue_id):
+        yield _fake_worklog("wl-b", "2026-02-10T10:00:00", author_id="acc-1")
+
+    jira.iter_issues = fake_iter_issues
+    jira.iter_worklogs_for_issue = fake_iter_worklogs_for_issue
+
+    svc = SyncService(db_session, jira)
+    await svc.update_worklogs_since(date(2026, 2, 1), teams=["Alpha"])
+
+    db_session.refresh(issue)
+    assert issue.out_of_scope is False
+
+
+@pytest.mark.asyncio
+async def test_bucket_b_skips_when_team_has_no_employees(db_session):
+    """Если в ``employee_teams`` нет записей для заданной команды — пропускаем."""
+    jira = MagicMock()
+    calls: list[str] = []
+
+    async def fake_iter_issues(jql, fields=None, max_results=100):
+        calls.append(jql)
+        if False:
+            yield
+
+    jira.iter_issues = fake_iter_issues
+
+    svc = SyncService(db_session, jira)
+    await svc.update_worklogs_since(date(2026, 2, 1), teams=["NonexistentTeam"])
+    # Only Bucket A JQL fired, no Bucket B
+    assert all("worklogAuthor" not in q for q in calls)
