@@ -7,6 +7,7 @@ import pytest
 from app.models import (
     CategoryMapping,
     Employee,
+    EmployeeTeam,
     Issue,
     Project,
     Worklog,
@@ -21,8 +22,6 @@ def setup_data(db_session):
     alice = Employee(jira_account_id="a1", display_name="Alice")
     bob = Employee(jira_account_id="b1", display_name="Bob")
     db_session.add_all([alice, bob])
-
-    from app.models import EmployeeTeam
 
     db_session.flush()  # Need alice.id/bob.id for EmployeeTeam
     db_session.add_all([
@@ -279,6 +278,42 @@ class TestHoursByEmployee:
         )
         rows_baseline = service.hours_by_employee()
         assert sum(r.total_hours for r in rows_filtered) == sum(r.total_hours for r in rows_baseline)
+
+    def test_team_filter_issues_escaped_team_name(self, db_session, setup_data):
+        # Add an issue whose participating_teams contains a name with a quote
+        extra = Issue(
+            jira_issue_id="jx",
+            key="AAA-X",
+            summary="X",
+            issue_type="Task",
+            status="Open",
+            project_id=setup_data["proj_a"].id,
+            team=None,
+            participating_teams='["Team \\"Quoted\\""]',  # JSON: ["Team \"Quoted\""]
+        )
+        db_session.add(extra)
+        db_session.flush()
+        db_session.add(Worklog(
+            jira_worklog_id="wlx",
+            started_at=datetime(2026, 1, 10, 10, 0, 0),
+            hours=1.0,
+            time_spent_seconds=3600,
+            comment_text="x",
+            issue_id=extra.id,
+            employee_id=setup_data["alice"].id,
+        ))
+        db_session.flush()
+
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_employee(
+            teams=['Team "Quoted"'],
+            match_employees=False,
+            match_issues=True,
+        )
+        by_name = {r.label: r for r in rows}
+        # Only wlx matches (1h). Other worklogs are on AAA-1/AAA-2/BBB-1 which don't have this team.
+        assert by_name["Alice"].total_hours == 1.0
+        assert "Bob" not in by_name
 
 
 class TestHoursByProject:

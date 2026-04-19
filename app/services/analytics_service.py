@@ -8,12 +8,13 @@
 - Контекстные переключения (сколько раз сотрудник переключался между проектами)
 """
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, date
 from typing import Optional
 
 from sqlalchemy import func, and_, or_, select, exists
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
 from app.services.categories import CATEGORY_LABELS, get_category_labels
@@ -64,11 +65,12 @@ class AnalyticsService:
         teams: Optional[list[str]],
         match_employees: bool,
         match_issues: bool,
+        issue_already_joined: bool = False,
     ):
-        """Apply team filter (employee-side OR issue-side).
+        """Применить team-фильтр: по команде сотрудника ИЛИ по команде задачи.
 
-        If ``teams`` is empty or both flags are False, return query unchanged.
-        ``Issue`` must already be joined in the caller when ``match_issues``.
+        Если ``teams`` пустой или обе галочки выключены — вернуть query без изменений.
+        Если нужен join ``Issue``, helper сам его добавит, когда ``issue_already_joined`` = False.
         """
         if not teams or (not match_employees and not match_issues):
             return query
@@ -100,9 +102,10 @@ class AnalyticsService:
             if named_teams:
                 named_clause = [Issue.team.in_(named_teams)]
                 for t in named_teams:
-                    escaped = t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    t_json = json.dumps(t, ensure_ascii=False)  # e.g. '"Core"' or '"Team \\"Alpha\\""'
+                    escaped = t_json.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                     named_clause.append(
-                        Issue.participating_teams.like(f'%"{escaped}"%', escape="\\")
+                        Issue.participating_teams.like(f"%{escaped}%", escape="\\")
                     )
                 issue_sub_clauses.append(or_(*named_clause))
             if has_none:
@@ -116,6 +119,8 @@ class AnalyticsService:
                     )
                 )
             if issue_sub_clauses:
+                if not issue_already_joined:
+                    query = query.join(Issue, Worklog.issue_id == Issue.id)
                 clauses.append(or_(*issue_sub_clauses) if len(issue_sub_clauses) > 1 else issue_sub_clauses[0])
 
         if not clauses:
@@ -163,11 +168,10 @@ class AnalyticsService:
                 .join(Project, Issue.project_id == Project.id)
                 .filter(Project.key == project_key)
             )
-        if teams and match_issues:
-            # Need Issue join for match_issues; safe to add if project_key already joined it
-            if not project_key:
-                query = query.join(Issue, Worklog.issue_id == Issue.id)
-        query = self._apply_team_filter(query, teams, match_employees, match_issues)
+        query = self._apply_team_filter(
+            query, teams, match_employees, match_issues,
+            issue_already_joined=bool(project_key),
+        )
 
         return [
             AggregateRow(
