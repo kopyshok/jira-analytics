@@ -14,7 +14,9 @@ from app.models.category_mapping import CategoryMapping
 from app.models.category_override import CategoryOverride
 from app.models.worklog_quality_rule import WorklogQualityRule
 from app.models.absence import Absence, ABSENCE_REASONS
-from app.models.monthly_capacity_rule import MonthlyCapacityRule
+from app.models.mandatory_work_type import MandatoryWorkType
+from app.models.role_capacity_rule import RoleCapacityRule
+from app.models.employee_capacity_override import EmployeeCapacityOverride
 from app.models.backlog_item import BacklogItem
 from app.models.planning_scenario import PlanningScenario
 from app.models.scenario_allocation import ScenarioAllocation
@@ -42,7 +44,9 @@ __all__ = [
     "WorklogQualityRule",
     "Absence",
     "ABSENCE_REASONS",
-    "MonthlyCapacityRule",
+    "MandatoryWorkType",
+    "RoleCapacityRule",
+    "EmployeeCapacityOverride",
     "BacklogItem",
     "PlanningScenario",
     "ScenarioAllocation",

@@ -7,7 +7,6 @@ import pytest
 from app.models import (
     Absence,
     Employee,
-    MonthlyCapacityRule,
     ProductionCalendarDay,
 )
 from app.services.capacity_service import (
@@ -113,41 +112,6 @@ class TestMonthlyCapacity:
         assert feb.vacation_hours == 16.0
         assert mar.vacation_hours == 40.0
 
-    def test_mandatory_rule_applied(self, db_session, employee):
-        # 20% of norm is mandatory
-        db_session.add(
-            MonthlyCapacityRule(year=2026, month=3, percent_of_norm=20.0)
-        )
-        db_session.flush()
-
-        result = CapacityService(db_session).monthly_capacity(
-            employee.id, 2026, 3
-        )
-
-        assert result.mandatory_hours == 176.0 * 0.2
-        assert result.available_hours == 176.0 - 176.0 * 0.2
-
-    def test_vacation_and_mandatory_combined(self, db_session, employee):
-        db_session.add(
-            Absence(
-                employee_id=employee.id,
-                start_date=date(2026, 3, 2),
-                end_date=date(2026, 3, 6),
-            )
-        )
-        db_session.add(
-            MonthlyCapacityRule(year=2026, month=3, percent_of_norm=25.0)
-        )
-        db_session.flush()
-
-        result = CapacityService(db_session).monthly_capacity(
-            employee.id, 2026, 3
-        )
-
-        assert result.vacation_hours == 40.0
-        assert result.mandatory_hours == 44.0  # 176 * 0.25
-        assert result.available_hours == 176.0 - 40.0 - 44.0
-
     def test_available_never_negative(self, db_session, employee):
         # Full-month vacation covers all 22 workdays
         db_session.add(
@@ -156,9 +120,6 @@ class TestMonthlyCapacity:
                 start_date=date(2026, 3, 1),
                 end_date=date(2026, 3, 31),
             )
-        )
-        db_session.add(
-            MonthlyCapacityRule(year=2026, month=3, percent_of_norm=50.0)
         )
         db_session.flush()
 
@@ -194,7 +155,9 @@ class TestQuarterCapacity:
         assert result.months[0].month == 1
         assert result.months[2].month == 3
 
-    def test_q1_with_vacation_and_rule(self, db_session, employee):
+    def test_q1_with_vacation_only(self, db_session, employee):
+        # Vacation-only quarter aggregation; mandatory rules проверяются
+        # в test_capacity_service_mandatory.py
         db_session.add(
             Absence(
                 employee_id=employee.id,
@@ -202,11 +165,6 @@ class TestQuarterCapacity:
                 end_date=date(2026, 2, 13),
             )
         )
-        # 10 workdays in Feb → 80h
-        db_session.add(
-            MonthlyCapacityRule(year=2026, month=1, percent_of_norm=10.0)
-        )
-        # Jan: 22 × 8 = 176, mandatory 17.6
         db_session.flush()
 
         result = CapacityService(db_session).quarter_capacity(
@@ -214,10 +172,8 @@ class TestQuarterCapacity:
         )
 
         assert result.total_vacation_hours == 80.0
-        assert result.total_mandatory_hours == 17.6
-        assert result.total_available_hours == pytest.approx(
-            512.0 - 80.0 - 17.6
-        )
+        assert result.total_mandatory_hours == 0.0
+        assert result.total_available_hours == pytest.approx(512.0 - 80.0)
 
     def test_invalid_quarter_raises(self, db_session, employee):
         service = CapacityService(db_session)

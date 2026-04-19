@@ -235,11 +235,71 @@ export interface AbsenceCreateRequest {
   hours_total?: number;
 }
 
-export interface CapacityRuleResponse {
+export interface MandatoryWorkType {
+  id: string;
+  code: string;
+  label: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface MandatoryWorkTypeCreate {
+  code: string;
+  label: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export interface MandatoryWorkTypeUpdate {
+  code?: string;
+  label?: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export interface RoleCapacityRule {
   id: string;
   year: number;
-  month: number;
+  quarter: number;
+  role: EmployeeRole | null;
+  work_type_id: string;
   percent_of_norm: number;
+}
+
+export interface RoleCapacityRuleCreate {
+  year: number;
+  quarter: number;
+  role: EmployeeRole | null;
+  work_type_id: string;
+  percent_of_norm: number;
+}
+
+export interface EmployeeCapacityOverride {
+  id: string;
+  year: number;
+  quarter: number;
+  employee_id: string;
+  work_type_id: string;
+  percent_of_norm: number;
+}
+
+export interface EmployeeCapacityOverrideCreate {
+  year: number;
+  quarter: number;
+  employee_id: string;
+  work_type_id: string;
+  percent_of_norm: number;
+}
+
+export interface CopyRulesRequest {
+  from_year: number;
+  from_quarter: number;
+  to_year: number;
+  to_quarter: number;
+}
+
+export interface CopyRulesResponse {
+  created: number;
 }
 
 export interface MonthlyCapacityResponse {

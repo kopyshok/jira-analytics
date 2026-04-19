@@ -30,31 +30,35 @@ No application-layer module depends on SQLite-specific features.
 ## Project Structure
 
 - `app/` — backend: `api/endpoints/`, `connectors/`, `models/`, `repositories/`, `services/`, `config.py`, `database.py`, `main.py`
-- `frontend/src/` — React SPA: `api/`, `hooks/`, `pages/` (7 routable: Dashboard, Sync, Analytics, Capacity, Backlog, Planning, Scope→redirects to Sync), `components/`, `types/`, `utils/`
+- `frontend/src/` — React SPA: `api/`, `hooks/`, `pages/` (8 routable: Dashboard, Sync, Analytics, Capacity, Backlog, Planning, Settings, Scope→redirects to Sync), `components/` (incl. `capacity/AbsenceHeatmap`, `HierarchyRulesTab`, `ConnectionCard`, `JiraFieldsCard`, `ScopeAdmin`), `types/`, `utils/`
 - `frontend/e2e/` — Playwright E2E tests (isolated `data/e2e.db`); specs: `navigation`, `dashboard`, `crud-flows`, `export-downloads`
 - `alembic/` — DB migrations
-- `tests/` — pytest backend tests (services, schemas, reference endpoints, config, models)
+- `tests/` — pytest backend tests (services, schemas, reference + targeted endpoint tests `test_api_*` / `test_*_endpoints`, config, models); shared sample data in `tests/fixtures/`
 - `scripts/` — `local_smoke.py`, `smoke-local.ps1`, `e2e-local.ps1`, `seed_e2e.py` (creates `data/e2e.db` with `E2E Analyst` employee + `E2E` project)
 
 ## Database Schema
 
-18 tables in 5 groups — `app/models/__init__.py` is source of truth:
+21 tables in 6 groups — `app/models/__init__.py` is source of truth:
 - **Core (Jira sync):** Employee, EmployeeTeam (M:N, single-primary invariant), Project, Issue (user/Jira-metadata fields: `team`, `participating_teams` (JSON text), `assigned_category`, `include_in_analysis`, `out_of_scope` (Bucket B auto-ingest flag), `status_category` (Jira `new|indeterminate|done`), `status_changed_at` (from `statuscategorychangedate`), `goals` (comma-joined `customfield_11421`)), Worklog, Comment, SyncState
 - **Scope / category config:** ScopeProject, ScopeRoot, CategoryOverride, WorklogQualityRule, CategoryMapping, Category (user-editable, seeded with 10 entries incl. `archive`, `archive_target`, `initiatives_rfa` — both archive codes in `ARCHIVE_CATEGORY_CODES` auto-drop `include_in_analysis` in single/batch category endpoints)
-- **Planning:** Vacation, MonthlyCapacityRule, BacklogItem, PlanningScenario, ScenarioAllocation
+- **Hierarchy:** HierarchyRule (user-editable parent→child type rules that replace the hard-coded `CONTAINER_ISSUE_TYPES`; managed via `/settings` → «Иерархия»)
+- **Capacity / planning:** Absence (was `Vacation`; migration 018; includes `reason` — see `ABSENCE_REASONS`), **MandatoryWorkType** (user-editable directory, seeded с 5 типами: organizational, management_admin, support_consult, tech_debt, technical_tasks), **RoleCapacityRule** (per (year, quarter, role?, work_type_id) — `role=NULL` = fallback «для всех»), **EmployeeCapacityOverride** (per (year, quarter, employee_id, work_type_id); приоритет выше role-rule), ProductionCalendarDay (per-day `hours` for RU calendar), BacklogItem, PlanningScenario, ScenarioAllocation
 - **App state:** AppSetting (flat key-value store — see next section)
 
 ## API Endpoints
 
-13 routers — `app/api/router.py` is source of truth. Patterns:
-- **CRUD:** GET list + POST create, GET|PATCH|DELETE by id (backlog, capacity, scope, categories)
+17 router includes in `app/api/router.py` (employees, projects, sync, jira, scope, analytics, mapping, capacity, backlog, planning, exports, settings, categories, issues, hierarchy-rules, production-calendar). Patterns:
+- **CRUD:** GET list + POST create, GET|PATCH|DELETE by id (backlog, capacity, scope, categories, absences, hierarchy-rules, production-calendar)
 - **Browse Jira (live):** `/sync/jira-projects`, `/sync/jira-epics`, `/sync/jira-fields`, `/sync/jira-teams` — no DB write, proxy Jira with `in_scope` flags; `/jira-projects?team=X` uses per-project JQL probe (see SyncService notes)
 - **Settings:** `/settings/jira` (GET|PUT, redacts token), `/settings/jira/test` (no save), `/settings/generic` (PUT) + `/settings/generic/{key}` (GET) — used for arbitrary runtime keys (see AppSetting store)
 - **Batch:** `/scope/projects/batch` — add/remove multiple at once
-- **Exports:** `/exports/analytics.xlsx|pdf`, `/exports/scenarios/{id}.xlsx|pptx`
+- **Exports:** `/exports/analytics.xlsx|pdf`, `/exports/scenarios/{id}.xlsx|pptx`, `/exports/capacity.xlsx`
 - **Planning:** `/planning/scenarios/generate` (greedy allocation)
 - **Targeted sync:** `POST /sync/issues/refresh` with `{jira_keys: [...]}` — re-reads only those keys in JQL `key in (...)` batches of 100, updates only rows that already exist locally (skips unknowns). Used by «Обновить с Jira» to dot-fill new fields without the 30-minute full resync.
-- **Issue tree:** `/issues/tree?project_keys=A,B&teams=T1,T2` (SQL-filtered by DB fields, teams OR'd); response includes **virtual group nodes** with `issue_type: 'group'` — `__orphans__` (parent_id set but parent excluded from DB) and `__operations__` (root leaf-type issues without children, i.e. childless non-Epic/Инициатива/История/Story/Цель roots). Also auto-pulls **ancestor context**: parents that fall outside the team filter get included with `is_context=true` so hierarchies stay legible; frontend renders them read-only. Mutations: `/issues/{id}/category`, `/issues/{id}/include`, `/issues/batch-category` (drives CategoryConfigTab). Archive codes (`archive`, `archive_target`) auto-drop `include_in_analysis` and are returned in `archived_ids`.
+- **Employees:** `GET /employees` list + `POST /employees/from-jira` (import from Jira user search), `POST /employees/recalc-active` (recompute active flag for all), `POST /employees/auto-detect-teams` (fill primary team from worklogs), `/employees/{id}/teams` M:N CRUD (GET/POST/PUT/DELETE `/{team}`) + `PUT /employees/{id}/teams/primary`; legacy `PUT /employees/{id}/team` kept as deprecated wrapper
+- **Hierarchy rules:** `GET`/`POST`/`PATCH /{id}`/`DELETE /{id}` under `/hierarchy-rules` + `POST /hierarchy-rules/reorder`; consumed by issue-tree builder to decide container vs leaf types
+- **Production calendar:** `GET /production-calendar?year=N` (list year), `PUT /production-calendar` (single-day manual upsert), `DELETE /production-calendar/{date}` (manual rows only), `POST /production-calendar/sync?year=N&overwrite_manual=false` (pull official RU calendar)
+- **Issue tree:** `/issues/tree?project_keys=A,B&teams=T1,T2` (SQL-filtered by DB fields, teams OR'd); response includes **virtual group nodes** with `issue_type: 'group'` — `__orphans__` (parent_id set but parent excluded from DB) and `__operations__` (root leaf-type issues without children, i.e. childless non-container roots per `hierarchy_rules`). Also auto-pulls **ancestor context**: parents that fall outside the team filter get included with `is_context=true` so hierarchies stay legible; frontend renders them read-only. Mutations: `/issues/{id}/category`, `/issues/{id}/include`, `/issues/batch-category` (drives CategoryConfigTab). Archive codes (`archive`, `archive_target`) auto-drop `include_in_analysis` and are returned in `archived_ids`.
 
 ## Code Principles
 
@@ -85,10 +89,11 @@ Idempotently recalculates `category_mappings` table and the denormalized `Issue.
 Commits internally — tests must clean tables after each run (see conftest).
 
 ### CapacityService
-Formula: `available = workdays × hours_per_day − vacation_hours − mandatory_hours`, clamped to `max(0.0, ...)`.
-MVP production calendar = Mon–Fri (`weekday() < 5`), no Russian holidays.
-Vacation overlap via `max(start, month_start)` / `min(end, month_end)`.
-`mandatory_hours = norm × percent_of_norm / 100` from `monthly_capacity_rules`.
+Formula: `available = norm_hours − absence_hours − mandatory_hours`, clamped to `max(0.0, ...)`.
+`norm_hours` = сумма `production_calendar_day.hours` за период (8ч будни, 7ч предпраздничные, 0 выходные/праздники), масштабируется на `hours_per_day / 8`. Если в БД на дату нет записи — фоллбэк на `hours_per_day` для Пн–Пт. Source: `ProductionCalendarService`.
+`absence_hours` = тот же расчёт по дням отпуска / болезни / других причин (`Absence.reason` ∈ `ABSENCE_REASONS`), перекрытие периода через `max(start, period_start)` / `min(end, period_end)`.
+`mandatory_hours = norm_hours × total_percent / 100`, где `total_percent = Σ CapacityService.mandatory_percent_breakdown(employee, year, quarter).values()`. Breakdown резолвится per (employee, work_type) по приоритету: `employee_capacity_overrides` > `role_capacity_rules(role=e.role)` > `role_capacity_rules(role=NULL)` (fallback) > 0. Квартальное правило равномерно распределяется по месяцам через норму (чем больше `norm_hours_month`, тем больше вычет).
+`fact_hours` — сумма `Worklog.hours` сотрудника за период; показывается отдельно и даёт plan/fact %.
 Quarter mapping: `QUARTER_MONTHS = {1:(1,2,3), 2:(4,5,6), 3:(7,8,9), 4:(10,11,12)}`.
 
 ### ExportService
@@ -130,7 +135,7 @@ Batch size: 100 issues per Jira API request.
 
 CRUD для M:N `employee_teams`. API: `list_teams`, `add_team`, `remove_team`, `set_primary`, `replace_teams`. Инвариант: ровно одна строка с `is_primary=true` на сотрудника (enforce в сервисе, не в БД — SQLite не поддерживает partial unique). Поле `Employee.team` — derived-колонка, обновляется синхронно с primary membership через `_recompute_legacy_team` для backward-compat с существующими запросами/экспортами до полного рефакторинга.
 
-CRUD endpoint'ы под `/employees/{id}/teams` (GET/POST/PUT/DELETE) + `/teams/primary` (PUT). Legacy `PUT /employees/{id}/team` сохранён как обёртка над `replace_teams` с `deprecated=true` в OpenAPI.
+CRUD endpoint'ы: `GET /employees/{id}/teams` (list), `POST /employees/{id}/teams` (add), `PUT /employees/{id}/teams` (replace all), `DELETE /employees/{id}/teams/{team}` (remove one), `PUT /employees/{id}/teams/primary` (set primary). Legacy `PUT /employees/{id}/team` сохранён как обёртка над `replace_teams` с `deprecated=true` в OpenAPI.
 
 Авто-определение команды по ворклогам (`auto_detect_team` / `auto_detect_all_missing`) пишет в primary membership через тот же сервис, что сохраняет инвариант.
 
@@ -224,6 +229,8 @@ cd frontend && npm run e2e     # starts backend :8010 and frontend :5174
 
   `matchesTab(effective, tab)` drives both filter and count. Row selection with `checkStrictly:false` cascades parent→children, disabled for group-nodes and `is_context` rows. «Установить категорию отмеченным» opens a modal → writes to `pendingCats` Map. Category Select stages into `pendingCats`; «Сохранить» batches PUTs via `/issues/batch-category` grouped by code and patches the tree cache locally (archive codes also clear `include_in_analysis`). Row tint deepens per depth level (`.tree-row-depth-0..5`) and italicizes context rows (`.tree-row-context`). Key column is a Jira deep link (`${base_url}/browse/{key}`); status tag uses `statusTagColor` mapping Jira `statusCategory` + name-override for cancel-like statuses; «Статус изменён» sortable with date + «N д назад» age thresholds (≥180d yellow, ≥365d red); «Цели» sortable purple tag per comma-value. Columns resizable via `react-resizable`.
 - **API client AbortSignal**: `api.get(path, params, signal?)` threads AbortSignal into `fetch`. TanStack Query's queryFn context signal flows in via `useQuery({ queryFn: ({signal}) => ... })` in `useIssueTree`. `AbortError` skipped in `errorStore` so cancels don't flood the bug panel
+- **SettingsPage**: 5 tabs — `connection` (ConnectionCard: Jira credentials via `/settings/jira`), `scope` (ScopeAdmin: scope projects + roots), `fields` (JiraFieldsCard: custom field IDs), `hierarchy` (HierarchyRulesTab: parent→child type rules CRUD + reorder), `calendar` (ProductionCalendarDay CRUD + «Синхронизировать» pulls official RU calendar). Active tab persisted in URL.
+- **CapacityPage v2**: per-team hierarchy filter + active-employee toggle, month/quarter switch, heatmap (`AbsenceHeatmap`), copy-rules across months, xlsx export via `/exports/capacity.xlsx`, plan/fact/% breakdown by category; overload >110% coloured red.
 - E2E: Playwright with isolated `data/e2e.db` on non-standard ports (:8010 backend, :5174 frontend), no Jira credentials needed
 
 ## CI

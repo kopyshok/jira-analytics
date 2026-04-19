@@ -7,14 +7,17 @@ from app.api.endpoints import (
     backlog,
     capacity,
     categories,
+    employee_capacity_overrides,
     employees,
     exports,
     hierarchy_rules as hierarchy_rules_endpoints,
     issue_config,
+    mandatory_work_types,
     mapping,
     planning,
     production_calendar,
     projects,
+    role_capacity_rules,
     scope,
     settings,
     sync,
@@ -71,4 +74,19 @@ api_router.include_router(
     production_calendar.router,
     prefix="/production-calendar",
     tags=["production_calendar"],
+)
+api_router.include_router(
+    mandatory_work_types.router,
+    prefix="/mandatory-work-types",
+    tags=["mandatory-work-types"],
+)
+api_router.include_router(
+    role_capacity_rules.router,
+    prefix="/capacity/role-rules",
+    tags=["capacity-rules"],
+)
+api_router.include_router(
+    employee_capacity_overrides.router,
+    prefix="/capacity/employee-overrides",
+    tags=["capacity-rules"],
 )
