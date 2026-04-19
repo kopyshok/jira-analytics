@@ -275,7 +275,7 @@ async def sync_teams(
     команд (значения team-поля Jira). Курсор двигается только при
     успехе; ошибка по одной команде не ломает остальные.
     """
-    if not request.teams:
+    if not body.teams:
         return SyncResponse(status="noop", message="Список команд пуст")
 
     try:
