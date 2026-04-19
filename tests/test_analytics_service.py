@@ -327,6 +327,20 @@ class TestHoursByProject:
         assert by_name["Alpha"].total_hours == 7.0
         assert by_name["Beta"].total_hours == 5.0
 
+    def test_team_filter_union(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_project(
+            teams=["Mobile"],
+            match_employees=True,
+            match_issues=True,
+        )
+        by_name = {r.label: r for r in rows}
+        # Bob (Mobile member) -> all Bob worklogs -> AAA-1 (2h) + BBB-1 (4h)
+        # Issue team=Mobile: AAA-2; Issue participating=Mobile: AAA-1; so AAA worklogs by anyone + Mobile-member worklogs
+        # Alpha (AAA): Alice 2+3h + Bob 2h = 7h; Beta (BBB): Bob 4h (only via employee, BBB is team-none)
+        assert by_name["Alpha"].total_hours == 7.0
+        assert by_name["Beta"].total_hours == 4.0
+
 
 class TestHoursByCategory:
     def test_totals(self, db_session, setup_data):
@@ -347,6 +361,20 @@ class TestHoursByCategory:
 
         tech_debt = next(r for r in rows if r.key == CategoryCode.TECH_DEBT)
         assert tech_debt.label == "Технический долг / прочее"
+
+    def test_team_filter_employees_only(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_category(
+            teams=["Core"],
+            match_employees=True,
+            match_issues=False,
+        )
+        by_key = {r.key: r for r in rows}
+        # Alice (Core) worklogs: tech_debt 2+3=5h, meetings 1h
+        assert by_key[CategoryCode.TECH_DEBT].total_hours == 5.0
+        assert by_key[CategoryCode.MEETINGS].total_hours == 1.0
+        # Bob worklogs excluded; support_consultation (wl5 by Bob) should be absent
+        assert CategoryCode.SUPPORT_CONSULTATION not in by_key
 
 
 class TestHoursByPeriod:
@@ -371,6 +399,22 @@ class TestHoursByPeriod:
         assert len(rows) == 1
         assert rows[0].key == "2026-01"
         assert rows[0].total_hours == 12.0
+
+    def test_team_filter_issues_only(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_period(
+            period="day",
+            teams=["Mobile"],
+            match_employees=False,
+            match_issues=True,
+        )
+        # Mobile issues: AAA-1 (participating), AAA-2 (team). Their worklogs:
+        # wl1 AAA-1 Jan 5 Alice 2h, wl2 AAA-2 Jan 6 Alice 3h, wl5 AAA-1 Jan 8 Bob 2h.
+        by_key = {r.key: r.total_hours for r in rows}
+        assert by_key.get("2026-01-05") == 2.0
+        assert by_key.get("2026-01-06") == 3.0
+        assert by_key.get("2026-01-08") == 2.0
+        assert "2026-01-07" not in by_key  # BBB-1 (no Mobile) excluded
 
 
 class TestContextSwitching:
@@ -406,6 +450,17 @@ class TestContextSwitching:
         assert by_name["Alice"].switches == 0
         # Bob: only Jan 5 Beta => no switch
         assert by_name["Bob"].switches == 0
+
+    def test_team_filter_employees_only(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.context_switching(
+            teams=["Core"],
+            match_employees=True,
+            match_issues=False,
+        )
+        names = [r.employee_name for r in rows]
+        assert "Alice" in names
+        assert "Bob" not in names
 
 
 class TestEmployeeFilter:

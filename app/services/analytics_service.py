@@ -189,6 +189,9 @@ class AnalyticsService:
         end: Optional[datetime] = None,
         employee_id: Optional[str] = None,
         project_key: Optional[str] = None,
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> list[AggregateRow]:
         """Часы по проектам за период."""
         query = (
@@ -208,6 +211,10 @@ class AnalyticsService:
             query = query.filter(Worklog.employee_id == employee_id)
         if project_key:
             query = query.filter(Project.key == project_key)
+        query = self._apply_team_filter(
+            query, teams, match_employees, match_issues,
+            issue_already_joined=True,
+        )
 
         return [
             AggregateRow(
@@ -225,6 +232,9 @@ class AnalyticsService:
         end: Optional[datetime] = None,
         employee_id: Optional[str] = None,
         project_key: Optional[str] = None,
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> list[AggregateRow]:
         """Часы по категориям за период.
 
@@ -257,6 +267,10 @@ class AnalyticsService:
                 .join(Project, Issue.project_id == Project.id)
                 .filter(Project.key == project_key)
             )
+        query = self._apply_team_filter(
+            query, teams, match_employees, match_issues,
+            issue_already_joined=bool(project_key),
+        )
 
         return [
             AggregateRow(
@@ -275,6 +289,9 @@ class AnalyticsService:
         end: Optional[datetime] = None,
         employee_id: Optional[str] = None,
         project_key: Optional[str] = None,
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> list[AggregateRow]:
         """Часы по периодам: day, week, month.
 
@@ -293,6 +310,10 @@ class AnalyticsService:
                 .join(Project, Issue.project_id == Project.id)
                 .filter(Project.key == project_key)
             )
+        query = self._apply_team_filter(
+            query, teams, match_employees, match_issues,
+            issue_already_joined=bool(project_key),
+        )
 
         buckets: dict[str, list[float]] = {}
         for started_at, hours in query.all():
@@ -331,6 +352,9 @@ class AnalyticsService:
         end: Optional[datetime] = None,
         employee_id: Optional[str] = None,
         project_key: Optional[str] = None,
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> list[ContextSwitchRow]:
         """Метрика контекстных переключений.
 
@@ -354,6 +378,10 @@ class AnalyticsService:
                 .join(Project, Issue.project_id == Project.id)
                 .filter(Project.key == project_key)
             )
+        query = self._apply_team_filter(
+            query, teams, match_employees, match_issues,
+            issue_already_joined=True,
+        )
 
         # category_mappings для worklog загружаем одним запросом
         mapping_rows = (
