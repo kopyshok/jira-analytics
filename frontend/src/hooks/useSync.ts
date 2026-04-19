@@ -3,6 +3,7 @@ import {
   testConnection, syncProjects, syncIssues, syncWorklogs, syncComments, syncFull,
   refreshIssuesByKeys, syncTeams,
   reloadWorklogsStream, type WorklogReloadProgress, type WorklogReloadDone,
+  updateWorklogsStream, type WorklogUpdateProgress, type WorklogUpdateDone,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
   getJiraIssueTypes,
 } from '../api/sync';
@@ -78,6 +79,24 @@ export const useReloadWorklogs = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+type UpdateInput = {
+  req: { since: string; teams?: string[] };
+  onProgress?: (e: WorklogUpdateProgress) => void;
+  signal?: AbortSignal;
+};
+export const useUpdateWorklogs = () => {
+  const qc = useQueryClient();
+  return useMutation<WorklogUpdateDone, Error, UpdateInput>({
+    mutationFn: ({ req, onProgress, signal }) =>
+      updateWorklogsStream(req, onProgress ?? (() => {}), signal),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
     },
   });
 };

@@ -109,6 +109,89 @@ export async function reloadWorklogsStream(
   if (!final) throw new Error('Stream ended without done event');
   return final;
 }
+export type WorklogUpdateProgress = {
+  type: 'progress';
+  bucket_a_issues_scanned: number;
+  bucket_a_worklogs_upserted: number;
+  bucket_b_issues_scanned: number;
+  bucket_b_worklogs_upserted: number;
+  bucket_b_out_of_scope_created: number;
+  current_key: string | null;
+};
+
+export type WorklogUpdateDone = Omit<WorklogUpdateProgress, 'type' | 'current_key'> & {
+  type: 'done';
+};
+
+type WorklogUpdateEvent =
+  | WorklogUpdateProgress
+  | WorklogUpdateDone
+  | { type: 'error'; detail: string }
+  | { type: 'cancelled' };
+
+export async function updateWorklogsStream(
+  req: { since: string; teams?: string[] },
+  onProgress: (e: WorklogUpdateProgress) => void,
+  signal?: AbortSignal,
+): Promise<WorklogUpdateDone> {
+  const url = `${BASE_URL}/sync/worklogs/update/stream`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(req),
+      signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
+    pushError({
+      ts: new Date().toISOString(), method: 'POST', url,
+      status: null, detail: (e as Error).message,
+      requestBody: JSON.stringify(req),
+    });
+    throw e;
+  }
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = err.detail || res.statusText;
+    pushError({
+      ts: new Date().toISOString(), method: 'POST', url,
+      status: res.status, detail,
+      requestBody: JSON.stringify(req),
+    });
+    throw new Error(detail);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let final: WorklogUpdateDone | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep = buffer.indexOf('\n\n');
+    while (sep !== -1) {
+      const raw = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      sep = buffer.indexOf('\n\n');
+      for (const line of raw.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const payload = JSON.parse(line.slice(5).trim()) as WorklogUpdateEvent;
+        if (payload.type === 'progress') onProgress(payload);
+        else if (payload.type === 'done') final = payload;
+        else if (payload.type === 'error') throw new Error(payload.detail);
+        else if (payload.type === 'cancelled') {
+          const err = new Error('Sync cancelled by client');
+          err.name = 'AbortError';
+          throw err;
+        }
+      }
+    }
+  }
+  if (!final) throw new Error('Stream ended without done event');
+  return final;
+}
 export const syncComments = (signal?: AbortSignal) =>
   api.post<SyncResponse>('/sync/comments', undefined, signal);
 export const syncFull = (
