@@ -90,6 +90,7 @@ def test_create_rejects_inverted_dates(client, employee):
 
 
 def test_delete(client, employee, db_session):
+    db_session.query(Employee).first()  # pin :memory: connection to test thread
     a = Absence(
         id="a1", employee_id=employee.id,
         start_date=date(2026, 4, 10), end_date=date(2026, 4, 12), reason="vacation",
