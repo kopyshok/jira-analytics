@@ -39,7 +39,7 @@ No application-layer module depends on SQLite-specific features.
 ## Database Schema
 
 18 tables in 5 groups — `app/models/__init__.py` is source of truth:
-- **Core (Jira sync):** Employee, Project, Issue (user/Jira-metadata fields: `team`, `participating_teams` (JSON text), `assigned_category`, `include_in_analysis`, `status_category` (Jira `new|indeterminate|done`), `status_changed_at` (from `statuscategorychangedate`), `goals` (comma-joined `customfield_11421`)), Worklog, Comment, SyncState
+- **Core (Jira sync):** Employee, EmployeeTeam (M:N, single-primary invariant), Project, Issue (user/Jira-metadata fields: `team`, `participating_teams` (JSON text), `assigned_category`, `include_in_analysis`, `out_of_scope` (Bucket B auto-ingest flag), `status_category` (Jira `new|indeterminate|done`), `status_changed_at` (from `statuscategorychangedate`), `goals` (comma-joined `customfield_11421`)), Worklog, Comment, SyncState
 - **Scope / category config:** ScopeProject, ScopeRoot, CategoryOverride, WorklogQualityRule, CategoryMapping, Category (user-editable, seeded with 10 entries incl. `archive`, `archive_target`, `initiatives_rfa` — both archive codes in `ARCHIVE_CATEGORY_CODES` auto-drop `include_in_analysis` in single/batch category endpoints)
 - **Planning:** Vacation, MonthlyCapacityRule, BacklogItem, PlanningScenario, ScenarioAllocation
 - **App state:** AppSetting (flat key-value store — see next section)
@@ -113,6 +113,26 @@ Batch size: 100 issues per Jira API request.
 **Targeted refresh:** `refresh_issues_by_keys(jira_keys)` re-reads given keys in JQL `key in (...)` batches of 100 using `iter_issues`, skips unknowns, reuses `_upsert_issue` — so any new field lands on the existing set without a full resync.
 
 **ORM caveat:** after `db.commit()` the session expires attributes; touching them afterwards triggers a reload on a potentially thread-rotated connection (reproduced in tests: `:memory:` SQLite + TestClient async endpoints). In endpoints, **snapshot the fields you need into locals before the commit** (see `issue_config.set_issue_category`).
+
+### Worklog sync dimensions
+
+Два независимых прохода ворклог-синка:
+- **Ведро A — issue-centric**: JQL `updated >= since`, upsert по локально существующим Issue. Ловит back-dated ворклоги за счёт перехода с `worklogDate` на `updated` — Jira двигает `issue.updated` при добавлении любого ворклога, включая записи с прошлым `started`.
+- **Ведро B — employee-centric** (активируется параметром `teams`): для каждого Employee из `employee_teams.team IN teams` запускается JQL `worklogAuthor = <account> AND updated >= since`. Незнакомые Issue создаются с `out_of_scope=True`, их Project тоже автосоздаётся (без scope). Вне-scope задачи не попадают в CategoryConfigTab / дерево, но их ворклоги видны в Capacity/Analytics.
+
+Два endpoint'а:
+- `POST /sync/worklogs/update/stream` — новый, upsert-only, безопасен в повседневке. Принимает `{since, teams?}`. Запускает Ведро A всегда + Ведро B если teams указан.
+- `POST /sync/worklogs/reload/stream` — жёсткая перезагрузка: `DELETE WHERE started_at >= since` + перечитать через `worklogDate >=` JQL. Нужно только если в Jira удалили ворклог и надо подчистить локальную копию.
+
+Оба — SSE-стримы прогресса с событиями `progress` / `done` / `error` / `cancelled`. Cancel через `request.is_disconnected()` как в обычных sync-endpoint'ах.
+
+### EmployeeTeamService
+
+CRUD для M:N `employee_teams`. API: `list_teams`, `add_team`, `remove_team`, `set_primary`, `replace_teams`. Инвариант: ровно одна строка с `is_primary=true` на сотрудника (enforce в сервисе, не в БД — SQLite не поддерживает partial unique). Поле `Employee.team` — derived-колонка, обновляется синхронно с primary membership через `_recompute_legacy_team` для backward-compat с существующими запросами/экспортами до полного рефакторинга.
+
+CRUD endpoint'ы под `/employees/{id}/teams` (GET/POST/PUT/DELETE) + `/teams/primary` (PUT). Legacy `PUT /employees/{id}/team` сохранён как обёртка над `replace_teams` с `deprecated=true` в OpenAPI.
+
+Авто-определение команды по ворклогам (`auto_detect_team` / `auto_detect_all_missing`) пишет в primary membership через тот же сервис, что сохраняет инвариант.
 
 ### AppSetting store
 Flat key-value table. Known keys:
