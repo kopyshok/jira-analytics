@@ -2,10 +2,31 @@
 
 from fastapi.testclient import TestClient
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.database import get_db
+from app.database import Base, get_db
 from app.models import Employee
+
+
+@pytest.fixture
+def db_session():
+    """StaticPool session so Starlette worker threads share the same :memory: DB."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = TestingSession()
+    try:
+        yield session
+    finally:
+        session.close()
+        engine.dispose()
 
 
 @pytest.fixture
@@ -29,7 +50,6 @@ def employee(db_session):
 
 
 def test_set_team(client, employee, db_session):
-    db_session.query(Employee).first()  # pin :memory: connection
     r = client.put(f"/api/v1/employees/{employee.id}/team", json={"team": "Alpha"})
     assert r.status_code == 200, r.text
     db_session.expire_all()
@@ -37,7 +57,6 @@ def test_set_team(client, employee, db_session):
 
 
 def test_clear_team(client, employee, db_session):
-    db_session.query(Employee).first()
     employee.team = "Alpha"
     db_session.commit()
     r = client.put(f"/api/v1/employees/{employee.id}/team", json={"team": None})
@@ -47,6 +66,5 @@ def test_clear_team(client, employee, db_session):
 
 
 def test_404_on_missing(client, db_session):
-    db_session.query(Employee).first()
     r = client.put("/api/v1/employees/does-not-exist/team", json={"team": "Alpha"})
     assert r.status_code == 404

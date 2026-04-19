@@ -7,6 +7,12 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.config import Settings
 
+# Ensure ALL models are registered with Base.metadata before create_all().
+# The engine fixture is session-scoped, so create_all() runs exactly once.
+# Without these imports, models that are only imported via app.main (lazy)
+# may be missing from the in-memory schema when tests run in alphabetical order.
+import app.models  # noqa: F401
+
 
 @pytest.fixture(scope="session")
 def test_settings():

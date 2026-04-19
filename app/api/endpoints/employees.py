@@ -7,15 +7,23 @@ from datetime import datetime
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Employee
+from app.models import Employee, EmployeeTeam
+from app.services.employee_team_service import EmployeeTeamService
 
 
 router = APIRouter()
+
+
+class EmployeeTeamItem(BaseModel):
+    team: str
+    is_primary: bool
+
+    model_config = {"from_attributes": True}
 
 
 class EmployeeResponse(BaseModel):
@@ -25,7 +33,8 @@ class EmployeeResponse(BaseModel):
     email: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool
-    team: Optional[str] = None
+    team: Optional[str] = None  # legacy: имя primary team
+    teams: Optional[List[EmployeeTeamItem]] = None  # присутствует только если with_teams=true
 
     model_config = {"from_attributes": True}
 
@@ -47,13 +56,27 @@ class RecalcActiveResponse(BaseModel):
 @router.get("", response_model=List[EmployeeResponse])
 def list_employees(
     is_active: Optional[bool] = Query(None),
+    with_teams: bool = Query(False, description="Включить M:N teams в ответ"),
     db: Session = Depends(get_db),
 ):
     """Список сотрудников."""
     query = db.query(Employee).order_by(Employee.display_name)
     if is_active is not None:
         query = query.filter(Employee.is_active == is_active)
-    return query.all()
+    employees = query.all()
+
+    result: List[EmployeeResponse] = []
+    for e in employees:
+        payload = EmployeeResponse.model_validate(e)
+        if with_teams:
+            # Отсортировать: primary первым, потом по имени.
+            teams = sorted(
+                e.teams,
+                key=lambda t: (not t.is_primary, t.team),
+            )
+            payload.teams = [EmployeeTeamItem.model_validate(t) for t in teams]
+        result.append(payload)
+    return result
 
 
 @router.post("/from-jira", response_model=EmployeeResponse)
@@ -116,8 +139,6 @@ class AutoDetectResponse(BaseModel):
 @router.post("/auto-detect-teams", response_model=AutoDetectResponse)
 def auto_detect_teams(db: Session = Depends(get_db)):
     """Массово проставить Employee.team по ворклогам (для сотрудников с team=NULL)."""
-    from app.services.employee_team_service import EmployeeTeamService
-
     summary = EmployeeTeamService(db).auto_detect_all_missing()
     return AutoDetectResponse(
         assigned=summary.assigned,
@@ -126,29 +147,123 @@ def auto_detect_teams(db: Session = Depends(get_db)):
     )
 
 
+# ─── Legacy single-team endpoint (deprecated, kept for compat) ───
+
 class TeamUpdateRequest(BaseModel):
     team: Optional[str] = None
 
 
-@router.put("/{employee_id}/team", response_model=EmployeeResponse)
-def set_team(
+@router.put(
+    "/{employee_id}/team",
+    response_model=EmployeeResponse,
+    deprecated=True,
+    description="Deprecated — используйте /teams endpoints для multi-team",
+)
+def set_team_legacy(
     employee_id: str,
     req: TeamUpdateRequest,
     db: Session = Depends(get_db),
 ):
-    """Назначить или очистить команду сотрудника.
-
-    Значение берётся из конфигурируемых опций Jira-поля «Продуктовая команда»
-    (/sync/jira-teams), но здесь не валидируется — это свободный справочник.
-    """
-    from fastapi import HTTPException
-
+    """Заменяет все membership одной командой и делает её primary.
+    Пустое значение = очистить все membership."""
     emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
     if emp is None:
         raise HTTPException(status_code=404, detail="Employee not found")
-    emp.team = (req.team or None)
-    db.flush()
-    # Snapshot before commit — see CLAUDE.md ORM caveat.
-    response = EmployeeResponse.model_validate(emp)
-    db.commit()
-    return response
+    svc = EmployeeTeamService(db)
+    if req.team:
+        svc.replace_teams(employee_id, [req.team], primary=req.team)
+    else:
+        svc.replace_teams(employee_id, [])
+    db.refresh(emp)
+    return EmployeeResponse.model_validate(emp)
+
+
+# ─── New M:N team endpoints ───
+
+class AddTeamRequest(BaseModel):
+    team: str
+    is_primary: bool = False
+
+
+class ReplaceTeamsRequest(BaseModel):
+    teams: List[str]
+    primary: Optional[str] = None
+
+
+class SetPrimaryRequest(BaseModel):
+    team: str
+
+
+@router.get("/{employee_id}/teams", response_model=List[EmployeeTeamItem])
+def get_teams(employee_id: str, db: Session = Depends(get_db)):
+    """Список команд сотрудника."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    rows = EmployeeTeamService(db).list_teams(employee_id)
+    return [EmployeeTeamItem.model_validate(r) for r in rows]
+
+
+@router.post("/{employee_id}/teams", response_model=EmployeeTeamItem)
+def post_team(
+    employee_id: str,
+    req: AddTeamRequest,
+    db: Session = Depends(get_db),
+):
+    """Добавить команду сотруднику."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    row = EmployeeTeamService(db).add_team(
+        employee_id, req.team, is_primary=req.is_primary,
+    )
+    return EmployeeTeamItem.model_validate(row)
+
+
+@router.put("/{employee_id}/teams", response_model=List[EmployeeTeamItem])
+def put_teams(
+    employee_id: str,
+    req: ReplaceTeamsRequest,
+    db: Session = Depends(get_db),
+):
+    """Заменить весь набор команд сотрудника."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    rows = EmployeeTeamService(db).replace_teams(
+        employee_id, req.teams, primary=req.primary,
+    )
+    return [EmployeeTeamItem.model_validate(r) for r in rows]
+
+
+@router.delete("/{employee_id}/teams/{team}", status_code=204)
+def delete_team(
+    employee_id: str,
+    team: str,
+    db: Session = Depends(get_db),
+):
+    """Удалить команду у сотрудника."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    EmployeeTeamService(db).remove_team(employee_id, team)
+    return Response(status_code=204)
+
+
+@router.put("/{employee_id}/teams/primary", response_model=List[EmployeeTeamItem])
+def put_primary(
+    employee_id: str,
+    req: SetPrimaryRequest,
+    db: Session = Depends(get_db),
+):
+    """Сменить primary-команду сотрудника."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    svc = EmployeeTeamService(db)
+    try:
+        svc.set_primary(employee_id, req.team)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Employee not in team {req.team!r}")
+    rows = svc.list_teams(employee_id)
+    return [EmployeeTeamItem.model_validate(r) for r in rows]
