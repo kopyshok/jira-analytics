@@ -67,7 +67,7 @@ class Issue(Base, SyncedMixin):
     # Задача попала в БД только через worklog автора (Bucket B) — не входит в
     # основной scope проекта. Используется для фильтрации в аналитике.
     out_of_scope: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True,
+        Boolean, default=False, server_default="0", nullable=False, index=True,
     )
 
     # Jira metadata for triage (e.g. «какие Done висят давно — в архив»)
