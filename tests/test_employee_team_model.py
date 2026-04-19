@@ -47,3 +47,25 @@ def test_employee_relationship_teams(db_session):
     team_names = sorted(t.team for t in emp.teams)
     assert team_names == ["A", "B"]
     assert emp.primary_team_name() == "A"
+
+
+def test_issue_out_of_scope_defaults_false(db_session):
+    from app.models import Project, Issue
+
+    proj = Project(
+        id="p-1", jira_project_id="10000", key="PRJ",
+        name="Test",
+        synced_at=datetime.utcnow(),
+    )
+    db_session.add(proj)
+    issue = Issue(
+        id="i-1", jira_issue_id="20000", key="PRJ-1",
+        project_id="p-1", summary="t", issue_type="Task",
+        status="Open", status_category="new",
+        synced_at=datetime.utcnow(),
+    )
+    db_session.add(issue)
+    db_session.commit()
+
+    loaded = db_session.query(Issue).one()
+    assert loaded.out_of_scope is False
