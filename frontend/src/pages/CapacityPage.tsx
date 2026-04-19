@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal, AutoComplete, Typography } from 'antd';
+import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal, AutoComplete, Typography, Switch } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown } from '../hooks/useCapacity';
+import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useSetEmployeeTeam, useAutoDetectTeams } from '../hooks/useCapacity';
+import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
@@ -21,33 +22,23 @@ function TeamTab() {
   const { data, isLoading } = useTeamCapacity(year, quarter);
   const { data: employees } = useEmployees();
   const recalc = useRecalcActiveEmployees();
+  const setTeam = useSetEmployeeTeam();
+  const autoDetect = useAutoDetectTeams();
+  const { data: jiraTeams } = useJiraTeams();
 
-  const stored = useGenericSetting('ui_capacity_team_filter');
+  const teamOptions = (jiraTeams ?? []).map(t => ({ value: t, label: t }));
+
+  const storedEmp = useGenericSetting('ui_capacity_team_filter');
+  const storedTeams = useGenericSetting('ui_capacity_team_filter_teams');
+  const storedShowFact = useGenericSetting('ui_capacity_show_fact');
+  const storedShowPct  = useGenericSetting('ui_capacity_show_pct');
   const saveStored = useSaveGenericSetting();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [showFact, setShowFact] = useState(false);
+  const [showPct,  setShowPct]  = useState(false);
   const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    if (hydrated || stored.data === undefined) return;
-    const val = stored.data?.value;
-    if (val) setSelectedIds(val.split(',').filter(Boolean));
-    setHydrated(true);
-  }, [hydrated, stored.data]);
-
-  useEffect(() => {
-    if (!hydrated || !employees || selectedIds.length === 0) return;
-    const activeIds = new Set(employees.filter(e => e.is_active).map(e => e.id));
-    const filtered = selectedIds.filter(id => activeIds.has(id));
-    if (filtered.length !== selectedIds.length) {
-      setSelectedIds(filtered);
-      saveStored.mutate({ key: 'ui_capacity_team_filter', value: filtered.join(',') });
-    }
-  }, [hydrated, employees, selectedIds, saveStored]);
-
-  const handleFilterChange = (val: string[]) => {
-    setSelectedIds(val);
-    saveStored.mutate({ key: 'ui_capacity_team_filter', value: val.join(',') });
-  };
 
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -56,10 +47,8 @@ function TeamTab() {
     const t = setTimeout(() => setDebouncedQuery(query), 300);
     return () => clearTimeout(t);
   }, [query]);
-
   const searchRes = useSearchJiraUsers(debouncedQuery);
   const addMut = useAddEmployeeFromJira();
-
   const handlePick = (user: JiraUserSearchResult) => {
     addMut.mutate({
       jira_account_id: user.jira_account_id,
@@ -77,51 +66,130 @@ function TeamTab() {
     });
   };
 
-  const months = QUARTER_MONTHS[Number(quarter)] || [];
-  const visibleData = selectedIds.length === 0
-    ? data
-    : data?.filter(r => selectedIds.includes(r.employee_id));
+  useEffect(() => {
+    if (hydrated) return;
+    if (storedEmp.data === undefined || storedTeams.data === undefined
+        || storedShowFact.data === undefined || storedShowPct.data === undefined) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedEmpIds((storedEmp.data?.value || '').split(',').filter(Boolean));
+    setSelectedTeams((storedTeams.data?.value || '').split(',').filter(Boolean));
+    setShowFact(storedShowFact.data?.value === '1');
+    setShowPct(storedShowPct.data?.value === '1');
+    setHydrated(true);
+  }, [hydrated, storedEmp.data, storedTeams.data, storedShowFact.data, storedShowPct.data]);
 
+  // Drop removed employees from selection (parity with old code).
+  useEffect(() => {
+    if (!hydrated || !employees || selectedEmpIds.length === 0) return;
+    const activeIds = new Set(employees.filter(e => e.is_active).map(e => e.id));
+    const filtered = selectedEmpIds.filter(id => activeIds.has(id));
+    if (filtered.length !== selectedEmpIds.length) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedEmpIds(filtered);
+      saveStored.mutate({ key: 'ui_capacity_team_filter', value: filtered.join(',') });
+    }
+  }, [hydrated, employees, selectedEmpIds, saveStored]);
+
+  const persist = (key: string, value: string) => saveStored.mutate({ key, value });
+
+  // ------------ Filter visible rows ------------
+  const visible = (data ?? []).filter(r => {
+    if (selectedEmpIds.length && !selectedEmpIds.includes(r.employee_id)) return false;
+    if (selectedTeams.length) {
+      const teamKey = r.team ?? '__none__';
+      if (!selectedTeams.includes(teamKey)) return false;
+    }
+    return true;
+  });
+
+  // ------------ Tree grouping ------------
+  interface TeamRow {
+    key: string;
+    isTeam: true;
+    employee_id: string;
+    employee_name: string;
+    team: string | null;
+    months: QuarterCapacityResponse['months'];
+    total_available_hours: number;
+    total_fact_hours: number;
+    children: QuarterCapacityResponse[];
+  }
+  type TreeRow = QuarterCapacityResponse | TeamRow;
+
+  const groupByTeam = (rows: QuarterCapacityResponse[]): TreeRow[] => {
+    const buckets = new Map<string, QuarterCapacityResponse[]>();
+    for (const r of rows) {
+      const k = r.team ?? '__none__';
+      const arr = buckets.get(k) ?? [];
+      arr.push(r);
+      buckets.set(k, arr);
+    }
+    const keys = Array.from(buckets.keys()).filter(k => k !== '__none__').sort();
+    if (buckets.has('__none__')) keys.push('__none__');
+    return keys.map(k => {
+      const members = buckets.get(k)!;
+      const monthSums: QuarterCapacityResponse['months'] = [];
+      if (members[0]) {
+        for (const m of members[0].months) {
+          monthSums.push({
+            ...m,
+            available_hours: members.reduce((s, mem) => s + (mem.months.find(x => x.month === m.month)?.available_hours ?? 0), 0),
+            fact_hours:      members.reduce((s, mem) => s + (mem.months.find(x => x.month === m.month)?.fact_hours ?? 0), 0),
+          });
+        }
+      }
+      const total_available_hours = members.reduce((s, m) => s + m.total_available_hours, 0);
+      const total_fact_hours      = members.reduce((s, m) => s + m.total_fact_hours, 0);
+      return {
+        key: `team:${k}`,
+        isTeam: true,
+        employee_id: `team:${k}`,
+        employee_name: k === '__none__' ? 'Без команды' : k,
+        team: k === '__none__' ? null : k,
+        months: monthSums,
+        total_available_hours,
+        total_fact_hours,
+        children: members,
+      } as TeamRow;
+    });
+  };
+  const tree = groupByTeam(visible);
+
+  // ------------ Cell helpers ------------
   const pctColor = (plan: number, fact: number): string | undefined => {
     if (plan <= 0) return undefined;
     const pct = (fact / plan) * 100;
+    if (pct > 110) return 'var(--ant-color-error, #ff4d4f)';
     if (pct >= 100) return 'var(--ant-color-success, #52c41a)';
-    if (pct < 50) return 'var(--ant-color-text-secondary, #999)';
+    if (pct < 50)  return 'var(--ant-color-text-secondary, #999)';
     return undefined;
   };
-
   const pctText = (plan: number, fact: number): string => {
     if (plan <= 0) return '—';
     return `${Math.round((fact / plan) * 100)}%`;
   };
 
+  // ------------ Columns (responsive to toggles) ------------
+  const months = QUARTER_MONTHS[Number(quarter)] || [];
   const monthGroup = (m: number) => ({
     title: MONTH_NAMES[m],
     children: [
-      {
-        title: 'План',
-        key: `m${m}_plan`,
-        width: 80,
-        render: (_: unknown, r: QuarterCapacityResponse) => {
-          const mc = r.months.find((x) => x.month === m);
+      { title: 'План', key: `m${m}_plan`, width: 80,
+        render: (_: unknown, r: TreeRow) => {
+          const mc = r.months?.find((x) => x.month === m);
           return mc ? formatHours(mc.available_hours) : '—';
-        },
-      },
-      {
-        title: 'Факт',
-        key: `m${m}_fact`,
-        width: 80,
-        render: (_: unknown, r: QuarterCapacityResponse) => {
-          const mc = r.months.find((x) => x.month === m);
+        } },
+      ...(showFact ? [{
+        title: 'Факт', key: `m${m}_fact`, width: 80,
+        render: (_: unknown, r: TreeRow) => {
+          const mc = r.months?.find((x) => x.month === m);
           return mc ? formatHours(mc.fact_hours) : '—';
         },
-      },
-      {
-        title: '%',
-        key: `m${m}_pct`,
-        width: 60,
-        render: (_: unknown, r: QuarterCapacityResponse) => {
-          const mc = r.months.find((x) => x.month === m);
+      }] : []),
+      ...(showPct ? [{
+        title: '%', key: `m${m}_pct`, width: 60,
+        render: (_: unknown, r: TreeRow) => {
+          const mc = r.months?.find((x) => x.month === m);
           if (!mc) return '—';
           return (
             <span style={{ color: pctColor(mc.available_hours, mc.fact_hours) }}>
@@ -129,73 +197,121 @@ function TeamTab() {
             </span>
           );
         },
-      },
+      }] : []),
     ],
   });
 
+  const nameColumn = {
+    title: 'Сотрудник', key: 'name', fixed: 'left' as const, width: 280,
+    render: (_: unknown, r: TreeRow) => {
+      if ('isTeam' in r) {
+        return <span style={{ fontWeight: 600 }}>{r.employee_name} <Text type="secondary">· {r.children.length}</Text></span>;
+      }
+      const currentTeam = r.team ?? undefined;
+      return (
+        <Space>
+          <span>{r.employee_name}</span>
+          <Select
+            size="small"
+            style={{ minWidth: 140 }}
+            placeholder="Без команды"
+            allowClear
+            value={currentTeam}
+            options={teamOptions}
+            onChange={(val) => setTeam.mutate({ id: r.employee_id, team: val ?? null })}
+            showSearch optionFilterProp="label"
+          />
+        </Space>
+      );
+    },
+  };
+
   const columns = [
-    { title: 'Сотрудник', dataIndex: 'employee_name', fixed: 'left' as const, width: 200 },
+    nameColumn,
     ...months.map(monthGroup),
     {
       title: 'Итого',
       children: [
         { title: 'План', dataIndex: 'total_available_hours', render: formatHours, width: 90 },
-        { title: 'Факт', dataIndex: 'total_fact_hours', render: formatHours, width: 90 },
-        {
+        ...(showFact ? [{ title: 'Факт', dataIndex: 'total_fact_hours', render: formatHours, width: 90 }] : []),
+        ...(showPct ? [{
           title: '%', width: 70,
-          render: (_: unknown, r: QuarterCapacityResponse) => (
+          render: (_: unknown, r: TreeRow) => (
             <span style={{ color: pctColor(r.total_available_hours, r.total_fact_hours) }}>
               {pctText(r.total_available_hours, r.total_fact_hours)}
             </span>
           ),
-        },
+        }] : []),
       ],
     },
   ];
 
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const exportHref = `${apiBase}/exports/capacity.xlsx?year=${year}&quarter=${quarter}`;
+
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
       <Space wrap>
-        <Select
-          mode="multiple"
-          allowClear
-          placeholder="Фильтр по сотруднику"
-          style={{ minWidth: 260 }}
-          value={selectedIds}
-          onChange={handleFilterChange}
-          showSearch
-          optionFilterProp="label"
-          options={(employees ?? [])
-            .filter(e => e.is_active)
-            .map(e => ({ value: e.id, label: e.display_name }))}
+        <Select mode="multiple" allowClear placeholder="Фильтр по команде"
+          style={{ minWidth: 220 }}
+          value={selectedTeams}
+          onChange={(v) => { setSelectedTeams(v); persist('ui_capacity_team_filter_teams', v.join(',')); }}
+          options={[...teamOptions, { value: '__none__', label: 'Без команды' }]}
+          showSearch optionFilterProp="label"
         />
+        <Select mode="multiple" allowClear placeholder="Фильтр по сотруднику"
+          style={{ minWidth: 260 }}
+          value={selectedEmpIds}
+          onChange={(v) => { setSelectedEmpIds(v); persist('ui_capacity_team_filter', v.join(',')); }}
+          options={(employees ?? []).filter(e => e.is_active)
+            .map(e => ({ value: e.id, label: e.display_name }))}
+          showSearch optionFilterProp="label"
+        />
+        <Space>
+          <Switch checked={showFact} onChange={(v) => { setShowFact(v); persist('ui_capacity_show_fact', v ? '1' : '0'); }} />
+          <Text>Факт</Text>
+          <Switch checked={showPct} onChange={(v) => { setShowPct(v); persist('ui_capacity_show_pct', v ? '1' : '0'); }} />
+          <Text>%</Text>
+        </Space>
+        <Popconfirm
+          title="Определить команды по ворклогам для всех без команды?"
+          okText="Определить" cancelText="Отмена"
+          onConfirm={() => autoDetect.mutate(undefined, {
+            onSuccess: (s) => notification.success({
+              title: 'Команды обновлены',
+              description: `Назначено: ${s.assigned}, пропущено: ${s.skipped}`,
+            }),
+            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
+          })}
+        >
+          <Button loading={autoDetect.isPending}>Определить команды авто</Button>
+        </Popconfirm>
         <Popconfirm
           title="Пересчитать состав по worklog'ам активных задач?"
-          okText="Пересчитать"
-          cancelText="Отмена"
+          okText="Пересчитать" cancelText="Отмена"
           okButtonProps={{ danger: true }}
           onConfirm={() => recalc.mutate(undefined, {
-            onSuccess: (s) => notification.success({
-              title: 'Состав обновлён',
-              description: `Активировано: ${s.activated}, деактивировано: ${s.deactivated}, всего активных: ${s.total_active}`,
-            }),
+            onSuccess: (s) => notification.success({ title: 'Состав обновлён',
+              description: `Активировано: ${s.activated}, деактивировано: ${s.deactivated}` }),
             onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
           })}
         >
           <Button loading={recalc.isPending}>Пересчитать состав</Button>
         </Popconfirm>
-        <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
-          Добавить сотрудника
-        </Button>
+        <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
+        <Button href={exportHref} target="_blank" rel="noreferrer">Экспорт в Excel</Button>
       </Space>
-      <Table<QuarterCapacityResponse>
-        dataSource={visibleData}
-        rowKey="employee_id"
+      <Table
+        dataSource={tree}
+        rowKey="key"
         loading={isLoading}
-        columns={columns}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        columns={columns as any}
         pagination={false}
         size="small"
         scroll={{ x: 1400 }}
+        expandable={{ defaultExpandAllRows: true, childrenColumnName: 'children' }}
+        rowClassName={(r: TreeRow) => 'isTeam' in r ? 'capacity-team-row' : ''}
       />
       <Modal
         title="Добавить сотрудника из Jira"

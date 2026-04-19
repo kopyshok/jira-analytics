@@ -156,3 +156,7 @@ kbd,
   border-color: var(--color-cyan) !important;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 201, 200, 0.2);
 }
+
+.capacity-team-row td {
+  background: rgba(250, 140, 22, 0.06);
+}
