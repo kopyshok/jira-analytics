@@ -1,12 +1,16 @@
 """EmployeeTeam model - M:N employee ↔ team membership."""
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import generate_uuid
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.employee import Employee
 
 
 class EmployeeTeam(Base):
@@ -39,7 +43,7 @@ class EmployeeTeam(Base):
         DateTime, default=datetime.utcnow, nullable=False
     )
 
-    employee = relationship("Employee", back_populates="teams")
+    employee: Mapped["Employee"] = relationship(back_populates="teams")
 
     def __repr__(self) -> str:
         return f"<EmployeeTeam {self.employee_id}:{self.team}{' *' if self.is_primary else ''}>"
