@@ -45,11 +45,19 @@ async def hours_by_employee(
     end: Optional[datetime] = Query(None, description="Конец периода (ISO)"),
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
+    teams: Optional[str] = Query(None, description="Команды CSV, __none__ = без команды"),
+    match_employees: bool = Query(True),
+    match_issues: bool = Query(True),
     db: Session = Depends(get_db),
 ):
     """Часы по сотрудникам за период."""
     service = AnalyticsService(db)
-    rows = service.hours_by_employee(start=start, end=end, employee_id=employee_id, project_key=project_key)
+    teams_list = [t for t in (teams.split(",") if teams else []) if t]
+    rows = service.hours_by_employee(
+        start=start, end=end,
+        employee_id=employee_id, project_key=project_key,
+        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+    )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -59,11 +67,19 @@ async def hours_by_project(
     end: Optional[datetime] = Query(None),
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
+    teams: Optional[str] = Query(None, description="Команды CSV, __none__ = без команды"),
+    match_employees: bool = Query(True),
+    match_issues: bool = Query(True),
     db: Session = Depends(get_db),
 ):
     """Часы по проектам за период."""
     service = AnalyticsService(db)
-    rows = service.hours_by_project(start=start, end=end, employee_id=employee_id, project_key=project_key)
+    teams_list = [t for t in (teams.split(",") if teams else []) if t]
+    rows = service.hours_by_project(
+        start=start, end=end,
+        employee_id=employee_id, project_key=project_key,
+        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+    )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -73,11 +89,19 @@ async def hours_by_category(
     end: Optional[datetime] = Query(None),
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
+    teams: Optional[str] = Query(None, description="Команды CSV, __none__ = без команды"),
+    match_employees: bool = Query(True),
+    match_issues: bool = Query(True),
     db: Session = Depends(get_db),
 ):
     """Часы по управленческим категориям работ."""
     service = AnalyticsService(db)
-    rows = service.hours_by_category(start=start, end=end, employee_id=employee_id, project_key=project_key)
+    teams_list = [t for t in (teams.split(",") if teams else []) if t]
+    rows = service.hours_by_category(
+        start=start, end=end,
+        employee_id=employee_id, project_key=project_key,
+        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+    )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -88,11 +112,19 @@ async def hours_by_period(
     end: Optional[datetime] = Query(None),
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
+    teams: Optional[str] = Query(None, description="Команды CSV, __none__ = без команды"),
+    match_employees: bool = Query(True),
+    match_issues: bool = Query(True),
     db: Session = Depends(get_db),
 ):
     """Часы по периодам: day, week, month."""
     service = AnalyticsService(db)
-    rows = service.hours_by_period(period=period, start=start, end=end, employee_id=employee_id, project_key=project_key)
+    teams_list = [t for t in (teams.split(",") if teams else []) if t]
+    rows = service.hours_by_period(
+        period=period, start=start, end=end,
+        employee_id=employee_id, project_key=project_key,
+        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+    )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
 
@@ -102,9 +134,17 @@ async def context_switching(
     end: Optional[datetime] = Query(None),
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
+    teams: Optional[str] = Query(None, description="Команды CSV, __none__ = без команды"),
+    match_employees: bool = Query(True),
+    match_issues: bool = Query(True),
     db: Session = Depends(get_db),
 ):
     """Метрика контекстных переключений по сотрудникам."""
     service = AnalyticsService(db)
-    rows = service.context_switching(start=start, end=end, employee_id=employee_id, project_key=project_key)
+    teams_list = [t for t in (teams.split(",") if teams else []) if t]
+    rows = service.context_switching(
+        start=start, end=end,
+        employee_id=employee_id, project_key=project_key,
+        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+    )
     return [ContextSwitchRowResponse(**row.__dict__) for row in rows]
