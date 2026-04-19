@@ -67,6 +67,7 @@ class QuarterCapacity:
     total_mandatory_hours: float = 0.0
     total_available_hours: float = 0.0
     total_fact_hours: float = 0.0
+    team: Optional[str] = None
 
 
 class CapacityService:
@@ -270,6 +271,7 @@ class CapacityService:
             employee_name=employee.display_name,
             year=year,
             quarter=quarter,
+            team=employee.team,
         )
 
         for month in QUARTER_MONTHS[quarter]:

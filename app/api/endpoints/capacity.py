@@ -106,6 +106,7 @@ class QuarterCapacityResponse(BaseModel):
     total_mandatory_hours: float
     total_available_hours: float
     total_fact_hours: float = 0.0
+    team: Optional[str] = None
 
     @classmethod
     def from_dataclass(cls, data: QuarterCapacity) -> "QuarterCapacityResponse":
@@ -122,6 +123,7 @@ class QuarterCapacityResponse(BaseModel):
             total_mandatory_hours=data.total_mandatory_hours,
             total_available_hours=data.total_available_hours,
             total_fact_hours=data.total_fact_hours,
+            team=data.team,
         )
 
 

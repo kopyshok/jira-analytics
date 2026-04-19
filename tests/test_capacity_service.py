@@ -386,6 +386,32 @@ class TestMonthlyCapacityFact:
         assert qc.total_fact_hours == 12.0
 
 
+class TestTeamCapacityIncludesTeamField:
+    def test_team_field_populated(self, db_session):
+        e1 = Employee(
+            id="e1",
+            jira_account_id="a1",
+            display_name="Иванов",
+            is_active=True,
+            team="Alpha",
+        )
+        e2 = Employee(
+            id="e2",
+            jira_account_id="a2",
+            display_name="Петров",
+            is_active=True,
+            team=None,
+        )
+        db_session.add_all([e1, e2])
+        db_session.commit()
+
+        svc = CapacityService(db_session)
+        rows = svc.team_quarter_capacity(2026, 2)
+        by_id = {r.employee_id: r for r in rows}
+        assert by_id["e1"].team == "Alpha"
+        assert by_id["e2"].team is None
+
+
 class TestCategoryBreakdown:
     def test_breakdown_buckets(self, db_session, employee):
         from app.models import Category
