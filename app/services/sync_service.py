@@ -1131,7 +1131,93 @@ class SyncService:
         since_iso: str,
         teams: List[str],
         stats: "UpdateStats",
-        on_progress,
+        on_progress: Optional[
+            Callable[["UpdateStats", Optional[str]], Awaitable[None]]
+        ] = None,
     ) -> None:
-        """Ведро B — placeholder, реализуется в Task 7."""
-        return
+        """Employee-centric проход. Для каждого сотрудника из указанных
+        команд — JQL по ``worklogAuthor``. Незнакомые issue создаём
+        с ``out_of_scope=True``; их ворклоги от ЛЮБОГО автора (не только
+        наших) попадают в БД, чтобы не разделять граф."""
+        from app.models import EmployeeTeam
+
+        # Собрать distinct сотрудников в этих командах
+        emps = (
+            self.db.query(Employee)
+            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+            .filter(EmployeeTeam.team.in_(teams))
+            .distinct()
+            .all()
+        )
+        for emp in emps:
+            await self._check_cancelled()
+            jql = f'worklogAuthor = "{emp.jira_account_id}" AND updated >= "{since_iso}"'
+            async for jira_issue in self.jira.iter_issues(
+                jql,
+                fields=["summary", "issuetype", "status", "project"],
+                max_results=100,
+            ):
+                await self._check_cancelled()
+                local = (
+                    self.db.query(Issue)
+                    .filter(Issue.jira_issue_id == jira_issue.id)
+                    .one_or_none()
+                )
+                if local is None:
+                    local = self._create_out_of_scope_issue(jira_issue)
+                    stats.bucket_b_out_of_scope_created += 1
+                stats.bucket_b_issues_scanned += 1
+                async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
+                    await self._check_cancelled()
+                    author_schema = JiraUserSchema(
+                        accountId=wl.author.accountId,
+                        displayName=wl.author.displayName,
+                        emailAddress=wl.author.emailAddress,
+                        active=True,
+                    )
+                    employee = self._ensure_employee(author_schema)
+                    self._upsert_worklog(wl, local.id, employee.id)
+                    stats.bucket_b_worklogs_upserted += 1
+                self.db.commit()
+                if on_progress is not None:
+                    await on_progress(stats, jira_issue.key)
+
+    def _create_out_of_scope_issue(self, jira_issue) -> "Issue":
+        """Создать Issue с ``out_of_scope=True`` + автосоздать Project
+        если его нет. Минимальный набор полей — summary/type/status/project."""
+        proj_payload = jira_issue.fields.project
+        project = (
+            self.db.query(Project)
+            .filter(Project.jira_project_id == proj_payload.id)
+            .one_or_none()
+        )
+        if project is None:
+            project = Project(
+                jira_project_id=proj_payload.id,
+                key=proj_payload.key,
+                name=proj_payload.name,
+                synced_at=datetime.utcnow(),
+            )
+            self.db.add(project)
+            self.db.flush()
+
+        status_obj = jira_issue.fields.status
+        status_cat = None
+        cat_obj = getattr(status_obj, "statusCategory", None)
+        if cat_obj is not None:
+            status_cat = getattr(cat_obj, "key", None)
+
+        issue = Issue(
+            jira_issue_id=jira_issue.id,
+            key=jira_issue.key,
+            project_id=project.id,
+            summary=jira_issue.fields.summary,
+            issue_type=jira_issue.fields.issuetype.name,
+            status=status_obj.name,
+            status_category=status_cat,
+            out_of_scope=True,
+            synced_at=datetime.utcnow(),
+        )
+        self.db.add(issue)
+        self.db.flush()
+        return issue
