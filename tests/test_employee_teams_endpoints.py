@@ -138,3 +138,15 @@ def test_legacy_put_team_still_works(client, emp):
     assert body["team"] == "Legacy"
     teams = client.get(f"/api/v1/employees/{emp.id}/teams").json()
     assert teams == [{"team": "Legacy", "is_primary": True}]
+    assert body.get("teams") is None
+
+
+def test_list_employees_without_with_teams_has_null_teams(client, emp):
+    client.put(
+        f"/api/v1/employees/{emp.id}/teams",
+        json={"teams": ["A"], "primary": "A"},
+    )
+    resp = client.get("/api/v1/employees")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body[0].get("teams") is None
