@@ -93,6 +93,32 @@ class ReloadStats:
     worklogs_inserted: int = 0
 
 
+@dataclass
+class UpdateStats:
+    """Результат мягкого обновления ворклогов (без удаления).
+
+    ``bucket_a_*`` — проход по всем issue с ``updated >= since``.
+    ``bucket_b_*`` — проход по ворклогам сотрудников выбранных команд
+    (включая задачи вне scope, которые создаются с ``out_of_scope=True``).
+    """
+
+    bucket_a_issues_scanned: int = 0
+    bucket_a_worklogs_upserted: int = 0
+    bucket_b_issues_scanned: int = 0
+    bucket_b_worklogs_upserted: int = 0
+    bucket_b_out_of_scope_created: int = 0
+
+    @property
+    def worklogs_upserted(self) -> int:
+        return self.bucket_a_worklogs_upserted + self.bucket_b_worklogs_upserted
+
+    @property
+    def deleted(self) -> int:
+        # Семантическая константа — update никогда не удаляет, нужна для
+        # совместимости с SSE-обёрткой, которая уже знает это поле.
+        return 0
+
+
 class SyncStats:
     """Statistics for a sync operation."""
     
@@ -1036,3 +1062,75 @@ class SyncService:
                 await on_progress(stats, jira_issue.key)
 
         return stats
+
+    async def update_worklogs_since(
+        self,
+        since: date,
+        teams: Optional[List[str]] = None,
+        on_progress: Optional[
+            Callable[["UpdateStats", Optional[str]], Awaitable[None]]
+        ] = None,
+    ) -> "UpdateStats":
+        """Мягкое обновление ворклогов: upsert без удаления.
+
+        - **Ведро A** (всегда): JQL ``updated >= since``. Для каждого issue,
+          уже существующего локально, перечитываются ворклоги и upsert'ятся.
+          Незнакомые issue пропускаются.
+        - **Ведро B** (если ``teams`` задан): JQL
+          ``worklogAuthor = <id> AND updated >= since`` по каждому сотруднику
+          из ``employee_teams.team IN teams``. Незнакомые issue создаются
+          с ``out_of_scope=True``.
+
+        Ничего не удаляет и не трогает ``sync_state``. Прогресс — через
+        ``on_progress(stats, current_key)``.
+        """
+        stats = UpdateStats()
+        since_iso = since.isoformat()
+
+        # ─── Ведро A ───
+        jql_a = f'updated >= "{since_iso}"'
+        async for jira_issue in self.jira.iter_issues(
+            jql_a,
+            fields=["summary", "issuetype", "status", "project"],
+            max_results=100,
+        ):
+            await self._check_cancelled()
+            local = (
+                self.db.query(Issue)
+                .filter(Issue.jira_issue_id == jira_issue.id)
+                .one_or_none()
+            )
+            if local is None:
+                continue
+            stats.bucket_a_issues_scanned += 1
+            async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
+                author_schema = JiraUserSchema(
+                    accountId=wl.author.accountId,
+                    displayName=wl.author.displayName,
+                    emailAddress=wl.author.emailAddress,
+                    active=True,
+                )
+                employee = self._ensure_employee(author_schema)
+                self._upsert_worklog(wl, local.id, employee.id)
+                stats.bucket_a_worklogs_upserted += 1
+            self.db.commit()
+            if on_progress is not None:
+                await on_progress(stats, jira_issue.key)
+
+        # ─── Ведро B ───
+        if teams:
+            await self._update_worklogs_bucket_b(
+                since_iso, teams, stats, on_progress,
+            )
+
+        return stats
+
+    async def _update_worklogs_bucket_b(
+        self,
+        since_iso: str,
+        teams: List[str],
+        stats: "UpdateStats",
+        on_progress,
+    ) -> None:
+        """Ведро B — placeholder, реализуется в Task 7."""
+        return
