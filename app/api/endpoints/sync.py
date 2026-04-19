@@ -1,16 +1,19 @@
 """Sync API endpoints."""
 
 import asyncio
+import json
+from contextlib import suppress
 from datetime import date
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
-from app.services.sync_service import SyncService, SyncStats
+from app.services.sync_service import SyncService, SyncStats, ReloadStats
 
 
 router = APIRouter()
@@ -368,6 +371,80 @@ async def reload_worklogs(
         issues_scanned=stats.issues_scanned,
         worklogs_inserted=stats.worklogs_inserted,
     )
+
+
+@router.post("/worklogs/reload/stream")
+async def reload_worklogs_stream(
+    req: WorklogReloadRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """SSE-стрим прогресса жёсткой перезагрузки worklog'ов.
+
+    Возвращает ``text/event-stream`` с событиями:
+    - ``progress`` — после каждого обработанного issue с текущими счётчиками
+      и ключом обработанной задачи
+    - ``done`` — финальные stats, ``worklog_reload_since_date`` записан
+    - ``error`` — backend-ошибка (включая Jira)
+    - ``cancelled`` — клиент отвалился
+
+    Cancel через обрыв HTTP-соединения: ``request.is_disconnected()``
+    поднимает ``CancelledError`` внутри SyncService, как и в обычных эндпоинтах.
+    """
+    from app.api.endpoints.settings import _set_setting
+
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(stats: ReloadStats, current_key: Optional[str]) -> None:
+            await queue.put({
+                "type": "progress",
+                "deleted": stats.deleted,
+                "issues_scanned": stats.issues_scanned,
+                "worklogs_inserted": stats.worklogs_inserted,
+                "current_key": current_key,
+            })
+
+        async def run() -> None:
+            try:
+                async with JiraClient.from_db(db) as jira:
+                    service = SyncService(
+                        db, jira,
+                        cancel_check=_disconnect_checker(http_request),
+                    )
+                    stats = await service.reload_worklogs_since(
+                        req.since, on_progress=on_progress,
+                    )
+                _set_setting(db, "worklog_reload_since_date", req.since.isoformat())
+                db.commit()
+                await queue.put({
+                    "type": "done",
+                    "deleted": stats.deleted,
+                    "issues_scanned": stats.issues_scanned,
+                    "worklogs_inserted": stats.worklogs_inserted,
+                })
+            except asyncio.CancelledError:
+                await queue.put({"type": "cancelled"})
+                raise
+            except JiraClientError as e:
+                await queue.put({"type": "error", "detail": f"Jira error: {e}"})
+            except Exception as e:
+                await queue.put({"type": "error", "detail": str(e)})
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                if event["type"] in ("done", "error", "cancelled"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await task
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @router.post("/comments", response_model=SyncResponse)

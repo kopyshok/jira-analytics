@@ -1,13 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   testConnection, syncProjects, syncIssues, syncWorklogs, syncComments, syncFull,
-  refreshIssuesByKeys, syncTeams, reloadWorklogs,
+  refreshIssuesByKeys, syncTeams,
+  reloadWorklogsStream, type WorklogReloadProgress, type WorklogReloadDone,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
   getJiraIssueTypes,
 } from '../api/sync';
 import { batchScopeProjects } from '../api/scope';
 import { recalculateAll } from '../api/mapping';
-import type { WorklogReloadRequest, WorklogReloadResponse } from '../types/api';
+import type { WorklogReloadRequest } from '../types/api';
 
 export const useConnectionTest = () =>
   useQuery({ queryKey: ['sync', 'connection'], queryFn: testConnection, retry: false, enabled: false });
@@ -64,11 +65,16 @@ export const useSyncTeams = () => {
   });
 };
 
-type ReloadInput = { req: WorklogReloadRequest; signal?: AbortSignal };
+type ReloadInput = {
+  req: WorklogReloadRequest;
+  onProgress?: (e: WorklogReloadProgress) => void;
+  signal?: AbortSignal;
+};
 export const useReloadWorklogs = () => {
   const qc = useQueryClient();
-  return useMutation<WorklogReloadResponse, Error, ReloadInput>({
-    mutationFn: ({ req, signal }) => reloadWorklogs(req, signal),
+  return useMutation<WorklogReloadDone, Error, ReloadInput>({
+    mutationFn: ({ req, onProgress, signal }) =>
+      reloadWorklogsStream(req, onProgress ?? (() => {}), signal),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });

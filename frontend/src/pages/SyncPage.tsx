@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App,
-  Tabs, Select, Typography, Modal, Checkbox, Popconfirm, DatePicker,
+  Tabs, Select, Typography, Modal, Checkbox, Popconfirm, DatePicker, Progress,
 } from 'antd';
 import {
   SyncOutlined, ReloadOutlined,
@@ -29,6 +29,7 @@ import type { IssueTreeNode } from '../types/api';
 import type {
   SyncStatusResponse,
 } from '../types/api';
+import type { WorklogReloadProgress } from '../api/sync';
 
 const { Text } = Typography;
 
@@ -1021,6 +1022,7 @@ function SyncControls() {
   const reload = useReloadWorklogs();
   const [sinceDate, setSinceDate] = useState<Dayjs>(() => dayjs('2026-01-01'));
   const [sinceHydrated, setSinceHydrated] = useState(false);
+  const [reloadProgress, setReloadProgress] = useState<WorklogReloadProgress | null>(null);
 
   useEffect(() => {
     if (sinceHydrated || reloadSince.data === undefined) return;
@@ -1033,7 +1035,12 @@ function SyncControls() {
     const iso = sinceDate.format('YYYY-MM-DD');
     const ctl = new AbortController();
     reloadAbortRef.current = ctl;
-    reload.mutate({ req: { since: iso }, signal: ctl.signal }, {
+    setReloadProgress(null);
+    reload.mutate({
+      req: { since: iso },
+      onProgress: (e) => setReloadProgress(e),
+      signal: ctl.signal,
+    }, {
       onSuccess: (stats) => {
         notification.success({
           message: "Worklog'и перезагружены",
@@ -1045,7 +1052,10 @@ function SyncControls() {
         if (e.name === 'AbortError') return;
         notification.error({ message: 'Ошибка', description: e.message });
       },
-      onSettled: () => { reloadAbortRef.current = null; },
+      onSettled: () => {
+        reloadAbortRef.current = null;
+        setReloadProgress(null);
+      },
     });
   };
 
@@ -1207,6 +1217,21 @@ function SyncControls() {
               </Popconfirm>
             )}
           </Space>
+          {reload.isPending && (
+            <Space direction="vertical" size={2} style={{ width: '100%', maxWidth: 520 }}>
+              <Progress
+                percent={99.9}
+                status="active"
+                showInfo={false}
+                strokeColor={DARK_THEME.cyanPrimary}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {reloadProgress
+                  ? `Удалено: ${reloadProgress.deleted} · Обработано задач: ${reloadProgress.issues_scanned} · Вставлено worklog: ${reloadProgress.worklogs_inserted}${reloadProgress.current_key ? ` · ${reloadProgress.current_key}` : ''}`
+                  : 'Подготовка…'}
+              </Text>
+            </Space>
+          )}
           {scopeKeys.length > 0 && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               Scope: {scopeKeys.join(', ')}

@@ -966,13 +966,24 @@ class SyncService:
         logger.info(f"Full sync complete in {self.stats.duration_seconds:.1f}s")
         return self.stats
 
-    async def reload_worklogs_since(self, since: date) -> ReloadStats:
+    async def reload_worklogs_since(
+        self,
+        since: date,
+        on_progress: Optional[
+            Callable[["ReloadStats", Optional[str]], Awaitable[None]]
+        ] = None,
+    ) -> ReloadStats:
         """Удаляет worklog'и с ``started_at >= since`` и перечитывает их
         из Jira по JQL ``worklogDate >= since``.
 
         Перебирает только те issue, что уже есть в локальной БД: незнакомые
         пропускаются, чтобы не расширять scope молча. Не трогает
         ``sync_state.last_sync``.
+
+        ``on_progress`` — опциональный async-коллбек, вызывается после коммита
+        каждого обработанного issue: ``(stats, current_jira_key)``. Используется
+        SSE-эндпоинтом для стрима прогресса; для пропущенных (незнакомых) issue
+        не вызывается.
         """
         since_dt = datetime.combine(since, datetime.min.time())
         since_dt_aware = since_dt.replace(tzinfo=timezone.utc)
@@ -984,6 +995,8 @@ class SyncService:
         self.db.commit()
 
         stats = ReloadStats(deleted=deleted)
+        if on_progress is not None:
+            await on_progress(stats, None)
         jql = f'worklogDate >= "{since.isoformat()}"'
 
         async for jira_issue in self.jira.iter_issues(
@@ -1019,5 +1032,7 @@ class SyncService:
                 if created:
                     stats.worklogs_inserted += 1
             self.db.commit()
+            if on_progress is not None:
+                await on_progress(stats, jira_issue.key)
 
         return stats
