@@ -8,6 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import SyncedMixin, generate_uuid
 from app.database import Base
 
+# NOTE: EmployeeTeam is imported lazily via string in relationship() to avoid
+# circular imports; the actual model lives in app.models.employee_team.
+
 
 class Employee(Base, SyncedMixin):
     """Employee/Jira user model.
@@ -38,6 +41,18 @@ class Employee(Base, SyncedMixin):
     worklogs = relationship("Worklog", back_populates="employee")
     comments = relationship("Comment", back_populates="author")
     absences = relationship("Absence", back_populates="employee")
+    teams = relationship(
+        "EmployeeTeam",
+        back_populates="employee",
+        cascade="all, delete-orphan",
+    )
+
+    def primary_team_name(self) -> Optional[str]:
+        """Название primary-команды (берётся из teams relationship)."""
+        for t in self.teams:
+            if t.is_primary:
+                return t.team
+        return None
 
     def __repr__(self) -> str:
         return f"<Employee {self.display_name}>"
