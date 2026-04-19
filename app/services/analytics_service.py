@@ -23,6 +23,15 @@ from app.services.categories import CATEGORY_LABELS, get_category_labels
 NO_TEAM_TOKEN = "__none__"
 
 
+def parse_teams_csv(teams: Optional[str]) -> list[str]:
+    """Распарсить CSV-строку команд из query-параметра в список.
+
+    Пустая строка / None / строка только с запятыми → пустой список
+    (helper должен быть no-op в таких случаях).
+    """
+    return [t for t in (teams.split(",") if teams else []) if t]
+
+
 @dataclass
 class AggregateRow:
     """Строка агрегированного отчёта."""
