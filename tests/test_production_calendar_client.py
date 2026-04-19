@@ -90,11 +90,13 @@ def test_parse_skips_malformed_tokens():
         "months": [{"month": 1, "days": "1,abc,,2+,x*,3"}],
     }
     days = list(ProductionCalendarClient._parse(2026, payload))
-    # 1, 2+, 3 — three valid tokens; "abc", "", "x*" dropped
+    # 1, 2+, 3 — three valid tokens; "abc", "", "x*" dropped.
+    # Jan 1 2026 — Thu (holiday); Jan 2 — Fri, явный «+» → weekend;
+    # Jan 3 — Sat, xmlcalendar без суффикса → парсер уточняет в weekend.
     assert {(d.date.day, d.kind) for d in days} == {
         (1, "holiday"),
         (2, "weekend"),
-        (3, "holiday"),
+        (3, "weekend"),
     }
 
 

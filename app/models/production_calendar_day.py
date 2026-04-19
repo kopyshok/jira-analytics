@@ -8,7 +8,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, String
+from sqlalchemy import Boolean, Date, DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -26,6 +26,7 @@ class ProductionCalendarDay(Base):
     date: Mapped[date] = mapped_column(Date, primary_key=True)
     is_workday: Mapped[bool] = mapped_column(Boolean, nullable=False)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    hours: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, default="xmlcalendar"
@@ -38,4 +39,7 @@ class ProductionCalendarDay(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<ProductionCalendarDay {self.date} {self.kind} workday={self.is_workday}>"
+        return (
+            f"<ProductionCalendarDay {self.date} {self.kind} "
+            f"workday={self.is_workday} hours={self.hours}>"
+        )

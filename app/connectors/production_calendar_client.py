@@ -102,13 +102,12 @@ class ProductionCalendarClient:
                     day = int(day_str)
                 except ValueError:
                     continue  # пропускаем мусорные токены
-                out.append(
-                    CalendarDayRaw(
-                        date=date(year, month, day),
-                        is_workday=is_wd,
-                        kind=kind,
-                    )
-                )
+                d = date(year, month, day)
+                # xmlcalendar не отличает обычные Сб/Вс от праздников —
+                # уточняем: выпавший на выходной «holiday» считаем weekend.
+                if kind == "holiday" and d.weekday() >= 5:
+                    kind = "weekend"
+                out.append(CalendarDayRaw(date=d, is_workday=is_wd, kind=kind))
         return out
 
     @staticmethod

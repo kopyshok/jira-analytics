@@ -17,6 +17,7 @@ class CalendarDayResponse(BaseModel):
     date: date
     is_workday: bool
     kind: str
+    hours: float
     note: str | None
     source: str
 
@@ -27,6 +28,7 @@ class CalendarDayUpsertRequest(BaseModel):
     date: date
     is_workday: bool
     kind: str
+    hours: float | None = None
     note: str | None = None
 
 
@@ -48,7 +50,9 @@ def upsert_manual(
     req: CalendarDayUpsertRequest, db: Session = Depends(get_db)
 ):
     svc = ProductionCalendarService(db)
-    row = svc.upsert_manual(req.date, req.is_workday, req.kind, req.note)
+    row = svc.upsert_manual(
+        req.date, req.is_workday, req.kind, req.note, req.hours
+    )
     return CalendarDayResponse.model_validate(row)
 
 
