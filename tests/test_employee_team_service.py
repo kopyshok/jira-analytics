@@ -3,7 +3,7 @@
 from datetime import date, datetime, timedelta
 import pytest
 
-from app.models import Category, Employee, Issue, Project, Worklog
+from app.models import Category, Employee, EmployeeTeam, Issue, Project, Worklog
 from app.services.employee_team_service import EmployeeTeamService
 
 
@@ -87,18 +87,28 @@ def test_bulk_auto_detect_all_missing(db_session, seed):
     assert summary.assigned == 1
     assert summary.skipped == 0
     db_session.expire_all()
+    # Legacy-колонка обновилась (через _recompute_legacy_team)…
     assert db_session.get(Employee, seed["emp"].id).team == "Alpha"
+    # …и M:N source of truth действительно содержит primary-строку.
+    rows = db_session.query(EmployeeTeam).filter_by(employee_id=seed["emp"].id).all()
+    assert len(rows) == 1
+    assert rows[0].team == "Alpha"
+    assert rows[0].is_primary is True
 
 
-def test_bulk_skips_employees_with_existing_team(db_session, seed):
-    seed["emp"].team = "Preserved"
-    db_session.commit()
+def test_bulk_skips_employees_with_existing_membership(db_session, seed):
+    """Skip = у сотрудника уже есть хотя бы одна строка в employee_teams
+    (legacy Employee.team без строки в M:N не считается «настроенным»)."""
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(seed["emp"].id, "Preserved")
     _log(db_session, seed["emp"], seed["i_alpha"], 5, 10)
     db_session.commit()
 
-    svc = EmployeeTeamService(db_session)
     summary = svc.auto_detect_all_missing()
     assert summary.assigned == 0
     assert summary.skipped == 1
     db_session.expire_all()
+    # Primary не перезаписан
     assert db_session.get(Employee, seed["emp"].id).team == "Preserved"
+    rows = db_session.query(EmployeeTeam).filter_by(employee_id=seed["emp"].id).all()
+    assert [r.team for r in rows] == ["Preserved"]
