@@ -12,7 +12,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Category, Employee, Issue, Worklog
+from app.models import Category, Employee, EmployeeTeam, Issue, Worklog
 
 
 # Коды категорий, исключаемые из скана: «Архив прочих задач» + «Инициативы».
@@ -86,3 +86,129 @@ class EmployeeTeamService:
             details.append({"employee_id": emp.id, "team": team})
         self.db.commit()
         return AutoDetectSummary(assigned=assigned, skipped=skipped, details=details)
+
+    def _recompute_legacy_team(self, employee_id: str) -> None:
+        """Обновить ``Employee.team`` = имя primary membership (или None).
+
+        Derived-колонка для backward-compat с кодом, который ещё читает
+        ``Employee.team`` напрямую. Вызывается из всех мутаций.
+        """
+        primary = (
+            self.db.query(EmployeeTeam)
+            .filter(EmployeeTeam.employee_id == employee_id, EmployeeTeam.is_primary == True)  # noqa: E712
+            .one_or_none()
+        )
+        emp = self.db.query(Employee).filter(Employee.id == employee_id).one()
+        emp.team = primary.team if primary else None
+
+    def list_teams(self, employee_id: str) -> list[EmployeeTeam]:
+        return (
+            self.db.query(EmployeeTeam)
+            .filter(EmployeeTeam.employee_id == employee_id)
+            .order_by(EmployeeTeam.is_primary.desc(), EmployeeTeam.team)
+            .all()
+        )
+
+    def add_team(self, employee_id: str, team: str, *, is_primary: bool = False) -> EmployeeTeam:
+        """Добавить команду. Если у сотрудника ещё нет команд — становится primary
+        автоматически, независимо от ``is_primary`` аргумента.
+        """
+        existing = (
+            self.db.query(EmployeeTeam)
+            .filter(EmployeeTeam.employee_id == employee_id, EmployeeTeam.team == team)
+            .one_or_none()
+        )
+        if existing is not None:
+            if is_primary and not existing.is_primary:
+                self.set_primary(employee_id, team)
+            return existing
+
+        has_any = (
+            self.db.query(EmployeeTeam)
+            .filter(EmployeeTeam.employee_id == employee_id)
+            .count()
+        ) > 0
+        make_primary = is_primary or not has_any
+        if make_primary:
+            # Сбросить у других
+            self.db.query(EmployeeTeam).filter(
+                EmployeeTeam.employee_id == employee_id,
+                EmployeeTeam.is_primary == True,  # noqa: E712
+            ).update({EmployeeTeam.is_primary: False}, synchronize_session="fetch")
+
+        row = EmployeeTeam(
+            employee_id=employee_id,
+            team=team,
+            is_primary=make_primary,
+        )
+        self.db.add(row)
+        self.db.flush()
+        self._recompute_legacy_team(employee_id)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def remove_team(self, employee_id: str, team: str) -> None:
+        row = (
+            self.db.query(EmployeeTeam)
+            .filter(EmployeeTeam.employee_id == employee_id, EmployeeTeam.team == team)
+            .one_or_none()
+        )
+        if row is None:
+            return
+        was_primary = row.is_primary
+        self.db.delete(row)
+        self.db.flush()
+        if was_primary:
+            # Промоутим любую оставшуюся (отсортировано по team для детерминизма).
+            leftover = (
+                self.db.query(EmployeeTeam)
+                .filter(EmployeeTeam.employee_id == employee_id)
+                .order_by(EmployeeTeam.team)
+                .first()
+            )
+            if leftover is not None:
+                leftover.is_primary = True
+                self.db.flush()
+        self._recompute_legacy_team(employee_id)
+        self.db.commit()
+
+    def set_primary(self, employee_id: str, team: str) -> None:
+        target = (
+            self.db.query(EmployeeTeam)
+            .filter(EmployeeTeam.employee_id == employee_id, EmployeeTeam.team == team)
+            .one_or_none()
+        )
+        if target is None:
+            raise ValueError(f"Employee {employee_id} not in team {team!r}")
+        self.db.query(EmployeeTeam).filter(
+            EmployeeTeam.employee_id == employee_id,
+        ).update({EmployeeTeam.is_primary: False}, synchronize_session="fetch")
+        target.is_primary = True
+        self.db.flush()
+        self._recompute_legacy_team(employee_id)
+        self.db.commit()
+
+    def replace_teams(
+        self,
+        employee_id: str,
+        teams: list[str],
+        primary: Optional[str] = None,
+    ) -> list[EmployeeTeam]:
+        """Заменить весь набор. Если primary указан и входит в teams — делает
+        его primary, иначе — первую команду в списке. Пустой список очищает всё.
+        """
+        self.db.query(EmployeeTeam).filter(
+            EmployeeTeam.employee_id == employee_id,
+        ).delete(synchronize_session=False)
+        self.db.flush()
+        chosen_primary = primary if primary in teams else (teams[0] if teams else None)
+        for t in teams:
+            self.db.add(EmployeeTeam(
+                employee_id=employee_id,
+                team=t,
+                is_primary=(t == chosen_primary),
+            ))
+        self._recompute_legacy_team(employee_id)
+        self.db.commit()
+        return self.list_teams(employee_id)

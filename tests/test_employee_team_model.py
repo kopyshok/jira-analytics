@@ -69,3 +69,87 @@ def test_issue_out_of_scope_defaults_false(db_session):
 
     loaded = db_session.query(Issue).one()
     assert loaded.out_of_scope is False
+
+
+class TestEmployeeTeamService:
+    def _make_emp(self, db, eid="emp-x"):
+        emp = Employee(
+            id=eid, jira_account_id=f"acc-{eid}",
+            display_name=eid, is_active=True,
+            synced_at=datetime.utcnow(),
+        )
+        db.add(emp)
+        db.commit()
+        return emp
+
+    def test_add_team_first_becomes_primary(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "Team A")
+        rows = db_session.query(EmployeeTeam).filter_by(employee_id=emp.id).all()
+        assert len(rows) == 1
+        assert rows[0].is_primary is True
+
+    def test_add_second_team_not_primary(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "A")
+        svc.add_team(emp.id, "B")
+        primaries = db_session.query(EmployeeTeam).filter_by(
+            employee_id=emp.id, is_primary=True
+        ).all()
+        assert len(primaries) == 1
+        assert primaries[0].team == "A"
+
+    def test_set_primary_reassigns(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "A")
+        svc.add_team(emp.id, "B")
+        svc.set_primary(emp.id, "B")
+        primaries = db_session.query(EmployeeTeam).filter_by(
+            employee_id=emp.id, is_primary=True
+        ).all()
+        assert len(primaries) == 1
+        assert primaries[0].team == "B"
+
+    def test_remove_team_reassigns_primary_if_needed(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "A")
+        svc.add_team(emp.id, "B")
+        svc.remove_team(emp.id, "A")
+        primaries = db_session.query(EmployeeTeam).filter_by(
+            employee_id=emp.id, is_primary=True
+        ).all()
+        assert len(primaries) == 1
+        assert primaries[0].team == "B"
+
+    def test_remove_last_team_ok(self, db_session):
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "A")
+        svc.remove_team(emp.id, "A")
+        assert db_session.query(EmployeeTeam).filter_by(employee_id=emp.id).count() == 0
+
+    def test_legacy_team_column_mirrors_primary(self, db_session):
+        """Employee.team всегда = имя primary team (derived). Пишется сервисом
+        для обратной совместимости с существующими запросами."""
+        from app.services.employee_team_service import EmployeeTeamService
+        emp = self._make_emp(db_session)
+        svc = EmployeeTeamService(db_session)
+        svc.add_team(emp.id, "A")
+        db_session.refresh(emp)
+        assert emp.team == "A"
+        svc.add_team(emp.id, "B")
+        svc.set_primary(emp.id, "B")
+        db_session.refresh(emp)
+        assert emp.team == "B"
+        svc.remove_team(emp.id, "B")
+        db_session.refresh(emp)
+        assert emp.team == "A"  # B removed, A was only remaining → auto-primary
