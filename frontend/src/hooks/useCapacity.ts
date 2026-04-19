@@ -19,6 +19,7 @@ import {
 } from '../api/capacity';
 import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam, patchEmployee } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
+import { api } from '../api/client';
 import type {
   RecalcActiveResponse,
   EmployeeFromJiraRequest,
