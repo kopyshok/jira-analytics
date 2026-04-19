@@ -1104,6 +1104,7 @@ class SyncService:
                 continue
             stats.bucket_a_issues_scanned += 1
             async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
+                await self._check_cancelled()
                 author_schema = JiraUserSchema(
                     accountId=wl.author.accountId,
                     displayName=wl.author.displayName,
