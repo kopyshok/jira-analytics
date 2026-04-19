@@ -230,6 +230,41 @@ async def upsert_capacity_rule(
     return rule
 
 
+class CopyRulesRequest(BaseModel):
+    from_year: int
+    from_quarter: int = Field(ge=1, le=4)
+    to_year: int
+    to_quarter: int = Field(ge=1, le=4)
+
+
+class CopyRulesResponse(BaseModel):
+    created: int
+
+
+@router.post(
+    "/rules/copy-to-quarter",
+    response_model=CopyRulesResponse,
+    status_code=201,
+)
+def copy_rules(
+    req: CopyRulesRequest,
+    db: Session = Depends(get_db),
+):
+    """Скопировать правила обязательных работ из одного квартала в другой."""
+    from app.services.capacity_service import RulesConflict
+
+    svc = CapacityService(db)
+    try:
+        created = svc.copy_rules_to_quarter(
+            req.from_year, req.from_quarter, req.to_year, req.to_quarter
+        )
+    except RulesConflict as exc:
+        raise HTTPException(status_code=409, detail={"conflicts": exc.conflicts})
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return CopyRulesResponse(created=created)
+
+
 @router.delete("/rules/{rule_id}")
 async def delete_capacity_rule(
     rule_id: str,

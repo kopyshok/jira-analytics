@@ -70,6 +70,12 @@ class QuarterCapacity:
     team: Optional[str] = None
 
 
+class RulesConflict(Exception):
+    def __init__(self, conflicts: list[tuple[int, int]]):
+        self.conflicts = conflicts
+        super().__init__(f"Target months already have rules: {conflicts}")
+
+
 class CapacityService:
     """Сервис расчёта ёмкости на месяц/квартал."""
 
@@ -357,6 +363,65 @@ class CapacityService:
             row.total_hours += float(hours)
 
         return list(per_employee.values())
+
+    def copy_rules_to_quarter(
+        self,
+        from_year: int,
+        from_quarter: int,
+        to_year: int,
+        to_quarter: int,
+    ) -> int:
+        """Клонировать правила из (from_year, from_quarter) в (to_year, to_quarter).
+
+        Сопоставляет M1→M1, M2→M2, M3→M3 внутри квартала.
+        Raises RulesConflict если в цели уже есть правило для одного из месяцев.
+        Raises ValueError если источник пуст.
+        """
+        src_months = QUARTER_MONTHS[from_quarter]
+        dst_months = QUARTER_MONTHS[to_quarter]
+
+        src_rules = (
+            self.db.query(MonthlyCapacityRule)
+            .filter(
+                MonthlyCapacityRule.year == from_year,
+                MonthlyCapacityRule.month.in_(src_months),
+            )
+            .all()
+        )
+        if not src_rules:
+            raise ValueError(
+                f"No rules found for source Q{from_quarter}/{from_year}"
+            )
+
+        by_src_month = {r.month: r for r in src_rules}
+
+        existing = (
+            self.db.query(MonthlyCapacityRule)
+            .filter(
+                MonthlyCapacityRule.year == to_year,
+                MonthlyCapacityRule.month.in_(dst_months),
+            )
+            .all()
+        )
+        conflicts = [(to_year, e.month) for e in existing]
+        if conflicts:
+            raise RulesConflict(conflicts)
+
+        created = 0
+        for src_m, dst_m in zip(src_months, dst_months):
+            src = by_src_month.get(src_m)
+            if src is None:
+                continue
+            self.db.add(
+                MonthlyCapacityRule(
+                    year=to_year,
+                    month=dst_m,
+                    percent_of_norm=src.percent_of_norm,
+                )
+            )
+            created += 1
+        self.db.commit()
+        return created
 
 
 BUCKETS = ("active_stack", "initiatives", "archive_target",
