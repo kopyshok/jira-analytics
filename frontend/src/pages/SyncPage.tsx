@@ -226,6 +226,8 @@ function CategoryConfigTab() {
   const batchCategoryMut = useBatchSetCategory();
   const refreshMut = useRefreshIssuesByKeys();
   const syncTeamsMut = useSyncTeams();
+  const refreshAbortRef = useRef<AbortController | null>(null);
+  const syncTeamsAbortRef = useRef<AbortController | null>(null);
   const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
   const treeQueryKey = useMemo(() => ['issues', 'tree', issueTreeParams], [issueTreeParams]);
@@ -736,7 +738,9 @@ function CategoryConfigTab() {
 
   const runRefresh = (keys: string[]) => {
     if (keys.length === 0) return;
-    refreshMut.mutate(keys, {
+    const ctl = new AbortController();
+    refreshAbortRef.current = ctl;
+    refreshMut.mutate({ jiraKeys: keys, signal: ctl.signal }, {
       onSuccess: (res) => {
         notification.success({
           message: 'Обновление с Jira завершено',
@@ -744,11 +748,17 @@ function CategoryConfigTab() {
         });
         issueTree.refetch();
       },
-      onError: (e) => notification.error({ message: 'Ошибка обновления', description: e.message }),
+      onError: (e) => {
+        if (e.name === 'AbortError') return;  // silent cancel
+        notification.error({ message: 'Ошибка обновления', description: e.message });
+      },
+      onSettled: () => { refreshAbortRef.current = null; },
     });
   };
   const handleRefreshAll = () => runRefresh(loadedKeys);
   const handleRefreshVisible = () => runRefresh(visibleKeys);
+  const cancelRefresh = () => refreshAbortRef.current?.abort();
+  const cancelSyncTeams = () => syncTeamsAbortRef.current?.abort();
 
   // Автозагрузка дерева при открытии страницы, если выбрана хотя бы одна
   // команда (persisted в AppSetting). Срабатывает один раз за монтирование,
@@ -849,7 +859,9 @@ function CategoryConfigTab() {
           okText="Запустить"
           cancelText="Отмена"
           onConfirm={() => {
-            syncTeamsMut.mutate(selectedTeams, {
+            const ctl = new AbortController();
+            syncTeamsAbortRef.current = ctl;
+            syncTeamsMut.mutate({ teams: selectedTeams, signal: ctl.signal }, {
               onSuccess: (res) => {
                 notification.success({
                   message: 'Синхронизация команд',
@@ -857,68 +869,77 @@ function CategoryConfigTab() {
                 });
                 issueTree.refetch();
               },
-              onError: (e) => notification.error({
-                message: 'Ошибка синхронизации команд',
-                description: e.message,
-              }),
+              onError: (e) => {
+                if (e.name === 'AbortError') return;
+                notification.error({
+                  message: 'Ошибка синхронизации команд',
+                  description: e.message,
+                });
+              },
+              onSettled: () => { syncTeamsAbortRef.current = null; },
             });
           }}
           disabled={selectedTeams.length === 0 || syncTeamsMut.isPending}
         >
-          <Button
-            icon={<ReloadOutlined spin={syncTeamsMut.isPending} />}
-            disabled={selectedTeams.length === 0 || syncTeamsMut.isPending}
-            loading={syncTeamsMut.isPending}
-          >
-            Получить данные с Jira по указанной команде ({selectedTeams.length})
-          </Button>
+          {syncTeamsMut.isPending ? (
+            <Button danger icon={<CloseOutlined />} onClick={cancelSyncTeams}>
+              Прервать синхронизацию команд
+            </Button>
+          ) : (
+            <Button
+              icon={<ReloadOutlined />}
+              disabled={selectedTeams.length === 0}
+            >
+              Получить данные с Jira по указанной команде ({selectedTeams.length})
+            </Button>
+          )}
         </Popconfirm>
-        <Popconfirm
-          title="Обновить с Jira все задачи"
-          description={
-            <div style={{ maxWidth: 320 }}>
-              Перечитает с Jira {loadedKeys.length} загруженных задач,
-              не создавая новых. Нужно чтобы подтянуть «Статус изменён»
-              и другие поля у уже существующих задач.
-            </div>
-          }
-          icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
-          okText="Запустить"
-          cancelText="Отмена"
-          onConfirm={handleRefreshAll}
-          disabled={loadedKeys.length === 0 || refreshMut.isPending}
-        >
-          <Button
-            icon={<ReloadOutlined spin={refreshMut.isPending} />}
-            disabled={loadedKeys.length === 0 || refreshMut.isPending}
-            loading={refreshMut.isPending}
-          >
-            Обновить с Jira все задачи ({loadedKeys.length})
+        {refreshMut.isPending ? (
+          <Button danger icon={<CloseOutlined />} onClick={cancelRefresh}>
+            Прервать обновление с Jira
           </Button>
-        </Popconfirm>
-        <Popconfirm
-          title="Обновить с Jira видимые задачи"
-          description={
-            <div style={{ maxWidth: 320 }}>
-              Перечитает с Jira {visibleKeys.length} задач текущей подвкладки
-              (как в счётчике её заголовка). Родительские и контекстные
-              узлы не обновляются.
-            </div>
-          }
-          icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
-          okText="Запустить"
-          cancelText="Отмена"
-          onConfirm={handleRefreshVisible}
-          disabled={visibleKeys.length === 0 || refreshMut.isPending}
-        >
-          <Button
-            icon={<ReloadOutlined spin={refreshMut.isPending} />}
-            disabled={visibleKeys.length === 0 || refreshMut.isPending}
-            loading={refreshMut.isPending}
-          >
-            Обновить с Jira видимые задачи ({visibleKeys.length})
-          </Button>
-        </Popconfirm>
+        ) : (
+          <>
+            <Popconfirm
+              title="Обновить с Jira все задачи"
+              description={
+                <div style={{ maxWidth: 320 }}>
+                  Перечитает с Jira {loadedKeys.length} загруженных задач,
+                  не создавая новых. Нужно чтобы подтянуть «Статус изменён»
+                  и другие поля у уже существующих задач.
+                </div>
+              }
+              icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+              okText="Запустить"
+              cancelText="Отмена"
+              onConfirm={handleRefreshAll}
+              disabled={loadedKeys.length === 0}
+            >
+              <Button icon={<ReloadOutlined />} disabled={loadedKeys.length === 0}>
+                Обновить с Jira все задачи ({loadedKeys.length})
+              </Button>
+            </Popconfirm>
+            <Popconfirm
+              title="Обновить с Jira видимые задачи"
+              description={
+                <div style={{ maxWidth: 320 }}>
+                  Перечитает с Jira {visibleKeys.length} задач текущей подвкладки
+                  (как в счётчике её заголовка). Родительские и контекстные
+                  узлы не обновляются.
+                </div>
+              }
+              icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+              okText="Запустить"
+              cancelText="Отмена"
+              onConfirm={handleRefreshVisible}
+              disabled={visibleKeys.length === 0}
+            >
+              <Button icon={<ReloadOutlined />} disabled={visibleKeys.length === 0}>
+                Обновить с Jira видимые задачи ({visibleKeys.length})
+              </Button>
+            </Popconfirm>
+          </>
+        )}
       </Space>
       <Tabs
         activeKey={innerTab}
@@ -987,6 +1008,14 @@ function SyncControls() {
   const worklogsMut = useSyncMutation('worklogs');
   const commentsMut = useSyncMutation('comments');
 
+  // AbortControllers для прерываемых sync-запросов. При клике на
+  // «Прервать» вызываем abort() → fetch бросает AbortError → бэкенд
+  // видит is_disconnected и поднимает CancelledError → 499.
+  const fullAbortRef = useRef<AbortController | null>(null);
+  const incAbortRef = useRef<AbortController | null>(null);
+  const wlAbortRef = useRef<AbortController | null>(null);
+  const reloadAbortRef = useRef<AbortController | null>(null);
+
   const reloadSince = useGenericSetting('worklog_reload_since_date');
   const saveReloadSince = useSaveGenericSetting();
   const reload = useReloadWorklogs();
@@ -1002,7 +1031,9 @@ function SyncControls() {
 
   const handleReload = () => {
     const iso = sinceDate.format('YYYY-MM-DD');
-    reload.mutate({ since: iso }, {
+    const ctl = new AbortController();
+    reloadAbortRef.current = ctl;
+    reload.mutate({ req: { since: iso }, signal: ctl.signal }, {
       onSuccess: (stats) => {
         notification.success({
           message: "Worklog'и перезагружены",
@@ -1010,37 +1041,70 @@ function SyncControls() {
         });
         saveReloadSince.mutate({ key: 'worklog_reload_since_date', value: iso });
       },
-      onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+      onError: (e) => {
+        if (e.name === 'AbortError') return;
+        notification.error({ message: 'Ошибка', description: e.message });
+      },
+      onSettled: () => { reloadAbortRef.current = null; },
     });
   };
 
   const handleFullSync = () => {
     const body = { project_keys: scopeKeys.length > 0 ? scopeKeys : undefined, incremental: false };
-    fullSyncMut.mutate(body, {
+    const ctl = new AbortController();
+    fullAbortRef.current = ctl;
+    fullSyncMut.mutate({ body, signal: ctl.signal }, {
       onSuccess: (res) => notification.success({ message: 'Полная синхронизация', description: res.message }),
-      onError: (e) => notification.error({ message: 'Ошибка синхронизации', description: e.message }),
+      onError: (e) => {
+        if (e.name === 'AbortError') return;
+        notification.error({ message: 'Ошибка синхронизации', description: e.message });
+      },
+      onSettled: () => { fullAbortRef.current = null; },
     });
   };
 
   const handleIncrementalSync = () => {
     const body = { project_keys: scopeKeys.length > 0 ? scopeKeys : undefined, incremental: true };
-    incrementalSyncMut.mutate(body, {
+    const ctl = new AbortController();
+    incAbortRef.current = ctl;
+    incrementalSyncMut.mutate({ body, signal: ctl.signal }, {
       onSuccess: (res) => notification.success({ message: 'Обновление', description: res.message }),
-      onError: (e) => notification.error({ message: 'Ошибка обновления', description: e.message }),
+      onError: (e) => {
+        if (e.name === 'AbortError') return;
+        notification.error({ message: 'Ошибка обновления', description: e.message });
+      },
+      onSettled: () => { incAbortRef.current = null; },
     });
   };
 
   const handleWorklogs = () => {
-    worklogsMut.mutate(undefined, {
+    const ctl = new AbortController();
+    wlAbortRef.current = ctl;
+    worklogsMut.mutate({ signal: ctl.signal }, {
       onSuccess: () => {
-        commentsMut.mutate(undefined, {
+        // Комментарии идут под тем же контроллером — один «Прервать»
+        // отменяет всю связку ворклоги→комменты.
+        commentsMut.mutate({ signal: ctl.signal }, {
           onSuccess: (res) => notification.success({ message: 'Ворклоги и комментарии', description: res.message }),
-          onError: (e) => notification.error({ message: 'Ошибка комментариев', description: e.message }),
+          onError: (e) => {
+            if (e.name === 'AbortError') return;
+            notification.error({ message: 'Ошибка комментариев', description: e.message });
+          },
+          onSettled: () => { wlAbortRef.current = null; },
         });
       },
-      onError: (e) => notification.error({ message: 'Ошибка ворклогов', description: e.message }),
+      onError: (e) => {
+        wlAbortRef.current = null;
+        if (e.name === 'AbortError') return;
+        notification.error({ message: 'Ошибка ворклогов', description: e.message });
+      },
     });
   };
+
+  const cancelFullSync = () => fullAbortRef.current?.abort();
+  const cancelIncSync = () => incAbortRef.current?.abort();
+  const cancelWorklogs = () => wlAbortRef.current?.abort();
+  const cancelReload = () => reloadAbortRef.current?.abort();
 
   const statusColumns = [
     {
@@ -1070,42 +1134,52 @@ function SyncControls() {
       <Card title="Синхронизация" size="small">
         <Space direction="vertical" style={{ width: '100%' }}>
           <Space wrap>
-            <Button
-              type="primary"
-              icon={<SyncOutlined spin={incrementalSyncMut.isPending} />}
-              loading={incrementalSyncMut.isPending}
-              onClick={handleIncrementalSync}
-            >
-              Обновить
-            </Button>
-            <Popconfirm
-              title="Полная синхронизация"
-              description={
-                <div style={{ maxWidth: 320 }}>
-                  Перечитает все задачи из Jira заново (десятки минут, ~115k+ тасков).
-                  В повседневке используйте «Обновить» — она тянет только изменившееся.
-                </div>
-              }
-              icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
-              okText="Запустить"
-              cancelText="Отмена"
-              okButtonProps={{ danger: true }}
-              onConfirm={handleFullSync}
-            >
-              <Button
-                icon={<SyncOutlined spin={fullSyncMut.isPending} />}
-                loading={fullSyncMut.isPending}
-              >
-                Полная синхронизация
+            {incrementalSyncMut.isPending ? (
+              <Button danger icon={<CloseOutlined />} onClick={cancelIncSync}>
+                Прервать обновление
               </Button>
-            </Popconfirm>
-            <Button
-              icon={<SyncOutlined spin={worklogsMut.isPending || commentsMut.isPending} />}
-              loading={worklogsMut.isPending || commentsMut.isPending}
-              onClick={handleWorklogs}
-            >
-              Ворклоги
-            </Button>
+            ) : (
+              <Button
+                type="primary"
+                icon={<SyncOutlined />}
+                onClick={handleIncrementalSync}
+              >
+                Обновить
+              </Button>
+            )}
+            {fullSyncMut.isPending ? (
+              <Button danger icon={<CloseOutlined />} onClick={cancelFullSync}>
+                Прервать полную синхронизацию
+              </Button>
+            ) : (
+              <Popconfirm
+                title="Полная синхронизация"
+                description={
+                  <div style={{ maxWidth: 320 }}>
+                    Перечитает все задачи из Jira заново (десятки минут, ~115k+ тасков).
+                    В повседневке используйте «Обновить» — она тянет только изменившееся.
+                  </div>
+                }
+                icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
+                okText="Запустить"
+                cancelText="Отмена"
+                okButtonProps={{ danger: true }}
+                onConfirm={handleFullSync}
+              >
+                <Button icon={<SyncOutlined />}>
+                  Полная синхронизация
+                </Button>
+              </Popconfirm>
+            )}
+            {(worklogsMut.isPending || commentsMut.isPending) ? (
+              <Button danger icon={<CloseOutlined />} onClick={cancelWorklogs}>
+                Прервать ворклоги
+              </Button>
+            ) : (
+              <Button icon={<SyncOutlined />} onClick={handleWorklogs}>
+                Ворклоги
+              </Button>
+            )}
           </Space>
           <Space wrap>
             <DatePicker
@@ -1113,18 +1187,25 @@ function SyncControls() {
               onChange={(d) => d && setSinceDate(d)}
               format="DD.MM.YYYY"
               allowClear={false}
+              disabled={reload.isPending}
             />
-            <Popconfirm
-              title={`Удалить все worklog'и с ${sinceDate.format('DD.MM.YYYY')} и перечитать?`}
-              okButtonProps={{ danger: true }}
-              okText="Перезагрузить"
-              cancelText="Отмена"
-              onConfirm={handleReload}
-            >
-              <Button loading={reload.isPending} icon={<ReloadOutlined />}>
-                Перезагрузить worklog'и с даты
+            {reload.isPending ? (
+              <Button danger icon={<CloseOutlined />} onClick={cancelReload}>
+                Прервать перезагрузку
               </Button>
-            </Popconfirm>
+            ) : (
+              <Popconfirm
+                title={`Удалить все worklog'и с ${sinceDate.format('DD.MM.YYYY')} и перечитать?`}
+                okButtonProps={{ danger: true }}
+                okText="Перезагрузить"
+                cancelText="Отмена"
+                onConfirm={handleReload}
+              >
+                <Button icon={<ReloadOutlined />}>
+                  Перезагрузить worklog'и с даты
+                </Button>
+              </Popconfirm>
+            )}
           </Space>
           {scopeKeys.length > 0 && (
             <Text type="secondary" style={{ fontSize: 12 }}>

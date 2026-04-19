@@ -17,16 +17,23 @@ export const useSyncStatus = () =>
 
 type SyncBody = { project_keys?: string[]; incremental?: boolean } | undefined;
 
+// Все sync-мутации принимают опциональный signal: AbortSignal — его прокидываем
+// в fetch, чтобы кнопка «Прервать» на фронте могла оборвать HTTP-запрос;
+// backend ловит disconnect и поднимает CancelledError → 499.
+type SyncInput = { body?: SyncBody; signal?: AbortSignal };
+
 export const useSyncMutation = (type: 'projects' | 'issues' | 'worklogs' | 'comments' | 'full') => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body?: SyncBody) => {
+    mutationFn: (input?: SyncInput) => {
+      const body = input?.body;
+      const signal = input?.signal;
       switch (type) {
-        case 'issues': return syncIssues(body);
-        case 'full': return syncFull(body);
-        case 'projects': return syncProjects();
-        case 'worklogs': return syncWorklogs();
-        case 'comments': return syncComments();
+        case 'issues': return syncIssues(body, signal);
+        case 'full': return syncFull(body, signal);
+        case 'projects': return syncProjects(signal);
+        case 'worklogs': return syncWorklogs(signal);
+        case 'comments': return syncComments(signal);
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sync', 'status'] }),
@@ -36,7 +43,8 @@ export const useSyncMutation = (type: 'projects' | 'issues' | 'worklogs' | 'comm
 export const useRefreshIssuesByKeys = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (jiraKeys: string[]) => refreshIssuesByKeys(jiraKeys),
+    mutationFn: ({ jiraKeys, signal }: { jiraKeys: string[]; signal?: AbortSignal }) =>
+      refreshIssuesByKeys(jiraKeys, signal),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
       qc.invalidateQueries({ queryKey: ['sync', 'status'] });
@@ -47,7 +55,8 @@ export const useRefreshIssuesByKeys = () => {
 export const useSyncTeams = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (teams: string[]) => syncTeams(teams),
+    mutationFn: ({ teams, signal }: { teams: string[]; signal?: AbortSignal }) =>
+      syncTeams(teams, signal),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
       qc.invalidateQueries({ queryKey: ['sync', 'status'] });
@@ -55,10 +64,11 @@ export const useSyncTeams = () => {
   });
 };
 
+type ReloadInput = { req: WorklogReloadRequest; signal?: AbortSignal };
 export const useReloadWorklogs = () => {
   const qc = useQueryClient();
-  return useMutation<WorklogReloadResponse, Error, WorklogReloadRequest>({
-    mutationFn: reloadWorklogs,
+  return useMutation<WorklogReloadResponse, Error, ReloadInput>({
+    mutationFn: ({ req, signal }) => reloadWorklogs(req, signal),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });

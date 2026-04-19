@@ -1,8 +1,9 @@
 """Sync service - orchestrates Jira data synchronization."""
 
+import asyncio
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Optional, List, Tuple, Any
+from typing import Awaitable, Callable, Optional, List, Tuple, Any
 import json
 import logging
 
@@ -139,11 +140,19 @@ class SyncService:
     - Upsert logic for all entities
     """
     
-    def __init__(self, db: Session, jira_client: JiraClient):
+    def __init__(
+        self,
+        db: Session,
+        jira_client: JiraClient,
+        cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
+    ):
         self.db = db
         self.jira = jira_client
         self.stats = SyncStats()
-        
+        # Коллбек проверки отмены от клиента (например request.is_disconnected
+        # для HTTP-эндпоинтов). Если None — синк работает без возможности отмены.
+        self._cancel_check = cancel_check
+
         # Initialize repositories
         self.employee_repo = BaseRepository(Employee, db)
         self.project_repo = BaseRepository(Project, db)
@@ -152,6 +161,19 @@ class SyncService:
         self.comment_repo = BaseRepository(Comment, db)
         self.sync_state_repo = BaseRepository(SyncState, db)
         self.scope_project_repo = BaseRepository(ScopeProject, db)
+
+    async def _check_cancelled(self) -> None:
+        """Опрос отмены. Если клиент отвалился — поднимает CancelledError.
+
+        Вставляется в горячие циклы (между страницами Jira, между issue'ами при
+        обходе ворклогов/комментов). Обработанные до отмены данные остаются в
+        БД — инкрементальный синк итак коммитит прогресс постранично.
+        """
+        if self._cancel_check is None:
+            return
+        if await self._cancel_check():
+            logger.info("Sync cancelled by client")
+            raise asyncio.CancelledError("client disconnected")
     
     def _get_scope_project_keys(self) -> List[str]:
         """Получить список разрешённых ключей проектов из scope_projects.
@@ -261,6 +283,7 @@ class SyncService:
         scope_keys = self._get_scope_project_keys()
 
         async for jira_project in self.jira.iter_projects():
+            await self._check_cancelled()
             # Фильтрация по scope: пропускаем проекты вне scope
             if scope_keys and jira_project.key not in scope_keys:
                 continue
@@ -392,6 +415,7 @@ class SyncService:
             since=since,
             extra_fields=extra_fields,
         ):
+            await self._check_cancelled()
             # Find local project
             project = self._get_project_by_jira_id(jira_issue.fields.project.id)
             if not project:
@@ -499,6 +523,7 @@ class SyncService:
         logger.info(f"Refreshing {total} issues by key (batch={BATCH})")
 
         for i in range(0, total, BATCH):
+            await self._check_cancelled()
             batch = jira_keys[i:i + BATCH]
             keys_jql = ", ".join(f'"{k}"' for k in batch)
             jql = f"key in ({keys_jql})"
@@ -601,6 +626,7 @@ class SyncService:
 
         report: dict = {}
         for team in teams:
+            await self._check_cancelled()
             state = self._get_sync_state("issues", scope=team)
             since = state.last_success_at if state else None
             run_start = datetime.utcnow()
@@ -622,6 +648,7 @@ class SyncService:
                     max_results=100,
                     fields=request_fields,
                 ):
+                    await self._check_cancelled()
                     project = self._get_project_by_jira_id(jira_issue.fields.project.id)
                     if not project:
                         continue
@@ -764,6 +791,7 @@ class SyncService:
         
         count = 0
         for idx, issue in enumerate(issues):
+            await self._check_cancelled()
             try:
                 async for jira_worklog in self.jira.iter_worklogs_for_issue(
                     issue_id=issue.jira_issue_id
@@ -776,7 +804,7 @@ class SyncService:
                         active=True,
                     )
                     employee = self._ensure_employee(author_schema)
-                    
+
                     # Upsert worklog
                     worklog, created = self._upsert_worklog(
                         jira_worklog,
@@ -856,6 +884,7 @@ class SyncService:
 
         count = 0
         for idx, issue in enumerate(issues):
+            await self._check_cancelled()
             try:
                 async for jira_comment in self.jira.iter_comments_for_issue(
                     issue_id=issue.jira_issue_id
@@ -962,6 +991,7 @@ class SyncService:
             fields=["summary", "issuetype", "status", "project"],
             max_results=100,
         ):
+            await self._check_cancelled()
             local = (
                 self.db.query(Issue)
                 .filter(Issue.jira_issue_id == jira_issue.id)

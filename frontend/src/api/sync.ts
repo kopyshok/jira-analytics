@@ -7,17 +7,26 @@ import type {
 } from '../types/api';
 
 export const testConnection = () => api.get<ConnectionTestResponse>('/sync/test-connection');
-export const syncProjects = () => api.post<SyncResponse>('/sync/projects');
-export const syncIssues = (body?: { project_keys?: string[]; incremental?: boolean }) => api.post<SyncResponse>('/sync/issues', body);
-export const syncWorklogs = () => api.post<SyncResponse>('/sync/worklogs');
-export const reloadWorklogs = (req: WorklogReloadRequest) =>
-  api.post<WorklogReloadResponse>('/sync/worklogs/reload', req);
-export const syncComments = () => api.post<SyncResponse>('/sync/comments');
-export const syncFull = (body?: { project_keys?: string[]; incremental?: boolean }) => api.post<SyncResponse>('/sync/full', body);
-export const refreshIssuesByKeys = (jiraKeys: string[]) =>
-  api.post<SyncResponse>('/sync/issues/refresh', { jira_keys: jiraKeys });
-export const syncTeams = (teams: string[]) =>
-  api.post<SyncResponse>('/sync/teams', { teams });
+export const syncProjects = (signal?: AbortSignal) =>
+  api.post<SyncResponse>('/sync/projects', undefined, signal);
+export const syncIssues = (
+  body?: { project_keys?: string[]; incremental?: boolean },
+  signal?: AbortSignal,
+) => api.post<SyncResponse>('/sync/issues', body, signal);
+export const syncWorklogs = (signal?: AbortSignal) =>
+  api.post<SyncResponse>('/sync/worklogs', undefined, signal);
+export const reloadWorklogs = (req: WorklogReloadRequest, signal?: AbortSignal) =>
+  api.post<WorklogReloadResponse>('/sync/worklogs/reload', req, signal);
+export const syncComments = (signal?: AbortSignal) =>
+  api.post<SyncResponse>('/sync/comments', undefined, signal);
+export const syncFull = (
+  body?: { project_keys?: string[]; incremental?: boolean },
+  signal?: AbortSignal,
+) => api.post<SyncResponse>('/sync/full', body, signal);
+export const refreshIssuesByKeys = (jiraKeys: string[], signal?: AbortSignal) =>
+  api.post<SyncResponse>('/sync/issues/refresh', { jira_keys: jiraKeys }, signal);
+export const syncTeams = (teams: string[], signal?: AbortSignal) =>
+  api.post<SyncResponse>('/sync/teams', { teams }, signal);
 export const getSyncStatus = () => api.get<SyncStatusResponse[]>('/sync/status');
 
 // Browse Jira

@@ -51,10 +51,14 @@ async function request<T>(
 export const api = {
   get: <T>(path: string, params?: Record<string, string | undefined>, signal?: AbortSignal) =>
     request<T>('GET', path, undefined, params, signal),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
-  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
-  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
-  del: <T>(path: string) => request<T>('DELETE', path),
+  post: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
+    request<T>('POST', path, body, undefined, signal),
+  put: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
+    request<T>('PUT', path, body, undefined, signal),
+  patch: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
+    request<T>('PATCH', path, body, undefined, signal),
+  del: <T>(path: string, signal?: AbortSignal) =>
+    request<T>('DELETE', path, undefined, undefined, signal),
   download: async (path: string, params?: Record<string, string | undefined>) => {
     const url = new URL(`${BASE_URL}${path}`);
     if (params) {
