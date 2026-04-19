@@ -1,18 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, InputNumber, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
+import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useAutoDetectTeams, useCopyRules, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
+import { useTeamCapacity, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useAutoDetectTeams, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
+import RulesTabV2 from '../components/capacity/RulesTabV2';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES, EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '../utils/constants';
-import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem, EmployeeRole } from '../types/api';
+import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem, EmployeeRole } from '../types/api';
 
 const { Text } = Typography;
 
@@ -546,92 +547,6 @@ function AbsencesTab() {
   );
 }
 
-function RulesTab() {
-  const { notification } = App.useApp();
-  const { year, quarter } = useQuarterYear();
-  const { data, isLoading } = useCapacityRules();
-  const add = useAddCapacityRule();
-  const remove = useRemoveCapacityRule();
-  const copy = useCopyRules();
-  const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
-
-  const next = () => {
-    const q = Number(quarter);
-    return q === 4 ? { y: Number(year) + 1, q: 1 } : { y: Number(year), q: q + 1 };
-  };
-  const { y: toYear, q: toQuarter } = next();
-
-  return (
-    <Space orientation="vertical" style={{ width: '100%' }}>
-      <Space>
-        <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>Добавить правило</Button>
-        <Popconfirm
-          title={`Скопировать правила из Q${quarter} ${year} в Q${toQuarter} ${toYear}?`}
-          okText="Скопировать" cancelText="Отмена"
-          onConfirm={() => copy.mutate(
-            { from_year: Number(year), from_quarter: Number(quarter), to_year: toYear, to_quarter: toQuarter },
-            {
-              onSuccess: (s) => notification.success({
-                title: 'Скопировано',
-                description: `Создано правил: ${s.created}`,
-              }),
-              onError: (e: Error) => {
-                const msg = e.message || 'Ошибка';
-                if (msg.includes('conflicts')) {
-                  notification.warning({ title: 'Конфликт', description: msg });
-                } else {
-                  notification.error({ title: 'Ошибка', description: msg });
-                }
-              },
-            },
-          )}
-        >
-          <Button loading={copy.isPending}>Скопировать в следующий квартал</Button>
-        </Popconfirm>
-      </Space>
-      <Modal title="Новое правило ёмкости" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={add.isPending}>
-        <Form form={form} layout="vertical" onFinish={(vals) => {
-          add.mutate(vals, {
-            onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ title: 'Правило добавлено' }); },
-            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
-          });
-        }}>
-          <Form.Item name="year" label="Год" rules={[{ required: true }]} initialValue={new Date().getFullYear()}>
-            <InputNumber min={2020} max={2030} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="month" label="Месяц" rules={[{ required: true }]}>
-            <Select options={Object.entries(MONTH_NAMES).map(([v, l]) => ({ value: Number(v), label: l }))} />
-          </Form.Item>
-          <Form.Item name="percent_of_norm" label="% от нормы" rules={[{ required: true }]} initialValue={10}>
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
-      </Modal>
-      <Table<CapacityRuleResponse>
-        dataSource={data}
-        rowKey="id"
-        loading={isLoading}
-        pagination={false}
-        size="small"
-        columns={[
-          { title: 'Год', dataIndex: 'year' },
-          { title: 'Месяц', dataIndex: 'month', render: (v: number) => MONTH_NAMES[v] || v },
-          { title: '% от нормы', dataIndex: 'percent_of_norm', render: (v: number) => `${v}%` },
-          {
-            title: '', width: 50,
-            render: (_, r) => (
-              <Popconfirm title="Удалить?" onConfirm={() => remove.mutate(r.id)}>
-                <Button icon={<DeleteOutlined />} size="small" danger />
-              </Popconfirm>
-            ),
-          },
-        ]}
-      />
-    </Space>
-  );
-}
-
 function BreakdownTab() {
   const { year, quarter } = useQuarterYear();
   const { data, isLoading } = useCategoryBreakdown(Number(year), Number(quarter));
@@ -673,7 +588,7 @@ export default function CapacityPage() {
         { key: 'team', label: 'Команда', children: <TeamTab /> },
         { key: 'breakdown', label: 'Распределение', children: <BreakdownTab /> },
         { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
-        { key: 'rules', label: 'Правила', children: <RulesTab /> },
+        { key: 'rules', label: 'Правила', children: <RulesTabV2 /> },
       ]} />
     </Space>
   );

@@ -1,8 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity, getCategoryBreakdown } from '../api/capacity';
+import {
+  getTeamCapacity,
+  getCategoryBreakdown,
+  getMandatoryWorkTypes,
+  createMandatoryWorkType,
+  updateMandatoryWorkType,
+  deleteMandatoryWorkType,
+  reorderMandatoryWorkTypes,
+  getRoleCapacityRules,
+  createRoleCapacityRule,
+  updateRoleCapacityRule,
+  deleteRoleCapacityRule,
+  copyRoleCapacityRulesToQuarter,
+  getEmployeeCapacityOverrides,
+  createEmployeeCapacityOverride,
+  updateEmployeeCapacityOverride,
+  deleteEmployeeCapacityOverride,
+} from '../api/capacity';
 import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam, patchEmployee } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
-import { api } from '../api/client';
 import type {
   RecalcActiveResponse,
   EmployeeFromJiraRequest,
@@ -19,19 +35,6 @@ export const useEmployees = (params?: { withTeams?: boolean; isActive?: boolean 
     }),
     staleTime: 30_000,
   });
-
-export const useCapacityRules = () =>
-  useQuery({ queryKey: ['capacity', 'rules'], queryFn: () => getCapacityRules() });
-
-export const useAddCapacityRule = () => {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: addCapacityRule, onSuccess: () => qc.invalidateQueries({ queryKey: ['capacity'] }) });
-};
-
-export const useRemoveCapacityRule = () => {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: removeCapacityRule, onSuccess: () => qc.invalidateQueries({ queryKey: ['capacity'] }) });
-};
 
 export const useTeamCapacity = (year: string, quarter: string) =>
   useQuery({
@@ -101,15 +104,6 @@ export const useAutoDetectTeams = () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
     },
-  });
-};
-
-export const useCopyRules = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { from_year: number; from_quarter: number; to_year: number; to_quarter: number }) =>
-      api.post<{ created: number }>('/capacity/rules/copy-to-quarter', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['capacity', 'rules'] }),
   });
 };
 
@@ -190,6 +184,158 @@ export const useSetPrimaryTeam = () => {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+// ──────────────── Mandatory work types ────────────────
+
+export const useMandatoryWorkTypes = (params?: { isActive?: boolean }) =>
+  useQuery({
+    queryKey: ['mandatory-work-types', params?.isActive ?? null],
+    queryFn: () => getMandatoryWorkTypes(params?.isActive),
+    staleTime: 60_000,
+  });
+
+export const useCreateMandatoryWorkType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createMandatoryWorkType,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mandatory-work-types'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+export const useUpdateMandatoryWorkType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Parameters<typeof updateMandatoryWorkType>[1] }) =>
+      updateMandatoryWorkType(id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mandatory-work-types'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+export const useDeleteMandatoryWorkType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteMandatoryWorkType,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mandatory-work-types'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+export const useReorderMandatoryWorkTypes = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: reorderMandatoryWorkTypes,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mandatory-work-types'] }),
+  });
+};
+
+// ──────────────── Role capacity rules ────────────────
+
+export const useRoleCapacityRules = (year: number, quarter: number) =>
+  useQuery({
+    queryKey: ['role-capacity-rules', year, quarter],
+    queryFn: () => getRoleCapacityRules(year, quarter),
+    enabled: Number.isFinite(year) && quarter >= 1 && quarter <= 4,
+  });
+
+export const useCreateRoleCapacityRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createRoleCapacityRule,
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['role-capacity-rules', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+export const useUpdateRoleCapacityRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, percent }: { id: string; percent: number; year: number; quarter: number }) =>
+      updateRoleCapacityRule(id, { percent_of_norm: percent }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['role-capacity-rules', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+export const useDeleteRoleCapacityRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; year: number; quarter: number }) => deleteRoleCapacityRule(id),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['role-capacity-rules', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+export const useCopyRoleCapacityRulesToQuarter = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: copyRoleCapacityRulesToQuarter,
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['role-capacity-rules', v.to_year, v.to_quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+// ──────────────── Employee capacity overrides ────────────────
+
+export const useEmployeeCapacityOverrides = (params: {
+  year: number; quarter: number; employeeId?: string;
+}) =>
+  useQuery({
+    queryKey: ['employee-capacity-overrides', params.year, params.quarter, params.employeeId ?? null],
+    queryFn: () => getEmployeeCapacityOverrides({
+      year: params.year, quarter: params.quarter, employee_id: params.employeeId,
+    }),
+    enabled: Number.isFinite(params.year) && params.quarter >= 1 && params.quarter <= 4,
+  });
+
+export const useCreateEmployeeCapacityOverride = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: createEmployeeCapacityOverride,
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['employee-capacity-overrides', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+export const useUpdateEmployeeCapacityOverride = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, percent }: { id: string; percent: number; year: number; quarter: number }) =>
+      updateEmployeeCapacityOverride(id, { percent_of_norm: percent }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['employee-capacity-overrides', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+export const useDeleteEmployeeCapacityOverride = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; year: number; quarter: number }) => deleteEmployeeCapacityOverride(id),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['employee-capacity-overrides', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
     },
   });
 };

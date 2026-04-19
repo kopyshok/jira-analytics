@@ -8,11 +8,11 @@ from datetime import date
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import MonthlyCapacityRule, Absence
+from app.models import Absence
 from app.repositories.base import BaseRepository
 from app.services.capacity_service import (
     CapacityService,
@@ -53,24 +53,6 @@ class AbsenceResponse(BaseModel):
     end_date: date
     reason: AbsenceReason
     hours_total: Optional[float] = None
-
-    class Config:
-        from_attributes = True
-
-
-# === Schemas: monthly capacity rules ===
-
-class CapacityRuleCreate(BaseModel):
-    year: int
-    month: int = Field(ge=1, le=12)
-    percent_of_norm: float = Field(ge=0, le=100)
-
-
-class CapacityRuleResponse(BaseModel):
-    id: str
-    year: int
-    month: int
-    percent_of_norm: float
 
     class Config:
         from_attributes = True
@@ -185,99 +167,6 @@ async def delete_absence(
     repo.delete(existing)
     db.commit()
     return {"status": "deleted", "id": absence_id}
-
-
-# === Monthly capacity rules CRUD ===
-
-@router.get("/rules", response_model=List[CapacityRuleResponse])
-async def list_capacity_rules(
-    year: Optional[int] = None,
-    db: Session = Depends(get_db),
-):
-    """Список правил обязательных работ (опционально — по году)."""
-    query = db.query(MonthlyCapacityRule)
-    if year is not None:
-        query = query.filter(MonthlyCapacityRule.year == year)
-    return query.order_by(
-        MonthlyCapacityRule.year, MonthlyCapacityRule.month
-    ).all()
-
-
-@router.post("/rules", response_model=CapacityRuleResponse, status_code=201)
-async def upsert_capacity_rule(
-    data: CapacityRuleCreate,
-    db: Session = Depends(get_db),
-):
-    """Создать или обновить правило процента обязательных работ на месяц."""
-    existing = (
-        db.query(MonthlyCapacityRule)
-        .filter(
-            MonthlyCapacityRule.year == data.year,
-            MonthlyCapacityRule.month == data.month,
-        )
-        .one_or_none()
-    )
-    if existing:
-        existing.percent_of_norm = data.percent_of_norm
-        db.commit()
-        db.refresh(existing)
-        return existing
-
-    rule = MonthlyCapacityRule(**data.model_dump())
-    db.add(rule)
-    db.commit()
-    db.refresh(rule)
-    return rule
-
-
-class CopyRulesRequest(BaseModel):
-    from_year: int
-    from_quarter: int = Field(ge=1, le=4)
-    to_year: int
-    to_quarter: int = Field(ge=1, le=4)
-
-
-class CopyRulesResponse(BaseModel):
-    created: int
-
-
-@router.post(
-    "/rules/copy-to-quarter",
-    response_model=CopyRulesResponse,
-    status_code=201,
-)
-def copy_rules(
-    req: CopyRulesRequest,
-    db: Session = Depends(get_db),
-):
-    """Скопировать правила обязательных работ из одного квартала в другой."""
-    from app.services.capacity_service import RulesConflict
-
-    svc = CapacityService(db)
-    try:
-        created = svc.copy_rules_to_quarter(
-            req.from_year, req.from_quarter, req.to_year, req.to_quarter
-        )
-    except RulesConflict as exc:
-        raise HTTPException(status_code=409, detail={"conflicts": exc.conflicts})
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    return CopyRulesResponse(created=created)
-
-
-@router.delete("/rules/{rule_id}")
-async def delete_capacity_rule(
-    rule_id: str,
-    db: Session = Depends(get_db),
-):
-    """Удалить правило."""
-    repo = BaseRepository(MonthlyCapacityRule, db)
-    existing = repo.get(rule_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Rule not found")
-    repo.delete(existing)
-    db.commit()
-    return {"status": "deleted", "id": rule_id}
 
 
 # === Capacity reports ===
