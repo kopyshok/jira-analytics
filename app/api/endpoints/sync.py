@@ -1,9 +1,10 @@
 """Sync API endpoints."""
 
+import asyncio
 from datetime import date
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,27 @@ from app.services.sync_service import SyncService, SyncStats
 
 
 router = APIRouter()
+
+
+def _disconnect_checker(request: Optional[Request]):
+    """Коллбек для SyncService: None если request отсутствует (unit-тесты),
+    иначе полёт в ``request.is_disconnected()`` на каждом вызове.
+
+    Используется для cancel-по-клиенту: при обрыве HTTP-соединения SyncService
+    поднимает ``CancelledError`` и эндпоинт отдаёт 499.
+    """
+    if request is None:
+        return None
+
+    async def _check() -> bool:
+        return await request.is_disconnected()
+
+    return _check
+
+
+# HTTP 499 — nginx-овый код "Client Closed Request". Используем его же
+# для консистентного ответа на отмену пользователем.
+CLIENT_CLOSED_REQUEST = 499
 
 # Отдельный роутер для браузинга пользователей Jira — монтируется в
 # ``app.api.router`` под префиксом ``/jira`` (чтобы URL был
@@ -148,22 +170,24 @@ async def test_jira_connection(db: Session = Depends(get_db)):
 
 
 @router.post("/projects", response_model=SyncResponse)
-async def sync_projects(db: Session = Depends(get_db)):
+async def sync_projects(http_request: Request, db: Session = Depends(get_db)):
     """Sync all projects from Jira.
-    
+
     This is a lightweight operation that fetches project metadata only.
     Run this first before syncing issues.
     """
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
             count = await service.sync_projects()
-            
+
             return SyncResponse(
                 status="completed",
                 message=f"Synced {count} projects",
                 stats=service.stats.to_dict(),
             )
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
@@ -172,31 +196,34 @@ async def sync_projects(db: Session = Depends(get_db)):
 
 @router.post("/issues", response_model=SyncResponse)
 async def sync_issues(
-    request: SyncRequest = None,
+    http_request: Request,
+    body: SyncRequest = None,
     db: Session = Depends(get_db),
 ):
     """Sync issues from Jira.
-    
+
     Args:
         project_keys: Optional list of project keys to sync.
                      If not provided, syncs all synced projects.
         incremental: If true, only sync issues updated since last sync.
     """
-    request = request or SyncRequest()
-    
+    body = body or SyncRequest()
+
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
             count = await service.sync_issues(
-                project_keys=request.project_keys,
-                incremental=request.incremental,
+                project_keys=body.project_keys,
+                incremental=body.incremental,
             )
-            
+
             return SyncResponse(
                 status="completed",
                 message=f"Synced {count} issues",
                 stats=service.stats.to_dict(),
             )
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
@@ -205,7 +232,8 @@ async def sync_issues(
 
 @router.post("/issues/refresh", response_model=SyncResponse)
 async def refresh_issues(
-    request: RefreshIssuesRequest,
+    body: RefreshIssuesRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
 ):
     """Перечитать с Jira конкретные задачи по ключам.
@@ -214,18 +242,20 @@ async def refresh_issues(
     создаёт. Нужно чтобы дотащить новое поле (``status_changed_at`` и т.п.)
     на текущий видимый набор задач без полной пересинхронизации.
     """
-    if not request.jira_keys:
+    if not body.jira_keys:
         return SyncResponse(status="noop", message="Список ключей пуст")
 
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
-            matched, total = await service.refresh_issues_by_keys(request.jira_keys)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
+            matched, total = await service.refresh_issues_by_keys(body.jira_keys)
             return SyncResponse(
                 status="completed",
                 message=f"Обновлено {matched} из {total} задач",
                 stats={"matched": matched, "requested": total},
             )
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
@@ -234,7 +264,8 @@ async def refresh_issues(
 
 @router.post("/teams", response_model=SyncResponse)
 async def sync_teams(
-    request: SyncTeamsRequest,
+    body: SyncTeamsRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
 ):
     """Быстрая синхронизация новых/изменённых задач выбранных команд.
@@ -249,8 +280,8 @@ async def sync_teams(
 
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
-            report = await service.sync_team_issues(request.teams)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
+            report = await service.sync_team_issues(body.teams)
             total_matched = sum(int(r.get("matched", 0)) for r in report.values())
             total_created = sum(int(r.get("created", 0)) for r in report.values())
             errors = {t: r["error"] for t, r in report.items() if r.get("error")}
@@ -269,6 +300,8 @@ async def sync_teams(
                 message=summary,
                 stats={"per_team": report},
             )
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except ValueError as e:
@@ -278,22 +311,24 @@ async def sync_teams(
 
 
 @router.post("/worklogs", response_model=SyncResponse)
-async def sync_worklogs(db: Session = Depends(get_db)):
+async def sync_worklogs(http_request: Request, db: Session = Depends(get_db)):
     """Sync worklogs for all synced issues.
-    
+
     This can be a long-running operation depending on the number of issues.
     Consider running as background task for large datasets.
     """
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
             count = await service.sync_worklogs()
-            
+
             return SyncResponse(
                 status="completed",
                 message=f"Synced {count} worklogs",
                 stats=service.stats.to_dict(),
             )
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
@@ -303,6 +338,7 @@ async def sync_worklogs(db: Session = Depends(get_db)):
 @router.post("/worklogs/reload", response_model=WorklogReloadResponse)
 async def reload_worklogs(
     req: WorklogReloadRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
 ):
     """Жёсткая перезагрузка worklog'ов с указанной даты по ``started_at``.
@@ -315,8 +351,10 @@ async def reload_worklogs(
 
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
             stats = await service.reload_worklogs_since(req.since)
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
@@ -333,11 +371,11 @@ async def reload_worklogs(
 
 
 @router.post("/comments", response_model=SyncResponse)
-async def sync_comments(db: Session = Depends(get_db)):
+async def sync_comments(http_request: Request, db: Session = Depends(get_db)):
     """Синхронизация комментариев к задачам из Jira."""
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
             count = await service.sync_comments()
 
             return SyncResponse(
@@ -345,6 +383,8 @@ async def sync_comments(db: Session = Depends(get_db)):
                 message=f"Synced {count} comments",
                 stats=service.stats.to_dict(),
             )
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
@@ -353,7 +393,8 @@ async def sync_comments(db: Session = Depends(get_db)):
 
 @router.post("/full", response_model=SyncResponse)
 async def full_sync(
-    request: SyncRequest = None,
+    http_request: Request,
+    body: SyncRequest = None,
     background: bool = False,
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
@@ -365,26 +406,26 @@ async def full_sync(
         incremental: If true, only sync data updated since last sync.
         background: If true, run sync as background task.
     """
-    request = request or SyncRequest()
-    
+    body = body or SyncRequest()
+
     if background and background_tasks:
         background_tasks.add_task(
             run_sync_task,
             db,
-            request.project_keys,
-            request.incremental,
+            body.project_keys,
+            body.incremental,
         )
         return SyncResponse(
             status="started",
             message="Full sync started in background",
         )
-    
+
     try:
         async with JiraClient.from_db(db) as jira:
-            service = SyncService(db, jira)
+            service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
             stats = await service.full_sync(
-                project_keys=request.project_keys,
-                incremental=request.incremental,
+                project_keys=body.project_keys,
+                incremental=body.incremental,
             )
 
         # Auto-recalculate mappings after full sync
@@ -397,6 +438,8 @@ async def full_sync(
             message=f"Full sync completed in {stats.duration_seconds:.1f}s",
             stats=stats.to_dict(),
         )
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
