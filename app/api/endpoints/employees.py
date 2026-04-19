@@ -107,6 +107,25 @@ def recalc_active(db: Session = Depends(get_db)):
     )
 
 
+class AutoDetectResponse(BaseModel):
+    assigned: int
+    skipped: int
+    details: List[dict]
+
+
+@router.post("/auto-detect-teams", response_model=AutoDetectResponse)
+def auto_detect_teams(db: Session = Depends(get_db)):
+    """Массово проставить Employee.team по ворклогам (для сотрудников с team=NULL)."""
+    from app.services.employee_team_service import EmployeeTeamService
+
+    summary = EmployeeTeamService(db).auto_detect_all_missing()
+    return AutoDetectResponse(
+        assigned=summary.assigned,
+        skipped=summary.skipped,
+        details=summary.details,
+    )
+
+
 class TeamUpdateRequest(BaseModel):
     team: Optional[str] = None
 
