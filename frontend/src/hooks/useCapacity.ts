@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity, getCategoryBreakdown } from '../api/capacity';
-import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam } from '../api/employees';
+import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam, patchEmployee } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
 import { api } from '../api/client';
 import type {
   RecalcActiveResponse,
   EmployeeFromJiraRequest,
   EmployeeResponse,
+  EmployeeRole,
 } from '../types/api';
 
 export const useEmployees = (params?: { withTeams?: boolean; isActive?: boolean }) =>
@@ -154,6 +155,21 @@ export const useReplaceEmployeeTeams = () => {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+export const useUpdateEmployeeRole = () => {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { employeeId: string; role: EmployeeRole | null }, EmployeesCtx>({
+    mutationFn: ({ employeeId, role }) => patchEmployee(employeeId, { role }),
+    onMutate: async ({ employeeId, role }) => {
+      await qc.cancelQueries({ queryKey: ['employees'] });
+      return patchEmployeesCache(qc, employeeId, e => ({ ...e, role }));
+    },
+    onError: (_err, _vars, ctx) => rollbackEmployeesCache(qc, ctx),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
     },
   });
 };

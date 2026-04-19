@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { EmployeeResponse, EmployeeTeamItem, RecalcActiveResponse, EmployeeFromJiraRequest } from '../types/api';
+import type { EmployeeResponse, EmployeeRole, EmployeeTeamItem, RecalcActiveResponse, EmployeeFromJiraRequest } from '../types/api';
 
 export const getEmployees = (params?: { is_active?: boolean; with_teams?: boolean }) => {
   const qp: Record<string, string> = {};
@@ -21,6 +21,9 @@ export const setEmployeePrimaryTeam = (employeeId: string, team: string) =>
 
 export const deleteEmployeeTeam = (employeeId: string, team: string) =>
   api.del<void>(`/employees/${employeeId}/teams/${encodeURIComponent(team)}`);
+
+export const patchEmployee = (employeeId: string, body: { role?: EmployeeRole | null }) =>
+  api.patch<EmployeeResponse>(`/employees/${employeeId}`, body);
 
 export const recalcActiveEmployees = () =>
   api.post<RecalcActiveResponse>('/employees/recalc-active', {});
