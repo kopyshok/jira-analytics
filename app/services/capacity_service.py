@@ -4,14 +4,14 @@
     available = norm_hours - vacation_hours - mandatory_hours
 
 где:
-- norm_hours = количество рабочих дней в месяце × hours_per_day
-- vacation_hours = пересечение отпусков сотрудника с периодом × hours_per_day
+- norm_hours = сумма ``production_calendar_day.hours`` за месяц
+  (8ч будни, 7ч предпраздничные, 0 выходные/праздники), масштабируется на
+  ``hours_per_day / 8``. Если в БД дня нет — фоллбэк ``hours_per_day`` на
+  каждый Пн–Пт.
+- vacation_hours = норма часов за дни отпуска, попавшие в период
+  (та же логика, что и для norm_hours).
 - mandatory_hours = norm_hours × percent_of_norm / 100
-  (из monthly_capacity_rules — обязательные работы вроде сопровождения)
-
-Для MVP используется упрощённый производственный календарь: рабочие дни —
-понедельник-пятница. Реальный календарь с праздниками будет добавлен позже
-как отдельная таблица/конфиг.
+  (из monthly_capacity_rules — обязательные работы вроде сопровождения).
 """
 
 from calendar import monthrange
@@ -22,7 +22,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Employee, MonthlyCapacityRule, Vacation, Worklog
+from app.models import Absence, Employee, MonthlyCapacityRule, Worklog
 from app.services.production_calendar_service import ProductionCalendarService
 
 
@@ -105,6 +105,29 @@ class CapacityService:
             current += timedelta(days=1)
         return days
 
+    def _norm_hours_in_range(self, start: date, end: date) -> float:
+        """Сумма нормы рабочих часов за интервал.
+
+        Если день есть в ``production_calendar_day`` — берётся его ``hours``
+        (предпраздничный=7, будни=8, выходной/праздник=0) и масштабируется по
+        ``hours_per_day / DEFAULT_HOURS_PER_DAY``. Для дней без записи —
+        фоллбэк: ``hours_per_day`` для Пн–Пт, иначе 0.
+        """
+        if end < start:
+            return 0.0
+        hours_map = self.production_calendar.hours_in_range_map(start, end)
+        scale = self.hours_per_day / DEFAULT_HOURS_PER_DAY
+        total = 0.0
+        current = start
+        while current <= end:
+            cal_hours = hours_map.get(current)
+            if cal_hours is not None:
+                total += cal_hours * scale
+            elif current.weekday() < 5:
+                total += self.hours_per_day
+            current += timedelta(days=1)
+        return total
+
     def _month_bounds(self, year: int, month: int) -> tuple[date, date]:
         last_day = monthrange(year, month)[1]
         return date(year, month, 1), date(year, month, last_day)
@@ -113,37 +136,40 @@ class CapacityService:
         start, end = self._month_bounds(year, month)
         return self._workdays_in_range(start, end)
 
+    def _norm_hours_in_month(self, year: int, month: int) -> float:
+        start, end = self._month_bounds(year, month)
+        return self._norm_hours_in_range(start, end)
+
     # === Вычеты ===
 
-    def _vacation_hours_for_month(
+    def _absence_hours_for_month(
         self,
         employee_id: str,
         year: int,
         month: int,
     ) -> float:
-        """Часы отпуска сотрудника, попавшие в конкретный месяц.
+        """Часы отсутствия сотрудника, попавшие в конкретный месяц.
 
         Считается как количество рабочих дней пересечения каждого
-        отпуска с месяцем × hours_per_day.
+        отсутствия с месяцем × hours_per_day.
         """
         month_start, month_end = self._month_bounds(year, month)
 
-        vacations = (
-            self.db.query(Vacation)
+        absences = (
+            self.db.query(Absence)
             .filter(
-                Vacation.employee_id == employee_id,
-                Vacation.start_date <= month_end,
-                Vacation.end_date >= month_start,
+                Absence.employee_id == employee_id,
+                Absence.start_date <= month_end,
+                Absence.end_date >= month_start,
             )
             .all()
         )
 
         total = 0.0
-        for vac in vacations:
-            overlap_start = max(vac.start_date, month_start)
-            overlap_end = min(vac.end_date, month_end)
-            workdays = self._workdays_in_range(overlap_start, overlap_end)
-            total += workdays * self.hours_per_day
+        for absence in absences:
+            overlap_start = max(absence.start_date, month_start)
+            overlap_end = min(absence.end_date, month_end)
+            total += self._norm_hours_in_range(overlap_start, overlap_end)
         return total
 
     def _mandatory_hours_for_month(
@@ -186,8 +212,8 @@ class CapacityService:
         employee = self._get_employee(employee_id)
 
         workdays = self._workdays_in_month(year, month)
-        norm_hours = workdays * self.hours_per_day
-        vacation_hours = self._vacation_hours_for_month(
+        norm_hours = self._norm_hours_in_month(year, month)
+        vacation_hours = self._absence_hours_for_month(
             employee_id, year, month
         )
         mandatory_hours = self._mandatory_hours_for_month(

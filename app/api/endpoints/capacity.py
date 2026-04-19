@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import MonthlyCapacityRule, Vacation
+from app.models import MonthlyCapacityRule, Absence as Vacation
 from app.repositories.base import BaseRepository
 from app.services.capacity_service import (
     CapacityService,

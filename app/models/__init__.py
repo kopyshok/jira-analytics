@@ -12,7 +12,7 @@ from app.models.scope_root import ScopeRoot
 from app.models.category_mapping import CategoryMapping
 from app.models.category_override import CategoryOverride
 from app.models.worklog_quality_rule import WorklogQualityRule
-from app.models.vacation import Vacation
+from app.models.absence import Absence, ABSENCE_REASONS
 from app.models.monthly_capacity_rule import MonthlyCapacityRule
 from app.models.backlog_item import BacklogItem
 from app.models.planning_scenario import PlanningScenario
@@ -37,7 +37,8 @@ __all__ = [
     "CategoryMapping",
     "CategoryOverride",
     "WorklogQualityRule",
-    "Vacation",
+    "Absence",
+    "ABSENCE_REASONS",
     "MonthlyCapacityRule",
     "BacklogItem",
     "PlanningScenario",

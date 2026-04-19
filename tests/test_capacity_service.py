@@ -5,10 +5,10 @@ from datetime import date, timedelta
 import pytest
 
 from app.models import (
+    Absence,
     Employee,
     MonthlyCapacityRule,
     ProductionCalendarDay,
-    Vacation,
 )
 from app.services.capacity_service import (
     CapacityService,
@@ -77,7 +77,7 @@ class TestMonthlyCapacity:
     def test_vacation_inside_month(self, db_session, employee):
         # 5 workdays off
         db_session.add(
-            Vacation(
+            Absence(
                 employee_id=employee.id,
                 start_date=date(2026, 3, 2),
                 end_date=date(2026, 3, 6),
@@ -97,7 +97,7 @@ class TestMonthlyCapacity:
         # Feb part: 26, 27 → 2 workdays (16h)
         # Mar part: 2, 3, 4, 5, 6 → 5 workdays (40h)
         db_session.add(
-            Vacation(
+            Absence(
                 employee_id=employee.id,
                 start_date=date(2026, 2, 26),
                 end_date=date(2026, 3, 6),
@@ -129,7 +129,7 @@ class TestMonthlyCapacity:
 
     def test_vacation_and_mandatory_combined(self, db_session, employee):
         db_session.add(
-            Vacation(
+            Absence(
                 employee_id=employee.id,
                 start_date=date(2026, 3, 2),
                 end_date=date(2026, 3, 6),
@@ -151,7 +151,7 @@ class TestMonthlyCapacity:
     def test_available_never_negative(self, db_session, employee):
         # Full-month vacation covers all 22 workdays
         db_session.add(
-            Vacation(
+            Absence(
                 employee_id=employee.id,
                 start_date=date(2026, 3, 1),
                 end_date=date(2026, 3, 31),
@@ -196,7 +196,7 @@ class TestQuarterCapacity:
 
     def test_q1_with_vacation_and_rule(self, db_session, employee):
         db_session.add(
-            Vacation(
+            Absence(
                 employee_id=employee.id,
                 start_date=date(2026, 2, 2),
                 end_date=date(2026, 2, 13),
@@ -303,6 +303,30 @@ class TestWorkdayCalendarIntegration:
         svc = CapacityService(db_session)
         got = svc._workdays_in_range(date(2026, 3, 7), date(2026, 3, 7))
         assert got == 1
+
+    def test_norm_hours_uses_preholiday_7h(self, db_session, employee):
+        """Предпраздничный день даёт 7ч нормы, а не 8."""
+        # Вся февральская сетка 2026. 20 февраля 2026 — пятница, предпраздничный.
+        for d in range(1, 29):
+            day = date(2026, 2, d)
+            if day == date(2026, 2, 20):
+                kind, is_wd, hours = "preholiday", True, 7.0
+            elif day.weekday() < 5:
+                kind, is_wd, hours = "workday", True, 8.0
+            else:
+                kind, is_wd, hours = "weekend", False, 0.0
+            db_session.add(ProductionCalendarDay(
+                date=day, is_workday=is_wd, kind=kind, hours=hours,
+                source="xmlcalendar",
+            ))
+        db_session.commit()
+
+        svc = CapacityService(db_session)
+        norm = svc._norm_hours_in_month(2026, 2)
+        workdays = svc._workdays_in_month(2026, 2)
+        # 20 рабочих дней, из них 1 по 7 часов — 19×8 + 7 = 159
+        assert workdays == 20
+        assert norm == 19 * 8 + 7
 
 
 from datetime import datetime

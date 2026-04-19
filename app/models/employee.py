@@ -37,7 +37,7 @@ class Employee(Base, SyncedMixin):
     # Relationships
     worklogs = relationship("Worklog", back_populates="employee")
     comments = relationship("Comment", back_populates="author")
-    vacations = relationship("Vacation", back_populates="employee")
+    absences = relationship("Absence", back_populates="employee")
 
     def __repr__(self) -> str:
         return f"<Employee {self.display_name}>"
