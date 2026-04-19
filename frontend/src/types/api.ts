@@ -7,6 +7,7 @@ export interface EmployeeResponse {
   email: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  team: string | null;
 }
 
 export interface JiraUserSearchResult {
@@ -201,12 +202,23 @@ export interface MappingResponse {
 
 // === Capacity ===
 
-export interface VacationResponse {
+export type AbsenceReason = 'vacation' | 'sick' | 'day_off' | 'other';
+
+export interface AbsenceResponse {
   id: string;
   employee_id: string;
   start_date: string;
   end_date: string;
+  reason: AbsenceReason;
   hours_total: number | null;
+}
+
+export interface AbsenceCreateRequest {
+  employee_id: string;
+  start_date: string;
+  end_date: string;
+  reason: AbsenceReason;
+  hours_total?: number;
 }
 
 export interface CapacityRuleResponse {
@@ -234,6 +246,7 @@ export interface QuarterCapacityResponse {
   employee_name: string;
   year: number;
   quarter: number;
+  team: string | null;
   months: MonthlyCapacityResponse[];
   total_norm_hours: number;
   total_vacation_hours: number;
@@ -338,6 +351,7 @@ export interface ProductionCalendarDayResponse {
   date: string;         // YYYY-MM-DD
   is_workday: boolean;
   kind: string;
+  hours: number;
   note: string | null;
   source: 'xmlcalendar' | 'manual';
 }
@@ -346,6 +360,7 @@ export interface ProductionCalendarUpsertRequest {
   date: string;
   is_workday: boolean;
   kind: string;
+  hours?: number | null;
   note: string | null;
 }
 

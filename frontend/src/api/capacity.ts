@@ -1,12 +1,5 @@
 import { api } from './client';
-import type { VacationResponse, CapacityRuleResponse, QuarterCapacityResponse, CategoryBreakdownResponse } from '../types/api';
-
-// Vacations
-export const getVacations = (employeeId?: string) =>
-  api.get<VacationResponse[]>('/capacity/vacations', { employee_id: employeeId });
-export const addVacation = (data: { employee_id: string; start_date: string; end_date: string; hours_total?: number }) =>
-  api.post<VacationResponse>('/capacity/vacations', data);
-export const removeVacation = (id: string) => api.del(`/capacity/vacations/${id}`);
+import type { CapacityRuleResponse, QuarterCapacityResponse, CategoryBreakdownResponse } from '../types/api';
 
 // Capacity Rules
 export const getCapacityRules = (year?: string) =>

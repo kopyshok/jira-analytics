@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getVacations, addVacation, removeVacation, getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity, getCategoryBreakdown } from '../api/capacity';
+import { getCapacityRules, addCapacityRule, removeCapacityRule, getTeamCapacity, getCategoryBreakdown } from '../api/capacity';
 import { getEmployees, recalcActiveEmployees, addEmployeeFromJira } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
+import { api } from '../api/client';
 import type {
   RecalcActiveResponse,
   EmployeeFromJiraRequest,
@@ -10,19 +11,6 @@ import type {
 
 export const useEmployees = () =>
   useQuery({ queryKey: ['employees'], queryFn: () => getEmployees() });
-
-export const useVacations = () =>
-  useQuery({ queryKey: ['capacity', 'vacations'], queryFn: () => getVacations() });
-
-export const useAddVacation = () => {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: addVacation, onSuccess: () => qc.invalidateQueries({ queryKey: ['capacity'] }) });
-};
-
-export const useRemoveVacation = () => {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: removeVacation, onSuccess: () => qc.invalidateQueries({ queryKey: ['capacity'] }) });
-};
 
 export const useCapacityRules = () =>
   useQuery({ queryKey: ['capacity', 'rules'], queryFn: () => getCapacityRules() });
@@ -78,5 +66,41 @@ export const useAddEmployeeFromJira = () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
     },
+  });
+};
+
+export const useSetEmployeeTeam = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, team }: { id: string; team: string | null }) =>
+      api.put(`/employees/${id}/team`, { team }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+export const useAutoDetectTeams = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ assigned: number; skipped: number; details: Array<{ employee_id: string; team: string }> }>(
+        '/employees/auto-detect-teams',
+        {},
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};
+
+export const useCopyRules = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { from_year: number; from_quarter: number; to_year: number; to_quarter: number }) =>
+      api.post<{ created: number }>('/capacity/rules/copy-to-quarter', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['capacity', 'rules'] }),
   });
 };
