@@ -23,10 +23,10 @@ test('main product routes render without browser errors', async ({ page }) => {
   await expectVisible(page.getByRole('tab', { name: 'Проекты' }));
   await expectVisible(page.getByPlaceholder('Ключ проекта (напр. PROJ)'));
 
-  await page.getByRole('menuitem', { name: 'Ёмкость' }).click();
+  await page.getByRole('menuitem', { name: 'Ресурсы' }).click();
   await expect(page).toHaveURL(/\/capacity$/);
   await expectVisible(page.getByRole('tab', { name: 'Команда' }));
-  await expectVisible(page.getByRole('tab', { name: 'Отпуска' }));
+  await expectVisible(page.getByRole('tab', { name: 'Отсутствия' }));
 
   await page.getByRole('menuitem', { name: 'Бэклог' }).click();
   await expect(page).toHaveURL(/\/backlog$/);
