@@ -63,15 +63,23 @@ class ExportService:
         self,
         start: Optional[datetime],
         end: Optional[datetime],
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> dict:
         """Собрать все аналитические отчёты за период."""
         analytics = AnalyticsService(self.db)
+        kw = dict(
+            teams=teams,
+            match_employees=match_employees,
+            match_issues=match_issues,
+        )
         return {
-            "by_employee": analytics.hours_by_employee(start, end),
-            "by_project": analytics.hours_by_project(start, end),
-            "by_category": analytics.hours_by_category(start, end),
-            "by_period": analytics.hours_by_period("month", start, end),
-            "switching": analytics.context_switching(start, end),
+            "by_employee": analytics.hours_by_employee(start, end, **kw),
+            "by_project": analytics.hours_by_project(start, end, **kw),
+            "by_category": analytics.hours_by_category(start, end, **kw),
+            "by_period": analytics.hours_by_period("month", start, end, **kw),
+            "switching": analytics.context_switching(start, end, **kw),
         }
 
     def _load_scenario_rows(
@@ -127,12 +135,17 @@ class ExportService:
         self,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> bytes:
         """Собрать многолистовой xlsx со всеми аналитическими отчётами."""
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment
 
-        data = self._collect_analytics(start, end)
+        data = self._collect_analytics(
+            start, end, teams, match_employees, match_issues
+        )
 
         wb = Workbook()
         bold = Font(bold=True)
@@ -239,6 +252,9 @@ class ExportService:
         self,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> bytes:
         """Собрать PDF-отчёт со сводкой и таблицами."""
         from reportlab.lib import colors
@@ -253,7 +269,9 @@ class ExportService:
             PageBreak,
         )
 
-        data = self._collect_analytics(start, end)
+        data = self._collect_analytics(
+            start, end, teams, match_employees, match_issues
+        )
 
         buf = BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4, title="Jira Analytics")

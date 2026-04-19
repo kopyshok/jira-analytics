@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.services.analytics_service import NO_TEAM_TOKEN, parse_teams_csv
 from app.services.export_service import ExportService
 
 
@@ -41,11 +42,23 @@ def _attachment_headers(filename: str) -> dict[str, str]:
 async def export_analytics_xlsx(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
+    teams: Optional[str] = Query(
+        None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"
+    ),
+    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
+    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ) -> Response:
     """Скачать xlsx с аналитическими отчётами за период."""
     service = ExportService(db)
-    data = service.build_analytics_xlsx(start=start, end=end)
+    teams_list = parse_teams_csv(teams)
+    data = service.build_analytics_xlsx(
+        start=start,
+        end=end,
+        teams=teams_list,
+        match_employees=match_employees,
+        match_issues=match_issues,
+    )
     return Response(
         content=data,
         media_type=XLSX_MIME,
@@ -60,11 +73,23 @@ async def export_analytics_xlsx(
 async def export_analytics_pdf(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
+    teams: Optional[str] = Query(
+        None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"
+    ),
+    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
+    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ) -> Response:
     """Скачать PDF-отчёт с аналитикой за период."""
     service = ExportService(db)
-    data = service.build_analytics_pdf(start=start, end=end)
+    teams_list = parse_teams_csv(teams)
+    data = service.build_analytics_pdf(
+        start=start,
+        end=end,
+        teams=teams_list,
+        match_employees=match_employees,
+        match_issues=match_issues,
+    )
     return Response(
         content=data,
         media_type=PDF_MIME,
