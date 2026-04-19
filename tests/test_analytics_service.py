@@ -22,6 +22,14 @@ def setup_data(db_session):
     bob = Employee(jira_account_id="b1", display_name="Bob")
     db_session.add_all([alice, bob])
 
+    from app.models import EmployeeTeam
+
+    db_session.flush()  # Need alice.id/bob.id for EmployeeTeam
+    db_session.add_all([
+        EmployeeTeam(employee_id=alice.id, team="Core", is_primary=True),
+        EmployeeTeam(employee_id=bob.id, team="Mobile", is_primary=True),
+    ])
+
     proj_a = Project(jira_project_id="pa", key="AAA", name="Alpha")
     proj_b = Project(jira_project_id="pb", key="BBB", name="Beta")
     db_session.add_all([proj_a, proj_b])
@@ -34,6 +42,8 @@ def setup_data(db_session):
         issue_type="Task",
         status="Open",
         project_id=proj_a.id,
+        team="Core",
+        participating_teams='["Core","Mobile"]',
     )
     issue_a2 = Issue(
         jira_issue_id="ja2",
@@ -42,6 +52,8 @@ def setup_data(db_session):
         issue_type="Task",
         status="Open",
         project_id=proj_a.id,
+        team="Mobile",
+        participating_teams='["Mobile"]',
     )
     issue_b1 = Issue(
         jira_issue_id="jb1",
@@ -50,6 +62,8 @@ def setup_data(db_session):
         issue_type="Task",
         status="Open",
         project_id=proj_b.id,
+        team=None,
+        participating_teams='[]',
     )
     db_session.add_all([issue_a1, issue_a2, issue_b1])
     db_session.flush()
@@ -168,6 +182,103 @@ class TestHoursByEmployee:
         # Bob: only wl5 (2h on Jan 8)
         assert by_name["Alice"].total_hours == 1.0
         assert by_name["Bob"].total_hours == 2.0
+
+    def test_team_filter_employees_only(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_employee(
+            teams=["Core"],
+            match_employees=True,
+            match_issues=False,
+        )
+        by_name = {r.label: r for r in rows}
+        assert "Alice" in by_name  # Alice is in Core
+        assert "Bob" not in by_name  # Bob is in Mobile
+        assert by_name["Alice"].total_hours == 6.0  # all Alice's worklogs
+
+    def test_team_filter_issues_only(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_employee(
+            teams=["Mobile"],
+            match_employees=False,
+            match_issues=True,
+        )
+        by_name = {r.label: r for r in rows}
+        # Mobile issues: AAA-2 (team=Mobile) + BBB-1 via participating_teams? BBB-1 has team=None, participating_teams='[]'
+        # Actually AAA-1 has participating_teams='["Core","Mobile"]' — so Mobile matches AAA-1 too.
+        # Worklogs on AAA-1: Alice 2h + Bob 2h; on AAA-2: Alice 3h; BBB-1: none.
+        # So Alice total = 5h (AAA-1 + AAA-2), Bob total = 2h (AAA-1)
+        assert by_name["Alice"].total_hours == 5.0
+        assert by_name["Bob"].total_hours == 2.0
+
+    def test_team_filter_union(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_employee(
+            teams=["Core"],
+            match_employees=True,
+            match_issues=True,
+        )
+        by_name = {r.label: r for r in rows}
+        # Alice (Core member) -> all her worklogs (6h)
+        # Bob (not Core member), but AAA-1 has team=Core (via participating_teams) and worklog wl5 on AAA-1 -> 2h
+        # BBB-1 has no Core team -> Bob's wl4 (4h on BBB-1) excluded
+        assert by_name["Alice"].total_hours == 6.0
+        assert by_name["Bob"].total_hours == 2.0
+
+    def test_team_filter_none_token_employees(self, db_session, setup_data):
+        # Add an employee with no team memberships
+        carol = Employee(jira_account_id="c1", display_name="Carol")
+        db_session.add(carol)
+        db_session.flush()
+        # Give Carol a worklog on AAA-1
+        db_session.add(Worklog(
+            jira_worklog_id="wl6",
+            started_at=datetime(2026, 1, 9, 10, 0, 0),
+            hours=1.5,
+            time_spent_seconds=5400,
+            comment_text="carol",
+            issue_id=setup_data["worklogs"][0].issue_id,  # AAA-1
+            employee_id=carol.id,
+        ))
+        db_session.flush()
+
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_employee(
+            teams=["__none__"],
+            match_employees=True,
+            match_issues=False,
+        )
+        by_name = {r.label: r for r in rows}
+        assert "Carol" in by_name
+        assert by_name["Carol"].total_hours == 1.5
+        assert "Alice" not in by_name
+        assert "Bob" not in by_name
+
+    def test_team_filter_none_token_issues(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows = service.hours_by_employee(
+            teams=["__none__"],
+            match_employees=False,
+            match_issues=True,
+        )
+        by_name = {r.label: r for r in rows}
+        # Only BBB-1 has no team; worklogs on BBB-1: Alice wl3 (1h) + Bob wl4 (4h)
+        assert by_name["Alice"].total_hours == 1.0
+        assert by_name["Bob"].total_hours == 4.0
+
+    def test_team_filter_empty_teams_is_noop(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows_filtered = service.hours_by_employee(teams=[], match_employees=True, match_issues=True)
+        rows_baseline = service.hours_by_employee()
+        # totals identical
+        assert sum(r.total_hours for r in rows_filtered) == sum(r.total_hours for r in rows_baseline)
+
+    def test_team_filter_both_flags_off_is_noop(self, db_session, setup_data):
+        service = AnalyticsService(db_session)
+        rows_filtered = service.hours_by_employee(
+            teams=["Core"], match_employees=False, match_issues=False,
+        )
+        rows_baseline = service.hours_by_employee()
+        assert sum(r.total_hours for r in rows_filtered) == sum(r.total_hours for r in rows_baseline)
 
 
 class TestHoursByProject:

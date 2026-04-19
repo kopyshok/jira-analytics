@@ -12,11 +12,14 @@ from dataclasses import dataclass
 from datetime import datetime, date
 from typing import Optional
 
-from sqlalchemy import func, and_
-from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, or_, select, exists
+from sqlalchemy.orm import Session, aliased
 
-from app.models import Worklog, Issue, Employee, Project, CategoryMapping
+from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
 from app.services.categories import CATEGORY_LABELS, get_category_labels
+
+
+NO_TEAM_TOKEN = "__none__"
 
 
 @dataclass
@@ -55,6 +58,72 @@ class AnalyticsService:
             query = query.filter(Worklog.started_at <= end)
         return query
 
+    def _apply_team_filter(
+        self,
+        query,
+        teams: Optional[list[str]],
+        match_employees: bool,
+        match_issues: bool,
+    ):
+        """Apply team filter (employee-side OR issue-side).
+
+        If ``teams`` is empty or both flags are False, return query unchanged.
+        ``Issue`` must already be joined in the caller when ``match_issues``.
+        """
+        if not teams or (not match_employees and not match_issues):
+            return query
+
+        named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
+        has_none = NO_TEAM_TOKEN in teams
+
+        clauses: list = []
+
+        if match_employees:
+            emp_sub_clauses: list = []
+            if named_teams:
+                emp_sub_clauses.append(
+                    Worklog.employee_id.in_(
+                        select(EmployeeTeam.employee_id).where(
+                            EmployeeTeam.team.in_(named_teams)
+                        )
+                    )
+                )
+            if has_none:
+                emp_sub_clauses.append(
+                    ~exists().where(EmployeeTeam.employee_id == Worklog.employee_id)
+                )
+            if emp_sub_clauses:
+                clauses.append(or_(*emp_sub_clauses) if len(emp_sub_clauses) > 1 else emp_sub_clauses[0])
+
+        if match_issues:
+            issue_sub_clauses: list = []
+            if named_teams:
+                named_clause = [Issue.team.in_(named_teams)]
+                for t in named_teams:
+                    escaped = t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    named_clause.append(
+                        Issue.participating_teams.like(f'%"{escaped}"%', escape="\\")
+                    )
+                issue_sub_clauses.append(or_(*named_clause))
+            if has_none:
+                issue_sub_clauses.append(
+                    and_(
+                        Issue.team.is_(None),
+                        or_(
+                            Issue.participating_teams.is_(None),
+                            Issue.participating_teams == "[]",
+                        ),
+                    )
+                )
+            if issue_sub_clauses:
+                clauses.append(or_(*issue_sub_clauses) if len(issue_sub_clauses) > 1 else issue_sub_clauses[0])
+
+        if not clauses:
+            return query
+
+        final = or_(*clauses) if len(clauses) > 1 else clauses[0]
+        return query.filter(final)
+
     @staticmethod
     def _exclude_non_analysis(query):
         """Исключить задачи с include_in_analysis=False (join Issue уже должен быть)."""
@@ -68,6 +137,9 @@ class AnalyticsService:
         end: Optional[datetime] = None,
         employee_id: Optional[str] = None,
         project_key: Optional[str] = None,
+        teams: Optional[list[str]] = None,
+        match_employees: bool = True,
+        match_issues: bool = True,
     ) -> list[AggregateRow]:
         """Часы по сотрудникам за период."""
         query = (
@@ -91,6 +163,11 @@ class AnalyticsService:
                 .join(Project, Issue.project_id == Project.id)
                 .filter(Project.key == project_key)
             )
+        if teams and match_issues:
+            # Need Issue join for match_issues; safe to add if project_key already joined it
+            if not project_key:
+                query = query.join(Issue, Worklog.issue_id == Issue.id)
+        query = self._apply_team_filter(query, teams, match_employees, match_issues)
 
         return [
             AggregateRow(
