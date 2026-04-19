@@ -47,6 +47,8 @@ function TeamTab() {
   const [showPct,  setShowPct]  = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -161,6 +163,10 @@ function TeamTab() {
     });
   };
   const tree = groupByTeam(visible);
+  const expandedRowKeys = useMemo(
+    () => tree.filter(r => !collapsed.has(r.key)).map(r => r.key),
+    [tree, collapsed],
+  );
 
   // ------------ Cell helpers ------------
   const pctColor = (plan: number, fact: number): string | undefined => {
@@ -237,12 +243,22 @@ function TeamTab() {
             loading={jiraTeams.isFetching}
             tagRender={(props) => {
               const isPrimary = props.value === primary;
+              const label = String(props.label ?? props.value);
               return (
                 <Tag
                   color={isPrimary ? 'gold' : 'default'}
                   closable={props.closable}
                   onClose={props.onClose}
-                  style={{ marginInlineEnd: 4, cursor: 'pointer' }}
+                  style={{
+                    marginInlineEnd: 4,
+                    cursor: 'pointer',
+                    maxWidth: 220,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                  }}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -255,9 +271,11 @@ function TeamTab() {
                       });
                     }
                   }}
-                  title={isPrimary ? 'Основная команда' : 'Клик — сделать основной'}
+                  title={`${label}${isPrimary ? ' · основная' : ' · клик — сделать основной'}`}
                 >
-                  {isPrimary ? '★ ' : ''}{props.label ?? String(props.value)}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {isPrimary ? '★ ' : ''}{label}
+                  </span>
                 </Tag>
               );
             }}
@@ -343,6 +361,8 @@ function TeamTab() {
           <Button loading={recalc.isPending}>Пересчитать состав</Button>
         </Popconfirm>
         <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
+        <Button onClick={() => setCollapsed(new Set(tree.map(r => r.key)))}>Свернуть все</Button>
+        <Button onClick={() => setCollapsed(new Set())}>Развернуть все</Button>
         <Button href={exportHref} target="_blank" rel="noreferrer">Экспорт в Excel</Button>
       </Space>
       <Table
@@ -354,7 +374,19 @@ function TeamTab() {
         pagination={false}
         size="small"
         scroll={{ x: 1400 }}
-        expandable={{ expandedRowKeys: tree.map(r => r.key), childrenColumnName: 'children' }}
+        expandable={{
+          expandedRowKeys,
+          childrenColumnName: 'children',
+          onExpand: (expand, record) => {
+            const r = record as TreeRow;
+            if (!('isTeam' in r)) return;
+            setCollapsed(prev => {
+              const next = new Set(prev);
+              if (expand) next.delete(r.key); else next.add(r.key);
+              return next;
+            });
+          },
+        }}
         rowClassName={(r: TreeRow) => 'isTeam' in r ? 'capacity-team-row' : ''}
       />
       <Modal

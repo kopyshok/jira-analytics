@@ -112,15 +112,46 @@ export const useCopyRules = () => {
   });
 };
 
+type EmployeesCtx = { snapshots: Array<[readonly unknown[], EmployeeResponse[] | undefined]> };
+
+const patchEmployeesCache = (
+  qc: ReturnType<typeof useQueryClient>,
+  employeeId: string,
+  mutate: (emp: EmployeeResponse) => EmployeeResponse,
+): EmployeesCtx => {
+  const queries = qc.getQueriesData<EmployeeResponse[]>({ queryKey: ['employees'] });
+  const snapshots: EmployeesCtx['snapshots'] = [];
+  for (const [key, data] of queries) {
+    snapshots.push([key, data]);
+    if (!data) continue;
+    qc.setQueryData<EmployeeResponse[]>(key, data.map(e => e.id === employeeId ? mutate(e) : e));
+  }
+  return { snapshots };
+};
+
+const rollbackEmployeesCache = (
+  qc: ReturnType<typeof useQueryClient>,
+  ctx: EmployeesCtx | undefined,
+) => {
+  if (!ctx) return;
+  for (const [key, data] of ctx.snapshots) qc.setQueryData(key, data);
+};
+
 export const useReplaceEmployeeTeams = () => {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ employeeId, teams, primary }: {
-      employeeId: string;
-      teams: string[];
-      primary?: string;
-    }) => replaceEmployeeTeams(employeeId, { teams, primary }),
-    onSuccess: () => {
+  return useMutation<unknown, Error, { employeeId: string; teams: string[]; primary?: string }, EmployeesCtx>({
+    mutationFn: ({ employeeId, teams, primary }) => replaceEmployeeTeams(employeeId, { teams, primary }),
+    onMutate: async ({ employeeId, teams, primary }) => {
+      await qc.cancelQueries({ queryKey: ['employees'] });
+      const resolvedPrimary = primary ?? teams[0];
+      return patchEmployeesCache(qc, employeeId, e => ({
+        ...e,
+        team: resolvedPrimary ?? null,
+        teams: teams.map(t => ({ team: t, is_primary: t === resolvedPrimary })),
+      }));
+    },
+    onError: (_err, _vars, ctx) => rollbackEmployeesCache(qc, ctx),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
     },
@@ -129,10 +160,18 @@ export const useReplaceEmployeeTeams = () => {
 
 export const useSetPrimaryTeam = () => {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ employeeId, team }: { employeeId: string; team: string }) =>
-      setEmployeePrimaryTeam(employeeId, team),
-    onSuccess: () => {
+  return useMutation<unknown, Error, { employeeId: string; team: string }, EmployeesCtx>({
+    mutationFn: ({ employeeId, team }) => setEmployeePrimaryTeam(employeeId, team),
+    onMutate: async ({ employeeId, team }) => {
+      await qc.cancelQueries({ queryKey: ['employees'] });
+      return patchEmployeesCache(qc, employeeId, e => ({
+        ...e,
+        team,
+        teams: (e.teams ?? []).map(t => ({ ...t, is_primary: t.team === team })),
+      }));
+    },
+    onError: (_err, _vars, ctx) => rollbackEmployeesCache(qc, ctx),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
     },
