@@ -4,12 +4,13 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useVacations, useAddVacation, useRemoveVacation, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown } from '../hooks/useCapacity';
+import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown } from '../hooks/useCapacity';
+import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
-import type { QuarterCapacityResponse, VacationResponse, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse } from '../types/api';
+import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, CapacityRuleResponse, JiraUserSearchResult, CategoryBreakdownResponse } from '../types/api';
 
 const { Text } = Typography;
 
@@ -219,12 +220,23 @@ function TeamTab() {
   );
 }
 
-function VacationsTab() {
+const REASON_OPTIONS: { value: AbsenceReason; label: string; color: string }[] = [
+  { value: 'vacation', label: 'Отпуск',     color: '#fa8c16' },
+  { value: 'sick',     label: 'Больничный', color: '#f5222d' },
+  { value: 'day_off',  label: 'Отгул',      color: '#1677ff' },
+  { value: 'other',    label: 'Прочее',     color: '#8c8c8c' },
+];
+
+function reasonMeta(r: AbsenceReason) {
+  return REASON_OPTIONS.find(o => o.value === r) ?? REASON_OPTIONS[0];
+}
+
+function AbsencesTab() {
   const { notification } = App.useApp();
-  const { data, isLoading } = useVacations();
+  const { data, isLoading } = useAbsences();
   const { data: employees } = useEmployees();
-  const add = useAddVacation();
-  const remove = useRemoveVacation();
+  const add = useAddAbsence();
+  const remove = useRemoveAbsence();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
@@ -232,37 +244,74 @@ function VacationsTab() {
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
-      <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>Добавить отпуск</Button>
-      <Modal title="Новый отпуск" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={add.isPending}>
-        <Form form={form} layout="vertical" onFinish={(vals) => {
-          add.mutate({
-            employee_id: vals.employee_id,
-            start_date: vals.dates[0].format('YYYY-MM-DD'),
-            end_date: vals.dates[1].format('YYYY-MM-DD'),
-          }, {
-            onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ title: 'Отпуск добавлен' }); },
-            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
-          });
-        }}>
+      {/* Heatmap placeholder — Task 5.3 adds AbsenceHeatmap here */}
+      <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>
+        Добавить отсутствие
+      </Button>
+      <Modal
+        title="Новое отсутствие"
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={() => form.submit()}
+        confirmLoading={add.isPending}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ reason: 'vacation' }}
+          onFinish={(vals) => {
+            add.mutate(
+              {
+                employee_id: vals.employee_id,
+                start_date: vals.dates[0].format('YYYY-MM-DD'),
+                end_date: vals.dates[1].format('YYYY-MM-DD'),
+                reason: vals.reason,
+              },
+              {
+                onSuccess: () => {
+                  setOpen(false);
+                  form.resetFields();
+                  notification.success({ title: 'Отсутствие добавлено' });
+                },
+                onError: (e) =>
+                  notification.error({ title: 'Ошибка', description: e.message }),
+              },
+            );
+          }}
+        >
           <Form.Item name="employee_id" label="Сотрудник" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={employees?.map((e) => ({ value: e.id, label: e.display_name }))} />
+            <Select showSearch optionFilterProp="label"
+              options={employees?.map((e) => ({ value: e.id, label: e.display_name }))} />
+          </Form.Item>
+          <Form.Item name="reason" label="Причина" rules={[{ required: true }]}>
+            <Select options={REASON_OPTIONS.map(o => ({ value: o.value, label: o.label }))} />
           </Form.Item>
           <Form.Item name="dates" label="Даты" rules={[{ required: true }]}>
             <DatePicker.RangePicker format="DD.MM.YYYY" />
           </Form.Item>
         </Form>
       </Modal>
-      <Table<VacationResponse>
+      <Table<AbsenceResponse>
         dataSource={data}
         rowKey="id"
         loading={isLoading}
         pagination={false}
         size="small"
         columns={[
-          { title: 'Сотрудник', dataIndex: 'employee_id', render: (id: string) => employeeMap.get(id) || id },
-          { title: 'Начало', dataIndex: 'start_date', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
-          { title: 'Окончание', dataIndex: 'end_date', render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
-          { title: 'Часов', dataIndex: 'hours_total', render: (v: number | null) => v != null ? formatHours(v) : '—' },
+          { title: 'Сотрудник', dataIndex: 'employee_id',
+            render: (id: string) => employeeMap.get(id) || id },
+          { title: 'Причина', dataIndex: 'reason', width: 130,
+            render: (v: AbsenceReason) => {
+              const m = reasonMeta(v);
+              return <span style={{ color: m.color }}>{m.label}</span>;
+            },
+          },
+          { title: 'Начало', dataIndex: 'start_date',
+            render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+          { title: 'Окончание', dataIndex: 'end_date',
+            render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+          { title: 'Часов', dataIndex: 'hours_total',
+            render: (v: number | null) => v != null ? formatHours(v) : '—' },
           {
             title: '', width: 50,
             render: (_, r) => (
@@ -363,14 +412,14 @@ export default function CapacityPage() {
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Планирование"
-        title="Ёмкость команды"
+        title="Ресурсы команды"
         subtitle="План · факт · отпуска · правила обязательной загрузки"
         actions={<QuarterYearSelect />}
       />
       <Tabs items={[
         { key: 'team', label: 'Команда', children: <TeamTab /> },
         { key: 'breakdown', label: 'Распределение', children: <BreakdownTab /> },
-        { key: 'vacations', label: 'Отпуска', children: <VacationsTab /> },
+        { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
         { key: 'rules', label: 'Правила', children: <RulesTab /> },
       ]} />
     </Space>
