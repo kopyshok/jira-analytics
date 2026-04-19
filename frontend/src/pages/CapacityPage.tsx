@@ -6,6 +6,7 @@ import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
 import { useTeamCapacity, useCapacityRules, useAddCapacityRule, useRemoveCapacityRule, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown } from '../hooks/useCapacity';
 import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
+import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
@@ -233,6 +234,7 @@ function reasonMeta(r: AbsenceReason) {
 
 function AbsencesTab() {
   const { notification } = App.useApp();
+  const { year, quarter } = useQuarterYear();
   const { data, isLoading } = useAbsences();
   const { data: employees } = useEmployees();
   const add = useAddAbsence();
@@ -241,10 +243,16 @@ function AbsencesTab() {
   const [form] = Form.useForm();
 
   const employeeMap = new Map(employees?.map((e) => [e.id, e.display_name]));
+  const activeEmployees = (employees ?? []).filter(e => e.is_active);
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
-      {/* Heatmap placeholder — Task 5.3 adds AbsenceHeatmap here */}
+      <AbsenceHeatmap
+        year={Number(year)}
+        quarter={Number(quarter)}
+        employees={activeEmployees.map(e => ({ id: e.id, display_name: e.display_name }))}
+        absences={data ?? []}
+      />
       <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>
         Добавить отсутствие
       </Button>
