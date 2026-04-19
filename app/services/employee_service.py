@@ -1,9 +1,9 @@
 """Сервис операций над таблицей employees.
 
 Сейчас содержит только пересчёт ``is_active`` на основе categorisation активных
-задач. Набор сотрудников, имеющих worklog'и на задачи с категориями
-«Активный стек» и «Архив квартальных задач», становится активным; все остальные
-помечаются неактивными.
+задач. Набор сотрудников, имеющих worklog'и на задачи с эффективной
+категорией («Активный стек» ∪ «Архив квартальных задач»), становится активным;
+все остальные помечаются неактивными.
 """
 
 from dataclasses import dataclass
@@ -44,11 +44,16 @@ class EmployeeService:
     def recalc_active_by_categories(self) -> RecalcStats:
         target = self._target_category_codes()
 
+        # Issue.category — денормализованная «эффективная» категория
+        # (наследуется от родителя в scope-дереве), в отличие от
+        # Issue.assigned_category (ручная метка на конкретной задаче).
+        # У абсолютного большинства задач assigned_category=NULL, поэтому
+        # фильтр по ней отсекал бы все ворклоги.
         active_ids = {
             row[0]
             for row in self.db.query(Worklog.employee_id)
             .join(Issue, Worklog.issue_id == Issue.id)
-            .filter(Issue.assigned_category.in_(target))
+            .filter(Issue.category.in_(target))
             .distinct()
             .all()
         }

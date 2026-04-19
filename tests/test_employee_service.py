@@ -35,6 +35,9 @@ def make_fixture(db_session, seed_categories):
             key=f"K-{employee_code}", summary="x",
             project_id=proj.id, issue_type="Task", status="В работе",
             assigned_category=issue_category,
+            # recalc смотрит на эффективную (денормализованную) категорию,
+            # которую в реальном бэкенде выставляет MappingService.
+            category=issue_category,
         )
         db_session.add_all([proj, emp, issue])
         db_session.flush()

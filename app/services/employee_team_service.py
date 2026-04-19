@@ -12,7 +12,12 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Employee, Issue, Worklog
+from app.models import Category, Employee, Issue, Worklog
+
+
+# Коды категорий, исключаемые из скана: «Архив прочих задач» + «Инициативы».
+# Остальные — «Активный стек» ∪ «Архив квартальных задач».
+EXCLUDED_CATEGORY_CODES: set[str] = {"archive", "initiatives_rfa"}
 
 
 @dataclass
@@ -26,11 +31,15 @@ class EmployeeTeamService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _target_category_codes(self) -> set[str]:
+        all_codes = {c.code for c in self.db.query(Category).all()}
+        return all_codes - EXCLUDED_CATEGORY_CODES
+
     def auto_detect_team(
-        self, employee_id: str, *, lookback_days: int = 180
+        self, employee_id: str, *, lookback_days: Optional[int] = None
     ) -> Optional[str]:
-        cutoff = datetime.utcnow() - timedelta(days=lookback_days)
-        rows = (
+        target_codes = self._target_category_codes()
+        q = (
             self.db.query(
                 Issue.team.label("team"),
                 func.coalesce(func.sum(Worklog.time_spent_seconds), 0).label("seconds"),
@@ -38,11 +47,16 @@ class EmployeeTeamService:
             .join(Worklog, Worklog.issue_id == Issue.id)
             .filter(
                 Worklog.employee_id == employee_id,
-                Worklog.started_at >= cutoff,
                 Issue.team.isnot(None),
                 Issue.team != "",
+                Issue.category.in_(target_codes),
             )
-            .group_by(Issue.team)
+        )
+        if lookback_days is not None:
+            cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+            q = q.filter(Worklog.started_at >= cutoff)
+        rows = (
+            q.group_by(Issue.team)
             .order_by(func.sum(Worklog.time_spent_seconds).desc())
             .all()
         )

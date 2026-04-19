@@ -3,21 +3,32 @@
 from datetime import date, datetime, timedelta
 import pytest
 
-from app.models import Employee, Issue, Project, Worklog
+from app.models import Category, Employee, Issue, Project, Worklog
 from app.services.employee_team_service import EmployeeTeamService
 
 
 @pytest.fixture
 def seed(db_session):
+    # Категории нужны, потому что auto_detect фильтрует задачи по
+    # Issue.category ∈ «Активный стек» ∪ «Архив квартальных задач»
+    # (т.е. всё кроме archive/initiatives_rfa).
+    db_session.add_all([
+        Category(id="cat_active", code="active_1", label="Active1", is_system=False),
+        Category(id="cat_archive", code="archive", label="Archive", is_system=True),
+        Category(id="cat_initiatives", code="initiatives_rfa", label="Init", is_system=True),
+    ])
     p = Project(id="p1", jira_project_id="100", key="PRJ", name="PRJ")
     db_session.add(p)
-    # Issues with team set
+    # Issues with team set (и активной категорией, иначе их отсекает фильтр).
     i_alpha = Issue(id="i_a", jira_issue_id="1", key="PRJ-1", summary="x",
-                    project_id="p1", issue_type="Task", status="Готово", team="Alpha")
+                    project_id="p1", issue_type="Task", status="Готово",
+                    team="Alpha", category="active_1")
     i_beta = Issue(id="i_b", jira_issue_id="2", key="PRJ-2", summary="x",
-                   project_id="p1", issue_type="Task", status="Готово", team="Beta")
+                   project_id="p1", issue_type="Task", status="Готово",
+                   team="Beta", category="active_1")
     i_none = Issue(id="i_n", jira_issue_id="3", key="PRJ-3", summary="x",
-                   project_id="p1", issue_type="Task", status="Готово", team=None)
+                   project_id="p1", issue_type="Task", status="Готово",
+                   team=None, category="active_1")
     emp = Employee(id="e1", jira_account_id="a1", display_name="Иванов",
                    is_active=True, team=None)
     db_session.add_all([i_alpha, i_beta, i_none, emp])
@@ -55,7 +66,8 @@ def test_ignores_worklogs_outside_lookback(db_session, seed):
     db_session.commit()
 
     svc = EmployeeTeamService(db_session)
-    assert svc.auto_detect_team(seed["emp"].id) == "Beta"
+    # Дефолт теперь «всё время» — для проверки окна передаём явно.
+    assert svc.auto_detect_team(seed["emp"].id, lookback_days=180) == "Beta"
 
 
 def test_returns_none_when_no_teamed_logs(db_session, seed):
