@@ -1,5 +1,10 @@
 // === Employees & Projects ===
 
+export interface EmployeeTeamItem {
+  team: string;
+  is_primary: boolean;
+}
+
 export interface EmployeeResponse {
   id: string;
   jira_account_id: string;
@@ -7,7 +12,8 @@ export interface EmployeeResponse {
   email: string | null;
   avatar_url: string | null;
   is_active: boolean;
-  team: string | null;
+  team: string | null;  // legacy: имя primary team
+  teams?: EmployeeTeamItem[];  // присутствует только если запросили with_teams=true
 }
 
 export interface JiraUserSearchResult {
