@@ -75,6 +75,8 @@ def list_employees(
                 key=lambda t: (not t.is_primary, t.team),
             )
             payload.teams = [EmployeeTeamItem.model_validate(t) for t in teams]
+        else:
+            payload.teams = None  # не утекать ORM-relationship когда не запрошено
         result.append(payload)
     return result
 
@@ -112,6 +114,7 @@ def employee_from_jira(
     # Snapshot before commit — commit expires attrs and a subsequent read
     # may hit a thread-rotated connection (see CLAUDE.md ORM caveat).
     response = EmployeeResponse.model_validate(existing)
+    response.teams = None  # endpoint does not expose multi-team
     db.commit()
     return response
 
@@ -175,7 +178,9 @@ def set_team_legacy(
     else:
         svc.replace_teams(employee_id, [])
     db.refresh(emp)
-    return EmployeeResponse.model_validate(emp)
+    response = EmployeeResponse.model_validate(emp)
+    response.teams = None  # legacy endpoint does not expose multi-team
+    return response
 
 
 # ─── New M:N team endpoints ───
@@ -220,6 +225,25 @@ def post_team(
     return EmployeeTeamItem.model_validate(row)
 
 
+@router.put("/{employee_id}/teams/primary", response_model=List[EmployeeTeamItem])
+def put_primary(
+    employee_id: str,
+    req: SetPrimaryRequest,
+    db: Session = Depends(get_db),
+):
+    """Сменить primary-команду сотрудника."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    svc = EmployeeTeamService(db)
+    try:
+        svc.set_primary(employee_id, req.team)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Employee not in team {req.team!r}")
+    rows = svc.list_teams(employee_id)
+    return [EmployeeTeamItem.model_validate(r) for r in rows]
+
+
 @router.put("/{employee_id}/teams", response_model=List[EmployeeTeamItem])
 def put_teams(
     employee_id: str,
@@ -248,22 +272,3 @@ def delete_team(
         raise HTTPException(status_code=404, detail="Employee not found")
     EmployeeTeamService(db).remove_team(employee_id, team)
     return Response(status_code=204)
-
-
-@router.put("/{employee_id}/teams/primary", response_model=List[EmployeeTeamItem])
-def put_primary(
-    employee_id: str,
-    req: SetPrimaryRequest,
-    db: Session = Depends(get_db),
-):
-    """Сменить primary-команду сотрудника."""
-    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
-    if emp is None:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    svc = EmployeeTeamService(db)
-    try:
-        svc.set_primary(employee_id, req.team)
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"Employee not in team {req.team!r}")
-    rows = svc.list_teams(employee_id)
-    return [EmployeeTeamItem.model_validate(r) for r in rows]
