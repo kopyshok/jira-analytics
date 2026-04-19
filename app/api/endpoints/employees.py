@@ -25,6 +25,7 @@ class EmployeeResponse(BaseModel):
     email: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool
+    team: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -104,3 +105,31 @@ def recalc_active(db: Session = Depends(get_db)):
         deactivated=stats.deactivated,
         total_active=stats.total_active,
     )
+
+
+class TeamUpdateRequest(BaseModel):
+    team: Optional[str] = None
+
+
+@router.put("/{employee_id}/team", response_model=EmployeeResponse)
+def set_team(
+    employee_id: str,
+    req: TeamUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """Назначить или очистить команду сотрудника.
+
+    Значение берётся из конфигурируемых опций Jira-поля «Продуктовая команда»
+    (/sync/jira-teams), но здесь не валидируется — это свободный справочник.
+    """
+    from fastapi import HTTPException
+
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    emp.team = (req.team or None)
+    db.flush()
+    # Snapshot before commit — see CLAUDE.md ORM caveat.
+    response = EmployeeResponse.model_validate(emp)
+    db.commit()
+    return response
