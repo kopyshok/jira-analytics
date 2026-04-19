@@ -18,18 +18,21 @@ test.describe('Capacity v2', () => {
     await page.goto('/capacity');
     await page.getByRole('tab', { name: 'Команда' }).click();
 
-    // Факт column not visible initially (toggle off by default).
-    await expect(page.getByRole('columnheader', { name: 'Факт', exact: true })).toHaveCount(0);
+    const factHeaders = page.getByRole('columnheader', { name: 'Факт', exact: true });
+
+    // Факт columns not rendered initially (toggle off by default).
+    await expect(factHeaders).toHaveCount(0);
 
     // The toolbar has two Switch components; the first corresponds to Факт.
     const switches = page.getByRole('switch');
     await switches.first().click();
 
-    await expectVisible(page.getByRole('columnheader', { name: 'Факт', exact: true }));
+    // After toggle: one Факт column per month (3) + one in Итого = 4.
+    await expect(factHeaders).not.toHaveCount(0);
 
     await page.reload();
     await page.getByRole('tab', { name: 'Команда' }).click();
-    await expectVisible(page.getByRole('columnheader', { name: 'Факт', exact: true }));
+    await expect(page.getByRole('columnheader', { name: 'Факт', exact: true })).not.toHaveCount(0);
 
     // Cleanup: toggle Факт off so other tests start from default.
     await page.getByRole('switch').first().click();

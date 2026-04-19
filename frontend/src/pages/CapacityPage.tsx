@@ -116,7 +116,7 @@ function TeamTab() {
   }
   type TreeRow = QuarterCapacityResponse | TeamRow;
 
-  const groupByTeam = (rows: QuarterCapacityResponse[]): TreeRow[] => {
+  const groupByTeam = (rows: QuarterCapacityResponse[]): TeamRow[] => {
     const buckets = new Map<string, QuarterCapacityResponse[]>();
     for (const r of rows) {
       const k = r.team ?? '__none__';
@@ -310,7 +310,7 @@ function TeamTab() {
         pagination={false}
         size="small"
         scroll={{ x: 1400 }}
-        expandable={{ defaultExpandAllRows: true, childrenColumnName: 'children' }}
+        expandable={{ expandedRowKeys: tree.map(r => r.key), childrenColumnName: 'children' }}
         rowClassName={(r: TreeRow) => 'isTeam' in r ? 'capacity-team-row' : ''}
       />
       <Modal
