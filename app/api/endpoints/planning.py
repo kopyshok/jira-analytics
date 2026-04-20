@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.services.capacity_service import CapacityService, ROLE_WHITELIST
 from app.services.planning_service import PlanningService
+from app.services.resource_base_service import ResourceBaseService
 
 
 router = APIRouter()
@@ -147,6 +148,30 @@ class CapacityPreviewResponse(BaseModel):
     per_employee: List[CapacityPreviewEmployeeRow]
 
 
+# === Resource base schemas ===
+
+class ResourceBaseDayOut(BaseModel):
+    date: str  # ISO "YYYY-MM-DD"
+    hours: float
+
+
+class ResourceBaseEmployeeOut(BaseModel):
+    employee_id: str
+    display_name: str
+    role: Optional[str] = None
+    total_hours: float
+    days: List[ResourceBaseDayOut]
+
+
+class ResourceBaseOut(BaseModel):
+    year: int
+    quarter: int
+    team: str
+    employees: List[ResourceBaseEmployeeOut]
+    role_totals: Dict[str, float]
+    external_qa_hours: Optional[float] = None
+
+
 # === Helpers ===
 
 def _to_scenario_resp(s: PlanningScenario) -> ScenarioResponse:
@@ -181,6 +206,29 @@ def _to_allocation_resp(
         opo_analyst_ratio=item.opo_analyst_ratio,
         impact=item.impact,
         risk=item.risk,
+    )
+
+
+def _resource_to_response(base) -> ResourceBaseOut:
+    return ResourceBaseOut(
+        year=base.year,
+        quarter=base.quarter,
+        team=base.team,
+        employees=[
+            ResourceBaseEmployeeOut(
+                employee_id=e.employee_id,
+                display_name=e.display_name,
+                role=e.role,
+                total_hours=e.total_hours,
+                days=[
+                    ResourceBaseDayOut(date=d.date.isoformat(), hours=d.hours)
+                    for d in e.days
+                ],
+            )
+            for e in base.employees
+        ],
+        role_totals=base.role_totals,
+        external_qa_hours=base.external_qa_hours,
     )
 
 
@@ -533,6 +581,7 @@ async def capacity_preview(
     body: CapacityPreviewRequest,
     db: Session = Depends(get_db),
 ):
+    # DEPRECATED — remove after Task 27 lands (see plans/2026-04-20-resources-scenarios-revamp.md)
     """Read-only расчёт ёмкости + spec спроса для UI планирования.
 
     Возвращает capacity/demand по ролям (analyst/dev/qa) и разбивку
@@ -603,3 +652,26 @@ async def capacity_preview(
         available_hours=avail,
         per_employee=per_emp,
     )
+
+
+# === Scenario resource base ===
+
+@router.get("/scenarios/{scenario_id}/resource", response_model=ResourceBaseOut)
+async def scenario_resource(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """Посуточная база ресурса команды для сценария.
+
+    Возвращает доступные проектные часы по каждому сотруднику на каждый
+    рабочий день квартала (с учётом отсутствий и обязательных работ).
+    """
+    sc = db.get(PlanningScenario, scenario_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Сценарий не найден")
+    if not sc.team:
+        raise HTTPException(status_code=400, detail="Команда у сценария не выбрана")
+    if not sc.year or not sc.quarter:
+        raise HTTPException(status_code=400, detail="Год/квартал у сценария не заданы")
+    base = ResourceBaseService(db).compute(sc)
+    return _resource_to_response(base)
