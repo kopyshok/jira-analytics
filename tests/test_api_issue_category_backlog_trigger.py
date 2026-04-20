@@ -98,19 +98,17 @@ def test_set_single_issue_category_removes_backlog_item_when_away(db_session):
     finally:
         app.dependency_overrides.clear()
 
-    # Category set via ``assigned_category``, not ``category``, so the
-    # derived field may not reflect it yet — but the trigger reads the new
-    # value via the service. Flip the denormalized category to match so
-    # the service deletes the row. In production MappingService owns this;
-    # in the test we replicate its behaviour manually.
+    # Endpoint пересчитывает denormalized Issue.category через
+    # CategoryResolver и зовёт BacklogService.sync_from_issue — для
+    # «не-backlog» категории без ScenarioAllocation это должно удалить
+    # BacklogItem.
     from app.models import Issue
 
     fresh = db_session.query(Issue).filter_by(id=issue.id).first()
-    # API endpoint sets assigned_category. Trigger should have synced using
-    # effective category — but sync reads ``issue.category``. Adjust the
-    # trigger to pass effective category... or we assert that the API also
-    # updates ``issue.category``. Read the current state:
     assert fresh.assigned_category == "development"
+    assert (
+        db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0
+    )
 
 
 def test_batch_set_category_triggers_backlog_sync(db_session):
