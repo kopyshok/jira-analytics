@@ -1,6 +1,7 @@
 import { Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import AppLayout from './components/Layout/AppLayout';
+import FactFilterProvider from './components/dashboard/FactFilterProvider';
 import {
   AnalyticsPage,
   BacklogPage,
@@ -30,8 +31,8 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: page(<DashboardPage />) },
-      { path: 'analytics', element: page(<AnalyticsPage />) },
+      { index: true, element: <FactFilterProvider>{page(<DashboardPage />)}</FactFilterProvider> },
+      { path: 'analytics', element: <FactFilterProvider>{page(<AnalyticsPage />)}</FactFilterProvider> },
       { path: 'sync', element: page(<SyncPage />) },
       { path: 'scope', element: <Navigate to="/sync" replace /> },
       { path: 'capacity', element: page(<CapacityPage />) },
