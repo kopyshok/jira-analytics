@@ -125,69 +125,115 @@ class TestMandatoryWorkTypesCRUD:
         assert codes_sorted == ["c", "b", "a"]
 
 
-# ──────────────────── Role capacity rules ────────────────────
+# ──────────────────── Role capacity rules (batch v3) ────────────────────
 
 class TestRoleCapacityRulesCRUD:
     def test_list_then_create(self, client, wt):
         empty = client.get("/api/v1/capacity/role-rules?year=2026&quarter=1").json()
         assert empty == []
 
-        res = client.post("/api/v1/capacity/role-rules", json={
-            "year": 2026, "quarter": 1, "role": "programmer",
-            "work_type_id": wt.id, "percent_of_norm": 10.0,
-        })
-        assert res.status_code == 201
+        res = client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": [
+                {"role": "programmer", "work_type_id": wt.id, "percent_of_norm": 100.0},
+            ]},
+        )
+        assert res.status_code == 200
 
         lst = client.get("/api/v1/capacity/role-rules?year=2026&quarter=1").json()
         assert len(lst) == 1
 
     def test_unknown_role_422(self, client, wt):
-        res = client.post("/api/v1/capacity/role-rules", json={
-            "year": 2026, "quarter": 1, "role": "ceo",
-            "work_type_id": wt.id, "percent_of_norm": 5.0,
-        })
+        res = client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": [
+                {"role": "ceo", "work_type_id": wt.id, "percent_of_norm": 100.0},
+            ]},
+        )
         assert res.status_code == 422
+        assert "Unknown role" in res.json()["detail"]
 
     def test_null_role_accepted(self, client, wt):
-        res = client.post("/api/v1/capacity/role-rules", json={
-            "year": 2026, "quarter": 1, "role": None,
-            "work_type_id": wt.id, "percent_of_norm": 3.0,
-        })
-        assert res.status_code == 201
-        assert res.json()["role"] is None
-
-    def test_duplicate_scope_409(self, client, wt):
-        body = {"year": 2026, "quarter": 1, "role": "analyst",
-                "work_type_id": wt.id, "percent_of_norm": 10.0}
-        client.post("/api/v1/capacity/role-rules", json=body)
-        res = client.post("/api/v1/capacity/role-rules", json=body)
-        assert res.status_code == 409
-
-    def test_patch_percent(self, client, wt):
-        created = client.post("/api/v1/capacity/role-rules", json={
-            "year": 2026, "quarter": 1, "role": "tester",
-            "work_type_id": wt.id, "percent_of_norm": 5.0,
-        }).json()
-        res = client.patch(
-            f"/api/v1/capacity/role-rules/{created['id']}",
-            json={"percent_of_norm": 7.5},
+        res = client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": [
+                {"role": None, "work_type_id": wt.id, "percent_of_norm": 100.0},
+            ]},
         )
         assert res.status_code == 200
-        assert res.json()["percent_of_norm"] == 7.5
+        assert res.json()[0]["role"] is None
 
-    def test_delete(self, client, wt):
-        created = client.post("/api/v1/capacity/role-rules", json={
-            "year": 2026, "quarter": 1, "role": "consultant",
-            "work_type_id": wt.id, "percent_of_norm": 5.0,
-        }).json()
-        res = client.delete(f"/api/v1/capacity/role-rules/{created['id']}")
-        assert res.status_code == 204
+    def test_duplicate_in_batch_422(self, client, wt):
+        res = client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": [
+                {"role": "analyst", "work_type_id": wt.id, "percent_of_norm": 50.0},
+                {"role": "analyst", "work_type_id": wt.id, "percent_of_norm": 50.0},
+            ]},
+        )
+        assert res.status_code == 422
+        assert "Duplicate rule" in res.json()["detail"]
 
-    def test_copy_to_quarter_happy_path(self, client, wt):
-        client.post("/api/v1/capacity/role-rules", json={
-            "year": 2026, "quarter": 1, "role": "programmer",
-            "work_type_id": wt.id, "percent_of_norm": 10.0,
-        })
+    def test_sum_not_100_returns_422(self, client, wt):
+        res = client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": [
+                {"role": "programmer", "work_type_id": wt.id, "percent_of_norm": 50.0},
+            ]},
+        )
+        assert res.status_code == 422
+        errors = res.json()["detail"]["errors"]
+        assert errors[0]["role"] == "programmer"
+        assert errors[0]["sum"] == 50.0
+        assert errors[0]["expected"] == 100.0
+
+    def test_batch_updates_existing_rule(self, client, wt, db_session):
+        # Seed a rule directly in DB with percent=60 (invalid alone but we're testing replace).
+        db_session.add(RoleCapacityRule(
+            year=2026, quarter=1, role="tester",
+            work_type_id=wt.id, percent_of_norm=60.0,
+        ))
+        db_session.commit()
+
+        # Atomic replace — submit a new percent; the old rule is wiped first.
+        res = client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": [
+                {"role": "tester", "work_type_id": wt.id, "percent_of_norm": 100.0},
+            ]},
+        )
+        assert res.status_code == 200
+
+        lst = client.get("/api/v1/capacity/role-rules?year=2026&quarter=1").json()
+        assert len(lst) == 1
+        assert lst[0]["percent_of_norm"] == 100.0
+
+    def test_batch_removes_rule_by_omission(self, client, wt):
+        # Seed a rule.
+        client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": [
+                {"role": "consultant", "work_type_id": wt.id, "percent_of_norm": 100.0},
+            ]},
+        )
+        assert len(client.get("/api/v1/capacity/role-rules?year=2026&quarter=1").json()) == 1
+
+        # Empty batch clears all rules for this (year, quarter).
+        res = client.put(
+            "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
+            json={"rules": []},
+        )
+        assert res.status_code == 200
+        assert client.get("/api/v1/capacity/role-rules?year=2026&quarter=1").json() == []
+
+    def test_copy_to_quarter_happy_path(self, client, wt, db_session):
+        # Seed source quarter directly via DB to avoid endpoint coupling.
+        db_session.add(RoleCapacityRule(
+            year=2026, quarter=1, role="programmer",
+            work_type_id=wt.id, percent_of_norm=100.0,
+        ))
+        db_session.commit()
+
         res = client.post("/api/v1/capacity/role-rules/copy-to-quarter", json={
             "from_year": 2026, "from_quarter": 1,
             "to_year": 2026, "to_quarter": 2,
@@ -195,12 +241,14 @@ class TestRoleCapacityRulesCRUD:
         assert res.status_code == 201
         assert res.json()["created"] == 1
 
-    def test_copy_to_quarter_conflict_409(self, client, wt):
+    def test_copy_to_quarter_conflict_409(self, client, wt, db_session):
         for q in (1, 2):
-            client.post("/api/v1/capacity/role-rules", json={
-                "year": 2026, "quarter": q, "role": "programmer",
-                "work_type_id": wt.id, "percent_of_norm": 10.0,
-            })
+            db_session.add(RoleCapacityRule(
+                year=2026, quarter=q, role="programmer",
+                work_type_id=wt.id, percent_of_norm=100.0,
+            ))
+        db_session.commit()
+
         res = client.post("/api/v1/capacity/role-rules/copy-to-quarter", json={
             "from_year": 2026, "from_quarter": 1,
             "to_year": 2026, "to_quarter": 2,
@@ -209,47 +257,90 @@ class TestRoleCapacityRulesCRUD:
         assert "conflicts" in res.json()["detail"]
 
 
-# ──────────────────── Employee overrides ────────────────────
+# ──────────────────── Employee overrides (batch v3) ────────────────────
 
 class TestEmployeeCapacityOverridesCRUD:
     def test_list_filters(self, client, wt, employee):
-        client.post("/api/v1/capacity/employee-overrides", json={
-            "year": 2026, "quarter": 1, "employee_id": employee.id,
-            "work_type_id": wt.id, "percent_of_norm": 20.0,
-        })
-        res = client.get(
-            f"/api/v1/capacity/employee-overrides?year=2026&quarter=1&employee_id={employee.id}",
+        res = client.put(
+            "/api/v1/capacity/employee-overrides/batch?year=2026&quarter=1",
+            json={"employee_rules": [
+                {"employee_id": employee.id, "rules": [
+                    {"work_type_id": wt.id, "percent_of_norm": 100.0},
+                ]},
+            ]},
         )
         assert res.status_code == 200
-        assert len(res.json()) == 1
+
+        listed = client.get(
+            f"/api/v1/capacity/employee-overrides?year=2026&quarter=1&employee_id={employee.id}",
+        )
+        assert listed.status_code == 200
+        assert len(listed.json()) == 1
 
     def test_unknown_employee_404(self, client, wt):
-        res = client.post("/api/v1/capacity/employee-overrides", json={
-            "year": 2026, "quarter": 1, "employee_id": "does-not-exist",
-            "work_type_id": wt.id, "percent_of_norm": 20.0,
-        })
+        res = client.put(
+            "/api/v1/capacity/employee-overrides/batch?year=2026&quarter=1",
+            json={"employee_rules": [
+                {"employee_id": "does-not-exist", "rules": [
+                    {"work_type_id": wt.id, "percent_of_norm": 100.0},
+                ]},
+            ]},
+        )
         assert res.status_code == 404
+        assert "Unknown employee_id" in res.json()["detail"]
 
-    def test_duplicate_scope_409(self, client, wt, employee):
-        body = {"year": 2026, "quarter": 1, "employee_id": employee.id,
-                "work_type_id": wt.id, "percent_of_norm": 20.0}
-        client.post("/api/v1/capacity/employee-overrides", json=body)
-        res = client.post("/api/v1/capacity/employee-overrides", json=body)
-        assert res.status_code == 409
-
-    def test_patch_and_delete(self, client, wt, employee):
-        created = client.post("/api/v1/capacity/employee-overrides", json={
-            "year": 2026, "quarter": 1, "employee_id": employee.id,
-            "work_type_id": wt.id, "percent_of_norm": 20.0,
-        }).json()
-        patched = client.patch(
-            f"/api/v1/capacity/employee-overrides/{created['id']}",
-            json={"percent_of_norm": 25.0},
+    def test_duplicate_in_batch_422(self, client, wt, employee):
+        res = client.put(
+            "/api/v1/capacity/employee-overrides/batch?year=2026&quarter=1",
+            json={"employee_rules": [
+                {"employee_id": employee.id, "rules": [
+                    {"work_type_id": wt.id, "percent_of_norm": 50.0},
+                    {"work_type_id": wt.id, "percent_of_norm": 50.0},
+                ]},
+            ]},
         )
-        assert patched.status_code == 200
-        assert patched.json()["percent_of_norm"] == 25.0
+        assert res.status_code == 422
+        assert "Duplicate rule" in res.json()["detail"]
 
-        removed = client.delete(
-            f"/api/v1/capacity/employee-overrides/{created['id']}",
+    def test_sum_not_100_returns_422(self, client, wt, employee):
+        res = client.put(
+            "/api/v1/capacity/employee-overrides/batch?year=2026&quarter=1",
+            json={"employee_rules": [
+                {"employee_id": employee.id, "rules": [
+                    {"work_type_id": wt.id, "percent_of_norm": 25.0},
+                ]},
+            ]},
         )
-        assert removed.status_code == 204
+        assert res.status_code == 422
+        errors = res.json()["detail"]["errors"]
+        assert errors[0]["employee_id"] == employee.id
+        assert errors[0]["sum"] == 25.0
+
+    def test_batch_updates_and_removes_overrides(self, client, wt, employee):
+        # Seed override.
+        client.put(
+            "/api/v1/capacity/employee-overrides/batch?year=2026&quarter=1",
+            json={"employee_rules": [
+                {"employee_id": employee.id, "rules": [
+                    {"work_type_id": wt.id, "percent_of_norm": 100.0},
+                ]},
+            ]},
+        )
+        listed = client.get(
+            f"/api/v1/capacity/employee-overrides?year=2026&quarter=1&employee_id={employee.id}",
+        ).json()
+        assert len(listed) == 1
+        assert listed[0]["percent_of_norm"] == 100.0
+
+        # Empty rules for this employee — clears all their overrides on (year, quarter).
+        removed = client.put(
+            "/api/v1/capacity/employee-overrides/batch?year=2026&quarter=1",
+            json={"employee_rules": [
+                {"employee_id": employee.id, "rules": []},
+            ]},
+        )
+        assert removed.status_code == 200
+        listed_after = client.get(
+            f"/api/v1/capacity/employee-overrides?year=2026&quarter=1&employee_id={employee.id}",
+        ).json()
+        assert listed_after == []
