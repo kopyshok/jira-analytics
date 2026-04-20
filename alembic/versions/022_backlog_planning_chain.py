@@ -27,6 +27,10 @@ SEED_CATEGORY = (
     True,
 )
 
+# AppSetting keys introduced by this feature — admin заполняет через UI,
+# в миграции не сидим (пустые "" строки бесполезны: _set_setting — upsert,
+# а _configured_planned_field_ids корректно пропускает отсутствующие ключи).
+# Оставлено как reference какие ключи ожидает sync.
 NEW_SETTING_KEYS = [
     "jira_planned_analyst_hours_field_id",
     "jira_planned_dev_hours_field_id",
@@ -116,31 +120,9 @@ def upgrade() -> None:
             "updated_at": now,
         }])
 
-    # --- Seed AppSetting keys with empty value (placeholder for admin to fill) ---
-    app_settings = sa.table(
-        "app_settings",
-        sa.column("id", sa.String),
-        sa.column("key", sa.String),
-        sa.column("value", sa.Text),
-        sa.column("created_at", sa.DateTime),
-        sa.column("updated_at", sa.DateTime),
-    )
-    rows_to_insert = []
-    for k in NEW_SETTING_KEYS:
-        found = bind.execute(
-            sa.text("SELECT key FROM app_settings WHERE key = :k"), {"k": k}
-        ).fetchone()
-        if not found:
-            now = datetime.utcnow()
-            rows_to_insert.append({
-                "id": str(uuid.uuid4()),
-                "key": k,
-                "value": "",
-                "created_at": now,
-                "updated_at": now,
-            })
-    if rows_to_insert:
-        op.bulk_insert(app_settings, rows_to_insert)
+    # AppSetting keys for customfield IDs не сидим: admin задаёт их через UI,
+    # а sync-код (см. _configured_planned_field_ids) корректно пропускает
+    # отсутствующие ключи. Пустые "" строки лишь засоряли таблицу.
 
 
 def downgrade() -> None:
@@ -168,13 +150,4 @@ def downgrade() -> None:
 
     bind = op.get_bind()
     bind.execute(sa.text("DELETE FROM categories WHERE code = 'initiatives_backlog'"))
-    for k in [
-        "jira_planned_analyst_hours_field_id", "jira_planned_dev_hours_field_id",
-        "jira_planned_qa_hours_field_id", "jira_planned_opo_hours_field_id",
-        "jira_involvement_analyst_field_id", "jira_involvement_dev_field_id",
-        "jira_involvement_qa_field_id", "jira_involvement_launch_field_id",
-        "jira_duration_analyst_field_id", "jira_duration_dev_field_id",
-        "jira_duration_qa_field_id", "jira_duration_launch_field_id",
-        "jira_impact_field_id", "jira_risk_field_id",
-    ]:
-        bind.execute(sa.text("DELETE FROM app_settings WHERE key = :k"), {"k": k})
+    # AppSetting ключи этой фичи в upgrade() не создаются — чистить нечего.
