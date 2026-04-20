@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { App, Form, Input, InputNumber, Modal, Select } from 'antd';
 import { useCreateScenario } from '../../hooks/usePlanning';
 import { useQuarterYear } from '../../hooks/useQuarterYear';
@@ -35,7 +35,9 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
   const { year, quarter } = useQuarterYear();
   const create = useCreateScenario();
   const [form] = Form.useForm<FormValues>();
-  const [submitDisabled, setSubmitDisabled] = useState(true);
+  // Derived: пересчёт disabled идёт от актуальных полей формы, без setState-in-effect.
+  const values = Form.useWatch([], form) as Partial<FormValues> | undefined;
+  const submitDisabled = !values?.name || !values?.year || !values?.quarter || !values?.team;
 
   useEffect(() => {
     if (!open) return;
@@ -45,13 +47,7 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
       quarter: Number(quarter),
       name: `Q${quarter} ${year} plan`,
     });
-    // После сброса поля team пустое — кнопка заблокирована
-    setSubmitDisabled(true);
   }, [open, year, quarter, form]);
-
-  const handleValuesChange = (_: Partial<FormValues>, all: FormValues) => {
-    setSubmitDisabled(!all.name || !all.year || !all.quarter || !all.team);
-  };
 
   const handleSubmit = (values: FormValues) => {
     create.mutate(values, {
@@ -81,7 +77,6 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
-        onValuesChange={handleValuesChange}
       >
         <Form.Item
           name="name"
