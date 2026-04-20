@@ -1,12 +1,14 @@
-import { Card, Skeleton } from 'antd';
+import { useMemo } from 'react';
+import { Card, Skeleton, Tag } from 'antd';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
-import type { CapacityPreviewResponse } from '../../types/planning';
+import type { AllocationResponse, ResourceBase } from '../../types/api';
+import { demandByRole } from '../../utils/planning';
 import RoleCapacityBar from './RoleCapacityBar';
 
-type CapacityRoleKey = keyof CapacityPreviewResponse['capacity_by_role'];
-const ROLE_KEYS: CapacityRoleKey[] = ['analyst', 'dev', 'qa'];
+const ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
+type RoleKey = (typeof ROLE_KEYS)[number];
 
 // Short abbreviations for role badges in the employee list
 const ROLE_SHORT_LOCAL: Record<string, string> = {
@@ -18,21 +20,12 @@ const ROLE_SHORT_LOCAL: Record<string, string> = {
 };
 
 interface Props {
-  preview: CapacityPreviewResponse | undefined;
+  resourceBase: ResourceBase | undefined;
+  allocations: AllocationResponse[];
   quarter: string;
 }
 
-function KpiRow({
-  k,
-  v,
-  neg,
-  strong,
-}: {
-  k: string;
-  v: string;
-  neg?: boolean;
-  strong?: boolean;
-}) {
+function KpiRow({ k, v, neg, strong }: { k: string; v: string; neg?: boolean; strong?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
       <span
@@ -58,13 +51,16 @@ function KpiRow({
   );
 }
 
-/** Правая sticky-колонка /planning: 4 карточки с ресурсом по ролям/сотрудникам. */
-export default function PlanningCapacityPanel({
-  preview,
-  quarter,
-}: Props) {
+/** Правая sticky-колонка /planning: карточки с ресурсом по ролям и сотрудникам.
+ *  Ёмкость берётся из resourceBase (Task 24, /scenarios/:id/resource).
+ *  Потребность считается на клиенте через demandByRole — мгновенно при клике. */
+export default function PlanningCapacityPanel({ resourceBase, allocations, quarter }: Props) {
   const { data: roles = [] } = useRoles();
-  if (!preview) {
+
+  // Пересчёт потребности по ролям при каждом изменении раскладок — O(n), <1ms
+  const demand = useMemo(() => demandByRole(allocations), [allocations]);
+
+  if (!resourceBase) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 16 }}>
         <Card>
@@ -80,31 +76,29 @@ export default function PlanningCapacityPanel({
     );
   }
 
-  const totalCapacity = preview.total_capacity;
-  const totalPlanned = preview.total_demand;
+  const capacityByRole: Record<RoleKey, number> = {
+    analyst: resourceBase.role_totals['analyst'] ?? 0,
+    dev:     resourceBase.role_totals['dev'] ?? 0,
+    // Если задан внешний QA-резерв — используем его, иначе берём из role_totals
+    qa: resourceBase.external_qa_hours != null
+      ? resourceBase.external_qa_hours
+      : (resourceBase.role_totals['qa'] ?? 0),
+  };
+
+  const totalCapacity = ROLE_KEYS.reduce((s, r) => s + capacityByRole[r], 0);
+  const totalDemand = ROLE_KEYS.reduce((s, r) => s + (demand[r] ?? 0), 0);
   const overallOver = ROLE_KEYS.some(
-    (r) => preview.demand_by_role[r] > preview.capacity_by_role[r] && preview.capacity_by_role[r] > 0,
+    (r) => (demand[r] ?? 0) > capacityByRole[r] && capacityByRole[r] > 0,
   );
-  const freeHours = Math.max(0, Math.round(totalCapacity - totalPlanned));
-  const freePct =
-    totalCapacity > 0 ? Math.max(0, Math.round((1 - totalPlanned / totalCapacity) * 100)) : 0;
+  const freeHours = Math.max(0, Math.round(totalCapacity - totalDemand));
+  const freePct = totalCapacity > 0
+    ? Math.max(0, Math.round((1 - totalDemand / totalCapacity) * 100))
+    : 0;
+  const plannedPct = totalCapacity > 0
+    ? Math.min(100, (totalDemand / totalCapacity) * 100)
+    : 0;
 
-  // Employees в разрезе ролей для «Расчёт ёмкости» -> последний блок
-  const perRoleAgg = ROLE_KEYS.map((r) => {
-    const emps = preview.per_employee.filter((e) => e.role === r);
-    return {
-      role: r,
-      empCount: emps.length,
-      raw: emps.reduce((s, e) => s + e.raw_hours, 0),
-      mandatory: emps.reduce((s, e) => s + e.mandatory_hours, 0),
-      capacity: preview.capacity_by_role[r],
-    };
-  });
-
-  const unroled = preview.per_employee.filter((e) => !ROLE_KEYS.includes(e.role as never));
-
-  // Overall bar (Card 1) — горизонтальный, два сегмента: planned + mandatory
-  const plannedPct = totalCapacity > 0 ? Math.min(100, (totalPlanned / totalCapacity) * 100) : 0;
+  const includedCount = allocations.filter((a) => a.included).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 16 }}>
@@ -128,6 +122,11 @@ export default function PlanningCapacityPanel({
           >
             Ресурс команды · Q{quarter}
           </span>
+          {resourceBase.external_qa_hours != null && (
+            <Tag color="purple" style={{ fontSize: 10, lineHeight: '18px' }}>
+              внешний QA {Math.round(resourceBase.external_qa_hours)} ч
+            </Tag>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
           <span
@@ -139,7 +138,7 @@ export default function PlanningCapacityPanel({
               lineHeight: 1,
             }}
           >
-            {Math.round(totalPlanned)}
+            {Math.round(totalDemand)}
           </span>
           <span style={{ fontSize: 16, color: DARK_THEME.textMuted }}>/</span>
           <span style={{ fontSize: 24, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
@@ -150,8 +149,8 @@ export default function PlanningCapacityPanel({
           {overallOver
             ? 'Перегруз по одной или нескольким ролям — см. ниже'
             : totalCapacity > 0
-              ? `Запас ${freeHours} ч · ${freePct}% свободно`
-              : 'Нет данных о ёмкости на период'}
+              ? `Запас ${freeHours} ч · ${freePct}% свободно · включено ${includedCount} идей`
+              : 'Нет данных о ёмкости'}
         </div>
         <div
           style={{
@@ -187,123 +186,30 @@ export default function PlanningCapacityPanel({
             <RoleCapacityBar
               key={r}
               role={r}
-              demand={preview.demand_by_role[r]}
-              capacity={preview.capacity_by_role[r]}
-              employeeCount={preview.per_employee.filter((e) => e.role === r).length}
+              demand={demand[r] ?? 0}
+              capacity={capacityByRole[r]}
+              employeeCount={resourceBase.employees.filter((e) => e.role === r).length}
             />
           ))}
         </div>
       </Card>
 
-      {/* 3. Расчёт ёмкости */}
-      <Card title="Расчёт ёмкости" styles={{ body: { padding: 0 } }}>
-        <div
-          style={{
-            padding: '10px 14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            fontSize: 12,
-          }}
-        >
-          <KpiRow
-            k={`${preview.per_employee.length} сотр. × календарь РФ`}
-            v={`${Math.round(preview.gross_hours).toLocaleString('ru')} ч брутто`}
-          />
-          <KpiRow k="− Отпуска / отсутствия" v={`−${Math.round(preview.absence_hours)} ч`} neg />
-          <KpiRow
-            k="− Обязат. работы (сопровожд., встречи)"
-            v={`−${Math.round(preview.mandatory_hours)} ч`}
-            neg
-          />
-          <div
-            style={{ borderTop: `1px solid ${DARK_THEME.border}`, paddingTop: 8, marginTop: 2 }}
-          >
-            <KpiRow
-              k="Доступно для бэклога"
-              v={`${Math.round(preview.available_hours)} ч`}
-              strong
-            />
-          </div>
-          {/* В разрезе ролей */}
-          <div
-            style={{
-              marginTop: 8,
-              paddingTop: 10,
-              borderTop: `1px dashed ${DARK_THEME.border}`,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                color: DARK_THEME.textMuted,
-                textTransform: 'uppercase',
-                letterSpacing: 0.6,
-                marginBottom: 8,
-              }}
-            >
-              в разрезе ролей
-            </div>
-            {perRoleAgg.map((agg) => (
-              <div
-                key={agg.role}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '8px 1fr auto',
-                  gap: 8,
-                  padding: '5px 0',
-                  alignItems: 'center',
-                }}
-              >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 2,
-                    background: getRoleColor(roles, agg.role),
-                    display: 'inline-block',
-                  }}
-                />
-                <span style={{ color: DARK_THEME.textSecondary, fontSize: 12 }}>
-                  {getRoleLabel(roles, agg.role)}{' '}
-                  <span style={{ color: DARK_THEME.textHint, fontSize: 10 }}>
-                    ({agg.empCount} чел · брутто {Math.round(agg.raw)} ч − обязат.{' '}
-                    {Math.round(agg.mandatory)} ч)
-                  </span>
-                </span>
-                <span
-                  style={{
-                    fontFamily: FONTS.mono,
-                    fontSize: 12,
-                    color: getRoleColor(roles, agg.role),
-                    fontWeight: 600,
-                  }}
-                >
-                  {Math.round(agg.capacity)} ч
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      {/* 4. По сотрудникам */}
+      {/* 3. По сотрудникам */}
       <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
         <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-          {preview.per_employee.map((e) => {
-            const knownRole = e.role && ROLE_KEYS.includes(e.role as CapacityRoleKey) ? e.role : null;
+          {resourceBase.employees.map((e) => {
+            const knownRole = e.role && (ROLE_KEYS as readonly string[]).includes(e.role) ? e.role : null;
             const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
-            const roleShort = knownRole ? (ROLE_SHORT_LOCAL[knownRole] ?? knownRole.slice(0, 2).toUpperCase()) : '—';
-            const mandPct = e.raw_hours > 0 ? (e.mandatory_hours / e.raw_hours) * 100 : 0;
-            const availPct = e.raw_hours > 0 ? (e.available_hours / e.raw_hours) * 100 : 0;
+            const roleShort = knownRole
+              ? (ROLE_SHORT_LOCAL[knownRole] ?? knownRole.slice(0, 2).toUpperCase())
+              : '—';
             return (
               <div key={e.employee_id}>
                 <div
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'baseline',
-                    marginBottom: 4,
+                    alignItems: 'center',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -330,16 +236,11 @@ export default function PlanningCapacityPanel({
                         fontSize: 12,
                       }}
                     >
-                      {e.name}
+                      {e.display_name}
                     </span>
-                    {e.vacation_days > 0 && (
-                      <span style={{ fontSize: 10, color: DARK_THEME.textHint }}>
-                        отп. {e.vacation_days} дн
-                      </span>
-                    )}
                     {!knownRole && (
                       <span style={{ fontSize: 10, color: DARK_THEME.textDim }}>
-                        роль не задана — не учитывается
+                        роль не задана
                       </span>
                     )}
                   </div>
@@ -350,39 +251,64 @@ export default function PlanningCapacityPanel({
                       fontFamily: FONTS.mono,
                     }}
                   >
-                    {Math.round(e.available_hours)} ч
+                    {Math.round(e.total_hours)} ч
                   </span>
                 </div>
+                {/* Simple capacity bar */}
                 <div
                   style={{
                     display: 'flex',
-                    height: 5,
+                    height: 4,
                     background: DARK_THEME.darkAccent,
-                    borderRadius: 2.5,
+                    borderRadius: 2,
                     overflow: 'hidden',
+                    marginTop: 4,
                   }}
                 >
-                  <div
-                    style={{
-                      width: `${mandPct}%`,
-                      background: 'rgba(127,119,221,0.5)',
-                    }}
-                  />
-                  <div style={{ width: `${availPct}%`, background: roleColor }} />
+                  <div style={{ width: '100%', background: roleColor, opacity: 0.4 }} />
                 </div>
               </div>
             );
           })}
-          {preview.per_employee.length === 0 && (
+          {resourceBase.employees.length === 0 && (
             <div style={{ color: DARK_THEME.textMuted, fontSize: 12, padding: 8 }}>
-              Нет активных сотрудников для периода.
+              Нет сотрудников в команде.
             </div>
           )}
-          {unroled.length > 0 && (
-            <div style={{ marginTop: 4, fontSize: 10, color: DARK_THEME.textDim }}>
-              Сотрудники без роли показаны серым и не учтены в capacity_by_role.
-            </div>
-          )}
+        </div>
+      </Card>
+
+      {/* 4. Ёмкость по ролям — сводка */}
+      <Card title="Ёмкость по ролям" styles={{ body: { padding: 0 } }}>
+        <div
+          style={{
+            padding: '10px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            fontSize: 12,
+          }}
+        >
+          {ROLE_KEYS.map((r) => {
+            const cap = capacityByRole[r];
+            const dem = demand[r] ?? 0;
+            return (
+              <KpiRow
+                key={r}
+                k={`${getRoleLabel(roles, r)} · ${resourceBase.employees.filter((e) => e.role === r).length} чел`}
+                v={`${Math.round(dem)} / ${Math.round(cap)} ч`}
+                neg={dem > cap && cap > 0}
+                strong={false}
+              />
+            );
+          })}
+          <div style={{ borderTop: `1px solid ${DARK_THEME.border}`, paddingTop: 8, marginTop: 2 }}>
+            <KpiRow
+              k="Итого доступно для бэклога"
+              v={`${Math.round(totalCapacity)} ч`}
+              strong
+            />
+          </div>
         </div>
       </Card>
     </div>
