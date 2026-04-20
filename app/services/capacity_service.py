@@ -1,19 +1,19 @@
-"""Сервис расчёта доступной ёмкости сотрудников.
+"""Сервис расчёта доступной ёмкости сотрудников (v3).
 
 Формула:
-    available = norm_hours - vacation_hours - mandatory_hours
+    effective_norm    = max(0, norm_hours − absence_hours)
+    productive_pct    = Σ правил для work_types, у которых есть хоть одна
+                        привязанная категория (Category.work_type_id = wt.id)
+    available_hours   = effective_norm × productive_pct / 100
+    mandatory_hours   = effective_norm − available_hours
 
-где:
-- norm_hours = сумма ``production_calendar_day.hours`` за месяц
-  (8ч будни, 7ч предпраздничные, 0 выходные/праздники), масштабируется на
-  ``hours_per_day / 8``. Если в БД дня нет — фоллбэк ``hours_per_day`` на
-  каждый Пн–Пт.
-- vacation_hours = норма часов за дни отпуска, попавшие в период
-  (та же логика, что и для norm_hours).
-- mandatory_hours = norm_hours × total_percent / 100
-  (total_percent резолвится per (employee, quarter) из правил v2:
-  employee_capacity_overrides > role_capacity_rules[role=e.role] >
-  role_capacity_rules[role=NULL] > 0 — см. ``_mandatory_percent_breakdown``).
+Где ``mandatory_percent_breakdown`` резолвит процент per (employee, work_type) по
+приоритету: employee_capacity_overrides > role_capacity_rules[role=e.role] >
+role_capacity_rules[role=NULL] > 0.
+
+v3 отличие от v2: проценты теперь описывают 100 % времени; «продуктивные» виды
+работ вычитаются из нормы только косвенно (через долю НЕпродуктивных), а факт
+(ворклоги) группируется per work_type через Category.work_type_id.
 """
 
 from calendar import monthrange
@@ -263,23 +263,21 @@ class CapacityService:
             result[wt.code] = pct
         return result
 
-    def _mandatory_hours_for_month(
-        self,
-        employee: Employee,
-        norm_hours: float,
-        year: int,
-        month: int,
-    ) -> float:
-        """Часы обязательных работ по правилам v2.
+    def _productive_work_type_ids(self) -> set[str]:
+        """IDs of work types that have at least one linked Category.
 
-        Применяется суммарный процент за квартал к месячной норме —
-        так квартальное правило равномерно распределяется по долям
-        norm_hours каждого месяца.
+        These are the ``productive`` work types — their rule percentages
+        contribute to ``available_hours`` (= productive share of norm).
         """
-        quarter = self._quarter_of(month)
-        breakdown = self.mandatory_percent_breakdown(employee, year, quarter)
-        total_pct = sum(breakdown.values())
-        return norm_hours * total_pct / 100.0
+        from app.models import Category
+
+        rows = (
+            self.db.query(Category.work_type_id)
+            .filter(Category.work_type_id.is_not(None))
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in rows}
 
     # === Основные расчёты ===
 
@@ -295,7 +293,7 @@ class CapacityService:
         year: int,
         month: int,
     ) -> MonthlyCapacity:
-        """Доступная ёмкость сотрудника за месяц."""
+        """Доступная ёмкость сотрудника за месяц (v3)."""
         if not 1 <= month <= 12:
             raise ValueError(f"Month must be 1..12, got {month}")
 
@@ -303,13 +301,27 @@ class CapacityService:
 
         workdays = self._workdays_in_month(year, month)
         norm_hours = self._norm_hours_in_month(year, month)
-        vacation_hours = self._absence_hours_for_month(
+        absence_hours = self._absence_hours_for_month(
             employee_id, year, month
         )
-        mandatory_hours = self._mandatory_hours_for_month(
-            employee, norm_hours, year, month
+
+        quarter = self._quarter_of(month)
+        breakdown = self.mandatory_percent_breakdown(employee, year, quarter)
+        productive_ids = self._productive_work_type_ids()
+
+        wt_id_by_code = {
+            w.code: w.id
+            for w in self.db.query(MandatoryWorkType).all()
+        }
+        productive_pct = sum(
+            pct
+            for code, pct in breakdown.items()
+            if wt_id_by_code.get(code) in productive_ids
         )
-        available = max(0.0, norm_hours - vacation_hours - mandatory_hours)
+
+        effective_norm = max(0.0, norm_hours - absence_hours)
+        available = effective_norm * (productive_pct / 100.0)
+        mandatory_hours = effective_norm - available
 
         month_start = date(year, month, 1)
         if month == 12:
@@ -336,7 +348,7 @@ class CapacityService:
             month=month,
             workdays=workdays,
             norm_hours=norm_hours,
-            vacation_hours=vacation_hours,
+            vacation_hours=absence_hours,
             mandatory_hours=mandatory_hours,
             available_hours=available,
             fact_hours=float(fact),
