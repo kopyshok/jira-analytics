@@ -1,25 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import minMax from 'dayjs/plugin/minMax';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
 import { useTeamCapacity, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useAutoDetectTeams, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
-import { useAbsences, useAddAbsence, useAddAbsencesBatch, useRemoveAbsence } from '../hooks/useAbsences';
-import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
+import { useAbsences, useAddAbsence, useRemoveAbsence } from '../hooks/useAbsences';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import RulesTabV2 from '../components/capacity/RulesTabV2';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
-import CapacityFilterProvider from '../components/capacity/CapacityFilterProvider';
-import { useCapacityFilter, NO_TEAM_VALUE } from '../hooks/useCapacityFilter';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES, EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '../utils/constants';
-import type { QuarterCapacityResponse, AbsenceResponse, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem, EmployeeRole } from '../types/api';
-
-dayjs.extend(minMax);
+import type { QuarterCapacityResponse, AbsenceResponse, AbsenceReason, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem, EmployeeRole } from '../types/api';
 
 const { Text } = Typography;
 
@@ -51,12 +45,13 @@ function TeamTab() {
   const teamOptions = (jiraTeams.data ?? []).map(t => ({ value: t, label: t }));
 
   const storedEmp = useGenericSetting('ui_capacity_team_filter');
+  const storedTeams = useGenericSetting('ui_capacity_team_filter_teams');
   const storedShowFact = useGenericSetting('ui_capacity_show_fact');
   const storedShowPct  = useGenericSetting('ui_capacity_show_pct');
   const saveStored = useSaveGenericSetting();
-  const { matchesTeam } = useCapacityFilter();
 
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [showFact, setShowFact] = useState(false);
   const [showPct,  setShowPct]  = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -91,14 +86,15 @@ function TeamTab() {
 
   useEffect(() => {
     if (hydrated) return;
-    if (storedEmp.data === undefined
+    if (storedEmp.data === undefined || storedTeams.data === undefined
         || storedShowFact.data === undefined || storedShowPct.data === undefined) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedEmpIds((storedEmp.data?.value || '').split(',').filter(Boolean));
+    setSelectedTeams((storedTeams.data?.value || '').split(',').filter(Boolean));
     setShowFact(storedShowFact.data?.value === '1');
     setShowPct(storedShowPct.data?.value === '1');
     setHydrated(true);
-  }, [hydrated, storedEmp.data, storedShowFact.data, storedShowPct.data]);
+  }, [hydrated, storedEmp.data, storedTeams.data, storedShowFact.data, storedShowPct.data]);
 
   // Drop removed employees from selection (parity with old code).
   useEffect(() => {
@@ -117,7 +113,10 @@ function TeamTab() {
   // ------------ Filter visible rows ------------
   const visible = (data ?? []).filter(r => {
     if (selectedEmpIds.length && !selectedEmpIds.includes(r.employee_id)) return false;
-    if (!matchesTeam(r.employee_id)) return false;
+    if (selectedTeams.length) {
+      const teamKey = r.team ?? '__none__';
+      if (!selectedTeams.includes(teamKey)) return false;
+    }
     return true;
   });
 
@@ -333,6 +332,16 @@ function TeamTab() {
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
       <Space wrap>
+        <Select mode="multiple" allowClear placeholder="Фильтр по команде"
+          style={{ minWidth: 220 }}
+          value={selectedTeams}
+          onChange={(v) => { setSelectedTeams(v); persist('ui_capacity_team_filter_teams', v.join(',')); }}
+          options={[...teamOptions, { value: '__none__', label: 'Без команды' }]}
+          onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
+          loading={jiraTeams.isFetching}
+          notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
+          showSearch optionFilterProp="label"
+        />
         <Select mode="multiple" allowClear placeholder="Фильтр по сотруднику"
           style={{ minWidth: 260 }}
           value={selectedEmpIds}
@@ -425,60 +434,29 @@ function TeamTab() {
   );
 }
 
+const REASON_OPTIONS: { value: AbsenceReason; label: string; color: string }[] = [
+  { value: 'vacation', label: 'Отпуск',     color: '#fa8c16' },
+  { value: 'sick',     label: 'Больничный', color: '#f5222d' },
+  { value: 'day_off',  label: 'Отгул',      color: '#1677ff' },
+  { value: 'other',    label: 'Прочее',     color: '#8c8c8c' },
+];
+
+function reasonMeta(r: AbsenceReason) {
+  return REASON_OPTIONS.find(o => o.value === r) ?? REASON_OPTIONS[0];
+}
+
 function AbsencesTab() {
   const { notification } = App.useApp();
   const { year, quarter } = useQuarterYear();
-  const { data: absences, isLoading } = useAbsences();
+  const { data, isLoading } = useAbsences();
   const { data: employees } = useEmployees();
-  const { data: reasons } = useAbsenceReasons();
   const add = useAddAbsence();
-  const batchAdd = useAddAbsencesBatch();
   const remove = useRemoveAbsence();
-  const { matchesTeam } = useCapacityFilter();
-  const [singleOpen, setSingleOpen] = useState(false);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [editEmployeeId, setEditEmployeeId] = useState<string | null>(null);
-  const [singleForm] = Form.useForm();
-  const [bulkForm] = Form.useForm();
-  const [showUnplannedOnly, setShowUnplannedOnly] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
 
-  const activeEmployees = (employees ?? []).filter(e => e.is_active && matchesTeam(e.id));
-  const activeReasons = (reasons ?? []).filter(r => r.is_active);
-
-  // Quarter bounds.
-  const months = QUARTER_MONTHS[Number(quarter)] ?? [];
-  const periodStart = dayjs(`${year}-${String(months[0] ?? 1).padStart(2, '0')}-01`);
-  const periodEnd = periodStart.add(3, 'month').subtract(1, 'day');
-
-  const absencesByEmp = useMemo(() => {
-    const m = new Map<string, AbsenceResponse[]>();
-    (absences ?? []).filter(a => matchesTeam(a.employee_id)).forEach(a => {
-      if (showUnplannedOnly && a.reason_is_planned) return;
-      // Keep only absences overlapping period.
-      const s = dayjs(a.start_date); const e = dayjs(a.end_date);
-      if (e.isBefore(periodStart) || s.isAfter(periodEnd)) return;
-      const arr = m.get(a.employee_id) ?? [];
-      arr.push(a);
-      m.set(a.employee_id, arr);
-    });
-    return m;
-  }, [absences, matchesTeam, showUnplannedOnly, periodStart, periodEnd]);
-
-  const openAddForEmp = (empId: string) => {
-    setEditEmployeeId(empId);
-    singleForm.resetFields();
-    singleForm.setFieldsValue({
-      employee_id: empId,
-      reason_id: activeReasons[0]?.id,
-    });
-    setSingleOpen(true);
-  };
-
-  const rows = activeEmployees.map(e => ({
-    employee_id: e.id,
-    display_name: e.display_name,
-    absences: absencesByEmp.get(e.id) ?? [],
-  }));
+  const employeeMap = new Map(employees?.map((e) => [e.id, e.display_name]));
+  const activeEmployees = (employees ?? []).filter(e => e.is_active);
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
@@ -486,144 +464,85 @@ function AbsencesTab() {
         year={Number(year)}
         quarter={Number(quarter)}
         employees={activeEmployees.map(e => ({ id: e.id, display_name: e.display_name }))}
-        absences={(absences ?? []).filter(r => matchesTeam(r.employee_id))}
+        absences={data ?? []}
       />
-      <Space wrap>
-        <Button icon={<PlusOutlined />} type="primary" onClick={() => {
-          bulkForm.resetFields();
-          bulkForm.setFieldsValue({ reason_id: activeReasons[0]?.id });
-          setBulkOpen(true);
-        }}>
-          Массовое добавление
-        </Button>
-        <Space>
-          <Switch checked={showUnplannedOnly} onChange={setShowUnplannedOnly} />
-          <Text>Только внеплановые</Text>
-        </Space>
-      </Space>
-
-      <Table
-        dataSource={rows}
-        rowKey="employee_id"
-        loading={isLoading}
-        pagination={false}
-        size="small"
-        columns={[
-          { title: 'Сотрудник', dataIndex: 'display_name', width: 240, fixed: 'left' as const },
-          {
-            title: `Отсутствия в Q${quarter} ${year}`,
-            render: (_: unknown, r: typeof rows[number]) => (
-              <Space wrap>
-                {r.absences.map(a => (
-                  <Tag
-                    key={a.id}
-                    color={a.reason_color ?? 'default'}
-                    closable
-                    onClose={(ev) => {
-                      ev.preventDefault();
-                      remove.mutate(a.id);
-                    }}
-                    style={{ cursor: 'default' }}
-                  >
-                    {a.reason_label}: {dayjs(a.start_date).format('DD.MM')}—
-                    {dayjs(a.end_date).format('DD.MM')}
-                  </Tag>
-                ))}
-                <Button size="small" icon={<PlusOutlined />} onClick={() => openAddForEmp(r.employee_id)}>
-                  добавить
-                </Button>
-              </Space>
-            ),
-          },
-          {
-            title: 'Дней', width: 80, align: 'right' as const,
-            render: (_: unknown, r: typeof rows[number]) => {
-              let days = 0;
-              for (const a of r.absences) {
-                const s = dayjs.max(dayjs(a.start_date), periodStart);
-                const e = dayjs.min(dayjs(a.end_date), periodEnd);
-                if (e && s) days += e.diff(s, 'day') + 1;
-              }
-              return days;
-            },
-          },
-        ]}
-      />
-
-      {/* Single-entry modal */}
+      <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>
+        Добавить отсутствие
+      </Button>
       <Modal
         title="Новое отсутствие"
-        open={singleOpen}
-        onCancel={() => setSingleOpen(false)}
-        onOk={() => singleForm.submit()}
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={() => form.submit()}
         confirmLoading={add.isPending}
       >
-        <Form form={singleForm} layout="vertical" onFinish={(v) => {
-          add.mutate({
-            employee_id: v.employee_id,
-            start_date: v.dates[0].format('YYYY-MM-DD'),
-            end_date: v.dates[1].format('YYYY-MM-DD'),
-            reason_id: v.reason_id,
-          }, {
-            onSuccess: () => {
-              setSingleOpen(false);
-              notification.success({ title: 'Отсутствие добавлено' });
-            },
-            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
-          });
-        }}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ reason: 'vacation' }}
+          onFinish={(vals) => {
+            add.mutate(
+              {
+                employee_id: vals.employee_id,
+                start_date: vals.dates[0].format('YYYY-MM-DD'),
+                end_date: vals.dates[1].format('YYYY-MM-DD'),
+                reason: vals.reason,
+              },
+              {
+                onSuccess: () => {
+                  setOpen(false);
+                  form.resetFields();
+                  notification.success({ title: 'Отсутствие добавлено' });
+                },
+                onError: (e) =>
+                  notification.error({ title: 'Ошибка', description: e.message }),
+              },
+            );
+          }}
+        >
           <Form.Item name="employee_id" label="Сотрудник" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label"
-              options={(employees ?? []).map(e => ({ value: e.id, label: e.display_name }))}
-              disabled={!!editEmployeeId}
-            />
+              options={employees?.map((e) => ({ value: e.id, label: e.display_name }))} />
           </Form.Item>
-          <Form.Item name="reason_id" label="Причина" rules={[{ required: true }]}>
-            <Select options={activeReasons.map(r => ({
-              value: r.id, label: r.label,
-            }))} />
+          <Form.Item name="reason" label="Причина" rules={[{ required: true }]}>
+            <Select options={REASON_OPTIONS.map(o => ({ value: o.value, label: o.label }))} />
           </Form.Item>
           <Form.Item name="dates" label="Даты" rules={[{ required: true }]}>
             <DatePicker.RangePicker format="DD.MM.YYYY" />
           </Form.Item>
         </Form>
       </Modal>
-
-      {/* Bulk-entry modal */}
-      <Modal
-        title="Массовое добавление отсутствий"
-        open={bulkOpen}
-        onCancel={() => setBulkOpen(false)}
-        onOk={() => bulkForm.submit()}
-        confirmLoading={batchAdd.isPending}
-        width={640}
-      >
-        <Form form={bulkForm} layout="vertical" onFinish={(v) => {
-          batchAdd.mutate({
-            employee_ids: v.employee_ids,
-            start_date: v.dates[0].format('YYYY-MM-DD'),
-            end_date: v.dates[1].format('YYYY-MM-DD'),
-            reason_id: v.reason_id,
-          }, {
-            onSuccess: (rows) => {
-              setBulkOpen(false);
-              notification.success({ title: 'Создано записей', description: String(rows.length) });
+      <Table<AbsenceResponse>
+        dataSource={data}
+        rowKey="id"
+        loading={isLoading}
+        pagination={false}
+        size="small"
+        columns={[
+          { title: 'Сотрудник', dataIndex: 'employee_id',
+            render: (id: string) => employeeMap.get(id) || id },
+          { title: 'Причина', dataIndex: 'reason', width: 130,
+            render: (v: AbsenceReason) => {
+              const m = reasonMeta(v);
+              return <span style={{ color: m.color }}>{m.label}</span>;
             },
-            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
-          });
-        }}>
-          <Form.Item name="employee_ids" label="Сотрудники" rules={[{ required: true }]}>
-            <Select mode="multiple" showSearch optionFilterProp="label"
-              options={activeEmployees.map(e => ({ value: e.id, label: e.display_name }))} />
-          </Form.Item>
-          <Form.Item name="reason_id" label="Причина" rules={[{ required: true }]}>
-            <Select options={activeReasons.map(r => ({ value: r.id, label: r.label }))} />
-          </Form.Item>
-          <Form.Item name="dates" label="Диапазон" rules={[{ required: true }]}>
-            <DatePicker.RangePicker format="DD.MM.YYYY" />
-          </Form.Item>
-        </Form>
-      </Modal>
+          },
+          { title: 'Начало', dataIndex: 'start_date',
+            render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+          { title: 'Окончание', dataIndex: 'end_date',
+            render: (v: string) => dayjs(v).format('DD.MM.YYYY') },
+          { title: 'Часов', dataIndex: 'hours_total',
+            render: (v: number | null) => v != null ? formatHours(v) : '—' },
+          {
+            title: '', width: 50,
+            render: (_, r) => (
+              <Popconfirm title="Удалить?" onConfirm={() => remove.mutate(r.id)}>
+                <Button icon={<DeleteOutlined />} size="small" danger />
+              </Popconfirm>
+            ),
+          },
+        ]}
+      />
     </Space>
   );
 }
@@ -631,11 +550,9 @@ function AbsencesTab() {
 function BreakdownTab() {
   const { year, quarter } = useQuarterYear();
   const { data, isLoading } = useCategoryBreakdown(Number(year), Number(quarter));
-  const { matchesTeam } = useCapacityFilter();
-  const visible = (data ?? []).filter(r => matchesTeam(r.employee_id));
   return (
     <Table<CategoryBreakdownResponse>
-      dataSource={visible}
+      dataSource={data}
       rowKey="employee_id"
       loading={isLoading}
       pagination={false}
@@ -658,53 +575,21 @@ function BreakdownTab() {
   );
 }
 
-function TeamFilterBar() {
-  const { selectedTeams, setSelectedTeams } = useCapacityFilter();
-  const jiraTeams = useJiraTeams();
-  const options = [
-    ...((jiraTeams.data ?? []).map(t => ({ value: t, label: t }))),
-    { value: NO_TEAM_VALUE, label: 'Без команды' },
-  ];
-  return (
-    <Select
-      mode="multiple"
-      allowClear
-      placeholder="Фильтр по команде (применяется ко всем вкладкам)"
-      style={{ minWidth: 320 }}
-      value={selectedTeams}
-      onChange={setSelectedTeams}
-      options={options}
-      onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
-      loading={jiraTeams.isFetching}
-      notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
-      showSearch
-      optionFilterProp="label"
-    />
-  );
-}
-
 export default function CapacityPage() {
   return (
-    <CapacityFilterProvider>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <PageHeader
-          eyebrow="Планирование"
-          title="Ресурсы команды"
-          subtitle="План · факт · отпуска · правила обязательной загрузки"
-          actions={
-            <Space wrap>
-              <TeamFilterBar />
-              <QuarterYearSelect />
-            </Space>
-          }
-        />
-        <Tabs items={[
-          { key: 'team', label: 'Команда', children: <TeamTab /> },
-          { key: 'breakdown', label: 'Распределение', children: <BreakdownTab /> },
-          { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
-          { key: 'rules', label: 'Правила', children: <RulesTabV2 /> },
-        ]} />
-      </Space>
-    </CapacityFilterProvider>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+      <PageHeader
+        eyebrow="Планирование"
+        title="Ресурсы команды"
+        subtitle="План · факт · отпуска · правила обязательной загрузки"
+        actions={<QuarterYearSelect />}
+      />
+      <Tabs items={[
+        { key: 'team', label: 'Команда', children: <TeamTab /> },
+        { key: 'breakdown', label: 'Распределение', children: <BreakdownTab /> },
+        { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
+        { key: 'rules', label: 'Правила', children: <RulesTabV2 /> },
+      ]} />
+    </Space>
   );
 }

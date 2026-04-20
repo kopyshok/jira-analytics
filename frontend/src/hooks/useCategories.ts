@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listCategories, createCategory, updateCategory, deleteCategory } from '../api/categories';
 import { CATEGORY_LABELS, CATEGORY_COLORS } from '../utils/constants';
+import type { CategoryResponse } from '../types/api';
 
 export function useCategories() {
   const query = useQuery({
@@ -9,6 +10,8 @@ export function useCategories() {
     queryFn: listCategories,
     staleTime: 60_000,
   });
+
+  const items = useMemo<CategoryResponse[]>(() => query.data ?? [], [query.data]);
 
   const labels = useMemo<Record<string, string>>(() => {
     if (query.data && query.data.length > 0) {
@@ -31,7 +34,7 @@ export function useCategories() {
     [labels],
   );
 
-  return { ...query, labels, colors, options };
+  return { ...query, items, labels, colors, options };
 }
 
 export function useCreateCategory() {
@@ -45,8 +48,10 @@ export function useCreateCategory() {
 export function useUpdateCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; label?: string; color?: string; sort_order?: number }) =>
-      updateCategory(id, body),
+    mutationFn: ({ id, body }: {
+      id: string;
+      body: { label?: string; color?: string | null; sort_order?: number; work_type_id?: string | null };
+    }) => updateCategory(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
   });
 }

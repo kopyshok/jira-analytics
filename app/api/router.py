@@ -3,7 +3,6 @@
 from fastapi import APIRouter
 
 from app.api.endpoints import (
-    absence_reasons,
     analytics,
     backlog,
     capacity,
@@ -89,10 +88,5 @@ api_router.include_router(
 api_router.include_router(
     employee_capacity_overrides.router,
     prefix="/capacity/employee-overrides",
-    tags=["capacity-rules"],
-)
-api_router.include_router(
-    absence_reasons.router,
-    prefix="/capacity/absence-reasons",
     tags=["capacity-rules"],
 )

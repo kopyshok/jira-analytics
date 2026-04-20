@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, InputNumber, Form, Modal, Switch, Input, Typography, Tag } from 'antd';
+import { useMemo, useState } from 'react';
+import { Tabs, Table, Button, Space, Popconfirm, App, InputNumber, Select, Form, Modal, Switch, Input, Typography, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import {
   useMandatoryWorkTypes,
@@ -8,21 +8,23 @@ import {
   useDeleteMandatoryWorkType,
   useReorderMandatoryWorkTypes,
   useRoleCapacityRules,
-  useSaveRoleRulesBatch,
+  useCreateRoleCapacityRule,
+  useUpdateRoleCapacityRule,
+  useDeleteRoleCapacityRule,
   useCopyRoleCapacityRulesToQuarter,
   useEmployeeCapacityOverrides,
-  useSaveEmployeeRulesBatch,
+  useCreateEmployeeCapacityOverride,
+  useUpdateEmployeeCapacityOverride,
+  useDeleteEmployeeCapacityOverride,
   useEmployees,
 } from '../../hooks/useCapacity';
 import { useQuarterYear } from '../../hooks/useQuarterYear';
-import { useCapacityFilter } from '../../hooks/useCapacityFilter';
 import { EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '../../utils/constants';
 import type {
   EmployeeRole,
   MandatoryWorkType,
-  RoleRuleIn,
-  RoleRulesValidationError,
-  EmployeeRulesValidationError,
+  RoleCapacityRule,
+  EmployeeCapacityOverride,
   EmployeeResponse,
 } from '../../types/api';
 
@@ -59,7 +61,7 @@ function WorkTypesSubtab() {
         <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>
           Добавить тип работ
         </Button>
-        <Text type="secondary">Справочник видов работ, покрывающих 100 % времени сотрудника.</Text>
+        <Text type="secondary">Справочник обязательных работ — заполняется вручную.</Text>
       </Space>
       <Modal
         title="Новый тип обязательных работ"
@@ -154,120 +156,46 @@ function RoleRulesSubtab() {
 
   const wts = useMandatoryWorkTypes({ isActive: true });
   const rules = useRoleCapacityRules(y, q);
-  const saveBatch = useSaveRoleRulesBatch(y, q);
+  const create = useCreateRoleCapacityRule();
+  const update = useUpdateRoleCapacityRule();
+  const remove = useDeleteRoleCapacityRule();
   const copy = useCopyRoleCapacityRulesToQuarter();
 
-  const activeWts = useMemo(
-    () => (wts.data ?? []).filter(w => w.is_active),
-    [wts.data],
-  );
+  const byKey = useMemo(() => {
+    const m = new Map<string, RoleCapacityRule>();
+    (rules.data ?? []).forEach(r => m.set(`${r.role ?? '__all__'}::${r.work_type_id}`, r));
+    return m;
+  }, [rules.data]);
 
-  // Draft state: Map<"role|work_type_id", number | null>.
-  const keyOf = (role: EmployeeRole | null, wtId: string) =>
-    `${role ?? '__all__'}::${wtId}`;
-
-  const [draft, setDraft] = useState<Map<string, number | null>>(new Map());
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    if (hydrated && !rules.isFetching) return;
-    if (!rules.data) return;
-    const m = new Map<string, number | null>();
-    for (const r of rules.data) {
-      m.set(keyOf(r.role as EmployeeRole | null, r.work_type_id), r.percent_of_norm);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraft(m);
-    setHydrated(true);
-  }, [rules.data, hydrated, rules.isFetching]);
-
-  // Re-hydrate on year/quarter change.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setHydrated(false);
-  }, [y, q]);
-
-  const readCell = (role: EmployeeRole | null, wtId: string): number | null => {
-    const v = draft.get(keyOf(role, wtId));
-    return v ?? null;
-  };
-
-  const writeCell = (role: EmployeeRole | null, wtId: string, next: number | null) => {
-    setDraft(prev => {
-      const m = new Map(prev);
-      if (next == null || Number.isNaN(next)) {
-        m.delete(keyOf(role, wtId));
-      } else {
-        m.set(keyOf(role, wtId), next);
+  const writePercent = (role: EmployeeRole | null, wtId: string, next: number | null) => {
+    const key = `${role ?? '__all__'}::${wtId}`;
+    const existing = byKey.get(key);
+    if (next == null || Number.isNaN(next)) {
+      if (existing) {
+        remove.mutate(
+          { id: existing.id, year: y, quarter: q },
+          { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
+        );
       }
-      return m;
-    });
-  };
-
-  const sumByRole = (role: EmployeeRole | null): number => {
-    return activeWts.reduce((acc, w) => {
-      const v = readCell(role, w.id);
-      return acc + (v ?? 0);
-    }, 0);
-  };
-
-  const isDirty = useMemo(() => {
-    const original = new Map<string, number>();
-    (rules.data ?? []).forEach(r =>
-      original.set(keyOf(r.role as EmployeeRole | null, r.work_type_id), r.percent_of_norm),
-    );
-    if (original.size !== draft.size) return true;
-    for (const [k, v] of draft) {
-      if (original.get(k) !== v) return true;
+      return;
     }
-    return false;
-  }, [draft, rules.data]);
-
-  const invalidRoles: EmployeeRole[] = useMemo(() => {
-    const bad: EmployeeRole[] = [];
-    for (const row of ROLE_ROWS) {
-      const s = sumByRole(row.role);
-      if (s > 0 && Math.abs(s - 100) > 0.01) {
-        if (row.role !== null) bad.push(row.role);
-      }
+    if (existing) {
+      if (existing.percent_of_norm === next) return;
+      update.mutate(
+        { id: existing.id, percent: next, year: y, quarter: q },
+        { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
+      );
+    } else {
+      create.mutate(
+        { year: y, quarter: q, role, work_type_id: wtId, percent_of_norm: next },
+        { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
+      );
     }
-    return bad;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, activeWts]);
-
-  const handleSave = () => {
-    const rulesOut: RoleRuleIn[] = [];
-    for (const [key, value] of draft) {
-      if (value == null || value === 0) continue;
-      const [roleKey, wtId] = key.split('::');
-      rulesOut.push({
-        role: roleKey === '__all__' ? null : (roleKey as EmployeeRole),
-        work_type_id: wtId,
-        percent_of_norm: value,
-      });
-    }
-    saveBatch.mutate(rulesOut, {
-      onSuccess: () => notification.success({ title: 'Сохранено' }),
-      onError: (e: unknown) => {
-        const err = e as { message?: string; data?: { detail?: { errors?: RoleRulesValidationError[] } } };
-        const errs = err.data?.detail?.errors;
-        if (Array.isArray(errs) && errs.length) {
-          const lines = errs.map(x =>
-            `${x.role ?? 'Все роли'}: Σ = ${x.sum.toFixed(0)}% (ожидается 100%)`,
-          ).join('\n');
-          notification.error({ title: 'Σ ≠ 100%', description: lines });
-        } else {
-          notification.error({ title: 'Ошибка', description: err.message ?? 'Неизвестная ошибка' });
-        }
-      },
-    });
-  };
-
-  const handleReset = () => {
-    setHydrated(false);
   };
 
   const next = q === 4 ? { y: y + 1, q: 1 } : { y, q: q + 1 };
+
+  const activeWts = (wts.data ?? []).filter(w => w.is_active);
 
   const columns = [
     {
@@ -284,18 +212,21 @@ function RoleRulesSubtab() {
       key: `wt_${w.id}`,
       width: 140,
       render: (_: unknown, row: typeof ROLE_ROWS[number]) => {
-        const v = readCell(row.role, w.id);
+        const rule = byKey.get(`${row.role ?? '__all__'}::${w.id}`);
         return (
           <InputNumber
             size="small"
-            min={0} max={100} step={1}
+            min={0} max={100}
+            step={1}
             style={{ width: '100%' }}
-            value={v}
+            value={rule?.percent_of_norm ?? null}
             placeholder="—"
             addonAfter="%"
-            onChange={(nv) =>
-              writeCell(row.role, w.id, nv == null ? null : Number(nv))
-            }
+            onBlur={(e) => {
+              const v = e.currentTarget.value.trim();
+              writePercent(row.role, w.id, v === '' ? null : Number(v));
+            }}
+            onPressEnter={(e) => (e.currentTarget as HTMLInputElement).blur()}
           />
         );
       },
@@ -303,11 +234,11 @@ function RoleRulesSubtab() {
     {
       title: 'Σ', key: 'sum', width: 80, fixed: 'right' as const,
       render: (_: unknown, row: typeof ROLE_ROWS[number]) => {
-        const s = sumByRole(row.role);
-        const ok = Math.abs(s - 100) < 0.01;
-        const empty = s === 0;
-        const color = empty ? undefined : ok ? '#52c41a' : '#ff4d4f';
-        return <Text style={{ color }}>{s.toFixed(0)}%</Text>;
+        const s = activeWts.reduce((acc, w) => {
+          const r = byKey.get(`${row.role ?? '__all__'}::${w.id}`);
+          return acc + (r?.percent_of_norm ?? 0);
+        }, 0);
+        return <Text style={{ color: s > 100 ? '#ff4d4f' : undefined }}>{s.toFixed(0)}%</Text>;
       },
     },
   ];
@@ -316,20 +247,9 @@ function RoleRulesSubtab() {
     <Space orientation="vertical" style={{ width: '100%' }}>
       <Space>
         <Text>
-          Правила для <b>Q{q} {y}</b>. В каждой строке сумма долей должна быть равна <b>100 %</b>
-          (пустая строка допустима). «Все роли» — fallback для сотрудников без явного правила.
+          Правила для <b>Q{q} {y}</b>. Число — % от нормы на соответствующий тип работ.
+          Пустая клетка = нет правила. Строка «Все роли» — fallback, если правила на конкретную роль нет.
         </Text>
-      </Space>
-      <Space>
-        <Button
-          type="primary"
-          loading={saveBatch.isPending}
-          disabled={!isDirty}
-          onClick={handleSave}
-        >
-          Сохранить {isDirty && <Tag style={{ marginLeft: 8 }}>есть изменения</Tag>}
-        </Button>
-        <Button disabled={!isDirty} onClick={handleReset}>Отменить</Button>
         <Popconfirm
           title={`Скопировать все правила из Q${q} ${y} в Q${next.q} ${next.y}?`}
           okText="Скопировать" cancelText="Отмена"
@@ -352,14 +272,9 @@ function RoleRulesSubtab() {
         >
           <Button loading={copy.isPending}>Скопировать в следующий квартал</Button>
         </Popconfirm>
-        {invalidRoles.length > 0 && (
-          <Text type="danger">
-            Σ ≠ 100%: {invalidRoles.map(r => EMPLOYEE_ROLE_LABELS[r]).join(', ')}
-          </Text>
-        )}
       </Space>
       {activeWts.length === 0 ? (
-        <Text type="secondary">Нет активных типов работ. Добавьте их во вкладке «Виды работ».</Text>
+        <Text type="secondary">Нет активных типов работ. Добавьте их во вкладке «Обязательные работы».</Text>
       ) : (
         <Table
           dataSource={ROLE_ROWS}
@@ -389,241 +304,146 @@ function EmployeeOverridesSubtab() {
   const wts = useMandatoryWorkTypes({ isActive: true });
   const roleRules = useRoleCapacityRules(y, q);
   const overrides = useEmployeeCapacityOverrides({ year: y, quarter: q });
-  const saveBatch = useSaveEmployeeRulesBatch(y, q);
-  const { matchesTeam } = useCapacityFilter();
+  const create = useCreateEmployeeCapacityOverride();
+  const update = useUpdateEmployeeCapacityOverride();
+  const remove = useDeleteEmployeeCapacityOverride();
 
-  const activeWts = useMemo(
-    () => (wts.data ?? []).filter(w => w.is_active),
-    [wts.data],
-  );
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
 
-  const visibleEmployees = useMemo(
-    () => (employees.data ?? []).filter(e => matchesTeam(e.id)),
-    [employees.data, matchesTeam],
-  );
+  const empById = useMemo(() => {
+    const m = new Map<string, EmployeeResponse>();
+    (employees.data ?? []).forEach(e => m.set(e.id, e));
+    return m;
+  }, [employees.data]);
 
-  // Build baseline map (role rules resolved for each emp × wt).
-  const baselineFor = useCallback(
-    (emp: EmployeeResponse, wtId: string): number => {
-      const rs = roleRules.data ?? [];
-      if (emp.role) {
-        const exact = rs.find(r => r.role === emp.role && r.work_type_id === wtId);
-        if (exact) return exact.percent_of_norm;
-      }
-      const fallback = rs.find(r => r.role === null && r.work_type_id === wtId);
-      return fallback?.percent_of_norm ?? 0;
-    },
-    [roleRules.data],
-  );
+  const wtById = useMemo(() => {
+    const m = new Map<string, string>();
+    (wts.data ?? []).forEach(w => m.set(w.id, w.label));
+    return m;
+  }, [wts.data]);
 
-  // Draft state: Map<employee_id, { enabled: boolean, pct: Map<wtId, number> }>.
-  interface RowDraft { enabled: boolean; pct: Map<string, number> }
-  const [draft, setDraft] = useState<Map<string, RowDraft>>(new Map());
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    if (hydrated && !overrides.isFetching) return;
-    if (!overrides.data) return;
-    const m = new Map<string, RowDraft>();
-    for (const o of overrides.data) {
-      const row = m.get(o.employee_id) ?? { enabled: true, pct: new Map() };
-      row.pct.set(o.work_type_id, o.percent_of_norm);
-      row.enabled = true;
-      m.set(o.employee_id, row);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraft(m);
-    setHydrated(true);
-  }, [overrides.data, hydrated, overrides.isFetching]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setHydrated(false);
-  }, [y, q]);
-
-  const toggleOverride = (emp: EmployeeResponse, next: boolean) => {
-    setDraft(prev => {
-      const m = new Map(prev);
-      const row = m.get(emp.id);
-      if (next) {
-        // Enable: if no row, seed from role baseline.
-        if (row?.enabled) return m;
-        const pct = new Map<string, number>();
-        for (const w of activeWts) {
-          pct.set(w.id, baselineFor(emp, w.id));
-        }
-        m.set(emp.id, { enabled: true, pct });
-      } else if (row) {
-        m.set(emp.id, { ...row, enabled: false });
-      } else {
-        m.set(emp.id, { enabled: false, pct: new Map() });
-      }
-      return m;
-    });
-  };
-
-  const writeCell = (empId: string, wtId: string, next: number | null) => {
-    setDraft(prev => {
-      const m = new Map(prev);
-      const row = m.get(empId) ?? { enabled: true, pct: new Map() };
-      const pct = new Map(row.pct);
-      if (next == null || Number.isNaN(next)) {
-        pct.delete(wtId);
-      } else {
-        pct.set(wtId, next);
-      }
-      m.set(empId, { enabled: row.enabled, pct });
-      return m;
-    });
-  };
-
-  const sumFor = (empId: string): number => {
-    const row = draft.get(empId);
-    if (!row) return 0;
-    let s = 0;
-    for (const v of row.pct.values()) s += v;
-    return s;
-  };
-
-  const isDirty = useMemo(() => {
-    const orig = new Map<string, { enabled: boolean; pct: Map<string, number> }>();
-    for (const o of overrides.data ?? []) {
-      const row = orig.get(o.employee_id) ?? { enabled: true, pct: new Map() };
-      row.pct.set(o.work_type_id, o.percent_of_norm);
-      orig.set(o.employee_id, row);
-    }
-    for (const [empId, d] of draft) {
-      const o = orig.get(empId);
-      if (!d.enabled) {
-        if (o) return true;
-        continue;
-      }
-      if (!o) return true;
-      if (o.pct.size !== d.pct.size) return true;
-      for (const [k, v] of d.pct) {
-        if (o.pct.get(k) !== v) return true;
-      }
-    }
-    return false;
-  }, [draft, overrides.data]);
-
-  const invalidEmps: string[] = useMemo(() => {
-    const out: string[] = [];
-    for (const [empId, row] of draft) {
-      if (!row.enabled) continue;
-      const s = sumFor(empId);
-      if (row.pct.size > 0 && Math.abs(s - 100) > 0.01) out.push(empId);
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft]);
-
-  const handleSave = () => {
-    const touchedIds = new Set<string>();
-    for (const [empId, row] of draft) {
-      touchedIds.add(empId);
-      if (row.enabled && row.pct.size > 0 && Math.abs(sumFor(empId) - 100) > 0.01) {
-        // UI already flagged; let server 422 for safety.
-      }
-    }
-    const payload = Array.from(touchedIds).map(empId => {
-      const row = draft.get(empId)!;
-      if (!row.enabled) return { employee_id: empId, rules: [] };
-      return {
-        employee_id: empId,
-        rules: Array.from(row.pct.entries())
-          .filter(([, v]) => v > 0)
-          .map(([wtId, v]) => ({ work_type_id: wtId, percent_of_norm: v })),
-      };
-    });
-    saveBatch.mutate(payload, {
-      onSuccess: () => notification.success({ title: 'Сохранено' }),
-      onError: (e: unknown) => {
-        const err = e as { message?: string; data?: { detail?: { errors?: EmployeeRulesValidationError[] } } };
-        const errs = err.data?.detail?.errors;
-        if (Array.isArray(errs) && errs.length) {
-          const lines = errs
-            .map(x => `${x.employee_id}: Σ = ${x.sum.toFixed(0)}% (ожидается 100%)`)
-            .join('\n');
-          notification.error({ title: 'Σ ≠ 100%', description: lines });
-        } else {
-          notification.error({ title: 'Ошибка', description: err.message ?? 'Неизвестная ошибка' });
-        }
-      },
-    });
+  const basePercentFor = (emp: EmployeeResponse | undefined, wtId: string): number => {
+    if (!emp) return 0;
+    const rules = roleRules.data ?? [];
+    const role = emp.role;
+    const exact = role ? rules.find(r => r.role === role && r.work_type_id === wtId) : undefined;
+    if (exact) return exact.percent_of_norm;
+    const fallback = rules.find(r => r.role === null && r.work_type_id === wtId);
+    return fallback?.percent_of_norm ?? 0;
   };
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
       <Space>
-        <Button
-          type="primary"
-          loading={saveBatch.isPending}
-          disabled={!isDirty}
-          onClick={handleSave}
-        >
-          Сохранить все {isDirty && <Tag style={{ marginLeft: 8 }}>есть изменения</Tag>}
+        <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>
+          Добавить индивидуальное правило
         </Button>
-        <Button disabled={!isDirty} onClick={() => setHydrated(false)}>Отменить</Button>
         <Text type="secondary">
-          Переключатель «Override» клонирует правило роли в редактируемую копию. Σ = 100 % обязательно.
+          Правила ниже имеют приоритет над «По ролям» для указанного сотрудника и типа работ на Q{q} {y}.
         </Text>
-        {invalidEmps.length > 0 && (
-          <Text type="danger">Σ ≠ 100%: {invalidEmps.length} сотрудник(ов)</Text>
-        )}
       </Space>
-      {visibleEmployees.map(emp => {
-        const row = draft.get(emp.id) ?? { enabled: false, pct: new Map() };
-        const s = sumFor(emp.id);
-        const ok = Math.abs(s - 100) < 0.01;
-        const baselineSum = activeWts.reduce((acc, w) => acc + baselineFor(emp, w.id), 0);
-        return (
-          <div key={emp.id} style={{
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 6, padding: 12,
-          }}>
-            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-              <Space>
-                <Text strong>{emp.display_name}</Text>
-                {emp.role && <Tag>{EMPLOYEE_ROLE_LABELS[emp.role]}</Tag>}
-              </Space>
-              <Space>
-                <Text type="secondary">Override</Text>
-                <Switch
-                  checked={row.enabled}
-                  onChange={(v) => toggleOverride(emp, v)}
-                />
-              </Space>
-            </Space>
-            {row.enabled ? (
-              <Space wrap style={{ marginTop: 8 }}>
-                {activeWts.map(w => (
-                  <Space key={w.id} size={4}>
-                    <Text type="secondary">{w.label}</Text>
-                    <InputNumber
-                      size="small"
-                      min={0} max={100} step={1}
-                      style={{ width: 90 }}
-                      value={row.pct.get(w.id) ?? null}
-                      addonAfter="%"
-                      onChange={(v) => writeCell(emp.id, w.id, v == null ? null : Number(v))}
-                    />
-                  </Space>
-                ))}
-                <Text style={{ color: ok ? '#52c41a' : '#ff4d4f', marginLeft: 8 }}>
-                  Σ = {s.toFixed(0)}%
-                </Text>
-              </Space>
-            ) : (
-              <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-                Baseline роли: {activeWts.map(w =>
-                  `${w.label} ${baselineFor(emp, w.id).toFixed(0)}%`).join(' · ')}
-                {' · Σ '}{baselineSum.toFixed(0)}%
-              </Text>
-            )}
-          </div>
-        );
-      })}
+      <Modal
+        title="Новое индивидуальное правило"
+        open={open}
+        onCancel={() => { setOpen(false); form.resetFields(); }}
+        onOk={() => form.submit()}
+        confirmLoading={create.isPending}
+      >
+        <Form form={form} layout="vertical" onFinish={(v) => {
+          create.mutate(
+            { year: y, quarter: q, employee_id: v.employee_id, work_type_id: v.work_type_id, percent_of_norm: v.percent },
+            {
+              onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ title: 'Правило добавлено' }); },
+              onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
+            },
+          );
+        }}>
+          <Form.Item name="employee_id" label="Сотрудник" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label"
+              options={(employees.data ?? []).map(e => ({ value: e.id, label: e.display_name }))} />
+          </Form.Item>
+          <Form.Item name="work_type_id" label="Тип обязательных работ" rules={[{ required: true }]}>
+            <Select options={(wts.data ?? []).filter(w => w.is_active)
+              .map(w => ({ value: w.id, label: w.label }))} />
+          </Form.Item>
+          <Form.Item name="percent" label="% от нормы" rules={[{ required: true }]} initialValue={10}>
+            <InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Table<EmployeeCapacityOverride>
+        dataSource={overrides.data ?? []}
+        rowKey="id"
+        loading={overrides.isLoading}
+        pagination={false}
+        size="small"
+        columns={[
+          {
+            title: 'Сотрудник', dataIndex: 'employee_id',
+            render: (id: string) => empById.get(id)?.display_name ?? id,
+          },
+          {
+            title: 'Роль', dataIndex: 'employee_id', width: 150,
+            render: (id: string) => {
+              const r = empById.get(id)?.role;
+              return r ? <Tag>{EMPLOYEE_ROLE_LABELS[r]}</Tag> : <Text type="secondary">—</Text>;
+            },
+          },
+          {
+            title: 'Тип работ', dataIndex: 'work_type_id',
+            render: (id: string) => wtById.get(id) ?? id,
+          },
+          {
+            title: '% override', dataIndex: 'percent_of_norm', width: 140,
+            render: (v: number, r) => (
+              <InputNumber
+                size="small" min={0} max={100}
+                style={{ width: '100%' }}
+                value={v}
+                addonAfter="%"
+                onBlur={(e) => {
+                  const next = Number(e.currentTarget.value);
+                  if (!Number.isFinite(next) || next === v) return;
+                  update.mutate(
+                    { id: r.id, percent: next, year: y, quarter: q },
+                    { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
+                  );
+                }}
+                onPressEnter={(e) => (e.currentTarget as HTMLInputElement).blur()}
+              />
+            ),
+          },
+          {
+            title: '% базовое (роль)', width: 140,
+            render: (_: unknown, r: EmployeeCapacityOverride) => {
+              const base = basePercentFor(empById.get(r.employee_id), r.work_type_id);
+              const diff = r.percent_of_norm - base;
+              return (
+                <Space size={4}>
+                  <Text type="secondary">{base.toFixed(0)}%</Text>
+                  {diff !== 0 && (
+                    <Tag color={diff > 0 ? 'red' : 'blue'}>
+                      {diff > 0 ? '+' : ''}{diff.toFixed(0)}
+                    </Tag>
+                  )}
+                </Space>
+              );
+            },
+          },
+          {
+            title: '', width: 50,
+            render: (_: unknown, r: EmployeeCapacityOverride) => (
+              <Popconfirm title="Удалить?" onConfirm={() => remove.mutate(
+                { id: r.id, year: y, quarter: q },
+                { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
+              )}>
+                <Button icon={<DeleteOutlined />} size="small" danger />
+              </Popconfirm>
+            ),
+          },
+        ]}
+      />
     </Space>
   );
 }
@@ -636,7 +456,7 @@ export default function RulesTabV2() {
   return (
     <Tabs
       items={[
-        { key: 'work_types', label: 'Виды работ', children: <WorkTypesSubtab /> },
+        { key: 'work_types', label: 'Обязательные работы', children: <WorkTypesSubtab /> },
         { key: 'by_role', label: 'Правила по ролям', children: <RoleRulesSubtab /> },
         { key: 'by_employee', label: 'Индивидуальные правила', children: <EmployeeOverridesSubtab /> },
       ]}
