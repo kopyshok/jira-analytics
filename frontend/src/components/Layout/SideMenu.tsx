@@ -22,15 +22,6 @@ const items: MenuProps['items'] = [
     ],
   },
   {
-    key: 'grp-data',
-    type: 'group',
-    label: 'ДАННЫЕ',
-    children: [
-      { key: '/sync', icon: <SyncOutlined />, label: 'Задачи / синк' },
-      { key: '/settings', icon: <SettingOutlined />, label: 'Настройки' },
-    ],
-  },
-  {
     key: 'grp-planning',
     type: 'group',
     label: 'ПЛАНИРОВАНИЕ',
@@ -38,6 +29,15 @@ const items: MenuProps['items'] = [
       { key: '/capacity', icon: <TeamOutlined />, label: 'Ресурсы' },
       { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Бэклог' },
       { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Сценарии' },
+    ],
+  },
+  {
+    key: 'grp-data',
+    type: 'group',
+    label: 'ДАННЫЕ',
+    children: [
+      { key: '/sync', icon: <SyncOutlined />, label: 'Задачи / синк' },
+      { key: '/settings', icon: <SettingOutlined />, label: 'Настройки' },
     ],
   },
 ];
