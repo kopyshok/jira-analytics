@@ -27,7 +27,9 @@ from app.models import (
     BacklogItem,
     Employee,
     PlanningScenario,
+    RoleCapacityRule,
     ScenarioAllocation,
+    ScenarioRule,
 )
 from app.services.capacity_service import CapacityService, ROLE_WHITELIST
 from app.services.planning_service import PlanningService
@@ -42,10 +44,14 @@ class ScenarioCreate(BaseModel):
     name: str
     year: int
     quarter: int = Field(ge=1, le=4)
+    team: Optional[str] = None
+    external_qa_hours: Optional[float] = None
 
 
 class ScenarioUpdate(BaseModel):
     name: Optional[str] = None
+    team: Optional[str] = None
+    external_qa_hours: Optional[float] = None
 
 
 class ScenarioResponse(BaseModel):
@@ -54,9 +60,31 @@ class ScenarioResponse(BaseModel):
     quarter: Optional[str] = None
     year: Optional[int] = None
     status: str
+    team: Optional[str] = None
+    external_qa_hours: Optional[float] = None
 
     class Config:
         from_attributes = True
+
+
+class ScenarioRuleOut(BaseModel):
+    id: str
+    role: Optional[str] = None
+    work_type_id: str
+    percent_of_norm: float
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioRuleInput(BaseModel):
+    role: Optional[str] = None
+    work_type_id: str
+    percent_of_norm: float
+
+
+class ScenarioRulesReplaceBody(BaseModel):
+    rules: List[ScenarioRuleInput]
 
 
 class AllocationPatch(BaseModel):
@@ -128,6 +156,8 @@ def _to_scenario_resp(s: PlanningScenario) -> ScenarioResponse:
         quarter=s.quarter,
         year=s.year,
         status=s.status,
+        team=s.team,
+        external_qa_hours=s.external_qa_hours,
     )
 
 
@@ -202,6 +232,8 @@ async def create_scenario(
         year=data.year,
         quarter=f"Q{data.quarter}",
         status="draft",
+        team=data.team,
+        external_qa_hours=data.external_qa_hours,
     )
     db.add(scenario)
     db.flush()
@@ -216,6 +248,26 @@ async def create_scenario(
                 planned_hours=0,
             )
         )
+
+    # Копировать правила из role_capacity_rules для указанного квартала.
+    template_rules = (
+        db.query(RoleCapacityRule)
+        .filter(
+            RoleCapacityRule.year == data.year,
+            RoleCapacityRule.quarter == data.quarter,
+        )
+        .all()
+    )
+    for rcr in template_rules:
+        db.add(
+            ScenarioRule(
+                scenario_id=scenario.id,
+                role=rcr.role,
+                work_type_id=rcr.work_type_id,
+                percent_of_norm=rcr.percent_of_norm,
+            )
+        )
+
     db.commit()
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
@@ -239,12 +291,17 @@ async def update_scenario(
     data: ScenarioUpdate,
     db: Session = Depends(get_db),
 ):
-    """Переименовать сценарий (разрешено и для approved)."""
+    """Обновить сценарий: имя, команда, внешние часы QA (разрешено и для approved)."""
     scenario = db.get(PlanningScenario, scenario_id)
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    if data.name is not None:
-        scenario.name = data.name
+    patch = data.model_dump(exclude_unset=True)
+    if "name" in patch:
+        scenario.name = patch["name"]
+    if "team" in patch:
+        scenario.team = patch["team"]
+    if "external_qa_hours" in patch:
+        scenario.external_qa_hours = patch["external_qa_hours"]
     db.commit()
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
@@ -298,6 +355,40 @@ async def revert_scenario(
     db.commit()
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
+
+
+@router.get("/scenarios/{scenario_id}/rules", response_model=List[ScenarioRuleOut])
+async def get_scenario_rules(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """Список правил обязательных работ для сценария."""
+    if not db.get(PlanningScenario, scenario_id):
+        raise HTTPException(status_code=404, detail="Сценарий не найден")
+    return db.query(ScenarioRule).filter(ScenarioRule.scenario_id == scenario_id).all()
+
+
+@router.put("/scenarios/{scenario_id}/rules", response_model=List[ScenarioRuleOut])
+async def replace_scenario_rules(
+    scenario_id: str,
+    body: ScenarioRulesReplaceBody,
+    db: Session = Depends(get_db),
+):
+    """Атомарно заменить правила обязательных работ сценария."""
+    if not db.get(PlanningScenario, scenario_id):
+        raise HTTPException(status_code=404, detail="Сценарий не найден")
+    db.query(ScenarioRule).filter(ScenarioRule.scenario_id == scenario_id).delete()
+    for r in body.rules:
+        db.add(
+            ScenarioRule(
+                scenario_id=scenario_id,
+                role=r.role,
+                work_type_id=r.work_type_id,
+                percent_of_norm=r.percent_of_norm,
+            )
+        )
+    db.commit()
+    return db.query(ScenarioRule).filter(ScenarioRule.scenario_id == scenario_id).all()
 
 
 @router.post(
