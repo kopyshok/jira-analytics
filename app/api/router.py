@@ -19,6 +19,7 @@ from app.api.endpoints import (
     production_calendar,
     projects,
     role_capacity_rules,
+    roles as roles_endpoints,
     scope,
     settings,
     sync,
@@ -96,3 +97,4 @@ api_router.include_router(
     prefix="/capacity/absence-reasons",
     tags=["capacity-rules"],
 )
+api_router.include_router(roles_endpoints.router, prefix="/roles", tags=["roles"])
