@@ -79,6 +79,65 @@ def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
 
 logger = logging.getLogger("jira_analytics.sync")
 
+
+# Planned-effort custom-field AppSetting keys. Populated by admin in /settings.
+# Extracted per-issue in _upsert_issue via Jira's ``_extra`` dict.
+_PLANNED_NUMERIC_SETTING_KEYS = [
+    "jira_planned_analyst_hours_field_id",
+    "jira_planned_dev_hours_field_id",
+    "jira_planned_qa_hours_field_id",
+    "jira_planned_opo_hours_field_id",
+    "jira_involvement_analyst_field_id",
+    "jira_involvement_dev_field_id",
+    "jira_involvement_qa_field_id",
+    "jira_involvement_launch_field_id",
+    "jira_duration_analyst_field_id",
+    "jira_duration_dev_field_id",
+    "jira_duration_qa_field_id",
+    "jira_duration_launch_field_id",
+]
+_PLANNED_STRING_SETTING_KEYS = [
+    "jira_impact_field_id",
+    "jira_risk_field_id",
+]
+_ALL_PLANNED_KEYS = _PLANNED_NUMERIC_SETTING_KEYS + _PLANNED_STRING_SETTING_KEYS
+
+
+def _to_float(raw: Any) -> Optional[float]:
+    """Coerce a Jira-field value to float. Supports numbers, numeric strings
+    with ``.`` or ``,`` decimal separator. Returns ``None`` for anything else."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    try:
+        return float(str(raw).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+_LEVEL_MAP = {
+    "high": "high", "высокий": "high", "critical": "high", "major": "high",
+    "medium": "medium", "средний": "medium", "normal": "medium",
+    "low": "low", "низкий": "low", "minor": "low", "trivial": "low",
+}
+
+
+def _normalize_level(raw: Any) -> Optional[str]:
+    """Нормализует значение select-поля (impact / risk) к low|medium|high.
+
+    Jira select-поля приходят либо как ``{"value": "...", "id": "..."}``,
+    либо как plain string. Неизвестные значения → None.
+    """
+    if raw is None:
+        return None
+    value = raw.get("value") if isinstance(raw, dict) else raw
+    if not isinstance(value, str):
+        return None
+    return _LEVEL_MAP.get(value.strip().lower())
+
 # Sentinel, чтобы отличать «поле не передано» от «поле передано с пустым значением».
 # None как «пусто» теперь валидный сигнал «очистить в БД».
 _UNSET: Any = object()
@@ -232,6 +291,22 @@ class SyncService:
         row = self.db.query(AppSetting).filter(AppSetting.key == key).first()
         return row.value if row else None
 
+    def _configured_planned_field_ids(self) -> List[str]:
+        """Список настроенных (непустых) customfield IDs для полей плановых
+        трудозатрат, involvement, duration, impact, risk.
+
+        Используется для расширения ``fields=`` параметра в запросах к Jira,
+        чтобы эти поля реально возвращались в ответе и попадали в ``_extra``.
+        """
+        ids: list[str] = []
+        seen: set[str] = set()
+        for key in _ALL_PLANNED_KEYS:
+            fid = self._get_setting(key)
+            if fid and fid not in seen:
+                ids.append(fid)
+                seen.add(fid)
+        return ids
+
     def _update_sync_state(
         self,
         entity_name: str,
@@ -380,6 +455,39 @@ class SyncService:
             )
         if goals is not _UNSET:
             data["goals"] = goals
+
+        # Planned effort / impact / risk — extract from _extra if the matching
+        # AppSetting field id is configured. Empty or unset ids → no-op (NULL).
+        extra = getattr(jira_issue.fields, "_extra", None) or {}
+        planned_ids = {k: self._get_setting(k) for k in _ALL_PLANNED_KEYS}
+
+        def _fld_float(key: str) -> Optional[float]:
+            fid = planned_ids.get(key)
+            if not fid:
+                return None
+            return _to_float(extra.get(fid))
+
+        def _fld_level(key: str) -> Optional[str]:
+            fid = planned_ids.get(key)
+            if not fid:
+                return None
+            return _normalize_level(extra.get(fid))
+
+        data["planned_analyst_hours"] = _fld_float("jira_planned_analyst_hours_field_id")
+        data["planned_dev_hours"] = _fld_float("jira_planned_dev_hours_field_id")
+        data["planned_qa_hours"] = _fld_float("jira_planned_qa_hours_field_id")
+        data["planned_opo_hours"] = _fld_float("jira_planned_opo_hours_field_id")
+        data["involvement_analyst"] = _fld_float("jira_involvement_analyst_field_id")
+        data["involvement_dev"] = _fld_float("jira_involvement_dev_field_id")
+        data["involvement_qa"] = _fld_float("jira_involvement_qa_field_id")
+        data["involvement_launch"] = _fld_float("jira_involvement_launch_field_id")
+        data["duration_analyst_days"] = _fld_float("jira_duration_analyst_field_id")
+        data["duration_dev_days"] = _fld_float("jira_duration_dev_field_id")
+        data["duration_qa_days"] = _fld_float("jira_duration_qa_field_id")
+        data["duration_launch_days"] = _fld_float("jira_duration_launch_field_id")
+        data["impact"] = _fld_level("jira_impact_field_id")
+        data["risk"] = _fld_level("jira_risk_field_id")
+
         return self.issue_repo.upsert_by_field(
             "jira_issue_id",
             jira_issue.id,
@@ -433,6 +541,10 @@ class SyncService:
         extra_fields = [
             fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
         ]
+        # Also request planned-effort / impact / risk custom fields when configured.
+        for fid in self._configured_planned_field_ids():
+            if fid not in extra_fields:
+                extra_fields.append(fid)
 
         count = 0
         unresolved_parents: List[Tuple[str, str]] = []  # (child_issue_id, parent_key)
@@ -535,6 +647,9 @@ class SyncService:
         extra_fields = [
             fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
         ]
+        for fid in self._configured_planned_field_ids():
+            if fid not in extra_fields:
+                extra_fields.append(fid)
         base_fields = [
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
@@ -623,6 +738,9 @@ class SyncService:
         extra_fields = [
             fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
         ]
+        for fid in self._configured_planned_field_ids():
+            if fid not in extra_fields:
+                extra_fields.append(fid)
 
         # Dedupe field ids when product/participating point to the same column
         # (common in this tenant — both = customfield_11526).
