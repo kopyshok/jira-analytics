@@ -1,5 +1,6 @@
 import { api } from './client';
 import type { ScenarioResponse, PlanningResultResponse, StoredAllocationResponse } from '../types/api';
+import type { CapacityPreviewRequest, CapacityPreviewResponse } from '../types/planning';
 
 export const getScenarios = (year?: string, quarter?: string) =>
   api.get<ScenarioResponse[]>('/planning/scenarios', { year, quarter });
@@ -14,3 +15,6 @@ export const getScenarioAllocations = (id: string) =>
 
 export const generateScenario = (data: { name: string; year: number; quarter: number }) =>
   api.post<PlanningResultResponse>('/planning/scenarios/generate', data);
+
+export const capacityPreview = (body: CapacityPreviewRequest) =>
+  api.post<CapacityPreviewResponse>('/planning/capacity-preview', body);
