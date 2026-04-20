@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs, Table, Button, Space, Popconfirm, App, InputNumber, Select, Form, Modal, Switch, Input, Typography, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import {
@@ -8,23 +8,21 @@ import {
   useDeleteMandatoryWorkType,
   useReorderMandatoryWorkTypes,
   useRoleCapacityRules,
-  useCreateRoleCapacityRule,
-  useUpdateRoleCapacityRule,
-  useDeleteRoleCapacityRule,
+  useSaveRoleRulesBatch,
   useCopyRoleCapacityRulesToQuarter,
   useEmployeeCapacityOverrides,
-  useCreateEmployeeCapacityOverride,
-  useUpdateEmployeeCapacityOverride,
-  useDeleteEmployeeCapacityOverride,
+  useSaveEmployeeRulesBatch,
   useEmployees,
 } from '../../hooks/useCapacity';
 import { useQuarterYear } from '../../hooks/useQuarterYear';
+import { useCapacityFilter } from '../../hooks/useCapacityFilter';
 import { EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '../../utils/constants';
 import type {
   EmployeeRole,
   MandatoryWorkType,
-  RoleCapacityRule,
-  EmployeeCapacityOverride,
+  RoleRuleIn,
+  RoleRulesValidationError,
+  EmployeeRulesValidationError,
   EmployeeResponse,
 } from '../../types/api';
 
@@ -61,7 +59,7 @@ function WorkTypesSubtab() {
         <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>
           Добавить тип работ
         </Button>
-        <Text type="secondary">Справочник обязательных работ — заполняется вручную.</Text>
+        <Text type="secondary">Справочник видов работ, покрывающих 100 % времени сотрудника.</Text>
       </Space>
       <Modal
         title="Новый тип обязательных работ"
@@ -156,46 +154,120 @@ function RoleRulesSubtab() {
 
   const wts = useMandatoryWorkTypes({ isActive: true });
   const rules = useRoleCapacityRules(y, q);
-  const create = useCreateRoleCapacityRule();
-  const update = useUpdateRoleCapacityRule();
-  const remove = useDeleteRoleCapacityRule();
+  const saveBatch = useSaveRoleRulesBatch(y, q);
   const copy = useCopyRoleCapacityRulesToQuarter();
 
-  const byKey = useMemo(() => {
-    const m = new Map<string, RoleCapacityRule>();
-    (rules.data ?? []).forEach(r => m.set(`${r.role ?? '__all__'}::${r.work_type_id}`, r));
-    return m;
-  }, [rules.data]);
+  const activeWts = useMemo(
+    () => (wts.data ?? []).filter(w => w.is_active),
+    [wts.data],
+  );
 
-  const writePercent = (role: EmployeeRole | null, wtId: string, next: number | null) => {
-    const key = `${role ?? '__all__'}::${wtId}`;
-    const existing = byKey.get(key);
-    if (next == null || Number.isNaN(next)) {
-      if (existing) {
-        remove.mutate(
-          { id: existing.id, year: y, quarter: q },
-          { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
-        );
+  // Draft state: Map<"role|work_type_id", number | null>.
+  const keyOf = (role: EmployeeRole | null, wtId: string) =>
+    `${role ?? '__all__'}::${wtId}`;
+
+  const [draft, setDraft] = useState<Map<string, number | null>>(new Map());
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (hydrated && !rules.isFetching) return;
+    if (!rules.data) return;
+    const m = new Map<string, number | null>();
+    for (const r of rules.data) {
+      m.set(keyOf(r.role as EmployeeRole | null, r.work_type_id), r.percent_of_norm);
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraft(m);
+    setHydrated(true);
+  }, [rules.data, hydrated, rules.isFetching]);
+
+  // Re-hydrate on year/quarter change.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHydrated(false);
+  }, [y, q]);
+
+  const readCell = (role: EmployeeRole | null, wtId: string): number | null => {
+    const v = draft.get(keyOf(role, wtId));
+    return v ?? null;
+  };
+
+  const writeCell = (role: EmployeeRole | null, wtId: string, next: number | null) => {
+    setDraft(prev => {
+      const m = new Map(prev);
+      if (next == null || Number.isNaN(next)) {
+        m.delete(keyOf(role, wtId));
+      } else {
+        m.set(keyOf(role, wtId), next);
       }
-      return;
+      return m;
+    });
+  };
+
+  const sumByRole = (role: EmployeeRole | null): number => {
+    return activeWts.reduce((acc, w) => {
+      const v = readCell(role, w.id);
+      return acc + (v ?? 0);
+    }, 0);
+  };
+
+  const isDirty = useMemo(() => {
+    const original = new Map<string, number>();
+    (rules.data ?? []).forEach(r =>
+      original.set(keyOf(r.role as EmployeeRole | null, r.work_type_id), r.percent_of_norm),
+    );
+    if (original.size !== draft.size) return true;
+    for (const [k, v] of draft) {
+      if (original.get(k) !== v) return true;
     }
-    if (existing) {
-      if (existing.percent_of_norm === next) return;
-      update.mutate(
-        { id: existing.id, percent: next, year: y, quarter: q },
-        { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
-      );
-    } else {
-      create.mutate(
-        { year: y, quarter: q, role, work_type_id: wtId, percent_of_norm: next },
-        { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
-      );
+    return false;
+  }, [draft, rules.data]);
+
+  const invalidRoles: EmployeeRole[] = useMemo(() => {
+    const bad: EmployeeRole[] = [];
+    for (const row of ROLE_ROWS) {
+      const s = sumByRole(row.role);
+      if (s > 0 && Math.abs(s - 100) > 0.01) {
+        if (row.role !== null) bad.push(row.role);
+      }
     }
+    return bad;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, activeWts]);
+
+  const handleSave = () => {
+    const rulesOut: RoleRuleIn[] = [];
+    for (const [key, value] of draft) {
+      if (value == null || value === 0) continue;
+      const [roleKey, wtId] = key.split('::');
+      rulesOut.push({
+        role: roleKey === '__all__' ? null : (roleKey as EmployeeRole),
+        work_type_id: wtId,
+        percent_of_norm: value,
+      });
+    }
+    saveBatch.mutate(rulesOut, {
+      onSuccess: () => notification.success({ title: 'Сохранено' }),
+      onError: (e: unknown) => {
+        const err = e as { message?: string; data?: { detail?: { errors?: RoleRulesValidationError[] } } };
+        const errs = err.data?.detail?.errors;
+        if (Array.isArray(errs) && errs.length) {
+          const lines = errs.map(x =>
+            `${x.role ?? 'Все роли'}: Σ = ${x.sum.toFixed(0)}% (ожидается 100%)`,
+          ).join('\n');
+          notification.error({ title: 'Σ ≠ 100%', description: lines });
+        } else {
+          notification.error({ title: 'Ошибка', description: err.message ?? 'Неизвестная ошибка' });
+        }
+      },
+    });
+  };
+
+  const handleReset = () => {
+    setHydrated(false);
   };
 
   const next = q === 4 ? { y: y + 1, q: 1 } : { y, q: q + 1 };
-
-  const activeWts = (wts.data ?? []).filter(w => w.is_active);
 
   const columns = [
     {
@@ -212,21 +284,18 @@ function RoleRulesSubtab() {
       key: `wt_${w.id}`,
       width: 140,
       render: (_: unknown, row: typeof ROLE_ROWS[number]) => {
-        const rule = byKey.get(`${row.role ?? '__all__'}::${w.id}`);
+        const v = readCell(row.role, w.id);
         return (
           <InputNumber
             size="small"
-            min={0} max={100}
-            step={1}
+            min={0} max={100} step={1}
             style={{ width: '100%' }}
-            value={rule?.percent_of_norm ?? null}
+            value={v}
             placeholder="—"
             addonAfter="%"
-            onBlur={(e) => {
-              const v = e.currentTarget.value.trim();
-              writePercent(row.role, w.id, v === '' ? null : Number(v));
-            }}
-            onPressEnter={(e) => (e.currentTarget as HTMLInputElement).blur()}
+            onChange={(nv) =>
+              writeCell(row.role, w.id, nv == null ? null : Number(nv))
+            }
           />
         );
       },
@@ -234,11 +303,11 @@ function RoleRulesSubtab() {
     {
       title: 'Σ', key: 'sum', width: 80, fixed: 'right' as const,
       render: (_: unknown, row: typeof ROLE_ROWS[number]) => {
-        const s = activeWts.reduce((acc, w) => {
-          const r = byKey.get(`${row.role ?? '__all__'}::${w.id}`);
-          return acc + (r?.percent_of_norm ?? 0);
-        }, 0);
-        return <Text style={{ color: s > 100 ? '#ff4d4f' : undefined }}>{s.toFixed(0)}%</Text>;
+        const s = sumByRole(row.role);
+        const ok = Math.abs(s - 100) < 0.01;
+        const empty = s === 0;
+        const color = empty ? undefined : ok ? '#52c41a' : '#ff4d4f';
+        return <Text style={{ color }}>{s.toFixed(0)}%</Text>;
       },
     },
   ];
@@ -247,9 +316,20 @@ function RoleRulesSubtab() {
     <Space orientation="vertical" style={{ width: '100%' }}>
       <Space>
         <Text>
-          Правила для <b>Q{q} {y}</b>. Число — % от нормы на соответствующий тип работ.
-          Пустая клетка = нет правила. Строка «Все роли» — fallback, если правила на конкретную роль нет.
+          Правила для <b>Q{q} {y}</b>. В каждой строке сумма долей должна быть равна <b>100 %</b>
+          (пустая строка допустима). «Все роли» — fallback для сотрудников без явного правила.
         </Text>
+      </Space>
+      <Space>
+        <Button
+          type="primary"
+          loading={saveBatch.isPending}
+          disabled={!isDirty}
+          onClick={handleSave}
+        >
+          Сохранить {isDirty && <Tag style={{ marginLeft: 8 }}>есть изменения</Tag>}
+        </Button>
+        <Button disabled={!isDirty} onClick={handleReset}>Отменить</Button>
         <Popconfirm
           title={`Скопировать все правила из Q${q} ${y} в Q${next.q} ${next.y}?`}
           okText="Скопировать" cancelText="Отмена"
@@ -272,9 +352,14 @@ function RoleRulesSubtab() {
         >
           <Button loading={copy.isPending}>Скопировать в следующий квартал</Button>
         </Popconfirm>
+        {invalidRoles.length > 0 && (
+          <Text type="danger">
+            Σ ≠ 100%: {invalidRoles.map(r => EMPLOYEE_ROLE_LABELS[r]).join(', ')}
+          </Text>
+        )}
       </Space>
       {activeWts.length === 0 ? (
-        <Text type="secondary">Нет активных типов работ. Добавьте их во вкладке «Обязательные работы».</Text>
+        <Text type="secondary">Нет активных типов работ. Добавьте их во вкладке «Виды работ».</Text>
       ) : (
         <Table
           dataSource={ROLE_ROWS}
@@ -307,6 +392,8 @@ function EmployeeOverridesSubtab() {
   const create = useCreateEmployeeCapacityOverride();
   const update = useUpdateEmployeeCapacityOverride();
   const remove = useDeleteEmployeeCapacityOverride();
+  const { matchesTeam } = useCapacityFilter();
+  const visibleOverrides = (overrides.data ?? []).filter(o => matchesTeam(o.employee_id));
 
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
@@ -373,7 +460,7 @@ function EmployeeOverridesSubtab() {
         </Form>
       </Modal>
       <Table<EmployeeCapacityOverride>
-        dataSource={overrides.data ?? []}
+        dataSource={visibleOverrides}
         rowKey="id"
         loading={overrides.isLoading}
         pagination={false}
@@ -456,7 +543,7 @@ export default function RulesTabV2() {
   return (
     <Tabs
       items={[
-        { key: 'work_types', label: 'Обязательные работы', children: <WorkTypesSubtab /> },
+        { key: 'work_types', label: 'Виды работ', children: <WorkTypesSubtab /> },
         { key: 'by_role', label: 'Правила по ролям', children: <RoleRulesSubtab /> },
         { key: 'by_employee', label: 'Индивидуальные правила', children: <EmployeeOverridesSubtab /> },
       ]}
