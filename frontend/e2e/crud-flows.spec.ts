@@ -151,30 +151,29 @@ test('scope, capacity, backlog, and planning CRUD flows work with seeded data', 
   expect(backlog.some((item) => item.title === 'E2E backlog candidate updated')).toBeTruthy();
 
   await page.goto(`/planning?year=${e2eYear}&quarter=${e2eQuarter}`);
-  await page.getByRole('button', { name: 'Сгенерировать сценарий' }).click();
-
-  const scenarioDialog = page.getByRole('dialog', { name: 'Новый сценарий' });
-  await scenarioDialog.getByLabel('Название сценария').fill('E2E generated scenario');
-  await clickPrimaryInModal(page);
-  await expectVisible(page.getByText('Результат: E2E generated scenario'));
-  await expectVisible(page.getByRole('cell', { name: 'E2E backlog candidate updated' }));
-  await expectVisible(page.getByText('Включена'));
+  const expectedScenarioName = `Q${e2eQuarter} ${e2eYear} draft`;
+  // Wait for backlog row to render — seeded E2E item is pre-selected by the page.
+  await expectVisible(page.getByText('E2E backlog candidate updated'));
+  await page.getByRole('button', { name: 'Сохранить сценарий' }).click();
+  await expectVisible(page.getByText(`Сценарий «${expectedScenarioName}» сохранён`));
 
   let scenarios = await apiGet<Scenario[]>(
     request,
     `/planning/scenarios?year=${e2eYear}&quarter=${e2eQuarter}`,
   );
-  expect(scenarios.some((scenario) => scenario.name === 'E2E generated scenario')).toBeTruthy();
+  const savedScenario = scenarios.find((scenario) => scenario.name === expectedScenarioName);
+  expect(savedScenario).toBeTruthy();
 
-  const scenarioRow = page.getByRole('row').filter({ hasText: 'E2E generated scenario' }).first();
-  await scenarioRow.locator('button').last().click();
-  await confirmPopconfirm(page);
+  // No delete UI on the redesigned /planning — clean up via API so the CRUD
+  // cycle still completes and subsequent assertions see the scenario removed.
+  const deleteResponse = await request.delete(`${apiBaseUrl}/planning/scenarios/${savedScenario!.id}`);
+  expect(deleteResponse.ok()).toBeTruthy();
 
   scenarios = await apiGet<Scenario[]>(
     request,
     `/planning/scenarios?year=${e2eYear}&quarter=${e2eQuarter}`,
   );
-  expect(scenarios.some((scenario) => scenario.name === 'E2E generated scenario')).toBeFalsy();
+  expect(scenarios.some((scenario) => scenario.name === expectedScenarioName)).toBeFalsy();
 
   await page.goto(`/backlog?year=${e2eYear}&quarter=${e2eQuarter}`);
   const updatedBacklogRow = page.getByRole('row').filter({ hasText: 'E2E backlog candidate updated' });
@@ -220,4 +219,45 @@ test('scope, capacity, backlog, and planning CRUD flows work with seeded data', 
   expect(overrides.some((override) => override.jira_issue_key === 'E2E-101')).toBeFalsy();
 
   await expectNoBrowserErrors(browserErrors);
+});
+
+test('planning — toggling a backlog checkbox updates role capacity panel', async ({
+  page,
+  request,
+}) => {
+  // Seed a minimal backlog item so the panel has a non-zero analyst demand to
+  // flip when the checkbox is toggled.  We target the same year/quarter the
+  // page opens by default.
+  const created = await request.post(`${apiBaseUrl}/backlog`, {
+    data: {
+      title: 'E2E planning toggle',
+      year: e2eYear,
+      quarter: `Q${e2eQuarter}`,
+      priority: 1,
+      estimate_analyst_hours: 4,
+      estimate_dev_hours: 8,
+      estimate_qa_hours: 2,
+      estimate_opo_hours: 0,
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  const createdItem = (await created.json()) as { id: string };
+
+  try {
+    await page.goto(`/planning?year=${e2eYear}&quarter=${e2eQuarter}`);
+
+    const demandCell = page.getByTestId('capacity-analyst-demand');
+    await demandCell.waitFor();
+    const initial = (await demandCell.textContent())?.trim() ?? '';
+
+    const row = page.getByTestId(`planning-item-${createdItem.id}`);
+    const checkbox = row.locator('input[type="checkbox"]').first();
+    await checkbox.uncheck();
+
+    await expect
+      .poll(async () => (await demandCell.textContent())?.trim() ?? '', { timeout: 5000 })
+      .not.toBe(initial);
+  } finally {
+    await request.delete(`${apiBaseUrl}/backlog/${createdItem.id}`);
+  }
 });
