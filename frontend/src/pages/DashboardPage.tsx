@@ -138,8 +138,8 @@ export default function DashboardPage() {
         )}
         <FactFilterBar />
         <ExportButtons
-          onXlsx={() => downloadAnalyticsXlsx(start, end)}
-          onPdf={() => downloadAnalyticsPdf(start, end)}
+          onXlsx={() => downloadAnalyticsXlsx(start, end, teamParams)}
+          onPdf={() => downloadAnalyticsPdf(start, end, teamParams)}
         />
         <Button
           icon={<SyncOutlined spin={syncFull.isPending} />}

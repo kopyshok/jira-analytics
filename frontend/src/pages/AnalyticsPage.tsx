@@ -72,8 +72,8 @@ export default function AnalyticsPage() {
         )}
         <FactFilterBar />
         <ExportButtons
-          onXlsx={() => downloadAnalyticsXlsx(start, end)}
-          onPdf={() => downloadAnalyticsPdf(start, end)}
+          onXlsx={() => downloadAnalyticsXlsx(start, end, teamParams)}
+          onPdf={() => downloadAnalyticsPdf(start, end, teamParams)}
         />
       </Space>
       <Tabs activeKey={activeTab} onChange={(key) => setSearchParams({ tab: key })} items={[
