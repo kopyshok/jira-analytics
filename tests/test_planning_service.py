@@ -4,15 +4,48 @@ import pytest
 
 from app.models import (
     BacklogItem,
+    Category,
     Employee,
+    MandatoryWorkType,
     PlanningScenario,
+    RoleCapacityRule,
     ScenarioAllocation,
 )
 from app.services.planning_service import PlanningService
 
 
 @pytest.fixture
-def two_employees(db_session):
+def productive_setup(db_session):
+    """v3: productive work type + linked Category + 100% fallback rule на Q1 2026.
+
+    Без этого productive_percent = 0 → team_quarter_capacity возвращает 0, и
+    ёмкость команды становится 0 вместо ожидаемых 1024 ч.
+    """
+    wt = MandatoryWorkType(
+        code="productive", label="Продуктив", is_active=True
+    )
+    db_session.add(wt)
+    db_session.flush()
+    db_session.add(
+        Category(
+            code="cat_productive",
+            label="Productive",
+            is_system=False,
+            work_type_id=wt.id,
+        )
+    )
+    db_session.add(
+        RoleCapacityRule(
+            year=2026, quarter=1, role=None,
+            work_type_id=wt.id, percent_of_norm=100.0,
+        )
+    )
+    db_session.flush()
+    return wt
+
+
+@pytest.fixture
+def two_employees(db_session, productive_setup):
     """Две активных сотрудника → 2 × 512 = 1024 часа ёмкости за Q1 2026."""
     alice = Employee(
         jira_account_id="a1", display_name="Alice", is_active=True

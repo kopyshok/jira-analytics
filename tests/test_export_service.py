@@ -12,10 +12,13 @@ import pytest
 
 from app.models import (
     BacklogItem,
+    Category,
     CategoryMapping,
     Employee,
     Issue,
+    MandatoryWorkType,
     Project,
+    RoleCapacityRule,
     Worklog,
 )
 from app.services.categories import CategoryCode
@@ -89,7 +92,32 @@ def analytics_seed(db_session):
 
 @pytest.fixture
 def scenario_seed(db_session):
-    """Два сотрудника + бэклог + сгенерированный сценарий Q1 2026."""
+    """Два сотрудника + бэклог + сгенерированный сценарий Q1 2026.
+
+    v3: нужен productive work_type + связанная Category + fallback-правило 100%,
+    иначе team_quarter_capacity отдаёт 0 и сценарий не пакует ничего.
+    """
+    wt = MandatoryWorkType(
+        code="productive", label="Продуктив", is_active=True,
+    )
+    db_session.add(wt)
+    db_session.flush()
+    db_session.add(
+        Category(
+            code="cat_productive",
+            label="Productive",
+            is_system=False,
+            work_type_id=wt.id,
+        )
+    )
+    db_session.add(
+        RoleCapacityRule(
+            year=2026, quarter=1, role=None,
+            work_type_id=wt.id, percent_of_norm=100.0,
+        )
+    )
+    db_session.flush()
+
     alice = Employee(
         jira_account_id="a1", display_name="Alice", is_active=True
     )

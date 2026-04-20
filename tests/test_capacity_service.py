@@ -6,8 +6,12 @@ import pytest
 
 from app.models import (
     Absence,
+    AbsenceReason,
+    Category,
     Employee,
+    MandatoryWorkType,
     ProductionCalendarDay,
+    RoleCapacityRule,
 )
 from app.services.capacity_service import (
     CapacityService,
@@ -25,6 +29,53 @@ def employee(db_session):
     db_session.add(emp)
     db_session.flush()
     return emp
+
+
+@pytest.fixture
+def vacation_reason(db_session):
+    """Absence.reason_id is now NOT NULL → seed one reason to attach to absences."""
+    reason = AbsenceReason(
+        code="vacation", label="Отпуск", is_planned=True, is_active=True,
+    )
+    db_session.add(reason)
+    db_session.flush()
+    return reason
+
+
+@pytest.fixture
+def productive_setup(db_session):
+    """v3: seed one productive work type + linked category + 100% fallback rule.
+
+    Без этого productive_percent = 0 → available = 0. Фикстура даёт
+    «продуктивный на 100%» бэйзлайн, эквивалентный v2 «нет правил»:
+    available = norm - absence, mandatory = 0.
+    """
+    wt = MandatoryWorkType(
+        code="productive", label="Продуктив", is_active=True
+    )
+    db_session.add(wt)
+    db_session.flush()
+    db_session.add(
+        Category(
+            code="cat_productive",
+            label="Productive",
+            is_system=False,
+            work_type_id=wt.id,
+        )
+    )
+    # Fallback rule (role=None) на все 4 квартала 2026 — тесты используют Q1/Q2.
+    for q in (1, 2, 3, 4):
+        db_session.add(
+            RoleCapacityRule(
+                year=2026,
+                quarter=q,
+                role=None,
+                work_type_id=wt.id,
+                percent_of_norm=100.0,
+            )
+        )
+    db_session.flush()
+    return wt
 
 
 class TestWorkdayCalendar:
@@ -62,7 +113,7 @@ class TestWorkdayCalendar:
 class TestMonthlyCapacity:
     """Hours = workdays × 8 − vacations − mandatory."""
 
-    def test_norm_without_deductions(self, db_session, employee):
+    def test_norm_without_deductions(self, db_session, employee, productive_setup):
         service = CapacityService(db_session)
         result = service.monthly_capacity(employee.id, 2026, 3)
 
@@ -73,13 +124,16 @@ class TestMonthlyCapacity:
         assert result.mandatory_hours == 0.0
         assert result.available_hours == 176.0
 
-    def test_vacation_inside_month(self, db_session, employee):
+    def test_vacation_inside_month(
+        self, db_session, employee, productive_setup, vacation_reason
+    ):
         # 5 workdays off
         db_session.add(
             Absence(
                 employee_id=employee.id,
                 start_date=date(2026, 3, 2),
                 end_date=date(2026, 3, 6),
+                reason_id=vacation_reason.id,
             )
         )
         db_session.flush()
@@ -91,7 +145,9 @@ class TestMonthlyCapacity:
         assert result.vacation_hours == 40.0
         assert result.available_hours == 176.0 - 40.0
 
-    def test_vacation_spans_month_boundary(self, db_session, employee):
+    def test_vacation_spans_month_boundary(
+        self, db_session, employee, productive_setup, vacation_reason
+    ):
         # 2026-02-26 Thu .. 2026-03-06 Fri
         # Feb part: 26, 27 → 2 workdays (16h)
         # Mar part: 2, 3, 4, 5, 6 → 5 workdays (40h)
@@ -100,6 +156,7 @@ class TestMonthlyCapacity:
                 employee_id=employee.id,
                 start_date=date(2026, 2, 26),
                 end_date=date(2026, 3, 6),
+                reason_id=vacation_reason.id,
             )
         )
         db_session.flush()
@@ -112,13 +169,16 @@ class TestMonthlyCapacity:
         assert feb.vacation_hours == 16.0
         assert mar.vacation_hours == 40.0
 
-    def test_available_never_negative(self, db_session, employee):
+    def test_available_never_negative(
+        self, db_session, employee, productive_setup, vacation_reason
+    ):
         # Full-month vacation covers all 22 workdays
         db_session.add(
             Absence(
                 employee_id=employee.id,
                 start_date=date(2026, 3, 1),
                 end_date=date(2026, 3, 31),
+                reason_id=vacation_reason.id,
             )
         )
         db_session.flush()
@@ -144,7 +204,7 @@ class TestMonthlyCapacity:
 class TestQuarterCapacity:
     """Quarter aggregates three months."""
 
-    def test_q1_without_deductions(self, db_session, employee):
+    def test_q1_without_deductions(self, db_session, employee, productive_setup):
         service = CapacityService(db_session)
         result = service.quarter_capacity(employee.id, 2026, 1)
 
@@ -155,7 +215,9 @@ class TestQuarterCapacity:
         assert result.months[0].month == 1
         assert result.months[2].month == 3
 
-    def test_q1_with_vacation_only(self, db_session, employee):
+    def test_q1_with_vacation_only(
+        self, db_session, employee, productive_setup, vacation_reason
+    ):
         # Vacation-only quarter aggregation; mandatory rules проверяются
         # в test_capacity_service_mandatory.py
         db_session.add(
@@ -163,6 +225,7 @@ class TestQuarterCapacity:
                 employee_id=employee.id,
                 start_date=date(2026, 2, 2),
                 end_date=date(2026, 2, 13),
+                reason_id=vacation_reason.id,
             )
         )
         db_session.flush()

@@ -1,8 +1,14 @@
-"""Tests for CapacityService mandatory_percent_breakdown + mandatory_hours v2."""
+"""Tests for CapacityService mandatory_percent_breakdown + mandatory_hours v3.
+
+v3: available = effective_norm × productive_percent / 100; mandatory = effective_norm − available.
+productive_percent = Σ правил для work_types, у которых есть хотя бы одна
+привязанная категория (Category.work_type_id = wt.id).
+"""
 
 import pytest
 
 from app.models import (
+    Category,
     Employee,
     EmployeeCapacityOverride,
     MandatoryWorkType,
@@ -34,6 +40,30 @@ def work_types(db_session):
     db_session.add_all(wts)
     db_session.flush()
     return {wt.code: wt for wt in wts}
+
+
+@pytest.fixture
+def productive_wt(db_session):
+    """v3: productive work type + linked Category — без этого productive_pct = 0.
+
+    Правила на этот wt тесты добавляют сами (role=None, % нужный каждому кейсу),
+    чтобы получить нужное соотношение productive/mandatory.
+    """
+    wt = MandatoryWorkType(
+        code="productive", label="Продуктив", is_active=True
+    )
+    db_session.add(wt)
+    db_session.flush()
+    db_session.add(
+        Category(
+            code="cat_productive",
+            label="Productive",
+            is_system=False,
+            work_type_id=wt.id,
+        )
+    )
+    db_session.flush()
+    return wt
 
 
 class TestMandatoryPercentBreakdown:
@@ -107,10 +137,14 @@ class TestMandatoryPercentBreakdown:
 
 
 class TestMandatoryHoursIntegration:
-    """mandatory_hours = norm_hours × total_percent / 100."""
+    """v3: available = effective_norm × productive_percent / 100; mandatory = rest."""
 
-    def test_monthly_capacity_applies_quarter_rule(self, db_session, employee, work_types):
-        # 10% tech_debt + 5% org = 15% суммарно для Q1/programmer.
+    def test_monthly_capacity_applies_quarter_rule(
+        self, db_session, employee, work_types, productive_wt
+    ):
+        # 10% tech_debt + 5% org = 15% mandatory для Q1/programmer.
+        # productive (связан с Category) = 85% → available = 85% * norm,
+        # mandatory = norm − available = 15% * norm.
         db_session.add_all([
             RoleCapacityRule(
                 year=2026, quarter=1, role="programmer",
@@ -119,6 +153,10 @@ class TestMandatoryHoursIntegration:
             RoleCapacityRule(
                 year=2026, quarter=1, role="programmer",
                 work_type_id=work_types["organizational"].id, percent_of_norm=5.0,
+            ),
+            RoleCapacityRule(
+                year=2026, quarter=1, role=None,
+                work_type_id=productive_wt.id, percent_of_norm=85.0,
             ),
         ])
         db_session.flush()
@@ -130,13 +168,21 @@ class TestMandatoryHoursIntegration:
         assert mc.mandatory_hours == pytest.approx(176.0 * 0.15)
         assert mc.available_hours == pytest.approx(176.0 * 0.85)
 
-    def test_no_role_no_rule_zero_mandatory(self, db_session, work_types):
+    def test_no_productive_rule_no_available(self, db_session, work_types):
+        """v3: без правил на productive work_type доступные часы = 0.
+
+        В v2 «нет правил» означало mandatory=0 → available=norm. В v3 проценты
+        описывают 100% времени, поэтому «нет productive правил» → productive_pct=0
+        → available=0, а вся норма отправляется в mandatory.
+        """
         emp = Employee(
             jira_account_id="acc-nul", display_name="NoRole",
             is_active=True, role=None,
         )
         db_session.add(emp)
         db_session.flush()
+        # Правило на роль, которой нет у сотрудника — не применяется ни по роли,
+        # ни по fallback (role=None). Категорий, привязанных к work_type, тоже нет.
         db_session.add(RoleCapacityRule(
             year=2026, quarter=1, role="programmer",
             work_type_id=work_types["tech_debt"].id, percent_of_norm=20.0,
@@ -145,15 +191,30 @@ class TestMandatoryHoursIntegration:
 
         svc = CapacityService(db_session)
         mc = svc.monthly_capacity(emp.id, 2026, 3)
-        assert mc.mandatory_hours == 0.0  # no role-match, no fallback
+        assert mc.available_hours == 0.0
+        assert mc.mandatory_hours == mc.norm_hours
 
-    def test_inactive_work_type_ignored(self, db_session, employee, work_types):
-        """Правила на деактивированный work_type не должны попадать в breakdown."""
-        db_session.add(RoleCapacityRule(
-            year=2026, quarter=1, role="programmer",
-            work_type_id=work_types["inactive_type"].id, percent_of_norm=50.0,
-        ))
+    def test_inactive_work_type_ignored(
+        self, db_session, employee, work_types, productive_wt
+    ):
+        """Правила на деактивированный work_type не должны попадать в breakdown.
+
+        productive_wt (100% fallback) обеспечивает бэйзлайн: available = norm,
+        mandatory = 0. Если бы правило на inactive_type применилось — mandatory
+        стал бы > 0.
+        """
+        db_session.add_all([
+            RoleCapacityRule(
+                year=2026, quarter=1, role="programmer",
+                work_type_id=work_types["inactive_type"].id, percent_of_norm=50.0,
+            ),
+            RoleCapacityRule(
+                year=2026, quarter=1, role=None,
+                work_type_id=productive_wt.id, percent_of_norm=100.0,
+            ),
+        ])
         db_session.flush()
 
         mc = CapacityService(db_session).monthly_capacity(employee.id, 2026, 3)
         assert mc.mandatory_hours == 0.0
+        assert mc.available_hours == mc.norm_hours
