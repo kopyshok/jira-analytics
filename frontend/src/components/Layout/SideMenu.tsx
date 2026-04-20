@@ -35,7 +35,7 @@ const items: MenuProps['items'] = [
     type: 'group',
     label: 'ПЛАНИРОВАНИЕ',
     children: [
-      { key: '/capacity', icon: <TeamOutlined />, label: 'Ёмкость' },
+      { key: '/capacity', icon: <TeamOutlined />, label: 'Ресурсы' },
       { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Бэклог' },
       { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Сценарии' },
     ],
