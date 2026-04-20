@@ -79,6 +79,16 @@ class QuarterCapacity:
     team: Optional[str] = None
 
 
+@dataclass
+class WorkTypeBreakdownRow:
+    work_type_id: Optional[str]
+    work_type_label: str
+    is_productive: bool
+    plan_hours: float
+    plan_pct: float
+    fact_hours: float
+
+
 class RulesConflict(Exception):
     """Целевой квартал уже содержит правила, подлежащие копированию."""
 
@@ -457,6 +467,103 @@ class CapacityService:
             row.total_hours += float(hours)
 
         return list(per_employee.values())
+
+    def work_type_breakdown(
+        self,
+        employee_id: str,
+        year: int,
+        quarter: int,
+    ) -> list[WorkTypeBreakdownRow]:
+        """Plan vs fact per work_type for an employee in a given quarter."""
+        from app.models import Category, Issue, MandatoryWorkType
+
+        if quarter not in QUARTER_MONTHS:
+            raise ValueError(f"Quarter must be 1..4, got {quarter}")
+
+        employee = self._get_employee(employee_id)
+
+        # Compute quarter norm minus absences (same approach as quarter_capacity).
+        months = QUARTER_MONTHS[quarter]
+        effective_norm = 0.0
+        for m in months:
+            nh = self._norm_hours_in_month(year, m)
+            ah = self._absence_hours_for_month(employee_id, year, m)
+            effective_norm += max(0.0, nh - ah)
+
+        breakdown = self.mandatory_percent_breakdown(employee, year, quarter)
+        productive_ids = self._productive_work_type_ids()
+
+        all_wts = (
+            self.db.query(MandatoryWorkType)
+            .order_by(MandatoryWorkType.sort_order, MandatoryWorkType.code)
+            .all()
+        )
+
+        # Fact: sum worklog hours in quarter, grouped by work_type via Issue.assigned_category.
+        start = date(year, months[0], 1)
+        if months[-1] == 12:
+            end_exclusive = date(year + 1, 1, 1)
+        else:
+            end_exclusive = date(year, months[-1] + 1, 1)
+
+        fact_rows = (
+            self.db.query(
+                Category.work_type_id,
+                func.coalesce(func.sum(Worklog.hours), 0.0).label("h"),
+            )
+            .outerjoin(Issue, Issue.assigned_category == Category.code)
+            .outerjoin(
+                Worklog,
+                (Worklog.issue_id == Issue.id)
+                & (Worklog.employee_id == employee_id)
+                & (Worklog.started_at >= datetime.combine(start, datetime.min.time()))
+                & (Worklog.started_at < datetime.combine(end_exclusive, datetime.min.time())),
+            )
+            .group_by(Category.work_type_id)
+            .all()
+        )
+        fact_by_wt: dict[Optional[str], float] = {
+            wt_id: float(h) for wt_id, h in fact_rows
+        }
+
+        # Worklogs whose issue.assigned_category is None OR whose category code doesn't
+        # appear in categories table → attribute to the None (uncategorized) bucket.
+        none_hours = (
+            self.db.query(func.coalesce(func.sum(Worklog.hours), 0.0))
+            .join(Issue, Worklog.issue_id == Issue.id)
+            .outerjoin(Category, Category.code == Issue.assigned_category)
+            .filter(
+                Worklog.employee_id == employee_id,
+                Worklog.started_at >= datetime.combine(start, datetime.min.time()),
+                Worklog.started_at < datetime.combine(end_exclusive, datetime.min.time()),
+                (Category.id.is_(None)) | (Category.work_type_id.is_(None)),
+            )
+            .scalar() or 0.0
+        )
+        fact_by_wt[None] = float(none_hours)
+
+        wt_id_by_code = {w.code: w.id for w in all_wts}
+
+        rows: list[WorkTypeBreakdownRow] = []
+        for wt in all_wts:
+            pct = breakdown.get(wt.code, 0.0)
+            rows.append(WorkTypeBreakdownRow(
+                work_type_id=wt.id,
+                work_type_label=wt.label,
+                is_productive=wt.id in productive_ids,
+                plan_hours=effective_norm * pct / 100.0,
+                plan_pct=pct,
+                fact_hours=fact_by_wt.get(wt.id, 0.0),
+            ))
+        rows.append(WorkTypeBreakdownRow(
+            work_type_id=None,
+            work_type_label="Без вида работ",
+            is_productive=False,
+            plan_hours=0.0,
+            plan_pct=0.0,
+            fact_hours=fact_by_wt.get(None, 0.0),
+        ))
+        return rows
 
     def copy_role_rules_to_quarter(
         self,
