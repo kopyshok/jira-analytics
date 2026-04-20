@@ -11,6 +11,7 @@ import {
   getScenarioAllocations,
   patchAllocation,
   capacityPreview,
+  getScenarioResource,
 } from '../api/planning';
 import type { CapacityPreviewRequest } from '../types/planning';
 import type { ScenarioResponse } from '../types/api';
@@ -124,6 +125,14 @@ export const usePatchAllocation = () => {
     },
   });
 };
+
+export const useScenarioResource = (sid?: string) =>
+  useQuery({
+    queryKey: ['planning', 'scenario', sid, 'resource'],
+    queryFn: () => getScenarioResource(sid!),
+    enabled: !!sid,
+    staleTime: 60_000,
+  });
 
 /** Live-расчёт ёмкости для страницы «Сценарии». Сервер принимает список
  *  backlog_item_ids (включённых в сценарий) и возвращает capacity/demand

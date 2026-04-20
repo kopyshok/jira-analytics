@@ -419,6 +419,28 @@ export interface ScenarioResponse {
   external_qa_hours: number | null;
 }
 
+export interface ResourceDayHours {
+  date: string; // ISO "YYYY-MM-DD"
+  hours: number;
+}
+
+export interface ResourceEmployee {
+  employee_id: string;
+  display_name: string;
+  role: string | null;
+  total_hours: number;
+  days: ResourceDayHours[];
+}
+
+export interface ResourceBase {
+  year: number;
+  quarter: number;
+  team: string;
+  employees: ResourceEmployee[];
+  role_totals: Record<string, number>;
+  external_qa_hours: number | null;
+}
+
 export interface AllocationResponse {
   id: string;
   scenario_id: string;
