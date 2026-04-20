@@ -33,6 +33,7 @@ class ScenarioAllocation(Base, TimestampMixin):
     )
     planned_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     included_flag: Mapped[bool] = mapped_column(Boolean, default=True)
+    involvement_coefficient: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Relationships
     scenario: Mapped["PlanningScenario"] = relationship(back_populates="allocations")
