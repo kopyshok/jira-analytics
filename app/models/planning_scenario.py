@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -35,6 +35,8 @@ class PlanningScenario(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="draft", server_default="draft"
     )
+    team: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    external_qa_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Relationships
     allocations: Mapped[List["ScenarioAllocation"]] = relationship(
