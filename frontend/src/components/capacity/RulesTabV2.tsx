@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, InputNumber, Select, Form, Modal, Switch, Input, Typography, Tag } from 'antd';
+import { Tabs, Table, Button, Space, Popconfirm, App, InputNumber, Form, Modal, Switch, Input, Typography, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import {
   useMandatoryWorkTypes,
@@ -389,148 +389,241 @@ function EmployeeOverridesSubtab() {
   const wts = useMandatoryWorkTypes({ isActive: true });
   const roleRules = useRoleCapacityRules(y, q);
   const overrides = useEmployeeCapacityOverrides({ year: y, quarter: q });
-  const create = useCreateEmployeeCapacityOverride();
-  const update = useUpdateEmployeeCapacityOverride();
-  const remove = useDeleteEmployeeCapacityOverride();
+  const saveBatch = useSaveEmployeeRulesBatch(y, q);
   const { matchesTeam } = useCapacityFilter();
-  const visibleOverrides = (overrides.data ?? []).filter(o => matchesTeam(o.employee_id));
 
-  const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
+  const activeWts = useMemo(
+    () => (wts.data ?? []).filter(w => w.is_active),
+    [wts.data],
+  );
 
-  const empById = useMemo(() => {
-    const m = new Map<string, EmployeeResponse>();
-    (employees.data ?? []).forEach(e => m.set(e.id, e));
-    return m;
-  }, [employees.data]);
+  const visibleEmployees = useMemo(
+    () => (employees.data ?? []).filter(e => matchesTeam(e.id)),
+    [employees.data, matchesTeam],
+  );
 
-  const wtById = useMemo(() => {
-    const m = new Map<string, string>();
-    (wts.data ?? []).forEach(w => m.set(w.id, w.label));
-    return m;
-  }, [wts.data]);
+  // Build baseline map (role rules resolved for each emp × wt).
+  const baselineFor = useCallback(
+    (emp: EmployeeResponse, wtId: string): number => {
+      const rs = roleRules.data ?? [];
+      if (emp.role) {
+        const exact = rs.find(r => r.role === emp.role && r.work_type_id === wtId);
+        if (exact) return exact.percent_of_norm;
+      }
+      const fallback = rs.find(r => r.role === null && r.work_type_id === wtId);
+      return fallback?.percent_of_norm ?? 0;
+    },
+    [roleRules.data],
+  );
 
-  const basePercentFor = (emp: EmployeeResponse | undefined, wtId: string): number => {
-    if (!emp) return 0;
-    const rules = roleRules.data ?? [];
-    const role = emp.role;
-    const exact = role ? rules.find(r => r.role === role && r.work_type_id === wtId) : undefined;
-    if (exact) return exact.percent_of_norm;
-    const fallback = rules.find(r => r.role === null && r.work_type_id === wtId);
-    return fallback?.percent_of_norm ?? 0;
+  // Draft state: Map<employee_id, { enabled: boolean, pct: Map<wtId, number> }>.
+  interface RowDraft { enabled: boolean; pct: Map<string, number> }
+  const [draft, setDraft] = useState<Map<string, RowDraft>>(new Map());
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (hydrated && !overrides.isFetching) return;
+    if (!overrides.data) return;
+    const m = new Map<string, RowDraft>();
+    for (const o of overrides.data) {
+      const row = m.get(o.employee_id) ?? { enabled: true, pct: new Map() };
+      row.pct.set(o.work_type_id, o.percent_of_norm);
+      row.enabled = true;
+      m.set(o.employee_id, row);
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraft(m);
+    setHydrated(true);
+  }, [overrides.data, hydrated, overrides.isFetching]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHydrated(false);
+  }, [y, q]);
+
+  const toggleOverride = (emp: EmployeeResponse, next: boolean) => {
+    setDraft(prev => {
+      const m = new Map(prev);
+      const row = m.get(emp.id);
+      if (next) {
+        // Enable: if no row, seed from role baseline.
+        if (row?.enabled) return m;
+        const pct = new Map<string, number>();
+        for (const w of activeWts) {
+          pct.set(w.id, baselineFor(emp, w.id));
+        }
+        m.set(emp.id, { enabled: true, pct });
+      } else if (row) {
+        m.set(emp.id, { ...row, enabled: false });
+      } else {
+        m.set(emp.id, { enabled: false, pct: new Map() });
+      }
+      return m;
+    });
+  };
+
+  const writeCell = (empId: string, wtId: string, next: number | null) => {
+    setDraft(prev => {
+      const m = new Map(prev);
+      const row = m.get(empId) ?? { enabled: true, pct: new Map() };
+      const pct = new Map(row.pct);
+      if (next == null || Number.isNaN(next)) {
+        pct.delete(wtId);
+      } else {
+        pct.set(wtId, next);
+      }
+      m.set(empId, { enabled: row.enabled, pct });
+      return m;
+    });
+  };
+
+  const sumFor = (empId: string): number => {
+    const row = draft.get(empId);
+    if (!row) return 0;
+    let s = 0;
+    for (const v of row.pct.values()) s += v;
+    return s;
+  };
+
+  const isDirty = useMemo(() => {
+    const orig = new Map<string, { enabled: boolean; pct: Map<string, number> }>();
+    for (const o of overrides.data ?? []) {
+      const row = orig.get(o.employee_id) ?? { enabled: true, pct: new Map() };
+      row.pct.set(o.work_type_id, o.percent_of_norm);
+      orig.set(o.employee_id, row);
+    }
+    for (const [empId, d] of draft) {
+      const o = orig.get(empId);
+      if (!d.enabled) {
+        if (o) return true;
+        continue;
+      }
+      if (!o) return true;
+      if (o.pct.size !== d.pct.size) return true;
+      for (const [k, v] of d.pct) {
+        if (o.pct.get(k) !== v) return true;
+      }
+    }
+    return false;
+  }, [draft, overrides.data]);
+
+  const invalidEmps: string[] = useMemo(() => {
+    const out: string[] = [];
+    for (const [empId, row] of draft) {
+      if (!row.enabled) continue;
+      const s = sumFor(empId);
+      if (row.pct.size > 0 && Math.abs(s - 100) > 0.01) out.push(empId);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
+
+  const handleSave = () => {
+    const touchedIds = new Set<string>();
+    for (const [empId, row] of draft) {
+      touchedIds.add(empId);
+      if (row.enabled && row.pct.size > 0 && Math.abs(sumFor(empId) - 100) > 0.01) {
+        // UI already flagged; let server 422 for safety.
+      }
+    }
+    const payload = Array.from(touchedIds).map(empId => {
+      const row = draft.get(empId)!;
+      if (!row.enabled) return { employee_id: empId, rules: [] };
+      return {
+        employee_id: empId,
+        rules: Array.from(row.pct.entries())
+          .filter(([, v]) => v > 0)
+          .map(([wtId, v]) => ({ work_type_id: wtId, percent_of_norm: v })),
+      };
+    });
+    saveBatch.mutate(payload, {
+      onSuccess: () => notification.success({ title: 'Сохранено' }),
+      onError: (e: unknown) => {
+        const err = e as { message?: string; data?: { detail?: { errors?: EmployeeRulesValidationError[] } } };
+        const errs = err.data?.detail?.errors;
+        if (Array.isArray(errs) && errs.length) {
+          const lines = errs
+            .map(x => `${x.employee_id}: Σ = ${x.sum.toFixed(0)}% (ожидается 100%)`)
+            .join('\n');
+          notification.error({ title: 'Σ ≠ 100%', description: lines });
+        } else {
+          notification.error({ title: 'Ошибка', description: err.message ?? 'Неизвестная ошибка' });
+        }
+      },
+    });
   };
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
       <Space>
-        <Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>
-          Добавить индивидуальное правило
+        <Button
+          type="primary"
+          loading={saveBatch.isPending}
+          disabled={!isDirty}
+          onClick={handleSave}
+        >
+          Сохранить все {isDirty && <Tag style={{ marginLeft: 8 }}>есть изменения</Tag>}
         </Button>
+        <Button disabled={!isDirty} onClick={() => setHydrated(false)}>Отменить</Button>
         <Text type="secondary">
-          Правила ниже имеют приоритет над «По ролям» для указанного сотрудника и типа работ на Q{q} {y}.
+          Переключатель «Override» клонирует правило роли в редактируемую копию. Σ = 100 % обязательно.
         </Text>
+        {invalidEmps.length > 0 && (
+          <Text type="danger">Σ ≠ 100%: {invalidEmps.length} сотрудник(ов)</Text>
+        )}
       </Space>
-      <Modal
-        title="Новое индивидуальное правило"
-        open={open}
-        onCancel={() => { setOpen(false); form.resetFields(); }}
-        onOk={() => form.submit()}
-        confirmLoading={create.isPending}
-      >
-        <Form form={form} layout="vertical" onFinish={(v) => {
-          create.mutate(
-            { year: y, quarter: q, employee_id: v.employee_id, work_type_id: v.work_type_id, percent_of_norm: v.percent },
-            {
-              onSuccess: () => { setOpen(false); form.resetFields(); notification.success({ title: 'Правило добавлено' }); },
-              onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
-            },
-          );
-        }}>
-          <Form.Item name="employee_id" label="Сотрудник" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label"
-              options={(employees.data ?? []).map(e => ({ value: e.id, label: e.display_name }))} />
-          </Form.Item>
-          <Form.Item name="work_type_id" label="Тип обязательных работ" rules={[{ required: true }]}>
-            <Select options={(wts.data ?? []).filter(w => w.is_active)
-              .map(w => ({ value: w.id, label: w.label }))} />
-          </Form.Item>
-          <Form.Item name="percent" label="% от нормы" rules={[{ required: true }]} initialValue={10}>
-            <InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" />
-          </Form.Item>
-        </Form>
-      </Modal>
-      <Table<EmployeeCapacityOverride>
-        dataSource={visibleOverrides}
-        rowKey="id"
-        loading={overrides.isLoading}
-        pagination={false}
-        size="small"
-        columns={[
-          {
-            title: 'Сотрудник', dataIndex: 'employee_id',
-            render: (id: string) => empById.get(id)?.display_name ?? id,
-          },
-          {
-            title: 'Роль', dataIndex: 'employee_id', width: 150,
-            render: (id: string) => {
-              const r = empById.get(id)?.role;
-              return r ? <Tag>{EMPLOYEE_ROLE_LABELS[r]}</Tag> : <Text type="secondary">—</Text>;
-            },
-          },
-          {
-            title: 'Тип работ', dataIndex: 'work_type_id',
-            render: (id: string) => wtById.get(id) ?? id,
-          },
-          {
-            title: '% override', dataIndex: 'percent_of_norm', width: 140,
-            render: (v: number, r) => (
-              <InputNumber
-                size="small" min={0} max={100}
-                style={{ width: '100%' }}
-                value={v}
-                addonAfter="%"
-                onBlur={(e) => {
-                  const next = Number(e.currentTarget.value);
-                  if (!Number.isFinite(next) || next === v) return;
-                  update.mutate(
-                    { id: r.id, percent: next, year: y, quarter: q },
-                    { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
-                  );
-                }}
-                onPressEnter={(e) => (e.currentTarget as HTMLInputElement).blur()}
-              />
-            ),
-          },
-          {
-            title: '% базовое (роль)', width: 140,
-            render: (_: unknown, r: EmployeeCapacityOverride) => {
-              const base = basePercentFor(empById.get(r.employee_id), r.work_type_id);
-              const diff = r.percent_of_norm - base;
-              return (
-                <Space size={4}>
-                  <Text type="secondary">{base.toFixed(0)}%</Text>
-                  {diff !== 0 && (
-                    <Tag color={diff > 0 ? 'red' : 'blue'}>
-                      {diff > 0 ? '+' : ''}{diff.toFixed(0)}
-                    </Tag>
-                  )}
-                </Space>
-              );
-            },
-          },
-          {
-            title: '', width: 50,
-            render: (_: unknown, r: EmployeeCapacityOverride) => (
-              <Popconfirm title="Удалить?" onConfirm={() => remove.mutate(
-                { id: r.id, year: y, quarter: q },
-                { onError: (e) => notification.error({ title: 'Ошибка', description: e.message }) },
-              )}>
-                <Button icon={<DeleteOutlined />} size="small" danger />
-              </Popconfirm>
-            ),
-          },
-        ]}
-      />
+      {visibleEmployees.map(emp => {
+        const row = draft.get(emp.id) ?? { enabled: false, pct: new Map() };
+        const s = sumFor(emp.id);
+        const ok = Math.abs(s - 100) < 0.01;
+        const baselineSum = activeWts.reduce((acc, w) => acc + baselineFor(emp, w.id), 0);
+        return (
+          <div key={emp.id} style={{
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 6, padding: 12,
+          }}>
+            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+              <Space>
+                <Text strong>{emp.display_name}</Text>
+                {emp.role && <Tag>{EMPLOYEE_ROLE_LABELS[emp.role]}</Tag>}
+              </Space>
+              <Space>
+                <Text type="secondary">Override</Text>
+                <Switch
+                  checked={row.enabled}
+                  onChange={(v) => toggleOverride(emp, v)}
+                />
+              </Space>
+            </Space>
+            {row.enabled ? (
+              <Space wrap style={{ marginTop: 8 }}>
+                {activeWts.map(w => (
+                  <Space key={w.id} size={4}>
+                    <Text type="secondary">{w.label}</Text>
+                    <InputNumber
+                      size="small"
+                      min={0} max={100} step={1}
+                      style={{ width: 90 }}
+                      value={row.pct.get(w.id) ?? null}
+                      addonAfter="%"
+                      onChange={(v) => writeCell(emp.id, w.id, v == null ? null : Number(v))}
+                    />
+                  </Space>
+                ))}
+                <Text style={{ color: ok ? '#52c41a' : '#ff4d4f', marginLeft: 8 }}>
+                  Σ = {s.toFixed(0)}%
+                </Text>
+              </Space>
+            ) : (
+              <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                Baseline роли: {activeWts.map(w =>
+                  `${w.label} ${baselineFor(emp, w.id).toFixed(0)}%`).join(' · ')}
+                {' · Σ '}{baselineSum.toFixed(0)}%
+              </Text>
+            )}
+          </div>
+        );
+      })}
     </Space>
   );
 }
