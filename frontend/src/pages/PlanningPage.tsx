@@ -27,6 +27,7 @@ import { TeamSelector } from '../components/planning/TeamSelector';
 import { downloadScenarioXlsx } from '../api/exports';
 import { DARK_THEME, FONTS } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
+import { useJiraSettings } from '../hooks/useSettings';
 import { getRoleColor } from '../utils/roles';
 import { OPO_COLOR } from '../utils/opo';
 import type { AllocationResponse, BacklogImpactRisk } from '../types/api';
@@ -52,6 +53,8 @@ export default function PlanningPage() {
   };
 
   const { data: roles = [] } = useRoles();
+  const jiraSettings = useJiraSettings();
+  const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const { data: scenarios } = useScenarios();
   const { data: scenario } = useScenario(scenarioId);
   const { data: allocations, isLoading: allocLoading } =
@@ -388,9 +391,23 @@ export default function PlanningPage() {
                           {a.title}
                         </div>
                         {a.jira_key && (
-                          <span style={{ fontFamily: FONTS.mono, fontSize: 10, color: DARK_THEME.cyanSecondary }}>
-                            {a.jira_key}
-                          </span>
+                          jiraBaseUrl
+                            ? (
+                              <a
+                                href={`${jiraBaseUrl}/browse/${a.jira_key}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ fontFamily: FONTS.mono, fontSize: 10, color: DARK_THEME.cyanSecondary }}
+                              >
+                                {a.jira_key}
+                              </a>
+                            )
+                            : (
+                              <span style={{ fontFamily: FONTS.mono, fontSize: 10, color: DARK_THEME.cyanSecondary }}>
+                                {a.jira_key}
+                              </span>
+                            )
                         )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
