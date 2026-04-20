@@ -21,7 +21,10 @@ import {
   useCapacityPreview,
 } from '../hooks/usePlanning';
 import { downloadScenarioXlsx } from '../api/exports';
-import { DARK_THEME, FONTS, ROLE_COLORS } from '../utils/constants';
+import { DARK_THEME, FONTS } from '../utils/constants';
+import { useRoles } from '../hooks/useRoles';
+import { getRoleColor } from '../utils/roles';
+import { OPO_COLOR } from '../utils/opo';
 import type { AllocationResponse, BacklogImpactRisk } from '../types/api';
 
 const IMPACT_COLORS: Record<BacklogImpactRisk, string> = { low: 'default', medium: 'blue', high: 'cyan' };
@@ -44,6 +47,7 @@ export default function PlanningPage() {
     setSearchParams(next, { replace: true });
   };
 
+  const { data: roles = [] } = useRoles();
   const { data: scenarios } = useScenarios();
   const { data: scenario } = useScenario(scenarioId);
   const { data: allocations, isLoading: allocLoading } =
@@ -378,16 +382,16 @@ export default function PlanningPage() {
                           }}
                         >
                           {total > 0 && an > 0 && (
-                            <div title={`Аналитик: ${an} ч`} style={{ width: `${(an / total) * 100}%`, background: ROLE_COLORS.analyst }} />
+                            <div title={`Аналитик: ${an} ч`} style={{ width: `${(an / total) * 100}%`, background: getRoleColor(roles, 'analyst') }} />
                           )}
                           {total > 0 && de > 0 && (
-                            <div title={`Программист: ${de} ч`} style={{ width: `${(de / total) * 100}%`, background: ROLE_COLORS.dev }} />
+                            <div title={`Программист: ${de} ч`} style={{ width: `${(de / total) * 100}%`, background: getRoleColor(roles, 'dev') }} />
                           )}
                           {total > 0 && qa > 0 && (
-                            <div title={`Тестировщик: ${qa} ч`} style={{ width: `${(qa / total) * 100}%`, background: ROLE_COLORS.qa }} />
+                            <div title={`Тестировщик: ${qa} ч`} style={{ width: `${(qa / total) * 100}%`, background: getRoleColor(roles, 'qa') }} />
                           )}
                           {total > 0 && op > 0 && (
-                            <div title={`ОПЭ: ${op} ч`} style={{ width: `${(op / total) * 100}%`, background: ROLE_COLORS.opo }} />
+                            <div title={`ОПЭ: ${op} ч`} style={{ width: `${(op / total) * 100}%`, background: OPO_COLOR }} />
                           )}
                         </div>
                         <div style={{ fontFamily: FONTS.mono, fontSize: 10, color: DARK_THEME.textHint, whiteSpace: 'nowrap' }}>

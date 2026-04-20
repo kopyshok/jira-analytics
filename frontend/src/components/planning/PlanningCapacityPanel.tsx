@@ -1,16 +1,21 @@
 import { Card, Skeleton } from 'antd';
-import {
-  ROLE_COLORS,
-  ROLE_LABELS,
-  ROLE_SHORT,
-  DARK_THEME,
-  FONTS,
-  type PlanningRole,
-} from '../../utils/constants';
+import { DARK_THEME, FONTS } from '../../utils/constants';
+import { useRoles } from '../../hooks/useRoles';
+import { getRoleLabel, getRoleColor } from '../../utils/roles';
 import type { CapacityPreviewResponse } from '../../types/planning';
 import RoleCapacityBar from './RoleCapacityBar';
 
-const ROLE_KEYS: Array<Exclude<PlanningRole, 'opo'>> = ['analyst', 'dev', 'qa'];
+type CapacityRoleKey = keyof CapacityPreviewResponse['capacity_by_role'];
+const ROLE_KEYS: CapacityRoleKey[] = ['analyst', 'dev', 'qa'];
+
+// Short abbreviations for role badges in the employee list
+const ROLE_SHORT_LOCAL: Record<string, string> = {
+  analyst: 'АН',
+  dev: 'ПР',
+  qa: 'ТС',
+  consultant: 'КН',
+  other: 'ДР',
+};
 
 interface Props {
   preview: CapacityPreviewResponse | undefined;
@@ -58,6 +63,7 @@ export default function PlanningCapacityPanel({
   preview,
   quarter,
 }: Props) {
+  const { data: roles = [] } = useRoles();
   if (!preview) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 16 }}>
@@ -254,12 +260,12 @@ export default function PlanningCapacityPanel({
                     width: 8,
                     height: 8,
                     borderRadius: 2,
-                    background: ROLE_COLORS[agg.role],
+                    background: getRoleColor(roles, agg.role),
                     display: 'inline-block',
                   }}
                 />
                 <span style={{ color: DARK_THEME.textSecondary, fontSize: 12 }}>
-                  {ROLE_LABELS[agg.role]}{' '}
+                  {getRoleLabel(roles, agg.role)}{' '}
                   <span style={{ color: DARK_THEME.textHint, fontSize: 10 }}>
                     ({agg.empCount} чел · брутто {Math.round(agg.raw)} ч − обязат.{' '}
                     {Math.round(agg.mandatory)} ч)
@@ -269,7 +275,7 @@ export default function PlanningCapacityPanel({
                   style={{
                     fontFamily: FONTS.mono,
                     fontSize: 12,
-                    color: ROLE_COLORS[agg.role],
+                    color: getRoleColor(roles, agg.role),
                     fontWeight: 600,
                   }}
                 >
@@ -285,11 +291,9 @@ export default function PlanningCapacityPanel({
       <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
         <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {preview.per_employee.map((e) => {
-            const knownRole = ROLE_KEYS.includes(e.role as never)
-              ? (e.role as Exclude<PlanningRole, 'opo'>)
-              : null;
-            const roleColor = knownRole ? ROLE_COLORS[knownRole] : DARK_THEME.textDim;
-            const roleShort = knownRole ? ROLE_SHORT[knownRole] : '—';
+            const knownRole = e.role && ROLE_KEYS.includes(e.role as CapacityRoleKey) ? e.role : null;
+            const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
+            const roleShort = knownRole ? (ROLE_SHORT_LOCAL[knownRole] ?? knownRole.slice(0, 2).toUpperCase()) : '—';
             const mandPct = e.raw_hours > 0 ? (e.mandatory_hours / e.raw_hours) * 100 : 0;
             const availPct = e.raw_hours > 0 ? (e.available_hours / e.raw_hours) * 100 : 0;
             return (

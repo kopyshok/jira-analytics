@@ -1,19 +1,3 @@
-import type { EmployeeRole } from '../types/api';
-
-export const EMPLOYEE_ROLE_LABELS: Record<EmployeeRole, string> = {
-  analyst: 'Аналитик',
-  dev: 'Программист',
-  qa: 'Тестировщик',
-  other: 'Другое',
-};
-
-export const EMPLOYEE_ROLES: EmployeeRole[] = [
-  'analyst',
-  'dev',
-  'qa',
-  'other',
-];
-
 export const CATEGORY_LABELS: Record<string, string> = {
   support_consultation: 'Сопровождение и консультация',
   business_analysis: 'Анализ/развитие бизнес-процессов',
@@ -91,27 +75,3 @@ export const MONTH_NAMES: Record<number, string> = {
   10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь',
 };
 
-/** Planning-role palette — used on Бэклог/Сценарии pages to color capacity bars,
- *  badges, and role-breakdown segments per backlog item. */
-export const ROLE_COLORS = {
-  analyst: '#4db8e8',
-  dev:     '#00c9c8',
-  qa:      '#EF9F27',
-  opo:     '#7F77DD',
-} as const;
-
-export const ROLE_LABELS = {
-  analyst: 'Аналитик',
-  dev:     'Программист',
-  qa:      'Тестировщик',
-  opo:     'Запуск (ОПЭ)',
-} as const;
-
-export const ROLE_SHORT = {
-  analyst: 'АН',
-  dev:     'ПР',
-  qa:      'ТС',
-  opo:     'ОПЭ',
-} as const;
-
-export type PlanningRole = keyof typeof ROLE_COLORS;

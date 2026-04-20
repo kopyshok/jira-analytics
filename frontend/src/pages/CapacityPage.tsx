@@ -16,7 +16,8 @@ import CapacityFilterProvider from '../components/capacity/CapacityFilterProvide
 import { useCapacityFilter, NO_TEAM_VALUE } from '../hooks/useCapacityFilter';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
-import { QUARTER_MONTHS, MONTH_NAMES, EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '../utils/constants';
+import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
+import { useRoles } from '../hooks/useRoles';
 import type { QuarterCapacityResponse, AbsenceResponse, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem, EmployeeRole } from '../types/api';
 
 dayjs.extend(minMax);
@@ -46,7 +47,8 @@ function TeamTab() {
     return m;
   }, [employeesFull.data]);
 
-  const roleOptions = EMPLOYEE_ROLES.map(r => ({ value: r, label: EMPLOYEE_ROLE_LABELS[r] }));
+  const { data: roles = [] } = useRoles();
+  const roleOptions = roles.filter(r => r.is_active).map(r => ({ value: r.code, label: r.label }));
 
   const teamOptions = (jiraTeams.data ?? []).map(t => ({ value: t, label: t }));
 

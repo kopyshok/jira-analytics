@@ -16,7 +16,8 @@ import {
 } from '../../hooks/useCapacity';
 import { useQuarterYear } from '../../hooks/useQuarterYear';
 import { useCapacityFilter } from '../../hooks/useCapacityFilter';
-import { EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '../../utils/constants';
+import { useRoles } from '../../hooks/useRoles';
+import { getRoleLabel } from '../../utils/roles';
 import type {
   EmployeeRole,
   MandatoryWorkType,
@@ -142,15 +143,21 @@ function WorkTypesSubtab() {
 // Subtab 2: Role × work_type matrix
 // ══════════════════════════════════════════════════════════════
 
-const ROLE_ROWS: Array<{ key: string; role: EmployeeRole | null; label: string }> = [
-  { key: '__all__', role: null, label: 'Все роли (fallback)' },
-  ...EMPLOYEE_ROLES.map(r => ({ key: r, role: r, label: EMPLOYEE_ROLE_LABELS[r] })),
-];
+type RoleRow = { key: string; role: EmployeeRole | null; label: string };
 
 function RoleRulesSubtab() {
   const { notification } = App.useApp();
   const { year, quarter } = useQuarterYear();
   const y = Number(year); const q = Number(quarter);
+
+  const { data: rolesData = [] } = useRoles();
+  const roleRows: RoleRow[] = useMemo(
+    () => [
+      { key: '__all__', role: null, label: 'Все роли (fallback)' },
+      ...rolesData.filter(r => r.is_active).map(r => ({ key: r.code, role: r.code, label: r.label })),
+    ],
+    [rolesData],
+  );
 
   const wts = useMandatoryWorkTypes({ isActive: true });
   const rules = useRoleCapacityRules(y, q);
@@ -225,7 +232,7 @@ function RoleRulesSubtab() {
 
   const invalidRoles: EmployeeRole[] = useMemo(() => {
     const bad: EmployeeRole[] = [];
-    for (const row of ROLE_ROWS) {
+    for (const row of roleRows) {
       const s = sumByRole(row.role);
       if (s > 0 && Math.abs(s - 100) > 0.01) {
         if (row.role !== null) bad.push(row.role);
@@ -273,7 +280,7 @@ function RoleRulesSubtab() {
     {
       title: 'Роль / тип работ', dataIndex: 'label', width: 240,
       fixed: 'left' as const,
-      render: (v: string, r: typeof ROLE_ROWS[number]) => (
+      render: (v: string, r: RoleRow) => (
         <span style={{ fontWeight: r.role === null ? 600 : 400 }}>
           {v}{r.role === null && <Tag color="default" style={{ marginLeft: 8 }}>fallback</Tag>}
         </span>
@@ -283,7 +290,7 @@ function RoleRulesSubtab() {
       title: w.label,
       key: `wt_${w.id}`,
       width: 140,
-      render: (_: unknown, row: typeof ROLE_ROWS[number]) => {
+      render: (_: unknown, row: RoleRow) => {
         const v = readCell(row.role, w.id);
         return (
           <InputNumber
@@ -302,7 +309,7 @@ function RoleRulesSubtab() {
     })),
     {
       title: 'Σ', key: 'sum', width: 80, fixed: 'right' as const,
-      render: (_: unknown, row: typeof ROLE_ROWS[number]) => {
+      render: (_: unknown, row: RoleRow) => {
         const s = sumByRole(row.role);
         const ok = Math.abs(s - 100) < 0.01;
         const empty = s === 0;
@@ -354,7 +361,7 @@ function RoleRulesSubtab() {
         </Popconfirm>
         {invalidRoles.length > 0 && (
           <Text type="danger">
-            Σ ≠ 100%: {invalidRoles.map(r => EMPLOYEE_ROLE_LABELS[r]).join(', ')}
+            Σ ≠ 100%: {invalidRoles.map(r => getRoleLabel(rolesData, r)).join(', ')}
           </Text>
         )}
       </Space>
@@ -362,7 +369,7 @@ function RoleRulesSubtab() {
         <Text type="secondary">Нет активных типов работ. Добавьте их во вкладке «Виды работ».</Text>
       ) : (
         <Table
-          dataSource={ROLE_ROWS}
+          dataSource={roleRows}
           rowKey="key"
           loading={rules.isLoading || wts.isLoading}
           pagination={false}
@@ -385,6 +392,7 @@ function EmployeeOverridesSubtab() {
   const { year, quarter } = useQuarterYear();
   const y = Number(year); const q = Number(quarter);
 
+  const { data: rolesData = [] } = useRoles();
   const employees = useEmployees({ isActive: true });
   const wts = useMandatoryWorkTypes({ isActive: true });
   const roleRules = useRoleCapacityRules(y, q);
@@ -585,7 +593,7 @@ function EmployeeOverridesSubtab() {
             <Space style={{ width: '100%', justifyContent: 'space-between' }}>
               <Space>
                 <Text strong>{emp.display_name}</Text>
-                {emp.role && <Tag>{EMPLOYEE_ROLE_LABELS[emp.role]}</Tag>}
+                {emp.role && <Tag>{getRoleLabel(rolesData, emp.role)}</Tag>}
               </Space>
               <Space>
                 <Text type="secondary">Override</Text>

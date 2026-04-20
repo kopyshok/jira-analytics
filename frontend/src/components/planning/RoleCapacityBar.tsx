@@ -1,7 +1,9 @@
-import { ROLE_COLORS, ROLE_LABELS, DARK_THEME, FONTS, type PlanningRole } from '../../utils/constants';
+import { DARK_THEME, FONTS } from '../../utils/constants';
+import { useRoles } from '../../hooks/useRoles';
+import { getRoleLabel, getRoleColor } from '../../utils/roles';
 
 interface Props {
-  role: Exclude<PlanningRole, 'opo'>;
+  role: string;
   demand: number;
   capacity: number;
   employeeCount: number;
@@ -11,10 +13,12 @@ interface Props {
  *  маркером 100 %, оранжевой «перегруз»-зоной и подписью запас/перегруз.
  *  Mirrors Prototype.html lines 1444-1491. */
 export default function RoleCapacityBar({ role, demand, capacity, employeeCount }: Props) {
+  const { data: roles = [] } = useRoles();
   const over = demand > capacity;
   const fillPct = capacity > 0 ? Math.min(100, (demand / capacity) * 100) : 0;
   const overflowPct = over && capacity > 0 ? Math.min(40, ((demand - capacity) / capacity) * 100) : 0;
   const loadPct = capacity > 0 ? Math.round((demand / capacity) * 100) : 0;
+  const roleColor = getRoleColor(roles, role);
 
   return (
     <div>
@@ -32,12 +36,12 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
               width: 10,
               height: 10,
               borderRadius: 2,
-              background: ROLE_COLORS[role],
+              background: roleColor,
               display: 'inline-block',
             }}
           />
           <span style={{ color: DARK_THEME.textPrimary, fontSize: 13, fontWeight: 500 }}>
-            {ROLE_LABELS[role]}
+            {getRoleLabel(roles, role)}
           </span>
           <span style={{ color: DARK_THEME.textHint, fontSize: 11 }}>· {employeeCount} чел.</span>
         </div>
@@ -70,7 +74,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
             top: 0,
             bottom: 0,
             width: `${fillPct}%`,
-            background: ROLE_COLORS[role],
+            background: roleColor,
             borderRadius: 5,
           }}
         />
