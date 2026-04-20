@@ -11,12 +11,10 @@ import {
   syncScenarioBacklog,
   getScenarioAllocations,
   patchAllocation,
-  capacityPreview,
   getScenarioResource,
   getScenarioRules,
   putScenarioRules,
 } from '../api/planning';
-import type { CapacityPreviewRequest } from '../types/planning';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput } from '../types/api';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
@@ -184,13 +182,3 @@ export const usePutScenarioRules = () => {
   });
 };
 
-/** Live-расчёт ёмкости для страницы «Сценарии». Сервер принимает список
- *  backlog_item_ids (включённых в сценарий) и возвращает capacity/demand
- *  по ролям и разбивку по сотрудникам. */
-export const useCapacityPreview = (req: CapacityPreviewRequest) =>
-  useQuery({
-    queryKey: ['planning', 'capacity-preview', req],
-    queryFn: () => capacityPreview(req),
-    staleTime: 10_000,
-    enabled: !!req.year && !!req.quarter,
-  });

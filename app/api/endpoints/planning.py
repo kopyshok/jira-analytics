@@ -31,7 +31,6 @@ from app.models import (
     ScenarioAllocation,
     ScenarioRule,
 )
-from app.services.capacity_service import CapacityService, ROLE_WHITELIST
 from app.services.planning_service import PlanningService
 from app.services.resource_base_service import ResourceBaseService
 
@@ -114,38 +113,6 @@ class AllocationResponse(BaseModel):
     opo_analyst_ratio: Optional[float] = None
     impact: Optional[str] = None
     risk: Optional[str] = None
-
-
-# === Capacity preview (live per-role calc without persisting a scenario) ===
-
-class CapacityPreviewRequest(BaseModel):
-    year: int
-    quarter: int = Field(ge=1, le=4)
-    backlog_item_ids: List[str] = Field(default_factory=list)
-    team_filter: Optional[List[str]] = None
-
-
-class CapacityPreviewEmployeeRow(BaseModel):
-    employee_id: str
-    name: str
-    role: Optional[str] = None
-    raw_hours: float
-    mandatory_hours: float
-    absence_hours: float
-    available_hours: float
-    vacation_days: int
-
-
-class CapacityPreviewResponse(BaseModel):
-    capacity_by_role: Dict[str, float]
-    demand_by_role: Dict[str, float]
-    total_capacity: float
-    total_demand: float
-    gross_hours: float
-    absence_hours: float
-    mandatory_hours: float
-    available_hours: float
-    per_employee: List[CapacityPreviewEmployeeRow]
 
 
 # === Resource base schemas ===
@@ -572,86 +539,6 @@ async def patch_allocation(
         .first()
     )
     return _to_allocation_resp(alloc, item)
-
-
-# === Capacity preview ===
-
-@router.post("/capacity-preview", response_model=CapacityPreviewResponse)
-async def capacity_preview(
-    body: CapacityPreviewRequest,
-    db: Session = Depends(get_db),
-):
-    # DEPRECATED — remove after Task 27 lands (see plans/2026-04-20-resources-scenarios-revamp.md)
-    """Read-only расчёт ёмкости + spec спроса для UI планирования.
-
-    Возвращает capacity/demand по ролям (analyst/dev/qa) и разбивку
-    по активным сотрудникам за выбранный квартал.
-    """
-    cap_svc = CapacityService(db)
-    try:
-        caps = cap_svc.team_role_capacity(
-            body.year, body.quarter, body.team_filter
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    # Per-employee rows
-    emp_q = db.query(Employee).filter(Employee.is_active.is_(True))
-    if body.team_filter:
-        from app.models import EmployeeTeam
-
-        emp_q = (
-            emp_q.join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-            .filter(EmployeeTeam.team.in_(body.team_filter))
-            .distinct()
-        )
-
-    per_emp: List[CapacityPreviewEmployeeRow] = []
-    gross = absence = mand = avail = 0.0
-    for emp in emp_q.all():
-        row = cap_svc.employee_quarter_breakdown(
-            emp.id, body.year, body.quarter
-        )
-        per_emp.append(
-            CapacityPreviewEmployeeRow(
-                employee_id=emp.id,
-                name=emp.display_name,
-                role=emp.role,
-                raw_hours=row["raw_hours"],
-                mandatory_hours=row["mandatory_hours"],
-                absence_hours=row["absence_hours"],
-                available_hours=row["available_hours"],
-                vacation_days=row["vacation_days"],
-            )
-        )
-        gross += row["raw_hours"]
-        absence += row["absence_hours"]
-        mand += row["mandatory_hours"]
-        avail += row["available_hours"]
-
-    # Demand — sum of per-role demand for the specified backlog items.
-    demand = {r: 0.0 for r in ROLE_WHITELIST}
-    if body.backlog_item_ids:
-        items = (
-            db.query(BacklogItem)
-            .filter(BacklogItem.id.in_(body.backlog_item_ids))
-            .all()
-        )
-        for item in items:
-            for role, hours in PlanningService._demand_by_role(item).items():
-                demand[role] += hours
-
-    return CapacityPreviewResponse(
-        capacity_by_role=caps,
-        demand_by_role=demand,
-        total_capacity=sum(caps.values()),
-        total_demand=sum(demand.values()),
-        gross_hours=gross,
-        absence_hours=absence,
-        mandatory_hours=mand,
-        available_hours=avail,
-        per_employee=per_emp,
-    )
 
 
 # === Scenario resource base ===
