@@ -118,11 +118,13 @@ def scenario_seed(db_session):
     )
     db_session.flush()
 
+    # v3 planning per-role: сотрудникам нужна роль из whitelist (analyst/dev/qa),
+    # иначе team_role_capacity их пропустит и ёмкость = 0.
     alice = Employee(
-        jira_account_id="a1", display_name="Alice", is_active=True
+        jira_account_id="a1", display_name="Alice", is_active=True, role="dev"
     )
     bob = Employee(
-        jira_account_id="b1", display_name="Bob", is_active=True
+        jira_account_id="b1", display_name="Bob", is_active=True, role="dev"
     )
     db_session.add_all([alice, bob])
     db_session.flush()
@@ -132,6 +134,7 @@ def scenario_seed(db_session):
             title="Redesign login",
             priority=1,
             estimate_hours=100,
+            estimate_dev_hours=100,
             year=2026,
             quarter="Q1",
         ),
@@ -139,6 +142,7 @@ def scenario_seed(db_session):
             title="Payments v2",
             priority=2,
             estimate_hours=200,
+            estimate_dev_hours=200,
             year=2026,
             quarter="Q1",
         ),
@@ -146,6 +150,7 @@ def scenario_seed(db_session):
             title="Overflow feature",
             priority=3,
             estimate_hours=5000,
+            estimate_dev_hours=5000,
             year=2026,
             quarter="Q1",
         ),

@@ -87,6 +87,14 @@ class PlanningService:
 
     # === Helpers ===
 
+    def _team_capacity_hours(self, year: int, quarter: int) -> float:
+        """Суммарная per-role ёмкость активной команды за квартал.
+
+        Переиспользуется ExportService для шапки scenario.xlsx / pptx.
+        """
+        caps = CapacityService(self.db).team_role_capacity(year, quarter)
+        return sum(caps.values())
+
     @staticmethod
     def _demand_by_role(item: BacklogItem) -> dict[str, float]:
         """Часы по ролям с учётом ОПЭ-сплита.
