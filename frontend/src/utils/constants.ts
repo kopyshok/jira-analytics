@@ -92,3 +92,28 @@ export const MONTH_NAMES: Record<number, string> = {
   7: 'Июль', 8: 'Август', 9: 'Сентябрь',
   10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь',
 };
+
+/** Planning-role palette — used on Бэклог/Сценарии pages to color capacity bars,
+ *  badges, and role-breakdown segments per backlog item. */
+export const ROLE_COLORS = {
+  analyst: '#4db8e8',
+  dev:     '#00c9c8',
+  qa:      '#EF9F27',
+  opo:     '#7F77DD',
+} as const;
+
+export const ROLE_LABELS = {
+  analyst: 'Аналитик',
+  dev:     'Программист',
+  qa:      'Тестировщик',
+  opo:     'Запуск (ОПЭ)',
+} as const;
+
+export const ROLE_SHORT = {
+  analyst: 'АН',
+  dev:     'ПР',
+  qa:      'ТС',
+  opo:     'ОПЭ',
+} as const;
+
+export type PlanningRole = keyof typeof ROLE_COLORS;
