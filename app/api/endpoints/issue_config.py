@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Issue, Project
+from app.services.backlog_service import BacklogService
+from app.services.category_resolver import CategoryResolver
 from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 
 router = APIRouter()
@@ -258,6 +260,17 @@ async def set_issue_category(
     if body.category_code in ARCHIVE_CATEGORY_CODES and issue.include_in_analysis:
         issue.include_in_analysis = False
         auto_excluded = True
+
+    # Пересчитать denormalized ``Issue.category`` — источник для
+    # BacklogService.sync_from_issue. Повторяем логику MappingService для
+    # одной задачи, чтобы не гонять весь пересчёт на каждое клик PM-а.
+    resolver = CategoryResolver(db)
+    issue.category = resolver.resolve_for_issue(issue).category_code
+
+    # Auto-sync BacklogItem (create/update/delete) по эффективной
+    # категории. Flush внутри сервиса, commit здесь.
+    BacklogService(db).sync_from_issue(issue)
+
     # Snapshot attributes before commit — commit() expires them and a
     # subsequent access would trigger a reload on a potentially rotated
     # connection.
@@ -326,6 +339,8 @@ async def batch_set_category(
     updated = 0
     archived_ids: list[str] = []
     is_archive = body.category_code in ARCHIVE_CATEGORY_CODES
+    resolver = CategoryResolver(db)
+    backlog = BacklogService(db)
     for issue_id in body.issue_ids:
         issue = db.get(Issue, issue_id)
         if not issue:
@@ -334,6 +349,9 @@ async def batch_set_category(
         if is_archive and issue.include_in_analysis:
             issue.include_in_analysis = False
             archived_ids.append(issue.id)
+        # Пересчитать denormalized category и синкнуть BacklogItem.
+        issue.category = resolver.resolve_for_issue(issue).category_code
+        backlog.sync_from_issue(issue)
         updated += 1
     db.commit()
     return {
