@@ -4,7 +4,7 @@
 расчёт доступной ёмкости сотрудников на месяц/квартал.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Absence
+from app.models import Absence, Employee, EmployeeTeam
 from app.repositories.base import BaseRepository
 from app.services.capacity_service import (
     CapacityService,
@@ -276,3 +276,31 @@ async def get_team_quarter_capacity(
     service = CapacityService(db)
     results = service.team_quarter_capacity(year, quarter)
     return [QuarterCapacityResponse.from_dataclass(r) for r in results]
+
+
+@router.post("/team/recalc")
+async def recalc_team(
+    year: int = Query(...),
+    quarter: int = Query(..., ge=1, le=4),
+    team: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Сигнал «пересчитать часы по команде».
+
+    Capacity вычисляется on-demand — этот endpoint возвращает счётчик
+    затронутых сотрудников и отметку времени, чтобы фронтенд мог
+    инвалидировать кэш и подтвердить обновление.
+    """
+    emp_count = (
+        db.query(Employee)
+        .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+        .filter(EmployeeTeam.team == team, Employee.is_active == True)
+        .count()
+    )
+    return {
+        "updated_employees": emp_count,
+        "year": year,
+        "quarter": quarter,
+        "team": team,
+        "recalculated_at": datetime.utcnow().isoformat(),
+    }
