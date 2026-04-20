@@ -166,6 +166,60 @@ async def create_absence(
     return AbsenceResponse.from_absence(absence)
 
 
+class AbsenceBatchCreate(BaseModel):
+    employee_ids: List[str]
+    start_date: date
+    end_date: date
+    reason_id: str
+    hours_total: Optional[float] = None
+
+
+@router.post("/absences/batch", response_model=List[AbsenceResponse], status_code=201)
+async def create_absences_batch(
+    data: AbsenceBatchCreate,
+    db: Session = Depends(get_db),
+):
+    """Массовое создание отсутствий — одна запись на каждого employee_id."""
+    if data.end_date < data.start_date:
+        raise HTTPException(status_code=400, detail="end_date must be >= start_date")
+    if not data.employee_ids:
+        raise HTTPException(status_code=400, detail="employee_ids must be non-empty")
+
+    from app.models import AbsenceReason, Employee
+
+    reason = (
+        db.query(AbsenceReason)
+        .filter(AbsenceReason.id == data.reason_id, AbsenceReason.is_active.is_(True))
+        .one_or_none()
+    )
+    if reason is None:
+        raise HTTPException(status_code=422, detail=f"Unknown or inactive reason_id {data.reason_id!r}")
+
+    known = {
+        e.id
+        for e in db.query(Employee).filter(Employee.id.in_(data.employee_ids)).all()
+    }
+    unknown = set(data.employee_ids) - known
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"Unknown employee_id(s): {sorted(unknown)}")
+
+    created = []
+    for emp_id in data.employee_ids:
+        a = Absence(
+            employee_id=emp_id,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            reason_id=data.reason_id,
+            hours_total=data.hours_total,
+        )
+        db.add(a)
+        created.append(a)
+    db.commit()
+    for a in created:
+        db.refresh(a)
+    return [AbsenceResponse.from_absence(a) for a in created]
+
+
 @router.delete("/absences/{absence_id}")
 async def delete_absence(
     absence_id: str,
