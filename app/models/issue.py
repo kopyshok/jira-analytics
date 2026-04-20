@@ -4,7 +4,7 @@ from typing import Optional, List, TYPE_CHECKING
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import SyncedMixin, generate_uuid
@@ -62,6 +62,27 @@ class Issue(Base, SyncedMixin):
     # Тянется через AppSetting.jira_goals_field_id, сохраняется плоской
     # строкой (comma-joined для multi-select).
     goals: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Planned effort (from Jira «Плановые трудозатраты» tab — RFA/ITL)
+    planned_analyst_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_dev_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_qa_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_opo_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Involvement fractions / durations — synced, reserved for future calendar planning.
+    involvement_analyst: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    involvement_dev: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    involvement_qa: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    involvement_launch: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_analyst_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_dev_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_qa_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_launch_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Prioritization signals (normalized to low | medium | high).
+    impact: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    risk: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=True)
     # Задача попала в БД только через worklog автора (Bucket B) — не входит в
