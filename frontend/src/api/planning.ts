@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AllocationResponse, ScenarioResponse } from '../types/api';
+import type { AllocationResponse, ScenarioResponse, ResourceBase } from '../types/api';
 import type { CapacityPreviewRequest, CapacityPreviewResponse } from '../types/planning';
 
 export const getScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
@@ -40,3 +40,6 @@ export const patchAllocation = (
 
 export const capacityPreview = (body: CapacityPreviewRequest) =>
   api.post<CapacityPreviewResponse>('/planning/capacity-preview', body);
+
+export const getScenarioResource = (sid: string) =>
+  api.get<ResourceBase>(`/planning/scenarios/${sid}/resource`);
