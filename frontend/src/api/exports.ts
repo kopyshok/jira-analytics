@@ -1,7 +1,5 @@
-import { api } from './client';
+import { api, boolParam } from './client';
 import type { TeamFilterParams } from './analytics';
-
-const boolParam = (v?: boolean): string | undefined => (v === undefined ? undefined : v ? 'true' : 'false');
 
 export const downloadAnalyticsXlsx = (start?: string, end?: string, team?: TeamFilterParams) =>
   api.download('/exports/analytics.xlsx', {

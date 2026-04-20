@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, boolParam } from './client';
 import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
 
 export type TeamFilterParams = {
@@ -6,8 +6,6 @@ export type TeamFilterParams = {
   match_employees?: boolean;
   match_issues?: boolean;
 };
-
-const boolParam = (v?: boolean) => (v === undefined ? undefined : v ? 'true' : 'false');
 
 const buildParams = (
   start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams,

@@ -1,8 +1,6 @@
-import { Checkbox, Select, Space, Typography } from 'antd';
+import { Checkbox, Select, Space } from 'antd';
 import { useFactFilter, NO_TEAM_VALUE } from '../../hooks/useFactFilter';
 import { useJiraTeams } from '../../hooks/useSync';
-
-const { Text } = Typography;
 
 export default function FactFilterBar() {
   const { selectedTeams, setSelectedTeams, matchEmployees, setMatchEmployees, matchIssues, setMatchIssues } = useFactFilter();
@@ -30,15 +28,17 @@ export default function FactFilterBar() {
       />
       <Checkbox
         checked={matchEmployees}
+        disabled={matchEmployees && !matchIssues}
         onChange={(e) => setMatchEmployees(e.target.checked)}
       >
-        <Text>Сотрудники</Text>
+        Сотрудники
       </Checkbox>
       <Checkbox
         checked={matchIssues}
+        disabled={matchIssues && !matchEmployees}
         onChange={(e) => setMatchIssues(e.target.checked)}
       >
-        <Text>Задачи</Text>
+        Задачи
       </Checkbox>
     </Space>
   );
