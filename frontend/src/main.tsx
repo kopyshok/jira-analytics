@@ -3,11 +3,20 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router';
 import { App as AntApp, ConfigProvider, theme } from 'antd';
-import ruRU from 'antd/locale/ru_RU';
+import ruRURaw from 'antd/locale/ru_RU';
+
+// Vite CJS→ESM interop: antd's pre-bundled locale wraps the object under `.default`.
+// Unwrap so ConfigProvider receives the actual locale object with DatePicker/Modal/etc keys.
+const ruRU = ((ruRURaw as unknown as { default?: typeof ruRURaw }).default
+  ?? ruRURaw) as typeof ruRURaw;
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
+import weekday from 'dayjs/plugin/weekday';
+import localeData from 'dayjs/plugin/localeData';
 import { router } from './routes';
 
+dayjs.extend(weekday);
+dayjs.extend(localeData);
 dayjs.locale('ru');
 import { DARK_THEME, FONTS } from './utils/constants';
 import './index.css';
