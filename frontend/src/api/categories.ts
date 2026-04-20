@@ -7,7 +7,7 @@ export const listCategories = () =>
 export const createCategory = (body: { code: string; label: string; color?: string; sort_order?: number }) =>
   api.post<CategoryResponse>('/categories', body);
 
-export const updateCategory = (id: string, body: { label?: string; color?: string; sort_order?: number }) =>
+export const updateCategory = (id: string, body: Partial<Omit<CategoryResponse, 'id'>>) =>
   api.put<CategoryResponse>(`/categories/${id}`, body);
 
 export const deleteCategory = (id: string) =>
