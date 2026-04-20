@@ -4,7 +4,7 @@ CRUD для сценариев квартального планирования
 жадным алгоритмом на основе приоритета и ёмкости команды.
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -119,8 +119,8 @@ class CapacityPreviewEmployeeRow(BaseModel):
 
 
 class CapacityPreviewResponse(BaseModel):
-    capacity_by_role: dict  # {analyst, dev, qa}
-    demand_by_role: dict
+    capacity_by_role: Dict[str, float]  # {analyst, dev, qa}
+    demand_by_role: Dict[str, float]
     total_capacity: float
     total_demand: float
     gross_hours: float
