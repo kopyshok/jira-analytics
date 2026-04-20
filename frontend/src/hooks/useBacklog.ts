@@ -1,5 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getBacklogItems, createBacklogItem, updateBacklogItem, deleteBacklogItem } from '../api/backlog';
+import {
+  getBacklogItems,
+  createBacklogItem,
+  updateBacklogItem,
+  deleteBacklogItem,
+  linkJira,
+  unlinkJira,
+  refreshFromJira,
+} from '../api/backlog';
 import { getProjects } from '../api/projects';
 
 export const useProjects = () =>
@@ -27,4 +35,28 @@ export const useUpdateBacklogItem = () => {
 export const useDeleteBacklogItem = () => {
   const qc = useQueryClient();
   return useMutation({ mutationFn: deleteBacklogItem, onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }) });
+};
+
+export const useLinkJira = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, jira_key }: { id: string; jira_key: string }) => linkJira(id, jira_key),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }),
+  });
+};
+
+export const useUnlinkJira = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => unlinkJira(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }),
+  });
+};
+
+export const useRefreshFromJira = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: refreshFromJira,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }),
+  });
 };

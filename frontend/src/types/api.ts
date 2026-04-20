@@ -387,14 +387,31 @@ export interface CategoryBreakdownResponse {
 
 // === Backlog ===
 
+export type BacklogImpactRisk = 'low' | 'medium' | 'high';
+
 export interface BacklogItemResponse {
   id: string;
   title: string;
   project_id: string | null;
+  issue_id: string | null;
+  jira_key: string | null;
   quarter: string | null;
   year: number | null;
-  estimate_hours: number | null;
   priority: number | null;
+  estimate_hours: number | null;
+  estimate_analyst_hours: number | null;
+  estimate_dev_hours: number | null;
+  estimate_qa_hours: number | null;
+  estimate_opo_hours: number | null;
+  opo_analyst_ratio: number | null;
+  impact: BacklogImpactRisk | null;
+  risk: BacklogImpactRisk | null;
+}
+
+export interface BacklogRefreshResult {
+  created: number;
+  updated: number;
+  removed: number;
 }
 
 // === Planning ===
