@@ -12,6 +12,9 @@ import { CHART_COLORS, DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { formatHours } from '../utils/format';
 import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
+import FactFilterBar from '../components/dashboard/FactFilterBar';
+import { useFactFilter } from '../hooks/useFactFilter';
+import type { TeamFilterParams } from '../api/analytics';
 
 const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
 
@@ -21,6 +24,7 @@ export default function AnalyticsPage() {
   const [employeeId, setEmployeeId] = useState<string | undefined>();
   const [projectKey, setProjectKey] = useState<string | undefined>();
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
+  const { queryParams: teamParams } = useFactFilter();
 
   const activeTab = searchParams.get('tab') || 'employee';
 
@@ -66,17 +70,18 @@ export default function AnalyticsPage() {
             Сбросить
           </Button>
         )}
+        <FactFilterBar />
         <ExportButtons
           onXlsx={() => downloadAnalyticsXlsx(start, end)}
           onPdf={() => downloadAnalyticsPdf(start, end)}
         />
       </Space>
       <Tabs activeKey={activeTab} onChange={(key) => setSearchParams({ tab: key })} items={[
-        { key: 'employee', label: 'По сотрудникам', children: <EmployeeTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
-        { key: 'project', label: 'По проектам', children: <ProjectTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
-        { key: 'category', label: 'По категориям', children: <CategoryTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
-        { key: 'period', label: 'По периодам', children: <PeriodTab start={start} end={end} period={period} onPeriodChange={setPeriod} employeeId={employeeId} projectKey={projectKey} /> },
-        { key: 'switching', label: 'Переключения контекста', children: <SwitchingTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} /> },
+        { key: 'employee', label: 'По сотрудникам', children: <EmployeeTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
+        { key: 'project', label: 'По проектам', children: <ProjectTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
+        { key: 'category', label: 'По категориям', children: <CategoryTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
+        { key: 'period', label: 'По периодам', children: <PeriodTab start={start} end={end} period={period} onPeriodChange={setPeriod} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
+        { key: 'switching', label: 'Переключения контекста', children: <SwitchingTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
       ]} />
     </Space>
   );
@@ -98,8 +103,10 @@ function HoursBarChart({ data, loading }: { data?: AggregateRowResponse[]; loadi
   );
 }
 
-function EmployeeTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
-  const { data, isLoading, isError, error } = useHoursByEmployee(start, end, employeeId, projectKey);
+type TabProps = { start?: string; end?: string; employeeId?: string; projectKey?: string; teamParams?: TeamFilterParams };
+
+function EmployeeTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
+  const { data, isLoading, isError, error } = useHoursByEmployee(start, end, employeeId, projectKey, teamParams);
   return (
     <>
       {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
@@ -119,8 +126,8 @@ function EmployeeTab({ start, end, employeeId, projectKey }: { start?: string; e
   );
 }
 
-function ProjectTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
-  const { data, isLoading, isError, error } = useHoursByProject(start, end, employeeId, projectKey);
+function ProjectTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
+  const { data, isLoading, isError, error } = useHoursByProject(start, end, employeeId, projectKey, teamParams);
   return (
     <>
       {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
@@ -140,9 +147,9 @@ function ProjectTab({ start, end, employeeId, projectKey }: { start?: string; en
   );
 }
 
-function CategoryTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
+function CategoryTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
   const { labels: catLabels, colors: catColors } = useCategories();
-  const { data, isLoading, isError, error } = useHoursByCategory(start, end, employeeId, projectKey);
+  const { data, isLoading, isError, error } = useHoursByCategory(start, end, employeeId, projectKey, teamParams);
   if (isLoading) return <Spin />;
   if (isError) return <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon />;
   if (!data?.length) return <Empty description="Нет данных" />;
@@ -178,8 +185,8 @@ function CategoryTab({ start, end, employeeId, projectKey }: { start?: string; e
   );
 }
 
-function PeriodTab({ start, end, period, onPeriodChange, employeeId, projectKey }: { start?: string; end?: string; period: 'day' | 'week' | 'month'; onPeriodChange: (v: 'day' | 'week' | 'month') => void; employeeId?: string; projectKey?: string }) {
-  const { data, isLoading, isError, error } = useHoursByPeriod(period, start, end, employeeId, projectKey);
+function PeriodTab({ start, end, period, onPeriodChange, employeeId, projectKey, teamParams }: TabProps & { period: 'day' | 'week' | 'month'; onPeriodChange: (v: 'day' | 'week' | 'month') => void }) {
+  const { data, isLoading, isError, error } = useHoursByPeriod(period, start, end, employeeId, projectKey, teamParams);
   if (isLoading) return <Spin />;
   if (isError) return <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon />;
   if (!data?.length) return (
@@ -205,8 +212,8 @@ function PeriodTab({ start, end, period, onPeriodChange, employeeId, projectKey 
   );
 }
 
-function SwitchingTab({ start, end, employeeId, projectKey }: { start?: string; end?: string; employeeId?: string; projectKey?: string }) {
-  const { data, isLoading, isError, error } = useContextSwitching(start, end, employeeId, projectKey);
+function SwitchingTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
+  const { data, isLoading, isError, error } = useContextSwitching(start, end, employeeId, projectKey, teamParams);
   return (
     <>
       {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}

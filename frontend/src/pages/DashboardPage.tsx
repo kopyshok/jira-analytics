@@ -33,6 +33,8 @@ import { CHART_COLORS, DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { formatHours, formatDate } from '../utils/format';
 import type { SyncStatusResponse } from '../types/api';
+import FactFilterBar from '../components/dashboard/FactFilterBar';
+import { useFactFilter } from '../hooks/useFactFilter';
 
 const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
 
@@ -43,6 +45,7 @@ export default function DashboardPage() {
   const { labels: catLabels, colors: catColors } = useCategories();
   const [employeeId, setEmployeeId] = useState<string | undefined>();
   const [projectKey, setProjectKey] = useState<string | undefined>();
+  const { queryParams: teamParams } = useFactFilter();
 
   const start = dates?.[0]?.format('YYYY-MM-DD');
   const end = dates?.[1]?.format('YYYY-MM-DD');
@@ -53,11 +56,11 @@ export default function DashboardPage() {
 
   const { data: syncStatus, isLoading: syncLoading } = useSyncStatus();
   const syncFull = useSyncMutation('full');
-  const { data: categories } = useHoursByCategory(start, end, employeeId, projectKey);
-  const { data: trend } = useHoursByPeriod('week', start, end, employeeId, projectKey);
-  const { data: employees } = useHoursByEmployee(start, end, employeeId, projectKey);
-  const { data: projects } = useHoursByProject(start, end, employeeId, projectKey);
-  const { data: switching } = useContextSwitching(start, end, employeeId, projectKey);
+  const { data: categories } = useHoursByCategory(start, end, employeeId, projectKey, teamParams);
+  const { data: trend } = useHoursByPeriod('week', start, end, employeeId, projectKey, teamParams);
+  const { data: employees } = useHoursByEmployee(start, end, employeeId, projectKey, teamParams);
+  const { data: projects } = useHoursByProject(start, end, employeeId, projectKey, teamParams);
+  const { data: switching } = useContextSwitching(start, end, employeeId, projectKey, teamParams);
 
   const totalHours = categories?.reduce((s, r) => s + r.total_hours, 0) ?? 0;
   const employeeCount = employees?.length ?? 0;
@@ -133,6 +136,7 @@ export default function DashboardPage() {
             Сбросить
           </Button>
         )}
+        <FactFilterBar />
         <ExportButtons
           onXlsx={() => downloadAnalyticsXlsx(start, end)}
           onPdf={() => downloadAnalyticsPdf(start, end)}
