@@ -26,6 +26,7 @@ from app.models.category import Category
 from app.models.hierarchy_rule import HierarchyRule
 from app.models.production_calendar_day import ProductionCalendarDay
 from app.models.role import Role
+from app.models.scenario_rule import ScenarioRule
 
 __all__ = [
     "TimestampMixin",
@@ -57,4 +58,5 @@ __all__ = [
     "HierarchyRule",
     "ProductionCalendarDay",
     "Role",
+    "ScenarioRule",
 ]
