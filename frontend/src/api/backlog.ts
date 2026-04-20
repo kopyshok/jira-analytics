@@ -5,14 +5,12 @@ import type {
   BacklogRefreshResult,
 } from '../types/api';
 
-export const getBacklogItems = (year?: string, quarter?: string, projectId?: string) =>
-  api.get<BacklogItemResponse[]>('/backlog', { year, quarter, project_id: projectId });
+export const getBacklogItems = (projectId?: string) =>
+  api.get<BacklogItemResponse[]>('/backlog', { project_id: projectId });
 
 export const createBacklogItem = (data: {
   title: string;
   project_id?: string;
-  quarter?: string;
-  year?: number;
   priority?: number;
   estimate_analyst_hours?: number;
   estimate_dev_hours?: number;
@@ -26,8 +24,6 @@ export const createBacklogItem = (data: {
 export const updateBacklogItem = (id: string, data: Partial<{
   title: string;
   project_id: string;
-  quarter: string;
-  year: number;
   priority: number;
   estimate_analyst_hours: number;
   estimate_dev_hours: number;

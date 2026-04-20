@@ -13,10 +13,10 @@ import { getProjects } from '../api/projects';
 export const useProjects = () =>
   useQuery({ queryKey: ['projects'], queryFn: getProjects });
 
-export const useBacklogItems = (year?: string, quarter?: string) =>
+export const useBacklogItems = () =>
   useQuery({
-    queryKey: ['backlog', year, quarter],
-    queryFn: () => getBacklogItems(year, quarter),
+    queryKey: ['backlog'],
+    queryFn: () => getBacklogItems(),
   });
 
 export const useCreateBacklogItem = () => {

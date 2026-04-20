@@ -100,7 +100,7 @@ class MappingService:
         вызывает ``BacklogService.sync_from_issue`` — это гарантирует, что
         после полного Jira-синка бэклог автоматически приводится в
         соответствие с новыми категориями (создаются BacklogItem для
-        новых ``initiatives_backlog``, удаляются для ушедших).
+        новых ``initiatives_rfa``, удаляются для ушедших).
 
         Note: per изменённую задачу sync_from_issue добавляет 1-3 запроса
         (O(N) extra queries в худшем случае). Для MVP это ОК; при большом

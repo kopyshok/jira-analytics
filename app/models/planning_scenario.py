@@ -31,6 +31,11 @@ class PlanningScenario(Base, TimestampMixin):
     )  # e.g., "Q1", "Q2"
     year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # "draft" — PM правит отметки; "approved" — зафиксирован для аналитики.
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default="draft"
+    )
+
     # Relationships
     allocations: Mapped[List["ScenarioAllocation"]] = relationship(
         back_populates="scenario"

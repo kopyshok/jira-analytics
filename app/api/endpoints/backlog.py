@@ -1,7 +1,7 @@
 """Backlog items API endpoints.
 
-Управление квартальным бэклогом: задачи-кандидаты, которые могут
-войти в сценарии квартального планирования.
+Пул задач-инициатив (категория «Инициативы и RFA»). Квартальной привязки
+у элементов нет — квартал выбирается в сценарии планирования.
 """
 
 from typing import List, Optional
@@ -24,8 +24,6 @@ router = APIRouter()
 class BacklogItemCreate(BaseModel):
     title: str
     project_id: Optional[str] = None
-    quarter: Optional[str] = Field(default=None, max_length=10)
-    year: Optional[int] = None
     priority: Optional[int] = None
     estimate_analyst_hours: Optional[float] = Field(default=None, ge=0)
     estimate_dev_hours: Optional[float] = Field(default=None, ge=0)
@@ -39,8 +37,6 @@ class BacklogItemCreate(BaseModel):
 class BacklogItemUpdate(BaseModel):
     title: Optional[str] = None
     project_id: Optional[str] = None
-    quarter: Optional[str] = Field(default=None, max_length=10)
-    year: Optional[int] = None
     priority: Optional[int] = None
     estimate_analyst_hours: Optional[float] = Field(default=None, ge=0)
     estimate_dev_hours: Optional[float] = Field(default=None, ge=0)
@@ -57,8 +53,6 @@ class BacklogItemResponse(BaseModel):
     project_id: Optional[str] = None
     issue_id: Optional[str] = None
     jira_key: Optional[str] = None
-    quarter: Optional[str] = None
-    year: Optional[int] = None
     priority: Optional[int] = None
     estimate_hours: Optional[float] = None  # derived sum
     estimate_analyst_hours: Optional[float] = None
@@ -106,8 +100,6 @@ def _to_response(item: BacklogItem) -> BacklogItemResponse:
         project_id=item.project_id,
         issue_id=item.issue_id,
         jira_key=item.issue.key if item.issue else None,
-        year=item.year,
-        quarter=item.quarter,
         priority=item.priority,
         estimate_hours=item.estimate_hours,
         estimate_analyst_hours=item.estimate_analyst_hours,
@@ -124,20 +116,14 @@ def _to_response(item: BacklogItem) -> BacklogItemResponse:
 
 @router.get("", response_model=List[BacklogItemResponse])
 async def list_backlog_items(
-    year: Optional[int] = Query(None),
-    quarter: Optional[str] = Query(None, max_length=10),
     project_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Список элементов бэклога с фильтрами по году/кварталу/проекту.
+    """Список всех элементов бэклога (опционально фильтр по проекту).
 
     Сортировка: сначала по priority (nulls last), затем по title.
     """
     query = db.query(BacklogItem).options(joinedload(BacklogItem.issue))
-    if year is not None:
-        query = query.filter(BacklogItem.year == year)
-    if quarter is not None:
-        query = query.filter(BacklogItem.quarter == quarter)
     if project_id is not None:
         query = query.filter(BacklogItem.project_id == project_id)
 
@@ -168,7 +154,7 @@ async def create_backlog_item(
 
 @router.post("/refresh-from-jira", response_model=RefreshResponse)
 async def refresh_from_jira(db: Session = Depends(get_db)):
-    """Пробежать все Issue(category='initiatives_backlog') и синкнуть бэклог.
+    """Пробежать все Issue(category='initiatives_rfa') и синкнуть бэклог.
 
     Возвращает счётчики created / updated / removed.
     """
@@ -194,7 +180,6 @@ async def refresh_from_jira(db: Session = Depends(get_db)):
             created += 1
 
     # 2) Подчистить BacklogItem с issue_id, чей Issue больше не в backlog-категории.
-    # Собираем stale list ДО итерации — sync может удалить запись, ломая итератор.
     stale = (
         db.query(BacklogItem)
         .options(joinedload(BacklogItem.issue))
@@ -302,8 +287,7 @@ async def link_jira(
     """Привязать ручной BacklogItem к Jira-задаче.
 
     Перетягивает title / project_id / per-role estimates / impact / risk
-    из Issue. Локальные ``priority`` / ``opo_analyst_ratio`` / ``year`` /
-    ``quarter`` не трогаются.
+    из Issue. Локальные ``priority`` / ``opo_analyst_ratio`` не трогаются.
     """
     item = (
         db.query(BacklogItem)

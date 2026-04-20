@@ -1,0 +1,98 @@
+import { useEffect } from 'react';
+import { App, Form, Input, InputNumber, Modal, Select } from 'antd';
+import { useCreateScenario } from '../../hooks/usePlanning';
+import { useQuarterYear } from '../../hooks/useQuarterYear';
+
+interface Props {
+  open: boolean;
+  onClose: (createdId?: string) => void;
+}
+
+interface FormValues {
+  name: string;
+  year: number;
+  quarter: number;
+}
+
+/** Модалка создания draft-сценария: name + year + quarter. После успеха
+ *  родитель получает id через onClose(id) и переключает выбор. */
+export default function ScenarioCreateModal({ open, onClose }: Props) {
+  const { notification } = App.useApp();
+  const { year, quarter } = useQuarterYear();
+  const create = useCreateScenario();
+  const [form] = Form.useForm<FormValues>();
+
+  useEffect(() => {
+    if (!open) return;
+    form.resetFields();
+    form.setFieldsValue({
+      year: Number(year),
+      quarter: Number(quarter),
+      name: `Q${quarter} ${year} plan`,
+    });
+  }, [open, year, quarter, form]);
+
+  const handleSubmit = (values: FormValues) => {
+    create.mutate(values, {
+      onSuccess: (s) => {
+        notification.success({ title: `Сценарий «${s.name}» создан` });
+        onClose(s.id);
+      },
+      onError: (e) =>
+        notification.error({ title: 'Ошибка', description: (e as Error).message }),
+    });
+  };
+
+  return (
+    <Modal
+      title="Новый сценарий квартала"
+      open={open}
+      onCancel={() => onClose()}
+      onOk={() => form.submit()}
+      confirmLoading={create.isPending}
+      destroyOnHidden
+      width={460}
+      okText="Создать"
+      cancelText="Отмена"
+    >
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form.Item
+          name="name"
+          label="Название"
+          rules={[{ required: true, message: 'Укажите название' }]}
+        >
+          <Input placeholder="Например: Q2 2026 план" />
+        </Form.Item>
+        <Form.Item label="Период" style={{ marginBottom: 0 }}>
+          <Form.Item
+            name="year"
+            label="Год"
+            style={{ display: 'inline-block', width: 'calc(50% - 8px)', marginRight: 16 }}
+            rules={[{ required: true }]}
+          >
+            <InputNumber min={2020} max={2035} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="quarter"
+            label="Квартал"
+            style={{ display: 'inline-block', width: 'calc(50% - 8px)' }}
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                { value: 1, label: 'Q1' },
+                { value: 2, label: 'Q2' },
+                { value: 3, label: 'Q3' },
+                { value: 4, label: 'Q4' },
+              ]}
+            />
+          </Form.Item>
+        </Form.Item>
+        <div style={{ fontSize: 12, color: '#8faec8' }}>
+          В сценарий попадут все текущие элементы бэклога. Отметьте галочками
+          задачи, которые планируете взять в квартал.
+        </div>
+      </Form>
+    </Modal>
+  );
+}

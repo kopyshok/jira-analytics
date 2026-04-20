@@ -135,33 +135,47 @@ def scenario_seed(db_session):
             priority=1,
             estimate_hours=100,
             estimate_dev_hours=100,
-            year=2026,
-            quarter="Q1",
         ),
         BacklogItem(
             title="Payments v2",
             priority=2,
             estimate_hours=200,
             estimate_dev_hours=200,
-            year=2026,
-            quarter="Q1",
         ),
         BacklogItem(
             title="Overflow feature",
             priority=3,
             estimate_hours=5000,
             estimate_dev_hours=5000,
-            year=2026,
-            quarter="Q1",
         ),
     ]
     db_session.add_all(items)
     db_session.flush()
 
-    result = PlanningService(db_session).generate_scenario(
-        name="Q1 baseline", year=2026, quarter=1
-    )
-    return result
+    # Manual scenario + allocations (replaces the old greedy generate_scenario).
+    from app.models import PlanningScenario, ScenarioAllocation
+    scenario = PlanningScenario(name="Q1 baseline", year=2026, quarter="Q1", status="draft")
+    db_session.add(scenario)
+    db_session.flush()
+    # Two items fit (100 + 200 = 300 ≤ 1024), the overflow one doesn't.
+    for item, included, planned in [(items[0], True, 100.0),
+                                    (items[1], True, 200.0),
+                                    (items[2], False, 0.0)]:
+        db_session.add(
+            ScenarioAllocation(
+                scenario_id=scenario.id,
+                backlog_item_id=item.id,
+                included_flag=included,
+                planned_hours=planned,
+            )
+        )
+    db_session.flush()
+
+    class _Result:
+        pass
+    r = _Result()
+    r.scenario_id = scenario.id
+    return r
 
 
 class TestAnalyticsXlsx:

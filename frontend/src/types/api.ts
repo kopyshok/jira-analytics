@@ -395,8 +395,6 @@ export interface BacklogItemResponse {
   project_id: string | null;
   issue_id: string | null;
   jira_key: string | null;
-  quarter: string | null;
-  year: number | null;
   priority: number | null;
   estimate_hours: number | null;
   estimate_analyst_hours: number | null;
@@ -416,42 +414,33 @@ export interface BacklogRefreshResult {
 
 // === Planning ===
 
+export type ScenarioStatus = 'draft' | 'approved';
+
 export interface ScenarioResponse {
   id: string;
   name: string;
   quarter: string | null;
   year: number | null;
+  status: ScenarioStatus;
 }
 
 export interface AllocationResponse {
-  backlog_item_id: string;
-  title: string;
-  priority: number | null;
-  estimate_hours: number;
-  planned_hours: number;
-  included: boolean;
-  reason: string;
-}
-
-export interface PlanningResultResponse {
-  scenario_id: string;
-  scenario_name: string;
-  year: number;
-  quarter: number;
-  total_capacity_hours: number;
-  total_planned_hours: number;
-  leftover_capacity_hours: number;
-  included_count: number;
-  skipped_count: number;
-  allocations: AllocationResponse[];
-}
-
-export interface StoredAllocationResponse {
   id: string;
   scenario_id: string;
   backlog_item_id: string;
+  included: boolean;
   planned_hours: number | null;
-  included_flag: boolean;
+  title: string;
+  jira_key: string | null;
+  priority: number | null;
+  estimate_hours: number | null;
+  estimate_analyst_hours: number | null;
+  estimate_dev_hours: number | null;
+  estimate_qa_hours: number | null;
+  estimate_opo_hours: number | null;
+  opo_analyst_ratio: number | null;
+  impact: BacklogImpactRisk | null;
+  risk: BacklogImpactRisk | null;
 }
 
 // === Hierarchy rules ===

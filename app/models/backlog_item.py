@@ -2,7 +2,7 @@
 
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Float, Integer, ForeignKey, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -40,11 +40,6 @@ class BacklogItem(Base, TimestampMixin):
         unique=True,
         index=True,
     )
-
-    quarter: Mapped[Optional[str]] = mapped_column(
-        String(10), nullable=True
-    )  # e.g., "Q1", "Q2"
-    year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Legacy aggregate (computed by service on write from per-role estimates).
     estimate_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

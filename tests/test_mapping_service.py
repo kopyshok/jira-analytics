@@ -234,11 +234,11 @@ class TestBacklogSyncTrigger:
         self, db_session, project
     ):
         """recalculate_issues должен создать BacklogItem для задач,
-        чья denormalized category обновилась до 'initiatives_backlog'."""
+        чья denormalized category обновилась до 'initiatives_rfa'."""
         db_session.add(
             Category(
-                code="initiatives_backlog",
-                label="Бэклог инициатив",
+                code="initiatives_rfa",
+                label="Инициативы и RFA",
                 color="#7F77DD",
                 sort_order=22,
                 is_system=True,
@@ -251,7 +251,7 @@ class TestBacklogSyncTrigger:
             issue_type="Task",
             status="Open",
             project_id=project.id,
-            assigned_category="initiatives_backlog",
+            assigned_category="initiatives_rfa",
             planned_dev_hours=8.0,
         )
         db_session.add(issue)
