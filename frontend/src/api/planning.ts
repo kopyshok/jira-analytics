@@ -13,8 +13,12 @@ export const deleteScenario = (id: string) => api.del(`/planning/scenarios/${id}
 export const getScenarioAllocations = (id: string) =>
   api.get<StoredAllocationResponse[]>(`/planning/scenarios/${id}/allocations`);
 
-export const generateScenario = (data: { name: string; year: number; quarter: number }) =>
-  api.post<PlanningResultResponse>('/planning/scenarios/generate', data);
+export const generateScenario = (data: {
+  name: string;
+  year: number;
+  quarter: number;
+  backlog_item_ids?: string[];
+}) => api.post<PlanningResultResponse>('/planning/scenarios/generate', data);
 
 export const capacityPreview = (body: CapacityPreviewRequest) =>
   api.post<CapacityPreviewResponse>('/planning/capacity-preview', body);
