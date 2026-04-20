@@ -29,8 +29,8 @@
 ### 1. Новая категория (seed через миграцию)
 
 ```python
-("initiatives_backlog", "Бэклог инициатив", "#7F77DD", 22, True)
-# (code, label, color, sort_order, is_system)
+("initiatives_backlog", "Бэклог инициатив", "#7F77DD", 23, True)
+# (code, label, color, sort_order, is_system) — 23 = следующий после archive_target (22)
 ```
 
 `ARCHIVE_CATEGORY_CODES` не трогаем — это не архив.
