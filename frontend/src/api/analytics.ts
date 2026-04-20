@@ -1,19 +1,36 @@
 import { api } from './client';
 import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
 
-const dateParams = (start?: string, end?: string) => ({ start, end });
+export type TeamFilterParams = {
+  teams?: string;
+  match_employees?: boolean;
+  match_issues?: boolean;
+};
 
-export const getHoursByEmployee = (start?: string, end?: string, employeeId?: string, projectKey?: string) =>
-  api.get<AggregateRowResponse[]>('/analytics/hours/by-employee', { ...dateParams(start, end), employee_id: employeeId, project_key: projectKey });
+const boolParam = (v?: boolean) => (v === undefined ? undefined : v ? 'true' : 'false');
 
-export const getHoursByProject = (start?: string, end?: string, employeeId?: string, projectKey?: string) =>
-  api.get<AggregateRowResponse[]>('/analytics/hours/by-project', { ...dateParams(start, end), employee_id: employeeId, project_key: projectKey });
+const buildParams = (
+  start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams,
+) => ({
+  start, end,
+  employee_id: employeeId,
+  project_key: projectKey,
+  teams: team?.teams,
+  match_employees: boolParam(team?.match_employees),
+  match_issues: boolParam(team?.match_issues),
+});
 
-export const getHoursByCategory = (start?: string, end?: string, employeeId?: string, projectKey?: string) =>
-  api.get<AggregateRowResponse[]>('/analytics/hours/by-category', { ...dateParams(start, end), employee_id: employeeId, project_key: projectKey });
+export const getHoursByEmployee = (start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams) =>
+  api.get<AggregateRowResponse[]>('/analytics/hours/by-employee', buildParams(start, end, employeeId, projectKey, team));
 
-export const getHoursByPeriod = (period: string, start?: string, end?: string, employeeId?: string, projectKey?: string) =>
-  api.get<AggregateRowResponse[]>('/analytics/hours/by-period', { period, ...dateParams(start, end), employee_id: employeeId, project_key: projectKey });
+export const getHoursByProject = (start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams) =>
+  api.get<AggregateRowResponse[]>('/analytics/hours/by-project', buildParams(start, end, employeeId, projectKey, team));
 
-export const getContextSwitching = (start?: string, end?: string, employeeId?: string, projectKey?: string) =>
-  api.get<ContextSwitchRowResponse[]>('/analytics/context-switching', { ...dateParams(start, end), employee_id: employeeId, project_key: projectKey });
+export const getHoursByCategory = (start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams) =>
+  api.get<AggregateRowResponse[]>('/analytics/hours/by-category', buildParams(start, end, employeeId, projectKey, team));
+
+export const getHoursByPeriod = (period: string, start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams) =>
+  api.get<AggregateRowResponse[]>('/analytics/hours/by-period', { period, ...buildParams(start, end, employeeId, projectKey, team) });
+
+export const getContextSwitching = (start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams) =>
+  api.get<ContextSwitchRowResponse[]>('/analytics/context-switching', buildParams(start, end, employeeId, projectKey, team));
