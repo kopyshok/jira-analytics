@@ -13,11 +13,10 @@ from app.database import Base
 
 
 EMPLOYEE_ROLES: tuple[str, ...] = (
-    "programmer",
-    "consultant",
-    "tester",
     "analyst",
-    "project_manager",
+    "dev",
+    "qa",
+    "other",
 )
 
 
