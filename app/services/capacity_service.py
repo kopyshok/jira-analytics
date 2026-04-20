@@ -45,6 +45,11 @@ QUARTER_MONTHS: dict[int, tuple[int, int, int]] = {
     4: (10, 11, 12),
 }
 
+# Планирование учитывает только эти три роли. Остальные (``manager``,
+# ``consultant``, ``project_manager``, None) игнорируются в
+# ``team_role_capacity`` и ``PlanningService``.
+ROLE_WHITELIST: tuple[str, ...] = ("analyst", "dev", "qa")
+
 
 @dataclass
 class MonthlyCapacity:
@@ -418,6 +423,138 @@ class CapacityService:
             self.quarter_capacity(emp.id, year, quarter)
             for emp in employees
         ]
+
+    # === Per-role aggregation (для backlog-planning) ===
+
+    def employee_monthly_capacity(
+        self,
+        employee_id: str,
+        year: int,
+        month: int,
+    ) -> dict:
+        """Возвращает месячную ёмкость сотрудника как словарь.
+
+        Тонкая обёртка над :meth:`monthly_capacity` — используется
+        ``employee_quarter_capacity`` и ``employee_quarter_breakdown`` для
+        удобной агрегации в API planning (`/capacity-preview`).
+        """
+        m = self.monthly_capacity(employee_id, year, month)
+        return {
+            "year": m.year,
+            "month": m.month,
+            "workdays": m.workdays,
+            "norm_hours": m.norm_hours,
+            "absence_hours": m.vacation_hours,
+            "mandatory_hours": m.mandatory_hours,
+            "available_hours": m.available_hours,
+            "fact_hours": m.fact_hours,
+        }
+
+    def employee_quarter_capacity(
+        self,
+        employee_id: str,
+        year: int,
+        quarter: int,
+    ) -> float:
+        """Сумма ``available_hours`` сотрудника за 3 месяца квартала."""
+        if quarter not in QUARTER_MONTHS:
+            raise ValueError(f"Quarter must be 1..4, got {quarter}")
+        total = 0.0
+        for m in QUARTER_MONTHS[quarter]:
+            total += self.employee_monthly_capacity(
+                employee_id, year, m
+            )["available_hours"]
+        return total
+
+    def employee_quarter_breakdown(
+        self,
+        employee_id: str,
+        year: int,
+        quarter: int,
+    ) -> dict:
+        """Детализированная ёмкость сотрудника за квартал для UI preview.
+
+        Возвращает абсолютные часы и счётчик дней отсутствия (для отдельного
+        показа в превью). ``vacation_days`` считается по пересечению
+        периодов отсутствий с кварталом.
+        """
+        if quarter not in QUARTER_MONTHS:
+            raise ValueError(f"Quarter must be 1..4, got {quarter}")
+
+        raw = absence = mandatory = available = 0.0
+        for m in QUARTER_MONTHS[quarter]:
+            row = self.employee_monthly_capacity(employee_id, year, m)
+            raw += row["norm_hours"]
+            absence += row["absence_hours"]
+            mandatory += row["mandatory_hours"]
+            available += row["available_hours"]
+
+        months = QUARTER_MONTHS[quarter]
+        q_start = date(year, months[0], 1)
+        last_month = months[-1]
+        last_day = monthrange(year, last_month)[1]
+        q_end = date(year, last_month, last_day)
+
+        vacation_days = 0
+        rows = (
+            self.db.query(Absence)
+            .filter(
+                Absence.employee_id == employee_id,
+                Absence.start_date <= q_end,
+                Absence.end_date >= q_start,
+            )
+            .all()
+        )
+        for a in rows:
+            overlap_start = max(a.start_date, q_start)
+            overlap_end = min(a.end_date, q_end)
+            if overlap_end >= overlap_start:
+                vacation_days += (overlap_end - overlap_start).days + 1
+
+        return {
+            "raw_hours": raw,
+            "absence_hours": absence,
+            "mandatory_hours": mandatory,
+            "available_hours": available,
+            "vacation_days": vacation_days,
+        }
+
+    def team_role_capacity(
+        self,
+        year: int,
+        quarter: int,
+        team_filter: Optional[list[str]] = None,
+    ) -> dict[str, float]:
+        """Ёмкость активной команды, сгруппированная по ``Employee.role``.
+
+        Возвращает словарь с ключами ``analyst``/``dev``/``qa`` (все три
+        всегда присутствуют; 0, если нет сотрудников с данной ролью).
+        Роли вне whitelist (``manager``, ``consultant``, None, ...)
+        игнорируются.
+
+        ``team_filter`` — список названий команд. Сотрудник матчится, если
+        состоит хотя бы в одной из указанных команд (через
+        ``EmployeeTeam``). Дубли по JOIN устраняются через ``distinct()``.
+        """
+        if quarter not in QUARTER_MONTHS:
+            raise ValueError(f"Quarter must be 1..4, got {quarter}")
+
+        out: dict[str, float] = {r: 0.0 for r in ROLE_WHITELIST}
+        query = self.db.query(Employee).filter(Employee.is_active.is_(True))
+        if team_filter:
+            from app.models import EmployeeTeam
+
+            query = (
+                query.join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+                .filter(EmployeeTeam.team.in_(team_filter))
+                .distinct()
+            )
+        for emp in query.all():
+            role = (emp.role or "").strip().lower()
+            if role not in out:
+                continue
+            out[role] += self.employee_quarter_capacity(emp.id, year, quarter)
+        return out
 
     def category_breakdown(
         self, year: int, quarter: int
