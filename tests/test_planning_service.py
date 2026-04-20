@@ -46,12 +46,17 @@ def productive_setup(db_session):
 
 @pytest.fixture
 def two_employees(db_session, productive_setup):
-    """Две активных сотрудника → 2 × 512 = 1024 часа ёмкости за Q1 2026."""
+    """Две активных сотрудника с ролью ``dev`` → 2 × 512 = 1024 ч ёмкости dev за Q1 2026.
+
+    v3 planning per-role: без ``Employee.role`` сотрудник игнорируется. Оба
+    сотрудника — ``dev``, что вместе с ``estimate_dev_hours = estimate_hours``
+    в ``_add_item`` сохраняет старую семантику агрегированной ёмкости.
+    """
     alice = Employee(
-        jira_account_id="a1", display_name="Alice", is_active=True
+        jira_account_id="a1", display_name="Alice", is_active=True, role="dev"
     )
     bob = Employee(
-        jira_account_id="b1", display_name="Bob", is_active=True
+        jira_account_id="b1", display_name="Bob", is_active=True, role="dev"
     )
     db_session.add_all([alice, bob])
     db_session.flush()
@@ -59,10 +64,14 @@ def two_employees(db_session, productive_setup):
 
 
 def _add_item(db, *, title, priority, hours, year=2026, quarter="Q1"):
+    """Добавить BacklogItem. Часы дублируются в ``estimate_dev_hours`` —
+    per-role алгоритм планирования требует хотя бы одной per-role оценки
+    для осмысленного demand."""
     item = BacklogItem(
         title=title,
         priority=priority,
         estimate_hours=hours,
+        estimate_dev_hours=hours if hours is not None else None,
         year=year,
         quarter=quarter,
     )
