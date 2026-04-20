@@ -40,9 +40,9 @@ No application-layer module depends on SQLite-specific features.
 
 21 tables in 6 groups — `app/models/__init__.py` is source of truth:
 - **Core (Jira sync):** Employee, EmployeeTeam (M:N, single-primary invariant), Project, Issue (user/Jira-metadata fields: `team`, `participating_teams` (JSON text), `assigned_category`, `include_in_analysis`, `out_of_scope` (Bucket B auto-ingest flag), `status_category` (Jira `new|indeterminate|done`), `status_changed_at` (from `statuscategorychangedate`), `goals` (comma-joined `customfield_11421`)), Worklog, Comment, SyncState
-- **Scope / category config:** ScopeProject, ScopeRoot, CategoryOverride, WorklogQualityRule, CategoryMapping, Category (user-editable, seeded with 10 entries incl. `archive`, `archive_target`, `initiatives_rfa` — both archive codes in `ARCHIVE_CATEGORY_CODES` auto-drop `include_in_analysis` in single/batch category endpoints)
+- **Scope / category config:** ScopeProject, ScopeRoot, CategoryOverride, WorklogQualityRule, CategoryMapping, Category (user-editable, seeded with 10 entries incl. `archive`, `archive_target`, `initiatives_rfa` — both archive codes in `ARCHIVE_CATEGORY_CODES` auto-drop `include_in_analysis` in single/batch category endpoints; v3: добавлено поле `Category.work_type_id` — nullable FK → `mandatory_work_types.id` с `ondelete=SET NULL`, помечает категорию как относящуюся к конкретному виду работ для per-work-type группировки факта)
 - **Hierarchy:** HierarchyRule (user-editable parent→child type rules that replace the hard-coded `CONTAINER_ISSUE_TYPES`; managed via `/settings` → «Иерархия»)
-- **Capacity / planning:** Absence (was `Vacation`; migration 018; includes `reason` — see `ABSENCE_REASONS`), **MandatoryWorkType** (user-editable directory, seeded с 5 типами: organizational, management_admin, support_consult, tech_debt, technical_tasks), **RoleCapacityRule** (per (year, quarter, role?, work_type_id) — `role=NULL` = fallback «для всех»), **EmployeeCapacityOverride** (per (year, quarter, employee_id, work_type_id); приоритет выше role-rule), ProductionCalendarDay (per-day `hours` for RU calendar), BacklogItem, PlanningScenario, ScenarioAllocation
+- **Capacity / planning:** Absence (was `Vacation`; migration 018; v3: поле `reason` (строка) заменено на `reason_id` — FK → `absence_reasons.id`), **AbsenceReason** (редактируемый справочник причин отсутствий с `is_planned`, `color`, `is_active`, `sort_order`; `Absence.reason_id` → FK; старый `ABSENCE_REASONS` tuple удалён), **MandatoryWorkType** (user-editable directory, seeded с 5 типами: organizational, management_admin, support_consult, tech_debt, technical_tasks), **RoleCapacityRule** (per (year, quarter, role?, work_type_id) — `role=NULL` = fallback «для всех»), **EmployeeCapacityOverride** (per (year, quarter, employee_id, work_type_id); приоритет выше role-rule), ProductionCalendarDay (per-day `hours` for RU calendar), BacklogItem, PlanningScenario, ScenarioAllocation
 - **App state:** AppSetting (flat key-value store — see next section)
 
 ## API Endpoints
@@ -59,6 +59,13 @@ No application-layer module depends on SQLite-specific features.
 - **Hierarchy rules:** `GET`/`POST`/`PATCH /{id}`/`DELETE /{id}` under `/hierarchy-rules` + `POST /hierarchy-rules/reorder`; consumed by issue-tree builder to decide container vs leaf types
 - **Production calendar:** `GET /production-calendar?year=N` (list year), `PUT /production-calendar` (single-day manual upsert), `DELETE /production-calendar/{date}` (manual rows only), `POST /production-calendar/sync?year=N&overwrite_manual=false` (pull official RU calendar)
 - **Issue tree:** `/issues/tree?project_keys=A,B&teams=T1,T2` (SQL-filtered by DB fields, teams OR'd); response includes **virtual group nodes** with `issue_type: 'group'` — `__orphans__` (parent_id set but parent excluded from DB) and `__operations__` (root leaf-type issues without children, i.e. childless non-container roots per `hierarchy_rules`). Also auto-pulls **ancestor context**: parents that fall outside the team filter get included with `is_context=true` so hierarchies stay legible; frontend renders them read-only. Mutations: `/issues/{id}/category`, `/issues/{id}/include`, `/issues/batch-category` (drives CategoryConfigTab). Archive codes (`archive`, `archive_target`) auto-drop `include_in_analysis` and are returned in `archived_ids`.
+- **Capacity directories (v3):**
+  - `/capacity/absence-reasons` (CRUD + `POST /reorder`) — manages the directory of absence reasons
+  - `PUT /capacity/role-rules/batch?year&quarter` — atomic replace + 422 если Σ ≠ 100% для какой-либо роли (старые per-cell `POST/PATCH/DELETE` удалены)
+  - `PUT /capacity/employee-overrides/batch?year&quarter` — то же для индивидуальных правил (partial: только упомянутые сотрудники)
+  - `POST /absences/batch` — массовое создание одной записи на каждого `employee_id`
+  - `PUT /categories/{id}` — теперь принимает `work_type_id: str | null` (валидация: MandatoryWorkType существует и активен)
+- **Absence responses:** `AbsenceResponse` теперь содержит денормализованные `reason_code`, `reason_label`, `reason_is_planned`, `reason_color` через `joinedload(Absence.reason)`.
 
 ## Code Principles
 
@@ -89,10 +96,17 @@ Idempotently recalculates `category_mappings` table and the denormalized `Issue.
 Commits internally — tests must clean tables after each run (see conftest).
 
 ### CapacityService
-Formula: `available = norm_hours − absence_hours − mandatory_hours`, clamped to `max(0.0, ...)`.
+Formula (v3):
+- `effective_norm = max(0, norm_hours − absence_hours)`
+- `productive_percent = Σ percent_resolved(emp, wt) for wt in WORK_TYPES where wt has at least one linked Category (Category.work_type_id = wt.id)`
+- `available_hours = effective_norm × productive_percent / 100`
+- `mandatory_hours = effective_norm − available_hours`
+
+v3: правила описывают 100% времени; «продуктивные» виды работ = те, у которых есть хотя бы одна смэпленная категория; факт ворклогов группируется per work_type через `Category.work_type_id`.
+
 `norm_hours` = сумма `production_calendar_day.hours` за период (8ч будни, 7ч предпраздничные, 0 выходные/праздники), масштабируется на `hours_per_day / 8`. Если в БД на дату нет записи — фоллбэк на `hours_per_day` для Пн–Пт. Source: `ProductionCalendarService`.
-`absence_hours` = тот же расчёт по дням отпуска / болезни / других причин (`Absence.reason` ∈ `ABSENCE_REASONS`), перекрытие периода через `max(start, period_start)` / `min(end, period_end)`.
-`mandatory_hours = norm_hours × total_percent / 100`, где `total_percent = Σ CapacityService.mandatory_percent_breakdown(employee, year, quarter).values()`. Breakdown резолвится per (employee, work_type) по приоритету: `employee_capacity_overrides` > `role_capacity_rules(role=e.role)` > `role_capacity_rules(role=NULL)` (fallback) > 0. Квартальное правило равномерно распределяется по месяцам через норму (чем больше `norm_hours_month`, тем больше вычет).
+`absence_hours` = тот же расчёт по дням отпуска / болезни / других причин (`Absence.reason_id` → `absence_reasons`), перекрытие периода через `max(start, period_start)` / `min(end, period_end)`.
+`percent_resolved(employee, work_type)` резолвится по приоритету: `employee_capacity_overrides` > `role_capacity_rules(role=e.role)` > `role_capacity_rules(role=NULL)` (fallback) > 0. Квартальное правило равномерно распределяется по месяцам через норму (чем больше `norm_hours_month`, тем больше вычет).
 `fact_hours` — сумма `Worklog.hours` сотрудника за период; показывается отдельно и даёт plan/fact %.
 Quarter mapping: `QUARTER_MONTHS = {1:(1,2,3), 2:(4,5,6), 3:(7,8,9), 4:(10,11,12)}`.
 
