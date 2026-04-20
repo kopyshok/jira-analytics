@@ -5,12 +5,12 @@ import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useCategoryBreakdown, useAutoDetectTeams, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
+import { useTeamCapacity, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useAutoDetectTeams, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useAddAbsencesBatch, useRemoveAbsence } from '../hooks/useAbsences';
 import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
-import RulesTabV2 from '../components/capacity/RulesTabV2';
+import RolesTab from '../components/capacity/RolesTab';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import CapacityFilterProvider from '../components/capacity/CapacityFilterProvider';
 import { useCapacityFilter, NO_TEAM_VALUE } from '../hooks/useCapacityFilter';
@@ -18,7 +18,7 @@ import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
-import type { QuarterCapacityResponse, AbsenceResponse, JiraUserSearchResult, CategoryBreakdownResponse, EmployeeTeamItem, EmployeeRole } from '../types/api';
+import type { QuarterCapacityResponse, AbsenceResponse, JiraUserSearchResult, EmployeeTeamItem, EmployeeRole } from '../types/api';
 
 dayjs.extend(minMax);
 
@@ -630,35 +630,6 @@ function AbsencesTab() {
   );
 }
 
-function BreakdownTab() {
-  const { year, quarter } = useQuarterYear();
-  const { data, isLoading } = useCategoryBreakdown(Number(year), Number(quarter));
-  const { matchesTeam } = useCapacityFilter();
-  const visible = (data ?? []).filter(r => matchesTeam(r.employee_id));
-  return (
-    <Table<CategoryBreakdownResponse>
-      dataSource={visible}
-      rowKey="employee_id"
-      loading={isLoading}
-      pagination={false}
-      size="small"
-      columns={[
-        { title: 'Сотрудник', dataIndex: 'employee_name', fixed: 'left' as const, width: 200 },
-        { title: 'Активный стек',
-          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.active_stack) },
-        { title: 'Инициативы',
-          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.initiatives) },
-        { title: 'Архив квартальных',
-          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.archive_target) },
-        { title: 'Архив прочих',
-          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.archive_other) },
-        { title: 'Без категории',
-          render: (_, r: CategoryBreakdownResponse) => formatHours(r.by_bucket.uncategorized) },
-        { title: 'Итого', dataIndex: 'total_hours', render: formatHours },
-      ]}
-    />
-  );
-}
 
 function TeamFilterBar() {
   const { selectedTeams, setSelectedTeams } = useCapacityFilter();
@@ -702,9 +673,8 @@ export default function CapacityPage() {
         />
         <Tabs items={[
           { key: 'team', label: 'Команда', children: <TeamTab /> },
-          { key: 'breakdown', label: 'Распределение', children: <BreakdownTab /> },
           { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
-          { key: 'rules', label: 'Правила', children: <RulesTabV2 /> },
+          { key: 'roles', label: 'Роли', children: <RolesTab /> },
         ]} />
       </Space>
     </CapacityFilterProvider>
