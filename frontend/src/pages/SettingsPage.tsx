@@ -26,6 +26,7 @@ import ConnectionCard from '../components/ConnectionCard';
 import ScopeAdmin from '../components/ScopeAdmin';
 import JiraFieldsCard from '../components/JiraFieldsCard';
 import HierarchyRulesTab from '../components/HierarchyRulesTab';
+import AbsenceReasonsTab from '../components/AbsenceReasonsTab';
 import PageHeader from '../components/shared/PageHeader';
 import {
   useProductionCalendarYear,
@@ -35,7 +36,7 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'calendar'] as const;
+const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'calendar'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function readHashKey(): TabKey {
@@ -72,6 +73,7 @@ export default function SettingsPage() {
           { key: 'scope', label: 'Проекты в scope', children: <ScopeAdmin /> },
           { key: 'fields', label: 'Поля Jira', children: <JiraFieldsCard /> },
           { key: 'hierarchy', label: 'Правила иерархии', children: <HierarchyRulesTab /> },
+          { key: 'reasons', label: 'Причины отсутствий', children: <AbsenceReasonsTab /> },
           { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
         ]}
       />
