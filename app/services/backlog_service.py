@@ -36,10 +36,16 @@ class BacklogService:
 
     Caller controls the transaction: ``sync_from_issue`` делает ``flush()``,
     но не коммитит — окончательный commit должен сделать вызвавший код.
+
+    Дефолтные year/quarter для новых BacklogItem читаются из AppSetting
+    один раз в ``__init__`` и кешируются — это важно для batch-контекстов
+    (``MappingService.recalculate_issues``, ``/refresh-from-jira``), где
+    sync_from_issue вызывается десятками раз подряд.
     """
 
     def __init__(self, db: Session):
         self.db = db
+        self._default_year, self._default_quarter = _get_default_quarter_year(db)
 
     def sync_from_issue(self, issue: Issue) -> Optional[BacklogItem]:
         """Идемпотентно выравнивает BacklogItem с Issue по текущей категории.
@@ -59,9 +65,8 @@ class BacklogService:
                 existing = BacklogItem(issue_id=issue.id)
                 self.db.add(existing)
                 # Дефолты только при создании — не перетираем то, что PM ввёл.
-                y, q = _get_default_quarter_year(self.db)
-                existing.year = y
-                existing.quarter = q
+                existing.year = self._default_year
+                existing.quarter = self._default_quarter
                 existing.opo_analyst_ratio = 0.5
             # Jira-sourced поля — перезаписываем всегда.
             existing.title = issue.summary
