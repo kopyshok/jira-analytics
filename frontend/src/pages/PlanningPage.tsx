@@ -18,7 +18,7 @@ import {
   useApproveScenario,
   useRevertScenario,
   useSyncScenarioBacklog,
-  useCapacityPreview,
+  useScenarioResource,
   useUpdateScenario,
 } from '../hooks/usePlanning';
 import { TeamSelector } from '../components/planning/TeamSelector';
@@ -92,15 +92,8 @@ export default function PlanningPage() {
     return m ? Number(m[1]) : 0;
   }, [scenario]);
 
-  const previewReq = useMemo(
-    () => ({
-      year: scenario?.year ?? 0,
-      quarter: quarterInt,
-      backlog_item_ids: includedIds,
-    }),
-    [scenario, quarterInt, includedIds],
-  );
-  const { data: preview } = useCapacityPreview(previewReq);
+  // Ресурс команды — не зависит от конкретных включённых идей, грузится один раз
+  const { data: resourceBase } = useScenarioResource(scenarioId ?? undefined);
 
   const isDraft = scenario?.status === 'draft';
   const isApproved = scenario?.status === 'approved';
@@ -457,7 +450,8 @@ export default function PlanningPage() {
           </Space>
 
           <PlanningCapacityPanel
-            preview={preview}
+            resourceBase={resourceBase}
+            allocations={allocations ?? []}
             quarter={String(quarterInt)}
           />
         </div>

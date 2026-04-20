@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { App } from 'antd';
 import {
   getScenarios,
   getScenario,
@@ -14,7 +15,7 @@ import {
   getScenarioResource,
 } from '../api/planning';
 import type { CapacityPreviewRequest } from '../types/planning';
-import type { ScenarioResponse } from '../types/api';
+import type { AllocationResponse, ScenarioResponse } from '../types/api';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
   useQuery({
@@ -112,15 +113,38 @@ export const useScenarioAllocations = (scenarioId: string | null) =>
 
 export const usePatchAllocation = () => {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      scenarioId, allocId, data,
-    }: {
-      scenarioId: string;
-      allocId: string;
-      data: { included?: boolean; planned_hours?: number };
-    }) => patchAllocation(scenarioId, allocId, data),
-    onSuccess: (_data, vars) => {
+  const { notification } = App.useApp();
+  // NOTE: TanStack cancelQueries cancels running *queries*, not in-flight mutations.
+  // Rapid-fire clicks may cause out-of-order server responses; acceptable for a
+  // single-user app. The optimistic cache is always overwritten by onSettled invalidation.
+  return useMutation<
+    AllocationResponse,
+    Error,
+    { scenarioId: string; allocId: string; data: { included?: boolean; planned_hours?: number } },
+    { prev?: AllocationResponse[] }
+  >({
+    mutationFn: ({ scenarioId, allocId, data }) => patchAllocation(scenarioId, allocId, data),
+    onMutate: async ({ scenarioId, allocId, data }) => {
+      const key = ['planning', 'allocations', scenarioId];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<AllocationResponse[]>(key);
+      if (prev && data.included !== undefined) {
+        qc.setQueryData<AllocationResponse[]>(
+          key,
+          prev.map((a) => (a.id === allocId ? { ...a, included: data.included! } : a)),
+        );
+      }
+      return { prev };
+    },
+    onError: (_err, vars, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData(['planning', 'allocations', vars.scenarioId], ctx.prev);
+      }
+      notification.error({ title: 'Не удалось сохранить изменение' });
+    },
+    onSettled: (_data, _err, vars) => {
+      // Синхронизируем кэш с сервером, чтобы получить актуальный planned_hours.
+      // НЕ инвалидируем resource — ёмкость команды не меняется при переключении идеи.
       qc.invalidateQueries({ queryKey: ['planning', 'allocations', vars.scenarioId] });
     },
   });
