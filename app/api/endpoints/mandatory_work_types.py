@@ -22,6 +22,7 @@ class WorkTypeResponse(BaseModel):
     label: str
     is_active: bool
     sort_order: int
+    subtracts_from_pool: bool
 
     class Config:
         from_attributes = True
@@ -32,6 +33,7 @@ class WorkTypeCreate(BaseModel):
     label: str = Field(min_length=1, max_length=255)
     is_active: bool = True
     sort_order: int = 0
+    subtracts_from_pool: bool = True
 
 
 class WorkTypeUpdate(BaseModel):
@@ -39,6 +41,7 @@ class WorkTypeUpdate(BaseModel):
     label: Optional[str] = Field(default=None, min_length=1, max_length=255)
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
+    subtracts_from_pool: Optional[bool] = None
 
 
 class ReorderRequest(BaseModel):
