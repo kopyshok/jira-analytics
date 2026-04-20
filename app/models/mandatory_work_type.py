@@ -20,6 +20,7 @@ class MandatoryWorkType(Base, TimestampMixin):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    subtracts_from_pool: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     def __repr__(self) -> str:
         return f"<MandatoryWorkType {self.code}>"
