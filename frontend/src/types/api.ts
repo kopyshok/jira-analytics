@@ -460,6 +460,21 @@ export interface AllocationResponse {
   risk: BacklogImpactRisk | null;
 }
 
+// === Scenario rules ===
+
+export interface ScenarioRuleOut {
+  id: string;
+  role: string | null;
+  work_type_id: string;
+  percent_of_norm: number;
+}
+
+export interface ScenarioRuleInput {
+  role: string | null;
+  work_type_id: string;
+  percent_of_norm: number;
+}
+
 // === Hierarchy rules ===
 
 export interface HierarchyRule {

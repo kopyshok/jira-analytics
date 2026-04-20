@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AllocationResponse, ScenarioResponse, ResourceBase } from '../types/api';
+import type { AllocationResponse, ScenarioResponse, ResourceBase, ScenarioRuleOut, ScenarioRuleInput } from '../types/api';
 import type { CapacityPreviewRequest, CapacityPreviewResponse } from '../types/planning';
 
 export const getScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
@@ -43,3 +43,9 @@ export const capacityPreview = (body: CapacityPreviewRequest) =>
 
 export const getScenarioResource = (sid: string) =>
   api.get<ResourceBase>(`/planning/scenarios/${sid}/resource`);
+
+export const getScenarioRules = (sid: string) =>
+  api.get<ScenarioRuleOut[]>(`/planning/scenarios/${sid}/rules`);
+
+export const putScenarioRules = (sid: string, rules: ScenarioRuleInput[]) =>
+  api.put<ScenarioRuleOut[]>(`/planning/scenarios/${sid}/rules`, { rules });

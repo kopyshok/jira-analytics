@@ -13,9 +13,11 @@ import {
   patchAllocation,
   capacityPreview,
   getScenarioResource,
+  getScenarioRules,
+  putScenarioRules,
 } from '../api/planning';
 import type { CapacityPreviewRequest } from '../types/planning';
-import type { AllocationResponse, ScenarioResponse } from '../types/api';
+import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput } from '../types/api';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
   useQuery({
@@ -157,6 +159,30 @@ export const useScenarioResource = (sid?: string) =>
     enabled: !!sid,
     staleTime: 60_000,
   });
+
+export const useScenarioRules = (sid?: string) =>
+  useQuery({
+    queryKey: ['planning', 'scenario', sid, 'rules'],
+    queryFn: () => getScenarioRules(sid!),
+    enabled: !!sid,
+    staleTime: 60_000,
+  });
+
+export const usePutScenarioRules = () => {
+  const qc = useQueryClient();
+  const { notification } = App.useApp();
+  return useMutation<ScenarioRuleOut[], Error, { scenarioId: string; rules: ScenarioRuleInput[] }>({
+    mutationFn: ({ scenarioId, rules }) => putScenarioRules(scenarioId, rules),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.scenarioId, 'rules'] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.scenarioId, 'resource'] });
+      notification.success({ title: 'Правила сохранены' });
+    },
+    onError: (err) => {
+      notification.error({ title: 'Не удалось сохранить правила', description: err.message });
+    },
+  });
+};
 
 /** Live-расчёт ёмкости для страницы «Сценарии». Сервер принимает список
  *  backlog_item_ids (включённых в сценарий) и возвращает capacity/demand

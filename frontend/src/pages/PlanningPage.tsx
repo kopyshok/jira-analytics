@@ -9,6 +9,7 @@ import {
 import PageHeader from '../components/shared/PageHeader';
 import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
 import ScenarioCreateModal from '../components/planning/ScenarioCreateModal';
+import ScenarioRulesEditor from '../components/planning/ScenarioRulesEditor';
 import {
   useScenarios,
   useScenario,
@@ -449,11 +450,14 @@ export default function PlanningPage() {
             </Card>
           </Space>
 
-          <PlanningCapacityPanel
-            resourceBase={resourceBase}
-            allocations={allocations ?? []}
-            quarter={String(quarterInt)}
-          />
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <PlanningCapacityPanel
+              resourceBase={resourceBase}
+              allocations={allocations ?? []}
+              quarter={String(quarterInt)}
+            />
+            <ScenarioRulesEditor scenarioId={scenarioId} />
+          </Space>
         </div>
       )}
     </Space>
