@@ -13,7 +13,8 @@ from app.models.scope_root import ScopeRoot
 from app.models.category_mapping import CategoryMapping
 from app.models.category_override import CategoryOverride
 from app.models.worklog_quality_rule import WorklogQualityRule
-from app.models.absence import Absence, ABSENCE_REASONS
+from app.models.absence import Absence
+from app.models.absence_reason import AbsenceReason
 from app.models.mandatory_work_type import MandatoryWorkType
 from app.models.role_capacity_rule import RoleCapacityRule
 from app.models.employee_capacity_override import EmployeeCapacityOverride
@@ -43,7 +44,7 @@ __all__ = [
     "CategoryOverride",
     "WorklogQualityRule",
     "Absence",
-    "ABSENCE_REASONS",
+    "AbsenceReason",
     "MandatoryWorkType",
     "RoleCapacityRule",
     "EmployeeCapacityOverride",
