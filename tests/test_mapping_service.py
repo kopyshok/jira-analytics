@@ -5,6 +5,8 @@ from datetime import datetime
 import pytest
 
 from app.models import (
+    BacklogItem,
+    Category,
     CategoryMapping,
     CategoryOverride,
     Employee,
@@ -225,6 +227,48 @@ class TestRecalculateWorklogs:
         )
         assert mapping.category == CategoryCode.MEETINGS
         assert mapping.source_rule == MappingSource.SCOPE_ROOT
+
+
+class TestBacklogSyncTrigger:
+    def test_creates_backlog_item_when_issue_enters_backlog_category(
+        self, db_session, project
+    ):
+        """recalculate_issues должен создать BacklogItem для задач,
+        чья denormalized category обновилась до 'initiatives_backlog'."""
+        db_session.add(
+            Category(
+                code="initiatives_backlog",
+                label="Бэклог инициатив",
+                color="#7F77DD",
+                sort_order=22,
+                is_system=True,
+            )
+        )
+        issue = Issue(
+            jira_issue_id="jid-IB-1",
+            key="IB-1",
+            summary="Initiative 1",
+            issue_type="Task",
+            status="Open",
+            project_id=project.id,
+            assigned_category="initiatives_backlog",
+            planned_dev_hours=8.0,
+        )
+        db_session.add(issue)
+        db_session.flush()
+
+        # Pre-condition: BacklogItem ещё нет.
+        assert (
+            db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0
+        )
+
+        MappingService(db_session).recalculate_issues()
+
+        item = (
+            db_session.query(BacklogItem).filter_by(issue_id=issue.id).one_or_none()
+        )
+        assert item is not None
+        assert item.estimate_dev_hours == 8.0
 
 
 class TestRecalculateAll:

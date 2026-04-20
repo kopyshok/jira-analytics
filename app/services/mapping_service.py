@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Issue, Worklog, CategoryMapping
 from app.repositories.base import BaseRepository
+from app.services.backlog_service import BacklogService
 from app.services.category_resolver import CategoryResolver
 
 
@@ -95,17 +96,28 @@ class MappingService:
         """Пересчитать категории всех задач.
 
         Обновляет denormalized поле Issue.category и category_mappings.
+        Для задач, у которых категория РЕАЛЬНО поменялась, дополнительно
+        вызывает ``BacklogService.sync_from_issue`` — это гарантирует, что
+        после полного Jira-синка бэклог автоматически приводится в
+        соответствие с новыми категориями (создаются BacklogItem для
+        новых ``initiatives_backlog``, удаляются для ушедших).
+
+        Note: per изменённую задачу sync_from_issue добавляет 1-3 запроса
+        (O(N) extra queries в худшем случае). Для MVP это ОК; при большом
+        количестве задач потребуется оптимизация (batch-вариант).
         """
         logger.info("Recalculating categories for all issues...")
 
         issues = self.db.query(Issue).all()
         count = 0
+        backlog = BacklogService(self.db)
 
         for issue in issues:
             resolution = self.resolver.resolve_for_issue(issue)
 
             # Обновляем denormalized поле
-            if issue.category != resolution.category_code:
+            category_changed = issue.category != resolution.category_code
+            if category_changed:
                 issue.category = resolution.category_code
 
             # Обновляем category_mappings
@@ -115,6 +127,11 @@ class MappingService:
                 category=resolution.category_code,
                 source_rule=resolution.source,
             )
+
+            # Синкаем BacklogItem только для реально изменившихся задач —
+            # экономим N*M запросов для остального большинства.
+            if category_changed:
+                backlog.sync_from_issue(issue)
 
             count += 1
             if count % 100 == 0:
