@@ -23,7 +23,7 @@ def employee(db_session):
         jira_account_id="acc-dev",
         display_name="Dev",
         is_active=True,
-        role="programmer",
+        role="dev",
     )
     db_session.add(emp)
     db_session.flush()
@@ -75,7 +75,7 @@ class TestMandatoryPercentBreakdown:
 
     def test_role_rule_applied(self, db_session, employee, work_types):
         db_session.add(RoleCapacityRule(
-            year=2026, quarter=1, role="programmer",
+            year=2026, quarter=1, role="dev",
             work_type_id=work_types["tech_debt"].id, percent_of_norm=15.0,
         ))
         db_session.flush()
@@ -106,7 +106,7 @@ class TestMandatoryPercentBreakdown:
                 work_type_id=work_types["tech_debt"].id, percent_of_norm=5.0,
             ),
             RoleCapacityRule(
-                year=2026, quarter=1, role="programmer",
+                year=2026, quarter=1, role="dev",
                 work_type_id=work_types["tech_debt"].id, percent_of_norm=15.0,
             ),
         ])
@@ -120,7 +120,7 @@ class TestMandatoryPercentBreakdown:
     def test_employee_override_wins(self, db_session, employee, work_types):
         db_session.add_all([
             RoleCapacityRule(
-                year=2026, quarter=1, role="programmer",
+                year=2026, quarter=1, role="dev",
                 work_type_id=work_types["tech_debt"].id, percent_of_norm=15.0,
             ),
             EmployeeCapacityOverride(
@@ -142,16 +142,16 @@ class TestMandatoryHoursIntegration:
     def test_monthly_capacity_applies_quarter_rule(
         self, db_session, employee, work_types, productive_wt
     ):
-        # 10% tech_debt + 5% org = 15% mandatory для Q1/programmer.
+        # 10% tech_debt + 5% org = 15% mandatory для Q1/dev.
         # productive (связан с Category) = 85% → available = 85% * norm,
         # mandatory = norm − available = 15% * norm.
         db_session.add_all([
             RoleCapacityRule(
-                year=2026, quarter=1, role="programmer",
+                year=2026, quarter=1, role="dev",
                 work_type_id=work_types["tech_debt"].id, percent_of_norm=10.0,
             ),
             RoleCapacityRule(
-                year=2026, quarter=1, role="programmer",
+                year=2026, quarter=1, role="dev",
                 work_type_id=work_types["organizational"].id, percent_of_norm=5.0,
             ),
             RoleCapacityRule(
@@ -184,7 +184,7 @@ class TestMandatoryHoursIntegration:
         # Правило на роль, которой нет у сотрудника — не применяется ни по роли,
         # ни по fallback (role=None). Категорий, привязанных к work_type, тоже нет.
         db_session.add(RoleCapacityRule(
-            year=2026, quarter=1, role="programmer",
+            year=2026, quarter=1, role="dev",
             work_type_id=work_types["tech_debt"].id, percent_of_norm=20.0,
         ))
         db_session.flush()
@@ -205,7 +205,7 @@ class TestMandatoryHoursIntegration:
         """
         db_session.add_all([
             RoleCapacityRule(
-                year=2026, quarter=1, role="programmer",
+                year=2026, quarter=1, role="dev",
                 work_type_id=work_types["inactive_type"].id, percent_of_norm=50.0,
             ),
             RoleCapacityRule(

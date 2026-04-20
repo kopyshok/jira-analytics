@@ -58,7 +58,7 @@ def test_patch_role_sets_valid_role(client, employee, db_session):
 
 
 def test_patch_role_clears_with_null(client, employee, db_session):
-    employee.role = "programmer"
+    employee.role = "dev"
     db_session.commit()
 
     res = client.patch(f"/api/v1/employees/{employee.id}", json={"role": None})

@@ -59,7 +59,7 @@ def wt(db_session):
 @pytest.fixture
 def employee(db_session):
     e = Employee(id="emp1", jira_account_id="a1", display_name="Dev",
-                 is_active=True, role="programmer")
+                 is_active=True, role="dev")
     db_session.add(e)
     db_session.commit()
     return e
@@ -98,7 +98,7 @@ class TestMandatoryWorkTypesCRUD:
 
     def test_delete_blocked_when_referenced(self, client, wt, db_session):
         db_session.add(RoleCapacityRule(
-            year=2026, quarter=1, role="programmer",
+            year=2026, quarter=1, role="dev",
             work_type_id=wt.id, percent_of_norm=10.0,
         ))
         db_session.commit()
@@ -135,7 +135,7 @@ class TestRoleCapacityRulesCRUD:
         res = client.put(
             "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
             json={"rules": [
-                {"role": "programmer", "work_type_id": wt.id, "percent_of_norm": 100.0},
+                {"role": "dev", "work_type_id": wt.id, "percent_of_norm": 100.0},
             ]},
         )
         assert res.status_code == 200
@@ -178,19 +178,19 @@ class TestRoleCapacityRulesCRUD:
         res = client.put(
             "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
             json={"rules": [
-                {"role": "programmer", "work_type_id": wt.id, "percent_of_norm": 50.0},
+                {"role": "dev", "work_type_id": wt.id, "percent_of_norm": 50.0},
             ]},
         )
         assert res.status_code == 422
         errors = res.json()["detail"]["errors"]
-        assert errors[0]["role"] == "programmer"
+        assert errors[0]["role"] == "dev"
         assert errors[0]["sum"] == 50.0
         assert errors[0]["expected"] == 100.0
 
     def test_batch_updates_existing_rule(self, client, wt, db_session):
         # Seed a rule directly in DB with percent=60 (invalid alone but we're testing replace).
         db_session.add(RoleCapacityRule(
-            year=2026, quarter=1, role="tester",
+            year=2026, quarter=1, role="qa",
             work_type_id=wt.id, percent_of_norm=60.0,
         ))
         db_session.commit()
@@ -199,7 +199,7 @@ class TestRoleCapacityRulesCRUD:
         res = client.put(
             "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
             json={"rules": [
-                {"role": "tester", "work_type_id": wt.id, "percent_of_norm": 100.0},
+                {"role": "qa", "work_type_id": wt.id, "percent_of_norm": 100.0},
             ]},
         )
         assert res.status_code == 200
@@ -213,7 +213,7 @@ class TestRoleCapacityRulesCRUD:
         client.put(
             "/api/v1/capacity/role-rules/batch?year=2026&quarter=1",
             json={"rules": [
-                {"role": "consultant", "work_type_id": wt.id, "percent_of_norm": 100.0},
+                {"role": "other", "work_type_id": wt.id, "percent_of_norm": 100.0},
             ]},
         )
         assert len(client.get("/api/v1/capacity/role-rules?year=2026&quarter=1").json()) == 1
@@ -229,7 +229,7 @@ class TestRoleCapacityRulesCRUD:
     def test_copy_to_quarter_happy_path(self, client, wt, db_session):
         # Seed source quarter directly via DB to avoid endpoint coupling.
         db_session.add(RoleCapacityRule(
-            year=2026, quarter=1, role="programmer",
+            year=2026, quarter=1, role="dev",
             work_type_id=wt.id, percent_of_norm=100.0,
         ))
         db_session.commit()
@@ -244,7 +244,7 @@ class TestRoleCapacityRulesCRUD:
     def test_copy_to_quarter_conflict_409(self, client, wt, db_session):
         for q in (1, 2):
             db_session.add(RoleCapacityRule(
-                year=2026, quarter=q, role="programmer",
+                year=2026, quarter=q, role="dev",
                 work_type_id=wt.id, percent_of_norm=100.0,
             ))
         db_session.commit()

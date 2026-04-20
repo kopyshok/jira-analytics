@@ -45,9 +45,8 @@ QUARTER_MONTHS: dict[int, tuple[int, int, int]] = {
     4: (10, 11, 12),
 }
 
-# Планирование учитывает только эти три роли. Остальные (``manager``,
-# ``consultant``, ``project_manager``, None) игнорируются в
-# ``team_role_capacity`` и ``PlanningService``.
+# Планирование учитывает только эти три роли. Остальные (``other``, None)
+# игнорируются в ``team_role_capacity`` и ``PlanningService``.
 ROLE_WHITELIST: tuple[str, ...] = ("analyst", "dev", "qa")
 
 
@@ -529,8 +528,7 @@ class CapacityService:
 
         Возвращает словарь с ключами ``analyst``/``dev``/``qa`` (все три
         всегда присутствуют; 0, если нет сотрудников с данной ролью).
-        Роли вне whitelist (``manager``, ``consultant``, None, ...)
-        игнорируются.
+        Роли вне whitelist (``other``, None) игнорируются.
 
         ``team_filter`` — список названий команд. Сотрудник матчится, если
         состоит хотя бы в одной из указанных команд (через
