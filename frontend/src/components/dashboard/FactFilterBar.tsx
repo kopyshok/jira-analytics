@@ -20,7 +20,7 @@ export default function FactFilterBar() {
         value={selectedTeams}
         onChange={setSelectedTeams}
         options={options}
-        onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
+        onOpenChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
         loading={jiraTeams.isFetching}
         notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
         showSearch
