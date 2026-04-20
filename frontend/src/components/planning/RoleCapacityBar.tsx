@@ -9,7 +9,7 @@ interface Props {
   employeeCount: number;
 }
 
-/** Одна из трёх строк в карточке «Ёмкость по ролям» — прогресс-бар с
+/** Одна из трёх строк в карточке «Ресурс по ролям» — прогресс-бар с
  *  маркером 100 %, оранжевой «перегруз»-зоной и подписью запас/перегруз.
  *  Mirrors Prototype.html lines 1444-1491. */
 export default function RoleCapacityBar({ role, demand, capacity, employeeCount }: Props) {

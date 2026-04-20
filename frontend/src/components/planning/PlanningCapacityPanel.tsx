@@ -58,7 +58,7 @@ function KpiRow({
   );
 }
 
-/** Правая sticky-колонка /planning: 4 карточки с ёмкостью по ролям/сотрудникам. */
+/** Правая sticky-колонка /planning: 4 карточки с ресурсом по ролям/сотрудникам. */
 export default function PlanningCapacityPanel({
   preview,
   quarter,
@@ -126,7 +126,7 @@ export default function PlanningCapacityPanel({
               letterSpacing: 0.8,
             }}
           >
-            Ёмкость команды · Q{quarter}
+            Ресурс команды · Q{quarter}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
@@ -178,7 +178,7 @@ export default function PlanningCapacityPanel({
 
       {/* 2. Per-role */}
       <Card
-        title="Ёмкость по ролям"
+        title="Ресурс по ролям"
         styles={{ body: { padding: 0 } }}
         extra={<span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>план / доступно</span>}
       >
