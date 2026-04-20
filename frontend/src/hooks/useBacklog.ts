@@ -34,7 +34,13 @@ export const useUpdateBacklogItem = () => {
 
 export const useDeleteBacklogItem = () => {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: deleteBacklogItem, onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog'] }) });
+  return useMutation({
+    mutationFn: deleteBacklogItem,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['backlog'] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
+    },
+  });
 };
 
 export const useLinkJira = () => {

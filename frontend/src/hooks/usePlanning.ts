@@ -13,6 +13,7 @@ import {
   capacityPreview,
 } from '../api/planning';
 import type { CapacityPreviewRequest } from '../types/planning';
+import type { ScenarioResponse } from '../types/api';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
   useQuery({
@@ -47,7 +48,23 @@ export const useDeleteScenario = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: deleteScenario,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning'] }),
+    // onMutate (ДО запроса): отменяем in-flight запросы по сценарию и убираем
+    // его из кэша списков. Без этого useScenario / useScenarioAllocations
+    // успевают отловить 404 при refetch'е после invalidate.
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['planning', 'scenario', id] });
+      await qc.cancelQueries({ queryKey: ['planning', 'allocations', id] });
+      qc.setQueriesData<ScenarioResponse[]>(
+        { queryKey: ['planning', 'scenarios'] },
+        (old) => (old ? old.filter((s) => s.id !== id) : old),
+      );
+      qc.removeQueries({ queryKey: ['planning', 'scenario', id] });
+      qc.removeQueries({ queryKey: ['planning', 'allocations', id] });
+    },
+    // onSuccess инвалидируем только список (не wildcard-planning), чтобы
+    // не ресетать удалённый сценарий обратно через observer re-fetch.
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] }),
   });
 };
 

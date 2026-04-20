@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
   App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
@@ -55,10 +55,22 @@ export default function PlanningPage() {
   const revert = useRevertScenario();
   const syncBacklog = useSyncScenarioBacklog();
 
-  // Auto-select first scenario if none selected
+  // Запоминаем id, который сейчас удаляется, — иначе авто-выбор ниже успеет
+  // снова взять его из стейл-кэша списка между `setScenarioId(null)` и
+  // refetch'ем, и лечит 404 на useScenario/useScenarioAllocations.
+  const deletingIdRef = useRef<string | null>(null);
+
+  // Авто-выбор: если сценарий из URL исчез (удалили) либо не выбран — взять
+  // первый доступный, кроме того, что сейчас в процессе удаления.
   useEffect(() => {
-    if (!scenarioId && scenarios && scenarios.length > 0) {
-      setScenarioId(scenarios[0].id);
+    if (!scenarios) return;
+    const available = scenarios.filter((s) => s.id !== deletingIdRef.current);
+    if (scenarioId && !available.some((s) => s.id === scenarioId)) {
+      setScenarioId(available[0]?.id ?? null);
+      return;
+    }
+    if (!scenarioId && available.length > 0) {
+      setScenarioId(available[0].id);
     }
   }, [scenarioId, scenarios]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -112,12 +124,18 @@ export default function PlanningPage() {
 
   const handleDelete = () => {
     if (!scenarioId) return;
-    deleteScenario.mutate(scenarioId, {
+    const id = scenarioId;
+    deletingIdRef.current = id;
+    setScenarioId(null);
+    deleteScenario.mutate(id, {
       onSuccess: () => {
         notification.success({ title: 'Сценарий удалён' });
-        setScenarioId(null);
+        deletingIdRef.current = null;
       },
-      onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+      onError: (e) => {
+        deletingIdRef.current = null;
+        notification.error({ title: 'Ошибка', description: (e as Error).message });
+      },
     });
   };
 

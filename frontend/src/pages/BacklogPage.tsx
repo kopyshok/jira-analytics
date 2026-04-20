@@ -343,7 +343,18 @@ export default function BacklogPage() {
                     )}
                     <Popconfirm
                       title="Удалить идею?"
+                      description="Элемент будет убран из всех черновиков сценариев."
                       onConfirm={() => del.mutate(r.id, {
+                        onSuccess: (res) => {
+                          if (res.affected_scenarios.length > 0) {
+                            notification.success({
+                              title: 'Удалено',
+                              description:
+                                `Убрано из ${res.affected_scenarios.length} сценариев: ` +
+                                res.affected_scenarios.map((s) => s.name).join(', '),
+                            });
+                          }
+                        },
                         onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
                       })}
                     >

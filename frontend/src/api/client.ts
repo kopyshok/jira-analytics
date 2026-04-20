@@ -6,6 +6,35 @@ export const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
 export const boolParam = (v?: boolean): string | undefined =>
   v === undefined ? undefined : v ? 'true' : 'false';
 
+// Недавно удалённые URL'ы — для подавления ложноположительных 404, которые
+// летят от still-mounted TanStack-observers после DELETE того же ресурса
+// (race между re-render'ом компонента и onMutate'ом мутации).
+const recentlyDeleted = new Map<string, number>();
+const DELETE_SUPPRESS_WINDOW_MS = 2000;
+
+function markDeleted(baseUrl: string): void {
+  const now = Date.now();
+  recentlyDeleted.set(baseUrl, now);
+  // Чистим старые записи, чтобы map не рос.
+  for (const [k, ts] of recentlyDeleted) {
+    if (now - ts > DELETE_SUPPRESS_WINDOW_MS) recentlyDeleted.delete(k);
+  }
+}
+
+function isSuppressed404(method: string, status: number | null, url: string): boolean {
+  if (method !== 'GET' || status !== 404) return false;
+  const now = Date.now();
+  // Совпадение по префиксу: DELETE /backlog/{id} глушит GET /backlog/{id}
+  // и GET /backlog/{id}/allocations в пределах окна.
+  for (const [base, ts] of recentlyDeleted) {
+    if (now - ts > DELETE_SUPPRESS_WINDOW_MS) continue;
+    if (url === base || url.startsWith(`${base}/`) || url.startsWith(`${base}?`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -41,13 +70,16 @@ async function request<T>(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     const detail = err.detail || res.statusText;
-    pushError({
-      ts: new Date().toISOString(), method, url: url.toString(),
-      status: res.status, detail,
-      requestBody: body ? JSON.stringify(body) : undefined,
-    });
+    if (!isSuppressed404(method, res.status, url.toString())) {
+      pushError({
+        ts: new Date().toISOString(), method, url: url.toString(),
+        status: res.status, detail,
+        requestBody: body ? JSON.stringify(body) : undefined,
+      });
+    }
     throw new Error(detail);
   }
+  if (method === 'DELETE') markDeleted(url.toString());
   return res.json();
 }
 

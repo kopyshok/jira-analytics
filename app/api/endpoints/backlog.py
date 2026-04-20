@@ -8,12 +8,14 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import BacklogItem, Issue, ScenarioAllocation
+from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
 from app.services.backlog_service import BACKLOG_CATEGORY, BacklogService
+from app.services.category_resolver import CategoryResolver
 
 
 router = APIRouter()
@@ -154,10 +156,16 @@ async def create_backlog_item(
 
 @router.post("/refresh-from-jira", response_model=RefreshResponse)
 async def refresh_from_jira(db: Session = Depends(get_db)):
-    """Пробежать все Issue(category='initiatives_rfa') и синкнуть бэклог.
+    """Пробежать issues с эффективной категорией ``initiatives_rfa`` и синкнуть бэклог.
+
+    Кандидаты — объединение ``assigned_category`` и денормализованного
+    ``category``: до коммита ``f08bd70`` batch-category не обновлял
+    ``Issue.category``, поэтому у части задач поля рассинхронизированы.
+    Here резолвер выступает source of truth и по ходу лечит drift.
 
     Возвращает счётчики created / updated / removed.
     """
+    resolver = CategoryResolver(db)
     svc = BacklogService(db)
     created = 0
     updated = 0
@@ -169,9 +177,25 @@ async def refresh_from_jira(db: Session = Depends(get_db)):
         .all()
     }
 
-    # 1) Пройти по issues с backlog-категорией — create-or-update.
-    issues = db.query(Issue).filter_by(category=BACKLOG_CATEGORY).all()
-    for issue in issues:
+    # 1) Кандидаты: всё, что хоть каким-то полем пахнет initiatives_rfa.
+    #    Резолвер решает окончательно, попадает ли задача в бэклог.
+    candidates = (
+        db.query(Issue)
+        .filter(
+            or_(
+                Issue.assigned_category == BACKLOG_CATEGORY,
+                Issue.category == BACKLOG_CATEGORY,
+            )
+        )
+        .all()
+    )
+    for issue in candidates:
+        resolved = resolver.resolve_for_issue(issue).category_code
+        # Heal denormalized column если рассинхронизировалось.
+        if issue.category != resolved:
+            issue.category = resolved
+        if resolved != BACKLOG_CATEGORY:
+            continue
         was = issue.id in existing_issue_ids
         svc.sync_from_issue(issue)
         if was:
@@ -179,17 +203,19 @@ async def refresh_from_jira(db: Session = Depends(get_db)):
         else:
             created += 1
 
-    # 2) Подчистить BacklogItem с issue_id, чей Issue больше не в backlog-категории.
-    stale = (
+    # 2) Подчистить BacklogItem, чей Issue больше не резолвится в backlog-категорию.
+    stale_items = (
         db.query(BacklogItem)
         .options(joinedload(BacklogItem.issue))
-        .join(Issue, BacklogItem.issue_id == Issue.id)
-        .filter(Issue.category != BACKLOG_CATEGORY)
+        .filter(BacklogItem.issue_id.isnot(None))
         .all()
     )
     removed = 0
-    for item in stale:
+    for item in stale_items:
         if item.issue is None:
+            continue
+        resolved = resolver.resolve_for_issue(item.issue).category_code
+        if resolved == BACKLOG_CATEGORY:
             continue
         svc.sync_from_issue(item.issue)
         removed += 1
@@ -250,32 +276,61 @@ async def delete_backlog_item(
 ):
     """Удалить элемент бэклога.
 
-    Если элемент уже используется в сохранённом сценарии планирования,
-    возвращаем 409 — пусть пользователь сначала удалит сценарий.
+    Каскадно удаляет связанные ``ScenarioAllocation`` у ``draft``-сценариев.
+    Если хотя бы один ``approved``-сценарий ссылается на элемент — 409, чтобы
+    не дропать согласованный план молча. В ответе перечислим имена таких
+    сценариев, чтобы UI мог показать, что блокирует удаление.
     """
     repo = BaseRepository(BacklogItem, db)
     item = repo.get(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Backlog item not found")
 
-    has_allocations = (
-        db.query(ScenarioAllocation)
-        .filter(ScenarioAllocation.backlog_item_id == item_id)
-        .first()
-        is not None
+    approved_scenarios = (
+        db.query(PlanningScenario)
+        .join(ScenarioAllocation, ScenarioAllocation.scenario_id == PlanningScenario.id)
+        .filter(
+            ScenarioAllocation.backlog_item_id == item_id,
+            PlanningScenario.status == "approved",
+        )
+        .distinct()
+        .all()
     )
-    if has_allocations:
+    if approved_scenarios:
         raise HTTPException(
             status_code=409,
-            detail=(
-                "Backlog item is referenced by one or more planning scenarios; "
-                "delete those scenarios first."
-            ),
+            detail={
+                "message": (
+                    "Backlog item is referenced by approved planning scenarios; "
+                    "revert them to draft or remove the item from each scenario first."
+                ),
+                "blocking_scenarios": [
+                    {"id": s.id, "name": s.name} for s in approved_scenarios
+                ],
+            },
         )
+
+    affected = (
+        db.query(PlanningScenario)
+        .join(ScenarioAllocation, ScenarioAllocation.scenario_id == PlanningScenario.id)
+        .filter(ScenarioAllocation.backlog_item_id == item_id)
+        .distinct()
+        .all()
+    )
+    allocations_removed = (
+        db.query(ScenarioAllocation)
+        .filter(ScenarioAllocation.backlog_item_id == item_id)
+        .delete(synchronize_session=False)
+    )
 
     repo.delete(item)
     db.commit()
-    return {"status": "deleted", "id": item_id}
+    return {
+        "status": "deleted",
+        "id": item_id,
+        "allocations_removed": allocations_removed,
+        "affected_scenarios": [{"id": s.id, "name": s.name} for s in affected],
+    }
 
 
 @router.post("/{item_id}/link-jira", response_model=BacklogItemResponse)

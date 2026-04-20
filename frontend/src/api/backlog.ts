@@ -34,7 +34,15 @@ export const updateBacklogItem = (id: string, data: Partial<{
   risk: BacklogImpactRisk;
 }>) => api.patch<BacklogItemResponse>(`/backlog/${id}`, data);
 
-export const deleteBacklogItem = (id: string) => api.del(`/backlog/${id}`);
+export interface DeleteBacklogResult {
+  status: string;
+  id: string;
+  allocations_removed: number;
+  affected_scenarios: { id: string; name: string }[];
+}
+
+export const deleteBacklogItem = (id: string) =>
+  api.del<DeleteBacklogResult>(`/backlog/${id}`);
 
 export const linkJira = (id: string, jira_key: string) =>
   api.post<BacklogItemResponse>(`/backlog/${id}/link-jira`, { jira_key });

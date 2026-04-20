@@ -224,6 +224,7 @@ def test_refresh_from_jira_pulls_all_matching(db_session):
                 issue_type="RFA",
                 status="Open",
                 project_id=proj.id,
+                assigned_category="initiatives_rfa",
                 category="initiatives_rfa",
                 planned_analyst_hours=h,
             )
@@ -280,3 +281,140 @@ def test_refresh_from_jira_removes_stale_items(db_session):
         app.dependency_overrides.clear()
 
     assert db_session.query(BacklogItem).filter_by(id="m-stale").count() == 0
+
+
+def test_refresh_from_jira_heals_legacy_drift(db_session):
+    """Легаси-данные: assigned_category='initiatives_rfa', а category — устарела.
+
+    Batch-category pre-f08bd70 не обновлял denormalized Issue.category. Refresh
+    обязан подобрать такие задачи через резолвер и заодно вылечить расхождение.
+    """
+    from app.models import BacklogItem, Category, Issue, Project
+
+    cat = Category(
+        id="cat-drift",
+        code="initiatives_rfa",
+        label="Инициативы и RFA",
+        color="#7F77DD",
+        sort_order=22,
+        is_system=True,
+    )
+    proj = Project(
+        id="p-drift",
+        jira_project_id="p-drift-jira",
+        key="RFA",
+        name="RFA",
+        is_active=True,
+    )
+    issue = Issue(
+        id="i-drift",
+        jira_issue_id="i-drift-jira",
+        key="RFA-77",
+        summary="drifted",
+        issue_type="RFA",
+        status="Open",
+        project_id=proj.id,
+        assigned_category="initiatives_rfa",
+        category="unfilled_worklog",  # stale denormalized column
+        planned_analyst_hours=5,
+    )
+    db_session.add_all([cat, proj, issue])
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post("/api/v1/backlog/refresh-from-jira")
+        assert r.status_code == 200, r.text
+        assert r.json()["created"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+    assert db_session.query(BacklogItem).filter_by(issue_id="i-drift").count() == 1
+    db_session.refresh(issue)
+    assert issue.category == "initiatives_rfa"  # drift healed
+
+
+def _seed_scenario(db, scenario_id, name, status, backlog_item_id):
+    from app.models import PlanningScenario, ScenarioAllocation
+
+    db.add(
+        PlanningScenario(
+            id=scenario_id,
+            name=name,
+            year=2026,
+            quarter="Q1",
+            status=status,
+        )
+    )
+    db.add(
+        ScenarioAllocation(
+            id=f"alloc-{scenario_id}",
+            scenario_id=scenario_id,
+            backlog_item_id=backlog_item_id,
+            planned_hours=10,
+            included_flag=True,
+        )
+    )
+
+
+def test_delete_backlog_cascades_through_draft_scenarios(db_session):
+    """Delete возвращает 200 и чистит ScenarioAllocation у draft-сценариев."""
+    from app.models import BacklogItem, ScenarioAllocation
+
+    item = BacklogItem(id="bi-del", title="to delete")
+    db_session.add(item)
+    _seed_scenario(db_session, "scn-d1", "Draft A", "draft", item.id)
+    _seed_scenario(db_session, "scn-d2", "Draft B", "draft", item.id)
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.delete(f"/api/v1/backlog/{item.id}")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["allocations_removed"] == 2
+        names = sorted(s["name"] for s in body["affected_scenarios"])
+        assert names == ["Draft A", "Draft B"]
+    finally:
+        app.dependency_overrides.clear()
+
+    assert db_session.query(BacklogItem).filter_by(id=item.id).count() == 0
+    assert (
+        db_session.query(ScenarioAllocation)
+        .filter_by(backlog_item_id=item.id)
+        .count()
+        == 0
+    )
+
+
+def test_delete_backlog_blocked_by_approved_scenario(db_session):
+    """Approved-сценарий блокирует удаление — 409 с именем сценария."""
+    from app.models import BacklogItem, ScenarioAllocation
+
+    item = BacklogItem(id="bi-blk", title="blocked")
+    db_session.add(item)
+    _seed_scenario(db_session, "scn-a", "Approved Plan", "approved", item.id)
+    _seed_scenario(db_session, "scn-d", "Draft Plan", "draft", item.id)
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.delete(f"/api/v1/backlog/{item.id}")
+        assert r.status_code == 409
+        detail = r.json()["detail"]
+        assert detail["blocking_scenarios"][0]["name"] == "Approved Plan"
+        assert len(detail["blocking_scenarios"]) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+    # Nothing removed on 409 — item + both allocations intact.
+    assert db_session.query(BacklogItem).filter_by(id=item.id).count() == 1
+    assert (
+        db_session.query(ScenarioAllocation)
+        .filter_by(backlog_item_id=item.id)
+        .count()
+        == 2
+    )
