@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTeamCapacity,
-  getCategoryBreakdown,
   getMandatoryWorkTypes,
   createMandatoryWorkType,
   updateMandatoryWorkType,
@@ -40,13 +39,6 @@ export const useTeamCapacity = (year: string, quarter: string) =>
     queryKey: ['capacity', 'team', year, quarter],
     queryFn: () => getTeamCapacity(year, quarter),
     enabled: !!year && !!quarter,
-  });
-
-export const useCategoryBreakdown = (year: number, quarter: number) =>
-  useQuery({
-    queryKey: ['capacity', 'breakdown', year, quarter],
-    queryFn: () => getCategoryBreakdown(year, quarter),
-    staleTime: 30_000,
   });
 
 export const useRecalcActiveEmployees = () => {

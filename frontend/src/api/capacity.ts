@@ -1,7 +1,6 @@
 import { api } from './client';
 import type {
   QuarterCapacityResponse,
-  CategoryBreakdownResponse,
   MandatoryWorkType,
   MandatoryWorkTypeCreate,
   MandatoryWorkTypeUpdate,
@@ -16,12 +15,6 @@ import type {
 // Capacity Reports
 export const getTeamCapacity = (year: string, quarter: string) =>
   api.get<QuarterCapacityResponse[]>('/capacity/team', { year, quarter });
-
-export const getCategoryBreakdown = (year: number, quarter: number) =>
-  api.get<CategoryBreakdownResponse[]>(
-    '/capacity/team/category-breakdown',
-    { year: String(year), quarter: String(quarter) },
-  );
 
 // === Mandatory work types (справочник) ===
 
