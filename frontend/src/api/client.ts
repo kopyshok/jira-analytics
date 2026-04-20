@@ -3,6 +3,9 @@ import { pushError } from '../utils/errorStore';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 export const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
 
+export const boolParam = (v?: boolean): string | undefined =>
+  v === undefined ? undefined : v ? 'true' : 'false';
+
 async function request<T>(
   method: string,
   path: string,
