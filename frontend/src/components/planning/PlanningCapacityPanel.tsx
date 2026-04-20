@@ -7,8 +7,11 @@ import type { AllocationResponse, ResourceBase } from '../../types/api';
 import { demandByRole } from '../../utils/planning';
 import RoleCapacityBar from './RoleCapacityBar';
 
-const ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
-type RoleKey = (typeof ROLE_KEYS)[number];
+// Core planning roles contributing to backlog demand (analyst/dev/qa).
+// Informational roles (e.g. consultant — capacity only, no demand) pulled
+// дополнительно ниже из реестра по флагу counts_in_planning.
+const CORE_ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
+type CoreRoleKey = (typeof CORE_ROLE_KEYS)[number];
 
 // Short abbreviations for role badges in the employee list
 const ROLE_SHORT_LOCAL: Record<string, string> = {
@@ -76,7 +79,7 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
     );
   }
 
-  const capacityByRole: Record<RoleKey, number> = {
+  const capacityByRole: Record<CoreRoleKey, number> = {
     analyst: resourceBase.role_totals['analyst'] ?? 0,
     dev:     resourceBase.role_totals['dev'] ?? 0,
     // Если задан внешний QA-резерв — используем его, иначе берём из role_totals
@@ -85,9 +88,15 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
       : (resourceBase.role_totals['qa'] ?? 0),
   };
 
-  const totalCapacity = ROLE_KEYS.reduce((s, r) => s + capacityByRole[r], 0);
-  const totalDemand = ROLE_KEYS.reduce((s, r) => s + (demand[r] ?? 0), 0);
-  const overallOver = ROLE_KEYS.some(
+  // Дополнительные роли из реестра: counts_in_planning=true, но не из core —
+  // отображаются информационно (capacity без demand; запас = capacity).
+  const infoRoles = roles.filter(
+    (r) => r.counts_in_planning && !(CORE_ROLE_KEYS as readonly string[]).includes(r.code),
+  );
+
+  const totalCapacity = CORE_ROLE_KEYS.reduce((s, r) => s + capacityByRole[r], 0);
+  const totalDemand = CORE_ROLE_KEYS.reduce((s, r) => s + (demand[r] ?? 0), 0);
+  const overallOver = CORE_ROLE_KEYS.some(
     (r) => (demand[r] ?? 0) > capacityByRole[r] && capacityByRole[r] > 0,
   );
   const freeHours = Math.max(0, Math.round(totalCapacity - totalDemand));
@@ -182,13 +191,22 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
         extra={<span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>план / доступно</span>}
       >
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {ROLE_KEYS.map((r) => (
+          {CORE_ROLE_KEYS.map((r) => (
             <RoleCapacityBar
               key={r}
               role={r}
               demand={demand[r] ?? 0}
               capacity={capacityByRole[r]}
               employeeCount={resourceBase.employees.filter((e) => e.role === r).length}
+            />
+          ))}
+          {infoRoles.map((r) => (
+            <RoleCapacityBar
+              key={r.code}
+              role={r.code}
+              demand={0}
+              capacity={resourceBase.role_totals[r.code] ?? 0}
+              employeeCount={resourceBase.employees.filter((e) => e.role === r.code).length}
             />
           ))}
         </div>
@@ -198,7 +216,7 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
       <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
         <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {resourceBase.employees.map((e) => {
-            const knownRole = e.role && (ROLE_KEYS as readonly string[]).includes(e.role) ? e.role : null;
+            const knownRole = e.role && (CORE_ROLE_KEYS as readonly string[]).includes(e.role) ? e.role : null;
             const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
             const roleShort = knownRole
               ? (ROLE_SHORT_LOCAL[knownRole] ?? knownRole.slice(0, 2).toUpperCase())
@@ -289,7 +307,7 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
             fontSize: 12,
           }}
         >
-          {ROLE_KEYS.map((r) => {
+          {CORE_ROLE_KEYS.map((r) => {
             const cap = capacityByRole[r];
             const dem = demand[r] ?? 0;
             return (
