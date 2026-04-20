@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { App, Modal, Form, Input, InputNumber, Select } from 'antd';
 import { useCreateBacklogItem, useUpdateBacklogItem, useProjects } from '../../hooks/useBacklog';
-import { useQuarterYear } from '../../hooks/useQuarterYear';
 import type { BacklogItemResponse, BacklogImpactRisk } from '../../types/api';
 
 interface Props {
@@ -13,8 +12,6 @@ interface Props {
 interface FormValues {
   title: string;
   project_id?: string;
-  year?: number;
-  quarter?: string;
   priority?: number;
   estimate_analyst_hours?: number;
   estimate_dev_hours?: number;
@@ -33,7 +30,6 @@ const IMPACT_RISK_OPTIONS = [
 
 export default function BacklogManualModal({ open, item, onClose }: Props) {
   const { notification } = App.useApp();
-  const { year, quarter } = useQuarterYear();
   const { data: projects } = useProjects();
   const create = useCreateBacklogItem();
   const update = useUpdateBacklogItem();
@@ -47,8 +43,6 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
       form.setFieldsValue({
         title: item.title,
         project_id: item.project_id ?? undefined,
-        year: item.year ?? undefined,
-        quarter: item.quarter ?? undefined,
         priority: item.priority ?? undefined,
         estimate_analyst_hours: item.estimate_analyst_hours ?? undefined,
         estimate_dev_hours: item.estimate_dev_hours ?? undefined,
@@ -61,12 +55,10 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
     } else {
       form.resetFields();
       form.setFieldsValue({
-        year: Number(year),
-        quarter: `Q${quarter}`,
         opo_analyst_ratio: 0.5,
       });
     }
-  }, [open, item, year, quarter, form]);
+  }, [open, item, form]);
 
   const handleSubmit = (values: FormValues) => {
     const payload = {
@@ -123,32 +115,6 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
             placeholder="Выберите проект"
             options={projects?.map((p) => ({ value: p.id, label: `${p.key} — ${p.name}` }))}
           />
-        </Form.Item>
-
-        <Form.Item label="Период" style={{ marginBottom: 0 }}>
-          <Form.Item
-            name="year"
-            label="Год"
-            style={{ display: 'inline-block', width: 'calc(50% - 8px)', marginRight: 16 }}
-            rules={[{ required: true, message: 'Год' }]}
-          >
-            <InputNumber min={2020} max={2035} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            name="quarter"
-            label="Квартал"
-            style={{ display: 'inline-block', width: 'calc(50% - 8px)' }}
-            rules={[{ required: true, message: 'Квартал' }]}
-          >
-            <Select
-              options={[
-                { value: 'Q1', label: 'Q1' },
-                { value: 'Q2', label: 'Q2' },
-                { value: 'Q3', label: 'Q3' },
-                { value: 'Q4', label: 'Q4' },
-              ]}
-            />
-          </Form.Item>
         </Form.Item>
 
         <Form.Item label="Оценка по ролям (часы)" style={{ marginBottom: 0 }}>

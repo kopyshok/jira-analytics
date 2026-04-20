@@ -134,8 +134,6 @@ def test_capacity_preview_returns_per_role_demand(
             BacklogItem(
                 id="b1",
                 title="T1",
-                year=2026,
-                quarter="Q2",
                 priority=1,
                 estimate_analyst_hours=40,
                 estimate_dev_hours=80,
@@ -193,8 +191,6 @@ def test_capacity_preview_splits_opo_between_analyst_and_dev(
             BacklogItem(
                 id="b1",
                 title="T1",
-                year=2026,
-                quarter="Q2",
                 priority=1,
                 estimate_analyst_hours=10,
                 estimate_dev_hours=10,

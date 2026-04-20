@@ -1,4 +1,4 @@
-import { Button, Card, Skeleton } from 'antd';
+import { Card, Skeleton } from 'antd';
 import {
   ROLE_COLORS,
   ROLE_LABELS,
@@ -15,10 +15,6 @@ const ROLE_KEYS: Array<Exclude<PlanningRole, 'opo'>> = ['analyst', 'dev', 'qa'];
 interface Props {
   preview: CapacityPreviewResponse | undefined;
   quarter: string;
-  onSave: () => void;
-  onExport: () => void;
-  isSaving?: boolean;
-  canExport?: boolean;
 }
 
 function KpiRow({
@@ -57,15 +53,10 @@ function KpiRow({
   );
 }
 
-/** Правая sticky-колонка /planning: 4 карточки + 2 кнопки.
- *  Mirrors Prototype.html lines 1420-1566. */
+/** Правая sticky-колонка /planning: 4 карточки с ёмкостью по ролям/сотрудникам. */
 export default function PlanningCapacityPanel({
   preview,
   quarter,
-  onSave,
-  onExport,
-  isSaving,
-  canExport,
 }: Props) {
   if (!preview) {
     return (
@@ -390,16 +381,6 @@ export default function PlanningCapacityPanel({
           )}
         </div>
       </Card>
-
-      {/* 5. Actions */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Button type="primary" style={{ flex: 1 }} onClick={onSave} loading={isSaving}>
-          Сохранить сценарий
-        </Button>
-        <Button onClick={onExport} disabled={!canExport}>
-          Экспорт
-        </Button>
-      </div>
     </div>
   );
 }

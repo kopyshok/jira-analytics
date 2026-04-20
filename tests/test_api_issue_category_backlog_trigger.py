@@ -1,4 +1,4 @@
-"""When PM sets Issue.category=initiatives_backlog via API, BacklogItem is
+"""When PM sets Issue.category=initiatives_rfa via API, BacklogItem is
 auto-created (and removed when category moves away)."""
 
 from fastapi.testclient import TestClient
@@ -14,12 +14,12 @@ def _override(db):
 def _seed_issue(db, key="RFA-1", category="development", **planned):
     from app.models import Category, Issue, Project
 
-    cat = db.query(Category).filter_by(code="initiatives_backlog").first()
+    cat = db.query(Category).filter_by(code="initiatives_rfa").first()
     if not cat:
         cat = Category(
             id="cat-ib",
-            code="initiatives_backlog",
-            label="Бэклог инициатив",
+            code="initiatives_rfa",
+            label="Инициативы и RFA",
             color="#7F77DD",
             sort_order=22,
             is_system=True,
@@ -62,7 +62,7 @@ def test_set_single_issue_category_triggers_backlog_sync(db_session):
         client = TestClient(app)
         r = client.put(
             f"/api/v1/issues/{issue.id}/category",
-            json={"category_code": "initiatives_backlog"},
+            json={"category_code": "initiatives_rfa"},
         )
         assert r.status_code == 200, r.text
     finally:
@@ -76,12 +76,12 @@ def test_set_single_issue_category_triggers_backlog_sync(db_session):
 
 
 def test_set_single_issue_category_removes_backlog_item_when_away(db_session):
-    """Если до этого задача была в initiatives_backlog и у неё был
+    """Если до этого задача была в initiatives_rfa и у неё был
     BacklogItem — при смене категории на другую BacklogItem удаляется."""
     from app.models import BacklogItem
     from app.services.backlog_service import BacklogService
 
-    issue = _seed_issue(db_session, category="initiatives_backlog", planned_dev_hours=8)
+    issue = _seed_issue(db_session, category="initiatives_rfa", planned_dev_hours=8)
     # Pre-create backlog item через сервис.
     BacklogService(db_session).sync_from_issue(issue)
     db_session.commit()
@@ -117,8 +117,8 @@ def test_batch_set_category_triggers_backlog_sync(db_session):
 
     cat = Category(
         id="cat-ib",
-        code="initiatives_backlog",
-        label="Бэклог инициатив",
+        code="initiatives_rfa",
+        label="Инициативы и RFA",
         color="#7F77DD",
         sort_order=22,
         is_system=True,
@@ -154,7 +154,7 @@ def test_batch_set_category_triggers_backlog_sync(db_session):
             "/api/v1/issues/batch-category",
             json={
                 "issue_ids": [i.id for i in issues],
-                "category_code": "initiatives_backlog",
+                "category_code": "initiatives_rfa",
             },
         )
         assert r.status_code == 200, r.text

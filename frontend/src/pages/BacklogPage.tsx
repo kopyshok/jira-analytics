@@ -10,7 +10,6 @@ import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
 import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
@@ -19,7 +18,6 @@ import {
   useUnlinkJira, useRefreshFromJira,
 } from '../hooks/useBacklog';
 import { useJiraSettings } from '../hooks/useSettings';
-import { useQuarterYear } from '../hooks/useQuarterYear';
 import type { BacklogItemResponse, BacklogImpactRisk } from '../types/api';
 
 const IMPACT_RISK_OPTIONS: { value: BacklogImpactRisk; label: string }[] = [
@@ -70,8 +68,7 @@ function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-
 
 export default function BacklogPage() {
   const { notification } = App.useApp();
-  const { year, quarter } = useQuarterYear();
-  const { data, isLoading } = useBacklogItems(year, `Q${quarter}`);
+  const { data, isLoading } = useBacklogItems();
   const { data: projects } = useProjects();
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
@@ -157,11 +154,10 @@ export default function BacklogPage() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Планирование"
-        title="Бэклог квартала"
-        subtitle="Инициативы: авто-синк из Jira (категория «Бэклог инициатив») + ручные идеи · drag-n-drop для приоритета"
+        title="Бэклог инициатив"
+        subtitle='Все задачи категории «Инициативы и RFA» (авто-синк из Jira) + ручные идеи · drag-n-drop для приоритета'
         actions={
           <Space>
-            <QuarterYearSelect />
             <Button
               icon={<ReloadOutlined />}
               onClick={handleRefreshFromJira}
@@ -195,7 +191,7 @@ export default function BacklogPage() {
             loading={isLoading}
             pagination={false}
             size="small"
-            scroll={{ x: 1280 }}
+            scroll={{ x: 1200 }}
             components={{ body: { row: SortableRow } }}
             columns={[
               {
@@ -317,14 +313,6 @@ export default function BacklogPage() {
                   const p = projectMap.get(id);
                   return p ? <Tooltip title={p.name}><span>{p.key}</span></Tooltip> : id;
                 },
-              },
-              {
-                title: 'Q', width: 90,
-                render: (_, r) => (
-                  <span style={{ fontFamily: 'monospace', color: '#c5d8ee' }}>
-                    {r.year ?? '—'} {r.quarter ?? ''}
-                  </span>
-                ),
               },
               {
                 title: 'Действия', width: 170, fixed: 'right',

@@ -1,5 +1,5 @@
 """Tests for BacklogService.sync_from_issue — auto-populate backlog from
-Issue with category='initiatives_backlog'."""
+Issue with category='initiatives_rfa' («Инициативы и RFA»)."""
 
 import pytest
 
@@ -44,7 +44,7 @@ def test_sync_creates_backlog_item_when_category_matches(db_session, proj):
         db_session,
         proj,
         "RFA-1",
-        "initiatives_backlog",
+        "initiatives_rfa",
         planned_analyst_hours=40,
         planned_dev_hours=40,
         planned_qa_hours=20,
@@ -77,7 +77,7 @@ def test_sync_updates_existing_backlog_item(db_session, proj):
         db_session,
         proj,
         "RFA-2",
-        "initiatives_backlog",
+        "initiatives_rfa",
         planned_analyst_hours=10,
         planned_dev_hours=10,
         planned_qa_hours=0,
@@ -98,22 +98,20 @@ def test_sync_updates_existing_backlog_item(db_session, proj):
 
 
 def test_sync_preserves_local_fields(db_session, proj):
-    """priority, opo_analyst_ratio, year, quarter — locals, Jira sync does not overwrite."""
+    """priority, opo_analyst_ratio — locals, Jira sync does not overwrite."""
     from app.services.backlog_service import BacklogService
 
     issue = _make_issue(
         db_session,
         proj,
         "RFA-3",
-        "initiatives_backlog",
+        "initiatives_rfa",
         planned_opo_hours=10,
     )
     svc = BacklogService(db_session)
     item = svc.sync_from_issue(issue)
     item.priority = 5
     item.opo_analyst_ratio = 0.7
-    item.year = 2026
-    item.quarter = "Q2"
     db_session.commit()
 
     svc.sync_from_issue(issue)
@@ -121,20 +119,18 @@ def test_sync_preserves_local_fields(db_session, proj):
     db_session.refresh(item)
     assert item.priority == 5
     assert item.opo_analyst_ratio == 0.7
-    assert item.year == 2026
-    assert item.quarter == "Q2"
 
 
 def test_sync_deletes_item_when_category_changes_away(db_session, proj):
     from app.services.backlog_service import BacklogService
 
-    issue = _make_issue(db_session, proj, "RFA-4", "initiatives_backlog")
+    issue = _make_issue(db_session, proj, "RFA-4", "initiatives_rfa")
     svc = BacklogService(db_session)
     svc.sync_from_issue(issue)
     db_session.commit()
     assert db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 1
 
-    issue.category = "initiatives_rfa"
+    issue.category = "development"
     db_session.commit()
     svc.sync_from_issue(issue)
     db_session.commit()
@@ -145,7 +141,7 @@ def test_sync_soft_unlinks_item_referenced_in_scenario(db_session, proj):
     from app.models import PlanningScenario, ScenarioAllocation
     from app.services.backlog_service import BacklogService
 
-    issue = _make_issue(db_session, proj, "RFA-5", "initiatives_backlog")
+    issue = _make_issue(db_session, proj, "RFA-5", "initiatives_rfa")
     svc = BacklogService(db_session)
     item = svc.sync_from_issue(issue)
     db_session.commit()

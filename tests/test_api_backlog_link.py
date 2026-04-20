@@ -37,8 +37,8 @@ def test_link_jira_pulls_estimates_from_issue(db_session):
 
     cat = Category(
         id="cat-ib",
-        code="initiatives_backlog",
-        label="Бэклог инициатив",
+        code="initiatives_rfa",
+        label="Инициативы и RFA",
         color="#7F77DD",
         sort_order=22,
         is_system=True,
@@ -58,7 +58,7 @@ def test_link_jira_pulls_estimates_from_issue(db_session):
         issue_type="RFA",
         status="Open",
         project_id=proj.id,
-        category="initiatives_backlog",
+        category="initiatives_rfa",
         planned_analyst_hours=8,
         planned_dev_hours=16,
         planned_qa_hours=4,
@@ -132,7 +132,7 @@ def test_link_jira_already_linked_returns_409(db_session):
         issue_type="RFA",
         status="Open",
         project_id=proj.id,
-        category="initiatives_backlog",
+        category="initiatives_rfa",
     )
     first = BacklogItem(id="m-first", title="First", issue_id=issue.id)
     second = BacklogItem(id="m-second", title="Second")
@@ -169,7 +169,7 @@ def test_unlink_jira_nulls_issue_id(db_session):
         issue_type="RFA",
         status="Open",
         project_id=proj.id,
-        category="initiatives_backlog",
+        category="initiatives_rfa",
     )
     item = BacklogItem(
         id="m3",
@@ -200,8 +200,8 @@ def test_refresh_from_jira_pulls_all_matching(db_session):
 
     cat = Category(
         id="cat-ib2",
-        code="initiatives_backlog",
-        label="Бэклог",
+        code="initiatives_rfa",
+        label="Инициативы и RFA",
         color="#7F77DD",
         sort_order=22,
         is_system=True,
@@ -224,7 +224,7 @@ def test_refresh_from_jira_pulls_all_matching(db_session):
                 issue_type="RFA",
                 status="Open",
                 project_id=proj.id,
-                category="initiatives_backlog",
+                category="initiatives_rfa",
                 planned_analyst_hours=h,
             )
         )

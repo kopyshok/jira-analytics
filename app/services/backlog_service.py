@@ -1,9 +1,12 @@
 """BacklogService — auto-population of BacklogItem from Issue with category
-`initiatives_backlog`.
+`initiatives_rfa` («Инициативы и RFA»).
+
+Бэклог — пул всех задач-инициатив без привязки к кварталу. Квартальный
+план собирается в сценариях отметками по элементам бэклога.
 
 Jira — источник истины для задач-инициатив; локально не трогаются только
 поля, которые PM заводит вручную: ``priority``, ``opo_analyst_ratio``,
-``year``, ``quarter``, ``id``, ``created_at``.
+``id``, ``created_at``.
 """
 
 from typing import Optional
@@ -13,22 +16,7 @@ from sqlalchemy.orm import Session
 from app.models import BacklogItem, Issue, ScenarioAllocation
 
 
-BACKLOG_CATEGORY = "initiatives_backlog"
-
-
-def _get_default_quarter_year(db: Session) -> tuple[Optional[int], Optional[str]]:
-    """Читает дефолтные year/quarter для новых BacklogItem из AppSetting."""
-    from app.models import AppSetting
-
-    year_row = db.query(AppSetting).filter_by(key="backlog_default_year").first()
-    quarter_row = db.query(AppSetting).filter_by(key="backlog_default_quarter").first()
-    y = (
-        int(year_row.value)
-        if year_row and year_row.value and year_row.value.isdigit()
-        else None
-    )
-    q = quarter_row.value if quarter_row and quarter_row.value else None
-    return y, q
+BACKLOG_CATEGORY = "initiatives_rfa"
 
 
 class BacklogService:
@@ -36,21 +24,15 @@ class BacklogService:
 
     Caller controls the transaction: ``sync_from_issue`` делает ``flush()``,
     но не коммитит — окончательный commit должен сделать вызвавший код.
-
-    Дефолтные year/quarter для новых BacklogItem читаются из AppSetting
-    один раз в ``__init__`` и кешируются — это важно для batch-контекстов
-    (``MappingService.recalculate_issues``, ``/refresh-from-jira``), где
-    sync_from_issue вызывается десятками раз подряд.
     """
 
     def __init__(self, db: Session):
         self.db = db
-        self._default_year, self._default_quarter = _get_default_quarter_year(db)
 
     def sync_from_issue(self, issue: Issue) -> Optional[BacklogItem]:
         """Идемпотентно выравнивает BacklogItem с Issue по текущей категории.
 
-        - ``category == 'initiatives_backlog'`` — create-or-update, перетягивает
+        - ``category == 'initiatives_rfa'`` — create-or-update, перетягивает
           заголовок/проект/плановые оценки из Issue.
         - Иначе: если BacklogItem существует и не используется ни в одном
           сценарии — удаляем. Если используется — soft-unlink
@@ -64,9 +46,6 @@ class BacklogService:
             if existing is None:
                 existing = BacklogItem(issue_id=issue.id)
                 self.db.add(existing)
-                # Дефолты только при создании — не перетираем то, что PM ввёл.
-                existing.year = self._default_year
-                existing.quarter = self._default_quarter
                 existing.opo_analyst_ratio = 0.5
             # Jira-sourced поля — перезаписываем всегда.
             existing.title = issue.summary
