@@ -1,8 +1,16 @@
 import { Tooltip } from 'antd';
 import dayjs from 'dayjs';
-import type { AbsenceResponse } from '../../types/api';
+import type { AbsenceResponse, AbsenceReason } from '../../types/api';
 
-const DEFAULT_REASON_COLOR = '#8c8c8c';
+const REASON_COLOR: Record<AbsenceReason, string> = {
+  vacation: '#fa8c16',
+  sick:     '#f5222d',
+  day_off:  '#1677ff',
+  other:    '#8c8c8c',
+};
+const REASON_LABEL: Record<AbsenceReason, string> = {
+  vacation: 'Отпуск', sick: 'Больничный', day_off: 'Отгул', other: 'Прочее',
+};
 
 const QUARTER_MONTHS: Record<number, number[]> = {
   1: [1, 2, 3], 2: [4, 5, 6], 3: [7, 8, 9], 4: [10, 11, 12],
@@ -66,10 +74,10 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
                 const a = reasonForDay(list, d);
                 const weekend = d.day() === 0 || d.day() === 6;
                 const bg = a
-                  ? (a.reason_color ?? DEFAULT_REASON_COLOR)
+                  ? REASON_COLOR[a.reason]
                   : (weekend ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)');
                 const tip = a
-                  ? `${e.display_name}: ${a.reason_label}, ${dayjs(a.start_date).format('DD.MM')}–${dayjs(a.end_date).format('DD.MM')}`
+                  ? `${e.display_name}: ${REASON_LABEL[a.reason]}, ${dayjs(a.start_date).format('DD.MM')}–${dayjs(a.end_date).format('DD.MM')}`
                   : `${e.display_name} · ${d.format('DD.MM')}`;
                 return (
                   <Tooltip key={`${e.id}-${d.format('YYYY-MM-DD')}`} title={tip} mouseEnterDelay={0.3}>

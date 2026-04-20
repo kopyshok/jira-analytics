@@ -5,11 +5,11 @@
 """
 
 from datetime import date
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Absence
@@ -35,12 +35,14 @@ router = APIRouter()
 
 # === Schemas: absences ===
 
+AbsenceReason = Literal["vacation", "sick", "day_off", "other"]
+
 
 class AbsenceCreate(BaseModel):
     employee_id: str
     start_date: date
     end_date: date
-    reason_id: str
+    reason: AbsenceReason = "vacation"
     hours_total: Optional[float] = None
 
 
@@ -49,30 +51,11 @@ class AbsenceResponse(BaseModel):
     employee_id: str
     start_date: date
     end_date: date
-    reason_id: str
-    reason_code: str
-    reason_label: str
-    reason_is_planned: bool
-    reason_color: Optional[str] = None
+    reason: AbsenceReason
     hours_total: Optional[float] = None
 
     class Config:
         from_attributes = True
-
-    @classmethod
-    def from_absence(cls, a) -> "AbsenceResponse":
-        return cls(
-            id=a.id,
-            employee_id=a.employee_id,
-            start_date=a.start_date,
-            end_date=a.end_date,
-            reason_id=a.reason_id,
-            reason_code=a.reason.code,
-            reason_label=a.reason.label,
-            reason_is_planned=a.reason.is_planned,
-            reason_color=a.reason.color,
-            hours_total=a.hours_total,
-        )
 
 
 # === Schemas: capacity reports ===
@@ -134,11 +117,10 @@ async def list_absences(
     db: Session = Depends(get_db),
 ):
     """Список отсутствий (опционально — по сотруднику)."""
-    query = db.query(Absence).options(joinedload(Absence.reason))
+    query = db.query(Absence)
     if employee_id:
         query = query.filter(Absence.employee_id == employee_id)
-    rows = query.order_by(Absence.start_date).all()
-    return [AbsenceResponse.from_absence(a) for a in rows]
+    return query.order_by(Absence.start_date).all()
 
 
 @router.post("/absences", response_model=AbsenceResponse, status_code=201)
@@ -146,78 +128,30 @@ async def create_absence(
     data: AbsenceCreate,
     db: Session = Depends(get_db),
 ):
-    """Добавить отсутствие."""
+    """Добавить отсутствие (отпуск / больничный / отгул / прочее)."""
     if data.end_date < data.start_date:
-        raise HTTPException(status_code=400, detail="end_date must be >= start_date")
-    from app.models import AbsenceReason
-    reason = (
-        db.query(AbsenceReason)
-        .filter(AbsenceReason.id == data.reason_id, AbsenceReason.is_active.is_(True))
-        .one_or_none()
-    )
-    if reason is None:
-        raise HTTPException(status_code=422, detail=f"Unknown or inactive reason_id {data.reason_id!r}")
-
-    absence = Absence(**data.model_dump())
-    db.add(absence)
-    db.commit()
-    db.refresh(absence)
-    # Snapshot for thread-safe return (see CLAUDE.md DB caveat).
-    return AbsenceResponse.from_absence(absence)
-
-
-class AbsenceBatchCreate(BaseModel):
-    employee_ids: List[str]
-    start_date: date
-    end_date: date
-    reason_id: str
-    hours_total: Optional[float] = None
-
-
-@router.post("/absences/batch", response_model=List[AbsenceResponse], status_code=201)
-async def create_absences_batch(
-    data: AbsenceBatchCreate,
-    db: Session = Depends(get_db),
-):
-    """Массовое создание отсутствий — одна запись на каждого employee_id."""
-    if data.end_date < data.start_date:
-        raise HTTPException(status_code=400, detail="end_date must be >= start_date")
-    if not data.employee_ids:
-        raise HTTPException(status_code=400, detail="employee_ids must be non-empty")
-
-    from app.models import AbsenceReason, Employee
-
-    reason = (
-        db.query(AbsenceReason)
-        .filter(AbsenceReason.id == data.reason_id, AbsenceReason.is_active.is_(True))
-        .one_or_none()
-    )
-    if reason is None:
-        raise HTTPException(status_code=422, detail=f"Unknown or inactive reason_id {data.reason_id!r}")
-
-    known = {
-        e.id
-        for e in db.query(Employee).filter(Employee.id.in_(data.employee_ids)).all()
-    }
-    unknown = set(data.employee_ids) - known
-    if unknown:
-        raise HTTPException(status_code=404, detail=f"Unknown employee_id(s): {sorted(unknown)}")
-
-    created = []
-    for emp_id in data.employee_ids:
-        a = Absence(
-            employee_id=emp_id,
-            start_date=data.start_date,
-            end_date=data.end_date,
-            reason_id=data.reason_id,
-            hours_total=data.hours_total,
+        raise HTTPException(
+            status_code=400,
+            detail="end_date must be >= start_date",
         )
-        db.add(a)
-        created.append(a)
+    repo = BaseRepository(Absence, db)
+    absence = repo.create(data.model_dump())
+    # Snapshot before commit — avoid expired-attribute reload on worker thread
+    absence_id = absence.id
+    employee_id = absence.employee_id
+    start_date = absence.start_date
+    end_date = absence.end_date
+    reason = absence.reason
+    hours_total = absence.hours_total
     db.commit()
-    for a in created:
-        db.refresh(a)
-    return [AbsenceResponse.from_absence(a) for a in created]
+    return AbsenceResponse(
+        id=absence_id,
+        employee_id=employee_id,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        hours_total=hours_total,
+    )
 
 
 @router.delete("/absences/{absence_id}")

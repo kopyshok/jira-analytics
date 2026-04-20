@@ -1,9 +1,4 @@
-"""Batch endpoint for role × work_type capacity rules (v3).
-
-Atomic replace for (year, quarter). Server-side validation:
-each role group (including role=NULL fallback) must have Σ percent = 100
-or be empty (0 rules). Deviations from 100 return HTTP 422 with detail.
-"""
+"""CRUD endpoints for role × work_type capacity rules."""
 
 from typing import List, Optional
 
@@ -16,8 +11,6 @@ from app.models import EMPLOYEE_ROLES, MandatoryWorkType, RoleCapacityRule
 from app.services.capacity_service import CapacityService, RulesConflict
 
 router = APIRouter()
-
-TOLERANCE = 0.01
 
 
 class RoleRuleResponse(BaseModel):
@@ -32,20 +25,16 @@ class RoleRuleResponse(BaseModel):
         from_attributes = True
 
 
-class RoleRuleIn(BaseModel):
+class RoleRuleCreate(BaseModel):
+    year: int
+    quarter: int = Field(ge=1, le=4)
     role: Optional[str] = None
     work_type_id: str
     percent_of_norm: float = Field(ge=0, le=100)
 
 
-class BatchSaveRequest(BaseModel):
-    rules: List[RoleRuleIn]
-
-
-class BatchValidationError(BaseModel):
-    role: Optional[str]
-    sum: float
-    expected: float = 100.0
+class RoleRuleUpdate(BaseModel):
+    percent_of_norm: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class CopyRulesRequest(BaseModel):
@@ -57,6 +46,24 @@ class CopyRulesRequest(BaseModel):
 
 class CopyRulesResponse(BaseModel):
     created: int
+
+
+def _validate_role(role: Optional[str]) -> None:
+    if role is not None and role not in EMPLOYEE_ROLES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown role {role!r}. Allowed: {list(EMPLOYEE_ROLES) + [None]}",
+        )
+
+
+def _validate_work_type(db: Session, work_type_id: str) -> None:
+    exists = (
+        db.query(MandatoryWorkType)
+        .filter(MandatoryWorkType.id == work_type_id)
+        .first()
+    )
+    if exists is None:
+        raise HTTPException(status_code=404, detail=f"Work type {work_type_id!r} not found")
 
 
 @router.get("", response_model=List[RoleRuleResponse])
@@ -72,83 +79,53 @@ def list_rules(
     )
 
 
-@router.put("/batch", response_model=List[RoleRuleResponse])
-def save_batch(
-    req: BatchSaveRequest,
-    year: int = Query(...),
-    quarter: int = Query(..., ge=1, le=4),
-    db: Session = Depends(get_db),
-):
-    # Validate roles + work_types.
-    for r in req.rules:
-        if r.role is not None and r.role not in EMPLOYEE_ROLES:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unknown role {r.role!r}. Allowed: {list(EMPLOYEE_ROLES) + [None]}",
-            )
-    wt_ids = {r.work_type_id for r in req.rules}
-    if wt_ids:
-        found = {
-            x.id
-            for x in db.query(MandatoryWorkType)
-            .filter(MandatoryWorkType.id.in_(wt_ids))
-            .all()
-        }
-        missing = wt_ids - found
-        if missing:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unknown work_type_id(s): {sorted(missing)}",
-            )
-
-    # Group by role and validate Σ = 100 per non-empty group.
-    by_role: dict[Optional[str], list[RoleRuleIn]] = {}
-    for r in req.rules:
-        by_role.setdefault(r.role, []).append(r)
-
-    errors: list[BatchValidationError] = []
-    for role, group in by_role.items():
-        s = sum(x.percent_of_norm for x in group)
-        if abs(s - 100.0) > TOLERANCE and len(group) > 0:
-            errors.append(BatchValidationError(role=role, sum=s))
-    if errors:
+@router.post("", response_model=RoleRuleResponse, status_code=201)
+def create_rule(req: RoleRuleCreate, db: Session = Depends(get_db)):
+    _validate_role(req.role)
+    _validate_work_type(db, req.work_type_id)
+    existing = (
+        db.query(RoleCapacityRule)
+        .filter(
+            RoleCapacityRule.year == req.year,
+            RoleCapacityRule.quarter == req.quarter,
+            RoleCapacityRule.role.is_(req.role) if req.role is None else RoleCapacityRule.role == req.role,
+            RoleCapacityRule.work_type_id == req.work_type_id,
+        )
+        .one_or_none()
+    )
+    if existing is not None:
         raise HTTPException(
-            status_code=422,
-            detail={"errors": [e.model_dump() for e in errors]},
+            status_code=409,
+            detail="Rule for this (year, quarter, role, work_type) already exists",
         )
-
-    # Detect duplicate (role, work_type_id) entries inside the payload.
-    seen: set[tuple[Optional[str], str]] = set()
-    for r in req.rules:
-        key = (r.role, r.work_type_id)
-        if key in seen:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Duplicate rule for role={r.role!r} work_type_id={r.work_type_id!r}",
-            )
-        seen.add(key)
-
-    # Atomic replace.
-    db.query(RoleCapacityRule).filter(
-        RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter,
-    ).delete(synchronize_session=False)
-
-    created: list[RoleCapacityRule] = []
-    for r in req.rules:
-        rule = RoleCapacityRule(
-            year=year, quarter=quarter,
-            role=r.role,
-            work_type_id=r.work_type_id,
-            percent_of_norm=r.percent_of_norm,
-        )
-        db.add(rule)
-        created.append(rule)
+    rule = RoleCapacityRule(**req.model_dump())
+    db.add(rule)
     db.commit()
-    # Refresh to get ids post-commit. Snapshot fields to avoid expired-attr reload
-    # on worker-thread re-read (see CLAUDE.md DB caveat).
-    for c in created:
-        db.refresh(c)
-    return created
+    db.refresh(rule)
+    return rule
+
+
+@router.patch("/{rule_id}", response_model=RoleRuleResponse)
+def update_rule(rule_id: str, req: RoleRuleUpdate, db: Session = Depends(get_db)):
+    rule = db.query(RoleCapacityRule).filter(RoleCapacityRule.id == rule_id).one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    data = req.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(rule, k, v)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@router.delete("/{rule_id}", status_code=204)
+def delete_rule(rule_id: str, db: Session = Depends(get_db)):
+    rule = db.query(RoleCapacityRule).filter(RoleCapacityRule.id == rule_id).one_or_none()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    db.delete(rule)
+    db.commit()
+    return None
 
 
 @router.post("/copy-to-quarter", response_model=CopyRulesResponse, status_code=201)

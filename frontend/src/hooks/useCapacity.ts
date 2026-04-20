@@ -8,8 +8,14 @@ import {
   deleteMandatoryWorkType,
   reorderMandatoryWorkTypes,
   getRoleCapacityRules,
+  createRoleCapacityRule,
+  updateRoleCapacityRule,
+  deleteRoleCapacityRule,
   copyRoleCapacityRulesToQuarter,
   getEmployeeCapacityOverrides,
+  createEmployeeCapacityOverride,
+  updateEmployeeCapacityOverride,
+  deleteEmployeeCapacityOverride,
 } from '../api/capacity';
 import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam, patchEmployee } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
@@ -19,10 +25,6 @@ import type {
   EmployeeFromJiraRequest,
   EmployeeResponse,
   EmployeeRole,
-  RoleRuleIn,
-  EmployeeRuleIn,
-  RoleCapacityRule,
-  EmployeeCapacityOverride,
 } from '../types/api';
 
 export const useEmployees = (params?: { withTeams?: boolean; isActive?: boolean }) =>
@@ -247,20 +249,39 @@ export const useRoleCapacityRules = (year: number, quarter: number) =>
     enabled: Number.isFinite(year) && quarter >= 1 && quarter <= 4,
   });
 
-export function useSaveRoleRulesBatch(year: number, quarter: number) {
+export const useCreateRoleCapacityRule = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (rules: RoleRuleIn[]) =>
-      api.put<RoleCapacityRule[]>(
-        `/capacity/role-rules/batch?year=${year}&quarter=${quarter}`,
-        { rules },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['role-capacity-rules', year, quarter] });
-      qc.invalidateQueries({ queryKey: ['team-capacity'] });
+    mutationFn: createRoleCapacityRule,
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['role-capacity-rules', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
     },
   });
-}
+};
+
+export const useUpdateRoleCapacityRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, percent }: { id: string; percent: number; year: number; quarter: number }) =>
+      updateRoleCapacityRule(id, { percent_of_norm: percent }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['role-capacity-rules', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+export const useDeleteRoleCapacityRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; year: number; quarter: number }) => deleteRoleCapacityRule(id),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['role-capacity-rules', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
 
 export const useCopyRoleCapacityRulesToQuarter = () => {
   const qc = useQueryClient();
@@ -286,17 +307,36 @@ export const useEmployeeCapacityOverrides = (params: {
     enabled: Number.isFinite(params.year) && params.quarter >= 1 && params.quarter <= 4,
   });
 
-export function useSaveEmployeeRulesBatch(year: number, quarter: number) {
+export const useCreateEmployeeCapacityOverride = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (employee_rules: { employee_id: string; rules: EmployeeRuleIn[] }[]) =>
-      api.put<EmployeeCapacityOverride[]>(
-        `/capacity/employee-overrides/batch?year=${year}&quarter=${quarter}`,
-        { employee_rules },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['employee-capacity-overrides', year, quarter] });
-      qc.invalidateQueries({ queryKey: ['team-capacity'] });
+    mutationFn: createEmployeeCapacityOverride,
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['employee-capacity-overrides', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
     },
   });
-}
+};
+
+export const useUpdateEmployeeCapacityOverride = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, percent }: { id: string; percent: number; year: number; quarter: number }) =>
+      updateEmployeeCapacityOverride(id, { percent_of_norm: percent }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['employee-capacity-overrides', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
+
+export const useDeleteEmployeeCapacityOverride = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; year: number; quarter: number }) => deleteEmployeeCapacityOverride(id),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['employee-capacity-overrides', v.year, v.quarter] });
+      qc.invalidateQueries({ queryKey: ['capacity', 'team'] });
+    },
+  });
+};
