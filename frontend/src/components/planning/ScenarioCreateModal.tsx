@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { App, Form, Input, InputNumber, Modal, Select } from 'antd';
 import { useCreateScenario } from '../../hooks/usePlanning';
 import { useQuarterYear } from '../../hooks/useQuarterYear';
+import { TeamSelector } from './TeamSelector';
 
 interface Props {
   open: boolean;
@@ -12,15 +13,29 @@ interface FormValues {
   name: string;
   year: number;
   quarter: number;
+  team: string;
 }
 
-/** Модалка создания draft-сценария: name + year + quarter. После успеха
+/** Обёртка-переходник: AntD Form.Item передаёт value/onChange как необязательные,
+ *  но TeamSelector объявляет их обязательными — этот компонент устраняет несоответствие. */
+function TeamSelectorFormItem(props: { value?: string | null; onChange?: (v: string | null) => void; style?: React.CSSProperties }) {
+  return (
+    <TeamSelector
+      value={props.value ?? null}
+      onChange={props.onChange ?? (() => undefined)}
+      style={props.style}
+    />
+  );
+}
+
+/** Модалка создания draft-сценария: name + year + quarter + team. После успеха
  *  родитель получает id через onClose(id) и переключает выбор. */
 export default function ScenarioCreateModal({ open, onClose }: Props) {
   const { notification } = App.useApp();
   const { year, quarter } = useQuarterYear();
   const create = useCreateScenario();
   const [form] = Form.useForm<FormValues>();
+  const [submitDisabled, setSubmitDisabled] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -30,7 +45,13 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
       quarter: Number(quarter),
       name: `Q${quarter} ${year} plan`,
     });
+    // После сброса поля team пустое — кнопка заблокирована
+    setSubmitDisabled(true);
   }, [open, year, quarter, form]);
+
+  const handleValuesChange = (_: Partial<FormValues>, all: FormValues) => {
+    setSubmitDisabled(!all.name || !all.year || !all.quarter || !all.team);
+  };
 
   const handleSubmit = (values: FormValues) => {
     create.mutate(values, {
@@ -50,12 +71,18 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
       onCancel={() => onClose()}
       onOk={() => form.submit()}
       confirmLoading={create.isPending}
+      okButtonProps={{ disabled: submitDisabled }}
       destroyOnHidden
       width={460}
       okText="Создать"
       cancelText="Отмена"
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+        onValuesChange={handleValuesChange}
+      >
         <Form.Item
           name="name"
           label="Название"
@@ -87,6 +114,13 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
               ]}
             />
           </Form.Item>
+        </Form.Item>
+        <Form.Item
+          name="team"
+          label="Команда"
+          rules={[{ required: true, message: 'Выберите команду' }]}
+        >
+          <TeamSelectorFormItem style={{ width: '100%' }} />
         </Form.Item>
         <div style={{ fontSize: 12, color: '#8faec8' }}>
           В сценарий попадут все текущие элементы бэклога. Отметьте галочками

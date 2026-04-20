@@ -8,7 +8,7 @@ export const getScenarios = (year?: string, quarter?: string, status?: 'draft' |
 export const getScenario = (id: string) =>
   api.get<ScenarioResponse>(`/planning/scenarios/${id}`);
 
-export const createScenario = (data: { name: string; year: number; quarter: number }) =>
+export const createScenario = (data: { name: string; year: number; quarter: number; team: string }) =>
   api.post<ScenarioResponse>('/planning/scenarios', data);
 
 export const updateScenario = (
