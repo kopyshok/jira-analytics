@@ -9,11 +9,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
-from app.models import Employee, Project
+from app.models import Employee, EmployeeTeam, Project
 
 
 E2E_EMPLOYEE_ID = "00000000-0000-0000-0000-000000000001"
 E2E_PROJECT_ID = "00000000-0000-0000-0000-000000000002"
+E2E_EMPLOYEE_TEAM_ID = "00000000-0000-0000-0000-000000000003"
+E2E_TEAM_NAME = "E2E Squad"
 
 
 def seed() -> None:
@@ -28,9 +30,20 @@ def seed() -> None:
                     display_name="E2E Analyst",
                     email="e2e.analyst@example.com",
                     role="analyst",
-                    team="E2E",
+                    team=E2E_TEAM_NAME,
                     department="QA",
                     is_active=True,
+                )
+            )
+
+        membership = db.get(EmployeeTeam, E2E_EMPLOYEE_TEAM_ID)
+        if membership is None:
+            db.add(
+                EmployeeTeam(
+                    id=E2E_EMPLOYEE_TEAM_ID,
+                    employee_id=E2E_EMPLOYEE_ID,
+                    team=E2E_TEAM_NAME,
+                    is_primary=True,
                 )
             )
 

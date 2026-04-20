@@ -111,3 +111,32 @@ test('analytics tab selection via URL param works', async ({ page }) => {
 
   await expectNoBrowserErrors(browserErrors);
 });
+
+test('team filter narrows dashboard KPIs', async ({ page }) => {
+  await page.goto('/');
+  await expectVisible(page.getByText('Всего часов', { exact: true }));
+
+  // Open the team select (FactFilterBar). AntD 6 renders the placeholder as
+  // span.ant-select-placeholder inside the select wrapper. Without Jira
+  // credentials the only available option is «Без команды» (value __none__).
+  const teamSelect = page
+    .locator('.ant-select', { has: page.locator('.ant-select-placeholder', { hasText: 'Команда' }) })
+    .first();
+  await teamSelect.click();
+
+  // Arm the response wait BEFORE clicking the option so the request is
+  // observed as soon as TanStack Query reacts to the state change.
+  const responsePromise = page.waitForResponse((r) =>
+    r.url().includes('/analytics/hours/by-category')
+    && r.url().includes('teams=__none__')
+  );
+
+  await page
+    .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+    .locator('.ant-select-item-option-content', { hasText: 'Без команды' })
+    .first()
+    .click();
+  await page.keyboard.press('Escape');
+
+  await responsePromise;
+});
