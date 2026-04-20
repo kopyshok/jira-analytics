@@ -307,6 +307,12 @@ class SyncService:
                 seen.add(fid)
         return ids
 
+    def _resolve_planned_field_ids(self) -> dict[str, Optional[str]]:
+        """Резолвит все planned-effort / impact / risk AppSetting ключи один
+        раз в начале sync-run, чтобы передавать в ``_upsert_issue`` без N+1.
+        """
+        return {k: self._get_setting(k) for k in _ALL_PLANNED_KEYS}
+
     def _update_sync_state(
         self,
         entity_name: str,
@@ -422,6 +428,7 @@ class SyncService:
         team: Any = _UNSET,
         participating_teams: Any = _UNSET,
         goals: Any = _UNSET,
+        planned_field_ids: Optional[dict[str, Optional[str]]] = None,
     ) -> Tuple[Issue, bool]:
         """Upsert issue from Jira.
 
@@ -429,6 +436,11 @@ class SyncService:
         чтобы означать «колонку не трогать». Явный ``None`` / ``[]`` / ``""``
         от вызывающего — это «очистить значение в БД» (когда поле
         очищено в Jira).
+
+        ``planned_field_ids`` — pre-resolved mapping из `_ALL_PLANNED_KEYS` в
+        значения AppSetting, передаётся из вызывающего sync-метода чтобы
+        избежать N+1 SELECT'ов на каждой задаче. Если ``None`` — резолвим
+        inline (fallback для обратной совместимости).
         """
         status_category = None
         if jira_issue.fields.status.statusCategory:
@@ -459,7 +471,12 @@ class SyncService:
         # Planned effort / impact / risk — extract from _extra if the matching
         # AppSetting field id is configured. Empty or unset ids → no-op (NULL).
         extra = getattr(jira_issue.fields, "_extra", None) or {}
-        planned_ids = {k: self._get_setting(k) for k in _ALL_PLANNED_KEYS}
+        if planned_field_ids is None:
+            # Fallback: резолвим per-issue (медленно — N+1). Основные sync-методы
+            # должны передавать pre-resolved dict.
+            planned_ids = {k: self._get_setting(k) for k in _ALL_PLANNED_KEYS}
+        else:
+            planned_ids = planned_field_ids
 
         def _fld_float(key: str) -> Optional[float]:
             fid = planned_ids.get(key)
@@ -545,6 +562,8 @@ class SyncService:
         for fid in self._configured_planned_field_ids():
             if fid not in extra_fields:
                 extra_fields.append(fid)
+        # Resolve planned-effort AppSetting ids once, reuse for every issue.
+        planned_field_ids = self._resolve_planned_field_ids()
 
         count = 0
         unresolved_parents: List[Tuple[str, str]] = []  # (child_issue_id, parent_key)
@@ -592,7 +611,9 @@ class SyncService:
 
             # Upsert issue
             issue, created = self._upsert_issue(
-                jira_issue, project.id, parent_id, **extra_kwargs,
+                jira_issue, project.id, parent_id,
+                planned_field_ids=planned_field_ids,
+                **extra_kwargs,
             )
             if created:
                 self.stats.issues_created += 1
@@ -650,6 +671,7 @@ class SyncService:
         for fid in self._configured_planned_field_ids():
             if fid not in extra_fields:
                 extra_fields.append(fid)
+        planned_field_ids = self._resolve_planned_field_ids()
         base_fields = [
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
@@ -707,7 +729,9 @@ class SyncService:
                         extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
 
                 self._upsert_issue(
-                    jira_issue, project.id, parent_id, **extra_kwargs,
+                    jira_issue, project.id, parent_id,
+                    planned_field_ids=planned_field_ids,
+                    **extra_kwargs,
                 )
                 matched += 1
 
@@ -741,6 +765,7 @@ class SyncService:
         for fid in self._configured_planned_field_ids():
             if fid not in extra_fields:
                 extra_fields.append(fid)
+        planned_field_ids = self._resolve_planned_field_ids()
 
         # Dedupe field ids when product/participating point to the same column
         # (common in this tenant — both = customfield_11526).
@@ -821,7 +846,9 @@ class SyncService:
                         extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
 
                     _, was_created = self._upsert_issue(
-                        jira_issue, project.id, parent_id, **extra_kwargs,
+                        jira_issue, project.id, parent_id,
+                        planned_field_ids=planned_field_ids,
+                        **extra_kwargs,
                     )
                     matched += 1
                     if was_created:
