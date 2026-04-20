@@ -19,11 +19,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # (code, label, color, sort_order, is_system)
+# sort_order=23 — следующий свободный после archive_target (22, см. миграцию 010).
 SEED_CATEGORY = (
     "initiatives_backlog",
     "Бэклог инициатив",
     "#7F77DD",
-    22,
+    23,
     True,
 )
 
