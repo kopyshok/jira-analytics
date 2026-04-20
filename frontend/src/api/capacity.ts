@@ -78,3 +78,10 @@ export const updateEmployeeCapacityOverride = (
 
 export const deleteEmployeeCapacityOverride = (id: string) =>
   api.del<void>(`/capacity/employee-overrides/${id}`);
+
+// === Team recalc ===
+
+export const recalcTeamCapacity = (params: { year: number; quarter: number; team: string }) =>
+  api.post<{ updated_employees: number; year: number; quarter: number; team: string; recalculated_at: string }>(
+    `/capacity/team/recalc?year=${params.year}&quarter=${params.quarter}&team=${encodeURIComponent(params.team)}`,
+  );

@@ -9,6 +9,7 @@ import {
   getRoleCapacityRules,
   copyRoleCapacityRulesToQuarter,
   getEmployeeCapacityOverrides,
+  recalcTeamCapacity,
 } from '../api/capacity';
 import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam, patchEmployee } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
@@ -292,3 +293,15 @@ export function useSaveEmployeeRulesBatch(year: number, quarter: number) {
     },
   });
 }
+
+// ──────────────── Team recalc ────────────────
+
+export const useTeamRecalc = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: recalcTeamCapacity,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+    },
+  });
+};

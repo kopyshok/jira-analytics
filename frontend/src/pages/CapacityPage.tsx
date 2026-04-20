@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
+import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, Tooltip } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useAutoDetectTeams, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
+import { useTeamCapacity, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useAutoDetectTeams, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole, useTeamRecalc } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useAddAbsencesBatch, useRemoveAbsence } from '../hooks/useAbsences';
 import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
@@ -56,7 +56,8 @@ function TeamTab() {
   const storedShowFact = useGenericSetting('ui_capacity_show_fact');
   const storedShowPct  = useGenericSetting('ui_capacity_show_pct');
   const saveStored = useSaveGenericSetting();
-  const { matchesTeam } = useCapacityFilter();
+  const { matchesTeam, selectedTeams } = useCapacityFilter();
+  const teamRecalc = useTeamRecalc();
 
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
   const [showFact, setShowFact] = useState(false);
@@ -374,6 +375,24 @@ function TeamTab() {
         >
           <Button loading={recalc.isPending}>Пересчитать состав</Button>
         </Popconfirm>
+        <Tooltip title={selectedTeams.length !== 1 ? 'Выберите ровно одну команду, чтобы пересчитать часы' : undefined}>
+          <Button
+            loading={teamRecalc.isPending}
+            disabled={!year || !quarter || selectedTeams.length !== 1}
+            onClick={() => teamRecalc.mutate(
+              { year: Number(year), quarter: Number(quarter), team: selectedTeams[0] },
+              {
+                onSuccess: (s) => notification.success({
+                  title: 'Часы пересчитаны',
+                  description: `Обновлено сотрудников: ${s.updated_employees}`,
+                }),
+                onError: (e) => notification.error({ title: 'Не удалось пересчитать', description: e.message }),
+              },
+            )}
+          >
+            Пересчитать часы
+          </Button>
+        </Tooltip>
         <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
         <Button onClick={() => setCollapsed(new Set(tree.map(r => r.key)))}>Свернуть все</Button>
         <Button onClick={() => setCollapsed(new Set())}>Развернуть все</Button>
