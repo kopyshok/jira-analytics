@@ -1,19 +1,17 @@
 import type { EmployeeRole } from '../types/api';
 
 export const EMPLOYEE_ROLE_LABELS: Record<EmployeeRole, string> = {
-  programmer: 'Программист',
-  consultant: 'Консультант',
-  tester: 'Тестировщик',
   analyst: 'Аналитик',
-  project_manager: 'Руководитель проектов',
+  dev: 'Программист',
+  qa: 'Тестировщик',
+  other: 'Другое',
 };
 
 export const EMPLOYEE_ROLES: EmployeeRole[] = [
-  'programmer',
-  'consultant',
-  'tester',
   'analyst',
-  'project_manager',
+  'dev',
+  'qa',
+  'other',
 ];
 
 export const CATEGORY_LABELS: Record<string, string> = {

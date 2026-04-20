@@ -6,11 +6,10 @@ export interface EmployeeTeamItem {
 }
 
 export type EmployeeRole =
-  | 'programmer'
-  | 'consultant'
-  | 'tester'
   | 'analyst'
-  | 'project_manager';
+  | 'dev'
+  | 'qa'
+  | 'other';
 
 export interface EmployeeResponse {
   id: string;
