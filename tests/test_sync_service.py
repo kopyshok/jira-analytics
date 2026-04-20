@@ -134,6 +134,134 @@ def _make_issue_schema(
     )
 
 
+def _make_issue_schema_with_extra(
+    *,
+    jira_id: str,
+    key: str,
+    project_key: str,
+    project_id: str,
+    extra_fields: dict,
+    issue_type: str = "RFA",
+) -> JiraIssueSchema:
+    """JiraIssueSchema с произвольными customfield-значениями в ``_extra``."""
+    fields_data = {
+        "summary": f"Issue {key}",
+        "issuetype": JiraIssueTypeSchema(id="1", name=issue_type, subtask=False),
+        "status": JiraStatusSchema(id="1", name="Open"),
+        "project": JiraProjectSchema(id=project_id, key=project_key, name=project_key),
+    }
+    fields_data.update(extra_fields)
+    return JiraIssueSchema(
+        id=jira_id,
+        key=key,
+        fields=JiraIssueFieldsSchema(**fields_data),
+    )
+
+
+class TestSyncIssuePlannedHoursExtraction:
+    """Tests for extracting planned hours / impact / risk custom fields."""
+
+    def test_upsert_issue_extracts_planned_hours_from_customfields(self, db_session):
+        """Когда customfield IDs настроены в AppSetting, sync должен
+        заполнить Issue.planned_*_hours, impact, risk из _extra."""
+        from app.models import AppSetting, Project
+        from app.services.sync_service import SyncService
+
+        db_session.add(AppSetting(key="jira_planned_analyst_hours_field_id", value="customfield_12001"))
+        db_session.add(AppSetting(key="jira_planned_dev_hours_field_id", value="customfield_12002"))
+        db_session.add(AppSetting(key="jira_planned_qa_hours_field_id", value="customfield_12003"))
+        db_session.add(AppSetting(key="jira_planned_opo_hours_field_id", value="customfield_12004"))
+        db_session.add(AppSetting(key="jira_impact_field_id", value="customfield_12010"))
+        db_session.add(AppSetting(key="jira_risk_field_id", value="customfield_12011"))
+        proj = Project(jira_project_id="p1", key="RFA", name="RFA")
+        db_session.add(proj)
+        db_session.commit()
+
+        svc = SyncService(db_session, jira_client=MagicMock())
+        schema = _make_issue_schema_with_extra(
+            jira_id="10001",
+            key="RFA-123",
+            project_key="RFA",
+            project_id="p1",
+            extra_fields={
+                "customfield_12001": 40,
+                "customfield_12002": "40",
+                "customfield_12003": 20.5,
+                "customfield_12004": 20,
+                "customfield_12010": "Высокий",
+                "customfield_12011": "Низкий",
+            },
+        )
+        issue, _ = svc._upsert_issue(schema, project_id=proj.id)
+        db_session.commit()
+
+        # Re-query to get fresh values after commit.
+        issue = svc.issue_repo.get_by_field("jira_issue_id", "10001")
+        assert issue.planned_analyst_hours == 40.0
+        assert issue.planned_dev_hours == 40.0
+        assert issue.planned_qa_hours == 20.5
+        assert issue.planned_opo_hours == 20.0
+        assert issue.impact == "high"
+        assert issue.risk == "low"
+
+    def test_upsert_issue_skips_unset_customfields(self, db_session):
+        """Если customfield ID не настроен в AppSetting, Issue.planned_* остаются NULL."""
+        from app.models import Project
+        from app.services.sync_service import SyncService
+
+        proj = Project(jira_project_id="p2", key="RFA", name="RFA")
+        db_session.add(proj)
+        db_session.commit()
+
+        svc = SyncService(db_session, jira_client=MagicMock())
+        schema = _make_issue_schema_with_extra(
+            jira_id="10002",
+            key="RFA-124",
+            project_key="RFA",
+            project_id="p2",
+            extra_fields={},  # no customfields present, no AppSetting configured
+        )
+        issue, _ = svc._upsert_issue(schema, project_id=proj.id)
+        db_session.commit()
+
+        issue = svc.issue_repo.get_by_field("jira_issue_id", "10002")
+        assert issue.planned_analyst_hours is None
+        assert issue.planned_dev_hours is None
+        assert issue.planned_qa_hours is None
+        assert issue.planned_opo_hours is None
+        assert issue.impact is None
+        assert issue.risk is None
+
+    def test_upsert_issue_normalizes_level_values(self, db_session):
+        """impact/risk приходит как dict {value: ...} из Jira — нужно извлечь и нормализовать."""
+        from app.models import AppSetting, Project
+        from app.services.sync_service import SyncService
+
+        db_session.add(AppSetting(key="jira_impact_field_id", value="customfield_12010"))
+        db_session.add(AppSetting(key="jira_risk_field_id", value="customfield_12011"))
+        proj = Project(jira_project_id="p3", key="RFA", name="RFA")
+        db_session.add(proj)
+        db_session.commit()
+
+        svc = SyncService(db_session, jira_client=MagicMock())
+        schema = _make_issue_schema_with_extra(
+            jira_id="10003",
+            key="RFA-125",
+            project_key="RFA",
+            project_id="p3",
+            extra_fields={
+                "customfield_12010": {"value": "Medium", "id": "1"},
+                "customfield_12011": {"value": "Средний", "id": "2"},
+            },
+        )
+        svc._upsert_issue(schema, project_id=proj.id)
+        db_session.commit()
+
+        issue = svc.issue_repo.get_by_field("jira_issue_id", "10003")
+        assert issue.impact == "medium"
+        assert issue.risk == "medium"
+
+
 class TestSyncIssuesParentLinking:
     """Regression tests for parent_id linking on out-of-order sync (Bug #3)."""
 
