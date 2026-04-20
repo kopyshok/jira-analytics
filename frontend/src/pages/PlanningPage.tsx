@@ -1,169 +1,124 @@
-import { useState } from 'react';
-import { Space, Card, Table, Button, Tag, Popconfirm, App, Modal, Form, Input, Progress, Row, Col, Empty } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { useDeferredValue, useMemo, useState } from 'react';
+import { App, Space } from 'antd';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
-import ExportButtons from '../components/shared/ExportButtons';
 import PageHeader from '../components/shared/PageHeader';
-import { useScenarios, useGenerateScenario, useDeleteScenario } from '../hooks/usePlanning';
+import PlanningBacklogList from '../components/planning/PlanningBacklogList';
+import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
+import { useBacklogItems } from '../hooks/useBacklog';
+import { useCapacityPreview, useGenerateScenario } from '../hooks/usePlanning';
 import { useQuarterYear } from '../hooks/useQuarterYear';
-import { useTeamCapacity } from '../hooks/useCapacity';
-import { downloadScenarioXlsx, downloadScenarioPptx } from '../api/exports';
-import { formatHours } from '../utils/format';
-import { CHART_COLORS, DARK_THEME } from '../utils/constants';
-import type { ScenarioResponse, PlanningResultResponse, AllocationResponse } from '../types/api';
+import { downloadScenarioXlsx } from '../api/exports';
+
+const EMPTY_ROLE_TOTALS = { analyst: 0, dev: 0, qa: 0 };
 
 export default function PlanningPage() {
   const { notification } = App.useApp();
   const { year, quarter } = useQuarterYear();
-  const { data: scenarios, isLoading } = useScenarios(year, quarter);
-  const { data: teamCapacity } = useTeamCapacity(year, quarter);
-  const generate = useGenerateScenario();
-  const del = useDeleteScenario();
-  const [open, setOpen] = useState(false);
-  const [result, setResult] = useState<PlanningResultResponse | null>(null);
-  const [form] = Form.useForm();
+  const quarterInt = Number(quarter);
 
-  const handleGenerate = (vals: { name: string }) => {
-    generate.mutate({ name: vals.name, year: Number(year), quarter: Number(quarter) }, {
-      onSuccess: (res) => {
-        setOpen(false);
-        form.resetFields();
-        setResult(res);
-        notification.success({ title: `Сценарий "${res.scenario_name}" создан` });
-      },
-      onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
+  const { data: backlog } = useBacklogItems(year, `Q${quarter}`);
+
+  // Selected backlog items (initially all, refreshes when a new backlog
+  // snapshot arrives). We store the backlog identity we last reacted to as a
+  // piece of React state and reconcile during render via setState-in-render
+  // (React's recommended pattern for derived state) — this sidesteps both
+  // `react-hooks/set-state-in-effect` and `react-hooks/refs` lint rules.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastBacklog, setLastBacklog] = useState<typeof backlog | null>(null);
+  if (backlog && backlog !== lastBacklog) {
+    setLastBacklog(backlog);
+    setSelected(new Set(backlog.map((b) => b.id)));
+  }
+
+  // Defer backlog_item_ids so that quick toggles don't spam backend; React
+  // defers between renders in batches (functionally a micro-debounce).
+  const selectedIds = useMemo(() => Array.from(selected).sort(), [selected]);
+  const deferredIds = useDeferredValue(selectedIds);
+
+  const previewReq = useMemo(
+    () => ({
+      year: Number(year),
+      quarter: quarterInt,
+      backlog_item_ids: deferredIds,
+    }),
+    [year, quarterInt, deferredIds],
+  );
+  const { data: preview } = useCapacityPreview(previewReq);
+
+  const generate = useGenerateScenario();
+  const [lastScenarioId, setLastScenarioId] = useState<string | null>(null);
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   };
 
-  const capacityPercent = result ? Math.round((result.total_planned_hours / result.total_capacity_hours) * 100) : 0;
+  const handleSave = () => {
+    generate.mutate(
+      {
+        name: `Q${quarterInt} ${year} draft`,
+        year: Number(year),
+        quarter: quarterInt,
+        backlog_item_ids: Array.from(selected),
+      },
+      {
+        onSuccess: (res) => {
+          setLastScenarioId(res.scenario_id);
+          notification.success({
+            title: `Сценарий «${res.scenario_name}» сохранён`,
+            description: `Включено: ${res.included_count}, пропущено: ${res.skipped_count}`,
+          });
+        },
+        onError: (e) =>
+          notification.error({ title: 'Ошибка', description: (e as Error).message }),
+      },
+    );
+  };
 
-  const capacityChartData = teamCapacity?.map((e) => ({
-    name: e.employee_name,
-    available: Number(e.total_available_hours.toFixed(1)),
-    mandatory: Number(e.total_mandatory_hours.toFixed(1)),
-    vacation: Number(e.total_vacation_hours.toFixed(1)),
-  }));
+  const handleExport = () => {
+    if (!lastScenarioId) return;
+    downloadScenarioXlsx(lastScenarioId);
+  };
 
   return (
-    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Планирование"
         title="Сценарии"
-        subtitle="Greedy-распределение бэклога по ёмкости команды"
-        actions={
-          <Space>
-            <QuarterYearSelect />
-            <Button icon={<PlusOutlined />} type="primary" onClick={() => { form.resetFields(); setOpen(true); }}>
-              Сгенерировать сценарий
-            </Button>
-          </Space>
-        }
+        subtitle="Отметьте идеи из бэклога — ёмкость по ролям пересчитывается live"
+        actions={<QuarterYearSelect />}
       />
 
-      <Modal title="Новый сценарий" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={generate.isPending}>
-        <Form form={form} layout="vertical" onFinish={handleGenerate}>
-          <Form.Item name="name" label="Название сценария" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <p>Год: {year}, Квартал: Q{quarter}</p>
-        </Form>
-      </Modal>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <Card title="Сценарии">
-            <Table<ScenarioResponse>
-              dataSource={scenarios}
-              rowKey="id"
-              loading={isLoading}
-              pagination={false}
-              size="small"
-              columns={[
-                { title: 'Название', dataIndex: 'name' },
-                { title: 'Квартал', dataIndex: 'quarter' },
-                { title: 'Год', dataIndex: 'year' },
-                {
-                  title: 'Действия',
-                  width: 200,
-                  render: (_, r) => (
-                    <Space>
-                      <ExportButtons
-                        onXlsx={() => downloadScenarioXlsx(r.id)}
-                        onPptx={() => downloadScenarioPptx(r.id)}
-                      />
-                      <Popconfirm title="Удалить?" onConfirm={() => del.mutate(r.id)}>
-                        <Button icon={<DeleteOutlined />} size="small" danger />
-                      </Popconfirm>
-                    </Space>
-                  ),
-                },
-              ]}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card title="Загрузка команды (квартал)">
-            {capacityChartData?.length ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={capacityChartData} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
-                  <XAxis type="number" />
-                  <YAxis type="category" dataKey="name" width={140} />
-                  <Tooltip formatter={(v: unknown) => `${v} ч`} />
-                  <Legend />
-                  <Bar dataKey="available" stackId="a" fill={CHART_COLORS.green} name="Доступно" />
-                  <Bar dataKey="mandatory" stackId="a" fill={CHART_COLORS.orange} name="Обяз. задачи" />
-                  <Bar dataKey="vacation" stackId="a" fill={CHART_COLORS.blue} name="Отпуск" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : <Empty description="Нет данных о ёмкости" />}
-          </Card>
-        </Col>
-      </Row>
-
-      {result && (
-        <Card title={`Результат: ${result.scenario_name}`}>
-          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-            <Space size="large">
-              <div>
-                <div style={{ marginBottom: 8 }}>Загрузка ёмкости</div>
-                <Progress
-                  type="dashboard"
-                  percent={capacityPercent}
-                  format={() => `${formatHours(result.total_planned_hours)} / ${formatHours(result.total_capacity_hours)} ч`}
-                  status={capacityPercent > 90 ? 'exception' : 'normal'}
-                  size={160}
-                />
-              </div>
-              <div>
-                <p>Включено задач: <strong>{result.included_count}</strong></p>
-                <p>Пропущено: <strong>{result.skipped_count}</strong></p>
-                <p>Остаток ёмкости: <strong>{formatHours(result.leftover_capacity_hours)} ч</strong></p>
-              </div>
-            </Space>
-
-            <Table<AllocationResponse>
-              dataSource={result.allocations}
-              rowKey="backlog_item_id"
-              pagination={false}
-              size="small"
-              columns={[
-                { title: '#', dataIndex: 'priority', width: 60, render: (v: number | null) => v ?? '—' },
-                { title: 'Задача', dataIndex: 'title' },
-                { title: 'Оценка (ч)', dataIndex: 'estimate_hours', render: formatHours },
-                { title: 'Запланировано (ч)', dataIndex: 'planned_hours', render: formatHours },
-                {
-                  title: 'Статус', dataIndex: 'included',
-                  render: (v: boolean) => v ? <Tag color="green">Включена</Tag> : <Tag color="red">Пропущена</Tag>,
-                },
-                { title: 'Причина', dataIndex: 'reason' },
-              ]}
-              rowClassName={(r) => r.included ? '' : 'ant-table-row-disabled'}
-            />
-          </Space>
-        </Card>
-      )}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) 460px',
+          gap: 16,
+          alignItems: 'start',
+        }}
+      >
+        <PlanningBacklogList
+          items={backlog ?? []}
+          selected={selected}
+          onToggle={toggle}
+          demandByRole={preview?.demand_by_role ?? EMPTY_ROLE_TOTALS}
+          capacityByRole={preview?.capacity_by_role ?? EMPTY_ROLE_TOTALS}
+          year={year}
+          quarter={quarter}
+        />
+        <PlanningCapacityPanel
+          preview={preview}
+          quarter={quarter}
+          onSave={handleSave}
+          onExport={handleExport}
+          isSaving={generate.isPending}
+          canExport={!!lastScenarioId}
+        />
+      </div>
     </Space>
   );
 }
