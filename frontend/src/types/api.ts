@@ -5,11 +5,17 @@ export interface EmployeeTeamItem {
   is_primary: boolean;
 }
 
-export type EmployeeRole =
-  | 'analyst'
-  | 'dev'
-  | 'qa'
-  | 'other';
+export type EmployeeRole = string;  // now driven by roles registry
+
+export interface Role {
+  id: string;
+  code: string;
+  label: string;
+  color: string;
+  is_active: boolean;
+  counts_in_planning: boolean;
+  sort_order: number;
+}
 
 export interface EmployeeResponse {
   id: string;
