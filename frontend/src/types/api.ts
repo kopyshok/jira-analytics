@@ -62,6 +62,7 @@ export interface CategoryResponse {
   color: string | null;
   sort_order: number;
   is_system: boolean;
+  work_type_id: string | null;
 }
 
 // === Settings ===
@@ -216,14 +217,26 @@ export interface MappingResponse {
 
 // === Capacity ===
 
-export type AbsenceReason = 'vacation' | 'sick' | 'day_off' | 'other';
+export interface AbsenceReason {
+  id: string;
+  code: string;
+  label: string;
+  is_planned: boolean;
+  color: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
 
 export interface AbsenceResponse {
   id: string;
   employee_id: string;
-  start_date: string;
+  start_date: string;  // YYYY-MM-DD
   end_date: string;
-  reason: AbsenceReason;
+  reason_id: string;
+  reason_code: string;
+  reason_label: string;
+  reason_is_planned: boolean;
+  reason_color: string | null;
   hours_total: number | null;
 }
 
@@ -231,8 +244,39 @@ export interface AbsenceCreateRequest {
   employee_id: string;
   start_date: string;
   end_date: string;
-  reason: AbsenceReason;
+  reason_id: string;
   hours_total?: number;
+}
+
+export interface RoleRuleIn {
+  role: string | null;
+  work_type_id: string;
+  percent_of_norm: number;
+}
+
+export interface RoleRulesBatchRequest {
+  rules: RoleRuleIn[];
+}
+
+export interface EmployeeRuleIn {
+  work_type_id: string;
+  percent_of_norm: number;
+}
+
+export interface EmployeeRulesBatchRequest {
+  employee_rules: { employee_id: string; rules: EmployeeRuleIn[] }[];
+}
+
+export interface RoleRulesValidationError {
+  role: string | null;
+  sum: number;
+  expected: number;
+}
+
+export interface EmployeeRulesValidationError {
+  employee_id: string;
+  sum: number;
+  expected: number;
 }
 
 export interface MandatoryWorkType {
