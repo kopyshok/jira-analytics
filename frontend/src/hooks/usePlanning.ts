@@ -39,8 +39,18 @@ export const useCreateScenario = () => {
 export const useUpdateScenario = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string } }) => updateScenario(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning'] }),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { name?: string; team?: string | null; external_qa_hours?: number | null };
+    }) => updateScenario(id, data),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.id] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.id, 'resource'] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
+    },
   });
 };
 

@@ -11,8 +11,10 @@ export const getScenario = (id: string) =>
 export const createScenario = (data: { name: string; year: number; quarter: number }) =>
   api.post<ScenarioResponse>('/planning/scenarios', data);
 
-export const updateScenario = (id: string, data: { name?: string }) =>
-  api.patch<ScenarioResponse>(`/planning/scenarios/${id}`, data);
+export const updateScenario = (
+  id: string,
+  data: { name?: string; team?: string | null; external_qa_hours?: number | null },
+) => api.patch<ScenarioResponse>(`/planning/scenarios/${id}`, data);
 
 export const deleteScenario = (id: string) => api.del(`/planning/scenarios/${id}`);
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
-  App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
+  Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
   CheckCircleOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, RollbackOutlined,
@@ -19,7 +19,9 @@ import {
   useRevertScenario,
   useSyncScenarioBacklog,
   useCapacityPreview,
+  useUpdateScenario,
 } from '../hooks/usePlanning';
+import { TeamSelector } from '../components/planning/TeamSelector';
 import { downloadScenarioXlsx } from '../api/exports';
 import { DARK_THEME, FONTS } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
@@ -54,6 +56,7 @@ export default function PlanningPage() {
     useScenarioAllocations(scenarioId);
 
   const patchAlloc = usePatchAllocation();
+  const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
   const approve = useApproveScenario();
   const revert = useRevertScenario();
@@ -151,6 +154,14 @@ export default function PlanningPage() {
     });
   };
 
+  const handleTeamChange = (team: string | null) => {
+    if (!scenarioId) return;
+    updateScenario.mutate(
+      { id: scenarioId, data: { team } },
+      { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
+    );
+  };
+
   const scenarioOptions = useMemo(
     () => (scenarios ?? []).map((s) => ({
       value: s.id,
@@ -200,7 +211,24 @@ export default function PlanningPage() {
         </Card>
       )}
 
-      {scenarioId && scenario && (
+      {scenarioId && scenario && !scenario.team && (
+        <Card>
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <Alert
+              type="info"
+              message="Для работы со сценарием выберите команду"
+              description="Сценарий привязан к конкретной команде — именно по ней считается ресурс и загрузка."
+              showIcon
+            />
+            <TeamSelector
+              value={scenario.team || null}
+              onChange={handleTeamChange}
+            />
+          </Space>
+        </Card>
+      )}
+
+      {scenarioId && scenario && !!scenario.team && (
         <div
           style={{
             display: 'grid',

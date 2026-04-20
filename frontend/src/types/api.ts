@@ -415,6 +415,8 @@ export interface ScenarioResponse {
   quarter: string | null;
   year: number | null;
   status: ScenarioStatus;
+  team: string | null;
+  external_qa_hours: number | null;
 }
 
 export interface AllocationResponse {
