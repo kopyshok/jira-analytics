@@ -29,6 +29,26 @@ def upgrade():
                             name="uq_scenario_rule_scope"),
     )
 
+    # Copy existing role_capacity_rules into each existing scenario as its starting set.
+    import uuid
+    conn = op.get_bind()
+    scenarios = conn.execute(sa.text(
+        "SELECT id, year, quarter FROM planning_scenarios WHERE year IS NOT NULL AND quarter IS NOT NULL"
+    )).fetchall()
+    for sid, year, qstr in scenarios:
+        q_int = int(str(qstr).replace("Q", "")) if qstr else None
+        if q_int is None:
+            continue
+        rules = conn.execute(sa.text(
+            "SELECT role, work_type_id, percent_of_norm "
+            "FROM role_capacity_rules WHERE year=:y AND quarter=:q"
+        ), {"y": year, "q": q_int}).fetchall()
+        for role, wt_id, pct in rules:
+            conn.execute(sa.text(
+                "INSERT INTO scenario_rules (id, scenario_id, role, work_type_id, percent_of_norm) "
+                "VALUES (:id, :sid, :role, :wt, :pct)"
+            ), {"id": str(uuid.uuid4()), "sid": sid, "role": role, "wt": wt_id, "pct": pct})
+
 
 def downgrade():
     op.drop_table("scenario_rules", if_exists=True)
