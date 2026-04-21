@@ -211,6 +211,7 @@ export const usePutScenarioRules = () => {
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.scenarioId, 'rules'] });
       qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.scenarioId, 'resource'] });
+      qc.invalidateQueries({ queryKey: ['scenario-resource-summary', vars.scenarioId] });
       notification.success({ title: 'Правила сохранены' });
     },
     onError: (err) => {
