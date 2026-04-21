@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  App, Button, InputNumber, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography,
+  App, Button, InputNumber, Popconfirm, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
-  DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined, LinkOutlined,
-  PlusOutlined, ReloadOutlined,
+  DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
+  InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -15,10 +16,12 @@ import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
 import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
-  useUnlinkJira, useRefreshFromJira,
+  useUnlinkJira, useRefreshFromJira, useArchiveBacklogItem, useRestoreBacklogItem,
 } from '../hooks/useBacklog';
 import { useJiraSettings } from '../hooks/useSettings';
-import type { BacklogItemResponse, BacklogImpactRisk } from '../types/api';
+import type {
+  BacklogItemResponse, BacklogImpactRisk, BacklogView,
+} from '../types/api';
 
 const IMPACT_RISK_OPTIONS: { value: BacklogImpactRisk; label: string }[] = [
   { value: 'low',    label: 'Низкий' },
@@ -68,7 +71,15 @@ function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-
 
 export default function BacklogPage() {
   const { notification } = App.useApp();
-  const { data, isLoading } = useBacklogItems();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get('view');
+  const view: BacklogView =
+    rawView === 'archived' || rawView === 'in_work' ? rawView : 'active';
+
+  const active = useBacklogItems('active');
+  const inWork = useBacklogItems('in_work');
+  const archived = useBacklogItems('archived');
+
   const { data: projects } = useProjects();
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
@@ -77,6 +88,8 @@ export default function BacklogPage() {
   const del = useDeleteBacklogItem();
   const unlink = useUnlinkJira();
   const refreshFromJira = useRefreshFromJira();
+  const archive = useArchiveBacklogItem();
+  const restore = useRestoreBacklogItem();
 
   const [manualOpen, setManualOpen] = useState(false);
   const [editing, setEditing] = useState<BacklogItemResponse | null>(null);
@@ -88,21 +101,23 @@ export default function BacklogPage() {
     [projects],
   );
 
-  const sorted = useMemo(
-    () => data?.slice().sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999)),
-    [data],
-  );
+  const sortByPriority = (rows?: BacklogItemResponse[]) =>
+    rows?.slice().sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+  const activeRows = useMemo(() => sortByPriority(active.data), [active.data]);
+  const inWorkRows = useMemo(() => sortByPriority(inWork.data), [inWork.data]);
+  const archivedRows = useMemo(() => sortByPriority(archived.data), [archived.data]);
 
   const handleDragEnd = useCallback(
-    ({ active, over }: DragEndEvent) => {
-      if (!over || active.id === over.id || !sorted) return;
-      const oldIndex = sorted.findIndex((i) => i.id === active.id);
-      const newIndex = sorted.findIndex((i) => i.id === over.id);
+    ({ active: draggingActive, over }: DragEndEvent) => {
+      if (!over || draggingActive.id === over.id || !activeRows) return;
+      const oldIndex = activeRows.findIndex((i) => i.id === draggingActive.id);
+      const newIndex = activeRows.findIndex((i) => i.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
       const newPriority = newIndex + 1;
-      update.mutate({ id: String(active.id), data: { priority: newPriority } });
+      update.mutate({ id: String(draggingActive.id), data: { priority: newPriority } });
     },
-    [sorted, update],
+    [activeRows, update],
   );
 
   const openCreate = () => { setEditing(null); setManualOpen(true); };
@@ -121,7 +136,10 @@ export default function BacklogPage() {
       onSuccess: (res) => {
         notification.success({
           title: 'Обновлено из Jira',
-          description: `Создано: ${res.created} · Обновлено: ${res.updated} · Удалено: ${res.removed}`,
+          description:
+            `Перечитано: ${res.jira_refreshed} · ` +
+            `Создано: ${res.created} · Обновлено: ${res.updated} · ` +
+            `Архивировано: ${res.archived} · Восстановлено: ${res.restored}`,
         });
       },
       onError: (e) =>
@@ -131,8 +149,9 @@ export default function BacklogPage() {
 
   const renderRoleEstimate = (
     field: 'estimate_analyst_hours' | 'estimate_dev_hours' | 'estimate_qa_hours' | 'estimate_opo_hours',
+    editable: boolean,
   ) => (v: number | null, r: BacklogItemResponse) => {
-    if (r.issue_id) return <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>;
+    if (!editable || r.issue_id) return <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>;
     return (
       <InputNumber
         size="small"
@@ -150,12 +169,249 @@ export default function BacklogPage() {
     );
   };
 
+  const renderImpactRisk = (field: 'impact' | 'risk', editable: boolean) =>
+    (v: BacklogImpactRisk | null, r: BacklogItemResponse) => {
+      if (!editable || r.issue_id) {
+        return v ? <Tag color={IMPACT_RISK_COLOR[v]}>{IMPACT_RISK_LABEL[v]}</Tag> : <span>—</span>;
+      }
+      return (
+        <Select
+          size="small"
+          allowClear
+          variant="borderless"
+          value={v ?? undefined}
+          style={{ width: 100 }}
+          options={IMPACT_RISK_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          onChange={(next) => patch(r.id, { [field]: next as BacklogImpactRisk } as Parameters<typeof update.mutate>[0]['data'])}
+        />
+      );
+    };
+
+  const baseColumns = (editable: boolean) => [
+    {
+      title: 'Prio', dataIndex: 'priority', width: 70, fixed: 'left' as const,
+      render: (v: number | null, r: BacklogItemResponse) =>
+        editable ? (
+          <InputNumber
+            size="small"
+            min={1}
+            value={v ?? undefined}
+            variant="borderless"
+            style={{ width: 55 }}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value.trim();
+              const next = raw === '' ? null : Number(raw);
+              if (next === v) return;
+              patch(r.id, { priority: next as number });
+            }}
+          />
+        ) : (
+          <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>
+        ),
+    },
+    {
+      title: 'Идея', dataIndex: 'title',
+      render: (v: string, r: BacklogItemResponse) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{v}</Typography.Text>
+          {r.jira_key && (
+            jiraBaseUrl
+              ? (
+                <Typography.Link
+                  href={`${jiraBaseUrl}/browse/${r.jira_key}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 12 }}
+                >
+                  {r.jira_key}
+                </Typography.Link>
+              )
+              : <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.jira_key}</Typography.Text>
+          )}
+        </Space>
+      ),
+    },
+    { title: 'АН ч', dataIndex: 'estimate_analyst_hours', width: 80,
+      render: renderRoleEstimate('estimate_analyst_hours', editable) },
+    { title: 'ПР ч', dataIndex: 'estimate_dev_hours', width: 80,
+      render: renderRoleEstimate('estimate_dev_hours', editable) },
+    { title: 'ТС ч', dataIndex: 'estimate_qa_hours', width: 80,
+      render: renderRoleEstimate('estimate_qa_hours', editable) },
+    { title: 'ОПЭ ч', dataIndex: 'estimate_opo_hours', width: 80,
+      render: renderRoleEstimate('estimate_opo_hours', editable) },
+    { title: 'Impact', dataIndex: 'impact', width: 110,
+      render: renderImpactRisk('impact', editable) },
+    { title: 'Risk', dataIndex: 'risk', width: 110,
+      render: renderImpactRisk('risk', editable) },
+    {
+      title: 'Проект', dataIndex: 'project_id', width: 110,
+      render: (id: string | null) => {
+        if (!id) return <span>—</span>;
+        const p = projectMap.get(id);
+        return p ? <Tooltip title={p.name}><span>{p.key}</span></Tooltip> : id;
+      },
+    },
+  ];
+
+  const actionsActive = (r: BacklogItemResponse) => (
+    <Space size={4}>
+      {r.issue_id ? (
+        <Popconfirm
+          title="Отвязать от Jira?"
+          description="Идея останется в бэклоге, но потеряет связь с задачей."
+          onConfirm={() => unlink.mutate(r.id, {
+            onSuccess: () => notification.success({ title: 'Отвязано' }),
+            onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+          })}
+        >
+          <Tooltip title="Отвязать от Jira">
+            <Button icon={<DisconnectOutlined />} size="small" />
+          </Tooltip>
+        </Popconfirm>
+      ) : (
+        <>
+          <Tooltip title="Связать с Jira">
+            <Button icon={<LinkOutlined />} size="small" onClick={() => openLink(r)} />
+          </Tooltip>
+          <Tooltip title="Редактировать">
+            <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
+          </Tooltip>
+        </>
+      )}
+      <Popconfirm
+        title="Убрать из активного бэклога?"
+        description="Инициатива попадёт в раздел «Архив». Связь с Jira сохраняется."
+        onConfirm={() => archive.mutate(r.id, {
+          onSuccess: () => notification.success({ title: 'Архивировано' }),
+          onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+        })}
+      >
+        <Tooltip title="Архивировать">
+          <Button icon={<InboxOutlined />} size="small" />
+        </Tooltip>
+      </Popconfirm>
+      <Popconfirm
+        title="Удалить идею?"
+        description="Элемент будет убран из всех черновиков сценариев."
+        onConfirm={() => del.mutate(r.id, {
+          onSuccess: (res) => {
+            if (res.affected_scenarios.length > 0) {
+              notification.success({
+                title: 'Удалено',
+                description:
+                  `Убрано из ${res.affected_scenarios.length} сценариев: ` +
+                  res.affected_scenarios.map((s) => s.name).join(', '),
+              });
+            }
+          },
+          onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+        })}
+      >
+        <Button icon={<DeleteOutlined />} size="small" danger />
+      </Popconfirm>
+    </Space>
+  );
+
+  const actionsArchived = (r: BacklogItemResponse) => (
+    <Space size={4}>
+      <Popconfirm
+        title="Вернуть в активный бэклог?"
+        onConfirm={() => restore.mutate(r.id, {
+          onSuccess: () => notification.success({ title: 'Восстановлено' }),
+          onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+        })}
+      >
+        <Tooltip title="Восстановить">
+          <Button icon={<UndoOutlined />} size="small" />
+        </Tooltip>
+      </Popconfirm>
+      {!r.issue_id && (
+        <Tooltip title="Редактировать">
+          <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
+        </Tooltip>
+      )}
+      <Popconfirm
+        title="Удалить идею?"
+        onConfirm={() => del.mutate(r.id, {
+          onSuccess: () => notification.success({ title: 'Удалено' }),
+          onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+        })}
+      >
+        <Button icon={<DeleteOutlined />} size="small" danger />
+      </Popconfirm>
+    </Space>
+  );
+
+  const scenariosColumn = {
+    title: 'Сценарий', dataIndex: 'approved_scenarios', width: 200,
+    render: (s: BacklogItemResponse['approved_scenarios']) => (
+      <Space size={4} wrap>
+        {s.map((x) => <Tag key={x.id} color="blue">{x.name}</Tag>)}
+      </Space>
+    ),
+  };
+
+  const activeTable = (
+    <DndContext
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={activeRows?.map((i) => i.id) ?? []} strategy={verticalListSortingStrategy}>
+        <Table<BacklogItemResponse>
+          dataSource={activeRows}
+          rowKey="id"
+          loading={active.isLoading}
+          pagination={false}
+          size="small"
+          scroll={{ x: 1200 }}
+          components={{ body: { row: SortableRow } }}
+          columns={[
+            { title: '', width: 32, fixed: 'left' as const, render: (_, r) => <DragHandle id={r.id} /> },
+            ...baseColumns(true),
+            { title: 'Действия', width: 210, fixed: 'right' as const, render: (_, r) => actionsActive(r) },
+          ]}
+        />
+      </SortableContext>
+    </DndContext>
+  );
+
+  const inWorkTable = (
+    <Table<BacklogItemResponse>
+      dataSource={inWorkRows}
+      rowKey="id"
+      loading={inWork.isLoading}
+      pagination={false}
+      size="small"
+      scroll={{ x: 1200 }}
+      columns={[
+        ...baseColumns(false),
+        scenariosColumn,
+      ]}
+    />
+  );
+
+  const archivedTable = (
+    <Table<BacklogItemResponse>
+      dataSource={archivedRows}
+      rowKey="id"
+      loading={archived.isLoading}
+      pagination={false}
+      size="small"
+      scroll={{ x: 1200 }}
+      columns={[
+        ...baseColumns(false),
+        { title: 'Действия', width: 160, fixed: 'right' as const, render: (_, r) => actionsArchived(r) },
+      ]}
+    />
+  );
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Планирование"
         title="Бэклог инициатив"
-        subtitle='Все задачи категории «Инициативы и RFA» (авто-синк из Jira) + ручные идеи · drag-n-drop для приоритета'
+        subtitle='Активные кандидаты — в основной вкладке; задачи в работе и архив — в отдельных'
         actions={
           <Space>
             <Button
@@ -183,190 +439,31 @@ export default function BacklogPage() {
         onClose={() => { setLinkOpen(false); setLinkTarget(null); }}
       />
 
-      <DndContext collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
-        <SortableContext items={sorted?.map((i) => i.id) ?? []} strategy={verticalListSortingStrategy}>
-          <Table<BacklogItemResponse>
-            dataSource={sorted}
-            rowKey="id"
-            loading={isLoading}
-            pagination={false}
-            size="small"
-            scroll={{ x: 1200 }}
-            components={{ body: { row: SortableRow } }}
-            columns={[
-              {
-                title: '', width: 32, fixed: 'left',
-                render: (_, r) => <DragHandle id={r.id} />,
-              },
-              {
-                title: 'Prio', dataIndex: 'priority', width: 70, fixed: 'left',
-                render: (v: number | null, r) => (
-                  <InputNumber
-                    size="small"
-                    min={1}
-                    value={v ?? undefined}
-                    variant="borderless"
-                    style={{ width: 55 }}
-                    onBlur={(e) => {
-                      const raw = e.currentTarget.value.trim();
-                      const next = raw === '' ? null : Number(raw);
-                      if (next === v) return;
-                      patch(r.id, { priority: next as number });
-                    }}
-                  />
-                ),
-              },
-              {
-                title: 'Идея', dataIndex: 'title',
-                render: (v: string, r) => (
-                  <Space direction="vertical" size={0}>
-                    <Typography.Text strong>{v}</Typography.Text>
-                    {r.jira_key && (
-                      jiraBaseUrl
-                        ? (
-                          <Typography.Link
-                            href={`${jiraBaseUrl}/browse/${r.jira_key}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ fontSize: 12 }}
-                          >
-                            {r.jira_key}
-                          </Typography.Link>
-                        )
-                        : <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.jira_key}</Typography.Text>
-                    )}
-                  </Space>
-                ),
-              },
-              { title: 'АН ч', dataIndex: 'estimate_analyst_hours', width: 80,
-                render: renderRoleEstimate('estimate_analyst_hours') },
-              { title: 'ПР ч', dataIndex: 'estimate_dev_hours', width: 80,
-                render: renderRoleEstimate('estimate_dev_hours') },
-              { title: 'ТС ч', dataIndex: 'estimate_qa_hours', width: 80,
-                render: renderRoleEstimate('estimate_qa_hours') },
-              { title: 'ОПЭ ч', dataIndex: 'estimate_opo_hours', width: 80,
-                render: renderRoleEstimate('estimate_opo_hours') },
-              {
-                title: 'ОПЭ→АН', dataIndex: 'opo_analyst_ratio', width: 90,
-                render: (v: number | null, r) => (
-                  <Tooltip title="Какая часть часов ОПЭ идёт на аналитика (остальное — на ПР)">
-                    <InputNumber
-                      size="small"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={v ?? 0.5}
-                      variant="borderless"
-                      style={{ width: 75 }}
-                      onBlur={(e) => {
-                        const raw = e.currentTarget.value.trim();
-                        const next = raw === '' ? null : Number(raw);
-                        if (next === v) return;
-                        patch(r.id, { opo_analyst_ratio: next as number });
-                      }}
-                    />
-                  </Tooltip>
-                ),
-              },
-              {
-                title: 'Impact', dataIndex: 'impact', width: 110,
-                render: (v: BacklogImpactRisk | null, r) => {
-                  if (r.issue_id) {
-                    return v ? <Tag color={IMPACT_RISK_COLOR[v]}>{IMPACT_RISK_LABEL[v]}</Tag> : <span>—</span>;
-                  }
-                  return (
-                    <Select
-                      size="small"
-                      allowClear
-                      variant="borderless"
-                      value={v ?? undefined}
-                      style={{ width: 100 }}
-                      options={IMPACT_RISK_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                      onChange={(next) => patch(r.id, { impact: next as BacklogImpactRisk })}
-                    />
-                  );
-                },
-              },
-              {
-                title: 'Risk', dataIndex: 'risk', width: 110,
-                render: (v: BacklogImpactRisk | null, r) => {
-                  if (r.issue_id) {
-                    return v ? <Tag color={IMPACT_RISK_COLOR[v]}>{IMPACT_RISK_LABEL[v]}</Tag> : <span>—</span>;
-                  }
-                  return (
-                    <Select
-                      size="small"
-                      allowClear
-                      variant="borderless"
-                      value={v ?? undefined}
-                      style={{ width: 100 }}
-                      options={IMPACT_RISK_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                      onChange={(next) => patch(r.id, { risk: next as BacklogImpactRisk })}
-                    />
-                  );
-                },
-              },
-              {
-                title: 'Проект', dataIndex: 'project_id', width: 110,
-                render: (id: string | null) => {
-                  if (!id) return <span>—</span>;
-                  const p = projectMap.get(id);
-                  return p ? <Tooltip title={p.name}><span>{p.key}</span></Tooltip> : id;
-                },
-              },
-              {
-                title: 'Действия', width: 170, fixed: 'right',
-                render: (_, r) => (
-                  <Space size={4}>
-                    {r.issue_id ? (
-                      <Popconfirm
-                        title="Отвязать от Jira?"
-                        description="Идея останется в бэклоге, но потеряет связь с задачей."
-                        onConfirm={() => unlink.mutate(r.id, {
-                          onSuccess: () => notification.success({ title: 'Отвязано' }),
-                          onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
-                        })}
-                      >
-                        <Tooltip title="Отвязать от Jira">
-                          <Button icon={<DisconnectOutlined />} size="small" />
-                        </Tooltip>
-                      </Popconfirm>
-                    ) : (
-                      <>
-                        <Tooltip title="Связать с Jira">
-                          <Button icon={<LinkOutlined />} size="small" onClick={() => openLink(r)} />
-                        </Tooltip>
-                        <Tooltip title="Редактировать">
-                          <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
-                        </Tooltip>
-                      </>
-                    )}
-                    <Popconfirm
-                      title="Удалить идею?"
-                      description="Элемент будет убран из всех черновиков сценариев."
-                      onConfirm={() => del.mutate(r.id, {
-                        onSuccess: (res) => {
-                          if (res.affected_scenarios.length > 0) {
-                            notification.success({
-                              title: 'Удалено',
-                              description:
-                                `Убрано из ${res.affected_scenarios.length} сценариев: ` +
-                                res.affected_scenarios.map((s) => s.name).join(', '),
-                            });
-                          }
-                        },
-                        onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
-                      })}
-                    >
-                      <Button icon={<DeleteOutlined />} size="small" danger />
-                    </Popconfirm>
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        </SortableContext>
-      </DndContext>
+      <Tabs
+        activeKey={view}
+        onChange={(k) => {
+          const next = new URLSearchParams(searchParams);
+          next.set('view', k);
+          setSearchParams(next, { replace: true });
+        }}
+        items={[
+          {
+            key: 'active',
+            label: `Активные (${activeRows?.length ?? 0})`,
+            children: activeTable,
+          },
+          {
+            key: 'in_work',
+            label: `В работе (${inWorkRows?.length ?? 0})`,
+            children: inWorkTable,
+          },
+          {
+            key: 'archived',
+            label: `Архив (${archivedRows?.length ?? 0})`,
+            children: archivedTable,
+          },
+        ]}
+      />
     </Space>
   );
 }
