@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
-  App, Button, InputNumber, Popconfirm, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
+  App, Button, InputNumber, Popconfirm, Popover, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
   DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
@@ -23,6 +23,10 @@ import {
 } from '../hooks/useBacklog';
 import { useJiraSettings } from '../hooks/useSettings';
 import { useEmployees } from '../hooks/useCapacity';
+import { useRoles } from '../hooks/useRoles';
+import { getRoleColor } from '../utils/roles';
+import { OPO_COLOR } from '../utils/opo';
+import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import type {
   BacklogItemResponse, BacklogImpactRisk, BacklogView,
 } from '../types/api';
@@ -111,6 +115,7 @@ export default function BacklogPage() {
   const archivedRows = useMemo(() => sortByPriority(archived.data), [archived.data]);
 
   const { data: employees = [] } = useEmployees();
+  const { data: roles = [] } = useRoles();
   const activeEmployees = useMemo(
     () => employees.filter((e) => e.is_active),
     [employees],
@@ -164,28 +169,6 @@ export default function BacklogPage() {
       onError: (e) =>
         notification.error({ title: 'Ошибка', description: (e as Error).message }),
     });
-  };
-
-  const renderRoleEstimate = (
-    field: 'estimate_analyst_hours' | 'estimate_dev_hours' | 'estimate_qa_hours' | 'estimate_opo_hours',
-    editable: boolean,
-  ) => (v: number | null, r: BacklogItemResponse) => {
-    if (!editable || r.issue_id) return <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>;
-    return (
-      <InputNumber
-        size="small"
-        min={0}
-        value={v ?? undefined}
-        variant="borderless"
-        style={{ width: 70 }}
-        onBlur={(e) => {
-          const raw = e.currentTarget.value.trim();
-          const next = raw === '' ? null : Number(raw);
-          if (next === v) return;
-          patch(r.id, { [field]: next as number } as Parameters<typeof update.mutate>[0]['data']);
-        }}
-      />
-    );
   };
 
   const renderImpactRisk = (field: 'impact' | 'risk', editable: boolean) =>
@@ -334,14 +317,69 @@ export default function BacklogPage() {
         );
       },
     },
-    { title: 'АН ч', dataIndex: 'estimate_analyst_hours', width: 80,
-      render: renderRoleEstimate('estimate_analyst_hours', editable) },
-    { title: 'ПР ч', dataIndex: 'estimate_dev_hours', width: 80,
-      render: renderRoleEstimate('estimate_dev_hours', editable) },
-    { title: 'ТС ч', dataIndex: 'estimate_qa_hours', width: 80,
-      render: renderRoleEstimate('estimate_qa_hours', editable) },
-    { title: 'ОПЭ ч', dataIndex: 'estimate_opo_hours', width: 80,
-      render: renderRoleEstimate('estimate_opo_hours', editable) },
+    {
+      title: 'АН / ПР / ТС / ОПЭ',
+      key: 'roles',
+      width: 280,
+      render: (_: unknown, r: BacklogItemResponse) => {
+        const an = r.estimate_analyst_hours ?? 0;
+        const de = r.estimate_dev_hours ?? 0;
+        const qa = r.estimate_qa_hours ?? 0;
+        const op = r.estimate_opo_hours ?? 0;
+        const total = r.estimate_hours ?? an + de + qa + op;
+        const isEditable = editable && !r.issue_id;
+
+        const makeCell = (
+          label: string,
+          hours: number,
+          field: 'estimate_analyst_hours' | 'estimate_dev_hours' | 'estimate_qa_hours' | 'estimate_opo_hours',
+          color: string,
+        ) => {
+          const cell = <BacklogRoleCell label={label} hours={hours} total={total} color={color} />;
+          if (!isEditable) return cell;
+          return (
+            <Popover
+              key={field}
+              trigger="click"
+              content={
+                <InputNumber
+                  autoFocus
+                  min={0}
+                  defaultValue={hours || undefined}
+                  size="small"
+                  style={{ width: 100 }}
+                  onBlur={(e) => {
+                    const raw = e.currentTarget.value.trim();
+                    const next = raw === '' ? null : Number(raw);
+                    if (next !== hours) {
+                      patch(r.id, { [field]: next });
+                    }
+                  }}
+                  onPressEnter={(e) => {
+                    const raw = (e.target as HTMLInputElement).value.trim();
+                    const next = raw === '' ? null : Number(raw);
+                    if (next !== hours) {
+                      patch(r.id, { [field]: next });
+                    }
+                  }}
+                />
+              }
+            >
+              <span style={{ cursor: 'pointer' }}>{cell}</span>
+            </Popover>
+          );
+        };
+
+        return (
+          <div style={{ display: 'flex', gap: 4 }}>
+            {makeCell('АН', an, 'estimate_analyst_hours', getRoleColor(roles, 'analyst'))}
+            {makeCell('ПР', de, 'estimate_dev_hours', getRoleColor(roles, 'dev'))}
+            {makeCell('ТС', qa, 'estimate_qa_hours', getRoleColor(roles, 'qa'))}
+            {makeCell('ОПЭ', op, 'estimate_opo_hours', OPO_COLOR)}
+          </div>
+        );
+      },
+    },
     {
       title: 'ОПЭ→АН', dataIndex: 'opo_analyst_ratio', width: 90,
       render: (v: number | null, r: BacklogItemResponse) => {
