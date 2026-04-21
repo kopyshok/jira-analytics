@@ -3,10 +3,14 @@ import type {
   BacklogItemResponse,
   BacklogImpactRisk,
   BacklogRefreshResult,
+  BacklogView,
 } from '../types/api';
 
-export const getBacklogItems = (projectId?: string) =>
-  api.get<BacklogItemResponse[]>('/backlog', { project_id: projectId });
+export const getBacklogItems = (
+  view: BacklogView = 'active',
+  projectId?: string,
+) =>
+  api.get<BacklogItemResponse[]>('/backlog', { view, project_id: projectId });
 
 export const createBacklogItem = (data: {
   title: string;
@@ -52,3 +56,9 @@ export const unlinkJira = (id: string) =>
 
 export const refreshFromJira = () =>
   api.post<BacklogRefreshResult>(`/backlog/refresh-from-jira`);
+
+export const archiveBacklogItem = (id: string) =>
+  api.post<BacklogItemResponse>(`/backlog/${id}/archive`);
+
+export const restoreBacklogItem = (id: string) =>
+  api.post<BacklogItemResponse>(`/backlog/${id}/restore`);
