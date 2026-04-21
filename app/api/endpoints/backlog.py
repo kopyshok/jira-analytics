@@ -116,6 +116,24 @@ def _recompute_total(item: BacklogItem) -> None:
     item.estimate_hours = total or None
 
 
+def _approved_scenarios_for(db: Session, item_id: str) -> List[ScenarioRef]:
+    """Return approved scenarios that reference this backlog item.
+
+    Empty list if the item is not allocated to any approved scenario.
+    """
+    rows = (
+        db.query(PlanningScenario.id, PlanningScenario.name)
+        .join(ScenarioAllocation, ScenarioAllocation.scenario_id == PlanningScenario.id)
+        .filter(
+            ScenarioAllocation.backlog_item_id == item_id,
+            PlanningScenario.status == "approved",
+        )
+        .distinct()
+        .all()
+    )
+    return [ScenarioRef(id=i, name=n) for i, n in rows]
+
+
 def _to_response(
     item: BacklogItem,
     approved_scenarios: Optional[List[ScenarioRef]] = None,
@@ -358,7 +376,7 @@ async def get_backlog_item(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Backlog item not found")
-    return _to_response(item)
+    return _to_response(item, _approved_scenarios_for(db, item.id))
 
 
 @router.patch("/{item_id}", response_model=BacklogItemResponse)
@@ -379,14 +397,14 @@ async def update_backlog_item(
 
     patch = data.model_dump(exclude_unset=True)
     if not patch:
-        return _to_response(item)
+        return _to_response(item, _approved_scenarios_for(db, item.id))
 
     for key, value in patch.items():
         setattr(item, key, value)
     _recompute_total(item)
     db.commit()
     db.refresh(item)
-    return _to_response(item)
+    return _to_response(item, _approved_scenarios_for(db, item.id))
 
 
 @router.delete("/{item_id}")
@@ -512,7 +530,7 @@ async def link_jira(
         .filter(BacklogItem.id == item_id)
         .first()
     )
-    return _to_response(item)
+    return _to_response(item, _approved_scenarios_for(db, item.id))
 
 
 @router.post("/{item_id}/unlink-jira", response_model=BacklogItemResponse)
@@ -536,4 +554,4 @@ async def unlink_jira(
     item.issue_id = None
     db.commit()
     db.refresh(item)
-    return _to_response(item)
+    return _to_response(item, _approved_scenarios_for(db, item.id))

@@ -541,3 +541,31 @@ def test_get_backlog_default_view_is_active(db_session):
         assert ids == {"bv-a"}
     finally:
         app.dependency_overrides.clear()
+
+
+def test_get_backlog_item_includes_approved_scenarios(db_session):
+    """Single-item GET reflects approved-scenario membership."""
+    from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
+
+    item = BacklogItem(id="gs-1", title="in work via single get")
+    db_session.add(item)
+    db_session.add(PlanningScenario(
+        id="gs-scn", name="GS Approved", year=2026, quarter="Q2", status="approved",
+    ))
+    db_session.add(ScenarioAllocation(
+        id="gs-alloc", scenario_id="gs-scn", backlog_item_id=item.id,
+        planned_hours=5, included_flag=True,
+    ))
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get(f"/api/v1/backlog/{item.id}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["in_work"] is True
+        assert len(body["approved_scenarios"]) == 1
+        assert body["approved_scenarios"][0]["name"] == "GS Approved"
+    finally:
+        app.dependency_overrides.clear()
