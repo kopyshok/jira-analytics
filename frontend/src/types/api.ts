@@ -382,6 +382,13 @@ export interface QuarterCapacityResponse {
 
 export type BacklogImpactRisk = 'low' | 'medium' | 'high';
 
+export type BacklogView = 'active' | 'archived' | 'in_work';
+
+export interface BacklogItemScenarioRef {
+  id: string;
+  name: string;
+}
+
 export interface BacklogItemResponse {
   id: string;
   title: string;
@@ -397,12 +404,18 @@ export interface BacklogItemResponse {
   opo_analyst_ratio: number | null;
   impact: BacklogImpactRisk | null;
   risk: BacklogImpactRisk | null;
+  archived_at: string | null;
+  in_work: boolean;
+  approved_scenarios: BacklogItemScenarioRef[];
 }
 
 export interface BacklogRefreshResult {
   created: number;
   updated: number;
   removed: number;
+  archived: number;
+  restored: number;
+  jira_refreshed: number;
 }
 
 // === Planning ===
