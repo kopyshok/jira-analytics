@@ -49,6 +49,30 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
   // Пересчёт потребности по ролям при каждом изменении раскладок — O(n), <1ms
   const demand = useMemo(() => demandByRole(allocations), [allocations]);
 
+  // Потребность по конкретным сотрудникам — часы из included-раскладок
+  const demandByEmployee = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const alloc of allocations) {
+      if (!alloc.included || !alloc.assignee_employee_id) continue;
+      const emp = resourceBase?.employees.find(
+        (e) => e.employee_id === alloc.assignee_employee_id,
+      );
+      if (!emp?.role) continue;
+      const hours =
+        emp.role === 'analyst'
+          ? (alloc.estimate_analyst_hours ?? 0)
+          : emp.role === 'dev'
+            ? (alloc.estimate_dev_hours ?? 0)
+            : emp.role === 'qa'
+              ? (alloc.estimate_qa_hours ?? 0)
+              : emp.role === 'consultant'
+                ? (alloc.estimate_opo_hours ?? 0)
+                : 0;
+      result[alloc.assignee_employee_id] = (result[alloc.assignee_employee_id] ?? 0) + hours;
+    }
+    return result;
+  }, [allocations, resourceBase]);
+
   if (!resourceBase) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 16 }}>
@@ -268,19 +292,48 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
                     {Math.round(e.total_hours)} ч
                   </span>
                 </div>
-                {/* Simple capacity bar */}
-                <div
-                  style={{
-                    display: 'flex',
-                    height: 4,
-                    background: DARK_THEME.darkAccent,
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    marginTop: 4,
-                  }}
-                >
-                  <div style={{ width: '100%', background: roleColor, opacity: 0.4 }} />
-                </div>
+                {/* Demand / capacity bar */}
+                {(() => {
+                  const empDemand = demandByEmployee[e.employee_id] ?? 0;
+                  const empCapacity = e.total_hours;
+                  const pct = empCapacity > 0 ? Math.min((empDemand / empCapacity) * 100, 100) : 0;
+                  const over = empDemand > empCapacity && empCapacity > 0;
+                  return (
+                    <>
+                      <div
+                        style={{
+                          display: 'flex',
+                          height: 5,
+                          background: DARK_THEME.darkAccent,
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                          marginTop: 4,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${pct}%`,
+                            background: over ? DARK_THEME.amber : roleColor,
+                            transition: 'width 0.2s',
+                          }}
+                        />
+                      </div>
+                      {empDemand > 0 && (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: over ? DARK_THEME.amber : DARK_THEME.textDim,
+                            marginTop: 1,
+                            textAlign: 'right',
+                            fontFamily: FONTS.mono,
+                          }}
+                        >
+                          {Math.round(empDemand)} / {Math.round(empCapacity)} ч
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             );
           })}
