@@ -631,8 +631,8 @@ async def restore_backlog_item(
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "Linked Jira issue has a non-backlog category — change the "
-                    "category in Jira (CategoryConfigTab) first."
+                    "В Jira у задачи архивная категория — сначала смените категорию "
+                    "в Jira на вкладке «Категории задач»."
                 ),
             )
         item.archived_at = None
