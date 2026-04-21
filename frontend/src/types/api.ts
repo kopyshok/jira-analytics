@@ -382,7 +382,7 @@ export interface QuarterCapacityResponse {
 
 export type BacklogImpactRisk = 'low' | 'medium' | 'high';
 
-export type BacklogView = 'active' | 'archived' | 'in_work';
+export type BacklogView = 'active' | 'archived';
 
 export interface BacklogItemScenarioRef {
   id: string;
@@ -454,6 +454,29 @@ export interface ResourceBase {
   team: string;
   employees: ResourceEmployee[];
   role_totals: Record<string, number>;
+  external_qa_hours: number | null;
+}
+
+export interface WorkTypeRow {
+  work_type_id: string;
+  work_type_label: string;
+  subtracts_from_pool: boolean;
+  by_role: Record<string, number>;
+  by_role_pct: Record<string, number | null>;
+  total: number;
+}
+
+export interface ResourceSummaryOut {
+  year: number;
+  quarter: number;
+  team: string;
+  roles: string[];
+  role_employee_names: Record<string, string[]>;
+  total_by_role: Record<string, number>;
+  total: number;
+  work_type_rows: WorkTypeRow[];
+  available_for_backlog_by_role: Record<string, number>;
+  available_for_backlog_total: number;
   external_qa_hours: number | null;
 }
 
