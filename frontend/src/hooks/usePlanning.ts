@@ -150,11 +150,11 @@ export const usePatchAllocation = () => {
   });
 };
 
-export const useScenarioResource = (sid?: string) =>
+export const useScenarioResource = (sid?: string, enabled = true) =>
   useQuery({
     queryKey: ['planning', 'scenario', sid, 'resource'],
     queryFn: () => getScenarioResource(sid!),
-    enabled: !!sid,
+    enabled: !!sid && enabled,
     staleTime: 60_000,
   });
 

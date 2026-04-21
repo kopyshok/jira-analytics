@@ -97,8 +97,12 @@ export default function PlanningPage() {
     return m ? Number(m[1]) : 0;
   }, [scenario]);
 
-  // Ресурс команды — не зависит от конкретных включённых идей, грузится один раз
-  const { data: resourceBase } = useScenarioResource(scenarioId ?? undefined);
+  // Ресурс команды — не зависит от конкретных включённых идей, грузится один раз.
+  // Не дёргаем ручку пока у сценария не выбрана команда — иначе бэк вернёт 400.
+  const { data: resourceBase } = useScenarioResource(
+    scenarioId ?? undefined,
+    !!scenario?.team,
+  );
 
   const isDraft = scenario?.status === 'draft';
   const isApproved = scenario?.status === 'approved';
