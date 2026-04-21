@@ -16,7 +16,6 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
   const { data: roles = [] } = useRoles();
   const over = demand > capacity;
   const fillPct = capacity > 0 ? Math.min(100, (demand / capacity) * 100) : 0;
-  const overflowPct = over && capacity > 0 ? Math.min(40, ((demand - capacity) / capacity) * 100) : 0;
   const loadPct = capacity > 0 ? Math.round((demand / capacity) * 100) : 0;
   const roleColor = getRoleColor(roles, role);
 
