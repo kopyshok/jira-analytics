@@ -22,6 +22,7 @@ import {
   useUnlinkJira, useRefreshFromJira, useArchiveBacklogItem, useRestoreBacklogItem,
 } from '../hooks/useBacklog';
 import { useJiraSettings } from '../hooks/useSettings';
+import { useEmployees } from '../hooks/useCapacity';
 import type {
   BacklogItemResponse, BacklogImpactRisk, BacklogView,
 } from '../types/api';
@@ -108,6 +109,23 @@ export default function BacklogPage() {
 
   const activeRows = useMemo(() => sortByPriority(active.data), [active.data]);
   const archivedRows = useMemo(() => sortByPriority(archived.data), [archived.data]);
+
+  const { data: employees = [] } = useEmployees();
+  const activeEmployees = useMemo(
+    () => employees.filter((e) => e.is_active),
+    [employees],
+  );
+
+  const totalHoursAll = useMemo(
+    () => (activeRows ?? []).reduce((sum, r) => {
+      const an = r.estimate_analyst_hours ?? 0;
+      const de = r.estimate_dev_hours ?? 0;
+      const qa = r.estimate_qa_hours ?? 0;
+      const op = r.estimate_opo_hours ?? 0;
+      return sum + (r.estimate_hours ?? an + de + qa + op);
+    }, 0),
+    [activeRows],
+  );
 
   const handleDragEnd = useCallback(
     ({ active: draggingActive, over }: DragEndEvent) => {
@@ -233,6 +251,59 @@ export default function BacklogPage() {
       ),
     },
     {
+      title: 'Исполнитель',
+      key: 'assignee',
+      width: 140,
+      render: (_: unknown, r: BacklogItemResponse) => {
+        if (r.issue_id) {
+          return <span style={{ fontSize: 12, color: '#8faec8' }}>{r.assignee_display_name ?? '—'}</span>;
+        }
+        return (
+          <Select
+            size="small"
+            allowClear
+            variant="borderless"
+            value={r.assignee_employee_id ?? undefined}
+            style={{ width: '100%', fontSize: 12 }}
+            options={activeEmployees.map((e) => ({ label: e.display_name, value: e.id }))}
+            onChange={(val) => patch(r.id, { assignee_employee_id: val ?? null })}
+          />
+        );
+      },
+    },
+    {
+      title: 'Заказчик',
+      key: 'customer',
+      width: 120,
+      render: (_: unknown, r: BacklogItemResponse) => {
+        if (r.issue_id) {
+          return <span style={{ fontSize: 12, color: '#6b8fa8' }}>{r.customer ?? '—'}</span>;
+        }
+        return (
+          <input
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: '1px dashed #1e3a5f',
+              color: '#8faec8',
+              fontSize: 12,
+              padding: '2px 4px',
+              width: '100%',
+              outline: 'none',
+            }}
+            defaultValue={r.customer ?? ''}
+            placeholder="Заказчик…"
+            onBlur={(e) => {
+              const next = e.target.value.trim() || null;
+              if (next !== (r.customer ?? null)) {
+                patch(r.id, { customer: next });
+              }
+            }}
+          />
+        );
+      },
+    },
+    {
       title: 'Статус', dataIndex: 'jira_status', width: 150,
       sorter: (a: BacklogItemResponse, b: BacklogItemResponse) => {
         const ta = a.jira_status_changed_at ? new Date(a.jira_status_changed_at).getTime() : 0;
@@ -298,10 +369,34 @@ export default function BacklogPage() {
         );
       },
     },
+    {
+      title: 'Всего часов',
+      key: 'total_hours',
+      width: 90,
+      align: 'right' as const,
+      render: (_: unknown, r: BacklogItemResponse) => {
+        const an = r.estimate_analyst_hours ?? 0;
+        const de = r.estimate_dev_hours ?? 0;
+        const qa = r.estimate_qa_hours ?? 0;
+        const op = r.estimate_opo_hours ?? 0;
+        const total = r.estimate_hours ?? an + de + qa + op;
+        const pct = totalHoursAll > 0 ? Math.round((total / totalHoursAll) * 100) : 0;
+        return (
+          <div style={{ textAlign: 'right' }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: '#e8f4f8' }}>
+              {Math.round(total)} ч
+            </span>
+            {totalHoursAll > 0 && (
+              <div style={{ fontSize: 10, color: '#4a6a80', marginTop: 1 }}>
+                {pct}% ресурса
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
     { title: 'Impact', dataIndex: 'impact', width: 110,
       render: renderImpactRisk('impact', editable) },
-    { title: 'Risk', dataIndex: 'risk', width: 110,
-      render: renderImpactRisk('risk', editable) },
     {
       title: 'Проект', dataIndex: 'project_id', width: 110,
       render: (id: string | null) => {
