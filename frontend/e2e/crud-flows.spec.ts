@@ -261,3 +261,39 @@ test('planning — toggling a backlog checkbox updates role capacity panel', asy
     await request.delete(`${apiBaseUrl}/backlog/${createdItem.id}`);
   }
 });
+
+test('backlog: archive + restore move initiative between tabs', async ({ page, request }) => {
+  const createResponse = await request.post(`${apiBaseUrl}/backlog`, {
+    data: { title: 'E2E idea to archive', priority: 77 },
+  });
+  expect(createResponse.ok()).toBeTruthy();
+  const created = (await createResponse.json()) as { id: string };
+
+  try {
+    await page.goto('/backlog?view=active');
+    // AntD Tabs keep inactive tabpanels in the DOM — scope every text check to
+    // the currently visible tabpane so hidden copies don't leak into counts.
+    const visiblePanel = page.locator('.ant-tabs-tabpane-active');
+    await expectVisible(visiblePanel.getByText('E2E idea to archive'));
+
+    const activeRow = visiblePanel.getByRole('row').filter({ hasText: 'E2E idea to archive' });
+    await activeRow.locator('button:has([aria-label="inbox"])').click();
+    await confirmPopconfirm(page);
+
+    await expect(visiblePanel.getByText('E2E idea to archive')).toHaveCount(0, { timeout: 5000 });
+
+    await page.getByRole('tab', { name: /Архив/i }).click();
+    await expectVisible(visiblePanel.getByText('E2E idea to archive'));
+
+    const archivedRow = visiblePanel.getByRole('row').filter({ hasText: 'E2E idea to archive' });
+    await archivedRow.locator('button:has([aria-label="undo"])').click();
+    await confirmPopconfirm(page);
+
+    await expect(visiblePanel.getByText('E2E idea to archive')).toHaveCount(0, { timeout: 5000 });
+
+    await page.getByRole('tab', { name: /Активные/i }).click();
+    await expectVisible(visiblePanel.getByText('E2E idea to archive'));
+  } finally {
+    await request.delete(`${apiBaseUrl}/backlog/${created.id}`);
+  }
+});
