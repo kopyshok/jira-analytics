@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
-import { Card, Select, Skeleton, Tag } from 'antd';
+import React, { useMemo } from 'react';
+import { Card, Collapse, Select, Skeleton, Tag } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
-import { getRoleLabel, getRoleColor } from '../../utils/roles';
+import { getRoleColor } from '../../utils/roles';
 import type { AllocationResponse, ResourceBase, ResourceSummaryOut } from '../../types/api';
 import { demandByRole } from '../../utils/planning';
 import RoleCapacityBar from './RoleCapacityBar';
@@ -36,7 +36,131 @@ interface Props {
 /** Правая sticky-колонка /planning: карточки с ресурсом по ролям и сотрудникам.
  *  Ёмкость берётся из resourceBase (Task 24, /scenarios/:id/resource).
  *  Потребность считается на клиенте через demandByRole — мгновенно при клике. */
-export default function PlanningCapacityPanel({ resourceBase, allocations, quarter, scenarioId }: Props) {
+function ResourceBreakdownTable({ summary }: { summary: ResourceSummaryOut }) {
+  const roles = summary.roles;
+
+  const vacationByRole: Record<string, number> = {};
+  for (const role of roles) {
+    const cal = summary.calendar_gross_by_role[role] ?? 0;
+    const gross = summary.total_by_role[role] ?? 0;
+    vacationByRole[role] = Math.round(cal - gross);
+  }
+
+  const mandatoryByRole: Record<string, number> = {};
+  for (const role of roles) {
+    mandatoryByRole[role] = 0;
+  }
+  for (const row of summary.work_type_rows) {
+    if (!row.subtracts_from_pool) continue;
+    for (const role of roles) {
+      mandatoryByRole[role] = (mandatoryByRole[role] ?? 0) + Math.round(row.by_role[role] ?? 0);
+    }
+  }
+
+  const calTotal = Math.round(Object.values(summary.calendar_gross_by_role).reduce((s, v) => s + v, 0));
+  const vacTotal = Math.round(Object.values(vacationByRole).reduce((s, v) => s + v, 0));
+  const mandTotal = Math.round(Object.values(mandatoryByRole).reduce((s, v) => s + v, 0));
+  const availTotal = Math.round(summary.available_for_backlog_total);
+
+  const cellStyle: React.CSSProperties = {
+    padding: '4px 8px',
+    textAlign: 'right',
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: DARK_THEME.textSecondary,
+  };
+  const labelStyle: React.CSSProperties = {
+    padding: '4px 8px',
+    fontSize: 11,
+    color: DARK_THEME.textMuted,
+  };
+  const tableStyle: React.CSSProperties = {
+    width: '100%',
+    borderCollapse: 'collapse' as const,
+    fontSize: 12,
+  };
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <table style={tableStyle}>
+        <thead>
+          <tr>
+            <th style={{ ...labelStyle, textAlign: 'left' }} />
+            {roles.map((r) => (
+              <th key={r} style={{ ...cellStyle, fontSize: 10, color: DARK_THEME.textHint }}>
+                {r.slice(0, 2).toUpperCase()}
+              </th>
+            ))}
+            <th style={{ ...cellStyle, fontSize: 10, color: DARK_THEME.textHint }}>Итого</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={labelStyle}>Брутто</td>
+            {roles.map((r) => (
+              <td key={r} style={cellStyle}>{Math.round(summary.calendar_gross_by_role[r] ?? 0)}</td>
+            ))}
+            <td style={{ ...cellStyle, fontWeight: 600, color: DARK_THEME.textPrimary }}>{calTotal}</td>
+          </tr>
+          <tr>
+            <td style={{ ...labelStyle, color: DARK_THEME.textHint }}>− Отпуска</td>
+            {roles.map((r) => (
+              <td key={r} style={{ ...cellStyle, color: DARK_THEME.textHint }}>
+                {vacationByRole[r] > 0 ? `−${vacationByRole[r]}` : '—'}
+              </td>
+            ))}
+            <td style={{ ...cellStyle, color: DARK_THEME.textHint }}>{vacTotal > 0 ? `−${vacTotal}` : '—'}</td>
+          </tr>
+          <tr>
+            <td style={{ ...labelStyle, color: DARK_THEME.textHint }}>− Обяз. работы</td>
+            {roles.map((r) => (
+              <td key={r} style={{ ...cellStyle, color: DARK_THEME.textHint }}>
+                {mandatoryByRole[r] > 0 ? `−${mandatoryByRole[r]}` : '—'}
+              </td>
+            ))}
+            <td style={{ ...cellStyle, color: DARK_THEME.textHint }}>{mandTotal > 0 ? `−${mandTotal}` : '—'}</td>
+          </tr>
+          <tr style={{ borderTop: `1px solid ${DARK_THEME.border}` }}>
+            <td style={{ ...labelStyle, color: DARK_THEME.cyanPrimary, fontWeight: 600 }}>= Доступно</td>
+            {roles.map((r) => (
+              <td key={r} style={{ ...cellStyle, color: DARK_THEME.cyanPrimary, fontWeight: 600 }}>
+                {Math.round(summary.available_for_backlog_by_role[r] ?? 0)}
+              </td>
+            ))}
+            <td style={{ ...cellStyle, color: DARK_THEME.cyanPrimary, fontWeight: 700 }}>{availTotal}</td>
+          </tr>
+          <tr>
+            <td style={{ ...labelStyle, fontSize: 10 }} />
+            {roles.map((r) => (
+              <td key={r} style={{ ...cellStyle, fontSize: 10, color: DARK_THEME.textHint }}>
+                {(summary.role_employee_names[r] ?? []).length} чел.
+              </td>
+            ))}
+            <td />
+          </tr>
+        </tbody>
+      </table>
+
+      {summary.absence_days_by_employee.length > 0 && (
+        <div style={{ marginTop: 10, borderTop: `1px solid ${DARK_THEME.border}`, paddingTop: 8 }}>
+          <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Отпуска по сотрудникам
+          </div>
+          {summary.absence_days_by_employee.map((emp) => (
+            <div key={emp.employee_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: DARK_THEME.textMuted, marginBottom: 3 }}>
+              <span>{emp.display_name}</span>
+              <span style={{ fontFamily: FONTS.mono }}>
+                {emp.role ? emp.role.slice(0, 2).toUpperCase() : '—'} · {emp.days} дн
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function PlanningCapacityPanel({ resourceBase, summary, allocations, quarter, scenarioId }: Props) {
   const { data: roles = [] } = useRoles();
   const qc = useQueryClient();
   const setRoleMutation = useMutation({
@@ -106,7 +230,7 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
     (r) => r.counts_in_planning && !(CORE_ROLE_KEYS as readonly string[]).includes(r.code),
   );
 
-  const totalCapacity = CORE_ROLE_KEYS.reduce((s, r) => s + capacityByRole[r], 0);
+  const totalCapacity = Object.values(resourceBase.role_totals).reduce((s, v) => s + v, 0);
   const totalDemand = CORE_ROLE_KEYS.reduce((s, r) => s + (demand[r] ?? 0), 0);
   const overallOver = CORE_ROLE_KEYS.some(
     (r) => (demand[r] ?? 0) > capacityByRole[r] && capacityByRole[r] > 0,
@@ -194,6 +318,17 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
             }}
           />
         </div>
+        {summary && (
+          <Collapse
+            ghost
+            style={{ marginTop: 8 }}
+            items={[{
+              key: 'breakdown',
+              label: <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>Разбивка по ролям ↓</span>,
+              children: <ResourceBreakdownTable summary={summary} />,
+            }]}
+          />
+        )}
       </Card>
 
       {/* 2. Per-role */}

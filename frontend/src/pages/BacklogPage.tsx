@@ -77,10 +77,9 @@ export default function BacklogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get('view');
   const view: BacklogView =
-    rawView === 'archived' || rawView === 'in_work' ? rawView : 'active';
+    rawView === 'archived' ? rawView : 'active';
 
   const active = useBacklogItems('active');
-  const inWork = useBacklogItems('in_work');
   const archived = useBacklogItems('archived');
 
   const { data: projects } = useProjects();
@@ -108,7 +107,6 @@ export default function BacklogPage() {
     rows?.slice().sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
   const activeRows = useMemo(() => sortByPriority(active.data), [active.data]);
-  const inWorkRows = useMemo(() => sortByPriority(inWork.data), [inWork.data]);
   const archivedRows = useMemo(() => sortByPriority(archived.data), [archived.data]);
 
   const handleDragEnd = useCallback(
@@ -276,7 +274,7 @@ export default function BacklogPage() {
     {
       title: 'ОПЭ→АН', dataIndex: 'opo_analyst_ratio', width: 90,
       render: (v: number | null, r: BacklogItemResponse) => {
-        if (!editable || r.issue_id) {
+        if (!editable) {
           return <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>;
         }
         return (
@@ -403,15 +401,6 @@ export default function BacklogPage() {
     </Space>
   );
 
-  const scenariosColumn = {
-    title: 'Сценарий', dataIndex: 'approved_scenarios', width: 200,
-    render: (s: BacklogItemResponse['approved_scenarios']) => (
-      <Space size={4} wrap>
-        {s.map((x) => <Tag key={x.id} color="blue">{x.name}</Tag>)}
-      </Space>
-    ),
-  };
-
   const activeTable = (
     <DndContext
       collisionDetection={closestCenter}
@@ -435,21 +424,6 @@ export default function BacklogPage() {
         />
       </SortableContext>
     </DndContext>
-  );
-
-  const inWorkTable = (
-    <Table<BacklogItemResponse>
-      dataSource={inWorkRows}
-      rowKey="id"
-      loading={inWork.isLoading}
-      pagination={false}
-      size="small"
-      scroll={{ x: 1400 }}
-      columns={[
-        ...baseColumns(false),
-        scenariosColumn,
-      ]}
-    />
   );
 
   const archivedTable = (
@@ -512,11 +486,6 @@ export default function BacklogPage() {
             key: 'active',
             label: `Активные (${activeRows?.length ?? 0})`,
             children: activeTable,
-          },
-          {
-            key: 'in_work',
-            label: `В работе (${inWorkRows?.length ?? 0})`,
-            children: inWorkTable,
           },
           {
             key: 'archived',
