@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
-import { Card, Skeleton, Tag } from 'antd';
+import { Card, Select, Skeleton, Tag } from 'antd';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
 import type { AllocationResponse, ResourceBase } from '../../types/api';
 import { demandByRole } from '../../utils/planning';
 import RoleCapacityBar from './RoleCapacityBar';
+import { patchEmployee } from '../../api/employees';
 
 // Core planning roles contributing to backlog demand (analyst/dev/qa).
 // Informational roles (e.g. consultant — capacity only, no demand) pulled
@@ -26,13 +28,23 @@ interface Props {
   resourceBase: ResourceBase | undefined;
   allocations: AllocationResponse[];
   quarter: string;
+  scenarioId: string;
 }
 
 /** Правая sticky-колонка /planning: карточки с ресурсом по ролям и сотрудникам.
  *  Ёмкость берётся из resourceBase (Task 24, /scenarios/:id/resource).
  *  Потребность считается на клиенте через demandByRole — мгновенно при клике. */
-export default function PlanningCapacityPanel({ resourceBase, allocations, quarter }: Props) {
+export default function PlanningCapacityPanel({ resourceBase, allocations, quarter, scenarioId }: Props) {
   const { data: roles = [] } = useRoles();
+  const qc = useQueryClient();
+  const setRoleMutation = useMutation({
+    mutationFn: ({ employeeId, role }: { employeeId: string; role: string }) =>
+      patchEmployee(employeeId, { role }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', scenarioId, 'resource'] });
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
 
   // Пересчёт потребности по ролям при каждом изменении раскладок — O(n), <1ms
   const demand = useMemo(() => demandByRole(allocations), [allocations]);
@@ -231,9 +243,19 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
                       {e.display_name}
                     </span>
                     {!knownRole && (
-                      <span style={{ fontSize: 10, color: DARK_THEME.textDim }}>
-                        роль не задана
-                      </span>
+                      <Select
+                        size="small"
+                        placeholder="роль"
+                        style={{ width: 110, fontSize: 11 }}
+                        options={roles
+                          .filter((r) => r.is_active)
+                          .map((r) => ({ label: r.label, value: r.code }))}
+                        loading={setRoleMutation.isPending}
+                        onChange={(value: string) =>
+                          setRoleMutation.mutate({ employeeId: e.employee_id, role: value })
+                        }
+                        onClick={(ev) => ev.stopPropagation()}
+                      />
                     )}
                   </div>
                   <span

@@ -496,6 +496,7 @@ export default function PlanningPage() {
                 resourceBase={resourceBase}
                 allocations={allocations ?? []}
                 quarter={String(quarterInt)}
+                scenarioId={scenarioId}
               />
               <Card size="small" styles={{ body: { padding: 12 } }}>
                 <ExternalQaInput
