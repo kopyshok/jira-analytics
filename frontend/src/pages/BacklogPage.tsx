@@ -239,6 +239,33 @@ export default function BacklogPage() {
       render: renderRoleEstimate('estimate_qa_hours', editable) },
     { title: 'ОПЭ ч', dataIndex: 'estimate_opo_hours', width: 80,
       render: renderRoleEstimate('estimate_opo_hours', editable) },
+    {
+      title: 'ОПЭ→АН', dataIndex: 'opo_analyst_ratio', width: 90,
+      render: (v: number | null, r: BacklogItemResponse) => {
+        if (!editable || r.issue_id) {
+          return <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>;
+        }
+        return (
+          <Tooltip title="Какая часть часов ОПЭ идёт на аналитика (остальное — на ПР)">
+            <InputNumber
+              size="small"
+              min={0}
+              max={1}
+              step={0.05}
+              value={v ?? 0.5}
+              variant="borderless"
+              style={{ width: 75 }}
+              onBlur={(e) => {
+                const raw = e.currentTarget.value.trim();
+                const next = raw === '' ? null : Number(raw);
+                if (next === v) return;
+                patch(r.id, { opo_analyst_ratio: next as number });
+              }}
+            />
+          </Tooltip>
+        );
+      },
+    },
     { title: 'Impact', dataIndex: 'impact', width: 110,
       render: renderImpactRisk('impact', editable) },
     { title: 'Risk', dataIndex: 'risk', width: 110,
