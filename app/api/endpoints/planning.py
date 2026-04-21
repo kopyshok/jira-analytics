@@ -588,7 +588,7 @@ async def patch_allocation_assignee(
     if not alloc:
         raise HTTPException(status_code=404, detail="Allocation not found")
 
-    scenario = db.query(PlanningScenario).filter(PlanningScenario.id == scenario_id).first()
+    scenario = db.get(PlanningScenario, scenario_id)
     _require_draft(scenario)
 
     backlog_item = (
