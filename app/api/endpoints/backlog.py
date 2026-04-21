@@ -555,3 +555,52 @@ async def unlink_jira(
     db.commit()
     db.refresh(item)
     return _to_response(item, _approved_scenarios_for(db, item.id))
+
+
+@router.post("/{item_id}/archive", response_model=BacklogItemResponse)
+async def archive_backlog_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+):
+    """Архивировать инициативу — скрыть из активного бэклога.
+
+    422, если элемент в ≥1 утверждённом сценарии. Идемпотентно: повторный
+    вызов не меняет ``archived_at``.
+    """
+    item = (
+        db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue))
+        .filter(BacklogItem.id == item_id)
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Backlog item not found")
+
+    if item.archived_at is None:
+        blocking = (
+            db.query(PlanningScenario)
+            .join(ScenarioAllocation, ScenarioAllocation.scenario_id == PlanningScenario.id)
+            .filter(
+                ScenarioAllocation.backlog_item_id == item_id,
+                PlanningScenario.status == "approved",
+            )
+            .distinct()
+            .all()
+        )
+        if blocking:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": (
+                        "Initiative is allocated to an approved scenario — "
+                        "remove the allocation first."
+                    ),
+                    "blocking_scenarios": [
+                        {"id": s.id, "name": s.name} for s in blocking
+                    ],
+                },
+            )
+        item.archived_at = datetime.utcnow()
+        db.commit()
+        db.refresh(item)
+    return _to_response(item, _approved_scenarios_for(db, item.id))

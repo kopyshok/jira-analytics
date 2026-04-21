@@ -569,3 +569,81 @@ def test_get_backlog_item_includes_approved_scenarios(db_session):
         assert body["approved_scenarios"][0]["name"] == "GS Approved"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_archive_active_item_sets_archived_at(db_session):
+    from app.models import BacklogItem
+
+    item = BacklogItem(id="arch-1", title="to archive")
+    db_session.add(item)
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/archive")
+        assert r.status_code == 200, r.text
+        assert r.json()["archived_at"] is not None
+    finally:
+        app.dependency_overrides.clear()
+
+    db_session.refresh(item)
+    assert item.archived_at is not None
+
+
+def test_archive_in_work_item_returns_422(db_session):
+    from app.models import BacklogItem
+
+    item = BacklogItem(id="arch-iw", title="in work")
+    db_session.add(item)
+    _seed_scenario(db_session, "scn-iw-appr", "Approved Plan", "approved", item.id)
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/archive")
+        assert r.status_code == 422
+        detail = r.json()["detail"]
+        # Сообщение должно упомянуть имя блокирующего сценария.
+        assert "Approved Plan" in str(detail)
+    finally:
+        app.dependency_overrides.clear()
+
+    db_session.refresh(item)
+    assert item.archived_at is None
+
+
+def test_archive_already_archived_is_idempotent(db_session):
+    from app.models import BacklogItem
+    from datetime import datetime, timezone
+
+    item = BacklogItem(
+        id="arch-dup", title="already archived",
+        archived_at=datetime.now(timezone.utc),
+    )
+    db_session.add(item)
+    db_session.commit()
+    first_ts = item.archived_at
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/archive")
+        assert r.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+
+    db_session.refresh(item)
+    # No timestamp churn.
+    assert item.archived_at == first_ts
+
+
+def test_archive_unknown_returns_404(db_session):
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post("/api/v1/backlog/does-not-exist/archive")
+        assert r.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
