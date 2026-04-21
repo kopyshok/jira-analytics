@@ -21,6 +21,7 @@ const ROLE_SHORT_LOCAL: Record<string, string> = {
   dev: 'ПР',
   qa: 'ТС',
   consultant: 'КН',
+  project_manager: 'РП',
   other: 'ДР',
 };
 
@@ -226,7 +227,7 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
       <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
         <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
           {resourceBase.employees.map((e) => {
-            const knownRole = e.role && (CORE_ROLE_KEYS as readonly string[]).includes(e.role) ? e.role : null;
+            const knownRole = e.role && roles.some(r => r.code === e.role && r.is_active) ? e.role : null;
             const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
             const roleShort = knownRole
               ? (ROLE_SHORT_LOCAL[knownRole] ?? knownRole.slice(0, 2).toUpperCase())
