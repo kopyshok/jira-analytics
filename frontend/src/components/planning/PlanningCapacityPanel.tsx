@@ -28,32 +28,6 @@ interface Props {
   quarter: string;
 }
 
-function KpiRow({ k, v, neg, strong }: { k: string; v: string; neg?: boolean; strong?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-      <span
-        style={{
-          color: strong ? DARK_THEME.textPrimary : DARK_THEME.textMuted,
-          fontSize: 12,
-          fontWeight: strong ? 600 : 400,
-        }}
-      >
-        {k}
-      </span>
-      <span
-        style={{
-          color: neg ? DARK_THEME.amber : strong ? DARK_THEME.cyanPrimary : DARK_THEME.textSecondary,
-          fontFamily: FONTS.mono,
-          fontSize: 12,
-          fontWeight: strong ? 600 : 400,
-        }}
-      >
-        {v}
-      </span>
-    </div>
-  );
-}
-
 /** Правая sticky-колонка /planning: карточки с ресурсом по ролям и сотрудникам.
  *  Ёмкость берётся из resourceBase (Task 24, /scenarios/:id/resource).
  *  Потребность считается на клиенте через demandByRole — мгновенно при клике. */
@@ -293,40 +267,6 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
               Нет сотрудников в команде.
             </div>
           )}
-        </div>
-      </Card>
-
-      {/* 4. Ёмкость по ролям — сводка */}
-      <Card title="Ёмкость по ролям" styles={{ body: { padding: 0 } }}>
-        <div
-          style={{
-            padding: '10px 14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            fontSize: 12,
-          }}
-        >
-          {CORE_ROLE_KEYS.map((r) => {
-            const cap = capacityByRole[r];
-            const dem = demand[r] ?? 0;
-            return (
-              <KpiRow
-                key={r}
-                k={`${getRoleLabel(roles, r)} · ${resourceBase.employees.filter((e) => e.role === r).length} чел`}
-                v={`${Math.round(dem)} / ${Math.round(cap)} ч`}
-                neg={dem > cap && cap > 0}
-                strong={false}
-              />
-            );
-          })}
-          <div style={{ borderTop: `1px solid ${DARK_THEME.border}`, paddingTop: 8, marginTop: 2 }}>
-            <KpiRow
-              k="Итого доступно для бэклога"
-              v={`${Math.round(totalCapacity)} ч`}
-              strong
-            />
-          </div>
         </div>
       </Card>
     </div>
