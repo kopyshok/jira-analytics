@@ -98,7 +98,7 @@ def test_resource_summary_basic(client, db_session):
     ))
     db_session.commit()
 
-    resp = client.get(f"/api/v1/scenarios/{sc.id}/resource-summary")
+    resp = client.get(f"/api/v1/planning/scenarios/{sc.id}/resource-summary")
     assert resp.status_code == 200
     data = resp.json()
     assert "analyst" in data["roles"]
