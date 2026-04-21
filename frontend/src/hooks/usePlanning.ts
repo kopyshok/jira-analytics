@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { App } from 'antd';
+import { api } from '../api/client';
 import {
   getScenarios,
   getScenario,
@@ -15,7 +16,7 @@ import {
   getScenarioRules,
   putScenarioRules,
 } from '../api/planning';
-import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput } from '../types/api';
+import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
   useQuery({
@@ -157,6 +158,42 @@ export const useScenarioResource = (sid?: string, enabled = true) =>
     enabled: !!sid && enabled,
     staleTime: 60_000,
   });
+
+export function useScenarioResourceSummary(
+  scenarioId: string | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['scenario-resource-summary', scenarioId],
+    queryFn: () =>
+      api.get<ResourceSummaryOut>(`/planning/scenarios/${scenarioId}/resource-summary`),
+    enabled: enabled && !!scenarioId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCopyRulesFromTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      scenarioId,
+      year,
+      quarter,
+    }: {
+      scenarioId: string;
+      year: number;
+      quarter: number;
+    }) =>
+      api.post(
+        `/planning/scenarios/${scenarioId}/copy-rules-from-template?year=${year}&quarter=${quarter}`,
+        {},
+      ),
+    onSuccess: (_data, { scenarioId }) => {
+      qc.invalidateQueries({ queryKey: ['scenario-rules', scenarioId] });
+      qc.invalidateQueries({ queryKey: ['scenario-resource-summary', scenarioId] });
+    },
+  });
+}
 
 export const useScenarioRules = (sid?: string) =>
   useQuery({
