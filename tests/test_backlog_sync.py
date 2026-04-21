@@ -121,24 +121,29 @@ def test_sync_preserves_local_fields(db_session, proj):
     assert item.opo_analyst_ratio == 0.7
 
 
-def test_sync_deletes_item_when_category_changes_away(db_session, proj):
+def test_sync_archives_item_when_category_leaves_backlog(db_session, proj):
+    """Категория ушла с initiatives_rfa → archived_at проставлен, issue_id жив."""
     from app.services.backlog_service import BacklogService
+    from app.models import BacklogItem
 
     issue = _make_issue(db_session, proj, "RFA-4", "initiatives_rfa")
     svc = BacklogService(db_session)
     svc.sync_from_issue(issue)
     db_session.commit()
-    assert db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 1
 
     issue.category = "development"
     db_session.commit()
     svc.sync_from_issue(issue)
     db_session.commit()
-    assert db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0
+
+    item = db_session.query(BacklogItem).filter_by(issue_id=issue.id).one()
+    assert item.archived_at is not None
+    assert item.issue_id == issue.id  # link preserved
 
 
-def test_sync_soft_unlinks_item_referenced_in_scenario(db_session, proj):
-    from app.models import PlanningScenario, ScenarioAllocation
+def test_sync_archives_item_referenced_in_scenario(db_session, proj):
+    """Архивная категория + allocation → archived_at, allocation не трогаем."""
+    from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
     from app.services.backlog_service import BacklogService
 
     issue = _make_issue(db_session, proj, "RFA-5", "initiatives_rfa")
@@ -150,22 +155,50 @@ def test_sync_soft_unlinks_item_referenced_in_scenario(db_session, proj):
     db_session.add(scenario)
     db_session.add(
         ScenarioAllocation(
-            id="a1",
-            scenario_id=scenario.id,
-            backlog_item_id=item.id,
-            included_flag=True,
-            planned_hours=0,
+            id="a1", scenario_id=scenario.id, backlog_item_id=item.id,
+            included_flag=True, planned_hours=0,
         )
     )
     db_session.commit()
 
-    issue.category = None
+    issue.category = "archive"
+    db_session.commit()
+    svc.sync_from_issue(issue)
+    db_session.commit()
+
+    db_session.refresh(item)
+    assert item.archived_at is not None
+    assert item.issue_id == issue.id
+    # Allocation intact.
+    assert (
+        db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count()
+        == 1
+    )
+
+
+def test_sync_restores_item_when_category_returns(db_session, proj):
+    """Категория снова initiatives_rfa → archived_at обнуляется."""
+    from app.services.backlog_service import BacklogService
+    from app.models import BacklogItem
+
+    issue = _make_issue(db_session, proj, "RFA-R", "initiatives_rfa")
+    svc = BacklogService(db_session)
+    svc.sync_from_issue(issue)
+    db_session.commit()
+
+    issue.category = "archive"
+    db_session.commit()
+    svc.sync_from_issue(issue)
+    db_session.commit()
+    item = db_session.query(BacklogItem).filter_by(issue_id=issue.id).one()
+    assert item.archived_at is not None
+
+    issue.category = "initiatives_rfa"
     db_session.commit()
     svc.sync_from_issue(issue)
     db_session.commit()
     db_session.refresh(item)
-    assert item.issue_id is None
-    assert item.id is not None  # not deleted
+    assert item.archived_at is None
 
 
 def test_sync_ignores_issue_without_backlog_category(db_session, proj):
