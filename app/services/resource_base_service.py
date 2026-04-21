@@ -295,13 +295,10 @@ class ResourceBaseService:
                 return cal_overrides[d]
             return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
 
-        # --- виды обязательных работ (subtracts_from_pool=True) ---
+        # --- виды обязательных работ (все активные) ---
         work_types = (
             self.db.query(MandatoryWorkType)
-            .filter(
-                MandatoryWorkType.subtracts_from_pool == True,  # noqa: E712
-                MandatoryWorkType.is_active == True,            # noqa: E712
-            )
+            .filter(MandatoryWorkType.is_active == True)  # noqa: E712
             .order_by(MandatoryWorkType.sort_order.asc().nullsfirst())
             .all()
         )
@@ -395,22 +392,27 @@ class ResourceBaseService:
                 h = round(gross_by_role.get(role, 0.0) * (pct or 0.0) / 100.0, 2)
                 hours_by_role[role] = h
                 total_wt += h
-            wt_rows.append(
-                WorkTypeSummaryRow(
-                    work_type_id=wt.id,
-                    work_type_label=wt.label,
-                    hours_by_role=hours_by_role,
-                    pct_by_role=pct_by_role,
-                    total_hours=round(total_wt, 2),
-                    subtracts_from_pool=wt.subtracts_from_pool,
+            if total_wt > 0 or any(v is not None for v in pct_by_role.values()):
+                wt_rows.append(
+                    WorkTypeSummaryRow(
+                        work_type_id=wt.id,
+                        work_type_label=wt.label,
+                        hours_by_role=hours_by_role,
+                        pct_by_role=pct_by_role,
+                        total_hours=round(total_wt, 2),
+                        subtracts_from_pool=wt.subtracts_from_pool,
+                    )
                 )
-            )
 
-        # --- доступные часы = валовые − обязательные ---
+        # --- доступные часы = валовые − обязательные (только subtracts_from_pool=True) ---
         available_by_role: dict[str, float] = {}
         for role in roles_ordered:
             gross = gross_by_role.get(role, 0.0)
-            mandatory_total = sum(row.hours_by_role.get(role, 0.0) for row in wt_rows)
+            mandatory_total = sum(
+                row.hours_by_role.get(role, 0.0)
+                for row in wt_rows
+                if row.subtracts_from_pool
+            )
             available_by_role[role] = round(max(0.0, gross - mandatory_total), 2)
 
         # external_qa_hours переопределяет доступные часы для роли qa
