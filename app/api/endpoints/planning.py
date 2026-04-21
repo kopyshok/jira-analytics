@@ -16,7 +16,6 @@ Flow:
 Утверждённые сценарии редактировать нельзя (409) — сначала revert.
 """
 
-import uuid
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -404,7 +403,6 @@ async def copy_rules_from_template(
     for rcr in template_rules:
         db.add(
             ScenarioRule(
-                id=str(uuid.uuid4()),
                 scenario_id=scenario_id,
                 role=rcr.role,
                 work_type_id=rcr.work_type_id,
