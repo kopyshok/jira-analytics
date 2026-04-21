@@ -12,6 +12,7 @@ import ScenarioCreateModal from '../components/planning/ScenarioCreateModal';
 import ScenarioRulesEditor from '../components/planning/ScenarioRulesEditor';
 import ExternalQaInput from '../components/planning/ExternalQaInput';
 import ScenarioResourceSummary from '../components/planning/ScenarioResourceSummary';
+import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import {
   useScenarios,
   useScenario,
@@ -38,7 +39,7 @@ const IMPACT_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', 
 const RISK_COLORS: Record<BacklogImpactRisk, string> = { low: 'green', medium: 'default', high: 'warning' };
 const RISK_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', medium: 'средний', high: 'высокий' };
 
-const GRID = '40px 60px 1fr 200px 75px 100px 95px';
+const GRID = '40px 60px 1fr 280px 75px 100px 95px';
 
 export default function PlanningPage() {
   const { notification } = App.useApp();
@@ -417,33 +418,31 @@ export default function PlanningPage() {
                                     )
                                 )}
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div
-                                  style={{
-                                    display: 'flex',
-                                    height: 16,
-                                    width: 120,
-                                    borderRadius: 3,
-                                    overflow: 'hidden',
-                                    background: DARK_THEME.darkAccent,
-                                  }}
-                                >
-                                  {total > 0 && an > 0 && (
-                                    <div title={`Аналитик: ${an} ч`} style={{ width: `${(an / total) * 100}%`, background: getRoleColor(roles, 'analyst') }} />
-                                  )}
-                                  {total > 0 && de > 0 && (
-                                    <div title={`Программист: ${de} ч`} style={{ width: `${(de / total) * 100}%`, background: getRoleColor(roles, 'dev') }} />
-                                  )}
-                                  {total > 0 && qa > 0 && (
-                                    <div title={`Тестировщик: ${qa} ч`} style={{ width: `${(qa / total) * 100}%`, background: getRoleColor(roles, 'qa') }} />
-                                  )}
-                                  {total > 0 && op > 0 && (
-                                    <div title={`ОПЭ: ${op} ч`} style={{ width: `${(op / total) * 100}%`, background: OPO_COLOR }} />
-                                  )}
-                                </div>
-                                <div style={{ fontFamily: FONTS.mono, fontSize: 10, color: DARK_THEME.textHint, whiteSpace: 'nowrap' }}>
-                                  {an}/{de}/{qa}/{op}
-                                </div>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <BacklogRoleCell
+                                  label="АН"
+                                  hours={an}
+                                  total={total}
+                                  color={getRoleColor(roles, 'analyst')}
+                                />
+                                <BacklogRoleCell
+                                  label="ПР"
+                                  hours={de}
+                                  total={total}
+                                  color={getRoleColor(roles, 'dev')}
+                                />
+                                <BacklogRoleCell
+                                  label="ТС"
+                                  hours={qa}
+                                  total={total}
+                                  color={getRoleColor(roles, 'qa')}
+                                />
+                                <BacklogRoleCell
+                                  label="ОПЭ"
+                                  hours={op}
+                                  total={total}
+                                  color={OPO_COLOR}
+                                />
                               </div>
                               <span style={{ textAlign: 'right', fontFamily: FONTS.mono, fontSize: 13, color: DARK_THEME.textPrimary }}>
                                 {Math.round(total)} ч
