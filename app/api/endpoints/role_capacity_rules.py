@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import EMPLOYEE_ROLES, MandatoryWorkType, RoleCapacityRule
+from app.models import MandatoryWorkType, Role, RoleCapacityRule
 from app.services.capacity_service import CapacityService, RulesConflict
 
 router = APIRouter()
@@ -80,11 +80,14 @@ def save_batch(
     db: Session = Depends(get_db),
 ):
     # Validate roles + work_types.
+    valid_codes = {
+        r.code for r in db.query(Role).filter(Role.is_active.is_(True)).all()
+    }
     for r in req.rules:
-        if r.role is not None and r.role not in EMPLOYEE_ROLES:
+        if r.role is not None and r.role not in valid_codes:
             raise HTTPException(
                 status_code=422,
-                detail=f"Unknown role {r.role!r}. Allowed: {list(EMPLOYEE_ROLES) + [None]}",
+                detail=f"Unknown role {r.role!r}. Allowed: {sorted(valid_codes) + [None]}",
             )
     wt_ids = {r.work_type_id for r in req.rules}
     if wt_ids:

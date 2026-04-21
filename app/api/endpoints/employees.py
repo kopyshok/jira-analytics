@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Employee, EMPLOYEE_ROLES, EmployeeTeam
+from app.models import Employee, EmployeeTeam, Role
 from app.services.employee_team_service import EmployeeTeamService
 
 
@@ -33,7 +33,7 @@ class EmployeeResponse(BaseModel):
     email: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool
-    role: Optional[str] = None  # код роли из EMPLOYEE_ROLES
+    role: Optional[str] = None  # код роли из реестра `roles`
     team: Optional[str] = None  # legacy: имя primary team
     teams: Optional[List[EmployeeTeamItem]] = None  # присутствует только если with_teams=true
 
@@ -174,11 +174,15 @@ def patch_employee(
     data = req.model_dump(exclude_unset=True)
     if "role" in data:
         role = data["role"]
-        if role is not None and role not in EMPLOYEE_ROLES:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unknown role {role!r}. Allowed: {list(EMPLOYEE_ROLES)}",
-            )
+        if role is not None:
+            valid_codes = {
+                r.code for r in db.query(Role).filter(Role.is_active.is_(True)).all()
+            }
+            if role not in valid_codes:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown role {role!r}. Allowed: {sorted(valid_codes)}",
+                )
         emp.role = role
 
     # Snapshot before commit — see CLAUDE.md ORM caveat.

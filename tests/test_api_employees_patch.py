@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.main import app
 from app.database import Base, get_db
-from app.models import Employee
+from app.models import Employee, Role
 
 
 @pytest.fixture
@@ -40,6 +40,20 @@ def client(db_session):
         app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _seed_roles(db_session):
+    """Роли из миграции 025 — валидация PATCH/employees идёт по этой таблице."""
+    for code, label in [
+        ("analyst", "Аналитик"),
+        ("dev", "Программист"),
+        ("qa", "Тестировщик"),
+        ("consultant", "Консультант"),
+        ("other", "Другое"),
+    ]:
+        db_session.add(Role(code=code, label=label))
+    db_session.commit()
+
+
 @pytest.fixture
 def employee(db_session):
     e = Employee(id="emp1", jira_account_id="a1", display_name="Иванов",
@@ -66,6 +80,13 @@ def test_patch_role_clears_with_null(client, employee, db_session):
     assert res.json()["role"] is None
     db_session.refresh(employee)
     assert employee.role is None
+
+
+def test_patch_role_accepts_consultant(client, employee, db_session):
+    """Регрессия: 'consultant' заведён в миграции 025 и должен приниматься."""
+    res = client.patch(f"/api/v1/employees/{employee.id}", json={"role": "consultant"})
+    assert res.status_code == 200
+    assert res.json()["role"] == "consultant"
 
 
 def test_patch_role_rejects_unknown_value(client, employee):

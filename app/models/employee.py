@@ -12,14 +12,6 @@ from app.database import Base
 # circular imports; the actual model lives in app.models.employee_team.
 
 
-EMPLOYEE_ROLES: tuple[str, ...] = (
-    "analyst",
-    "dev",
-    "qa",
-    "other",
-)
-
-
 class Employee(Base, SyncedMixin):
     """Employee/Jira user model.
     
@@ -41,7 +33,7 @@ class Employee(Base, SyncedMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
     # Analytics fields (populated later)
-    role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # один из EMPLOYEE_ROLES
+    role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # код из реестра `roles`
     team: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 

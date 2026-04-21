@@ -16,6 +16,7 @@ from app.models import (
     Employee,
     EmployeeCapacityOverride,
     MandatoryWorkType,
+    Role,
     RoleCapacityRule,
 )
 
@@ -46,6 +47,20 @@ def client(db_session):
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _seed_roles(db_session):
+    """Роли из миграции 025 — валидация role-rules идёт по этой таблице."""
+    for code, label in [
+        ("analyst", "Аналитик"),
+        ("dev", "Программист"),
+        ("qa", "Тестировщик"),
+        ("consultant", "Консультант"),
+        ("other", "Другое"),
+    ]:
+        db_session.add(Role(code=code, label=label))
+    db_session.commit()
 
 
 @pytest.fixture
