@@ -464,3 +464,80 @@ def test_refresh_from_jira_reports_archived_and_restored(db_session):
         assert body["restored"] == 1
     finally:
         app.dependency_overrides.clear()
+
+
+def _seed_view_fixture(db):
+    from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
+    from datetime import datetime, timezone
+
+    active = BacklogItem(id="bv-a", title="active")
+    archived = BacklogItem(
+        id="bv-arch", title="archived", archived_at=datetime.now(timezone.utc)
+    )
+    in_work = BacklogItem(id="bv-iw", title="in-work")
+    db.add_all([active, archived, in_work])
+
+    db.add(PlanningScenario(id="bv-scn", name="Approved Q", year=2026, quarter="Q2", status="approved"))
+    db.add(ScenarioAllocation(
+        id="bv-alloc", scenario_id="bv-scn", backlog_item_id=in_work.id,
+        planned_hours=10, included_flag=True,
+    ))
+    db.commit()
+
+
+def test_get_backlog_view_active_excludes_archived_and_in_work(db_session):
+    _seed_view_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog?view=active")
+        assert r.status_code == 200
+        ids = {row["id"] for row in r.json()}
+        assert ids == {"bv-a"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_backlog_view_archived_returns_only_archived(db_session):
+    _seed_view_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog?view=archived")
+        assert r.status_code == 200
+        rows = r.json()
+        ids = {row["id"] for row in rows}
+        assert ids == {"bv-arch"}
+        assert rows[0]["archived_at"] is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_backlog_view_in_work_returns_only_in_work_with_scenarios(db_session):
+    _seed_view_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog?view=in_work")
+        assert r.status_code == 200
+        rows = r.json()
+        assert [row["id"] for row in rows] == ["bv-iw"]
+        assert rows[0]["in_work"] is True
+        scenarios = rows[0]["approved_scenarios"]
+        assert len(scenarios) == 1
+        assert scenarios[0]["name"] == "Approved Q"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_backlog_default_view_is_active(db_session):
+    _seed_view_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog")
+        assert r.status_code == 200
+        ids = {row["id"] for row in r.json()}
+        assert ids == {"bv-a"}
+    finally:
+        app.dependency_overrides.clear()

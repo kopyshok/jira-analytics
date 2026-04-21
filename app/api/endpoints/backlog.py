@@ -5,6 +5,7 @@
 """
 
 import asyncio
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -52,6 +53,11 @@ class BacklogItemUpdate(BaseModel):
     risk: Optional[str] = None
 
 
+class ScenarioRef(BaseModel):
+    id: str
+    name: str
+
+
 class BacklogItemResponse(BaseModel):
     id: str
     title: str
@@ -67,6 +73,9 @@ class BacklogItemResponse(BaseModel):
     opo_analyst_ratio: Optional[float] = None
     impact: Optional[str] = None
     risk: Optional[str] = None
+    archived_at: Optional[datetime] = None
+    in_work: bool = False
+    approved_scenarios: List[ScenarioRef] = []
 
     class Config:
         from_attributes = True
@@ -107,7 +116,11 @@ def _recompute_total(item: BacklogItem) -> None:
     item.estimate_hours = total or None
 
 
-def _to_response(item: BacklogItem) -> BacklogItemResponse:
+def _to_response(
+    item: BacklogItem,
+    approved_scenarios: Optional[List[ScenarioRef]] = None,
+) -> BacklogItemResponse:
+    scenarios = approved_scenarios or []
     return BacklogItemResponse(
         id=item.id,
         title=item.title,
@@ -123,6 +136,9 @@ def _to_response(item: BacklogItem) -> BacklogItemResponse:
         opo_analyst_ratio=item.opo_analyst_ratio,
         impact=item.impact,
         risk=item.risk,
+        archived_at=item.archived_at,
+        in_work=bool(scenarios),
+        approved_scenarios=scenarios,
     )
 
 
@@ -131,15 +147,35 @@ def _to_response(item: BacklogItem) -> BacklogItemResponse:
 @router.get("", response_model=List[BacklogItemResponse])
 async def list_backlog_items(
     project_id: Optional[str] = Query(None),
+    view: str = Query("active", pattern="^(active|archived|in_work)$"),
     db: Session = Depends(get_db),
 ):
-    """Список всех элементов бэклога (опционально фильтр по проекту).
+    """Список бэклога с фильтром по виду.
 
-    Сортировка: сначала по priority (nulls last), затем по title.
+    - ``active`` (default): не архивные и не в утверждённых сценариях.
+    - ``archived``: только ``archived_at IS NOT NULL``.
+    - ``in_work``: не архивные, есть ≥1 allocation в approved-сценарии;
+      каждый элемент получает список ссылок на эти сценарии.
     """
+    approved_alloc_ids = (
+        db.query(ScenarioAllocation.backlog_item_id)
+        .join(PlanningScenario, ScenarioAllocation.scenario_id == PlanningScenario.id)
+        .filter(PlanningScenario.status == "approved")
+        .distinct()
+    )
+
     query = db.query(BacklogItem).options(joinedload(BacklogItem.issue))
     if project_id is not None:
         query = query.filter(BacklogItem.project_id == project_id)
+
+    if view == "active":
+        query = query.filter(BacklogItem.archived_at.is_(None))
+        query = query.filter(~BacklogItem.id.in_(approved_alloc_ids))
+    elif view == "archived":
+        query = query.filter(BacklogItem.archived_at.isnot(None))
+    elif view == "in_work":
+        query = query.filter(BacklogItem.archived_at.is_(None))
+        query = query.filter(BacklogItem.id.in_(approved_alloc_ids))
 
     items = query.all()
     items.sort(
@@ -149,7 +185,24 @@ async def list_backlog_items(
             i.title or "",
         )
     )
-    return [_to_response(i) for i in items]
+
+    # For in_work, join back approved scenarios per item.
+    scenarios_by_item: dict[str, List[ScenarioRef]] = {}
+    if view == "in_work" and items:
+        item_ids = [i.id for i in items]
+        rows = (
+            db.query(ScenarioAllocation.backlog_item_id, PlanningScenario.id, PlanningScenario.name)
+            .join(PlanningScenario, ScenarioAllocation.scenario_id == PlanningScenario.id)
+            .filter(PlanningScenario.status == "approved")
+            .filter(ScenarioAllocation.backlog_item_id.in_(item_ids))
+            .all()
+        )
+        for bi_id, scn_id, scn_name in rows:
+            scenarios_by_item.setdefault(bi_id, []).append(
+                ScenarioRef(id=scn_id, name=scn_name)
+            )
+
+    return [_to_response(i, scenarios_by_item.get(i.id)) for i in items]
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)
