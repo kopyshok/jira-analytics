@@ -1,19 +1,11 @@
-"""Сервис расчёта доступной ёмкости сотрудников (v3).
+"""Сервис расчёта базовых ресурсов сотрудника на месяц/квартал.
 
-Формула:
-    effective_norm    = max(0, norm_hours − absence_hours)
-    productive_pct    = Σ правил для work_types, у которых есть хоть одна
-                        привязанная категория (Category.work_type_id = wt.id)
-    available_hours   = effective_norm × productive_pct / 100
-    mandatory_hours   = effective_norm − available_hours
+Формула (базовые ресурсы):
+    available_hours = max(0, часы_календаря − часы_отсутствий)
 
-Где ``mandatory_percent_breakdown`` резолвит процент per (employee, work_type) по
-приоритету: employee_capacity_overrides > role_capacity_rules[role=e.role] >
-role_capacity_rules[role=NULL] > 0.
-
-v3 отличие от v2: проценты теперь описывают 100 % времени; «продуктивные» виды
-работ вычитаются из нормы только косвенно (через долю НЕпродуктивных), а факт
-(ворклоги) группируется per work_type через Category.work_type_id.
+Распределение рабочего времени по видам работ (продуктивные / обязательные)
+к базовым ресурсам отношения не имеет — оно применяется отдельно внутри
+каждого сценария через его собственный набор правил (``scenario_rules``).
 """
 
 from calendar import monthrange
@@ -21,17 +13,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import (
-    Absence,
-    Employee,
-    EmployeeCapacityOverride,
-    MandatoryWorkType,
-    RoleCapacityRule,
-    Worklog,
-)
+from app.models import Absence, Employee, Worklog
 from app.services.production_calendar_service import ProductionCalendarService
 
 
@@ -81,16 +66,6 @@ class QuarterCapacity:
     total_available_hours: float = 0.0
     total_fact_hours: float = 0.0
     team: Optional[str] = None
-
-
-@dataclass
-class WorkTypeBreakdownRow:
-    work_type_id: Optional[str]
-    work_type_label: str
-    is_productive: bool
-    plan_hours: float
-    plan_pct: float
-    fact_hours: float
 
 
 class RulesConflict(Exception):
@@ -205,94 +180,6 @@ class CapacityService:
             total += self._norm_hours_in_range(overlap_start, overlap_end)
         return total
 
-    @staticmethod
-    def _quarter_of(month: int) -> int:
-        return (month - 1) // 3 + 1
-
-    def mandatory_percent_breakdown(
-        self,
-        employee: Employee,
-        year: int,
-        quarter: int,
-    ) -> dict[str, float]:
-        """Для каждого активного work_type — итоговый процент обязательной нагрузки.
-
-        Приоритет: employee_capacity_overrides > role_capacity_rules[role=e.role]
-        > role_capacity_rules[role=NULL] > 0.
-        """
-        wts = (
-            self.db.query(MandatoryWorkType)
-            .filter(MandatoryWorkType.is_active.is_(True))
-            .all()
-        )
-        if not wts:
-            return {}
-
-        overrides = {
-            o.work_type_id: o.percent_of_norm
-            for o in self.db.query(EmployeeCapacityOverride)
-            .filter(
-                EmployeeCapacityOverride.employee_id == employee.id,
-                EmployeeCapacityOverride.year == year,
-                EmployeeCapacityOverride.quarter == quarter,
-            )
-            .all()
-        }
-
-        role_filter = (
-            or_(
-                RoleCapacityRule.role == employee.role,
-                RoleCapacityRule.role.is_(None),
-            )
-            if employee.role is not None
-            else RoleCapacityRule.role.is_(None)
-        )
-        role_rules = (
-            self.db.query(RoleCapacityRule)
-            .filter(
-                RoleCapacityRule.year == year,
-                RoleCapacityRule.quarter == quarter,
-                role_filter,
-            )
-            .all()
-        )
-        by_wt_role: dict[str, float] = {}
-        by_wt_fallback: dict[str, float] = {}
-        for r in role_rules:
-            if r.role == employee.role and employee.role is not None:
-                by_wt_role[r.work_type_id] = r.percent_of_norm
-            elif r.role is None:
-                by_wt_fallback[r.work_type_id] = r.percent_of_norm
-
-        result: dict[str, float] = {}
-        for wt in wts:
-            if wt.id in overrides:
-                pct = overrides[wt.id]
-            elif wt.id in by_wt_role:
-                pct = by_wt_role[wt.id]
-            elif wt.id in by_wt_fallback:
-                pct = by_wt_fallback[wt.id]
-            else:
-                pct = 0.0
-            result[wt.code] = pct
-        return result
-
-    def _productive_work_type_ids(self) -> set[str]:
-        """IDs of work types that have at least one linked Category.
-
-        These are the ``productive`` work types — their rule percentages
-        contribute to ``available_hours`` (= productive share of norm).
-        """
-        from app.models import Category
-
-        rows = (
-            self.db.query(Category.work_type_id)
-            .filter(Category.work_type_id.is_not(None))
-            .distinct()
-            .all()
-        )
-        return {row[0] for row in rows}
-
     # === Основные расчёты ===
 
     def _get_employee(self, employee_id: str) -> Employee:
@@ -307,7 +194,12 @@ class CapacityService:
         year: int,
         month: int,
     ) -> MonthlyCapacity:
-        """Доступная ёмкость сотрудника за месяц (v3)."""
+        """Базовые ресурсы сотрудника за месяц.
+
+        План = норма по производственному календарю − часы отсутствий.
+        Распределение по видам работ (продуктивные/обязательные) применяется
+        отдельно внутри каждого сценария — здесь не учитывается.
+        """
         if not 1 <= month <= 12:
             raise ValueError(f"Month must be 1..12, got {month}")
 
@@ -319,23 +211,7 @@ class CapacityService:
             employee_id, year, month
         )
 
-        quarter = self._quarter_of(month)
-        breakdown = self.mandatory_percent_breakdown(employee, year, quarter)
-        productive_ids = self._productive_work_type_ids()
-
-        wt_id_by_code = {
-            w.code: w.id
-            for w in self.db.query(MandatoryWorkType).all()
-        }
-        productive_pct = sum(
-            pct
-            for code, pct in breakdown.items()
-            if wt_id_by_code.get(code) in productive_ids
-        )
-
-        effective_norm = max(0.0, norm_hours - absence_hours)
-        available = effective_norm * (productive_pct / 100.0)
-        mandatory_hours = effective_norm - available
+        available = max(0.0, norm_hours - absence_hours)
 
         month_start = date(year, month, 1)
         if month == 12:
@@ -363,7 +239,7 @@ class CapacityService:
             workdays=workdays,
             norm_hours=norm_hours,
             vacation_hours=absence_hours,
-            mandatory_hours=mandatory_hours,
+            mandatory_hours=0.0,
             available_hours=available,
             fact_hours=float(fact),
         )
@@ -408,15 +284,16 @@ class CapacityService:
     ) -> list[QuarterCapacity]:
         """Ёмкость по команде за квартал — batch-версия.
 
-        Всю зависимую data (календарь, отсутствия, правила, ворклоги)
-        читает одним набором запросов и считает in-memory, чтобы избежать
-        N+1 при 300+ сотрудниках.
+        Возвращает базовые ресурсы (норма по производственному календарю за вычетом
+        отсутствий). Распределение по видам работ применяется отдельно внутри
+        каждого сценария. Календарь, отсутствия и ворклоги читаются одним набором
+        запросов — чтобы избежать N+1 при 300+ сотрудниках.
         """
         if quarter not in QUARTER_MONTHS:
             raise ValueError(f"Quarter must be 1..4, got {quarter}")
 
         from sqlalchemy import extract
-        from app.models import Category, ProductionCalendarDay
+        from app.models import ProductionCalendarDay
 
         months = QUARTER_MONTHS[quarter]
         q_start = date(year, months[0], 1)
@@ -488,51 +365,7 @@ class CapacityService:
         for a in abs_rows:
             abs_by_emp.setdefault(a.employee_id, []).append(a)
 
-        # 4. Справочник видов работ + productive IDs.
-        wts = (
-            self.db.query(MandatoryWorkType)
-            .filter(MandatoryWorkType.is_active.is_(True))
-            .all()
-        )
-        productive_ids: set[str] = {
-            row[0]
-            for row in self.db.query(Category.work_type_id)
-            .filter(Category.work_type_id.is_not(None))
-            .distinct()
-            .all()
-        }
-
-        # 5. Правила per-role + overrides per-employee.
-        role_rule_rows = (
-            self.db.query(RoleCapacityRule)
-            .filter(
-                RoleCapacityRule.year == year,
-                RoleCapacityRule.quarter == quarter,
-            )
-            .all()
-        )
-        # {role (or None) -> {work_type_id -> pct}}
-        rules_by_role: dict[Optional[str], dict[str, float]] = {}
-        for r in role_rule_rows:
-            rules_by_role.setdefault(r.role, {})[r.work_type_id] = r.percent_of_norm
-        fallback_rules = rules_by_role.get(None, {})
-
-        override_rows = (
-            self.db.query(EmployeeCapacityOverride)
-            .filter(
-                EmployeeCapacityOverride.year == year,
-                EmployeeCapacityOverride.quarter == quarter,
-                EmployeeCapacityOverride.employee_id.in_(emp_ids),
-            )
-            .all()
-        )
-        overrides_by_emp: dict[str, dict[str, float]] = {}
-        for o in override_rows:
-            overrides_by_emp.setdefault(o.employee_id, {})[o.work_type_id] = (
-                o.percent_of_norm
-            )
-
-        # 6. Factt-часы per (employee, month) — одним SQL-агрегатом.
+        # 4. Факт-часы per (employee, month) — одним SQL-агрегатом.
         q_start_dt = datetime.combine(q_start, datetime.min.time())
         # Exclusive upper bound on next month after quarter end.
         if months[-1] == 12:
@@ -558,27 +391,9 @@ class CapacityService:
             (emp_id, int(m)): float(h) for emp_id, m, h in fact_rows
         }
 
-        # 7. Сборка результатов.
+        # 5. Сборка результатов.
         results: list[QuarterCapacity] = []
         for emp in employees:
-            emp_overrides = overrides_by_emp.get(emp.id, {})
-            role_rules_for_emp = (
-                rules_by_role.get(emp.role, {}) if emp.role else {}
-            )
-
-            productive_pct = 0.0
-            for wt in wts:
-                if wt.id in emp_overrides:
-                    pct = emp_overrides[wt.id]
-                elif wt.id in role_rules_for_emp:
-                    pct = role_rules_for_emp[wt.id]
-                elif wt.id in fallback_rules:
-                    pct = fallback_rules[wt.id]
-                else:
-                    pct = 0.0
-                if wt.id in productive_ids:
-                    productive_pct += pct
-
             qc = QuarterCapacity(
                 employee_id=emp.id,
                 employee_name=emp.display_name,
@@ -603,9 +418,7 @@ class CapacityService:
 
                 norm_hours = month_norm[m]
                 workdays = month_workdays[m]
-                effective_norm = max(0.0, norm_hours - absence_hours)
-                available = effective_norm * (productive_pct / 100.0)
-                mandatory = effective_norm - available
+                available = max(0.0, norm_hours - absence_hours)
                 fact = fact_map.get((emp.id, m), 0.0)
 
                 qc.months.append(
@@ -617,14 +430,13 @@ class CapacityService:
                         workdays=workdays,
                         norm_hours=norm_hours,
                         vacation_hours=absence_hours,
-                        mandatory_hours=mandatory,
+                        mandatory_hours=0.0,
                         available_hours=available,
                         fact_hours=fact,
                     )
                 )
                 qc.total_norm_hours += norm_hours
                 qc.total_vacation_hours += absence_hours
-                qc.total_mandatory_hours += mandatory
                 qc.total_available_hours += available
                 qc.total_fact_hours += fact
 

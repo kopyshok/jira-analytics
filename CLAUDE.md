@@ -96,19 +96,15 @@ Idempotently recalculates `category_mappings` table and the denormalized `Issue.
 Commits internally — tests must clean tables after each run (see conftest).
 
 ### CapacityService
-Formula (v3):
-- `effective_norm = max(0, norm_hours − absence_hours)`
-- `productive_percent = Σ percent_resolved(emp, wt) for wt in WORK_TYPES where wt has at least one linked Category (Category.work_type_id = wt.id)`
-- `available_hours = effective_norm × productive_percent / 100`
-- `mandatory_hours = effective_norm − available_hours`
-
-v3: правила описывают 100% времени; «продуктивные» виды работ = те, у которых есть хотя бы одна смэпленная категория; факт ворклогов группируется per work_type через `Category.work_type_id`.
+Базовые ресурсы сотрудника — единственная формула, возвращаемая сервисом:
+- `available_hours = max(0, norm_hours − absence_hours)`
+- `mandatory_hours = 0` (поле оставлено в ответе для обратной совместимости; распределение по видам работ применяется отдельно внутри каждого сценария через `scenario_rules`, к базовым ресурсам отношения не имеет)
 
 `norm_hours` = сумма `production_calendar_day.hours` за период (8ч будни, 7ч предпраздничные, 0 выходные/праздники), масштабируется на `hours_per_day / 8`. Если в БД на дату нет записи — фоллбэк на `hours_per_day` для Пн–Пт. Source: `ProductionCalendarService`.
 `absence_hours` = тот же расчёт по дням отпуска / болезни / других причин (`Absence.reason_id` → `absence_reasons`), перекрытие периода через `max(start, period_start)` / `min(end, period_end)`.
-`percent_resolved(employee, work_type)` резолвится по приоритету: `employee_capacity_overrides` > `role_capacity_rules(role=e.role)` > `role_capacity_rules(role=NULL)` (fallback) > 0. Квартальное правило равномерно распределяется по месяцам через норму (чем больше `norm_hours_month`, тем больше вычет).
 `fact_hours` — сумма `Worklog.hours` сотрудника за период; показывается отдельно и даёт plan/fact %.
 Quarter mapping: `QUARTER_MONTHS = {1:(1,2,3), 2:(4,5,6), 3:(7,8,9), 4:(10,11,12)}`.
+`role_capacity_rules` / `employee_capacity_overrides` / `mandatory_work_types.work_type_id` на `categories` остаются в схеме как шаблоны для создания новых сценариев — в расчёте Team tab не участвуют.
 
 ### ExportService
 `openpyxl` / `reportlab` / `pptx` are **lazily imported inside methods** so a missing library doesn't break module import.
