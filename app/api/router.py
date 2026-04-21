@@ -98,3 +98,19 @@ api_router.include_router(
     tags=["capacity-rules"],
 )
 api_router.include_router(roles_endpoints.router, prefix="/roles", tags=["roles"])
+
+# Top-level scenarios routes (resource endpoints)
+from app.api.endpoints.planning import ResourceSummaryOut, scenario_resource_summary
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import PlanningScenario
+from fastapi import HTTPException
+
+@api_router.get("/scenarios/{scenario_id}/resource-summary", response_model=ResourceSummaryOut)
+async def api_scenario_resource_summary(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """Разбивка ресурса команды: норма-часы → обязательные работы → доступно на бэклог."""
+    return await scenario_resource_summary(scenario_id, db)
