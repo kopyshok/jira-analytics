@@ -139,6 +139,28 @@ class ResourceBaseOut(BaseModel):
     external_qa_hours: Optional[float] = None
 
 
+class WorkTypeRowOut(BaseModel):
+    work_type_id: str
+    work_type_label: str
+    hours_by_role: Dict[str, float]
+    pct_by_role: Dict[str, Optional[float]]
+    total_hours: float
+
+
+class ResourceSummaryOut(BaseModel):
+    year: int
+    quarter: int
+    team: str
+    roles: List[str]
+    role_employee_names: Dict[str, List[str]]
+    gross_by_role: Dict[str, float]
+    gross_total: float
+    work_type_rows: List[WorkTypeRowOut]
+    available_by_role: Dict[str, float]
+    available_total: float
+    external_qa_hours: Optional[float] = None
+
+
 # === Helpers ===
 
 def _to_scenario_resp(s: PlanningScenario) -> ScenarioResponse:
@@ -286,58 +308,6 @@ async def create_scenario(
     db.commit()
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
-
-
-@router.get("/scenarios/{scenario_id}", response_model=ScenarioResponse)
-async def get_scenario(
-    scenario_id: str,
-    db: Session = Depends(get_db),
-):
-    """Получить сценарий по id."""
-    scenario = db.get(PlanningScenario, scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-    return _to_scenario_resp(scenario)
-
-
-@router.patch("/scenarios/{scenario_id}", response_model=ScenarioResponse)
-async def update_scenario(
-    scenario_id: str,
-    data: ScenarioUpdate,
-    db: Session = Depends(get_db),
-):
-    """Обновить сценарий: имя, команда, внешние часы QA (разрешено и для approved)."""
-    scenario = db.get(PlanningScenario, scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-    patch = data.model_dump(exclude_unset=True)
-    if "name" in patch:
-        scenario.name = patch["name"]
-    if "team" in patch:
-        scenario.team = patch["team"]
-    if "external_qa_hours" in patch:
-        scenario.external_qa_hours = patch["external_qa_hours"]
-    db.commit()
-    db.refresh(scenario)
-    return _to_scenario_resp(scenario)
-
-
-@router.delete("/scenarios/{scenario_id}")
-async def delete_scenario(
-    scenario_id: str,
-    db: Session = Depends(get_db),
-):
-    """Удалить сценарий вместе со всеми его раскладками."""
-    scenario = db.get(PlanningScenario, scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-
-    db.query(ScenarioAllocation).filter(
-        ScenarioAllocation.scenario_id == scenario_id
-    ).delete()
-    db.delete(scenario)
-    db.commit()
-    return {"status": "deleted", "id": scenario_id}
 
 
 @router.post("/scenarios/{scenario_id}/approve", response_model=ScenarioResponse)
@@ -566,3 +536,97 @@ async def scenario_resource(
         raise HTTPException(status_code=400, detail="Год/квартал у сценария не заданы")
     base = ResourceBaseService(db).compute(sc)
     return _resource_to_response(base)
+
+
+@router.get("/scenarios/{scenario_id}/resource-summary", response_model=ResourceSummaryOut)
+async def scenario_resource_summary(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """Разбивка ресурса команды: норма-часы → обязательные работы → доступно на бэклог."""
+    sc = db.get(PlanningScenario, scenario_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Сценарий не найден")
+    if not sc.team:
+        raise HTTPException(status_code=400, detail="Команда у сценария не выбрана")
+    if not sc.year or not sc.quarter:
+        raise HTTPException(status_code=400, detail="Год/квартал у сценария не заданы")
+
+    summary = ResourceBaseService(db).compute_summary(sc)
+    return ResourceSummaryOut(
+        year=summary.year,
+        quarter=summary.quarter,
+        team=summary.team,
+        roles=summary.roles,
+        role_employee_names=summary.role_employee_names,
+        gross_by_role=summary.gross_by_role,
+        gross_total=summary.gross_total,
+        work_type_rows=[
+            WorkTypeRowOut(
+                work_type_id=row.work_type_id,
+                work_type_label=row.work_type_label,
+                hours_by_role=row.hours_by_role,
+                pct_by_role=row.pct_by_role,
+                total_hours=row.total_hours,
+            )
+            for row in summary.work_type_rows
+        ],
+        available_by_role=summary.available_by_role,
+        available_total=summary.available_total,
+        external_qa_hours=summary.external_qa_hours,
+    )
+
+
+# === Generic scenario CRUD routes (must come last) ===
+
+
+@router.get("/scenarios/{scenario_id}", response_model=ScenarioResponse)
+async def get_scenario(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """Получить сценарий по id."""
+    scenario = db.get(PlanningScenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    return _to_scenario_resp(scenario)
+
+
+@router.patch("/scenarios/{scenario_id}", response_model=ScenarioResponse)
+async def update_scenario(
+    scenario_id: str,
+    data: ScenarioUpdate,
+    db: Session = Depends(get_db),
+):
+    """Обновить сценарий: имя, команда, внешние часы QA (разрешено и для approved)."""
+    scenario = db.get(PlanningScenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    patch = data.model_dump(exclude_unset=True)
+    if "name" in patch:
+        scenario.name = patch["name"]
+    if "team" in patch:
+        scenario.team = patch["team"]
+    if "external_qa_hours" in patch:
+        scenario.external_qa_hours = patch["external_qa_hours"]
+    db.commit()
+    db.refresh(scenario)
+    return _to_scenario_resp(scenario)
+
+
+@router.delete("/scenarios/{scenario_id}")
+async def delete_scenario(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """Удалить сценарий вместе со всеми его раскладками."""
+    scenario = db.get(PlanningScenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    db.query(ScenarioAllocation).filter(
+        ScenarioAllocation.scenario_id == scenario_id
+    ).delete()
+    db.delete(scenario)
+    db.commit()
+    return {"status": "deleted", "id": scenario_id}
