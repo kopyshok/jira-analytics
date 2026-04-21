@@ -114,6 +114,14 @@ class AllocationResponse(BaseModel):
     opo_analyst_ratio: Optional[float] = None
     impact: Optional[str] = None
     risk: Optional[str] = None
+    assignee_employee_id: Optional[str] = None
+    assignee_display_name: Optional[str] = None
+    customer: Optional[str] = None
+    cost_type: Optional[str] = None
+
+
+class AllocationAssigneePatch(BaseModel):
+    assignee_employee_id: Optional[str] = None
 
 
 # === Resource base schemas ===
@@ -197,6 +205,10 @@ def _to_allocation_resp(
         opo_analyst_ratio=item.opo_analyst_ratio,
         impact=item.impact,
         risk=item.risk,
+        assignee_employee_id=item.assignee_employee_id,
+        assignee_display_name=item.assignee.display_name if item.assignee else None,
+        customer=item.customer,
+        cost_type=item.cost_type,
     )
 
 
@@ -223,7 +235,9 @@ def _resource_to_response(base) -> ResourceBaseOut:
     )
 
 
-def _require_draft(scenario: PlanningScenario) -> None:
+def _require_draft(scenario: Optional[PlanningScenario]) -> None:
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
     if scenario.status != "draft":
         raise HTTPException(
             status_code=409,
@@ -484,7 +498,7 @@ async def list_scenario_allocations(
     rows = (
         db.query(ScenarioAllocation, BacklogItem)
         .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(ScenarioAllocation.scenario_id == scenario_id)
         .all()
     )
@@ -545,11 +559,64 @@ async def patch_allocation(
     # Re-load with issue join for response.
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(BacklogItem.id == alloc.backlog_item_id)
         .first()
     )
     return _to_allocation_resp(alloc, item)
+
+
+@router.patch(
+    "/scenarios/{scenario_id}/allocations/{alloc_id}/assignee",
+    response_model=AllocationResponse,
+)
+async def patch_allocation_assignee(
+    scenario_id: str,
+    alloc_id: str,
+    data: AllocationAssigneePatch,
+    db: Session = Depends(get_db),
+):
+    """Сменить исполнителя на конкретной идее в сценарии."""
+    alloc = (
+        db.query(ScenarioAllocation)
+        .filter(
+            ScenarioAllocation.id == alloc_id,
+            ScenarioAllocation.scenario_id == scenario_id,
+        )
+        .first()
+    )
+    if not alloc:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+
+    scenario = db.query(PlanningScenario).filter(PlanningScenario.id == scenario_id).first()
+    _require_draft(scenario)
+
+    backlog_item = (
+        db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .filter(BacklogItem.id == alloc.backlog_item_id)
+        .first()
+    )
+    if not backlog_item:
+        raise HTTPException(status_code=404, detail="BacklogItem not found")
+
+    if data.assignee_employee_id is not None:
+        emp = db.query(Employee).filter(Employee.id == data.assignee_employee_id).first()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        backlog_item.assignee_employee_id = data.assignee_employee_id
+    else:
+        backlog_item.assignee_employee_id = None
+
+    db.commit()
+    # Reload with relationships after commit.
+    backlog_item = (
+        db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .filter(BacklogItem.id == backlog_item.id)
+        .first()
+    )
+    return _to_allocation_resp(alloc, backlog_item)
 
 
 # === Scenario resource base ===
