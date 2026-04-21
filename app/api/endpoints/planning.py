@@ -16,6 +16,7 @@ Flow:
 Утверждённые сценарии редактировать нельзя (409) — сначала revert.
 """
 
+import uuid
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -372,6 +373,42 @@ async def replace_scenario_rules(
                 role=r.role,
                 work_type_id=r.work_type_id,
                 percent_of_norm=r.percent_of_norm,
+            )
+        )
+    db.commit()
+    return db.query(ScenarioRule).filter(ScenarioRule.scenario_id == scenario_id).all()
+
+
+@router.post(
+    "/scenarios/{scenario_id}/copy-rules-from-template",
+    response_model=List[ScenarioRuleOut],
+)
+async def copy_rules_from_template(
+    scenario_id: str,
+    year: int = Query(..., description="Год шаблона"),
+    quarter: int = Query(..., ge=1, le=4, description="Квартал шаблона"),
+    db: Session = Depends(get_db),
+):
+    """Заменить правила сценария шаблонными правилами role_capacity_rules за год/квартал."""
+    sc = db.get(PlanningScenario, scenario_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail="Сценарий не найден")
+    _require_draft(sc)
+
+    template_rules = (
+        db.query(RoleCapacityRule)
+        .filter(RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter)
+        .all()
+    )
+    db.query(ScenarioRule).filter(ScenarioRule.scenario_id == scenario_id).delete()
+    for rcr in template_rules:
+        db.add(
+            ScenarioRule(
+                id=str(uuid.uuid4()),
+                scenario_id=scenario_id,
+                role=rcr.role,
+                work_type_id=rcr.work_type_id,
+                percent_of_norm=rcr.percent_of_norm,
             )
         )
     db.commit()
