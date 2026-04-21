@@ -1,8 +1,9 @@
 """BacklogItem model - quarterly backlog items."""
 
+from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -56,6 +57,10 @@ class BacklogItem(Base, TimestampMixin):
     priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     impact: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     risk: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=False
+    )
 
     # Relationships
     project: Mapped[Optional["Project"]] = relationship(back_populates="backlog_items")
