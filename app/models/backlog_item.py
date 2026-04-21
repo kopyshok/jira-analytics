@@ -12,6 +12,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.issue import Issue
+    from app.models.employee import Employee
     from app.models.scenario_allocation import ScenarioAllocation
 
 
@@ -62,9 +63,22 @@ class BacklogItem(Base, TimestampMixin):
         DateTime, nullable=True, index=False
     )
 
+    assignee_employee_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("employees.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    customer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Relationships
     project: Mapped[Optional["Project"]] = relationship(back_populates="backlog_items")
     issue: Mapped[Optional["Issue"]] = relationship("Issue")
+    assignee: Mapped[Optional["Employee"]] = relationship(
+        "Employee",
+        foreign_keys=[assignee_employee_id],
+    )
     allocations: Mapped[List["ScenarioAllocation"]] = relationship(
         back_populates="backlog_item"
     )
