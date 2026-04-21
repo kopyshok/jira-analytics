@@ -142,9 +142,10 @@ class ResourceBaseOut(BaseModel):
 class WorkTypeRowOut(BaseModel):
     work_type_id: str
     work_type_label: str
-    hours_by_role: Dict[str, float]
-    pct_by_role: Dict[str, Optional[float]]
-    total_hours: float
+    by_role: Dict[str, float]
+    by_role_pct: Dict[str, Optional[float]]
+    total: float
+    subtracts_from_pool: bool
 
 
 class ResourceSummaryOut(BaseModel):
@@ -153,11 +154,11 @@ class ResourceSummaryOut(BaseModel):
     team: str
     roles: List[str]
     role_employee_names: Dict[str, List[str]]
-    gross_by_role: Dict[str, float]
-    gross_total: float
+    total_by_role: Dict[str, float]
+    total: float
     work_type_rows: List[WorkTypeRowOut]
-    available_by_role: Dict[str, float]
-    available_total: float
+    available_for_backlog_by_role: Dict[str, float]
+    available_for_backlog_total: float
     external_qa_hours: Optional[float] = None
 
 
@@ -553,26 +554,37 @@ async def scenario_resource_summary(
         raise HTTPException(status_code=400, detail="Год/квартал у сценария не заданы")
 
     summary = ResourceBaseService(db).compute_summary(sc)
+
+    # Load work type models to get subtracts_from_pool flag
+    from app.models import MandatoryWorkType
+    wt_lookup = {
+        wt.id: wt
+        for wt in db.query(MandatoryWorkType).filter(
+            MandatoryWorkType.id.in_([row.work_type_id for row in summary.work_type_rows])
+        ).all()
+    }
+
     return ResourceSummaryOut(
         year=summary.year,
         quarter=summary.quarter,
         team=summary.team,
         roles=summary.roles,
         role_employee_names=summary.role_employee_names,
-        gross_by_role=summary.gross_by_role,
-        gross_total=summary.gross_total,
+        total_by_role=summary.gross_by_role,
+        total=summary.gross_total,
         work_type_rows=[
             WorkTypeRowOut(
                 work_type_id=row.work_type_id,
                 work_type_label=row.work_type_label,
-                hours_by_role=row.hours_by_role,
-                pct_by_role=row.pct_by_role,
-                total_hours=row.total_hours,
+                by_role=row.hours_by_role,
+                by_role_pct=row.pct_by_role,
+                total=row.total_hours,
+                subtracts_from_pool=wt_lookup[row.work_type_id].subtracts_from_pool,
             )
             for row in summary.work_type_rows
         ],
-        available_by_role=summary.available_by_role,
-        available_total=summary.available_total,
+        available_for_backlog_by_role=summary.available_by_role,
+        available_for_backlog_total=summary.available_total,
         external_qa_hours=summary.external_qa_hours,
     )
 

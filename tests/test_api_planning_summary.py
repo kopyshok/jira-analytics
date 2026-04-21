@@ -102,10 +102,11 @@ def test_resource_summary_basic(client, db_session):
     assert resp.status_code == 200
     data = resp.json()
     assert "analyst" in data["roles"]
-    assert data["gross_by_role"]["analyst"] > 0
+    assert data["total_by_role"]["analyst"] > 0
     wt_row = data["work_type_rows"][0]
     assert wt_row["work_type_label"] == "Орг. работы"
-    assert wt_row["pct_by_role"]["analyst"] == 15.0
-    gross = data["gross_by_role"]["analyst"]
+    assert wt_row["by_role_pct"]["analyst"] == 15.0
+    assert wt_row["subtracts_from_pool"] is True
+    gross = data["total_by_role"]["analyst"]
     expected_avail = round(max(0, gross - gross * 0.15), 2)
-    assert abs(data["available_by_role"]["analyst"] - expected_avail) < 1.0
+    assert abs(data["available_for_backlog_by_role"]["analyst"] - expected_avail) < 1.0
