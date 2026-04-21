@@ -36,6 +36,8 @@ export const updateBacklogItem = (id: string, data: Partial<{
   opo_analyst_ratio: number;
   impact: BacklogImpactRisk;
   risk: BacklogImpactRisk;
+  assignee_employee_id: string | null;
+  customer: string | null;
 }>) => api.patch<BacklogItemResponse>(`/backlog/${id}`, data);
 
 export interface DeleteBacklogResult {

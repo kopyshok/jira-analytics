@@ -407,6 +407,9 @@ export interface BacklogItemResponse {
   archived_at: string | null;
   in_work: boolean;
   approved_scenarios: BacklogItemScenarioRef[];
+  assignee_employee_id: string | null;
+  assignee_display_name: string | null;
+  customer: string | null;
   jira_status: string | null;
   jira_status_category: string | null;
   jira_status_changed_at: string | null;
