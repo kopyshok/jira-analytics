@@ -64,7 +64,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
           height: 10,
           background: DARK_THEME.darkAccent,
           borderRadius: 5,
-          overflow: 'visible',
+          overflow: 'hidden',
         }}
       >
         <div
@@ -74,35 +74,20 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
             top: 0,
             bottom: 0,
             width: `${fillPct}%`,
-            background: roleColor,
+            background: over ? DARK_THEME.amber : roleColor,
             borderRadius: 5,
+            transition: 'width .2s',
           }}
         />
-        {over && (
-          <div
-            style={{
-              position: 'absolute',
-              left: '100%',
-              top: -2,
-              bottom: -2,
-              width: `${overflowPct}%`,
-              background: DARK_THEME.amber,
-              borderTopRightRadius: 5,
-              borderBottomRightRadius: 5,
-              borderLeft: `2px solid ${DARK_THEME.cardBg}`,
-            }}
-          />
-        )}
-        {/* 100% marker */}
+        {/* 100% marker — stays at right inner edge */}
         <div
           style={{
             position: 'absolute',
-            left: '100%',
-            top: -3,
-            bottom: -3,
+            right: 0,
+            top: -2,
+            bottom: -2,
             width: 2,
             background: DARK_THEME.textSecondary,
-            transform: 'translateX(-1px)',
           }}
         />
       </div>
