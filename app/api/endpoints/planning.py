@@ -253,7 +253,7 @@ async def create_scenario(
     db.add(scenario)
     db.flush()
 
-    items = db.query(BacklogItem).all()
+    items = db.query(BacklogItem).filter(BacklogItem.archived_at.is_(None)).all()
     for item in items:
         db.add(
             ScenarioAllocation(
@@ -430,7 +430,11 @@ async def sync_backlog(
         .filter(ScenarioAllocation.scenario_id == scenario_id)
         .all()
     }
-    current_ids = {i.id for i in db.query(BacklogItem.id).all()}
+    current_ids = {
+        i.id for i in db.query(BacklogItem.id)
+        .filter(BacklogItem.archived_at.is_(None))
+        .all()
+    }
 
     # Добавить новые.
     for item_id in current_ids - existing_ids:
