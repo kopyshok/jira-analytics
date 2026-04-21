@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
