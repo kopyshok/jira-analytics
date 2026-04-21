@@ -14,6 +14,9 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import PageHeader from '../components/shared/PageHeader';
 import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
+import { statusTagColor } from '../utils/status';
+import { daysSince, formatDateOnly } from '../utils/format';
+import { DARK_THEME } from '../utils/constants';
 import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
   useUnlinkJira, useRefreshFromJira, useArchiveBacklogItem, useRestoreBacklogItem,
@@ -231,6 +234,37 @@ export default function BacklogPage() {
         </Space>
       ),
     },
+    {
+      title: 'Статус', dataIndex: 'jira_status', width: 150,
+      sorter: (a: BacklogItemResponse, b: BacklogItemResponse) => {
+        const ta = a.jira_status_changed_at ? new Date(a.jira_status_changed_at).getTime() : 0;
+        const tb = b.jira_status_changed_at ? new Date(b.jira_status_changed_at).getTime() : 0;
+        return ta - tb;
+      },
+      render: (_: unknown, r: BacklogItemResponse) => {
+        if (!r.jira_status) return <span style={{ color: '#8faec8' }}>—</span>;
+        const days = daysSince(r.jira_status_changed_at);
+        let ageColor: string = DARK_THEME.textMuted;
+        if (days !== null) {
+          if (days >= 365) ageColor = '#ff7875';
+          else if (days >= 180) ageColor = DARK_THEME.yellow;
+        }
+        return (
+          <Space direction="vertical" size={0} style={{ lineHeight: 1.1 }}>
+            <Tag color={statusTagColor(r.jira_status, r.jira_status_category)} style={{ marginInlineEnd: 0 }}>
+              {r.jira_status}
+            </Tag>
+            {r.jira_status_changed_at && (
+              <Tooltip title={formatDateOnly(r.jira_status_changed_at)}>
+                <span style={{ fontSize: 11, color: ageColor }}>
+                  {days !== null ? `${days} д назад` : '—'}
+                </span>
+              </Tooltip>
+            )}
+          </Space>
+        );
+      },
+    },
     { title: 'АН ч', dataIndex: 'estimate_analyst_hours', width: 80,
       render: renderRoleEstimate('estimate_analyst_hours', editable) },
     { title: 'ПР ч', dataIndex: 'estimate_dev_hours', width: 80,
@@ -391,7 +425,7 @@ export default function BacklogPage() {
           loading={active.isLoading}
           pagination={false}
           size="small"
-          scroll={{ x: 1200 }}
+          scroll={{ x: 1400 }}
           components={{ body: { row: SortableRow } }}
           columns={[
             { title: '', width: 32, fixed: 'left' as const, render: (_, r) => <DragHandle id={r.id} /> },
@@ -410,7 +444,7 @@ export default function BacklogPage() {
       loading={inWork.isLoading}
       pagination={false}
       size="small"
-      scroll={{ x: 1200 }}
+      scroll={{ x: 1400 }}
       columns={[
         ...baseColumns(false),
         scenariosColumn,
@@ -425,7 +459,7 @@ export default function BacklogPage() {
       loading={archived.isLoading}
       pagination={false}
       size="small"
-      scroll={{ x: 1200 }}
+      scroll={{ x: 1400 }}
       columns={[
         ...baseColumns(false),
         { title: 'Действия', width: 160, fixed: 'right' as const, render: (_, r) => actionsArchived(r) },

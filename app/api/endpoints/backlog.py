@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.connectors.jira_client import JiraClient, JiraClientError
@@ -76,6 +76,10 @@ class BacklogItemResponse(BaseModel):
     archived_at: Optional[datetime] = None
     in_work: bool = False
     approved_scenarios: List[ScenarioRef] = []
+    # Denormalized Jira status of the linked issue (null for manual items).
+    jira_status: Optional[str] = None
+    jira_status_category: Optional[str] = None
+    jira_status_changed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -139,12 +143,14 @@ def _to_response(
     approved_scenarios: Optional[List[ScenarioRef]] = None,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
+    issue = item.issue
+    jira_in_progress = bool(issue and issue.status_category == "indeterminate")
     return BacklogItemResponse(
         id=item.id,
         title=item.title,
         project_id=item.project_id,
         issue_id=item.issue_id,
-        jira_key=item.issue.key if item.issue else None,
+        jira_key=issue.key if issue else None,
         priority=item.priority,
         estimate_hours=item.estimate_hours,
         estimate_analyst_hours=item.estimate_analyst_hours,
@@ -155,8 +161,11 @@ def _to_response(
         impact=item.impact,
         risk=item.risk,
         archived_at=item.archived_at,
-        in_work=bool(scenarios),
+        in_work=bool(scenarios) or jira_in_progress,
         approved_scenarios=scenarios,
+        jira_status=issue.status if issue else None,
+        jira_status_category=issue.status_category if issue else None,
+        jira_status_changed_at=issue.status_changed_at if issue else None,
     )
 
 
@@ -182,18 +191,42 @@ async def list_backlog_items(
         .distinct()
     )
 
-    query = db.query(BacklogItem).options(joinedload(BacklogItem.issue))
+    query = (
+        db.query(BacklogItem)
+        .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
+        .options(joinedload(BacklogItem.issue))
+    )
     if project_id is not None:
         query = query.filter(BacklogItem.project_id == project_id)
 
+    # Jira statusCategory drives view membership alongside archived_at and
+    # approved-scenario allocations. For manual items (no issue) status is
+    # NULL — coalesce to '' so they flow through to active/in_work without
+    # being matched as done/indeterminate.
+    status_cat = func.coalesce(Issue.status_category, "")
+
     if view == "active":
-        query = query.filter(BacklogItem.archived_at.is_(None))
-        query = query.filter(~BacklogItem.id.in_(approved_alloc_ids))
+        query = query.filter(
+            BacklogItem.archived_at.is_(None),
+            ~BacklogItem.id.in_(approved_alloc_ids),
+            status_cat.notin_(["done", "indeterminate"]),
+        )
     elif view == "archived":
-        query = query.filter(BacklogItem.archived_at.isnot(None))
+        query = query.filter(
+            or_(
+                BacklogItem.archived_at.isnot(None),
+                Issue.status_category == "done",
+            ),
+        )
     elif view == "in_work":
-        query = query.filter(BacklogItem.archived_at.is_(None))
-        query = query.filter(BacklogItem.id.in_(approved_alloc_ids))
+        query = query.filter(
+            BacklogItem.archived_at.is_(None),
+            status_cat != "done",
+            or_(
+                BacklogItem.id.in_(approved_alloc_ids),
+                Issue.status_category == "indeterminate",
+            ),
+        )
 
     items = query.all()
     items.sort(

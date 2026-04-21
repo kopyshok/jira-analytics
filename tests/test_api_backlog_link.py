@@ -543,6 +543,115 @@ def test_get_backlog_default_view_is_active(db_session):
         app.dependency_overrides.clear()
 
 
+def _seed_jira_status_fixture(db):
+    """Three linked items: new / indeterminate / done in Jira; no scenarios."""
+    from app.models import BacklogItem, Issue, Project
+
+    proj = Project(
+        id="js-p", jira_project_id="js-pj", key="RFA", name="RFA", is_active=True,
+    )
+    i_new = Issue(
+        id="js-i-new", jira_issue_id="js-in", key="RFA-N", summary="new",
+        issue_type="RFA", status="Open", status_category="new", project_id=proj.id,
+    )
+    i_in = Issue(
+        id="js-i-ind", jira_issue_id="js-ii", key="RFA-I", summary="in progress",
+        issue_type="RFA", status="В работе", status_category="indeterminate",
+        project_id=proj.id,
+    )
+    i_done = Issue(
+        id="js-i-done", jira_issue_id="js-id", key="RFA-D", summary="done",
+        issue_type="RFA", status="Готово", status_category="done",
+        project_id=proj.id,
+    )
+    db.add_all([proj, i_new, i_in, i_done])
+    db.add_all([
+        BacklogItem(id="js-new", title="Jira-new", issue_id=i_new.id),
+        BacklogItem(id="js-ind", title="Jira-in-progress", issue_id=i_in.id),
+        BacklogItem(id="js-done", title="Jira-done", issue_id=i_done.id),
+    ])
+    db.commit()
+
+
+def test_view_active_excludes_jira_done_and_in_progress(db_session):
+    _seed_jira_status_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog?view=active")
+        assert r.status_code == 200
+        ids = {row["id"] for row in r.json()}
+        assert ids == {"js-new"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_view_in_work_includes_jira_indeterminate_without_scenario(db_session):
+    _seed_jira_status_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog?view=in_work")
+        assert r.status_code == 200
+        rows = r.json()
+        ids = {row["id"] for row in rows}
+        assert ids == {"js-ind"}
+        # No approved scenario, but in_work is still true via Jira status.
+        assert rows[0]["in_work"] is True
+        assert rows[0]["approved_scenarios"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_view_archived_includes_jira_done_without_archived_at(db_session):
+    _seed_jira_status_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog?view=archived")
+        assert r.status_code == 200
+        rows = r.json()
+        ids = {row["id"] for row in rows}
+        assert ids == {"js-done"}
+        # archived_at still NULL — virtual archive via Jira status only.
+        assert rows[0]["archived_at"] is None
+        assert rows[0]["jira_status_category"] == "done"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_response_exposes_jira_status_fields(db_session):
+    _seed_jira_status_fixture(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog/js-ind")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["jira_status"] == "В работе"
+        assert body["jira_status_category"] == "indeterminate"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_manual_item_without_issue_survives_active_filter(db_session):
+    """Item with issue_id=NULL must flow through into 'active' view."""
+    from app.models import BacklogItem
+
+    db_session.add(BacklogItem(id="manual-1", title="manual"))
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.get("/api/v1/backlog?view=active")
+        assert r.status_code == 200
+        ids = {row["id"] for row in r.json()}
+        assert "manual-1" in ids
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_backlog_item_includes_approved_scenarios(db_session):
     """Single-item GET reflects approved-scenario membership."""
     from app.models import BacklogItem, PlanningScenario, ScenarioAllocation

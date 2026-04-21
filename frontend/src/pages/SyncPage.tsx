@@ -22,6 +22,7 @@ import {
   useScopeProjects,
 } from '../hooks/useScope';
 import { formatDate, formatDateOnly, daysSince } from '../utils/format';
+import { statusTagColor } from '../utils/status';
 import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { useIssueTree, useSetIssueInclude, useBatchSetCategory } from '../hooks/useIssueTree';
@@ -73,20 +74,6 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
 type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 const INITIATIVES_CODE = 'initiatives_rfa';
-
-// Маппинг Jira statusCategory.key → цвет AntD Tag. Плюс строковые overrides
-// для специальных статусов ("Отменено" попадает в категорию 'done' в Jira,
-// но визуально это не done — красим в grey).
-function statusTagColor(statusName: string, category: string | null): string {
-  const lower = (statusName || '').toLowerCase();
-  if (lower.includes('отмен') || lower.includes('cancel') || lower.includes('reject')) return 'default';
-  switch (category) {
-    case 'done': return 'success';
-    case 'indeterminate': return 'processing';
-    case 'new': return 'default';
-    default: return 'default';
-  }
-}
 
 function matchesTab(effective: string | null, tab: InnerTab): boolean {
   switch (tab) {
