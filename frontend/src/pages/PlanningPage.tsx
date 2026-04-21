@@ -24,6 +24,7 @@ import {
   useSyncScenarioBacklog,
   useScenarioResource,
   useUpdateScenario,
+  usePatchAllocationAssignee,
 } from '../hooks/usePlanning';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { downloadScenarioXlsx } from '../api/exports';
@@ -39,7 +40,7 @@ const IMPACT_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', 
 const RISK_COLORS: Record<BacklogImpactRisk, string> = { low: 'green', medium: 'default', high: 'warning' };
 const RISK_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', medium: 'средний', high: 'высокий' };
 
-const GRID = '40px 60px 1fr 280px 75px 100px 95px';
+const GRID = '40px 60px 1fr 150px 120px 280px 75px 100px 95px';
 
 export default function PlanningPage() {
   const { notification } = App.useApp();
@@ -63,6 +64,7 @@ export default function PlanningPage() {
     useScenarioAllocations(scenarioId);
 
   const patchAlloc = usePatchAllocation();
+  const patchAssignee = usePatchAllocationAssignee();
   const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
   const approve = useApproveScenario();
@@ -343,6 +345,8 @@ export default function PlanningPage() {
                         <span>✓</span>
                         <span>Прио</span>
                         <span>Идея</span>
+                        <span>Исполнитель</span>
+                        <span>Заказчик</span>
                         <span>АН / ПР / ТС / ОПЭ</span>
                         <span style={{ textAlign: 'right' }}>Всего</span>
                         <span>Влияние</span>
@@ -419,6 +423,50 @@ export default function PlanningPage() {
                                       </span>
                                     )
                                 )}
+                                {a.cost_type && (
+                                  <Tag
+                                    color={a.cost_type.toLowerCase().includes('change') ? 'blue' : 'green'}
+                                    style={{ fontSize: 10, padding: '0 4px', marginLeft: 4 }}
+                                  >
+                                    {a.cost_type}
+                                  </Tag>
+                                )}
+                              </div>
+                              {/* Исполнитель */}
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <Select
+                                  size="small"
+                                  value={a.assignee_employee_id ?? undefined}
+                                  placeholder="—"
+                                  allowClear
+                                  disabled={!isDraft}
+                                  style={{ width: '100%', fontSize: 12 }}
+                                  options={
+                                    resourceBase?.employees.map((emp) => ({
+                                      label: emp.display_name,
+                                      value: emp.employee_id,
+                                    })) ?? []
+                                  }
+                                  onChange={(value: string | undefined) =>
+                                    patchAssignee.mutate({
+                                      scenarioId: scenarioId!,
+                                      allocId: a.id,
+                                      assigneeEmployeeId: value ?? null,
+                                    })
+                                  }
+                                />
+                              </div>
+                              {/* Заказчик */}
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: DARK_THEME.textMuted,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {a.customer ?? '—'}
                               </div>
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <BacklogRoleCell
