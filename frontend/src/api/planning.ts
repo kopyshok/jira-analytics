@@ -45,3 +45,13 @@ export const getScenarioRules = (sid: string) =>
 
 export const putScenarioRules = (sid: string, rules: ScenarioRuleInput[]) =>
   api.put<ScenarioRuleOut[]>(`/planning/scenarios/${sid}/rules`, { rules });
+
+export const patchAllocationAssignee = (
+  scenarioId: string,
+  allocId: string,
+  assigneeEmployeeId: string | null,
+): Promise<AllocationResponse> =>
+  api.patch<AllocationResponse>(
+    `/planning/scenarios/${scenarioId}/allocations/${allocId}/assignee`,
+    { assignee_employee_id: assigneeEmployeeId },
+  );

@@ -497,6 +497,10 @@ export interface AllocationResponse {
   opo_analyst_ratio: number | null;
   impact: BacklogImpactRisk | null;
   risk: BacklogImpactRisk | null;
+  assignee_employee_id: string | null;
+  assignee_display_name: string | null;
+  customer: string | null;
+  cost_type: string | null;
 }
 
 // === Scenario rules ===

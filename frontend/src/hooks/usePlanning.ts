@@ -12,6 +12,7 @@ import {
   syncScenarioBacklog,
   getScenarioAllocations,
   patchAllocation,
+  patchAllocationAssignee,
   getScenarioResource,
   getScenarioRules,
   putScenarioRules,
@@ -216,6 +217,25 @@ export const usePutScenarioRules = () => {
     },
     onError: (err) => {
       notification.error({ title: 'Не удалось сохранить правила', description: err.message });
+    },
+  });
+};
+
+export const usePatchAllocationAssignee = () => {
+  const qc = useQueryClient();
+  const { notification } = App.useApp();
+  return useMutation<
+    AllocationResponse,
+    Error,
+    { scenarioId: string; allocId: string; assigneeEmployeeId: string | null }
+  >({
+    mutationFn: ({ scenarioId, allocId, assigneeEmployeeId }) =>
+      patchAllocationAssignee(scenarioId, allocId, assigneeEmployeeId),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['planning', 'allocations', vars.scenarioId] });
+    },
+    onError: () => {
+      notification.error({ title: 'Не удалось сменить исполнителя' });
     },
   });
 };
