@@ -204,13 +204,14 @@ def _to_response(
 @router.get("", response_model=List[BacklogItemResponse])
 async def list_backlog_items(
     project_id: Optional[str] = Query(None),
-    view: str = Query("active", pattern="^(active|archived)$"),
+    view: str = Query("active", pattern="^(active|archived|in_work)$"),
     db: Session = Depends(get_db),
 ):
     """Список бэклога с фильтром по виду.
 
     - ``active`` (default): не архивные, статус не done.
     - ``archived``: ``archived_at IS NOT NULL`` или статус done.
+    - ``in_work``: включены в утверждённый сценарий или статус в работе.
     """
     query = (
         db.query(BacklogItem)
@@ -230,6 +231,21 @@ async def list_backlog_items(
             or_(
                 BacklogItem.archived_at.isnot(None),
                 Issue.status_category == "done",
+            ),
+        )
+    elif view == "in_work":
+        in_work_ids = (
+            db.query(ScenarioAllocation.backlog_item_id)
+            .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+            .filter(PlanningScenario.status == "approved")
+            .distinct()
+            .subquery()
+        )
+        query = query.filter(
+            BacklogItem.archived_at.is_(None),
+            or_(
+                BacklogItem.id.in_(in_work_ids),
+                Issue.status_category == "indeterminate",
             ),
         )
 
@@ -256,6 +272,12 @@ async def create_backlog_item(
     _recompute_total(item)
     db.commit()
     db.refresh(item)
+    item = (
+        db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .filter(BacklogItem.id == item.id)
+        .first()
+    )
     return _to_response(item)
 
 
@@ -330,7 +352,7 @@ async def refresh_from_jira(
                 cost_type_field_id = await _discover_field_id(
                     jira, db, "jira_cost_type_field_id", "Тип затрат"
                 )
-                extra_fields = ["assignee"]
+                extra_fields = ["summary", "issuetype", "status", "project", "assignee"]
                 if customer_field_id:
                     extra_fields.append(customer_field_id)
                 if cost_type_field_id:
@@ -645,6 +667,7 @@ async def unlink_jira(
     """
     item = (
         db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(BacklogItem.id == item_id)
         .first()
     )
