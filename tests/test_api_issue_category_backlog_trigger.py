@@ -75,9 +75,10 @@ def test_set_single_issue_category_triggers_backlog_sync(db_session):
     assert item.estimate_hours == 30
 
 
-def test_set_single_issue_category_removes_backlog_item_when_away(db_session):
+def test_set_single_issue_category_archives_backlog_item_when_away(db_session):
     """Если до этого задача была в initiatives_rfa и у неё был
-    BacklogItem — при смене категории на другую BacklogItem удаляется."""
+    BacklogItem — при смене категории на другую BacklogItem архивируется
+    (`archived_at` выставляется, связь с Jira и allocations сохраняются)."""
     from app.models import BacklogItem
     from app.services.backlog_service import BacklogService
 
@@ -100,15 +101,20 @@ def test_set_single_issue_category_removes_backlog_item_when_away(db_session):
 
     # Endpoint пересчитывает denormalized Issue.category через
     # CategoryResolver и зовёт BacklogService.sync_from_issue — для
-    # «не-backlog» категории без ScenarioAllocation это должно удалить
-    # BacklogItem.
+    # «не-backlog» категории это выставляет archived_at; связь с Jira
+    # (issue_id) и возможные ScenarioAllocation сохраняются нетронутыми.
     from app.models import Issue
 
     fresh = db_session.query(Issue).filter_by(id=issue.id).first()
     assert fresh.assigned_category == "development"
-    assert (
-        db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0
+
+    item = (
+        db_session.query(BacklogItem)
+        .filter_by(issue_id=issue.id)
+        .one()
     )
+    assert item.archived_at is not None
+    assert item.issue_id == issue.id
 
 
 def test_batch_set_category_triggers_backlog_sync(db_session):
