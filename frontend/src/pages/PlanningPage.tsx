@@ -334,7 +334,7 @@ export default function PlanningPage() {
                           padding: '8px 14px',
                           borderBottom: `1px solid ${DARK_THEME.border}`,
                           background: DARK_THEME.darkAccent,
-                          fontSize: 10,
+                          fontSize: 11,
                           color: DARK_THEME.textMuted,
                           textTransform: 'uppercase',
                           letterSpacing: 0.6,
@@ -397,7 +397,7 @@ export default function PlanningPage() {
                                 {a.priority ?? '—'}
                               </span>
                               <div>
-                                <div style={{ color: DARK_THEME.textPrimary, fontSize: 13, marginBottom: 3 }}>
+                                <div style={{ color: DARK_THEME.textPrimary, fontSize: 14, marginBottom: 3 }}>
                                   {a.title}
                                 </div>
                                 {a.jira_key && (
@@ -408,13 +408,13 @@ export default function PlanningPage() {
                                         target="_blank"
                                         rel="noreferrer"
                                         onClick={(e) => e.stopPropagation()}
-                                        style={{ fontFamily: FONTS.mono, fontSize: 10, color: DARK_THEME.cyanSecondary }}
+                                        style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}
                                       >
                                         {a.jira_key}
                                       </a>
                                     )
                                     : (
-                                      <span style={{ fontFamily: FONTS.mono, fontSize: 10, color: DARK_THEME.cyanSecondary }}>
+                                      <span style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}>
                                         {a.jira_key}
                                       </span>
                                     )
@@ -446,7 +446,7 @@ export default function PlanningPage() {
                                   color={OPO_COLOR}
                                 />
                               </div>
-                              <span style={{ textAlign: 'right', fontFamily: FONTS.mono, fontSize: 13, color: DARK_THEME.textPrimary }}>
+                              <span style={{ textAlign: 'right', fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
                                 {Math.round(total)} ч
                               </span>
                               <div>

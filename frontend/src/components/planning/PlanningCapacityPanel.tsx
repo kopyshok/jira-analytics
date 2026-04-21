@@ -237,7 +237,7 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
                     <span
                       style={{
                         color: knownRole ? DARK_THEME.textPrimary : DARK_THEME.textMuted,
-                        fontSize: 12,
+                        fontSize: 13,
                       }}
                     >
                       {e.display_name}
@@ -260,7 +260,7 @@ export default function PlanningCapacityPanel({ resourceBase, allocations, quart
                   </div>
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: 12,
                       color: DARK_THEME.textMuted,
                       fontFamily: FONTS.mono,
                     }}
