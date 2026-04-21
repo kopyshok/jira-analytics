@@ -647,3 +647,87 @@ def test_archive_unknown_returns_404(db_session):
         assert r.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_restore_archived_manual_item_clears_archived_at(db_session):
+    from app.models import BacklogItem
+    from datetime import datetime, timezone
+
+    item = BacklogItem(
+        id="rst-1", title="archived manual",
+        archived_at=datetime.now(timezone.utc),
+    )
+    db_session.add(item)
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/restore")
+        assert r.status_code == 200
+        assert r.json()["archived_at"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+    db_session.refresh(item)
+    assert item.archived_at is None
+
+
+def test_restore_linked_item_with_archive_category_returns_409(db_session):
+    from app.models import BacklogItem, Issue, Project
+    from datetime import datetime, timezone
+
+    proj = Project(
+        id="p-rst", jira_project_id="p-rst-jira", key="RFA", name="RFA", is_active=True,
+    )
+    issue = Issue(
+        id="i-rst", jira_issue_id="i-rst-jira", key="RFA-RST", summary="x",
+        issue_type="RFA", status="Open", project_id=proj.id,
+        category="archive",
+    )
+    item = BacklogItem(
+        id="rst-blocked", title="blocked", issue_id=issue.id,
+        archived_at=datetime.now(timezone.utc),
+    )
+    db_session.add_all([proj, issue, item])
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/restore")
+        assert r.status_code == 409
+        # User should see the Jira-category message.
+        assert "Jira" in str(r.json()["detail"]) or "category" in str(r.json()["detail"]).lower()
+    finally:
+        app.dependency_overrides.clear()
+
+    db_session.refresh(item)
+    assert item.archived_at is not None
+
+
+def test_restore_already_active_is_idempotent(db_session):
+    from app.models import BacklogItem
+
+    item = BacklogItem(id="rst-noop", title="active")
+    db_session.add(item)
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/restore")
+        assert r.status_code == 200
+        assert r.json()["archived_at"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_restore_unknown_returns_404(db_session):
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post("/api/v1/backlog/does-not-exist/restore")
+        assert r.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
