@@ -4,18 +4,21 @@
 у элементов нет — квартал выбирается в сценарии планирования.
 """
 
+import asyncio
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.connectors.jira_client import JiraClient, JiraClientError
 from app.database import get_db
-from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
+from app.models import AppSetting, BacklogItem, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
 from app.services.backlog_service import BACKLOG_CATEGORY, BacklogService
 from app.services.category_resolver import CategoryResolver
+from app.services.sync_service import SyncService
 
 
 router = APIRouter()
@@ -76,10 +79,19 @@ class LinkJiraRequest(BaseModel):
 class RefreshResponse(BaseModel):
     created: int
     updated: int
-    removed: int
+    removed: int = 0  # kept at 0 for backward compat — no more auto-delete
+    archived: int = 0
+    restored: int = 0
+    jira_refreshed: int = 0
 
 
 # === Helpers ===
+
+def _get_setting_value(db: Session, key: str) -> Optional[str]:
+    """Прочитать значение из AppSetting по ключу."""
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    return row.value if row else None
+
 
 def _recompute_total(item: BacklogItem) -> None:
     """Пересчитать denormalized ``estimate_hours`` из per-role часов."""
@@ -155,30 +167,69 @@ async def create_backlog_item(
 
 
 @router.post("/refresh-from-jira", response_model=RefreshResponse)
-async def refresh_from_jira(db: Session = Depends(get_db)):
-    """Пробежать issues с эффективной категорией ``initiatives_rfa`` и синкнуть бэклог.
+async def refresh_from_jira(
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """Перечитать с Jira задачи-кандидаты в бэклог и синкнуть BacklogItem.
 
-    Кандидаты — объединение ``assigned_category`` и денормализованного
-    ``category``: до коммита ``f08bd70`` batch-category не обновлял
-    ``Issue.category``, поэтому у части задач поля рассинхронизированы.
-    Here резолвер выступает source of truth и по ходу лечит drift.
+    Шаги:
+      1) Собираем ключи всех кандидатов (``assigned_category`` или
+         денормализованный ``category`` равен ``initiatives_rfa``).
+      2) Тянем их свежие значения из Jira через
+         ``SyncService.refresh_issues_by_keys`` — это подтягивает актуальные
+         плановые часы / impact / risk / цели / команду с учётом текущих
+         настроек ID кастомных полей. Если связь с Jira не настроена,
+         шаг пропускается и работа продолжается на локальных данных.
+      3) Резолвер выступает source of truth и по ходу лечит drift между
+         ``assigned_category`` и денормализованным ``category``.
+      4) Синк BacklogItem через ``BacklogService.sync_from_issue``.
 
-    Возвращает счётчики created / updated / removed.
+    Возвращает счётчики created / updated / removed / jira_refreshed.
     """
     resolver = CategoryResolver(db)
     svc = BacklogService(db)
-    created = 0
-    updated = 0
+    jira_refreshed = 0
 
-    existing_issue_ids = {
-        i.issue_id
-        for i in db.query(BacklogItem)
-        .filter(BacklogItem.issue_id.isnot(None))
+    # 1) Ключи кандидатов — для похода в Jira.
+    candidate_keys = [
+        key for (key,) in db.query(Issue.key)
+        .filter(
+            or_(
+                Issue.assigned_category == BACKLOG_CATEGORY,
+                Issue.category == BACKLOG_CATEGORY,
+            )
+        )
         .all()
-    }
+    ]
 
-    # 1) Кандидаты: всё, что хоть каким-то полем пахнет initiatives_rfa.
-    #    Резолвер решает окончательно, попадает ли задача в бэклог.
+    # 2) Сходить в Jira за свежими значениями кастомных полей. Если Jira
+    #    не настроена — продолжаем на локальных данных, чтобы ручной бэклог
+    #    всё равно можно было пересобрать.
+    jira_configured = all(
+        _get_setting_value(db, key)
+        for key in ("jira_base_url", "jira_email", "jira_api_token")
+    )
+    if candidate_keys and jira_configured:
+        try:
+            async with JiraClient.from_db(db) as jira:
+                service = SyncService(
+                    db, jira,
+                    cancel_check=(
+                        (lambda: http_request.is_disconnected())
+                        if http_request is not None else None
+                    ),
+                )
+                matched, _total = await service.refresh_issues_by_keys(candidate_keys)
+                jira_refreshed = matched
+        except asyncio.CancelledError:
+            raise HTTPException(status_code=499, detail="Refresh cancelled by client")
+        except JiraClientError as e:
+            raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+    # 3) Перечитать кандидатов заново — их ``planned_*`` / impact / risk
+    #    теперь актуальны. ``category`` sync не трогает, так что набор тот же,
+    #    но перечитать надо: сессия могла истечь атрибуты после commit в шаге 2.
     candidates = (
         db.query(Issue)
         .filter(
@@ -189,39 +240,55 @@ async def refresh_from_jira(db: Session = Depends(get_db)):
         )
         .all()
     )
+    created = 0
+    updated = 0
+    archived = 0
+    restored = 0
+
     for issue in candidates:
         resolved = resolver.resolve_for_issue(issue).category_code
-        # Heal denormalized column если рассинхронизировалось.
         if issue.category != resolved:
             issue.category = resolved
         if resolved != BACKLOG_CATEGORY:
             continue
-        was = issue.id in existing_issue_ids
+        existing = (
+            db.query(BacklogItem).filter_by(issue_id=issue.id).one_or_none()
+        )
+        was_archived = existing is not None and existing.archived_at is not None
+        was_present = existing is not None
         svc.sync_from_issue(issue)
-        if was:
+        if was_present:
             updated += 1
+            if was_archived:
+                restored += 1
         else:
             created += 1
 
-    # 2) Подчистить BacklogItem, чей Issue больше не резолвится в backlog-категорию.
+    # Items that used to be backlog but Jira category moved away → archive.
     stale_items = (
         db.query(BacklogItem)
         .options(joinedload(BacklogItem.issue))
         .filter(BacklogItem.issue_id.isnot(None))
         .all()
     )
-    removed = 0
     for item in stale_items:
         if item.issue is None:
             continue
         resolved = resolver.resolve_for_issue(item.issue).category_code
         if resolved == BACKLOG_CATEGORY:
             continue
-        svc.sync_from_issue(item.issue)
-        removed += 1
+        if item.archived_at is None:
+            svc.sync_from_issue(item.issue)
+            archived += 1
 
     db.commit()
-    return RefreshResponse(created=created, updated=updated, removed=removed)
+    return RefreshResponse(
+        created=created,
+        updated=updated,
+        archived=archived,
+        restored=restored,
+        jira_refreshed=jira_refreshed,
+    )
 
 
 @router.get("/{item_id}", response_model=BacklogItemResponse)

@@ -276,11 +276,13 @@ def test_refresh_from_jira_removes_stale_items(db_session):
         r = client.post("/api/v1/backlog/refresh-from-jira")
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body["removed"] >= 1
+        assert body["archived"] == 1
     finally:
         app.dependency_overrides.clear()
 
-    assert db_session.query(BacklogItem).filter_by(id="m-stale").count() == 0
+    assert db_session.query(BacklogItem).filter_by(id="m-stale").count() == 1
+    item = db_session.query(BacklogItem).filter_by(id="m-stale").one()
+    assert item.archived_at is not None
 
 
 def test_refresh_from_jira_heals_legacy_drift(db_session):
@@ -418,3 +420,47 @@ def test_delete_backlog_blocked_by_approved_scenario(db_session):
         .count()
         == 2
     )
+
+
+def test_refresh_from_jira_reports_archived_and_restored(db_session):
+    """Refresh считает archived/restored на сменах категории."""
+    from app.models import BacklogItem, Category, Issue, Project
+
+    cat = Category(
+        id="cat-arch", code="initiatives_rfa", label="Инициативы и RFA",
+        color="#7F77DD", sort_order=22, is_system=True,
+    )
+    proj = Project(
+        id="p-arch", jira_project_id="p-arch-jira", key="RFA", name="RFA", is_active=True,
+    )
+    # Issue A: in Jira now ARCHIVE but currently has BacklogItem → should archive.
+    issue_a = Issue(
+        id="i-a", jira_issue_id="i-a-jira", key="RFA-A", summary="to-archive",
+        issue_type="RFA", status="Open", project_id=proj.id,
+        assigned_category="archive", category="archive",
+    )
+    item_a = BacklogItem(id="ba", title="to-archive", issue_id=issue_a.id)
+    # Issue B: was archived locally; Jira now says initiatives_rfa → should restore.
+    from datetime import datetime, timezone
+    issue_b = Issue(
+        id="i-b", jira_issue_id="i-b-jira", key="RFA-B", summary="to-restore",
+        issue_type="RFA", status="Open", project_id=proj.id,
+        assigned_category="initiatives_rfa", category="initiatives_rfa",
+    )
+    item_b = BacklogItem(
+        id="bb", title="to-restore", issue_id=issue_b.id,
+        archived_at=datetime.now(timezone.utc),
+    )
+    db_session.add_all([cat, proj, issue_a, issue_b, item_a, item_b])
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post("/api/v1/backlog/refresh-from-jira")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["archived"] == 1
+        assert body["restored"] == 1
+    finally:
+        app.dependency_overrides.clear()
