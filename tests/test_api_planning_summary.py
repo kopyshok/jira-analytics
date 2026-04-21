@@ -109,4 +109,4 @@ def test_resource_summary_basic(client, db_session):
     assert wt_row["subtracts_from_pool"] is True
     gross = data["total_by_role"]["analyst"]
     expected_avail = round(max(0, gross - gross * 0.15), 2)
-    assert abs(data["available_for_backlog_by_role"]["analyst"] - expected_avail) < 1.0
+    assert abs(data["available_for_backlog_by_role"]["analyst"] - expected_avail) < 0.01

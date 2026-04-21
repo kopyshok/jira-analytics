@@ -39,6 +39,7 @@ class WorkTypeSummaryRow:
     hours_by_role: dict[str, float]           # role_code -> часы (0 если нет правила)
     pct_by_role: dict[str, Optional[float]]   # role_code -> % (None если нет правила)
     total_hours: float
+    subtracts_from_pool: bool
 
 
 @dataclass
@@ -401,6 +402,7 @@ class ResourceBaseService:
                     hours_by_role=hours_by_role,
                     pct_by_role=pct_by_role,
                     total_hours=round(total_wt, 2),
+                    subtracts_from_pool=wt.subtracts_from_pool,
                 )
             )
 

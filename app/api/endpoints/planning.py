@@ -26,6 +26,7 @@ from app.database import get_db
 from app.models import (
     BacklogItem,
     Employee,
+    MandatoryWorkType,
     PlanningScenario,
     RoleCapacityRule,
     ScenarioAllocation,
@@ -555,15 +556,6 @@ async def scenario_resource_summary(
 
     summary = ResourceBaseService(db).compute_summary(sc)
 
-    # Load work type models to get subtracts_from_pool flag
-    from app.models import MandatoryWorkType
-    wt_lookup = {
-        wt.id: wt
-        for wt in db.query(MandatoryWorkType).filter(
-            MandatoryWorkType.id.in_([row.work_type_id for row in summary.work_type_rows])
-        ).all()
-    }
-
     return ResourceSummaryOut(
         year=summary.year,
         quarter=summary.quarter,
@@ -579,7 +571,7 @@ async def scenario_resource_summary(
                 by_role=row.hours_by_role,
                 by_role_pct=row.pct_by_role,
                 total=row.total_hours,
-                subtracts_from_pool=wt_lookup[row.work_type_id].subtracts_from_pool,
+                subtracts_from_pool=row.subtracts_from_pool,
             )
             for row in summary.work_type_rows
         ],
