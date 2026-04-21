@@ -604,3 +604,38 @@ async def archive_backlog_item(
         db.commit()
         db.refresh(item)
     return _to_response(item, _approved_scenarios_for(db, item.id))
+
+
+@router.post("/{item_id}/restore", response_model=BacklogItemResponse)
+async def restore_backlog_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+):
+    """Восстановить инициативу из архива в активный бэклог.
+
+    Если инициатива привязана к Jira-задаче, а в Jira категория сейчас
+    архивная — 409: Jira source-of-truth, сначала смените категорию там.
+    Идемпотентно: уже активный элемент — no-op.
+    """
+    item = (
+        db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue))
+        .filter(BacklogItem.id == item_id)
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Backlog item not found")
+
+    if item.archived_at is not None:
+        if item.issue is not None and item.issue.category != BACKLOG_CATEGORY:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Linked Jira issue has a non-backlog category — change the "
+                    "category in Jira (CategoryConfigTab) first."
+                ),
+            )
+        item.archived_at = None
+        db.commit()
+        db.refresh(item)
+    return _to_response(item, _approved_scenarios_for(db, item.id))
