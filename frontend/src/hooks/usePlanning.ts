@@ -189,7 +189,7 @@ export function useCopyRulesFromTemplate() {
         {},
       ),
     onSuccess: (_data, { scenarioId }) => {
-      qc.invalidateQueries({ queryKey: ['scenario-rules', scenarioId] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', scenarioId, 'rules'] });
       qc.invalidateQueries({ queryKey: ['scenario-resource-summary', scenarioId] });
     },
   });
