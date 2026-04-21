@@ -169,6 +169,8 @@ class ResourceSummaryOut(BaseModel):
     available_for_backlog_by_role: Dict[str, float]
     available_for_backlog_total: float
     external_qa_hours: Optional[float] = None
+    calendar_gross_by_role: Dict[str, float] = {}
+    absence_days_by_employee: List[Dict] = []
 
 
 # === Helpers ===
@@ -680,6 +682,8 @@ async def scenario_resource_summary(
         available_for_backlog_by_role=summary.available_by_role,
         available_for_backlog_total=summary.available_total,
         external_qa_hours=summary.external_qa_hours,
+        calendar_gross_by_role=summary.calendar_gross_by_role,
+        absence_days_by_employee=summary.absence_days_by_employee,
     )
 
 

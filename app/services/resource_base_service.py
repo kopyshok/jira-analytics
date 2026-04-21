@@ -57,6 +57,8 @@ class ResourceSummary:
     available_by_role: dict[str, float]        # после вычета обязательных
     available_total: float
     external_qa_hours: Optional[float]
+    calendar_gross_by_role: dict[str, float]          # production calendar hours, no deductions
+    absence_days_by_employee: list[dict]               # [{employee_id, display_name, role, days}]
 
 
 @dataclass
@@ -329,6 +331,19 @@ class ResourceBaseService:
                 return rule_lookup[(wt_id, None)]
             return None
 
+        # --- брутто: производственный календарь × сотрудники (без любых вычетов) ---
+        calendar_gross_by_role: dict[str, float] = {}
+        for e in employees:
+            total_cal = 0.0
+            cur = period_start
+            while cur < period_end:
+                total_cal += day_hours(cur)
+                cur += timedelta(days=1)
+            if e.role:
+                calendar_gross_by_role[e.role] = (
+                    calendar_gross_by_role.get(e.role, 0.0) + round(total_cal, 2)
+                )
+
         # --- валовые часы по сотрудникам (без вычета обязательных) ---
         gross_by_emp: dict[str, float] = {}
         emp_role: dict[str, Optional[str]] = {}
@@ -357,6 +372,33 @@ class ResourceBaseService:
             gross_by_emp[e.id] = round(total, 2)
             emp_role[e.id] = e.role
             emp_name[e.id] = e.display_name
+
+        # --- дни отсутствия по сотрудникам ---
+        absence_days_by_employee: list[dict] = []
+        for e in employees:
+            abs_ranges = (
+                self.db.query(Absence)
+                .filter(
+                    Absence.employee_id == e.id,
+                    Absence.start_date < period_end,
+                    Absence.end_date >= period_start,
+                )
+                .all()
+            )
+            days_count = 0.0
+            cur = period_start
+            while cur < period_end:
+                if day_hours(cur) > 0:
+                    if any(a.start_date <= cur <= a.end_date for a in abs_ranges):
+                        days_count += 1.0
+                cur += timedelta(days=1)
+            if days_count > 0:
+                absence_days_by_employee.append({
+                    "employee_id": e.id,
+                    "display_name": e.display_name,
+                    "role": e.role,
+                    "days": days_count,
+                })
 
         # --- агрегация по ролям ---
         role_employee_names: dict[str, list[str]] = {}
@@ -434,4 +476,6 @@ class ResourceBaseService:
             available_by_role=available_by_role,
             available_total=available_total,
             external_qa_hours=scenario.external_qa_hours,
+            calendar_gross_by_role=calendar_gross_by_role,
+            absence_days_by_employee=absence_days_by_employee,
         )
