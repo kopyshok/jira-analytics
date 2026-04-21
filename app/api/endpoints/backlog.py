@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.connectors.jira_client import JiraClient, JiraClientError
 from app.database import get_db
-from app.models import AppSetting, BacklogItem, Issue, PlanningScenario, ScenarioAllocation
+from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
 from app.services.backlog_service import BACKLOG_CATEGORY, BacklogService
 from app.services.category_resolver import CategoryResolver
@@ -76,6 +76,10 @@ class BacklogItemResponse(BaseModel):
     archived_at: Optional[datetime] = None
     in_work: bool = False
     approved_scenarios: List[ScenarioRef] = []
+    assignee_employee_id: Optional[str] = None
+    assignee_display_name: Optional[str] = None
+    customer: Optional[str] = None
+    cost_type: Optional[str] = None
     # Denormalized Jira status of the linked issue (null for manual items).
     jira_status: Optional[str] = None
     jira_status_category: Optional[str] = None
@@ -104,6 +108,28 @@ def _get_setting_value(db: Session, key: str) -> Optional[str]:
     """Прочитать значение из AppSetting по ключу."""
     row = db.query(AppSetting).filter(AppSetting.key == key).first()
     return row.value if row else None
+
+
+async def _discover_field_id(jira, db: Session, setting_key: str, field_name: str) -> Optional[str]:
+    """Return Jira custom field ID for field_name, caching result in AppSetting."""
+    cached_setting = db.query(AppSetting).filter(AppSetting.key == setting_key).first()
+    if cached_setting and cached_setting.value:
+        return cached_setting.value
+    try:
+        fields = await jira.get_fields()
+    except Exception:
+        return None
+    for f in fields:
+        if f.get("name", "").strip().lower() == field_name.strip().lower():
+            fid = f["id"]
+            row = db.query(AppSetting).filter(AppSetting.key == setting_key).first()
+            if row:
+                row.value = fid
+            else:
+                db.add(AppSetting(key=setting_key, value=fid))
+            db.flush()
+            return fid
+    return None
 
 
 def _recompute_total(item: BacklogItem) -> None:
@@ -163,6 +189,10 @@ def _to_response(
         archived_at=item.archived_at,
         in_work=bool(scenarios) or jira_in_progress,
         approved_scenarios=scenarios,
+        assignee_employee_id=item.assignee_employee_id,
+        assignee_display_name=item.assignee.display_name if item.assignee else None,
+        customer=item.customer,
+        cost_type=item.cost_type,
         jira_status=issue.status if issue else None,
         jira_status_category=issue.status_category if issue else None,
         jira_status_changed_at=issue.status_changed_at if issue else None,
@@ -174,57 +204,32 @@ def _to_response(
 @router.get("", response_model=List[BacklogItemResponse])
 async def list_backlog_items(
     project_id: Optional[str] = Query(None),
-    view: str = Query("active", pattern="^(active|archived|in_work)$"),
+    view: str = Query("active", pattern="^(active|archived)$"),
     db: Session = Depends(get_db),
 ):
     """Список бэклога с фильтром по виду.
 
-    - ``active`` (default): не архивные и не в утверждённых сценариях.
-    - ``archived``: только ``archived_at IS NOT NULL``.
-    - ``in_work``: не архивные, есть ≥1 allocation в approved-сценарии;
-      каждый элемент получает список ссылок на эти сценарии.
+    - ``active`` (default): не архивные, статус не done.
+    - ``archived``: ``archived_at IS NOT NULL`` или статус done.
     """
-    approved_alloc_ids = (
-        db.query(ScenarioAllocation.backlog_item_id)
-        .join(PlanningScenario, ScenarioAllocation.scenario_id == PlanningScenario.id)
-        .filter(PlanningScenario.status == "approved")
-        .distinct()
-    )
-
     query = (
         db.query(BacklogItem)
         .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
     )
     if project_id is not None:
         query = query.filter(BacklogItem.project_id == project_id)
 
-    # Jira statusCategory drives view membership alongside archived_at and
-    # approved-scenario allocations. For manual items (no issue) status is
-    # NULL — coalesce to '' so they flow through to active/in_work without
-    # being matched as done/indeterminate.
-    status_cat = func.coalesce(Issue.status_category, "")
-
     if view == "active":
         query = query.filter(
             BacklogItem.archived_at.is_(None),
-            ~BacklogItem.id.in_(approved_alloc_ids),
-            status_cat.notin_(["done", "indeterminate"]),
+            func.coalesce(Issue.status_category, "") != "done",
         )
     elif view == "archived":
         query = query.filter(
             or_(
                 BacklogItem.archived_at.isnot(None),
                 Issue.status_category == "done",
-            ),
-        )
-    elif view == "in_work":
-        query = query.filter(
-            BacklogItem.archived_at.is_(None),
-            status_cat != "done",
-            or_(
-                BacklogItem.id.in_(approved_alloc_ids),
-                Issue.status_category == "indeterminate",
             ),
         )
 
@@ -237,23 +242,7 @@ async def list_backlog_items(
         )
     )
 
-    # For in_work, join back approved scenarios per item.
-    scenarios_by_item: dict[str, List[ScenarioRef]] = {}
-    if view == "in_work" and items:
-        item_ids = [i.id for i in items]
-        rows = (
-            db.query(ScenarioAllocation.backlog_item_id, PlanningScenario.id, PlanningScenario.name)
-            .join(PlanningScenario, ScenarioAllocation.scenario_id == PlanningScenario.id)
-            .filter(PlanningScenario.status == "approved")
-            .filter(ScenarioAllocation.backlog_item_id.in_(item_ids))
-            .all()
-        )
-        for bi_id, scn_id, scn_name in rows:
-            scenarios_by_item.setdefault(bi_id, []).append(
-                ScenarioRef(id=scn_id, name=scn_name)
-            )
-
-    return [_to_response(i, scenarios_by_item.get(i.id)) for i in items]
+    return [_to_response(i, None) for i in items]
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)
@@ -331,6 +320,84 @@ async def refresh_from_jira(
         except JiraClientError as e:
             raise HTTPException(status_code=502, detail=f"Jira error: {e}")
 
+    # Sync assignee / customer / cost_type from Jira
+    if candidate_keys and jira_configured:
+        try:
+            async with JiraClient.from_db(db) as jira:
+                customer_field_id = await _discover_field_id(
+                    jira, db, "jira_customer_field_id", "Заказчик (user)"
+                )
+                cost_type_field_id = await _discover_field_id(
+                    jira, db, "jira_cost_type_field_id", "Тип затрат"
+                )
+                extra_fields = ["assignee"]
+                if customer_field_id:
+                    extra_fields.append(customer_field_id)
+                if cost_type_field_id:
+                    extra_fields.append(cost_type_field_id)
+
+                BATCH = 100
+                for i in range(0, len(candidate_keys), BATCH):
+                    batch = candidate_keys[i : i + BATCH]
+                    keys_jql = ", ".join(f'"{k}"' for k in batch)
+                    jql = f"key in ({keys_jql})"
+
+                    async for jira_issue in jira.iter_issues(
+                        jql=jql,
+                        max_results=BATCH,
+                        fields=extra_fields,
+                    ):
+                        issue_row = (
+                            db.query(Issue)
+                            .filter(Issue.key == jira_issue.key)
+                            .one_or_none()
+                        )
+                        if not issue_row:
+                            continue
+                        backlog_item = (
+                            db.query(BacklogItem)
+                            .filter(BacklogItem.issue_id == issue_row.id)
+                            .one_or_none()
+                        )
+                        if not backlog_item:
+                            continue
+
+                        # Assignee
+                        assignee_data = getattr(jira_issue.fields, "assignee", None)
+                        if assignee_data and hasattr(assignee_data, "accountId"):
+                            emp = (
+                                db.query(Employee)
+                                .filter(Employee.jira_account_id == assignee_data.accountId)
+                                .one_or_none()
+                            )
+                            backlog_item.assignee_employee_id = emp.id if emp else None
+                        else:
+                            backlog_item.assignee_employee_id = None
+
+                        # Customer
+                        if customer_field_id:
+                            raw = (jira_issue.fields._extra or {}).get(customer_field_id)
+                            if raw and isinstance(raw, dict):
+                                backlog_item.customer = raw.get("displayName") or raw.get("name")
+                            else:
+                                backlog_item.customer = None
+
+                        # Cost type
+                        if cost_type_field_id:
+                            raw = (jira_issue.fields._extra or {}).get(cost_type_field_id)
+                            if raw and isinstance(raw, dict):
+                                backlog_item.cost_type = raw.get("value") or raw.get("name")
+                            elif isinstance(raw, str):
+                                backlog_item.cost_type = raw
+                            else:
+                                backlog_item.cost_type = None
+
+                db.commit()
+        except asyncio.CancelledError:
+            raise HTTPException(status_code=499, detail="Refresh cancelled by client")
+        except Exception:
+            pass  # best-effort
+
     # 3) Перечитать кандидатов заново — их ``planned_*`` / impact / risk
     #    теперь актуальны. ``category`` sync не трогает, так что набор тот же,
     #    но перечитать надо: сессия могла истечь атрибуты после commit в шаге 2.
@@ -403,7 +470,7 @@ async def get_backlog_item(
     """Получить один элемент бэклога по id."""
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -421,7 +488,7 @@ async def update_backlog_item(
     """Частичное обновление элемента бэклога."""
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -559,7 +626,7 @@ async def link_jira(
     # Reload with joined issue for response.
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -602,7 +669,7 @@ async def archive_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -652,7 +719,7 @@ async def restore_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue))
+        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(BacklogItem.id == item_id)
         .first()
     )
