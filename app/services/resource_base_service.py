@@ -27,6 +27,36 @@ from app.models import (
 
 DEFAULT_HOURS_PER_DAY = 8.0
 
+ROLE_PREFERRED_ORDER = ['analyst', 'dev', 'qa', 'consultant', 'project_manager']
+
+
+@dataclass
+class WorkTypeSummaryRow:
+    """Строка разбивки по одному виду обязательных работ."""
+
+    work_type_id: str
+    work_type_label: str
+    hours_by_role: dict[str, float]           # role_code -> часы (0 если нет правила)
+    pct_by_role: dict[str, Optional[float]]   # role_code -> % (None если нет правила)
+    total_hours: float
+
+
+@dataclass
+class ResourceSummary:
+    """Сводная разбивка ресурса команды по видам обязательных работ и ролям."""
+
+    year: int
+    quarter: int
+    team: str
+    roles: list[str]                           # упорядоченные коды ролей в команде
+    role_employee_names: dict[str, list[str]]  # role_code -> отсортированные имена
+    gross_by_role: dict[str, float]            # норма-часы до вычета обязательных
+    gross_total: float
+    work_type_rows: list[WorkTypeSummaryRow]   # только subtracts_from_pool=True
+    available_by_role: dict[str, float]        # после вычета обязательных
+    available_total: float
+    external_qa_hours: Optional[float]
+
 
 @dataclass
 class EmployeeDayHours:
@@ -222,5 +252,182 @@ class ResourceBaseService:
             team=team,
             employees=result_emps,
             role_totals=role_totals,
+            external_qa_hours=scenario.external_qa_hours,
+        )
+
+    def compute_summary(self, scenario: PlanningScenario) -> ResourceSummary:
+        """Сводная разбивка: норма-часы → обязательные работы → на бэклог, по ролям."""
+        year = scenario.year
+        q = int(str(scenario.quarter).replace("Q", ""))
+        team = scenario.team
+        months = self.QUARTER_MONTHS[q]
+        period_start = date(year, months[0], 1)
+        last_m = months[-1]
+        next_year = year + 1 if last_m == 12 else year
+        next_month = 1 if last_m == 12 else last_m + 1
+        period_end = date(next_year, next_month, 1)
+
+        # --- сотрудники команды ---
+        emp_ids = [
+            r[0]
+            for r in self.db.query(EmployeeTeam.employee_id)
+            .filter(EmployeeTeam.team == team)
+            .all()
+        ]
+        employees = (
+            self.db.query(Employee)
+            .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712
+            .all()
+        )
+
+        # --- производственный календарь ---
+        cal_overrides: dict[date, float] = {
+            row.date: float(row.hours)
+            for row in self.db.query(ProductionCalendarDay).filter(
+                ProductionCalendarDay.date >= period_start,
+                ProductionCalendarDay.date < period_end,
+            ).all()
+        }
+
+        def day_hours(d: date) -> float:
+            if d in cal_overrides:
+                return cal_overrides[d]
+            return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
+
+        # --- виды обязательных работ (subtracts_from_pool=True) ---
+        work_types = (
+            self.db.query(MandatoryWorkType)
+            .filter(
+                MandatoryWorkType.subtracts_from_pool == True,  # noqa: E712
+                MandatoryWorkType.is_active == True,            # noqa: E712
+            )
+            .order_by(MandatoryWorkType.sort_order.asc().nullsfirst())
+            .all()
+        )
+        wt_ids = {wt.id for wt in work_types}
+
+        # --- правила сценария для этих видов работ ---
+        rules: list[ScenarioRule] = []
+        if wt_ids:
+            rules = (
+                self.db.query(ScenarioRule)
+                .filter(
+                    ScenarioRule.scenario_id == scenario.id,
+                    ScenarioRule.work_type_id.in_(wt_ids),
+                )
+                .all()
+            )
+
+        # Словарь: (work_type_id, role_or_None) -> pct
+        rule_lookup: dict[tuple[str, Optional[str]], float] = {}
+        for r in rules:
+            key = (r.work_type_id, r.role)
+            rule_lookup[key] = rule_lookup.get(key, 0.0) + r.percent_of_norm
+
+        def wt_pct_for_role(wt_id: str, role: Optional[str]) -> Optional[float]:
+            if role and (wt_id, role) in rule_lookup:
+                return rule_lookup[(wt_id, role)]
+            if (wt_id, None) in rule_lookup:
+                return rule_lookup[(wt_id, None)]
+            return None
+
+        # --- валовые часы по сотрудникам (без вычета обязательных) ---
+        gross_by_emp: dict[str, float] = {}
+        emp_role: dict[str, Optional[str]] = {}
+        emp_name: dict[str, str] = {}
+
+        for e in employees:
+            abs_ranges = (
+                self.db.query(Absence)
+                .filter(
+                    Absence.employee_id == e.id,
+                    Absence.start_date < period_end,
+                    Absence.end_date >= period_start,
+                )
+                .all()
+            )
+            total = 0.0
+            cur = period_start
+            while cur < period_end:
+                norm = day_hours(cur)
+                if norm > 0:
+                    on_absence = any(a.start_date <= cur <= a.end_date for a in abs_ranges)
+                    if not on_absence:
+                        total += norm
+                cur += timedelta(days=1)
+
+            gross_by_emp[e.id] = round(total, 2)
+            emp_role[e.id] = e.role
+            emp_name[e.id] = e.display_name
+
+        # --- агрегация по ролям ---
+        role_employee_names: dict[str, list[str]] = {}
+        gross_by_role: dict[str, float] = {}
+        for emp_id, gross in gross_by_emp.items():
+            role = emp_role[emp_id]
+            if role:
+                gross_by_role[role] = gross_by_role.get(role, 0.0) + gross
+                role_employee_names.setdefault(role, []).append(emp_name[emp_id])
+
+        for names in role_employee_names.values():
+            names.sort()
+
+        # Упорядочиваем роли по предпочтительному порядку
+        roles_ordered = sorted(
+            gross_by_role.keys(),
+            key=lambda r: (
+                ROLE_PREFERRED_ORDER.index(r)
+                if r in ROLE_PREFERRED_ORDER
+                else len(ROLE_PREFERRED_ORDER)
+            ),
+        )
+
+        # --- строки по видам работ ---
+        wt_rows: list[WorkTypeSummaryRow] = []
+        for wt in work_types:
+            hours_by_role: dict[str, float] = {}
+            pct_by_role: dict[str, Optional[float]] = {}
+            total_wt = 0.0
+            for role in roles_ordered:
+                pct = wt_pct_for_role(wt.id, role)
+                pct_by_role[role] = pct
+                h = round(gross_by_role.get(role, 0.0) * (pct or 0.0) / 100.0, 2)
+                hours_by_role[role] = h
+                total_wt += h
+            wt_rows.append(
+                WorkTypeSummaryRow(
+                    work_type_id=wt.id,
+                    work_type_label=wt.label,
+                    hours_by_role=hours_by_role,
+                    pct_by_role=pct_by_role,
+                    total_hours=round(total_wt, 2),
+                )
+            )
+
+        # --- доступные часы = валовые − обязательные ---
+        available_by_role: dict[str, float] = {}
+        for role in roles_ordered:
+            gross = gross_by_role.get(role, 0.0)
+            mandatory_total = sum(row.hours_by_role.get(role, 0.0) for row in wt_rows)
+            available_by_role[role] = round(max(0.0, gross - mandatory_total), 2)
+
+        # external_qa_hours переопределяет доступные часы для роли qa
+        if scenario.external_qa_hours is not None:
+            available_by_role["qa"] = scenario.external_qa_hours
+
+        gross_total = round(sum(gross_by_role.values()), 2)
+        available_total = round(sum(available_by_role.values()), 2)
+
+        return ResourceSummary(
+            year=year,
+            quarter=q,
+            team=team,
+            roles=list(roles_ordered),
+            role_employee_names=role_employee_names,
+            gross_by_role=gross_by_role,
+            gross_total=gross_total,
+            work_type_rows=wt_rows,
+            available_by_role=available_by_role,
+            available_total=available_total,
             external_qa_hours=scenario.external_qa_hours,
         )
