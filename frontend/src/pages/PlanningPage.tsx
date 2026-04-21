@@ -23,6 +23,7 @@ import {
   useRevertScenario,
   useSyncScenarioBacklog,
   useScenarioResource,
+  useScenarioResourceSummary,
   useUpdateScenario,
   usePatchAllocationAssignee,
 } from '../hooks/usePlanning';
@@ -37,10 +38,8 @@ import type { AllocationResponse, BacklogImpactRisk } from '../types/api';
 
 const IMPACT_COLORS: Record<BacklogImpactRisk, string> = { low: 'default', medium: 'blue', high: 'cyan' };
 const IMPACT_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', medium: 'средний', high: 'высокий' };
-const RISK_COLORS: Record<BacklogImpactRisk, string> = { low: 'green', medium: 'default', high: 'warning' };
-const RISK_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', medium: 'средний', high: 'высокий' };
 
-const GRID = '40px 60px 1fr 150px 120px 280px 75px 100px 95px';
+const GRID = '40px 60px 1fr 150px 120px 280px 90px 100px';
 
 export default function PlanningPage() {
   const { notification } = App.useApp();
@@ -105,6 +104,11 @@ export default function PlanningPage() {
   // Не дёргаем ручку пока у сценария не выбрана команда — иначе бэк вернёт 400.
   const { data: resourceBase } = useScenarioResource(
     scenarioId ?? undefined,
+    !!scenario?.team,
+  );
+
+  const { data: resourceSummary } = useScenarioResourceSummary(
+    scenarioId ?? '',
     !!scenario?.team,
   );
 
@@ -348,9 +352,8 @@ export default function PlanningPage() {
                         <span>Исполнитель</span>
                         <span>Заказчик</span>
                         <span>АН / ПР / ТС / ОПЭ</span>
-                        <span style={{ textAlign: 'right' }}>Всего</span>
+                        <span style={{ textAlign: 'right' }}>Всего часов</span>
                         <span>Влияние</span>
-                        <span>Риск</span>
                       </div>
                       <div style={{ overflowY: 'auto', flex: 1 }}>
                         {(allocations ?? []).map((a) => {
@@ -494,19 +497,19 @@ export default function PlanningPage() {
                                   color={OPO_COLOR}
                                 />
                               </div>
-                              <span style={{ textAlign: 'right', fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
-                                {Math.round(total)} ч
-                              </span>
-                              <div>
-                                {a.impact ? (
-                                  <Tag color={IMPACT_COLORS[a.impact]}>{IMPACT_LABELS[a.impact]}</Tag>
-                                ) : (
-                                  <span style={{ color: DARK_THEME.textDim, fontSize: 11 }}>—</span>
+                              <div style={{ textAlign: 'right' }}>
+                                <span style={{ fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
+                                  {Math.round(total)} ч
+                                </span>
+                                {resourceSummary && resourceSummary.available_for_backlog_total > 0 && (
+                                  <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 1 }}>
+                                    {Math.round((total / resourceSummary.available_for_backlog_total) * 100)}% ресурса
+                                  </div>
                                 )}
                               </div>
                               <div>
-                                {a.risk ? (
-                                  <Tag color={RISK_COLORS[a.risk]}>{RISK_LABELS[a.risk]}</Tag>
+                                {a.impact ? (
+                                  <Tag color={IMPACT_COLORS[a.impact]}>{IMPACT_LABELS[a.impact]}</Tag>
                                 ) : (
                                   <span style={{ color: DARK_THEME.textDim, fontSize: 11 }}>—</span>
                                 )}
@@ -547,6 +550,7 @@ export default function PlanningPage() {
                 allocations={allocations ?? []}
                 quarter={String(quarterInt)}
                 scenarioId={scenarioId}
+                summary={resourceSummary}
               />
               <Card size="small" styles={{ body: { padding: 12 } }}>
                 <ExternalQaInput

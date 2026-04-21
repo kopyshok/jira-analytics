@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
-import type { AllocationResponse, ResourceBase } from '../../types/api';
+import type { AllocationResponse, ResourceBase, ResourceSummaryOut } from '../../types/api';
 import { demandByRole } from '../../utils/planning';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
@@ -30,6 +30,7 @@ interface Props {
   allocations: AllocationResponse[];
   quarter: string;
   scenarioId: string;
+  summary?: ResourceSummaryOut;
 }
 
 /** Правая sticky-колонка /planning: карточки с ресурсом по ролям и сотрудникам.
