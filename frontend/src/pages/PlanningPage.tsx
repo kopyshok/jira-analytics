@@ -305,7 +305,7 @@ export default function PlanningPage() {
 
           <ScenarioResourceSummary scenarioId={scenarioId} enabled={!!scenario.team} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 16, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 16, alignItems: 'stretch' }}>
             <Tabs
               defaultActiveKey="distribution"
               items={[
@@ -313,9 +313,11 @@ export default function PlanningPage() {
                   key: 'distribution',
                   label: 'Распределение',
                   children: (
+                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                     <Card
                       title="Элементы бэклога"
-                      styles={{ body: { padding: 0 } }}
+                      styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1 } }}
+                      style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
                       loading={allocLoading}
                       extra={
                         <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>
@@ -346,7 +348,7 @@ export default function PlanningPage() {
                         <span>Влияние</span>
                         <span>Риск</span>
                       </div>
-                      <div style={{ maxHeight: 640, overflowY: 'auto' }}>
+                      <div style={{ overflowY: 'auto', flex: 1 }}>
                         {(allocations ?? []).map((a) => {
                           const an = a.estimate_analyst_hours ?? 0;
                           const de = a.estimate_dev_hours ?? 0;
@@ -472,6 +474,7 @@ export default function PlanningPage() {
                         )}
                       </div>
                     </Card>
+                    </div>
                   ),
                 },
                 {
