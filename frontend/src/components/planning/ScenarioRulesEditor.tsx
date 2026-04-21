@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  App, Button, Collapse, InputNumber, Select, Space, Table, Tooltip, Typography,
+  App, Button, InputNumber, Popover, Select, Space, Table, Tooltip,
 } from 'antd';
-import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
-import { useScenarioRules, usePutScenarioRules } from '../../hooks/usePlanning';
+import { CopyOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import { useScenarioRules, usePutScenarioRules, useCopyRulesFromTemplate } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
 import { useMandatoryWorkTypes } from '../../hooks/useCapacity';
 import type { ScenarioRuleInput } from '../../types/api';
@@ -22,6 +22,10 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
   const { data: roles = [] } = useRoles();
   const { data: workTypes = [] } = useMandatoryWorkTypes({ isActive: true });
   const put = usePutScenarioRules();
+  const copy = useCopyRulesFromTemplate();
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyYear, setCopyYear] = useState<number>(new Date().getFullYear());
+  const [copyQuarter, setCopyQuarter] = useState<number>(1);
 
   const [drafts, setDrafts] = useState<RuleDraft[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -191,54 +195,96 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
 
   const saveDisabled = !dirty || hasDuplicates || put.isPending;
 
-  return (
-    <Collapse
-      defaultActiveKey={[]}
-      size="small"
-      items={[
-        {
-          key: '1',
-          label: (
-            <Typography.Text style={{ fontSize: 13 }}>
-              Правила обязательных работ
-            </Typography.Text>
-          ),
-          children: (
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              <Table<RuleDraft>
-                size="small"
-                dataSource={drafts}
-                rowKey="_key"
-                columns={columns}
-                pagination={false}
-                locale={{ emptyText: 'Нет правил' }}
-              />
-              <Space>
-                <Button size="small" icon={<PlusOutlined />} onClick={addRow}>
-                  Добавить правило
-                </Button>
-                <Tooltip title={hasDuplicates ? 'Есть дубликаты — исправьте перед сохранением' : undefined}>
-                  <Button
-                    size="small"
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    disabled={saveDisabled}
-                    loading={put.isPending}
-                    onClick={handleSave}
-                  >
-                    Сохранить
-                  </Button>
-                </Tooltip>
-                {dirty && (
-                  <Button size="small" onClick={handleReset}>
-                    Сбросить
-                  </Button>
-                )}
-              </Space>
-            </Space>
-          ),
+  const handleCopy = () => {
+    copy.mutate(
+      { scenarioId, year: copyYear, quarter: copyQuarter },
+      {
+        onSuccess: () => {
+          setCopyOpen(false);
+          setDirty(false);
+          notification.success({ message: `Правила скопированы из Q${copyQuarter} ${copyYear}` });
         },
-      ]}
-    />
+        onError: (e) => notification.error({ message: 'Ошибка', description: (e as Error).message }),
+      },
+    );
+  };
+
+  const yearOptions = [2024, 2025, 2026, 2027].map((y) => ({ value: y, label: String(y) }));
+  const quarterOptions = [1, 2, 3, 4].map((q) => ({ value: q, label: `Q${q}` }));
+
+  const copyContent = (
+    <Space direction="vertical" size={8} style={{ width: 200 }}>
+      <Space>
+        <Select
+          size="small"
+          value={copyYear}
+          options={yearOptions}
+          onChange={setCopyYear}
+          style={{ width: 80 }}
+        />
+        <Select
+          size="small"
+          value={copyQuarter}
+          options={quarterOptions}
+          onChange={setCopyQuarter}
+          style={{ width: 70 }}
+        />
+      </Space>
+      <Button
+        size="small"
+        type="primary"
+        block
+        loading={copy.isPending}
+        onClick={handleCopy}
+      >
+        Скопировать
+      </Button>
+    </Space>
+  );
+
+  return (
+    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+      <Table<RuleDraft>
+        size="small"
+        dataSource={drafts}
+        rowKey="_key"
+        columns={columns}
+        pagination={false}
+        locale={{ emptyText: 'Нет правил' }}
+      />
+      <Space>
+        <Button size="small" icon={<PlusOutlined />} onClick={addRow}>
+          Добавить правило
+        </Button>
+        <Popover
+          open={copyOpen}
+          onOpenChange={setCopyOpen}
+          content={copyContent}
+          title="Скопировать из шаблона квартала"
+          trigger="click"
+        >
+          <Button size="small" icon={<CopyOutlined />}>
+            Из квартала
+          </Button>
+        </Popover>
+        <Tooltip title={hasDuplicates ? 'Есть дубликаты — исправьте перед сохранением' : undefined}>
+          <Button
+            size="small"
+            type="primary"
+            icon={<SaveOutlined />}
+            disabled={saveDisabled}
+            loading={put.isPending}
+            onClick={handleSave}
+          >
+            Сохранить
+          </Button>
+        </Tooltip>
+        {dirty && (
+          <Button size="small" onClick={handleReset}>
+            Сбросить
+          </Button>
+        )}
+      </Space>
+    </Space>
   );
 }
