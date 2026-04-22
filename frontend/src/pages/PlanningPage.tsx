@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
-  Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tabs, Tag, Tooltip,
+  Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
   CheckCircleOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, RollbackOutlined,
@@ -46,6 +46,7 @@ export default function PlanningPage() {
   const { notification } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'distribution' | 'rules'>('distribution');
 
   const scenarioId = searchParams.get('scenario') || null;
   const setScenarioId = (id: string | null) => {
@@ -316,247 +317,260 @@ export default function PlanningPage() {
             allocations={allocations ?? []}
           />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 16, alignItems: 'stretch' }}>
-            <Tabs
-              defaultActiveKey="distribution"
-              items={[
-                {
-                  key: 'distribution',
-                  label: 'Распределение',
-                  children: (
-                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                    <Card
-                      title="Элементы бэклога"
-                      styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1 } }}
-                      style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
-                      loading={allocLoading}
-                      extra={
-                        <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>
-                          {isApproved
-                            ? 'сценарий утверждён — отметки заблокированы'
-                            : 'клик по строке переключает включение'}
-                        </span>
-                      }
-                    >
+          {/* Вкладки — на всю ширину над сеткой */}
+          <div style={{
+            display: 'flex',
+            borderBottom: `1px solid ${DARK_THEME.border}`,
+            marginBottom: 0,
+          }}>
+            {(['distribution', 'rules'] as const).map((key) => (
+              <div
+                key={key}
+                onClick={() => setActiveTab(key)}
+                style={{
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  borderBottom: activeTab === key ? `2px solid ${DARK_THEME.cyanPrimary}` : '2px solid transparent',
+                  marginBottom: -1,
+                  color: activeTab === key ? DARK_THEME.cyanPrimary : DARK_THEME.textMuted,
+                  transition: 'color .15s',
+                  userSelect: 'none' as const,
+                }}
+              >
+                {key === 'distribution' ? 'Распределение' : 'Правила'}
+              </div>
+            ))}
+          </div>
+
+          {/* Двуколоночная сетка */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 16, alignItems: 'start' }}>
+            {/* Левая колонка — контент активной вкладки */}
+            {activeTab === 'distribution' ? (
+              <Card
+                title="Элементы бэклога"
+                styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1 } }}
+                style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
+                loading={allocLoading}
+                extra={
+                  <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>
+                    {isApproved
+                      ? 'сценарий утверждён — отметки заблокированы'
+                      : 'клик по строке переключает включение'}
+                  </span>
+                }
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: GRID,
+                    columnGap: GRID_GAP,
+                    padding: '8px 14px',
+                    borderBottom: `1px solid ${DARK_THEME.border}`,
+                    background: DARK_THEME.darkAccent,
+                    fontSize: 11,
+                    color: DARK_THEME.textMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.6,
+                  }}
+                >
+                  <span>✓</span>
+                  <span>Прио</span>
+                  <span>Идея</span>
+                  <span>Исполнитель</span>
+                  <span>Заказчик</span>
+                  <span>АН / ПР / ТС / ОПЭ</span>
+                  <span style={{ textAlign: 'right' }}>Всего часов</span>
+                  <span>Влияние</span>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {(allocations ?? []).map((a) => {
+                    const an = a.estimate_analyst_hours ?? 0;
+                    const de = a.estimate_dev_hours ?? 0;
+                    const qa = a.estimate_qa_hours ?? 0;
+                    const op = a.estimate_opo_hours ?? 0;
+                    const total = a.estimate_hours ?? an + de + qa + op;
+                    const priorityCyan = a.priority != null && a.priority <= 3;
+                    return (
                       <div
+                        key={a.id}
+                        onClick={() => toggleAllocation(a)}
                         style={{
                           display: 'grid',
                           gridTemplateColumns: GRID,
                           columnGap: GRID_GAP,
-                          padding: '8px 14px',
+                          padding: '12px 14px',
                           borderBottom: `1px solid ${DARK_THEME.border}`,
-                          background: DARK_THEME.darkAccent,
-                          fontSize: 11,
-                          color: DARK_THEME.textMuted,
-                          textTransform: 'uppercase',
-                          letterSpacing: 0.6,
+                          alignItems: 'center',
+                          cursor: isDraft ? 'pointer' : 'default',
+                          background: a.included ? 'rgba(0,201,200,0.06)' : 'transparent',
+                          opacity: a.included ? 1 : 0.7,
+                          transition: 'background .15s',
                         }}
                       >
-                        <span>✓</span>
-                        <span>Прио</span>
-                        <span>Идея</span>
-                        <span>Исполнитель</span>
-                        <span>Заказчик</span>
-                        <span>АН / ПР / ТС / ОПЭ</span>
-                        <span style={{ textAlign: 'right' }}>Всего часов</span>
-                        <span>Влияние</span>
-                      </div>
-                      <div style={{ overflowY: 'auto', flex: 1 }}>
-                        {(allocations ?? []).map((a) => {
-                          const an = a.estimate_analyst_hours ?? 0;
-                          const de = a.estimate_dev_hours ?? 0;
-                          const qa = a.estimate_qa_hours ?? 0;
-                          const op = a.estimate_opo_hours ?? 0;
-                          const total = a.estimate_hours ?? an + de + qa + op;
-                          const priorityCyan = a.priority != null && a.priority <= 3;
-                          return (
-                            <div
-                              key={a.id}
-                              onClick={() => toggleAllocation(a)}
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: GRID,
-                                columnGap: GRID_GAP,
-                                padding: '12px 14px',
-                                borderBottom: `1px solid ${DARK_THEME.border}`,
-                                alignItems: 'center',
-                                cursor: isDraft ? 'pointer' : 'default',
-                                background: a.included ? 'rgba(0,201,200,0.06)' : 'transparent',
-                                opacity: a.included ? 1 : 0.7,
-                                transition: 'background .15s',
-                              }}
-                            >
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <Checkbox
-                                  checked={a.included}
-                                  disabled={!isDraft}
-                                  onChange={() => toggleAllocation(a)}
-                                />
-                              </div>
-                              <span
-                                style={{
-                                  width: 24,
-                                  height: 24,
-                                  borderRadius: 4,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  background: priorityCyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
-                                  color: priorityCyan ? '#003a3a' : DARK_THEME.textMuted,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  fontFamily: FONTS.mono,
-                                }}
-                              >
-                                {a.priority ?? '—'}
-                              </span>
-                              <div>
-                                <div style={{ color: DARK_THEME.textPrimary, fontSize: 14, marginBottom: 3 }}>
-                                  {a.title}
-                                </div>
-                                {a.jira_key && (
-                                  jiraBaseUrl
-                                    ? (
-                                      <a
-                                        href={`${jiraBaseUrl}/browse/${a.jira_key}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}
-                                      >
-                                        {a.jira_key}
-                                      </a>
-                                    )
-                                    : (
-                                      <span style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}>
-                                        {a.jira_key}
-                                      </span>
-                                    )
-                                )}
-                                {a.cost_type && (
-                                  <Tag
-                                    color={a.cost_type.toLowerCase().includes('change') ? 'blue' : 'green'}
-                                    style={{ fontSize: 10, padding: '0 4px', marginLeft: 4 }}
-                                  >
-                                    {a.cost_type}
-                                  </Tag>
-                                )}
-                              </div>
-                              {/* Исполнитель */}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                {!isDraft && !a.assignee_employee_id ? (
-                                  <span style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
-                                    {a.assignee_display_name ?? '—'}
-                                  </span>
-                                ) : (
-                                  <Select
-                                    size="small"
-                                    value={a.assignee_employee_id ?? undefined}
-                                    placeholder={a.assignee_display_name ?? '—'}
-                                    allowClear
-                                    disabled={!isDraft}
-                                    style={{ width: '100%', fontSize: 12 }}
-                                    options={
-                                      resourceBase?.employees.map((emp) => ({
-                                        label: emp.display_name,
-                                        value: emp.employee_id,
-                                      })) ?? []
-                                    }
-                                    onChange={(value: string | undefined) =>
-                                      patchAssignee.mutate({
-                                        scenarioId: scenarioId!,
-                                        allocId: a.id,
-                                        assigneeEmployeeId: value ?? null,
-                                      })
-                                    }
-                                  />
-                                )}
-                              </div>
-                              {/* Заказчик */}
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: DARK_THEME.textMuted,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {a.customer ?? '—'}
-                              </div>
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <BacklogRoleCell
-                                  label="АН"
-                                  hours={an}
-                                  total={total}
-                                  color={getRoleColor(roles, 'analyst')}
-                                />
-                                <BacklogRoleCell
-                                  label="ПР"
-                                  hours={de}
-                                  total={total}
-                                  color={getRoleColor(roles, 'dev')}
-                                />
-                                <BacklogRoleCell
-                                  label="ТС"
-                                  hours={qa}
-                                  total={total}
-                                  color={getRoleColor(roles, 'qa')}
-                                />
-                                <BacklogRoleCell
-                                  label="ОПЭ"
-                                  hours={op}
-                                  total={total}
-                                  color={OPO_COLOR}
-                                />
-                              </div>
-                              <div style={{ textAlign: 'right' }}>
-                                <span style={{ fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
-                                  {Math.round(total)} ч
-                                </span>
-                                {resourceSummary && resourceSummary.available_for_backlog_total > 0 && (
-                                  <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 1 }}>
-                                    {Math.round((total / resourceSummary.available_for_backlog_total) * 100)}% ресурса
-                                  </div>
-                                )}
-                              </div>
-                              <div>
-                                {a.impact ? (
-                                  <Tag color={IMPACT_COLORS[a.impact]}>{IMPACT_LABELS[a.impact]}</Tag>
-                                ) : (
-                                  <span style={{ color: DARK_THEME.textDim, fontSize: 11 }}>—</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {(allocations ?? []).length === 0 && !allocLoading && (
-                          <div style={{ padding: 24, textAlign: 'center', color: DARK_THEME.textMuted, fontSize: 13 }}>
-                            В сценарии нет элементов. Добавьте задачи в бэклог и нажмите
-                            «Синк с бэклогом».
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={a.included}
+                            disabled={!isDraft}
+                            onChange={() => toggleAllocation(a)}
+                          />
+                        </div>
+                        <span
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 4,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: priorityCyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
+                            color: priorityCyan ? '#003a3a' : DARK_THEME.textMuted,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            fontFamily: FONTS.mono,
+                          }}
+                        >
+                          {a.priority ?? '—'}
+                        </span>
+                        <div>
+                          <div style={{ color: DARK_THEME.textPrimary, fontSize: 14, marginBottom: 3 }}>
+                            {a.title}
                           </div>
-                        )}
+                          {a.jira_key && (
+                            jiraBaseUrl
+                              ? (
+                                <a
+                                  href={`${jiraBaseUrl}/browse/${a.jira_key}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}
+                                >
+                                  {a.jira_key}
+                                </a>
+                              )
+                              : (
+                                <span style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}>
+                                  {a.jira_key}
+                                </span>
+                              )
+                          )}
+                          {a.cost_type && (
+                            <Tag
+                              color={a.cost_type.toLowerCase().includes('change') ? 'blue' : 'green'}
+                              style={{ fontSize: 10, padding: '0 4px', marginLeft: 4 }}
+                            >
+                              {a.cost_type}
+                            </Tag>
+                          )}
+                        </div>
+                        {/* Исполнитель */}
+                        <div onClick={(e) => e.stopPropagation()}>
+                          {!isDraft && !a.assignee_employee_id ? (
+                            <span style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
+                              {a.assignee_display_name ?? '—'}
+                            </span>
+                          ) : (
+                            <Select
+                              size="small"
+                              value={a.assignee_employee_id ?? undefined}
+                              placeholder={a.assignee_display_name ?? '—'}
+                              allowClear
+                              disabled={!isDraft}
+                              style={{ width: '100%', fontSize: 12 }}
+                              options={
+                                resourceBase?.employees.map((emp) => ({
+                                  label: emp.display_name,
+                                  value: emp.employee_id,
+                                })) ?? []
+                              }
+                              onChange={(value: string | undefined) =>
+                                patchAssignee.mutate({
+                                  scenarioId: scenarioId!,
+                                  allocId: a.id,
+                                  assigneeEmployeeId: value ?? null,
+                                })
+                              }
+                            />
+                          )}
+                        </div>
+                        {/* Заказчик */}
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: DARK_THEME.textMuted,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {a.customer ?? '—'}
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <BacklogRoleCell
+                            label="АН"
+                            hours={an}
+                            total={total}
+                            color={getRoleColor(roles, 'analyst')}
+                          />
+                          <BacklogRoleCell
+                            label="ПР"
+                            hours={de}
+                            total={total}
+                            color={getRoleColor(roles, 'dev')}
+                          />
+                          <BacklogRoleCell
+                            label="ТС"
+                            hours={qa}
+                            total={total}
+                            color={getRoleColor(roles, 'qa')}
+                          />
+                          <BacklogRoleCell
+                            label="ОПЭ"
+                            hours={op}
+                            total={total}
+                            color={OPO_COLOR}
+                          />
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
+                            {Math.round(total)} ч
+                          </span>
+                          {resourceSummary && resourceSummary.available_for_backlog_total > 0 && (
+                            <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 1 }}>
+                              {Math.round((total / resourceSummary.available_for_backlog_total) * 100)}% ресурса
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          {a.impact ? (
+                            <Tag color={IMPACT_COLORS[a.impact]}>{IMPACT_LABELS[a.impact]}</Tag>
+                          ) : (
+                            <span style={{ color: DARK_THEME.textDim, fontSize: 11 }}>—</span>
+                          )}
+                        </div>
                       </div>
-                    </Card>
+                    );
+                  })}
+                  {(allocations ?? []).length === 0 && !allocLoading && (
+                    <div style={{ padding: 24, textAlign: 'center', color: DARK_THEME.textMuted, fontSize: 13 }}>
+                      В сценарии нет элементов. Добавьте задачи в бэклог и нажмите
+                      «Синк с бэклогом».
                     </div>
-                  ),
-                },
-                {
-                  key: 'rules',
-                  label: 'Правила',
-                  children: (
-                    <Card
-                      title="Правила обязательных работ"
-                      styles={{ body: { padding: 14 } }}
-                      style={{ background: DARK_THEME.cardBg }}
-                    >
-                      <ScenarioRulesEditor scenarioId={scenarioId} />
-                    </Card>
-                  ),
-                },
-              ]}
-            />
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <Card
+                title="Правила обязательных работ"
+                styles={{ body: { padding: 14 } }}
+                style={{ background: DARK_THEME.cardBg }}
+              >
+                <ScenarioRulesEditor scenarioId={scenarioId} />
+              </Card>
+            )}
 
+            {/* Правая колонка — без изменений */}
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <PlanningCapacityPanel
                 resourceBase={resourceBase}
