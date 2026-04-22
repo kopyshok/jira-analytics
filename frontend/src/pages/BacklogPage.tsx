@@ -28,26 +28,8 @@ import { getRoleColor } from '../utils/roles';
 import { OPO_COLOR } from '../utils/opo';
 import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import type {
-  BacklogItemResponse, BacklogImpactRisk, BacklogView,
+  BacklogItemResponse, BacklogView,
 } from '../types/api';
-
-const IMPACT_RISK_OPTIONS: { value: BacklogImpactRisk; label: string }[] = [
-  { value: 'low',    label: 'Низкий' },
-  { value: 'medium', label: 'Средний' },
-  { value: 'high',   label: 'Высокий' },
-];
-
-const IMPACT_RISK_COLOR: Record<BacklogImpactRisk, string> = {
-  low: 'default',
-  medium: 'gold',
-  high: 'red',
-};
-
-const IMPACT_RISK_LABEL: Record<BacklogImpactRisk, string> = {
-  low: 'Низкий',
-  medium: 'Средний',
-  high: 'Высокий',
-};
 
 function DragHandle({ id }: { id: string }) {
   const { attributes, listeners } = useSortable({ id });
@@ -170,24 +152,6 @@ export default function BacklogPage() {
         notification.error({ title: 'Ошибка', description: (e as Error).message }),
     });
   };
-
-  const renderImpactRisk = (field: 'impact' | 'risk', editable: boolean) =>
-    (v: BacklogImpactRisk | null, r: BacklogItemResponse) => {
-      if (!editable || r.issue_id) {
-        return v ? <Tag color={IMPACT_RISK_COLOR[v]}>{IMPACT_RISK_LABEL[v]}</Tag> : <span>—</span>;
-      }
-      return (
-        <Select
-          size="small"
-          allowClear
-          variant="borderless"
-          value={v ?? undefined}
-          style={{ width: 100 }}
-          options={IMPACT_RISK_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-          onChange={(next) => patch(r.id, { [field]: next as BacklogImpactRisk } as Parameters<typeof update.mutate>[0]['data'])}
-        />
-      );
-    };
 
   const baseColumns = (editable: boolean) => [
     {
@@ -433,8 +397,6 @@ export default function BacklogPage() {
         );
       },
     },
-    { title: 'Impact', dataIndex: 'impact', width: 110,
-      render: renderImpactRisk('impact', editable) },
     {
       title: 'Проект', dataIndex: 'project_id', width: 110,
       render: (id: string | null) => {

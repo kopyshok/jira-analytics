@@ -91,6 +91,9 @@ class Issue(Base, SyncedMixin):
         Boolean, default=False, server_default="0", nullable=False, index=True,
     )
 
+    # Jira assignee display name (denormalized from Jira, read-only).
+    assignee_display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     # Jira metadata for triage (e.g. «какие Done висят давно — в архив»)
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
