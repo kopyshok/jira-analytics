@@ -490,6 +490,11 @@ class SyncService:
                 return None
             return _normalize_level(extra.get(fid))
 
+        data["assignee_display_name"] = (
+            jira_issue.fields.assignee.display_name
+            if jira_issue.fields.assignee else None
+        )
+
         data["planned_analyst_hours"] = _fld_float("jira_planned_analyst_hours_field_id")
         data["planned_dev_hours"] = _fld_float("jira_planned_dev_hours_field_id")
         data["planned_qa_hours"] = _fld_float("jira_planned_qa_hours_field_id")

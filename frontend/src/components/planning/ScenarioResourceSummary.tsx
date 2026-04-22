@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
 import { DARK_THEME, FONTS } from '../../utils/constants';
+import { demandByRole } from '../../utils/planning';
+import type { AllocationResponse } from '../../types/api';
 
 interface Props {
   scenarioId: string;
   enabled: boolean;
+  allocations?: AllocationResponse[];
 }
 
 const CELL: React.CSSProperties = {
@@ -23,9 +26,17 @@ const CELL_LABEL: React.CSSProperties = {
   color: DARK_THEME.textMuted,
 };
 
-export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) {
+const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
+
+export default function ScenarioResourceSummary({ scenarioId, enabled, allocations }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
+
+  // Потребность по ролям от отмеченных элементов (analyst/dev/qa с учётом opo_analyst_ratio)
+  const roleDemand = useMemo(
+    () => (allocations ? demandByRole(allocations) : { analyst: 0, dev: 0, qa: 0 }),
+    [allocations],
+  );
 
   if (isLoading) {
     return (
@@ -67,12 +78,15 @@ export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) 
     overflow: 'hidden',
   };
 
-  const rowStyle: React.CSSProperties = {
+  const rowStyle = (opts?: { borderTop?: string }): React.CSSProperties => ({
     display: 'grid',
     gridTemplateColumns: gridCols,
     gap: 1,
     background: DARK_THEME.border,
-  };
+    borderTop: opts?.borderTop ?? ROW_DIVIDER,
+  });
+
+  const totalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
 
   return (
     <Card styles={{ body: { padding: 0, overflow: 'hidden', borderRadius: 8 } }}>
@@ -131,10 +145,10 @@ export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) 
         </div>
       </div>
 
-      {/* Всего норма-часов */}
-      <div style={rowStyle}>
+      {/* Нормированные работы */}
+      <div style={rowStyle({ borderTop: 'none' })}>
         <div style={{ ...CELL_LABEL, background: DARK_THEME.cardBg, fontWeight: 600, color: DARK_THEME.textPrimary }}>
-          Всего норма-часов
+          Нормированные работы
         </div>
         {summary.roles.map((role) => (
           <div key={role} style={{ ...CELL, ...roleCellStyle(role), fontWeight: 600 }}>
@@ -148,7 +162,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) 
 
       {/* Обязательные работы */}
       {summary.work_type_rows.map((row) => (
-        <div key={row.work_type_id} style={rowStyle}>
+        <div key={row.work_type_id} style={rowStyle()}>
           <Tooltip title={row.work_type_label}>
             <div
               style={{
@@ -184,7 +198,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) 
       ))}
 
       {/* На бэклог */}
-      <div style={{ ...rowStyle, borderTop: `2px solid ${DARK_THEME.cyanPrimary}` }}>
+      <div style={{ ...rowStyle({ borderTop: `2px solid ${DARK_THEME.cyanPrimary}` }) }}>
         <div
           style={{
             ...CELL_LABEL,
@@ -198,7 +212,10 @@ export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) 
         </div>
         {summary.roles.map((role) => {
           const avail = summary.available_for_backlog_by_role[role] ?? 0;
+          const used = roleDemand[role as keyof typeof roleDemand] ?? 0;
+          const remaining = Math.round(Math.max(0, avail - used));
           const isExternal = role === 'qa' && summary.external_qa_hours != null;
+          const hasUsed = used > 0;
           return (
             <div
               key={role}
@@ -210,7 +227,16 @@ export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) 
                 fontWeight: 700,
               }}
             >
-              {Math.round(avail).toLocaleString('ru')}
+              {hasUsed ? (
+                <>
+                  {remaining.toLocaleString('ru')}
+                  <div style={{ fontSize: 10, color: DARK_THEME.textHint, fontWeight: 400, marginTop: 1 }}>
+                    из {Math.round(avail).toLocaleString('ru')}
+                  </div>
+                </>
+              ) : (
+                Math.round(avail).toLocaleString('ru')
+              )}
               {isExternal && (
                 <div style={{ fontSize: 10, color: DARK_THEME.textHint, fontWeight: 400 }}>
                   внешний
@@ -227,7 +253,16 @@ export default function ScenarioResourceSummary({ scenarioId, enabled }: Props) 
             fontWeight: 700,
           }}
         >
-          {Math.round(summary.available_for_backlog_total).toLocaleString('ru')}
+          {totalDemand > 0 ? (
+            <>
+              {Math.round(Math.max(0, summary.available_for_backlog_total - totalDemand)).toLocaleString('ru')}
+              <div style={{ fontSize: 10, color: DARK_THEME.textHint, fontWeight: 400, marginTop: 1 }}>
+                из {Math.round(summary.available_for_backlog_total).toLocaleString('ru')}
+              </div>
+            </>
+          ) : (
+            Math.round(summary.available_for_backlog_total).toLocaleString('ru')
+          )}
         </div>
       </div>
     </Card>

@@ -412,9 +412,17 @@ class ResourceBaseService:
         for names in role_employee_names.values():
             names.sort()
 
-        # Упорядочиваем роли по предпочтительному порядку
+        # Упорядочиваем роли по предпочтительному порядку.
+        # Если задан external_qa_hours, добавляем 'qa' в список даже при отсутствии
+        # ТС-сотрудников в команде — чтобы колонка Тестировщики всегда отображалась.
+        base_roles = set(gross_by_role.keys())
+        if scenario.external_qa_hours is not None:
+            base_roles.add('qa')
+            gross_by_role.setdefault('qa', 0.0)
+            calendar_gross_by_role.setdefault('qa', 0.0)
+            role_employee_names.setdefault('qa', [])
         roles_ordered = sorted(
-            gross_by_role.keys(),
+            base_roles,
             key=lambda r: (
                 ROLE_PREFERRED_ORDER.index(r)
                 if r in ROLE_PREFERRED_ORDER

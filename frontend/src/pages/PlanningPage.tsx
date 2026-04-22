@@ -40,6 +40,7 @@ const IMPACT_COLORS: Record<BacklogImpactRisk, string> = { low: 'default', mediu
 const IMPACT_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', medium: 'средний', high: 'высокий' };
 
 const GRID = '40px 60px 1fr 150px 120px 280px 90px 100px';
+const GRID_GAP = 8;
 
 export default function PlanningPage() {
   const { notification } = App.useApp();
@@ -309,7 +310,11 @@ export default function PlanningPage() {
             </div>
           </Card>
 
-          <ScenarioResourceSummary scenarioId={scenarioId} enabled={!!scenario.team} />
+          <ScenarioResourceSummary
+            scenarioId={scenarioId}
+            enabled={!!scenario.team}
+            allocations={allocations ?? []}
+          />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 16, alignItems: 'stretch' }}>
             <Tabs
@@ -337,6 +342,7 @@ export default function PlanningPage() {
                         style={{
                           display: 'grid',
                           gridTemplateColumns: GRID,
+                          columnGap: GRID_GAP,
                           padding: '8px 14px',
                           borderBottom: `1px solid ${DARK_THEME.border}`,
                           background: DARK_THEME.darkAccent,
@@ -370,6 +376,7 @@ export default function PlanningPage() {
                               style={{
                                 display: 'grid',
                                 gridTemplateColumns: GRID,
+                                columnGap: GRID_GAP,
                                 padding: '12px 14px',
                                 borderBottom: `1px solid ${DARK_THEME.border}`,
                                 alignItems: 'center',

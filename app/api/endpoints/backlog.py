@@ -190,7 +190,10 @@ def _to_response(
         in_work=bool(scenarios) or jira_in_progress,
         approved_scenarios=scenarios,
         assignee_employee_id=item.assignee_employee_id,
-        assignee_display_name=item.assignee.display_name if item.assignee else None,
+        assignee_display_name=(
+            issue.assignee_display_name if (issue and issue.assignee_display_name) else
+            (item.assignee.display_name if item.assignee else None)
+        ),
         customer=item.customer,
         cost_type=item.cost_type,
         jira_status=issue.status if issue else None,
