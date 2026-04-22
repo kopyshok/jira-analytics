@@ -32,6 +32,17 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
 
+  const LS_KEY = 'planning_resource_table_collapsed';
+  const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_KEY) === 'true');
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(LS_KEY, String(next));
+      return next;
+    });
+  };
+
   // Потребность по ролям от отмеченных элементов (analyst/dev/qa с учётом opo_analyst_ratio)
   const roleDemand = useMemo(
     () => (allocations ? demandByRole(allocations) : { analyst: 0, dev: 0, qa: 0 }),
@@ -47,6 +58,71 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   }
 
   if (!summary || summary.roles.length === 0) return null;
+
+  if (collapsed) {
+    return (
+      <Card styles={{ body: { padding: 0, overflow: 'hidden' } }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: 40 }}>
+          <div style={{
+            padding: '0 14px',
+            fontSize: 12,
+            color: DARK_THEME.textMuted,
+            borderRight: `1px solid ${DARK_THEME.border}`,
+            background: DARK_THEME.darkAccent,
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            whiteSpace: 'nowrap' as const,
+          }}>
+            На бэклог
+          </div>
+          {summary.roles.map((role) => (
+            <div key={role} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '0 16px',
+              borderRight: `1px solid ${DARK_THEME.border}`,
+              height: '100%',
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
+                {getRoleLabel(roles, role)}
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 700, fontFamily: FONTS.mono, color: DARK_THEME.cyanPrimary }}>
+                {Math.round(summary.available_for_backlog_by_role[role] ?? 0)} ч
+              </span>
+            </div>
+          ))}
+          <div style={{
+            padding: '0 16px',
+            borderRight: `1px solid ${DARK_THEME.border}`,
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+          }}>
+            <span style={{ fontSize: 15, fontWeight: 700, fontFamily: FONTS.mono, color: DARK_THEME.cyanPrimary }}>
+              {Math.round(summary.available_for_backlog_total)} ч
+            </span>
+          </div>
+          <button
+            onClick={toggleCollapsed}
+            style={{
+              marginLeft: 'auto',
+              padding: '0 14px',
+              height: '100%',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 11,
+              color: DARK_THEME.textMuted,
+            }}
+          >
+            ↓ Развернуть
+          </button>
+        </div>
+      </Card>
+    );
+  }
 
   const gridCols = `180px repeat(${summary.roles.length}, 1fr) 90px`;
 
@@ -93,6 +169,28 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
         {/* Основная таблица */}
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Кнопка свернуть — всегда над таблицей */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            padding: '4px 10px',
+            borderBottom: `1px solid ${DARK_THEME.border}`,
+            background: DARK_THEME.cardBg,
+          }}>
+            <button
+              onClick={toggleCollapsed}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 11,
+                color: DARK_THEME.textMuted,
+                padding: '2px 4px',
+              }}
+            >
+              ↑ Свернуть
+            </button>
+          </div>
           {/* Header row */}
           <div style={headerStyle}>
             <div style={{ ...CELL_LABEL, background: DARK_THEME.darkAccent }} />
