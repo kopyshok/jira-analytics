@@ -208,7 +208,10 @@ def _to_allocation_resp(
         impact=item.impact,
         risk=item.risk,
         assignee_employee_id=item.assignee_employee_id,
-        assignee_display_name=item.assignee.display_name if item.assignee else None,
+        assignee_display_name=(
+            item.issue.assignee_display_name if (item.issue and item.issue.assignee_display_name) else
+            (item.assignee.display_name if item.assignee else None)
+        ),
         customer=item.customer,
         cost_type=item.cost_type,
     )

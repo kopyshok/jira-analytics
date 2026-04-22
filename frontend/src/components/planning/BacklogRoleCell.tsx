@@ -20,10 +20,10 @@ export default function BacklogRoleCell({ label, hours, total, color }: BacklogR
         padding: '5px 6px 4px',
         textAlign: 'center',
         background: empty
-          ? `${color}0d`
-          : `linear-gradient(180deg, ${color}55 0%, ${color}22 100%)`,
-        border: empty ? `1px solid ${color}33` : `1px solid ${color}66`,
-        borderBottom: empty ? `2px solid ${color}44` : `2px solid ${color}`,
+          ? `${color}1a`
+          : `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`,
+        border: empty ? `1px solid ${color}55` : `1px solid ${color}cc`,
+        borderBottom: empty ? `2px solid ${color}77` : `2px solid ${color}`,
         userSelect: 'none',
       }}
     >
@@ -34,7 +34,7 @@ export default function BacklogRoleCell({ label, hours, total, color }: BacklogR
           letterSpacing: '0.07em',
           textTransform: 'uppercase',
           color,
-          opacity: empty ? 0.45 : 0.95,
+          opacity: empty ? 0.6 : 1,
           marginBottom: 2,
         }}
       >

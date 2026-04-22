@@ -444,27 +444,33 @@ export default function PlanningPage() {
                               </div>
                               {/* Исполнитель */}
                               <div onClick={(e) => e.stopPropagation()}>
-                                <Select
-                                  size="small"
-                                  value={a.assignee_employee_id ?? undefined}
-                                  placeholder="—"
-                                  allowClear
-                                  disabled={!isDraft}
-                                  style={{ width: '100%', fontSize: 12 }}
-                                  options={
-                                    resourceBase?.employees.map((emp) => ({
-                                      label: emp.display_name,
-                                      value: emp.employee_id,
-                                    })) ?? []
-                                  }
-                                  onChange={(value: string | undefined) =>
-                                    patchAssignee.mutate({
-                                      scenarioId: scenarioId!,
-                                      allocId: a.id,
-                                      assigneeEmployeeId: value ?? null,
-                                    })
-                                  }
-                                />
+                                {!isDraft && !a.assignee_employee_id ? (
+                                  <span style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
+                                    {a.assignee_display_name ?? '—'}
+                                  </span>
+                                ) : (
+                                  <Select
+                                    size="small"
+                                    value={a.assignee_employee_id ?? undefined}
+                                    placeholder={a.assignee_display_name ?? '—'}
+                                    allowClear
+                                    disabled={!isDraft}
+                                    style={{ width: '100%', fontSize: 12 }}
+                                    options={
+                                      resourceBase?.employees.map((emp) => ({
+                                        label: emp.display_name,
+                                        value: emp.employee_id,
+                                      })) ?? []
+                                    }
+                                    onChange={(value: string | undefined) =>
+                                      patchAssignee.mutate({
+                                        scenarioId: scenarioId!,
+                                        allocId: a.id,
+                                        assigneeEmployeeId: value ?? null,
+                                      })
+                                    }
+                                  />
+                                )}
                               </div>
                               {/* Заказчик */}
                               <div
