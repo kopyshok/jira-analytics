@@ -63,6 +63,9 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   if (!summary || summary.roles.length === 0) return null;
 
   if (collapsed) {
+    const collapsedTotalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
+    const collapsedTotalRemaining = Math.round(summary.available_for_backlog_total - collapsedTotalDemand);
+    const collapsedTotalDeficit = collapsedTotalRemaining < 0;
     return (
       <Card styles={{ body: { padding: 0, overflow: 'hidden' } }}>
         <div style={{ display: 'flex', alignItems: 'center', height: 40 }}>
@@ -79,23 +82,30 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           }}>
             На бэклог
           </div>
-          {summary.roles.map((role) => (
-            <div key={role} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '0 16px',
-              borderRight: `1px solid ${DARK_THEME.border}`,
-              height: '100%',
-            }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
-                {getRoleLabel(roles, role)}
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 700, fontFamily: FONTS.mono, color: DARK_THEME.cyanPrimary }}>
-                {Math.round(summary.available_for_backlog_by_role[role] ?? 0)} ч
-              </span>
-            </div>
-          ))}
+          {summary.roles.map((role) => {
+            const avail = summary.available_for_backlog_by_role[role] ?? 0;
+            const used = roleDemand[role as keyof typeof roleDemand] ?? 0;
+            const remaining = Math.round(avail - used);
+            const isDeficit = remaining < 0;
+            const hasUsed = used > 0;
+            return (
+              <div key={role} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '0 16px',
+                borderRight: `1px solid ${DARK_THEME.border}`,
+                height: '100%',
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
+                  {getRoleLabel(roles, role)}
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: FONTS.mono, color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}>
+                  {hasUsed ? remaining : Math.round(avail)} ч
+                </span>
+              </div>
+            );
+          })}
           <div style={{
             padding: '0 16px',
             borderRight: `1px solid ${DARK_THEME.border}`,
@@ -103,8 +113,8 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
             display: 'flex',
             alignItems: 'center',
           }}>
-            <span style={{ fontSize: 15, fontWeight: 700, fontFamily: FONTS.mono, color: DARK_THEME.cyanPrimary }}>
-              {Math.round(summary.available_for_backlog_total)} ч
+            <span style={{ fontSize: 15, fontWeight: 700, fontFamily: FONTS.mono, color: collapsedTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}>
+              {collapsedTotalDemand > 0 ? collapsedTotalRemaining : Math.round(summary.available_for_backlog_total)} ч
             </span>
           </div>
           <button
@@ -127,7 +137,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     );
   }
 
-  const gridCols = `minmax(280px, max-content) repeat(${summary.roles.length}, 1fr) 90px`;
+  const gridCols = `minmax(280px, max-content) repeat(${summary.roles.length}, 1fr) minmax(100px, max-content)`;
 
   const roleBorderStyle = (role: string): React.CSSProperties => {
     const color = getRoleColor(roles, role);

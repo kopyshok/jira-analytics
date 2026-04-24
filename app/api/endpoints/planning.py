@@ -161,6 +161,7 @@ class AllocationResponse(BaseModel):
     risk: Optional[str] = None
     assignee_employee_id: Optional[str] = None
     assignee_display_name: Optional[str] = None
+    assignee_role: Optional[str] = None
     customer: Optional[str] = None
     cost_type: Optional[str] = None
     source_category: Optional[str] = None  # 'initiatives_rfa' | 'quarterly_tasks'
@@ -258,6 +259,7 @@ def _to_allocation_resp(
             item.issue.assignee_display_name if (item.issue and item.issue.assignee_display_name) else
             (item.assignee.display_name if item.assignee else None)
         ),
+        assignee_role=item.assignee.role if item.assignee else None,
         customer=item.customer,
         cost_type=item.cost_type,
         source_category=item.issue.category if item.issue else None,
