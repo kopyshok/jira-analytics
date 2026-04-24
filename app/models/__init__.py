@@ -27,6 +27,9 @@ from app.models.hierarchy_rule import HierarchyRule
 from app.models.production_calendar_day import ProductionCalendarDay
 from app.models.role import Role
 from app.models.scenario_rule import ScenarioRule
+from app.models.scenario_revision import ScenarioRevision
+from app.models.scenario_revision_item import ScenarioRevisionItem
+from app.models.scenario_capacity_snapshot import ScenarioCapacitySnapshot
 
 __all__ = [
     "TimestampMixin",
@@ -58,4 +61,7 @@ __all__ = [
     "ProductionCalendarDay",
     "Role",
     "ScenarioRule",
+    "ScenarioRevision",
+    "ScenarioRevisionItem",
+    "ScenarioCapacitySnapshot",
 ]

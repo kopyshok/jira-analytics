@@ -11,6 +11,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.scenario_allocation import ScenarioAllocation
+    from app.models.scenario_revision import ScenarioRevision
 
 
 class PlanningScenario(Base, TimestampMixin):
@@ -41,6 +42,10 @@ class PlanningScenario(Base, TimestampMixin):
     # Relationships
     allocations: Mapped[List["ScenarioAllocation"]] = relationship(
         back_populates="scenario"
+    )
+    revisions: Mapped[List["ScenarioRevision"]] = relationship(
+        back_populates="scenario", cascade="all, delete-orphan",
+        order_by="ScenarioRevision.revision_number",
     )
 
     def __repr__(self) -> str:
