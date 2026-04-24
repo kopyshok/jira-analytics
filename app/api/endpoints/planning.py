@@ -235,8 +235,19 @@ def _to_scenario_resp(s: PlanningScenario) -> ScenarioResponse:
 
 
 def _to_allocation_resp(
-    alloc: ScenarioAllocation, item: BacklogItem
+    alloc: ScenarioAllocation,
+    item: BacklogItem,
+    employee_role_by_name: dict | None = None,
 ) -> AllocationResponse:
+    jira_assignee_name = item.issue.assignee_display_name if item.issue else None
+    resolved_role = (
+        item.assignee.role if item.assignee
+        else (
+            employee_role_by_name.get(jira_assignee_name)
+            if employee_role_by_name and jira_assignee_name
+            else None
+        )
+    )
     return AllocationResponse(
         id=alloc.id,
         scenario_id=alloc.scenario_id,
@@ -256,10 +267,10 @@ def _to_allocation_resp(
         risk=item.risk,
         assignee_employee_id=item.assignee_employee_id,
         assignee_display_name=(
-            item.issue.assignee_display_name if (item.issue and item.issue.assignee_display_name) else
-            (item.assignee.display_name if item.assignee else None)
+            jira_assignee_name if jira_assignee_name
+            else (item.assignee.display_name if item.assignee else None)
         ),
-        assignee_role=item.assignee.role if item.assignee else None,
+        assignee_role=resolved_role,
         customer=item.customer,
         cost_type=item.cost_type,
         source_category=item.issue.category if item.issue else None,
@@ -670,7 +681,11 @@ async def list_scenario_allocations(
         .filter(ScenarioAllocation.scenario_id == scenario_id)
         .all()
     )
-    resp = [_to_allocation_resp(alloc, item) for alloc, item in rows]
+    # Lookup для автоматического разрешения роли по имени из Jira, когда
+    # assignee_employee_id не заполнен вручную.
+    active_employees = db.query(Employee).filter(Employee.is_active == True).all()  # noqa: E712
+    emp_role_by_name = {e.display_name: e.role for e in active_employees if e.role}
+    resp = [_to_allocation_resp(alloc, item, emp_role_by_name) for alloc, item in rows]
     resp.sort(
         key=lambda r: (
             r.priority is None,
