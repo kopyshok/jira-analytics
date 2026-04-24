@@ -118,12 +118,14 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
     ? { ...summary.available_for_backlog_by_role }
     : { ...resourceBase.role_totals };
 
+  // Для qa берём то же значение, что и верхняя таблица в строке «На бэклог»
+  // (норма минус обязательные работы). Раньше здесь подставлялись валовые
+  // часы внешнего тестировщика без вычета обяз. работ — правый блок
+  // показывал 680, а верхняя таблица 340.
   const capacityByRole: Record<CoreRoleKey, number> = {
     analyst: availableByRole['analyst'] ?? 0,
     dev:     availableByRole['dev']     ?? 0,
-    qa: resourceBase.external_qa_hours != null
-      ? resourceBase.external_qa_hours
-      : (availableByRole['qa'] ?? 0),
+    qa:      availableByRole['qa']      ?? 0,
   };
 
   const infoRoles = roles.filter(
