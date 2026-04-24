@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Card, Select, Skeleton, Tag } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';

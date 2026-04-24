@@ -64,10 +64,11 @@ export default function BacklogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get('view');
   const view: BacklogView =
-    rawView === 'archived' ? rawView : 'active';
+    rawView === 'archived' ? 'archived' : rawView === 'active' ? 'active' : 'quarterly';
 
   const active = useBacklogItems('active');
   const archived = useBacklogItems('archived');
+  const quarterly = useBacklogItems('quarterly');
 
   const { data: projects } = useProjects();
   const jiraSettings = useJiraSettings();
@@ -95,6 +96,7 @@ export default function BacklogPage() {
 
   const activeRows = useMemo(() => sortByPriority(active.data), [active.data]);
   const archivedRows = useMemo(() => sortByPriority(archived.data), [archived.data]);
+  const quarterlyRows = useMemo(() => sortByPriority(quarterly.data), [quarterly.data]);
 
   const { data: employees = [] } = useEmployees();
   const { data: roles = [] } = useRoles();
@@ -496,6 +498,18 @@ export default function BacklogPage() {
     </Space>
   );
 
+  const quarterlyTable = (
+    <Table<BacklogItemResponse>
+      dataSource={quarterlyRows}
+      rowKey="id"
+      loading={quarterly.isLoading}
+      pagination={false}
+      size="small"
+      scroll={{ x: 1400 }}
+      columns={baseColumns(false)}
+    />
+  );
+
   const activeTable = (
     <DndContext
       collisionDetection={closestCenter}
@@ -540,8 +554,8 @@ export default function BacklogPage() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Планирование"
-        title="Бэклог инициатив"
-        subtitle='Активные кандидаты — в основной вкладке; задачи в работе и архив — в отдельных'
+        title="Целевые задачи"
+        subtitle='Активные задачи текущего квартала и бэклог инициатив'
         actions={
           <Space>
             <Button
@@ -578,8 +592,13 @@ export default function BacklogPage() {
         }}
         items={[
           {
+            key: 'quarterly',
+            label: `Активные (${quarterlyRows?.length ?? 0})`,
+            children: quarterlyTable,
+          },
+          {
             key: 'active',
-            label: `Активные (${activeRows?.length ?? 0})`,
+            label: `Бэклог (${activeRows?.length ?? 0})`,
             children: activeTable,
           },
           {
