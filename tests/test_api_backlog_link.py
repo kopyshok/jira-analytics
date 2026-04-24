@@ -337,6 +337,53 @@ def test_refresh_from_jira_heals_legacy_drift(db_session):
     assert issue.category == "initiatives_rfa"  # drift healed
 
 
+def test_refresh_from_jira_picks_up_quarterly_tasks(db_session):
+    from app.models import BacklogItem, Category, Issue, Project
+
+    cat = Category(
+        id="cat-qt",
+        code="quarterly_tasks",
+        label="Квартальные задачи",
+        color="#1D9E75",
+        sort_order=2,
+        is_system=False,
+    )
+    proj = Project(
+        id="p-qt",
+        jira_project_id="p-qt-jira",
+        key="ITL",
+        name="ITL",
+        is_active=True,
+    )
+    db_session.add_all([cat, proj])
+    db_session.add(
+        Issue(
+            id="i-qt-1",
+            jira_issue_id="i-qt-1-jira",
+            key="ITL-100",
+            summary="Quarterly initiative",
+            issue_type="ITL",
+            status="In Progress",
+            project_id=proj.id,
+            assigned_category="quarterly_tasks",
+            category="quarterly_tasks",
+        )
+    )
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post("/api/v1/backlog/refresh-from-jira")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["created"] == 1
+    finally:
+        app.dependency_overrides.clear()
+
+    assert db_session.query(BacklogItem).filter_by(issue_id="i-qt-1").count() == 1
+
+
 def _seed_scenario(db, scenario_id, name, status, backlog_item_id):
     from app.models import PlanningScenario, ScenarioAllocation
 

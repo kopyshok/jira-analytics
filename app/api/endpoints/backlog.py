@@ -17,7 +17,11 @@ from app.connectors.jira_client import JiraClient, JiraClientError
 from app.database import get_db
 from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
-from app.services.backlog_service import BACKLOG_CATEGORY, BacklogService
+from app.services.backlog_service import (
+    BACKLOG_CATEGORY,
+    QUARTERLY_TASKS_CATEGORY,
+    BacklogService,
+)
 from app.services.category_resolver import CategoryResolver
 from app.services.sync_service import SyncService
 
@@ -316,6 +320,8 @@ async def refresh_from_jira(
             or_(
                 Issue.assigned_category == BACKLOG_CATEGORY,
                 Issue.category == BACKLOG_CATEGORY,
+                Issue.assigned_category == QUARTERLY_TASKS_CATEGORY,
+                Issue.category == QUARTERLY_TASKS_CATEGORY,
             )
         )
         .all()
@@ -432,6 +438,8 @@ async def refresh_from_jira(
             or_(
                 Issue.assigned_category == BACKLOG_CATEGORY,
                 Issue.category == BACKLOG_CATEGORY,
+                Issue.assigned_category == QUARTERLY_TASKS_CATEGORY,
+                Issue.category == QUARTERLY_TASKS_CATEGORY,
             )
         )
         .all()
@@ -445,7 +453,7 @@ async def refresh_from_jira(
         resolved = resolver.resolve_for_issue(issue).category_code
         if issue.category != resolved:
             issue.category = resolved
-        if resolved != BACKLOG_CATEGORY:
+        if resolved not in (BACKLOG_CATEGORY, QUARTERLY_TASKS_CATEGORY):
             continue
         existing = (
             db.query(BacklogItem).filter_by(issue_id=issue.id).one_or_none()
@@ -471,7 +479,7 @@ async def refresh_from_jira(
         if item.issue is None:
             continue
         resolved = resolver.resolve_for_issue(item.issue).category_code
-        if resolved == BACKLOG_CATEGORY:
+        if resolved in (BACKLOG_CATEGORY, QUARTERLY_TASKS_CATEGORY):
             continue
         if item.archived_at is None:
             svc.sync_from_issue(item.issue)
