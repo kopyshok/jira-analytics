@@ -346,3 +346,34 @@ def test_sync_no_draft_scenarios_is_noop(db_session, proj):
     db_session.commit()
 
     assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 0
+
+
+def test_sync_creates_backlog_item_for_quarterly_tasks(db_session, proj):
+    from app.services.backlog_service import BacklogService
+
+    issue = _make_issue(db_session, proj, "ITL-1", "quarterly_tasks",
+                        planned_analyst_hours=40)
+    svc = BacklogService(db_session)
+    item = svc.sync_from_issue(issue)
+    db_session.commit()
+
+    assert item is not None
+    assert item.issue_id == issue.id
+    assert item.archived_at is None
+
+
+def test_sync_archives_when_category_leaves_tracked_set(db_session, proj):
+    from app.services.backlog_service import BacklogService
+
+    issue = _make_issue(db_session, proj, "ITL-2", "quarterly_tasks")
+    svc = BacklogService(db_session)
+    item = svc.sync_from_issue(issue)
+    db_session.commit()
+
+    issue.category = "development"  # уходит из отслеживаемых
+    db_session.commit()
+    svc.sync_from_issue(issue)
+    db_session.commit()
+
+    db_session.refresh(item)
+    assert item.archived_at is not None

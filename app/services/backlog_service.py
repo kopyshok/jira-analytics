@@ -24,6 +24,8 @@ from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
 
 
 BACKLOG_CATEGORY = "initiatives_rfa"
+QUARTERLY_TASKS_CATEGORY = "quarterly_tasks"
+TRACKED_CATEGORIES = {BACKLOG_CATEGORY, QUARTERLY_TASKS_CATEGORY}
 
 
 class BacklogService:
@@ -50,7 +52,7 @@ class BacklogService:
             self.db.query(BacklogItem).filter_by(issue_id=issue.id).one_or_none()
         )
 
-        if issue.category == BACKLOG_CATEGORY:
+        if issue.category in TRACKED_CATEGORIES:
             is_new = existing is None
             was_archived = existing is not None and existing.archived_at is not None
             if is_new:
