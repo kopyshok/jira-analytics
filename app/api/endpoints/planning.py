@@ -16,6 +16,7 @@ Flow:
 Утверждённые сценарии редактировать нельзя (409) — сначала revert.
 """
 
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,17 +27,24 @@ from app.database import get_db
 from app.models import (
     BacklogItem,
     Employee,
+    EmployeeTeam,
     MandatoryWorkType,
     PlanningScenario,
     RoleCapacityRule,
     ScenarioAllocation,
+    ScenarioCapacitySnapshot,
+    ScenarioRevision,
+    ScenarioRevisionItem,
     ScenarioRule,
 )
+from app.services.capacity_service import CapacityService
 from app.services.planning_service import PlanningService
 from app.services.resource_base_service import ResourceBaseService
 
 
 router = APIRouter()
+
+QUARTER_MONTHS = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
 
 
 # === Schemas ===
@@ -53,6 +61,43 @@ class ScenarioUpdate(BaseModel):
     name: Optional[str] = None
     team: Optional[str] = None
     external_qa_hours: Optional[float] = None
+
+
+class ApproveBody(BaseModel):
+    note: Optional[str] = None
+
+
+class CapacitySnapshotOut(BaseModel):
+    employee_id: Optional[str]
+    employee_name: str
+    year: int
+    month: int
+    norm_hours: float
+    available_hours: float
+
+    class Config:
+        from_attributes = True
+
+
+class RevisionItemOut(BaseModel):
+    backlog_item_id: Optional[str]
+    backlog_item_name: str
+    action: str
+
+    class Config:
+        from_attributes = True
+
+
+class RevisionOut(BaseModel):
+    id: str
+    revision_number: int
+    approved_at: str
+    note: Optional[str]
+    items: List[RevisionItemOut]
+    capacity_snapshots: List[CapacitySnapshotOut]
+
+    class Config:
+        from_attributes = True
 
 
 class ScenarioResponse(BaseModel):
@@ -334,12 +379,124 @@ async def create_scenario(
 @router.post("/scenarios/{scenario_id}/approve", response_model=ScenarioResponse)
 async def approve_scenario(
     scenario_id: str,
+    body: ApproveBody = ApproveBody(),
     db: Session = Depends(get_db),
 ):
-    """Зафиксировать сценарий: status='approved'. Используется как вход в аналитику."""
+    """Зафиксировать сценарий: status='approved'.
+
+    Создаёт запись пересмотра с диффом инициатив и снапшотом нормы команды.
+    """
     scenario = db.get(PlanningScenario, scenario_id)
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
+
+    now = datetime.utcnow()
+
+    # --- Порядковый номер ревизии ---
+    prev_count = (
+        db.query(ScenarioRevision)
+        .filter(ScenarioRevision.scenario_id == scenario_id)
+        .count()
+    )
+    revision_number = prev_count + 1
+
+    # --- Создать запись ревизии ---
+    revision = ScenarioRevision(
+        scenario_id=scenario_id,
+        revision_number=revision_number,
+        approved_at=now,
+        note=body.note,
+    )
+    db.add(revision)
+    db.flush()
+
+    # --- Дифф инициатив ---
+    included_allocs = (
+        db.query(ScenarioAllocation)
+        .filter(
+            ScenarioAllocation.scenario_id == scenario_id,
+            ScenarioAllocation.included_flag == True,  # noqa: E712
+        )
+        .all()
+    )
+    current_included: dict[str, str] = {}
+    for alloc in included_allocs:
+        item = db.get(BacklogItem, alloc.backlog_item_id)
+        current_included[alloc.backlog_item_id] = item.title if item else alloc.backlog_item_id
+
+    prev_revision = (
+        db.query(ScenarioRevision)
+        .filter(
+            ScenarioRevision.scenario_id == scenario_id,
+            ScenarioRevision.revision_number == revision_number - 1,
+        )
+        .first()
+    )
+    if prev_revision:
+        prev_items = (
+            db.query(ScenarioRevisionItem)
+            .filter(
+                ScenarioRevisionItem.revision_id == prev_revision.id,
+                ScenarioRevisionItem.action == "included",
+            )
+            .all()
+        )
+        prev_included: dict[str, str] = {
+            i.backlog_item_id: i.backlog_item_name
+            for i in prev_items
+            if i.backlog_item_id is not None
+        }
+        added = {k: v for k, v in current_included.items() if k not in prev_included}
+        removed = {k: v for k, v in prev_included.items() if k not in current_included}
+    else:
+        added = current_included
+        removed = {}
+
+    for item_id, item_name in added.items():
+        db.add(ScenarioRevisionItem(
+            revision_id=revision.id,
+            backlog_item_id=item_id,
+            backlog_item_name=item_name,
+            action="included",
+        ))
+    for item_id, item_name in removed.items():
+        db.add(ScenarioRevisionItem(
+            revision_id=revision.id,
+            backlog_item_id=item_id,
+            backlog_item_name=item_name,
+            action="excluded",
+        ))
+
+    # --- Снапшот нормы команды ---
+    if scenario.team and scenario.year and scenario.quarter:
+        q = int(str(scenario.quarter).replace("Q", ""))
+        months = QUARTER_MONTHS[q]
+        emp_ids = [
+            r[0]
+            for r in db.query(EmployeeTeam.employee_id)
+            .filter(EmployeeTeam.team == scenario.team)
+            .all()
+        ]
+        employees = (
+            db.query(Employee)
+            .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712
+            .all()
+        )
+        capacity_svc = CapacityService(db)
+        for emp in employees:
+            for month in months:
+                mc = capacity_svc.monthly_capacity(emp.id, scenario.year, month)
+                db.add(ScenarioCapacitySnapshot(
+                    revision_id=revision.id,
+                    employee_id=emp.id,
+                    employee_name=emp.display_name,
+                    year=scenario.year,
+                    month=month,
+                    norm_hours=mc.norm_hours,
+                    available_hours=mc.available_hours,
+                    snapshot_taken_at=now,
+                ))
+
     scenario.status = "approved"
     db.commit()
     db.refresh(scenario)
@@ -688,6 +845,69 @@ async def scenario_resource_summary(
         calendar_gross_by_role=summary.calendar_gross_by_role,
         absence_days_by_employee=summary.absence_days_by_employee,
     )
+
+
+@router.get(
+    "/scenarios/{scenario_id}/revisions",
+    response_model=List[RevisionOut],
+)
+async def list_scenario_revisions(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """История пересмотров сценария: дифф инициатив и снапшот нормы по каждому утверждению."""
+    if not db.get(PlanningScenario, scenario_id):
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    revisions = (
+        db.query(ScenarioRevision)
+        .filter(ScenarioRevision.scenario_id == scenario_id)
+        .order_by(ScenarioRevision.revision_number)
+        .all()
+    )
+
+    result = []
+    for rev in revisions:
+        items = (
+            db.query(ScenarioRevisionItem)
+            .filter(ScenarioRevisionItem.revision_id == rev.id)
+            .all()
+        )
+        snapshots = (
+            db.query(ScenarioCapacitySnapshot)
+            .filter(ScenarioCapacitySnapshot.revision_id == rev.id)
+            .order_by(
+                ScenarioCapacitySnapshot.employee_name,
+                ScenarioCapacitySnapshot.month,
+            )
+            .all()
+        )
+        result.append(RevisionOut(
+            id=rev.id,
+            revision_number=rev.revision_number,
+            approved_at=rev.approved_at.isoformat(),
+            note=rev.note,
+            items=[
+                RevisionItemOut(
+                    backlog_item_id=i.backlog_item_id,
+                    backlog_item_name=i.backlog_item_name,
+                    action=i.action,
+                )
+                for i in items
+            ],
+            capacity_snapshots=[
+                CapacitySnapshotOut(
+                    employee_id=s.employee_id,
+                    employee_name=s.employee_name,
+                    year=s.year,
+                    month=s.month,
+                    norm_hours=s.norm_hours,
+                    available_hours=s.available_hours,
+                )
+                for s in snapshots
+            ],
+        ))
+    return result
 
 
 # === Generic scenario CRUD routes (must come last) ===
