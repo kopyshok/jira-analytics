@@ -1,5 +1,5 @@
-"""BacklogService — auto-population of BacklogItem from Issue with category
-`initiatives_rfa` («Инициативы и RFA»).
+"""BacklogService — auto-population of BacklogItem from Issues with tracked categories
+(`initiatives_rfa` — «Инициативы и RFA», `quarterly_tasks` — «Квартальные задачи»).
 
 Бэклог — пул всех задач-инициатив без привязки к кварталу. Квартальный
 план собирается в сценариях отметками по элементам бэклога.
@@ -41,7 +41,7 @@ class BacklogService:
     def sync_from_issue(self, issue: Issue) -> Optional[BacklogItem]:
         """Идемпотентно выравнивает BacklogItem с Issue по текущей категории.
 
-        - ``category == 'initiatives_rfa'`` — create-or-update, перетягивает
+        - ``category in TRACKED_CATEGORIES`` — create-or-update, перетягивает
           Jira-поля и сбрасывает ``archived_at`` (auto-restore). При создании
           или разархивации — допроставляет allocations в draft-сценариях.
         - Иначе: если BacklogItem существует — проставляем ``archived_at=now()``

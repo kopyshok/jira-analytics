@@ -360,6 +360,9 @@ def test_sync_creates_backlog_item_for_quarterly_tasks(db_session, proj):
     assert item is not None
     assert item.issue_id == issue.id
     assert item.archived_at is None
+    assert item.title == issue.summary
+    assert item.estimate_analyst_hours == 40
+    assert item.estimate_hours == 40
 
 
 def test_sync_archives_when_category_leaves_tracked_set(db_session, proj):
