@@ -4,13 +4,14 @@ import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleLabel, getRoleColor } from '../../utils/roles';
 import { DARK_THEME, FONTS } from '../../utils/constants';
-import { demandByRole } from '../../utils/planning';
-import type { AllocationResponse } from '../../types/api';
+import { demandByAssigneeRole, demandByRole } from '../../utils/planning';
+import type { AllocationResponse, ResourceEmployee } from '../../types/api';
 
 interface Props {
   scenarioId: string;
   enabled: boolean;
   allocations?: AllocationResponse[];
+  employees?: ResourceEmployee[];
 }
 
 const CELL: React.CSSProperties = {
@@ -28,7 +29,7 @@ const CELL_LABEL: React.CSSProperties = {
 
 const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
 
-export default function ScenarioResourceSummary({ scenarioId, enabled, allocations }: Props) {
+export default function ScenarioResourceSummary({ scenarioId, enabled, allocations, employees }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
 
@@ -43,11 +44,13 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     });
   };
 
-  // Потребность по ролям от отмеченных элементов (analyst/dev/qa с учётом opo_analyst_ratio)
-  const roleDemand = useMemo(
-    () => (allocations ? demandByRole(allocations) : { analyst: 0, dev: 0, qa: 0 }),
-    [allocations],
-  );
+  // Потребность по роли исполнителя: часы РП идут в пул РП, не аналитика
+  const roleDemand = useMemo(() => {
+    if (!allocations) return { analyst: 0, dev: 0, qa: 0 };
+    return employees && employees.length > 0
+      ? demandByAssigneeRole(allocations, employees)
+      : demandByRole(allocations);
+  }, [allocations, employees]);
 
   if (isLoading) {
     return (
@@ -313,7 +316,8 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
             {summary.roles.map((role) => {
               const avail = summary.available_for_backlog_by_role[role] ?? 0;
               const used = roleDemand[role as keyof typeof roleDemand] ?? 0;
-              const remaining = Math.round(Math.max(0, avail - used));
+              const remaining = Math.round(avail - used);
+              const isDeficit = remaining < 0;
               const isExternal = role === 'qa' && summary.external_qa_hours != null;
               const hasUsed = used > 0;
               return (
@@ -322,8 +326,8 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                   style={{
                     ...CELL,
                     ...roleBorderStyle(role),
-                    background: 'rgba(0,201,200,0.1)',
-                    color: DARK_THEME.cyanPrimary,
+                    background: isDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.1)',
+                    color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
                     fontWeight: 700,
                     fontSize: 17,
                     whiteSpace: 'nowrap' as const,
@@ -347,27 +351,33 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                 </div>
               );
             })}
-            <div
-              style={{
-                ...CELL,
-                background: 'rgba(0,201,200,0.08)',
-                color: DARK_THEME.cyanPrimary,
-                fontWeight: 700,
-                fontSize: 17,
-                whiteSpace: 'nowrap' as const,
-              }}
-            >
-              {totalDemand > 0 ? (
-                <>
-                  {Math.round(Math.max(0, summary.available_for_backlog_total - totalDemand)).toLocaleString('ru')}
-                  <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
-                    из {Math.round(summary.available_for_backlog_total).toLocaleString('ru')}
-                  </span>
-                </>
-              ) : (
-                Math.round(summary.available_for_backlog_total).toLocaleString('ru')
-              )}
-            </div>
+            {(() => {
+              const totalRemaining = Math.round(summary.available_for_backlog_total - totalDemand);
+              const isTotalDeficit = totalRemaining < 0;
+              return (
+                <div
+                  style={{
+                    ...CELL,
+                    background: isTotalDeficit ? 'rgba(255,165,0,0.08)' : 'rgba(0,201,200,0.08)',
+                    color: isTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
+                    fontWeight: 700,
+                    fontSize: 17,
+                    whiteSpace: 'nowrap' as const,
+                  }}
+                >
+                  {totalDemand > 0 ? (
+                    <>
+                      {totalRemaining.toLocaleString('ru')}
+                      <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
+                        из {Math.round(summary.available_for_backlog_total).toLocaleString('ru')}
+                      </span>
+                    </>
+                  ) : (
+                    Math.round(summary.available_for_backlog_total).toLocaleString('ru')
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 

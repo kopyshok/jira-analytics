@@ -5,7 +5,6 @@ import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleColor } from '../../utils/roles';
 import type { AllocationResponse, ResourceBase, ResourceSummaryOut } from '../../types/api';
-import { demandByRole } from '../../utils/planning';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
 
@@ -53,8 +52,6 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
     },
   });
 
-  const demand = useMemo(() => demandByRole(allocations), [allocations]);
-
   const demandByEmployee = useMemo(() => {
     const result: Record<string, number> = {};
     for (const alloc of allocations) {
@@ -95,12 +92,24 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
             : emp.role === 'qa'
               ? eq
               : emp.role === 'consultant'
-                ? eo
+                ? ea + ed + eq + eo
                 : 0;
       result[targetId] = (result[targetId] ?? 0) + hours;
     }
     return result;
   }, [allocations, resourceBase]);
+
+  // Потребность по роли исполнителя (РП, консультант и пр. не сваливаются в пул аналитика)
+  const demandByEmployeeRole = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const emp of resourceBase?.employees ?? []) {
+      const hours = demandByEmployee[emp.employee_id] ?? 0;
+      if (emp.role) {
+        result[emp.role] = (result[emp.role] ?? 0) + hours;
+      }
+    }
+    return result;
+  }, [demandByEmployee, resourceBase]);
 
   if (!resourceBase) {
     return (
@@ -134,9 +143,9 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
 
   const totalCapacity = Object.values(capacityByRole).reduce((s, v) => s + v, 0)
     + infoRoles.reduce((s, r) => s + (availableByRole[r.code] ?? 0), 0);
-  const totalDemand = CORE_ROLE_KEYS.reduce((s, r) => s + (demand[r] ?? 0), 0);
-  const overallOver = CORE_ROLE_KEYS.some(
-    (r) => (demand[r] ?? 0) > capacityByRole[r] && capacityByRole[r] > 0,
+  const totalDemand = Object.values(demandByEmployeeRole).reduce((s, v) => s + v, 0);
+  const overallOver = Object.entries(demandByEmployeeRole).some(
+    ([role, d]) => d > (availableByRole[role] ?? 0) && (availableByRole[role] ?? 0) > 0,
   );
   const freeHours = Math.max(0, Math.round(totalCapacity - totalDemand));
   const freePct = totalCapacity > 0
@@ -215,7 +224,7 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
             <RoleCapacityBar
               key={r}
               role={r}
-              demand={demand[r] ?? 0}
+              demand={demandByEmployeeRole[r] ?? 0}
               capacity={capacityByRole[r]}
               employeeCount={resourceBase.employees.filter((e) => e.role === r).length}
             />
@@ -224,7 +233,7 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
             <RoleCapacityBar
               key={r.code}
               role={r.code}
-              demand={0}
+              demand={demandByEmployeeRole[r.code] ?? 0}
               capacity={availableByRole[r.code] ?? 0}
               employeeCount={resourceBase.employees.filter((e) => e.role === r.code).length}
             />
