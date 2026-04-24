@@ -33,7 +33,7 @@ class ScenarioRevisionItem(Base, TimestampMixin):
         nullable=True, index=True,
     )
     backlog_item_name: Mapped[str] = mapped_column(String(500), nullable=False)
-    action: Mapped[str] = mapped_column(String(8), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
 
     revision: Mapped["ScenarioRevision"] = relationship(back_populates="items")
     backlog_item: Mapped[Optional["BacklogItem"]] = relationship()

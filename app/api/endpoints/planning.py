@@ -441,6 +441,8 @@ async def approve_scenario(
             )
             .all()
         )
+        # Deleted backlog items (backlog_item_id=NULL via SET NULL FK) are silently
+        # omitted from prev_included — their exclusion won't appear in this revision's diff.
         prev_included: dict[str, str] = {
             i.backlog_item_id: i.backlog_item_name
             for i in prev_items
