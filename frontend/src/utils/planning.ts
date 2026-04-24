@@ -39,22 +39,26 @@ export function demandByAssigneeRole(
     const eo = a.estimate_opo_hours ?? 0;
     const r = a.opo_analyst_ratio ?? 0.5;
     const emp = employees.find((e) => e.employee_id === a.assignee_employee_id);
-    const role = emp?.role;
+    // Используем роль из найденного сотрудника, иначе — денормализованную роль из
+    // аллокации (assignee может быть из другой команды и отсутствовать в пуле).
+    const role = emp?.role ?? a.assignee_role ?? null;
     if (role) {
       const hours =
-        role === 'analyst' || role === 'RP'
+        role === 'analyst'
           ? ea + eo * r
           : role === 'dev'
             ? ed + eo * (1 - r)
             : role === 'qa'
               ? eq
-              : ea + ed + eq + eo; // consultant / other
+              : ea + ed + eq + eo; // consultant / project_manager / other
       d[role] = (d[role] ?? 0) + hours;
-    } else {
+    } else if (!a.assignee_employee_id) {
+      // Нет конкретного исполнителя — распределяем по типу оценки.
       d['analyst'] = (d['analyst'] ?? 0) + ea + eo * r;
       d['dev'] = (d['dev'] ?? 0) + ed + eo * (1 - r);
       d['qa'] = (d['qa'] ?? 0) + eq;
     }
+    // Если исполнитель задан, но роль неизвестна — не добавляем в аналитик.
   }
   return d;
 }

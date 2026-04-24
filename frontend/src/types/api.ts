@@ -504,6 +504,7 @@ export interface AllocationResponse {
   risk: BacklogImpactRisk | null;
   assignee_employee_id: string | null;
   assignee_display_name: string | null;
+  assignee_role: string | null;
   customer: string | null;
   cost_type: string | null;
   source_category: string | null;
