@@ -163,6 +163,7 @@ class AllocationResponse(BaseModel):
     assignee_display_name: Optional[str] = None
     customer: Optional[str] = None
     cost_type: Optional[str] = None
+    source_category: Optional[str] = None  # 'initiatives_rfa' | 'quarterly_tasks'
 
 
 class AllocationAssigneePatch(BaseModel):
@@ -259,6 +260,7 @@ def _to_allocation_resp(
         ),
         customer=item.customer,
         cost_type=item.cost_type,
+        source_category=item.issue.category if item.issue else None,
     )
 
 

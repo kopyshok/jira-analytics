@@ -95,3 +95,46 @@ def test_sync_backlog_excludes_archived_items(db_session):
     item_ids = {a.backlog_item_id for a in allocs}
     assert "pa2-active" in item_ids
     assert "pa2-arch" not in item_ids
+
+
+def test_allocation_response_has_source_category(db_session):
+    from app.models import BacklogItem, Issue, Project
+
+    proj = Project(
+        id="p-sc",
+        jira_project_id="p-sc-jira",
+        key="ITL",
+        name="ITL",
+        is_active=True,
+    )
+    issue = Issue(
+        id="i-sc",
+        jira_issue_id="i-sc-jira",
+        key="ITL-SC1",
+        summary="Quarterly",
+        issue_type="ITL",
+        status="Open",
+        project_id=proj.id,
+        category="quarterly_tasks",
+    )
+    item = BacklogItem(id="bi-sc", title="Quarterly", issue_id=issue.id)
+    db_session.add_all([proj, issue, item])
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(
+            "/api/v1/planning/scenarios",
+            json={"name": "Test", "year": 2026, "quarter": 2},
+        )
+        assert r.status_code == 201, r.text
+        scenario_id = r.json()["id"]
+
+        r2 = client.get(f"/api/v1/planning/scenarios/{scenario_id}/allocations")
+        assert r2.status_code == 200, r2.text
+        allocs = r2.json()
+        qt_alloc = next(a for a in allocs if a["backlog_item_id"] == "bi-sc")
+        assert qt_alloc["source_category"] == "quarterly_tasks"
+    finally:
+        app.dependency_overrides.clear()
