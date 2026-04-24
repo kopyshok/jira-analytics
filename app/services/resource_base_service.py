@@ -417,14 +417,16 @@ class ResourceBaseService:
         # ТС-сотрудников в команде — чтобы колонка Тестировщики всегда отображалась.
         base_roles = set(gross_by_role.keys())
         if scenario.external_qa_hours is not None:
-            # Внешний QA: трактуем как «норма» для роли qa (до вычета обязательных
-            # работ). Если в команде нет QA-сотрудников — gross_by_role['qa']
-            # заполняется внешними часами, иначе суммируется.
+            # Внешний QA ПОЛНОСТЬЮ замещает часы штатных QA-сотрудников —
+            # так же, как в compute() (role_totals['qa'] = external_qa_hours)
+            # и как описано в тултипе ExternalQaInput: «При пустом значении
+            # используются часы штатных QA». Иначе верхняя таблица показывала
+            # бы qa = внутренний + внешний, а правый блок — только внешний,
+            # что давало расхождение у пользователя (680 vs 340).
             base_roles.add('qa')
-            gross_by_role['qa'] = gross_by_role.get('qa', 0.0) + float(
-                scenario.external_qa_hours
-            )
-            calendar_gross_by_role.setdefault('qa', 0.0)
+            ext = float(scenario.external_qa_hours)
+            gross_by_role['qa'] = ext
+            calendar_gross_by_role['qa'] = ext
             role_employee_names.setdefault('qa', [])
         roles_ordered = sorted(
             base_roles,

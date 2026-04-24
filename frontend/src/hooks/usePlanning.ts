@@ -165,7 +165,13 @@ export function useScenarioResourceSummary(
   enabled = true,
 ) {
   return useQuery({
-    queryKey: ['scenario-resource-summary', scenarioId],
+    // Ключ под зонтиком ['planning', 'scenario', id, ...]: любая мутация,
+    // инвалидирующая сценарий (useUpdateScenario, useSyncScenarioBacklog,
+    // useApproveScenario и т.д.), автоматически обновит и эту сводку.
+    // Раньше был отдельный корень ['scenario-resource-summary', id] —
+    // изменение external_qa_hours через ExternalQaInput не обновляло верхнюю
+    // таблицу, приходилось перезагружать страницу.
+    queryKey: ['planning', 'scenario', scenarioId, 'summary'],
     queryFn: () =>
       api.get<ResourceSummaryOut>(`/planning/scenarios/${scenarioId}/resource-summary`),
     enabled: enabled && !!scenarioId,
@@ -190,8 +196,7 @@ export function useCopyRulesFromTemplate() {
         {},
       ),
     onSuccess: (_data, { scenarioId }) => {
-      qc.invalidateQueries({ queryKey: ['planning', 'scenario', scenarioId, 'rules'] });
-      qc.invalidateQueries({ queryKey: ['scenario-resource-summary', scenarioId] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', scenarioId] });
     },
   });
 }
@@ -210,9 +215,7 @@ export const usePutScenarioRules = () => {
   return useMutation<ScenarioRuleOut[], Error, { scenarioId: string; rules: ScenarioRuleInput[] }>({
     mutationFn: ({ scenarioId, rules }) => putScenarioRules(scenarioId, rules),
     onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.scenarioId, 'rules'] });
-      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.scenarioId, 'resource'] });
-      qc.invalidateQueries({ queryKey: ['scenario-resource-summary', vars.scenarioId] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.scenarioId] });
       notification.success({ title: 'Правила сохранены' });
     },
     onError: (err) => {

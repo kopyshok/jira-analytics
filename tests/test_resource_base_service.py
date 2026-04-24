@@ -249,3 +249,26 @@ def test_external_qa_override_replaces_qa_sum(db_session):
     # QA-сотрудник добавляет какую-то сумму, но external_qa_hours = 500 побеждает
     assert result.external_qa_hours == 500.0
     assert result.role_totals["qa"] == 500.0
+
+
+def test_external_qa_override_replaces_qa_sum_in_summary(db_session):
+    """external_qa_hours перезаписывает gross_by_role['qa'] в compute_summary.
+
+    Раньше compute_summary **прибавлял** external_qa к часам штатных QA —
+    верхняя таблица показывала qa = внутренний + внешний, а правый блок
+    capacityByRole.qa = только внешний, расхождение у пользователя 680 vs 340.
+    После фикса оба блока согласованы: внешний QA замещает штатных.
+    """
+    _make_employee(db_session, eid="qa-emp", role="qa")
+    scenario = _make_scenario(db_session, sid="sc-qa-sum", external_qa=500.0)
+    _seed_calendar_mondays(db_session)
+    db_session.flush()
+
+    svc = ResourceBaseService(db_session)
+    summary = svc.compute_summary(scenario)
+
+    # gross должен быть РАВЕН external_qa_hours (замена), а не больше (прибавление).
+    assert summary.gross_by_role["qa"] == 500.0
+    # Без правил обязательных работ для qa — доступно всё 500.
+    assert summary.available_by_role["qa"] == 500.0
+    assert summary.external_qa_hours == 500.0
