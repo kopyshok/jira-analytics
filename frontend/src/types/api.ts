@@ -382,7 +382,7 @@ export interface QuarterCapacityResponse {
 
 export type BacklogImpactRisk = 'low' | 'medium' | 'high';
 
-export type BacklogView = 'active' | 'archived' | 'quarterly';
+export type BacklogView = 'active' | 'archived' | 'in_work' | 'quarterly';
 
 export interface BacklogItemScenarioRef {
   id: string;

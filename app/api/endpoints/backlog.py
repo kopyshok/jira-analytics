@@ -20,6 +20,7 @@ from app.repositories.base import BaseRepository
 from app.services.backlog_service import (
     BACKLOG_CATEGORY,
     QUARTERLY_TASKS_CATEGORY,
+    TRACKED_CATEGORIES,
     BacklogService,
 )
 from app.services.category_resolver import CategoryResolver
@@ -229,17 +230,25 @@ async def list_backlog_items(
         query = query.filter(BacklogItem.project_id == project_id)
 
     if view == "active":
+        quarterly_filter = or_(
+            func.coalesce(Issue.assigned_category, "") == QUARTERLY_TASKS_CATEGORY,
+            func.coalesce(Issue.category, "") == QUARTERLY_TASKS_CATEGORY,
+        )
+        in_work_ids = (
+            db.query(ScenarioAllocation.backlog_item_id)
+            .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+            .filter(PlanningScenario.status == "approved")
+            .distinct()
+            .scalar_subquery()
+        )
         query = query.filter(
             BacklogItem.archived_at.is_(None),
-            func.coalesce(Issue.status_category, "") != "done",
-            or_(
-                BacklogItem.issue_id.is_(None),  # manual items always in backlog
-                func.coalesce(Issue.assigned_category, "") != QUARTERLY_TASKS_CATEGORY,
-            ),
+            func.coalesce(Issue.status_category, "").notin_(["done", "indeterminate"]),
             or_(
                 BacklogItem.issue_id.is_(None),
-                func.coalesce(Issue.category, "") != QUARTERLY_TASKS_CATEGORY,
+                ~quarterly_filter,
             ),
+            BacklogItem.id.notin_(in_work_ids),
         )
     elif view == "archived":
         query = query.filter(
@@ -254,7 +263,7 @@ async def list_backlog_items(
             .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
             .filter(PlanningScenario.status == "approved")
             .distinct()
-            .subquery()
+            .scalar_subquery()
         )
         query = query.filter(
             BacklogItem.archived_at.is_(None),
@@ -281,6 +290,8 @@ async def list_backlog_items(
         )
     )
 
+    if view == "in_work":
+        return [_to_response(i, _approved_scenarios_for(db, i.id)) for i in items]
     return [_to_response(i, None) for i in items]
 
 
@@ -777,7 +788,7 @@ async def restore_backlog_item(
         raise HTTPException(status_code=404, detail="Backlog item not found")
 
     if item.archived_at is not None:
-        if item.issue is not None and item.issue.category != BACKLOG_CATEGORY:
+        if item.issue is not None and item.issue.category not in TRACKED_CATEGORIES:
             raise HTTPException(
                 status_code=409,
                 detail=(
