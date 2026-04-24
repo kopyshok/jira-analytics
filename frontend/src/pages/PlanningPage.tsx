@@ -4,7 +4,7 @@ import {
   Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
-  CheckCircleOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, RollbackOutlined,
+  CheckCircleOutlined, DeleteOutlined, FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
@@ -34,12 +34,9 @@ import { useRoles } from '../hooks/useRoles';
 import { useJiraSettings } from '../hooks/useSettings';
 import { getRoleColor } from '../utils/roles';
 import { OPO_COLOR } from '../utils/opo';
-import type { AllocationResponse, BacklogImpactRisk } from '../types/api';
+import type { AllocationResponse } from '../types/api';
 
-const IMPACT_COLORS: Record<BacklogImpactRisk, string> = { low: 'default', medium: 'blue', high: 'cyan' };
-const IMPACT_LABELS: Record<BacklogImpactRisk, string> = { low: 'низкий', medium: 'средний', high: 'высокий' };
-
-const GRID = '40px 60px 1fr 150px 120px 280px 90px 100px';
+const GRID = '36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
 const GRID_GAP = 8;
 
 export default function PlanningPage() {
@@ -183,7 +180,8 @@ export default function PlanningPage() {
   );
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <div style={{ marginBottom: -36 }}>
       <PageHeader
         eyebrow="Планирование"
         title="Сценарии"
@@ -205,6 +203,7 @@ export default function PlanningPage() {
           </Space>
         }
       />
+      </div>
 
       <ScenarioCreateModal
         open={createOpen}
@@ -368,20 +367,26 @@ export default function PlanningPage() {
                     padding: '8px 14px',
                     borderBottom: `1px solid ${DARK_THEME.border}`,
                     background: DARK_THEME.darkAccent,
-                    fontSize: 11,
-                    color: DARK_THEME.textMuted,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: DARK_THEME.textPrimary,
                     textTransform: 'uppercase',
                     letterSpacing: 0.6,
                   }}
                 >
                   <span>✓</span>
-                  <span>Прио</span>
+                  <span title="Приоритет" style={{ textAlign: 'center' }}>
+                    <FlagFilled className="flag-wave" style={{ color: DARK_THEME.cyanPrimary, fontSize: 16 }} />
+                  </span>
                   <span>Идея</span>
                   <span>Исполнитель</span>
                   <span>Заказчик</span>
-                  <span>АН / ПР / ТС / ОПЭ</span>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {['АН', 'ПР', 'ТС', 'ОПЭ'].map((l) => (
+                      <span key={l} style={{ flex: 1, minWidth: 52, textAlign: 'center' }}>{l}</span>
+                    ))}
+                  </div>
                   <span style={{ textAlign: 'right' }}>Всего часов</span>
-                  <span>Влияние</span>
                 </div>
                 <div style={{ overflowY: 'auto', flex: 1 }}>
                   {(allocations ?? []).map((a) => {
@@ -506,7 +511,7 @@ export default function PlanningPage() {
                         >
                           {a.customer ?? '—'}
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
                           <BacklogRoleCell
                             label="АН"
                             hours={an}
@@ -540,13 +545,6 @@ export default function PlanningPage() {
                             <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 1 }}>
                               {Math.round((total / resourceSummary.available_for_backlog_total) * 100)}% ресурса
                             </div>
-                          )}
-                        </div>
-                        <div>
-                          {a.impact ? (
-                            <Tag color={IMPACT_COLORS[a.impact]}>{IMPACT_LABELS[a.impact]}</Tag>
-                          ) : (
-                            <span style={{ color: DARK_THEME.textDim, fontSize: 11 }}>—</span>
                           )}
                         </div>
                       </div>

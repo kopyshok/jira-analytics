@@ -39,12 +39,12 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
               display: 'inline-block',
             }}
           />
-          <span style={{ color: DARK_THEME.textPrimary, fontSize: 13, fontWeight: 500 }}>
+          <span style={{ color: DARK_THEME.textPrimary, fontSize: 15, fontWeight: 500 }}>
             {getRoleLabel(roles, role)}
           </span>
-          <span style={{ color: DARK_THEME.textHint, fontSize: 11 }}>· {employeeCount} чел.</span>
+          <span style={{ color: DARK_THEME.textHint, fontSize: 13 }}>· {employeeCount} чел.</span>
         </div>
-        <div style={{ fontFamily: FONTS.mono, fontSize: 12 }}>
+        <div style={{ fontFamily: FONTS.mono, fontSize: 14 }}>
           <span
             data-testid={`capacity-${role}-demand`}
             style={{
@@ -95,7 +95,7 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
           display: 'flex',
           justifyContent: 'space-between',
           marginTop: 4,
-          fontSize: 10,
+          fontSize: 12,
           color: DARK_THEME.textHint,
           fontFamily: FONTS.mono,
         }}

@@ -33,7 +33,7 @@ export default function BacklogRoleCell({ label, hours, total, color }: BacklogR
           fontWeight: 800,
           letterSpacing: '0.07em',
           textTransform: 'uppercase',
-          color,
+          color: empty ? `${color}` : '#ffffff',
           opacity: empty ? 0.6 : 1,
           marginBottom: 2,
         }}
@@ -45,7 +45,7 @@ export default function BacklogRoleCell({ label, hours, total, color }: BacklogR
           style={{
             fontSize: 16,
             fontWeight: 800,
-            color: empty ? DARK_THEME.textDim : color,
+            color: empty ? DARK_THEME.textDim : '#ffffff',
           }}
         >
           {empty ? '—' : hours}
@@ -55,8 +55,8 @@ export default function BacklogRoleCell({ label, hours, total, color }: BacklogR
             style={{
               fontSize: 10,
               fontWeight: 500,
-              color,
-              opacity: 0.65,
+              color: '#ffffff',
+              opacity: 0.85,
               marginLeft: 3,
             }}
           >

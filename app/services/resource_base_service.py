@@ -417,8 +417,13 @@ class ResourceBaseService:
         # ТС-сотрудников в команде — чтобы колонка Тестировщики всегда отображалась.
         base_roles = set(gross_by_role.keys())
         if scenario.external_qa_hours is not None:
+            # Внешний QA: трактуем как «норма» для роли qa (до вычета обязательных
+            # работ). Если в команде нет QA-сотрудников — gross_by_role['qa']
+            # заполняется внешними часами, иначе суммируется.
             base_roles.add('qa')
-            gross_by_role.setdefault('qa', 0.0)
+            gross_by_role['qa'] = gross_by_role.get('qa', 0.0) + float(
+                scenario.external_qa_hours
+            )
             calendar_gross_by_role.setdefault('qa', 0.0)
             role_employee_names.setdefault('qa', [])
         roles_ordered = sorted(
@@ -464,10 +469,6 @@ class ResourceBaseService:
                 if row.subtracts_from_pool
             )
             available_by_role[role] = round(max(0.0, gross - mandatory_total), 2)
-
-        # external_qa_hours переопределяет доступные часы для роли qa
-        if scenario.external_qa_hours is not None:
-            available_by_role["qa"] = scenario.external_qa_hours
 
         gross_total = round(sum(gross_by_role.values()), 2)
         available_total = round(sum(available_by_role.values()), 2)

@@ -124,7 +124,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     );
   }
 
-  const gridCols = `180px repeat(${summary.roles.length}, 1fr) 90px`;
+  const gridCols = `minmax(280px, max-content) repeat(${summary.roles.length}, 1fr) 90px`;
 
   const roleBorderStyle = (role: string): React.CSSProperties => {
     const color = getRoleColor(roles, role);
@@ -216,7 +216,12 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                       paddingTop: 10,
                     }}
                   >
-                    <div style={{ fontWeight: 600, color: getRoleColor(roles, role) }}>{label}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 600, color: getRoleColor(roles, role) }}>{label}</span>
+                      <span style={{ fontSize: 11, color: DARK_THEME.textHint }}>
+                        · {names.length} чел. ⓘ
+                      </span>
+                    </div>
                     <div
                       style={{
                         height: 3,
@@ -226,9 +231,6 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                         width: '80%',
                       }}
                     />
-                    <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 2 }}>
-                      {names.length} чел. ⓘ
-                    </div>
                   </div>
                 </Tooltip>
               );
@@ -248,7 +250,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
 
           {/* Нормированные работы */}
           <div style={rowStyle({ borderTop: 'none' })}>
-            <div style={{ ...CELL_LABEL, background: DARK_THEME.cardBg, fontWeight: 600, color: DARK_THEME.textPrimary }}>
+            <div style={{ ...CELL_LABEL, background: DARK_THEME.cardBg, fontWeight: 600, color: DARK_THEME.textPrimary, whiteSpace: 'nowrap' as const }}>
               Нормированные работы
             </div>
             {summary.roles.map((role) => (
@@ -264,20 +266,15 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           {/* Обязательные работы */}
           {summary.work_type_rows.map((row) => (
             <div key={row.work_type_id} style={rowStyle()}>
-              <Tooltip title={row.work_type_label}>
-                <div
-                  style={{
-                    ...CELL_LABEL,
-                    background: DARK_THEME.darkAccent,
-                    maxWidth: 140,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  — {row.work_type_label}
-                </div>
-              </Tooltip>
+              <div
+                style={{
+                  ...CELL_LABEL,
+                  background: DARK_THEME.darkAccent,
+                  whiteSpace: 'nowrap' as const,
+                }}
+              >
+                — {row.work_type_label}
+              </div>
               {summary.roles.map((role) => {
                 const h = row.by_role[role] ?? 0;
                 const pct = row.by_role_pct[role];
@@ -306,7 +303,9 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                 background: 'rgba(0,201,200,0.08)',
                 color: DARK_THEME.cyanPrimary,
                 fontWeight: 700,
+                fontSize: 16,
                 borderLeft: `3px solid ${DARK_THEME.cyanPrimary}`,
+                whiteSpace: 'nowrap' as const,
               }}
             >
               На бэклог
@@ -326,22 +325,24 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                     background: 'rgba(0,201,200,0.1)',
                     color: DARK_THEME.cyanPrimary,
                     fontWeight: 700,
+                    fontSize: 17,
+                    whiteSpace: 'nowrap' as const,
                   }}
                 >
                   {hasUsed ? (
                     <>
                       {remaining.toLocaleString('ru')}
-                      <div style={{ fontSize: 10, color: DARK_THEME.textHint, fontWeight: 400, marginTop: 1 }}>
+                      <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
                         из {Math.round(avail).toLocaleString('ru')}
-                      </div>
+                      </span>
                     </>
                   ) : (
                     Math.round(avail).toLocaleString('ru')
                   )}
                   {isExternal && (
-                    <div style={{ fontSize: 10, color: DARK_THEME.textHint, fontWeight: 400 }}>
+                    <span style={{ fontSize: 11, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
                       внешний
-                    </div>
+                    </span>
                   )}
                 </div>
               );
@@ -352,14 +353,16 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                 background: 'rgba(0,201,200,0.08)',
                 color: DARK_THEME.cyanPrimary,
                 fontWeight: 700,
+                fontSize: 17,
+                whiteSpace: 'nowrap' as const,
               }}
             >
               {totalDemand > 0 ? (
                 <>
                   {Math.round(Math.max(0, summary.available_for_backlog_total - totalDemand)).toLocaleString('ru')}
-                  <div style={{ fontSize: 10, color: DARK_THEME.textHint, fontWeight: 400, marginTop: 1 }}>
+                  <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
                     из {Math.round(summary.available_for_backlog_total).toLocaleString('ru')}
-                  </div>
+                  </span>
                 </>
               ) : (
                 Math.round(summary.available_for_backlog_total).toLocaleString('ru')

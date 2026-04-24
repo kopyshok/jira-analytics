@@ -12,12 +12,19 @@ import { patchEmployee } from '../../api/employees';
 const CORE_ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
 type CoreRoleKey = (typeof CORE_ROLE_KEYS)[number];
 
+const ROLE_SORT_ORDER: string[] = ['RP', 'analyst', 'dev', 'qa', 'consultant', 'other'];
+const roleSortKey = (role: string | null | undefined): number => {
+  if (!role) return ROLE_SORT_ORDER.length + 1;
+  const idx = ROLE_SORT_ORDER.indexOf(role);
+  return idx === -1 ? ROLE_SORT_ORDER.length : idx;
+};
+
 const ROLE_SHORT_LOCAL: Record<string, string> = {
   analyst: 'АН',
   dev: 'ПР',
   qa: 'ТС',
   consultant: 'КН',
-  project_manager: 'РП',
+  RP: 'РП',
   other: 'ДР',
 };
 
@@ -51,22 +58,46 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
   const demandByEmployee = useMemo(() => {
     const result: Record<string, number> = {};
     for (const alloc of allocations) {
-      if (!alloc.included || !alloc.assignee_employee_id) continue;
-      const emp = resourceBase?.employees.find(
-        (e) => e.employee_id === alloc.assignee_employee_id,
-      );
+      if (!alloc.included) continue;
+      let emp = alloc.assignee_employee_id
+        ? resourceBase?.employees.find((e) => e.employee_id === alloc.assignee_employee_id)
+        : undefined;
+      // Фолбэк: если у задачи нет связки employee_id, но есть display_name
+      // (бывает, когда бэклог подтянул задачу из Jira без смапленного Employee),
+      // ищем сотрудника по имени в команде сценария. Сопоставление толерантное:
+      // сравниваем множества слов — порядок и лишние слова не мешают
+      // («Копышков Николай» ↔ «Копышков Николай Сергеевич»).
+      if (!emp && alloc.assignee_display_name) {
+        const tokens = (s: string) =>
+          new Set(s.toLowerCase().split(/\s+/).filter((t) => t.length >= 3));
+        const need = tokens(alloc.assignee_display_name);
+        if (need.size > 0) {
+          emp = resourceBase?.employees.find((e) => {
+            const have = tokens(e.display_name);
+            let hit = 0;
+            for (const t of need) if (have.has(t)) hit += 1;
+            return hit >= Math.min(2, need.size);
+          });
+        }
+      }
       if (!emp?.role) continue;
+      const targetId = emp.employee_id;
+      const ea = alloc.estimate_analyst_hours ?? 0;
+      const ed = alloc.estimate_dev_hours ?? 0;
+      const eq = alloc.estimate_qa_hours ?? 0;
+      const eo = alloc.estimate_opo_hours ?? 0;
+      const r = alloc.opo_analyst_ratio ?? 0.5;
       const hours =
-        emp.role === 'analyst'
-          ? (alloc.estimate_analyst_hours ?? 0)
+        emp.role === 'analyst' || emp.role === 'RP'
+          ? ea + eo * r
           : emp.role === 'dev'
-            ? (alloc.estimate_dev_hours ?? 0)
+            ? ed + eo * (1 - r)
             : emp.role === 'qa'
-              ? (alloc.estimate_qa_hours ?? 0)
+              ? eq
               : emp.role === 'consultant'
-                ? (alloc.estimate_opo_hours ?? 0)
+                ? eo
                 : 0;
-      result[alloc.assignee_employee_id] = (result[alloc.assignee_employee_id] ?? 0) + hours;
+      result[targetId] = (result[targetId] ?? 0) + hours;
     }
     return result;
   }, [allocations, resourceBase]);
@@ -134,25 +165,25 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
       {/* 1. Overall gauge */}
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-          <span style={{ fontSize: 11, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          <span style={{ fontSize: 14, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
             Ресурс команды · Q{quarter}
           </span>
           {resourceBase.external_qa_hours != null && (
-            <Tag color="purple" style={{ fontSize: 10, lineHeight: '18px' }}>
+            <Tag color="purple" style={{ fontSize: 12, lineHeight: '20px' }}>
               внешний QA {Math.round(resourceBase.external_qa_hours)} ч
             </Tag>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 42, fontWeight: 700, color: overallOver ? DARK_THEME.amber : DARK_THEME.textPrimary, fontFamily: FONTS.mono, lineHeight: 1 }}>
+          <span style={{ fontSize: 44, fontWeight: 700, color: overallOver ? DARK_THEME.amber : DARK_THEME.textPrimary, fontFamily: FONTS.mono, lineHeight: 1 }}>
             {Math.round(totalDemand)}
           </span>
-          <span style={{ fontSize: 16, color: DARK_THEME.textMuted }}>/</span>
-          <span style={{ fontSize: 24, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
+          <span style={{ fontSize: 18, color: DARK_THEME.textMuted }}>/</span>
+          <span style={{ fontSize: 26, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
             {Math.round(totalCapacity)} ч
           </span>
         </div>
-        <div style={{ fontSize: 11, color: DARK_THEME.textHint, marginBottom: 10 }}>
+        <div style={{ fontSize: 14, color: DARK_THEME.textHint, marginBottom: 10 }}>
           {overallOver
             ? 'Перегруз по одной или нескольким ролям — см. ниже'
             : totalCapacity > 0
@@ -175,38 +206,26 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
       <Card
         title="Ресурс по ролям"
         styles={{ body: { padding: 0 } }}
-        extra={<span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>план / доступно</span>}
+        extra={<span style={{ fontSize: 13, color: DARK_THEME.textMuted }}>план / доступно</span>}
       >
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {CORE_ROLE_KEYS.map((r) => (
-            <div key={r}>
-              <RoleCapacityBar
-                role={r}
-                demand={demand[r] ?? 0}
-                capacity={capacityByRole[r]}
-                employeeCount={resourceBase.employees.filter((e) => e.role === r).length}
-              />
-              {summary && mandatoryPctByRole[r] != null && mandatoryPctByRole[r] > 0 && (
-                <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 2, paddingLeft: 2 }}>
-                  обяз. работы {mandatoryPctByRole[r]}% · норма {Math.round((summary.total_by_role[r] ?? 0))} ч
-                </div>
-              )}
-            </div>
+            <RoleCapacityBar
+              key={r}
+              role={r}
+              demand={demand[r] ?? 0}
+              capacity={capacityByRole[r]}
+              employeeCount={resourceBase.employees.filter((e) => e.role === r).length}
+            />
           ))}
           {infoRoles.map((r) => (
-            <div key={r.code}>
-              <RoleCapacityBar
-                role={r.code}
-                demand={0}
-                capacity={availableByRole[r.code] ?? 0}
-                employeeCount={resourceBase.employees.filter((e) => e.role === r.code).length}
-              />
-              {summary && mandatoryPctByRole[r.code] != null && mandatoryPctByRole[r.code] > 0 && (
-                <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 2, paddingLeft: 2 }}>
-                  обяз. работы {mandatoryPctByRole[r.code]}% · норма {Math.round((summary.total_by_role[r.code] ?? 0))} ч
-                </div>
-              )}
-            </div>
+            <RoleCapacityBar
+              key={r.code}
+              role={r.code}
+              demand={0}
+              capacity={availableByRole[r.code] ?? 0}
+              employeeCount={resourceBase.employees.filter((e) => e.role === r.code).length}
+            />
           ))}
         </div>
       </Card>
@@ -214,16 +233,21 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
       {/* 3. По сотрудникам */}
       <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
         <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-          {resourceBase.employees.map((e) => {
+          {[...resourceBase.employees]
+            .sort((a, b) => {
+              const d = roleSortKey(a.role) - roleSortKey(b.role);
+              return d !== 0 ? d : a.display_name.localeCompare(b.display_name, 'ru');
+            })
+            .map((e) => {
             const knownRole = e.role && roles.some(r => r.code === e.role && r.is_active) ? e.role : null;
             const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
             const roleShort = knownRole ? getRoleShort(knownRole) : '—';
             const mandPct = knownRole ? (mandatoryPctByRole[knownRole] ?? 0) : 0;
 
-            // Норма-часы (до вычета обяз. работ) — пересчитываем из total_hours и mandPct
+            // Норма-часы (до вычета обяз. работ). Если mandPct=0 — норма равна total_hours.
             const normHours = mandPct > 0 && e.total_hours > 0
               ? Math.round(e.total_hours / (1 - mandPct / 100))
-              : null;
+              : Math.round(e.total_hours);
 
             return (
               <div key={e.employee_id}>
@@ -231,15 +255,15 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span
                       style={{
-                        width: 22, height: 16, borderRadius: 3,
+                        width: 26, height: 18, borderRadius: 3,
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         background: roleColor, color: '#00202a',
-                        fontSize: 9, fontWeight: 700, fontFamily: FONTS.mono,
+                        fontSize: 11, fontWeight: 700, fontFamily: FONTS.mono,
                       }}
                     >
                       {roleShort}
                     </span>
-                    <span style={{ color: knownRole ? DARK_THEME.textPrimary : DARK_THEME.textMuted, fontSize: 13 }}>
+                    <span style={{ color: knownRole ? DARK_THEME.textPrimary : DARK_THEME.textMuted, fontSize: 15 }}>
                       {e.display_name}
                     </span>
                     {!knownRole && (
@@ -257,14 +281,12 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
                     )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: 12, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
+                    <span style={{ fontSize: 14, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
                       {Math.round(e.total_hours)} ч
                     </span>
-                    {normHours != null && (
-                      <div style={{ fontSize: 10, color: DARK_THEME.textHint }}>
-                        норма {normHours} ч · −{mandPct}%
-                      </div>
-                    )}
+                    <div style={{ fontSize: 12, color: DARK_THEME.textHint }}>
+                      норма {normHours} ч{mandPct > 0 ? ` · −${mandPct}%` : ''}
+                    </div>
                   </div>
                 </div>
                 {/* Demand / capacity bar */}
@@ -279,7 +301,7 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
                         <div style={{ width: `${pct}%`, background: over ? DARK_THEME.amber : roleColor, transition: 'width 0.2s' }} />
                       </div>
                       {empDemand > 0 && (
-                        <div style={{ fontSize: 10, color: over ? DARK_THEME.amber : DARK_THEME.textDim, marginTop: 1, textAlign: 'right', fontFamily: FONTS.mono }}>
+                        <div style={{ fontSize: 12, color: over ? DARK_THEME.amber : DARK_THEME.textDim, marginTop: 1, textAlign: 'right', fontFamily: FONTS.mono }}>
                           {Math.round(empDemand)} / {Math.round(empCapacity)} ч
                         </div>
                       )}

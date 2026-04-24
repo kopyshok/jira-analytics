@@ -160,3 +160,13 @@ kbd,
 .capacity-team-row td {
   background: rgba(250, 140, 22, 0.06);
 }
+
+@keyframes flag-wave {
+  0%, 100% { transform: rotate(-8deg); }
+  50%      { transform: rotate(8deg); }
+}
+.flag-wave {
+  display: inline-block;
+  transform-origin: bottom left;
+  animation: flag-wave 1.6s ease-in-out infinite;
+}
