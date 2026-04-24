@@ -387,8 +387,7 @@ async def approve_scenario(
     Создаёт запись пересмотра с диффом инициатив и снапшотом нормы команды.
     """
     scenario = db.get(PlanningScenario, scenario_id)
-    if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+    _require_draft(scenario)
 
     now = datetime.utcnow()
 
@@ -411,18 +410,19 @@ async def approve_scenario(
     db.flush()
 
     # --- Дифф инициатив ---
-    included_allocs = (
-        db.query(ScenarioAllocation)
+    included_rows = (
+        db.query(ScenarioAllocation, BacklogItem)
+        .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
         .filter(
             ScenarioAllocation.scenario_id == scenario_id,
             ScenarioAllocation.included_flag == True,  # noqa: E712
         )
         .all()
     )
-    current_included: dict[str, str] = {}
-    for alloc in included_allocs:
-        item = db.get(BacklogItem, alloc.backlog_item_id)
-        current_included[alloc.backlog_item_id] = item.title if item else alloc.backlog_item_id
+    current_included: dict[str, str] = {
+        alloc.backlog_item_id: item.title
+        for alloc, item in included_rows
+    }
 
     prev_revision = (
         db.query(ScenarioRevision)
