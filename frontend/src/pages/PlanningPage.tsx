@@ -441,6 +441,21 @@ export default function PlanningPage() {
                           <div style={{ color: DARK_THEME.textPrimary, fontSize: 14, marginBottom: 3 }}>
                             {a.title}
                           </div>
+                          {a.source_category === 'quarterly_tasks' && (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                marginTop: 2,
+                                fontSize: 11,
+                                padding: '1px 6px',
+                                borderRadius: 3,
+                                background: 'rgba(29,158,117,0.15)',
+                                color: '#1D9E75',
+                              }}
+                            >
+                              В работе
+                            </span>
+                          )}
                           {a.jira_key && (
                             jiraBaseUrl
                               ? (

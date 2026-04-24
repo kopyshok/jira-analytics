@@ -27,7 +27,7 @@ const items: MenuProps['items'] = [
     label: 'ПЛАНИРОВАНИЕ',
     children: [
       { key: '/capacity', icon: <TeamOutlined />, label: 'Ресурсы' },
-      { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Бэклог' },
+      { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Целевые задачи' },
       { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Сценарии' },
     ],
   },
