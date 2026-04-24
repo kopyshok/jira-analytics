@@ -5,9 +5,17 @@ export function useIssueTree(params?: { project_keys?: string; teams?: string })
   return useQuery({
     queryKey: ['issues', 'tree', params],
     queryFn: ({ signal }) => getIssueTree(params, signal),
-    enabled: false,  // manual trigger via refetch
+    enabled: false,
     retry: false,
   });
+}
+
+function invalidateCategoryDependents(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+  // Backlog page and any allocation/scenario view update after
+  // BacklogService.sync_from_issue on the backend runs.
+  qc.invalidateQueries({ queryKey: ['backlog'] });
+  qc.invalidateQueries({ queryKey: ['planning'] });
 }
 
 export function useSetIssueCategory() {
@@ -15,7 +23,7 @@ export function useSetIssueCategory() {
   return useMutation({
     mutationFn: ({ issueId, categoryCode }: { issueId: string; categoryCode: string | null }) =>
       setIssueCategory(issueId, categoryCode),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
+    onSuccess: () => invalidateCategoryDependents(qc),
   });
 }
 
@@ -33,6 +41,6 @@ export function useBatchSetCategory() {
   return useMutation({
     mutationFn: ({ issueIds, categoryCode }: { issueIds: string[]; categoryCode: string | null }) =>
       batchSetCategory(issueIds, categoryCode),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
+    onSuccess: () => invalidateCategoryDependents(qc),
   });
 }
