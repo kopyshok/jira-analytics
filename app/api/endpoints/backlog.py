@@ -211,7 +211,7 @@ def _to_response(
 @router.get("", response_model=List[BacklogItemResponse])
 async def list_backlog_items(
     project_id: Optional[str] = Query(None),
-    view: str = Query("active", pattern="^(active|archived|in_work)$"),
+    view: str = Query("active", pattern="^(active|archived|in_work|quarterly)$"),
     db: Session = Depends(get_db),
 ):
     """Список бэклога с фильтром по виду.
@@ -232,6 +232,14 @@ async def list_backlog_items(
         query = query.filter(
             BacklogItem.archived_at.is_(None),
             func.coalesce(Issue.status_category, "") != "done",
+            or_(
+                BacklogItem.issue_id.is_(None),  # manual items always in backlog
+                func.coalesce(Issue.assigned_category, "") != QUARTERLY_TASKS_CATEGORY,
+            ),
+            or_(
+                BacklogItem.issue_id.is_(None),
+                func.coalesce(Issue.category, "") != QUARTERLY_TASKS_CATEGORY,
+            ),
         )
     elif view == "archived":
         query = query.filter(
@@ -253,6 +261,14 @@ async def list_backlog_items(
             or_(
                 BacklogItem.id.in_(in_work_ids),
                 Issue.status_category == "indeterminate",
+            ),
+        )
+    elif view == "quarterly":
+        query = query.filter(
+            BacklogItem.archived_at.is_(None),
+            or_(
+                Issue.assigned_category == QUARTERLY_TASKS_CATEGORY,
+                Issue.category == QUARTERLY_TASKS_CATEGORY,
             ),
         )
 

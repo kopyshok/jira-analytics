@@ -887,3 +887,79 @@ def test_restore_unknown_returns_404(db_session):
         assert r.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_backlog_list_quarterly_view_returns_quarterly_items(db_session):
+    from app.models import BacklogItem, Issue, Project
+
+    proj = Project(
+        id="p-qv",
+        jira_project_id="p-qv-jira",
+        key="ITL",
+        name="ITL",
+        is_active=True,
+    )
+    issue_qt = Issue(
+        id="i-qv-qt",
+        jira_issue_id="i-qv-qt-jira",
+        key="ITL-QV1",
+        summary="Quarterly item",
+        issue_type="ITL",
+        status="Open",
+        project_id=proj.id,
+        category="quarterly_tasks",
+    )
+    issue_rfa = Issue(
+        id="i-qv-rfa",
+        jira_issue_id="i-qv-rfa-jira",
+        key="RFA-QV1",
+        summary="RFA item",
+        issue_type="RFA",
+        status="Open",
+        project_id=proj.id,
+        category="initiatives_rfa",
+    )
+    item_qt = BacklogItem(id="bi-qv-qt", title="Quarterly item", issue_id=issue_qt.id)
+    item_rfa = BacklogItem(id="bi-qv-rfa", title="RFA item", issue_id=issue_rfa.id)
+    db_session.add_all([proj, issue_qt, issue_rfa, item_qt, item_rfa])
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r_q = client.get("/api/v1/backlog?view=quarterly")
+        assert r_q.status_code == 200, r_q.text
+        ids_q = {i["id"] for i in r_q.json()}
+        assert "bi-qv-qt" in ids_q
+        assert "bi-qv-rfa" not in ids_q
+
+        r_a = client.get("/api/v1/backlog?view=active")
+        assert r_a.status_code == 200, r_a.text
+        ids_a = {i["id"] for i in r_a.json()}
+        assert "bi-qv-rfa" in ids_a
+        assert "bi-qv-qt" not in ids_a
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_backlog_list_active_view_includes_manual_items(db_session):
+    """Ручные записи без issue_id всегда показываются в active, не в quarterly."""
+    from app.models import BacklogItem
+
+    db_session.add(BacklogItem(id="bi-manual", title="Manual item"))
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r_a = client.get("/api/v1/backlog?view=active")
+        assert r_a.status_code == 200, r_a.text
+        ids_a = {i["id"] for i in r_a.json()}
+        assert "bi-manual" in ids_a
+
+        r_q = client.get("/api/v1/backlog?view=quarterly")
+        assert r_q.status_code == 200, r_q.text
+        ids_q = {i["id"] for i in r_q.json()}
+        assert "bi-manual" not in ids_q
+    finally:
+        app.dependency_overrides.clear()
