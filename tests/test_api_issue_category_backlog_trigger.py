@@ -173,3 +173,82 @@ def test_batch_set_category_triggers_backlog_sync(db_session):
         item = db_session.query(BacklogItem).filter_by(issue_id=i.id).first()
         assert item is not None, f"missing backlog item for {i.key}"
         assert item.estimate_dev_hours == float(int(i.key.split("-")[1]))
+
+
+def test_batch_set_category_creates_allocations_in_draft_scenarios(db_session):
+    """Назначение initiatives_rfa на задачи создаёт allocations в draft-сценариях."""
+    from app.models import (
+        BacklogItem, Category, Issue, PlanningScenario, Project, ScenarioAllocation,
+    )
+
+    cat = Category(
+        id="cat-ib-alloc",
+        code="initiatives_rfa",
+        label="Инициативы и RFA",
+        color="#7F77DD",
+        sort_order=22,
+        is_system=True,
+    )
+    proj = Project(
+        id="p-alloc",
+        jira_project_id="p-alloc-jira",
+        key="RFA",
+        name="RFA",
+        is_active=True,
+    )
+    draft = PlanningScenario(
+        id="s-draft-alloc", name="Draft", year=2026, quarter="Q2", status="draft"
+    )
+    approved = PlanningScenario(
+        id="s-appr-alloc", name="Approved", year=2026, quarter="Q1", status="approved"
+    )
+    issues = [
+        Issue(
+            id=f"ia-{i}",
+            jira_issue_id=f"ia-{i}-jira",
+            key=f"RFA-A{i}",
+            summary=f"Epic A{i}",
+            issue_type="RFA",
+            status="Open",
+            project_id=proj.id,
+            category="development",
+            planned_dev_hours=float(i),
+        )
+        for i in range(1, 3)
+    ]
+    db_session.add_all([cat, proj, draft, approved, *issues])
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.put(
+            "/api/v1/issues/batch-category",
+            json={
+                "issue_ids": [i.id for i in issues],
+                "category_code": "initiatives_rfa",
+            },
+        )
+        assert r.status_code == 200, r.text
+    finally:
+        app.dependency_overrides.clear()
+
+    items = db_session.query(BacklogItem).filter(
+        BacklogItem.issue_id.in_([i.id for i in issues])
+    ).all()
+    assert len(items) == 2
+    item_ids = [it.id for it in items]
+
+    draft_allocations = db_session.query(ScenarioAllocation).filter(
+        ScenarioAllocation.scenario_id == draft.id,
+        ScenarioAllocation.backlog_item_id.in_(item_ids),
+    ).all()
+    assert len(draft_allocations) == 2
+    for a in draft_allocations:
+        assert a.included_flag is False
+        assert a.planned_hours == 0
+
+    approved_allocations = db_session.query(ScenarioAllocation).filter(
+        ScenarioAllocation.scenario_id == approved.id,
+    ).count()
+    assert approved_allocations == 0
