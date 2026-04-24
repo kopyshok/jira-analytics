@@ -314,6 +314,7 @@ export default function PlanningPage() {
             scenarioId={scenarioId}
             enabled={!!scenario.team}
             allocations={allocations ?? []}
+            employees={resourceBase?.employees}
           />
 
           {/* Вкладки — на всю ширину над сеткой */}
