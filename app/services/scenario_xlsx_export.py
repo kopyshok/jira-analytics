@@ -651,9 +651,10 @@ class ScenarioXlsxExporter:
             ws.cell(row=r_idx, column=5).font = _Style.BOLD_FONT
             days_cell = ws.cell(row=r_idx, column=6, value=row["abs_days"])
             days_cell.alignment = _Style.RIGHT
-            if 6 <= row["abs_days"] <= 15:
+            abs_days_val = row["abs_days"]  # type: ignore[assignment]
+            if 6 <= abs_days_val <= 15:  # type: ignore[operator]
                 days_cell.fill = _Style.YELLOW_BG
-            elif row["abs_days"] > 15:
+            elif abs_days_val > 15:  # type: ignore[operator]
                 days_cell.fill = _Style.RED_BG
             r_idx += 1
 
@@ -1050,9 +1051,10 @@ class ScenarioXlsxExporter:
                 h_cell = ws.cell(row=r_idx, column=8, value=row["hours"])
                 h_cell.number_format = "#,##0"
                 h_cell.alignment = _Style.RIGHT
-                if row["hours"] > 80:
+                hours_val = float(row["hours"])  # type: ignore[arg-type]
+                if hours_val > 80:
                     h_cell.fill = _Style.RED_BG
-                elif row["hours"] > 40:
+                elif hours_val > 40:
                     h_cell.fill = _Style.YELLOW_BG
                 r_idx += 1
             # Totals row
@@ -1065,8 +1067,8 @@ class ScenarioXlsxExporter:
             ws.merge_cells(
                 start_row=r_idx, start_column=1, end_row=r_idx, end_column=6,
             )
-            days_total = sum(r["days"] for r in abs_rows)
-            hours_total = sum(r["hours"] for r in abs_rows)
+            days_total = sum(int(r["days"]) for r in abs_rows)  # type: ignore[misc,arg-type]
+            hours_total = sum(float(r["hours"]) for r in abs_rows)  # type: ignore[misc,arg-type]
             c = ws.cell(row=r_idx, column=7, value=days_total)
             c.font = _Style.BOLD_FONT
             c.fill = _Style.TOTALS_FILL
