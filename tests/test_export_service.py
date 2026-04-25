@@ -25,7 +25,6 @@ from app.models import (
 )
 from app.services.categories import CategoryCode
 from app.services.export_service import ExportService
-from app.services.planning_service import PlanningService
 
 
 @pytest.fixture

@@ -169,7 +169,7 @@ class TestSummaryByEmployee:
         wb = load_workbook(BytesIO(data))
         ws = wb["Сводка"]
         labels = [str(ws.cell(row=r, column=1).value or "") for r in range(1, ws.max_row + 1)]
-        assert any("ПО СОТРУДНИКАМ" in l for l in labels)
+        assert any("ПО СОТРУДНИКАМ" in lbl for lbl in labels)
 
     def test_employee_table_headers(self, db_session, minimal_scenario):
         data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
