@@ -4,18 +4,18 @@ See docs/superpowers/specs/2026-04-25-scenario-xlsx-export-design.md
 for layout, colours and contents of each sheet.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Optional
 
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+from openpyxl import Workbook  # type: ignore[import-untyped]
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # type: ignore[import-untyped]
+from openpyxl.utils import get_column_letter  # type: ignore[import-untyped]
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
-    Absence, AbsenceReason, AppSetting, BacklogItem, Employee, EmployeeTeam,
+    Absence, AppSetting, BacklogItem, Employee, EmployeeTeam,
     MandatoryWorkType, PlanningScenario, ProductionCalendarDay, Role,
     ScenarioAllocation, ScenarioRule,
 )
@@ -245,7 +245,7 @@ class ScenarioXlsxExporter:
             self.db.query(Absence)
             .options(joinedload(Absence.reason))
             .filter(
-                Absence.employee_id.in_(emp_ids) if emp_ids else False,
+                Absence.employee_id.in_(emp_ids) if emp_ids else False,  # type: ignore[arg-type]
                 Absence.start_date < period_end,
                 Absence.end_date >= period_start,
             )
@@ -451,7 +451,7 @@ class ScenarioXlsxExporter:
     def _render_initiatives(
         self, ws, ctx: ScenarioExportContext, *, included: bool,
     ) -> None:
-        from openpyxl.formatting.rule import ColorScaleRule, CellIsRule
+        from openpyxl.formatting.rule import ColorScaleRule, CellIsRule  # type: ignore[import-untyped]
 
         ws.sheet_view.showGridLines = False
 
@@ -960,7 +960,7 @@ class ScenarioXlsxExporter:
             ws.cell(row=r_idx, column=3, value=row["role"])
             reason_cell = ws.cell(row=r_idx, column=4, value=row["reason"])
             if row["color"]:
-                color_hex = row["color"].lstrip("#").upper()
+                color_hex = str(row["color"]).lstrip("#").upper()
                 reason_cell.fill = PatternFill("solid", fgColor=color_hex)
                 reason_cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
             ws.cell(row=r_idx, column=5, value=row["kind"])
