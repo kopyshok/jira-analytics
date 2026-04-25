@@ -28,9 +28,13 @@ export default function ScenarioDiffPanel({
   open, onClose, draftScenario, draftAllocations,
 }: Props) {
   // Take the most-recently-created approved scenario for same year+quarter.
+  // Backend ждёт quarter как целое 1..4, а в `ScenarioResponse.quarter` лежит строка "Q1".."Q4".
+  const quarterInt = draftScenario.quarter
+    ? draftScenario.quarter.replace(/^Q/, '')
+    : undefined;
   const { data: approvedList } = useScenarios(
     draftScenario.year != null ? String(draftScenario.year) : undefined,
-    draftScenario.quarter ?? undefined,
+    quarterInt,
     'approved',
   );
   const lastApproved = useMemo(() => {
