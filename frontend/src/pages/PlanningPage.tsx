@@ -4,8 +4,9 @@ import {
   Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
-  CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, DeleteOutlined,
-  FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined, ShopOutlined, UserOutlined,
+  CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
+  DeleteOutlined, FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined,
+  ShopOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
@@ -45,6 +46,16 @@ export default function PlanningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'distribution' | 'rules'>('distribution');
+  const [compact, setCompact] = useState<boolean>(
+    () => localStorage.getItem('planning_backlog_compact') === 'true',
+  );
+  const toggleCompact = () => {
+    setCompact((prev) => {
+      const next = !prev;
+      localStorage.setItem('planning_backlog_compact', String(next));
+      return next;
+    });
+  };
 
   const scenarioId = searchParams.get('scenario') || null;
   const setScenarioId = (id: string | null) => {
@@ -354,11 +365,22 @@ export default function PlanningPage() {
                 style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
                 loading={allocLoading}
                 extra={
-                  <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>
-                    {isApproved
-                      ? 'сценарий утверждён — отметки заблокированы'
-                      : 'клик по строке переключает включение'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>
+                      {isApproved
+                        ? 'сценарий утверждён — отметки заблокированы'
+                        : 'клик по строке переключает включение'}
+                    </span>
+                    <Button
+                      size="small"
+                      type={compact ? 'primary' : 'default'}
+                      icon={<CompressOutlined />}
+                      onClick={toggleCompact}
+                      title={compact ? 'Обычный режим' : 'Компактный режим'}
+                    >
+                      {compact ? 'Компактный' : 'Обычный'}
+                    </Button>
+                  </div>
                 }
               >
                 <div
@@ -366,7 +388,7 @@ export default function PlanningPage() {
                     display: 'grid',
                     gridTemplateColumns: GRID,
                     columnGap: GRID_GAP,
-                    padding: '8px 14px',
+                    padding: compact ? '4px 14px' : '8px 14px',
                     borderBottom: `1px solid ${DARK_THEME.border}`,
                     background: DARK_THEME.darkAccent,
                     fontSize: 13,
@@ -422,7 +444,8 @@ export default function PlanningPage() {
                           display: 'grid',
                           gridTemplateColumns: GRID,
                           columnGap: GRID_GAP,
-                          padding: '12px 14px',
+                          padding: compact ? '4px 14px' : '12px 14px',
+                          fontSize: compact ? 13 : 14,
                           borderBottom: `1px solid ${DARK_THEME.border}`,
                           alignItems: 'center',
                           cursor: isDraft ? 'pointer' : 'default',
