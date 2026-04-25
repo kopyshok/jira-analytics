@@ -397,6 +397,89 @@ def empty_scenario(db_session):
     return r
 
 
+class TestPlannedHoursAssigneeByJiraName:
+    """Если задача не привязана к сотруднику через assignee_employee_id,
+    но в Jira-issue указан исполнитель по имени — роль резолвится через
+    лookup по display_name (как в /planning endpoint)."""
+
+    def test_jira_assignee_name_routes_analyst_hours_to_pm(self, db_session):
+        from app.models import Issue, Project
+        db_session.add_all([
+            Role(code="analyst", label="Аналитик", color="#722ED1",
+                 is_active=True, counts_in_planning=True),
+            Role(code="project_manager", label="Руководитель проектов",
+                 color="#FA8C16", is_active=True, counts_in_planning=True),
+        ])
+        db_session.flush()
+
+        analyst_emp = Employee(
+            jira_account_id="anl2", display_name="Анна А.", role="analyst",
+            is_active=True,
+        )
+        pm_emp = Employee(
+            jira_account_id="pm2", display_name="Пётр П.", role="project_manager",
+            is_active=True,
+        )
+        db_session.add_all([analyst_emp, pm_emp])
+        db_session.flush()
+        db_session.add_all([
+            EmployeeTeam(employee_id=analyst_emp.id, team="Gamma", is_primary=True),
+            EmployeeTeam(employee_id=pm_emp.id, team="Gamma", is_primary=True),
+        ])
+
+        # Issue с assignee_display_name = "Пётр П." (по имени, без linked employee)
+        proj = Project(jira_project_id="px", key="GAMMA", name="Gamma project")
+        db_session.add(proj)
+        db_session.flush()
+        issue = Issue(
+            jira_issue_id="i100", key="GAMMA-1",
+            summary="Issue with PM name", issue_type="Task", status="Open",
+            project_id=proj.id,
+            assignee_display_name="Пётр П.",
+        )
+        db_session.add(issue)
+        db_session.flush()
+
+        # Backlog item — ассоциация только через issue, без assignee_employee_id
+        item = BacklogItem(
+            title="PM-driven via Jira",
+            priority=1,
+            estimate_hours=100,
+            estimate_analyst_hours=100,
+            issue_id=issue.id,
+            # assignee_employee_id NOT set
+        )
+        db_session.add(item)
+        db_session.flush()
+
+        scenario = PlanningScenario(
+            name="Gamma plan", year=2026, quarter="Q2",
+            team="Gamma", status="draft",
+        )
+        db_session.add(scenario)
+        db_session.flush()
+        db_session.add(ScenarioAllocation(
+            scenario_id=scenario.id, backlog_item_id=item.id,
+            included_flag=True, planned_hours=100.0,
+        ))
+        db_session.flush()
+
+        data = ScenarioXlsxExporter(db_session, scenario.id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Сводка"]
+
+        analyst_plan = None
+        pm_plan = None
+        for r in range(1, ws.max_row + 1):
+            label = ws.cell(row=r, column=1).value
+            if label == "Аналитик":
+                analyst_plan = ws.cell(row=r, column=6).value
+            elif label == "Руководитель проектов":
+                pm_plan = ws.cell(row=r, column=6).value
+        assert analyst_plan in (0, 0.0, None)
+        assert pm_plan == pytest.approx(100.0)
+
+
 class TestPlannedHoursAssigneeSubstitution:
     """Аналитический объём задачи, назначенной на РП/Консультанта,
     должен попасть в его роль, а не в «Аналитик»."""

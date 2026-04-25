@@ -111,6 +111,10 @@ class ScenarioExportContext:
     generated_at: datetime
     period_start: date
     period_end: date  # exclusive
+    # display_name → role code, по всем активным сотрудникам. Нужен для
+    # резолвинга роли исполнителя задачи, когда assignee_employee_id не
+    # заполнен вручную и приходится сопоставлять по имени из Jira.
+    role_by_display_name: dict[str, str]
 
 
 INCLUDED_HEADERS = [
@@ -232,6 +236,23 @@ def _stamp_row_borders(
 ANALYST_SUBSTITUTE_ROLES = {"project_manager", "consultant", "RP"}
 
 
+def _resolve_assignee_role(
+    item: BacklogItem, ctx: ScenarioExportContext,
+) -> Optional[str]:
+    """Роль исполнителя задачи. Повторяет логику /planning endpoint:
+    1) `BacklogItem.assignee.role` (если назначен сотрудник);
+    2) lookup `Issue.assignee_display_name` → `role_by_display_name`
+       (если в Jira указан исполнитель по имени).
+    """
+    assignee = getattr(item, "assignee", None)
+    if assignee is not None and assignee.role:
+        return assignee.role
+    issue = getattr(item, "issue", None)
+    if issue is not None and issue.assignee_display_name:
+        return ctx.role_by_display_name.get(issue.assignee_display_name)
+    return None
+
+
 def _planned_hours_by_role(ctx: ScenarioExportContext) -> dict[str, float]:
     """Запланированные часы по ролям с учётом исполнителя.
 
@@ -250,8 +271,7 @@ def _planned_hours_by_role(ctx: ScenarioExportContext) -> dict[str, float]:
             continue
         p = a.planned_hours or 0.0
         analyst_target = "analyst"
-        assignee = getattr(a.backlog_item, "assignee", None)
-        assignee_role = assignee.role if assignee is not None else None
+        assignee_role = _resolve_assignee_role(a.backlog_item, ctx)
         if assignee_role and assignee_role in ANALYST_SUBSTITUTE_ROLES:
             analyst_target = assignee_role
         out[analyst_target] = out.get(analyst_target, 0.0) + p * analyst / total_est
@@ -422,6 +442,17 @@ class ScenarioXlsxExporter:
         base_url_setting = self.db.get(AppSetting, "jira_base_url")
         jira_base_url = (base_url_setting.value if base_url_setting else "") or ""
 
+        # Lookup роли по display_name — повторяет логику /planning endpoint.
+        # Нужен, когда задача не привязана к сотруднику через assignee_employee_id,
+        # но в Jira-issue указан исполнитель по имени.
+        all_active = (
+            self.db.query(Employee).filter(Employee.is_active == True).all()  # noqa: E712
+        )
+        role_by_display_name: dict[str, str] = {
+            e.display_name: e.role for e in all_active
+            if e.display_name and e.role
+        }
+
         return ScenarioExportContext(
             scenario=scenario,
             allocations=allocations,
@@ -437,6 +468,7 @@ class ScenarioXlsxExporter:
             generated_at=datetime.utcnow(),
             period_start=period_start,
             period_end=period_end,
+            role_by_display_name=role_by_display_name,
         )
 
     # === Sheets ===
