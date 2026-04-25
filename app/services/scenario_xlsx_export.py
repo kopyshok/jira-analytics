@@ -85,11 +85,12 @@ class _Style:
     TOP_DARK = Side(style="medium", color=DARK_HEADER)
     SECTION_BORDER = Border(bottom=BOTTOM_DARK)
     TOTALS_BORDER = Border(top=TOP_DARK)
+    ROW_BORDER = Border(bottom=THIN_GREY)
 
-    # Alignment
-    LEFT = Alignment(horizontal="left", vertical="center")
-    RIGHT = Alignment(horizontal="right", vertical="center")
-    CENTER = Alignment(horizontal="center", vertical="center")
+    # Alignment (wrap_text везде, чтобы длинные значения не вылезали за ячейку)
+    LEFT = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    RIGHT = Alignment(horizontal="right", vertical="center", wrap_text=True)
+    CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
 
 @dataclass
@@ -196,8 +197,49 @@ def _write_section_header(ws, row: int, text: str, *, columns: int = 8) -> None:
     )
 
 
+def _stamp_row_borders(
+    ws, ranges: list[tuple[int, int, int]],
+) -> None:
+    """Тонкий нижний border + wrap_text на каждую ячейку data-строки.
+
+    `ranges` — список `(start_row, end_row, columns)`. Сохраняет уже
+    выставленные left/right/top и horizontal-alignment, перезаписывает
+    только bottom-border и включает wrap_text.
+    """
+    for start, end, cols in ranges:
+        if end < start:
+            continue
+        for r in range(start, end + 1):
+            for c in range(1, cols + 1):
+                cell = ws.cell(row=r, column=c)
+                # bottom border
+                existing = cell.border
+                cell.border = Border(
+                    left=existing.left,
+                    right=existing.right,
+                    top=existing.top,
+                    bottom=_Style.THIN_GREY,
+                )
+                # wrap_text — сохраняем horizontal/vertical если заданы
+                a = cell.alignment
+                cell.alignment = Alignment(
+                    horizontal=(a.horizontal if a is not None else None),
+                    vertical=(a.vertical if (a is not None and a.vertical) else "center"),
+                    wrap_text=True,
+                )
+
+
+ANALYST_SUBSTITUTE_ROLES = {"project_manager", "consultant", "RP"}
+
+
 def _planned_hours_by_role(ctx: ScenarioExportContext) -> dict[str, float]:
-    """Запланированные часы по ролям (analyst / dev / qa) — пропорция от _demand_by_role."""
+    """Запланированные часы по ролям с учётом исполнителя.
+
+    Программист и тестировщик всегда попадают в свои роли (`dev` / `qa`).
+    Аналитический объём попадает в `analyst`, **кроме** случая, когда исполнитель —
+    Руководитель проектов или Консультант: тогда аналитический объём списывается
+    на роль исполнителя. Логика повторяет `demandByAssigneeRole` на фронте.
+    """
     out: dict[str, float] = {}
     for a in ctx.allocations:
         if not a.included_flag:
@@ -207,7 +249,12 @@ def _planned_hours_by_role(ctx: ScenarioExportContext) -> dict[str, float]:
         if total_est <= 0:
             continue
         p = a.planned_hours or 0.0
-        out["analyst"] = out.get("analyst", 0.0) + p * analyst / total_est
+        analyst_target = "analyst"
+        assignee = getattr(a.backlog_item, "assignee", None)
+        assignee_role = assignee.role if assignee is not None else None
+        if assignee_role and assignee_role in ANALYST_SUBSTITUTE_ROLES:
+            analyst_target = assignee_role
+        out[analyst_target] = out.get(analyst_target, 0.0) + p * analyst / total_est
         out["dev"] = out.get("dev", 0.0) + p * dev / total_est
         out["qa"] = out.get("qa", 0.0) + p * qa / total_est
     return out
@@ -315,6 +362,8 @@ class ScenarioXlsxExporter:
                     .joinedload(BacklogItem.issue),
                 joinedload(ScenarioAllocation.backlog_item)
                     .joinedload(BacklogItem.project),
+                joinedload(ScenarioAllocation.backlog_item)
+                    .joinedload(BacklogItem.assignee),
             )
             .filter(ScenarioAllocation.scenario_id == self.scenario_id)
             .all()
@@ -658,6 +707,12 @@ class ScenarioXlsxExporter:
                 days_cell.fill = _Style.RED_BG
             r_idx += 1
 
+        # Тонкая линия снизу каждой data-строки в обеих секциях
+        _stamp_row_borders(ws, [
+            (header_row + 1, total_row_idx - 1, 8),  # «По ролям × месяцам»
+            (emp_header_row + 1, r_idx - 1, 8),      # «По сотрудникам»
+        ])
+
         # --- Column widths ---
         widths = [26, 18, 12, 12, 12, 12, 12, 12]
         for c_idx, w in enumerate(widths, start=1):
@@ -749,6 +804,9 @@ class ScenarioXlsxExporter:
         # Empty cell for "Цели" column to keep the strip continuous
         c = ws.cell(row=total_row_idx, column=11, value="")
         c.fill = _Style.HEADER_FILL
+
+        # Тонкая линия снизу каждой строки данных
+        _stamp_row_borders(ws, [(3, total_row_idx - 1, len(INCLUDED_HEADERS))])
 
         # Heatmap on hours columns 5-8 (only if there are rows)
         if rows:
@@ -845,6 +903,9 @@ class ScenarioXlsxExporter:
             c.alignment = _Style.RIGHT
         c = ws.cell(row=total_row_idx, column=10, value="")
         c.fill = _Style.HEADER_FILL
+
+        # Тонкая линия снизу каждой строки данных
+        _stamp_row_borders(ws, [(3, total_row_idx - 1, len(EXCLUDED_HEADERS))])
 
         # Heatmap on hours
         if rows:
@@ -958,6 +1019,9 @@ class ScenarioXlsxExporter:
             if sum_pct > 100:
                 sum_cell.font = _Style.RED_BOLD_FONT
             r_idx += 1
+
+        # Тонкая линия снизу каждой строки матрицы правил
+        _stamp_row_borders(ws, [(matrix_header_row + 1, r_idx - 1, sum_col_idx)])
 
         # --- Section 2: Внешний QA-лимит ---
         sec2_row = r_idx + 1
@@ -1079,6 +1143,9 @@ class ScenarioXlsxExporter:
             c.fill = _Style.TOTALS_FILL
             c.alignment = _Style.RIGHT
             c.number_format = "#,##0"
+
+            # Тонкая линия снизу каждой строки отсутствий (без totals)
+            _stamp_row_borders(ws, [(abs_header_row + 1, r_idx - 1, 8)])
 
         # --- Column widths ---
         widths = [22, 14, 18, 14, 12, 12, 8, 12]

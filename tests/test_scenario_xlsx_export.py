@@ -397,6 +397,95 @@ def empty_scenario(db_session):
     return r
 
 
+class TestPlannedHoursAssigneeSubstitution:
+    """Аналитический объём задачи, назначенной на РП/Консультанта,
+    должен попасть в его роль, а не в «Аналитик»."""
+
+    def test_pm_assignee_routes_analyst_hours_to_pm(self, db_session):
+        # Setup: команда, аналитик, РП. Одна задача с назначенным РП.
+        db_session.add_all([
+            Role(code="analyst", label="Аналитик", color="#722ED1",
+                 is_active=True, counts_in_planning=True),
+            Role(code="project_manager", label="Руководитель проектов",
+                 color="#FA8C16", is_active=True, counts_in_planning=True),
+        ])
+        db_session.flush()
+
+        analyst_emp = Employee(
+            jira_account_id="anl", display_name="Анна А.", role="analyst",
+            is_active=True,
+        )
+        pm_emp = Employee(
+            jira_account_id="pm1", display_name="Пётр П.", role="project_manager",
+            is_active=True,
+        )
+        db_session.add_all([analyst_emp, pm_emp])
+        db_session.flush()
+        db_session.add_all([
+            EmployeeTeam(employee_id=analyst_emp.id, team="Beta", is_primary=True),
+            EmployeeTeam(employee_id=pm_emp.id, team="Beta", is_primary=True),
+        ])
+
+        item = BacklogItem(
+            title="PM-driven feature",
+            priority=1,
+            estimate_hours=100,
+            estimate_analyst_hours=100,
+            assignee_employee_id=pm_emp.id,
+        )
+        db_session.add(item)
+        db_session.flush()
+
+        scenario = PlanningScenario(
+            name="Beta plan", year=2026, quarter="Q2",
+            team="Beta", status="draft",
+        )
+        db_session.add(scenario)
+        db_session.flush()
+        db_session.add(ScenarioAllocation(
+            scenario_id=scenario.id, backlog_item_id=item.id,
+            included_flag=True, planned_hours=100.0,
+        ))
+        db_session.flush()
+
+        data = ScenarioXlsxExporter(db_session, scenario.id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Сводка"]
+
+        # На «По ролям × месяцам»: ищем строку РП и Аналитик, проверяем «План»
+        analyst_plan = None
+        pm_plan = None
+        for r in range(1, ws.max_row + 1):
+            label = ws.cell(row=r, column=1).value
+            if label == "Аналитик":
+                analyst_plan = ws.cell(row=r, column=6).value
+            elif label == "Руководитель проектов":
+                pm_plan = ws.cell(row=r, column=6).value
+        # Аналитик должен быть 0 (исполнитель — РП), РП — 100
+        assert analyst_plan in (0, 0.0, None)
+        assert pm_plan == pytest.approx(100.0)
+
+
+class TestWrapAndBorders:
+    """wrap_text=True и тонкая нижняя граница на data-строках."""
+
+    def test_data_cell_has_wrap_text(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        # Cell with the title "Build feature"
+        cell = ws.cell(row=3, column=2)
+        assert cell.alignment.wrap_text is True
+
+    def test_data_row_has_bottom_border(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        cell = ws.cell(row=3, column=2)
+        assert cell.border.bottom is not None
+        assert cell.border.bottom.style == "thin"
+
+
 class TestEmpty:
     def test_build_does_not_crash(self, db_session, empty_scenario):
         data = ScenarioXlsxExporter(db_session, empty_scenario.scenario_id).build()
