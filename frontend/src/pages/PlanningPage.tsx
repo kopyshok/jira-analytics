@@ -57,6 +57,23 @@ export default function PlanningPage() {
     });
   };
 
+  const [flashingIds, setFlashingIds] = useState<Set<string>>(() => new Set());
+
+  const flashRow = (allocId: string) => {
+    setFlashingIds((prev) => {
+      const next = new Set(prev);
+      next.add(allocId);
+      return next;
+    });
+    setTimeout(() => {
+      setFlashingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(allocId);
+        return next;
+      });
+    }, 650);
+  };
+
   const scenarioId = searchParams.get('scenario') || null;
   const setScenarioId = (id: string | null) => {
     const next = new URLSearchParams(searchParams);
@@ -128,6 +145,7 @@ export default function PlanningPage() {
 
   const toggleAllocation = (alloc: AllocationResponse) => {
     if (!scenarioId || !isDraft) return;
+    flashRow(alloc.id);
     patchAlloc.mutate(
       { scenarioId, allocId: alloc.id, data: { included: !alloc.included } },
       { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
@@ -438,7 +456,7 @@ export default function PlanningPage() {
                     return (
                       <div
                         key={a.id}
-                        className="backlog-row"
+                        className={`backlog-row${flashingIds.has(a.id) ? ' cyan-flash' : ''}`}
                         onClick={() => toggleAllocation(a)}
                         style={{
                           display: 'grid',
