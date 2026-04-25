@@ -6,7 +6,7 @@ import {
 import {
   CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
   DeleteOutlined, DiffOutlined, FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined,
-  ShopOutlined, UserOutlined,
+  ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
@@ -18,6 +18,7 @@ import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import ApproveCelebration from '../components/planning/ApproveCelebration';
 import ScenarioDeficitBadge from '../components/planning/ScenarioDeficitBadge';
 import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
+import ScenarioCompareDrawer from '../components/planning/ScenarioCompareDrawer';
 import {
   useScenarios,
   useScenario,
@@ -73,6 +74,7 @@ export default function PlanningPage() {
   const [activeTab, setActiveTab] = useState<'distribution' | 'rules'>('distribution');
   const [celebrate, setCelebrate] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [compact, setCompact] = useState<boolean>(
     () => localStorage.getItem('planning_backlog_compact') === 'true',
   );
@@ -312,6 +314,11 @@ export default function PlanningPage() {
               allowClear
               onClear={() => setScenarioId(null)}
             />
+            <Tooltip title="Сравнить два сценария">
+              <Button icon={<SwapOutlined />} onClick={() => setCompareOpen(true)}>
+                Сравнить
+              </Button>
+            </Tooltip>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
               Новый сценарий
             </Button>
@@ -775,6 +782,11 @@ export default function PlanningPage() {
           draftAllocations={allocations}
         />
       )}
+      <ScenarioCompareDrawer
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        initialScenarioId={scenarioId ?? undefined}
+      />
       <ApproveCelebration visible={celebrate} />
     </Space>
   );
