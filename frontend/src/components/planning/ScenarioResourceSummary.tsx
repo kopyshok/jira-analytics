@@ -406,6 +406,11 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
               const isDeficit = remaining < 0;
               const isExternal = role === 'qa' && summary.external_qa_hours != null;
               const hasUsed = used > 0;
+              const utilPct = avail > 0 ? Math.min(150, (used / avail) * 100) : 0;
+              const barColor =
+                utilPct > 110 ? '#f5222d' :
+                utilPct > 100 ? '#fa8c16' :
+                DARK_THEME.cyanPrimary;
               return (
                 <div
                   key={role}
@@ -417,6 +422,8 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                     fontWeight: 700,
                     fontSize: 17,
                     whiteSpace: 'nowrap' as const,
+                    position: 'relative' as const,
+                    paddingBottom: 12,
                   }}
                 >
                   <span className={pulsedRoles?.has(role) ? 'role-pulse' : undefined}>
@@ -435,6 +442,29 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                     <span style={{ fontSize: 11, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
                       внешний
                     </span>
+                  )}
+                  {hasUsed && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 4,
+                        left: 8,
+                        right: 8,
+                        height: 4,
+                        background: 'rgba(255,255,255,0.06)',
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${Math.min(100, utilPct)}%`,
+                          background: barColor,
+                          transition: 'width 0.3s ease, background-color 0.3s ease',
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
               );
