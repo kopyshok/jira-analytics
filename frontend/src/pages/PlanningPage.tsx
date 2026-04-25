@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
-  DeleteOutlined, FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined,
+  DeleteOutlined, DiffOutlined, FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined,
   ShopOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
@@ -17,6 +17,7 @@ import ScenarioResourceSummary from '../components/planning/ScenarioResourceSumm
 import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import ApproveCelebration from '../components/planning/ApproveCelebration';
 import ScenarioDeficitBadge from '../components/planning/ScenarioDeficitBadge';
+import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
 import {
   useScenarios,
   useScenario,
@@ -71,6 +72,7 @@ export default function PlanningPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'distribution' | 'rules'>('distribution');
   const [celebrate, setCelebrate] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
   const [compact, setCompact] = useState<boolean>(
     () => localStorage.getItem('planning_backlog_compact') === 'true',
   );
@@ -409,6 +411,17 @@ export default function PlanningPage() {
                   >
                     В черновик
                   </Button>
+                )}
+                {isDraft && (
+                  <Tooltip title="Сравнить с последним утверждённым">
+                    <Button
+                      icon={<DiffOutlined />}
+                      size="small"
+                      onClick={() => setDiffOpen(true)}
+                    >
+                      Diff
+                    </Button>
+                  </Tooltip>
                 )}
                 <Button size="small" onClick={() => downloadScenarioXlsx(scenarioId)}>
                   Экспорт
@@ -753,6 +766,14 @@ export default function PlanningPage() {
             </Space>
           </div>
         </Space>
+      )}
+      {scenario && allocations && isDraft && (
+        <ScenarioDiffPanel
+          open={diffOpen}
+          onClose={() => setDiffOpen(false)}
+          draftScenario={scenario}
+          draftAllocations={allocations}
+        />
       )}
       <ApproveCelebration visible={celebrate} />
     </Space>
