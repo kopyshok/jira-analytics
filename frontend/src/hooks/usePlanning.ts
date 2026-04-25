@@ -13,6 +13,7 @@ import {
   getScenarioAllocations,
   patchAllocation,
   patchAllocationAssignee,
+  reorderAllocations,
   getScenarioResource,
   getScenarioRules,
   putScenarioRules,
@@ -220,6 +221,48 @@ export const usePutScenarioRules = () => {
     },
     onError: (err) => {
       notification.error({ title: 'Не удалось сохранить правила', description: err.message });
+    },
+  });
+};
+
+export const useReorderAllocations = () => {
+  const qc = useQueryClient();
+  const { notification } = App.useApp();
+  return useMutation<
+    AllocationResponse[],
+    Error,
+    { scenarioId: string; orderedIds: string[] },
+    { prev?: AllocationResponse[] }
+  >({
+    mutationFn: ({ scenarioId, orderedIds }) => reorderAllocations(scenarioId, orderedIds),
+    onMutate: async ({ scenarioId, orderedIds }) => {
+      const key = ['planning', 'allocations', scenarioId];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<AllocationResponse[]>(key);
+      if (prev) {
+        const byId = new Map(prev.map((a) => [a.id, a]));
+        const reordered: AllocationResponse[] = [];
+        orderedIds.forEach((id) => {
+          const a = byId.get(id);
+          if (a) {
+            reordered.push(a);
+            byId.delete(id);
+          }
+        });
+        // Не упомянутые — в конец, сохраняя относительный порядок.
+        byId.forEach((a) => reordered.push(a));
+        qc.setQueryData<AllocationResponse[]>(key, reordered);
+      }
+      return { prev };
+    },
+    onError: (_err, vars, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData(['planning', 'allocations', vars.scenarioId], ctx.prev);
+      }
+      notification.error({ title: 'Не удалось изменить порядок' });
+    },
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: ['planning', 'allocations', vars.scenarioId] });
     },
   });
 };

@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
   Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
   CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
-  DeleteOutlined, DiffOutlined, FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined,
-  ShopOutlined, SwapOutlined, UserOutlined,
+  DeleteOutlined, DiffOutlined, FlagFilled, HolderOutlined, PlusOutlined, ReloadOutlined,
+  RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
@@ -33,6 +37,7 @@ import {
   useScenarioResourceSummary,
   useUpdateScenario,
   usePatchAllocationAssignee,
+  useReorderAllocations,
 } from '../hooks/usePlanning';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { downloadScenarioXlsx } from '../api/exports';
@@ -44,8 +49,50 @@ import { OPO_COLOR } from '../utils/opo';
 import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../utils/planning';
 import type { AllocationResponse } from '../types/api';
 
-const GRID = '36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
+const GRID = '24px 36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
 const GRID_GAP = 8;
+
+
+type DragHandleProps = {
+  attributes: ReturnType<typeof useSortable>['attributes'];
+  listeners: ReturnType<typeof useSortable>['listeners'];
+};
+
+function SortableAllocRow({
+  id,
+  registerRef,
+  onClick,
+  className,
+  style,
+  children,
+}: {
+  id: string;
+  registerRef: (el: HTMLDivElement | null) => void;
+  onClick?: () => void;
+  className?: string;
+  style?: CSSProperties;
+  children: (handle: DragHandleProps) => ReactNode;
+}) {
+  const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id });
+  return (
+    <div
+      ref={(el) => {
+        setNodeRef(el);
+        registerRef(el);
+      }}
+      onClick={onClick}
+      className={className}
+      style={{
+        ...style,
+        transform: CSS.Translate.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+    >
+      {children({ attributes, listeners })}
+    </div>
+  );
+}
 
 function rolesAffectedByAllocation(
   a: AllocationResponse,
@@ -171,20 +218,25 @@ export default function PlanningPage() {
     [allocations],
   );
 
-  // Отмеченные — наверх; внутри групп — по приоритету (nulls last), затем по названию.
-  const sortedAllocations = useMemo(() => {
-    const list = [...(allocations ?? [])];
-    list.sort((a, b) => {
-      if (a.included !== b.included) return a.included ? -1 : 1;
-      const pa = a.priority ?? Number.POSITIVE_INFINITY;
-      const pb = b.priority ?? Number.POSITIVE_INFINITY;
-      if (pa !== pb) return pa - pb;
-      return (a.title ?? '').localeCompare(b.title ?? '');
-    });
-    return list;
-  }, [allocations]);
+  // Порядок строк — целиком с бэка (sort_order). Чек поднимает строку
+  // наверх, снятие — оставляет на месте, drag&drop переписывает порядок.
+  const orderedAllocations = allocations ?? [];
 
   const [listRef] = useAutoAnimate<HTMLDivElement>({ duration: 280, easing: 'ease-in-out' });
+
+  const reorderAllocs = useReorderAllocations();
+  const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
+    if (!scenarioId || !isDraft) return;
+    if (!over || dragActive.id === over.id) return;
+    const ids = orderedAllocations.map((a) => a.id);
+    const oldIndex = ids.indexOf(String(dragActive.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = ids.slice();
+    next.splice(oldIndex, 1);
+    next.splice(newIndex, 0, String(dragActive.id));
+    reorderAllocs.mutate({ scenarioId, orderedIds: next });
+  };
 
   const quarterInt = useMemo(() => {
     if (!scenario?.quarter) return 0;
@@ -543,6 +595,7 @@ export default function PlanningPage() {
                     letterSpacing: 0.6,
                   }}
                 >
+                  <span aria-hidden style={{ textAlign: 'center' }} />
                   <span title="Включено в сценарий" style={{ textAlign: 'center' }}>
                     <CheckSquareTwoTone
                       className="icon-tick"
@@ -572,8 +625,17 @@ export default function PlanningPage() {
                     Всего часов
                   </span>
                 </div>
-                <div style={{ overflowY: 'auto', flex: 1 }} ref={listRef}>
-                  {sortedAllocations.map((a) => {
+                <DndContext
+                  collisionDetection={closestCenter}
+                  modifiers={[restrictToVerticalAxis]}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={orderedAllocations.map((a) => a.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div style={{ overflowY: 'auto', flex: 1 }} ref={listRef}>
+                  {orderedAllocations.map((a) => {
                     const an = a.estimate_analyst_hours ?? 0;
                     const de = a.estimate_dev_hours ?? 0;
                     const qa = a.estimate_qa_hours ?? 0;
@@ -581,9 +643,10 @@ export default function PlanningPage() {
                     const total = a.estimate_hours ?? an + de + qa + op;
                     const priorityCyan = a.priority != null && a.priority <= 3;
                     return (
-                      <div
+                      <SortableAllocRow
                         key={a.id}
-                        ref={(el) => {
+                        id={a.id}
+                        registerRef={(el) => {
                           if (el) rowRefs.current.set(a.id, el);
                           else rowRefs.current.delete(a.id);
                         }}
@@ -606,6 +669,25 @@ export default function PlanningPage() {
                           opacity: a.included ? 1 : 0.7,
                         }}
                       >
+                        {({ attributes, listeners }) => (
+                          <>
+                        <span
+                          {...(isDraft ? attributes : {})}
+                          {...(isDraft ? listeners : {})}
+                          onClick={(e) => e.stopPropagation()}
+                          title={isDraft ? 'Перетащить' : ''}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: isDraft ? 'grab' : 'default',
+                            color: DARK_THEME.textMuted,
+                            opacity: isDraft ? 1 : 0.3,
+                            touchAction: 'none',
+                          }}
+                        >
+                          <HolderOutlined />
+                        </span>
                         <div onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             checked={a.included}
@@ -755,7 +837,9 @@ export default function PlanningPage() {
                             </div>
                           )}
                         </div>
-                      </div>
+                          </>
+                        )}
+                      </SortableAllocRow>
                     );
                   })}
                   {(allocations ?? []).length === 0 && !allocLoading && (
@@ -764,7 +848,9 @@ export default function PlanningPage() {
                       «Синк с бэклогом».
                     </div>
                   )}
-                </div>
+                    </div>
+                  </SortableContext>
+                </DndContext>
               </Card>
             ) : (
               <Card

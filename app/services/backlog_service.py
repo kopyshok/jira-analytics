@@ -18,6 +18,7 @@ BacklogItem allocations в draft-сценариях удаляются. Утве
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
@@ -143,12 +144,20 @@ class BacklogService:
         for sid in draft_scenario_ids:
             if sid in existing_scenario_ids:
                 continue
+            # В конец списка сценария: max(sort_order) + 1.
+            next_order = (
+                self.db.query(func.max(ScenarioAllocation.sort_order))
+                .filter(ScenarioAllocation.scenario_id == sid)
+                .scalar()
+                or 0.0
+            ) + 1.0
             self.db.add(
                 ScenarioAllocation(
                     scenario_id=sid,
                     backlog_item_id=item_id,
                     included_flag=False,
                     planned_hours=0,
+                    sort_order=next_order,
                 )
             )
         self.db.flush()

@@ -55,3 +55,12 @@ export const patchAllocationAssignee = (
     `/planning/scenarios/${scenarioId}/allocations/${allocId}/assignee`,
     { assignee_employee_id: assigneeEmployeeId },
   );
+
+export const reorderAllocations = (
+  scenarioId: string,
+  orderedIds: string[],
+): Promise<AllocationResponse[]> =>
+  api.patch<AllocationResponse[]>(
+    `/planning/scenarios/${scenarioId}/allocations/reorder`,
+    { ordered_ids: orderedIds },
+  );

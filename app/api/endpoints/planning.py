@@ -21,6 +21,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -169,6 +170,12 @@ class AllocationResponse(BaseModel):
 
 class AllocationAssigneePatch(BaseModel):
     assignee_employee_id: Optional[str] = None
+
+
+class AllocationsReorderBody(BaseModel):
+    """Список allocation.id в желаемом порядке (от верха к низу)."""
+
+    ordered_ids: List[str]
 
 
 # === Resource base schemas ===
@@ -356,14 +363,24 @@ async def create_scenario(
     db.add(scenario)
     db.flush()
 
-    items = db.query(BacklogItem).filter(BacklogItem.archived_at.is_(None)).all()
-    for item in items:
+    items = (
+        db.query(BacklogItem)
+        .filter(BacklogItem.archived_at.is_(None))
+        .order_by(
+            BacklogItem.priority.is_(None),
+            BacklogItem.priority,
+            BacklogItem.title,
+        )
+        .all()
+    )
+    for idx, item in enumerate(items, start=1):
         db.add(
             ScenarioAllocation(
                 scenario_id=scenario.id,
                 backlog_item_id=item.id,
                 included_flag=False,
                 planned_hours=0,
+                sort_order=float(idx),
             )
         )
 
@@ -636,7 +653,13 @@ async def sync_backlog(
         .all()
     }
 
-    # Добавить новые.
+    # Новые allocations добавляем в конец списка — PM сам перетащит куда нужно.
+    next_order = (
+        db.query(func.max(ScenarioAllocation.sort_order))
+        .filter(ScenarioAllocation.scenario_id == scenario_id)
+        .scalar()
+        or 0.0
+    ) + 1.0
     for item_id in current_ids - existing_ids:
         db.add(
             ScenarioAllocation(
@@ -644,8 +667,10 @@ async def sync_backlog(
                 backlog_item_id=item_id,
                 included_flag=False,
                 planned_hours=0,
+                sort_order=next_order,
             )
         )
+        next_order += 1.0
     # Убрать allocations для удалённых из бэклога записей.
     if existing_ids - current_ids:
         db.query(ScenarioAllocation).filter(
@@ -679,21 +704,70 @@ async def list_scenario_allocations(
         .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
         .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(ScenarioAllocation.scenario_id == scenario_id)
+        .order_by(
+            # Per-scenario manual order (sort_order). NULL — в конец как fallback.
+            ScenarioAllocation.sort_order.is_(None),
+            ScenarioAllocation.sort_order,
+            BacklogItem.title,
+        )
         .all()
     )
     # Lookup для автоматического разрешения роли по имени из Jira, когда
     # assignee_employee_id не заполнен вручную.
     active_employees = db.query(Employee).filter(Employee.is_active == True).all()  # noqa: E712
     emp_role_by_name = {e.display_name: e.role for e in active_employees if e.role}
-    resp = [_to_allocation_resp(alloc, item, emp_role_by_name) for alloc, item in rows]
-    resp.sort(
-        key=lambda r: (
-            r.priority is None,
-            r.priority if r.priority is not None else 0,
-            r.title or "",
-        )
+    return [_to_allocation_resp(alloc, item, emp_role_by_name) for alloc, item in rows]
+
+
+@router.patch(
+    "/scenarios/{scenario_id}/allocations/reorder",
+    response_model=List[AllocationResponse],
+)
+async def reorder_allocations(
+    scenario_id: str,
+    body: AllocationsReorderBody,
+    db: Session = Depends(get_db),
+):
+    """Перетащили строки мышкой — переписываем ``sort_order`` подряд: 1, 2, 3, …
+
+    Принимает список ``allocation.id`` в желаемом порядке сверху вниз.
+    Идентификаторы не из этого сценария игнорируются. Только для draft.
+    Объявлен ВЫШЕ ``patch_allocation`` — иначе ``reorder`` ловится как
+    ``{alloc_id}`` и не исполняется.
+    """
+    scenario = db.get(PlanningScenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    _require_draft(scenario)
+
+    allocs = (
+        db.query(ScenarioAllocation)
+        .filter(ScenarioAllocation.scenario_id == scenario_id)
+        .all()
     )
-    return resp
+    by_id = {a.id: a for a in allocs}
+
+    pos = 1.0
+    seen: set[str] = set()
+    for aid in body.ordered_ids:
+        a = by_id.get(aid)
+        if a is None or aid in seen:
+            continue
+        a.sort_order = pos
+        pos += 1.0
+        seen.add(aid)
+
+    # Те, что не упомянуты — оставляем в конце, сохраняя относительный порядок.
+    leftover = sorted(
+        (a for a in allocs if a.id not in seen),
+        key=lambda a: (a.sort_order is None, a.sort_order or 0.0, a.id),
+    )
+    for a in leftover:
+        a.sort_order = pos
+        pos += 1.0
+
+    db.commit()
+    return await list_scenario_allocations(scenario_id, db)
 
 
 @router.patch(
@@ -728,10 +802,20 @@ async def patch_allocation(
     patch = data.model_dump(exclude_unset=True)
 
     if "included" in patch:
+        was_included = bool(alloc.included_flag)
         alloc.included_flag = bool(patch["included"])
         if alloc.included_flag:
             if "planned_hours" not in patch and (alloc.planned_hours or 0) <= 0:
                 alloc.planned_hours = item.estimate_hours or 0
+            # Поднимаем строку в самый верх только при переходе False → True.
+            # Снятие галочки оставляет sort_order на месте — строка не прыгает.
+            if not was_included:
+                current_min = (
+                    db.query(func.min(ScenarioAllocation.sort_order))
+                    .filter(ScenarioAllocation.scenario_id == scenario_id)
+                    .scalar()
+                )
+                alloc.sort_order = (current_min if current_min is not None else 1.0) - 1.0
         else:
             alloc.planned_hours = 0
 
