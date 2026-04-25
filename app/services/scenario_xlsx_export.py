@@ -665,7 +665,112 @@ class ScenarioXlsxExporter:
         ws.freeze_panes = "A4"
 
     def _sheet_included(self, ws, ctx: ScenarioExportContext) -> None:
-        pass
+        from openpyxl.formatting.rule import ColorScaleRule  # type: ignore[import-untyped]
+
+        ws.sheet_view.showGridLines = False
+
+        rows = sorted(
+            [a for a in ctx.allocations if a.included_flag],
+            key=lambda a: (
+                a.backlog_item.priority is None,
+                a.backlog_item.priority if a.backlog_item.priority is not None else 0,
+                a.backlog_item.title,
+            ),
+        )
+
+        # Title strip
+        status = "утверждён" if ctx.scenario.status == "approved" else "черновик"
+        title = (
+            f"Сценарий: {ctx.scenario.name} — {status} · "
+            f"Включено ({len(rows)} задач)"
+        )
+        _write_title_strip(ws, title, columns=len(INCLUDED_HEADERS))
+
+        # Header row at row 2
+        for c_idx, h in enumerate(INCLUDED_HEADERS, start=1):
+            c = ws.cell(row=2, column=c_idx, value=h)
+            c.font = _Style.HEADER_FONT
+            c.fill = _Style.HEADER_FILL
+            c.alignment = _Style.CENTER
+        ws.row_dimensions[2].height = 22
+
+        # Data rows
+        for r_idx, alloc in enumerate(rows, start=3):
+            values = _initiative_row_mid(alloc, included=True)
+            for c_idx, val in enumerate(values, start=1):
+                c = ws.cell(row=r_idx, column=c_idx, value=val)
+                if c_idx in (5, 6, 7, 8):
+                    c.number_format = "#,##0.#"
+                    c.alignment = _Style.RIGHT
+                elif c_idx == 3:
+                    c.alignment = _Style.CENTER
+                    if val == 1:
+                        c.font = _Style.PRI1_FONT
+                    elif val == 2:
+                        c.font = _Style.PRI2_FONT
+                elif c_idx == 9:
+                    c.font = _Style.BOLD_FONT
+                    c.number_format = "#,##0.#"
+                    c.alignment = _Style.RIGHT
+                    c.fill = PatternFill("solid", fgColor="EFF6FF")
+                elif c_idx == 10:
+                    c.font = _Style.BOLD_FONT
+                    c.number_format = "#,##0.#"
+                    c.alignment = _Style.RIGHT
+
+            # Hyperlink on key column
+            key = values[0]
+            if key and ctx.jira_base_url:
+                link = f"{ctx.jira_base_url.rstrip('/')}/browse/{key}"
+                ws.cell(row=r_idx, column=1).hyperlink = link
+                ws.cell(row=r_idx, column=1).font = _Style.LINK_FONT
+
+        # Totals row
+        total_row_idx = len(rows) + 3
+        total_label = ws.cell(row=total_row_idx, column=1, value=f"Σ ИТОГО ({len(rows)} задач)")
+        total_label.font = _Style.HEADER_FONT
+        total_label.fill = _Style.HEADER_FILL
+        ws.merge_cells(
+            start_row=total_row_idx, start_column=1,
+            end_row=total_row_idx, end_column=4,
+        )
+        sum_cols = [5, 6, 7, 8, 9, 10]
+        for c_idx in sum_cols:
+            if rows:
+                total = sum(_initiative_row_mid(a, included=True)[c_idx - 1] for a in rows)
+            else:
+                total = 0
+            c = ws.cell(row=total_row_idx, column=c_idx, value=round(total, 1))
+            c.font = _Style.HEADER_FONT
+            c.fill = _Style.HEADER_FILL
+            c.number_format = "#,##0.#"
+            c.alignment = _Style.RIGHT
+        # Empty cell for "Цели" column to keep the strip continuous
+        c = ws.cell(row=total_row_idx, column=11, value="")
+        c.fill = _Style.HEADER_FILL
+
+        # Heatmap on hours columns 5-8 (only if there are rows)
+        if rows:
+            for c_idx in (5, 6, 7, 8):
+                col = get_column_letter(c_idx)
+                rng = f"{col}3:{col}{total_row_idx - 1}"
+                ws.conditional_formatting.add(
+                    rng,
+                    ColorScaleRule(
+                        start_type="min", start_color=_Style.HEAT_LIGHT,
+                        end_type="max", end_color=_Style.HEAT_DARK,
+                    ),
+                )
+
+        # Column widths
+        for c_idx, w in enumerate(INCLUDED_WIDTHS, start=1):
+            ws.column_dimensions[get_column_letter(c_idx)].width = w
+
+        ws.freeze_panes = "A3"
+        if rows:
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(INCLUDED_HEADERS))}{total_row_idx}"
+        else:
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(INCLUDED_HEADERS))}2"
 
     def _sheet_excluded(self, ws, ctx: ScenarioExportContext) -> None:
         pass

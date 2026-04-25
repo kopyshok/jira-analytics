@@ -201,6 +201,61 @@ class TestSummaryByEmployee:
         assert found
 
 
+INCLUDED_HEADERS_MID = [
+    "Ключ Jira", "Название", "Приоритет", "Заказчик",
+    "Аналитик, ч", "Разработка, ч", "QA, ч", "ОПЭ, ч",
+    "Итого, ч", "План, ч", "Цели",
+]
+
+
+class TestIncludedSheet:
+    def test_title_strip(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        a1 = ws.cell(row=1, column=1).value or ""
+        assert "Q2 2026 Alpha Base" in a1
+        assert "Включено" in a1
+        assert "1" in a1  # the count "(1 задач)"
+
+    def test_headers_in_row_2(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        header = [ws.cell(row=2, column=c).value for c in range(1, 12)]
+        assert header == INCLUDED_HEADERS_MID
+
+    def test_data_row_for_build_feature(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        assert ws.cell(row=3, column=2).value == "Build feature"
+        assert ws.cell(row=3, column=3).value == 1
+        assert ws.cell(row=3, column=6).value == pytest.approx(80.0)
+        assert ws.cell(row=3, column=9).value == pytest.approx(80.0)  # Итого
+        assert ws.cell(row=3, column=10).value == pytest.approx(80.0)  # План
+
+    def test_totals_row_present(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        last = ws.max_row
+        assert "ИТОГО" in str(ws.cell(row=last, column=1).value or "")
+        assert ws.cell(row=last, column=9).value == pytest.approx(80.0)
+
+    def test_autofilter_set(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        assert ws.auto_filter.ref is not None
+
+    def test_freeze_panes_a3(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        assert ws.freeze_panes == "A3"
+
+
 class TestStructure:
     def test_workbook_has_four_sheets_in_order(self, db_session, minimal_scenario):
         data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
