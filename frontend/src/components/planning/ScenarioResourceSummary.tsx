@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
@@ -39,21 +39,21 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     () => localStorage.getItem(LS_KEY) === 'true',
   );
   const [isStuck, setIsStuck] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  // Callback-ref вместо useRef + useEffect: эффект с deps=[] срабатывает один
+  // раз при первом render'е, когда компонент ещё показывает Skeleton и
+  // sentinel'а в DOM нет — поэтому observer никогда не подцеплялся. Здесь
+  // setSentinelEl триггерит useEffect, как только sentinel реально появится.
+  const [sentinelEl, setSentinelEl] = useState<HTMLDivElement | null>(null);
 
-  // При скролле страницы вниз верхняя таблица «прилипает» сверху и сворачивается
-  // в компактный режим. IntersectionObserver на sentinel перед sticky-контейнером
-  // даёт надёжную детекцию (надёжнее scroll-listener'а с порогами).
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
+    if (!sentinelEl) return;
     const obs = new IntersectionObserver(
       ([entry]) => setIsStuck(!entry.isIntersecting),
       { threshold: 0 },
     );
-    obs.observe(el);
+    obs.observe(sentinelEl);
     return () => obs.disconnect();
-  }, []);
+  }, [sentinelEl]);
 
   const collapsed = userCollapsed || isStuck;
 
@@ -98,7 +98,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           смещённая на −1px вверх от блока, уходит за границу экрана →
           IntersectionObserver выставляет isStuck. */}
       <div
-        ref={sentinelRef}
+        ref={setSentinelEl}
         aria-hidden
         style={{
           position: 'absolute',
