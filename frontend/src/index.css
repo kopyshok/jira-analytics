@@ -222,3 +222,64 @@ kbd,
   transform-origin: center bottom;
   animation: icon-wiggle 2.4s ease-in-out infinite;
 }
+
+/* Backlog row toggle highlight */
+@keyframes cyan-flash {
+  0%   { background-color: rgba(0, 201, 200, 0.35); }
+  100% { background-color: transparent; }
+}
+.cyan-flash {
+  animation: cyan-flash 0.6s ease-out;
+}
+
+/* Pulse on role columns when their demand changes */
+@keyframes role-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.18); text-shadow: 0 0 12px rgba(0, 201, 200, 0.6); }
+}
+.role-pulse {
+  display: inline-block;
+  animation: role-pulse 0.55s ease-in-out;
+}
+
+/* Approve celebration: SVG circle + checkmark draw-in */
+@keyframes check-circle-draw {
+  from { stroke-dashoffset: 226; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes check-mark-draw {
+  from { stroke-dashoffset: 60; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes celebration-fade {
+  0%   { opacity: 0; transform: scale(0.85); }
+  20%  { opacity: 1; transform: scale(1); }
+  80%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
+}
+
+/* Deficit badge subtle pulse to draw attention */
+@keyframes deficit-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(250, 140, 22, 0.0); }
+  50%      { box-shadow: 0 0 0 4px rgba(250, 140, 22, 0.15); }
+}
+.deficit-pulse {
+  animation: deficit-pulse 2.4s ease-in-out infinite;
+}
+
+/* Hover effect on backlog rows: nudge right + cyan border */
+.backlog-row {
+  border-left: 3px solid transparent;
+  transition: transform 0.15s ease, border-left-color 0.15s ease, background-color 0.15s ease;
+}
+.backlog-row:hover {
+  transform: translateX(2px);
+  border-left-color: #00c9c8;
+}
+/* Color coding overrides border-left when row is in a special state */
+.backlog-row.row-state-no-estimates { border-left-color: #fa8c16; }
+.backlog-row.row-state-deficit      { border-left-color: #f5222d; }
+.backlog-row.row-state-in-work      { border-left-color: #1d9e75; }
+.backlog-row.row-state-no-estimates:hover { border-left-color: #fa8c16; }
+.backlog-row.row-state-deficit:hover      { border-left-color: #f5222d; }
+.backlog-row.row-state-in-work:hover      { border-left-color: #1d9e75; }
