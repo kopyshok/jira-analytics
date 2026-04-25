@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Sister doc (spec):** `docs/superpowers/specs/2026-04-25-planning-ux-polish-design.md` — read this first if you need to understand WHY a feature behaves the way it does or what the acceptance criteria are. This plan is the HOW.
+
 **Goal:** Add 12 visual/UX improvements to the Planning page — animated transitions, capacity visualizations, scenario comparison views — to elevate it from functional to polished.
 
 **Architecture:** Pure-frontend feature batch. Reuses existing keyframe pattern in `index.css`. Most tasks are CSS classes + minor React state. Two new components for scenario comparison. No backend changes needed (existing endpoints `/planning/scenarios` + `/scenarios/{id}/allocations` cover both diff and side-by-side modes via client-side comparison).
