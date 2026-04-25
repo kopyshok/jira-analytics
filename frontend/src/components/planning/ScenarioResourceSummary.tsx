@@ -39,21 +39,29 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     () => localStorage.getItem(LS_KEY) === 'true',
   );
   const [isStuck, setIsStuck] = useState(false);
-  // Callback-ref вместо useRef + useEffect: эффект с deps=[] срабатывает один
-  // раз при первом render'е, когда компонент ещё показывает Skeleton и
-  // sentinel'а в DOM нет — поэтому observer никогда не подцеплялся. Здесь
-  // setSentinelEl триггерит useEffect, как только sentinel реально появится.
-  const [sentinelEl, setSentinelEl] = useState<HTMLDivElement | null>(null);
+  // Callback-ref на сам sticky-блок: при скролле проверяем его позицию через
+  // getBoundingClientRect(). Когда top достиг 0 — значит блок прилип к верху
+  // viewport. Раньше использовался IntersectionObserver на 1px sentinel внутри
+  // sticky-блока, но он давал ложные срабатывания на границе и не всегда
+  // переключался; scroll-listener с rect.top надёжнее в этом конкретном
+  // случае (sticky внутри flex-column, родитель — высокий контейнер страницы).
+  const [stickyEl, setStickyEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!sentinelEl) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => setIsStuck(!entry.isIntersecting),
-      { threshold: 0 },
-    );
-    obs.observe(sentinelEl);
-    return () => obs.disconnect();
-  }, [sentinelEl]);
+    if (!stickyEl) return;
+    const update = () => {
+      // Прилипший означает, что собственная top-позиция блока ровно на 0
+      // (с поправкой 1px на возможные subpixel-округления).
+      setIsStuck(stickyEl.getBoundingClientRect().top <= 1);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [stickyEl]);
 
   const collapsed = userCollapsed || isStuck;
 
@@ -85,6 +93,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
 
   const stickyWrap = (children: React.ReactNode) => (
     <div
+      ref={setStickyEl}
       style={{
         position: 'sticky',
         top: 0,
@@ -93,22 +102,6 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
         boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
       }}
     >
-      {/* Sentinel внутри sticky как absolute. Когда верхний край sticky-блока
-          оказывается у верха viewport (то есть он «прилип»), эта 1px-полоска,
-          смещённая на −1px вверх от блока, уходит за границу экрана →
-          IntersectionObserver выставляет isStuck. */}
-      <div
-        ref={setSentinelEl}
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: -1,
-          left: 0,
-          width: 1,
-          height: 1,
-          pointerEvents: 'none',
-        }}
-      />
       <div
         style={{
           maxHeight: collapsed ? 44 : 800,
