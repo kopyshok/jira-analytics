@@ -760,8 +760,23 @@ export default function PlanningPage() {
               </Card>
             )}
 
-            {/* Правая колонка — без изменений */}
-            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            {/* Правая колонка — sticky, чтобы при скролле длинного бэклога
+                «Ресурс команды» / «По сотрудникам» / внешний QA оставались
+                видимыми. Высота ограничена viewport'ом за вычетом sticky-strip
+                (≈44px) и буфера; внутри панели — собственный скролл, если
+                содержимое не влезает. */}
+            <div
+              style={{
+                position: 'sticky',
+                top: 56,
+                alignSelf: 'start',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                maxHeight: 'calc(100vh - 72px)',
+                overflowY: 'auto',
+              }}
+            >
               <PlanningCapacityPanel
                 resourceBase={resourceBase}
                 allocations={allocations ?? []}
@@ -776,7 +791,7 @@ export default function PlanningPage() {
                   disabled={!isDraft}
                 />
               </Card>
-            </Space>
+            </div>
           </div>
         </div>
       )}
