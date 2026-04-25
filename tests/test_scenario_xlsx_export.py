@@ -379,3 +379,41 @@ class TestStructure:
     def test_unknown_scenario_raises(self, db_session):
         with pytest.raises(ValueError, match="not found"):
             ScenarioXlsxExporter(db_session, "no-such-id").build()
+
+
+@pytest.fixture
+def empty_scenario(db_session):
+    """Сценарий-пустышка."""
+    scenario = PlanningScenario(
+        name="Empty", year=2026, quarter="Q3", team="Ghost", status="draft",
+    )
+    db_session.add(scenario)
+    db_session.flush()
+
+    class _R:
+        pass
+    r = _R()
+    r.scenario_id = scenario.id
+    return r
+
+
+class TestEmpty:
+    def test_build_does_not_crash(self, db_session, empty_scenario):
+        data = ScenarioXlsxExporter(db_session, empty_scenario.scenario_id).build()
+        assert data[:2] == b"PK"
+        wb = load_workbook(BytesIO(data))
+        assert wb.sheetnames == EXPECTED_SHEETS
+
+    def test_empty_sections_render_safely(self, db_session, empty_scenario):
+        data = ScenarioXlsxExporter(db_session, empty_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        # Сводка — title strip + section headers should still be there
+        ws = wb["Сводка"]
+        assert ws.cell(row=4, column=1).value == "СВОДКА"
+        # Справочник — "Отсутствий в квартале нет" message
+        ws_ref = wb["Справочник"]
+        all_text = " ".join(
+            str(ws_ref.cell(row=r, column=c).value or "")
+            for r in range(1, ws_ref.max_row + 1) for c in range(1, 9)
+        )
+        assert "Отсутствий в квартале нет" in all_text
