@@ -1,5 +1,29 @@
 import type { AllocationResponse } from '../types/api';
 
+/**
+ * Возвращает дефицит по ролям: для ролей, где demand > avail, вернёт
+ * положительное число часов недостачи. Роли без дефицита в результате
+ * не присутствуют. Округляет до целого.
+ *
+ * @example
+ *   computeDeficitByRole({ analyst: 100 }, { analyst: 120 }) // { analyst: 20 }
+ *   computeDeficitByRole({ analyst: 100 }, { analyst: 80 })  // {}
+ */
+export function computeDeficitByRole(
+  available: Record<string, number>,
+  demand: Record<string, number>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const role of Object.keys(available)) {
+    const used = demand[role] ?? 0;
+    const remaining = available[role] - used;
+    if (remaining < 0) {
+      out[role] = Math.round(-remaining);
+    }
+  }
+  return out;
+}
+
 /** Считает потребность по ролям (аналитик/разработчик/тестировщик)
  *  на основе списка раскладок. Учитываются только включённые элементы.
  *  Повторяет логику backend _demand_by_role. */
