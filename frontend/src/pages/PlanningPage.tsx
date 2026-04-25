@@ -362,7 +362,13 @@ export default function PlanningPage() {
       )}
 
       {scenarioId && scenario && !!scenario.team && (
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        // Намеренно plain `<div>`, не AntD `<Space>`: Space оборачивает каждого
+        // ребёнка в `.ant-space-item`, который становится containing-block'ом
+        // для `position: sticky` на ScenarioResourceSummary — и поскольку он
+        // высотой ровно равен таблице, прилипать некуда. Тут все дочерние
+        // элементы лежат прямо в flex-контейнере, и sticky упирается в его
+        // полную высоту страницы.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
           <Card
             styles={{ body: { padding: '14px 18px' } }}
             style={{ background: DARK_THEME.cardBg }}
@@ -772,7 +778,7 @@ export default function PlanningPage() {
               </Card>
             </Space>
           </div>
-        </Space>
+        </div>
       )}
       {scenario && allocations && isDraft && (
         <ScenarioDiffPanel

@@ -84,28 +84,41 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   if (!summary || summary.roles.length === 0) return null;
 
   const stickyWrap = (children: React.ReactNode) => (
-    <>
-      <div ref={sentinelRef} aria-hidden style={{ height: 1, marginBottom: -1 }} />
+    <div
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 20,
+        transition: 'box-shadow .2s ease',
+        boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
+      }}
+    >
+      {/* Sentinel внутри sticky как absolute. Когда верхний край sticky-блока
+          оказывается у верха viewport (то есть он «прилип»), эта 1px-полоска,
+          смещённая на −1px вверх от блока, уходит за границу экрана →
+          IntersectionObserver выставляет isStuck. */}
+      <div
+        ref={sentinelRef}
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -1,
+          left: 0,
+          width: 1,
+          height: 1,
+          pointerEvents: 'none',
+        }}
+      />
       <div
         style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 20,
-          transition: 'box-shadow .2s ease',
-          boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
+          maxHeight: collapsed ? 44 : 800,
+          overflow: 'hidden',
+          transition: 'max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        <div
-          style={{
-            maxHeight: collapsed ? 44 : 800,
-            overflow: 'hidden',
-            transition: 'max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
-        >
-          {children}
-        </div>
+        {children}
       </div>
-    </>
+    </div>
   );
 
   if (collapsed) {
