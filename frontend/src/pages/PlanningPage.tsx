@@ -196,6 +196,20 @@ export default function PlanningPage() {
     return computeDeficitByRole(resourceSummary.available_for_backlog_by_role, demand);
   }, [resourceSummary, allocations, resourceBase]);
 
+  const hasAnyDeficit = Object.keys(deficit).length > 0;
+
+  const rowStateClass = (a: AllocationResponse): string => {
+    const total =
+      (a.estimate_analyst_hours ?? 0) +
+      (a.estimate_dev_hours ?? 0) +
+      (a.estimate_qa_hours ?? 0) +
+      (a.estimate_opo_hours ?? 0);
+    if (total <= 0) return 'row-state-no-estimates';
+    if (a.included && hasAnyDeficit) return 'row-state-deficit';
+    if (a.source_category === 'quarterly_tasks') return 'row-state-in-work';
+    return '';
+  };
+
   const scrollRowIntoView = (allocId: string) => {
     const el = rowRefs.current.get(allocId);
     if (!el) return;
@@ -531,7 +545,11 @@ export default function PlanningPage() {
                           if (el) rowRefs.current.set(a.id, el);
                           else rowRefs.current.delete(a.id);
                         }}
-                        className={`backlog-row${flashingIds.has(a.id) ? ' cyan-flash' : ''}`}
+                        className={[
+                          'backlog-row',
+                          flashingIds.has(a.id) ? 'cyan-flash' : '',
+                          rowStateClass(a),
+                        ].filter(Boolean).join(' ')}
                         onClick={() => toggleAllocation(a)}
                         style={{
                           display: 'grid',
