@@ -16,6 +16,7 @@ import ExternalQaInput from '../components/planning/ExternalQaInput';
 import ScenarioResourceSummary from '../components/planning/ScenarioResourceSummary';
 import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import ApproveCelebration from '../components/planning/ApproveCelebration';
+import ScenarioDeficitBadge from '../components/planning/ScenarioDeficitBadge';
 import {
   useScenarios,
   useScenario,
@@ -37,6 +38,7 @@ import { useRoles } from '../hooks/useRoles';
 import { useJiraSettings } from '../hooks/useSettings';
 import { getRoleColor } from '../utils/roles';
 import { OPO_COLOR } from '../utils/opo';
+import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../utils/planning';
 import type { AllocationResponse } from '../types/api';
 
 const GRID = '36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
@@ -184,6 +186,15 @@ export default function PlanningPage() {
 
   const isDraft = scenario?.status === 'draft';
   const isApproved = scenario?.status === 'approved';
+
+  const deficit = useMemo(() => {
+    if (!resourceSummary || !allocations) return {};
+    const demand =
+      resourceBase?.employees && resourceBase.employees.length > 0
+        ? demandByAssigneeRole(allocations, resourceBase.employees)
+        : demandByRole(allocations);
+    return computeDeficitByRole(resourceSummary.available_for_backlog_by_role, demand);
+  }, [resourceSummary, allocations, resourceBase]);
 
   const scrollRowIntoView = (allocId: string) => {
     const el = rowRefs.current.get(allocId);
@@ -345,6 +356,7 @@ export default function PlanningPage() {
                   status={isApproved ? 'success' : 'processing'}
                   text={isApproved ? 'Утверждён' : 'Черновик'}
                 />
+                <ScenarioDeficitBadge deficit={deficit} />
                 {allocations && (
                   <span style={{ color: DARK_THEME.textHint, fontSize: 12 }}>
                     включено {includedIds.length} из {allocations.length}
