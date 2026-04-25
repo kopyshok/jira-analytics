@@ -258,7 +258,7 @@ class TestAnalyticsPdf:
 
 
 class TestScenarioXlsx:
-    def test_workbook_has_seven_sheets(self, db_session, scenario_seed):
+    def test_workbook_has_four_sheets(self, db_session, scenario_seed):
         from openpyxl import load_workbook
 
         data = ExportService(db_session).build_scenario_xlsx(
@@ -266,8 +266,7 @@ class TestScenarioXlsx:
         )
         wb = load_workbook(BytesIO(data))
         assert wb.sheetnames == [
-            "Обложка", "Включено", "Не вошло",
-            "По ролям", "По сотрудникам", "Правила", "Отсутствия",
+            "Сводка", "Включено", "Не вошло", "Справочник",
         ]
 
     def test_included_titles_present(self, db_session, scenario_seed):
@@ -277,14 +276,21 @@ class TestScenarioXlsx:
             scenario_seed.scenario_id
         )
         wb = load_workbook(BytesIO(data))
-        ws = wb["Включено"]
-        titles = {ws.cell(row=i, column=2).value for i in range(2, ws.max_row + 1)}
-        assert "Redesign login" in titles
-        assert "Payments v2" in titles
-        # "Overflow feature" должен быть в "Не вошло"
-        assert "Overflow feature" not in titles
+        ws_in = wb["Включено"]
+        # Header row 2, data starts row 3
+        in_titles = {
+            ws_in.cell(row=i, column=2).value
+            for i in range(3, ws_in.max_row + 1)
+        }
+        assert "Redesign login" in in_titles
+        assert "Payments v2" in in_titles
+        assert "Overflow feature" not in in_titles
+
         ws_out = wb["Не вошло"]
-        out_titles = {ws_out.cell(row=i, column=2).value for i in range(2, ws_out.max_row + 1)}
+        out_titles = {
+            ws_out.cell(row=i, column=2).value
+            for i in range(3, ws_out.max_row + 1)
+        }
         assert "Overflow feature" in out_titles
 
     def test_unknown_scenario_raises(self, db_session):
