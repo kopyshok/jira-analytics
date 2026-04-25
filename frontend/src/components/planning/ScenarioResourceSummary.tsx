@@ -137,7 +137,10 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     );
   }
 
-  const gridCols = `minmax(280px, max-content) repeat(${summary.roles.length}, 1fr) minmax(100px, max-content)`;
+  // Фиксированные ширины крайних колонок + minmax(0, 1fr) на ролевые: гарантирует,
+  // что колонки выравниваются между независимыми сетками строк (max-content
+  // по содержимому давал расхождение между строкой шапки и «На бэклог»).
+  const gridCols = `300px repeat(${summary.roles.length}, minmax(0, 1fr)) 140px`;
 
   const roleBorderStyle = (role: string): React.CSSProperties => {
     const color = getRoleColor(roles, role);

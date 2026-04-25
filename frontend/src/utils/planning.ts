@@ -22,9 +22,16 @@ export function demandByRole(allocations: AllocationResponse[]): Record<string, 
 type EmployeeLike = { employee_id: string; role: string | null; display_name: string };
 
 /**
- * Считает потребность по роли ИСПОЛНИТЕЛЯ, а не по типу оценки задачи.
- * Если РП делает задачу с аналитическими часами — часы идут в пул РП, не аналитика.
- * Без сопоставленного сотрудника (нет assignee или нет роли) — фолбэк на estimate-based.
+ * Считает потребность по ролям с учётом исполнителя.
+ *
+ * Часы задачи всегда раскладываются по своим типам работы:
+ *   - аналитический объём = ea + eo * r
+ *   - программистский объём = ed + eo * (1 - r)
+ *   - тестировочный объём = eq
+ *
+ * Особенность: если задача назначена на РП или Консультанта, аналитический
+ * объём «закрывает» эта роль (на неё уходят часы аналитика), а часы
+ * программиста и тестировщика по-прежнему идут в свои пулы.
  */
 export function demandByAssigneeRole(
   allocations: AllocationResponse[],
@@ -38,27 +45,22 @@ export function demandByAssigneeRole(
     const eq = a.estimate_qa_hours ?? 0;
     const eo = a.estimate_opo_hours ?? 0;
     const r = a.opo_analyst_ratio ?? 0.5;
+
+    const analystPortion = ea + eo * r;
+    const devPortion = ed + eo * (1 - r);
+    const qaPortion = eq;
+
+    // Роль исполнителя: из пула команды или денормализованная (если ассигни вне
+    // команды), либо разрешённая на бэке по имени из Jira.
     const emp = employees.find((e) => e.employee_id === a.assignee_employee_id);
-    // Используем роль из найденного сотрудника, иначе — денормализованную роль из
-    // аллокации (assignee может быть из другой команды и отсутствовать в пуле).
     const role = emp?.role ?? a.assignee_role ?? null;
-    if (role) {
-      const hours =
-        role === 'analyst'
-          ? ea + eo * r
-          : role === 'dev'
-            ? ed + eo * (1 - r)
-            : role === 'qa'
-              ? eq
-              : ea + ed + eq + eo; // consultant / project_manager / other
-      d[role] = (d[role] ?? 0) + hours;
-    } else if (!a.assignee_employee_id) {
-      // Нет конкретного исполнителя — распределяем по типу оценки.
-      d['analyst'] = (d['analyst'] ?? 0) + ea + eo * r;
-      d['dev'] = (d['dev'] ?? 0) + ed + eo * (1 - r);
-      d['qa'] = (d['qa'] ?? 0) + eq;
-    }
-    // Если исполнитель задан, но роль неизвестна — не добавляем в аналитик.
+    const isAnalystSubstitute =
+      role === 'RP' || role === 'project_manager' || role === 'consultant';
+    const analystTarget = isAnalystSubstitute ? (role as string) : 'analyst';
+
+    d[analystTarget] = (d[analystTarget] ?? 0) + analystPortion;
+    d['dev'] = (d['dev'] ?? 0) + devPortion;
+    d['qa'] = (d['qa'] ?? 0) + qaPortion;
   }
   return d;
 }
