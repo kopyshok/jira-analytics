@@ -13,6 +13,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models import PlanningScenario
 from app.services.analytics_service import NO_TEAM_TOKEN, parse_teams_csv
 from app.services.export_service import ExportService
 
@@ -133,11 +134,18 @@ async def export_scenario_xlsx(
         data = service.build_scenario_xlsx(scenario_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return Response(
-        content=data,
-        media_type=XLSX_MIME,
-        headers=_attachment_headers(f"scenario-{scenario_id}.xlsx"),
+
+    scenario = db.get(PlanningScenario, scenario_id)
+    slug = "".join(
+        c if c.isalnum() else "-" for c in (scenario.name or "scenario")
+    ).lower().strip("-")[:40]
+    fn = (
+        f"scenario_{scenario.quarter or 'Q'}"
+        f"_{scenario.year or 'YYYY'}"
+        f"_{slug}"
+        f"_{datetime.utcnow():%Y-%m-%d}.xlsx"
     )
+    return Response(content=data, media_type=XLSX_MIME, headers=_attachment_headers(fn))
 
 
 @router.get(

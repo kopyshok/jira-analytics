@@ -15,9 +15,11 @@ from app.models import (
     Category,
     CategoryMapping,
     Employee,
+    EmployeeTeam,
     Issue,
     MandatoryWorkType,
     Project,
+    Role,
     RoleCapacityRule,
     Worklog,
 )
@@ -154,7 +156,16 @@ def scenario_seed(db_session):
 
     # Manual scenario + allocations (replaces the old greedy generate_scenario).
     from app.models import PlanningScenario, ScenarioAllocation
-    scenario = PlanningScenario(name="Q1 baseline", year=2026, quarter="Q1", status="draft")
+    db_session.add(Role(
+        code="dev", label="Разработчик", color="#1890FF",
+        is_active=True, counts_in_planning=True,
+    ))
+    db_session.add_all([
+        EmployeeTeam(employee_id=alice.id, team="DevTeam", is_primary=True),
+        EmployeeTeam(employee_id=bob.id, team="DevTeam", is_primary=True),
+    ])
+    db_session.flush()
+    scenario = PlanningScenario(name="Q1 baseline", year=2026, quarter="Q1", status="draft", team="DevTeam")
     db_session.add(scenario)
     db_session.flush()
     # Two items fit (100 + 200 = 300 ≤ 1024), the overflow one doesn't.
@@ -247,43 +258,34 @@ class TestAnalyticsPdf:
 
 
 class TestScenarioXlsx:
-    def test_sheet_has_summary_and_rows(self, db_session, scenario_seed):
+    def test_workbook_has_seven_sheets(self, db_session, scenario_seed):
         from openpyxl import load_workbook
 
         data = ExportService(db_session).build_scenario_xlsx(
             scenario_seed.scenario_id
         )
         wb = load_workbook(BytesIO(data))
-        assert wb.sheetnames == ["Сценарий"]
-
-        ws = wb["Сценарий"]
-        assert "Q1 baseline" in ws["A1"].value
-        assert ws["A4"].value == "Ёмкость команды, ч:"
-        assert ws["B4"].value == pytest.approx(1024.0)
-
-        # Header at row 10, data starts at row 11
-        header = [ws.cell(row=10, column=c).value for c in range(1, 6)]
-        assert header == [
-            "Задача",
-            "Приоритет",
-            "Оценка, ч",
-            "План, ч",
-            "Статус",
+        assert wb.sheetnames == [
+            "Обложка", "Включено", "Не вошло",
+            "По ролям", "По сотрудникам", "Правила", "Отсутствия",
         ]
 
-        data_rows = [
-            (
-                ws.cell(row=i, column=1).value,
-                ws.cell(row=i, column=5).value,
-            )
-            for i in range(11, ws.max_row + 1)
-            if ws.cell(row=i, column=1).value is not None
-        ]
-        included = {t for t, status in data_rows if status == "Включено"}
-        skipped = {t for t, status in data_rows if status == "Пропущено"}
-        assert "Redesign login" in included
-        assert "Payments v2" in included
-        assert "Overflow feature" in skipped
+    def test_included_titles_present(self, db_session, scenario_seed):
+        from openpyxl import load_workbook
+
+        data = ExportService(db_session).build_scenario_xlsx(
+            scenario_seed.scenario_id
+        )
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+        titles = {ws.cell(row=i, column=2).value for i in range(2, ws.max_row + 1)}
+        assert "Redesign login" in titles
+        assert "Payments v2" in titles
+        # "Overflow feature" должен быть в "Не вошло"
+        assert "Overflow feature" not in titles
+        ws_out = wb["Не вошло"]
+        out_titles = {ws_out.cell(row=i, column=2).value for i in range(2, ws_out.max_row + 1)}
+        assert "Overflow feature" in out_titles
 
     def test_unknown_scenario_raises(self, db_session):
         with pytest.raises(ValueError, match="not found"):

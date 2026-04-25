@@ -459,89 +459,10 @@ class ExportService:
     # === Scenario: Excel ===
 
     def build_scenario_xlsx(self, scenario_id: str) -> bytes:
-        """Собрать xlsx со сводкой сценария и его раскладками."""
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill
+        """Собрать xlsx со сводкой и раскладкой сценария — делегирует в ScenarioXlsxExporter."""
+        from app.services.scenario_xlsx_export import ScenarioXlsxExporter
 
-        scenario, rows, summary = self._load_scenario_rows(scenario_id)
-
-        # Ёмкость команды для заголовка — пересчитаем по году/кварталу
-        quarter_num = int(scenario.quarter.replace("Q", "")) if scenario.quarter else 0
-        total_capacity = 0.0
-        if scenario.year and quarter_num:
-            planning = PlanningService(self.db)
-            total_capacity = planning._team_capacity_hours(
-                scenario.year, quarter_num
-            )
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Сценарий"
-
-        bold = Font(bold=True)
-        header_fill = PatternFill(
-            start_color="DDDDDD", end_color="DDDDDD", fill_type="solid"
-        )
-        skip_fill = PatternFill(
-            start_color="FCE4E4", end_color="FCE4E4", fill_type="solid"
-        )
-
-        ws["A1"] = f"Сценарий: {scenario.name}"
-        ws["A1"].font = Font(bold=True, size=14)
-        ws["A2"] = f"{scenario.quarter or ''} {scenario.year or ''}".strip()
-
-        ws["A4"] = "Ёмкость команды, ч:"
-        ws["B4"] = round(total_capacity, 2)
-        ws["A5"] = "Запланировано, ч:"
-        ws["B5"] = round(summary["total_planned_hours"], 2)
-        ws["A6"] = "Остаток, ч:"
-        ws["B6"] = round(
-            max(0.0, total_capacity - summary["total_planned_hours"]), 2
-        )
-        ws["A7"] = "Включено задач:"
-        ws["B7"] = summary["included_count"]
-        ws["A8"] = "Пропущено задач:"
-        ws["B8"] = summary["skipped_count"]
-
-        headers = [
-            "Задача",
-            "Приоритет",
-            "Оценка, ч",
-            "План, ч",
-            "Статус",
-        ]
-        header_row_idx = 10
-        for col_idx, h in enumerate(headers, start=1):
-            cell = ws.cell(row=header_row_idx, column=col_idx, value=h)
-            cell.font = bold
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center")
-
-        for i, row in enumerate(rows, start=header_row_idx + 1):
-            ws.cell(row=i, column=1, value=row.title)
-            ws.cell(
-                row=i,
-                column=2,
-                value=row.priority if row.priority is not None else "",
-            )
-            ws.cell(row=i, column=3, value=round(row.estimate_hours, 2))
-            ws.cell(row=i, column=4, value=round(row.planned_hours, 2))
-            ws.cell(
-                row=i,
-                column=5,
-                value="Включено" if row.included else "Пропущено",
-            )
-            if not row.included:
-                for col_idx in range(1, len(headers) + 1):
-                    ws.cell(row=i, column=col_idx).fill = skip_fill
-
-        ws.column_dimensions["A"].width = 50
-        for col in ("B", "C", "D", "E"):
-            ws.column_dimensions[col].width = 16
-
-        buf = BytesIO()
-        wb.save(buf)
-        return buf.getvalue()
+        return ScenarioXlsxExporter(self.db, scenario_id).build()
 
     # === Scenario: PPTX ===
 
