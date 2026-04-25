@@ -490,18 +490,20 @@ class ScenarioXlsxExporter:
                 for c_idx in range(1, len(INITIATIVES_HEADERS) + 1):
                     ws.cell(row=r_idx, column=c_idx).fill = _Style.GREY_BG
 
-        # Totals row
+        # Totals row — numeric sums (openpyxl does not evaluate formulas on read)
         total_row_idx = len(rows) + 2
         ws.cell(row=total_row_idx, column=1, value="Σ ИТОГО").font = _Style.HEADER_FONT
         ws.cell(row=total_row_idx, column=1).fill = _Style.ACCENT_BG
         sum_cols = [6, 7, 8, 9, 11, 12]  # часы по ролям + итого + план
+        col_totals: dict[int, float] = {c: 0.0 for c in sum_cols}
+        for alloc in rows:
+            vals = _initiative_row(alloc, ctx)
+            for c_idx in sum_cols:
+                v = vals[c_idx - 1]
+                if isinstance(v, (int, float)) and v is not None:
+                    col_totals[c_idx] = col_totals.get(c_idx, 0.0) + float(v)
         for c_idx in sum_cols:
-            col_letter = get_column_letter(c_idx)
-            if rows:
-                formula = f"=SUM({col_letter}2:{col_letter}{total_row_idx - 1})"
-            else:
-                formula = 0
-            c = ws.cell(row=total_row_idx, column=c_idx, value=formula)
+            c = ws.cell(row=total_row_idx, column=c_idx, value=round(col_totals[c_idx], 1))
             c.font = _Style.HEADER_FONT
             c.fill = _Style.ACCENT_BG
 
