@@ -11,7 +11,7 @@ depends_on = None
 ROLES_SEED = [
     ("analyst",    "Аналитик",     "#4db8e8", True,  0),
     ("dev",        "Программист",  "#00c9c8", True,  1),
-    ("qa",         "Тестировщик",  "#EF9F27", True,  2),
+    ("qa",         "Тестировщик",  "#eb2f96", True,  2),
     ("consultant", "Консультант",  "#7F77DD", True,  3),
     ("other",      "Другое",       "#888780", False, 4),
 ]
