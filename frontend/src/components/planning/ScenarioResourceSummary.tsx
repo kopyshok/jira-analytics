@@ -94,7 +94,15 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
         }}
       >
-        {children}
+        <div
+          style={{
+            maxHeight: collapsed ? 44 : 800,
+            overflow: 'hidden',
+            transition: 'max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+        >
+          {children}
+        </div>
       </div>
     </>
   );
