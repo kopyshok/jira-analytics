@@ -41,6 +41,27 @@ import type { AllocationResponse } from '../types/api';
 const GRID = '36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
 const GRID_GAP = 8;
 
+function rolesAffectedByAllocation(
+  a: AllocationResponse,
+  employees: { employee_id: string; role: string | null }[] | undefined,
+): string[] {
+  const ea = a.estimate_analyst_hours ?? 0;
+  const ed = a.estimate_dev_hours ?? 0;
+  const eq = a.estimate_qa_hours ?? 0;
+  const eo = a.estimate_opo_hours ?? 0;
+  const r = a.opo_analyst_ratio ?? 0.5;
+  const emp = employees?.find((e) => e.employee_id === a.assignee_employee_id);
+  const role = emp?.role ?? a.assignee_role ?? null;
+  const isAnalystSubstitute =
+    role === 'RP' || role === 'project_manager' || role === 'consultant';
+  const analystTarget = isAnalystSubstitute ? (role as string) : 'analyst';
+  const out: string[] = [];
+  if (ea + eo * r > 0) out.push(analystTarget);
+  if (ed + eo * (1 - r) > 0) out.push('dev');
+  if (eq > 0) out.push('qa');
+  return out;
+}
+
 export default function PlanningPage() {
   const { notification } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,6 +93,24 @@ export default function PlanningPage() {
         return next;
       });
     }, 650);
+  };
+
+  const [pulsedRoles, setPulsedRoles] = useState<Set<string>>(() => new Set());
+
+  const pulseRoles = (roles: string[]) => {
+    if (roles.length === 0) return;
+    setPulsedRoles((prev) => {
+      const next = new Set(prev);
+      roles.forEach((r) => next.add(r));
+      return next;
+    });
+    setTimeout(() => {
+      setPulsedRoles((prev) => {
+        const next = new Set(prev);
+        roles.forEach((r) => next.delete(r));
+        return next;
+      });
+    }, 600);
   };
 
   const scenarioId = searchParams.get('scenario') || null;
@@ -146,6 +185,7 @@ export default function PlanningPage() {
   const toggleAllocation = (alloc: AllocationResponse) => {
     if (!scenarioId || !isDraft) return;
     flashRow(alloc.id);
+    pulseRoles(rolesAffectedByAllocation(alloc, resourceBase?.employees));
     patchAlloc.mutate(
       { scenarioId, allocId: alloc.id, data: { included: !alloc.included } },
       { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
@@ -345,6 +385,7 @@ export default function PlanningPage() {
             enabled={!!scenario.team}
             allocations={allocations ?? []}
             employees={resourceBase?.employees}
+            pulsedRoles={pulsedRoles}
           />
 
           {/* Вкладки — на всю ширину над сеткой */}

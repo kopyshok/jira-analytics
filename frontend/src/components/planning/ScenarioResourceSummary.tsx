@@ -12,6 +12,7 @@ interface Props {
   enabled: boolean;
   allocations?: AllocationResponse[];
   employees?: ResourceEmployee[];
+  pulsedRoles?: Set<string>;
 }
 
 const CELL: React.CSSProperties = {
@@ -29,7 +30,7 @@ const CELL_LABEL: React.CSSProperties = {
 
 const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
 
-export default function ScenarioResourceSummary({ scenarioId, enabled, allocations, employees }: Props) {
+export default function ScenarioResourceSummary({ scenarioId, enabled, allocations, employees, pulsedRoles }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
 
@@ -145,7 +146,10 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                 <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
                   {getRoleLabel(roles, role)}
                 </span>
-                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: FONTS.mono, color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}>
+                <span
+                  className={pulsedRoles?.has(role) ? 'role-pulse' : undefined}
+                  style={{ fontSize: 14, fontWeight: 700, fontFamily: FONTS.mono, color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}
+                >
                   {hasUsed ? remaining : Math.round(avail)} ч
                 </span>
               </div>
@@ -415,16 +419,18 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                     whiteSpace: 'nowrap' as const,
                   }}
                 >
-                  {hasUsed ? (
-                    <>
-                      {remaining.toLocaleString('ru')}
-                      <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
-                        из {Math.round(avail).toLocaleString('ru')}
-                      </span>
-                    </>
-                  ) : (
-                    Math.round(avail).toLocaleString('ru')
-                  )}
+                  <span className={pulsedRoles?.has(role) ? 'role-pulse' : undefined}>
+                    {hasUsed ? (
+                      <>
+                        {remaining.toLocaleString('ru')}
+                        <span style={{ fontSize: 12, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
+                          из {Math.round(avail).toLocaleString('ru')}
+                        </span>
+                      </>
+                    ) : (
+                      Math.round(avail).toLocaleString('ru')
+                    )}
+                  </span>
                   {isExternal && (
                     <span style={{ fontSize: 11, color: DARK_THEME.textHint, fontWeight: 400, marginLeft: 6 }}>
                       внешний
