@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
   Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
@@ -169,6 +170,21 @@ export default function PlanningPage() {
     () => (allocations ?? []).filter((a) => a.included).map((a) => a.backlog_item_id),
     [allocations],
   );
+
+  // Отмеченные — наверх; внутри групп — по приоритету (nulls last), затем по названию.
+  const sortedAllocations = useMemo(() => {
+    const list = [...(allocations ?? [])];
+    list.sort((a, b) => {
+      if (a.included !== b.included) return a.included ? -1 : 1;
+      const pa = a.priority ?? Number.POSITIVE_INFINITY;
+      const pb = b.priority ?? Number.POSITIVE_INFINITY;
+      if (pa !== pb) return pa - pb;
+      return (a.title ?? '').localeCompare(b.title ?? '');
+    });
+    return list;
+  }, [allocations]);
+
+  const [listRef] = useAutoAnimate<HTMLDivElement>({ duration: 280, easing: 'ease-in-out' });
 
   const quarterInt = useMemo(() => {
     if (!scenario?.quarter) return 0;
@@ -556,8 +572,8 @@ export default function PlanningPage() {
                     Всего часов
                   </span>
                 </div>
-                <div style={{ overflowY: 'auto', flex: 1 }}>
-                  {(allocations ?? []).map((a) => {
+                <div style={{ overflowY: 'auto', flex: 1 }} ref={listRef}>
+                  {sortedAllocations.map((a) => {
                     const an = a.estimate_analyst_hours ?? 0;
                     const de = a.estimate_dev_hours ?? 0;
                     const qa = a.estimate_qa_hours ?? 0;

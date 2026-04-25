@@ -97,8 +97,8 @@ def test_sync_updates_existing_backlog_item(db_session, proj):
     assert item.estimate_hours == 60
 
 
-def test_sync_preserves_local_fields(db_session, proj):
-    """priority, opo_analyst_ratio — locals, Jira sync does not overwrite."""
+def test_sync_preserves_opo_analyst_ratio(db_session, proj):
+    """opo_analyst_ratio — local, Jira sync does not overwrite."""
     from app.services.backlog_service import BacklogService
 
     issue = _make_issue(
@@ -110,15 +110,45 @@ def test_sync_preserves_local_fields(db_session, proj):
     )
     svc = BacklogService(db_session)
     item = svc.sync_from_issue(issue)
-    item.priority = 5
     item.opo_analyst_ratio = 0.7
     db_session.commit()
 
     svc.sync_from_issue(issue)
     db_session.commit()
     db_session.refresh(item)
-    assert item.priority == 5
     assert item.opo_analyst_ratio == 0.7
+
+
+def test_sync_overwrites_priority_from_jira(db_session, proj):
+    """priority — Jira источник истины: значение из Issue.priority перетирает ручное."""
+    from app.services.backlog_service import BacklogService
+
+    issue = _make_issue(db_session, proj, "RFA-PR-1", "initiatives_rfa")
+    issue.priority = "High"
+    db_session.commit()
+
+    svc = BacklogService(db_session)
+    item = svc.sync_from_issue(issue)
+    db_session.commit()
+    assert item.priority == 2  # High → 2
+
+    # PM выставил вручную — следующий синк затрёт.
+    item.priority = 99
+    db_session.commit()
+    issue.priority = "Lowest"
+    db_session.commit()
+    svc.sync_from_issue(issue)
+    db_session.commit()
+    db_session.refresh(item)
+    assert item.priority == 5  # Lowest → 5
+
+    # Jira пустой / неизвестный → priority обнуляется.
+    issue.priority = None
+    db_session.commit()
+    svc.sync_from_issue(issue)
+    db_session.commit()
+    db_session.refresh(item)
+    assert item.priority is None
 
 
 def test_sync_archives_item_when_category_leaves_backlog(db_session, proj):

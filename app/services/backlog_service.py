@@ -27,6 +27,31 @@ BACKLOG_CATEGORY = "initiatives_rfa"
 QUARTERLY_TASKS_CATEGORY = "quarterly_tasks"
 TRACKED_CATEGORIES = {BACKLOG_CATEGORY, QUARTERLY_TASKS_CATEGORY}
 
+# Стандартное поле Jira «Priority» → числовой приоритет бэклога.
+# Перетирает ручной приоритет: PM выбрал «Jira — источник истины».
+JIRA_PRIORITY_MAP: dict[str, int] = {
+    "highest": 1,
+    "high": 2,
+    "medium": 3,
+    "low": 4,
+    "lowest": 5,
+    # Часто встречающиеся локализованные/расширенные значения.
+    "срочный": 1,
+    "urgent": 1,
+    "blocker": 1,
+    "высокий": 2,
+    "средний": 3,
+    "normal": 3,
+    "низкий": 4,
+}
+
+
+def _jira_priority_to_int(raw: Optional[str]) -> Optional[int]:
+    """Маппинг строкового приоритета Jira в число 1..5. Неизвестное → None."""
+    if not raw:
+        return None
+    return JIRA_PRIORITY_MAP.get(raw.strip().lower())
+
 
 class BacklogService:
     """Sync BacklogItem records to Issue.category.
@@ -67,6 +92,9 @@ class BacklogService:
             existing.estimate_opo_hours = issue.planned_opo_hours
             existing.impact = issue.impact
             existing.risk = issue.risk
+            # PM выбрал «Jira — источник истины»: затираем ручной приоритет
+            # значением из Jira (None, если в Jira пусто или неизвестное значение).
+            existing.priority = _jira_priority_to_int(issue.priority)
             total = sum(
                 v or 0
                 for v in (
