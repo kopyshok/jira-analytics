@@ -416,6 +416,7 @@ export default function PlanningPage() {
                     return (
                       <div
                         key={a.id}
+                        className="backlog-row"
                         onClick={() => toggleAllocation(a)}
                         style={{
                           display: 'grid',
@@ -427,7 +428,6 @@ export default function PlanningPage() {
                           cursor: isDraft ? 'pointer' : 'default',
                           background: a.included ? 'rgba(0,201,200,0.06)' : 'transparent',
                           opacity: a.included ? 1 : 0.7,
-                          transition: 'background .15s',
                         }}
                       >
                         <div onClick={(e) => e.stopPropagation()}>
