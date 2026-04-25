@@ -113,7 +113,7 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
 
   if (!resourceBase) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Card><Skeleton active paragraph={{ rows: 3 }} /></Card>
         <Card><Skeleton active paragraph={{ rows: 4 }} /></Card>
         <Card><Skeleton active paragraph={{ rows: 5 }} /></Card>
@@ -172,7 +172,7 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* 1. Overall gauge */}
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
