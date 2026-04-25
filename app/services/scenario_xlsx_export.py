@@ -393,7 +393,276 @@ class ScenarioXlsxExporter:
     # === Sheets ===
 
     def _sheet_summary(self, ws, ctx: ScenarioExportContext) -> None:
-        pass
+        ws.sheet_view.showGridLines = False
+        summary = ctx.resource_summary
+
+        # --- Title strip + subtitle ---
+        status_label = "утверждён" if ctx.scenario.status == "approved" else "черновик"
+        title = f"Сценарий: {ctx.scenario.name} — {status_label}"
+        _write_title_strip(ws, title, columns=8)
+
+        subtitle = (
+            f"{ctx.scenario.quarter or ''} "
+            f"{ctx.scenario.year or ''} · команда «{ctx.scenario.team or '—'}» · "
+            f"сформировано {ctx.generated_at:%d.%m.%Y}"
+        ).strip()
+        _write_subtitle(ws, subtitle, row=2, columns=8)
+
+        # --- Section 1: Сводка metrics 2×8 ---
+        _write_section_header(ws, row=4, text="Сводка", columns=8)
+
+        # Compute metrics
+        total_capacity = round(summary.available_total, 1)
+        planned_by_role = _planned_hours_by_role(ctx)
+        total_planned = round(sum(planned_by_role.values()), 1)
+        leftover = round(max(0.0, total_capacity - total_planned), 1)
+        included_n = sum(1 for a in ctx.allocations if a.included_flag)
+        excluded_n = sum(1 for a in ctx.allocations if not a.included_flag)
+        qa_avail = summary.available_by_role.get("qa", 0.0)
+        qa_planned = planned_by_role.get("qa", 0.0)
+        qa_deficit = round(min(0.0, qa_avail - qa_planned), 1)
+        usage_pct = (
+            round(total_planned / total_capacity, 4) if total_capacity > 0 else 0.0
+        )
+        absences_total_hours = round(
+            sum(_absence_hours_in_period(a, ctx) for a in ctx.absences), 1,
+        )
+
+        # Row 5
+        pairs_5 = [
+            ("Ёмкость, ч", total_capacity, "#,##0"),
+            ("План, ч", total_planned, "#,##0"),
+            ("Остаток, ч", leftover, "#,##0"),
+            ("Использование", usage_pct, "0%"),
+        ]
+        for i, (label, value, fmt) in enumerate(pairs_5):
+            col = 1 + i * 2
+            lc = ws.cell(row=5, column=col, value=label)
+            lc.font = _Style.LABEL_FONT
+            lc.alignment = _Style.LEFT
+            v = ws.cell(row=5, column=col + 1, value=value)
+            v.font = _Style.BOLD_FONT
+            v.alignment = _Style.RIGHT
+            v.number_format = fmt
+        # Usage % conditional fill (col 8)
+        if total_capacity > 0:
+            v = ws.cell(row=5, column=8)
+            if usage_pct < 0.8:
+                v.fill = _Style.GREEN_BG
+            elif usage_pct <= 1.10:
+                v.fill = _Style.YELLOW_BG
+            else:
+                v.fill = _Style.RED_BG
+                v.font = _Style.RED_BOLD_FONT
+
+        # Row 6
+        pairs_6 = [
+            ("Включено, шт.", included_n, "#,##0"),
+            ("Не вошло, шт.", excluded_n, "#,##0"),
+            ("QA дефицит, ч", qa_deficit, "#,##0"),
+            ("Отсутствия, ч", absences_total_hours, "#,##0"),
+        ]
+        for i, (label, value, fmt) in enumerate(pairs_6):
+            col = 1 + i * 2
+            lc = ws.cell(row=6, column=col, value=label)
+            lc.font = _Style.LABEL_FONT
+            lc.alignment = _Style.LEFT
+            v = ws.cell(row=6, column=col + 1, value=value)
+            v.font = _Style.BOLD_FONT
+            v.alignment = _Style.RIGHT
+            v.number_format = fmt
+        # QA дефицит red bold if negative
+        if qa_deficit < 0:
+            ws.cell(row=6, column=6).font = _Style.RED_BOLD_FONT
+
+        # --- Section 2: По ролям × месяцам ---
+        section2_row = 8
+        _write_section_header(ws, row=section2_row, text="По ролям × месяцам", columns=8)
+
+        months = QUARTER_MONTHS[int(str(ctx.scenario.quarter or "Q1").replace("Q", ""))]
+        month_labels = [MONTH_LABELS[m] for m in months]
+
+        header_row = section2_row + 1
+        headers_2 = ["Роль", *month_labels, "Σ Ёмкость", "План", "Остаток", "% исп."]
+        for c_idx, h in enumerate(headers_2, start=1):
+            c = ws.cell(row=header_row, column=c_idx, value=h)
+            c.font = _Style.HEADER_FONT
+            c.fill = _Style.HEADER_FILL
+            c.alignment = _Style.CENTER if c_idx > 1 else _Style.LEFT
+
+        role_month = _per_role_per_month(ctx)
+        planned_by_role = _planned_hours_by_role(ctx)
+
+        total_per_month = [0.0, 0.0, 0.0]
+        total_capacity_sum = 0.0
+        total_planned_sum = 0.0
+
+        r_idx = header_row + 1
+        for role in summary.roles:
+            role_label = (
+                ctx.roles_by_code[role].label if role in ctx.roles_by_code else role
+            )
+            ws.cell(row=r_idx, column=1, value=role_label).font = _Style.BOLD_FONT
+
+            m_sum = 0.0
+            for i, m in enumerate(months):
+                v = round(role_month.get((role, m), 0.0), 1)
+                cell = ws.cell(row=r_idx, column=2 + i, value=v)
+                cell.alignment = _Style.RIGHT
+                cell.number_format = "#,##0"
+                m_sum += v
+                total_per_month[i] += v
+
+            capacity = summary.available_by_role.get(role, 0.0)
+            ws.cell(row=r_idx, column=5, value=round(capacity, 1)).number_format = "#,##0"
+            ws.cell(row=r_idx, column=5).font = _Style.BOLD_FONT
+            ws.cell(row=r_idx, column=5).alignment = _Style.RIGHT
+            total_capacity_sum += capacity
+
+            planned = round(planned_by_role.get(role, 0.0), 1)
+            ws.cell(row=r_idx, column=6, value=planned).number_format = "#,##0"
+            ws.cell(row=r_idx, column=6).alignment = _Style.RIGHT
+            total_planned_sum += planned
+
+            leftover_r = round(capacity - planned, 1)
+            leftover_cell = ws.cell(row=r_idx, column=7, value=leftover_r)
+            leftover_cell.number_format = "#,##0"
+            leftover_cell.alignment = _Style.RIGHT
+            if leftover_r < 0:
+                leftover_cell.font = _Style.RED_BOLD_FONT
+
+            usage = (planned / capacity) if capacity > 0 else 0.0
+            usage_cell = ws.cell(row=r_idx, column=8, value=round(usage, 4))
+            usage_cell.number_format = "0%"
+            usage_cell.alignment = _Style.RIGHT
+            if usage < 0.8:
+                usage_cell.fill = _Style.GREEN_BG
+            elif usage <= 1.10:
+                usage_cell.fill = _Style.YELLOW_BG
+            else:
+                usage_cell.fill = _Style.RED_BG
+                usage_cell.font = _Style.RED_BOLD_FONT
+
+            r_idx += 1
+
+        # ИТОГО row
+        total_row_idx = r_idx
+        total_cell = ws.cell(row=total_row_idx, column=1, value="ИТОГО")
+        total_cell.font = _Style.BOLD_FONT
+        total_cell.fill = _Style.TOTALS_FILL
+        total_cell.border = _Style.TOTALS_BORDER
+        for i, v in enumerate(total_per_month):
+            c = ws.cell(row=total_row_idx, column=2 + i, value=round(v, 1))
+            c.font = _Style.BOLD_FONT
+            c.fill = _Style.TOTALS_FILL
+            c.border = _Style.TOTALS_BORDER
+            c.number_format = "#,##0"
+            c.alignment = _Style.RIGHT
+        for c_idx, value in [
+            (5, round(total_capacity_sum, 1)),
+            (6, round(total_planned_sum, 1)),
+            (7, round(total_capacity_sum - total_planned_sum, 1)),
+        ]:
+            c = ws.cell(row=total_row_idx, column=c_idx, value=value)
+            c.font = _Style.BOLD_FONT
+            c.fill = _Style.TOTALS_FILL
+            c.border = _Style.TOTALS_BORDER
+            c.number_format = "#,##0"
+            c.alignment = _Style.RIGHT
+        total_usage = (
+            total_planned_sum / total_capacity_sum if total_capacity_sum > 0 else 0.0
+        )
+        c = ws.cell(row=total_row_idx, column=8, value=round(total_usage, 4))
+        c.font = _Style.BOLD_FONT
+        c.fill = _Style.TOTALS_FILL
+        c.border = _Style.TOTALS_BORDER
+        c.number_format = "0%"
+        c.alignment = _Style.RIGHT
+
+        # --- Section 3: По сотрудникам ---
+        section3_row = total_row_idx + 2
+        _write_section_header(ws, row=section3_row, text="По сотрудникам", columns=8)
+
+        emp_header_row = section3_row + 1
+        emp_headers = [
+            "Сотрудник", "Роль", "Норма, ч", "Отсутствия, ч",
+            "Доступно, ч", "Дней отсутствия",
+        ]
+        for c_idx, h in enumerate(emp_headers, start=1):
+            c = ws.cell(row=emp_header_row, column=c_idx, value=h)
+            c.font = _Style.HEADER_FONT
+            c.fill = _Style.HEADER_FILL
+            c.alignment = _Style.CENTER if c_idx > 1 else _Style.LEFT
+
+        base_by_id = {e.employee_id: e for e in ctx.resource_base.employees}
+
+        emp_rows = []
+        for emp in ctx.employees:
+            role_label = (
+                ctx.roles_by_code[emp.role].label
+                if emp.role and emp.role in ctx.roles_by_code else (emp.role or "—")
+            )
+            base = base_by_id.get(emp.id)
+            cal_gross = 0.0
+            cur = ctx.period_start
+            while cur < ctx.period_end:
+                cal_gross += ctx.calendar_by_date.get(
+                    cur, 8.0 if cur.weekday() < 5 else 0.0,
+                )
+                cur = cur + timedelta(days=1)
+
+            available = base.total_hours if base else 0.0
+            emp_abs = [a for a in ctx.absences if a.employee_id == emp.id]
+            abs_days = 0
+            cur = ctx.period_start
+            while cur < ctx.period_end:
+                norm = ctx.calendar_by_date.get(
+                    cur, 8.0 if cur.weekday() < 5 else 0.0,
+                )
+                if norm > 0:
+                    if any(a.start_date <= cur <= a.end_date for a in emp_abs):
+                        abs_days += 1
+                cur = cur + timedelta(days=1)
+            absence_hours = round(cal_gross - available, 1)
+
+            emp_rows.append({
+                "name": emp.display_name,
+                "role": role_label,
+                "norm": round(cal_gross, 1),
+                "absence": absence_hours,
+                "available": round(available, 1),
+                "abs_days": abs_days,
+            })
+
+        emp_rows.sort(key=lambda r: (r["role"], r["name"]))
+
+        r_idx = emp_header_row + 1
+        for row in emp_rows:
+            ws.cell(row=r_idx, column=1, value=row["name"])
+            ws.cell(row=r_idx, column=2, value=row["role"])
+            for c_idx, key, fmt in [
+                (3, "norm", "#,##0"),
+                (4, "absence", "#,##0"),
+                (5, "available", "#,##0"),
+            ]:
+                c = ws.cell(row=r_idx, column=c_idx, value=row[key])
+                c.number_format = fmt
+                c.alignment = _Style.RIGHT
+            ws.cell(row=r_idx, column=5).font = _Style.BOLD_FONT
+            days_cell = ws.cell(row=r_idx, column=6, value=row["abs_days"])
+            days_cell.alignment = _Style.RIGHT
+            if 6 <= row["abs_days"] <= 15:
+                days_cell.fill = _Style.YELLOW_BG
+            elif row["abs_days"] > 15:
+                days_cell.fill = _Style.RED_BG
+            r_idx += 1
+
+        # --- Column widths ---
+        widths = [26, 18, 12, 12, 12, 12, 12, 12]
+        for c_idx, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(c_idx)].width = w
+
+        ws.freeze_panes = "A4"
 
     def _sheet_included(self, ws, ctx: ScenarioExportContext) -> None:
         pass
