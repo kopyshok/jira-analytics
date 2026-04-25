@@ -868,4 +868,219 @@ class ScenarioXlsxExporter:
             ws.auto_filter.ref = f"A2:{get_column_letter(len(EXCLUDED_HEADERS))}2"
 
     def _sheet_reference(self, ws, ctx: ScenarioExportContext) -> None:
-        pass
+        ws.sheet_view.showGridLines = False
+        summary = ctx.resource_summary
+        sub_wts = [w for w in ctx.work_types if w.subtracts_from_pool]
+
+        # --- Title strip ---
+        title = (
+            f"Справочник · {ctx.scenario.quarter or ''} {ctx.scenario.year or ''} · "
+            f"{ctx.scenario.team or '—'}"
+        )
+        _write_title_strip(ws, title, columns=8)
+        ws.cell(row=2, column=1).value = ""  # blank row 2 for spacing
+
+        # --- Section 1: Правила распределения часов ---
+        sec1_row = 4
+        _write_section_header(
+            ws, row=sec1_row,
+            text="1 · Правила распределения часов на обязательные работы",
+            columns=8,
+        )
+        hint = ws.cell(row=sec1_row + 1, column=1, value=(
+            "Сколько процентов нормы каждой роли резервируется на обязательные виды работ. "
+            "Остаток уходит на инициативы."
+        ))
+        hint.font = _Style.ITALIC_GREY_FONT
+        hint.alignment = _Style.LEFT
+        ws.merge_cells(
+            start_row=sec1_row + 1, start_column=1,
+            end_row=sec1_row + 1, end_column=8,
+        )
+
+        # Matrix header
+        matrix_header_row = sec1_row + 2
+        ws.cell(row=matrix_header_row, column=1, value="Роль").font = _Style.HEADER_FONT
+        ws.cell(row=matrix_header_row, column=1).fill = _Style.HEADER_FILL
+        ws.cell(row=matrix_header_row, column=1).alignment = _Style.LEFT
+        for c_idx, wt in enumerate(sub_wts, start=2):
+            c = ws.cell(row=matrix_header_row, column=c_idx, value=wt.label)
+            c.font = _Style.HEADER_FONT
+            c.fill = _Style.HEADER_FILL
+            c.alignment = _Style.CENTER
+        sum_col_idx = len(sub_wts) + 2
+        c = ws.cell(row=matrix_header_row, column=sum_col_idx, value="Σ обязат.")
+        c.font = _Style.HEADER_FONT
+        c.fill = _Style.HEADER_FILL
+        c.alignment = _Style.CENTER
+
+        # Rule lookup
+        rule_lookup: dict[tuple[str, Optional[str]], float] = {}
+        for r in ctx.scenario_rules:
+            key = (r.work_type_id, r.role)
+            rule_lookup[key] = rule_lookup.get(key, 0.0) + r.percent_of_norm
+
+        r_idx = matrix_header_row + 1
+        roles_to_render = list(summary.roles)
+        has_null_rule = any(rule.role is None for rule in ctx.scenario_rules)
+        if has_null_rule:
+            roles_to_render.append(None)  # type: ignore[arg-type]
+
+        for role in roles_to_render:
+            role_label = (
+                ctx.roles_by_code[role].label
+                if role and role in ctx.roles_by_code else (role or "Все роли")
+            )
+            ws.cell(row=r_idx, column=1, value=role_label).font = _Style.BOLD_FONT
+            sum_pct = 0.0
+            gross = summary.gross_by_role.get(role, 0.0) if role else 0.0
+            for c_idx, wt in enumerate(sub_wts, start=2):
+                pct = rule_lookup.get((wt.id, role))
+                if pct is None:
+                    cell = ws.cell(row=r_idx, column=c_idx, value=None)
+                    cell.fill = _Style.GREY_BG
+                    continue
+                hours = round(gross * pct / 100.0, 1) if role else None
+                text = f"{pct:.0f}%" + (f" · {hours:.0f} ч" if hours is not None else "")
+                cell = ws.cell(row=r_idx, column=c_idx, value=text)
+                cell.alignment = _Style.RIGHT
+                sum_pct += pct
+                if pct >= 50:
+                    cell.fill = PatternFill("solid", fgColor=_Style.HEAT_DARK)
+                elif pct >= 25:
+                    cell.fill = PatternFill("solid", fgColor=_Style.HEAT_MID)
+                elif pct >= 10:
+                    cell.fill = PatternFill("solid", fgColor=_Style.HEAT_LIGHT)
+            sum_cell = ws.cell(row=r_idx, column=sum_col_idx, value=f"{sum_pct:.0f}%")
+            sum_cell.alignment = _Style.RIGHT
+            sum_cell.font = _Style.BOLD_FONT
+            if sum_pct > 100:
+                sum_cell.font = _Style.RED_BOLD_FONT
+            r_idx += 1
+
+        # --- Section 2: Внешний QA-лимит ---
+        sec2_row = r_idx + 1
+        _write_section_header(ws, row=sec2_row, text="2 · Внешний QA-лимит", columns=8)
+        qa_label_cell = ws.cell(
+            row=sec2_row + 1, column=1,
+            value="Часы внешнего QA, фиксированный лимит на квартал",
+        )
+        qa_label_cell.alignment = _Style.LEFT
+        qa_value = ctx.scenario.external_qa_hours
+        if qa_value is None:
+            v = ws.cell(row=sec2_row + 1, column=2, value="не задан")
+            v.font = _Style.ITALIC_GREY_FONT
+        else:
+            v = ws.cell(row=sec2_row + 1, column=2, value=round(float(qa_value), 1))
+            v.font = _Style.BOLD_FONT
+            v.number_format = "#,##0"
+        v.alignment = _Style.RIGHT
+        note = ws.cell(
+            row=sec2_row + 2, column=1,
+            value="Замещает суммарную ёмкость штатных QA, если задано",
+        )
+        note.font = _Style.ITALIC_GREY_FONT
+
+        # --- Section 3: Отсутствия команды ---
+        sec3_row = sec2_row + 4
+        _write_section_header(
+            ws, row=sec3_row, text="3 · Отсутствия команды в квартале", columns=8,
+        )
+
+        emp_by_id = {e.id: e for e in ctx.employees}
+        abs_rows = []
+        for a in ctx.absences:
+            emp = emp_by_id.get(a.employee_id)
+            if emp is None:
+                continue
+            role_label = (
+                ctx.roles_by_code[emp.role].label
+                if emp.role and emp.role in ctx.roles_by_code else (emp.role or "—")
+            )
+            abs_rows.append({
+                "name": emp.display_name,
+                "role": role_label,
+                "reason": a.reason.label if a.reason else "—",
+                "color": a.reason.color if a.reason else None,
+                "kind": "Плановая" if (a.reason and a.reason.is_planned) else "Внеплановая",
+                "is_planned": bool(a.reason and a.reason.is_planned),
+                "start": a.start_date,
+                "end": a.end_date,
+                "days": _absence_days_in_period(a, ctx),
+                "hours": _absence_hours_in_period(a, ctx),
+            })
+        abs_rows.sort(key=lambda r: (r["name"], r["start"]))
+
+        if not abs_rows:
+            msg_cell = ws.cell(
+                row=sec3_row + 1, column=1, value="Отсутствий в квартале нет",
+            )
+            msg_cell.font = _Style.ITALIC_GREY_FONT
+        else:
+            # Header
+            abs_header_row = sec3_row + 1
+            abs_headers = ["Сотрудник", "Роль", "Причина", "Тип",
+                           "Начало", "Конец", "Дней", "Часов"]
+            for c_idx, h in enumerate(abs_headers, start=1):
+                c = ws.cell(row=abs_header_row, column=c_idx, value=h)
+                c.font = _Style.HEADER_FONT
+                c.fill = _Style.HEADER_FILL
+                c.alignment = _Style.CENTER if c_idx > 1 else _Style.LEFT
+
+            r_idx = abs_header_row + 1
+            for row in abs_rows:
+                ws.cell(row=r_idx, column=1, value=row["name"])
+                ws.cell(row=r_idx, column=2, value=row["role"])
+                reason_cell = ws.cell(row=r_idx, column=3, value=row["reason"])
+                if row["color"]:
+                    color_hex = str(row["color"]).lstrip("#").upper()
+                    reason_cell.fill = PatternFill("solid", fgColor=color_hex)
+                    reason_cell.font = Font(
+                        name="Calibri", size=11, bold=True, color="FFFFFF",
+                    )
+                    reason_cell.alignment = _Style.CENTER
+                kind_cell = ws.cell(row=r_idx, column=4, value=row["kind"])
+                kind_cell.fill = _Style.GREEN_BG if row["is_planned"] else _Style.RED_BG
+                kind_cell.alignment = _Style.CENTER
+                ws.cell(row=r_idx, column=5, value=row["start"]).number_format = "DD.MM.YYYY"
+                ws.cell(row=r_idx, column=6, value=row["end"]).number_format = "DD.MM.YYYY"
+                d = ws.cell(row=r_idx, column=7, value=row["days"])
+                d.number_format = "#,##0"
+                d.alignment = _Style.RIGHT
+                h_cell = ws.cell(row=r_idx, column=8, value=row["hours"])
+                h_cell.number_format = "#,##0"
+                h_cell.alignment = _Style.RIGHT
+                if row["hours"] > 80:
+                    h_cell.fill = _Style.RED_BG
+                elif row["hours"] > 40:
+                    h_cell.fill = _Style.YELLOW_BG
+                r_idx += 1
+            # Totals row
+            total = ws.cell(
+                row=r_idx, column=1,
+                value=f"Σ ИТОГО ({len(abs_rows)} отсутствий)",
+            )
+            total.font = _Style.BOLD_FONT
+            total.fill = _Style.TOTALS_FILL
+            ws.merge_cells(
+                start_row=r_idx, start_column=1, end_row=r_idx, end_column=6,
+            )
+            days_total = sum(r["days"] for r in abs_rows)
+            hours_total = sum(r["hours"] for r in abs_rows)
+            c = ws.cell(row=r_idx, column=7, value=days_total)
+            c.font = _Style.BOLD_FONT
+            c.fill = _Style.TOTALS_FILL
+            c.alignment = _Style.RIGHT
+            c.number_format = "#,##0"
+            c = ws.cell(row=r_idx, column=8, value=round(hours_total, 1))
+            c.font = _Style.BOLD_FONT
+            c.fill = _Style.TOTALS_FILL
+            c.alignment = _Style.RIGHT
+            c.number_format = "#,##0"
+
+        # --- Column widths ---
+        widths = [22, 14, 18, 14, 12, 12, 8, 12]
+        for c_idx, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(c_idx)].width = w
+
+        ws.freeze_panes = "A2"

@@ -293,6 +293,83 @@ class TestExcludedSheet:
         assert cell.fill.fgColor.value.upper().endswith("FAFAFA")
 
 
+class TestReferenceSheet:
+    def test_three_section_headers_present(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Справочник"]
+        labels = [str(ws.cell(row=r, column=1).value or "") for r in range(1, ws.max_row + 1)]
+        joined = " ".join(labels)
+        assert "ПРАВИЛА" in joined
+        assert "ВНЕШНИЙ QA" in joined
+        assert "ОТСУТСТВИЯ" in joined
+
+    def test_external_qa_when_set(self, db_session, minimal_scenario):
+        scenario = db_session.get(PlanningScenario, minimal_scenario.scenario_id)
+        scenario.external_qa_hours = 120.0
+        db_session.flush()
+
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Справочник"]
+        qa_value_seen = False
+        for r in range(1, ws.max_row + 1):
+            v = ws.cell(row=r, column=2).value
+            if v == 120 or v == 120.0 or (isinstance(v, str) and "120" in v):
+                qa_value_seen = True
+        assert qa_value_seen
+
+    def test_external_qa_when_not_set(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Справочник"]
+        all_text = " ".join(
+            str(ws.cell(row=r, column=c).value or "")
+            for r in range(1, ws.max_row + 1) for c in range(1, 9)
+        )
+        assert "не задан" in all_text
+
+    def test_no_absences_message(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Справочник"]
+        all_text = " ".join(
+            str(ws.cell(row=r, column=c).value or "")
+            for r in range(1, ws.max_row + 1) for c in range(1, 9)
+        )
+        assert "Отсутствий в квартале нет" in all_text
+
+    def test_absences_table_when_present(self, db_session, minimal_scenario):
+        from datetime import date as _d
+        from app.models import Absence, AbsenceReason
+        reason = AbsenceReason(
+            code="vac", label="Отпуск", is_planned=True, color="#16A34A",
+            sort_order=0,
+        )
+        db_session.add(reason)
+        db_session.flush()
+        emp = db_session.query(Employee).filter(Employee.display_name == "Dave").first()
+        db_session.add(Absence(
+            employee_id=emp.id,
+            start_date=_d(2026, 4, 6),
+            end_date=_d(2026, 4, 12),
+            reason_id=reason.id,
+            hours_total=40.0,
+        ))
+        db_session.flush()
+
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Справочник"]
+
+        found = False
+        for r in range(1, ws.max_row + 1):
+            if ws.cell(row=r, column=1).value == "Dave":
+                found = True
+                assert ws.cell(row=r, column=3).value == "Отпуск"
+        assert found
+
+
 class TestStructure:
     def test_workbook_has_four_sheets_in_order(self, db_session, minimal_scenario):
         data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
