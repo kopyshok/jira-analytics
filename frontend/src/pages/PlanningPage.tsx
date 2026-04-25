@@ -15,6 +15,7 @@ import ScenarioRulesEditor from '../components/planning/ScenarioRulesEditor';
 import ExternalQaInput from '../components/planning/ExternalQaInput';
 import ScenarioResourceSummary from '../components/planning/ScenarioResourceSummary';
 import BacklogRoleCell from '../components/planning/BacklogRoleCell';
+import ApproveCelebration from '../components/planning/ApproveCelebration';
 import {
   useScenarios,
   useScenario,
@@ -67,6 +68,7 @@ export default function PlanningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'distribution' | 'rules'>('distribution');
+  const [celebrate, setCelebrate] = useState(false);
   const [compact, setCompact] = useState<boolean>(
     () => localStorage.getItem('planning_backlog_compact') === 'true',
   );
@@ -207,7 +209,11 @@ export default function PlanningPage() {
   const handleApprove = () => {
     if (!scenarioId) return;
     approve.mutate(scenarioId, {
-      onSuccess: () => notification.success({ title: 'Сценарий утверждён' }),
+      onSuccess: () => {
+        setCelebrate(true);
+        setTimeout(() => setCelebrate(false), 1700);
+        notification.success({ title: 'Сценарий утверждён' });
+      },
       onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
     });
   };
@@ -718,6 +724,7 @@ export default function PlanningPage() {
           </div>
         </Space>
       )}
+      <ApproveCelebration visible={celebrate} />
     </Space>
   );
 }
