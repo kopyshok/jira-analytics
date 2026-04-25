@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
@@ -34,10 +34,30 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   const { data: roles = [] } = useRoles();
 
   const LS_KEY = 'planning_resource_table_collapsed';
-  const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_KEY) === 'true');
+  const [userCollapsed, setUserCollapsed] = useState<boolean>(
+    () => localStorage.getItem(LS_KEY) === 'true',
+  );
+  const [isStuck, setIsStuck] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // При скролле страницы вниз верхняя таблица «прилипает» сверху и сворачивается
+  // в компактный режим. IntersectionObserver на sentinel перед sticky-контейнером
+  // даёт надёжную детекцию (надёжнее scroll-listener'а с порогами).
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setIsStuck(!entry.isIntersecting),
+      { threshold: 0 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  const collapsed = userCollapsed || isStuck;
 
   const toggleCollapsed = () => {
-    setCollapsed((prev) => {
+    setUserCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem(LS_KEY, String(next));
       return next;
@@ -62,11 +82,28 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
 
   if (!summary || summary.roles.length === 0) return null;
 
+  const stickyWrap = (children: React.ReactNode) => (
+    <>
+      <div ref={sentinelRef} aria-hidden style={{ height: 1, marginBottom: -1 }} />
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 20,
+          transition: 'box-shadow .2s ease',
+          boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
+        }}
+      >
+        {children}
+      </div>
+    </>
+  );
+
   if (collapsed) {
     const collapsedTotalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
     const collapsedTotalRemaining = Math.round(summary.available_for_backlog_total - collapsedTotalDemand);
     const collapsedTotalDeficit = collapsedTotalRemaining < 0;
-    return (
+    return stickyWrap(
       <Card styles={{ body: { padding: 0, overflow: 'hidden' } }}>
         <div style={{ display: 'flex', alignItems: 'center', height: 40 }}>
           <div style={{
@@ -119,21 +156,24 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           </div>
           <button
             onClick={toggleCollapsed}
+            disabled={isStuck && !userCollapsed}
+            title={isStuck ? 'Раскроется автоматически при прокрутке наверх' : undefined}
             style={{
               marginLeft: 'auto',
               padding: '0 14px',
               height: '100%',
               background: 'none',
               border: 'none',
-              cursor: 'pointer',
+              cursor: isStuck && !userCollapsed ? 'not-allowed' : 'pointer',
               fontSize: 11,
               color: DARK_THEME.textMuted,
+              opacity: isStuck && !userCollapsed ? 0.4 : 1,
             }}
           >
             ↓ Развернуть
           </button>
         </div>
-      </Card>
+      </Card>,
     );
   }
 
@@ -180,7 +220,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
 
   const totalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
 
-  return (
+  return stickyWrap(
     <Card styles={{ body: { padding: 0, overflow: 'hidden', borderRadius: 8 } }}>
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
         {/* Основная таблица */}
@@ -230,12 +270,33 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                       color: DARK_THEME.textSecondary,
                       cursor: 'default',
                       paddingTop: 10,
+                      paddingLeft: 4,
+                      paddingRight: 4,
+                      overflow: 'hidden',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6 }}>
-                      <span style={{ fontWeight: 600, color: getRoleColor(roles, role) }}>{label}</span>
-                      <span style={{ fontSize: 11, color: DARK_THEME.textHint }}>
-                        · {names.length} чел. ⓘ
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        justifyContent: 'center',
+                        gap: 4,
+                        whiteSpace: 'nowrap' as const,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 13,
+                          color: getRoleColor(roles, role),
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {label}
+                      </span>
+                      <span style={{ fontSize: 10, color: DARK_THEME.textHint, flexShrink: 0 }}>
+                        · {names.length}
                       </span>
                     </div>
                     <div
@@ -480,6 +541,6 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           </div>
         )}
       </div>
-    </Card>
+    </Card>,
   );
 }

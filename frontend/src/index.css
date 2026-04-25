@@ -170,3 +170,55 @@ kbd,
   transform-origin: bottom left;
   animation: flag-wave 1.6s ease-in-out infinite;
 }
+
+/* Header icon animations for the backlog table */
+@keyframes icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.18); }
+}
+.icon-pulse {
+  display: inline-block;
+  animation: icon-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes icon-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+.icon-bob {
+  display: inline-block;
+  animation: icon-bob 2.2s ease-in-out infinite;
+}
+
+@keyframes icon-spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.icon-spin-slow {
+  display: inline-block;
+  animation: icon-spin-slow 8s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes icon-tick {
+  0%, 60%, 100% { transform: scale(1) rotate(0); }
+  10%           { transform: scale(1.25) rotate(-10deg); }
+  20%           { transform: scale(1.1) rotate(8deg); }
+  30%           { transform: scale(1.18) rotate(-4deg); }
+  40%           { transform: scale(1.05) rotate(2deg); }
+}
+.icon-tick {
+  display: inline-block;
+  transform-origin: center;
+  animation: icon-tick 2.6s ease-in-out infinite;
+}
+
+@keyframes icon-wiggle {
+  0%, 100% { transform: rotate(-4deg); }
+  50%      { transform: rotate(4deg); }
+}
+.icon-wiggle {
+  display: inline-block;
+  transform-origin: center bottom;
+  animation: icon-wiggle 2.4s ease-in-out infinite;
+}

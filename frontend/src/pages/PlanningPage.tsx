@@ -4,7 +4,8 @@ import {
   Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
-  CheckCircleOutlined, DeleteOutlined, FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined,
+  CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, DeleteOutlined,
+  FlagFilled, PlusOutlined, ReloadOutlined, RollbackOutlined, ShopOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
@@ -375,19 +376,34 @@ export default function PlanningPage() {
                     letterSpacing: 0.6,
                   }}
                 >
-                  <span>✓</span>
+                  <span title="Включено в сценарий" style={{ textAlign: 'center' }}>
+                    <CheckSquareTwoTone
+                      className="icon-tick"
+                      twoToneColor={DARK_THEME.cyanPrimary}
+                      style={{ fontSize: 16 }}
+                    />
+                  </span>
                   <span title="Приоритет" style={{ textAlign: 'center' }}>
                     <FlagFilled className="flag-wave" style={{ color: DARK_THEME.cyanPrimary, fontSize: 16 }} />
                   </span>
                   <span>Идея</span>
-                  <span>Исполнитель</span>
-                  <span>Заказчик</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <UserOutlined className="icon-bob" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
+                    Исполнитель
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <ShopOutlined className="icon-wiggle" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
+                    Заказчик
+                  </span>
                   <div style={{ display: 'flex', gap: 4 }}>
                     {['АН', 'ПР', 'ТС', 'ОПЭ'].map((l) => (
                       <span key={l} style={{ flex: 1, minWidth: 52, textAlign: 'center' }}>{l}</span>
                     ))}
                   </div>
-                  <span style={{ textAlign: 'right' }}>Всего часов</span>
+                  <span style={{ textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                    <ClockCircleOutlined className="icon-spin-slow" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
+                    Всего часов
+                  </span>
                 </div>
                 <div style={{ overflowY: 'auto', flex: 1 }}>
                   {(allocations ?? []).map((a) => {
