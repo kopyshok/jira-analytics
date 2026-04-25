@@ -1,6 +1,6 @@
-"""7-sheet xlsx export for planning scenarios.
+"""4-sheet xlsx export for planning scenarios («Бухгалтерия» style).
 
-See docs/superpowers/specs/2026-04-25-scenario-xlsx-export-design.md
+See docs/superpowers/specs/2026-04-25-scenario-xlsx-export-redesign.md
 for layout, colours and contents of each sheet.
 """
 
@@ -24,69 +24,72 @@ from app.services.resource_base_service import (
 )
 
 
-SHEET_NAMES = [
-    "Обложка",
-    "Включено",
-    "Не вошло",
-    "По ролям",
-    "По сотрудникам",
-    "Правила",
-    "Отсутствия",
-]
+SHEET_NAMES = ["Сводка", "Включено", "Не вошло", "Справочник"]
 
 QUARTER_MONTHS = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
 
+MONTH_LABELS = {
+    1: "Янв", 2: "Фев", 3: "Мар", 4: "Апр", 5: "Май", 6: "Июн",
+    7: "Июл", 8: "Авг", 9: "Сен", 10: "Окт", 11: "Ноя", 12: "Дек",
+}
+
 
 class _Style:
-    """Centralised styling constants — colours, fonts, fills."""
+    """Бухгалтерия palette — dark-grey headers, traffic-light data, no cyan."""
 
-    # Palette (from spec § "Стилистическая база")
-    DARK_HEADER = "0F2340"
-    CYAN_ACCENT = "00C9C8"
-    GREEN_TEXT = "52C41A"
-    GREEN_FILL = "F6FFED"
-    YELLOW_TEXT = "FAAD14"
-    YELLOW_FILL = "FFFBE6"
-    ORANGE_FILL = "FFF7E6"
-    RED_TEXT = "FF4D4F"
-    RED_FILL = "FFF1F0"
-    GREY_TEXT = "8C8C8C"
+    # Palette
+    DARK_HEADER = "1F2937"
+    SECTION_BG = "F3F4F6"
+    TOTALS_BG = "FAFAFA"
+    HEAT_LIGHT = "ECFEFF"
+    HEAT_MID = "CFFAFE"
+    HEAT_DARK = "67E8F9"
+    GREEN_FILL = "DCFCE7"
+    GREEN_TEXT = "166534"
+    YELLOW_FILL = "FEF3C7"
+    YELLOW_TEXT = "92400E"
+    RED_FILL = "FEE2E2"
+    RED_TEXT = "B91C1C"
+    PRI1_TEXT = "B91C1C"
+    PRI2_TEXT = "B45309"
+    GREY_TEXT = "9CA3AF"
     GREY_FILL = "FAFAFA"
-    CYAN_LIGHT = "F0F9FF"
-    CYAN_MID = "BAE7FF"
-    CYAN_DARK = "69C0FF"
+    LINK_BLUE = "1D4ED8"
 
     # Reusable fills
     HEADER_FILL = PatternFill("solid", fgColor=DARK_HEADER)
+    SECTION_FILL = PatternFill("solid", fgColor=SECTION_BG)
+    TOTALS_FILL = PatternFill("solid", fgColor=TOTALS_BG)
     GREEN_BG = PatternFill("solid", fgColor=GREEN_FILL)
     YELLOW_BG = PatternFill("solid", fgColor=YELLOW_FILL)
-    ORANGE_BG = PatternFill("solid", fgColor=ORANGE_FILL)
     RED_BG = PatternFill("solid", fgColor=RED_FILL)
     GREY_BG = PatternFill("solid", fgColor=GREY_FILL)
-    ACCENT_BG = PatternFill("solid", fgColor=CYAN_ACCENT)
-    CYAN_LIGHT_BG = PatternFill("solid", fgColor=CYAN_LIGHT)
 
     # Reusable fonts
+    STRIP_FONT = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
     HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    METRIC_FONT = Font(name="Calibri", size=28, bold=True)
-    METRIC_LABEL_FONT = Font(name="Calibri", size=10, color=GREY_TEXT)
-    METRIC_HINT_FONT = Font(name="Calibri", size=9, color=GREY_TEXT)
+    SECTION_FONT = Font(name="Calibri", size=11, bold=True, color="4B5563")
     BOLD_FONT = Font(name="Calibri", size=11, bold=True)
-    ITALIC_FONT = Font(name="Calibri", size=11, italic=True, color=GREY_TEXT)
-    TITLE_FONT = Font(name="Calibri", size=24, bold=True, color="FFFFFF")
-    BADGE_GREEN_FONT = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    BADGE_GREY_FONT = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    REGULAR_FONT = Font(name="Calibri", size=11)
+    LABEL_FONT = Font(name="Calibri", size=10, color="6B7280")
+    ITALIC_GREY_FONT = Font(name="Calibri", size=10, italic=True, color="6B7280")
+    PRI1_FONT = Font(name="Calibri", size=11, bold=True, color=PRI1_TEXT)
+    PRI2_FONT = Font(name="Calibri", size=11, bold=True, color=PRI2_TEXT)
+    LINK_FONT = Font(name="Calibri", size=11, color=LINK_BLUE, underline="single")
+    RED_BOLD_FONT = Font(name="Calibri", size=11, bold=True, color=RED_TEXT)
+    EXCLUDED_FONT = Font(name="Calibri", size=11, color="6B7280")
 
-    THIN_BORDER = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
+    # Borders
+    THIN_GREY = Side(style="thin", color="E5E7EB")
+    BOTTOM_DARK = Side(style="medium", color=DARK_HEADER)
+    TOP_DARK = Side(style="medium", color=DARK_HEADER)
+    SECTION_BORDER = Border(bottom=BOTTOM_DARK)
+    TOTALS_BORDER = Border(top=TOP_DARK)
 
-    CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
+    # Alignment
     LEFT = Alignment(horizontal="left", vertical="center")
     RIGHT = Alignment(horizontal="right", vertical="center")
+    CENTER = Alignment(horizontal="center", vertical="center")
 
 
 @dataclass
