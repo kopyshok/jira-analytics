@@ -773,7 +773,99 @@ class ScenarioXlsxExporter:
             ws.auto_filter.ref = f"A2:{get_column_letter(len(INCLUDED_HEADERS))}2"
 
     def _sheet_excluded(self, ws, ctx: ScenarioExportContext) -> None:
-        pass
+        from openpyxl.formatting.rule import ColorScaleRule  # type: ignore[import-untyped]
+
+        ws.sheet_view.showGridLines = False
+
+        rows = sorted(
+            [a for a in ctx.allocations if not a.included_flag],
+            key=lambda a: (
+                a.backlog_item.priority is None,
+                a.backlog_item.priority if a.backlog_item.priority is not None else 0,
+                a.backlog_item.title,
+            ),
+        )
+
+        title = f"Сценарий: {ctx.scenario.name} · Не вошло ({len(rows)} задач)"
+        _write_title_strip(ws, title, columns=len(EXCLUDED_HEADERS))
+
+        for c_idx, h in enumerate(EXCLUDED_HEADERS, start=1):
+            c = ws.cell(row=2, column=c_idx, value=h)
+            c.font = _Style.HEADER_FONT
+            c.fill = _Style.HEADER_FILL
+            c.alignment = _Style.CENTER
+        ws.row_dimensions[2].height = 22
+
+        for r_idx, alloc in enumerate(rows, start=3):
+            values = _initiative_row_mid(alloc, included=False)
+            for c_idx, val in enumerate(values, start=1):
+                c = ws.cell(row=r_idx, column=c_idx, value=val)
+                c.fill = _Style.GREY_BG
+                if c_idx in (5, 6, 7, 8):
+                    c.number_format = "#,##0.#"
+                    c.alignment = _Style.RIGHT
+                elif c_idx == 3:
+                    c.alignment = _Style.CENTER
+                elif c_idx == 9:
+                    c.font = _Style.BOLD_FONT
+                    c.number_format = "#,##0.#"
+                    c.alignment = _Style.RIGHT
+                elif c_idx in (2, 10):
+                    c.font = _Style.EXCLUDED_FONT
+            # Hyperlink on key column
+            key = values[0]
+            if key and ctx.jira_base_url:
+                link = f"{ctx.jira_base_url.rstrip('/')}/browse/{key}"
+                ws.cell(row=r_idx, column=1).hyperlink = link
+                ws.cell(row=r_idx, column=1).font = _Style.LINK_FONT
+
+        # Totals row
+        total_row_idx = len(rows) + 3
+        total_label = ws.cell(
+            row=total_row_idx, column=1,
+            value=f"Σ ИТОГО ({len(rows)} задач не вошло)",
+        )
+        total_label.font = _Style.HEADER_FONT
+        total_label.fill = _Style.HEADER_FILL
+        ws.merge_cells(
+            start_row=total_row_idx, start_column=1,
+            end_row=total_row_idx, end_column=4,
+        )
+        sum_cols = [5, 6, 7, 8, 9]
+        for c_idx in sum_cols:
+            if rows:
+                total = sum(_initiative_row_mid(a, included=False)[c_idx - 1] for a in rows)
+            else:
+                total = 0
+            c = ws.cell(row=total_row_idx, column=c_idx, value=round(total, 1))
+            c.font = _Style.HEADER_FONT
+            c.fill = _Style.HEADER_FILL
+            c.number_format = "#,##0.#"
+            c.alignment = _Style.RIGHT
+        c = ws.cell(row=total_row_idx, column=10, value="")
+        c.fill = _Style.HEADER_FILL
+
+        # Heatmap on hours
+        if rows:
+            for c_idx in (5, 6, 7, 8):
+                col = get_column_letter(c_idx)
+                rng = f"{col}3:{col}{total_row_idx - 1}"
+                ws.conditional_formatting.add(
+                    rng,
+                    ColorScaleRule(
+                        start_type="min", start_color=_Style.HEAT_LIGHT,
+                        end_type="max", end_color=_Style.HEAT_DARK,
+                    ),
+                )
+
+        for c_idx, w in enumerate(EXCLUDED_WIDTHS, start=1):
+            ws.column_dimensions[get_column_letter(c_idx)].width = w
+
+        ws.freeze_panes = "A3"
+        if rows:
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(EXCLUDED_HEADERS))}{total_row_idx}"
+        else:
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(EXCLUDED_HEADERS))}2"
 
     def _sheet_reference(self, ws, ctx: ScenarioExportContext) -> None:
         pass

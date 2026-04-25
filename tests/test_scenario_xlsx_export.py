@@ -256,6 +256,43 @@ class TestIncludedSheet:
         assert ws.freeze_panes == "A3"
 
 
+EXCLUDED_HEADERS_EXPECTED = [
+    "Ключ Jira", "Название", "Приоритет", "Заказчик",
+    "Аналитик, ч", "Разработка, ч", "QA, ч", "ОПЭ, ч",
+    "Итого, ч", "Цели",
+]
+
+
+class TestExcludedSheet:
+    def test_title_strip(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Не вошло"]
+        a1 = ws.cell(row=1, column=1).value or ""
+        assert "Не вошло" in a1
+        assert "1" in a1
+
+    def test_headers_no_plan_column(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Не вошло"]
+        header = [ws.cell(row=2, column=c).value for c in range(1, 11)]
+        assert header == EXCLUDED_HEADERS_EXPECTED
+
+    def test_excluded_row_present(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Не вошло"]
+        assert ws.cell(row=3, column=2).value == "Skipped feature"
+
+    def test_data_rows_have_grey_fill(self, db_session, minimal_scenario):
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Не вошло"]
+        cell = ws.cell(row=3, column=2)
+        assert cell.fill.fgColor.value.upper().endswith("FAFAFA")
+
+
 class TestStructure:
     def test_workbook_has_four_sheets_in_order(self, db_session, minimal_scenario):
         data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
