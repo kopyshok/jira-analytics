@@ -141,6 +141,7 @@ export default function PlanningPage() {
   // снова взять его из стейл-кэша списка между `setScenarioId(null)` и
   // refetch'ем, и лечит 404 на useScenario/useScenarioAllocations.
   const deletingIdRef = useRef<string | null>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Авто-выбор: если сценарий из URL исчез (удалили) либо не выбран — взять
   // первый доступный, кроме того, что сейчас в процессе удаления.
@@ -182,10 +183,21 @@ export default function PlanningPage() {
   const isDraft = scenario?.status === 'draft';
   const isApproved = scenario?.status === 'approved';
 
+  const scrollRowIntoView = (allocId: string) => {
+    const el = rowRefs.current.get(allocId);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const fullyVisible = rect.top >= 60 && rect.bottom <= window.innerHeight - 20;
+    if (!fullyVisible) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
+
   const toggleAllocation = (alloc: AllocationResponse) => {
     if (!scenarioId || !isDraft) return;
     flashRow(alloc.id);
     pulseRoles(rolesAffectedByAllocation(alloc, resourceBase?.employees));
+    scrollRowIntoView(alloc.id);
     patchAlloc.mutate(
       { scenarioId, allocId: alloc.id, data: { included: !alloc.included } },
       { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
@@ -497,6 +509,10 @@ export default function PlanningPage() {
                     return (
                       <div
                         key={a.id}
+                        ref={(el) => {
+                          if (el) rowRefs.current.set(a.id, el);
+                          else rowRefs.current.delete(a.id);
+                        }}
                         className={`backlog-row${flashingIds.has(a.id) ? ' cyan-flash' : ''}`}
                         onClick={() => toggleAllocation(a)}
                         style={{
