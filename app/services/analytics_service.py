@@ -404,7 +404,7 @@ class AnalyticsService:
             .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
             .filter(
                 ScenarioAllocation.scenario_id.in_(scenario_ids),
-                ScenarioAllocation.included_flag == True,  # noqa: E712
+                ScenarioAllocation.included_flag.is_(True),
                 BacklogItem.issue_id.isnot(None),
             )
             .distinct()
@@ -451,16 +451,21 @@ class AnalyticsService:
         # 5. Forecast (linear extrapolation over the quarter)
         passed_days = (today - period_start).days
         remaining_days = (period_end - today).days
-        if passed_days > 0 and done > 0:
+        if remaining_days <= 0:
+            # Past quarter — actuals are the forecast
+            forecast_done = done
+            forecast_pct = round(done / total * 100, 1) if total else 0.0
+        elif passed_days > 0 and done > 0:
             forecast_done = min(total, round(done / passed_days * (passed_days + remaining_days)))
+            forecast_pct = round(forecast_done / total * 100, 1) if total else 0.0
         else:
             forecast_done = done
-        forecast_pct = round(forecast_done / total * 100, 1) if total else 0.0
+            forecast_pct = round(forecast_done / total * 100, 1) if total else 0.0
 
         # 6. Silence detection — last worklog date per epic
         # Worklogs on the epic itself OR on its direct children
         issue_id_set = set(issue_ids)
-        silence_cutoff = datetime.combine(today - timedelta(days=silence_days), datetime.min.time())
+        silence_cutoff = datetime.utcnow() - timedelta(days=silence_days)
 
         # One query: max(started_at) grouped by the "root" issue id
         # For child issues: root = parent_id if parent in our set, else issue.id
@@ -491,10 +496,16 @@ class AnalyticsService:
                 if existing is None or (last_wl and last_wl > existing):
                     last_activity[root_id] = last_wl
 
-        # 7. Fact hours per issue (worklogs on epic + children)
+        # 7. Fact hours per issue (worklogs on epic + children), period-scoped
+        start_dt = datetime.combine(period_start, datetime.min.time())
+        end_dt = datetime.combine(period_end, datetime.max.time())
         fact_rows = (
             self.db.query(Worklog.issue_id, func.sum(Worklog.hours).label("hrs"))
-            .filter(Worklog.issue_id.in_(all_worklog_issue_ids))
+            .filter(
+                Worklog.issue_id.in_(all_worklog_issue_ids),
+                Worklog.started_at >= start_dt,
+                Worklog.started_at <= end_dt,
+            )
             .group_by(Worklog.issue_id)
             .all()
         )
@@ -517,9 +528,12 @@ class AnalyticsService:
                 days_overdue = (today - issue.due_date.date()).days
 
             last_wl = last_activity.get(issue.id)
-            days_silent = None
-            if last_wl is None or last_wl < silence_cutoff:
-                days_silent = (today - last_wl.date()).days if last_wl else None
+            if last_wl is None:
+                days_silent = (today - period_start).days
+            elif last_wl < silence_cutoff:
+                days_silent = (today - last_wl.date()).days
+            else:
+                days_silent = None
 
             if days_overdue is not None or days_silent is not None:
                 attention_list.append(ProjectAttentionItem(
@@ -554,8 +568,8 @@ class AnalyticsService:
             not_started=not_started,
             forecast_done=forecast_done,
             forecast_pct=forecast_pct,
-            attention_list=attention_list,
-            overrun_list=overrun_list,
+            attention_list=attention_list[:10],
+            overrun_list=overrun_list[:10],
         )
 
     # === Контекстные переключения ===
