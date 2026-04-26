@@ -54,3 +54,13 @@ frontend/test-results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Brainstorming visual companion
+.superpowers/
+
+# Local agent / tool artefacts
+.claude/
+.dev-logs/
+.playwright-mcp/
+design-reference/
+test.md
