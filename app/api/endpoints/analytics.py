@@ -8,7 +8,7 @@
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,10 @@ def dashboard_norm_work(
 ):
     """Widget 2: план/факт нормированных работ за квартал/месяц."""
     svc = AnalyticsService(db)
-    return svc.get_dashboard_norm_work(year=year, quarter=quarter, month=month)
+    try:
+        return svc.get_dashboard_norm_work(year=year, quarter=quarter, month=month)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get("/dashboard/categories", response_model=DashboardCategoriesResponse)
@@ -47,7 +50,10 @@ def dashboard_categories(
 ):
     """Widget 3: метрики по категориям работ за квартал/месяц."""
     svc = AnalyticsService(db)
-    return svc.get_dashboard_categories(year=year, quarter=quarter, month=month)
+    try:
+        return svc.get_dashboard_categories(year=year, quarter=quarter, month=month)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get("/dashboard/projects", response_model=DashboardProjectsResponse)
@@ -59,7 +65,10 @@ def dashboard_projects(
 ):
     """Widget 1: обзор проектов квартала из утверждённого сценария."""
     svc = AnalyticsService(db)
-    return svc.get_dashboard_projects(year=year, quarter=quarter, month=month)
+    try:
+        return svc.get_dashboard_projects(year=year, quarter=quarter, month=month)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 # === Response schemas ===
