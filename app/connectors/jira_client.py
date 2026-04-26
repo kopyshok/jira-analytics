@@ -267,6 +267,7 @@ class JiraClient:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
+            "statuscategorychangedate", "duedate",
         ]
 
         params: dict = {
@@ -333,7 +334,7 @@ class JiraClient:
                 "summary", "description", "issuetype", "status",
                 "priority", "project", "parent", "creator",
                 "assignee", "created", "updated",
-                "statuscategorychangedate",
+                "statuscategorychangedate", "duedate",
             ]
             fields = default_fields + list(extra_fields)
 

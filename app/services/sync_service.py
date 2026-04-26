@@ -77,6 +77,18 @@ def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _parse_jira_date(raw: Optional[str]) -> Optional[datetime]:
+    """Parse Jira plain date (e.g. ``2026-06-30``) into a naive midnight datetime."""
+    if not raw:
+        return None
+    try:
+        from datetime import date as _date
+        d = _date.fromisoformat(raw)
+        return datetime(d.year, d.month, d.day)
+    except (ValueError, TypeError):
+        return None
+
+
 logger = logging.getLogger("jira_analytics.sync")
 
 
@@ -457,6 +469,7 @@ class SyncService:
             "project_id": project_id,
             "parent_id": parent_id,
             "status_changed_at": _parse_jira_datetime(jira_issue.fields.statuscategorychangedate),
+            "due_date": _parse_jira_date(jira_issue.fields.duedate),
             "synced_at": datetime.utcnow(),
         }
         if team is not _UNSET:
