@@ -1,7 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import { getHoursByEmployee, getHoursByProject, getHoursByCategory, getHoursByPeriod, getContextSwitching, type TeamFilterParams } from '../api/analytics';
+import {
+  getHoursByEmployee,
+  getHoursByProject,
+  getHoursByCategory,
+  getHoursByPeriod,
+  getContextSwitching,
+  fetchDashboardProjects,
+  fetchDashboardNormWork,
+  fetchDashboardCategories,
+  type TeamFilterParams,
+} from '../api/analytics';
 import { getEmployees } from '../api/employees';
 import { getProjects } from '../api/projects';
+import type { QuarterPeriod } from '../types/api';
 
 const teamKey = (t?: TeamFilterParams) => [t?.teams ?? '', t?.match_employees ?? true, t?.match_issues ?? true];
 
@@ -25,3 +36,30 @@ export const useEmployeesForFilter = () =>
 
 export const useProjectsForFilter = () =>
   useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
+
+export function useDashboardProjects(period: QuarterPeriod) {
+  return useQuery({
+    queryKey: ['dashboard-projects', period],
+    queryFn: ({ signal }) => fetchDashboardProjects(period, signal),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useDashboardNormWork(period: QuarterPeriod) {
+  return useQuery({
+    queryKey: ['dashboard-norm-work', period],
+    queryFn: ({ signal }) => fetchDashboardNormWork(period, signal),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useDashboardCategories(period: QuarterPeriod) {
+  return useQuery({
+    queryKey: ['dashboard-categories', period],
+    queryFn: ({ signal }) => fetchDashboardCategories(period, signal),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}

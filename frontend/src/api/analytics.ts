@@ -1,5 +1,13 @@
 import { api, boolParam } from './client';
-import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
+import type {
+  AggregateRowResponse,
+  ContextSwitchRowResponse,
+  DashboardProjectsResponse,
+  DashboardNormWorkResponse,
+  DashboardCategoriesResponse,
+  QuarterPeriod,
+} from '../types/api';
+import { periodToParams } from '../types/api';
 
 export type TeamFilterParams = {
   teams?: string;
@@ -32,3 +40,24 @@ export const getHoursByPeriod = (period: string, start?: string, end?: string, e
 
 export const getContextSwitching = (start?: string, end?: string, employeeId?: string, projectKey?: string, team?: TeamFilterParams) =>
   api.get<ContextSwitchRowResponse[]>('/analytics/context-switching', buildParams(start, end, employeeId, projectKey, team));
+
+export function fetchDashboardProjects(
+  period: QuarterPeriod,
+  signal?: AbortSignal,
+): Promise<DashboardProjectsResponse> {
+  return api.get<DashboardProjectsResponse>('/analytics/dashboard/projects', periodToParams(period), signal);
+}
+
+export function fetchDashboardNormWork(
+  period: QuarterPeriod,
+  signal?: AbortSignal,
+): Promise<DashboardNormWorkResponse> {
+  return api.get<DashboardNormWorkResponse>('/analytics/dashboard/norm-work', periodToParams(period), signal);
+}
+
+export function fetchDashboardCategories(
+  period: QuarterPeriod,
+  signal?: AbortSignal,
+): Promise<DashboardCategoriesResponse> {
+  return api.get<DashboardCategoriesResponse>('/analytics/dashboard/categories', periodToParams(period), signal);
+}
