@@ -13,7 +13,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas.dashboard import DashboardProjectsResponse
+from app.schemas.dashboard import (
+    DashboardProjectsResponse,
+    DashboardNormWorkResponse,
+    DashboardCategoriesResponse,
+)
 from app.services.analytics_service import AnalyticsService, NO_TEAM_TOKEN, parse_teams_csv
 
 
@@ -21,6 +25,30 @@ router = APIRouter()
 
 
 # === Dashboard endpoints ===
+
+@router.get("/dashboard/norm-work", response_model=DashboardNormWorkResponse)
+def dashboard_norm_work(
+    year: int = Query(..., ge=2020, le=2100),
+    quarter: int = Query(..., ge=1, le=4),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    db: Session = Depends(get_db),
+):
+    """Widget 2: план/факт нормированных работ за квартал/месяц."""
+    svc = AnalyticsService(db)
+    return svc.get_dashboard_norm_work(year=year, quarter=quarter, month=month)
+
+
+@router.get("/dashboard/categories", response_model=DashboardCategoriesResponse)
+def dashboard_categories(
+    year: int = Query(..., ge=2020, le=2100),
+    quarter: int = Query(..., ge=1, le=4),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    db: Session = Depends(get_db),
+):
+    """Widget 3: метрики по категориям работ за квартал/месяц."""
+    svc = AnalyticsService(db)
+    return svc.get_dashboard_categories(year=year, quarter=quarter, month=month)
+
 
 @router.get("/dashboard/projects", response_model=DashboardProjectsResponse)
 def dashboard_projects(

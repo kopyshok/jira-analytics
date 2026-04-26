@@ -18,10 +18,15 @@ from sqlalchemy.orm import Session
 
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
+from app.models import MandatoryWorkType, RoleCapacityRule, Category
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
     ProjectAttentionItem,
     ProjectOverrunItem,
+    DashboardNormWorkResponse,
+    NormWorkItem,
+    DashboardCategoriesResponse,
+    CategoryMetaItem,
 )
 from app.services.categories import CATEGORY_LABELS, get_category_labels
 from app.utils.period import quarter_to_dates
@@ -571,6 +576,182 @@ class AnalyticsService:
             attention_list=attention_list[:10],
             overrun_list=overrun_list[:10],
         )
+
+    # === Dashboard widgets 2 & 3 ===
+
+    def get_dashboard_norm_work(
+        self,
+        year: int,
+        quarter: int,
+        month: Optional[int] = None,
+        team: Optional[str] = None,
+    ) -> DashboardNormWorkResponse:
+        """Widget 2: план/факт по обязательным видам работ за квартал/месяц.
+
+        Для каждого активного вида работ считает:
+        - fact_hours = сумма ворклогов по задачам категорий, привязанных к данному виду работ
+        - plan_hours = total_fact * pct / 100, где pct берётся из глобального правила (role IS NULL)
+        """
+        period_start, period_end = quarter_to_dates(year, quarter, month)
+        start_dt = datetime.combine(period_start, datetime.min.time())
+        end_dt = datetime.combine(period_end, datetime.max.time())
+
+        # 1. Все активные виды работ
+        work_types: list[MandatoryWorkType] = (
+            self.db.query(MandatoryWorkType)
+            .filter(MandatoryWorkType.is_active.is_(True))
+            .order_by(MandatoryWorkType.sort_order)
+            .all()
+        )
+
+        # 2. Категории: code → work_type_id (только с привязкой)
+        cat_rows = (
+            self.db.query(Category.code, Category.work_type_id)
+            .filter(Category.work_type_id.isnot(None))
+            .all()
+        )
+        codes_by_work_type: dict[str, list[str]] = {}
+        for code, wt_id in cat_rows:
+            codes_by_work_type.setdefault(wt_id, []).append(code)
+
+        # 3. Общий факт за период (все задачи, любая категория)
+        total_fact_row = (
+            self.db.query(func.sum(Worklog.hours))
+            .filter(
+                Worklog.started_at >= start_dt,
+                Worklog.started_at <= end_dt,
+            )
+            .scalar()
+        )
+        total_fact_all: float = float(total_fact_row or 0)
+
+        # 4. Глобальные правила (role IS NULL) для данного квартала: work_type_id → pct
+        rule_rows = (
+            self.db.query(RoleCapacityRule.work_type_id, RoleCapacityRule.percent_of_norm)
+            .filter(
+                RoleCapacityRule.year == year,
+                RoleCapacityRule.quarter == quarter,
+                RoleCapacityRule.role.is_(None),
+            )
+            .all()
+        )
+        pct_by_work_type: dict[str, float] = {r[0]: r[1] for r in rule_rows}
+
+        # 5. Факт по видам работ
+        items: list[NormWorkItem] = []
+        for wt in work_types:
+            category_codes = codes_by_work_type.get(wt.id, [])
+            if category_codes:
+                fact_row = (
+                    self.db.query(func.sum(Worklog.hours))
+                    .join(Issue, Worklog.issue_id == Issue.id)
+                    .filter(
+                        Worklog.started_at >= start_dt,
+                        Worklog.started_at <= end_dt,
+                        Issue.category.in_(category_codes),
+                    )
+                    .scalar()
+                )
+                fact_hours = float(fact_row or 0)
+            else:
+                fact_hours = 0.0
+
+            pct_rule = pct_by_work_type.get(wt.id, 0.0)
+            plan_hours = round(total_fact_all * pct_rule / 100, 2)
+            pct_actual = round(fact_hours / plan_hours * 100, 1) if plan_hours > 0 else 0.0
+
+            items.append(NormWorkItem(
+                work_type_id=wt.id,
+                label=wt.label,
+                plan_hours=plan_hours,
+                fact_hours=round(fact_hours, 2),
+                pct=pct_actual,
+            ))
+
+        total_plan = round(sum(i.plan_hours for i in items), 2)
+        total_fact = round(sum(i.fact_hours for i in items), 2)
+        total_pct = round(total_fact / total_plan * 100, 1) if total_plan > 0 else 0.0
+
+        return DashboardNormWorkResponse(
+            items=items,
+            total_plan=total_plan,
+            total_fact=total_fact,
+            total_pct=total_pct,
+        )
+
+    def get_dashboard_categories(
+        self,
+        year: int,
+        quarter: int,
+        month: Optional[int] = None,
+        team: Optional[str] = None,
+    ) -> DashboardCategoriesResponse:
+        """Widget 3: метрики по категориям работ за квартал/месяц.
+
+        Исключает архивные категории. Считает часы, число ворклогов,
+        задач и сотрудников, среднюю длительность ворклога.
+        """
+        ARCHIVE_CODES = ["archive", "archive_target"]
+        _DEFAULT_COLOR = "#8884d8"
+
+        period_start, period_end = quarter_to_dates(year, quarter, month)
+        start_dt = datetime.combine(period_start, datetime.min.time())
+        end_dt = datetime.combine(period_end, datetime.max.time())
+
+        # 1. Активные не-архивные категории: code → (label, color)
+        cat_rows = (
+            self.db.query(Category.code, Category.label, Category.color)
+            .filter(Category.code.not_in(ARCHIVE_CODES))
+            .all()
+        )
+        cat_meta: dict[str, tuple[str, str]] = {
+            row.code: (row.label, row.color or _DEFAULT_COLOR)
+            for row in cat_rows
+        }
+        allowed_codes = list(cat_meta.keys())
+
+        # 2. Агрегат по категории задачи
+        agg_rows = (
+            self.db.query(
+                Issue.category.label("category"),
+                func.sum(Worklog.hours).label("hours"),
+                func.count(Worklog.id).label("worklog_count"),
+                func.count(func.distinct(Issue.id)).label("issue_count"),
+                func.count(func.distinct(Worklog.employee_id)).label("employee_count"),
+                func.avg(Worklog.hours * 60).label("avg_worklog_minutes"),
+            )
+            .join(Issue, Worklog.issue_id == Issue.id)
+            .filter(
+                Worklog.started_at >= start_dt,
+                Worklog.started_at <= end_dt,
+                Issue.category.in_(allowed_codes),
+            )
+            .group_by(Issue.category)
+            .all()
+        )
+
+        items: list[CategoryMetaItem] = []
+        for row in agg_rows:
+            label, color = cat_meta.get(row.category, (row.category, _DEFAULT_COLOR))
+            items.append(CategoryMetaItem(
+                key=row.category,
+                label=label,
+                color=color,
+                hours=round(float(row.hours or 0), 2),
+                worklog_count=int(row.worklog_count or 0),
+                issue_count=int(row.issue_count or 0),
+                employee_count=int(row.employee_count or 0),
+                avg_worklog_minutes=round(float(row.avg_worklog_minutes or 0), 1),
+                pct=0.0,  # computed below
+            ))
+
+        items.sort(key=lambda x: x.hours, reverse=True)
+        total_hours = round(sum(i.hours for i in items), 2)
+
+        for item in items:
+            item.pct = round(item.hours / total_hours * 100, 1) if total_hours > 0 else 0.0
+
+        return DashboardCategoriesResponse(items=items, total_hours=total_hours)
 
     # === Контекстные переключения ===
 
