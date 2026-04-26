@@ -574,3 +574,89 @@ export interface ProductionCalendarSyncResponse {
   updated: number;
   skipped_manual: number;
 }
+
+// ─── Quarter period ───────────────────────────────────────────────────────
+
+export interface QuarterPeriod {
+  year: number;
+  quarter: 1 | 2 | 3 | 4;
+  month?: number; // optional: month within the quarter (1-12)
+}
+
+export function periodToParams(p: QuarterPeriod): Record<string, string> {
+  const params: Record<string, string> = {
+    year: String(p.year),
+    quarter: String(p.quarter),
+  };
+  if (p.month) params.month = String(p.month);
+  return params;
+}
+
+export function currentQuarterPeriod(): QuarterPeriod {
+  const now = new Date();
+  const m = now.getMonth() + 1; // 1-12
+  const q = m <= 3 ? 1 : m <= 6 ? 2 : m <= 9 ? 3 : 4;
+  return { year: now.getFullYear(), quarter: q as 1 | 2 | 3 | 4 };
+}
+
+// ─── Dashboard response types ─────────────────────────────────────────────
+
+export interface ProjectAttentionItem {
+  issue_key: string;
+  title: string;
+  fact_hours: number;
+  days_overdue: number | null;
+  days_silent: number | null;
+}
+
+export interface ProjectOverrunItem {
+  issue_key: string;
+  title: string;
+  plan_hours: number;
+  fact_hours: number;
+  delta_hours: number;
+}
+
+export interface DashboardProjectsResponse {
+  total: number;
+  done: number;
+  in_progress: number;
+  overdue: number;
+  not_started: number;
+  forecast_done: number;
+  forecast_pct: number;
+  attention_list: ProjectAttentionItem[];
+  overrun_list: ProjectOverrunItem[];
+}
+
+export interface NormWorkItem {
+  work_type_id: string;
+  label: string;
+  plan_hours: number;
+  fact_hours: number;
+  pct: number;
+}
+
+export interface DashboardNormWorkResponse {
+  items: NormWorkItem[];
+  total_plan: number;
+  total_fact: number;
+  total_pct: number;
+}
+
+export interface CategoryMetaItem {
+  key: string;
+  label: string;
+  color: string;
+  hours: number;
+  worklog_count: number;
+  issue_count: number;
+  employee_count: number;
+  avg_worklog_minutes: number;
+  pct: number;
+}
+
+export interface DashboardCategoriesResponse {
+  items: CategoryMetaItem[];
+  total_hours: number;
+}
