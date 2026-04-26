@@ -96,6 +96,7 @@ class Issue(Base, SyncedMixin):
 
     # Jira metadata for triage (e.g. «какие Done висят давно — в архив»)
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="issues")
