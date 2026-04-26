@@ -10,14 +10,21 @@
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Optional
 
 from sqlalchemy import func, and_, or_, select, exists
 from sqlalchemy.orm import Session
 
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
+from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
+from app.schemas.dashboard import (
+    DashboardProjectsResponse,
+    ProjectAttentionItem,
+    ProjectOverrunItem,
+)
 from app.services.categories import CATEGORY_LABELS, get_category_labels
+from app.utils.period import quarter_to_dates
 
 
 NO_TEAM_TOKEN = "__none__"
@@ -352,6 +359,204 @@ class AnalyticsService:
             iso_year, iso_week, _ = ts.isocalendar()
             return f"{iso_year:04d}-W{iso_week:02d}"
         return f"{ts.year:04d}-{ts.month:02d}-{ts.day:02d}"
+
+    # === Dashboard widgets ===
+
+    def get_dashboard_projects(
+        self,
+        year: int,
+        quarter: int,
+        month: Optional[int] = None,
+        team: Optional[str] = None,
+        silence_days: int = 14,
+    ) -> DashboardProjectsResponse:
+        """Widget 1: обзор проектов квартала из утверждённого сценария.
+
+        Возвращает счётчики статусов, прогноз закрытия, список требующих
+        внимания (просрочено или тихо) и список превышения оценки.
+        """
+        period_start, period_end = quarter_to_dates(year, quarter, month)
+        today = date.today()
+
+        # 1. Найти утверждённый сценарий и issue-ключи входящих задач
+        approved_q = (
+            self.db.query(PlanningScenario.id)
+            .filter(
+                PlanningScenario.year == year,
+                PlanningScenario.quarter == f"Q{quarter}",
+                PlanningScenario.status == "approved",
+            )
+        )
+        if team:
+            approved_q = approved_q.filter(PlanningScenario.team == team)
+        scenario_ids = [row[0] for row in approved_q.all()]
+
+        if not scenario_ids:
+            return DashboardProjectsResponse(
+                total=0, done=0, in_progress=0, overdue=0, not_started=0,
+                forecast_done=0, forecast_pct=0.0,
+                attention_list=[], overrun_list=[],
+            )
+
+        # Issue.id for all included backlog items across approved scenarios
+        alloc_rows = (
+            self.db.query(BacklogItem.issue_id, BacklogItem.estimate_hours)
+            .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+            .filter(
+                ScenarioAllocation.scenario_id.in_(scenario_ids),
+                ScenarioAllocation.included_flag == True,  # noqa: E712
+                BacklogItem.issue_id.isnot(None),
+            )
+            .distinct()
+            .all()
+        )
+
+        if not alloc_rows:
+            return DashboardProjectsResponse(
+                total=0, done=0, in_progress=0, overdue=0, not_started=0,
+                forecast_done=0, forecast_pct=0.0,
+                attention_list=[], overrun_list=[],
+            )
+
+        issue_ids = list({row[0] for row in alloc_rows})
+        # Map issue_id → plan hours (from BacklogItem.estimate_hours)
+        plan_by_issue: dict[str, float] = {}
+        for issue_id, est in alloc_rows:
+            if issue_id and est is not None:
+                plan_by_issue[issue_id] = est
+
+        # 2. Load Issue objects
+        issues: list[Issue] = (
+            self.db.query(Issue)
+            .filter(Issue.id.in_(issue_ids))
+            .all()
+        )
+        total = len(issues)
+
+        # 3. Count by status_category
+        done = sum(1 for i in issues if i.status_category == "done")
+        in_progress = sum(1 for i in issues if i.status_category == "indeterminate")
+        not_started = sum(1 for i in issues if i.status_category == "new")
+
+        # 4. Overdue: not done AND due_date < today
+        overdue_issues = [
+            i for i in issues
+            if i.status_category != "done"
+            and i.due_date is not None
+            and i.due_date.date() < today
+        ]
+        overdue = len(overdue_issues)
+        overdue_ids = {i.id for i in overdue_issues}
+
+        # 5. Forecast (linear extrapolation over the quarter)
+        passed_days = (today - period_start).days
+        remaining_days = (period_end - today).days
+        if passed_days > 0 and done > 0:
+            forecast_done = min(total, round(done / passed_days * (passed_days + remaining_days)))
+        else:
+            forecast_done = done
+        forecast_pct = round(forecast_done / total * 100, 1) if total else 0.0
+
+        # 6. Silence detection — last worklog date per epic
+        # Worklogs on the epic itself OR on its direct children
+        issue_id_set = set(issue_ids)
+        silence_cutoff = datetime.combine(today - timedelta(days=silence_days), datetime.min.time())
+
+        # One query: max(started_at) grouped by the "root" issue id
+        # For child issues: root = parent_id if parent in our set, else issue.id
+        # Simpler: load max worklog date for each issue_id and its children
+        child_rows = (
+            self.db.query(Issue.id, Issue.parent_id)
+            .filter(Issue.parent_id.in_(issue_id_set))
+            .all()
+        )
+        child_to_parent: dict[str, str] = {r[0]: r[1] for r in child_rows}
+
+        # IDs to query worklogs for: our epics + their children
+        all_worklog_issue_ids = issue_id_set | set(child_to_parent.keys())
+
+        wlog_rows = (
+            self.db.query(Worklog.issue_id, func.max(Worklog.started_at).label("last_wl"))
+            .filter(Worklog.issue_id.in_(all_worklog_issue_ids))
+            .group_by(Worklog.issue_id)
+            .all()
+        )
+
+        # Aggregate to root issue level
+        last_activity: dict[str, datetime] = {}  # root_issue_id → last worklog datetime
+        for wlog_issue_id, last_wl in wlog_rows:
+            root_id = child_to_parent.get(wlog_issue_id, wlog_issue_id)
+            if root_id in issue_id_set:
+                existing = last_activity.get(root_id)
+                if existing is None or (last_wl and last_wl > existing):
+                    last_activity[root_id] = last_wl
+
+        # 7. Fact hours per issue (worklogs on epic + children)
+        fact_rows = (
+            self.db.query(Worklog.issue_id, func.sum(Worklog.hours).label("hrs"))
+            .filter(Worklog.issue_id.in_(all_worklog_issue_ids))
+            .group_by(Worklog.issue_id)
+            .all()
+        )
+        fact_by_wlog_issue: dict[str, float] = {r[0]: float(r[1] or 0) for r in fact_rows}
+
+        # Roll up to root
+        fact_by_issue: dict[str, float] = {}
+        for wlog_issue_id, hrs in fact_by_wlog_issue.items():
+            root_id = child_to_parent.get(wlog_issue_id, wlog_issue_id)
+            if root_id in issue_id_set:
+                fact_by_issue[root_id] = fact_by_issue.get(root_id, 0.0) + hrs
+
+        # 8. Build attention_list
+        attention_list: list[ProjectAttentionItem] = []
+        for issue in issues:
+            if issue.status_category == "done":
+                continue
+            days_overdue = None
+            if issue.id in overdue_ids:
+                days_overdue = (today - issue.due_date.date()).days
+
+            last_wl = last_activity.get(issue.id)
+            days_silent = None
+            if last_wl is None or last_wl < silence_cutoff:
+                days_silent = (today - last_wl.date()).days if last_wl else None
+
+            if days_overdue is not None or days_silent is not None:
+                attention_list.append(ProjectAttentionItem(
+                    issue_key=issue.key,
+                    title=issue.summary,
+                    fact_hours=fact_by_issue.get(issue.id, 0.0),
+                    days_overdue=days_overdue,
+                    days_silent=days_silent,
+                ))
+
+        # 9. Build overrun_list (only when plan_hours known)
+        overrun_list: list[ProjectOverrunItem] = []
+        for issue in issues:
+            plan_h = plan_by_issue.get(issue.id)
+            if plan_h is None:
+                continue
+            fact_h = fact_by_issue.get(issue.id, 0.0)
+            if fact_h > plan_h:
+                overrun_list.append(ProjectOverrunItem(
+                    issue_key=issue.key,
+                    title=issue.summary,
+                    plan_hours=plan_h,
+                    fact_hours=fact_h,
+                    delta_hours=round(fact_h - plan_h, 2),
+                ))
+
+        return DashboardProjectsResponse(
+            total=total,
+            done=done,
+            in_progress=in_progress,
+            overdue=overdue,
+            not_started=not_started,
+            forecast_done=forecast_done,
+            forecast_pct=forecast_pct,
+            attention_list=attention_list,
+            overrun_list=overrun_list,
+        )
 
     # === Контекстные переключения ===
 

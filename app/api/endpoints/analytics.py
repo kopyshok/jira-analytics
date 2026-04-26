@@ -13,10 +13,25 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.schemas.dashboard import DashboardProjectsResponse
 from app.services.analytics_service import AnalyticsService, NO_TEAM_TOKEN, parse_teams_csv
 
 
 router = APIRouter()
+
+
+# === Dashboard endpoints ===
+
+@router.get("/dashboard/projects", response_model=DashboardProjectsResponse)
+def dashboard_projects(
+    year: int = Query(..., ge=2020, le=2100),
+    quarter: int = Query(..., ge=1, le=4),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    db: Session = Depends(get_db),
+):
+    """Widget 1: обзор проектов квартала из утверждённого сценария."""
+    svc = AnalyticsService(db)
+    return svc.get_dashboard_projects(year=year, quarter=quarter, month=month)
 
 
 # === Response schemas ===
