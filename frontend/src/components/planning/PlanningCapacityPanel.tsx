@@ -7,6 +7,7 @@ import { getRoleColor } from '../../utils/roles';
 import type { AllocationResponse, ResourceBase, ResourceSummaryOut } from '../../types/api';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
+import { demandByAssigneeRole } from '../../utils/planning';
 
 const CORE_ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
 type CoreRoleKey = (typeof CORE_ROLE_KEYS)[number];
@@ -52,6 +53,11 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
     },
   });
 
+  // Персональная нагрузка ответственного: каждому ассайни — часы только его
+  // типа работ (аналитик/dev/qa). РП, project_manager и Консультант
+  // «закрывают» аналитическую часть. Часы dev/qa других типов работ
+  // одной и той же задачи в персональный счёт не попадают — они уходят в
+  // соответствующие ролевые пулы (см. demandByRole ниже).
   const demandByEmployee = useMemo(() => {
     const result: Record<string, number> = {};
     for (const alloc of allocations) {
@@ -78,38 +84,39 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
         }
       }
       if (!emp?.role) continue;
-      const targetId = emp.employee_id;
       const ea = alloc.estimate_analyst_hours ?? 0;
       const ed = alloc.estimate_dev_hours ?? 0;
       const eq = alloc.estimate_qa_hours ?? 0;
       const eo = alloc.estimate_opo_hours ?? 0;
       const r = alloc.opo_analyst_ratio ?? 0.5;
-      const hours =
-        emp.role === 'analyst' || emp.role === 'RP'
+      const role = emp.role;
+      const personalLoad =
+        role === 'analyst' ||
+        role === 'RP' ||
+        role === 'project_manager' ||
+        role === 'consultant'
           ? ea + eo * r
-          : emp.role === 'dev'
+          : role === 'dev'
             ? ed + eo * (1 - r)
-            : emp.role === 'qa'
+            : role === 'qa'
               ? eq
-              : emp.role === 'consultant'
-                ? ea + ed + eq + eo
-                : 0;
-      result[targetId] = (result[targetId] ?? 0) + hours;
+              : 0;
+      result[emp.employee_id] = (result[emp.employee_id] ?? 0) + personalLoad;
     }
     return result;
   }, [allocations, resourceBase]);
 
-  // Потребность по роли исполнителя (РП, консультант и пр. не сваливаются в пул аналитика)
-  const demandByEmployeeRole = useMemo(() => {
-    const result: Record<string, number> = {};
-    for (const emp of resourceBase?.employees ?? []) {
-      const hours = demandByEmployee[emp.employee_id] ?? 0;
-      if (emp.role) {
-        result[emp.role] = (result[emp.role] ?? 0) + hours;
-      }
-    }
-    return result;
-  }, [demandByEmployee, resourceBase]);
+  // Потребность по ролям: часы каждого типа работ всегда падают в свой пул
+  // (analyst / dev / qa) независимо от ответственного. Используем общую
+  // утилиту, чтобы поведение совпадало с расчётом дефицита на странице
+  // «Сценарии» и в карточке «Сводка по ресурсу».
+  const demandByEmployeeRole = useMemo(
+    () =>
+      resourceBase?.employees
+        ? demandByAssigneeRole(allocations, resourceBase.employees)
+        : ({} as Record<string, number>),
+    [allocations, resourceBase],
+  );
 
   if (!resourceBase) {
     return (
