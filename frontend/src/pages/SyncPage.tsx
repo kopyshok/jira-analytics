@@ -1008,16 +1008,13 @@ function SyncControls() {
   const reloadSince = useGenericSetting('worklog_reload_since_date');
   const saveReloadSince = useSaveGenericSetting();
   const reload = useReloadWorklogs();
-  const [sinceDate, setSinceDate] = useState<Dayjs>(() => dayjs('2026-01-01'));
-  const [sinceHydrated, setSinceHydrated] = useState(false);
+  const storedSinceDate = useMemo(
+    () => dayjs(reloadSince.data?.value || '2026-01-01'),
+    [reloadSince.data?.value],
+  );
+  const [selectedSinceDate, setSelectedSinceDate] = useState<Dayjs | null>(null);
+  const sinceDate = selectedSinceDate ?? storedSinceDate;
   const [reloadProgress, setReloadProgress] = useState<WorklogReloadProgress | null>(null);
-
-  useEffect(() => {
-    if (sinceHydrated || reloadSince.data === undefined) return;
-    const val = reloadSince.data?.value;
-    if (val) setSinceDate(dayjs(val));
-    setSinceHydrated(true);
-  }, [sinceHydrated, reloadSince.data]);
 
   const handleReload = () => {
     const iso = sinceDate.format('YYYY-MM-DD');
@@ -1228,7 +1225,7 @@ function SyncControls() {
           <Space wrap>
             <DatePicker
               value={sinceDate}
-              onChange={(d) => d && setSinceDate(d)}
+              onChange={(d) => d && setSelectedSinceDate(d)}
               format="DD.MM.YYYY"
               allowClear={false}
               disabled={reload.isPending || update.isPending}

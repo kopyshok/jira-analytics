@@ -693,7 +693,7 @@ class SyncService:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
-            "statuscategorychangedate",
+            "statuscategorychangedate", "duedate",
         ]
         fields = base_fields + list(extra_fields)
 
@@ -804,7 +804,7 @@ class SyncService:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
-            "statuscategorychangedate",
+            "statuscategorychangedate", "duedate",
         ]
         request_fields = base_fields + list(extra_fields)
 

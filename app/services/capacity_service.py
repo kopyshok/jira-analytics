@@ -16,7 +16,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Absence, Employee, Worklog
+from app.models import Absence, Employee, RoleCapacityRule, Worklog
 from app.services.production_calendar_service import ProductionCalendarService
 
 
@@ -90,6 +90,54 @@ class CapacityService:
         self.production_calendar = (
             production_calendar or ProductionCalendarService(db)
         )
+
+    def copy_role_rules_to_quarter(
+        self,
+        from_year: int,
+        from_quarter: int,
+        to_year: int,
+        to_quarter: int,
+    ) -> int:
+        """Скопировать шаблон правил из одного квартала в другой."""
+        source_rules = (
+            self.db.query(RoleCapacityRule)
+            .filter(
+                RoleCapacityRule.year == from_year,
+                RoleCapacityRule.quarter == from_quarter,
+            )
+            .all()
+        )
+        if not source_rules:
+            raise ValueError("Source quarter has no rules")
+
+        target_rules = (
+            self.db.query(RoleCapacityRule)
+            .filter(
+                RoleCapacityRule.year == to_year,
+                RoleCapacityRule.quarter == to_quarter,
+            )
+            .all()
+        )
+        if target_rules:
+            raise RulesConflict([
+                {
+                    "id": rule.id,
+                    "role": rule.role,
+                    "work_type_id": rule.work_type_id,
+                }
+                for rule in target_rules
+            ])
+
+        for rule in source_rules:
+            self.db.add(RoleCapacityRule(
+                year=to_year,
+                quarter=to_quarter,
+                role=rule.role,
+                work_type_id=rule.work_type_id,
+                percent_of_norm=rule.percent_of_norm,
+            ))
+        self.db.commit()
+        return len(source_rules)
 
     # === Календарь ===
 

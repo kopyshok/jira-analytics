@@ -2,9 +2,9 @@
 
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from app.models import Project
+from app.models import Issue, Project
 from app.services.sync_service import SyncService, SyncStats
 from app.connectors.schemas import (
     JiraIssueFieldsSchema,
@@ -261,6 +261,87 @@ class TestSyncIssuePlannedHoursExtraction:
         assert issue.impact == "medium"
         assert issue.risk == "medium"
 
+    @pytest.mark.asyncio
+    async def test_refresh_issues_requests_and_saves_due_date(self, db_session):
+        """Targeted refresh должен запрашивать и сохранять due date."""
+        proj = Project(jira_project_id="p4", key="RFA", name="RFA")
+        issue = Issue(
+            jira_issue_id="10004",
+            key="RFA-126",
+            summary="Old",
+            issue_type="RFA",
+            status="Open",
+            project=proj,
+        )
+        db_session.add_all([proj, issue])
+        db_session.commit()
+
+        captured_fields: list[str] = []
+        refreshed = _make_issue_schema_with_extra(
+            jira_id="10004",
+            key="RFA-126",
+            project_key="RFA",
+            project_id="p4",
+            extra_fields={"duedate": "2026-06-30"},
+        )
+
+        mock_jira = MagicMock()
+
+        async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+            captured_fields.extend(fields)
+            yield refreshed
+
+        mock_jira.iter_issues = fake_iter_issues
+
+        svc = SyncService(db_session, mock_jira)
+        matched, total = await svc.refresh_issues_by_keys(["RFA-126"])
+
+        updated = svc.issue_repo.get_by_field("jira_issue_id", "10004")
+        assert matched == 1
+        assert total == 1
+        assert "duedate" in captured_fields
+        assert updated.due_date.isoformat() == "2026-06-30T00:00:00"
+
+    @pytest.mark.asyncio
+    async def test_team_sync_requests_and_saves_due_date(self, db_session):
+        """Team sync должен запрашивать и сохранять due date."""
+        from app.models import AppSetting, ScopeProject
+
+        db_session.add_all([
+            AppSetting(key="jira_team_field_id", value="customfield_11526"),
+            ScopeProject(jira_project_key="RFA", is_enabled=True),
+            Project(jira_project_id="p5", key="RFA", name="RFA"),
+        ])
+        db_session.commit()
+
+        captured_fields: list[str] = []
+        synced = _make_issue_schema_with_extra(
+            jira_id="10005",
+            key="RFA-127",
+            project_key="RFA",
+            project_id="p5",
+            extra_fields={
+                "customfield_11526": {"value": "Team A"},
+                "duedate": "2026-07-15",
+            },
+        )
+
+        mock_jira = MagicMock()
+
+        async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+            captured_fields.extend(fields)
+            yield synced
+
+        mock_jira.iter_issues = fake_iter_issues
+
+        svc = SyncService(db_session, mock_jira)
+        report = await svc.sync_team_issues(["Team A"])
+
+        created = svc.issue_repo.get_by_field("jira_issue_id", "10005")
+        assert report["Team A"]["matched"] == 1
+        assert "duedate" in captured_fields
+        assert created.due_date.isoformat() == "2026-07-15T00:00:00"
+
 
 class TestSyncIssuesParentLinking:
     """Regression tests for parent_id linking on out-of-order sync (Bug #3)."""
@@ -296,7 +377,7 @@ class TestSyncIssuesParentLinking:
 
         mock_jira = MagicMock()
 
-        async def fake_iter(project_keys, since):  # noqa: ARG001
+        async def fake_iter(project_keys, since, extra_fields=None):  # noqa: ARG001
             yield subtask
             yield epic
 

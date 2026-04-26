@@ -271,6 +271,14 @@ class TestRoleCapacityRulesCRUD:
         assert res.status_code == 409
         assert "conflicts" in res.json()["detail"]
 
+    def test_copy_to_quarter_empty_source_404(self, client):
+        res = client.post("/api/v1/capacity/role-rules/copy-to-quarter", json={
+            "from_year": 2026, "from_quarter": 1,
+            "to_year": 2026, "to_quarter": 2,
+        })
+
+        assert res.status_code == 404
+
 
 # ──────────────────── Employee overrides (batch v3) ────────────────────
 

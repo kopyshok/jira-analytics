@@ -60,6 +60,15 @@ def _set_setting(db: Session, key: str, value: Optional[str]) -> None:
         db.add(AppSetting(key=key, value=value))
 
 
+def _is_allowed_generic_key(key: str) -> bool:
+    """Limit generic settings to non-secret UI/runtime keys."""
+    return (
+        key.startswith("ui_")
+        or key == "worklog_reload_since_date"
+        or (key.startswith("jira_") and key.endswith("_field_id"))
+    )
+
+
 # --- Endpoints ---
 
 @router.get("/jira", response_model=JiraSettingsResponse)
@@ -96,6 +105,8 @@ async def save_jira_settings(
 @router.put("/generic")
 async def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db)):
     """Сохранить произвольную настройку (key → value)."""
+    if not _is_allowed_generic_key(body.key):
+        raise HTTPException(status_code=403, detail="Setting key is not allowed")
     _set_setting(db, body.key, body.value)
     db.commit()
     return {"key": body.key, "ok": True}
@@ -104,6 +115,8 @@ async def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db
 @router.get("/generic/{key}")
 async def get_generic_setting(key: str, db: Session = Depends(get_db)):
     """Прочитать произвольную настройку по ключу."""
+    if not _is_allowed_generic_key(key):
+        raise HTTPException(status_code=403, detail="Setting key is not allowed")
     return {"key": key, "value": _get_setting(db, key)}
 
 

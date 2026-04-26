@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useSyncStatus } from '../../hooks/useSync';
 import { DARK_THEME } from '../../utils/constants';
 import { timeAgo } from '../../utils/format';
@@ -8,6 +9,14 @@ import { timeAgo } from '../../utils/format';
  */
 export default function SyncIndicator() {
   const { data } = useSyncStatus();
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    update();
+    const timer = window.setInterval(update, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const hasError = data?.some((r) => r.last_error) ?? false;
   const lastSyncIso = data
@@ -16,15 +25,15 @@ export default function SyncIndicator() {
     .sort()
     .at(-1) ?? null;
 
-  const now = Date.now();
-  const ageHours = lastSyncIso ? (now - new Date(lastSyncIso).getTime()) / 3_600_000 : null;
+  const nowDate = now === null ? null : new Date(now);
+  const ageHours = lastSyncIso && now !== null ? (now - new Date(lastSyncIso).getTime()) / 3_600_000 : null;
   const stale = ageHours !== null && ageHours > 6;
 
   const { dot, label, text } = (() => {
     if (hasError) return { dot: DARK_THEME.amber, label: 'Ошибка синхронизации', text: DARK_THEME.amber };
     if (lastSyncIso === null) return { dot: DARK_THEME.textHint, label: 'Нет данных', text: DARK_THEME.textMuted };
-    if (stale) return { dot: DARK_THEME.textHint, label: timeAgo(lastSyncIso), text: DARK_THEME.textMuted };
-    return { dot: DARK_THEME.cyanPrimary, label: timeAgo(lastSyncIso), text: DARK_THEME.textSecondary };
+    if (stale) return { dot: DARK_THEME.textHint, label: nowDate ? timeAgo(lastSyncIso, nowDate) : '—', text: DARK_THEME.textMuted };
+    return { dot: DARK_THEME.cyanPrimary, label: nowDate ? timeAgo(lastSyncIso, nowDate) : '—', text: DARK_THEME.textSecondary };
   })();
 
   return (
