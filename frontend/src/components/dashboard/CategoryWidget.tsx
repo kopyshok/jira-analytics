@@ -6,17 +6,18 @@ function Treemap({ items, totalHours }: { items: CategoryMetaItem[]; totalHours:
   if (!items.length) return <Empty description="Нет данных" />;
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, width: '100%', minHeight: 160 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', alignContent: 'flex-start', gap: 4, width: '100%' }}>
       {items.map((item) => {
         const pct = totalHours > 0 ? item.hours / totalHours : 0;
         const minW = pct > 0.15 ? 120 : pct > 0.07 ? 80 : 60;
+        const h = pct > 0.25 ? 110 : pct > 0.15 ? 85 : pct > 0.08 ? 65 : 50;
         return (
           <div
             key={item.key}
             title={`${item.label}: ${formatHours(item.hours)} ч (${item.pct.toFixed(1)}%)`}
             style={{
               flex: `${pct * 100} 0 ${minW}px`,
-              minHeight: 56,
+              height: h,
               background: `${item.color}33`,
               border: `1.5px solid ${item.color}66`,
               borderRadius: 8,
