@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Row, Col, App, Space, Button, Collapse, Spin, Table, Tag } from 'antd';
+import { Row, Col, App, Space, Button } from 'antd';
 import { SyncOutlined } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import QuarterPicker from '../components/shared/QuarterPicker';
@@ -8,20 +8,18 @@ import ExportButtons from '../components/shared/ExportButtons';
 import ProjectsWidget from '../components/dashboard/ProjectsWidget';
 import NormWorkWidget from '../components/dashboard/NormWorkWidget';
 import CategoryWidget from '../components/dashboard/CategoryWidget';
-import { useSyncStatus, useSyncMutation } from '../hooks/useSync';
+import { useSyncMutation } from '../hooks/useSync';
 import { useDashboardProjects, useDashboardNormWork, useDashboardCategories } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
 import { currentQuarterPeriod } from '../types/api';
-import type { QuarterPeriod, SyncStatusResponse } from '../types/api';
+import type { QuarterPeriod } from '../types/api';
 import { useFactFilter } from '../hooks/useFactFilter';
-import { formatDate } from '../utils/format';
 
 export default function DashboardPage() {
   const { notification } = App.useApp();
   const [period, setPeriod] = useState<QuarterPeriod>(currentQuarterPeriod);
   const { queryParams: teamParams } = useFactFilter();
   const syncFull = useSyncMutation('full');
-  const { data: syncStatus, isLoading: syncLoading } = useSyncStatus();
 
   const { data: projects, isLoading: projLoading } = useDashboardProjects(period);
   const { data: normWork, isLoading: normLoading } = useDashboardNormWork(period);
@@ -71,26 +69,6 @@ export default function DashboardPage() {
         </Col>
       </Row>
 
-      <Collapse
-        items={[{
-          key: 'sync',
-          label: 'Статус синхронизации',
-          children: syncLoading ? <Spin /> : (
-            <Table<SyncStatusResponse>
-              dataSource={syncStatus}
-              rowKey="entity"
-              pagination={false}
-              size="small"
-              scroll={{ x: true }}
-              columns={[
-                { title: 'Сущность', dataIndex: 'entity' },
-                { title: 'Последняя синхронизация', dataIndex: 'last_sync', render: (v: string | null) => formatDate(v) },
-                { title: 'Статус', dataIndex: 'last_error', render: (v: string | null) => v ? <Tag color="red">Ошибка</Tag> : <Tag color="green">OK</Tag> },
-              ]}
-            />
-          ),
-        }]}
-      />
     </div>
   );
 }

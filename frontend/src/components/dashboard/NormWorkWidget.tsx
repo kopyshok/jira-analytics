@@ -26,17 +26,17 @@ function BulletBar({ item }: { item: NormWorkItem }) {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '160px 1fr 90px',
+        gridTemplateColumns: '150px 1fr 80px',
         alignItems: 'center',
-        gap: 12,
-        padding: '8px 0',
+        gap: 10,
+        padding: '5px 0',
         borderBottom: '1px solid rgba(28,51,88,.4)',
       }}
     >
       <div style={{ fontSize: 12, color: '#e6edf7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {item.label}
       </div>
-      <div style={{ position: 'relative', height: 16, background: '#1c3358', borderRadius: 4, overflow: 'visible' }}>
+      <div style={{ position: 'relative', height: 12, background: '#1c3358', borderRadius: 4, overflow: 'visible' }}>
         {/* fact fill — up to target line */}
         <div style={{
           position: 'absolute', top: 0, left: 0,
@@ -57,7 +57,7 @@ function BulletBar({ item }: { item: NormWorkItem }) {
           width: 2, background: '#fff', borderRadius: 1,
         }} />
       </div>
-      <div style={{ textAlign: 'right', fontSize: 12 }}>
+      <div style={{ textAlign: 'right', fontSize: 11 }}>
         <span style={{ color, fontWeight: 600 }}>{item.pct.toFixed(0)}%</span>
         <div style={{ color: '#7e94b8', fontSize: 10 }}>
           {formatHours(item.fact_hours)}/{formatHours(item.plan_hours)} ч
