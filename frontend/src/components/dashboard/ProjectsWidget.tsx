@@ -118,14 +118,10 @@ export default function ProjectsWidget({ data, loading }: Props) {
               onClick={() => navigate(`/analytics?project=${item.issue_key}`)}
             >
               {item.days_overdue != null ? (
-                <Tag color="red" style={{ fontSize: 10, margin: 0 }}>
-                  просрочен {item.days_overdue}д
-                </Tag>
-              ) : (
-                <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>
-                  тишина {item.days_silent}д
-                </Tag>
-              )}
+                <Tag color="red" style={{ fontSize: 10, margin: 0 }}>просрочен {item.days_overdue}д</Tag>
+              ) : item.days_silent != null ? (
+                <Tag color="orange" style={{ fontSize: 10, margin: 0 }}>тишина {item.days_silent}д</Tag>
+              ) : null}
               <span style={{ color: '#fff', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.title}
               </span>

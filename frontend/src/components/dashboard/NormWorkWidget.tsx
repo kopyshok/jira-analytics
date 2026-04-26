@@ -15,8 +15,11 @@ function BulletBar({ item }: { item: NormWorkItem }) {
   const color = barColor(item.pct);
   // target line at 66% of track width (leaves 34% room for overrun)
   const targetPct = 66;
-  const fillWidth = item.plan_hours > 0
-    ? Math.min(100, (item.fact_hours / item.plan_hours) * targetPct)
+  const factFillWidth = item.plan_hours > 0
+    ? Math.min(targetPct, (item.fact_hours / item.plan_hours) * targetPct)
+    : 0;
+  const overrunWidth = item.plan_hours > 0 && item.fact_hours > item.plan_hours
+    ? Math.min(100 - targetPct, ((item.fact_hours - item.plan_hours) / item.plan_hours) * targetPct)
     : 0;
 
   return (
@@ -34,30 +37,25 @@ function BulletBar({ item }: { item: NormWorkItem }) {
         {item.label}
       </div>
       <div style={{ position: 'relative', height: 16, background: '#1c3358', borderRadius: 4, overflow: 'visible' }}>
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            height: '100%',
-            width: `${fillWidth}%`,
-            background: color,
-            borderRadius: 4,
-            transition: 'width .3s',
-          }}
-        />
+        {/* fact fill — up to target line */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0,
+          height: '100%', width: `${factFillWidth}%`,
+          background: color, borderRadius: 4, transition: 'width .3s',
+        }} />
+        {/* overrun — past target line */}
+        {overrunWidth > 0 && (
+          <div style={{
+            position: 'absolute', top: 0, left: `${targetPct}%`,
+            height: '100%', width: `${overrunWidth}%`,
+            background: '#ff4d4f', borderRadius: '0 4px 4px 0', transition: 'width .3s',
+          }} />
+        )}
         {/* target line */}
-        <div
-          style={{
-            position: 'absolute',
-            top: -3,
-            bottom: -3,
-            left: `${targetPct}%`,
-            width: 2,
-            background: '#fff',
-            borderRadius: 1,
-          }}
-        />
+        <div style={{
+          position: 'absolute', top: -3, bottom: -3, left: `${targetPct}%`,
+          width: 2, background: '#fff', borderRadius: 1,
+        }} />
       </div>
       <div style={{ textAlign: 'right', fontSize: 12 }}>
         <span style={{ color, fontWeight: 600 }}>{item.pct.toFixed(0)}%</span>
