@@ -82,8 +82,7 @@ def _parse_jira_date(raw: Optional[str]) -> Optional[datetime]:
     if not raw:
         return None
     try:
-        from datetime import date as _date
-        d = _date.fromisoformat(raw)
+        d = date.fromisoformat(raw)
         return datetime(d.year, d.month, d.day)
     except (ValueError, TypeError):
         return None
