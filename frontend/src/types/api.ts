@@ -580,7 +580,7 @@ export interface ProductionCalendarSyncResponse {
 export interface QuarterPeriod {
   year: number;
   quarter: 1 | 2 | 3 | 4;
-  month?: number; // optional: month within the quarter (1-12)
+  month?: number; // if set, must be a month belonging to the selected quarter (enforced by QuarterPicker)
 }
 
 export function periodToParams(p: QuarterPeriod): Record<string, string> {
