@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, App, Space, Button } from 'antd';
 import { SyncOutlined } from '@ant-design/icons';
-import PageHeader from '../components/shared/PageHeader';
 import QuarterPicker from '../components/shared/QuarterPicker';
 import FactFilterBar from '../components/dashboard/FactFilterBar';
 import ExportButtons from '../components/shared/ExportButtons';
@@ -25,14 +24,8 @@ export default function DashboardPage() {
   const { data: normWork, isLoading: normLoading } = useDashboardNormWork(period);
   const { data: categories, isLoading: catLoading } = useDashboardCategories(period);
 
-  const subtitle = period.month
-    ? `${period.year} Q${period.quarter} · месяц ${period.month}`
-    : `${period.year} Q${period.quarter}`;
-
   return (
     <div>
-      <PageHeader eyebrow="Обзор" title="Дашборд" subtitle={subtitle} />
-
       <Space wrap style={{ marginBottom: 24 }}>
         <QuarterPicker value={period} onChange={setPeriod} />
         <FactFilterBar />
