@@ -10,6 +10,8 @@ from typing import Callable, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from croniter import croniter
 
+from app.connectors.jira_client import JiraClient  # noqa: F401 — for patch target in tests
+
 logger = logging.getLogger(__name__)
 
 
@@ -115,15 +117,9 @@ async def scheduled_pipeline_runner(*, schedule_id: str, mode: str, team: Option
     Открывает собственную DB-сессию, проверяет lock (skip-if-running),
     создаёт SyncRun, прогоняет pipeline и финализирует run.
     """
-    from app.connectors.jira_client import JiraClient
     from app.repositories.sync_run import SyncRunRepository
     from app.repositories.sync_schedule import SyncScheduleRepository
     from app.services.sync_lock import SyncLock
-    from app.services.sync_pipeline import PipelineOrchestrator, build_pipeline
-    from app.services.mapping_service import MappingService
-    from app.services.production_calendar_service import ProductionCalendarService
-    from app.services.sync_service import SyncService
-    from app.services.event_bus import get_event_bus
 
     db = _get_db_session()
     try:
