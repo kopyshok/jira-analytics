@@ -167,7 +167,7 @@ const IncludeCell = memo(function IncludeCell({
 const tableComponents = { header: { cell: ResizableTitle } };
 const tableScroll = { y: 600 };
 
-function CategoryConfigTab() {
+export function CategoryConfigTab() {
   const { notification, message } = App.useApp();
   const qc = useQueryClient();
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);

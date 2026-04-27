@@ -8,6 +8,7 @@ import {
   UnorderedListOutlined,
   FundProjectionScreenOutlined,
   SettingOutlined,
+  TagsOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
@@ -36,7 +37,8 @@ const items: MenuProps['items'] = [
     type: 'group',
     label: 'ДАННЫЕ',
     children: [
-      { key: '/sync', icon: <SyncOutlined />, label: 'Задачи / синк' },
+      { key: '/sync', icon: <SyncOutlined />, label: 'Синхронизация' },
+      { key: '/categories', icon: <TagsOutlined />, label: 'Категории задач' },
       { key: '/settings', icon: <SettingOutlined />, label: 'Настройки' },
     ],
   },
