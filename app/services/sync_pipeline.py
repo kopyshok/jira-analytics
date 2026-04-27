@@ -176,19 +176,47 @@ class WorklogsDeltaStage(Stage):
         self.svc = sync_svc
 
     async def run(self, ctx: dict) -> dict:
-        from datetime import date, timedelta
-        since = ctx.get("since")
-        if since is None:
-            # Дефолт: 7 дней назад
-            since = date.today() - timedelta(days=7)
-        elif isinstance(since, str):
-            since = date.fromisoformat(since)
+        from datetime import date, datetime, timedelta, timezone
+        fallback_since = date.today() - timedelta(days=7)
+        explicit_since = ctx.get("since")
+
+        if explicit_since is not None:
+            # Явное значение из PipelineRequest — использовать как есть
+            if isinstance(explicit_since, str):
+                since = date.fromisoformat(explicit_since)
+            else:
+                since = explicit_since
+        else:
+            # Читаем cursor из sync_state
+            team_or_empty: str = ctx.get("team") or ""
+            cursor_state = self.svc._get_sync_state("worklogs", scope=team_or_empty)
+            if cursor_state is not None and cursor_state.last_success_at is not None:
+                # Overlap 24h — покрывает back-dated ворклоги за тот же день
+                cursor_dt = cursor_state.last_success_at
+                if cursor_dt.tzinfo is None:
+                    cursor_dt = cursor_dt.replace(tzinfo=timezone.utc)
+                overlap_since = (cursor_dt - timedelta(hours=24)).date()
+                since = max(overlap_since, fallback_since)
+            else:
+                since = fallback_since
 
         kwargs: dict = {"since": since}
+        team_or_empty = ctx.get("team") or ""
         if ctx.get("team"):
             kwargs["teams"] = [ctx["team"]]
 
+        # Фиксируем момент начала run — cursor пишется по этой точке,
+        # чтобы следующий run не пропустил ворклоги, появившиеся в процессе.
+        started_at = datetime.now(tz=timezone.utc)
+
         result = await self.svc.update_worklogs_since(**kwargs)
+
+        # Успешно завершились — обновить cursor (scope = team или "")
+        self.svc._update_sync_state(
+            "worklogs",
+            last_success=started_at.replace(tzinfo=None),  # хранится UTC naive
+            scope=team_or_empty,
+        )
 
         # result — UpdateStats (dataclass) или dict (в моках)
         if isinstance(result, dict):
