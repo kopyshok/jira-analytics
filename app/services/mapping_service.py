@@ -174,6 +174,33 @@ class MappingService:
         logger.info(f"Worklog categories recalculated: {count}")
         return count
 
+    def recalculate_for_issues(self, issue_ids: list[str]) -> int:
+        """Пересчитать категории только для указанных issue_ids.
+
+        Возвращает количество затронутых issues. Используется team-mode pipeline,
+        чтобы не гонять полный recalculate_all для пары сотен задач.
+        """
+        if not issue_ids:
+            return 0
+        issues = self.db.query(Issue).filter(Issue.id.in_(issue_ids)).all()
+        affected = 0
+        backlog = BacklogService(self.db)
+        for issue in issues:
+            resolution = self.resolver.resolve_for_issue(issue)
+            category_changed = issue.category != resolution.category_code
+            if category_changed:
+                issue.category = resolution.category_code
+                backlog.sync_from_issue(issue)
+                affected += 1
+            self._upsert_mapping(
+                entity_type="issue",
+                entity_id=issue.id,
+                category=resolution.category_code,
+                source_rule=resolution.source,
+            )
+        self.db.commit()
+        return affected
+
     def recalculate_all(self) -> MappingStats:
         """Полный пересчёт: сначала задачи, затем worklog.
 

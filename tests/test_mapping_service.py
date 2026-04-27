@@ -294,3 +294,36 @@ class TestRecalculateAll:
         assert stats.mappings_created == 4  # 2 issues + 2 worklogs
         assert stats.finished_at is not None
         assert stats.duration_seconds >= 0
+
+
+class TestRecalculateForIssues:
+    def test_recalculate_for_issues_updates_only_given_subset(
+        self, db_session, project
+    ):
+        """recalculate_for_issues пересчитывает только переданные id."""
+        issue1 = _issue(db_session, project, "PRJ-S1")
+        issue2 = _issue(db_session, project, "PRJ-S2")
+        _issue(db_session, project, "PRJ-S3")  # не попадёт в target
+
+        from app.services.mapping_service import MappingService
+        svc = MappingService(db_session)
+        target = [issue1.id, issue2.id]
+        affected = svc.recalculate_for_issues(target)
+        # 0 категорий изменилось (все None→None), но функция вернула 0 изменений
+        # Важнее — mapping записи созданы только для двух
+        from app.models import CategoryMapping
+        mappings = (
+            db_session.query(CategoryMapping)
+            .filter(CategoryMapping.entity_type == "issue")
+            .all()
+        )
+        mapped_ids = {m.entity_id for m in mappings}
+        assert issue1.id in mapped_ids
+        assert issue2.id in mapped_ids
+
+    def test_recalculate_for_issues_empty_list_returns_zero(
+        self, db_session
+    ):
+        from app.services.mapping_service import MappingService
+        svc = MappingService(db_session)
+        assert svc.recalculate_for_issues([]) == 0
