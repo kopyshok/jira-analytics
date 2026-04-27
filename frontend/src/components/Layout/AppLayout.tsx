@@ -1,18 +1,27 @@
-import { useState } from 'react';
-import { Outlet } from 'react-router';
-import { Layout } from 'antd';
+import { useState, useCallback } from 'react';
+import { Outlet, useNavigate } from 'react-router';
+import { Layout, Button } from 'antd';
+import { LogoutOutlined } from '@ant-design/icons';
 import SideMenu from './SideMenu';
 import LogoMark from './LogoMark';
 import SyncIndicator from './SyncIndicator';
 import BugReportButton from '../BugReportButton';
 import { DARK_THEME } from '../../utils/constants';
 import { useEventStream } from '../../hooks/useEventStream';
+import { useAuth } from '../../hooks/useAuth';
 
 const { Header, Sider, Content } = Layout;
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   useEventStream();
+
+  const handleLogout = useCallback(() => {
+    logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
@@ -52,7 +61,24 @@ export default function AppLayout() {
           >
             Анализ Jira · Планирование квартала
           </div>
-          <SyncIndicator />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SyncIndicator />
+            {user && (
+              <>
+                <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
+                  {user.display_name}
+                </span>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<LogoutOutlined />}
+                  onClick={handleLogout}
+                  style={{ color: 'rgba(255,255,255,0.35)' }}
+                  title="Выйти"
+                />
+              </>
+            )}
+          </div>
         </Header>
         <Content
           style={{
