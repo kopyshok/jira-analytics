@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { Row, Col, App, Space, Button } from 'antd';
-import { SyncOutlined } from '@ant-design/icons';
+import { Row, Col, Space } from 'antd';
 import QuarterPicker from '../components/shared/QuarterPicker';
 import FactFilterBar from '../components/dashboard/FactFilterBar';
 import ExportButtons from '../components/shared/ExportButtons';
 import ProjectsWidget from '../components/dashboard/ProjectsWidget';
 import NormWorkWidget from '../components/dashboard/NormWorkWidget';
 import CategoryWidget from '../components/dashboard/CategoryWidget';
-import { useSyncMutation } from '../hooks/useSync';
 import { useDashboardProjects, useDashboardNormWork, useDashboardCategories } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
 import { currentQuarterPeriod } from '../types/api';
@@ -15,10 +13,8 @@ import type { QuarterPeriod } from '../types/api';
 import { useFactFilter } from '../hooks/useFactFilter';
 
 export default function DashboardPage() {
-  const { notification } = App.useApp();
   const [period, setPeriod] = useState<QuarterPeriod>(currentQuarterPeriod);
   const { queryParams: teamParams } = useFactFilter();
-  const syncFull = useSyncMutation('full');
 
   const { data: projects, isLoading: projLoading } = useDashboardProjects(period);
   const { data: normWork, isLoading: normLoading } = useDashboardNormWork(period);
@@ -33,18 +29,6 @@ export default function DashboardPage() {
           onXlsx={() => downloadAnalyticsXlsx(undefined, undefined, teamParams)}
           onPdf={() => downloadAnalyticsPdf(undefined, undefined, teamParams)}
         />
-        <Button
-          icon={<SyncOutlined spin={syncFull.isPending} />}
-          loading={syncFull.isPending}
-          onClick={() =>
-            syncFull.mutate(undefined, {
-              onSuccess: (res) => notification.success({ title: 'Синхронизация завершена', description: res.message }),
-              onError: (e) => notification.error({ title: 'Ошибка синхронизации', description: e.message }),
-            })
-          }
-        >
-          Синхронизация
-        </Button>
       </Space>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
