@@ -32,6 +32,7 @@ from app.models.scenario_revision_item import ScenarioRevisionItem
 from app.models.scenario_capacity_snapshot import ScenarioCapacitySnapshot
 from app.models.sync_schedule import SyncSchedule
 from app.models.sync_run import SyncRun
+from app.models.user import User, UserRole  # noqa: F401
 
 __all__ = [
     "TimestampMixin",
@@ -68,4 +69,6 @@ __all__ = [
     "ScenarioCapacitySnapshot",
     "SyncSchedule",
     "SyncRun",
+    "User",
+    "UserRole",
 ]
