@@ -22,6 +22,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const { access_token } = await apiLogin(values.email, values.password);
+      localStorage.setItem('auth_token', access_token);
       const profile = await getMe();
       login(access_token, profile);
       const redirect =
