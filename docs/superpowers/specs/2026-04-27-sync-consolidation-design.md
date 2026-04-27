@@ -177,7 +177,7 @@ next_run_at (datetime, для UI)
 created_at, updated_at
 ```
 
-**Дефолт-сиды (миграция 029):**
+**Дефолт-сиды (миграция 035):**
 
 | name | cron | mode |
 |---|---|---|
@@ -245,7 +245,7 @@ created_at, updated_at
 - `app/api/endpoints/events.py` — `GET /events/stream`
 - `app/repositories/sync_run.py`, `app/repositories/sync_schedule.py`
 - `app/models/sync_run.py`, `app/models/sync_schedule.py`
-- `alembic/versions/029_sync_pipeline.py` — таблицы + сиды
+- `alembic/versions/035_sync_pipeline.py` — таблицы + сиды
 
 **Дополнить файлы:**
 - `app/api/endpoints/sync.py` — новые маршруты:
@@ -301,7 +301,7 @@ created_at, updated_at
 - `frontend/src/components/TaskSectionsTab.tsx` (#10, #11) — это scope-конфиг, не sync
 - `frontend/src/components/ConnectionCard.tsx` (#9) — переехать в раздел «Дополнительно» хаба, либо остаться в `/settings`
 
-## Модели БД (миграция 029)
+## Модели БД (миграция 035)
 
 ```python
 class SyncRun(Base):
@@ -356,7 +356,7 @@ class SyncSchedule(Base):
 
 ## Rollout
 
-1. **PR 1 (бэк-фундамент):** миграция 029, модели, репозитории, EventBroadcaster, эндпоинт `/events/stream`. Не ломает ничего.
+1. **PR 1 (бэк-фундамент):** миграция 035, модели, репозитории, EventBroadcaster, эндпоинт `/events/stream`. Не ломает ничего.
 2. **PR 2 (pipeline):** PipelineOrchestrator, эндпоинты `/sync/pipeline`, `/sync/team/refresh`, `/sync/runs`. Старые эндпоинты живы.
 3. **PR 3 (scheduler):** SchedulerService в lifespan, `/sync/schedule` API, дефолт-сиды. Расписание включено сразу — PM получит автозапуск с первого деплоя.
 4. **PR 4 (фронт-хаб):** `SyncHubPage` под маршрутом `/sync` (старая `SyncPage` переезжает на `/sync-old`), глобальный `useEventStream()` в App.tsx, страница `/categories`.
