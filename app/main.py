@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.api.router import api_router
+from app.database import SessionLocal
+from app.repositories.sync_schedule import SyncScheduleRepository
+from app.services.scheduler import SchedulerService, scheduled_pipeline_runner
 
 settings = get_settings()
 
@@ -17,7 +20,23 @@ async def lifespan(app: FastAPI):
     print(f"Starting {settings.app_name} v{settings.app_version}")
     print(f"Debug mode: {settings.debug}")
     print(f"Database: {settings.database_url}")
+
+    # --- Scheduler ---
+    db = SessionLocal()
+    try:
+        schedules = SyncScheduleRepository(db).list_all()
+    finally:
+        db.close()
+
+    sched_svc = SchedulerService(trigger_runner=scheduled_pipeline_runner)
+    sched_svc.register_jobs(schedules)
+    sched_svc.start()
+    app.state.scheduler = sched_svc
+
     yield
+
+    # --- Shutdown ---
+    sched_svc.shutdown()
     print("Shutting down...")
 
 
