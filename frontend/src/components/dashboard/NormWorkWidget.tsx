@@ -1,19 +1,20 @@
-import { Card, Spin, Empty, Tooltip } from 'antd';
+import { useState } from 'react';
+import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import type { DashboardNormWorkResponse, NormWorkItem } from '../../types/api';
 import { formatHours } from '../../utils/format';
 
-const DEFAULT_THRESHOLDS = { warnAbove: 110, underBelow: 70 };
+interface Thresholds { warnAbove: number; underBelow: number; }
 
-function barColor(pct: number): string {
-  if (pct > DEFAULT_THRESHOLDS.warnAbove) return '#ff4d4f';
-  if (pct < DEFAULT_THRESHOLDS.underBelow) return '#faad14';
+// <underBelow → зелёный, underBelow..warnAbove → жёлтый, >warnAbove → красный
+function barColor(pct: number, t: Thresholds): string {
+  if (pct > t.warnAbove) return '#ff4d4f';
+  if (pct >= t.underBelow) return '#faad14';
   return '#52c41a';
 }
 
-function BulletBar({ item }: { item: NormWorkItem }) {
-  const color = barColor(item.pct);
-  // target line at 66% of track width (leaves 34% room for overrun)
+function BulletBar({ item, thresholds }: { item: NormWorkItem; thresholds: Thresholds }) {
+  const color = barColor(item.pct, thresholds);
   const targetPct = 66;
   const factFillWidth = item.plan_hours > 0
     ? Math.min(targetPct, (item.fact_hours / item.plan_hours) * targetPct)
@@ -26,40 +27,37 @@ function BulletBar({ item }: { item: NormWorkItem }) {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '150px 1fr 80px',
+        gridTemplateColumns: '160px 1fr 90px',
         alignItems: 'center',
-        gap: 10,
-        padding: '5px 0',
+        gap: 12,
+        padding: '8px 0',
         borderBottom: '1px solid rgba(28,51,88,.4)',
       }}
     >
-      <div style={{ fontSize: 12, color: '#e6edf7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: 14, color: '#e6edf7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {item.label}
       </div>
-      <div style={{ position: 'relative', height: 12, background: '#1c3358', borderRadius: 4, overflow: 'visible' }}>
-        {/* fact fill — up to target line */}
+      <div style={{ position: 'relative', height: 26, background: '#1c3358', borderRadius: 6, overflow: 'visible' }}>
         <div style={{
           position: 'absolute', top: 0, left: 0,
           height: '100%', width: `${factFillWidth}%`,
-          background: color, borderRadius: 4, transition: 'width .3s',
+          background: color, borderRadius: 6, transition: 'width .3s',
         }} />
-        {/* overrun — past target line */}
         {overrunWidth > 0 && (
           <div style={{
             position: 'absolute', top: 0, left: `${targetPct}%`,
             height: '100%', width: `${overrunWidth}%`,
-            background: '#ff4d4f', borderRadius: '0 4px 4px 0', transition: 'width .3s',
+            background: '#ff4d4f', borderRadius: '0 6px 6px 0', transition: 'width .3s',
           }} />
         )}
-        {/* target line */}
         <div style={{
-          position: 'absolute', top: -3, bottom: -3, left: `${targetPct}%`,
+          position: 'absolute', top: -4, bottom: -4, left: `${targetPct}%`,
           width: 2, background: '#fff', borderRadius: 1,
         }} />
       </div>
-      <div style={{ textAlign: 'right', fontSize: 11 }}>
-        <span style={{ color, fontWeight: 600 }}>{item.pct.toFixed(0)}%</span>
-        <div style={{ color: '#7e94b8', fontSize: 10 }}>
+      <div style={{ textAlign: 'right', fontSize: 13 }}>
+        <span style={{ color, fontWeight: 700 }}>{item.pct.toFixed(0)}%</span>
+        <div style={{ color: '#7e94b8', fontSize: 11, marginTop: 1 }}>
           {formatHours(item.fact_hours)}/{formatHours(item.plan_hours)} ч
         </div>
       </div>
@@ -72,42 +70,72 @@ interface Props {
   loading: boolean;
 }
 
+const DEFAULT_THRESHOLDS: Thresholds = { warnAbove: 110, underBelow: 70 };
+
 export default function NormWorkWidget({ data, loading }: Props) {
-  const extra = (
+  const [thresholds, setThresholds] = useState<Thresholds>(DEFAULT_THRESHOLDS);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form] = Form.useForm<Thresholds>();
+
+  const summaryExtra = data && !loading ? (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 24, fontSize: 15, color: '#7e94b8' }}>
+      <span>Σ план: <b style={{ color: '#fff', fontSize: 16 }}>{formatHours(data.total_plan)} ч</b></span>
+      <span>Σ факт: <b style={{ color: '#fff', fontSize: 16 }}>{formatHours(data.total_fact)} ч</b></span>
+      <span>Загрузка: <b style={{ color: barColor(data.total_pct, thresholds), fontSize: 16 }}>{data.total_pct.toFixed(0)}%</b></span>
+    </span>
+  ) : null;
+
+  const gearIcon = (
     <Tooltip title="Настройка порогов">
-      <SettingOutlined style={{ cursor: 'pointer', color: '#7e94b8' }} />
+      <SettingOutlined
+        style={{ cursor: 'pointer', color: '#7e94b8', fontSize: 16 }}
+        onClick={() => { form.setFieldsValue(thresholds); setModalOpen(true); }}
+      />
     </Tooltip>
   );
 
-  if (loading) return <Card title="Нормированные работы" extra={extra}><Spin /></Card>;
-  if (!data?.items.length) return <Card title="Нормированные работы" extra={extra}><Empty description="Нет данных" /></Card>;
+  const cardTitle = (
+    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 16 }}>
+      <span style={{ fontSize: 15, fontWeight: 600, color: '#e6edf7', whiteSpace: 'nowrap' }}>
+        Нормированные работы: план / факт
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 28, flex: 1, justifyContent: 'center' }}>
+        {summaryExtra}
+      </span>
+      {gearIcon}
+    </span>
+  );
+
+  if (loading) return <Card title="Нормированные работы"><Spin /></Card>;
+  if (!data?.items.length) return <Card title={cardTitle}><Empty description="Нет данных" /></Card>;
 
   return (
-    <Card title="Нормированные работы: план / факт" extra={extra}>
-      {data.items.map((item) => (
-        <BulletBar key={item.work_type_id} item={item} />
-      ))}
-      <div
-        style={{
-          display: 'flex',
-          gap: 24,
-          marginTop: 12,
-          paddingTop: 10,
-          borderTop: '1px solid #1c3358',
-          fontSize: 12,
-          color: '#7e94b8',
-        }}
+    <>
+      <Card title={cardTitle}>
+        {data.items.map((item) => (
+          <BulletBar key={item.work_type_id} item={item} thresholds={thresholds} />
+        ))}
+      </Card>
+
+      <Modal
+        title="Настройка порогов загрузки"
+        open={modalOpen}
+        onOk={() => form.validateFields().then(v => { setThresholds(v); setModalOpen(false); })}
+        onCancel={() => setModalOpen(false)}
+        okText="Применить"
+        cancelText="Отмена"
       >
-        <span>
-          Σ план: <b style={{ color: '#fff' }}>{formatHours(data.total_plan)} ч</b>
-        </span>
-        <span>
-          Σ факт: <b style={{ color: '#fff' }}>{formatHours(data.total_fact)} ч</b>
-        </span>
-        <span>
-          Загрузка: <b style={{ color: barColor(data.total_pct) }}>{data.total_pct.toFixed(0)}%</b>
-        </span>
-      </div>
-    </Card>
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label="Перегруз — выше, % (красный)" name="warnAbove"
+            rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
+            <InputNumber style={{ width: '100%' }} min={1} max={500} addonAfter="%" />
+          </Form.Item>
+          <Form.Item label="Недозагрузка — ниже, % (жёлтый)" name="underBelow"
+            rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
+            <InputNumber style={{ width: '100%' }} min={1} max={500} addonAfter="%" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
   );
 }

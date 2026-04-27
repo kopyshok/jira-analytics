@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
 from app.models import MandatoryWorkType, RoleCapacityRule, Category
+from app.services.resource_base_service import ResourceBaseService
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
@@ -589,8 +590,8 @@ class AnalyticsService:
         """Widget 2: план/факт по обязательным видам работ за квартал/месяц.
 
         Для каждого активного вида работ считает:
+        - plan_hours = из утверждённого сценария квартала (ResourceBaseService.compute_summary)
         - fact_hours = сумма ворклогов по задачам категорий, привязанных к данному виду работ
-        - plan_hours = total_fact * pct / 100, где pct берётся из глобального правила (role IS NULL)
         """
         period_start, period_end = quarter_to_dates(year, quarter, month)
         start_dt = datetime.combine(period_start, datetime.min.time())
@@ -614,28 +615,39 @@ class AnalyticsService:
         for code, wt_id in cat_rows:
             codes_by_work_type.setdefault(wt_id, []).append(code)
 
-        # 3. Общий факт за период (все задачи, любая категория)
-        total_fact_row = (
-            self.db.query(func.sum(Worklog.hours))
+        # 3. План из утверждённого сценария квартала
+        approved_scenario = (
+            self.db.query(PlanningScenario)
             .filter(
-                Worklog.started_at >= start_dt,
-                Worklog.started_at <= end_dt,
+                PlanningScenario.year == year,
+                PlanningScenario.quarter == f"Q{quarter}",
+                PlanningScenario.status == "approved",
             )
-            .scalar()
+            .order_by(PlanningScenario.updated_at.desc())
+            .first()
         )
-        total_fact_all: float = float(total_fact_row or 0)
-
-        # 4. Глобальные правила (role IS NULL) для данного квартала: work_type_id → pct
-        rule_rows = (
-            self.db.query(RoleCapacityRule.work_type_id, RoleCapacityRule.percent_of_norm)
-            .filter(
-                RoleCapacityRule.year == year,
-                RoleCapacityRule.quarter == quarter,
-                RoleCapacityRule.role.is_(None),
+        plan_by_work_type: dict[str, float] = {}
+        backlog_plan_hours: float = 0.0
+        if approved_scenario:
+            summary = ResourceBaseService(self.db).compute_summary(approved_scenario)
+            plan_by_work_type = {row.work_type_id: row.total_hours for row in summary.work_type_rows}
+            row = (
+                self.db.query(
+                    func.sum(
+                        func.coalesce(BacklogItem.estimate_analyst_hours, 0.0)
+                        + func.coalesce(BacklogItem.estimate_dev_hours, 0.0)
+                        + func.coalesce(BacklogItem.estimate_qa_hours, 0.0)
+                        + func.coalesce(BacklogItem.estimate_opo_hours, 0.0)
+                    )
+                )
+                .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+                .filter(
+                    ScenarioAllocation.scenario_id == approved_scenario.id,
+                    ScenarioAllocation.included_flag == True,  # noqa: E712
+                )
+                .scalar()
             )
-            .all()
-        )
-        pct_by_work_type: dict[str, float] = {r[0]: r[1] for r in rule_rows}
+            backlog_plan_hours = float(row or 0.0)
 
         # 5. Факт по видам работ — один групповой запрос вместо N запросов
         all_category_codes = [code for codes in codes_by_work_type.values() for code in codes]
@@ -658,8 +670,13 @@ class AnalyticsService:
         for wt in work_types:
             fact_hours = sum(fact_by_code.get(code, 0.0) for code in codes_by_work_type.get(wt.id, []))
 
-            pct_rule = pct_by_work_type.get(wt.id, 0.0)
-            plan_hours = round(total_fact_all * pct_rule / 100, 2)
+            if wt.id in plan_by_work_type:
+                plan_hours = round(plan_by_work_type[wt.id], 2)
+            elif fact_hours > 0 and backlog_plan_hours > 0:
+                # нет правила в сценарии, но есть факт → проектная работа
+                plan_hours = round(backlog_plan_hours, 2)
+            else:
+                plan_hours = 0.0
             pct_actual = round(fact_hours / plan_hours * 100, 1) if plan_hours > 0 else 0.0
 
             items.append(NormWorkItem(
@@ -670,6 +687,7 @@ class AnalyticsService:
                 pct=pct_actual,
             ))
 
+        items = [i for i in items if i.plan_hours > 0 or i.fact_hours > 0]
         total_plan = round(sum(i.plan_hours for i in items), 2)
         total_fact = round(sum(i.fact_hours for i in items), 2)
         total_pct = round(total_fact / total_plan * 100, 1) if total_plan > 0 else 0.0
