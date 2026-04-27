@@ -10,8 +10,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.connectors.jira_client import JiraClient, JiraClientError
 from app.database import get_db
@@ -152,9 +152,9 @@ def _recompute_total(item: BacklogItem) -> None:
 
 
 def _approved_scenarios_for(db: Session, item_id: str) -> List[ScenarioRef]:
-    """Return approved scenarios that reference this backlog item.
+    """Return approved scenarios where this backlog item is included (checked).
 
-    Empty list if the item is not allocated to any approved scenario.
+    Empty list if the item is not allocated/included in any approved scenario.
     """
     rows = (
         db.query(PlanningScenario.id, PlanningScenario.name)
@@ -162,6 +162,7 @@ def _approved_scenarios_for(db: Session, item_id: str) -> List[ScenarioRef]:
         .filter(
             ScenarioAllocation.backlog_item_id == item_id,
             PlanningScenario.status == "approved",
+            ScenarioAllocation.included_flag == True,
         )
         .distinct()
         .all()
@@ -221,9 +222,11 @@ async def list_backlog_items(
     - ``archived``: ``archived_at IS NOT NULL`` или статус done.
     - ``in_work``: включены в утверждённый сценарий или статус в работе.
     """
+    ParentIssue = aliased(Issue)
     query = (
         db.query(BacklogItem)
         .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
+        .outerjoin(ParentIssue, Issue.parent_id == ParentIssue.id)
         .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
     )
     if project_id is not None:
@@ -237,7 +240,10 @@ async def list_backlog_items(
         in_work_ids = (
             db.query(ScenarioAllocation.backlog_item_id)
             .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
-            .filter(PlanningScenario.status == "approved")
+            .filter(
+                PlanningScenario.status == "approved",
+                ScenarioAllocation.included_flag == True,
+            )
             .distinct()
             .scalar_subquery()
         )
@@ -261,7 +267,10 @@ async def list_backlog_items(
         in_work_ids = (
             db.query(ScenarioAllocation.backlog_item_id)
             .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
-            .filter(PlanningScenario.status == "approved")
+            .filter(
+                PlanningScenario.status == "approved",
+                ScenarioAllocation.included_flag == True,
+            )
             .distinct()
             .scalar_subquery()
         )
@@ -273,12 +282,22 @@ async def list_backlog_items(
             ),
         )
     elif view == "quarterly":
+        # Only root-level quarterly tasks — exclude children whose parent is also quarterly
+        not_quarterly_parent = or_(
+            Issue.parent_id.is_(None),
+            ParentIssue.id.is_(None),
+            and_(
+                func.coalesce(ParentIssue.assigned_category, "") != QUARTERLY_TASKS_CATEGORY,
+                func.coalesce(ParentIssue.category, "") != QUARTERLY_TASKS_CATEGORY,
+            ),
+        )
         query = query.filter(
             BacklogItem.archived_at.is_(None),
             or_(
                 Issue.assigned_category == QUARTERLY_TASKS_CATEGORY,
                 Issue.category == QUARTERLY_TASKS_CATEGORY,
             ),
+            not_quarterly_parent,
         )
 
     items = query.all()
