@@ -52,16 +52,16 @@ export function useEventStream() {
 
 function handleEvent(event: GlobalEvent, qc: ReturnType<typeof useQueryClient>) {
   switch (event.type) {
-    case 'entity_changed':
-      invalidateForEntity(event.entity, qc);
+    case 'entity_changed': {
+      const entities = event.entities ?? (event.entity ? [event.entity] : []);
+      entities.forEach((e) => invalidateForEntity(e, qc));
       break;
+    }
     case 'pipeline_done':
-      // Обновить историю запусков
       qc.invalidateQueries({ queryKey: ['sync', 'runs'] });
       qc.invalidateQueries({ queryKey: ['sync', 'status'] });
       break;
     case 'stage_done':
-      // Инкрементальные инвалидации по завершению стадий
       qc.invalidateQueries({ queryKey: ['sync', 'runs'] });
       break;
     default:
@@ -76,17 +76,31 @@ function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClien
       qc.invalidateQueries({ queryKey: ['analytics'] });
       qc.invalidateQueries({ queryKey: ['backlog'] });
       break;
+    case 'backlog':
+      qc.invalidateQueries({ queryKey: ['backlog'] });
+      qc.invalidateQueries({ queryKey: ['planning'] });
+      break;
+    case 'planning':
+      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: ['backlog'] });
+      break;
     case 'worklogs':
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
       break;
-    case 'projects':
-      qc.invalidateQueries({ queryKey: ['scope', 'projects'] });
+    case 'capacity':
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+      break;
+    case 'analytics':
+      qc.invalidateQueries({ queryKey: ['analytics'] });
       break;
     case 'employees':
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
+      break;
+    case 'projects':
+      qc.invalidateQueries({ queryKey: ['scope', 'projects'] });
       break;
     default:
       break;
