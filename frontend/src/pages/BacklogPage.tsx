@@ -506,7 +506,27 @@ export default function BacklogPage() {
       pagination={false}
       size="small"
       scroll={{ x: 1400 }}
-      columns={baseColumns(false)}
+      columns={[
+        ...baseColumns(false).filter((c) => !('dataIndex' in c && c.dataIndex === 'project_id')),
+        {
+          title: 'Сценарий',
+          key: 'scenario',
+          width: 180,
+          render: (_: unknown, r: BacklogItemResponse) => {
+            if (!r.approved_scenarios?.length)
+              return <span style={{ color: '#8faec8' }}>—</span>;
+            return (
+              <Space direction="vertical" size={2}>
+                {r.approved_scenarios.map((s) => (
+                  <Tag key={s.id} color="cyan" style={{ marginInlineEnd: 0 }}>
+                    {s.name}
+                  </Tag>
+                ))}
+              </Space>
+            );
+          },
+        },
+      ]}
     />
   );
 
