@@ -919,7 +919,8 @@ class JiraUserResponse(BaseModel):
 
 
 from app.repositories.sync_run import SyncRunRepository
-from app.schemas.sync_pipeline import SyncRunOut
+from app.repositories.sync_schedule import SyncScheduleRepository
+from app.schemas.sync_pipeline import SyncRunOut, SyncScheduleOut, SyncScheduleCreate, SyncScheduleUpdate
 
 
 @router.get("/runs", response_model=list[SyncRunOut])
@@ -940,6 +941,101 @@ def get_sync_run(run_id: str, db: Session = Depends(get_db)) -> SyncRunOut:
     if run is None:
         raise HTTPException(status_code=404, detail="Sync run not found")
     return SyncRunOut.model_validate(run)
+
+
+# === Schedule CRUD ===
+
+
+def _refresh_app_scheduler(db: Session, request: Request) -> None:
+    """Пересобрать jobs в SchedulerService после изменения расписаний.
+
+    Берёт SchedulerService из app.state (если есть) и вызывает register_jobs.
+    """
+    try:
+        sched_svc = request.app.state.scheduler
+    except AttributeError:
+        return
+    schedules = SyncScheduleRepository(db).list_all()
+    sched_svc.register_jobs(schedules)
+
+
+@router.get("/schedule", response_model=list[SyncScheduleOut])
+def list_schedules(db: Session = Depends(get_db)) -> list[SyncScheduleOut]:
+    """Список всех расписаний автозапуска pipeline."""
+    return [SyncScheduleOut.model_validate(s) for s in SyncScheduleRepository(db).list_all()]
+
+
+@router.post("/schedule", response_model=SyncScheduleOut, status_code=201)
+def create_schedule(
+    body: SyncScheduleCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> SyncScheduleOut:
+    """Создать новое расписание. Валидирует cron-выражение."""
+    from app.services.scheduler import SchedulerService
+
+    if not SchedulerService.is_valid_cron(body.cron_expr):
+        raise HTTPException(status_code=400, detail=f"Invalid cron expression: {body.cron_expr!r}")
+    schedule = SyncScheduleRepository(db).create(
+        name=body.name,
+        cron_expr=body.cron_expr,
+        mode=body.mode,
+        team=body.team,
+        enabled=body.enabled,
+    )
+    _refresh_app_scheduler(db, request)
+    return SyncScheduleOut.model_validate(schedule)
+
+
+@router.patch("/schedule/{schedule_id}", response_model=SyncScheduleOut)
+def update_schedule(
+    schedule_id: str,
+    body: SyncScheduleUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> SyncScheduleOut:
+    """Обновить расписание. Валидирует cron если передан."""
+    from app.services.scheduler import SchedulerService
+
+    if body.cron_expr is not None and not SchedulerService.is_valid_cron(body.cron_expr):
+        raise HTTPException(status_code=400, detail=f"Invalid cron expression: {body.cron_expr!r}")
+
+    repo = SyncScheduleRepository(db)
+    fields = body.model_dump(exclude_none=True)
+    updated = repo.update(schedule_id, **fields)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    _refresh_app_scheduler(db, request)
+    return SyncScheduleOut.model_validate(updated)
+
+
+@router.delete("/schedule/{schedule_id}", status_code=204)
+def delete_schedule(
+    schedule_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> None:
+    """Удалить расписание."""
+    deleted = SyncScheduleRepository(db).delete(schedule_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    _refresh_app_scheduler(db, request)
+
+
+@router.post("/schedule/{schedule_id}/run-now")
+async def run_schedule_now(
+    schedule_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Запустить расписание немедленно (sugar over /pipeline)."""
+    from app.schemas.sync_pipeline import PipelineRequest
+
+    schedule = SyncScheduleRepository(db).get(schedule_id)
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    pipeline_request = PipelineRequest(mode=schedule.mode, team=schedule.team)
+    return await run_pipeline(pipeline_request, request=request, db=db)
 
 
 @jira_router.get("/users/search", response_model=List[JiraUserResponse])
