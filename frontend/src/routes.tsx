@@ -6,9 +6,11 @@ import {
   AnalyticsPage,
   BacklogPage,
   CapacityPage,
+  CategoriesEditorPage,
   DashboardPage,
   PlanningPage,
   SettingsPage,
+  SyncHubPage,
   SyncPage,
 } from './pages/lazyPages';
 
@@ -33,7 +35,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <FactFilterProvider>{page(<DashboardPage />)}</FactFilterProvider> },
       { path: 'analytics', element: <FactFilterProvider>{page(<AnalyticsPage />)}</FactFilterProvider> },
-      { path: 'sync', element: page(<SyncPage />) },
+      { path: 'sync', element: page(<SyncHubPage />) },
+      { path: 'sync-old', element: page(<SyncPage />) },
+      { path: 'categories', element: page(<CategoriesEditorPage />) },
       { path: 'scope', element: <Navigate to="/sync" replace /> },
       { path: 'capacity', element: page(<CapacityPage />) },
       { path: 'backlog', element: page(<BacklogPage />) },
