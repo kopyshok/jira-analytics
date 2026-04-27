@@ -309,7 +309,7 @@ async def list_backlog_items(
         )
     )
 
-    if view == "in_work":
+    if view in ("in_work", "quarterly"):
         return [_to_response(i, _approved_scenarios_for(db, i.id)) for i in items]
     return [_to_response(i, None) for i in items]
 
