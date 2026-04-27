@@ -41,6 +41,7 @@ from app.models import (
 from app.services.capacity_service import CapacityService
 from app.services.planning_service import PlanningService
 from app.services.resource_base_service import ResourceBaseService
+from app.services.event_bus import EventBroadcaster, get_event_bus
 
 
 router = APIRouter()
@@ -348,6 +349,7 @@ async def list_scenarios(
 async def create_scenario(
     data: ScenarioCreate,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Создать draft-сценарий. В allocations кладутся ВСЕ текущие BacklogItem
     c ``included_flag=False, planned_hours=0`` — PM отмечает нужные галочками.
@@ -404,6 +406,7 @@ async def create_scenario(
         )
 
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
 
@@ -413,6 +416,7 @@ async def approve_scenario(
     scenario_id: str,
     body: ApproveBody = ApproveBody(),
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Зафиксировать сценарий: status='approved'.
 
@@ -533,6 +537,7 @@ async def approve_scenario(
 
     scenario.status = "approved"
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
 
@@ -543,6 +548,7 @@ async def approve_scenario(
 async def revert_scenario(
     scenario_id: str,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Вернуть утверждённый сценарий в черновик для редактирования."""
     scenario = db.get(PlanningScenario, scenario_id)
@@ -550,6 +556,7 @@ async def revert_scenario(
         raise HTTPException(status_code=404, detail="Scenario not found")
     scenario.status = "draft"
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
 
@@ -779,6 +786,7 @@ async def patch_allocation(
     alloc_id: str,
     data: AllocationPatch,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Обновить одну раскладку: toggle ``included`` и/или задать ``planned_hours``.
 
@@ -823,6 +831,7 @@ async def patch_allocation(
         alloc.planned_hours = patch["planned_hours"]
 
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
     # Re-load with issue join for response.
     item = (
         db.query(BacklogItem)
@@ -842,6 +851,7 @@ async def patch_allocation_assignee(
     alloc_id: str,
     data: AllocationAssigneePatch,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Сменить исполнителя на конкретной идее в сценарии."""
     alloc = (
@@ -876,6 +886,7 @@ async def patch_allocation_assignee(
         backlog_item.assignee_employee_id = None
 
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
     # Reload with relationships after commit.
     backlog_item = (
         db.query(BacklogItem)
@@ -1056,6 +1067,7 @@ async def update_scenario(
 async def delete_scenario(
     scenario_id: str,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Удалить сценарий вместе со всеми его раскладками."""
     scenario = db.get(PlanningScenario, scenario_id)
@@ -1067,4 +1079,5 @@ async def delete_scenario(
     ).delete()
     db.delete(scenario)
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
     return {"status": "deleted", "id": scenario_id}
