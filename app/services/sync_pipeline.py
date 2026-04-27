@@ -16,6 +16,19 @@ from app.services.event_bus import EventBroadcaster
 
 logger = logging.getLogger(__name__)
 
+_STAGE_INVALIDATES_TO_ENTITY: dict[str, str] = {
+    "issues": "issues",
+    "tree": "issues",
+    "backlog": "backlog",
+    "planning": "planning",
+    "worklogs": "worklogs",
+    "capacity": "capacity",
+    "analytics": "analytics",
+    "projects": "projects",
+    "production-calendar": "capacity",
+    "employees": "employees",
+}
+
 
 class Stage(ABC):
     name: str = ""
@@ -46,6 +59,7 @@ class PipelineOrchestrator:
         ctx: dict[str, Any] = {"mode": mode, "team": team, "run_id": run_id}
         stages_report: list[dict] = []
         had_non_critical_failure = False
+        touched_entities: set[str] = set()
 
         await self.bus.publish({"type": "sync_started", "run_id": run_id, "mode": mode, "trigger": trigger})
 
@@ -62,6 +76,10 @@ class PipelineOrchestrator:
                     "status": "ok",
                     "counts": counts or {},
                 })
+                for key in stage.invalidates():
+                    entity = _STAGE_INVALIDATES_TO_ENTITY.get(key)
+                    if entity:
+                        touched_entities.add(entity)
                 await self.bus.publish({
                     "type": "stage_done",
                     "stage": stage.name,
@@ -100,6 +118,8 @@ class PipelineOrchestrator:
 
         status = "partial" if had_non_critical_failure else "ok"
         await self.bus.publish({"type": "pipeline_done", "run_id": run_id, "status": status})
+        if touched_entities:
+            await self.bus.publish({"type": "entity_changed", "entities": list(touched_entities)})
         return {"status": status, "stages": stages_report}
 
 
