@@ -6,11 +6,13 @@ import LogoMark from './LogoMark';
 import SyncIndicator from './SyncIndicator';
 import BugReportButton from '../BugReportButton';
 import { DARK_THEME } from '../../utils/constants';
+import { useEventStream } from '../../hooks/useEventStream';
 
 const { Header, Sider, Content } = Layout;
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  useEventStream();
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
