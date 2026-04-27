@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import Issue, Project
 from app.services.backlog_service import BacklogService
 from app.services.category_resolver import CategoryResolver
+from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 
 router = APIRouter()
@@ -321,6 +322,7 @@ def _set_include_recursive(db: Session, parent_id: str, include: bool) -> None:
 async def batch_set_category(
     body: BatchCategoryRequest,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Пакетное назначение категории на несколько задач.
 
@@ -354,6 +356,7 @@ async def batch_set_category(
         backlog.sync_from_issue(issue)
         updated += 1
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {
         "ok": True,
         "updated": updated,

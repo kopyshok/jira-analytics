@@ -1,33 +1,10 @@
 """Проверяем, что мутирующие endpoints планирования публикуют entity_changed."""
-import pytest
 from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
+from app.database import get_db
 from app.main import app
 from app.services.event_bus import get_event_bus
-
-
-@pytest.fixture
-def db_session():
-    """Session backed by StaticPool so TestClient shares the same SQLite connection."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    import app.models  # noqa: F401 – register all models before create_all
-    Base.metadata.create_all(bind=engine)
-    Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = Session()
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
 
 
 def _make_client(db, mock_bus):
@@ -72,10 +49,10 @@ def _seed_scenario_with_allocation(db, item_id):
 
 # ── tests ─────────────────────────────────────────────────────────────────────
 
-def test_create_scenario_publishes_planning(db_session):
+def test_create_scenario_publishes_planning(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_backlog_item(db_session)
-    client = _make_client(db_session, mock_bus)
+    item = _seed_backlog_item(testclient_db_session)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.post("/api/v1/planning/scenarios",
                         json={"name": "Q1", "year": 2026, "quarter": 1})
@@ -87,11 +64,11 @@ def test_create_scenario_publishes_planning(db_session):
     )
 
 
-def test_patch_allocation_publishes_planning_and_backlog(db_session):
+def test_patch_allocation_publishes_planning_and_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_backlog_item(db_session)
-    sc, alloc = _seed_scenario_with_allocation(db_session, item.id)
-    client = _make_client(db_session, mock_bus)
+    item = _seed_backlog_item(testclient_db_session)
+    sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.patch(
             f"/api/v1/planning/scenarios/{sc.id}/allocations/{alloc.id}",
@@ -105,11 +82,11 @@ def test_patch_allocation_publishes_planning_and_backlog(db_session):
     )
 
 
-def test_patch_allocation_assignee_publishes_planning(db_session):
+def test_patch_allocation_assignee_publishes_planning(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_backlog_item(db_session)
-    sc, alloc = _seed_scenario_with_allocation(db_session, item.id)
-    client = _make_client(db_session, mock_bus)
+    item = _seed_backlog_item(testclient_db_session)
+    sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.patch(
             f"/api/v1/planning/scenarios/{sc.id}/allocations/{alloc.id}/assignee",
@@ -123,11 +100,11 @@ def test_patch_allocation_assignee_publishes_planning(db_session):
     )
 
 
-def test_approve_scenario_publishes_planning_and_backlog(db_session):
+def test_approve_scenario_publishes_planning_and_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_backlog_item(db_session)
-    sc, alloc = _seed_scenario_with_allocation(db_session, item.id)
-    client = _make_client(db_session, mock_bus)
+    item = _seed_backlog_item(testclient_db_session)
+    sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.post(f"/api/v1/planning/scenarios/{sc.id}/approve", json={})
         assert r.status_code == 200, r.text
@@ -138,14 +115,14 @@ def test_approve_scenario_publishes_planning_and_backlog(db_session):
     )
 
 
-def test_revert_scenario_publishes_planning_and_backlog(db_session):
+def test_revert_scenario_publishes_planning_and_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_backlog_item(db_session)
-    sc, alloc = _seed_scenario_with_allocation(db_session, item.id)
+    item = _seed_backlog_item(testclient_db_session)
+    sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
     # Approve first so we can revert
-    db_session.get(sc.__class__, sc.id).status = "approved"
-    db_session.commit()
-    client = _make_client(db_session, mock_bus)
+    testclient_db_session.get(sc.__class__, sc.id).status = "approved"
+    testclient_db_session.commit()
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.post(f"/api/v1/planning/scenarios/{sc.id}/revert-to-draft")
         assert r.status_code == 200, r.text
@@ -156,11 +133,11 @@ def test_revert_scenario_publishes_planning_and_backlog(db_session):
     )
 
 
-def test_delete_scenario_publishes_planning_and_backlog(db_session):
+def test_delete_scenario_publishes_planning_and_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_backlog_item(db_session)
-    sc, alloc = _seed_scenario_with_allocation(db_session, item.id)
-    client = _make_client(db_session, mock_bus)
+    item = _seed_backlog_item(testclient_db_session)
+    sc, alloc = _seed_scenario_with_allocation(testclient_db_session, item.id)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.delete(f"/api/v1/planning/scenarios/{sc.id}")
         assert r.status_code == 200, r.text

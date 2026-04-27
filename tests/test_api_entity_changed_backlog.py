@@ -2,34 +2,11 @@
 import datetime
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
+from app.database import get_db
 from app.main import app
 from app.services.event_bus import get_event_bus
-
-
-@pytest.fixture
-def db_session():
-    """Session backed by StaticPool so TestClient shares the same SQLite connection."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    import app.models  # noqa: F401 – register all models before create_all
-    Base.metadata.create_all(bind=engine)
-    Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = Session()
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
 
 
 def _make_client(db, mock_bus):
@@ -50,9 +27,9 @@ def _seed_item(db):
     return item
 
 
-def test_create_backlog_item_publishes_backlog(db_session):
+def test_create_backlog_item_publishes_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    client = _make_client(db_session, mock_bus)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.post("/api/v1/backlog", json={"title": "New item"})
         assert r.status_code == 201, r.text
@@ -63,10 +40,10 @@ def test_create_backlog_item_publishes_backlog(db_session):
     )
 
 
-def test_update_backlog_item_publishes_backlog(db_session):
+def test_update_backlog_item_publishes_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_item(db_session)
-    client = _make_client(db_session, mock_bus)
+    item = _seed_item(testclient_db_session)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.patch(f"/api/v1/backlog/{item.id}", json={"title": "Updated"})
         assert r.status_code == 200, r.text
@@ -77,10 +54,10 @@ def test_update_backlog_item_publishes_backlog(db_session):
     )
 
 
-def test_archive_backlog_item_publishes_backlog(db_session):
+def test_archive_backlog_item_publishes_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_item(db_session)
-    client = _make_client(db_session, mock_bus)
+    item = _seed_item(testclient_db_session)
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.post(f"/api/v1/backlog/{item.id}/archive")
         assert r.status_code == 200, r.text
@@ -91,12 +68,12 @@ def test_archive_backlog_item_publishes_backlog(db_session):
     )
 
 
-def test_restore_backlog_item_publishes_backlog(db_session):
+def test_restore_backlog_item_publishes_backlog(testclient_db_session):
     mock_bus = AsyncMock()
-    item = _seed_item(db_session)
+    item = _seed_item(testclient_db_session)
     item.archived_at = datetime.datetime.utcnow()
-    db_session.commit()
-    client = _make_client(db_session, mock_bus)
+    testclient_db_session.commit()
+    client = _make_client(testclient_db_session, mock_bus)
     try:
         r = client.post(f"/api/v1/backlog/{item.id}/restore")
         assert r.status_code == 200, r.text
