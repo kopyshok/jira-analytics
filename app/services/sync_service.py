@@ -1375,7 +1375,7 @@ class SyncService:
                 employee = self._ensure_employee(author_schema)
                 self._upsert_worklog(wl, local_issue.id, employee.id)
                 stats.bucket_a_worklogs_upserted += 1
-            stats.touched_issue_keys.add(jira_issue_id)
+            stats.touched_issue_keys.add(local_issue.key)
 
         # Шаг 4: delete diff — для каждой touched issue получаем полный список
         # ворклогов из Jira (чтобы не удалить старые, не изменявшиеся в периоде)
