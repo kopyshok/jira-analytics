@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Tabs, Table, Button, Space, Popconfirm, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, Tooltip } from 'antd';
+import { Tabs, Table, Button, Space, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useEmployees, useRecalcActiveEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useAutoDetectTeams, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole, useTeamRecalc } from '../hooks/useCapacity';
+import { useTeamCapacity, useEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useAddAbsencesBatch, useRemoveAbsence } from '../hooks/useAbsences';
 import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
@@ -29,11 +29,9 @@ function TeamTab() {
   const { year, quarter } = useQuarterYear();
   const { data, isLoading } = useTeamCapacity(year, quarter);
   const { data: employees } = useEmployees();
-  const recalc = useRecalcActiveEmployees();
   const replaceTeams = useReplaceEmployeeTeams();
   const setPrimary = useSetPrimaryTeam();
   const updateRole = useUpdateEmployeeRole();
-  const autoDetect = useAutoDetectTeams();
   const jiraTeams = useJiraTeams();
   const employeesFull = useEmployees({ withTeams: true });
   const teamsByEmpId = useMemo(() => {
@@ -56,8 +54,7 @@ function TeamTab() {
   const storedShowFact = useGenericSetting('ui_capacity_show_fact');
   const storedShowPct  = useGenericSetting('ui_capacity_show_pct');
   const saveStored = useSaveGenericSetting();
-  const { matchesTeam, selectedTeams } = useCapacityFilter();
-  const teamRecalc = useTeamRecalc();
+  const { matchesTeam } = useCapacityFilter();
 
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
   const [showFact, setShowFact] = useState(false);
@@ -350,49 +347,6 @@ function TeamTab() {
           <Switch checked={showPct} onChange={(v) => { setShowPct(v); persist('ui_capacity_show_pct', v ? '1' : '0'); }} />
           <Text>%</Text>
         </Space>
-        <Popconfirm
-          title="Определить команды по ворклогам для всех без команды?"
-          okText="Определить" cancelText="Отмена"
-          onConfirm={() => autoDetect.mutate(undefined, {
-            onSuccess: (s) => notification.success({
-              title: 'Команды обновлены',
-              description: `Назначено: ${s.assigned}, пропущено: ${s.skipped}`,
-            }),
-            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
-          })}
-        >
-          <Button loading={autoDetect.isPending}>Определить команды авто</Button>
-        </Popconfirm>
-        <Popconfirm
-          title="Пересчитать состав по worklog'ам активных задач?"
-          okText="Пересчитать" cancelText="Отмена"
-          okButtonProps={{ danger: true }}
-          onConfirm={() => recalc.mutate(undefined, {
-            onSuccess: (s) => notification.success({ title: 'Состав обновлён',
-              description: `Активировано: ${s.activated}, деактивировано: ${s.deactivated}` }),
-            onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
-          })}
-        >
-          <Button loading={recalc.isPending}>Пересчитать состав</Button>
-        </Popconfirm>
-        <Tooltip title={selectedTeams.length !== 1 ? 'Выберите ровно одну команду, чтобы пересчитать часы' : undefined}>
-          <Button
-            loading={teamRecalc.isPending}
-            disabled={!year || !quarter || selectedTeams.length !== 1}
-            onClick={() => teamRecalc.mutate(
-              { year: Number(year), quarter: Number(quarter), team: selectedTeams[0] },
-              {
-                onSuccess: (s) => notification.success({
-                  title: 'Часы пересчитаны',
-                  description: `Обновлено сотрудников: ${s.updated_employees}`,
-                }),
-                onError: (e) => notification.error({ title: 'Не удалось пересчитать', description: e.message }),
-              },
-            )}
-          >
-            Пересчитать часы
-          </Button>
-        </Tooltip>
         <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
         <Button onClick={() => setCollapsed(new Set(tree.map(r => r.key)))}>Свернуть все</Button>
         <Button onClick={() => setCollapsed(new Set())}>Развернуть все</Button>
