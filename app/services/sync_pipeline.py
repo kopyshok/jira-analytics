@@ -119,7 +119,7 @@ class PipelineOrchestrator:
         status = "partial" if had_non_critical_failure else "ok"
         await self.bus.publish({"type": "pipeline_done", "run_id": run_id, "status": status})
         if touched_entities:
-            await self.bus.publish({"type": "entity_changed", "entities": list(touched_entities)})
+            await self.bus.publish({"type": "entity_changed", "entities": sorted(touched_entities)})
         return {"status": status, "stages": stages_report}
 
 
@@ -336,7 +336,7 @@ class MappingStage(Stage):
         return {"affected": affected}
 
     def invalidates(self) -> list[str]:
-        return ["analytics", "categories"]
+        return ["analytics"]
 
 
 def build_pipeline(*, mode: str, services: dict, team: Optional[str] = None) -> list[Stage]:
