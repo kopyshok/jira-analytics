@@ -29,6 +29,8 @@ import HierarchyRulesTab from '../components/HierarchyRulesTab';
 import AbsenceReasonsTab from '../components/AbsenceReasonsTab';
 import CategoriesTab from '../components/CategoriesTab';
 import PageHeader from '../components/shared/PageHeader';
+import { useAuth } from '../hooks/useAuth';
+import UsersTab from './settings/UsersTab';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -37,7 +39,7 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'calendar'] as const;
+const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'calendar', 'users'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function readHashKey(): TabKey {
@@ -47,6 +49,7 @@ function readHashKey(): TabKey {
 
 export default function SettingsPage() {
   const [activeKey, setActiveKey] = useState<TabKey>(readHashKey);
+  const { user } = useAuth();
 
   useEffect(() => {
     const handler = () => setActiveKey(readHashKey());
@@ -77,6 +80,7 @@ export default function SettingsPage() {
           { key: 'reasons', label: 'Причины отсутствий', children: <AbsenceReasonsTab /> },
           { key: 'categories', label: 'Категории работ', children: <CategoriesTab /> },
           { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
+          ...(user?.role === 'admin' ? [{ key: 'users', label: 'Пользователи', children: <UsersTab /> }] : []),
         ]}
       />
     </>
