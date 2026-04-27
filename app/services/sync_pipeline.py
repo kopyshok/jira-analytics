@@ -209,7 +209,7 @@ class WorklogsDeltaStage(Stage):
         # чтобы следующий run не пропустил ворклоги, появившиеся в процессе.
         started_at = datetime.now(tz=timezone.utc)
 
-        result = await self.svc.update_worklogs_since(**kwargs)
+        result = await self.svc.update_worklogs_v2(**kwargs)
 
         # Успешно завершились — обновить cursor (scope = team или "")
         self.svc._update_sync_state(
