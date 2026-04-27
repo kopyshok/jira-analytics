@@ -812,6 +812,30 @@ class JiraUserResponse(BaseModel):
     avatar_url: Optional[str] = None
 
 
+from app.repositories.sync_run import SyncRunRepository
+from app.schemas.sync_pipeline import SyncRunOut
+
+
+@router.get("/runs", response_model=list[SyncRunOut])
+def list_sync_runs(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+) -> list[SyncRunOut]:
+    """История запусков sync pipeline (последние сначала)."""
+    repo = SyncRunRepository(db)
+    return [SyncRunOut.model_validate(r) for r in repo.list_latest(limit=limit)]
+
+
+@router.get("/runs/{run_id}", response_model=SyncRunOut)
+def get_sync_run(run_id: str, db: Session = Depends(get_db)) -> SyncRunOut:
+    """Детали конкретного запуска по id."""
+    repo = SyncRunRepository(db)
+    run = repo.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Sync run not found")
+    return SyncRunOut.model_validate(run)
+
+
 @jira_router.get("/users/search", response_model=List[JiraUserResponse])
 async def search_jira_users(
     query: str = Query(..., min_length=2),
