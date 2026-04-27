@@ -10,7 +10,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
-  DeleteOutlined, DiffOutlined, FlagFilled, HolderOutlined, PlusOutlined, ReloadOutlined,
+  DeleteOutlined, DiffOutlined, FlagFilled, HolderOutlined, PlusOutlined,
   RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
@@ -32,7 +32,6 @@ import {
   useDeleteScenario,
   useApproveScenario,
   useRevertScenario,
-  useSyncScenarioBacklog,
   useScenarioResource,
   useScenarioResourceSummary,
   useUpdateScenario,
@@ -191,7 +190,6 @@ export default function PlanningPage() {
   const deleteScenario = useDeleteScenario();
   const approve = useApproveScenario();
   const revert = useRevertScenario();
-  const syncBacklog = useSyncScenarioBacklog();
 
   // Запоминаем id, который сейчас удаляется, — иначе авто-выбор ниже успеет
   // снова взять его из стейл-кэша списка между `setScenarioId(null)` и
@@ -340,14 +338,6 @@ export default function PlanningPage() {
     });
   };
 
-  const handleSync = () => {
-    if (!scenarioId) return;
-    syncBacklog.mutate(scenarioId, {
-      onSuccess: () => notification.success({ title: 'Синхронизировано с бэклогом' }),
-      onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
-    });
-  };
-
   const handleTeamChange = (team: string | null) => {
     if (!scenarioId) return;
     updateScenario.mutate(
@@ -461,18 +451,6 @@ export default function PlanningPage() {
                 )}
               </div>
               <Space>
-                {isDraft && (
-                  <Tooltip title="Досоздать allocations для новых элементов бэклога">
-                    <Button
-                      icon={<ReloadOutlined />}
-                      size="small"
-                      onClick={handleSync}
-                      loading={syncBacklog.isPending}
-                    >
-                      Синк с бэклогом
-                    </Button>
-                  </Tooltip>
-                )}
                 {isDraft ? (
                   <Button
                     type="primary"
@@ -844,8 +822,7 @@ export default function PlanningPage() {
                   })}
                   {(allocations ?? []).length === 0 && !allocLoading && (
                     <div style={{ padding: 24, textAlign: 'center', color: DARK_THEME.textMuted, fontSize: 13 }}>
-                      В сценарии нет элементов. Добавьте задачи в бэклог и нажмите
-                      «Синк с бэклогом».
+                      В сценарии нет элементов. Добавьте задачи в бэклог — они появятся автоматически.
                     </div>
                   )}
                     </div>
