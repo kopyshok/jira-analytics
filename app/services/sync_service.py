@@ -1325,6 +1325,90 @@ class SyncService:
 
         return stats
 
+    async def update_worklogs_v2(
+        self,
+        since: date,
+        teams: Optional[List[str]] = None,
+        on_progress: Optional[
+            Callable[["UpdateStats", Optional[str]], Awaitable[None]]
+        ] = None,
+    ) -> "UpdateStats":
+        """Worklog sync через bulk API (worklog/updated → worklog/list).
+
+        Вместо Bucket A per-issue, использует:
+        1. GET /worklog/updated — все изменённые worklog ID за период
+        2. POST /worklog/list — батч-загрузка содержимого
+        3. Upsert только для issue которые есть в локальной БД
+        4. Delete diff: для каждой touched issue — полный iter_worklogs_for_issue,
+           чтобы не удалить ворклоги, не изменявшиеся в данном периоде.
+        5. Bucket B (если teams задан) — остаётся как есть.
+        """
+        stats = UpdateStats()
+        since_dt = datetime.combine(since, datetime.min.time())
+
+        # Шаг 1+2: все изменённые ворклоги за период; группируем по issueId
+        worklogs_by_issue: dict[str, list] = {}
+        async for wl in self.jira.get_worklogs_updated_since(since_dt):
+            await self._check_cancelled()
+            worklogs_by_issue.setdefault(wl.issueId, []).append(wl)
+
+        # Кеш lookup issue_id → local Issue
+        issue_cache: dict[str, Optional[Issue]] = {}
+
+        # Шаг 3: upsert для каждой touched issue, присутствующей в нашей БД
+        for jira_issue_id, worklogs in worklogs_by_issue.items():
+            local_issue = (
+                self.db.query(Issue)
+                .filter(Issue.jira_issue_id == jira_issue_id)
+                .one_or_none()
+            )
+            issue_cache[jira_issue_id] = local_issue
+            if local_issue is None:
+                continue
+            for wl in worklogs:
+                author_schema = JiraUserSchema(
+                    accountId=wl.author.accountId,
+                    displayName=wl.author.displayName,
+                    emailAddress=wl.author.emailAddress,
+                    active=True,
+                )
+                employee = self._ensure_employee(author_schema)
+                self._upsert_worklog(wl, local_issue.id, employee.id)
+                stats.bucket_a_worklogs_upserted += 1
+            stats.touched_issue_keys.add(jira_issue_id)
+
+        # Шаг 4: delete diff — для каждой touched issue получаем полный список
+        # ворклогов из Jira (чтобы не удалить старые, не изменявшиеся в периоде)
+        for jira_issue_id in list(worklogs_by_issue.keys()):
+            await self._check_cancelled()
+            local_issue = issue_cache.get(jira_issue_id)
+            if local_issue is None:
+                continue
+            all_jira_ids: set[str] = set()
+            async for wl in self.jira.iter_worklogs_for_issue(jira_issue_id):
+                all_jira_ids.add(wl.id)
+            if all_jira_ids:
+                stale_count = (
+                    self.db.query(Worklog)
+                    .filter(
+                        Worklog.issue_id == local_issue.id,
+                        ~Worklog.jira_worklog_id.in_(all_jira_ids),
+                    )
+                    .delete(synchronize_session=False)
+                )
+                stats.bucket_a_worklogs_deleted += stale_count
+            self.db.commit()
+            if on_progress is not None:
+                await on_progress(stats, jira_issue_id)
+
+        # ─── Ведро B ───
+        if teams:
+            await self._update_worklogs_bucket_b(
+                since.isoformat(), teams, stats, on_progress,
+            )
+
+        return stats
+
     async def _update_worklogs_bucket_b(
         self,
         since_iso: str,
