@@ -177,8 +177,10 @@ class UpdateStats:
 
     bucket_a_issues_scanned: int = 0
     bucket_a_worklogs_upserted: int = 0
+    bucket_a_worklogs_deleted: int = 0
     bucket_b_issues_scanned: int = 0
     bucket_b_worklogs_upserted: int = 0
+    bucket_b_worklogs_deleted: int = 0
     bucket_b_out_of_scope_created: int = 0
     touched_issue_keys: "set[str]" = None  # type: ignore[assignment]
 
@@ -191,10 +193,13 @@ class UpdateStats:
         return self.bucket_a_worklogs_upserted + self.bucket_b_worklogs_upserted
 
     @property
+    def worklogs_deleted(self) -> int:
+        return self.bucket_a_worklogs_deleted + self.bucket_b_worklogs_deleted
+
+    @property
     def deleted(self) -> int:
-        # Семантическая константа — update никогда не удаляет, нужна для
-        # совместимости с SSE-обёрткой, которая уже знает это поле.
-        return 0
+        # Совместимость с SSE-обёрткой; теперь возвращает реальное число удалённых.
+        return self.worklogs_deleted
 
 
 class SyncStats:
@@ -1241,17 +1246,19 @@ class SyncService:
             Callable[["UpdateStats", Optional[str]], Awaitable[None]]
         ] = None,
     ) -> "UpdateStats":
-        """Мягкое обновление ворклогов: upsert без удаления.
+        """Мягкое обновление ворклогов: upsert + per-issue delete diff.
 
         - **Ведро A** (всегда): JQL ``updated >= since``. Для каждого issue,
-          уже существующего локально, перечитываются ворклоги и upsert'ятся.
+          уже существующего локально, перечитываются все ворклоги из Jira и
+          upsert'ятся. Ворклоги, отсутствующие в Jira, удаляются из локальной БД.
           Незнакомые issue пропускаются.
         - **Ведро B** (если ``teams`` задан): JQL
           ``worklogAuthor = <id> AND updated >= since`` по каждому сотруднику
           из ``employee_teams.team IN teams``. Незнакомые issue создаются
-          с ``out_of_scope=True``.
+          с ``out_of_scope=True``. Аналогичный delete diff применяется ко всем
+          ворклогам задачи (не только от текущего автора).
 
-        Ничего не удаляет и не трогает ``sync_state``. Прогресс — через
+        Не трогает ``sync_state``. Прогресс — через
         ``on_progress(stats, current_key)``.
         """
         stats = UpdateStats()
@@ -1273,8 +1280,10 @@ class SyncService:
             if local is None:
                 continue
             stats.bucket_a_issues_scanned += 1
+            jira_wl_ids: set[str] = set()
             async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
                 await self._check_cancelled()
+                jira_wl_ids.add(wl.id)
                 author_schema = JiraUserSchema(
                     accountId=wl.author.accountId,
                     displayName=wl.author.displayName,
@@ -1284,6 +1293,25 @@ class SyncService:
                 employee = self._ensure_employee(author_schema)
                 self._upsert_worklog(wl, local.id, employee.id)
                 stats.bucket_a_worklogs_upserted += 1
+            # Delete diff: удаляем ворклоги, которых уже нет в Jira
+            if jira_wl_ids:
+                local_wl_ids: set[str] = {
+                    row[0]
+                    for row in self.db.query(Worklog.jira_worklog_id).filter(
+                        Worklog.issue_id == local.id
+                    ).all()
+                }
+                stale_ids = local_wl_ids - jira_wl_ids
+                if stale_ids:
+                    deleted_count = (
+                        self.db.query(Worklog)
+                        .filter(
+                            Worklog.issue_id == local.id,
+                            Worklog.jira_worklog_id.in_(stale_ids),
+                        )
+                        .delete(synchronize_session=False)
+                    )
+                    stats.bucket_a_worklogs_deleted += deleted_count
             stats.touched_issue_keys.add(jira_issue.key)
             self.db.commit()
             if on_progress is not None:
@@ -1320,6 +1348,9 @@ class SyncService:
             .distinct()
             .all()
         )
+        # Dedup: одна задача может встретиться у нескольких сотрудников команды.
+        # Delete diff применяем только при первом обходе задачи.
+        seen_issues: set[str] = set()
         for emp in emps:
             await self._check_cancelled()
             jql = f'worklogAuthor = "{emp.jira_account_id}" AND updated >= "{since_iso}"'
@@ -1338,8 +1369,10 @@ class SyncService:
                     local = self._create_out_of_scope_issue(jira_issue)
                     stats.bucket_b_out_of_scope_created += 1
                 stats.bucket_b_issues_scanned += 1
+                jira_wl_ids_b: set[str] = set()
                 async for wl in self.jira.iter_worklogs_for_issue(jira_issue.id):
                     await self._check_cancelled()
+                    jira_wl_ids_b.add(wl.id)
                     author_schema = JiraUserSchema(
                         accountId=wl.author.accountId,
                         displayName=wl.author.displayName,
@@ -1349,6 +1382,26 @@ class SyncService:
                     employee = self._ensure_employee(author_schema)
                     self._upsert_worklog(wl, local.id, employee.id)
                     stats.bucket_b_worklogs_upserted += 1
+                # Delete diff — только при первом обходе задачи
+                if jira_wl_ids_b and jira_issue.id not in seen_issues:
+                    local_wl_ids_b: set[str] = {
+                        row[0]
+                        for row in self.db.query(Worklog.jira_worklog_id).filter(
+                            Worklog.issue_id == local.id
+                        ).all()
+                    }
+                    stale_ids_b = local_wl_ids_b - jira_wl_ids_b
+                    if stale_ids_b:
+                        deleted_b = (
+                            self.db.query(Worklog)
+                            .filter(
+                                Worklog.issue_id == local.id,
+                                Worklog.jira_worklog_id.in_(stale_ids_b),
+                            )
+                            .delete(synchronize_session=False)
+                        )
+                        stats.bucket_b_worklogs_deleted += deleted_b
+                seen_issues.add(jira_issue.id)
                 stats.touched_issue_keys.add(jira_issue.key)
                 self.db.commit()
                 if on_progress is not None:
