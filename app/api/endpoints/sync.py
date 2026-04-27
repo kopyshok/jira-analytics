@@ -26,17 +26,21 @@ from app.schemas.sync_pipeline import PipelineRequest, TeamRefreshRequest
 router = APIRouter()
 
 
-def _build_orchestrator(db, *, mode: str, team: Optional[str] = None) -> PipelineOrchestrator:
-    """Собрать оркестратор для заданного режима."""
-    sync_svc = SyncService(db)
-    calendar_svc = ProductionCalendarService(db)
-    mapping_svc = MappingService(db)
-    stages = build_pipeline(
-        mode=mode,
-        services={"sync": sync_svc, "calendar": calendar_svc, "mapping": mapping_svc},
-        team=team,
-    )
-    return PipelineOrchestrator(stages=stages, db=db, bus=get_event_bus())
+async def _build_orchestrator(db, *, mode: str, team: Optional[str] = None) -> PipelineOrchestrator:
+    """Собрать оркестратор для заданного режима.
+
+    Создаёт JiraClient из настроек БД и передаёт в SyncService.
+    """
+    async with JiraClient.from_db(db) as jira:
+        sync_svc = SyncService(db, jira)
+        calendar_svc = ProductionCalendarService(db)
+        mapping_svc = MappingService(db)
+        stages = build_pipeline(
+            mode=mode,
+            services={"sync": sync_svc, "calendar": calendar_svc, "mapping": mapping_svc},
+            team=team,
+        )
+        return PipelineOrchestrator(stages=stages, db=db, bus=get_event_bus())
 
 
 @router.post("/pipeline")
@@ -60,7 +64,7 @@ async def run_pipeline(
         run_repo.finalize(run.id, status="skipped", stages=[], error_text="lock contention")
         raise HTTPException(status_code=409, detail={"running_run_id": lock.current_run_id()})
 
-    orch = _build_orchestrator(db, mode=pipeline_request.mode, team=pipeline_request.team)
+    orch = await _build_orchestrator(db, mode=pipeline_request.mode, team=pipeline_request.team)
     bus = get_event_bus()
     queue = bus.subscribe()
 
