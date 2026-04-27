@@ -30,6 +30,8 @@ from app.models.scenario_rule import ScenarioRule
 from app.models.scenario_revision import ScenarioRevision
 from app.models.scenario_revision_item import ScenarioRevisionItem
 from app.models.scenario_capacity_snapshot import ScenarioCapacitySnapshot
+from app.models.sync_schedule import SyncSchedule
+from app.models.sync_run import SyncRun
 
 __all__ = [
     "TimestampMixin",
@@ -64,4 +66,6 @@ __all__ = [
     "ScenarioRevision",
     "ScenarioRevisionItem",
     "ScenarioCapacitySnapshot",
+    "SyncSchedule",
+    "SyncRun",
 ]
