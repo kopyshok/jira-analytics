@@ -22,3 +22,17 @@ def test_create_and_decode_token():
 def test_decode_invalid_token_raises():
     with pytest.raises(JWTError):
         decode_access_token("not.a.valid.token")
+
+
+def test_expired_token_raises():
+    from datetime import datetime, timedelta
+    from jose import jwt
+    from app.config import get_settings
+    s = get_settings()
+    token = jwt.encode(
+        {"sub": "x", "exp": datetime.utcnow() - timedelta(seconds=1)},
+        s.jwt_secret_key,
+        algorithm="HS256",
+    )
+    with pytest.raises(JWTError):
+        decode_access_token(token)
