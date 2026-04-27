@@ -13,10 +13,107 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
+from app.services.event_bus import get_event_bus
+from app.services.mapping_service import MappingService
+from app.services.production_calendar_service import ProductionCalendarService
+from app.services.sync_lock import SyncLock
+from app.services.sync_pipeline import PipelineOrchestrator, build_pipeline
 from app.services.sync_service import SyncService, SyncStats, ReloadStats, UpdateStats
+from app.repositories.sync_run import SyncRunRepository
+from app.schemas.sync_pipeline import PipelineRequest, TeamRefreshRequest
 
 
 router = APIRouter()
+
+
+def _build_orchestrator(db, *, mode: str, team: Optional[str] = None) -> PipelineOrchestrator:
+    """Собрать оркестратор для заданного режима."""
+    sync_svc = SyncService(db)
+    calendar_svc = ProductionCalendarService(db)
+    mapping_svc = MappingService(db)
+    stages = build_pipeline(
+        mode=mode,
+        services={"sync": sync_svc, "calendar": calendar_svc, "mapping": mapping_svc},
+        team=team,
+    )
+    return PipelineOrchestrator(stages=stages, db=db, bus=get_event_bus())
+
+
+@router.post("/pipeline")
+async def run_pipeline(
+    pipeline_request: PipelineRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Запустить sync pipeline. Возвращает SSE-stream стадий."""
+    lock = SyncLock(db)
+    run_repo = SyncRunRepository(db)
+
+    if lock.current_run_id() and not lock.is_stale():
+        raise HTTPException(
+            status_code=409,
+            detail={"running_run_id": lock.current_run_id()},
+        )
+
+    run = run_repo.create(mode=pipeline_request.mode, trigger="manual", team=pipeline_request.team)
+    if not lock.acquire(run.id):
+        run_repo.finalize(run.id, status="skipped", stages=[], error_text="lock contention")
+        raise HTTPException(status_code=409, detail={"running_run_id": lock.current_run_id()})
+
+    orch = _build_orchestrator(db, mode=pipeline_request.mode, team=pipeline_request.team)
+    bus = get_event_bus()
+    queue = bus.subscribe()
+
+    async def event_generator():
+        run_task = asyncio.create_task(
+            orch.run(
+                mode=pipeline_request.mode,
+                trigger="manual",
+                team=pipeline_request.team,
+                run_id=run.id,
+            )
+        )
+        try:
+            while True:
+                if await request.is_disconnected():
+                    run_task.cancel()
+                    run_repo.finalize(run.id, status="cancelled", stages=[])
+                    break
+                if run_task.done():
+                    result = run_task.result()
+                    run_repo.finalize(
+                        run.id,
+                        status=result["status"],
+                        stages=result.get("stages", []),
+                        error_text=result.get("error"),
+                    )
+                    yield f"data: {json.dumps({'type': 'pipeline_done', 'run_id': run.id, 'status': result['status']})}\n\n"
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=10.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ":ping\n\n"
+        finally:
+            bus.unsubscribe(queue)
+            lock.release()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/team/refresh")
+async def team_refresh(
+    team_request: TeamRefreshRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Sugar: запустить team-mode pipeline для указанной команды."""
+    pipeline_request = PipelineRequest(mode="team", team=team_request.team)
+    return await run_pipeline(pipeline_request, request=request, db=db)
 
 
 def _disconnect_checker(request: Optional[Request]):
