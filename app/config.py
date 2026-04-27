@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     jira_max_retries: int = 3
     jira_batch_size: int = 100  # Issues per request
 
+    # Auth
+    jwt_secret_key: str = "dev-secret-change-in-production"
+    jwt_expire_hours: int = 8
+
+    # Admin seed (used by scripts/create_admin.py)
+    admin_email: str = ""
+    admin_password: str = ""
+
     @field_validator("debug", mode="before")
     @classmethod
     def parse_debug_aliases(cls, value: Any) -> Any:
