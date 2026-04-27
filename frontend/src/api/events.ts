@@ -6,7 +6,7 @@ export type GlobalEvent =
   | { type: 'stage_done'; stage: string; run_id: string; counts: Record<string, number> }
   | { type: 'stage_failed'; stage: string; run_id: string; error: string }
   | { type: 'pipeline_done'; run_id: string; status: string }
-  | { type: 'entity_changed'; entity: string };
+  | { type: 'entity_changed'; entity?: string; entities?: string[] };
 
 /** URL глобального SSE-потока событий. */
 export const EVENTS_STREAM_URL = `${BASE_URL}/events/stream`;
