@@ -35,6 +35,11 @@ function isSuppressed404(method: string, status: number | null, url: string): bo
   return false;
 }
 
+function getAuthHeader(): Record<string, string> {
+  const token = localStorage.getItem('auth_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -53,7 +58,10 @@ async function request<T>(
   try {
     res = await fetch(url.toString(), {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers: {
+        ...getAuthHeader(),
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
       signal,
     });
