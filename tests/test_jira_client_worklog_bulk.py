@@ -61,6 +61,44 @@ async def test_get_worklogs_updated_since_paginates():
 
 
 @pytest.mark.asyncio
+async def test_iter_deleted_worklog_ids_paginates():
+    """Если lastPage=false — делает второй запрос; собирает все worklogId."""
+    client = _make_client()
+
+    page1 = {
+        "values": [{"worklogId": 10}, {"worklogId": 20}],
+        "since": 1000,
+        "until": 2000,
+        "lastPage": False,
+    }
+    page2 = {
+        "values": [{"worklogId": 30}],
+        "since": 2000,
+        "until": 3000,
+        "lastPage": True,
+    }
+
+    get_call_params: list[dict] = []
+
+    async def fake_request(method, path, params=None, json=None):
+        get_call_params.append(dict(params or {}))
+        return page1 if len(get_call_params) == 1 else page2
+
+    client._request = fake_request  # type: ignore[method-assign]
+
+    since = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    results: list[int] = []
+    async for wl_id in client.iter_deleted_worklog_ids(since):
+        results.append(wl_id)
+
+    assert results == [10, 20, 30]
+    assert len(get_call_params) == 2
+    since_ms = int(since.timestamp() * 1000)
+    assert get_call_params[0]["since"] == since_ms
+    assert get_call_params[1]["since"] == 2000
+
+
+@pytest.mark.asyncio
 async def test_get_worklogs_updated_since_batches_1000():
     """1001 worklog ID → 2 вызова POST /worklog/list."""
     client = _make_client()

@@ -1339,8 +1339,8 @@ class SyncService:
         1. GET /worklog/updated — все изменённые worklog ID за период
         2. POST /worklog/list — батч-загрузка содержимого
         3. Upsert только для issue которые есть в локальной БД
-        4. Delete diff: для каждой touched issue — полный iter_worklogs_for_issue,
-           чтобы не удалить ворклоги, не изменявшиеся в данном периоде.
+        4. Удаление ворклогов, удалённых в Jira, через GET /worklog/deleted
+           (ловит ВСЕ удалённые ворклоги, не только по touched issues)
         5. Bucket B (если teams задан) — остаётся как есть.
         """
         stats = UpdateStats()
@@ -1352,9 +1352,6 @@ class SyncService:
             await self._check_cancelled()
             worklogs_by_issue.setdefault(wl.issueId, []).append(wl)
 
-        # Кеш lookup issue_id → local Issue
-        issue_cache: dict[str, Optional[Issue]] = {}
-
         # Шаг 3: upsert для каждой touched issue, присутствующей в нашей БД
         for jira_issue_id, worklogs in worklogs_by_issue.items():
             local_issue = (
@@ -1362,7 +1359,6 @@ class SyncService:
                 .filter(Issue.jira_issue_id == jira_issue_id)
                 .one_or_none()
             )
-            issue_cache[jira_issue_id] = local_issue
             if local_issue is None:
                 continue
             for wl in worklogs:
@@ -1377,29 +1373,19 @@ class SyncService:
                 stats.bucket_a_worklogs_upserted += 1
             stats.touched_issue_keys.add(local_issue.key)
 
-        # Шаг 4: delete diff — для каждой touched issue получаем полный список
-        # ворклогов из Jira (чтобы не удалить старые, не изменявшиеся в периоде)
-        for jira_issue_id in list(worklogs_by_issue.keys()):
+        # Шаг 4: удалить ворклоги удалённые в Jira с момента since
+        async for wl_id in self.jira.iter_deleted_worklog_ids(since_dt):
             await self._check_cancelled()
-            local_issue = issue_cache.get(jira_issue_id)
-            if local_issue is None:
-                continue
-            all_jira_ids: set[str] = set()
-            async for wl in self.jira.iter_worklogs_for_issue(jira_issue_id):
-                all_jira_ids.add(wl.id)
-            if all_jira_ids:
-                stale_count = (
-                    self.db.query(Worklog)
-                    .filter(
-                        Worklog.issue_id == local_issue.id,
-                        ~Worklog.jira_worklog_id.in_(all_jira_ids),
-                    )
-                    .delete(synchronize_session=False)
-                )
-                stats.bucket_a_worklogs_deleted += stale_count
-            self.db.commit()
-            if on_progress is not None:
-                await on_progress(stats, jira_issue_id)
+            deleted = (
+                self.db.query(Worklog)
+                .filter(Worklog.jira_worklog_id == str(wl_id))
+                .first()
+            )
+            if deleted:
+                self.db.delete(deleted)
+                stats.bucket_a_worklogs_deleted += 1
+
+        self.db.commit()
 
         # ─── Ведро B ───
         if teams:

@@ -68,12 +68,12 @@ async def test_update_v2_upserts_from_bulk_api(db_session, issue):
         yield wl1
         yield wl2
 
-    async def fake_iter_for_issue(jira_issue_id):
-        yield wl1
-        yield wl2
+    async def fake_deleted(since):
+        return
+        yield  # noqa: unreachable — делает функцию async generator
 
     jira.get_worklogs_updated_since = fake_bulk
-    jira.iter_worklogs_for_issue = fake_iter_for_issue
+    jira.iter_deleted_worklog_ids = fake_deleted
 
     svc = SyncService(db_session, jira)
     stats = await svc.update_worklogs_v2(date(2026, 4, 1))
@@ -95,9 +95,12 @@ async def test_update_v2_skips_unknown_issue(db_session):
     async def fake_bulk(since):
         yield wl
 
+    async def fake_deleted(since):
+        return
+        yield  # noqa: unreachable — делает функцию async generator
+
     jira.get_worklogs_updated_since = fake_bulk
-    # iter_worklogs_for_issue не должен вызываться для неизвестного issue
-    jira.iter_worklogs_for_issue = AsyncMock(side_effect=AssertionError("should not call"))
+    jira.iter_deleted_worklog_ids = fake_deleted
 
     svc = SyncService(db_session, jira)
     stats = await svc.update_worklogs_v2(date(2026, 4, 1))
@@ -107,18 +110,18 @@ async def test_update_v2_skips_unknown_issue(db_session):
 
 
 @pytest.mark.asyncio
-async def test_update_v2_calls_iter_worklogs_for_delete_diff(db_session, issue):
-    """update_worklogs_v2 вызывает iter_worklogs_for_issue для delete diff."""
+async def test_update_v2_handles_deleted_worklogs(db_session, issue):
+    """Ворклоги удалённые в Jira удаляются из локальной БД через /worklog/deleted API."""
     wl1 = _fake_worklog_schema("wl-1", "20000", "2026-04-01T10:00:00")
 
-    # Предварительно добавляем stale ворклог в БД
+    # Предварительно добавляем stale ворклог в БД (будет удалён через /worklog/deleted)
     emp = Employee(
         id="e-1", jira_account_id="acc-1", display_name="A",
         is_active=True, synced_at=datetime.utcnow(),
     )
     db_session.add(emp)
     stale = Worklog(
-        id="w-stale", jira_worklog_id="wl-stale",
+        id="w-stale", jira_worklog_id="99999",
         issue_id=issue.id, employee_id=emp.id,
         started_at=datetime(2026, 3, 1),
         hours=1.0, time_spent_seconds=3600,
@@ -127,27 +130,22 @@ async def test_update_v2_calls_iter_worklogs_for_delete_diff(db_session, issue):
     db_session.add(stale)
     db_session.commit()
 
-    iter_calls: list[str] = []
-
     jira = MagicMock()
 
     async def fake_bulk(since):
         yield wl1
 
-    async def fake_iter_for_issue(jira_issue_id):
-        iter_calls.append(jira_issue_id)
-        yield wl1  # только wl-1 есть в Jira, wl-stale — нет
+    async def fake_deleted(since):
+        yield 99999  # ID удалённого ворклога
 
     jira.get_worklogs_updated_since = fake_bulk
-    jira.iter_worklogs_for_issue = fake_iter_for_issue
+    jira.iter_deleted_worklog_ids = fake_deleted
 
     svc = SyncService(db_session, jira)
     stats = await svc.update_worklogs_v2(date(2026, 4, 1))
 
-    # iter_worklogs_for_issue должен быть вызван для delete diff
-    assert "20000" in iter_calls
-    # Stale ворклог удалён
+    # Stale ворклог удалён через /worklog/deleted
     assert stats.bucket_a_worklogs_deleted == 1
-    assert db_session.query(Worklog).filter_by(jira_worklog_id="wl-stale").count() == 0
+    assert db_session.query(Worklog).filter_by(jira_worklog_id="99999").count() == 0
     # wl-1 остался
     assert db_session.query(Worklog).filter_by(jira_worklog_id="wl-1").count() == 1

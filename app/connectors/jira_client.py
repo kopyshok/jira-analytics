@@ -411,6 +411,21 @@ class JiraClient:
                 break
             start_at += max_results
 
+    async def iter_deleted_worklog_ids(self, since: datetime) -> AsyncIterator[int]:
+        """GET /rest/api/3/worklog/deleted?since={ms} — ID ворклогов удалённых с timestamp.
+
+        Пагинация идентична worklog/updated: lastPage + until.
+        Yields int worklog IDs.
+        """
+        since_ms = int(since.timestamp() * 1000)
+        while True:
+            data = await self._request("GET", "/worklog/deleted", params={"since": since_ms})
+            for item in data.get("values", []):
+                yield item["worklogId"]
+            if data.get("lastPage", True):
+                break
+            since_ms = data["until"]
+
     async def get_worklogs_updated_since(
         self,
         since: datetime,
