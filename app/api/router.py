@@ -10,6 +10,7 @@ from app.api.endpoints import (
     categories,
     employee_capacity_overrides,
     employees,
+    events as events_endpoints,
     exports,
     hierarchy_rules as hierarchy_rules_endpoints,
     issue_config,
@@ -98,3 +99,4 @@ api_router.include_router(
     tags=["capacity-rules"],
 )
 api_router.include_router(roles_endpoints.router, prefix="/roles", tags=["roles"])
+api_router.include_router(events_endpoints.router, prefix="/events", tags=["events"])
