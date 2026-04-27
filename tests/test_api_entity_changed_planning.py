@@ -13,11 +13,13 @@ from app.services.event_bus import get_event_bus
 
 @pytest.fixture
 def db_session():
+    """Session backed by StaticPool so TestClient shares the same SQLite connection."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    import app.models  # noqa: F401 – register all models before create_all
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = Session()

@@ -24,6 +24,7 @@ from app.services.backlog_service import (
     BacklogService,
 )
 from app.services.category_resolver import CategoryResolver
+from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.sync_service import SyncService
 
 
@@ -318,12 +319,14 @@ async def list_backlog_items(
 async def create_backlog_item(
     data: BacklogItemCreate,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Добавить элемент в бэклог."""
     repo = BaseRepository(BacklogItem, db)
     item = repo.create(data.model_dump())
     _recompute_total(item)
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
     db.refresh(item)
     item = (
         db.query(BacklogItem)
@@ -563,6 +566,7 @@ async def update_backlog_item(
     item_id: str,
     data: BacklogItemUpdate,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Частичное обновление элемента бэклога."""
     item = (
@@ -582,6 +586,7 @@ async def update_backlog_item(
         setattr(item, key, value)
     _recompute_total(item)
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
     db.refresh(item)
     return _to_response(item, _approved_scenarios_for(db, item.id))
 
@@ -741,6 +746,7 @@ async def unlink_jira(
 async def archive_backlog_item(
     item_id: str,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Архивировать инициативу — скрыть из активного бэклога.
 
@@ -782,6 +788,7 @@ async def archive_backlog_item(
             )
         item.archived_at = datetime.utcnow()
         db.commit()
+        await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
         db.refresh(item)
     return _to_response(item, _approved_scenarios_for(db, item.id))
 
@@ -790,6 +797,7 @@ async def archive_backlog_item(
 async def restore_backlog_item(
     item_id: str,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Восстановить инициативу из архива в активный бэклог.
 
@@ -817,5 +825,6 @@ async def restore_backlog_item(
             )
         item.archived_at = None
         db.commit()
+        await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
         db.refresh(item)
     return _to_response(item, _approved_scenarios_for(db, item.id))
