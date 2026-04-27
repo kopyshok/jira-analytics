@@ -69,12 +69,12 @@ def _make_sync_svc(**kwargs):
 async def test_worklogs_delta_uses_since_from_ctx():
     """WorklogsDeltaStage passes since from ctx to service."""
     fake_stats = SimpleNamespace(worklogs_upserted=10, touched_issue_keys=set())
-    sync_svc = _make_sync_svc(update_worklogs_since=AsyncMock(return_value=fake_stats))
+    sync_svc = _make_sync_svc(update_worklogs_v2=AsyncMock(return_value=fake_stats))
     ctx = {"since": "2026-04-01"}
     stage = WorklogsDeltaStage(sync_svc)
     result = await stage.run(ctx)
-    sync_svc.update_worklogs_since.assert_awaited_once()
-    call_kwargs = sync_svc.update_worklogs_since.call_args[1]
+    sync_svc.update_worklogs_v2.assert_awaited_once()
+    call_kwargs = sync_svc.update_worklogs_v2.call_args[1]
     assert call_kwargs["since"] == date(2026, 4, 1)
     assert result["worklogs_upserted"] == 10
 
@@ -83,11 +83,11 @@ async def test_worklogs_delta_uses_since_from_ctx():
 async def test_worklogs_delta_sets_default_since_when_missing():
     """WorklogsDeltaStage sets default since (7 days ago) if not in ctx."""
     fake_stats = SimpleNamespace(worklogs_upserted=3, touched_issue_keys=set())
-    sync_svc = _make_sync_svc(update_worklogs_since=AsyncMock(return_value=fake_stats))
+    sync_svc = _make_sync_svc(update_worklogs_v2=AsyncMock(return_value=fake_stats))
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run({})
-    sync_svc.update_worklogs_since.assert_awaited_once()
-    call_kwargs = sync_svc.update_worklogs_since.call_args[1]
+    sync_svc.update_worklogs_v2.assert_awaited_once()
+    call_kwargs = sync_svc.update_worklogs_v2.call_args[1]
     assert "since" in call_kwargs
 
 
@@ -98,7 +98,7 @@ async def test_worklogs_delta_collects_keys_into_ctx():
         worklogs_upserted=5,
         touched_issue_keys={"A-1", "A-2"},
     )
-    sync_svc = _make_sync_svc(update_worklogs_since=AsyncMock(return_value=fake_stats))
+    sync_svc = _make_sync_svc(update_worklogs_v2=AsyncMock(return_value=fake_stats))
     ctx: dict = {}
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run(ctx)
@@ -109,7 +109,7 @@ async def test_worklogs_delta_collects_keys_into_ctx():
 async def test_worklogs_delta_no_ctx_when_keys_empty():
     """WorklogsDeltaStage does not set touched_issue_keys in ctx when set is empty."""
     fake_stats = SimpleNamespace(worklogs_upserted=0, touched_issue_keys=set())
-    sync_svc = _make_sync_svc(update_worklogs_since=AsyncMock(return_value=fake_stats))
+    sync_svc = _make_sync_svc(update_worklogs_v2=AsyncMock(return_value=fake_stats))
     ctx: dict = {}
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run(ctx)
@@ -206,12 +206,12 @@ async def test_worklogs_delta_uses_sync_state_cursor():
     fake_stats = SimpleNamespace(worklogs_upserted=0, touched_issue_keys=set())
     sync_svc = _make_sync_svc(
         _get_sync_state=MagicMock(return_value=cursor_state),
-        update_worklogs_since=AsyncMock(return_value=fake_stats),
+        update_worklogs_v2=AsyncMock(return_value=fake_stats),
     )
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run({})
 
-    call_kwargs = sync_svc.update_worklogs_since.call_args[1]
+    call_kwargs = sync_svc.update_worklogs_v2.call_args[1]
     actual_since: date = call_kwargs["since"]
     # since должен быть cursor - 1d (в date), не today-7d
     expected_since = (cursor_dt - timedelta(hours=24)).date()
@@ -225,22 +225,22 @@ async def test_worklogs_delta_uses_fallback_when_no_cursor():
     fake_stats = SimpleNamespace(worklogs_upserted=0, touched_issue_keys=set())
     sync_svc = _make_sync_svc(
         _get_sync_state=MagicMock(return_value=None),
-        update_worklogs_since=AsyncMock(return_value=fake_stats),
+        update_worklogs_v2=AsyncMock(return_value=fake_stats),
     )
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run({})
 
-    call_kwargs = sync_svc.update_worklogs_since.call_args[1]
+    call_kwargs = sync_svc.update_worklogs_v2.call_args[1]
     actual_since: date = call_kwargs["since"]
     assert actual_since == date.today() - timedelta(days=7)
 
 
 @pytest.mark.asyncio
 async def test_worklogs_delta_writes_sync_state_after_run():
-    """После успешного update_worklogs_since вызывается _update_sync_state."""
+    """После успешного update_worklogs_v2 вызывается _update_sync_state."""
     fake_stats = SimpleNamespace(worklogs_upserted=2, touched_issue_keys={"K-1"})
     sync_svc = _make_sync_svc(
-        update_worklogs_since=AsyncMock(return_value=fake_stats),
+        update_worklogs_v2=AsyncMock(return_value=fake_stats),
     )
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run({})
@@ -258,12 +258,12 @@ async def test_worklogs_delta_explicit_since_skips_cursor():
     """Явный since из ctx не читает cursor из sync_state."""
     fake_stats = SimpleNamespace(worklogs_upserted=0, touched_issue_keys=set())
     sync_svc = _make_sync_svc(
-        update_worklogs_since=AsyncMock(return_value=fake_stats),
+        update_worklogs_v2=AsyncMock(return_value=fake_stats),
     )
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run({"since": "2026-01-01"})
 
     # _get_sync_state не должен быть вызван (explicit since)
     sync_svc._get_sync_state.assert_not_called()
-    call_kwargs = sync_svc.update_worklogs_since.call_args[1]
+    call_kwargs = sync_svc.update_worklogs_v2.call_args[1]
     assert call_kwargs["since"] == date(2026, 1, 1)
