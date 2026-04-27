@@ -1,6 +1,6 @@
 import { Button, Form, Input, Typography } from 'antd';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { getMe, login as apiLogin } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 

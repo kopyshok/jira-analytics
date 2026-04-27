@@ -1,7 +1,9 @@
-import { Suspense, type ReactNode } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router';
+import React, { Suspense, type ReactNode } from 'react';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router';
 import AppLayout from './components/Layout/AppLayout';
+import { AuthProvider } from './components/AuthProvider';
 import FactFilterProvider from './components/dashboard/FactFilterProvider';
+import { useAuth } from './hooks/useAuth';
 import {
   AnalyticsPage,
   BacklogPage,
@@ -13,6 +15,7 @@ import {
   SyncHubPage,
   SyncPage,
 } from './pages/lazyPages';
+import LoginPage from './pages/LoginPage';
 
 function page(element: ReactNode) {
   return (
@@ -28,21 +31,45 @@ function page(element: ReactNode) {
   );
 }
 
+function AuthLayout() {
+  return (
+    <AuthProvider>
+      <Outlet />
+    </AuthProvider>
+  );
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 export const router = createBrowserRouter([
   {
-    path: '/',
-    element: <AppLayout />,
+    element: <AuthLayout />,
     children: [
-      { index: true, element: <FactFilterProvider>{page(<DashboardPage />)}</FactFilterProvider> },
-      { path: 'analytics', element: <FactFilterProvider>{page(<AnalyticsPage />)}</FactFilterProvider> },
-      { path: 'sync', element: page(<SyncHubPage />) },
-      { path: 'sync-old', element: page(<SyncPage />) },
-      { path: 'categories', element: page(<CategoriesEditorPage />) },
-      { path: 'scope', element: <Navigate to="/sync" replace /> },
-      { path: 'capacity', element: page(<CapacityPage />) },
-      { path: 'backlog', element: page(<BacklogPage />) },
-      { path: 'planning', element: page(<PlanningPage />) },
-      { path: 'settings', element: page(<SettingsPage />) },
+      {
+        path: '/',
+        element: <AppLayout />,
+        children: [
+          { index: true, element: <ProtectedRoute><FactFilterProvider>{page(<DashboardPage />)}</FactFilterProvider></ProtectedRoute> },
+          { path: 'analytics', element: <ProtectedRoute><FactFilterProvider>{page(<AnalyticsPage />)}</FactFilterProvider></ProtectedRoute> },
+          { path: 'sync', element: <ProtectedRoute>{page(<SyncHubPage />)}</ProtectedRoute> },
+          { path: 'sync-old', element: <ProtectedRoute>{page(<SyncPage />)}</ProtectedRoute> },
+          { path: 'categories', element: <ProtectedRoute>{page(<CategoriesEditorPage />)}</ProtectedRoute> },
+          { path: 'scope', element: <Navigate to="/sync" replace /> },
+          { path: 'capacity', element: <ProtectedRoute>{page(<CapacityPage />)}</ProtectedRoute> },
+          { path: 'backlog', element: <ProtectedRoute>{page(<BacklogPage />)}</ProtectedRoute> },
+          { path: 'planning', element: <ProtectedRoute>{page(<PlanningPage />)}</ProtectedRoute> },
+          { path: 'settings', element: <ProtectedRoute>{page(<SettingsPage />)}</ProtectedRoute> },
+        ],
+      },
+      {
+        path: '/login',
+        element: <LoginPage />,
+      },
     ],
   },
 ]);
