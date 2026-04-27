@@ -415,18 +415,29 @@ class JiraClient:
         self,
         since: datetime,
     ) -> AsyncIterator[JiraWorklogSchema]:
-        """Get all worklogs updated since timestamp using bulk API.
-        
-        Note: This uses the /worklog/updated endpoint which returns
-        worklog IDs, then fetches each worklog individually.
-        For MVP, we fetch worklogs per issue instead.
+        """Bulk worklog fetch: worklog/updated → worklog/list.
+
+        Шаг 1: GET /rest/api/3/worklog/updated?since={ms} — пагинация по lastPage.
+        Шаг 2: POST /rest/api/3/worklog/list батчами по 1000 ID.
+        Возвращает JiraWorklogSchema каждого worklog с заполненным issueId.
         """
-        # For MVP: This requires fetching issue by issue
-        # In future, implement /worklog/updated bulk endpoint
-        raise NotImplementedError(
-            "Use iter_worklogs_for_issue per issue. "
-            "Bulk worklog API will be added in future version."
-        )
+        since_ms = int(since.timestamp() * 1000)
+        worklog_ids: list[int] = []
+
+        # Шаг 1: собрать все изменённые worklog ID
+        while True:
+            data = await self._request("GET", "/worklog/updated", params={"since": since_ms})
+            worklog_ids.extend(item["worklogId"] for item in data.get("values", []))
+            if data.get("lastPage", True):
+                break
+            since_ms = data["until"]
+
+        # Шаг 2: батч-fetch содержимого
+        for i in range(0, len(worklog_ids), 1000):
+            batch = worklog_ids[i : i + 1000]
+            data = await self._request("POST", "/worklog/list", json={"ids": batch})
+            for wl_data in data:
+                yield JiraWorklogSchema(**wl_data)
     
     # === Field discovery methods ===
 
