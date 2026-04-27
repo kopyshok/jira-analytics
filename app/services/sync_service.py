@@ -170,6 +170,9 @@ class UpdateStats:
     ``bucket_a_*`` — проход по всем issue с ``updated >= since``.
     ``bucket_b_*`` — проход по ворклогам сотрудников выбранных команд
     (включая задачи вне scope, которые создаются с ``out_of_scope=True``).
+    ``touched_issue_keys`` — все Jira-ключи задач, по которым были обновлены
+    ворклоги (из обоих вёдер). Используется в team-mode pipeline для
+    последующего refresh метаданных задач.
     """
 
     bucket_a_issues_scanned: int = 0
@@ -177,6 +180,11 @@ class UpdateStats:
     bucket_b_issues_scanned: int = 0
     bucket_b_worklogs_upserted: int = 0
     bucket_b_out_of_scope_created: int = 0
+    touched_issue_keys: "set[str]" = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.touched_issue_keys is None:
+            self.touched_issue_keys = set()
 
     @property
     def worklogs_upserted(self) -> int:
@@ -1276,6 +1284,7 @@ class SyncService:
                 employee = self._ensure_employee(author_schema)
                 self._upsert_worklog(wl, local.id, employee.id)
                 stats.bucket_a_worklogs_upserted += 1
+            stats.touched_issue_keys.add(jira_issue.key)
             self.db.commit()
             if on_progress is not None:
                 await on_progress(stats, jira_issue.key)
@@ -1340,6 +1349,7 @@ class SyncService:
                     employee = self._ensure_employee(author_schema)
                     self._upsert_worklog(wl, local.id, employee.id)
                     stats.bucket_b_worklogs_upserted += 1
+                stats.touched_issue_keys.add(jira_issue.key)
                 self.db.commit()
                 if on_progress is not None:
                     await on_progress(stats, jira_issue.key)

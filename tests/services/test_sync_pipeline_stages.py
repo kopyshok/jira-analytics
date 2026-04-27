@@ -1,5 +1,6 @@
 """Tests for pipeline stage wrappers."""
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -57,7 +58,7 @@ async def test_calendar_stage_calls_sync_year():
 @pytest.mark.asyncio
 async def test_worklogs_delta_uses_since_from_ctx():
     """WorklogsDeltaStage passes since from ctx to service."""
-    fake_stats = MagicMock(worklogs_upserted=10, issue_keys=[])
+    fake_stats = SimpleNamespace(worklogs_upserted=10, touched_issue_keys=set())
     sync_svc = MagicMock(update_worklogs_since=AsyncMock(return_value=fake_stats))
     ctx = {"since": "2026-04-01"}
     stage = WorklogsDeltaStage(sync_svc)
@@ -71,13 +72,38 @@ async def test_worklogs_delta_uses_since_from_ctx():
 @pytest.mark.asyncio
 async def test_worklogs_delta_sets_default_since_when_missing():
     """WorklogsDeltaStage sets default since (7 days ago) if not in ctx."""
-    fake_stats = MagicMock(worklogs_upserted=3, issue_keys=[])
+    fake_stats = SimpleNamespace(worklogs_upserted=3, touched_issue_keys=set())
     sync_svc = MagicMock(update_worklogs_since=AsyncMock(return_value=fake_stats))
     stage = WorklogsDeltaStage(sync_svc)
     await stage.run({})
     sync_svc.update_worklogs_since.assert_awaited_once()
     call_kwargs = sync_svc.update_worklogs_since.call_args[1]
     assert "since" in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_worklogs_delta_collects_keys_into_ctx():
+    """WorklogsDeltaStage reads touched_issue_keys from UpdateStats and sets ctx."""
+    fake_stats = SimpleNamespace(
+        worklogs_upserted=5,
+        touched_issue_keys={"A-1", "A-2"},
+    )
+    sync_svc = MagicMock(update_worklogs_since=AsyncMock(return_value=fake_stats))
+    ctx: dict = {}
+    stage = WorklogsDeltaStage(sync_svc)
+    await stage.run(ctx)
+    assert set(ctx.get("touched_issue_keys", [])) == {"A-1", "A-2"}
+
+
+@pytest.mark.asyncio
+async def test_worklogs_delta_no_ctx_when_keys_empty():
+    """WorklogsDeltaStage does not set touched_issue_keys in ctx when set is empty."""
+    fake_stats = SimpleNamespace(worklogs_upserted=0, touched_issue_keys=set())
+    sync_svc = MagicMock(update_worklogs_since=AsyncMock(return_value=fake_stats))
+    ctx: dict = {}
+    stage = WorklogsDeltaStage(sync_svc)
+    await stage.run(ctx)
+    assert "touched_issue_keys" not in ctx
 
 
 @pytest.mark.asyncio

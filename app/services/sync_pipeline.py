@@ -190,16 +190,13 @@ class WorklogsDeltaStage(Stage):
 
         result = await self.svc.update_worklogs_since(**kwargs)
 
-        # result — UpdateStats или dict
-        if hasattr(result, "worklogs_upserted"):
-            upserted = result.worklogs_upserted
-            issue_keys = getattr(result, "issue_keys", []) or []
-        elif isinstance(result, dict):
+        # result — UpdateStats (dataclass) или dict (в моках)
+        if isinstance(result, dict):
             upserted = result.get("worklogs_upserted", 0)
-            issue_keys = result.get("issue_keys", []) or []
+            issue_keys = list(result.get("issue_keys") or [])
         else:
-            upserted = 0
-            issue_keys = []
+            upserted = getattr(result, "worklogs_upserted", 0)
+            issue_keys = list(getattr(result, "touched_issue_keys", None) or [])
 
         if issue_keys:
             ctx["touched_issue_keys"] = issue_keys
