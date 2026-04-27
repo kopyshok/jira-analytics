@@ -298,7 +298,14 @@ class MappingStage(Stage):
         self.svc = mapping_svc
 
     async def run(self, ctx: dict) -> dict:
-        ids = ctx.get("touched_issue_ids")
+        ids: list | None = ctx.get("touched_issue_ids")
+        if not ids:
+            keys: list | None = ctx.get("touched_issue_keys")
+            if keys:
+                from app.models.issue import Issue
+                rows = self.svc.db.query(Issue.id).filter(Issue.key.in_(keys)).all()
+                ids = [row[0] for row in rows]
+
         if ids:
             affected = self.svc.recalculate_for_issues(ids)
         else:

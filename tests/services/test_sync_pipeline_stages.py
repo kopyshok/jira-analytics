@@ -154,6 +154,42 @@ async def test_mapping_stage_full_when_no_ids():
     assert result["affected"] == 10
 
 
+@pytest.mark.asyncio
+async def test_mapping_stage_resolves_keys_to_ids_via_db_lookup():
+    """MappingStage конвертирует touched_issue_keys → ids через DB lookup."""
+    uuid1, uuid2 = "uuid-aaa", "uuid-bbb"
+
+    # Мокаем цепочку db.query(...).filter(...).all()
+    mock_query = MagicMock()
+    mock_filter = MagicMock()
+    mock_filter.all.return_value = [(uuid1,), (uuid2,)]
+    mock_query.filter.return_value = mock_filter
+
+    mapping_svc = MagicMock(
+        db=MagicMock(query=MagicMock(return_value=mock_query)),
+        recalculate_for_issues=MagicMock(return_value=2),
+    )
+    stage = MappingStage(mapping_svc)
+    ctx: dict = {"touched_issue_keys": ["A-1", "A-2"]}
+    result = await stage.run(ctx)
+
+    mapping_svc.recalculate_for_issues.assert_called_once_with([uuid1, uuid2])
+    mapping_svc.recalculate_all.assert_not_called()
+    assert result["affected"] == 2
+
+
+@pytest.mark.asyncio
+async def test_mapping_stage_full_when_no_keys_and_no_ids():
+    """Нет ни ids, ни keys → full recalc."""
+    fake_stats = MagicMock(issues_processed=10)
+    mapping_svc = MagicMock(recalculate_all=MagicMock(return_value=fake_stats))
+    stage = MappingStage(mapping_svc)
+    result = await stage.run({})
+    mapping_svc.recalculate_all.assert_called_once()
+    mapping_svc.recalculate_for_issues.assert_not_called()
+    assert result["affected"] == 10
+
+
 # ──────────────────────── cursor tests ────────────────────────
 
 @pytest.mark.asyncio
