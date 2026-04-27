@@ -26,21 +26,22 @@ from app.schemas.sync_pipeline import PipelineRequest, TeamRefreshRequest
 router = APIRouter()
 
 
-async def _build_orchestrator(db, *, mode: str, team: Optional[str] = None) -> PipelineOrchestrator:
+def _build_orchestrator(db, jira: "JiraClient", *, mode: str, team: Optional[str] = None) -> PipelineOrchestrator:
     """Собрать оркестратор для заданного режима.
 
-    Создаёт JiraClient из настроек БД и передаёт в SyncService.
+    Принимает уже открытый JiraClient — его lifecycle управляется снаружи
+    (в ``run_pipeline`` внутри SSE-генератора) чтобы клиент оставался живым
+    на протяжении всего выполнения pipeline.
     """
-    async with JiraClient.from_db(db) as jira:
-        sync_svc = SyncService(db, jira)
-        calendar_svc = ProductionCalendarService(db)
-        mapping_svc = MappingService(db)
-        stages = build_pipeline(
-            mode=mode,
-            services={"sync": sync_svc, "calendar": calendar_svc, "mapping": mapping_svc},
-            team=team,
-        )
-        return PipelineOrchestrator(stages=stages, db=db, bus=get_event_bus())
+    sync_svc = SyncService(db, jira)
+    calendar_svc = ProductionCalendarService(db)
+    mapping_svc = MappingService(db)
+    stages = build_pipeline(
+        mode=mode,
+        services={"sync": sync_svc, "calendar": calendar_svc, "mapping": mapping_svc},
+        team=team,
+    )
+    return PipelineOrchestrator(stages=stages, db=db, bus=get_event_bus())
 
 
 @router.post("/pipeline")
@@ -64,40 +65,44 @@ async def run_pipeline(
         run_repo.finalize(run.id, status="skipped", stages=[], error_text="lock contention")
         raise HTTPException(status_code=409, detail={"running_run_id": lock.current_run_id()})
 
-    orch = await _build_orchestrator(db, mode=pipeline_request.mode, team=pipeline_request.team)
-    bus = get_event_bus()
-    queue = bus.subscribe()
-
     async def event_generator():
-        run_task = asyncio.create_task(
-            orch.run(
-                mode=pipeline_request.mode,
-                trigger="manual",
-                team=pipeline_request.team,
-                run_id=run.id,
-            )
-        )
+        bus = get_event_bus()
+        queue = bus.subscribe()
         try:
-            while True:
-                if await request.is_disconnected():
-                    run_task.cancel()
-                    run_repo.finalize(run.id, status="cancelled", stages=[])
-                    break
-                if run_task.done():
-                    result = run_task.result()
-                    run_repo.finalize(
-                        run.id,
-                        status=result["status"],
-                        stages=result.get("stages", []),
-                        error_text=result.get("error"),
+            async with JiraClient.from_db(db) as jira:
+                orch = _build_orchestrator(db, jira, mode=pipeline_request.mode, team=pipeline_request.team)
+                run_task = asyncio.create_task(
+                    orch.run(
+                        mode=pipeline_request.mode,
+                        trigger="manual",
+                        team=pipeline_request.team,
+                        run_id=run.id,
                     )
-                    yield f"data: {json.dumps({'type': 'pipeline_done', 'run_id': run.id, 'status': result['status']})}\n\n"
-                    break
+                )
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=10.0)
-                    yield f"data: {json.dumps(event)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ":ping\n\n"
+                    while True:
+                        if await request.is_disconnected():
+                            run_task.cancel()
+                            run_repo.finalize(run.id, status="cancelled", stages=[])
+                            break
+                        if run_task.done():
+                            result = run_task.result()
+                            run_repo.finalize(
+                                run.id,
+                                status=result["status"],
+                                stages=result.get("stages", []),
+                                error_text=result.get("error"),
+                            )
+                            yield f"data: {json.dumps({'type': 'pipeline_done', 'run_id': run.id, 'status': result['status']})}\n\n"
+                            break
+                        try:
+                            event = await asyncio.wait_for(queue.get(), timeout=10.0)
+                            yield f"data: {json.dumps(event)}\n\n"
+                        except asyncio.TimeoutError:
+                            yield ":ping\n\n"
+                finally:
+                    if not run_task.done():
+                        run_task.cancel()
         finally:
             bus.unsubscribe(queue)
             lock.release()
