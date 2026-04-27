@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Popover, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
@@ -19,7 +20,7 @@ import { daysSince, formatDateOnly } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
 import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
-  useUnlinkJira, useRefreshFromJira, useArchiveBacklogItem, useRestoreBacklogItem,
+  useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem,
 } from '../hooks/useBacklog';
 import { useJiraSettings } from '../hooks/useSettings';
 import { useEmployees } from '../hooks/useCapacity';
@@ -61,6 +62,7 @@ function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-
 
 export default function BacklogPage() {
   const { notification } = App.useApp();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get('view');
   const view: BacklogView =
@@ -77,7 +79,6 @@ export default function BacklogPage() {
   const update = useUpdateBacklogItem();
   const del = useDeleteBacklogItem();
   const unlink = useUnlinkJira();
-  const refreshFromJira = useRefreshFromJira();
   const archive = useArchiveBacklogItem();
   const restore = useRestoreBacklogItem();
 
@@ -140,19 +141,8 @@ export default function BacklogPage() {
   };
 
   const handleRefreshFromJira = () => {
-    refreshFromJira.mutate(undefined, {
-      onSuccess: (res) => {
-        notification.success({
-          title: 'Обновлено из Jira',
-          description:
-            `Перечитано: ${res.jira_refreshed} · ` +
-            `Создано: ${res.created} · Обновлено: ${res.updated} · ` +
-            `Архивировано: ${res.archived} · Восстановлено: ${res.restored}`,
-        });
-      },
-      onError: (e) =>
-        notification.error({ title: 'Ошибка', description: (e as Error).message }),
-    });
+    void queryClient.invalidateQueries({ queryKey: ['backlog'] });
+    notification.success({ title: 'Данные обновлены' });
   };
 
   const baseColumns = (editable: boolean) => [
@@ -581,9 +571,8 @@ export default function BacklogPage() {
             <Button
               icon={<ReloadOutlined />}
               onClick={handleRefreshFromJira}
-              loading={refreshFromJira.isPending}
             >
-              Обновить с Jira
+              Обновить
             </Button>
             <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>
               Идея вручную
