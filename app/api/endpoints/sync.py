@@ -284,7 +284,7 @@ async def test_jira_connection(db: Session = Depends(get_db)):
         )
 
 
-@router.post("/projects", response_model=SyncResponse)
+@router.post("/projects", response_model=SyncResponse, deprecated=True)
 async def sync_projects(http_request: Request, db: Session = Depends(get_db)):
     """Sync all projects from Jira.
 
@@ -309,7 +309,7 @@ async def sync_projects(http_request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/issues", response_model=SyncResponse)
+@router.post("/issues", response_model=SyncResponse, deprecated=True)
 async def sync_issues(
     http_request: Request,
     body: SyncRequest = None,
@@ -377,7 +377,7 @@ async def refresh_issues(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/teams", response_model=SyncResponse)
+@router.post("/teams", response_model=SyncResponse, deprecated=True)
 async def sync_teams(
     body: SyncTeamsRequest,
     http_request: Request,
@@ -425,7 +425,7 @@ async def sync_teams(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/worklogs", response_model=SyncResponse)
+@router.post("/worklogs", response_model=SyncResponse, deprecated=True)
 async def sync_worklogs(http_request: Request, db: Session = Depends(get_db)):
     """Sync worklogs for all synced issues.
 
@@ -450,7 +450,7 @@ async def sync_worklogs(http_request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/worklogs/reload", response_model=WorklogReloadResponse)
+@router.post("/worklogs/reload", response_model=WorklogReloadResponse, deprecated=True)
 async def reload_worklogs(
     req: WorklogReloadRequest,
     http_request: Request,
@@ -485,7 +485,7 @@ async def reload_worklogs(
     )
 
 
-@router.post("/worklogs/reload/stream")
+@router.post("/worklogs/reload/stream", deprecated=True)
 async def reload_worklogs_stream(
     req: WorklogReloadRequest,
     http_request: Request,
@@ -633,7 +633,7 @@ async def update_worklogs_stream(
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
-@router.post("/comments", response_model=SyncResponse)
+@router.post("/comments", response_model=SyncResponse, deprecated=True)
 async def sync_comments(http_request: Request, db: Session = Depends(get_db)):
     """Синхронизация комментариев к задачам из Jira."""
     try:
@@ -654,7 +654,7 @@ async def sync_comments(http_request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/full", response_model=SyncResponse)
+@router.post("/full", response_model=SyncResponse, deprecated=True)
 async def full_sync(
     http_request: Request,
     body: SyncRequest = None,
