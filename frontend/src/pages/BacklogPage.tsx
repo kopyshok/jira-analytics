@@ -61,6 +61,20 @@ function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-
   );
 }
 
+function groupArchiveByQuarter(items: BacklogItemResponse[]): [string, BacklogItemResponse[]][] {
+  const groups = new Map<string, BacklogItemResponse[]>();
+  for (const item of items) {
+    const key = item.quarter_label ?? '__none__';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  }
+  return [...groups.entries()].sort(([a], [b]) => {
+    if (a === '__none__') return 1;
+    if (b === '__none__') return -1;
+    return b.localeCompare(a); // newest quarter first
+  });
+}
+
 export default function BacklogPage() {
   const { notification } = App.useApp();
   const queryClient = useQueryClient();
@@ -88,6 +102,15 @@ export default function BacklogPage() {
   const [editing, setEditing] = useState<BacklogItemResponse | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<BacklogItemResponse | null>(null);
+
+  const [groupByQuarter, setGroupByQuarter] = useState<boolean>(() => {
+    return localStorage.getItem('backlog-archive-group') === 'true';
+  });
+
+  const toggleGroupByQuarter = (val: boolean) => {
+    setGroupByQuarter(val);
+    localStorage.setItem('backlog-archive-group', String(val));
+  };
 
   const projectMap = useMemo(
     () => new Map(projects?.map((p) => [p.id, p]) ?? []),
@@ -547,19 +570,73 @@ export default function BacklogPage() {
     </DndContext>
   );
 
+  const archiveColumns = [
+    ...baseColumns(false),
+    {
+      title: 'Квартал',
+      key: 'quarter_label',
+      width: 110,
+      sorter: (a: BacklogItemResponse, b: BacklogItemResponse) => {
+        if (!a.quarter_label && !b.quarter_label) return 0;
+        if (!a.quarter_label) return 1;
+        if (!b.quarter_label) return -1;
+        return b.quarter_label.localeCompare(a.quarter_label);
+      },
+      defaultSortOrder: 'ascend' as const,
+      render: (_: unknown, r: BacklogItemResponse) =>
+        r.quarter_label
+          ? <Tag color="purple" style={{ marginInlineEnd: 0 }}>{r.quarter_label}</Tag>
+          : <span style={{ color: '#4a6a80' }}>—</span>,
+    },
+    { title: 'Действия', width: 160, fixed: 'right' as const, render: (_: unknown, r: BacklogItemResponse) => actionsArchived(r) },
+  ];
+
   const archivedTable = (
-    <Table<BacklogItemResponse>
-      dataSource={archivedRows}
-      rowKey="id"
-      loading={archived.isLoading}
-      pagination={false}
-      size="small"
-      scroll={{ x: 1400 }}
-      columns={[
-        ...baseColumns(false),
-        { title: 'Действия', width: 160, fixed: 'right' as const, render: (_, r) => actionsArchived(r) },
-      ]}
-    />
+    <div>
+      <Button
+        size="small"
+        type={groupByQuarter ? 'primary' : 'default'}
+        ghost={groupByQuarter}
+        onClick={() => toggleGroupByQuarter(!groupByQuarter)}
+        style={{ marginBottom: 8 }}
+      >
+        {groupByQuarter ? 'Сгруппировано по кварталам' : 'Группировать по кварталам'}
+      </Button>
+      {groupByQuarter ? (
+        groupArchiveByQuarter(archivedRows ?? []).map(([key, rows]) => (
+          <div key={key} style={{ marginBottom: 16 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+              padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              {key === '__none__'
+                ? <span style={{ color: '#4a6a80', fontWeight: 600 }}>Без квартала</span>
+                : <Tag color="purple">{key}</Tag>
+              }
+              <span style={{ fontSize: 12, color: '#4a6a80' }}>{rows.length} {rows.length === 1 ? 'задача' : 'задач'}</span>
+            </div>
+            <Table<BacklogItemResponse>
+              dataSource={rows}
+              columns={archiveColumns}
+              rowKey="id"
+              size="small"
+              pagination={false}
+              scroll={{ x: true }}
+            />
+          </div>
+        ))
+      ) : (
+        <Table<BacklogItemResponse>
+          dataSource={archivedRows}
+          rowKey="id"
+          loading={archived.isLoading}
+          pagination={{ pageSize: 50 }}
+          size="small"
+          scroll={{ x: 1400 }}
+          columns={archiveColumns}
+        />
+      )}
+    </div>
   );
 
   return (
