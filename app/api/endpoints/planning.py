@@ -623,6 +623,176 @@ async def approve_scenario(
     return _to_scenario_resp(scenario)
 
 
+@router.get("/scenarios/{scenario_id}/capacity-diff")
+def get_capacity_diff(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+):
+    """Сравнивает текущие отсутствия с данными на момент утверждения."""
+    from app.schemas.capacity_diff import (
+        AbsenceChange,
+        CapacityDiffResponse,
+        EmployeeDiff,
+        MonthDiff,
+    )
+    scenario = db.get(PlanningScenario, scenario_id)
+    if not scenario or scenario.status != "approved":
+        raise HTTPException(status_code=404, detail="Approved scenario not found")
+
+    revision = (
+        db.query(ScenarioRevision)
+        .filter(ScenarioRevision.scenario_id == scenario_id)
+        .order_by(ScenarioRevision.revision_number.desc())
+        .first()
+    )
+    if not revision:
+        return CapacityDiffResponse(has_changes=False, changed_employees=[])
+
+    # Load absence snapshots
+    snaps = (
+        db.query(ScenarioAbsenceSnapshot)
+        .filter(ScenarioAbsenceSnapshot.revision_id == revision.id)
+        .all()
+    )
+    # Load capacity snapshots for available_hours comparison
+    cap_snaps: dict[tuple, float] = {
+        (s.employee_id, s.year, s.month): s.available_hours
+        for s in db.query(ScenarioCapacitySnapshot)
+        .filter(ScenarioCapacitySnapshot.revision_id == revision.id)
+        .all()
+    }
+
+    emp_ids = list(
+        {s.employee_id for s in snaps if s.employee_id}
+        | {k[0] for k in cap_snaps if k[0]}
+    )
+    if not emp_ids:
+        return CapacityDiffResponse(has_changes=False, changed_employees=[])
+
+    # Quarter date range
+    q_num = int(str(scenario.quarter).replace("Q", ""))
+    q_months = QUARTER_MONTHS[q_num]
+    import calendar as cal_mod
+    from datetime import date as date_t
+    quarter_start = date_t(scenario.year, q_months[0], 1)
+    quarter_end = date_t(scenario.year, q_months[-1],
+                         cal_mod.monthrange(scenario.year, q_months[-1])[1])
+
+    # Current absences
+    current_absences = (
+        db.query(Absence)
+        .filter(
+            Absence.employee_id.in_(emp_ids),
+            Absence.start_date <= quarter_end,
+            Absence.end_date >= quarter_start,
+        )
+        .all()
+    )
+
+    # Load reason labels for current absences
+    reason_ids = list({a.reason_id for a in current_absences if a.reason_id})
+    reasons: dict[str, str] = {}
+    if reason_ids:
+        reasons = {
+            r.id: r.label
+            for r in db.query(AbsenceReason).filter(AbsenceReason.id.in_(reason_ids)).all()
+        }
+
+    employees = {e.id: e for e in db.query(Employee).filter(Employee.id.in_(emp_ids)).all()}
+
+    # Build snap index
+    snap_by_emp: dict[str, list] = {}
+    for s in snaps:
+        snap_by_emp.setdefault(s.employee_id, []).append(s)
+
+    current_by_emp: dict[str, list] = {}
+    for a in current_absences:
+        current_by_emp.setdefault(a.employee_id, []).append(a)
+
+    capacity_svc = CapacityService(db)
+    changed_employees: list[EmployeeDiff] = []
+
+    for emp_id in emp_ids:
+        month_diffs: list[MonthDiff] = []
+        snapped_by_orig_id = {
+            s.original_absence_id: s
+            for s in snap_by_emp.get(emp_id, [])
+            if s.original_absence_id
+        }
+        current_ids = {a.id for a in current_by_emp.get(emp_id, [])}
+
+        for month in q_months:
+            snap_avail = cap_snaps.get((emp_id, scenario.year, month))
+            if snap_avail is None:
+                continue
+            mc = capacity_svc.monthly_capacity(emp_id, scenario.year, month)
+            current_avail = mc.available_hours
+            delta = round(current_avail - snap_avail, 2)
+
+            absence_changes: list[AbsenceChange] = []
+            # Removed: in snapshot but not in current
+            for orig_id, snap_ab in snapped_by_orig_id.items():
+                if orig_id not in current_ids:
+                    if snap_ab.start_date.month == month or snap_ab.end_date.month == month:
+                        absence_changes.append(AbsenceChange(
+                            type="removed",
+                            start_date=snap_ab.start_date,
+                            end_date=snap_ab.end_date,
+                            reason=snap_ab.reason_label,
+                            hours=snap_ab.hours_total,
+                        ))
+            # Added: in current but not in snapshot
+            for cur_ab in current_by_emp.get(emp_id, []):
+                if cur_ab.id not in snapped_by_orig_id:
+                    if cur_ab.start_date.month == month or cur_ab.end_date.month == month:
+                        absence_changes.append(AbsenceChange(
+                            type="added",
+                            start_date=cur_ab.start_date,
+                            end_date=cur_ab.end_date,
+                            reason=reasons.get(cur_ab.reason_id) if cur_ab.reason_id else None,
+                            hours=cur_ab.hours_total,
+                        ))
+
+            if abs(delta) > 0.1 or absence_changes:
+                month_diffs.append(MonthDiff(
+                    year=scenario.year,
+                    month=month,
+                    snapshot_available_hours=snap_avail,
+                    current_available_hours=current_avail,
+                    delta_hours=delta,
+                    absence_changes=absence_changes,
+                ))
+
+        if month_diffs:
+            emp = employees.get(emp_id)
+            changed_employees.append(EmployeeDiff(
+                employee_id=emp_id,
+                employee_name=emp.display_name if emp else emp_id,
+                months=month_diffs,
+            ))
+
+    return CapacityDiffResponse(
+        has_changes=len(changed_employees) > 0,
+        changed_employees=changed_employees,
+    )
+
+
+@router.patch("/scenarios/{scenario_id}/acknowledge-drift", response_model=dict)
+async def acknowledge_capacity_drift(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Пометить изменения доступности как просмотренные."""
+    scenario = db.get(PlanningScenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    scenario.capacity_drift_acknowledged_at = datetime.utcnow()
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    return {"ok": True}
+
+
 @router.post(
     "/scenarios/{scenario_id}/revert-to-draft", response_model=ScenarioResponse
 )

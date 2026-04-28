@@ -131,3 +131,62 @@ def test_approve_creates_absence_snapshots(client, db_session):
     assert snaps[0].employee_id == "emp-t2"
     assert snaps[0].hours_total == 40.0
     assert snaps[0].reason_label == "Отпуск"
+
+
+def test_capacity_diff_no_changes(client, db_session):
+    """Diff returns has_changes=False when nothing changed after approval."""
+    emp = Employee(id="emp-d1", jira_account_id="acc-d1", display_name="DiffTest", is_active=True)
+    db_session.add(emp)
+    db_session.add(EmployeeTeam(
+        id=_uid(), employee_id="emp-d1", team="TeamD1", is_primary=True,
+    ))
+    scenario = PlanningScenario(id="sc-d1", name="Q2 Diff", quarter="Q2", year=2026, status="draft", team="TeamD1")
+    db_session.add(scenario)
+    db_session.commit()
+
+    approve_resp = client.post("/api/v1/planning/scenarios/sc-d1/approve")
+    assert approve_resp.status_code == 200
+
+    resp = client.get("/api/v1/planning/scenarios/sc-d1/capacity-diff")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_changes"] is False
+
+
+def test_capacity_diff_detects_removed_absence(client, db_session):
+    """Diff detects absence removed after approval."""
+    emp = Employee(id="emp-d2", jira_account_id="acc-d2", display_name="DiffTest2", is_active=True)
+    db_session.add(emp)
+    db_session.add(EmployeeTeam(
+        id=_uid(), employee_id="emp-d2", team="TeamD2", is_primary=True,
+    ))
+    reason = AbsenceReason(
+        id="ar-d1", code="vacation_d", label="Отпуск",
+        is_planned=True, is_active=True, sort_order=0,
+    )
+    db_session.add(reason)
+    absence = Absence(
+        id="abs-d1", employee_id="emp-d2", reason_id="ar-d1",
+        start_date=date(2026, 4, 7), end_date=date(2026, 4, 11), hours_total=40.0,
+    )
+    db_session.add(absence)
+    scenario = PlanningScenario(id="sc-d2", name="Q2 Diff2", quarter="Q2", year=2026, status="draft", team="TeamD2")
+    db_session.add(scenario)
+    db_session.commit()
+
+    approve_resp = client.post("/api/v1/planning/scenarios/sc-d2/approve")
+    assert approve_resp.status_code == 200
+
+    # Delete the absence after approval
+    db_session.delete(absence)
+    db_session.commit()
+
+    resp = client.get("/api/v1/planning/scenarios/sc-d2/capacity-diff")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_changes"] is True
+    emp_diff = data["changed_employees"][0]
+    assert emp_diff["employee_id"] == "emp-d2"
+    changes = emp_diff["months"][0]["absence_changes"]
+    assert len(changes) == 1
+    assert changes[0]["type"] == "removed"
