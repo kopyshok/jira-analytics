@@ -665,14 +665,21 @@ class AnalyticsService:
             )
             if teams:
                 named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
+                has_none = NO_TEAM_TOKEN in teams
+                emp_clauses: list = []
                 if named_teams:
-                    emp_ids = [
-                        r[0] for r in
-                        self.db.query(EmployeeTeam.employee_id)
-                        .filter(EmployeeTeam.team.in_(named_teams))
-                        .all()
-                    ]
-                    fact_q = fact_q.filter(Worklog.employee_id.in_(emp_ids))
+                    emp_subq = select(EmployeeTeam.employee_id).where(
+                        EmployeeTeam.team.in_(named_teams)
+                    ).scalar_subquery()
+                    emp_clauses.append(Worklog.employee_id.in_(emp_subq))
+                if has_none:
+                    emp_clauses.append(
+                        ~exists().where(EmployeeTeam.employee_id == Worklog.employee_id)
+                    )
+                if emp_clauses:
+                    fact_q = fact_q.filter(
+                        or_(*emp_clauses) if len(emp_clauses) > 1 else emp_clauses[0]
+                    )
             rows = fact_q.group_by(Issue.category).all()
             fact_by_code = {code: float(hours or 0) for code, hours in rows}
 
@@ -758,14 +765,21 @@ class AnalyticsService:
         )
         if teams:
             named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
+            has_none = NO_TEAM_TOKEN in teams
+            emp_clauses: list = []
             if named_teams:
-                emp_ids = [
-                    r[0] for r in
-                    self.db.query(EmployeeTeam.employee_id)
-                    .filter(EmployeeTeam.team.in_(named_teams))
-                    .all()
-                ]
-                agg_q = agg_q.filter(Worklog.employee_id.in_(emp_ids))
+                emp_subq = select(EmployeeTeam.employee_id).where(
+                    EmployeeTeam.team.in_(named_teams)
+                ).scalar_subquery()
+                emp_clauses.append(Worklog.employee_id.in_(emp_subq))
+            if has_none:
+                emp_clauses.append(
+                    ~exists().where(EmployeeTeam.employee_id == Worklog.employee_id)
+                )
+            if emp_clauses:
+                agg_q = agg_q.filter(
+                    or_(*emp_clauses) if len(emp_clauses) > 1 else emp_clauses[0]
+                )
         agg_rows = agg_q.group_by(Issue.category).all()
 
         items: list[CategoryMetaItem] = []
