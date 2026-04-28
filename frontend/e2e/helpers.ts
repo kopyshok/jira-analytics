@@ -1,5 +1,16 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+export const E2E_EMAIL = 'e2e-admin@example.com';
+export const E2E_PASSWORD = 'e2etest123';
+
+export async function loginAs(page: Page, email = E2E_EMAIL, password = E2E_PASSWORD) {
+  await page.goto('/login');
+  await page.fill('input[type=email]', email);
+  await page.fill('input[type=password]', password);
+  await page.click('button[type=submit]');
+  await page.waitForURL(/\/(?!login)/);
+}
+
 export type BrowserErrorTracker = {
   errors: string[];
 };
