@@ -39,10 +39,11 @@ function AuthLayout() {
   );
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, adminOnly }: { children: React.ReactNode; adminOnly?: boolean }) {
   const { user, isLoading } = useAuth();
   if (isLoading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -63,7 +64,7 @@ export const router = createBrowserRouter([
           { path: 'capacity', element: <ProtectedRoute>{page(<CapacityPage />)}</ProtectedRoute> },
           { path: 'backlog', element: <ProtectedRoute>{page(<BacklogPage />)}</ProtectedRoute> },
           { path: 'planning', element: <ProtectedRoute>{page(<PlanningPage />)}</ProtectedRoute> },
-          { path: 'settings', element: <ProtectedRoute>{page(<SettingsPage />)}</ProtectedRoute> },
+          { path: 'settings', element: <ProtectedRoute adminOnly>{page(<SettingsPage />)}</ProtectedRoute> },
         ],
       },
       {
