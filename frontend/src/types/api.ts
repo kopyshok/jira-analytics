@@ -413,6 +413,7 @@ export interface BacklogItemResponse {
   jira_status: string | null;
   jira_status_category: string | null;
   jira_status_changed_at: string | null;
+  quarter_label: string | null;
 }
 
 export interface BacklogRefreshResult {

@@ -90,6 +90,7 @@ class BacklogItemResponse(BaseModel):
     jira_status: Optional[str] = None
     jira_status_category: Optional[str] = None
     jira_status_changed_at: Optional[datetime] = None
+    quarter_label: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -171,9 +172,29 @@ def _approved_scenarios_for(db: Session, item_id: str) -> List[ScenarioRef]:
     return [ScenarioRef(id=i, name=n) for i, n in rows]
 
 
+def _quarter_label_for(db: Session, item_id: str) -> Optional[str]:
+    """Return Russian quarter label (e.g. '2 кв. 2026') from the approved scenario
+    this item was allocated to, or None if not found."""
+    row = (
+        db.query(PlanningScenario.quarter, PlanningScenario.year)
+        .join(ScenarioAllocation, ScenarioAllocation.scenario_id == PlanningScenario.id)
+        .filter(
+            ScenarioAllocation.backlog_item_id == item_id,
+            PlanningScenario.status == "approved",
+            ScenarioAllocation.included_flag == True,
+        )
+        .first()
+    )
+    if row and row.quarter and row.year:
+        q_num = row.quarter.replace("Q", "")
+        return f"{q_num} кв. {row.year}"
+    return None
+
+
 def _to_response(
     item: BacklogItem,
     approved_scenarios: Optional[List[ScenarioRef]] = None,
+    quarter_label: Optional[str] = None,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
@@ -206,6 +227,7 @@ def _to_response(
         jira_status=issue.status if issue else None,
         jira_status_category=issue.status_category if issue else None,
         jira_status_changed_at=issue.status_changed_at if issue else None,
+        quarter_label=quarter_label,
     )
 
 
@@ -317,6 +339,10 @@ async def list_backlog_items(
 
     if view in ("in_work", "quarterly"):
         return [_to_response(i, _approved_scenarios_for(db, i.id)) for i in items]
+    if view == "archived":
+        return [
+            _to_response(i, None, _quarter_label_for(db, i.id)) for i in items
+        ]
     return [_to_response(i, None) for i in items]
 
 

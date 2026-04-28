@@ -103,3 +103,35 @@ def test_active_view_excludes_done_jira_status(testclient_db_session):
         )
     finally:
         _teardown()
+
+
+def test_archived_item_has_quarter_label(testclient_db_session):
+    """Archived backlog item allocated to approved scenario has quarter_label."""
+    from datetime import datetime
+
+    from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
+
+    db = testclient_db_session
+    sc = PlanningScenario(
+        id="sc-ql-1", name="Q2 Test", quarter="Q2", year=2026,
+        status="approved", team="T1",
+    )
+    db.add(sc)
+    bi = BacklogItem(id="bi-ql-1", title="Test item", archived_at=datetime(2026, 4, 1))
+    db.add(bi)
+    db.flush()
+    db.add(ScenarioAllocation(
+        id="sa-ql-1", scenario_id="sc-ql-1", backlog_item_id="bi-ql-1",
+        included_flag=True, sort_order=0,
+    ))
+    db.commit()
+
+    client = _make_client(db)
+    try:
+        resp = client.get("/api/v1/backlog?view=archived")
+        assert resp.status_code == 200
+        item = next((i for i in resp.json() if i["id"] == "bi-ql-1"), None)
+        assert item is not None
+        assert item["quarter_label"] == "2 кв. 2026"
+    finally:
+        _teardown()
