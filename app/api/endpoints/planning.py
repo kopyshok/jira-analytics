@@ -26,14 +26,18 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import (
+    Absence,
+    AbsenceReason,
     BacklogItem,
     Employee,
     EmployeeTeam,
     MandatoryWorkType,
     PlanningScenario,
     RoleCapacityRule,
+    ScenarioAbsenceSnapshot,
     ScenarioAllocation,
     ScenarioCapacitySnapshot,
+    ScenarioNormSnapshot,
     ScenarioRevision,
     ScenarioRevisionItem,
     ScenarioRule,
@@ -538,6 +542,79 @@ async def approve_scenario(
                     available_hours=mc.available_hours,
                     snapshot_taken_at=now,
                 ))
+
+        # --- Снапшот норм по видам работ ---
+        rules = (
+            db.query(ScenarioRule)
+            .filter(ScenarioRule.scenario_id == scenario_id)
+            .all()
+        )
+        wt_ids = list({r.work_type_id for r in rules})
+        work_types: dict[str, str] = {}
+        if wt_ids:
+            work_types = {
+                wt.id: wt.label
+                for wt in db.query(MandatoryWorkType).filter(MandatoryWorkType.id.in_(wt_ids)).all()
+            }
+        for emp in employees:
+            for month in months:
+                mc = capacity_svc.monthly_capacity(emp.id, scenario.year, month)
+                emp_rules = [r for r in rules if r.role is None or r.role == emp.role]
+                for rule in emp_rules:
+                    norm_h = round(mc.norm_hours * rule.percent_of_norm / 100, 2)
+                    db.add(ScenarioNormSnapshot(
+                        revision_id=revision.id,
+                        employee_id=emp.id,
+                        employee_name=emp.display_name,
+                        role=emp.role,
+                        year=scenario.year,
+                        month=month,
+                        work_type_id=rule.work_type_id,
+                        work_type_label=work_types.get(rule.work_type_id, ""),
+                        norm_hours=norm_h,
+                    ))
+
+        # --- Снапшот отсутствий команды ---
+        import calendar as cal_mod
+        from datetime import date as date_t
+        q_num = int(str(scenario.quarter).replace("Q", ""))
+        q_months_list = QUARTER_MONTHS[q_num]
+        quarter_start = date_t(scenario.year, q_months_list[0], 1)
+        last_month = q_months_list[-1]
+        last_day = cal_mod.monthrange(scenario.year, last_month)[1]
+        quarter_end = date_t(scenario.year, last_month, last_day)
+
+        absences = (
+            db.query(Absence)
+            .filter(
+                Absence.employee_id.in_([emp.id for emp in employees]),
+                Absence.start_date <= quarter_end,
+                Absence.end_date >= quarter_start,
+            )
+            .all()
+        )
+
+        reason_ids = list({a.reason_id for a in absences if a.reason_id})
+        reasons: dict[str, str] = {}
+        if reason_ids:
+            reasons = {
+                r.id: r.label
+                for r in db.query(AbsenceReason).filter(AbsenceReason.id.in_(reason_ids)).all()
+            }
+        emp_names = {emp.id: emp.display_name for emp in employees}
+
+        for ab in absences:
+            db.add(ScenarioAbsenceSnapshot(
+                revision_id=revision.id,
+                employee_id=ab.employee_id,
+                employee_name=emp_names.get(ab.employee_id, ""),
+                original_absence_id=ab.id,
+                start_date=ab.start_date,
+                end_date=ab.end_date,
+                reason_id=ab.reason_id,
+                reason_label=reasons.get(ab.reason_id) if ab.reason_id else None,
+                hours_total=ab.hours_total,
+            ))
 
     scenario.status = "approved"
     db.commit()
