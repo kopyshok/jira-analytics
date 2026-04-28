@@ -6,6 +6,7 @@ import {
   type UserCreate, type UserUpdate,
 } from '../../api/adminUsers';
 import type { UserProfile } from '../../api/auth';
+import { useJiraTeams } from '../../hooks/useSync';
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Администратор' },
@@ -17,6 +18,7 @@ const ROLE_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 export default function UsersTab() {
+  const { data: jiraTeams } = useJiraTeams();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -44,10 +46,14 @@ export default function UsersTab() {
     }
   }
 
-  async function handleUpdate(values: UserUpdate) {
+  async function handleUpdate(values: Record<string, unknown>) {
     if (!editUser) return;
+    const payload: UserUpdate = { ...values } as UserUpdate;
+    if ('default_team' in values && (values.default_team === undefined || values.default_team === '')) {
+      payload.default_team = null;
+    }
     try {
-      await updateUser(editUser.id, values);
+      await updateUser(editUser.id, payload);
       refresh();
       setEditUser(null);
       notification.success({ message: 'Изменения сохранены' });
@@ -136,7 +142,14 @@ export default function UsersTab() {
         <Form form={form} layout="vertical" onFinish={handleUpdate}>
           <Form.Item name="display_name" label="Имя"><Input /></Form.Item>
           <Form.Item name="role" label="Роль"><Select options={ROLE_OPTIONS} /></Form.Item>
-          <Form.Item name="default_team" label="Команда"><Input /></Form.Item>
+          <Form.Item name="default_team" label="Команда по умолчанию">
+            <Select
+              options={(jiraTeams ?? []).map(t => ({ value: t, label: t }))}
+              placeholder="Не задана"
+              allowClear
+              showSearch
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
