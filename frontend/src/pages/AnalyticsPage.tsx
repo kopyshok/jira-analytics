@@ -12,8 +12,7 @@ import { CHART_COLORS, DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { formatHours } from '../utils/format';
 import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
-import FactFilterBar from '../components/dashboard/FactFilterBar';
-import { useFactFilter } from '../hooks/useFactFilter';
+import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import type { TeamFilterParams } from '../api/analytics';
 
 const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
@@ -24,7 +23,7 @@ export default function AnalyticsPage() {
   const [employeeId, setEmployeeId] = useState<string | undefined>();
   const [projectKey, setProjectKey] = useState<string | undefined>();
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
-  const { queryParams: teamParams } = useFactFilter();
+  const { queryParams: teamParams } = useGlobalTeamFilter();
 
   const activeTab = searchParams.get('tab') || 'employee';
 
@@ -70,7 +69,6 @@ export default function AnalyticsPage() {
             Сбросить
           </Button>
         )}
-        <FactFilterBar />
         <ExportButtons
           onXlsx={() => downloadAnalyticsXlsx(start, end, teamParams)}
           onPdf={() => downloadAnalyticsPdf(start, end, teamParams)}

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Space } from 'antd';
 import QuarterPicker from '../components/shared/QuarterPicker';
-import FactFilterBar from '../components/dashboard/FactFilterBar';
 import ExportButtons from '../components/shared/ExportButtons';
 import ProjectsWidget from '../components/dashboard/ProjectsWidget';
 import NormWorkWidget from '../components/dashboard/NormWorkWidget';
@@ -10,11 +9,11 @@ import { useDashboardProjects, useDashboardNormWork, useDashboardCategories } fr
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
 import { currentQuarterPeriod } from '../types/api';
 import type { QuarterPeriod } from '../types/api';
-import { useFactFilter } from '../hooks/useFactFilter';
+import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 
 export default function DashboardPage() {
   const [period, setPeriod] = useState<QuarterPeriod>(currentQuarterPeriod);
-  const { queryParams: teamParams } = useFactFilter();
+  const { queryParams: teamParams } = useGlobalTeamFilter();
 
   const { data: projects, isLoading: projLoading } = useDashboardProjects(period);
   const { data: normWork, isLoading: normLoading } = useDashboardNormWork(period);
@@ -24,7 +23,6 @@ export default function DashboardPage() {
     <div>
       <Space wrap style={{ marginBottom: 24 }}>
         <QuarterPicker value={period} onChange={setPeriod} />
-        <FactFilterBar />
         <ExportButtons
           onXlsx={() => downloadAnalyticsXlsx(undefined, undefined, teamParams)}
           onPdf={() => downloadAnalyticsPdf(undefined, undefined, teamParams)}
