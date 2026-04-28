@@ -17,6 +17,8 @@ import {
   getScenarioResource,
   getScenarioRules,
   putScenarioRules,
+  fetchCapacityDiff,
+  acknowledgeDrift,
 } from '../api/planning';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
 
@@ -285,4 +287,25 @@ export const usePatchAllocationAssignee = () => {
     },
   });
 };
+
+export function useCapacityDiff(scenarioId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['capacity-diff', scenarioId],
+    queryFn: ({ signal }) => fetchCapacityDiff(scenarioId!, signal),
+    enabled: enabled && !!scenarioId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+export function useAcknowledgeDrift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (scenarioId: string) => acknowledgeDrift(scenarioId),
+    onSuccess: (_, scenarioId) => {
+      qc.invalidateQueries({ queryKey: ['capacity-diff', scenarioId] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
+    },
+  });
+}
 

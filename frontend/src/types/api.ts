@@ -526,6 +526,36 @@ export interface ScenarioRuleInput {
   percent_of_norm: number;
 }
 
+// === Capacity diff ===
+
+export interface AbsenceChange {
+  type: 'added' | 'removed';
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  hours: number;
+}
+
+export interface MonthDiff {
+  year: number;
+  month: number;
+  snapshot_available_hours: number;
+  current_available_hours: number;
+  delta_hours: number;
+  absence_changes: AbsenceChange[];
+}
+
+export interface EmployeeDiff {
+  employee_id: string;
+  employee_name: string;
+  months: MonthDiff[];
+}
+
+export interface CapacityDiffResponse {
+  has_changes: boolean;
+  changed_employees: EmployeeDiff[];
+}
+
 // === Hierarchy rules ===
 
 export interface HierarchyRule {

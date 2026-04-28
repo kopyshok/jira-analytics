@@ -37,6 +37,8 @@ import {
   useUpdateScenario,
   usePatchAllocationAssignee,
   useReorderAllocations,
+  useCapacityDiff,
+  useAcknowledgeDrift,
 } from '../hooks/usePlanning';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -113,6 +115,90 @@ function rolesAffectedByAllocation(
   if (ed + eo * (1 - r) > 0) out.push('dev');
   if (eq > 0) out.push('qa');
   return out;
+}
+
+const MONTH_NAMES = ['', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
+                     'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+
+function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data: diff } = useCapacityDiff(scenarioId, true);
+  const acknowledge = useAcknowledgeDrift();
+
+  if (!diff?.has_changes) return null;
+
+  return (
+    <div style={{
+      border: '1px solid rgba(245,158,11,0.5)',
+      borderRadius: 8,
+      background: 'rgba(245,158,11,0.04)',
+      padding: '8px 12px',
+      marginTop: 8,
+    }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+        onClick={() => setExpanded(v => !v)}
+      >
+        <span style={{ color: '#f59e0b' }}>⚠</span>
+        <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>
+          Доступность изменилась ({diff.changed_employees.length} чел.)
+        </span>
+        <span style={{ color: '#64748b', fontSize: 11, marginLeft: 'auto' }}>
+          {expanded ? '▲' : '▼'}
+        </span>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 8 }}>
+          {diff.changed_employees.map(emp => (
+            <div key={emp.employee_id}>
+              {emp.months.map(m => (
+                <div key={`${m.year}-${m.month}`} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap',
+                  padding: '4px 6px', background: 'rgba(245,158,11,0.07)',
+                  borderRadius: 5, fontSize: 12, marginBottom: 3,
+                }}>
+                  <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
+                    {emp.employee_name}
+                  </span>
+                  <span style={{ color: '#94a3b8' }}>
+                    {MONTH_NAMES[m.month]}: {Math.round(m.snapshot_available_hours)} → {Math.round(m.current_available_hours)} ч
+                  </span>
+                  <span style={{ fontWeight: 700, color: m.delta_hours > 0 ? '#22c55e' : '#f87171' }}>
+                    {m.delta_hours > 0 ? '+' : ''}{Math.round(m.delta_hours)} ч
+                  </span>
+                  {m.absence_changes.map((ac, i) => (
+                    <span key={i} style={{ color: '#64748b', fontSize: 11 }}>
+                      {ac.type === 'removed' ? 'Удалено' : 'Добавлено'}:{' '}
+                      {ac.reason ?? 'отсутствие'} {ac.start_date}–{ac.end_date}{' '}
+                      ({Math.round(ac.hours)} ч)
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Button
+              size="small"
+              style={{ borderColor: '#f59e0b', color: '#f59e0b' }}
+              onClick={() => {/* future: trigger re-approve flow */}}
+            >
+              Пересмотреть сценарий
+            </Button>
+            <Button
+              size="small"
+              style={{ color: '#64748b' }}
+              loading={acknowledge.isPending}
+              onClick={() => acknowledge.mutate(scenarioId)}
+            >
+              Игнорировать
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PlanningPage() {
@@ -496,6 +582,9 @@ export default function PlanningPage() {
                 </Popconfirm>
               </Space>
             </div>
+            {isApproved && (
+              <CapacityDriftIndicator scenarioId={scenarioId} />
+            )}
           </Card>
 
           <ScenarioResourceSummary

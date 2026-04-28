@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AllocationResponse, ScenarioResponse, ResourceBase, ScenarioRuleOut, ScenarioRuleInput } from '../types/api';
+import type { AllocationResponse, ScenarioResponse, ResourceBase, ScenarioRuleOut, ScenarioRuleInput, CapacityDiffResponse } from '../types/api';
 
 export const getScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
   api.get<ScenarioResponse[]>('/planning/scenarios', { year, quarter, status, teams });
@@ -64,3 +64,21 @@ export const reorderAllocations = (
     `/planning/scenarios/${scenarioId}/allocations/reorder`,
     { ordered_ids: orderedIds },
   );
+
+export function fetchCapacityDiff(
+  scenarioId: string,
+  signal?: AbortSignal,
+): Promise<CapacityDiffResponse> {
+  return api.get<CapacityDiffResponse>(
+    `/planning/scenarios/${scenarioId}/capacity-diff`,
+    {},
+    signal,
+  );
+}
+
+export function acknowledgeDrift(scenarioId: string): Promise<{ ok: boolean }> {
+  return api.patch<{ ok: boolean }>(
+    `/planning/scenarios/${scenarioId}/acknowledge-drift`,
+    {},
+  );
+}
