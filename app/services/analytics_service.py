@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
 from app.models import MandatoryWorkType, RoleCapacityRule, Category
-from app.services.resource_base_service import ResourceBaseService
+from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
+from app.models.scenario_revision import ScenarioRevision
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
@@ -591,7 +592,7 @@ class AnalyticsService:
         """Widget 2: план/факт по обязательным видам работ за квартал/месяц.
 
         Для каждого активного вида работ считает:
-        - plan_hours = из утверждённого сценария квартала (ResourceBaseService.compute_summary)
+        - plan_hours = из ScenarioNormSnapshot утверждённого сценария (последняя ревизия)
         - fact_hours = сумма ворклогов по задачам категорий, привязанных к данному виду работ
         """
         period_start, period_end = quarter_to_dates(year, quarter, month)
@@ -630,8 +631,47 @@ class AnalyticsService:
         plan_by_work_type: dict[str, float] = {}
         backlog_plan_hours: float = 0.0
         if approved_scenario:
-            summary = ResourceBaseService(self.db).compute_summary(approved_scenario)
-            plan_by_work_type = {row.work_type_id: row.total_hours for row in summary.work_type_rows}
+            from sqlalchemy import func as sqlfunc
+            from app.services.capacity_service import QUARTER_MONTHS
+
+            latest_revision = (
+                self.db.query(ScenarioRevision)
+                .filter(ScenarioRevision.scenario_id == approved_scenario.id)
+                .order_by(ScenarioRevision.revision_number.desc())
+                .first()
+            )
+            if latest_revision:
+                snap_q = (
+                    self.db.query(
+                        ScenarioNormSnapshot.work_type_id,
+                        sqlfunc.sum(ScenarioNormSnapshot.norm_hours).label("total"),
+                    )
+                    .filter(
+                        ScenarioNormSnapshot.revision_id == latest_revision.id,
+                        ScenarioNormSnapshot.year == year,
+                    )
+                )
+                if month:
+                    snap_q = snap_q.filter(ScenarioNormSnapshot.month == month)
+                else:
+                    snap_q = snap_q.filter(
+                        ScenarioNormSnapshot.month.in_(QUARTER_MONTHS[quarter])
+                    )
+                if teams:
+                    named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
+                    if named_teams:
+                        emp_subq = (
+                            select(EmployeeTeam.employee_id)
+                            .where(EmployeeTeam.team.in_(named_teams))
+                            .scalar_subquery()
+                        )
+                        snap_q = snap_q.filter(
+                            ScenarioNormSnapshot.employee_id.in_(emp_subq)
+                        )
+                for wt_id, total in snap_q.group_by(ScenarioNormSnapshot.work_type_id).all():
+                    if wt_id:
+                        plan_by_work_type[wt_id] = round(float(total), 2)
+
             row = (
                 self.db.query(
                     func.sum(

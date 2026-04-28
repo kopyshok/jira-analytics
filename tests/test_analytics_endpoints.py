@@ -155,3 +155,47 @@ def test_dashboard_norm_work_accepts_teams_param(tc_client):
 def test_dashboard_categories_accepts_teams_param(tc_client):
     resp = tc_client.get("/api/v1/analytics/dashboard/categories?year=2026&quarter=2&teams=TeamA")
     assert resp.status_code == 200
+
+
+def test_dashboard_norm_work_reads_from_snapshot(tc_client, testclient_db_session):
+    """norm-work plan_hours come from ScenarioNormSnapshot, not ResourceBaseService."""
+    from datetime import datetime
+    from app.models import PlanningScenario, MandatoryWorkType
+    from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
+    from app.models.scenario_revision import ScenarioRevision
+
+    db = testclient_db_session
+
+    wt = MandatoryWorkType(
+        id="wt-nw1", code="projects_nw", label="Проекты NW",
+        is_active=True, sort_order=1, subtracts_from_pool=False,
+    )
+    db.add(wt)
+    sc = PlanningScenario(
+        id="sc-nw1", name="Q2 NW", quarter="Q2", year=2026,
+        status="approved", team="TNW",
+    )
+    db.add(sc)
+    db.flush()
+    rev = ScenarioRevision(
+        id="rev-nw1", scenario_id="sc-nw1", revision_number=1,
+        approved_at=datetime.utcnow(),
+    )
+    db.add(rev)
+    db.flush()
+    # Snapshot: 3 months, 42h each = 126h total
+    for month in [4, 5, 6]:
+        db.add(ScenarioNormSnapshot(
+            id=f"ns-nw-{month}", revision_id="rev-nw1",
+            employee_id=None, employee_name="X", role="analyst",
+            year=2026, month=month, work_type_id="wt-nw1",
+            work_type_label="Проекты NW", norm_hours=42.0,
+        ))
+    db.commit()
+
+    resp = tc_client.get("/api/v1/analytics/dashboard/norm-work?year=2026&quarter=2")
+    assert resp.status_code == 200
+    data = resp.json()
+    item = next((i for i in data["items"] if i["work_type_id"] == "wt-nw1"), None)
+    assert item is not None
+    assert item["plan_hours"] == 126.0  # 42 * 3 months
