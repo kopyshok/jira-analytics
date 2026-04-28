@@ -737,14 +737,12 @@ export function CategoryConfigTab() {
   const cancelRefresh = () => refreshAbortRef.current?.abort();
   const cancelSyncTeams = () => syncTeamsAbortRef.current?.abort();
 
-  // Автозагрузка дерева при открытии страницы, если выбрана хотя бы одна
-  // команда (global filter). Срабатывает один раз за монтирование,
-  // чтобы не мешать ручному переключению фильтров.
-  const autoLoadedRef = useRef(false);
+  // Автозагрузка дерева при изменении выбранных команд (global filter).
+  // Перечитываем при каждой смене команды — иначе invalidateQueries
+  // в GlobalTeamFilterProvider чистит кэш, а refetch не стреляет
+  // (useIssueTree объявлен с enabled:false).
   useEffect(() => {
-    if (autoLoadedRef.current) return;
     if (selectedTeams.length === 0) return;
-    autoLoadedRef.current = true;
     issueTree.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTeams]);
