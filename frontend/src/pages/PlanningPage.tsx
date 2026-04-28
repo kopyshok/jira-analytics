@@ -582,7 +582,7 @@ export default function PlanningPage() {
                 </Popconfirm>
               </Space>
             </div>
-            {isApproved && (
+            {isApproved && scenarioId && (
               <CapacityDriftIndicator scenarioId={scenarioId} />
             )}
           </Card>
