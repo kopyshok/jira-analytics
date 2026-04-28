@@ -1,16 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.core.security import create_access_token, decode_access_token, verify_password
+from app.core.auth_deps import get_current_user
+from app.core.security import create_access_token, verify_password
 from app.database import get_db
+from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import LoginRequest, TokenResponse, UserResponse
+from app.schemas.user import LoginRequest, TokenResponse, UserResponse, UserTeamsUpdate
 
 router = APIRouter()
-_oauth2 = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 _repo = UserRepository()
 
 
@@ -30,15 +29,15 @@ def login(data: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
 
 
 @router.get("/me", response_model=UserResponse)
-def me(token: str | None = Depends(_oauth2), db: Session = Depends(get_db)) -> UserResponse:
-    if not token:
-        raise HTTPException(status_code=401, detail="Не авторизован")
-    try:
-        payload = decode_access_token(token)
-        user_id: str = payload["sub"]
-    except (JWTError, KeyError):
-        raise HTTPException(status_code=401, detail="Невалидный токен")
-    user = _repo.get_by_id(db, user_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="Пользователь не найден")
+def me(user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse.model_validate(user)
+
+
+@router.put("/me/teams", response_model=UserResponse)
+def update_my_teams(
+    data: UserTeamsUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserResponse:
+    user.selected_teams = data.teams
+    return UserResponse.model_validate(_repo.update(db, user))
