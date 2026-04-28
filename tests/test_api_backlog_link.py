@@ -620,7 +620,9 @@ def _seed_jira_status_fixture(db):
     db.commit()
 
 
-def test_view_active_excludes_jira_done_and_in_progress(db_session):
+def test_view_active_excludes_jira_done_includes_indeterminate(db_session):
+    # 'done' items must be excluded; 'indeterminate' items must stay in active
+    # (they are only moved to in_work once allocated to an approved scenario).
     _seed_jira_status_fixture(db_session)
     _override(db_session)
     try:
@@ -628,7 +630,9 @@ def test_view_active_excludes_jira_done_and_in_progress(db_session):
         r = client.get("/api/v1/backlog?view=active")
         assert r.status_code == 200
         ids = {row["id"] for row in r.json()}
-        assert ids == {"js-new"}
+        assert "js-new" in ids
+        assert "js-ind" in ids   # indeterminate stays in active until in approved scenario
+        assert "js-done" not in ids
     finally:
         app.dependency_overrides.clear()
 

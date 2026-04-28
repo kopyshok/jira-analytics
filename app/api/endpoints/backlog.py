@@ -255,7 +255,7 @@ async def list_backlog_items(
         )
         query = query.filter(
             BacklogItem.archived_at.is_(None),
-            func.coalesce(Issue.status_category, "").notin_(["done", "indeterminate"]),
+            func.coalesce(Issue.status_category, "").notin_(["done"]),
             or_(
                 BacklogItem.issue_id.is_(None),
                 ~quarterly_filter,
