@@ -20,6 +20,7 @@ class UserResponse(BaseModel):
     display_name: str
     role: UserRole
     default_team: str | None
+    selected_teams: list[str] = []
     is_active: bool
     created_at: datetime
     updated_at: datetime
