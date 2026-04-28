@@ -172,23 +172,29 @@ def _approved_scenarios_for(db: Session, item_id: str) -> List[ScenarioRef]:
     return [ScenarioRef(id=i, name=n) for i, n in rows]
 
 
-def _quarter_label_for(db: Session, item_id: str) -> Optional[str]:
-    """Return Russian quarter label (e.g. '2 кв. 2026') from the approved scenario
-    this item was allocated to, or None if not found."""
-    row = (
-        db.query(PlanningScenario.quarter, PlanningScenario.year)
-        .join(ScenarioAllocation, ScenarioAllocation.scenario_id == PlanningScenario.id)
-        .filter(
-            ScenarioAllocation.backlog_item_id == item_id,
-            PlanningScenario.status == "approved",
-            ScenarioAllocation.included_flag == True,
+def _quarter_labels_bulk(db: Session, item_ids: list[str]) -> dict[str, str]:
+    """Один запрос для всех archived items вместо N запросов."""
+    if not item_ids:
+        return {}
+    rows = (
+        db.query(
+            ScenarioAllocation.backlog_item_id,
+            PlanningScenario.quarter,
+            PlanningScenario.year,
         )
-        .first()
+        .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+        .filter(
+            ScenarioAllocation.backlog_item_id.in_(item_ids),
+            PlanningScenario.status == "approved",
+            ScenarioAllocation.included_flag.is_(True),
+        )
+        .all()
     )
-    if row and row.quarter and row.year:
-        q_num = row.quarter.replace("Q", "")
-        return f"{q_num} кв. {row.year}"
-    return None
+    return {
+        bid: f"{q.replace('Q', '')} кв. {y}"
+        for bid, q, y in rows
+        if q and y
+    }
 
 
 def _to_response(
@@ -340,9 +346,8 @@ async def list_backlog_items(
     if view in ("in_work", "quarterly"):
         return [_to_response(i, _approved_scenarios_for(db, i.id)) for i in items]
     if view == "archived":
-        return [
-            _to_response(i, None, _quarter_label_for(db, i.id)) for i in items
-        ]
+        labels = _quarter_labels_bulk(db, [i.id for i in items])
+        return [_to_response(i, None, labels.get(i.id)) for i in items]
     return [_to_response(i, None) for i in items]
 
 
