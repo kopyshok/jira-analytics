@@ -9,8 +9,9 @@ import type {
 export const getBacklogItems = (
   view: BacklogView = 'active',
   projectId?: string,
+  teams?: string,
 ) =>
-  api.get<BacklogItemResponse[]>('/backlog', { view, project_id: projectId });
+  api.get<BacklogItemResponse[]>('/backlog', { view, project_id: projectId, teams });
 
 export const createBacklogItem = (data: {
   title: string;

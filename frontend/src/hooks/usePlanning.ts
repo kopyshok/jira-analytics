@@ -20,10 +20,10 @@ import {
 } from '../api/planning';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
 
-export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
+export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
   useQuery({
-    queryKey: ['planning', 'scenarios', year, quarter, status],
-    queryFn: () => getScenarios(year, quarter, status),
+    queryKey: ['planning', 'scenarios', year, quarter, status, teams],
+    queryFn: () => getScenarios(year, quarter, status, teams),
   });
 
 export const useScenario = (id: string | null) =>
