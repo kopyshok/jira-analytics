@@ -4,13 +4,15 @@ import {
 } from 'antd';
 import { LockOutlined, DeleteOutlined, PlusOutlined, HolderOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { AggregationColor } from 'antd/es/color-picker/color';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useCategories, useUpdateCategory, useDeleteCategory, useCreateCategory,
 } from '../hooks/useCategories';
+import { updateCategory } from '../api/categories';
 import { useMandatoryWorkTypes } from '../hooks/useCapacity';
 import type { CategoryResponse } from '../types/api';
 
@@ -44,6 +46,7 @@ function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-
 
 export default function CategoriesTab() {
   const { notification } = App.useApp();
+  const qc = useQueryClient();
   const { items, isLoading } = useCategories();
   const update = useUpdateCategory();
   const del = useDeleteCategory();
@@ -59,32 +62,43 @@ export default function CategoriesTab() {
   ];
 
   const handleDragEnd = useCallback(
-    ({ active: draggingActive, over }: DragEndEvent) => {
-      if (!over || draggingActive.id === over.id) return;
+    async ({ active: draggingActive, over }: DragEndEvent) => {
+      if (!over || draggingActive.id === over.id || !items) return;
+
       const oldIndex = items.findIndex(i => i.id === draggingActive.id);
       const newIndex = items.findIndex(i => i.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
 
-      // Reorder: assign sort_order = index position for affected items
-      const reordered = [...items];
-      const [moved] = reordered.splice(oldIndex, 1);
-      reordered.splice(newIndex, 0, moved);
+      const reordered = arrayMove(items, oldIndex, newIndex);
+      const toUpdate = reordered
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item, idx }) => item.sort_order !== idx);
 
-      reordered.forEach((item, idx) => {
-        if (item.sort_order !== idx) {
-          update.mutate(
-            { id: item.id, body: { sort_order: idx } },
-            { onError: (err) => notification.error({ title: 'Ошибка', description: err.message }) },
-          );
-        }
-      });
+      if (toUpdate.length === 0) return;
+
+      try {
+        await Promise.all(
+          toUpdate.map(({ item, idx }) => updateCategory(item.id, { sort_order: idx })),
+        );
+        qc.invalidateQueries({ queryKey: ['categories'] });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Неизвестная ошибка';
+        notification.error({ message: 'Ошибка сортировки', description: msg });
+      }
     },
-    [items, update, notification],
+    [items, qc, notification],
   );
 
   const handleAddSubmit = (vals: { label: string; color: string }) => {
     const label = vals.label.trim();
     const code = label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    if (!code) {
+      notification.error({
+        message: 'Код категории пуст',
+        description: 'Используйте латинские символы в названии или введите код вручную.',
+      });
+      return;
+    }
     const color = vals.color || undefined;
     create.mutate(
       { code, label, color },
@@ -146,7 +160,7 @@ export default function CategoriesTab() {
                   <ColorPicker
                     size="small"
                     value={v ?? '#ffffff'}
-                    onChange={(color: AggregationColor) => {
+                    onChangeComplete={(color: AggregationColor) => {
                       const hex = color.toHexString();
                       if (hex !== (v ?? '#ffffff')) {
                         update.mutate(
