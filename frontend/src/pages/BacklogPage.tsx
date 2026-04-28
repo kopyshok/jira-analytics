@@ -580,9 +580,9 @@ export default function BacklogPage() {
         if (!a.quarter_label && !b.quarter_label) return 0;
         if (!a.quarter_label) return 1;
         if (!b.quarter_label) return -1;
-        return b.quarter_label.localeCompare(a.quarter_label);
+        return a.quarter_label.localeCompare(b.quarter_label);
       },
-      defaultSortOrder: 'ascend' as const,
+      defaultSortOrder: 'descend' as const,
       render: (_: unknown, r: BacklogItemResponse) =>
         r.quarter_label
           ? <Tag color="purple" style={{ marginInlineEnd: 0 }}>{r.quarter_label}</Tag>
@@ -619,6 +619,7 @@ export default function BacklogPage() {
               dataSource={rows}
               columns={archiveColumns}
               rowKey="id"
+              loading={archived.isLoading}
               size="small"
               pagination={false}
               scroll={{ x: true }}
