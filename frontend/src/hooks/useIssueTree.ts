@@ -5,7 +5,9 @@ export function useIssueTree(params?: { project_keys?: string; teams?: string })
   return useQuery({
     queryKey: ['issues', 'tree', params],
     queryFn: ({ signal }) => getIssueTree(params, signal),
-    enabled: false,
+    // Авто-загрузка когда выставлен фильтр команд (или явно — список проектов).
+    // Без фильтра дерево слишком тяжёлое, поэтому не дёргаем.
+    enabled: !!(params?.teams || params?.project_keys),
     retry: false,
   });
 }

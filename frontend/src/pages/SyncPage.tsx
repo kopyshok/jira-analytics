@@ -673,16 +673,6 @@ export function CategoryConfigTab() {
 
   const hasPending = pendingCats.size > 0;
 
-  // Автозагрузка дерева при изменении выбранных команд (global filter).
-  // Перечитываем при каждой смене команды — иначе invalidateQueries
-  // в GlobalTeamFilterProvider чистит кэш, а refetch не стреляет
-  // (useIssueTree объявлен с enabled:false).
-  useEffect(() => {
-    if (selectedTeams.length === 0) return;
-    issueTree.refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeams]);
-
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
       <Space wrap>
@@ -696,22 +686,13 @@ export function CategoryConfigTab() {
           options={uniqueStatuses.map(s => ({ value: s, label: s }))}
           maxTagCount="responsive"
         />
-        {issueTree.isFetching ? (
+        {issueTree.isFetching && (
           <Button
             danger
             icon={<CloseOutlined />}
             onClick={() => qc.cancelQueries({ queryKey: treeQueryKey })}
           >
             Отменить загрузку
-          </Button>
-        ) : (
-          <Button
-            type="primary"
-            icon={<SyncOutlined />}
-            disabled={selectedTeams.length === 0}
-            onClick={() => issueTree.refetch()}
-          >
-            Получить перечень задач
           </Button>
         )}
         <Button
