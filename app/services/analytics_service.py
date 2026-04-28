@@ -586,6 +586,7 @@ class AnalyticsService:
         year: int,
         quarter: int,
         month: Optional[int] = None,
+        teams: Optional[list[str]] = None,
     ) -> DashboardNormWorkResponse:
         """Widget 2: план/факт по обязательным видам работ за квартал/месяц.
 
@@ -653,7 +654,7 @@ class AnalyticsService:
         all_category_codes = [code for codes in codes_by_work_type.values() for code in codes]
         fact_by_code: dict[str, float] = {}
         if all_category_codes:
-            rows = (
+            fact_q = (
                 self.db.query(Issue.category, func.sum(Worklog.hours))
                 .join(Worklog, Worklog.issue_id == Issue.id)
                 .filter(
@@ -661,9 +662,18 @@ class AnalyticsService:
                     Worklog.started_at <= end_dt,
                     Issue.category.in_(all_category_codes),
                 )
-                .group_by(Issue.category)
-                .all()
             )
+            if teams:
+                named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
+                if named_teams:
+                    emp_ids = [
+                        r[0] for r in
+                        self.db.query(EmployeeTeam.employee_id)
+                        .filter(EmployeeTeam.team.in_(named_teams))
+                        .all()
+                    ]
+                    fact_q = fact_q.filter(Worklog.employee_id.in_(emp_ids))
+            rows = fact_q.group_by(Issue.category).all()
             fact_by_code = {code: float(hours or 0) for code, hours in rows}
 
         items: list[NormWorkItem] = []
@@ -704,6 +714,7 @@ class AnalyticsService:
         year: int,
         quarter: int,
         month: Optional[int] = None,
+        teams: Optional[list[str]] = None,
     ) -> DashboardCategoriesResponse:
         """Widget 3: метрики по категориям работ за квартал/месяц.
 
@@ -729,7 +740,7 @@ class AnalyticsService:
         allowed_codes = list(cat_meta.keys())
 
         # 2. Агрегат по категории задачи
-        agg_rows = (
+        agg_q = (
             self.db.query(
                 Issue.category.label("category"),
                 func.sum(Worklog.hours).label("hours"),
@@ -744,9 +755,18 @@ class AnalyticsService:
                 Worklog.started_at <= end_dt,
                 Issue.category.in_(allowed_codes),
             )
-            .group_by(Issue.category)
-            .all()
         )
+        if teams:
+            named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
+            if named_teams:
+                emp_ids = [
+                    r[0] for r in
+                    self.db.query(EmployeeTeam.employee_id)
+                    .filter(EmployeeTeam.team.in_(named_teams))
+                    .all()
+                ]
+                agg_q = agg_q.filter(Worklog.employee_id.in_(emp_ids))
+        agg_rows = agg_q.group_by(Issue.category).all()
 
         items: list[CategoryMetaItem] = []
         for row in agg_rows:

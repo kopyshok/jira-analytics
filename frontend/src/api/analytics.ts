@@ -50,14 +50,24 @@ export function fetchDashboardProjects(
 
 export function fetchDashboardNormWork(
   period: QuarterPeriod,
+  teams?: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<DashboardNormWorkResponse> {
-  return api.get<DashboardNormWorkResponse>('/analytics/dashboard/norm-work', periodToParams(period), signal);
+  return api.get<DashboardNormWorkResponse>(
+    '/analytics/dashboard/norm-work',
+    { ...periodToParams(period), ...(teams ?? {}) },
+    signal,
+  );
 }
 
 export function fetchDashboardCategories(
   period: QuarterPeriod,
+  teams?: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<DashboardCategoriesResponse> {
-  return api.get<DashboardCategoriesResponse>('/analytics/dashboard/categories', periodToParams(period), signal);
+  return api.get<DashboardCategoriesResponse>(
+    '/analytics/dashboard/categories',
+    { ...periodToParams(period), ...(teams ?? {}) },
+    signal,
+  );
 }

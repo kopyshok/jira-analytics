@@ -30,6 +30,18 @@ def client(db_session):
 
 
 @pytest.fixture
+def tc_client(testclient_db_session):
+    """TestClient backed by StaticPool — safe for async ASGI dispatch threads."""
+    def _get_db():
+        yield testclient_db_session
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
 def setup_data(db_session):
     """Minimal seed: 2 employees, 2 projects, 3 issues, worklogs + category mappings.
 
@@ -132,3 +144,14 @@ def test_hours_by_employee_empty_teams_is_noop(client, db_session, setup_data):
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 2  # both Alice and Bob
+
+
+def test_dashboard_norm_work_accepts_teams_param(tc_client):
+    """teams param accepted without error — 200 response."""
+    resp = tc_client.get("/api/v1/analytics/dashboard/norm-work?year=2026&quarter=2&teams=TeamA")
+    assert resp.status_code == 200
+
+
+def test_dashboard_categories_accepts_teams_param(tc_client):
+    resp = tc_client.get("/api/v1/analytics/dashboard/categories?year=2026&quarter=2&teams=TeamA")
+    assert resp.status_code == 200

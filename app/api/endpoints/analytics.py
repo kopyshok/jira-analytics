@@ -31,12 +31,13 @@ def dashboard_norm_work(
     year: int = Query(..., ge=2020, le=2100),
     quarter: int = Query(..., ge=1, le=4),
     month: Optional[int] = Query(None, ge=1, le=12),
+    teams: Optional[str] = Query(None, description="Команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Widget 2: план/факт нормированных работ за квартал/месяц."""
     svc = AnalyticsService(db)
     try:
-        return svc.get_dashboard_norm_work(year=year, quarter=quarter, month=month)
+        return svc.get_dashboard_norm_work(year=year, quarter=quarter, month=month, teams=parse_teams_csv(teams))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -46,12 +47,13 @@ def dashboard_categories(
     year: int = Query(..., ge=2020, le=2100),
     quarter: int = Query(..., ge=1, le=4),
     month: Optional[int] = Query(None, ge=1, le=12),
+    teams: Optional[str] = Query(None, description="Команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Widget 3: метрики по категориям работ за квартал/месяц."""
     svc = AnalyticsService(db)
     try:
-        return svc.get_dashboard_categories(year=year, quarter=quarter, month=month)
+        return svc.get_dashboard_categories(year=year, quarter=quarter, month=month, teams=parse_teams_csv(teams))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

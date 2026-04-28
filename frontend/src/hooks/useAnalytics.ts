@@ -46,19 +46,19 @@ export function useDashboardProjects(period: QuarterPeriod) {
   });
 }
 
-export function useDashboardNormWork(period: QuarterPeriod) {
+export function useDashboardNormWork(period: QuarterPeriod, teams?: Record<string, string>) {
   return useQuery({
-    queryKey: ['dashboard-norm-work', period],
-    queryFn: ({ signal }) => fetchDashboardNormWork(period, signal),
+    queryKey: ['dashboard-norm-work', period, teams],
+    queryFn: ({ signal }) => fetchDashboardNormWork(period, teams, signal),
     staleTime: 30_000,
     retry: 1,
   });
 }
 
-export function useDashboardCategories(period: QuarterPeriod) {
+export function useDashboardCategories(period: QuarterPeriod, teams?: Record<string, string>) {
   return useQuery({
-    queryKey: ['dashboard-categories', period],
-    queryFn: ({ signal }) => fetchDashboardCategories(period, signal),
+    queryKey: ['dashboard-categories', period, teams],
+    queryFn: ({ signal }) => fetchDashboardCategories(period, teams, signal),
     staleTime: 30_000,
     retry: 1,
   });
