@@ -165,7 +165,7 @@ const IncludeCell = memo(function IncludeCell({
 // Constant Table props — lifted out of render so every click doesn't
 // hand AntD a fresh object reference.
 const tableComponents = { header: { cell: ResizableTitle } };
-const tableScroll = { y: 600 };
+const tableScroll = { y: 'calc(100vh - 320px)' };
 
 export function CategoryConfigTab() {
   const { notification, message } = App.useApp();
