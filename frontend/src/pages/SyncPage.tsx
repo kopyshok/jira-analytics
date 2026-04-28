@@ -15,8 +15,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useJiraSettings, useSaveGenericSetting, useGenericSetting } from '../hooks/useSettings';
 import {
   useSyncStatus, useSyncMutation, useRecalculateMapping,
-  useRefreshIssuesByKeys, useSyncTeams, useReloadWorklogs,
-  useUpdateWorklogs,
+  useReloadWorklogs, useUpdateWorklogs,
 } from '../hooks/useSync';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import {
@@ -201,10 +200,6 @@ export function CategoryConfigTab() {
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const setIncludeMut = useSetIssueInclude();
   const batchCategoryMut = useBatchSetCategory();
-  const refreshMut = useRefreshIssuesByKeys();
-  const syncTeamsMut = useSyncTeams();
-  const refreshAbortRef = useRef<AbortController | null>(null);
-  const syncTeamsAbortRef = useRef<AbortController | null>(null);
   const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
   const treeQueryKey = useMemo(() => ['issues', 'tree', issueTreeParams], [issueTreeParams]);
@@ -678,65 +673,6 @@ export function CategoryConfigTab() {
 
   const hasPending = pendingCats.size > 0;
 
-  // Keys of all loaded, non-orphan, non-group nodes — for targeted refresh.
-  const loadedKeys = useMemo(() => {
-    const out: string[] = [];
-    const walk = (nodes: IssueTreeNode[]) => {
-      nodes.forEach(n => {
-        if (n.issue_type !== 'group' && n.key) out.push(n.key);
-        walk(n.children);
-      });
-    };
-    walk(issueTree.data ?? []);
-    return out;
-  }, [issueTree.data]);
-
-  // Keys of nodes strictly matching the active inner tab — same population
-  // as the count shown on the tab label (group/context excluded).
-  const visibleKeys = useMemo(() => {
-    const out: string[] = [];
-    const walk = (nodes: TreeNodeWithChildren[]) => {
-      nodes.forEach(n => {
-        if (
-          n.issue_type !== 'group'
-          && !n.is_context
-          && n.key
-          && matchesTab(effectiveFor(n), innerTab)
-        ) {
-          out.push(n.key);
-        }
-        if (n.children) walk(n.children);
-      });
-    };
-    walk(tabData);
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabData, innerTab]);
-
-  const runRefresh = (keys: string[]) => {
-    if (keys.length === 0) return;
-    const ctl = new AbortController();
-    refreshAbortRef.current = ctl;
-    refreshMut.mutate({ jiraKeys: keys, signal: ctl.signal }, {
-      onSuccess: (res) => {
-        notification.success({
-          message: 'Обновление с Jira завершено',
-          description: res.message,
-        });
-        issueTree.refetch();
-      },
-      onError: (e) => {
-        if (e.name === 'AbortError') return;  // silent cancel
-        notification.error({ message: 'Ошибка обновления', description: e.message });
-      },
-      onSettled: () => { refreshAbortRef.current = null; },
-    });
-  };
-  const handleRefreshAll = () => runRefresh(loadedKeys);
-  const handleRefreshVisible = () => runRefresh(visibleKeys);
-  const cancelRefresh = () => refreshAbortRef.current?.abort();
-  const cancelSyncTeams = () => syncTeamsAbortRef.current?.abort();
-
   // Автозагрузка дерева при изменении выбранных команд (global filter).
   // Перечитываем при каждой смене команды — иначе invalidateQueries
   // в GlobalTeamFilterProvider чистит кэш, а refetch не стреляет
@@ -802,102 +738,6 @@ export function CategoryConfigTab() {
             >
               Отмена
             </Button>
-          </>
-        )}
-      </Space>
-      <Space wrap>
-        <Popconfirm
-          title="Быстрая синхронизация команд"
-          description={
-            <div style={{ maxWidth: 340 }}>
-              Подтянет с Jira новые и изменённые задачи выбранных команд
-              за прошедший период. У каждой команды свой курсор —
-              повторный запуск грузит только свежее.
-            </div>
-          }
-          icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
-          okText="Запустить"
-          cancelText="Отмена"
-          onConfirm={() => {
-            const ctl = new AbortController();
-            syncTeamsAbortRef.current = ctl;
-            syncTeamsMut.mutate({ teams: selectedTeams, signal: ctl.signal }, {
-              onSuccess: (res) => {
-                notification.success({
-                  message: 'Синхронизация команд',
-                  description: res.message,
-                });
-                issueTree.refetch();
-              },
-              onError: (e) => {
-                if (e.name === 'AbortError') return;
-                notification.error({
-                  message: 'Ошибка синхронизации команд',
-                  description: e.message,
-                });
-              },
-              onSettled: () => { syncTeamsAbortRef.current = null; },
-            });
-          }}
-          disabled={selectedTeams.length === 0 || syncTeamsMut.isPending}
-        >
-          {syncTeamsMut.isPending ? (
-            <Button danger icon={<CloseOutlined />} onClick={cancelSyncTeams}>
-              Прервать синхронизацию команд
-            </Button>
-          ) : (
-            <Button
-              icon={<ReloadOutlined />}
-              disabled={selectedTeams.length === 0}
-            >
-              Получить данные с Jira по указанной команде ({selectedTeams.length})
-            </Button>
-          )}
-        </Popconfirm>
-        {refreshMut.isPending ? (
-          <Button danger icon={<CloseOutlined />} onClick={cancelRefresh}>
-            Прервать обновление с Jira
-          </Button>
-        ) : (
-          <>
-            <Popconfirm
-              title="Обновить с Jira все задачи"
-              description={
-                <div style={{ maxWidth: 320 }}>
-                  Перечитает с Jira {loadedKeys.length} загруженных задач,
-                  не создавая новых. Нужно чтобы подтянуть «Статус изменён»
-                  и другие поля у уже существующих задач.
-                </div>
-              }
-              icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
-              okText="Запустить"
-              cancelText="Отмена"
-              onConfirm={handleRefreshAll}
-              disabled={loadedKeys.length === 0}
-            >
-              <Button icon={<ReloadOutlined />} disabled={loadedKeys.length === 0}>
-                Обновить с Jira все задачи ({loadedKeys.length})
-              </Button>
-            </Popconfirm>
-            <Popconfirm
-              title="Обновить с Jira видимые задачи"
-              description={
-                <div style={{ maxWidth: 320 }}>
-                  Перечитает с Jira {visibleKeys.length} задач текущей подвкладки
-                  (как в счётчике её заголовка). Родительские и контекстные
-                  узлы не обновляются.
-                </div>
-              }
-              icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
-              okText="Запустить"
-              cancelText="Отмена"
-              onConfirm={handleRefreshVisible}
-              disabled={visibleKeys.length === 0}
-            >
-              <Button icon={<ReloadOutlined />} disabled={visibleKeys.length === 0}>
-                Обновить с Jira видимые задачи ({visibleKeys.length})
-              </Button>
-            </Popconfirm>
           </>
         )}
       </Space>
