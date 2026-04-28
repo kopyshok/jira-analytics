@@ -327,6 +327,7 @@ async def list_scenarios(
     year: Optional[int] = Query(None),
     quarter: Optional[int] = Query(None, ge=1, le=4),
     status: Optional[str] = Query(None, pattern="^(draft|approved)$"),
+    teams: Optional[str] = Query(None, description="Comma-separated team codes to filter by"),
     db: Session = Depends(get_db),
 ):
     """Список сценариев планирования (опционально по году/кварталу/статусу)."""
@@ -337,6 +338,9 @@ async def list_scenarios(
         query = query.filter(PlanningScenario.quarter == f"Q{quarter}")
     if status is not None:
         query = query.filter(PlanningScenario.status == status)
+    teams_list = [t.strip() for t in (teams or "").split(",") if t.strip()]
+    if teams_list:
+        query = query.filter(PlanningScenario.team.in_(teams_list))
     rows = query.order_by(
         PlanningScenario.year.desc(),
         PlanningScenario.quarter,

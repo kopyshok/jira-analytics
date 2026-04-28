@@ -215,6 +215,7 @@ def _to_response(
 async def list_backlog_items(
     project_id: Optional[str] = Query(None),
     view: str = Query("active", pattern="^(active|archived|in_work|quarterly)$"),
+    teams: Optional[str] = Query(None, description="Comma-separated team codes to filter by"),
     db: Session = Depends(get_db),
 ):
     """Список бэклога с фильтром по виду.
@@ -232,6 +233,10 @@ async def list_backlog_items(
     )
     if project_id is not None:
         query = query.filter(BacklogItem.project_id == project_id)
+
+    teams_list = [t.strip() for t in (teams or "").split(",") if t.strip()]
+    if teams_list:
+        query = query.filter(Issue.team.in_(teams_list))
 
     if view == "active":
         quarterly_filter = or_(
