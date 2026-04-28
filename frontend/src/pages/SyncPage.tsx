@@ -15,9 +15,10 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useJiraSettings, useSaveGenericSetting, useGenericSetting } from '../hooks/useSettings';
 import {
   useSyncStatus, useSyncMutation, useRecalculateMapping,
-  useJiraTeams, useRefreshIssuesByKeys, useSyncTeams, useReloadWorklogs,
+  useRefreshIssuesByKeys, useSyncTeams, useReloadWorklogs,
   useUpdateWorklogs,
 } from '../hooks/useSync';
+import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import {
   useScopeProjects,
 } from '../hooks/useScope';
@@ -170,24 +171,12 @@ const tableScroll = { y: 600 };
 export function CategoryConfigTab() {
   const { notification, message } = App.useApp();
   const qc = useQueryClient();
-  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [teamsHydrated, setTeamsHydrated] = useState(false);
+  const { queryParams: globalQueryParams } = useGlobalTeamFilter();
+  const selectedTeams = useMemo(
+    () => (globalQueryParams.teams ? globalQueryParams.teams.split(',').filter(Boolean) : []),
+    [globalQueryParams.teams],
+  );
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
-  const storedTeams = useGenericSetting('ui_teams_categories');
-  const saveUiSetting = useSaveGenericSetting();
-
-  // Hydrate once from AppSetting; changes are persisted via handleTeamsChange.
-  useEffect(() => {
-    if (teamsHydrated || storedTeams.data === undefined) return;
-    const val = storedTeams.data?.value;
-    if (val) setSelectedTeams(val.split(',').filter(Boolean));
-    setTeamsHydrated(true);
-  }, [teamsHydrated, storedTeams.data]);
-
-  const handleTeamsChange = (val: string[]) => {
-    setSelectedTeams(val);
-    saveUiSetting.mutate({ key: 'ui_teams_categories', value: val.join(',') });
-  };
 
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 110, summary: 380, status: 140, statusChanged: 150, goals: 110, category: 260, include: 80,
@@ -208,7 +197,6 @@ export function CategoryConfigTab() {
     [scopeKeys, selectedTeams],
   );
   const issueTree = useIssueTree(issueTreeParams);
-  const jiraTeams = useJiraTeams();
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const setIncludeMut = useSetIssueInclude();
@@ -750,35 +738,20 @@ export function CategoryConfigTab() {
   const cancelSyncTeams = () => syncTeamsAbortRef.current?.abort();
 
   // Автозагрузка дерева при открытии страницы, если выбрана хотя бы одна
-  // команда (persisted в AppSetting). Срабатывает один раз за монтирование,
+  // команда (global filter). Срабатывает один раз за монтирование,
   // чтобы не мешать ручному переключению фильтров.
   const autoLoadedRef = useRef(false);
   useEffect(() => {
     if (autoLoadedRef.current) return;
-    if (!teamsHydrated) return;
     if (selectedTeams.length === 0) return;
     autoLoadedRef.current = true;
     issueTree.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamsHydrated, selectedTeams]);
+  }, [selectedTeams]);
 
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
       <Space wrap>
-        <Select
-          mode="multiple"
-          placeholder="Продуктовые команды"
-          value={selectedTeams}
-          onChange={handleTeamsChange}
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          style={{ minWidth: 360 }}
-          maxTagCount="responsive"
-          options={(jiraTeams.data ?? []).map(t => ({ value: t, label: t }))}
-          onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
-          loading={jiraTeams.isFetching}
-        />
         <Select
           mode="multiple"
           placeholder="Скрытые статусы"
