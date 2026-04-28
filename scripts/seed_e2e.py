@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import SessionLocal
 from app.models import Employee, EmployeeTeam, Project
+from app.models.user import User, UserRole
+from app.core.security import hash_password
 
 
 E2E_EMPLOYEE_ID = "00000000-0000-0000-0000-000000000001"
@@ -56,6 +58,19 @@ def seed() -> None:
                     key="E2E",
                     name="E2E Project",
                     project_type="software",
+                    is_active=True,
+                )
+            )
+
+        if not db.get(User, "e2e-admin-id"):
+            db.add(
+                User(
+                    id="e2e-admin-id",
+                    email="e2e-admin@example.com",
+                    password_hash=hash_password("e2etest123"),
+                    display_name="E2E Admin",
+                    role=UserRole.admin,
+                    default_team=None,
                     is_active=True,
                 )
             )
