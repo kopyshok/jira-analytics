@@ -5,6 +5,7 @@ import { LogoutOutlined } from '@ant-design/icons';
 import SideMenu from './SideMenu';
 import LogoMark from './LogoMark';
 import SyncIndicator from './SyncIndicator';
+import GlobalTeamFilterButton from './GlobalTeamFilterButton';
 import BugReportButton from '../BugReportButton';
 import { DARK_THEME } from '../../utils/constants';
 import { useEventStream } from '../../hooks/useEventStream';
@@ -65,6 +66,7 @@ export default function AppLayout() {
             <SyncIndicator />
             {user && (
               <>
+                <GlobalTeamFilterButton />
                 <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
                   {user.display_name}
                 </span>
