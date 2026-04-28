@@ -3,7 +3,6 @@ import { createBrowserRouter, Navigate, Outlet } from 'react-router';
 import AppLayout from './components/Layout/AppLayout';
 import { AuthProvider } from './components/AuthProvider';
 import { GlobalTeamFilterProvider } from './components/GlobalTeamFilterProvider';
-import FactFilterProvider from './components/dashboard/FactFilterProvider';
 import { useAuth } from './hooks/useAuth';
 import {
   AnalyticsPage,
@@ -58,8 +57,8 @@ export const router = createBrowserRouter([
         path: '/',
         element: <AppLayout />,
         children: [
-          { index: true, element: <ProtectedRoute><FactFilterProvider>{page(<DashboardPage />)}</FactFilterProvider></ProtectedRoute> },
-          { path: 'analytics', element: <ProtectedRoute><FactFilterProvider>{page(<AnalyticsPage />)}</FactFilterProvider></ProtectedRoute> },
+          { index: true, element: <ProtectedRoute>{page(<DashboardPage />)}</ProtectedRoute> },
+          { path: 'analytics', element: <ProtectedRoute>{page(<AnalyticsPage />)}</ProtectedRoute> },
           { path: 'sync', element: <ProtectedRoute>{page(<SyncHubPage />)}</ProtectedRoute> },
           { path: 'sync-old', element: <ProtectedRoute>{page(<SyncPage />)}</ProtectedRoute> },
           { path: 'categories', element: <ProtectedRoute>{page(<CategoriesEditorPage />)}</ProtectedRoute> },
