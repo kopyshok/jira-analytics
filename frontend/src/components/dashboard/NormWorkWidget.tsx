@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import type { DashboardNormWorkResponse, NormWorkItem } from '../../types/api';
-import { formatHours } from '../../utils/format';
 
 interface Thresholds { warnAbove: number; underBelow: number; }
 
@@ -58,7 +57,7 @@ function BulletBar({ item, thresholds }: { item: NormWorkItem; thresholds: Thres
       <div style={{ textAlign: 'right', fontSize: 13 }}>
         <span style={{ color, fontWeight: 700 }}>{item.pct.toFixed(0)}%</span>
         <div style={{ color: '#7e94b8', fontSize: 11, marginTop: 1 }}>
-          {formatHours(Math.round(item.fact_hours))}/{formatHours(Math.round(item.plan_hours))} ч
+          {Math.round(item.fact_hours)}/{Math.round(item.plan_hours)} ч
         </div>
       </div>
     </div>
@@ -79,8 +78,8 @@ export default function NormWorkWidget({ data, loading }: Props) {
 
   const summaryExtra = data && !loading ? (
     <span style={{ display: 'flex', alignItems: 'center', gap: 24, fontSize: 15, color: '#7e94b8' }}>
-      <span>Σ план: <b style={{ color: '#fff', fontSize: 16 }}>{formatHours(Math.round(data.total_plan))} ч</b></span>
-      <span>Σ факт: <b style={{ color: '#fff', fontSize: 16 }}>{formatHours(Math.round(data.total_fact))} ч</b></span>
+      <span>Σ план: <b style={{ color: '#fff', fontSize: 16 }}>{Math.round(data.total_plan)} ч</b></span>
+      <span>Σ факт: <b style={{ color: '#fff', fontSize: 16 }}>{Math.round(data.total_fact)} ч</b></span>
       <span>Загрузка: <b style={{ color: barColor(data.total_pct, thresholds), fontSize: 16 }}>{data.total_pct.toFixed(0)}%</b></span>
     </span>
   ) : null;
