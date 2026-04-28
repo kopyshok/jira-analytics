@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from app.models.planning_scenario import PlanningScenario
     from app.models.scenario_revision_item import ScenarioRevisionItem
     from app.models.scenario_capacity_snapshot import ScenarioCapacitySnapshot
+    from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
+    from app.models.scenario_absence_snapshot import ScenarioAbsenceSnapshot
 
 
 class ScenarioRevision(Base, TimestampMixin):
@@ -39,6 +41,12 @@ class ScenarioRevision(Base, TimestampMixin):
         back_populates="revision", cascade="all, delete-orphan"
     )
     capacity_snapshots: Mapped[List["ScenarioCapacitySnapshot"]] = relationship(
+        back_populates="revision", cascade="all, delete-orphan"
+    )
+    norm_snapshots: Mapped[List["ScenarioNormSnapshot"]] = relationship(
+        back_populates="revision", cascade="all, delete-orphan"
+    )
+    absence_snapshots: Mapped[List["ScenarioAbsenceSnapshot"]] = relationship(
         back_populates="revision", cascade="all, delete-orphan"
     )
 

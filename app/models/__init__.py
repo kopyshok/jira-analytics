@@ -30,6 +30,8 @@ from app.models.scenario_rule import ScenarioRule
 from app.models.scenario_revision import ScenarioRevision
 from app.models.scenario_revision_item import ScenarioRevisionItem
 from app.models.scenario_capacity_snapshot import ScenarioCapacitySnapshot
+from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
+from app.models.scenario_absence_snapshot import ScenarioAbsenceSnapshot
 from app.models.sync_schedule import SyncSchedule
 from app.models.sync_run import SyncRun
 from app.models.user import User, UserRole  # noqa: F401
@@ -67,6 +69,8 @@ __all__ = [
     "ScenarioRevision",
     "ScenarioRevisionItem",
     "ScenarioCapacitySnapshot",
+    "ScenarioNormSnapshot",
+    "ScenarioAbsenceSnapshot",
     "SyncSchedule",
     "SyncRun",
     "User",
