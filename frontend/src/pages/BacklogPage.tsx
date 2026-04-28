@@ -22,6 +22,7 @@ import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
   useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem,
 } from '../hooks/useBacklog';
+import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useJiraSettings } from '../hooks/useSettings';
 import { useEmployees } from '../hooks/useCapacity';
 import { useRoles } from '../hooks/useRoles';
@@ -68,9 +69,10 @@ export default function BacklogPage() {
   const view: BacklogView =
     rawView === 'archived' ? 'archived' : rawView === 'active' ? 'active' : 'quarterly';
 
-  const active = useBacklogItems('active');
-  const archived = useBacklogItems('archived');
-  const quarterly = useBacklogItems('quarterly');
+  const { queryParams } = useGlobalTeamFilter();
+  const active = useBacklogItems('active', queryParams.teams);
+  const archived = useBacklogItems('archived', queryParams.teams);
+  const quarterly = useBacklogItems('quarterly', queryParams.teams);
 
   const { data: projects } = useProjects();
   const jiraSettings = useJiraSettings();

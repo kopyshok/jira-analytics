@@ -16,10 +16,10 @@ import type { BacklogView } from '../types/api';
 export const useProjects = () =>
   useQuery({ queryKey: ['projects'], queryFn: getProjects });
 
-export const useBacklogItems = (view: BacklogView = 'active') =>
+export const useBacklogItems = (view: BacklogView = 'active', teams?: string) =>
   useQuery({
-    queryKey: ['backlog', view],
-    queryFn: () => getBacklogItems(view),
+    queryKey: ['backlog', view, teams],
+    queryFn: () => getBacklogItems(view, undefined, teams),
   });
 
 function invalidateAllBacklog(qc: ReturnType<typeof useQueryClient>) {

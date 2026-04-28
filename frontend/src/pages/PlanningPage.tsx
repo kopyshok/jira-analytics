@@ -39,6 +39,7 @@ import {
   useReorderAllocations,
 } from '../hooks/usePlanning';
 import { TeamSelector } from '../components/planning/TeamSelector';
+import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { downloadScenarioXlsx } from '../api/exports';
 import { DARK_THEME, FONTS } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
@@ -179,7 +180,8 @@ export default function PlanningPage() {
   const { data: roles = [] } = useRoles();
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
-  const { data: scenarios } = useScenarios();
+  const { queryParams } = useGlobalTeamFilter();
+  const { data: scenarios } = useScenarios(undefined, undefined, undefined, queryParams.teams);
   const { data: scenario } = useScenario(scenarioId);
   const { data: allocations, isLoading: allocLoading } =
     useScenarioAllocations(scenarioId);

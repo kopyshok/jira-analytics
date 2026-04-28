@@ -1,8 +1,8 @@
 import { api } from './client';
 import type { AllocationResponse, ScenarioResponse, ResourceBase, ScenarioRuleOut, ScenarioRuleInput } from '../types/api';
 
-export const getScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved') =>
-  api.get<ScenarioResponse[]>('/planning/scenarios', { year, quarter, status });
+export const getScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
+  api.get<ScenarioResponse[]>('/planning/scenarios', { year, quarter, status, teams });
 
 export const getScenario = (id: string) =>
   api.get<ScenarioResponse>(`/planning/scenarios/${id}`);
