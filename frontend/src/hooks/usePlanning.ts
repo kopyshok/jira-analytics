@@ -303,8 +303,9 @@ export function useAcknowledgeDrift() {
   return useMutation({
     mutationFn: (scenarioId: string) => acknowledgeDrift(scenarioId),
     onSuccess: (_, scenarioId) => {
-      qc.invalidateQueries({ queryKey: ['capacity-diff', scenarioId] });
-      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
+      // Suppress indicator locally without re-fetching
+      qc.setQueryData(['capacity-diff', scenarioId], { has_changes: false, changed_employees: [] });
+      qc.invalidateQueries({ queryKey: ['scenarios'] });
     },
   });
 }

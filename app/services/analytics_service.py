@@ -658,8 +658,22 @@ class AnalyticsService:
                         ScenarioNormSnapshot.month.in_(QUARTER_MONTHS[quarter])
                     )
                 if teams:
+                    has_none = NO_TEAM_TOKEN in teams
                     named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
-                    if named_teams:
+                    if named_teams and has_none:
+                        named_subq = (
+                            select(EmployeeTeam.employee_id)
+                            .where(EmployeeTeam.team.in_(named_teams))
+                            .scalar_subquery()
+                        )
+                        no_team_subq = select(EmployeeTeam.employee_id).scalar_subquery()
+                        snap_q = snap_q.filter(
+                            or_(
+                                ScenarioNormSnapshot.employee_id.in_(named_subq),
+                                ~ScenarioNormSnapshot.employee_id.in_(no_team_subq),
+                            )
+                        )
+                    elif named_teams:
                         emp_subq = (
                             select(EmployeeTeam.employee_id)
                             .where(EmployeeTeam.team.in_(named_teams))
@@ -667,6 +681,11 @@ class AnalyticsService:
                         )
                         snap_q = snap_q.filter(
                             ScenarioNormSnapshot.employee_id.in_(emp_subq)
+                        )
+                    elif has_none:
+                        all_emp_subq = select(EmployeeTeam.employee_id).scalar_subquery()
+                        snap_q = snap_q.filter(
+                            ~ScenarioNormSnapshot.employee_id.in_(all_emp_subq)
                         )
                 for wt_id, total in snap_q.group_by(ScenarioNormSnapshot.work_type_id).all():
                     if wt_id:
