@@ -329,6 +329,7 @@ class CapacityService:
         year: int,
         quarter: int,
         employee_ids: Optional[list[str]] = None,
+        teams_filter: Optional[list[str]] = None,
     ) -> list[QuarterCapacity]:
         """Ёмкость по команде за квартал — batch-версия.
 
@@ -353,6 +354,13 @@ class CapacityService:
             query = query.filter(Employee.id.in_(employee_ids))
         else:
             query = query.filter(Employee.is_active.is_(True))
+        if teams_filter:
+            from app.models import EmployeeTeam as _ET
+            query = (
+                query.join(_ET, _ET.employee_id == Employee.id)
+                .filter(_ET.team.in_(teams_filter))
+                .distinct()
+            )
         employees = query.all()
         if not employees:
             return []

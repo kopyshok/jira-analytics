@@ -13,8 +13,11 @@ import type {
 } from '../types/api';
 
 // Capacity Reports
-export const getTeamCapacity = (year: string, quarter: string) =>
-  api.get<QuarterCapacityResponse[]>('/capacity/team', { year, quarter });
+export const getTeamCapacity = (year: string, quarter: string, teams?: string) => {
+  const params: Record<string, string> = { year, quarter };
+  if (teams) params.teams = teams;
+  return api.get<QuarterCapacityResponse[]>('/capacity/team', params);
+};
 
 // === Mandatory work types (справочник) ===
 

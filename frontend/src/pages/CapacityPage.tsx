@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Tabs, Table, Button, Space, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -12,8 +12,7 @@ import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import RolesTab from '../components/capacity/RolesTab';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
-import CapacityFilterProvider from '../components/capacity/CapacityFilterProvider';
-import { useCapacityFilter, NO_TEAM_VALUE } from '../hooks/useCapacityFilter';
+import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useQuarterYear } from '../hooks/useQuarterYear';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
@@ -27,7 +26,8 @@ const { Text } = Typography;
 function TeamTab() {
   const { notification } = App.useApp();
   const { year, quarter } = useQuarterYear();
-  const { data, isLoading } = useTeamCapacity(year, quarter);
+  const { queryParams } = useGlobalTeamFilter();
+  const { data, isLoading } = useTeamCapacity(year, quarter, queryParams.teams);
   const { data: employees } = useEmployees();
   const replaceTeams = useReplaceEmployeeTeams();
   const setPrimary = useSetPrimaryTeam();
@@ -54,8 +54,6 @@ function TeamTab() {
   const storedShowFact = useGenericSetting('ui_capacity_show_fact');
   const storedShowPct  = useGenericSetting('ui_capacity_show_pct');
   const saveStored = useSaveGenericSetting();
-  const { matchesTeam } = useCapacityFilter();
-
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
   const [showFact, setShowFact] = useState(false);
   const [showPct,  setShowPct]  = useState(false);
@@ -117,7 +115,6 @@ function TeamTab() {
   // ------------ Filter visible rows ------------
   const visible = (data ?? []).filter(r => {
     if (selectedEmpIds.length && !selectedEmpIds.includes(r.employee_id)) return false;
-    if (!matchesTeam(r.employee_id)) return false;
     return true;
   });
 
@@ -409,13 +406,31 @@ function AbsencesTab() {
   const add = useAddAbsence();
   const batchAdd = useAddAbsencesBatch();
   const remove = useRemoveAbsence();
-  const { matchesTeam } = useCapacityFilter();
+  const { queryParams } = useGlobalTeamFilter();
+  const empsWithTeams = useEmployees({ withTeams: true });
   const [singleOpen, setSingleOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editEmployeeId, setEditEmployeeId] = useState<string | null>(null);
   const [singleForm] = Form.useForm();
   const [bulkForm] = Form.useForm();
   const [showUnplannedOnly, setShowUnplannedOnly] = useState(false);
+
+  const selectedTeams = useMemo(
+    () => (queryParams.teams ? queryParams.teams.split(',').filter(Boolean) : []),
+    [queryParams.teams],
+  );
+  const employeeTeamMap = useMemo(() => {
+    const m = new Map<string, string[]>();
+    (empsWithTeams.data ?? []).forEach(e => {
+      m.set(e.id, (e.teams ?? []).map(t => t.team));
+    });
+    return m;
+  }, [empsWithTeams.data]);
+  const matchesTeam = useCallback((employeeId: string): boolean => {
+    if (selectedTeams.length === 0) return true;
+    const teams = employeeTeamMap.get(employeeId) ?? [];
+    return teams.some(t => selectedTeams.includes(t));
+  }, [selectedTeams, employeeTeamMap]);
 
   const activeEmployees = (employees ?? []).filter(e => e.is_active && matchesTeam(e.id));
   const activeReasons = (reasons ?? []).filter(r => r.is_active);
@@ -604,52 +619,20 @@ function AbsencesTab() {
 }
 
 
-function TeamFilterBar() {
-  const { selectedTeams, setSelectedTeams } = useCapacityFilter();
-  const jiraTeams = useJiraTeams();
-  const options = [
-    ...((jiraTeams.data ?? []).map(t => ({ value: t, label: t }))),
-    { value: NO_TEAM_VALUE, label: 'Без команды' },
-  ];
-  return (
-    <Select
-      mode="multiple"
-      allowClear
-      placeholder="Фильтр по команде (применяется ко всем вкладкам)"
-      style={{ minWidth: 320 }}
-      value={selectedTeams}
-      onChange={setSelectedTeams}
-      options={options}
-      onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
-      loading={jiraTeams.isFetching}
-      notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
-      showSearch
-      optionFilterProp="label"
-    />
-  );
-}
-
 export default function CapacityPage() {
   return (
-    <CapacityFilterProvider>
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        <PageHeader
-          eyebrow="Планирование"
-          title="Ресурсы команды"
-          subtitle="План · факт · отпуска · правила обязательной загрузки"
-          actions={
-            <Space wrap>
-              <TeamFilterBar />
-              <QuarterYearSelect />
-            </Space>
-          }
-        />
-        <Tabs items={[
-          { key: 'team', label: 'Команда', children: <TeamTab /> },
-          { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
-          { key: 'roles', label: 'Роли', children: <RolesTab /> },
-        ]} />
-      </Space>
-    </CapacityFilterProvider>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+      <PageHeader
+        eyebrow="Планирование"
+        title="Ресурсы команды"
+        subtitle="План · факт · отпуска · правила обязательной загрузки"
+        actions={<QuarterYearSelect />}
+      />
+      <Tabs items={[
+        { key: 'team', label: 'Команда', children: <TeamTab /> },
+        { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
+        { key: 'roles', label: 'Роли', children: <RolesTab /> },
+      ]} />
+    </Space>
   );
 }

@@ -266,15 +266,33 @@ async def get_quarter_capacity(
     return QuarterCapacityResponse.from_dataclass(result)
 
 
+def _resolve_teams(team: Optional[str], teams: Optional[str]) -> Optional[List[str]]:
+    """Разрешает параметры фильтра команд в список.
+
+    Новый параметр ``teams`` (comma-separated) имеет приоритет над старым
+    ``team`` (single). Возвращает ``None`` если фильтр не задан.
+    """
+    if teams:
+        parsed = [t for t in teams.split(",") if t]
+        if parsed:
+            return parsed
+    if team:
+        return [team]
+    return None
+
+
 @router.get("/team", response_model=List[QuarterCapacityResponse])
 async def get_team_quarter_capacity(
     year: int = Query(...),
     quarter: int = Query(..., ge=1, le=4),
+    team: Optional[str] = Query(None, description="Команда (одна, устаревший параметр)"),
+    teams: Optional[str] = Query(None, description="Команды через запятую"),
     db: Session = Depends(get_db),
 ):
-    """Ёмкость всей активной команды на квартал."""
+    """Ёмкость команды на квартал. Фильтр: teams=A,B или team=A (backward compat)."""
+    teams_list = _resolve_teams(team, teams)
     service = CapacityService(db)
-    results = service.team_quarter_capacity(year, quarter)
+    results = service.team_quarter_capacity(year, quarter, employee_ids=None, teams_filter=teams_list)
     return [QuarterCapacityResponse.from_dataclass(r) for r in results]
 
 

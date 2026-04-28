@@ -35,10 +35,10 @@ export const useEmployees = (params?: { withTeams?: boolean; isActive?: boolean 
     staleTime: 30_000,
   });
 
-export const useTeamCapacity = (year: string, quarter: string) =>
+export const useTeamCapacity = (year: string, quarter: string, teams?: string) =>
   useQuery({
-    queryKey: ['capacity', 'team', year, quarter],
-    queryFn: () => getTeamCapacity(year, quarter),
+    queryKey: ['capacity', 'team', year, quarter, teams ?? null],
+    queryFn: () => getTeamCapacity(year, quarter, teams),
     enabled: !!year && !!quarter,
   });
 
