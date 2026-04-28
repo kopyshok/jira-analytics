@@ -45,3 +45,7 @@ class UserUpdate(BaseModel):
 
 class PasswordReset(BaseModel):
     new_password: str
+
+
+class UserTeamsUpdate(BaseModel):
+    teams: list[str]
