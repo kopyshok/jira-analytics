@@ -14,7 +14,7 @@ function Treemap({ items, totalHours }: { items: CategoryMetaItem[]; totalHours:
         return (
           <div
             key={item.key}
-            title={`${item.label}: ${formatHours(item.hours)} ч (${item.pct.toFixed(1)}%)`}
+            title={`${item.label}: ${formatHours(Math.round(item.hours))} ч (${item.pct.toFixed(1)}%)`}
             style={{
               flex: `${pct * 100} 0 ${minW}px`,
               height: h,
@@ -31,7 +31,7 @@ function Treemap({ items, totalHours }: { items: CategoryMetaItem[]; totalHours:
             <div style={{ fontSize: 11, color: '#a4b8d8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.label}
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{formatHours(item.hours)} ч</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{formatHours(Math.round(item.hours))} ч</div>
             {pct > 0.07 && (
               <div style={{ fontSize: 10, color: '#7e94b8' }}>{item.pct.toFixed(0)}%</div>
             )}
@@ -68,7 +68,7 @@ function MetaTable({ items }: { items: CategoryMetaItem[] }) {
                   <span style={{ color: '#e6edf7' }}>{item.label}</span>
                 </span>
               </td>
-              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#fff', fontWeight: 600 }}>{formatHours(item.hours)}</td>
+              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#fff', fontWeight: 600 }}>{formatHours(Math.round(item.hours))}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.worklog_count}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.issue_count}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.employee_count}</td>
@@ -78,7 +78,7 @@ function MetaTable({ items }: { items: CategoryMetaItem[] }) {
           ))}
           <tr style={{ borderTop: '2px solid #1c3358', fontWeight: 600, color: '#fff', fontSize: 11 }}>
             <td style={{ padding: '5px 8px' }}>Итого</td>
-            <td style={{ textAlign: 'right', padding: '5px 8px' }}>{formatHours(totalHours)}</td>
+            <td style={{ textAlign: 'right', padding: '5px 8px' }}>{formatHours(Math.round(totalHours))}</td>
             <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{totalWl}</td>
             <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{totalIssues}</td>
             <td colSpan={3} />
