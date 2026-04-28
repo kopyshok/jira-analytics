@@ -8,12 +8,10 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   useReloadWorklogs, useUpdateWorklogs, useRecalculateMapping,
-  useSyncMutation,
 } from '../../hooks/useSync';
 import { useAutoDetectTeams } from '../../hooks/useCapacity';
 import { useGenericSetting, useSaveGenericSetting } from '../../hooks/useSettings';
 import type { WorklogReloadProgress, WorklogUpdateProgress } from '../../api/sync';
-import { useScopeProjects } from '../../hooks/useScope';
 import { DARK_THEME } from '../../utils/constants';
 
 const { Text } = Typography;
@@ -21,10 +19,6 @@ const { Text } = Typography;
 /** Продвинутые операции синхронизации — ручные команды для PM. */
 export default function SyncAdvanced() {
   const { notification } = App.useApp();
-
-  // ─── Scope ───────────────────────────────────────────────
-  const scopeProjects = useScopeProjects();
-  const scopeKeys = (scopeProjects.data ?? []).map((p) => p.jira_project_key);
 
   // ─── Worklogs date ───────────────────────────────────────
   const reloadSince = useGenericSetting('worklog_reload_since_date');
@@ -120,44 +114,6 @@ export default function SyncAdvanced() {
   };
   const cancelUpdate = () => updateAbortRef.current?.abort();
 
-  // ─── Full / incremental issue sync ───────────────────────
-  const fullSyncMut = useSyncMutation('full');
-  const incrementalSyncMut = useSyncMutation('full');
-  const fullAbortRef = useRef<AbortController | null>(null);
-  const incAbortRef = useRef<AbortController | null>(null);
-
-  const handleFullSync = () => {
-    const body = { project_keys: scopeKeys.length > 0 ? scopeKeys : undefined, incremental: false };
-    const ctl = new AbortController();
-    fullAbortRef.current = ctl;
-    fullSyncMut.mutate({ body, signal: ctl.signal }, {
-      onSuccess: (res) =>
-        notification.success({ message: 'Полная синхронизация', description: res.message }),
-      onError: (e) => {
-        if (e.name === 'AbortError') return;
-        notification.error({ message: 'Ошибка', description: e.message });
-      },
-      onSettled: () => { fullAbortRef.current = null; },
-    });
-  };
-  const cancelFullSync = () => fullAbortRef.current?.abort();
-
-  const handleIncrementalSync = () => {
-    const body = { project_keys: scopeKeys.length > 0 ? scopeKeys : undefined, incremental: true };
-    const ctl = new AbortController();
-    incAbortRef.current = ctl;
-    incrementalSyncMut.mutate({ body, signal: ctl.signal }, {
-      onSuccess: (res) =>
-        notification.success({ message: 'Обновление задач', description: res.message }),
-      onError: (e) => {
-        if (e.name === 'AbortError') return;
-        notification.error({ message: 'Ошибка', description: e.message });
-      },
-      onSettled: () => { incAbortRef.current = null; },
-    });
-  };
-  const cancelIncSync = () => incAbortRef.current?.abort();
-
   // ─── Recalculate mapping ─────────────────────────────────
   const recalculate = useRecalculateMapping();
 
@@ -168,42 +124,6 @@ export default function SyncAdvanced() {
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {/* Синхронизация задач */}
-      <Card title="Синхронизация задач (legacy)" size="small">
-        <Space wrap>
-          {incrementalSyncMut.isPending ? (
-            <Button danger icon={<CloseOutlined />} onClick={cancelIncSync}>
-              Прервать обновление
-            </Button>
-          ) : (
-            <Button icon={<ReloadOutlined />} onClick={handleIncrementalSync}>
-              Обновить задачи (incremental)
-            </Button>
-          )}
-          {fullSyncMut.isPending ? (
-            <Button danger icon={<CloseOutlined />} onClick={cancelFullSync}>
-              Прервать полную синхронизацию
-            </Button>
-          ) : (
-            <Popconfirm
-              title="Полная синхронизация"
-              description={
-                <div style={{ maxWidth: 320 }}>
-                  Перечитает все задачи из Jira заново (~115k+). В повседневке — «Обновить задачи».
-                </div>
-              }
-              icon={<ExclamationCircleOutlined style={{ color: '#faad14' }} />}
-              okText="Запустить"
-              cancelText="Отмена"
-              okButtonProps={{ danger: true }}
-              onConfirm={handleFullSync}
-            >
-              <Button icon={<ReloadOutlined />}>Полная синхронизация задач</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      </Card>
-
       {/* Ворклоги */}
       <Card title="Ворклоги" size="small">
         <Space direction="vertical" style={{ width: '100%' }}>
