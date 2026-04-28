@@ -16,7 +16,8 @@ Flow:
 Утверждённые сценарии редактировать нельзя (409) — сначала revert.
 """
 
-from datetime import datetime
+import calendar
+from datetime import date, datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -528,6 +529,20 @@ async def approve_scenario(
             .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712
             .all()
         )
+        # --- Снапшот норм по видам работ ---
+        rules = (
+            db.query(ScenarioRule)
+            .filter(ScenarioRule.scenario_id == scenario_id)
+            .all()
+        )
+        wt_ids = list({r.work_type_id for r in rules})
+        work_types: dict[str, str] = {}
+        if wt_ids:
+            work_types = {
+                wt.id: wt.label
+                for wt in db.query(MandatoryWorkType).filter(MandatoryWorkType.id.in_(wt_ids)).all()
+            }
+
         capacity_svc = CapacityService(db)
         for emp in employees:
             for month in months:
@@ -542,23 +557,6 @@ async def approve_scenario(
                     available_hours=mc.available_hours,
                     snapshot_taken_at=now,
                 ))
-
-        # --- Снапшот норм по видам работ ---
-        rules = (
-            db.query(ScenarioRule)
-            .filter(ScenarioRule.scenario_id == scenario_id)
-            .all()
-        )
-        wt_ids = list({r.work_type_id for r in rules})
-        work_types: dict[str, str] = {}
-        if wt_ids:
-            work_types = {
-                wt.id: wt.label
-                for wt in db.query(MandatoryWorkType).filter(MandatoryWorkType.id.in_(wt_ids)).all()
-            }
-        for emp in employees:
-            for month in months:
-                mc = capacity_svc.monthly_capacity(emp.id, scenario.year, month)
                 emp_rules = [r for r in rules if r.role is None or r.role == emp.role]
                 for rule in emp_rules:
                     norm_h = round(mc.norm_hours * rule.percent_of_norm / 100, 2)
@@ -575,14 +573,9 @@ async def approve_scenario(
                     ))
 
         # --- Снапшот отсутствий команды ---
-        import calendar as cal_mod
-        from datetime import date as date_t
-        q_num = int(str(scenario.quarter).replace("Q", ""))
-        q_months_list = QUARTER_MONTHS[q_num]
-        quarter_start = date_t(scenario.year, q_months_list[0], 1)
-        last_month = q_months_list[-1]
-        last_day = cal_mod.monthrange(scenario.year, last_month)[1]
-        quarter_end = date_t(scenario.year, last_month, last_day)
+        quarter_start = date(scenario.year, months[0], 1)
+        last_day = calendar.monthrange(scenario.year, months[-1])[1]
+        quarter_end = date(scenario.year, months[-1], last_day)
 
         absences = (
             db.query(Absence)
