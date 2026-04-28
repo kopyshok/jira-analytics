@@ -224,8 +224,8 @@ export default function CategoriesTab() {
           <Form.Item name="label" label="Название" rules={[{ required: true, message: 'Введите название' }]}>
             <Input placeholder="напр. Тестирование" />
           </Form.Item>
-          <Form.Item name="color" label="Цвет" initialValue="#8c8c8c">
-            <Input placeholder="#rrggbb" />
+          <Form.Item name="color" label="Цвет" initialValue="#8c8c8c" getValueFromEvent={(_, hex: string) => hex}>
+            <ColorPicker />
           </Form.Item>
         </Form>
       </Modal>
