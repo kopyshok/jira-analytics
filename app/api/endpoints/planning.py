@@ -43,6 +43,12 @@ from app.models import (
     ScenarioRevisionItem,
     ScenarioRule,
 )
+from app.schemas.capacity_diff import (
+    AbsenceChange,
+    CapacityDiffResponse,
+    EmployeeDiff,
+    MonthDiff,
+)
 from app.services.capacity_service import CapacityService
 from app.services.planning_service import PlanningService
 from app.services.resource_base_service import ResourceBaseService
@@ -617,17 +623,11 @@ async def approve_scenario(
 
 
 @router.get("/scenarios/{scenario_id}/capacity-diff")
-def get_capacity_diff(
+async def get_capacity_diff(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
     """Сравнивает текущие отсутствия с данными на момент утверждения."""
-    from app.schemas.capacity_diff import (
-        AbsenceChange,
-        CapacityDiffResponse,
-        EmployeeDiff,
-        MonthDiff,
-    )
     scenario = db.get(PlanningScenario, scenario_id)
     if not scenario or scenario.status != "approved":
         raise HTTPException(status_code=404, detail="Approved scenario not found")
@@ -718,6 +718,7 @@ def get_capacity_diff(
             snap_avail = cap_snaps.get((emp_id, scenario.year, month))
             if snap_avail is None:
                 continue
+            # TODO: monthly_capacity computes fact_hours unnecessarily here; refactor to available_hours_for_month
             mc = capacity_svc.monthly_capacity(emp_id, scenario.year, month)
             current_avail = mc.available_hours
             delta = round(current_avail - snap_avail, 2)
@@ -726,7 +727,8 @@ def get_capacity_diff(
             # Removed: in snapshot but not in current
             for orig_id, snap_ab in snapped_by_orig_id.items():
                 if orig_id not in current_ids:
-                    if snap_ab.start_date.month == month or snap_ab.end_date.month == month:
+                    if (snap_ab.start_date.month == month and snap_ab.start_date.year == scenario.year) \
+                       or (snap_ab.end_date.month == month and snap_ab.end_date.year == scenario.year):
                         absence_changes.append(AbsenceChange(
                             type="removed",
                             start_date=snap_ab.start_date,
@@ -737,7 +739,8 @@ def get_capacity_diff(
             # Added: in current but not in snapshot
             for cur_ab in current_by_emp.get(emp_id, []):
                 if cur_ab.id not in snapped_by_orig_id:
-                    if cur_ab.start_date.month == month or cur_ab.end_date.month == month:
+                    if (cur_ab.start_date.month == month and cur_ab.start_date.year == scenario.year) \
+                       or (cur_ab.end_date.month == month and cur_ab.end_date.year == scenario.year):
                         absence_changes.append(AbsenceChange(
                             type="added",
                             start_date=cur_ab.start_date,
@@ -780,6 +783,8 @@ async def acknowledge_capacity_drift(
     scenario = db.get(PlanningScenario, scenario_id)
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    if scenario.status != "approved":
+        raise HTTPException(status_code=400, detail="Only approved scenarios can acknowledge drift")
     scenario.capacity_drift_acknowledged_at = datetime.utcnow()
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})

@@ -190,3 +190,39 @@ def test_capacity_diff_detects_removed_absence(client, db_session):
     changes = emp_diff["months"][0]["absence_changes"]
     assert len(changes) == 1
     assert changes[0]["type"] == "removed"
+
+
+def test_capacity_diff_detects_added_absence(client, db_session):
+    """Diff detects absence added after approval."""
+    emp = Employee(id="emp-d3", jira_account_id="acc-d3", display_name="DiffTest3", is_active=True)
+    db_session.add(emp)
+    db_session.add(EmployeeTeam(
+        id=_uid(), employee_id="emp-d3", team="TeamD3", is_primary=True,
+    ))
+    scenario = PlanningScenario(id="sc-d3", name="Q2 Diff3", quarter="Q2", year=2026, status="draft", team="TeamD3")
+    db_session.add(scenario)
+    db_session.commit()
+
+    # Approve with no absences
+    approve_resp = client.post("/api/v1/planning/scenarios/sc-d3/approve")
+    assert approve_resp.status_code == 200
+
+    # Add absence AFTER approval
+    reason3 = AbsenceReason(
+        id="ar-d3", code="vacation_d3", label="Отпуск",
+        is_planned=True, is_active=True, sort_order=0,
+    )
+    db_session.add(reason3)
+    new_abs = Absence(
+        id="abs-d2", employee_id="emp-d3", reason_id="ar-d3",
+        start_date=date(2026, 5, 5), end_date=date(2026, 5, 9), hours_total=40.0,
+    )
+    db_session.add(new_abs)
+    db_session.commit()
+
+    resp = client.get("/api/v1/planning/scenarios/sc-d3/capacity-diff")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_changes"] is True
+    changes = data["changed_employees"][0]["months"][0]["absence_changes"]
+    assert any(c["type"] == "added" for c in changes)
