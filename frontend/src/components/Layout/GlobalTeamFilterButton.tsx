@@ -2,11 +2,11 @@ import { TeamOutlined, DownOutlined } from '@ant-design/icons';
 import { Button, Popover, Select, Space, Tooltip } from 'antd';
 import { useState } from 'react';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
-import { useJiraTeams } from '../../hooks/useSync';
+import { useTeams } from '../../hooks/useSync';
 
 export default function GlobalTeamFilterButton() {
   const { selectedTeams, setSelectedTeams, saving } = useGlobalTeamFilter();
-  const { data: teams, isLoading } = useJiraTeams();
+  const { data: teams, isLoading } = useTeams();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string[]>(selectedTeams);
 

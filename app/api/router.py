@@ -26,6 +26,7 @@ from app.api.endpoints import (
     scope,
     settings,
     sync,
+    teams as teams_endpoints,
 )
 
 api_router = APIRouter()
@@ -58,6 +59,7 @@ async def root():
 # Include routers
 api_router.include_router(employees.router, prefix="/employees", tags=["employees"])
 api_router.include_router(projects.router, prefix="/projects", tags=["projects"])
+api_router.include_router(teams_endpoints.router, prefix="/teams", tags=["teams"])
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
 api_router.include_router(sync.jira_router, prefix="/jira", tags=["jira"])
 api_router.include_router(scope.router, prefix="/scope", tags=["scope"])

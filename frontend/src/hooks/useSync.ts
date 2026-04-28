@@ -5,7 +5,7 @@ import {
   reloadWorklogsStream, type WorklogReloadProgress, type WorklogReloadDone,
   updateWorklogsStream, type WorklogUpdateProgress, type WorklogUpdateDone,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
-  getJiraIssueTypes,
+  getTeams, getJiraIssueTypes,
 } from '../api/sync';
 import { batchScopeProjects } from '../api/scope';
 import { recalculateAll } from '../api/mapping';
@@ -132,6 +132,15 @@ export const useJiraTeams = () =>
     queryFn: getJiraTeams,
     enabled: false,
     retry: false,
+    staleTime: 60_000,
+  });
+
+// Distinct список команд из локальной БД — мгновенный, без Jira API.
+// Используется глобальным фильтром команд в шапке.
+export const useTeams = () =>
+  useQuery({
+    queryKey: ['teams'],
+    queryFn: getTeams,
     staleTime: 60_000,
   });
 

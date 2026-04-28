@@ -215,6 +215,10 @@ export const getJiraFields = () =>
   api.get<JiraFieldItem[]>('/sync/jira-fields');
 export const getJiraTeams = () =>
   api.get<string[]>('/sync/jira-teams');
+// Distinct список команд из локальной БД (issues + employee memberships).
+// Быстрый источник для глобального фильтра — без обращения к Jira API.
+export const getTeams = () =>
+  api.get<string[]>('/teams');
 export const getJiraIssueTypes = () =>
   api.get<string[]>('/sync/jira-issuetypes');
 
