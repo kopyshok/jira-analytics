@@ -7,6 +7,7 @@ export interface AuthState {
   isLoading: boolean;
   login: (token: string, user: UserProfile) => void;
   logout: () => void;
+  updateUser: (u: UserProfile) => void;
 }
 
 export const AuthContext = createContext<AuthState | null>(null);

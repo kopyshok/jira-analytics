@@ -6,6 +6,7 @@ export interface UserProfile {
   display_name: string;
   role: 'admin' | 'super_manager' | 'manager';
   default_team: string | null;
+  selected_teams: string[];
   is_active: boolean;
 }
 
@@ -20,4 +21,8 @@ export function login(email: string, password: string): Promise<TokenResponse> {
 
 export function getMe(): Promise<UserProfile> {
   return api.get<UserProfile>('/auth/me');
+}
+
+export function updateMyTeams(teams: string[]): Promise<UserProfile> {
+  return api.put<UserProfile>('/auth/me/teams', { teams });
 }
