@@ -114,16 +114,17 @@ def setup_data(db_session):
 
 
 def test_hours_by_employee_team_filter_smoke(client, db_session, setup_data):
-    # Filter by Core via employees only — Alice in, Bob out
+    # Filter by Core (OR: employee team OR issue team) — Alice in (Core member),
+    # Bob in too because wl5 is on AAA-1 which has team=Core.
     resp = client.get(
         "/api/v1/analytics/hours/by-employee",
-        params={"teams": "Core", "match_employees": "true", "match_issues": "false"},
+        params={"teams": "Core"},
     )
     assert resp.status_code == 200
     body = resp.json()
     labels = {row["label"] for row in body}
     assert "Alice" in labels
-    assert "Bob" not in labels
+    assert "Bob" in labels  # wl5 on AAA-1 (team=Core) pulls Bob in via issue branch
 
 
 def test_hours_by_employee_empty_teams_is_noop(client, db_session, setup_data):

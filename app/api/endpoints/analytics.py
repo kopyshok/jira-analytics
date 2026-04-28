@@ -98,8 +98,6 @@ async def hours_by_employee(
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     teams: Optional[str] = Query(None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"),
-    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
-    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ):
     """Часы по сотрудникам за период."""
@@ -108,7 +106,7 @@ async def hours_by_employee(
     rows = service.hours_by_employee(
         start=start, end=end,
         employee_id=employee_id, project_key=project_key,
-        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+        teams=teams_list,
     )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
@@ -120,8 +118,6 @@ async def hours_by_project(
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     teams: Optional[str] = Query(None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"),
-    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
-    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ):
     """Часы по проектам за период."""
@@ -130,7 +126,7 @@ async def hours_by_project(
     rows = service.hours_by_project(
         start=start, end=end,
         employee_id=employee_id, project_key=project_key,
-        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+        teams=teams_list,
     )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
@@ -142,8 +138,6 @@ async def hours_by_category(
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     teams: Optional[str] = Query(None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"),
-    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
-    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ):
     """Часы по управленческим категориям работ."""
@@ -152,7 +146,7 @@ async def hours_by_category(
     rows = service.hours_by_category(
         start=start, end=end,
         employee_id=employee_id, project_key=project_key,
-        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+        teams=teams_list,
     )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
@@ -165,8 +159,6 @@ async def hours_by_period(
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     teams: Optional[str] = Query(None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"),
-    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
-    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ):
     """Часы по периодам: day, week, month."""
@@ -175,7 +167,7 @@ async def hours_by_period(
     rows = service.hours_by_period(
         period=period, start=start, end=end,
         employee_id=employee_id, project_key=project_key,
-        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+        teams=teams_list,
     )
     return [AggregateRowResponse(**row.__dict__) for row in rows]
 
@@ -187,8 +179,6 @@ async def context_switching(
     employee_id: Optional[str] = Query(None, description="UUID сотрудника"),
     project_key: Optional[str] = Query(None, description="Ключ проекта, напр. AAA"),
     teams: Optional[str] = Query(None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"),
-    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
-    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ):
     """Метрика контекстных переключений по сотрудникам."""
@@ -197,6 +187,6 @@ async def context_switching(
     rows = service.context_switching(
         start=start, end=end,
         employee_id=employee_id, project_key=project_key,
-        teams=teams_list, match_employees=match_employees, match_issues=match_issues,
+        teams=teams_list,
     )
     return [ContextSwitchRowResponse(**row.__dict__) for row in rows]

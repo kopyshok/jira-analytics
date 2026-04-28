@@ -46,8 +46,6 @@ async def export_analytics_xlsx(
     teams: Optional[str] = Query(
         None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"
     ),
-    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
-    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ) -> Response:
     """Скачать xlsx с аналитическими отчётами за период."""
@@ -57,8 +55,6 @@ async def export_analytics_xlsx(
         start=start,
         end=end,
         teams=teams_list,
-        match_employees=match_employees,
-        match_issues=match_issues,
     )
     return Response(
         content=data,
@@ -77,8 +73,6 @@ async def export_analytics_pdf(
     teams: Optional[str] = Query(
         None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"
     ),
-    match_employees: bool = Query(True, description="Фильтр по команде сотрудника"),
-    match_issues: bool = Query(True, description="Фильтр по команде задачи"),
     db: Session = Depends(get_db),
 ) -> Response:
     """Скачать PDF-отчёт с аналитикой за период."""
@@ -88,8 +82,6 @@ async def export_analytics_pdf(
         start=start,
         end=end,
         teams=teams_list,
-        match_employees=match_employees,
-        match_issues=match_issues,
     )
     return Response(
         content=data,
