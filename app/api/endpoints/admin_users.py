@@ -38,14 +38,9 @@ def update_user(user_id: str, data: UserUpdate, db: Session = Depends(get_db)) -
     user = _repo.get_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    if data.display_name is not None:
-        user.display_name = data.display_name
-    if data.role is not None:
-        user.role = data.role
-    if data.default_team is not None:
-        user.default_team = data.default_team
-    if data.is_active is not None:
-        user.is_active = data.is_active
+    fields = data.model_dump(exclude_unset=True)
+    for k, v in fields.items():
+        setattr(user, k, v)
     return _repo.update(db, user)
 
 
