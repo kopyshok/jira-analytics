@@ -27,6 +27,8 @@ def upgrade() -> None:
         sa.Column("original_absence_id", sa.String(36), nullable=True),
         sa.Column("start_date", sa.Date, nullable=False),
         sa.Column("end_date", sa.Date, nullable=False),
+        # reason_id намеренно без FK: снапшот хранит значение даже после удаления причины.
+        # Nullification в этом случае не нужна — архивные данные должны оставаться неизменными.
         sa.Column("reason_id", sa.String(36), nullable=True),
         sa.Column("reason_label", sa.String(255), nullable=True),
         sa.Column("hours_total", sa.Float, nullable=False),

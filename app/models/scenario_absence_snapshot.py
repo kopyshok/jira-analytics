@@ -33,6 +33,7 @@ class ScenarioAbsenceSnapshot(Base, TimestampMixin):
     original_absence_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Намеренно без FK: снапшот хранит значение даже после удаления справочника.
     reason_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     reason_label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     hours_total: Mapped[float] = mapped_column(Float, nullable=False)
