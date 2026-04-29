@@ -32,6 +32,12 @@ from app.models.scenario_revision_item import ScenarioRevisionItem
 from app.models.scenario_capacity_snapshot import ScenarioCapacitySnapshot
 from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
 from app.models.scenario_absence_snapshot import ScenarioAbsenceSnapshot
+from app.models.scenario_team_snapshot import ScenarioTeamSnapshot
+from app.models.scenario_calendar_snapshot import ScenarioCalendarSnapshot
+from app.models.scenario_rules_snapshot import ScenarioRulesSnapshot
+from app.models.scenario_allocation_snapshot import ScenarioAllocationSnapshot
+from app.models.scenario_allocation_breakdown_snapshot import ScenarioAllocationBreakdownSnapshot
+from app.models.scenario_dictionary_snapshot import ScenarioDictionarySnapshot
 from app.models.sync_schedule import SyncSchedule
 from app.models.sync_run import SyncRun
 from app.models.user import User, UserRole  # noqa: F401
@@ -71,6 +77,12 @@ __all__ = [
     "ScenarioCapacitySnapshot",
     "ScenarioNormSnapshot",
     "ScenarioAbsenceSnapshot",
+    "ScenarioTeamSnapshot",
+    "ScenarioCalendarSnapshot",
+    "ScenarioRulesSnapshot",
+    "ScenarioAllocationSnapshot",
+    "ScenarioAllocationBreakdownSnapshot",
+    "ScenarioDictionarySnapshot",
     "SyncSchedule",
     "SyncRun",
     "User",
