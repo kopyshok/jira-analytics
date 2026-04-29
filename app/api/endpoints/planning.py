@@ -1296,6 +1296,46 @@ async def list_scenario_revisions(
     return result
 
 
+@router.delete(
+    "/scenarios/{scenario_id}/revisions/{revision_id}",
+    status_code=204,
+)
+async def delete_revision(
+    scenario_id: str,
+    revision_id: str,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Удалить ревизию: каскад на все snapshot-таблицы + перепривязка parent."""
+    rev = db.query(ScenarioRevision).filter_by(id=revision_id, scenario_id=scenario_id).first()
+    if not rev:
+        raise HTTPException(status_code=404, detail="Revision not found")
+
+    parent_id = rev.parent_revision_id
+
+    # Re-link children to deleted revision's parent
+    db.query(ScenarioRevision).filter(
+        ScenarioRevision.parent_revision_id == revision_id
+    ).update(
+        {"parent_revision_id": parent_id},
+        synchronize_session=False,
+    )
+
+    db.delete(rev)
+    db.flush()
+
+    # If approved scenario has no remaining revisions → revert to draft
+    remaining = db.query(ScenarioRevision).filter_by(scenario_id=scenario_id).count()
+    if remaining == 0:
+        scenario = db.get(PlanningScenario, scenario_id)
+        if scenario and scenario.status == "approved":
+            scenario.status = "draft"
+
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    return None
+
+
 def _state_at_revision(scenario_id: str, revision_number: int, db: Session) -> dict[str, str]:
     """Восстановить набор включённых инициатив на момент ревизии N.
 
