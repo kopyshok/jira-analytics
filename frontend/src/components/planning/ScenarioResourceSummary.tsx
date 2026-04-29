@@ -505,13 +505,18 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           </div>
         </div>
 
-        {/* Блок отпусков */}
-        {summary.absence_days_by_employee.length > 0 && (
+        {/* Блок отсутствий */}
+        {summary.absence_days_by_employee.length > 0 && (() => {
+          const totalUnplanned = summary.absence_days_by_employee.reduce(
+            (s, e) => s + e.unplanned_days, 0,
+          );
+          const showUnplannedCol = totalUnplanned > 0;
+          return (
           <div style={{
             borderLeft: `2px solid ${DARK_THEME.border}`,
             background: DARK_THEME.darkAccent,
-            minWidth: 180,
-            maxWidth: 240,
+            minWidth: showUnplannedCol ? 230 : 180,
+            maxWidth: showUnplannedCol ? 290 : 240,
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
@@ -527,10 +532,24 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
               fontWeight: 600,
               background: DARK_THEME.cardBg,
             }}>
-              Отпуска квартала
+              Отсутствия квартала
+            </div>
+            {/* Подзаголовок-легенда */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 12,
+              padding: '4px 12px 2px',
+              fontSize: 9,
+              color: DARK_THEME.textHint,
+              textTransform: 'uppercase' as const,
+              letterSpacing: 0.4,
+            }}>
+              <span style={{ width: 36, textAlign: 'right' as const }}>отпуск</span>
+              {showUnplannedCol && <span style={{ width: 36, textAlign: 'right' as const }}>прочее</span>}
             </div>
             {/* Список сотрудников */}
-            <div style={{ padding: '6px 12px', flex: 1 }}>
+            <div style={{ padding: '2px 12px 6px', flex: 1 }}>
               {summary.absence_days_by_employee.map((emp) => {
                 const roleColor = emp.role ? getRoleColor(roles, emp.role) : DARK_THEME.textDim;
                 return (
@@ -538,10 +557,11 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
+                    gap: 8,
                     padding: '3px 0',
                     borderBottom: `1px solid rgba(255,255,255,0.04)`,
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
                       <div style={{
                         width: 8,
                         height: 8,
@@ -559,37 +579,82 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                         {emp.display_name}
                       </span>
                     </div>
-                    <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: DARK_THEME.textMuted, marginLeft: 8, flexShrink: 0 }}>
-                      {emp.days > 0 ? `${emp.days} дн` : '—'}
+                    <span style={{
+                      fontSize: 11,
+                      fontFamily: FONTS.mono,
+                      color: emp.planned_days > 0 ? DARK_THEME.textSecondary : DARK_THEME.textDim,
+                      width: 36,
+                      textAlign: 'right' as const,
+                      flexShrink: 0,
+                    }}>
+                      {emp.planned_days > 0 ? `${emp.planned_days} дн` : '—'}
                     </span>
+                    {showUnplannedCol && (
+                      <span style={{
+                        fontSize: 11,
+                        fontFamily: FONTS.mono,
+                        color: emp.unplanned_days > 0 ? DARK_THEME.textSecondary : DARK_THEME.textDim,
+                        width: 36,
+                        textAlign: 'right' as const,
+                        flexShrink: 0,
+                      }}>
+                        {emp.unplanned_days > 0 ? `${emp.unplanned_days} дн` : '—'}
+                      </span>
+                    )}
                   </div>
                 );
               })}
             </div>
             {/* Итого */}
             {(() => {
-              const totalDays = summary.absence_days_by_employee.reduce((s, e) => s + e.days, 0);
-              const totalVacHours = Math.round(
+              const totalPlanned = summary.absence_days_by_employee.reduce((s, e) => s + e.planned_days, 0);
+              const totalUnpl = summary.absence_days_by_employee.reduce((s, e) => s + e.unplanned_days, 0);
+              const totalAbsHours = Math.round(
                 Object.values(summary.calendar_gross_by_role).reduce((s, v) => s + v, 0) -
                 Object.values(summary.total_by_role).reduce((s, v) => s + v, 0)
               );
-              return totalDays > 0 ? (
+              return (totalPlanned + totalUnpl) > 0 ? (
                 <div style={{
                   display: 'flex',
                   justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
                   padding: '6px 12px',
                   borderTop: `1px solid ${DARK_THEME.border}`,
                   fontSize: 11,
                 }}>
-                  <span style={{ color: DARK_THEME.textMuted }}>Итого</span>
-                  <span style={{ fontFamily: FONTS.mono, color: DARK_THEME.textSecondary }}>
-                    {totalDays} дн · −{totalVacHours} ч
+                  <span style={{ color: DARK_THEME.textMuted, flex: 1 }}>
+                    Итого
+                    <span style={{ marginLeft: 6, color: DARK_THEME.textHint, fontFamily: FONTS.mono }}>
+                      −{totalAbsHours} ч
+                    </span>
                   </span>
+                  <span style={{
+                    fontFamily: FONTS.mono,
+                    color: DARK_THEME.textSecondary,
+                    width: 36,
+                    textAlign: 'right' as const,
+                    flexShrink: 0,
+                  }}>
+                    {totalPlanned} дн
+                  </span>
+                  {showUnplannedCol && (
+                    <span style={{
+                      fontFamily: FONTS.mono,
+                      color: DARK_THEME.textSecondary,
+                      width: 36,
+                      textAlign: 'right' as const,
+                      flexShrink: 0,
+                    }}>
+                      {totalUnpl} дн
+                    </span>
+                  )}
                 </div>
               ) : null;
             })()}
           </div>
-        )}
+          );
+        })()}
       </div>
     </Card>,
   );

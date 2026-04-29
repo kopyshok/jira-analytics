@@ -483,7 +483,13 @@ export interface ResourceSummaryOut {
   available_for_backlog_total: number;
   external_qa_hours: number | null;
   calendar_gross_by_role: Record<string, number>;
-  absence_days_by_employee: Array<{ employee_id: string; display_name: string; role: string | null; days: number }>;
+  absence_days_by_employee: Array<{
+    employee_id: string;
+    display_name: string;
+    role: string | null;
+    planned_days: number;
+    unplanned_days: number;
+  }>;
 }
 
 export interface AllocationResponse {

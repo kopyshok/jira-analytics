@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Absence,
+    AbsenceReason,
     Employee,
     EmployeeTeam,
     MandatoryWorkType,
@@ -58,7 +59,7 @@ class ResourceSummary:
     available_total: float
     external_qa_hours: Optional[float]
     calendar_gross_by_role: dict[str, float]          # production calendar hours, no deductions
-    absence_days_by_employee: list[dict]               # [{employee_id, display_name, role, days}]
+    absence_days_by_employee: list[dict]               # [{employee_id, display_name, role, planned_days, unplanned_days}]
 
 
 @dataclass
@@ -373,7 +374,10 @@ class ResourceBaseService:
             emp_role[e.id] = e.role
             emp_name[e.id] = e.display_name
 
-        # --- дни отсутствия по сотрудникам ---
+        # --- дни отсутствия по сотрудникам (отпуск vs прочее) ---
+        reason_planned_map: dict[str, bool] = {
+            r.id: r.is_planned for r in self.db.query(AbsenceReason).all()
+        }
         absence_days_by_employee: list[dict] = []
         for e in employees:
             abs_ranges = (
@@ -385,19 +389,30 @@ class ResourceBaseService:
                 )
                 .all()
             )
-            days_count = 0.0
+            planned_days = 0.0
+            unplanned_days = 0.0
             cur = period_start
             while cur < period_end:
                 if day_hours(cur) > 0:
-                    if any(a.start_date <= cur <= a.end_date for a in abs_ranges):
-                        days_count += 1.0
+                    covering = [a for a in abs_ranges if a.start_date <= cur <= a.end_date]
+                    if covering:
+                        # день относим к «отпуску», если хотя бы одна покрывающая
+                        # причина — плановая; иначе — к «прочему».
+                        is_planned_day = any(
+                            reason_planned_map.get(a.reason_id, False) for a in covering
+                        )
+                        if is_planned_day:
+                            planned_days += 1.0
+                        else:
+                            unplanned_days += 1.0
                 cur += timedelta(days=1)
-            if days_count > 0:
+            if planned_days > 0 or unplanned_days > 0:
                 absence_days_by_employee.append({
                     "employee_id": e.id,
                     "display_name": e.display_name,
                     "role": e.role,
-                    "days": days_count,
+                    "planned_days": planned_days,
+                    "unplanned_days": unplanned_days,
                 })
 
         # --- агрегация по ролям ---
