@@ -350,17 +350,15 @@ class SnapshotWriter:
         }
 
         # Активные сотрудники команды
-        emp_ids = [
-            row[0]
-            for row in self.db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.team == scenario.team)
-            .all()
-        ]
         employees = (
             self.db.query(Employee)
-            .filter(Employee.id.in_(emp_ids), Employee.is_active.is_(True))
+            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+            .filter(
+                EmployeeTeam.team == scenario.team,
+                Employee.is_active.is_(True),
+            )
             .all()
-        ) if emp_ids else []
+        )
 
         # Правила сценария + work_type labels
         rules = (
@@ -368,6 +366,10 @@ class SnapshotWriter:
             .filter(ScenarioRule.scenario_id == scenario.id)
             .all()
         )
+        if not rules and (
+            scenario.external_qa_hours is None or float(scenario.external_qa_hours or 0) <= 0
+        ):
+            return
         wt_label_by_id: dict[str, str] = {}
         if rules:
             wt_ids = {r.work_type_id for r in rules if r.work_type_id}
