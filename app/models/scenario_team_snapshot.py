@@ -6,6 +6,7 @@
 from typing import Optional, TYPE_CHECKING
 from sqlalchemy import Boolean, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import expression
 from app.models.base import TimestampMixin, generate_uuid
 from app.database import Base
 
@@ -25,7 +26,11 @@ class ScenarioTeamSnapshot(Base, TimestampMixin):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     hours_per_day: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    is_external: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=expression.true()
+    )
+    is_external: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=expression.false()
+    )
 
     revision: Mapped["ScenarioRevision"] = relationship(back_populates="team_snapshots")
