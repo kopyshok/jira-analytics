@@ -4,11 +4,12 @@
 commit делает вызывающий код.
 """
 import calendar
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Absence,
     AbsenceReason,
     Employee,
     EmployeeTeam,
@@ -17,6 +18,7 @@ from app.models import (
     ProductionCalendarDay,
     Role,
     ScenarioCalendarSnapshot,
+    ScenarioCapacitySnapshot,
     ScenarioDictionarySnapshot,
     ScenarioRevision,
     ScenarioRule,
@@ -191,3 +193,124 @@ class SnapshotWriter:
                     },
                 )
             )
+
+    def write_capacity_snapshot(
+        self, revision: ScenarioRevision, scenario: PlanningScenario
+    ) -> None:
+        """Snapshot capacity: gross/absence/available/mandatory/project per emp × month.
+
+        Для каждого активного сотрудника команды сценария и каждого месяца квартала
+        считает часы по производственному календарю с вычетом отсутствий и
+        обязательных работ (subtracts_from_pool=True).
+        """
+        if not (scenario.team and scenario.year and scenario.quarter):
+            return
+
+        q = int(str(scenario.quarter).replace("Q", ""))
+        months = QUARTER_MONTHS[q]
+
+        # Активные сотрудники команды
+        employees = (
+            self.db.query(Employee)
+            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+            .filter(
+                EmployeeTeam.team == scenario.team,
+                Employee.is_active.is_(True),
+            )
+            .all()
+        )
+        if not employees:
+            return
+
+        # Производственный календарь за весь квартал
+        start, end = _quarter_bounds(scenario.year, scenario.quarter)
+        cal_days = (
+            self.db.query(ProductionCalendarDay)
+            .filter(
+                ProductionCalendarDay.date >= start,
+                ProductionCalendarDay.date <= end,
+            )
+            .all()
+        )
+        cal_by_date: dict[date, float] = {d.date: float(d.hours) for d in cal_days}
+
+        # Отсутствия сотрудников команды за период
+        emp_ids = [e.id for e in employees]
+        absences = (
+            self.db.query(Absence)
+            .filter(
+                Absence.employee_id.in_(emp_ids),
+                Absence.start_date <= end,
+                Absence.end_date >= start,
+            )
+            .all()
+        )
+        abs_by_emp: dict[str, list[tuple[date, date]]] = {}
+        for a in absences:
+            abs_by_emp.setdefault(a.employee_id, []).append((a.start_date, a.end_date))
+
+        # Правила сценария: sum pct mandatory per role (только subtracts_from_pool)
+        rules = (
+            self.db.query(ScenarioRule)
+            .filter(ScenarioRule.scenario_id == scenario.id)
+            .all()
+        )
+        wt_subtracts: dict[str, bool] = {}
+        if rules:
+            wt_ids = {r.work_type_id for r in rules if r.work_type_id}
+            if wt_ids:
+                for wt in (
+                    self.db.query(MandatoryWorkType)
+                    .filter(MandatoryWorkType.id.in_(wt_ids))
+                    .all()
+                ):
+                    wt_subtracts[wt.id] = bool(wt.subtracts_from_pool)
+
+        def _sum_pct(role: str | None) -> float:
+            return sum(
+                r.percent_of_norm for r in rules
+                if (r.role is None or r.role == role)
+                and wt_subtracts.get(r.work_type_id, False)
+            )
+
+        now = datetime.utcnow()
+        for emp in employees:
+            pct_mandatory = _sum_pct(emp.role)
+            emp_abs = abs_by_emp.get(emp.id, [])
+            for month in months:
+                month_start = date(scenario.year, month, 1)
+                last_day = calendar.monthrange(scenario.year, month)[1]
+                month_end = date(scenario.year, month, last_day)
+
+                gross = 0.0
+                absence_hrs = 0.0
+                cur = month_start
+                while cur <= month_end:
+                    day_h = cal_by_date.get(cur, 0.0)
+                    if day_h > 0:
+                        gross += day_h
+                        if any(s <= cur <= e for s, e in emp_abs):
+                            absence_hrs += day_h
+                    cur += timedelta(days=1)
+
+                available = max(0.0, gross - absence_hrs)
+                mandatory = round(available * pct_mandatory / 100, 2)
+                project = round(max(0.0, available - mandatory), 2)
+
+                self.db.add(
+                    ScenarioCapacitySnapshot(
+                        revision_id=revision.id,
+                        employee_id=emp.id,
+                        employee_name=emp.display_name,
+                        year=scenario.year,
+                        month=month,
+                        norm_hours=round(gross, 2),
+                        available_hours=round(available, 2),
+                        backlog_pool_hours=project,
+                        gross_hours=round(gross, 2),
+                        absence_hours=round(absence_hrs, 2),
+                        mandatory_hours=mandatory,
+                        project_hours=project,
+                        snapshot_taken_at=now,
+                    )
+                )

@@ -286,3 +286,87 @@ def test_write_dictionary_snapshot_copies_work_types_roles_and_reasons(
     assert ("absence_reason", "ar-1") in by_key
     assert by_key[("absence_reason", "ar-1")].label == "Отпуск"
     assert by_key[("absence_reason", "ar-1")].extra_json["is_planned"] is True
+
+
+def test_write_capacity_snapshot_per_emp_per_month(
+    db_session: Session, team_setup
+):
+    """Capacity snapshot: gross/absence/available/mandatory/project per emp×month."""
+    from app.models import Absence, ScenarioCapacitySnapshot
+
+    # Создаём причину отсутствия (reason_id обязателен в Absence)
+    ar = AbsenceReason(
+        id="ar-cap", code="vacation_cap", label="Отпуск",
+        is_planned=True, color=None, is_active=True, sort_order=1,
+    )
+    db_session.add(ar)
+
+    # Календарь Q2: 3 рабочих дня по 8ч в каждом месяце
+    for d in [ddate(2026, 4, 1), ddate(2026, 4, 2), ddate(2026, 4, 3),
+              ddate(2026, 5, 1), ddate(2026, 5, 4), ddate(2026, 5, 5),
+              ddate(2026, 6, 1), ddate(2026, 6, 2), ddate(2026, 6, 3)]:
+        db_session.add(ProductionCalendarDay(
+            date=d, hours=8.0, is_workday=True, kind="workday", source="manual",
+        ))
+
+    # Иванов (e-1) в отпуске весь май
+    db_session.add(Absence(
+        id="ab-1", employee_id="e-1",
+        start_date=ddate(2026, 5, 1), end_date=ddate(2026, 5, 31),
+        reason_id="ar-cap",
+    ))
+
+    # Правила: analyst — Сопровождение 35% + Орг 15% = 50% mandatory (subtracts_from_pool)
+    db_session.add(MandatoryWorkType(
+        id="wt-1", code="support_cap", label="Сопровождение",
+        is_active=True, sort_order=1, subtracts_from_pool=True,
+    ))
+    db_session.add(MandatoryWorkType(
+        id="wt-2", code="org_cap", label="Орг",
+        is_active=True, sort_order=2, subtracts_from_pool=True,
+    ))
+    db_session.add(ScenarioRule(
+        id="sr-c1", scenario_id="s-1", role="analyst",
+        work_type_id="wt-1", percent_of_norm=35.0,
+    ))
+    db_session.add(ScenarioRule(
+        id="sr-c2", scenario_id="s-1", role="analyst",
+        work_type_id="wt-2", percent_of_norm=15.0,
+    ))
+    db_session.commit()
+
+    writer = SnapshotWriter(db_session)
+    writer.write_capacity_snapshot(
+        revision=team_setup["revision"], scenario=team_setup["scenario"]
+    )
+    db_session.commit()
+
+    rows = (
+        db_session.query(ScenarioCapacitySnapshot)
+        .filter_by(revision_id="r-1", employee_id="e-1")
+        .order_by(ScenarioCapacitySnapshot.month)
+        .all()
+    )
+    assert len(rows) == 3
+    apr, may, jun = rows
+
+    # апрель: 24ч брутто, 0 отсутствий → available=24, mandatory=12, project=12
+    assert apr.month == 4
+    assert apr.gross_hours == 24.0
+    assert apr.absence_hours == 0.0
+    assert apr.available_hours == 24.0
+    assert apr.mandatory_hours == 12.0
+    assert apr.project_hours == 12.0
+
+    # май: 24ч брутто, весь в отсутствии → available=0, mandatory=0, project=0
+    assert may.absence_hours == 24.0
+    assert may.available_hours == 0.0
+    assert may.mandatory_hours == 0.0
+    assert may.project_hours == 0.0
+
+    # июнь: 24/0/24/12/12
+    assert jun.gross_hours == 24.0
+    assert jun.available_hours == 24.0
+
+    # legacy: norm_hours = gross_hours
+    assert apr.norm_hours == 24.0
