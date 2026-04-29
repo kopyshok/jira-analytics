@@ -288,6 +288,9 @@ class SnapshotWriter:
                 while cur <= month_end:
                     day_h = cal_by_date.get(cur, 0.0)
                     if day_h > 0:
+                        # hours_per_day coefficient (day_h × emp.hours_per_day / 8) опущен:
+                        # Employee пока не имеет hours_per_day, все работают по 8ч.
+                        # Вернуть когда появится part-time поддержка.
                         gross += day_h
                         if any(s <= cur <= e for s, e in emp_abs):
                             absence_hrs += day_h
@@ -306,7 +309,7 @@ class SnapshotWriter:
                         month=month,
                         norm_hours=round(gross, 2),
                         available_hours=round(available, 2),
-                        backlog_pool_hours=project,
+                        backlog_pool_hours=None,  # deprecated в v2 — читать project_hours
                         gross_hours=round(gross, 2),
                         absence_hours=round(absence_hrs, 2),
                         mandatory_hours=mandatory,
