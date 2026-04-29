@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import {
   Space, Table, Select, Input, App, Tag, Button, Popconfirm, ColorPicker, Modal, Form,
 } from 'antd';
-import { LockOutlined, DeleteOutlined, PlusOutlined, HolderOutlined } from '@ant-design/icons';
+import { LockOutlined, DeleteOutlined, PlusOutlined, HolderOutlined, ReloadOutlined } from '@ant-design/icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -14,6 +14,7 @@ import {
 } from '../hooks/useCategories';
 import { updateCategory } from '../api/categories';
 import { useMandatoryWorkTypes } from '../hooks/useCapacity';
+import { useRecalculateMapping } from '../hooks/useSync';
 import type { CategoryResponse } from '../types/api';
 
 function DragHandle({ id }: { id: string }) {
@@ -52,6 +53,7 @@ export default function CategoriesTab() {
   const del = useDeleteCategory();
   const create = useCreateCategory();
   const wts = useMandatoryWorkTypes({ isActive: true });
+  const recalculate = useRecalculateMapping();
 
   const [addOpen, setAddOpen] = useState(false);
   const [form] = Form.useForm<{ label: string; color: string }>();
@@ -221,9 +223,25 @@ export default function CategoriesTab() {
         </SortableContext>
       </DndContext>
 
-      <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
-        Добавить категорию
-      </Button>
+      <Space wrap>
+        <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
+          Добавить категорию
+        </Button>
+        <Button
+          icon={<ReloadOutlined />}
+          loading={recalculate.isPending}
+          onClick={() =>
+            recalculate.mutate(undefined, {
+              onSuccess: (res) =>
+                notification.success({ message: 'Маппинг пересчитан', description: res.message }),
+              onError: (e) =>
+                notification.error({ message: 'Ошибка маппинга', description: e.message }),
+            })
+          }
+        >
+          Пересчитать маппинг по задачам
+        </Button>
+      </Space>
 
       <Modal
         title="Добавить категорию"

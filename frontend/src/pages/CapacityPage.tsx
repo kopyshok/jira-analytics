@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Tabs, Table, Button, Space, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
 import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
-import { useTeamCapacity, useEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole } from '../hooks/useCapacity';
+import { useTeamCapacity, useEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole, useAutoDetectTeams } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
 import { useAbsences, useAddAbsence, useAddAbsencesBatch, useRemoveAbsence } from '../hooks/useAbsences';
 import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
@@ -70,6 +70,7 @@ function TeamTab() {
   }, [query]);
   const searchRes = useSearchJiraUsers(debouncedQuery);
   const addMut = useAddEmployeeFromJira();
+  const autoDetect = useAutoDetectTeams();
   const handlePick = (user: JiraUserSearchResult) => {
     addMut.mutate({
       jira_account_id: user.jira_account_id,
@@ -345,6 +346,22 @@ function TeamTab() {
           <Text>%</Text>
         </Space>
         <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
+        <Button
+          icon={<TeamOutlined />}
+          loading={autoDetect.isPending}
+          onClick={() =>
+            autoDetect.mutate(undefined, {
+              onSuccess: (res) =>
+                notification.success({
+                  title: 'Команды определены',
+                  description: `Назначено: ${res.assigned}, пропущено: ${res.skipped}`,
+                }),
+              onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
+            })
+          }
+        >
+          Авто-определить команды
+        </Button>
         <Button onClick={() => setCollapsed(new Set(tree.map(r => r.key)))}>Свернуть все</Button>
         <Button onClick={() => setCollapsed(new Set())}>Развернуть все</Button>
         <Button href={exportHref} target="_blank" rel="noreferrer">Экспорт в Excel</Button>

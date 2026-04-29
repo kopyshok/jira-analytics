@@ -3,20 +3,20 @@ import {
   Button, Card, Checkbox, DatePicker, Popconfirm, Progress, Space, Typography, App,
 } from 'antd';
 import {
-  ReloadOutlined, CloseOutlined, ExclamationCircleOutlined, TeamOutlined,
+  ReloadOutlined, CloseOutlined, ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
-  useReloadWorklogs, useUpdateWorklogs, useRecalculateMapping,
+  useReloadWorklogs, useUpdateWorklogs,
 } from '../../hooks/useSync';
-import { useAutoDetectTeams } from '../../hooks/useCapacity';
 import { useGenericSetting, useSaveGenericSetting } from '../../hooks/useSettings';
 import type { WorklogReloadProgress, WorklogUpdateProgress } from '../../api/sync';
 import { DARK_THEME } from '../../utils/constants';
 
 const { Text } = Typography;
 
-/** Продвинутые операции синхронизации — ручные команды для PM. */
+/** Ворклог breakglass: backfill с произвольной даты + полная перезагрузка
+ *  (единственный способ вычистить worklog, удалённые в Jira). */
 export default function SyncAdvanced() {
   const { notification } = App.useApp();
 
@@ -114,17 +114,15 @@ export default function SyncAdvanced() {
   };
   const cancelUpdate = () => updateAbortRef.current?.abort();
 
-  // ─── Recalculate mapping ─────────────────────────────────
-  const recalculate = useRecalculateMapping();
-
-  // ─── Auto-detect teams ───────────────────────────────────
-  const autoDetect = useAutoDetectTeams();
-
   const worklogsInProgress = reload.isPending || update.isPending;
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {/* Ворклоги */}
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        Ручной backfill ворклогов с произвольной даты и полная перезагрузка
+        (единственный способ подчистить worklog, удалённые в&nbsp;Jira). В&nbsp;повседневке
+        используйте «Синхронизация».
+      </Text>
       <Card title="Ворклоги" size="small">
         <Space direction="vertical" style={{ width: '100%' }}>
           <Space wrap>
@@ -207,42 +205,6 @@ export default function SyncAdvanced() {
         </Space>
       </Card>
 
-      {/* Прочее */}
-      <Card title="Служебные операции" size="small">
-        <Space wrap>
-          <Button
-            icon={<ReloadOutlined />}
-            loading={recalculate.isPending}
-            onClick={() =>
-              recalculate.mutate(undefined, {
-                onSuccess: (res) =>
-                  notification.success({ message: 'Маппинг пересчитан', description: res.message }),
-                onError: (e) =>
-                  notification.error({ message: 'Ошибка маппинга', description: e.message }),
-              })
-            }
-          >
-            Пересчитать маппинг категорий
-          </Button>
-          <Button
-            icon={<TeamOutlined />}
-            loading={autoDetect.isPending}
-            onClick={() =>
-              autoDetect.mutate(undefined, {
-                onSuccess: (res) =>
-                  notification.success({
-                    message: 'Команды определены',
-                    description: `Назначено: ${res.assigned}, пропущено: ${res.skipped}`,
-                  }),
-                onError: (e) =>
-                  notification.error({ message: 'Ошибка', description: e.message }),
-              })
-            }
-          >
-            Авто-определить команды сотрудников
-          </Button>
-        </Space>
-      </Card>
     </Space>
   );
 }
