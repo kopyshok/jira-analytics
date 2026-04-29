@@ -11,12 +11,15 @@ from sqlalchemy.orm import Session
 from app.models import (
     Absence,
     AbsenceReason,
+    BacklogItem,
     Employee,
     EmployeeTeam,
     MandatoryWorkType,
     PlanningScenario,
     ProductionCalendarDay,
     Role,
+    ScenarioAllocation,
+    ScenarioAllocationSnapshot,
     ScenarioCalendarSnapshot,
     ScenarioCapacitySnapshot,
     ScenarioDictionarySnapshot,
@@ -425,3 +428,75 @@ class SnapshotWriter:
                             is_external=True,
                         )
                     )
+
+    def write_allocation_snapshot(
+        self, revision: ScenarioRevision, scenario: PlanningScenario
+    ) -> None:
+        """Snapshot включённых allocations сценария с копией атрибутов BacklogItem.
+
+        Для каждой ScenarioAllocation с included_flag=True данного сценария
+        копирует все поля BacklogItem (title, issue_id, project_id, customer,
+        cost_type, impact, risk, priority, estimate_*_hours, opo_analyst_ratio,
+        assignee_employee_id) и поля allocation (allocation_id, backlog_item_id,
+        sort_order, included_flag, involvement_coefficient).
+
+        assignee_role_at_approval резолвится одним батчевым запросом по всем
+        assignee_employee_id.
+
+        Allocations с included_flag=False не попадают в snapshot.
+        """
+        rows = (
+            self.db.query(ScenarioAllocation, BacklogItem)
+            .join(BacklogItem, BacklogItem.id == ScenarioAllocation.backlog_item_id)
+            .filter(
+                ScenarioAllocation.scenario_id == scenario.id,
+                ScenarioAllocation.included_flag.is_(True),
+            )
+            .all()
+        )
+        if not rows:
+            return
+
+        # Батчевый запрос ролей по всем assignee_employee_id
+        assignee_ids = {
+            bi.assignee_employee_id
+            for _, bi in rows
+            if bi.assignee_employee_id
+        }
+        role_by_employee_id: dict[str, str | None] = {}
+        if assignee_ids:
+            for emp in (
+                self.db.query(Employee)
+                .filter(Employee.id.in_(assignee_ids))
+                .all()
+            ):
+                role_by_employee_id[emp.id] = emp.role
+
+        for alloc, bi in rows:
+            self.db.add(
+                ScenarioAllocationSnapshot(
+                    revision_id=revision.id,
+                    allocation_id=alloc.id,
+                    backlog_item_id=bi.id,
+                    sort_order=alloc.sort_order,
+                    included_flag=True,
+                    involvement_coefficient=alloc.involvement_coefficient,
+                    title=bi.title,
+                    issue_id=bi.issue_id,
+                    project_id=bi.project_id,
+                    customer=bi.customer,
+                    cost_type=bi.cost_type,
+                    impact=bi.impact,
+                    risk=bi.risk,
+                    priority=bi.priority,
+                    estimate_analyst_hours=bi.estimate_analyst_hours,
+                    estimate_dev_hours=bi.estimate_dev_hours,
+                    estimate_qa_hours=bi.estimate_qa_hours,
+                    estimate_opo_hours=bi.estimate_opo_hours,
+                    opo_analyst_ratio=bi.opo_analyst_ratio,
+                    assignee_employee_id=bi.assignee_employee_id,
+                    assignee_role_at_approval=role_by_employee_id.get(
+                        bi.assignee_employee_id
+                    ) if bi.assignee_employee_id else None,
+                )
+            )

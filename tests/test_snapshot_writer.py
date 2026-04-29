@@ -12,12 +12,15 @@ from app.database import Base
 from app.models import (
     Absence,
     AbsenceReason,
+    BacklogItem,
     Employee,
     EmployeeTeam,
     MandatoryWorkType,
     PlanningScenario,
     ProductionCalendarDay,
     Role,
+    ScenarioAllocation,
+    ScenarioAllocationSnapshot,
     ScenarioCalendarSnapshot,
     ScenarioCapacitySnapshot,
     ScenarioDictionarySnapshot,
@@ -461,3 +464,83 @@ def test_write_norm_snapshot_external_qa(db_session: Session, team_setup):
         assert r.role == "qa"
         assert r.work_type_id == "wt-1"
         assert r.norm_hours == 70.0  # 200 × 0.35
+
+
+def test_write_allocation_snapshot_copies_included_items(
+    db_session: Session, team_setup
+):
+    """write_allocation_snapshot: included=True → 1 строка с полными атрибутами;
+    included=False → не попадает в snapshot."""
+    # bi-1 included, rich attributes
+    bi1 = BacklogItem(
+        id="bi-1",
+        title="Инициатива А",
+        issue_id=None,
+        project_id="proj-1",
+        customer="ООО Заказчик",
+        cost_type="capex",
+        impact="high",
+        risk="medium",
+        priority=1,
+        estimate_analyst_hours=40.0,
+        estimate_dev_hours=80.0,
+        estimate_qa_hours=20.0,
+        estimate_opo_hours=10.0,
+        opo_analyst_ratio=0.6,
+        assignee_employee_id="e-1",
+    )
+    # bi-2 not included
+    bi2 = BacklogItem(
+        id="bi-2",
+        title="Инициатива Б",
+        assignee_employee_id=None,
+    )
+    db_session.add_all([bi1, bi2])
+
+    al1 = ScenarioAllocation(
+        id="al-1",
+        scenario_id="s-1",
+        backlog_item_id="bi-1",
+        included_flag=True,
+        sort_order=1.0,
+        involvement_coefficient=0.8,
+    )
+    al2 = ScenarioAllocation(
+        id="al-2",
+        scenario_id="s-1",
+        backlog_item_id="bi-2",
+        included_flag=False,
+        sort_order=2.0,
+    )
+    db_session.add_all([al1, al2])
+    db_session.commit()
+
+    writer = SnapshotWriter(db_session)
+    writer.write_allocation_snapshot(
+        revision=team_setup["revision"], scenario=team_setup["scenario"]
+    )
+    db_session.commit()
+
+    rows = db_session.query(ScenarioAllocationSnapshot).filter_by(revision_id="r-1").all()
+    assert len(rows) == 1, "Only included_flag=True allocation should be snapshotted"
+
+    row = rows[0]
+    assert row.allocation_id == "al-1"
+    assert row.backlog_item_id == "bi-1"
+    assert row.title == "Инициатива А"
+    assert row.project_id == "proj-1"
+    assert row.customer == "ООО Заказчик"
+    assert row.cost_type == "capex"
+    assert row.impact == "high"
+    assert row.risk == "medium"
+    assert row.priority == 1
+    assert row.estimate_analyst_hours == 40.0
+    assert row.estimate_dev_hours == 80.0
+    assert row.estimate_qa_hours == 20.0
+    assert row.estimate_opo_hours == 10.0
+    assert row.opo_analyst_ratio == 0.6
+    assert row.assignee_employee_id == "e-1"
+    assert row.assignee_role_at_approval == "analyst"  # looked up from Employee
+    assert row.sort_order == 1.0
+    assert row.included_flag is True
+    assert row.involvement_coefficient == 0.8
