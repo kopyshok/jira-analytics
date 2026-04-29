@@ -91,6 +91,8 @@ function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClien
       break;
     case 'capacity':
       qc.invalidateQueries({ queryKey: ['capacity'] });
+      qc.invalidateQueries({ queryKey: ['capacity-diff'] });
+      qc.invalidateQueries({ queryKey: ['planning'] });
       break;
     case 'analytics':
       qc.invalidateQueries({ queryKey: ['analytics'] });

@@ -19,6 +19,7 @@ from app.services.capacity_service import (
     MonthlyCapacity,
     QuarterCapacity,
 )
+from app.services.event_bus import EventBroadcaster, get_event_bus
 
 
 router = APIRouter()
@@ -136,6 +137,7 @@ async def list_absences(
 async def create_absence(
     data: AbsenceCreate,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Добавить отсутствие."""
     if data.end_date < data.start_date:
@@ -153,6 +155,7 @@ async def create_absence(
     db.add(absence)
     db.commit()
     db.refresh(absence)
+    await event_bus.publish({"type": "entity_changed", "entities": ["capacity"]})
     # Snapshot for thread-safe return (see CLAUDE.md DB caveat).
     return AbsenceResponse.from_absence(absence)
 
@@ -169,6 +172,7 @@ class AbsenceBatchCreate(BaseModel):
 async def create_absences_batch(
     data: AbsenceBatchCreate,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Массовое создание отсутствий — одна запись на каждого employee_id."""
     if data.end_date < data.start_date:
@@ -208,6 +212,7 @@ async def create_absences_batch(
     db.commit()
     for a in created:
         db.refresh(a)
+    await event_bus.publish({"type": "entity_changed", "entities": ["capacity"]})
     return [AbsenceResponse.from_absence(a) for a in created]
 
 
@@ -215,6 +220,7 @@ async def create_absences_batch(
 async def delete_absence(
     absence_id: str,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Удалить отсутствие."""
     repo = BaseRepository(Absence, db)
@@ -223,6 +229,7 @@ async def delete_absence(
         raise HTTPException(status_code=404, detail="Absence not found")
     repo.delete(existing)
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["capacity"]})
     return {"status": "deleted", "id": absence_id}
 
 
