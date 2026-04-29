@@ -63,6 +63,19 @@ Incremental sync через `sync_state.last_sync` per entity; JQL `updated >= "
 - **Bucket A — issue-centric:** JQL `updated >= since`, upsert по локально существующим Issue. Ловит back-dated ворклоги через переход с `worklogDate` на `updated` — Jira двигает `issue.updated` при добавлении любого ворклога, включая записи с прошлым `started`.
 - **Bucket B — employee-centric** (активируется параметром `teams`): для каждого Employee из `employee_teams.team IN teams` запускается JQL `worklogAuthor = <account> AND updated >= since`. Незнакомые Issue создаются с `out_of_scope=True`, их Project тоже автосоздаётся (без scope). Вне-scope задачи не попадают в CategoryConfigTab/дерево, но ворклоги видны в Capacity/Analytics.
 
+## SnapshotWriter ([snapshot_writer.py](snapshot_writer.py))
+
+Заполняет все snapshot-таблицы при создании ревизии сценария (`POST /scenarios/{id}/approve`). Один экземпляр = один проход. Методы: `write_team_snapshot`, `write_calendar_snapshot`, `write_rules_snapshot`, `write_dictionary_snapshot`, `write_capacity_snapshot`, `write_norm_snapshot`, `write_allocation_snapshot`, `write_allocation_breakdown`. Все добавляют строки в сессию; commit делает вызывающий код. Ревизии, созданные через writer, помечаются `algo_version='v2'`. Старые v1-ревизии не пересчитываются.
+
+Algo notes:
+- `write_capacity_snapshot` считает `gross/absence/available/mandatory/project` per emp×month с учётом отсутствий и правил роли.
+- `write_norm_snapshot` использует `available_hours × pct/100` (НЕ gross), внешний QA — отдельные строки `employee_id=NULL, is_external=TRUE` с равномерным split `external_qa_hours / 3`.
+- `write_allocation_breakdown` — авто-сплит часов allocation по месяцам и ролям пропорционально `available_hours`. Для AN/Cons — на assignee; для RP — на единственного РП команды (alphabetical first если несколько); для dev/qa — пул роли (`employee_id=NULL`); для внешнего QA — равномерно. Edge cases: 0 РП, 0 dev, удалённый assignee → строка с `employee_id=NULL`.
+
+## SnapshotDiffer ([snapshot_differ.py](snapshot_differ.py))
+
+Diff между двумя ревизиями того же сценария. Срезы: allocations (added/removed/changed), team (added/removed/role_changed), rules (added/removed/changed), external_qa_total_hours (before/after), capacity_changes (per emp×month available_hours delta). Чистое чтение snapshot-таблиц.
+
 ## AnalyticsService ([analytics_service.py](analytics_service.py))
 
 Hours by-{employee | project | category | period} + dashboard widgets + context-switching. Все запросы фильтруют по двумерному team filter (employee OR issue) — см. `FactFilterProvider` на фронте.
