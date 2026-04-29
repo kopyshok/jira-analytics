@@ -19,6 +19,7 @@ from app.models import (
     ProductionCalendarDay,
     Role,
     ScenarioAllocation,
+    ScenarioAllocationBreakdownSnapshot,
     ScenarioAllocationSnapshot,
     ScenarioCalendarSnapshot,
     ScenarioCapacitySnapshot,
@@ -30,6 +31,31 @@ from app.models import (
     ScenarioTeamSnapshot,
 )
 from app.services.capacity_service import QUARTER_MONTHS
+
+
+def _split_proportional(total: float, weights: list[float]) -> list[float]:
+    """Делит total по весам пропорционально; последний элемент компенсирует ошибку округления.
+
+    Если sum(weights) == 0 — равномерный split. sum(result) == total точно.
+    """
+    n = len(weights)
+    if n == 0:
+        return []
+    s = sum(weights)
+    if s <= 0:
+        # равномерный split
+        equal = round(total / n, 2)
+        return [equal] * (n - 1) + [round(total - equal * (n - 1), 2)]
+    out: list[float] = []
+    accumulated = 0.0
+    for i, w in enumerate(weights):
+        if i == n - 1:
+            out.append(round(total - accumulated, 2))
+        else:
+            v = round(total * w / s, 2)
+            out.append(v)
+            accumulated += v
+    return out
 
 
 def _quarter_bounds(year: int, quarter_str: str) -> tuple[date, date]:
@@ -500,3 +526,176 @@ class SnapshotWriter:
                     ) if bi.assignee_employee_id else None,
                 )
             )
+
+    def write_allocation_breakdown(
+        self, revision: ScenarioRevision, scenario: PlanningScenario
+    ) -> None:
+        """Помесячный сплит каждого allocation по ролям и сотрудникам.
+
+        Для каждого included allocation вычисляет квартальные часы по ролям
+        (analyst/consultant/RP/dev/qa), затем делит их по месяцам пропорционально
+        available_hours из ScenarioCapacitySnapshot (уже записанного ранее).
+        Вызывать после write_capacity_snapshot и write_allocation_snapshot.
+        """
+        if not (scenario.team and scenario.year and scenario.quarter):
+            return
+
+        q = int(str(scenario.quarter).replace("Q", ""))
+        months = QUARTER_MONTHS[q]
+
+        # Flush pending inserts so capacity rows are visible to the SELECT below.
+        self.db.flush()
+
+        # available_hours per emp×month из уже записанных capacity snapshots
+        cap_rows = (
+            self.db.query(ScenarioCapacitySnapshot)
+            .filter_by(revision_id=revision.id)
+            .all()
+        )
+        avail_emp_month: dict[tuple[str, int], float] = {
+            (r.employee_id, r.month): float(r.available_hours)
+            for r in cap_rows if r.employee_id
+        }
+
+        # Активные сотрудники команды
+        emp_ids = [
+            r[0] for r in self.db.query(EmployeeTeam.employee_id)
+            .filter(EmployeeTeam.team == scenario.team).all()
+        ]
+        employees = (
+            self.db.query(Employee)
+            .filter(Employee.id.in_(emp_ids), Employee.is_active.is_(True))
+            .all()
+        ) if emp_ids else []
+
+        devs = [e for e in employees if e.role == "dev"]
+        qas = [e for e in employees if e.role == "qa"]
+        rps = [e for e in employees if e.role == "RP"]
+        rp_emp_id = sorted(rps, key=lambda e: e.display_name)[0].id if rps else None
+
+        def _avail_role_month(role_emps: list[Employee], month: int) -> float:
+            return sum(avail_emp_month.get((e.id, month), 0.0) for e in role_emps)
+
+        # Все included allocations
+        allocs = (
+            self.db.query(ScenarioAllocation, BacklogItem)
+            .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+            .filter(
+                ScenarioAllocation.scenario_id == scenario.id,
+                ScenarioAllocation.included_flag.is_(True),
+            )
+            .all()
+        )
+        role_by_emp: dict[str, str | None] = {e.id: e.role for e in employees}
+        qa_external = (
+            scenario.external_qa_hours is not None
+            and float(scenario.external_qa_hours or 0) > 0
+        )
+
+        for alloc, bi in allocs:
+            # 1. Квартальные часы по ролям
+            opo = float(bi.estimate_opo_hours or 0)
+            opo_an_ratio = float(
+                bi.opo_analyst_ratio if bi.opo_analyst_ratio is not None else 0.5
+            )
+            an_total = float(bi.estimate_analyst_hours or 0) + opo * opo_an_ratio
+            rp_total = opo * (1 - opo_an_ratio)
+            dev_total = float(bi.estimate_dev_hours or 0)
+            qa_total = float(bi.estimate_qa_hours or 0)
+
+            # 2. Роль/сотрудник для аналитика
+            assignee_role = (
+                role_by_emp.get(bi.assignee_employee_id)
+                if bi.assignee_employee_id else None
+            )
+            an_role = "consultant" if assignee_role == "consultant" else "analyst"
+            an_emp_id = (
+                bi.assignee_employee_id
+                if assignee_role in {"analyst", "consultant"} else None
+            )
+
+            # 3. Сплит по месяцам
+
+            def _split_emp(total: float, emp_id: str | None) -> list[float]:
+                if total == 0:
+                    return [0.0] * len(months)
+                if emp_id is None:
+                    return _split_proportional(total, [1.0] * len(months))
+                return _split_proportional(
+                    total, [avail_emp_month.get((emp_id, m), 0.0) for m in months]
+                )
+
+            def _split_pool(total: float, role_emps: list[Employee]) -> list[float]:
+                if total == 0:
+                    return [0.0] * len(months)
+                return _split_proportional(
+                    total, [_avail_role_month(role_emps, m) for m in months]
+                )
+
+            # analyst / consultant
+            if an_total > 0:
+                for month, h in zip(months, _split_emp(an_total, an_emp_id)):
+                    self.db.add(ScenarioAllocationBreakdownSnapshot(
+                        revision_id=revision.id,
+                        allocation_id=alloc.id,
+                        month=month,
+                        role=an_role,
+                        employee_id=an_emp_id,
+                        is_external=False,
+                        hours=h,
+                    ))
+
+            # RP
+            if rp_total > 0:
+                for month, h in zip(months, _split_emp(rp_total, rp_emp_id)):
+                    self.db.add(ScenarioAllocationBreakdownSnapshot(
+                        revision_id=revision.id,
+                        allocation_id=alloc.id,
+                        month=month,
+                        role="RP",
+                        employee_id=rp_emp_id,
+                        is_external=False,
+                        hours=h,
+                    ))
+
+            # dev (pool, NULL employee)
+            if dev_total > 0:
+                for month, h in zip(months, _split_pool(dev_total, devs)):
+                    self.db.add(ScenarioAllocationBreakdownSnapshot(
+                        revision_id=revision.id,
+                        allocation_id=alloc.id,
+                        month=month,
+                        role="dev",
+                        employee_id=None,
+                        is_external=False,
+                        hours=h,
+                    ))
+
+            # qa
+            if qa_total > 0:
+                if qa_external:
+                    # Внешний QA: равномерный split, is_external=True
+                    for month, h in zip(
+                        months, _split_proportional(qa_total, [1.0] * len(months))
+                    ):
+                        self.db.add(ScenarioAllocationBreakdownSnapshot(
+                            revision_id=revision.id,
+                            allocation_id=alloc.id,
+                            month=month,
+                            role="qa",
+                            employee_id=None,
+                            is_external=True,
+                            hours=h,
+                        ))
+                else:
+                    # Штатный QA: pool
+                    for month, h in zip(months, _split_pool(qa_total, qas)):
+                        self.db.add(ScenarioAllocationBreakdownSnapshot(
+                            revision_id=revision.id,
+                            allocation_id=alloc.id,
+                            month=month,
+                            role="qa",
+                            employee_id=None,
+                            is_external=False,
+                            hours=h,
+                        ))
