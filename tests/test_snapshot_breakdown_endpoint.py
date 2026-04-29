@@ -118,8 +118,8 @@ class TestBreakdownEndpoint:
         rev = _make_revision(db_session, scenario.id, algo_version="v2")
         bi = _make_backlog_item(db_session)
         alloc = _make_allocation(db_session, scenario.id, bi.id)
-        row1 = _make_breakdown_row(db_session, rev.id, alloc.id, month=4, hours=10.0)
-        row2 = _make_breakdown_row(db_session, rev.id, alloc.id, month=5, hours=10.0)
+        _make_breakdown_row(db_session, rev.id, alloc.id, month=4, hours=10.0)
+        _make_breakdown_row(db_session, rev.id, alloc.id, month=5, hours=10.0)
         db_session.commit()
 
         resp = client.get(
