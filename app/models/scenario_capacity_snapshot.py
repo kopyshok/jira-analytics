@@ -41,6 +41,10 @@ class ScenarioCapacitySnapshot(Base, TimestampMixin):
     # «На бэклог» = available_hours − обязательные часы (subtracts_from_pool=True).
     # Nullable: ревизии до миграции 042 эту колонку не заполняли.
     backlog_pool_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    gross_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    absence_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    mandatory_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    project_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     snapshot_taken_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
     revision: Mapped["ScenarioRevision"] = relationship(back_populates="capacity_snapshots")
