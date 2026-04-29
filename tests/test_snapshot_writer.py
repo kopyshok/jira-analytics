@@ -20,6 +20,7 @@ from app.models import (
     ProductionCalendarDay,
     Role,
     ScenarioAllocation,
+    ScenarioAllocationBreakdownSnapshot,
     ScenarioAllocationSnapshot,
     ScenarioCalendarSnapshot,
     ScenarioCapacitySnapshot,
@@ -30,6 +31,10 @@ from app.models import (
     ScenarioRulesSnapshot,
     ScenarioTeamSnapshot,
 )
+from fastapi.testclient import TestClient
+
+from app.database import get_db
+from app.main import app
 from app.services.snapshot_writer import SnapshotWriter
 
 
@@ -544,3 +549,62 @@ def test_write_allocation_snapshot_copies_included_items(
     assert row.sort_order == 1.0
     assert row.included_flag is True
     assert row.involvement_coefficient == 0.8
+
+
+# ---------------------------------------------------------------------------
+# E2E: TestClient fixture + endpoint test
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def client(db_session: Session):
+    def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_approve_endpoint_writes_v2_snapshots(client: TestClient, db_session: Session):
+    """E2E: POST /scenarios/{id}/approve должен записать все v2 snapshot-таблицы."""
+    # --- Inventory ---
+    db_session.add(Employee(id="e-an", jira_account_id="j1", display_name="Аналитик", role="analyst", is_active=True))
+    db_session.add(Employee(id="e-rp", jira_account_id="j2", display_name="РП", role="RP", is_active=True))
+    db_session.add(EmployeeTeam(id="et-an", employee_id="e-an", team="T1", is_primary=True))
+    db_session.add(EmployeeTeam(id="et-rp", employee_id="e-rp", team="T1", is_primary=True))
+    sc = PlanningScenario(id="s-e2e", name="Q2", year=2026, quarter="Q2", team="T1", status="draft")
+    db_session.add(sc)
+
+    db_session.add(ProductionCalendarDay(date=ddate(2026, 4, 1), hours=8.0, is_workday=True, kind="workday", source="manual"))
+    db_session.add(ProductionCalendarDay(date=ddate(2026, 5, 1), hours=8.0, is_workday=True, kind="workday", source="manual"))
+    db_session.add(ProductionCalendarDay(date=ddate(2026, 6, 1), hours=8.0, is_workday=True, kind="workday", source="manual"))
+    db_session.add(MandatoryWorkType(id="wt-e2e", code="support_e2e", label="Сопровождение", is_active=True, sort_order=1, subtracts_from_pool=True))
+    db_session.add(ScenarioRule(id="sr-e2e", scenario_id="s-e2e", role="analyst", work_type_id="wt-e2e", percent_of_norm=35.0))
+    db_session.add(BacklogItem(id="bi-e2e", title="X", estimate_analyst_hours=10.0, assignee_employee_id="e-an"))
+    db_session.add(ScenarioAllocation(id="al-e2e", scenario_id="s-e2e", backlog_item_id="bi-e2e", included_flag=True))
+    db_session.commit()
+
+    resp = client.post("/api/v1/planning/scenarios/s-e2e/approve", json={})
+    assert resp.status_code == 200
+
+    rev = (
+        db_session.query(ScenarioRevision)
+        .filter_by(scenario_id="s-e2e")
+        .order_by(ScenarioRevision.revision_number.desc())
+        .first()
+    )
+    assert rev is not None
+    assert rev.algo_version == "v2"
+    assert rev.parent_revision_id is None  # first ever revision
+
+    # All snapshot tables populated
+    assert db_session.query(ScenarioTeamSnapshot).filter_by(revision_id=rev.id).count() == 2
+    assert db_session.query(ScenarioCalendarSnapshot).filter_by(revision_id=rev.id).count() == 3
+    assert db_session.query(ScenarioRulesSnapshot).filter_by(revision_id=rev.id).count() == 1
+    assert db_session.query(ScenarioDictionarySnapshot).filter_by(revision_id=rev.id, kind="work_type").count() >= 1
+    assert db_session.query(ScenarioCapacitySnapshot).filter_by(revision_id=rev.id).count() == 6  # 2 emp × 3 months
+    assert db_session.query(ScenarioNormSnapshot).filter_by(revision_id=rev.id).count() >= 1
+    assert db_session.query(ScenarioAllocationSnapshot).filter_by(revision_id=rev.id).count() == 1
+    assert db_session.query(ScenarioAllocationBreakdownSnapshot).filter_by(revision_id=rev.id).count() >= 1
