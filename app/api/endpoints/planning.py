@@ -1510,6 +1510,39 @@ async def diff_scenario_revisions(
     )
 
 
+@router.get("/scenarios/{scenario_id}/revisions/{revision_id}/diff")
+async def diff_revision(
+    scenario_id: str,
+    revision_id: str,
+    against: Optional[str] = Query(
+        None, description="ID ревизии для сравнения; по умолчанию parent_revision_id"
+    ),
+    db: Session = Depends(get_db),
+):
+    """Diff между двумя ревизиями того же сценария по snapshot-таблицам."""
+    rev = db.query(ScenarioRevision).filter_by(id=revision_id, scenario_id=scenario_id).first()
+    if not rev:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    against_id = against or rev.parent_revision_id
+    if not against_id:
+        return {
+            "allocations": {"added": [], "removed": [], "changed": []},
+            "team": {"added": [], "removed": [], "role_changed": []},
+            "rules": {"added": [], "removed": [], "changed": []},
+            "external_qa_total_hours": {"before": 0.0, "after": 0.0},
+            "capacity_changes": [],
+        }
+    against_rev = db.query(ScenarioRevision).filter_by(
+        id=against_id, scenario_id=scenario_id
+    ).first()
+    if not against_rev:
+        raise HTTPException(
+            status_code=404, detail="Against revision not found in same scenario"
+        )
+    from app.services.snapshot_differ import SnapshotDiffer
+    return SnapshotDiffer(db).diff(revision_id=revision_id, against_revision_id=against_id)
+
+
 # === Generic scenario CRUD routes (must come last) ===
 
 
