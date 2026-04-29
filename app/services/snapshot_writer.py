@@ -20,6 +20,7 @@ from app.models import (
     ScenarioCalendarSnapshot,
     ScenarioCapacitySnapshot,
     ScenarioDictionarySnapshot,
+    ScenarioNormSnapshot,
     ScenarioRevision,
     ScenarioRule,
     ScenarioRulesSnapshot,
@@ -317,3 +318,108 @@ class SnapshotWriter:
                         snapshot_taken_at=now,
                     )
                 )
+
+    def write_norm_snapshot(
+        self, revision: ScenarioRevision, scenario: PlanningScenario
+    ) -> None:
+        """Норм. часы = available × pct правила; для внешнего QA — отдельные строки.
+
+        Читает available_hours из уже записанных ScenarioCapacitySnapshot строк
+        (revision_id=revision.id) — вызывать после write_capacity_snapshot.
+        Для внешнего QA (scenario.external_qa_hours > 0) добавляет строки
+        с employee_id=None, is_external=True для каждого правила роли qa.
+        """
+        if not (scenario.team and scenario.year and scenario.quarter):
+            return
+
+        q = int(str(scenario.quarter).replace("Q", ""))
+        months = QUARTER_MONTHS[q]
+
+        # Flush pending inserts so capacity rows are visible to the SELECT below.
+        self.db.flush()
+
+        # available_hours per emp×month — из уже записанных capacity snapshots
+        cap_rows = (
+            self.db.query(ScenarioCapacitySnapshot)
+            .filter_by(revision_id=revision.id)
+            .all()
+        )
+        available_by_emp_month: dict[tuple[str, int], float] = {
+            (r.employee_id, r.month): float(r.available_hours)
+            for r in cap_rows if r.employee_id
+        }
+
+        # Активные сотрудники команды
+        emp_ids = [
+            row[0]
+            for row in self.db.query(EmployeeTeam.employee_id)
+            .filter(EmployeeTeam.team == scenario.team)
+            .all()
+        ]
+        employees = (
+            self.db.query(Employee)
+            .filter(Employee.id.in_(emp_ids), Employee.is_active.is_(True))
+            .all()
+        ) if emp_ids else []
+
+        # Правила сценария + work_type labels
+        rules = (
+            self.db.query(ScenarioRule)
+            .filter(ScenarioRule.scenario_id == scenario.id)
+            .all()
+        )
+        wt_label_by_id: dict[str, str] = {}
+        if rules:
+            wt_ids = {r.work_type_id for r in rules if r.work_type_id}
+            if wt_ids:
+                for wt in (
+                    self.db.query(MandatoryWorkType)
+                    .filter(MandatoryWorkType.id.in_(wt_ids))
+                    .all()
+                ):
+                    wt_label_by_id[wt.id] = wt.label
+
+        # 1. Штатные сотрудники
+        for emp in employees:
+            emp_role = emp.role
+            for month in months:
+                available = available_by_emp_month.get((emp.id, month), 0.0)
+                for r in rules:
+                    if r.role is None or r.role == emp_role:
+                        norm = round(available * r.percent_of_norm / 100, 2)
+                        self.db.add(
+                            ScenarioNormSnapshot(
+                                revision_id=revision.id,
+                                employee_id=emp.id,
+                                employee_name=emp.display_name,
+                                role=emp_role,
+                                year=scenario.year,
+                                month=month,
+                                work_type_id=r.work_type_id,
+                                work_type_label=wt_label_by_id.get(r.work_type_id, ""),
+                                norm_hours=norm,
+                                is_external=False,
+                            )
+                        )
+
+        # 2. Внешний QA
+        if scenario.external_qa_hours is not None and float(scenario.external_qa_hours) > 0:
+            ext_per_month = float(scenario.external_qa_hours) / len(months)
+            qa_rules = [r for r in rules if r.role == "qa"]
+            for month in months:
+                for r in qa_rules:
+                    norm = round(ext_per_month * r.percent_of_norm / 100, 2)
+                    self.db.add(
+                        ScenarioNormSnapshot(
+                            revision_id=revision.id,
+                            employee_id=None,
+                            employee_name="(внешний QA)",
+                            role="qa",
+                            year=scenario.year,
+                            month=month,
+                            work_type_id=r.work_type_id,
+                            work_type_label=wt_label_by_id.get(r.work_type_id, ""),
+                            norm_hours=norm,
+                            is_external=True,
+                        )
+                    )

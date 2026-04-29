@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.models import (
+    Absence,
     AbsenceReason,
     Employee,
     EmployeeTeam,
@@ -18,7 +19,9 @@ from app.models import (
     ProductionCalendarDay,
     Role,
     ScenarioCalendarSnapshot,
+    ScenarioCapacitySnapshot,
     ScenarioDictionarySnapshot,
+    ScenarioNormSnapshot,
     ScenarioRevision,
     ScenarioRule,
     ScenarioRulesSnapshot,
@@ -370,3 +373,91 @@ def test_write_capacity_snapshot_per_emp_per_month(
 
     # legacy: norm_hours = gross_hours
     assert apr.norm_hours == 24.0
+
+
+def test_write_norm_snapshot_uses_available_not_gross(
+    db_session: Session, team_setup
+):
+    """Норм. часы = available × pct, НЕ gross × pct (отсутствия учтены)."""
+    ar = AbsenceReason(
+        id="ar-n1", code="vacation_n1", label="Отпуск",
+        is_planned=True, color=None, is_active=True, sort_order=1,
+    )
+    db_session.add(ar)
+    for d in [ddate(2026, 4, 1), ddate(2026, 4, 2),
+              ddate(2026, 5, 4), ddate(2026, 5, 5),
+              ddate(2026, 6, 1), ddate(2026, 6, 2)]:
+        db_session.add(ProductionCalendarDay(
+            date=d, hours=8.0, is_workday=True, kind="workday", source="manual",
+        ))
+    # Иванов (e-1) в отпуске 1-2 апреля (оба рабочих дня апреля)
+    db_session.add(Absence(
+        id="ab-n1", employee_id="e-1",
+        start_date=ddate(2026, 4, 1), end_date=ddate(2026, 4, 2),
+        reason_id="ar-n1",
+    ))
+    db_session.add(MandatoryWorkType(
+        id="wt-1", code="support", label="Сопровождение",
+        is_active=True, sort_order=1, subtracts_from_pool=True,
+    ))
+    db_session.add(ScenarioRule(
+        id="sr-1", scenario_id="s-1", role="analyst",
+        work_type_id="wt-1", percent_of_norm=35.0,
+    ))
+    db_session.commit()
+
+    writer = SnapshotWriter(db_session)
+    writer.write_capacity_snapshot(
+        revision=team_setup["revision"], scenario=team_setup["scenario"]
+    )
+    writer.write_norm_snapshot(
+        revision=team_setup["revision"], scenario=team_setup["scenario"]
+    )
+    db_session.commit()
+
+    apr = db_session.query(ScenarioNormSnapshot).filter_by(
+        revision_id="r-1", employee_id="e-1", month=4, work_type_id="wt-1"
+    ).one()
+    # gross=16, absence=16 (оба дня) → available=0 → norm=0 (НЕ 16×0.35=5.6)
+    assert apr.norm_hours == 0.0
+    assert apr.is_external is False
+
+    may = db_session.query(ScenarioNormSnapshot).filter_by(
+        revision_id="r-1", employee_id="e-1", month=5, work_type_id="wt-1"
+    ).one()
+    # gross=16, absence=0 → available=16 → norm 16×0.35 = 5.6
+    assert may.norm_hours == 5.6
+
+
+def test_write_norm_snapshot_external_qa(db_session: Session, team_setup):
+    """external_qa_hours = 600 → 200/мес × pct правила QA."""
+    team_setup["scenario"].external_qa_hours = 600.0
+    db_session.commit()
+    db_session.add(MandatoryWorkType(
+        id="wt-1", code="support", label="Сопровождение",
+        is_active=True, sort_order=1, subtracts_from_pool=True,
+    ))
+    db_session.add(ScenarioRule(
+        id="sr-1", scenario_id="s-1", role="qa",
+        work_type_id="wt-1", percent_of_norm=35.0,
+    ))
+    db_session.commit()
+
+    writer = SnapshotWriter(db_session)
+    writer.write_capacity_snapshot(
+        revision=team_setup["revision"], scenario=team_setup["scenario"]
+    )
+    writer.write_norm_snapshot(
+        revision=team_setup["revision"], scenario=team_setup["scenario"]
+    )
+    db_session.commit()
+
+    qa_rows = db_session.query(ScenarioNormSnapshot).filter_by(
+        revision_id="r-1", is_external=True
+    ).all()
+    assert len(qa_rows) == 3  # 3 месяца
+    for r in qa_rows:
+        assert r.employee_id is None
+        assert r.role == "qa"
+        assert r.work_type_id == "wt-1"
+        assert r.norm_hours == 70.0  # 200 × 0.35
