@@ -28,17 +28,13 @@ class SnapshotWriter:
         """
         if not scenario.team:
             return
-        emp_ids = [
-            r[0]
-            for r in self.db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.team == scenario.team)
-            .all()
-        ]
-        if not emp_ids:
-            return
         employees = (
             self.db.query(Employee)
-            .filter(Employee.id.in_(emp_ids))
+            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+            .filter(
+                EmployeeTeam.team == scenario.team,
+                Employee.is_active.is_(True),
+            )
             .all()
         )
         for emp in employees:
