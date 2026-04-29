@@ -94,6 +94,7 @@ class CapacitySnapshotOut(BaseModel):
     month: int
     norm_hours: float
     available_hours: float
+    backlog_pool_hours: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -590,16 +591,27 @@ async def approve_scenario(
         )
         wt_ids = list({r.work_type_id for r in rules})
         work_types: dict[str, str] = {}
+        work_type_subtracts: dict[str, bool] = {}
         if wt_ids:
-            work_types = {
-                wt.id: wt.label
-                for wt in db.query(MandatoryWorkType).filter(MandatoryWorkType.id.in_(wt_ids)).all()
-            }
+            wt_rows = db.query(MandatoryWorkType).filter(MandatoryWorkType.id.in_(wt_ids)).all()
+            work_types = {wt.id: wt.label for wt in wt_rows}
+            work_type_subtracts = {wt.id: bool(wt.subtracts_from_pool) for wt in wt_rows}
 
         capacity_svc = CapacityService(db)
         for emp in employees:
             for month in months:
                 mc = capacity_svc.monthly_capacity(emp.id, scenario.year, month)
+                emp_rules = [r for r in rules if r.role is None or r.role == emp.role]
+                # «На бэклог» = available × (1 − Σ% правил, которые вычитаются из пула).
+                # Та же формула, что в ResourceBaseService.compute_summary, но per-месяц.
+                sum_pct_subtract = sum(
+                    r.percent_of_norm
+                    for r in emp_rules
+                    if work_type_subtracts.get(r.work_type_id, False)
+                )
+                pool_hours = round(
+                    max(0.0, mc.available_hours * (1 - sum_pct_subtract / 100)), 2,
+                )
                 db.add(ScenarioCapacitySnapshot(
                     revision_id=revision.id,
                     employee_id=emp.id,
@@ -608,9 +620,9 @@ async def approve_scenario(
                     month=month,
                     norm_hours=mc.norm_hours,
                     available_hours=mc.available_hours,
+                    backlog_pool_hours=pool_hours,
                     snapshot_taken_at=now,
                 ))
-                emp_rules = [r for r in rules if r.role is None or r.role == emp.role]
                 for rule in emp_rules:
                     norm_h = round(mc.norm_hours * rule.percent_of_norm / 100, 2)
                     db.add(ScenarioNormSnapshot(
@@ -1315,6 +1327,7 @@ async def list_scenario_revisions(
                     month=s.month,
                     norm_hours=s.norm_hours,
                     available_hours=s.available_hours,
+                    backlog_pool_hours=s.backlog_pool_hours,
                 )
                 for s in snapshots
             ],

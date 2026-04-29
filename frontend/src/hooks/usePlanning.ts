@@ -91,7 +91,10 @@ export const useApproveScenario = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: approveScenario,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: ['capacity-diff'] });
+    },
   });
 };
 
@@ -99,7 +102,11 @@ export const useRevertScenario = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: revertScenario,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['planning'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['planning'] });
+      // Drop cached diff without refetch — backend returns 404 for draft scenarios.
+      qc.removeQueries({ queryKey: ['capacity-diff'] });
+    },
   });
 };
 

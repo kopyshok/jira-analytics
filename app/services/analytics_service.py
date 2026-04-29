@@ -629,7 +629,6 @@ class AnalyticsService:
             .first()
         )
         plan_by_work_type: dict[str, float] = {}
-        backlog_plan_hours: float = 0.0
         if approved_scenario:
             from sqlalchemy import func as sqlfunc
             from app.services.capacity_service import QUARTER_MONTHS
@@ -691,24 +690,6 @@ class AnalyticsService:
                     if wt_id:
                         plan_by_work_type[wt_id] = round(float(total), 2)
 
-            row = (
-                self.db.query(
-                    func.sum(
-                        func.coalesce(BacklogItem.estimate_analyst_hours, 0.0)
-                        + func.coalesce(BacklogItem.estimate_dev_hours, 0.0)
-                        + func.coalesce(BacklogItem.estimate_qa_hours, 0.0)
-                        + func.coalesce(BacklogItem.estimate_opo_hours, 0.0)
-                    )
-                )
-                .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
-                .filter(
-                    ScenarioAllocation.scenario_id == approved_scenario.id,
-                    ScenarioAllocation.included_flag == True,  # noqa: E712
-                )
-                .scalar()
-            )
-            backlog_plan_hours = float(row or 0.0)
-
         # 5. Факт по видам работ — один групповой запрос вместо N запросов
         all_category_codes = [code for codes in codes_by_work_type.values() for code in codes]
         fact_by_code: dict[str, float] = {}
@@ -746,13 +727,7 @@ class AnalyticsService:
         for wt in work_types:
             fact_hours = sum(fact_by_code.get(code, 0.0) for code in codes_by_work_type.get(wt.id, []))
 
-            if wt.id in plan_by_work_type:
-                plan_hours = round(plan_by_work_type[wt.id], 2)
-            elif fact_hours > 0 and backlog_plan_hours > 0:
-                # нет правила в сценарии, но есть факт → проектная работа
-                plan_hours = round(backlog_plan_hours, 2)
-            else:
-                plan_hours = 0.0
+            plan_hours = round(plan_by_work_type.get(wt.id, 0.0), 2)
             pct_actual = round(fact_hours / plan_hours * 100, 1) if plan_hours > 0 else 0.0
 
             items.append(NormWorkItem(
