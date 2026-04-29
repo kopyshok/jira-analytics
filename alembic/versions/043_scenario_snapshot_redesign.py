@@ -21,10 +21,13 @@ depends_on = None
 
 def upgrade() -> None:
     # --- scenario_revisions: новые поля ---
+    # Добавляем колонки отдельно от FK, чтобы избежать CircularDependencyError
+    # при batch-пересборке таблицы с self-referencing FK (parent_revision_id).
     with op.batch_alter_table("scenario_revisions") as batch_op:
         batch_op.add_column(sa.Column("parent_revision_id", sa.String(length=36), nullable=True))
         batch_op.add_column(sa.Column("approved_by_user_id", sa.String(length=36), nullable=True))
         batch_op.add_column(sa.Column("algo_version", sa.String(length=16), nullable=False, server_default="v1"))
+    with op.batch_alter_table("scenario_revisions", recreate="always") as batch_op:
         batch_op.create_foreign_key(
             "fk_scenario_revisions_parent",
             "scenario_revisions",
@@ -48,6 +51,10 @@ def upgrade() -> None:
     # --- scenario_norm_snapshots: is_external ---
     with op.batch_alter_table("scenario_norm_snapshots") as batch_op:
         batch_op.add_column(sa.Column("is_external", sa.Boolean(), nullable=False, server_default=sa.false()))
+        batch_op.create_unique_constraint(
+            "uq_scenario_norm_snap_rev_emp_ym_wt_ext",
+            ["revision_id", "employee_id", "year", "month", "work_type_id", "is_external"],
+        )
 
     # --- scenario_team_snapshots ---
     op.create_table(
@@ -135,6 +142,10 @@ def upgrade() -> None:
         sa.Column("hours", sa.Float(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint(
+            "revision_id", "allocation_id", "month", "role", "employee_id", "is_external",
+            name="uq_alloc_breakdown_rev_alloc_month_role_emp_ext",
+        ),
     )
     op.create_index(
         "ix_alloc_breakdown_rev_alloc_month",
@@ -169,15 +180,18 @@ def downgrade() -> None:
     op.drop_index("ix_scenario_team_snapshots_revision_role", table_name="scenario_team_snapshots")
     op.drop_table("scenario_team_snapshots")
     with op.batch_alter_table("scenario_norm_snapshots") as batch_op:
+        batch_op.drop_constraint("uq_scenario_norm_snap_rev_emp_ym_wt_ext", type_="unique")
         batch_op.drop_column("is_external")
     with op.batch_alter_table("scenario_capacity_snapshots") as batch_op:
         batch_op.drop_column("project_hours")
         batch_op.drop_column("mandatory_hours")
         batch_op.drop_column("absence_hours")
         batch_op.drop_column("gross_hours")
-    with op.batch_alter_table("scenario_revisions") as batch_op:
+    # Сначала удаляем FK (recreate, чтобы убрать self-referencing FK), затем колонки.
+    with op.batch_alter_table("scenario_revisions", recreate="always") as batch_op:
         batch_op.drop_constraint("fk_scenario_revisions_user", type_="foreignkey")
         batch_op.drop_constraint("fk_scenario_revisions_parent", type_="foreignkey")
+    with op.batch_alter_table("scenario_revisions") as batch_op:
         batch_op.drop_column("algo_version")
         batch_op.drop_column("approved_by_user_id")
         batch_op.drop_column("parent_revision_id")
