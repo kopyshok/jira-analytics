@@ -109,7 +109,12 @@ class SnapshotWriter:
     def write_rules_snapshot(
         self, revision: ScenarioRevision, scenario: PlanningScenario
     ) -> None:
-        """Snapshot scenario_rules + резолв work_type_label."""
+        """Snapshot scenario_rules сценария.
+
+        Копирует role, work_type_id, pct_of_norm. Резолвит work_type_label
+        одним батчевым запросом по всем используемым work_type_id.
+        Если у сценария нет правил — ничего не пишет.
+        """
         rules = (
             self.db.query(ScenarioRule)
             .filter(ScenarioRule.scenario_id == scenario.id)
@@ -176,7 +181,7 @@ class SnapshotWriter:
                     revision_id=revision.id,
                     kind="absence_reason",
                     original_id=ar.id,
-                    code=None,
+                    code=ar.code,
                     label=ar.label,
                     sort_order=ar.sort_order,
                     extra_json={
