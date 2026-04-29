@@ -1,6 +1,7 @@
 """ScenarioNormSnapshot — per-employee/month/work_type norm at approval time."""
 from typing import Optional, TYPE_CHECKING
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
+from sqlalchemy.sql import expression
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import TimestampMixin, generate_uuid
 from app.database import Base
@@ -38,7 +39,7 @@ class ScenarioNormSnapshot(Base, TimestampMixin):
     )
     work_type_label: Mapped[str] = mapped_column(String(255), nullable=False)
     norm_hours: Mapped[float] = mapped_column(Float, nullable=False)
-    is_external: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_external: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
 
     revision: Mapped["ScenarioRevision"] = relationship(back_populates="norm_snapshots")
     employee: Mapped[Optional["Employee"]] = relationship()

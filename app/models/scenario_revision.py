@@ -25,6 +25,17 @@ if TYPE_CHECKING:
 
 
 class ScenarioRevision(Base, TimestampMixin):
+    """Запись об одном утверждении сценария (v1 или v2).
+
+    Создаётся при каждом POST /scenarios/{id}/approve. Хранит порядковый
+    номер, момент утверждения, необязательный комментарий PM, цепочку
+    parent_revision_id для diff между ревизиями, аккаунт утвердившего
+    пользователя и версию алгоритма расчёта снапшотов.
+
+    v1 — старые ревизии с inline-логикой расчёта в endpoint approve.
+    v2 — ревизии, созданные через SnapshotWriter (полный набор snapshot-таблиц).
+    """
+
     __tablename__ = "scenario_revisions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
@@ -44,7 +55,7 @@ class ScenarioRevision(Base, TimestampMixin):
         String(36), ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    algo_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1")
+    algo_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1", server_default="v1")
 
     scenario: Mapped["PlanningScenario"] = relationship(back_populates="revisions")
     items: Mapped[List["ScenarioRevisionItem"]] = relationship(
