@@ -37,6 +37,7 @@ from app.models import (
     RoleCapacityRule,
     ScenarioAbsenceSnapshot,
     ScenarioAllocation,
+    ScenarioAllocationBreakdownSnapshot,
     ScenarioCapacitySnapshot,
     ScenarioNormSnapshot,
     ScenarioRevision,
@@ -1541,6 +1542,43 @@ async def diff_revision(
         )
     from app.services.snapshot_differ import SnapshotDiffer
     return SnapshotDiffer(db).diff(revision_id=revision_id, against_revision_id=against_id)
+
+
+@router.get("/scenarios/{scenario_id}/revisions/{revision_id}/breakdown")
+async def get_revision_breakdown(
+    scenario_id: str,
+    revision_id: str,
+    db: Session = Depends(get_db),
+):
+    """Debug-view помесячного breakdown allocation по ролям и сотрудникам."""
+    rev = db.query(ScenarioRevision).filter_by(id=revision_id, scenario_id=scenario_id).first()
+    if not rev:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    rows = (
+        db.query(ScenarioAllocationBreakdownSnapshot)
+        .filter_by(revision_id=revision_id)
+        .order_by(
+            ScenarioAllocationBreakdownSnapshot.allocation_id,
+            ScenarioAllocationBreakdownSnapshot.month,
+            ScenarioAllocationBreakdownSnapshot.role,
+        )
+        .all()
+    )
+    return {
+        "revision_id": revision_id,
+        "algo_version": rev.algo_version,
+        "rows": [
+            {
+                "allocation_id": r.allocation_id,
+                "month": r.month,
+                "role": r.role,
+                "employee_id": r.employee_id,
+                "is_external": r.is_external,
+                "hours": r.hours,
+            }
+            for r in rows
+        ],
+    }
 
 
 # === Generic scenario CRUD routes (must come last) ===
