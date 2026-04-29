@@ -32,14 +32,12 @@ from app.models import (
     BacklogItem,
     Employee,
     EmployeeTeam,
-    MandatoryWorkType,
     PlanningScenario,
     RoleCapacityRule,
     ScenarioAbsenceSnapshot,
     ScenarioAllocation,
     ScenarioAllocationBreakdownSnapshot,
     ScenarioCapacitySnapshot,
-    ScenarioNormSnapshot,
     ScenarioRevision,
     ScenarioRevisionItem,
     ScenarioRule,
@@ -51,7 +49,6 @@ from app.schemas.capacity_diff import (
     MonthDiff,
 )
 from app.services.capacity_service import CapacityService
-from app.services.planning_service import PlanningService
 from app.services.resource_base_service import ResourceBaseService
 from app.services.snapshot_writer import SnapshotWriter
 from app.services.event_bus import EventBroadcaster, get_event_bus
