@@ -52,6 +52,7 @@ from app.schemas.capacity_diff import (
 from app.services.capacity_service import CapacityService
 from app.services.planning_service import PlanningService
 from app.services.resource_base_service import ResourceBaseService
+from app.services.snapshot_writer import SnapshotWriter
 from app.services.event_bus import EventBroadcaster, get_event_bus
 
 
@@ -498,12 +499,24 @@ async def approve_scenario(
     )
     revision_number = prev_count + 1
 
+    # --- Предыдущая ревизия (нужна до создания новой) ---
+    prev_revision = (
+        db.query(ScenarioRevision)
+        .filter(
+            ScenarioRevision.scenario_id == scenario_id,
+            ScenarioRevision.revision_number == revision_number - 1,
+        )
+        .first()
+    )
+
     # --- Создать запись ревизии ---
     revision = ScenarioRevision(
         scenario_id=scenario_id,
         revision_number=revision_number,
         approved_at=now,
         note=body.note,
+        parent_revision_id=prev_revision.id if prev_revision else None,
+        algo_version="v2",
     )
     db.add(revision)
     db.flush()
@@ -522,15 +535,6 @@ async def approve_scenario(
         alloc.backlog_item_id: item.title
         for alloc, item in included_rows
     }
-
-    prev_revision = (
-        db.query(ScenarioRevision)
-        .filter(
-            ScenarioRevision.scenario_id == scenario_id,
-            ScenarioRevision.revision_number == revision_number - 1,
-        )
-        .first()
-    )
     if prev_revision:
         prev_items = (
             db.query(ScenarioRevisionItem)
@@ -568,7 +572,18 @@ async def approve_scenario(
             action="excluded",
         ))
 
-    # --- Снапшот нормы команды ---
+    # --- Снапшоты ревизии (v2) ---
+    writer = SnapshotWriter(db)
+    writer.write_team_snapshot(revision, scenario)
+    writer.write_calendar_snapshot(revision, scenario)
+    writer.write_rules_snapshot(revision, scenario)
+    writer.write_dictionary_snapshot(revision)
+    writer.write_capacity_snapshot(revision, scenario)
+    writer.write_norm_snapshot(revision, scenario)
+    writer.write_allocation_snapshot(revision, scenario)
+    writer.write_allocation_breakdown(revision, scenario)
+
+    # --- Снапшот отсутствий команды (inline, будет перенесён в SnapshotWriter позже) ---
     if scenario.team and scenario.year and scenario.quarter:
         q = int(str(scenario.quarter).replace("Q", ""))
         months = QUARTER_MONTHS[q]
@@ -583,61 +598,7 @@ async def approve_scenario(
             .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712
             .all()
         )
-        # --- Снапшот норм по видам работ ---
-        rules = (
-            db.query(ScenarioRule)
-            .filter(ScenarioRule.scenario_id == scenario_id)
-            .all()
-        )
-        wt_ids = list({r.work_type_id for r in rules})
-        work_types: dict[str, str] = {}
-        work_type_subtracts: dict[str, bool] = {}
-        if wt_ids:
-            wt_rows = db.query(MandatoryWorkType).filter(MandatoryWorkType.id.in_(wt_ids)).all()
-            work_types = {wt.id: wt.label for wt in wt_rows}
-            work_type_subtracts = {wt.id: bool(wt.subtracts_from_pool) for wt in wt_rows}
-
         capacity_svc = CapacityService(db)
-        for emp in employees:
-            for month in months:
-                mc = capacity_svc.monthly_capacity(emp.id, scenario.year, month)
-                emp_rules = [r for r in rules if r.role is None or r.role == emp.role]
-                # «На бэклог» = available × (1 − Σ% правил, которые вычитаются из пула).
-                # Та же формула, что в ResourceBaseService.compute_summary, но per-месяц.
-                sum_pct_subtract = sum(
-                    r.percent_of_norm
-                    for r in emp_rules
-                    if work_type_subtracts.get(r.work_type_id, False)
-                )
-                pool_hours = round(
-                    max(0.0, mc.available_hours * (1 - sum_pct_subtract / 100)), 2,
-                )
-                db.add(ScenarioCapacitySnapshot(
-                    revision_id=revision.id,
-                    employee_id=emp.id,
-                    employee_name=emp.display_name,
-                    year=scenario.year,
-                    month=month,
-                    norm_hours=mc.norm_hours,
-                    available_hours=mc.available_hours,
-                    backlog_pool_hours=pool_hours,
-                    snapshot_taken_at=now,
-                ))
-                for rule in emp_rules:
-                    norm_h = round(mc.norm_hours * rule.percent_of_norm / 100, 2)
-                    db.add(ScenarioNormSnapshot(
-                        revision_id=revision.id,
-                        employee_id=emp.id,
-                        employee_name=emp.display_name,
-                        role=emp.role,
-                        year=scenario.year,
-                        month=month,
-                        work_type_id=rule.work_type_id,
-                        work_type_label=work_types.get(rule.work_type_id, ""),
-                        norm_hours=norm_h,
-                    ))
-
-        # --- Снапшот отсутствий команды ---
         quarter_start = date(scenario.year, months[0], 1)
         last_day = calendar.monthrange(scenario.year, months[-1])[1]
         quarter_end = date(scenario.year, months[-1], last_day)
