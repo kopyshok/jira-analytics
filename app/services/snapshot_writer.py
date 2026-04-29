@@ -576,6 +576,22 @@ class SnapshotWriter:
         def _avail_role_month(role_emps: list[Employee], month: int) -> float:
             return sum(avail_emp_month.get((e.id, month), 0.0) for e in role_emps)
 
+        def _split_emp(total: float, emp_id: str | None) -> list[float]:
+            if total == 0:
+                return [0.0] * len(months)
+            if emp_id is None:
+                return _split_proportional(total, [1.0] * len(months))
+            return _split_proportional(
+                total, [avail_emp_month.get((emp_id, m), 0.0) for m in months]
+            )
+
+        def _split_pool(total: float, role_emps: list[Employee]) -> list[float]:
+            if total == 0:
+                return [0.0] * len(months)
+            return _split_proportional(
+                total, [_avail_role_month(role_emps, m) for m in months]
+            )
+
         # Все included allocations
         allocs = (
             self.db.query(ScenarioAllocation, BacklogItem)
@@ -614,23 +630,8 @@ class SnapshotWriter:
                 if assignee_role in {"analyst", "consultant"} else None
             )
 
-            # 3. Сплит по месяцам
-
-            def _split_emp(total: float, emp_id: str | None) -> list[float]:
-                if total == 0:
-                    return [0.0] * len(months)
-                if emp_id is None:
-                    return _split_proportional(total, [1.0] * len(months))
-                return _split_proportional(
-                    total, [avail_emp_month.get((emp_id, m), 0.0) for m in months]
-                )
-
-            def _split_pool(total: float, role_emps: list[Employee]) -> list[float]:
-                if total == 0:
-                    return [0.0] * len(months)
-                return _split_proportional(
-                    total, [_avail_role_month(role_emps, m) for m in months]
-                )
+            # 3. Сплит по месяцам — закрытия `_split_emp`/`_split_pool`
+            #    определены выше, чтобы не пересоздаваться на каждой allocation.
 
             # analyst / consultant
             if an_total > 0:
