@@ -19,6 +19,8 @@ import {
   putScenarioRules,
   fetchCapacityDiff,
   acknowledgeDrift,
+  fetchScenarioRevisions,
+  fetchRevisionDiff,
 } from '../api/planning';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
 
@@ -307,6 +309,22 @@ export function useAcknowledgeDrift() {
       qc.setQueryData(['capacity-diff', scenarioId], { has_changes: false, changed_employees: [] });
       qc.invalidateQueries({ queryKey: ['scenarios'] });
     },
+  });
+}
+
+export function useScenarioRevisions(scenarioId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['planning', 'scenario', scenarioId, 'revisions'],
+    queryFn: () => fetchScenarioRevisions(scenarioId!),
+    enabled: enabled && !!scenarioId,
+  });
+}
+
+export function useRevisionDiff(scenarioId: string | undefined, r1: number | null, r2: number | null) {
+  return useQuery({
+    queryKey: ['planning', 'scenario', scenarioId, 'revisions', 'diff', r1, r2],
+    queryFn: () => fetchRevisionDiff(scenarioId!, r1!, r2!),
+    enabled: !!scenarioId && r1 != null && r2 != null && r1 !== r2,
   });
 }
 

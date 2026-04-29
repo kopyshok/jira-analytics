@@ -1,5 +1,8 @@
 import { api } from './client';
-import type { AllocationResponse, ScenarioResponse, ResourceBase, ScenarioRuleOut, ScenarioRuleInput, CapacityDiffResponse } from '../types/api';
+import type {
+  AllocationResponse, ScenarioResponse, ResourceBase, ScenarioRuleOut, ScenarioRuleInput,
+  CapacityDiffResponse, ScenarioRevision, RevisionDiffResponse,
+} from '../types/api';
 
 export const getScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
   api.get<ScenarioResponse[]>('/planning/scenarios', { year, quarter, status, teams });
@@ -82,3 +85,9 @@ export function acknowledgeDrift(scenarioId: string): Promise<{ ok: boolean }> {
     {},
   );
 }
+
+export const fetchScenarioRevisions = (id: string) =>
+  api.get<ScenarioRevision[]>(`/planning/scenarios/${id}/revisions`);
+
+export const fetchRevisionDiff = (id: string, r1: number, r2: number) =>
+  api.get<RevisionDiffResponse>(`/planning/scenarios/${id}/revisions/diff`, { r1, r2 });

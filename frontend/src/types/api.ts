@@ -556,6 +556,72 @@ export interface CapacityDiffResponse {
   changed_employees: EmployeeDiff[];
 }
 
+// === Scenario revision history ===
+
+export interface ScenarioRevisionItem {
+  backlog_item_id: string | null;
+  backlog_item_name: string;
+  action: 'included' | 'excluded';
+}
+
+export interface ScenarioCapacitySnapshot {
+  employee_id: string | null;
+  employee_name: string;
+  year: number;
+  month: number;
+  norm_hours: number;
+  available_hours: number;
+}
+
+export interface ScenarioRevision {
+  id: string;
+  revision_number: number;
+  approved_at: string;
+  note: string | null;
+  items: ScenarioRevisionItem[];
+  capacity_snapshots: ScenarioCapacitySnapshot[];
+}
+
+export interface RevisionDiffItem {
+  backlog_item_id: string | null;
+  backlog_item_name: string;
+}
+
+export interface RevisionDiffMonth {
+  year: number;
+  month: number;
+  r1_norm_hours: number;
+  r1_available_hours: number;
+  r2_norm_hours: number;
+  r2_available_hours: number;
+  delta_norm_hours: number;
+  delta_available_hours: number;
+}
+
+export interface RevisionDiffEmployee {
+  employee_id: string | null;
+  employee_name: string;
+  months: RevisionDiffMonth[];
+  delta_total_norm_hours: number;
+  delta_total_available_hours: number;
+}
+
+export interface RevisionDiffSide {
+  revision_number: number;
+  approved_at: string;
+  note: string | null;
+  included_count: number;
+}
+
+export interface RevisionDiffResponse {
+  r1: RevisionDiffSide;
+  r2: RevisionDiffSide;
+  added: RevisionDiffItem[];
+  removed: RevisionDiffItem[];
+  kept: RevisionDiffItem[];
+  capacity: RevisionDiffEmployee[];
+}
+
 // === Hierarchy rules ===
 
 export interface HierarchyRule {

@@ -60,6 +60,13 @@ router = APIRouter()
 QUARTER_MONTHS = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
 
 
+def _resolve_absence_hours(absence: Absence, capacity_svc: CapacityService) -> float:
+    """Часы отсутствия: явное значение либо расчёт по производственному календарю."""
+    if absence.hours_total is not None:
+        return float(absence.hours_total)
+    return capacity_svc._norm_hours_in_range(absence.start_date, absence.end_date)
+
+
 # === Schemas ===
 
 class ScenarioCreate(BaseModel):
@@ -111,6 +118,46 @@ class RevisionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RevisionDiffItem(BaseModel):
+    backlog_item_id: Optional[str]
+    backlog_item_name: str
+
+
+class RevisionDiffMonth(BaseModel):
+    year: int
+    month: int
+    r1_norm_hours: float
+    r1_available_hours: float
+    r2_norm_hours: float
+    r2_available_hours: float
+    delta_norm_hours: float
+    delta_available_hours: float
+
+
+class RevisionDiffEmployee(BaseModel):
+    employee_id: Optional[str]
+    employee_name: str
+    months: List[RevisionDiffMonth]
+    delta_total_norm_hours: float
+    delta_total_available_hours: float
+
+
+class RevisionDiffSide(BaseModel):
+    revision_number: int
+    approved_at: str
+    note: Optional[str]
+    included_count: int
+
+
+class RevisionDiffResponse(BaseModel):
+    r1: RevisionDiffSide
+    r2: RevisionDiffSide
+    added: List[RevisionDiffItem]
+    removed: List[RevisionDiffItem]
+    kept: List[RevisionDiffItem]
+    capacity: List[RevisionDiffEmployee]
 
 
 class ScenarioResponse(BaseModel):
@@ -612,7 +659,7 @@ async def approve_scenario(
                 end_date=ab.end_date,
                 reason_id=ab.reason_id,
                 reason_label=reasons.get(ab.reason_id) if ab.reason_id else None,
-                hours_total=ab.hours_total,
+                hours_total=_resolve_absence_hours(ab, capacity_svc),
             ))
 
     scenario.status = "approved"
@@ -734,7 +781,7 @@ async def get_capacity_diff(
                             start_date=snap_ab.start_date,
                             end_date=snap_ab.end_date,
                             reason=snap_ab.reason_label,
-                            hours=snap_ab.hours_total,
+                            hours=snap_ab.hours_total if snap_ab.hours_total is not None else 0.0,
                         ))
             # Added: in current but not in snapshot
             for cur_ab in current_by_emp.get(emp_id, []):
@@ -746,7 +793,7 @@ async def get_capacity_diff(
                             start_date=cur_ab.start_date,
                             end_date=cur_ab.end_date,
                             reason=reasons.get(cur_ab.reason_id) if cur_ab.reason_id else None,
-                            hours=cur_ab.hours_total,
+                            hours=_resolve_absence_hours(cur_ab, capacity_svc),
                         ))
 
             if abs(delta) > 0.1 or absence_changes:
@@ -1273,6 +1320,180 @@ async def list_scenario_revisions(
             ],
         ))
     return result
+
+
+def _state_at_revision(scenario_id: str, revision_number: int, db: Session) -> dict[str, str]:
+    """Восстановить набор включённых инициатив на момент ревизии N.
+
+    RevisionItem хранит инкрементальную дельту: action='included' (добавлено),
+    action='excluded' (исключено) относительно предыдущей ревизии. Состояние на
+    ревизии N = сумма дельт по всем ревизиям ≤ N.
+    """
+    revisions = (
+        db.query(ScenarioRevision)
+        .filter(
+            ScenarioRevision.scenario_id == scenario_id,
+            ScenarioRevision.revision_number <= revision_number,
+        )
+        .order_by(ScenarioRevision.revision_number)
+        .all()
+    )
+    state: dict[str, str] = {}
+    for rev in revisions:
+        items = (
+            db.query(ScenarioRevisionItem)
+            .filter(ScenarioRevisionItem.revision_id == rev.id)
+            .all()
+        )
+        for item in items:
+            key = item.backlog_item_id or f"__deleted__{item.id}"
+            if item.action == "included":
+                state[key] = item.backlog_item_name
+            elif item.action == "excluded":
+                state.pop(key, None)
+    return state
+
+
+@router.get(
+    "/scenarios/{scenario_id}/revisions/diff",
+    response_model=RevisionDiffResponse,
+)
+async def diff_scenario_revisions(
+    scenario_id: str,
+    r1: int = Query(..., ge=1, description="Базовая ревизия"),
+    r2: int = Query(..., ge=1, description="Сравниваемая ревизия"),
+    db: Session = Depends(get_db),
+):
+    """Сравнить две ревизии одного сценария: состав инициатив + capacity дельта."""
+    if not db.get(PlanningScenario, scenario_id):
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    if r1 == r2:
+        raise HTTPException(status_code=400, detail="r1 and r2 must differ")
+
+    rev1 = (
+        db.query(ScenarioRevision)
+        .filter(
+            ScenarioRevision.scenario_id == scenario_id,
+            ScenarioRevision.revision_number == r1,
+        )
+        .first()
+    )
+    rev2 = (
+        db.query(ScenarioRevision)
+        .filter(
+            ScenarioRevision.scenario_id == scenario_id,
+            ScenarioRevision.revision_number == r2,
+        )
+        .first()
+    )
+    if not rev1 or not rev2:
+        raise HTTPException(status_code=404, detail="Revision not found")
+
+    state1 = _state_at_revision(scenario_id, r1, db)
+    state2 = _state_at_revision(scenario_id, r2, db)
+
+    added = [
+        RevisionDiffItem(
+            backlog_item_id=k if not k.startswith("__deleted__") else None,
+            backlog_item_name=v,
+        )
+        for k, v in state2.items() if k not in state1
+    ]
+    removed = [
+        RevisionDiffItem(
+            backlog_item_id=k if not k.startswith("__deleted__") else None,
+            backlog_item_name=v,
+        )
+        for k, v in state1.items() if k not in state2
+    ]
+    kept = [
+        RevisionDiffItem(
+            backlog_item_id=k if not k.startswith("__deleted__") else None,
+            backlog_item_name=v,
+        )
+        for k, v in state2.items() if k in state1
+    ]
+    added.sort(key=lambda x: x.backlog_item_name)
+    removed.sort(key=lambda x: x.backlog_item_name)
+    kept.sort(key=lambda x: x.backlog_item_name)
+
+    snaps1 = (
+        db.query(ScenarioCapacitySnapshot)
+        .filter(ScenarioCapacitySnapshot.revision_id == rev1.id)
+        .all()
+    )
+    snaps2 = (
+        db.query(ScenarioCapacitySnapshot)
+        .filter(ScenarioCapacitySnapshot.revision_id == rev2.id)
+        .all()
+    )
+    by1: dict[tuple[str, int, int], ScenarioCapacitySnapshot] = {
+        (s.employee_id, s.year, s.month): s for s in snaps1
+    }
+    by2: dict[tuple[str, int, int], ScenarioCapacitySnapshot] = {
+        (s.employee_id, s.year, s.month): s for s in snaps2
+    }
+    emp_names: dict[str, str] = {}
+    for s in snaps1 + snaps2:
+        emp_names[s.employee_id] = s.employee_name
+
+    keys_by_emp: dict[str, list[tuple[int, int]]] = {}
+    for emp_id, year, month in set(by1.keys()) | set(by2.keys()):
+        keys_by_emp.setdefault(emp_id, []).append((year, month))
+
+    capacity: list[RevisionDiffEmployee] = []
+    for emp_id, ym_list in keys_by_emp.items():
+        ym_list.sort()
+        months_out: list[RevisionDiffMonth] = []
+        total_norm = 0.0
+        total_avail = 0.0
+        for year, month in ym_list:
+            s1 = by1.get((emp_id, year, month))
+            s2 = by2.get((emp_id, year, month))
+            r1_norm = s1.norm_hours if s1 else 0.0
+            r1_avail = s1.available_hours if s1 else 0.0
+            r2_norm = s2.norm_hours if s2 else 0.0
+            r2_avail = s2.available_hours if s2 else 0.0
+            d_norm = round(r2_norm - r1_norm, 2)
+            d_avail = round(r2_avail - r1_avail, 2)
+            if abs(d_norm) < 0.01 and abs(d_avail) < 0.01:
+                continue
+            total_norm += d_norm
+            total_avail += d_avail
+            months_out.append(RevisionDiffMonth(
+                year=year, month=month,
+                r1_norm_hours=r1_norm, r1_available_hours=r1_avail,
+                r2_norm_hours=r2_norm, r2_available_hours=r2_avail,
+                delta_norm_hours=d_norm, delta_available_hours=d_avail,
+            ))
+        if months_out:
+            capacity.append(RevisionDiffEmployee(
+                employee_id=emp_id,
+                employee_name=emp_names.get(emp_id, emp_id),
+                months=months_out,
+                delta_total_norm_hours=round(total_norm, 2),
+                delta_total_available_hours=round(total_avail, 2),
+            ))
+    capacity.sort(key=lambda e: e.employee_name)
+
+    return RevisionDiffResponse(
+        r1=RevisionDiffSide(
+            revision_number=rev1.revision_number,
+            approved_at=rev1.approved_at.isoformat(),
+            note=rev1.note,
+            included_count=len(state1),
+        ),
+        r2=RevisionDiffSide(
+            revision_number=rev2.revision_number,
+            approved_at=rev2.approved_at.isoformat(),
+            note=rev2.note,
+            included_count=len(state2),
+        ),
+        added=added,
+        removed=removed,
+        kept=kept,
+        capacity=capacity,
+    )
 
 
 # === Generic scenario CRUD routes (must come last) ===

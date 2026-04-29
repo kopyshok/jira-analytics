@@ -10,7 +10,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
-  DeleteOutlined, DiffOutlined, FlagFilled, HolderOutlined, PlusOutlined,
+  DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined, HolderOutlined, PlusOutlined,
   RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
@@ -24,6 +24,7 @@ import ApproveCelebration from '../components/planning/ApproveCelebration';
 import ScenarioDeficitBadge from '../components/planning/ScenarioDeficitBadge';
 import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
 import ScenarioCompareDrawer from '../components/planning/ScenarioCompareDrawer';
+import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisionHistoryDrawer';
 import {
   useScenarios,
   useScenario,
@@ -121,11 +122,23 @@ const MONTH_NAMES = ['', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Ию
                      'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
 function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
+  const { notification } = App.useApp();
   const [expanded, setExpanded] = useState(false);
   const { data: diff } = useCapacityDiff(scenarioId, true);
   const acknowledge = useAcknowledgeDrift();
+  const revert = useRevertScenario();
 
   if (!diff?.has_changes) return null;
+
+  const handleRevise = () => {
+    revert.mutate(scenarioId, {
+      onSuccess: () => notification.info({
+        title: 'Сценарий в черновике',
+        description: 'Пересмотрите состав инициатив с учётом новой доступности и утвердите снова — будет создана новая ревизия.',
+      }),
+      onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+    });
+  };
 
   return (
     <div style={{
@@ -182,7 +195,8 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
             <Button
               size="small"
               style={{ borderColor: '#f59e0b', color: '#f59e0b' }}
-              onClick={() => {/* future: trigger re-approve flow */}}
+              loading={revert.isPending}
+              onClick={handleRevise}
             >
               Пересмотреть сценарий
             </Button>
@@ -209,6 +223,7 @@ export default function PlanningPage() {
   const [celebrate, setCelebrate] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [compact, setCompact] = useState<boolean>(
     () => localStorage.getItem('planning_backlog_compact') === 'true',
   );
@@ -570,6 +585,15 @@ export default function PlanningPage() {
                     </Button>
                   </Tooltip>
                 )}
+                <Tooltip title="История ревизий и сравнение снапшотов">
+                  <Button
+                    icon={<HistoryOutlined />}
+                    size="small"
+                    onClick={() => setHistoryOpen(true)}
+                  >
+                    История
+                  </Button>
+                </Tooltip>
                 <Button size="small" onClick={() => downloadScenarioXlsx(scenarioId)}>
                   Экспорт
                 </Button>
@@ -977,6 +1001,11 @@ export default function PlanningPage() {
         open={compareOpen}
         onClose={() => setCompareOpen(false)}
         initialScenarioId={scenarioId ?? undefined}
+      />
+      <ScenarioRevisionHistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        scenarioId={scenarioId}
       />
       <ApproveCelebration visible={celebrate} />
     </Space>
