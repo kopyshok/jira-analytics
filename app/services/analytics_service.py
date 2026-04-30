@@ -18,8 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
-from app.models import MandatoryWorkType, RoleCapacityRule, Category
-from app.models.role import Role
+from app.models import MandatoryWorkType, RoleCapacityRule, Category, Role
 from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
 from app.models.scenario_revision import ScenarioRevision
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
@@ -568,29 +567,35 @@ class AnalyticsService:
                 return parts[0][:2].upper()
             return (parts[0][0] + parts[1][0]).upper()
 
+        # Pre-load Role.color by code for assignee avatars
+        all_roles = self.db.query(Role).all()
+        role_color_by_code: dict[str, str] = {r.code: r.color for r in all_roles if r.color}
+
         def employee_color(emp: "Employee | None") -> str:
-            if emp and emp.role:
-                role_obj = self.db.query(Role).filter(Role.code == emp.role).first()
-                if role_obj and role_obj.color:
-                    return role_obj.color
+            if emp and emp.role and emp.role in role_color_by_code:
+                return role_color_by_code[emp.role]
             return "#7e94b8"
 
         # Forecast close date per epic
         quarter_end = period_end
+
+        first_wl_rows = (
+            self.db.query(Worklog.issue_id, func.min(Worklog.started_at).label("first_wl"))
+            .filter(Worklog.issue_id.in_(all_wl_ids))
+            .group_by(Worklog.issue_id)
+            .all()
+        )
+        first_wl_by_issue: dict[str, datetime] = {r[0]: r[1] for r in first_wl_rows if r[1] is not None}
 
         def epic_forecast(epic_id: str, plan_h: float, fact_h: float) -> tuple[date | None, bool]:
             if fact_h <= 0:
                 return (None, False)
             last_wl = epic_last_wl(epic_id)
             relevant_ids = {epic_id} | {cid for cid, pid in child_to_parent.items() if pid == epic_id}
-            first_wl_row = (
-                self.db.query(func.min(Worklog.started_at))
-                .filter(Worklog.issue_id.in_(relevant_ids))
-                .scalar()
-            )
-            if first_wl_row is None:
+            candidates = [first_wl_by_issue[i] for i in relevant_ids if i in first_wl_by_issue]
+            if not candidates:
                 return (None, False)
-            first_dt = first_wl_row
+            first_dt = min(candidates)
             days_active = max(1, (today_dt - first_dt).days)
             rate_per_day = fact_h / days_active
             if rate_per_day <= 0:
@@ -614,21 +619,25 @@ class AnalyticsService:
 
         weekly_activity_per_epic: dict[str, list[float]] = {epic_id: [0.0] * 8 for epic_id in issue_ids}
 
-        for idx, (wk_start, wk_end) in enumerate(week_buckets):
-            rows = (
-                self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
-                .filter(
-                    Worklog.issue_id.in_(all_wl_ids),
-                    Worklog.started_at >= wk_start,
-                    Worklog.started_at < wk_end,
-                )
-                .group_by(Worklog.issue_id)
-                .all()
+        window_start = week_buckets[0][0]
+        window_rows = (
+            self.db.query(Worklog.issue_id, Worklog.started_at, Worklog.time_spent_seconds)
+            .filter(
+                Worklog.issue_id.in_(all_wl_ids),
+                Worklog.started_at >= window_start,
+                Worklog.started_at < period_end_dt,
             )
-            for issue_id, secs in rows:
-                epic_id = child_to_parent.get(issue_id, issue_id) if issue_id in child_to_parent else issue_id
-                if epic_id in weekly_activity_per_epic:
+            .all()
+        )
+
+        for issue_id, started_at, secs in window_rows:
+            epic_id = child_to_parent.get(issue_id, issue_id) if issue_id in child_to_parent else issue_id
+            if epic_id not in weekly_activity_per_epic:
+                continue
+            for idx, (wk_start, wk_end) in enumerate(week_buckets):
+                if wk_start <= started_at < wk_end:
                     weekly_activity_per_epic[epic_id][idx] += (secs or 0) / 3600.0
+                    break
 
         # KPI top-level
         overdue_ids = {i.id for i in overdue_issues}
