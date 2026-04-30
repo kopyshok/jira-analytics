@@ -25,7 +25,6 @@ from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
     DashboardNormWorkResponse,
-    NormWorkItem,
     DashboardCategoriesResponse,
     CategoryMetaItem,
 )

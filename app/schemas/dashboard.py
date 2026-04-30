@@ -48,16 +48,37 @@ class DashboardProjectsResponse(BaseModel):
 
 # ── Widget 2: Norm work plan/fact ────────────────────────────────────────────
 
-class NormWorkItem(BaseModel):
+class NormWorkTypeBreakdown(BaseModel):
     work_type_id: str
     label: str
     plan_hours: float
     fact_hours: float
-    pct: float                 # fact / plan * 100 (0 если plan == 0)
+    pct: float
+
+
+class NormWorkEmployee(BaseModel):
+    employee_id: str
+    name: str
+    initials: str
+    plan_hours: float
+    fact_hours: float
+    pct: float
+    work_types: list[NormWorkTypeBreakdown]
+
+
+class NormWorkRoleGroup(BaseModel):
+    role_code: str
+    role_label: str
+    role_color: str
+    employees_count: int
+    total_plan: float
+    total_fact: float
+    total_pct: float
+    employees: list[NormWorkEmployee]
 
 
 class DashboardNormWorkResponse(BaseModel):
-    items: list[NormWorkItem]
+    roles: list[NormWorkRoleGroup]
     total_plan: float
     total_fact: float
     total_pct: float

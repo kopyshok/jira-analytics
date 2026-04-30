@@ -62,14 +62,36 @@ def test_norm_work_widget_returns_200():
     resp = client.get("/api/v1/analytics/dashboard/norm-work?year=2026&quarter=2")
     assert resp.status_code == 200
     data = resp.json()
-    assert "items" in data
+    assert "roles" in data
     assert "total_plan" in data
-    assert isinstance(data["items"], list)
-    for item in data["items"]:
-        assert "work_type_id" in item
-        assert "plan_hours" in item
-        assert "fact_hours" in item
-        assert "pct" in item
+    assert "total_fact" in data
+    assert "total_pct" in data
+    assert isinstance(data["roles"], list)
+    assert "items" not in data
+
+
+def test_norm_work_widget_role_shape():
+    resp = client.get("/api/v1/analytics/dashboard/norm-work?year=2026&quarter=2")
+    data = resp.json()
+    if data["roles"]:
+        role = data["roles"][0]
+        for k in [
+            "role_code", "role_label", "role_color", "employees_count",
+            "total_plan", "total_fact", "total_pct", "employees",
+        ]:
+            assert k in role
+        assert isinstance(role["employees"], list)
+        if role["employees"]:
+            emp = role["employees"][0]
+            for k in [
+                "employee_id", "name", "initials",
+                "plan_hours", "fact_hours", "pct", "work_types",
+            ]:
+                assert k in emp
+            if emp["work_types"]:
+                wt = emp["work_types"][0]
+                for k in ["work_type_id", "label", "plan_hours", "fact_hours", "pct"]:
+                    assert k in wt
 
 
 def test_categories_widget_returns_200():
