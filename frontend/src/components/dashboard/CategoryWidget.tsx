@@ -1,39 +1,104 @@
 import { Card, Spin, Empty } from 'antd';
 import type { DashboardCategoriesResponse, CategoryMetaItem } from '../../types/api';
 
-function Treemap({ items, totalHours }: { items: CategoryMetaItem[]; totalHours: number }) {
+function HeatmapGrid({ items, totalHours }: { items: CategoryMetaItem[]; totalHours: number }) {
   if (!items.length) return <Empty description="Нет данных" />;
 
+  const visible = items.slice(0, 10);
+  const overflow = items.length > 10 ? items.slice(10) : [];
+
+  const cells: (CategoryMetaItem | { _overflow: true; count: number; hours: number })[] = [...visible];
+  if (overflow.length) {
+    cells.push({
+      _overflow: true,
+      count: overflow.length,
+      hours: overflow.reduce((s, i) => s + i.hours, 0),
+    });
+  }
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', alignContent: 'flex-start', gap: 4, width: '100%' }}>
-      {items.map((item) => {
-        const pct = totalHours > 0 ? item.hours / totalHours : 0;
-        const minW = pct > 0.15 ? 120 : pct > 0.07 ? 80 : 60;
-        const h = pct > 0.25 ? 110 : pct > 0.15 ? 85 : pct > 0.08 ? 65 : 50;
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gridAutoRows: 'minmax(140px, 1fr)',
+        gap: 6,
+        width: '100%',
+      }}
+    >
+      {cells.map((c, idx) => {
+        if ('_overflow' in c) {
+          return (
+            <div
+              key={`overflow-${idx}`}
+              style={{
+                background: '#1c335833',
+                border: '1px solid #1c335866',
+                borderRadius: 8,
+                padding: 12,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ fontSize: 12, color: '#a4b8d8' }}>+ ещё {c.count}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>{Math.round(c.hours)} ч</div>
+            </div>
+          );
+        }
+        const item = c;
+        const intensity = totalHours > 0 ? item.hours / totalHours : 0;
         return (
           <div
             key={item.key}
             title={`${item.label}: ${Math.round(item.hours)} ч (${item.pct.toFixed(1)}%)`}
             style={{
-              flex: `${pct * 100} 0 ${minW}px`,
-              height: h,
               background: `${item.color}33`,
-              border: `1.5px solid ${item.color}66`,
+              border: `1px solid ${item.color}66`,
               borderRadius: 8,
-              padding: '8px 10px',
+              padding: 12,
+              position: 'relative',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
               overflow: 'hidden',
             }}
           >
-            <div style={{ fontSize: 11, color: '#a4b8d8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {item.label}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{
+                fontSize: 12,
+                color: '#a4b8d8',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+              }}>
+                {item.label}
+              </div>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 700,
+                background: item.color,
+                color: '#fff',
+                padding: '2px 6px',
+                borderRadius: 6,
+                flexShrink: 0,
+              }}>
+                {item.pct.toFixed(0)}%
+              </span>
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{Math.round(item.hours)} ч</div>
-            {pct > 0.07 && (
-              <div style={{ fontSize: 10, color: '#7e94b8' }}>{item.pct.toFixed(0)}%</div>
-            )}
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>{Math.round(item.hours)} ч</div>
+            <div style={{ fontSize: 10, color: '#7e94b8' }}>
+              {item.worklog_count} wl · {item.issue_count} зад · {item.employee_count} чел
+            </div>
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              height: 3,
+              width: `${Math.min(100, intensity * 100 * 3)}%`,
+              background: item.color,
+            }} />
           </div>
         );
       })}
@@ -99,8 +164,8 @@ export default function CategoryWidget({ data, loading }: Props) {
 
   return (
     <Card title="Ворклоги по категориям задач">
-      <div style={{ display: 'grid', gridTemplateColumns: '55% 45%', gap: 16 }}>
-        <Treemap items={data.items} totalHours={data.total_hours} />
+      <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', gap: 16 }}>
+        <HeatmapGrid items={data.items} totalHours={data.total_hours} />
         <MetaTable items={data.items} />
       </div>
     </Card>
