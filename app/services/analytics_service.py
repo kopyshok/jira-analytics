@@ -582,9 +582,10 @@ class AnalyticsService:
             if fact_h <= 0:
                 return (None, False)
             last_wl = epic_last_wl(epic_id)
+            relevant_ids = {epic_id} | {cid for cid, pid in child_to_parent.items() if pid == epic_id}
             first_wl_row = (
                 self.db.query(func.min(Worklog.started_at))
-                .filter(Worklog.issue_id == epic_id)
+                .filter(Worklog.issue_id.in_(relevant_ids))
                 .scalar()
             )
             if first_wl_row is None:
