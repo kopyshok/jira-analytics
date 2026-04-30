@@ -75,6 +75,7 @@ function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClien
       qc.invalidateQueries({ queryKey: ['issues'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
       qc.invalidateQueries({ queryKey: ['backlog'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-projects'] });
       break;
     case 'backlog':
       qc.invalidateQueries({ queryKey: ['backlog'] });
@@ -83,23 +84,32 @@ function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClien
     case 'planning':
       qc.invalidateQueries({ queryKey: ['planning'] });
       qc.invalidateQueries({ queryKey: ['backlog'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-projects'] });
       break;
     case 'worklogs':
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-projects'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-categories'] });
       break;
     case 'capacity':
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['capacity-diff'] });
       qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
       break;
     case 'analytics':
       qc.invalidateQueries({ queryKey: ['analytics'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-projects'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-categories'] });
       break;
     case 'employees':
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
       break;
     case 'projects':
       qc.invalidateQueries({ queryKey: ['scope', 'projects'] });
