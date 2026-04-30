@@ -243,7 +243,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
 }
 
 function Sparklines({ projects }: { projects: ProjectItem[] }) {
-  const visible = projects.slice(0, 6);
+  const visible = [...projects].sort((a, b) => b.fact_hours - a.fact_hours).slice(0, 6);
   return (
     <div style={{ background: '#0a1d3a', border: '1px solid #1c3358', borderRadius: 8, padding: 14 }}>
       <div style={{

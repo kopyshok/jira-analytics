@@ -162,14 +162,14 @@ export default function NormWorkWidget({ data, loading }: Props) {
   return (
     <>
       <Card title={title}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, alignItems: 'flex-start' }}>
-          {data.roles.slice(0, 4).map((r) => <RoleColumn key={r.role_code} role={r} t={t} />)}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 16,
+          alignItems: 'flex-start',
+        }}>
+          {data.roles.map((r) => <RoleColumn key={r.role_code} role={r} t={t} />)}
         </div>
-        {data.roles.length > 4 && (
-          <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: `repeat(${Math.min(data.roles.length - 4, 4)}, 1fr)`, gap: 16 }}>
-            {data.roles.slice(4).map((r) => <RoleColumn key={r.role_code} role={r} t={t} />)}
-          </div>
-        )}
       </Card>
 
       <Modal
