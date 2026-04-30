@@ -15,6 +15,7 @@ import {
 import { updateCategory } from '../api/categories';
 import { useMandatoryWorkTypes } from '../hooks/useCapacity';
 import { useRecalculateMapping } from '../hooks/useSync';
+import { slugifyCode } from '../utils/slugify';
 import type { CategoryResponse } from '../types/api';
 
 function DragHandle({ id }: { id: string }) {
@@ -56,7 +57,7 @@ export default function CategoriesTab() {
   const recalculate = useRecalculateMapping();
 
   const [addOpen, setAddOpen] = useState(false);
-  const [form] = Form.useForm<{ label: string; color: string }>();
+  const [form] = Form.useForm<{ label: string; code?: string; color: string }>();
 
   const wtOptions = [
     { value: '', label: '— Без привязки —' },
@@ -91,15 +92,22 @@ export default function CategoriesTab() {
     [items, qc, notification],
   );
 
-  const handleAddSubmit = (vals: { label: string; color: string }) => {
+  const handleAddSubmit = (vals: { label: string; code?: string; color: string }) => {
     const label = vals.label.trim();
-    const code = label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const manualCode = (vals.code ?? '').trim();
+    const code = manualCode ? slugifyCode(manualCode) : slugifyCode(label);
     if (!code) {
       notification.error({
-        message: 'Код категории пуст',
-        description: 'Используйте латинские символы в названии или введите код вручную.',
+        title: 'Не удалось сформировать код',
+        description: 'Введите код вручную (латиница, цифры, подчёркивание).',
       });
       return;
+    }
+    if (manualCode && code !== manualCode) {
+      notification.warning({
+        title: 'Код нормализован',
+        description: `Использован «${code}» — допустимы только a-z, 0-9, _.`,
+      });
     }
     const color = vals.color || undefined;
     create.mutate(
@@ -255,6 +263,13 @@ export default function CategoriesTab() {
         <Form form={form} layout="vertical" onFinish={handleAddSubmit}>
           <Form.Item name="label" label="Название" rules={[{ required: true, message: 'Введите название' }]}>
             <Input placeholder="напр. Тестирование" />
+          </Form.Item>
+          <Form.Item
+            name="code"
+            label="Код"
+            tooltip="Латиница, цифры, подчёркивание. Пусто — сгенерируется из названия (с транслитерацией кириллицы)."
+          >
+            <Input placeholder="авто из названия" />
           </Form.Item>
           <Form.Item name="color" label="Цвет" initialValue="#8c8c8c" getValueFromEvent={(_, hex: string) => hex}>
             <ColorPicker />
