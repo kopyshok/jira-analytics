@@ -12,9 +12,11 @@ interface Thresholds { warnAbove: number; underBelow: number; }
 const DEFAULT_THRESHOLDS: Thresholds = { warnAbove: 110, underBelow: 70 };
 
 function statusColor(pct: number, t: Thresholds): string {
+  // pct > warnAbove → перегруз (красный); underBelow ≤ pct ≤ warnAbove → норма (жёлтый);
+  // pct < underBelow → недогрузка (зелёный, есть запас).
   if (pct > t.warnAbove) return '#ff4d4f';
-  if (pct >= t.underBelow) return '#52c41a';
-  return '#faad14';
+  if (pct >= t.underBelow) return '#faad14';
+  return '#52c41a';
 }
 
 function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: string }) {
@@ -184,7 +186,7 @@ export default function NormWorkWidget({ data, loading }: Props) {
           <Form.Item label="Перегруз — выше, % (красный)" name="warnAbove" rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
             <InputNumber style={{ width: '100%' }} min={1} max={500} addonAfter="%" />
           </Form.Item>
-          <Form.Item label="Недозагрузка — ниже, % (жёлтый)" name="underBelow" rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
+          <Form.Item label="Недозагрузка — ниже, % (зелёный)" name="underBelow" rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
             <InputNumber style={{ width: '100%' }} min={1} max={500} addonAfter="%" />
           </Form.Item>
         </Form>

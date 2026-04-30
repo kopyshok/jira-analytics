@@ -875,15 +875,27 @@ class AnalyticsService:
         for emp in employees:
             base_hours_by_emp.setdefault(emp.id, 0.0)
 
-        # 7. Plan per emp × work_type
+        # «Проектные работы» — особый work_type code='project':
+        #   план = base − Σ(план остальных work_types)
+        #   факт = ворклоги в задачах из утверждённых элементов бэклога + всё их поддерево
+        project_wt = next((wt for wt in work_types if wt.code == "project"), None)
+
+        # 7. Plan per emp × work_type. Для project — остаток после нормированных.
         plan_per_emp_wt: dict[str, dict[str, float]] = {}
         for emp in employees:
             base = base_hours_by_emp.get(emp.id, 0.0)
             per_wt: dict[str, float] = {}
+            mandatory_total = 0.0
             for wt in work_types:
+                if project_wt is not None and wt.id == project_wt.id:
+                    continue
                 pct = pct_for(emp.role, emp.id, wt.id)
                 if pct > 0:
-                    per_wt[wt.id] = base * pct / 100.0
+                    h = base * pct / 100.0
+                    per_wt[wt.id] = h
+                    mandatory_total += h
+            if project_wt is not None:
+                per_wt[project_wt.id] = max(0.0, base - mandatory_total)
             plan_per_emp_wt[emp.id] = per_wt
 
         # 8. Факт per emp × work_type из ворклогов (worklog → issue.category → category.work_type_id).
@@ -912,8 +924,74 @@ class AnalyticsService:
             wt_id = code_to_wt.get(cat_code)
             if wt_id is None:
                 continue
+            # Факт по project считаем отдельно (через scenario allocations) — пропускаем здесь.
+            if project_wt is not None and wt_id == project_wt.id:
+                continue
             h = (secs or 0) / 3600.0
             fact_per_emp_wt[emp_id][wt_id] = fact_per_emp_wt[emp_id].get(wt_id, 0.0) + h
+
+        # 8b. Факт по проектным работам — ворклоги в задачах утверждённых элементов
+        # бэклога + всё их поддерево (родитель + все потомки).
+        if project_wt is not None and approved_scenario_ids:
+            from app.models.backlog_item import BacklogItem
+            from app.models.scenario_allocation import ScenarioAllocation
+
+            root_rows = (
+                self.db.query(BacklogItem.issue_id)
+                .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+                .filter(
+                    ScenarioAllocation.scenario_id.in_(approved_scenario_ids),
+                    ScenarioAllocation.included_flag.is_(True),
+                    BacklogItem.issue_id.isnot(None),
+                )
+                .distinct()
+                .all()
+            )
+            project_issue_ids: set[str] = {r[0] for r in root_rows if r[0]}
+
+            # BFS вниз по parent_id: разворачиваем поддерево. Чанкуем по 500 ради SQLite
+            # (limit 999 переменных в IN).
+            CHUNK = 500
+            frontier = list(project_issue_ids)
+            while frontier:
+                new_ids: set[str] = set()
+                for i in range(0, len(frontier), CHUNK):
+                    chunk = frontier[i : i + CHUNK]
+                    children = (
+                        self.db.query(Issue.id)
+                        .filter(Issue.parent_id.in_(chunk))
+                        .all()
+                    )
+                    new_ids.update(c[0] for c in children)
+                new_ids -= project_issue_ids
+                project_issue_ids.update(new_ids)
+                frontier = list(new_ids)
+
+            if project_issue_ids:
+                project_ids_list = list(project_issue_ids)
+                proj_rows: list[tuple[str, int | None]] = []
+                for i in range(0, len(project_ids_list), CHUNK):
+                    chunk = project_ids_list[i : i + CHUNK]
+                    proj_rows.extend(
+                        self.db.query(
+                            Worklog.employee_id,
+                            func.sum(Worklog.time_spent_seconds).label("secs"),
+                        )
+                        .filter(
+                            Worklog.employee_id.in_(emp_ids_list),
+                            Worklog.issue_id.in_(chunk),
+                            Worklog.started_at >= start_dt,
+                            Worklog.started_at <= end_dt,
+                        )
+                        .group_by(Worklog.employee_id)
+                        .all()
+                    )
+                for emp_id, secs in proj_rows:
+                    h = (secs or 0) / 3600.0
+                    fact_per_emp_wt.setdefault(emp_id, {})
+                    fact_per_emp_wt[emp_id][project_wt.id] = (
+                        fact_per_emp_wt[emp_id].get(project_wt.id, 0.0) + h
+                    )
 
         def initials(name: str) -> str:
             parts = [p for p in (name or "").split() if p]
