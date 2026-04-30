@@ -886,12 +886,15 @@ class AnalyticsService:
                     per_wt[wt.id] = base * pct / 100.0
             plan_per_emp_wt[emp.id] = per_wt
 
-        # 8. Факт per emp × work_type из ворклогов (worklog → issue.assigned_category → category.work_type_id)
+        # 8. Факт per emp × work_type из ворклогов (worklog → issue.category → category.work_type_id).
+        # Используем denormalized Issue.category (учитывает наследование от родителя
+        # и scope_root через CategoryResolver/MappingService), а не Issue.assigned_category —
+        # иначе теряем часы на дочерних задачах без собственной ручной метки.
         emp_ids_list = [e.id for e in employees]
         wl_rows = (
             self.db.query(
                 Worklog.employee_id,
-                Issue.assigned_category,
+                Issue.category,
                 func.sum(Worklog.time_spent_seconds).label("secs"),
             )
             .join(Issue, Issue.id == Worklog.issue_id)
@@ -899,9 +902,9 @@ class AnalyticsService:
                 Worklog.employee_id.in_(emp_ids_list),
                 Worklog.started_at >= start_dt,
                 Worklog.started_at <= end_dt,
-                Issue.assigned_category.isnot(None),
+                Issue.category.isnot(None),
             )
-            .group_by(Worklog.employee_id, Issue.assigned_category)
+            .group_by(Worklog.employee_id, Issue.category)
             .all()
         )
         fact_per_emp_wt: dict[str, dict[str, float]] = {e.id: {} for e in employees}
