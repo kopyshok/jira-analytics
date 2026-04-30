@@ -745,7 +745,7 @@ export interface DashboardProjectsResponse {
   projects: ProjectItem[];
 }
 
-export interface NormWorkItem {
+export interface NormWorkTypeBreakdown {
   work_type_id: string;
   label: string;
   plan_hours: number;
@@ -753,8 +753,29 @@ export interface NormWorkItem {
   pct: number;
 }
 
+export interface NormWorkEmployee {
+  employee_id: string;
+  name: string;
+  initials: string;
+  plan_hours: number;
+  fact_hours: number;
+  pct: number;
+  work_types: NormWorkTypeBreakdown[];
+}
+
+export interface NormWorkRoleGroup {
+  role_code: string;
+  role_label: string;
+  role_color: string;
+  employees_count: number;
+  total_plan: number;
+  total_fact: number;
+  total_pct: number;
+  employees: NormWorkEmployee[];
+}
+
 export interface DashboardNormWorkResponse {
-  items: NormWorkItem[];
+  roles: NormWorkRoleGroup[];
   total_plan: number;
   total_fact: number;
   total_pct: number;
