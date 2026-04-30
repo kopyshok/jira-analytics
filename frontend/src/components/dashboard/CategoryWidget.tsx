@@ -1,7 +1,7 @@
 import { Card, Spin, Empty } from 'antd';
 import type { DashboardCategoriesResponse, CategoryMetaItem } from '../../types/api';
 
-function HeatmapGrid({ items, totalHours }: { items: CategoryMetaItem[]; totalHours: number }) {
+function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
   if (!items.length) return <Empty description="Нет данных" />;
 
   const visible = items.slice(0, 10);
@@ -47,7 +47,6 @@ function HeatmapGrid({ items, totalHours }: { items: CategoryMetaItem[]; totalHo
           );
         }
         const item = c;
-        const intensity = totalHours > 0 ? item.hours / totalHours : 0;
         return (
           <div
             key={item.key}
@@ -96,12 +95,37 @@ function HeatmapGrid({ items, totalHours }: { items: CategoryMetaItem[]; totalHo
               bottom: 0,
               left: 0,
               height: 3,
-              width: `${Math.min(100, intensity * 100 * 3)}%`,
+              width: `${Math.min(100, item.pct)}%`,
               background: item.color,
             }} />
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function SummaryStrip({ items }: { items: CategoryMetaItem[] }) {
+  const totalHours = items.reduce((s, i) => s + i.hours, 0);
+  const totalWl = items.reduce((s, i) => s + i.worklog_count, 0);
+  const totalIssues = items.reduce((s, i) => s + i.issue_count, 0);
+  const avgMin = totalWl > 0
+    ? items.reduce((s, i) => s + i.avg_worklog_minutes * i.worklog_count, 0) / totalWl
+    : 0;
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 16,
+      marginTop: 12,
+      fontSize: 12,
+      color: '#7e94b8',
+    }}>
+      <span>Σ часов: <b style={{ color: '#fff' }}>{Math.round(totalHours)}</b></span>
+      <span>Σ ворклогов: <b style={{ color: '#fff' }}>{totalWl}</b></span>
+      <span>Σ задач: <b style={{ color: '#fff' }}>{totalIssues}</b></span>
+      <span>{items.length} категорий</span>
+      <span>средн. <b style={{ color: '#fff' }}>{avgMin.toFixed(0)}</b> мин/wl</span>
     </div>
   );
 }
@@ -165,7 +189,10 @@ export default function CategoryWidget({ data, loading }: Props) {
   return (
     <Card title="Ворклоги по категориям задач">
       <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', gap: 16 }}>
-        <HeatmapGrid items={data.items} totalHours={data.total_hours} />
+        <div>
+          <HeatmapGrid items={data.items} />
+          <SummaryStrip items={data.items} />
+        </div>
         <MetaTable items={data.items} />
       </div>
     </Card>
