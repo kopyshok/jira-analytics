@@ -743,17 +743,20 @@ class AnalyticsService:
         month: Optional[int] = None,
         teams: Optional[list[str]] = None,
     ) -> DashboardNormWorkResponse:
-        """Widget 2: план/факт по обязательным видам работ за квартал/месяц.
+        """Widget 2: per-employee план/факт по обязательным видам работ, группировка по ролям."""
+        from app.schemas.dashboard import (
+            NormWorkTypeBreakdown, NormWorkEmployee, NormWorkRoleGroup,
+        )
+        from app.services.capacity_service import CapacityService
+        from app.models.role_capacity_rule import RoleCapacityRule
+        from app.models.employee_capacity_override import EmployeeCapacityOverride
+        from app.models.employee_team import EmployeeTeam
 
-        Для каждого активного вида работ считает:
-        - plan_hours = из ScenarioNormSnapshot утверждённого сценария (последняя ревизия)
-        - fact_hours = сумма ворклогов по задачам категорий, привязанных к данному виду работ
-        """
         period_start, period_end = quarter_to_dates(year, quarter, month)
         start_dt = datetime.combine(period_start, datetime.min.time())
         end_dt = datetime.combine(period_end, datetime.max.time())
 
-        # 1. Все активные виды работ
+        # 1. Активные виды работ
         work_types: list[MandatoryWorkType] = (
             self.db.query(MandatoryWorkType)
             .filter(MandatoryWorkType.is_active.is_(True))
@@ -761,147 +764,213 @@ class AnalyticsService:
             .all()
         )
 
-        # 2. Категории: code → work_type_id (только с привязкой)
+        # 2. Категории → work_type
         cat_rows = (
             self.db.query(Category.code, Category.work_type_id)
             .filter(Category.work_type_id.isnot(None))
             .all()
         )
-        codes_by_work_type: dict[str, list[str]] = {}
-        for code, wt_id in cat_rows:
-            codes_by_work_type.setdefault(wt_id, []).append(code)
+        code_to_wt: dict[str, str] = {code: wt_id for code, wt_id in cat_rows}
 
-        # 3. План из утверждённого сценария квартала
-        approved_scenario = (
-            self.db.query(PlanningScenario)
-            .filter(
-                PlanningScenario.year == year,
-                PlanningScenario.quarter == f"Q{quarter}",
-                PlanningScenario.status == "approved",
+        # 3. Активные сотрудники в командах
+        employees_q = self.db.query(Employee).filter(Employee.is_active.is_(True))
+        if teams:
+            team_emp_ids = (
+                self.db.query(EmployeeTeam.employee_id)
+                .filter(EmployeeTeam.team.in_(teams))
+                .distinct()
+                .all()
             )
-            .order_by(PlanningScenario.updated_at.desc())
-            .first()
+            emp_ids = [r[0] for r in team_emp_ids]
+            employees_q = employees_q.filter(Employee.id.in_(emp_ids))
+        employees: list[Employee] = employees_q.all()
+
+        if not employees:
+            return DashboardNormWorkResponse(
+                roles=[], total_plan=0.0, total_fact=0.0, total_pct=0.0,
+            )
+
+        # 4. Роли реестр
+        roles_db: list[Role] = self.db.query(Role).filter(Role.is_active.is_(True)).order_by(Role.sort_order).all()
+        role_by_code: dict[str, Role] = {r.code: r for r in roles_db}
+
+        # 5. Capacity rules pre-load
+        rules: list[RoleCapacityRule] = (
+            self.db.query(RoleCapacityRule)
+            .filter(RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter)
+            .all()
         )
-        plan_by_work_type: dict[str, float] = {}
-        if approved_scenario:
-            from sqlalchemy import func as sqlfunc
-            from app.services.capacity_service import QUARTER_MONTHS
+        # role_code (or None for fallback) -> wt_id -> pct
+        rules_by_role: dict[str | None, dict[str, float]] = {}
+        for rule in rules:
+            rules_by_role.setdefault(rule.role, {})[rule.work_type_id] = rule.percent_of_norm
 
-            latest_revision = (
-                self.db.query(ScenarioRevision)
-                .filter(ScenarioRevision.scenario_id == approved_scenario.id)
-                .order_by(ScenarioRevision.revision_number.desc())
-                .first()
-            )
-            if latest_revision:
-                snap_q = (
-                    self.db.query(
-                        ScenarioNormSnapshot.work_type_id,
-                        sqlfunc.sum(ScenarioNormSnapshot.norm_hours).label("total"),
-                    )
-                    .filter(
-                        ScenarioNormSnapshot.revision_id == latest_revision.id,
-                        ScenarioNormSnapshot.year == year,
-                    )
-                )
-                if month:
-                    snap_q = snap_q.filter(ScenarioNormSnapshot.month == month)
+        overrides: list[EmployeeCapacityOverride] = (
+            self.db.query(EmployeeCapacityOverride)
+            .filter(EmployeeCapacityOverride.year == year, EmployeeCapacityOverride.quarter == quarter)
+            .all()
+        )
+        overrides_by_emp: dict[str, dict[str, float]] = {}
+        for ov in overrides:
+            overrides_by_emp.setdefault(ov.employee_id, {})[ov.work_type_id] = ov.percent_of_norm
+
+        def pct_for(emp_role: str | None, emp_id: str, wt_id: str) -> float:
+            # Override (per employee) wins
+            emp_overrides = overrides_by_emp.get(emp_id, {})
+            if wt_id in emp_overrides:
+                return emp_overrides[wt_id]
+            # Role rule
+            role_rules = rules_by_role.get(emp_role, {})
+            if wt_id in role_rules:
+                return role_rules[wt_id]
+            # Fallback rule (role=None)
+            fallback = rules_by_role.get(None, {})
+            return fallback.get(wt_id, 0.0)
+
+        # 6. Base hours per employee for the period (через CapacityService)
+        cap_svc = CapacityService(self.db)
+        base_hours_by_emp: dict[str, float] = {}
+        for emp in employees:
+            try:
+                if month is not None:
+                    mcap = cap_svc.monthly_capacity(emp.id, year, month)
+                    base_hours_by_emp[emp.id] = mcap.available_hours
                 else:
-                    snap_q = snap_q.filter(
-                        ScenarioNormSnapshot.month.in_(QUARTER_MONTHS[quarter])
-                    )
-                if teams:
-                    has_none = NO_TEAM_TOKEN in teams
-                    named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
-                    if named_teams and has_none:
-                        named_subq = (
-                            select(EmployeeTeam.employee_id)
-                            .where(EmployeeTeam.team.in_(named_teams))
-                            .scalar_subquery()
-                        )
-                        no_team_subq = select(EmployeeTeam.employee_id).scalar_subquery()
-                        snap_q = snap_q.filter(
-                            or_(
-                                ScenarioNormSnapshot.employee_id.in_(named_subq),
-                                ~ScenarioNormSnapshot.employee_id.in_(no_team_subq),
-                            )
-                        )
-                    elif named_teams:
-                        emp_subq = (
-                            select(EmployeeTeam.employee_id)
-                            .where(EmployeeTeam.team.in_(named_teams))
-                            .scalar_subquery()
-                        )
-                        snap_q = snap_q.filter(
-                            ScenarioNormSnapshot.employee_id.in_(emp_subq)
-                        )
-                    elif has_none:
-                        all_emp_subq = select(EmployeeTeam.employee_id).scalar_subquery()
-                        snap_q = snap_q.filter(
-                            ~ScenarioNormSnapshot.employee_id.in_(all_emp_subq)
-                        )
-                for wt_id, total in snap_q.group_by(ScenarioNormSnapshot.work_type_id).all():
-                    if wt_id:
-                        plan_by_work_type[wt_id] = round(float(total), 2)
+                    qcap = cap_svc.quarter_capacity(emp.id, year, quarter)
+                    base_hours_by_emp[emp.id] = qcap.total_available_hours
+            except Exception:
+                base_hours_by_emp[emp.id] = 0.0
 
-        # 5. Факт по видам работ — один групповой запрос вместо N запросов
-        all_category_codes = [code for codes in codes_by_work_type.values() for code in codes]
-        fact_by_code: dict[str, float] = {}
-        if all_category_codes:
-            fact_q = (
-                self.db.query(Issue.category, func.sum(Worklog.hours))
-                .join(Worklog, Worklog.issue_id == Issue.id)
+        # 7. Plan per emp × work_type
+        plan_per_emp_wt: dict[str, dict[str, float]] = {}
+        for emp in employees:
+            base = base_hours_by_emp.get(emp.id, 0.0)
+            per_wt: dict[str, float] = {}
+            for wt in work_types:
+                pct = pct_for(emp.role, emp.id, wt.id)
+                if pct > 0:
+                    per_wt[wt.id] = base * pct / 100.0
+            plan_per_emp_wt[emp.id] = per_wt
+
+        # 8. Факт per emp × work_type из ворклогов (worklog → issue.assigned_category → category.work_type_id)
+        emp_ids_list = [e.id for e in employees]
+        if not emp_ids_list:
+            wl_rows = []
+        else:
+            wl_rows = (
+                self.db.query(
+                    Worklog.employee_id,
+                    Issue.assigned_category,
+                    func.sum(Worklog.time_spent_seconds).label("secs"),
+                )
+                .join(Issue, Issue.id == Worklog.issue_id)
                 .filter(
+                    Worklog.employee_id.in_(emp_ids_list),
                     Worklog.started_at >= start_dt,
                     Worklog.started_at <= end_dt,
-                    Issue.category.in_(all_category_codes),
+                    Issue.assigned_category.isnot(None),
                 )
+                .group_by(Worklog.employee_id, Issue.assigned_category)
+                .all()
             )
-            if teams:
-                named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
-                has_none = NO_TEAM_TOKEN in teams
-                emp_clauses: list = []
-                if named_teams:
-                    emp_subq = select(EmployeeTeam.employee_id).where(
-                        EmployeeTeam.team.in_(named_teams)
-                    ).scalar_subquery()
-                    emp_clauses.append(Worklog.employee_id.in_(emp_subq))
-                if has_none:
-                    emp_clauses.append(
-                        ~exists().where(EmployeeTeam.employee_id == Worklog.employee_id)
-                    )
-                if emp_clauses:
-                    fact_q = fact_q.filter(
-                        or_(*emp_clauses) if len(emp_clauses) > 1 else emp_clauses[0]
-                    )
-            rows = fact_q.group_by(Issue.category).all()
-            fact_by_code = {code: float(hours or 0) for code, hours in rows}
+        fact_per_emp_wt: dict[str, dict[str, float]] = {e.id: {} for e in employees}
+        for emp_id, cat_code, secs in wl_rows:
+            wt_id = code_to_wt.get(cat_code)
+            if wt_id is None:
+                continue
+            h = (secs or 0) / 3600.0
+            fact_per_emp_wt[emp_id][wt_id] = fact_per_emp_wt[emp_id].get(wt_id, 0.0) + h
 
-        items: list[NormWorkItem] = []
-        for wt in work_types:
-            fact_hours = sum(fact_by_code.get(code, 0.0) for code in codes_by_work_type.get(wt.id, []))
+        def initials(name: str) -> str:
+            parts = [p for p in (name or "").split() if p]
+            if not parts:
+                return "??"
+            if len(parts) == 1:
+                return parts[0][:2].upper()
+            return (parts[0][0] + parts[1][0]).upper()
 
-            plan_hours = round(plan_by_work_type.get(wt.id, 0.0), 2)
-            pct_actual = round(fact_hours / plan_hours * 100, 1) if plan_hours > 0 else 0.0
+        # 9. Группировка по роли
+        employees_by_role: dict[str | None, list[Employee]] = {}
+        for emp in employees:
+            employees_by_role.setdefault(emp.role, []).append(emp)
 
-            items.append(NormWorkItem(
-                work_type_id=wt.id,
-                label=wt.label,
-                plan_hours=plan_hours,
-                fact_hours=round(fact_hours, 2),
-                pct=pct_actual,
+        role_order_codes = [r.code for r in roles_db]
+        iter_codes = role_order_codes + [c for c in employees_by_role.keys() if c not in role_order_codes]
+
+        roles_out: list[NormWorkRoleGroup] = []
+        grand_plan = 0.0
+        grand_fact = 0.0
+
+        for role_code in iter_codes:
+            if role_code not in employees_by_role:
+                continue
+            emps = employees_by_role[role_code]
+            role_obj = role_by_code.get(role_code) if role_code else None
+            role_label = role_obj.label if role_obj else (role_code or "Без роли")
+            role_color = role_obj.color if role_obj else "#7e94b8"
+
+            emp_with_totals = []
+            for emp in emps:
+                plan_total = sum(plan_per_emp_wt.get(emp.id, {}).values())
+                fact_total = sum(fact_per_emp_wt.get(emp.id, {}).values())
+                pct = (fact_total / plan_total * 100) if plan_total > 0 else 0.0
+                emp_with_totals.append((emp, plan_total, fact_total, pct))
+
+            emp_with_totals.sort(key=lambda x: -x[3])
+
+            emp_items: list[NormWorkEmployee] = []
+            role_plan = 0.0
+            role_fact = 0.0
+
+            for emp, plan_total, fact_total, emp_pct in emp_with_totals:
+                wt_breakdowns: list[NormWorkTypeBreakdown] = []
+                for wt in work_types:
+                    p = plan_per_emp_wt.get(emp.id, {}).get(wt.id, 0.0)
+                    f = fact_per_emp_wt.get(emp.id, {}).get(wt.id, 0.0)
+                    if p == 0 and f == 0:
+                        continue
+                    wt_pct = (f / p * 100) if p > 0 else 0.0
+                    wt_breakdowns.append(NormWorkTypeBreakdown(
+                        work_type_id=wt.id,
+                        label=wt.label,
+                        plan_hours=round(p, 1),
+                        fact_hours=round(f, 1),
+                        pct=round(wt_pct, 1),
+                    ))
+
+                emp_items.append(NormWorkEmployee(
+                    employee_id=emp.id,
+                    name=emp.display_name or "",
+                    initials=initials(emp.display_name or ""),
+                    plan_hours=round(plan_total, 1),
+                    fact_hours=round(fact_total, 1),
+                    pct=round(emp_pct, 1),
+                    work_types=wt_breakdowns,
+                ))
+                role_plan += plan_total
+                role_fact += fact_total
+
+            role_pct = (role_fact / role_plan * 100) if role_plan > 0 else 0.0
+            roles_out.append(NormWorkRoleGroup(
+                role_code=role_code or "_unassigned",
+                role_label=role_label,
+                role_color=role_color,
+                employees_count=len(emp_items),
+                total_plan=round(role_plan, 1),
+                total_fact=round(role_fact, 1),
+                total_pct=round(role_pct, 1),
+                employees=emp_items,
             ))
+            grand_plan += role_plan
+            grand_fact += role_fact
 
-        items = [i for i in items if i.plan_hours > 0 or i.fact_hours > 0]
-        total_plan = round(sum(i.plan_hours for i in items), 2)
-        total_fact = round(sum(i.fact_hours for i in items), 2)
-        total_pct = round(total_fact / total_plan * 100, 1) if total_plan > 0 else 0.0
+        grand_pct = (grand_fact / grand_plan * 100) if grand_plan > 0 else 0.0
 
         return DashboardNormWorkResponse(
-            items=items,
-            total_plan=total_plan,
-            total_fact=total_fact,
-            total_pct=total_pct,
+            roles=roles_out,
+            total_plan=round(grand_plan, 1),
+            total_fact=round(grand_fact, 1),
+            total_pct=round(grand_pct, 1),
         )
 
     def get_dashboard_categories(
