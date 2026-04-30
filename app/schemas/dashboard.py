@@ -1,22 +1,34 @@
+from datetime import date
+
 from pydantic import BaseModel
 
 
 # ── Widget 1: Projects overview ──────────────────────────────────────────────
 
-class ProjectAttentionItem(BaseModel):
-    issue_key: str
-    title: str
-    fact_hours: float
-    days_overdue: int | None   # None если не просрочен
-    days_silent: int | None    # None если была активность недавно
+class ProjectAssignee(BaseModel):
+    initials: str
+    color: str  # hex, для аватара (от роли сотрудника либо генерим)
 
 
-class ProjectOverrunItem(BaseModel):
+class ProjectItem(BaseModel):
     issue_key: str
     title: str
+    status_category: str            # 'done' | 'indeterminate' | 'new' | 'overdue'
     plan_hours: float
     fact_hours: float
-    delta_hours: float         # fact - plan
+    delta_hours: float              # fact - plan
+    subtasks_done: int
+    subtasks_total: int
+    assignees: list[ProjectAssignee]   # top-3 по часам
+    assignees_total: int               # всего сотрудников касавшихся эпика
+    due_date: date | None
+    days_to_due: int | None            # negative = overdue, None = no due
+    trend_hours_week: float            # часы за последние 7 дней
+    trend_dir: str                     # 'up' | 'down' | 'flat'
+    forecast_close_date: date | None
+    forecast_in_quarter: bool          # успевает ли к концу квартала
+    silent_days: int                   # дни с последнего ворклога (0 если был сегодня)
+    weekly_activity: list[float]       # 8 точек спарклайна (часы/неделю с конца периода назад)
 
 
 class DashboardProjectsResponse(BaseModel):
@@ -25,10 +37,13 @@ class DashboardProjectsResponse(BaseModel):
     in_progress: int
     overdue: int
     not_started: int
-    forecast_done: int         # прогноз: сколько закроется к концу квартала
-    forecast_pct: float        # forecast_done / total * 100
-    attention_list: list[ProjectAttentionItem]
-    overrun_list: list[ProjectOverrunItem]
+    total_fact_hours: float
+    total_plan_hours: float
+    avg_load_pct: float          # total_fact / total_plan * 100
+    silent_count: int            # проекты с silent_days > 14
+    forecast_done: int
+    forecast_pct: float
+    projects: list[ProjectItem]
 
 
 # ── Widget 2: Norm work plan/fact ────────────────────────────────────────────

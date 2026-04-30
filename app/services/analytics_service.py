@@ -24,8 +24,6 @@ from app.models.scenario_revision import ScenarioRevision
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
-    ProjectAttentionItem,
-    ProjectOverrunItem,
     DashboardNormWorkResponse,
     NormWorkItem,
     DashboardCategoriesResponse,
