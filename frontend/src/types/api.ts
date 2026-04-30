@@ -704,20 +704,30 @@ export function currentQuarterPeriod(): QuarterPeriod {
 
 // ─── Dashboard response types ─────────────────────────────────────────────
 
-export interface ProjectAttentionItem {
-  issue_key: string;
-  title: string;
-  fact_hours: number;
-  days_overdue: number | null;
-  days_silent: number | null;
+export interface ProjectAssignee {
+  initials: string;
+  color: string;
 }
 
-export interface ProjectOverrunItem {
+export interface ProjectItem {
   issue_key: string;
   title: string;
+  status_category: 'done' | 'indeterminate' | 'new' | 'overdue';
   plan_hours: number;
   fact_hours: number;
   delta_hours: number;
+  subtasks_done: number;
+  subtasks_total: number;
+  assignees: ProjectAssignee[];
+  assignees_total: number;
+  due_date: string | null;
+  days_to_due: number | null;
+  trend_hours_week: number;
+  trend_dir: 'up' | 'down' | 'flat';
+  forecast_close_date: string | null;
+  forecast_in_quarter: boolean;
+  silent_days: number;
+  weekly_activity: number[];
 }
 
 export interface DashboardProjectsResponse {
@@ -726,10 +736,13 @@ export interface DashboardProjectsResponse {
   in_progress: number;
   overdue: number;
   not_started: number;
+  total_fact_hours: number;
+  total_plan_hours: number;
+  avg_load_pct: number;
+  silent_count: number;
   forecast_done: number;
   forecast_pct: number;
-  attention_list: ProjectAttentionItem[];
-  overrun_list: ProjectOverrunItem[];
+  projects: ProjectItem[];
 }
 
 export interface NormWorkItem {
