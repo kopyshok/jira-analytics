@@ -36,9 +36,12 @@ export default function DashboardPage() {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} lg={12}>
+        <Col xs={24}>
           <NormWorkWidget data={normWork} loading={normLoading} />
         </Col>
+      </Row>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={12}>
           <CategoryWidget data={categories} loading={catLoading} />
         </Col>
