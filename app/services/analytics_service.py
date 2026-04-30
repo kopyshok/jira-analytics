@@ -751,6 +751,7 @@ class AnalyticsService:
         from app.models.role_capacity_rule import RoleCapacityRule
         from app.models.employee_capacity_override import EmployeeCapacityOverride
         from app.models.employee_team import EmployeeTeam
+        from app.models.scenario_rule import ScenarioRule
 
         period_start, period_end = quarter_to_dates(year, quarter, month)
         start_dt = datetime.combine(period_start, datetime.min.time())
@@ -794,16 +795,42 @@ class AnalyticsService:
         roles_db: list[Role] = self.db.query(Role).filter(Role.is_active.is_(True)).order_by(Role.sort_order).all()
         role_by_code: dict[str, Role] = {r.code: r for r in roles_db}
 
-        # 5. Capacity rules pre-load
-        rules: list[RoleCapacityRule] = (
-            self.db.query(RoleCapacityRule)
-            .filter(RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter)
-            .all()
-        )
-        # role_code (or None for fallback) -> wt_id -> pct
+        # 5. Capacity rules pre-load — приоритет:
+        #    ScenarioRule утверждённого сценария → RoleCapacityRule (шаблон).
+        # ScenarioRule живёт per approved scenario, RoleCapacityRule — глобальный шаблон.
         rules_by_role: dict[str | None, dict[str, float]] = {}
-        for rule in rules:
-            rules_by_role.setdefault(rule.role, {})[rule.work_type_id] = rule.percent_of_norm
+
+        approved_scenario_q = (
+            self.db.query(PlanningScenario.id)
+            .filter(
+                PlanningScenario.year == year,
+                PlanningScenario.quarter == f"Q{quarter}",
+                PlanningScenario.status == "approved",
+            )
+        )
+        if teams:
+            approved_scenario_q = approved_scenario_q.filter(
+                PlanningScenario.team.in_(teams)
+            )
+        approved_scenario_ids = [r[0] for r in approved_scenario_q.all()]
+
+        if approved_scenario_ids:
+            scenario_rules = (
+                self.db.query(ScenarioRule)
+                .filter(ScenarioRule.scenario_id.in_(approved_scenario_ids))
+                .all()
+            )
+            for sr in scenario_rules:
+                rules_by_role.setdefault(sr.role, {})[sr.work_type_id] = sr.percent_of_norm
+
+        if not rules_by_role:
+            template_rules: list[RoleCapacityRule] = (
+                self.db.query(RoleCapacityRule)
+                .filter(RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter)
+                .all()
+            )
+            for rule in template_rules:
+                rules_by_role.setdefault(rule.role, {})[rule.work_type_id] = rule.percent_of_norm
 
         overrides: list[EmployeeCapacityOverride] = (
             self.db.query(EmployeeCapacityOverride)
