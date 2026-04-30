@@ -827,19 +827,26 @@ class AnalyticsService:
             fallback = rules_by_role.get(None, {})
             return fallback.get(wt_id, 0.0)
 
-        # 6. Base hours per employee for the period (через CapacityService)
+        # 6. Base hours per employee for the period — batch via team_quarter_capacity
         cap_svc = CapacityService(self.db)
         base_hours_by_emp: dict[str, float] = {}
+        try:
+            emp_ids_for_cap = [e.id for e in employees]
+            team_caps = cap_svc.team_quarter_capacity(
+                year=year, quarter=quarter, employee_ids=emp_ids_for_cap,
+            )
+        except ValueError:
+            team_caps = []
+        for qcap in team_caps:
+            if month is not None:
+                # Pick the matching month from quarter_capacity.months[]
+                mcap = next((m for m in qcap.months if m.month == month), None)
+                base_hours_by_emp[qcap.employee_id] = mcap.available_hours if mcap else 0.0
+            else:
+                base_hours_by_emp[qcap.employee_id] = qcap.total_available_hours
+        # Default 0 for employees not returned by capacity (e.g. inactive edge cases)
         for emp in employees:
-            try:
-                if month is not None:
-                    mcap = cap_svc.monthly_capacity(emp.id, year, month)
-                    base_hours_by_emp[emp.id] = mcap.available_hours
-                else:
-                    qcap = cap_svc.quarter_capacity(emp.id, year, quarter)
-                    base_hours_by_emp[emp.id] = qcap.total_available_hours
-            except Exception:
-                base_hours_by_emp[emp.id] = 0.0
+            base_hours_by_emp.setdefault(emp.id, 0.0)
 
         # 7. Plan per emp × work_type
         plan_per_emp_wt: dict[str, dict[str, float]] = {}
@@ -854,25 +861,22 @@ class AnalyticsService:
 
         # 8. Факт per emp × work_type из ворклогов (worklog → issue.assigned_category → category.work_type_id)
         emp_ids_list = [e.id for e in employees]
-        if not emp_ids_list:
-            wl_rows = []
-        else:
-            wl_rows = (
-                self.db.query(
-                    Worklog.employee_id,
-                    Issue.assigned_category,
-                    func.sum(Worklog.time_spent_seconds).label("secs"),
-                )
-                .join(Issue, Issue.id == Worklog.issue_id)
-                .filter(
-                    Worklog.employee_id.in_(emp_ids_list),
-                    Worklog.started_at >= start_dt,
-                    Worklog.started_at <= end_dt,
-                    Issue.assigned_category.isnot(None),
-                )
-                .group_by(Worklog.employee_id, Issue.assigned_category)
-                .all()
+        wl_rows = (
+            self.db.query(
+                Worklog.employee_id,
+                Issue.assigned_category,
+                func.sum(Worklog.time_spent_seconds).label("secs"),
             )
+            .join(Issue, Issue.id == Worklog.issue_id)
+            .filter(
+                Worklog.employee_id.in_(emp_ids_list),
+                Worklog.started_at >= start_dt,
+                Worklog.started_at <= end_dt,
+                Issue.assigned_category.isnot(None),
+            )
+            .group_by(Worklog.employee_id, Issue.assigned_category)
+            .all()
+        )
         fact_per_emp_wt: dict[str, dict[str, float]] = {e.id: {} for e in employees}
         for emp_id, cat_code, secs in wl_rows:
             wt_id = code_to_wt.get(cat_code)
