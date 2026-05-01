@@ -1,9 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Tabs, Table, Button, Space, App, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag } from 'antd';
+import { Tabs, Table, Button, Space, App, Checkbox, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, InputNumber } from 'antd';
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
-import QuarterYearSelect from '../components/shared/QuarterYearSelect';
 import PageHeader from '../components/shared/PageHeader';
 import { useTeamCapacity, useEmployees, useSearchJiraUsers, useAddEmployeeFromJira, useReplaceEmployeeTeams, useSetPrimaryTeam, useUpdateEmployeeRole, useAutoDetectTeams } from '../hooks/useCapacity';
 import { useJiraTeams } from '../hooks/useSync';
@@ -13,7 +12,7 @@ import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import RolesTab from '../components/capacity/RolesTab';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
-import { useQuarterYear } from '../hooks/useQuarterYear';
+import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { formatHours } from '../utils/format';
 import { QUARTER_MONTHS, MONTH_NAMES } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
@@ -23,9 +22,8 @@ dayjs.extend(minMax);
 
 const { Text } = Typography;
 
-function TeamTab() {
+function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   const { notification } = App.useApp();
-  const { year, quarter } = useQuarterYear();
   const { queryParams } = useGlobalTeamFilter();
   const { data, isLoading } = useTeamCapacity(year, quarter, queryParams.teams);
   const { data: employees } = useEmployees();
@@ -414,9 +412,8 @@ function TeamTab() {
   );
 }
 
-function AbsencesTab() {
+function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
   const { notification } = App.useApp();
-  const { year, quarter } = useQuarterYear();
   const { data: absences, isLoading } = useAbsences();
   const { data: employees } = useEmployees();
   const { data: reasons } = useAbsenceReasons();
@@ -636,18 +633,86 @@ function AbsencesTab() {
 }
 
 
+function CapacityPeriodSelector({
+  year, quarter, overrideOn, onToggleOverride, onYearChange, onQuarterChange,
+}: {
+  year: string;
+  quarter: string;
+  overrideOn: boolean;
+  onToggleOverride: (v: boolean) => void;
+  onYearChange: (y: string) => void;
+  onQuarterChange: (q: string) => void;
+}) {
+  return (
+    <Space>
+      <Checkbox checked={overrideOn} onChange={e => onToggleOverride(e.target.checked)}>
+        Уточнить период
+      </Checkbox>
+      {overrideOn && (
+        <>
+          <span>Год:</span>
+          <InputNumber
+            value={Number(year)}
+            min={2020}
+            max={2030}
+            onChange={v => v && onYearChange(String(v))}
+            style={{ width: 100 }}
+          />
+          <span>Квартал:</span>
+          <Select
+            value={quarter}
+            onChange={onQuarterChange}
+            style={{ width: 80 }}
+            options={[
+              { value: '1', label: 'Q1' },
+              { value: '2', label: 'Q2' },
+              { value: '3', label: 'Q3' },
+              { value: '4', label: 'Q4' },
+            ]}
+          />
+        </>
+      )}
+    </Space>
+  );
+}
+
 export default function CapacityPage() {
+  const { period: globalPeriod } = useGlobalPeriod();
+  const [overrideOn, setOverrideOn] = useState(false);
+  const [localYear, setLocalYear] = useState<string>(String(globalPeriod.year));
+  const [localQuarter, setLocalQuarter] = useState<string>(String(globalPeriod.quarter));
+
+  const year = overrideOn ? localYear : String(globalPeriod.year);
+  const quarter = overrideOn ? localQuarter : String(globalPeriod.quarter);
+
+  const handleToggleOverride = (v: boolean) => {
+    if (v) {
+      setLocalYear(String(globalPeriod.year));
+      setLocalQuarter(String(globalPeriod.quarter));
+    }
+    setOverrideOn(v);
+  };
+
   return (
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Планирование"
         title="Ресурсы команды"
         subtitle="План · факт · отпуска · правила обязательной загрузки"
-        actions={<QuarterYearSelect />}
+        actions={
+          <CapacityPeriodSelector
+            year={year}
+            quarter={quarter}
+            overrideOn={overrideOn}
+            onToggleOverride={handleToggleOverride}
+            onYearChange={setLocalYear}
+            onQuarterChange={setLocalQuarter}
+          />
+        }
       />
       <Tabs items={[
-        { key: 'team', label: 'Команда', children: <TeamTab /> },
-        { key: 'absences', label: 'Отсутствия', children: <AbsencesTab /> },
+        { key: 'team', label: 'Команда', children: <TeamTab year={year} quarter={quarter} /> },
+        { key: 'absences', label: 'Отсутствия', children: <AbsencesTab year={year} quarter={quarter} /> },
         { key: 'roles', label: 'Роли', children: <RolesTab /> },
       ]} />
     </Space>

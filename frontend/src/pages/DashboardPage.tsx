@@ -1,18 +1,21 @@
-import { useState } from 'react';
 import { Row, Col, Space } from 'antd';
-import QuarterPicker from '../components/shared/QuarterPicker';
 import ExportButtons from '../components/shared/ExportButtons';
 import ProjectsWidget from '../components/dashboard/ProjectsWidget';
 import NormWorkWidget from '../components/dashboard/NormWorkWidget';
 import CategoryWidget from '../components/dashboard/CategoryWidget';
 import { useDashboardProjects, useDashboardNormWork, useDashboardCategories } from '../hooks/useAnalytics';
 import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
-import { currentQuarterPeriod } from '../types/api';
 import type { QuarterPeriod } from '../types/api';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 
 export default function DashboardPage() {
-  const [period, setPeriod] = useState<QuarterPeriod>(currentQuarterPeriod);
+  const { period: globalPeriod } = useGlobalPeriod();
+  const period: QuarterPeriod = {
+    year: globalPeriod.year,
+    quarter: globalPeriod.quarter as 1 | 2 | 3 | 4,
+    month: globalPeriod.month,
+  };
   const { queryParams: teamParams } = useGlobalTeamFilter();
 
   const { data: projects, isLoading: projLoading } = useDashboardProjects(period);
@@ -22,7 +25,6 @@ export default function DashboardPage() {
   return (
     <div>
       <Space wrap style={{ marginBottom: 24 }}>
-        <QuarterPicker value={period} onChange={setPeriod} />
         <ExportButtons
           onXlsx={() => downloadAnalyticsXlsx(undefined, undefined, teamParams)}
           onPdf={() => downloadAnalyticsPdf(undefined, undefined, teamParams)}
@@ -42,7 +44,7 @@ export default function DashboardPage() {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} lg={12}>
+        <Col xs={24}>
           <CategoryWidget data={categories} loading={catLoading} />
         </Col>
       </Row>
