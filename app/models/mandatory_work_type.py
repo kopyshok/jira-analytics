@@ -8,9 +8,10 @@ from app.database import Base
 
 
 class MandatoryWorkType(Base, TimestampMixin):
-    """Тип обязательной работы (организационные вопросы, тех. долг и т.д.).
+    """Тип работы (обязательная либо служебная вроде «Прочие/Чужие»).
 
-    Справочник для правил ёмкости. Пополняется пользователем вручную.
+    Системные строки (`is_system=True`) нельзя удалять и менять `code`;
+    label остаётся редактируемым.
     """
 
     __tablename__ = "mandatory_work_types"
@@ -21,6 +22,7 @@ class MandatoryWorkType(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     subtracts_from_pool: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     def __repr__(self) -> str:
         return f"<MandatoryWorkType {self.code}>"
