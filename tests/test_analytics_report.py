@@ -190,7 +190,11 @@ def test_report_plan_hours_at_employee_level(db_session):
     svc = AnalyticsService(db_session)
     data = svc.get_hierarchical_report(year=2026, quarter=2, teams=["Команда A"])
     emp_node = data.teams[0].roles[0].employees[0]
+    # plan_hours = 50% × base_hours; base_hours = weekday fallback (8h/day) since no
+    # ProductionCalendarDay rows exist in the test DB.  Q2 2026 has 65 Mon-Fri days →
+    # base = 520 h → plan_support = 260 h.
     assert emp_node.totals.plan_hours is not None
-    assert emp_node.totals.plan_hours > 0
+    assert emp_node.totals.plan_hours == pytest.approx(260.0, rel=0.05)
     sup_wt = next(w for w in emp_node.work_types if w.label == "Сопровождение и консультация")
     assert sup_wt.totals.plan_hours is not None
+    assert sup_wt.totals.plan_hours == pytest.approx(260.0, rel=0.05)
