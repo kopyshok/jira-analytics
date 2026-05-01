@@ -1839,3 +1839,32 @@ class AnalyticsService:
                 ),
             ),
         )
+
+    def get_issue_worklogs(
+        self, issue_id: str, start: date, end: date,
+    ) -> list:
+        """Плоский список ворклогов по задаче за период."""
+        from app.schemas.analytics_report import IssueWorklogItem
+        start_dt = datetime.combine(start, datetime.min.time())
+        end_dt = datetime.combine(end, datetime.max.time())
+        rows = (
+            self.db.query(
+                Worklog.id, Worklog.started_at, Worklog.hours,
+                Employee.display_name, Worklog.comment_text,
+            )
+            .join(Employee, Employee.id == Worklog.employee_id)
+            .filter(
+                Worklog.issue_id == issue_id,
+                Worklog.started_at >= start_dt,
+                Worklog.started_at <= end_dt,
+            )
+            .order_by(Worklog.started_at)
+            .all()
+        )
+        return [
+            IssueWorklogItem(
+                worklog_id=r.id, started_at=r.started_at, hours=r.hours or 0.0,
+                employee_name=r.display_name or "", comment=r.comment_text,
+            )
+            for r in rows
+        ]
