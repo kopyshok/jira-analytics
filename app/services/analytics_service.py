@@ -782,6 +782,109 @@ class AnalyticsService:
 
     # === Dashboard widgets 2 & 3 ===
 
+    def _build_plan_per_emp_wt(
+        self,
+        year: int,
+        quarter: int,
+        month: Optional[int],
+        teams: Optional[list[str]],
+        employees: list["Employee"],
+        work_types: list["MandatoryWorkType"],
+    ) -> dict[str, dict[str, float]]:
+        """Plan hours per employee × work_type.
+
+        Приоритет правил: ScenarioRule утверждённого сценария →
+        RoleCapacityRule (глобальный шаблон). Возвращает словарь
+        ``{employee_id: {work_type_id: hours}}``.
+        """
+        from app.services.capacity_service import CapacityService
+        from app.models.employee_capacity_override import EmployeeCapacityOverride
+        from app.models.scenario_rule import ScenarioRule
+
+        # 1. Rules: approved scenario → template
+        rules_by_role: dict[str | None, dict[str, float]] = {}
+
+        approved_q = (
+            self.db.query(PlanningScenario.id)
+            .filter(
+                PlanningScenario.year == year,
+                PlanningScenario.quarter == f"Q{quarter}",
+                PlanningScenario.status == "approved",
+            )
+        )
+        if teams:
+            approved_q = approved_q.filter(PlanningScenario.team.in_(teams))
+        approved_ids = [r[0] for r in approved_q.all()]
+
+        if approved_ids:
+            for sr in self.db.query(ScenarioRule).filter(
+                ScenarioRule.scenario_id.in_(approved_ids)
+            ).all():
+                rules_by_role.setdefault(sr.role, {})[sr.work_type_id] = sr.percent_of_norm
+
+        if not rules_by_role:
+            for rule in self.db.query(RoleCapacityRule).filter(
+                RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter,
+            ).all():
+                rules_by_role.setdefault(rule.role, {})[rule.work_type_id] = rule.percent_of_norm
+
+        # 2. Per-employee overrides
+        overrides_by_emp: dict[str, dict[str, float]] = {}
+        for ov in self.db.query(EmployeeCapacityOverride).filter(
+            EmployeeCapacityOverride.year == year,
+            EmployeeCapacityOverride.quarter == quarter,
+        ).all():
+            overrides_by_emp.setdefault(ov.employee_id, {})[ov.work_type_id] = ov.percent_of_norm
+
+        def pct_for(emp_role: str | None, emp_id: str, wt_id: str) -> float:
+            ov = overrides_by_emp.get(emp_id, {})
+            if wt_id in ov:
+                return ov[wt_id]
+            r = rules_by_role.get(emp_role, {})
+            if wt_id in r:
+                return r[wt_id]
+            return rules_by_role.get(None, {}).get(wt_id, 0.0)
+
+        # 3. Base hours via CapacityService (fallback: 8h × weekdays when no calendar rows)
+        cap_svc = CapacityService(self.db)
+        base_hours_by_emp: dict[str, float] = {}
+        try:
+            team_caps = cap_svc.team_quarter_capacity(
+                year=year, quarter=quarter,
+                employee_ids=[e.id for e in employees],
+            )
+        except ValueError:
+            team_caps = []
+        for qcap in team_caps:
+            if month is not None:
+                mcap = next((m for m in qcap.months if m.month == month), None)
+                base_hours_by_emp[qcap.employee_id] = mcap.available_hours if mcap else 0.0
+            else:
+                base_hours_by_emp[qcap.employee_id] = qcap.total_available_hours
+        for emp in employees:
+            base_hours_by_emp.setdefault(emp.id, 0.0)
+
+        # 4. Assemble plan per emp × wt; project_wt gets the remainder
+        project_wt = next((wt for wt in work_types if wt.code == "project"), None)
+        plan_per_emp_wt: dict[str, dict[str, float]] = {}
+        for emp in employees:
+            base = base_hours_by_emp.get(emp.id, 0.0)
+            per_wt: dict[str, float] = {}
+            mandatory_total = 0.0
+            for wt in work_types:
+                if project_wt is not None and wt.id == project_wt.id:
+                    continue
+                p = pct_for(emp.role, emp.id, wt.id)
+                if p > 0:
+                    h = base * p / 100.0
+                    per_wt[wt.id] = h
+                    mandatory_total += h
+            if project_wt is not None:
+                per_wt[project_wt.id] = max(0.0, base - mandatory_total)
+            plan_per_emp_wt[emp.id] = per_wt
+
+        return plan_per_emp_wt
+
     def get_dashboard_norm_work(
         self,
         year: int,
@@ -793,11 +896,7 @@ class AnalyticsService:
         from app.schemas.dashboard import (
             NormWorkTypeBreakdown, NormWorkEmployee, NormWorkRoleGroup,
         )
-        from app.services.capacity_service import CapacityService
-        from app.models.role_capacity_rule import RoleCapacityRule
-        from app.models.employee_capacity_override import EmployeeCapacityOverride
         from app.models.employee_team import EmployeeTeam
-        from app.models.scenario_rule import ScenarioRule
 
         period_start, period_end = quarter_to_dates(year, quarter, month)
         start_dt = datetime.combine(period_start, datetime.min.time())
@@ -857,11 +956,18 @@ class AnalyticsService:
         roles_db: list[Role] = self.db.query(Role).filter(Role.is_active.is_(True)).order_by(Role.sort_order).all()
         role_by_code: dict[str, Role] = {r.code: r for r in roles_db}
 
-        # 5. Capacity rules pre-load — приоритет:
-        #    ScenarioRule утверждённого сценария → RoleCapacityRule (шаблон).
-        # ScenarioRule живёт per approved scenario, RoleCapacityRule — глобальный шаблон.
-        rules_by_role: dict[str | None, dict[str, float]] = {}
+        # 5. Plan per emp × work_type (approved scenario → template rules → capacity fallback)
+        plan_per_emp_wt = self._build_plan_per_emp_wt(
+            year=year, quarter=quarter, month=month,
+            teams=teams, employees=employees, work_types=work_types,
+        )
 
+        # «Проектные работы» — особый work_type code='project':
+        #   план = base − Σ(план остальных work_types)
+        #   факт = ворклоги в задачах из утверждённых элементов бэклога + всё их поддерево
+        project_wt = next((wt for wt in work_types if wt.code == "project"), None)
+
+        # approved_scenario_ids needed for project fact below — re-query after plan helper
         approved_scenario_q = (
             self.db.query(PlanningScenario.id)
             .filter(
@@ -876,91 +982,7 @@ class AnalyticsService:
             )
         approved_scenario_ids = [r[0] for r in approved_scenario_q.all()]
 
-        if approved_scenario_ids:
-            scenario_rules = (
-                self.db.query(ScenarioRule)
-                .filter(ScenarioRule.scenario_id.in_(approved_scenario_ids))
-                .all()
-            )
-            for sr in scenario_rules:
-                rules_by_role.setdefault(sr.role, {})[sr.work_type_id] = sr.percent_of_norm
-
-        if not rules_by_role:
-            template_rules: list[RoleCapacityRule] = (
-                self.db.query(RoleCapacityRule)
-                .filter(RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter)
-                .all()
-            )
-            for rule in template_rules:
-                rules_by_role.setdefault(rule.role, {})[rule.work_type_id] = rule.percent_of_norm
-
-        overrides: list[EmployeeCapacityOverride] = (
-            self.db.query(EmployeeCapacityOverride)
-            .filter(EmployeeCapacityOverride.year == year, EmployeeCapacityOverride.quarter == quarter)
-            .all()
-        )
-        overrides_by_emp: dict[str, dict[str, float]] = {}
-        for ov in overrides:
-            overrides_by_emp.setdefault(ov.employee_id, {})[ov.work_type_id] = ov.percent_of_norm
-
-        def pct_for(emp_role: str | None, emp_id: str, wt_id: str) -> float:
-            # Override (per employee) wins
-            emp_overrides = overrides_by_emp.get(emp_id, {})
-            if wt_id in emp_overrides:
-                return emp_overrides[wt_id]
-            # Role rule
-            role_rules = rules_by_role.get(emp_role, {})
-            if wt_id in role_rules:
-                return role_rules[wt_id]
-            # Fallback rule (role=None)
-            fallback = rules_by_role.get(None, {})
-            return fallback.get(wt_id, 0.0)
-
-        # 6. Base hours per employee for the period — batch via team_quarter_capacity
-        cap_svc = CapacityService(self.db)
-        base_hours_by_emp: dict[str, float] = {}
-        try:
-            emp_ids_for_cap = [e.id for e in employees]
-            team_caps = cap_svc.team_quarter_capacity(
-                year=year, quarter=quarter, employee_ids=emp_ids_for_cap,
-            )
-        except ValueError:
-            team_caps = []
-        for qcap in team_caps:
-            if month is not None:
-                # Pick the matching month from quarter_capacity.months[]
-                mcap = next((m for m in qcap.months if m.month == month), None)
-                base_hours_by_emp[qcap.employee_id] = mcap.available_hours if mcap else 0.0
-            else:
-                base_hours_by_emp[qcap.employee_id] = qcap.total_available_hours
-        # Default 0 for employees not returned by capacity (e.g. inactive edge cases)
-        for emp in employees:
-            base_hours_by_emp.setdefault(emp.id, 0.0)
-
-        # «Проектные работы» — особый work_type code='project':
-        #   план = base − Σ(план остальных work_types)
-        #   факт = ворклоги в задачах из утверждённых элементов бэклога + всё их поддерево
-        project_wt = next((wt for wt in work_types if wt.code == "project"), None)
-
-        # 7. Plan per emp × work_type. Для project — остаток после нормированных.
-        plan_per_emp_wt: dict[str, dict[str, float]] = {}
-        for emp in employees:
-            base = base_hours_by_emp.get(emp.id, 0.0)
-            per_wt: dict[str, float] = {}
-            mandatory_total = 0.0
-            for wt in work_types:
-                if project_wt is not None and wt.id == project_wt.id:
-                    continue
-                pct = pct_for(emp.role, emp.id, wt.id)
-                if pct > 0:
-                    h = base * pct / 100.0
-                    per_wt[wt.id] = h
-                    mandatory_total += h
-            if project_wt is not None:
-                per_wt[project_wt.id] = max(0.0, base - mandatory_total)
-            plan_per_emp_wt[emp.id] = per_wt
-
-        # 8. Факт per emp × work_type из ворклогов (worklog → issue.category → category.work_type_id).
+        # 6. Факт per emp × work_type из ворклогов (worklog → issue.category → category.work_type_id).
         # Используем denormalized Issue.category (учитывает наследование от родителя
         # и scope_root через CategoryResolver/MappingService), а не Issue.assigned_category —
         # иначе теряем часы на дочерних задачах без собственной ручной метки.
@@ -1669,86 +1691,11 @@ class AnalyticsService:
             tree.setdefault(team_k, {}).setdefault(role_k, {}).setdefault(emp_id, {}).setdefault(
                 wt_id, {}).setdefault(cat_code, []).append(v)
 
-        # 7. Plan-часы per emp×work_type (логика из get_dashboard_norm_work §5-7)
-        from app.services.capacity_service import CapacityService
-        from app.models.role_capacity_rule import RoleCapacityRule
-        from app.models.employee_capacity_override import EmployeeCapacityOverride
-        from app.models.scenario_rule import ScenarioRule
-
-        rules_by_role: dict["str | None", dict[str, float]] = {}
-        approved_q = (
-            self.db.query(PlanningScenario.id)
-            .filter(
-                PlanningScenario.year == year,
-                PlanningScenario.quarter == f"Q{quarter}",
-                PlanningScenario.status == "approved",
-            )
+        # 7. Plan-часы per emp×work_type
+        plan_per_emp_wt = self._build_plan_per_emp_wt(
+            year=year, quarter=quarter, month=month,
+            teams=teams, employees=employees, work_types=work_types,
         )
-        if teams:
-            approved_q = approved_q.filter(PlanningScenario.team.in_(teams))
-        approved_ids = [r[0] for r in approved_q.all()]
-        if approved_ids:
-            for sr in self.db.query(ScenarioRule).filter(
-                ScenarioRule.scenario_id.in_(approved_ids)
-            ).all():
-                rules_by_role.setdefault(sr.role, {})[sr.work_type_id] = sr.percent_of_norm
-        if not rules_by_role:
-            for rule in self.db.query(RoleCapacityRule).filter(
-                RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter,
-            ).all():
-                rules_by_role.setdefault(rule.role, {})[rule.work_type_id] = rule.percent_of_norm
-
-        overrides_by_emp: dict[str, dict[str, float]] = {}
-        for ov in self.db.query(EmployeeCapacityOverride).filter(
-            EmployeeCapacityOverride.year == year,
-            EmployeeCapacityOverride.quarter == quarter,
-        ).all():
-            overrides_by_emp.setdefault(ov.employee_id, {})[ov.work_type_id] = ov.percent_of_norm
-
-        def pct_for(emp_role: "str | None", emp_id_inner: str, wt_id_inner: str) -> float:
-            ov = overrides_by_emp.get(emp_id_inner, {})
-            if wt_id_inner in ov:
-                return ov[wt_id_inner]
-            r = rules_by_role.get(emp_role, {})
-            if wt_id_inner in r:
-                return r[wt_id_inner]
-            return rules_by_role.get(None, {}).get(wt_id_inner, 0.0)
-
-        cap_svc = CapacityService(self.db)
-        base_hours_by_emp: dict[str, float] = {}
-        try:
-            team_caps = cap_svc.team_quarter_capacity(
-                year=year, quarter=quarter,
-                employee_ids=[e.id for e in employees],
-            )
-        except ValueError:
-            team_caps = []
-        for qcap in team_caps:
-            if month is not None:
-                mcap = next((m for m in qcap.months if m.month == month), None)
-                base_hours_by_emp[qcap.employee_id] = mcap.available_hours if mcap else 0.0
-            else:
-                base_hours_by_emp[qcap.employee_id] = qcap.total_available_hours
-        for emp in employees:
-            base_hours_by_emp.setdefault(emp.id, 0.0)
-
-        project_wt = next((wt for wt in work_types if wt.code == "project"), None)
-        plan_per_emp_wt: dict[str, dict[str, float]] = {}
-        for emp in employees:
-            base = base_hours_by_emp.get(emp.id, 0.0)
-            per_wt: dict[str, float] = {}
-            mandatory_total = 0.0
-            for wt in work_types:
-                if project_wt is not None and wt.id == project_wt.id:
-                    continue
-                p = pct_for(emp.role, emp.id, wt.id)
-                if p > 0:
-                    h = base * p / 100.0
-                    per_wt[wt.id] = h
-                    mandatory_total += h
-            if project_wt is not None:
-                per_wt[project_wt.id] = max(0.0, base - mandatory_total)
-            plan_per_emp_wt[emp.id] = per_wt
 
         def calc_totals(rows: list[dict], plan_hours: "float | None" = None,
                         emp_count: int = 0, parent_total: "float | None" = None) -> NodeTotals:
