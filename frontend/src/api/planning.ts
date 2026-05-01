@@ -90,4 +90,4 @@ export const fetchScenarioRevisions = (id: string) =>
   api.get<ScenarioRevision[]>(`/planning/scenarios/${id}/revisions`);
 
 export const fetchRevisionDiff = (id: string, r1: number, r2: number) =>
-  api.get<RevisionDiffResponse>(`/planning/scenarios/${id}/revisions/diff`, { r1, r2 });
+  api.get<RevisionDiffResponse>(`/planning/scenarios/${id}/revisions/diff`, { r1: String(r1), r2: String(r2) });

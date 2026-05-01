@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet } from 'react-router';
 import AppLayout from './components/Layout/AppLayout';
 import { AuthProvider } from './components/AuthProvider';
 import { GlobalTeamFilterProvider } from './components/GlobalTeamFilterProvider';
+import { GlobalPeriodFilterProvider } from './components/shared/GlobalPeriodFilterProvider';
 import { useAuth } from './hooks/useAuth';
 import {
   AnalyticsPage,
@@ -35,7 +36,9 @@ function AuthLayout() {
   return (
     <AuthProvider>
       <GlobalTeamFilterProvider>
-        <Outlet />
+        <GlobalPeriodFilterProvider>
+          <Outlet />
+        </GlobalPeriodFilterProvider>
       </GlobalTeamFilterProvider>
     </AuthProvider>
   );
