@@ -28,6 +28,7 @@ import JiraFieldsCard from '../components/JiraFieldsCard';
 import HierarchyRulesTab from '../components/HierarchyRulesTab';
 import AbsenceReasonsTab from '../components/AbsenceReasonsTab';
 import CategoriesTab from '../components/CategoriesTab';
+import WorkTypesTab from '../components/settings/WorkTypesTab';
 import PageHeader from '../components/shared/PageHeader';
 import { useAuth } from '../hooks/useAuth';
 import UsersTab from './settings/UsersTab';
@@ -39,7 +40,7 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'calendar', 'users'] as const;
+const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'users'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function readHashKey(): TabKey {
@@ -79,6 +80,7 @@ export default function SettingsPage() {
           { key: 'hierarchy', label: 'Правила иерархии', children: <HierarchyRulesTab /> },
           { key: 'reasons', label: 'Причины отсутствий', children: <AbsenceReasonsTab /> },
           { key: 'categories', label: 'Категории работ', children: <CategoriesTab /> },
+          { key: 'worktypes', label: 'Виды работ', children: <WorkTypesTab /> },
           { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
           ...(user?.role === 'admin' ? [{ key: 'users', label: 'Пользователи', children: <UsersTab /> }] : []),
         ]}
