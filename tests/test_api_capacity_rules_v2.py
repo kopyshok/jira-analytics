@@ -367,3 +367,53 @@ class TestEmployeeCapacityOverridesCRUD:
             f"/api/v1/capacity/employee-overrides?year=2026&quarter=1&employee_id={employee.id}",
         ).json()
         assert listed_after == []
+
+
+# ── System work type protection ─────────────────────────────────────────────
+
+
+def _make_system_wt(db_session, code: str = "other_foreign", label: str = "Прочие / Чужие задачи"):
+    wt = MandatoryWorkType(code=code, label=label, is_system=True)
+    db_session.add(wt)
+    db_session.commit()
+    db_session.refresh(wt)
+    return wt
+
+
+def test_delete_system_work_type_forbidden(db_session, client):
+    wt = _make_system_wt(db_session)
+    resp = client.delete(f"/api/v1/mandatory-work-types/{wt.id}")
+    assert resp.status_code == 409
+    assert "system" in resp.json()["detail"].lower()
+
+
+def test_patch_system_work_type_code_forbidden(db_session, client):
+    wt = _make_system_wt(db_session, code="sys1", label="Sys 1")
+    resp = client.patch(
+        f"/api/v1/mandatory-work-types/{wt.id}",
+        json={"code": "renamed"},
+    )
+    assert resp.status_code == 409
+    assert "system" in resp.json()["detail"].lower()
+
+
+def test_patch_system_work_type_label_allowed(db_session, client):
+    wt = _make_system_wt(db_session, code="sys2", label="Old label")
+    resp = client.patch(
+        f"/api/v1/mandatory-work-types/{wt.id}",
+        json={"label": "New label"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "New label"
+    assert resp.json()["is_system"] is True
+
+
+def test_list_includes_is_system_field(db_session, client):
+    _make_system_wt(db_session, code="sys3")
+    resp = client.get("/api/v1/mandatory-work-types")
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) >= 1
+    assert all("is_system" in it for it in items)
+    sys_row = next(it for it in items if it["code"] == "sys3")
+    assert sys_row["is_system"] is True

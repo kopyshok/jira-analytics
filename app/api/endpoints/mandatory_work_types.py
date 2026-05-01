@@ -23,6 +23,7 @@ class WorkTypeResponse(BaseModel):
     is_active: bool
     sort_order: int
     subtracts_from_pool: bool
+    is_system: bool
 
     class Config:
         from_attributes = True
@@ -83,6 +84,11 @@ def update_work_type(wt_id: str, req: WorkTypeUpdate, db: Session = Depends(get_
     if wt is None:
         raise HTTPException(status_code=404, detail="Work type not found")
     data = req.model_dump(exclude_unset=True)
+    if wt.is_system and "code" in data and data["code"] != wt.code:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot change code of a system work type",
+        )
     if "code" in data and data["code"] != wt.code:
         conflict = (
             db.query(MandatoryWorkType)
@@ -103,6 +109,11 @@ def delete_work_type(wt_id: str, db: Session = Depends(get_db)):
     wt = db.query(MandatoryWorkType).filter(MandatoryWorkType.id == wt_id).one_or_none()
     if wt is None:
         raise HTTPException(status_code=404, detail="Work type not found")
+    if wt.is_system:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete a system work type",
+        )
     has_rules = (
         db.query(RoleCapacityRule)
         .filter(RoleCapacityRule.work_type_id == wt_id)
