@@ -950,6 +950,11 @@ class AnalyticsService:
             )
             .all()
         )
+        # Orphan-bucket: ворклоги без категории или с категорией без work_type_id
+        # учитываются в виртуальной строке «Не указана категория/вид работ».
+        ORPHAN_WT_ID = "__unmapped__"
+        ORPHAN_WT_LABEL = "Не указана категория/вид работ"
+
         fact_per_emp_wt: dict[str, dict[str, float]] = {e.id: {} for e in employees}
         for emp_id, cat_code, issue_team, parts_json, secs in wl_rows:
             h = (secs or 0) / 3600.0
@@ -982,10 +987,17 @@ class AnalyticsService:
                 continue
 
             # Стандартный routing — по категории задачи.
+            # cat_code is None → orphan; cat_code без mapping → orphan.
             if cat_code is None:
+                fact_per_emp_wt[emp_id][ORPHAN_WT_ID] = (
+                    fact_per_emp_wt[emp_id].get(ORPHAN_WT_ID, 0.0) + h
+                )
                 continue
             wt_id = code_to_wt.get(cat_code)
             if wt_id is None:
+                fact_per_emp_wt[emp_id][ORPHAN_WT_ID] = (
+                    fact_per_emp_wt[emp_id].get(ORPHAN_WT_ID, 0.0) + h
+                )
                 continue
             # Факт по project считаем отдельно (через scenario allocations) — пропускаем здесь.
             if project_wt is not None and wt_id == project_wt.id:
@@ -1110,6 +1122,24 @@ class AnalyticsService:
                         plan_hours=round(p, 1),
                         fact_hours=round(f, 1),
                         pct=round(wt_pct, 1),
+                    ))
+
+                # Виртуальная orphan-строка вставляется ПЕРЕД other_foreign
+                # (либо в конец, если other_foreign в этом блоке нет).
+                orphan_fact = fact_per_emp_wt.get(emp.id, {}).get(ORPHAN_WT_ID, 0.0)
+                if orphan_fact > 0:
+                    other_foreign_idx = next(
+                        (i for i, b in enumerate(wt_breakdowns)
+                         if other_foreign_wt is not None
+                         and b.work_type_id == other_foreign_wt.id),
+                        len(wt_breakdowns),
+                    )
+                    wt_breakdowns.insert(other_foreign_idx, NormWorkTypeBreakdown(
+                        work_type_id=ORPHAN_WT_ID,
+                        label=ORPHAN_WT_LABEL,
+                        plan_hours=0.0,
+                        fact_hours=round(orphan_fact, 1),
+                        pct=0.0,
                     ))
 
                 emp_items.append(NormWorkEmployee(
