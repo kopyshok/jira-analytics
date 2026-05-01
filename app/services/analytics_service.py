@@ -963,9 +963,11 @@ class AnalyticsService:
                 parts: list[str] = []
                 if parts_json:
                     try:
-                        parts = json.loads(parts_json) or []
-                    except (ValueError, TypeError):
-                        parts = []
+                        decoded = json.loads(parts_json)
+                    except ValueError:
+                        decoded = None
+                    if isinstance(decoded, list):
+                        parts = [p for p in decoded if isinstance(p, str)]
                 if not issue_team:
                     is_foreign = True
                 elif issue_team == emp_team or emp_team in parts:
