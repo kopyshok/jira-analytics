@@ -247,3 +247,26 @@ def test_empty_issue_team_is_foreign(db_session, client):
     )
     block = _find_emp_breakdown(resp.json(), emp.id)
     assert _wt_label_hours(block, "Прочие") == 2.0
+
+
+def test_other_foreign_row_visible_when_plan_zero_fact_positive(db_session, client):
+    """Строка other_foreign показывается с plan=0 fact>0 (пользовательский фронт перекрасит в красный)."""
+    _seed_work_types_and_categories(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_employee(db_session, "План Ноль", "Команда A")
+    issue = _seed_issue(db_session, project, "ZP-1", team="Команда B")
+    _seed_worklog(db_session, issue, emp, 6.0)
+
+    resp = client.get(
+        "/api/v1/analytics/dashboard/norm-work",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A"},
+    )
+    block = _find_emp_breakdown(resp.json(), emp.id)
+    assert block is not None
+    other_row = next(
+        (wt for wt in block["work_types"] if "Прочие" in wt["label"]), None
+    )
+    assert other_row is not None, "Строка other_foreign должна быть в ответе"
+    assert other_row["plan_hours"] == 0
+    assert other_row["fact_hours"] == 6.0
+    assert other_row["pct"] == 0.0  # план 0 → pct=0 по текущей логике, фронт сам красит
