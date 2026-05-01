@@ -1,234 +1,104 @@
-import { useState } from 'react';
-import { Tabs, Table, Space, Spin, Empty, Select, Segmented, Alert, Button } from 'antd';
-import type { Dayjs } from 'dayjs';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
-import DateRangeSelect from '../components/shared/DateRangeSelect';
-import ExportButtons from '../components/shared/ExportButtons';
+import { Space, DatePicker, Switch, Empty, Spin } from 'antd';
+import type { Dayjs } from 'dayjs';
 import PageHeader from '../components/shared/PageHeader';
-import { useHoursByEmployee, useHoursByProject, useHoursByCategory, useHoursByPeriod, useContextSwitching, useEmployeesForFilter, useProjectsForFilter } from '../hooks/useAnalytics';
-import { downloadAnalyticsXlsx, downloadAnalyticsPdf } from '../api/exports';
-import { CHART_COLORS, DARK_THEME } from '../utils/constants';
-import { useCategories } from '../hooks/useCategories';
-import { formatHours } from '../utils/format';
-import type { AggregateRowResponse, ContextSwitchRowResponse } from '../types/api';
+import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
+import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
+import AnalyticsTable from '../components/analytics/AnalyticsTable';
+import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
+import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
-import type { TeamFilterParams } from '../api/analytics';
-
-const tooltipFmt = (v: unknown) => formatHours(Number(v)) + ' ч';
 
 export default function AnalyticsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [dates, setDates] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [employeeId, setEmployeeId] = useState<string | undefined>();
-  const [projectKey, setProjectKey] = useState<string | undefined>();
-  const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
-  const { queryParams: teamParams } = useGlobalTeamFilter();
+  const [params, setParams] = useSearchParams();
+  const { period } = useGlobalPeriod();
+  const { selectedTeams } = useGlobalTeamFilter();
 
-  const activeTab = searchParams.get('tab') || 'employee';
+  const [selectedTeam, setSelectedTeam] = useState<string | 'all'>(
+    selectedTeams[0] || 'all',
+  );
 
-  const start = dates?.[0]?.format('YYYY-MM-DD');
-  const end = dates?.[1]?.format('YYYY-MM-DD');
+  // URL-driven filters
+  const employeeId = params.get('employee') || undefined;
+  const workType = params.get('work_type') || undefined;
+  const category = params.get('category') || undefined;
+  const taskQ = params.get('task') || undefined;
 
-  const { data: employees } = useEmployeesForFilter();
-  const { data: projects } = useProjectsForFilter();
+  const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('inline');
 
-  const hasFilters = !!employeeId || !!projectKey || !!dates;
+  const queryParams = useMemo(() => ({
+    year: period.year,
+    quarter: period.quarter,
+    month: period.month,
+    start_date: localRange?.[0]?.format('YYYY-MM-DD'),
+    end_date: localRange?.[1]?.format('YYYY-MM-DD'),
+    teams: selectedTeam !== 'all' ? selectedTeam : (selectedTeams.join(',') || undefined),
+    employee_id: employeeId,
+    task_query: taskQ,
+    work_type_codes: workType,
+    category_codes: category,
+  }), [period, localRange, selectedTeam, selectedTeams, employeeId, workType, category, taskQ]);
+
+  const { data, isLoading } = useAnalyticsReport(queryParams);
 
   return (
-    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-      <PageHeader
-        eyebrow="Аналитика"
-        title="Распределение трудозатрат"
-        subtitle="Часы по сотрудникам, проектам, категориям и периодам"
-      />
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <PageHeader eyebrow="Аналитика" title="Иерархический отчёт по часам" />
+
       <Space wrap>
-        <DateRangeSelect value={dates} onChange={setDates} />
-        <Select
+        <DatePicker.RangePicker
+          value={localRange}
+          onChange={setLocalRange}
+          placeholder={['Уточнить с', 'по']}
           allowClear
-          placeholder="Все сотрудники"
-          style={{ minWidth: 180 }}
-          value={employeeId}
-          onChange={setEmployeeId}
-          options={employees?.map(e => ({ value: e.id, label: e.display_name }))}
-          showSearch
-          optionFilterProp="label"
         />
-        <Select
-          allowClear
-          placeholder="Все проекты"
-          style={{ minWidth: 160 }}
-          value={projectKey}
-          onChange={setProjectKey}
-          options={projects?.map(p => ({ value: p.key, label: p.name }))}
-          showSearch
-          optionFilterProp="label"
-        />
-        {hasFilters && (
-          <Button onClick={() => { setEmployeeId(undefined); setProjectKey(undefined); setDates(null); }}>
-            Сбросить
-          </Button>
-        )}
-        <ExportButtons
-          onXlsx={() => downloadAnalyticsXlsx(start, end, teamParams)}
-          onPdf={() => downloadAnalyticsPdf(start, end, teamParams)}
+        <span>Ворклоги:</span>
+        <Switch
+          checkedChildren="inline"
+          unCheckedChildren="drawer"
+          checked={worklogMode === 'inline'}
+          onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
         />
       </Space>
-      <Tabs activeKey={activeTab} onChange={(key) => setSearchParams({ tab: key })} items={[
-        { key: 'employee', label: 'По сотрудникам', children: <EmployeeTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
-        { key: 'project', label: 'По проектам', children: <ProjectTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
-        { key: 'category', label: 'По категориям', children: <CategoryTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
-        { key: 'period', label: 'По периодам', children: <PeriodTab start={start} end={end} period={period} onPeriodChange={setPeriod} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
-        { key: 'switching', label: 'Переключения контекста', children: <SwitchingTab start={start} end={end} employeeId={employeeId} projectKey={projectKey} teamParams={teamParams} /> },
-      ]} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
+        <AnalyticsTeamList
+          data={data}
+          selected={selectedTeam}
+          onSelect={setSelectedTeam}
+        />
+        <div>
+          <AnalyticsFilters
+            urlParams={{ employeeId, workType, category, taskQ }}
+            onChange={(next) => {
+              const p = new URLSearchParams(params);
+              const set = (k: string, v: string | undefined) => {
+                if (v) p.set(k, v); else p.delete(k);
+              };
+              set('employee', next.employeeId);
+              set('work_type', next.workType);
+              set('category', next.category);
+              set('task', next.taskQ);
+              setParams(p);
+            }}
+          />
+          {isLoading ? (
+            <Spin />
+          ) : !data?.teams.length ? (
+            <Empty description="Нет данных за выбранный период" />
+          ) : (
+            <AnalyticsTable
+              data={data}
+              selectedTeam={selectedTeam}
+              worklogMode={worklogMode}
+              periodStart={localRange?.[0]?.format('YYYY-MM-DD') || ''}
+              periodEnd={localRange?.[1]?.format('YYYY-MM-DD') || ''}
+            />
+          )}
+        </div>
+      </div>
     </Space>
-  );
-}
-
-function HoursBarChart({ data, loading }: { data?: AggregateRowResponse[]; loading: boolean }) {
-  if (loading) return <Spin />;
-  if (!data?.length) return <Empty description="Нет данных" />;
-  return (
-    <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={data} margin={{ left: 20, bottom: 60 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
-        <XAxis dataKey="label" angle={-45} textAnchor="end" interval={0} height={80} />
-        <YAxis />
-        <Tooltip formatter={tooltipFmt} />
-        <Bar dataKey="total_hours" fill={CHART_COLORS.blue} name="Часы" />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
-
-type TabProps = { start?: string; end?: string; employeeId?: string; projectKey?: string; teamParams?: TeamFilterParams };
-
-function EmployeeTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
-  const { data, isLoading, isError, error } = useHoursByEmployee(start, end, employeeId, projectKey, teamParams);
-  return (
-    <>
-      {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
-      <HoursBarChart data={data} loading={isLoading} />
-      <Table<AggregateRowResponse>
-        dataSource={data}
-        rowKey="key"
-        size="small"
-        pagination={false}
-        columns={[
-          { title: 'Сотрудник', dataIndex: 'label' },
-          { title: 'Часы', dataIndex: 'total_hours', render: formatHours, sorter: (a, b) => a.total_hours - b.total_hours },
-          { title: 'Ворклогов', dataIndex: 'worklog_count', sorter: (a, b) => a.worklog_count - b.worklog_count },
-        ]}
-      />
-    </>
-  );
-}
-
-function ProjectTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
-  const { data, isLoading, isError, error } = useHoursByProject(start, end, employeeId, projectKey, teamParams);
-  return (
-    <>
-      {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
-      <HoursBarChart data={data} loading={isLoading} />
-      <Table<AggregateRowResponse>
-        dataSource={data}
-        rowKey="key"
-        size="small"
-        pagination={false}
-        columns={[
-          { title: 'Проект', dataIndex: 'label' },
-          { title: 'Часы', dataIndex: 'total_hours', render: formatHours, sorter: (a, b) => a.total_hours - b.total_hours },
-          { title: 'Ворклогов', dataIndex: 'worklog_count', sorter: (a, b) => a.worklog_count - b.worklog_count },
-        ]}
-      />
-    </>
-  );
-}
-
-function CategoryTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
-  const { labels: catLabels, colors: catColors } = useCategories();
-  const { data, isLoading, isError, error } = useHoursByCategory(start, end, employeeId, projectKey, teamParams);
-  if (isLoading) return <Spin />;
-  if (isError) return <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon />;
-  if (!data?.length) return <Empty description="Нет данных" />;
-
-  const chartData = data.map((d) => ({
-    ...d,
-    label: catLabels[d.key] || d.label,
-    fill: catColors[d.key] || '#8884d8',
-  }));
-
-  return (
-    <>
-      <ResponsiveContainer width="100%" height={400}>
-        <PieChart>
-          <Pie data={chartData} dataKey="total_hours" nameKey="label" cx="50%" cy="50%" outerRadius={150} label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} (${((percent ?? 0) * 100).toFixed(0)}%)`}>
-            {chartData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-          </Pie>
-          <Tooltip formatter={tooltipFmt} />
-        </PieChart>
-      </ResponsiveContainer>
-      <Table<AggregateRowResponse>
-        dataSource={data}
-        rowKey="key"
-        size="small"
-        pagination={false}
-        columns={[
-          { title: 'Категория', dataIndex: 'key', render: (v: string) => catLabels[v] || v },
-          { title: 'Часы', dataIndex: 'total_hours', render: formatHours, sorter: (a, b) => a.total_hours - b.total_hours },
-          { title: 'Ворклогов', dataIndex: 'worklog_count', sorter: (a, b) => a.worklog_count - b.worklog_count },
-        ]}
-      />
-    </>
-  );
-}
-
-function PeriodTab({ start, end, period, onPeriodChange, employeeId, projectKey, teamParams }: TabProps & { period: 'day' | 'week' | 'month'; onPeriodChange: (v: 'day' | 'week' | 'month') => void }) {
-  const { data, isLoading, isError, error } = useHoursByPeriod(period, start, end, employeeId, projectKey, teamParams);
-  if (isLoading) return <Spin />;
-  if (isError) return <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon />;
-  if (!data?.length) return (
-    <>
-      <Segmented options={[{ label: 'День', value: 'day' }, { label: 'Неделя', value: 'week' }, { label: 'Месяц', value: 'month' }]} value={period} onChange={v => onPeriodChange(v as 'day' | 'week' | 'month')} style={{ marginBottom: 16 }} />
-      <Empty description="Нет данных" />
-    </>
-  );
-  return (
-    <>
-      <Segmented options={[{ label: 'День', value: 'day' }, { label: 'Неделя', value: 'week' }, { label: 'Месяц', value: 'month' }]} value={period} onChange={v => onPeriodChange(v as 'day' | 'week' | 'month')} style={{ marginBottom: 16 }} />
-      <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke={DARK_THEME.border} />
-          <XAxis dataKey="label" />
-          <YAxis />
-          <Tooltip formatter={tooltipFmt} />
-          <Legend />
-          <Line type="monotone" dataKey="total_hours" stroke={CHART_COLORS.cyan} name="Часы" />
-        </LineChart>
-      </ResponsiveContainer>
-    </>
-  );
-}
-
-function SwitchingTab({ start, end, employeeId, projectKey, teamParams }: TabProps) {
-  const { data, isLoading, isError, error } = useContextSwitching(start, end, employeeId, projectKey, teamParams);
-  return (
-    <>
-      {isError && <Alert type="error" message="Ошибка загрузки" description={(error as Error)?.message} showIcon style={{ marginBottom: 16 }} />}
-      <Table<ContextSwitchRowResponse>
-        dataSource={data}
-        rowKey="employee_id"
-        loading={isLoading}
-        size="small"
-        pagination={false}
-        columns={[
-          { title: 'Сотрудник', dataIndex: 'employee_name' },
-          { title: 'Ворклогов', dataIndex: 'total_worklogs', sorter: (a, b) => a.total_worklogs - b.total_worklogs },
-          { title: 'Проектов', dataIndex: 'distinct_projects', sorter: (a, b) => a.distinct_projects - b.distinct_projects },
-          { title: 'Категорий', dataIndex: 'distinct_categories', sorter: (a, b) => a.distinct_categories - b.distinct_categories },
-          { title: 'Переключений', dataIndex: 'switches', sorter: (a, b) => a.switches - b.switches },
-        ]}
-      />
-    </>
   );
 }
