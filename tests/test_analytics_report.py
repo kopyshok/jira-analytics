@@ -13,6 +13,7 @@ from app.models import (
     Category, Employee, EmployeeTeam, Issue, MandatoryWorkType,
     Project, Role, Worklog,
 )
+from app.models.role_capacity_rule import RoleCapacityRule
 
 
 @pytest.fixture
@@ -169,3 +170,27 @@ def test_report_task_query_filter(db_session):
     ]
     assert len(all_issues) == 1
     assert all_issues[0].key == "PROD-1"
+
+
+def test_report_plan_hours_at_employee_level(db_session):
+    from app.services.analytics_service import AnalyticsService
+    _seed_minimal(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_emp(db_session, "Тест", "Команда A")
+    # support_consult, 50% от нормы
+    wt_support = db_session.query(MandatoryWorkType).filter_by(code="support_consult").first()
+    db_session.add(RoleCapacityRule(
+        id=str(uuid.uuid4()), year=2026, quarter=2, role="developer",
+        work_type_id=wt_support.id, percent_of_norm=50.0,
+    ))
+    db_session.commit()
+    issue = _seed_issue(db_session, project, "T-1", "Команда A", "support_consultation")
+    _seed_worklog(db_session, issue, emp, 2.0)
+
+    svc = AnalyticsService(db_session)
+    data = svc.get_hierarchical_report(year=2026, quarter=2, teams=["Команда A"])
+    emp_node = data.teams[0].roles[0].employees[0]
+    assert emp_node.totals.plan_hours is not None
+    assert emp_node.totals.plan_hours > 0
+    sup_wt = next(w for w in emp_node.work_types if w.label == "Сопровождение и консультация")
+    assert sup_wt.totals.plan_hours is not None
