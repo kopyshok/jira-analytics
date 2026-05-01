@@ -290,6 +290,8 @@ export interface MandatoryWorkType {
   label: string;
   is_active: boolean;
   sort_order: number;
+  subtracts_from_pool: boolean;
+  is_system: boolean;
 }
 
 export interface MandatoryWorkTypeCreate {
@@ -297,6 +299,7 @@ export interface MandatoryWorkTypeCreate {
   label: string;
   is_active?: boolean;
   sort_order?: number;
+  subtracts_from_pool?: boolean;
 }
 
 export interface MandatoryWorkTypeUpdate {
@@ -304,6 +307,7 @@ export interface MandatoryWorkTypeUpdate {
   label?: string;
   is_active?: boolean;
   sort_order?: number;
+  subtracts_from_pool?: boolean;
 }
 
 export interface RoleCapacityRule {
@@ -712,6 +716,7 @@ export interface ProjectAssignee {
 export interface ProjectItem {
   issue_key: string;
   title: string;
+  status: string;
   status_category: 'done' | 'indeterminate' | 'new' | 'overdue';
   plan_hours: number;
   fact_hours: number;
@@ -793,7 +798,18 @@ export interface CategoryMetaItem {
   pct: number;
 }
 
+export interface EmployeeWorklogActivity {
+  employee_id: string;
+  name: string;
+  initials: string;
+  last_worklog_at: string | null;
+  days_since_last: number | null;
+  is_absent: boolean;
+  absence_label: string | null;
+}
+
 export interface DashboardCategoriesResponse {
   items: CategoryMetaItem[];
   total_hours: number;
+  employees: EmployeeWorklogActivity[];
 }
