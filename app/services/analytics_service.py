@@ -38,6 +38,25 @@ from app.utils.period import quarter_to_dates
 NO_TEAM_TOKEN = "__none__"
 
 
+def _initials(name: str) -> str:
+    """Инициалы сотрудника из полного имени (2 буквы)."""
+    parts = [p for p in (name or "").split() if p]
+    if not parts:
+        return "??"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[1][0]).upper()
+
+
+def _empty_totals() -> "NodeTotals":
+    """Пустые итоги для узлов без данных."""
+    from app.schemas.analytics_report import NodeTotals
+    return NodeTotals(
+        fact_hours=0.0, plan_hours=None, pct_plan=None, pct_total=0.0,
+        worklog_count=0, issue_count=0, employee_count=0, avg_worklog_minutes=0.0,
+    )
+
+
 def parse_teams_csv(teams: Optional[str]) -> list[str]:
     """Распарсить CSV-строку команд из query-параметра в список.
 
@@ -1067,14 +1086,6 @@ class AnalyticsService:
                         fact_per_emp_wt[emp_id].get(project_wt.id, 0.0) + h
                     )
 
-        def initials(name: str) -> str:
-            parts = [p for p in (name or "").split() if p]
-            if not parts:
-                return "??"
-            if len(parts) == 1:
-                return parts[0][:2].upper()
-            return (parts[0][0] + parts[1][0]).upper()
-
         # 9. Группировка по роли
         employees_by_role: dict[str | None, list[Employee]] = {}
         for emp in employees:
@@ -1145,7 +1156,7 @@ class AnalyticsService:
                 emp_items.append(NormWorkEmployee(
                     employee_id=emp.id,
                     name=emp.display_name or "",
-                    initials=initials(emp.display_name or ""),
+                    initials=_initials(emp.display_name or ""),
                     plan_hours=round(plan_total, 1),
                     fact_hours=round(fact_total, 1),
                     pct=round(emp_pct, 1),
@@ -1278,14 +1289,6 @@ class AnalyticsService:
         teams: Optional[list[str]] = None,
     ) -> list[EmployeeWorklogActivity]:
         """Активные сотрудники команды + дата последнего зарегистрированного ворклога."""
-        def _initials(name: str) -> str:
-            parts = [p for p in (name or "").split() if p]
-            if not parts:
-                return "??"
-            if len(parts) == 1:
-                return parts[0][:2].upper()
-            return (parts[0][0] + parts[1][0]).upper()
-
         emp_q = self.db.query(Employee).filter(Employee.is_active.is_(True))
         if teams:
             named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
@@ -1449,3 +1452,345 @@ class AnalyticsService:
                 reverse=True,
             )
         ]
+
+    def get_hierarchical_report(
+        self,
+        year: int,
+        quarter: int,
+        month: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        teams: Optional[list[str]] = None,
+        employee_id: Optional[str] = None,
+        task_query: Optional[str] = None,
+        work_type_codes: Optional[list[str]] = None,
+        category_codes: Optional[list[str]] = None,
+    ) -> "AnalyticsReportResponse":
+        """Иерархический отчёт: Команда → Роль → Сотрудник → ВидРабот → Категория → Задача."""
+        from app.schemas.analytics_report import (
+            AnalyticsReportResponse, AnalyticsTeamNode, AnalyticsRoleNode,
+            AnalyticsEmployeeNode, AnalyticsWorkTypeNode, AnalyticsCategoryNode,
+            AnalyticsIssueNode, NodeTotals,
+        )
+        from app.models.employee_team import EmployeeTeam
+
+        # 1. Период (приоритет start_date/end_date > month > quarter)
+        if start_date and end_date:
+            period_start, period_end = start_date, end_date
+        else:
+            period_start, period_end = quarter_to_dates(year, quarter, month)
+        start_dt = datetime.combine(period_start, datetime.min.time())
+        end_dt = datetime.combine(period_end, datetime.max.time())
+
+        # 2. Справочники
+        work_types: list[MandatoryWorkType] = (
+            self.db.query(MandatoryWorkType)
+            .filter(MandatoryWorkType.is_active.is_(True))
+            .order_by(MandatoryWorkType.sort_order)
+            .all()
+        )
+        wt_by_id = {wt.id: wt for wt in work_types}
+        other_foreign_wt = next((wt for wt in work_types if wt.code == "other_foreign"), None)
+
+        cat_rows = (
+            self.db.query(Category.code, Category.work_type_id, Category.label, Category.color)
+            .all()
+        )
+        cat_meta: dict[str, tuple[str, str, "str | None"]] = {
+            r.code: (r.label, r.color or "#7e94b8", r.work_type_id) for r in cat_rows
+        }
+        code_to_wt = {code: meta[2] for code, meta in cat_meta.items() if meta[2]}
+
+        roles_db = self.db.query(Role).filter(Role.is_active.is_(True)).order_by(Role.sort_order).all()
+        role_by_code = {r.code: r for r in roles_db}
+
+        ORPHAN_WT_ID = "__unmapped__"
+        ORPHAN_WT_LABEL = "Не указана категория/вид работ"
+        ORPHAN_CAT_CODE = None
+        ORPHAN_CAT_LABEL = "Без категории"
+
+        # 3. Сотрудники + primary team
+        emp_query = self.db.query(Employee).filter(Employee.is_active.is_(True))
+        if employee_id:
+            emp_query = emp_query.filter(Employee.id == employee_id)
+        all_employees: list[Employee] = emp_query.all()
+
+        emp_team_rows = (
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
+            .filter(
+                EmployeeTeam.employee_id.in_([e.id for e in all_employees]),
+                EmployeeTeam.is_primary.is_(True),
+            )
+            .all()
+        )
+        emp_team_by_id: dict[str, str] = {r.employee_id: r.team for r in emp_team_rows}
+
+        # team filter — оставляем только сотрудников чья primary team подходит
+        if teams:
+            team_set = set(teams)
+            employees = [e for e in all_employees if emp_team_by_id.get(e.id) in team_set]
+        else:
+            employees = all_employees
+
+        if not employees:
+            return AnalyticsReportResponse(
+                teams=[],
+                grand_totals=_empty_totals(),
+            )
+
+        # 4. Ворклоги за период с агрегацией по emp×issue
+        # Issue.assignee_display_name — реальное имя поля (не assignee_name)
+        _has_assignee = hasattr(Issue, "assignee_display_name")
+        assignee_col = Issue.assignee_display_name if _has_assignee else None
+
+        select_cols = [
+            Worklog.employee_id,
+            Worklog.issue_id,
+            Issue.key,
+            Issue.summary,
+            Issue.status,
+            Issue.status_category,
+            Issue.issue_type,
+            Issue.category,
+            Issue.team,
+            Issue.participating_teams,
+            func.sum(Worklog.time_spent_seconds).label("secs"),
+            func.count(Worklog.id).label("wl_count"),
+            func.max(Worklog.started_at).label("last_at"),
+        ]
+        if assignee_col is not None:
+            select_cols.insert(10, assignee_col)
+
+        wl_q = (
+            self.db.query(*select_cols)
+            .join(Issue, Issue.id == Worklog.issue_id)
+            .filter(
+                Worklog.employee_id.in_([e.id for e in employees]),
+                Worklog.started_at >= start_dt,
+                Worklog.started_at <= end_dt,
+            )
+        )
+        if task_query:
+            q = f"%{task_query}%"
+            wl_q = wl_q.filter(or_(Issue.key.ilike(q), Issue.summary.ilike(q)))
+
+        group_cols = [
+            Worklog.employee_id, Worklog.issue_id, Issue.key, Issue.summary,
+            Issue.status, Issue.status_category, Issue.issue_type, Issue.category,
+            Issue.team, Issue.participating_teams,
+        ]
+        if assignee_col is not None:
+            group_cols.append(assignee_col)
+
+        wl_q = wl_q.group_by(*group_cols)
+        wl_rows = wl_q.all()
+
+        # 5. Бакетируем строки по (team, role, emp, wt_id, cat_code, issue)
+        bucket: dict[tuple, dict] = {}
+
+        for row in wl_rows:
+            emp_id = row.employee_id
+            issue_id = row.issue_id
+            cat_code = row.category
+            issue_team = row.team
+            parts_json = row.participating_teams
+            secs = row.secs or 0
+            wl_count = row.wl_count or 0
+            last_at = row.last_at
+            h = secs / 3600.0
+
+            emp = next((e for e in employees if e.id == emp_id), None)
+            if emp is None:
+                continue
+            emp_team = emp_team_by_id.get(emp_id)
+
+            # Cross-team routing
+            is_foreign = False
+            if emp_team:
+                parts: list[str] = []
+                if parts_json:
+                    try:
+                        decoded = json.loads(parts_json)
+                        parts = [p for p in decoded if isinstance(p, str)] if isinstance(decoded, list) else []
+                    except ValueError:
+                        pass
+                if not issue_team:
+                    is_foreign = True
+                elif issue_team == emp_team or emp_team in parts:
+                    is_foreign = False
+                else:
+                    is_foreign = True
+
+            if is_foreign and other_foreign_wt is not None:
+                wt_id = other_foreign_wt.id
+                cat_code_eff = ORPHAN_CAT_CODE
+            else:
+                if cat_code is None:
+                    wt_id = ORPHAN_WT_ID
+                    cat_code_eff = ORPHAN_CAT_CODE
+                else:
+                    mapped_wt = code_to_wt.get(cat_code)
+                    if mapped_wt is None:
+                        wt_id = ORPHAN_WT_ID
+                        cat_code_eff = cat_code
+                    else:
+                        wt_id = mapped_wt
+                        cat_code_eff = cat_code
+
+            # Дополнительные фильтры
+            if work_type_codes:
+                wt_obj = wt_by_id.get(wt_id)
+                wt_code = wt_obj.code if wt_obj else (
+                    "__unmapped__" if wt_id == ORPHAN_WT_ID else None
+                )
+                if wt_code not in work_type_codes:
+                    continue
+            if category_codes:
+                if cat_code_eff not in category_codes:
+                    continue
+
+            team_key = emp_team or "__no_team__"
+            role_key = emp.role
+            key = (team_key, role_key, emp_id, wt_id, cat_code_eff, issue_id)
+
+            entry = bucket.get(key)
+            if entry is None:
+                assignee_name_val = getattr(row, "assignee_display_name", None) if _has_assignee else None
+                entry = {
+                    "issue_id": issue_id, "key": row.key, "summary": row.summary,
+                    "status": row.status, "status_category": row.status_category,
+                    "issue_type": row.issue_type, "category": cat_code,
+                    "fact_hours": 0.0, "wl_count": 0,
+                    "last_at": None,
+                    "assignee_name": assignee_name_val,
+                }
+                bucket[key] = entry
+            entry["fact_hours"] += h
+            entry["wl_count"] += wl_count
+            if last_at is not None and (entry["last_at"] is None or last_at > entry["last_at"]):
+                entry["last_at"] = last_at
+
+        # 6. Свёртка bucket → дерево
+        tree: dict = {}
+        for (team_k, role_k, emp_id, wt_id, cat_code, issue_id), v in bucket.items():
+            tree.setdefault(team_k, {}).setdefault(role_k, {}).setdefault(emp_id, {}).setdefault(
+                wt_id, {}).setdefault(cat_code, []).append(v)
+
+        # 7. plan_hours=None везде (Task 3 добавит расчёт)
+
+        def calc_totals(rows: list[dict], plan_hours: "float | None" = None,
+                        emp_count: int = 0, parent_total: "float | None" = None) -> NodeTotals:
+            fact = sum(r["fact_hours"] for r in rows)
+            wl = sum(r["wl_count"] for r in rows)
+            issues = len({r["issue_id"] for r in rows})
+            avg_min = (fact * 60 / wl) if wl else 0.0
+            pct_plan = (fact / plan_hours * 100) if plan_hours and plan_hours > 0 else None
+            pct_total = (fact / parent_total * 100) if parent_total and parent_total > 0 else 0.0
+            return NodeTotals(
+                fact_hours=round(fact, 1),
+                plan_hours=round(plan_hours, 1) if plan_hours is not None else None,
+                pct_plan=round(pct_plan, 1) if pct_plan is not None else None,
+                pct_total=round(pct_total, 1),
+                worklog_count=wl,
+                issue_count=issues,
+                employee_count=emp_count,
+                avg_worklog_minutes=round(avg_min, 1),
+            )
+
+        grand_total_fact = sum(v["fact_hours"] for v in bucket.values())
+
+        teams_out: list[AnalyticsTeamNode] = []
+        for team_key, roles_dict in tree.items():
+            team_rows: list[dict] = []
+            roles_out: list[AnalyticsRoleNode] = []
+            team_emp_ids: set[str] = set()
+            for role_key, emps_dict in roles_dict.items():
+                role_rows: list[dict] = []
+                emps_out: list[AnalyticsEmployeeNode] = []
+                for emp_id, wts_dict in emps_dict.items():
+                    emp = next((e for e in employees if e.id == emp_id), None)
+                    if emp is None:
+                        continue
+                    emp_rows: list[dict] = []
+                    wts_out: list[AnalyticsWorkTypeNode] = []
+                    for wt_id, cats_dict in wts_dict.items():
+                        wt_rows: list[dict] = []
+                        cats_out: list[AnalyticsCategoryNode] = []
+                        wt_obj = wt_by_id.get(wt_id)
+                        wt_label = wt_obj.label if wt_obj else ORPHAN_WT_LABEL
+                        for cat_code, issues_list in cats_dict.items():
+                            cat_label, cat_color, _ = cat_meta.get(
+                                cat_code or "", (ORPHAN_CAT_LABEL, "#7e94b8", None)
+                            )
+                            issues_out: list[AnalyticsIssueNode] = []
+                            for v in issues_list:
+                                issues_out.append(AnalyticsIssueNode(
+                                    id=v["issue_id"], key=v["key"], summary=v["summary"],
+                                    status=v["status"], status_category=v["status_category"],
+                                    issue_type=v["issue_type"], category=v["category"],
+                                    last_worklog_at=v["last_at"],
+                                    assignee_name=v.get("assignee_name"),
+                                    totals=calc_totals([v], parent_total=grand_total_fact),
+                                ))
+                            cats_out.append(AnalyticsCategoryNode(
+                                category_code=cat_code,
+                                label=cat_label, color=cat_color,
+                                totals=calc_totals(issues_list, parent_total=grand_total_fact),
+                                issues=sorted(issues_out, key=lambda x: -x.totals.fact_hours),
+                            ))
+                            wt_rows.extend(issues_list)
+                        wts_out.append(AnalyticsWorkTypeNode(
+                            work_type_id=wt_id, label=wt_label,
+                            totals=calc_totals(wt_rows, parent_total=grand_total_fact),
+                            categories=sorted(cats_out, key=lambda x: -x.totals.fact_hours),
+                        ))
+                        emp_rows.extend(wt_rows)
+                    emps_out.append(AnalyticsEmployeeNode(
+                        employee_id=emp.id,
+                        name=emp.display_name or "",
+                        initials=_initials(emp.display_name or ""),
+                        totals=calc_totals(emp_rows, emp_count=1, parent_total=grand_total_fact),
+                        work_types=sorted(wts_out, key=lambda x: -x.totals.fact_hours),
+                    ))
+                    role_rows.extend(emp_rows)
+                    team_emp_ids.add(emp.id)
+                role_obj = role_by_code.get(role_key)
+                role_label = role_obj.label if role_obj else (role_key or "Без роли")
+                role_color_main = role_obj.color if role_obj else "#7e94b8"
+                roles_out.append(AnalyticsRoleNode(
+                    role_code=role_key,
+                    role_label=role_label, role_color=role_color_main,
+                    totals=calc_totals(role_rows, emp_count=len(emps_out),
+                                       parent_total=grand_total_fact),
+                    employees=sorted(emps_out, key=lambda x: -x.totals.fact_hours),
+                ))
+                team_rows.extend(role_rows)
+            teams_out.append(AnalyticsTeamNode(
+                team=team_key if team_key != "__no_team__" else None,
+                totals=calc_totals(team_rows, emp_count=len(team_emp_ids),
+                                   parent_total=grand_total_fact),
+                roles=sorted(roles_out, key=lambda x: -x.totals.fact_hours),
+            ))
+
+        teams_out.sort(key=lambda t: -t.totals.fact_hours)
+        all_emp_ids: set[str] = set()
+        for t in tree.values():
+            for r in t.values():
+                for eid in r.keys():
+                    all_emp_ids.add(eid)
+        return AnalyticsReportResponse(
+            teams=teams_out,
+            grand_totals=NodeTotals(
+                fact_hours=round(grand_total_fact, 1),
+                plan_hours=None, pct_plan=None,
+                pct_total=100.0 if grand_total_fact > 0 else 0.0,
+                worklog_count=sum(v["wl_count"] for v in bucket.values()),
+                issue_count=len({v["issue_id"] for v in bucket.values()}),
+                employee_count=len(all_emp_ids),
+                avg_worklog_minutes=round(
+                    (grand_total_fact * 60 / sum(v["wl_count"] for v in bucket.values()))
+                    if any(v["wl_count"] for v in bucket.values()) else 0.0,
+                    1,
+                ),
+            ),
+        )
