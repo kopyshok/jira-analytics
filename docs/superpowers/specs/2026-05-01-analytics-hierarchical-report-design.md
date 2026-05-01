@@ -97,7 +97,7 @@ AnalyticsIssueNode {
   key: string,
   summary: string,
   status: string,
-  status_category: string,        // 'done' | 'indeterminate' | 'new' | 'cancel'
+  status_category: string | null, // 'done' | 'indeterminate' | 'new' | 'cancel' (null для несинхронизированных задач)
   issue_type: string,
   category: string | null,        // унаследованная
   last_worklog_at: datetime | null,
