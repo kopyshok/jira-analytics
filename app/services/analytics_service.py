@@ -1669,7 +1669,86 @@ class AnalyticsService:
             tree.setdefault(team_k, {}).setdefault(role_k, {}).setdefault(emp_id, {}).setdefault(
                 wt_id, {}).setdefault(cat_code, []).append(v)
 
-        # 7. plan_hours=None везде (Task 3 добавит расчёт)
+        # 7. Plan-часы per emp×work_type (логика из get_dashboard_norm_work §5-7)
+        from app.services.capacity_service import CapacityService
+        from app.models.role_capacity_rule import RoleCapacityRule
+        from app.models.employee_capacity_override import EmployeeCapacityOverride
+        from app.models.scenario_rule import ScenarioRule
+
+        rules_by_role: dict["str | None", dict[str, float]] = {}
+        approved_q = (
+            self.db.query(PlanningScenario.id)
+            .filter(
+                PlanningScenario.year == year,
+                PlanningScenario.quarter == f"Q{quarter}",
+                PlanningScenario.status == "approved",
+            )
+        )
+        if teams:
+            approved_q = approved_q.filter(PlanningScenario.team.in_(teams))
+        approved_ids = [r[0] for r in approved_q.all()]
+        if approved_ids:
+            for sr in self.db.query(ScenarioRule).filter(
+                ScenarioRule.scenario_id.in_(approved_ids)
+            ).all():
+                rules_by_role.setdefault(sr.role, {})[sr.work_type_id] = sr.percent_of_norm
+        if not rules_by_role:
+            for rule in self.db.query(RoleCapacityRule).filter(
+                RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter,
+            ).all():
+                rules_by_role.setdefault(rule.role, {})[rule.work_type_id] = rule.percent_of_norm
+
+        overrides_by_emp: dict[str, dict[str, float]] = {}
+        for ov in self.db.query(EmployeeCapacityOverride).filter(
+            EmployeeCapacityOverride.year == year,
+            EmployeeCapacityOverride.quarter == quarter,
+        ).all():
+            overrides_by_emp.setdefault(ov.employee_id, {})[ov.work_type_id] = ov.percent_of_norm
+
+        def pct_for(emp_role: "str | None", emp_id_inner: str, wt_id_inner: str) -> float:
+            ov = overrides_by_emp.get(emp_id_inner, {})
+            if wt_id_inner in ov:
+                return ov[wt_id_inner]
+            r = rules_by_role.get(emp_role, {})
+            if wt_id_inner in r:
+                return r[wt_id_inner]
+            return rules_by_role.get(None, {}).get(wt_id_inner, 0.0)
+
+        cap_svc = CapacityService(self.db)
+        base_hours_by_emp: dict[str, float] = {}
+        try:
+            team_caps = cap_svc.team_quarter_capacity(
+                year=year, quarter=quarter,
+                employee_ids=[e.id for e in employees],
+            )
+        except ValueError:
+            team_caps = []
+        for qcap in team_caps:
+            if month is not None:
+                mcap = next((m for m in qcap.months if m.month == month), None)
+                base_hours_by_emp[qcap.employee_id] = mcap.available_hours if mcap else 0.0
+            else:
+                base_hours_by_emp[qcap.employee_id] = qcap.total_available_hours
+        for emp in employees:
+            base_hours_by_emp.setdefault(emp.id, 0.0)
+
+        project_wt = next((wt for wt in work_types if wt.code == "project"), None)
+        plan_per_emp_wt: dict[str, dict[str, float]] = {}
+        for emp in employees:
+            base = base_hours_by_emp.get(emp.id, 0.0)
+            per_wt: dict[str, float] = {}
+            mandatory_total = 0.0
+            for wt in work_types:
+                if project_wt is not None and wt.id == project_wt.id:
+                    continue
+                p = pct_for(emp.role, emp.id, wt.id)
+                if p > 0:
+                    h = base * p / 100.0
+                    per_wt[wt.id] = h
+                    mandatory_total += h
+            if project_wt is not None:
+                per_wt[project_wt.id] = max(0.0, base - mandatory_total)
+            plan_per_emp_wt[emp.id] = per_wt
 
         def calc_totals(rows: list[dict], plan_hours: "float | None" = None,
                         emp_count: int = 0, parent_total: "float | None" = None) -> NodeTotals:
@@ -1732,35 +1811,55 @@ class AnalyticsService:
                                 issues=sorted(issues_out, key=lambda x: -x.totals.fact_hours),
                             ))
                             wt_rows.extend(issues_list)
+                        plan_for_wt = plan_per_emp_wt.get(emp.id, {}).get(wt_id)
+                        if plan_for_wt == 0.0:
+                            plan_for_wt = None
                         wts_out.append(AnalyticsWorkTypeNode(
                             work_type_id=wt_id, label=wt_label,
-                            totals=calc_totals(wt_rows, parent_total=grand_total_fact),
+                            totals=calc_totals(wt_rows, plan_hours=plan_for_wt,
+                                               parent_total=grand_total_fact),
                             categories=sorted(cats_out, key=lambda x: -x.totals.fact_hours),
                         ))
                         emp_rows.extend(wt_rows)
+                    emp_plan = sum(plan_per_emp_wt.get(emp.id, {}).values())
                     emps_out.append(AnalyticsEmployeeNode(
                         employee_id=emp.id,
                         name=emp.display_name or "",
                         initials=_initials(emp.display_name or ""),
-                        totals=calc_totals(emp_rows, emp_count=1, parent_total=grand_total_fact),
+                        totals=calc_totals(emp_rows,
+                                           plan_hours=emp_plan if emp_plan > 0 else None,
+                                           emp_count=1, parent_total=grand_total_fact),
                         work_types=sorted(wts_out, key=lambda x: -x.totals.fact_hours),
                     ))
                     role_rows.extend(emp_rows)
                     team_emp_ids.add(emp.id)
+                role_plan = sum(
+                    sum(plan_per_emp_wt.get(eid, {}).values())
+                    for eid in emps_dict.keys()
+                )
                 role_obj = role_by_code.get(role_key)
                 role_label = role_obj.label if role_obj else (role_key or "Без роли")
                 role_color_main = role_obj.color if role_obj else "#7e94b8"
                 roles_out.append(AnalyticsRoleNode(
                     role_code=role_key,
                     role_label=role_label, role_color=role_color_main,
-                    totals=calc_totals(role_rows, emp_count=len(emps_out),
+                    totals=calc_totals(role_rows,
+                                       plan_hours=role_plan if role_plan > 0 else None,
+                                       emp_count=len(emps_out),
                                        parent_total=grand_total_fact),
                     employees=sorted(emps_out, key=lambda x: -x.totals.fact_hours),
                 ))
                 team_rows.extend(role_rows)
+            team_plan = sum(
+                sum(plan_per_emp_wt.get(eid, {}).values())
+                for roles_d in roles_dict.values()
+                for eid in roles_d.keys()
+            )
             teams_out.append(AnalyticsTeamNode(
                 team=team_key if team_key != "__no_team__" else None,
-                totals=calc_totals(team_rows, emp_count=len(team_emp_ids),
+                totals=calc_totals(team_rows,
+                                   plan_hours=team_plan if team_plan > 0 else None,
+                                   emp_count=len(team_emp_ids),
                                    parent_total=grand_total_fact),
                 roles=sorted(roles_out, key=lambda x: -x.totals.fact_hours),
             ))
@@ -1771,18 +1870,24 @@ class AnalyticsService:
             for r in t.values():
                 for eid in r.keys():
                     all_emp_ids.add(eid)
+        grand_plan = sum(
+            sum(plan_per_emp_wt.get(eid, {}).values())
+            for eid in all_emp_ids
+        )
+        total_wl = sum(v["wl_count"] for v in bucket.values())
         return AnalyticsReportResponse(
             teams=teams_out,
             grand_totals=NodeTotals(
                 fact_hours=round(grand_total_fact, 1),
-                plan_hours=None, pct_plan=None,
+                plan_hours=round(grand_plan, 1) if grand_plan > 0 else None,
+                pct_plan=round(grand_total_fact / grand_plan * 100, 1) if grand_plan > 0 else None,
                 pct_total=100.0 if grand_total_fact > 0 else 0.0,
-                worklog_count=sum(v["wl_count"] for v in bucket.values()),
+                worklog_count=total_wl,
                 issue_count=len({v["issue_id"] for v in bucket.values()}),
                 employee_count=len(all_emp_ids),
                 avg_worklog_minutes=round(
-                    (grand_total_fact * 60 / sum(v["wl_count"] for v in bucket.values()))
-                    if any(v["wl_count"] for v in bucket.values()) else 0.0,
+                    (grand_total_fact * 60 / total_wl)
+                    if total_wl else 0.0,
                     1,
                 ),
             ),
