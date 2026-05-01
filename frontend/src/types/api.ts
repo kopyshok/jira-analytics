@@ -752,6 +752,7 @@ export interface DashboardProjectsResponse {
 
 export interface NormWorkTypeBreakdown {
   work_type_id: string;
+  work_type_code?: string | null;
   label: string;
   plan_hours: number;
   fact_hours: number;

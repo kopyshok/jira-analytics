@@ -1156,6 +1156,7 @@ class AnalyticsService:
                     wt_pct = (f / p * 100) if p > 0 else 0.0
                     wt_breakdowns.append(NormWorkTypeBreakdown(
                         work_type_id=wt.id,
+                        work_type_code=wt.code,
                         label=wt.label,
                         plan_hours=round(p, 1),
                         fact_hours=round(f, 1),
@@ -1174,6 +1175,7 @@ class AnalyticsService:
                     )
                     wt_breakdowns.insert(other_foreign_idx, NormWorkTypeBreakdown(
                         work_type_id=ORPHAN_WT_ID,
+                        work_type_code=ORPHAN_WT_ID,
                         label=ORPHAN_WT_LABEL,
                         plan_hours=0.0,
                         fact_hours=round(orphan_fact, 1),

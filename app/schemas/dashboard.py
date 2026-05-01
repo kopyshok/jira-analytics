@@ -51,6 +51,7 @@ class DashboardProjectsResponse(BaseModel):
 
 class NormWorkTypeBreakdown(BaseModel):
     work_type_id: str
+    work_type_code: str | None = None
     label: str
     plan_hours: float
     fact_hours: float

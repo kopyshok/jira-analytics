@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router';
 import type {
   DashboardNormWorkResponse,
   NormWorkRoleGroup,
@@ -44,7 +45,7 @@ function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: s
   );
 }
 
-function WorkTypeRow({ wt, t }: { wt: NormWorkTypeBreakdown; t: Thresholds }) {
+function WorkTypeRow({ wt, t, onOpen }: { wt: NormWorkTypeBreakdown; t: Thresholds; onOpen?: () => void }) {
   // План 0 + факт > 0 = всегда перегруз (например, чужие/прочие задачи без выделенного плана)
   const overflowZeroPlan = wt.plan_hours === 0 && wt.fact_hours > 0;
   const color = overflowZeroPlan ? '#ff4d4f' : statusColor(wt.pct, t);
@@ -52,9 +53,10 @@ function WorkTypeRow({ wt, t }: { wt: NormWorkTypeBreakdown; t: Thresholds }) {
     ? Math.min(100, (wt.fact_hours / wt.plan_hours) * 100)
     : (overflowZeroPlan ? 100 : 0);
   return (
-    <div style={{
+    <div onClick={onOpen} style={{
       display: 'grid', gridTemplateColumns: '1fr auto 60px',
       gap: 8, alignItems: 'center', padding: '3px 0',
+      cursor: onOpen ? 'pointer' : 'default',
     }}>
       <span style={{
         fontSize: 12,
@@ -80,12 +82,18 @@ function WorkTypeRow({ wt, t }: { wt: NormWorkTypeBreakdown; t: Thresholds }) {
 }
 
 function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWorkRoleGroup; t: Thresholds }) {
+  const navigate = useNavigate();
   const color = statusColor(emp.pct, t);
+  const openAnalytics = (extra: Record<string, string> = {}) => {
+    const params = new URLSearchParams({ employee: emp.employee_id, ...extra });
+    navigate(`/analytics?${params.toString()}`);
+  };
   return (
     <div style={{ paddingBottom: 12, borderBottom: '1px solid rgba(28,51,88,.5)', marginBottom: 12 }}>
-      <div style={{
+      <div onClick={() => openAnalytics()} style={{
         display: 'grid', gridTemplateColumns: '28px 1fr auto',
         gap: 8, alignItems: 'center', marginBottom: 8,
+        cursor: 'pointer',
       }}>
         <div style={{
           width: 24, height: 24, borderRadius: '50%', background: role.role_color,
@@ -105,7 +113,12 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
       </div>
       <div style={{ marginTop: 8, marginLeft: 12 }}>
         {emp.work_types.map((wt) => (
-          <WorkTypeRow key={wt.work_type_id} wt={wt} t={t} />
+          <WorkTypeRow
+            key={wt.work_type_id}
+            wt={wt}
+            t={t}
+            onOpen={wt.work_type_code ? () => openAnalytics({ work_type: wt.work_type_code! }) : undefined}
+          />
         ))}
       </div>
     </div>
