@@ -1,14 +1,16 @@
-"""Hierarchical analytics report — service-level tests."""
+"""Hierarchical analytics report — service-level and endpoint tests."""
 from datetime import datetime
 import json
 import uuid
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base
+from app.database import Base, get_db
+from app.main import app
 from app.models import (
     Category, Employee, EmployeeTeam, Issue, MandatoryWorkType,
     Project, Role, Worklog,
@@ -31,6 +33,17 @@ def db_session():
     finally:
         s.close()
         engine.dispose()
+
+
+@pytest.fixture
+def client(db_session):
+    def _get_db():
+        yield db_session
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
 
 
 def _seed_minimal(db):
@@ -198,3 +211,37 @@ def test_report_plan_hours_at_employee_level(db_session):
     sup_wt = next(w for w in emp_node.work_types if w.label == "Сопровождение и консультация")
     assert sup_wt.totals.plan_hours is not None
     assert sup_wt.totals.plan_hours == pytest.approx(260.0, rel=0.05)
+
+
+def test_report_endpoint_returns_200(db_session, client):
+    _seed_minimal(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_emp(db_session, "Тест", "Команда A")
+    issue = _seed_issue(db_session, project, "T-1", "Команда A", "support_consultation")
+    _seed_worklog(db_session, issue, emp, 4.0)
+
+    resp = client.get(
+        "/api/v1/analytics/report",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["grand_totals"]["fact_hours"] == 4.0
+
+
+def test_report_endpoint_filters(db_session, client):
+    _seed_minimal(db_session)
+    project = _seed_project(db_session)
+    emp1 = _seed_emp(db_session, "Один", "Команда A")
+    emp2 = _seed_emp(db_session, "Два", "Команда A")
+    issue = _seed_issue(db_session, project, "T-1", "Команда A", "support_consultation")
+    _seed_worklog(db_session, issue, emp1, 3.0)
+    _seed_worklog(db_session, issue, emp2, 5.0)
+
+    resp = client.get(
+        "/api/v1/analytics/report",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A",
+                "employee_id": emp1.id},
+    )
+    data = resp.json()
+    assert data["grand_totals"]["fact_hours"] == 3.0
