@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -13,6 +13,7 @@ class ProjectAssignee(BaseModel):
 class ProjectItem(BaseModel):
     issue_key: str
     title: str
+    status: str                     # имя статуса из Jira (например, "В работе")
     status_category: str            # 'done' | 'indeterminate' | 'new' | 'overdue'
     plan_hours: float
     fact_hours: float
@@ -98,6 +99,17 @@ class CategoryMetaItem(BaseModel):
     pct: float                 # от общего числа часов в периоде
 
 
+class EmployeeWorklogActivity(BaseModel):
+    employee_id: str
+    name: str
+    initials: str
+    last_worklog_at: datetime | None
+    days_since_last: int | None    # None если ни одного ворклога
+    is_absent: bool                 # сейчас в отсутствии
+    absence_label: str | None       # тип отсутствия (отпуск/больничный/...)
+
+
 class DashboardCategoriesResponse(BaseModel):
     items: list[CategoryMetaItem]
     total_hours: float
+    employees: list[EmployeeWorklogActivity]

@@ -100,6 +100,8 @@ def test_categories_widget_returns_200():
     data = resp.json()
     assert "items" in data
     assert "total_hours" in data
+    assert "employees" in data
+    assert isinstance(data["employees"], list)
     for item in data["items"]:
         assert "key" in item
         assert "hours" in item
@@ -107,3 +109,6 @@ def test_categories_widget_returns_200():
         assert "employee_count" in item
         assert "avg_worklog_minutes" in item
         assert "pct" in item
+    for emp in data["employees"]:
+        for k in ["employee_id", "name", "initials", "last_worklog_at", "days_since_last"]:
+            assert k in emp
