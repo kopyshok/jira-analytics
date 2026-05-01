@@ -6,6 +6,7 @@ import SideMenu from './SideMenu';
 import LogoMark from './LogoMark';
 import SyncIndicator from './SyncIndicator';
 import GlobalTeamFilterButton from './GlobalTeamFilterButton';
+import GlobalPeriodPicker from '../shared/GlobalPeriodPicker';
 import BugReportButton from '../BugReportButton';
 import { DARK_THEME } from '../../utils/constants';
 import { useEventStream } from '../../hooks/useEventStream';
@@ -67,6 +68,7 @@ export default function AppLayout() {
             {user && (
               <>
                 <GlobalTeamFilterButton />
+                <GlobalPeriodPicker />
                 <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
                   {user.display_name}
                 </span>
