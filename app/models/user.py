@@ -31,6 +31,12 @@ class User(Base, TimestampMixin):
     selected_teams_raw: Mapped[str] = mapped_column(
         "selected_teams", Text, nullable=False, default="[]"
     )
+    selected_period_raw: Mapped[str] = mapped_column(
+        "selected_period", Text, nullable=False, default="{}"
+    )
+    analytics_columns_raw: Mapped[str] = mapped_column(
+        "analytics_columns", Text, nullable=False, default="[]"
+    )
 
     @property
     def selected_teams(self) -> list[str]:
@@ -42,3 +48,25 @@ class User(Base, TimestampMixin):
     @selected_teams.setter
     def selected_teams(self, value: list[str]) -> None:
         self.selected_teams_raw = json.dumps(list(value or []))
+
+    @property
+    def selected_period(self) -> dict:
+        try:
+            return json.loads(self.selected_period_raw or "{}")
+        except (TypeError, ValueError):
+            return {}
+
+    @selected_period.setter
+    def selected_period(self, value: dict) -> None:
+        self.selected_period_raw = json.dumps(value or {})
+
+    @property
+    def analytics_columns(self) -> list[str]:
+        try:
+            return json.loads(self.analytics_columns_raw or "[]")
+        except (TypeError, ValueError):
+            return []
+
+    @analytics_columns.setter
+    def analytics_columns(self, value: list[str]) -> None:
+        self.analytics_columns_raw = json.dumps(list(value or []))
