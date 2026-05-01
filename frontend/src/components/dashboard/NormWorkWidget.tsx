@@ -45,20 +45,34 @@ function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: s
 }
 
 function WorkTypeRow({ wt, t }: { wt: NormWorkTypeBreakdown; t: Thresholds }) {
-  const color = statusColor(wt.pct, t);
-  const fillW = wt.plan_hours > 0 ? Math.min(100, (wt.fact_hours / wt.plan_hours) * 100) : 0;
+  // План 0 + факт > 0 = всегда перегруз (например, чужие/прочие задачи без выделенного плана)
+  const overflowZeroPlan = wt.plan_hours === 0 && wt.fact_hours > 0;
+  const color = overflowZeroPlan ? '#ff4d4f' : statusColor(wt.pct, t);
+  const fillW = wt.plan_hours > 0
+    ? Math.min(100, (wt.fact_hours / wt.plan_hours) * 100)
+    : (overflowZeroPlan ? 100 : 0);
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: '1fr auto 60px',
       gap: 8, alignItems: 'center', padding: '3px 0',
     }}>
-      <span style={{ fontSize: 12, color: '#a4b8d8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{
+        fontSize: 12,
+        color: overflowZeroPlan ? '#ff4d4f' : '#a4b8d8',
+        fontWeight: overflowZeroPlan ? 600 : 400,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
         {wt.label}
       </span>
       <div style={{ width: 50, height: 5, background: '#1c3358', borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${fillW}%`, background: color }} />
       </div>
-      <span style={{ fontSize: 11, color: '#7e94b8', textAlign: 'right' }}>
+      <span style={{
+        fontSize: 11,
+        color: overflowZeroPlan ? '#ff4d4f' : '#7e94b8',
+        fontWeight: overflowZeroPlan ? 600 : 400,
+        textAlign: 'right',
+      }}>
         {Math.round(wt.fact_hours)}/{Math.round(wt.plan_hours)}
       </span>
     </div>
