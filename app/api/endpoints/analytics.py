@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,7 @@ from app.schemas.dashboard import (
 )
 from app.schemas.analytics_report import AnalyticsReportResponse, IssueWorklogItem
 from app.services.analytics_service import AnalyticsService, NO_TEAM_TOKEN, parse_teams_csv
+from app.services.export_service import ExportService
 
 
 router = APIRouter()
@@ -97,6 +99,41 @@ def get_analytics_report(
         start_date=start_date, end_date=end_date,
         teams=teams_list, employee_id=employee_id,
         task_query=task_query, work_type_codes=wt_codes, category_codes=cat_codes,
+    )
+
+
+@router.get("/report/export.xlsx")
+def export_report_xlsx(
+    year: int,
+    quarter: int,
+    month: Optional[int] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    teams: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    task_query: Optional[str] = None,
+    work_type_codes: Optional[str] = None,
+    category_codes: Optional[str] = None,
+    columns: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """XLSX-выгрузка иерархического отчёта Аналитики с применёнными фильтрами."""
+    teams_list = [t.strip() for t in teams.split(",") if t.strip()] if teams else None
+    wt_codes = [c.strip() for c in work_type_codes.split(",") if c.strip()] if work_type_codes else None
+    cat_codes = [c.strip() for c in category_codes.split(",") if c.strip()] if category_codes else None
+    cols = [c.strip() for c in columns.split(",") if c.strip()] if columns else []
+
+    report = AnalyticsService(db).get_hierarchical_report(
+        year=year, quarter=quarter, month=month,
+        start_date=start_date, end_date=end_date,
+        teams=teams_list, employee_id=employee_id,
+        task_query=task_query, work_type_codes=wt_codes, category_codes=cat_codes,
+    )
+    blob = ExportService(db).export_analytics_report_xlsx(report, cols)
+    return Response(
+        content=blob,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=analytics_report.xlsx"},
     )
 
 

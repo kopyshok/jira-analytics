@@ -456,6 +456,91 @@ class ExportService:
         wb.save(buf)
         return buf.getvalue()
 
+    # === Analytics Report: Excel ===
+
+    def export_analytics_report_xlsx(
+        self,
+        report: "AnalyticsReportResponse",
+        visible_columns: list[str],
+    ) -> bytes:
+        """Плоская xlsx-выгрузка иерархического отчёта Аналитики (по задачам)."""
+        from io import BytesIO
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Аналитика"
+
+        base_headers = [
+            "Команда", "Роль", "Сотрудник", "Вид работ", "Категория",
+            "Ключ", "Заголовок", "Тип", "Статус", "Часы факт",
+        ]
+        col_label_map = {
+            "plan_hours": "Часы план",
+            "pct_plan": "% план",
+            "pct_total": "% от итога",
+            "worklog_count": "Ворклогов",
+            "issue_count": "Задач",
+            "employee_count": "Сотрудников",
+            "avg_worklog_minutes": "Ср.мин",
+            "last_worklog_at": "Последний ворклог",
+            "assignee_name": "Исполнитель",
+        }
+        opt_headers = []
+        opt_keys = []
+        for col in visible_columns:
+            label = col_label_map.get(col)
+            if label:
+                opt_headers.append(label)
+                opt_keys.append(col)
+
+        ws.append(base_headers + opt_headers)
+
+        for team in report.teams:
+            for role in team.roles:
+                for emp in role.employees:
+                    for wt in emp.work_types:
+                        for cat in wt.categories:
+                            for issue in cat.issues:
+                                row: list = [
+                                    team.team or "Без команды",
+                                    role.role_label,
+                                    emp.name,
+                                    wt.label,
+                                    cat.label,
+                                    issue.key,
+                                    issue.summary,
+                                    issue.issue_type,
+                                    issue.status,
+                                    issue.totals.fact_hours,
+                                ]
+                                for k in opt_keys:
+                                    if k == "plan_hours":
+                                        row.append(issue.totals.plan_hours if issue.totals.plan_hours is not None else "")
+                                    elif k == "pct_plan":
+                                        row.append(issue.totals.pct_plan if issue.totals.pct_plan is not None else "")
+                                    elif k == "pct_total":
+                                        row.append(issue.totals.pct_total)
+                                    elif k == "worklog_count":
+                                        row.append(issue.totals.worklog_count)
+                                    elif k == "issue_count":
+                                        row.append(issue.totals.issue_count)
+                                    elif k == "employee_count":
+                                        row.append(issue.totals.employee_count)
+                                    elif k == "avg_worklog_minutes":
+                                        row.append(issue.totals.avg_worklog_minutes)
+                                    elif k == "last_worklog_at":
+                                        row.append(issue.last_worklog_at.isoformat() if issue.last_worklog_at else "")
+                                    elif k == "assignee_name":
+                                        row.append(issue.assignee_name or "")
+                                    else:
+                                        row.append("")
+                                ws.append(row)
+
+        buf = BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
     # === Scenario: Excel ===
 
     def build_scenario_xlsx(self, scenario_id: str) -> bytes:

@@ -9,6 +9,7 @@ import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import AnalyticsTable from '../components/analytics/AnalyticsTable';
 import AnalyticsColumnSettings from '../components/analytics/AnalyticsColumnSettings';
 import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
+import { useAnalyticsColumns } from '../hooks/useAnalyticsColumns';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 
@@ -61,6 +62,7 @@ export default function AnalyticsPage() {
   }), [period, localRange, selectedTeam, selectedTeams, employeeId, workType, category, taskQ]);
 
   const { data, isLoading } = useAnalyticsReport(queryParams);
+  const { visible: visibleColumns } = useAnalyticsColumns();
 
   const { start: periodStart, end: periodEnd } = useMemo(() => {
     if (localRange?.[0] && localRange?.[1]) {
@@ -95,6 +97,26 @@ export default function AnalyticsPage() {
           onClick={() => setColumnSettingsOpen(true)}
         >
           Настройка столбцов
+        </Button>
+        <Button
+          onClick={() => {
+            const p = new URLSearchParams({
+              year: String(period.year),
+              quarter: String(period.quarter),
+              ...(period.month != null ? { month: String(period.month) } : {}),
+              ...(localRange?.[0] ? { start_date: localRange[0].format('YYYY-MM-DD') } : {}),
+              ...(localRange?.[1] ? { end_date: localRange[1].format('YYYY-MM-DD') } : {}),
+              ...(selectedTeam !== 'all' ? { teams: selectedTeam } : selectedTeams.length ? { teams: selectedTeams.join(',') } : {}),
+              ...(employeeId ? { employee_id: employeeId } : {}),
+              ...(taskQ ? { task_query: taskQ } : {}),
+              ...(workType ? { work_type_codes: workType } : {}),
+              ...(category ? { category_codes: category } : {}),
+              ...(visibleColumns.length ? { columns: visibleColumns.join(',') } : {}),
+            });
+            window.location.href = `${import.meta.env.VITE_API_BASE_URL}/analytics/report/export.xlsx?${p.toString()}`;
+          }}
+        >
+          Экспорт XLSX
         </Button>
       </Space>
 
