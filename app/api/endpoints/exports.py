@@ -34,62 +34,6 @@ def _attachment_headers(filename: str) -> dict[str, str]:
     return {"Content-Disposition": f'attachment; filename="{filename}"'}
 
 
-# === Analytics ===
-
-@router.get(
-    "/analytics.xlsx",
-    responses={200: {"content": {XLSX_MIME: {}}}},
-)
-async def export_analytics_xlsx(
-    start: Optional[datetime] = Query(None),
-    end: Optional[datetime] = Query(None),
-    teams: Optional[str] = Query(
-        None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"
-    ),
-    db: Session = Depends(get_db),
-) -> Response:
-    """Скачать xlsx с аналитическими отчётами за период."""
-    service = ExportService(db)
-    teams_list = parse_teams_csv(teams)
-    data = service.build_analytics_xlsx(
-        start=start,
-        end=end,
-        teams=teams_list,
-    )
-    return Response(
-        content=data,
-        media_type=XLSX_MIME,
-        headers=_attachment_headers("analytics.xlsx"),
-    )
-
-
-@router.get(
-    "/analytics.pdf",
-    responses={200: {"content": {PDF_MIME: {}}}},
-)
-async def export_analytics_pdf(
-    start: Optional[datetime] = Query(None),
-    end: Optional[datetime] = Query(None),
-    teams: Optional[str] = Query(
-        None, description=f"Команды CSV, {NO_TEAM_TOKEN} = без команды"
-    ),
-    db: Session = Depends(get_db),
-) -> Response:
-    """Скачать PDF-отчёт с аналитикой за период."""
-    service = ExportService(db)
-    teams_list = parse_teams_csv(teams)
-    data = service.build_analytics_pdf(
-        start=start,
-        end=end,
-        teams=teams_list,
-    )
-    return Response(
-        content=data,
-        media_type=PDF_MIME,
-        headers=_attachment_headers("analytics.pdf"),
-    )
-
-
 # === Capacity ===
 
 @router.get(
