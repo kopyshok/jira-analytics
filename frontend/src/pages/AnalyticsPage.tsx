@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { Space, DatePicker, Switch, Empty, Spin } from 'antd';
+import { Space, DatePicker, Switch, Empty, Spin, Button } from 'antd';
+import { SettingOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../components/shared/PageHeader';
 import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import AnalyticsTable from '../components/analytics/AnalyticsTable';
+import AnalyticsColumnSettings from '../components/analytics/AnalyticsColumnSettings';
 import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -27,6 +29,7 @@ export default function AnalyticsPage() {
 
   const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('inline');
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
 
   const queryParams = useMemo(() => ({
     year: period.year,
@@ -61,7 +64,18 @@ export default function AnalyticsPage() {
           checked={worklogMode === 'inline'}
           onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
         />
+        <Button
+          icon={<SettingOutlined />}
+          onClick={() => setColumnSettingsOpen(true)}
+        >
+          Настройка столбцов
+        </Button>
       </Space>
+
+      <AnalyticsColumnSettings
+        open={columnSettingsOpen}
+        onClose={() => setColumnSettingsOpen(false)}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
         <AnalyticsTeamList

@@ -11,6 +11,7 @@ import type {
   AnalyticsEmployeeNode,
   AnalyticsRoleNode,
 } from '../../types/api';
+import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
 
 interface TreeNode {
   key: string;
@@ -124,6 +125,9 @@ interface Props {
 }
 
 export default function AnalyticsTable({ data, selectedTeam }: Props) {
+  const { visible } = useAnalyticsColumns();
+  const visibleSet = new Set(visible);
+
   const teams =
     selectedTeam === 'all'
       ? data.teams
@@ -133,7 +137,7 @@ export default function AnalyticsTable({ data, selectedTeam }: Props) {
 
   const tableData: TreeNode[] = teams.map((t) => buildAntTreeNode(t));
 
-  const columns: ColumnsType<TreeNode> = [
+  const allColumns: ColumnsType<TreeNode> = [
     {
       title: 'Группа / Задача',
       dataIndex: 'label',
@@ -203,6 +207,12 @@ export default function AnalyticsTable({ data, selectedTeam }: Props) {
       align: 'right',
     },
   ];
+
+  // Mandatory columns always shown: label, fact_hours. Others filtered by visibility.
+  const MANDATORY_KEYS = new Set(['label', 'fact_hours']);
+  const columns = allColumns.filter(
+    (col) => MANDATORY_KEYS.has(col.key as string) || visibleSet.has(col.key as string),
+  );
 
   return (
     <Table<TreeNode>
