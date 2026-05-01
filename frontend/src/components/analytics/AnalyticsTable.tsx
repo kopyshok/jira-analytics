@@ -1,5 +1,6 @@
 import type React from 'react';
-import { Table, Tag } from 'antd';
+import { useState } from 'react';
+import { Table, Tag, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table/interface';
 import type {
   AnalyticsReportResponse,
@@ -12,12 +13,17 @@ import type {
   AnalyticsRoleNode,
 } from '../../types/api';
 import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
+import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 
 interface TreeNode {
   key: string;
   label: React.ReactNode;
   totals: NodeTotals;
   children?: TreeNode[];
+  /** Issue UUID — set only for issue rows */
+  issueId?: string;
+  /** Issue Jira key (e.g. PROJ-123) — set only for issue rows */
+  issueKey?: string;
 }
 
 function buildCategoryNode(
@@ -44,6 +50,8 @@ function buildCategoryNode(
     totals: c.totals,
     children: c.issues.map((i: AnalyticsIssueNode) => ({
       key: `${prefix}/c:${c.category_code || '_none'}/i:${i.id}`,
+      issueId: i.id,
+      issueKey: i.key,
       label: (
         <span style={{ marginLeft: 40 }}>
           <a
@@ -124,9 +132,10 @@ interface Props {
   periodEnd: string;
 }
 
-export default function AnalyticsTable({ data, selectedTeam }: Props) {
+export default function AnalyticsTable({ data, selectedTeam, worklogMode, periodStart, periodEnd }: Props) {
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
+  const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string } | null>(null);
 
   const teams =
     selectedTeam === 'all'
@@ -215,15 +224,53 @@ export default function AnalyticsTable({ data, selectedTeam }: Props) {
   );
 
   return (
-    <Table<TreeNode>
-      dataSource={tableData}
-      columns={columns}
-      rowKey="key"
-      pagination={false}
-      size="small"
-      expandable={{
-        defaultExpandAllRows: false,
-      }}
-    />
+    <>
+      <Table<TreeNode>
+        dataSource={tableData}
+        columns={columns}
+        rowKey="key"
+        pagination={false}
+        size="small"
+        expandable={
+          worklogMode === 'inline'
+            ? {
+                defaultExpandAllRows: false,
+                rowExpandable: (record) => !!record.issueId,
+                expandedRowRender: (record) =>
+                  record.issueId ? (
+                    <AnalyticsWorklogsBlock
+                      issueId={record.issueId}
+                      periodStart={periodStart}
+                      periodEnd={periodEnd}
+                    />
+                  ) : null,
+              }
+            : { defaultExpandAllRows: false }
+        }
+        onRow={(record) =>
+          worklogMode === 'drawer' && record.issueId
+            ? {
+                onClick: () => setDrawerIssue({ id: record.issueId!, key: record.issueKey! }),
+                style: { cursor: 'pointer' },
+              }
+            : {}
+        }
+      />
+      <Drawer
+        title={drawerIssue?.key}
+        open={!!drawerIssue}
+        onClose={() => setDrawerIssue(null)}
+        width={600}
+        destroyOnClose
+      >
+        {drawerIssue && (
+          <AnalyticsWorklogsBlock
+            issueId={drawerIssue.id}
+            periodStart={periodStart}
+            periodEnd={periodEnd}
+          />
+        )}
+      </Drawer>
+    </>
   );
 }

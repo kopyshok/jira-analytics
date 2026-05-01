@@ -12,6 +12,22 @@ import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 
+/** Returns ISO date bounds for a quarter (and optionally a specific month). */
+function periodBounds(year: number, quarter: number, month?: number): { start: string; end: string } {
+  if (month != null) {
+    const mm = String(month).padStart(2, '0');
+    const lastDay = new Date(year, month, 0).getDate();
+    return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${lastDay}` };
+  }
+  const qStartMonth = (quarter - 1) * 3 + 1;
+  const qEndMonth = qStartMonth + 2;
+  const lastDay = new Date(year, qEndMonth, 0).getDate();
+  return {
+    start: `${year}-${String(qStartMonth).padStart(2, '0')}-01`,
+    end: `${year}-${String(qEndMonth).padStart(2, '0')}-${lastDay}`,
+  };
+}
+
 export default function AnalyticsPage() {
   const [params, setParams] = useSearchParams();
   const { period } = useGlobalPeriod();
@@ -45,6 +61,16 @@ export default function AnalyticsPage() {
   }), [period, localRange, selectedTeam, selectedTeams, employeeId, workType, category, taskQ]);
 
   const { data, isLoading } = useAnalyticsReport(queryParams);
+
+  const { start: periodStart, end: periodEnd } = useMemo(() => {
+    if (localRange?.[0] && localRange?.[1]) {
+      return {
+        start: localRange[0].format('YYYY-MM-DD'),
+        end: localRange[1].format('YYYY-MM-DD'),
+      };
+    }
+    return periodBounds(period.year, period.quarter, period.month);
+  }, [localRange, period]);
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -107,8 +133,8 @@ export default function AnalyticsPage() {
               data={data}
               selectedTeam={selectedTeam}
               worklogMode={worklogMode}
-              periodStart={localRange?.[0]?.format('YYYY-MM-DD') || ''}
-              periodEnd={localRange?.[1]?.format('YYYY-MM-DD') || ''}
+              periodStart={periodStart}
+              periodEnd={periodEnd}
             />
           )}
         </div>
