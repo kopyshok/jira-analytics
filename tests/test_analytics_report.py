@@ -229,6 +229,25 @@ def test_report_endpoint_returns_200(db_session, client):
     assert data["grand_totals"]["fact_hours"] == 4.0
 
 
+def test_issue_worklogs_endpoint(db_session, client):
+    _seed_minimal(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_emp(db_session, "Тест", "Команда A")
+    issue = _seed_issue(db_session, project, "T-1", "Команда A", "support_consultation")
+    _seed_worklog(db_session, issue, emp, 2.0, day=10)
+    _seed_worklog(db_session, issue, emp, 3.0, day=15)
+
+    resp = client.get(
+        f"/api/v1/analytics/report/issue/{issue.id}/worklogs",
+        params={"start": "2026-04-01", "end": "2026-04-30"},
+    )
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 2
+    assert sum(i["hours"] for i in items) == 5.0
+    assert all(i["employee_name"] == "Тест" for i in items)
+
+
 def test_report_endpoint_filters(db_session, client):
     _seed_minimal(db_session)
     project = _seed_project(db_session)

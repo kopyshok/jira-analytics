@@ -18,7 +18,7 @@ from app.schemas.dashboard import (
     DashboardNormWorkResponse,
     DashboardCategoriesResponse,
 )
-from app.schemas.analytics_report import AnalyticsReportResponse
+from app.schemas.analytics_report import AnalyticsReportResponse, IssueWorklogItem
 from app.services.analytics_service import AnalyticsService, NO_TEAM_TOKEN, parse_teams_csv
 
 
@@ -98,6 +98,17 @@ def get_analytics_report(
         teams=teams_list, employee_id=employee_id,
         task_query=task_query, work_type_codes=wt_codes, category_codes=cat_codes,
     )
+
+
+@router.get("/report/issue/{issue_id}/worklogs", response_model=list[IssueWorklogItem])
+def get_issue_worklogs_endpoint(
+    issue_id: str,
+    start: date,
+    end: date,
+    db: Session = Depends(get_db),
+):
+    """Плоский список ворклогов по задаче за период."""
+    return AnalyticsService(db).get_issue_worklogs(issue_id, start, end)
 
 
 # === Response schemas ===
