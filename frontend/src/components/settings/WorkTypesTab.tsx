@@ -79,7 +79,9 @@ export default function WorkTypesTab() {
     }
     try {
       if (editing) {
-        await update.mutateAsync({ id: editing.id, body: values });
+        const { code: _code, ...rest } = values;
+        const body = editing.is_system ? rest : values;
+        await update.mutateAsync({ id: editing.id, body });
       } else {
         await create.mutateAsync(values);
       }
@@ -188,6 +190,7 @@ export default function WorkTypesTab() {
 
       <Modal
         open={open}
+        forceRender
         title={editing ? `Изменить «${editing.label}»` : 'Новый вид работ'}
         onOk={onSubmit}
         onCancel={close}
