@@ -57,6 +57,29 @@ def _empty_totals() -> "NodeTotals":
     )
 
 
+def _classify_foreign(
+    emp_team: str | None,
+    issue_team: str | None,
+    parts_json: str | None,
+) -> bool:
+    """True если ворклог на чужую задачу (issue не принадлежит команде сотрудника)."""
+    if not emp_team:
+        return False  # Сотрудник без primary-команды — fallback на старое поведение
+    parts: list[str] = []
+    if parts_json:
+        try:
+            decoded = json.loads(parts_json)
+            if isinstance(decoded, list):
+                parts = [p for p in decoded if isinstance(p, str)]
+        except ValueError:
+            pass
+    if not issue_team:
+        return True
+    if issue_team == emp_team or emp_team in parts:
+        return False
+    return True
+
+
 def parse_teams_csv(teams: Optional[str]) -> list[str]:
     """Распарсить CSV-строку команд из query-параметра в список.
 
@@ -979,25 +1002,7 @@ class AnalyticsService:
             h = (secs or 0) / 3600.0
             emp_team = emp_team_by_id.get(emp_id)
 
-            is_foreign = False
-            if not emp_team:
-                # Сотрудник без primary-команды — fallback на старое поведение
-                is_foreign = False
-            else:
-                parts: list[str] = []
-                if parts_json:
-                    try:
-                        decoded = json.loads(parts_json)
-                    except ValueError:
-                        decoded = None
-                    if isinstance(decoded, list):
-                        parts = [p for p in decoded if isinstance(p, str)]
-                if not issue_team:
-                    is_foreign = True
-                elif issue_team == emp_team or emp_team in parts:
-                    is_foreign = False
-                else:
-                    is_foreign = True
+            is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
 
             if is_foreign and other_foreign_wt is not None:
                 fact_per_emp_wt[emp_id][other_foreign_wt.id] = (
@@ -1559,7 +1564,7 @@ class AnalyticsService:
             func.max(Worklog.started_at).label("last_at"),
         ]
         if assignee_col is not None:
-            select_cols.insert(10, assignee_col)
+            select_cols.append(assignee_col.label("assignee_name"))
 
         wl_q = (
             self.db.query(*select_cols)
@@ -1585,6 +1590,8 @@ class AnalyticsService:
         wl_q = wl_q.group_by(*group_cols)
         wl_rows = wl_q.all()
 
+        emp_by_id = {e.id: e for e in employees}
+
         # 5. Бакетируем строки по (team, role, emp, wt_id, cat_code, issue)
         bucket: dict[tuple, dict] = {}
 
@@ -1599,27 +1606,13 @@ class AnalyticsService:
             last_at = row.last_at
             h = secs / 3600.0
 
-            emp = next((e for e in employees if e.id == emp_id), None)
+            emp = emp_by_id.get(emp_id)
             if emp is None:
                 continue
             emp_team = emp_team_by_id.get(emp_id)
 
             # Cross-team routing
-            is_foreign = False
-            if emp_team:
-                parts: list[str] = []
-                if parts_json:
-                    try:
-                        decoded = json.loads(parts_json)
-                        parts = [p for p in decoded if isinstance(p, str)] if isinstance(decoded, list) else []
-                    except ValueError:
-                        pass
-                if not issue_team:
-                    is_foreign = True
-                elif issue_team == emp_team or emp_team in parts:
-                    is_foreign = False
-                else:
-                    is_foreign = True
+            is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
 
             if is_foreign and other_foreign_wt is not None:
                 wt_id = other_foreign_wt.id
@@ -1655,7 +1648,7 @@ class AnalyticsService:
 
             entry = bucket.get(key)
             if entry is None:
-                assignee_name_val = getattr(row, "assignee_display_name", None) if _has_assignee else None
+                assignee_name_val = getattr(row, "assignee_name", None)
                 entry = {
                     "issue_id": issue_id, "key": row.key, "summary": row.summary,
                     "status": row.status, "status_category": row.status_category,
@@ -1708,7 +1701,7 @@ class AnalyticsService:
                 role_rows: list[dict] = []
                 emps_out: list[AnalyticsEmployeeNode] = []
                 for emp_id, wts_dict in emps_dict.items():
-                    emp = next((e for e in employees if e.id == emp_id), None)
+                    emp = emp_by_id.get(emp_id)
                     if emp is None:
                         continue
                     emp_rows: list[dict] = []
