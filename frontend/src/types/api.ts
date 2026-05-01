@@ -813,3 +813,79 @@ export interface DashboardCategoriesResponse {
   total_hours: number;
   employees: EmployeeWorklogActivity[];
 }
+
+// ─── Analytics hierarchical report ───────────────────────────────────────────
+
+export interface NodeTotals {
+  fact_hours: number;
+  plan_hours: number | null;
+  pct_plan: number | null;
+  pct_total: number;
+  worklog_count: number;
+  issue_count: number;
+  employee_count: number;
+  avg_worklog_minutes: number;
+}
+
+export interface AnalyticsIssueNode {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  status_category: string | null;
+  issue_type: string;
+  category: string | null;
+  last_worklog_at: string | null;
+  assignee_name: string | null;
+  totals: NodeTotals;
+}
+
+export interface AnalyticsCategoryNode {
+  category_code: string | null;
+  label: string;
+  color: string;
+  totals: NodeTotals;
+  issues: AnalyticsIssueNode[];
+}
+
+export interface AnalyticsWorkTypeNode {
+  work_type_id: string;
+  label: string;
+  totals: NodeTotals;
+  categories: AnalyticsCategoryNode[];
+}
+
+export interface AnalyticsEmployeeNode {
+  employee_id: string;
+  name: string;
+  initials: string;
+  totals: NodeTotals;
+  work_types: AnalyticsWorkTypeNode[];
+}
+
+export interface AnalyticsRoleNode {
+  role_code: string | null;
+  role_label: string;
+  role_color: string;
+  totals: NodeTotals;
+  employees: AnalyticsEmployeeNode[];
+}
+
+export interface AnalyticsTeamNode {
+  team: string | null;
+  totals: NodeTotals;
+  roles: AnalyticsRoleNode[];
+}
+
+export interface AnalyticsReportResponse {
+  teams: AnalyticsTeamNode[];
+  grand_totals: NodeTotals;
+}
+
+export interface IssueWorklogItem {
+  worklog_id: string;
+  started_at: string;
+  hours: number;
+  employee_name: string;
+  comment: string | null;
+}
