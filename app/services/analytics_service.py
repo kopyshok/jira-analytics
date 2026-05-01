@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
 from app.models import MandatoryWorkType, RoleCapacityRule, Category, Role
+from app.models.absence import Absence
+from app.models.absence_reason import AbsenceReason
 from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
 from app.models.scenario_revision import ScenarioRevision
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
@@ -27,6 +29,7 @@ from app.schemas.dashboard import (
     DashboardNormWorkResponse,
     DashboardCategoriesResponse,
     CategoryMetaItem,
+    EmployeeWorklogActivity,
 )
 from app.services.categories import CATEGORY_LABELS, get_category_labels
 from app.utils.period import quarter_to_dates
@@ -684,6 +687,7 @@ class AnalyticsService:
             project_items.append(ProjectItem(
                 issue_key=issue.key,
                 title=issue.summary or "",
+                status=issue.status or "",
                 status_category=ui_status,
                 plan_hours=round(plan_h, 1),
                 fact_hours=round(fact_h, 1),
@@ -764,6 +768,9 @@ class AnalyticsService:
             .order_by(MandatoryWorkType.sort_order)
             .all()
         )
+        other_foreign_wt = next(
+            (wt for wt in work_types if wt.code == "other_foreign"), None
+        )
 
         # 2. Категории → work_type
         cat_rows = (
@@ -790,6 +797,19 @@ class AnalyticsService:
             return DashboardNormWorkResponse(
                 roles=[], total_plan=0.0, total_fact=0.0, total_pct=0.0,
             )
+
+        # Primary team каждого выбранного сотрудника — для cross-team routing.
+        emp_team_rows = (
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
+            .filter(
+                EmployeeTeam.employee_id.in_([e.id for e in employees]),
+                EmployeeTeam.is_primary.is_(True),
+            )
+            .all()
+        )
+        emp_team_by_id: dict[str, str] = {
+            row.employee_id: row.team for row in emp_team_rows
+        }
 
         # 4. Роли реестр
         roles_db: list[Role] = self.db.query(Role).filter(Role.is_active.is_(True)).order_by(Role.sort_order).all()
@@ -902,11 +922,18 @@ class AnalyticsService:
         # Используем denormalized Issue.category (учитывает наследование от родителя
         # и scope_root через CategoryResolver/MappingService), а не Issue.assigned_category —
         # иначе теряем часы на дочерних задачах без собственной ручной метки.
+        #
+        # Cross-team routing: если задача принадлежит чужой продуктовой команде
+        # (issue.team не совпадает с primary-командой сотрудника и сотрудник не
+        # числится в participating_teams), факт идёт в work_type 'other_foreign'
+        # независимо от категории задачи. Пустая team задачи = чужая.
         emp_ids_list = [e.id for e in employees]
         wl_rows = (
             self.db.query(
                 Worklog.employee_id,
                 Issue.category,
+                Issue.team,
+                Issue.participating_teams,
                 func.sum(Worklog.time_spent_seconds).label("secs"),
             )
             .join(Issue, Issue.id == Worklog.issue_id)
@@ -914,20 +941,53 @@ class AnalyticsService:
                 Worklog.employee_id.in_(emp_ids_list),
                 Worklog.started_at >= start_dt,
                 Worklog.started_at <= end_dt,
-                Issue.category.isnot(None),
             )
-            .group_by(Worklog.employee_id, Issue.category)
+            .group_by(
+                Worklog.employee_id,
+                Issue.category,
+                Issue.team,
+                Issue.participating_teams,
+            )
             .all()
         )
         fact_per_emp_wt: dict[str, dict[str, float]] = {e.id: {} for e in employees}
-        for emp_id, cat_code, secs in wl_rows:
+        for emp_id, cat_code, issue_team, parts_json, secs in wl_rows:
+            h = (secs or 0) / 3600.0
+            emp_team = emp_team_by_id.get(emp_id)
+
+            is_foreign = False
+            if not emp_team:
+                # Сотрудник без primary-команды — fallback на старое поведение
+                is_foreign = False
+            else:
+                parts: list[str] = []
+                if parts_json:
+                    try:
+                        parts = json.loads(parts_json) or []
+                    except (ValueError, TypeError):
+                        parts = []
+                if not issue_team:
+                    is_foreign = True
+                elif issue_team == emp_team or emp_team in parts:
+                    is_foreign = False
+                else:
+                    is_foreign = True
+
+            if is_foreign and other_foreign_wt is not None:
+                fact_per_emp_wt[emp_id][other_foreign_wt.id] = (
+                    fact_per_emp_wt[emp_id].get(other_foreign_wt.id, 0.0) + h
+                )
+                continue
+
+            # Стандартный routing — по категории задачи.
+            if cat_code is None:
+                continue
             wt_id = code_to_wt.get(cat_code)
             if wt_id is None:
                 continue
             # Факт по project считаем отдельно (через scenario allocations) — пропускаем здесь.
             if project_wt is not None and wt_id == project_wt.id:
                 continue
-            h = (secs or 0) / 3600.0
             fact_per_emp_wt[emp_id][wt_id] = fact_per_emp_wt[emp_id].get(wt_id, 0.0) + h
 
         # 8b. Факт по проектным работам — ворклоги в задачах утверждённых элементов
@@ -1172,7 +1232,101 @@ class AnalyticsService:
         for item in items:
             item.pct = round(item.hours / total_hours * 100, 1) if total_hours > 0 else 0.0
 
-        return DashboardCategoriesResponse(items=items, total_hours=total_hours)
+        # Сотрудники команды + дата последнего ворклога (за всё время, не только период)
+        employees_activity = self._employees_last_worklog(teams)
+
+        return DashboardCategoriesResponse(
+            items=items,
+            total_hours=total_hours,
+            employees=employees_activity,
+        )
+
+    def _employees_last_worklog(
+        self,
+        teams: Optional[list[str]] = None,
+    ) -> list[EmployeeWorklogActivity]:
+        """Активные сотрудники команды + дата последнего зарегистрированного ворклога."""
+        def _initials(name: str) -> str:
+            parts = [p for p in (name or "").split() if p]
+            if not parts:
+                return "??"
+            if len(parts) == 1:
+                return parts[0][:2].upper()
+            return (parts[0][0] + parts[1][0]).upper()
+
+        emp_q = self.db.query(Employee).filter(Employee.is_active.is_(True))
+        if teams:
+            named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
+            has_none = NO_TEAM_TOKEN in teams
+            clauses: list = []
+            if named_teams:
+                in_team_subq = (
+                    select(EmployeeTeam.employee_id)
+                    .where(EmployeeTeam.team.in_(named_teams))
+                    .scalar_subquery()
+                )
+                clauses.append(Employee.id.in_(in_team_subq))
+            if has_none:
+                clauses.append(
+                    ~exists().where(EmployeeTeam.employee_id == Employee.id)
+                )
+            if clauses:
+                emp_q = emp_q.filter(
+                    or_(*clauses) if len(clauses) > 1 else clauses[0]
+                )
+        employees: list[Employee] = emp_q.all()
+        if not employees:
+            return []
+
+        emp_ids = [e.id for e in employees]
+        last_rows = (
+            self.db.query(
+                Worklog.employee_id,
+                func.max(Worklog.started_at).label("last_at"),
+            )
+            .filter(Worklog.employee_id.in_(emp_ids))
+            .group_by(Worklog.employee_id)
+            .all()
+        )
+        last_by_emp: dict[str, datetime] = {r.employee_id: r.last_at for r in last_rows}
+
+        today = date.today()
+
+        # Текущие отсутствия сотрудников (сегодня внутри [start_date, end_date])
+        absence_rows = (
+            self.db.query(Absence.employee_id, AbsenceReason.label)
+            .join(AbsenceReason, Absence.reason_id == AbsenceReason.id)
+            .filter(
+                Absence.employee_id.in_(emp_ids),
+                Absence.start_date <= today,
+                Absence.end_date >= today,
+            )
+            .all()
+        )
+        absence_by_emp: dict[str, str] = {row.employee_id: row.label for row in absence_rows}
+
+        result: list[EmployeeWorklogActivity] = []
+        for emp in employees:
+            last_at = last_by_emp.get(emp.id)
+            days = (today - last_at.date()).days if last_at else None
+            absence_label = absence_by_emp.get(emp.id)
+            result.append(EmployeeWorklogActivity(
+                employee_id=emp.id,
+                name=emp.display_name or "",
+                initials=_initials(emp.display_name or ""),
+                last_worklog_at=last_at,
+                days_since_last=days,
+                is_absent=absence_label is not None,
+                absence_label=absence_label,
+            ))
+
+        # Сортировка: stale-first; отсутствующие — в конец (отдельная группа после всех)
+        result.sort(key=lambda r: (
+            r.is_absent,
+            r.days_since_last is None,
+            -(r.days_since_last or 0),
+        ))
+        return result
 
     # === Контекстные переключения ===
 
