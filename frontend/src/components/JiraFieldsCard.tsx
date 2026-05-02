@@ -61,6 +61,25 @@ const GROUPS: FieldGroup[] = [
       { key: 'jira_risk_field_id',   label: 'Risk' },
     ],
   },
+  {
+    panelKey: 'customer_rating',
+    title: 'Оценка заказчика',
+    subtitle: 'Шкала 1–5 по трём направлениям',
+    fields: [
+      { key: 'jira_rating_quality_field_id', label: 'Качество' },
+      { key: 'jira_rating_speed_field_id',   label: 'Скорость' },
+      { key: 'jira_rating_result_field_id',  label: 'Результат' },
+    ],
+  },
+  {
+    panelKey: 'planned_dates',
+    title: 'Плановые даты',
+    subtitle: 'Зарезервированы под будущий инструмент планирования',
+    fields: [
+      { key: 'jira_planned_start_date_field_id', label: 'Дата начала' },
+      { key: 'jira_planned_end_date_field_id',   label: 'Дата окончания' },
+    ],
+  },
 ];
 
 const ALL_FIELDS: FieldDef[] = GROUPS.flatMap(g => g.fields);
@@ -133,7 +152,7 @@ export default function JiraFieldsCard() {
     >
       <Form layout="vertical">
         <Collapse
-          defaultActiveKey={['core', 'planned_hours', 'prioritization']}
+          defaultActiveKey={['core', 'planned_hours', 'prioritization', 'customer_rating']}
           items={GROUPS.map(g => ({
             key: g.panelKey,
             label: g.title,
