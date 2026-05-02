@@ -1,6 +1,12 @@
 import React from 'react';
-import { Tag, Button } from 'antd';
+import { Tag, Button, Dropdown, message } from 'antd';
+import {
+  ReloadOutlined,
+  FilePdfOutlined,
+  MoreOutlined,
+} from '@ant-design/icons';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
+import { useRegenerateSummary } from '../../hooks/useProjectSummary';
 
 type ViewMode = 'analysis' | 'presentation';
 
@@ -11,44 +17,175 @@ interface Props {
   onViewChange: (v: ViewMode) => void;
 }
 
-export const ProjectHeader: React.FC<Props> = ({ detail, view, onViewChange }) => (
-  <div
-    style={{
-      padding: '16px 20px',
-      borderBottom: '1px solid rgba(255,255,255,0.06)',
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 12,
-    }}
-  >
-    <div style={{ minWidth: 0 }}>
-      <div
-        style={{
-          fontSize: 18,
-          fontWeight: 600,
-          color: '#e8f0fa',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {detail?.summary ?? '—'}
-      </div>
-      <div style={{ fontSize: 12, color: '#7e94b8', marginTop: 4 }}>
-        <span style={{ color: '#4db8e8' }}>{detail?.key}</span>
-        {detail?.status && (
-          <Tag style={{ marginLeft: 8, fontSize: 11 }}>{detail.status}</Tag>
+const STATUS_COLOR: Record<string, string> = {
+  new: '#7e94b8',
+  indeterminate: '#00c9c8',
+  done: '#67d68d',
+};
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+}
+
+export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewChange }) => {
+  const regen = useRegenerateSummary();
+
+  const handleRegen = () => {
+    if (!detail) return;
+    regen.mutate(detail.key, {
+      onSuccess: () => {
+        message.success('AI-резюме обновлено');
+      },
+      onError: () => {
+        message.error('Ошибка обновления AI-резюме');
+      },
+    });
+  };
+
+  const handlePdf = () => {
+    onViewChange('presentation');
+    setTimeout(() => window.print(), 300);
+  };
+
+  const statusCategory = detail?.status_category ?? 'new';
+  const statusColor = STATUS_COLOR[statusCategory] ?? '#7e94b8';
+
+  const moreItems = [
+    { key: 'copy-link', label: 'Копировать ссылку' },
+  ];
+
+  return (
+    <div
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 5,
+        background: '#0d1c33',
+        padding: '12px 20px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: 12,
+      }}
+    >
+      {/* Left: title + meta */}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            color: '#fff',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            lineHeight: 1.3,
+          }}
+        >
+          {detail?.summary ?? '—'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+          {detail?.key && (
+            <a
+              href={`https://itgri.atlassian.net/browse/${detail.key}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#00c9c8', fontSize: 12, textDecoration: 'none' }}
+            >
+              {detail.key}
+            </a>
+          )}
+          {detail?.key && <span style={{ color: '#7e94b8', fontSize: 12 }}>·</span>}
+          {(detail?.period_start || detail?.period_end) && (
+            <span style={{ color: '#7e94b8', fontSize: 12 }}>
+              {formatDate(detail?.period_start ?? null)} — {formatDate(detail?.period_end ?? null)}
+            </span>
+          )}
+          {detail?.status && (
+            <>
+              <span style={{ color: '#7e94b8', fontSize: 12 }}>·</span>
+              <Tag
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${statusColor}`,
+                  color: statusColor,
+                  fontSize: 11,
+                  margin: 0,
+                  lineHeight: '18px',
+                }}
+              >
+                {detail.status}
+              </Tag>
+            </>
+          )}
+        </div>
+        {summary?.generated_at && (
+          <div style={{ fontSize: 11, color: '#7e94b8', marginTop: 3 }}>
+            AI-резюме обновлено {formatDateTime(summary.generated_at)}
+          </div>
         )}
       </div>
+
+      {/* Right: controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <Button.Group>
+          <Button
+            size="small"
+            type={view === 'analysis' ? 'primary' : 'default'}
+            onClick={() => onViewChange('analysis')}
+            style={view === 'analysis' ? { background: '#00c9c8', borderColor: '#00c9c8', color: '#0d1c33' } : { color: '#7e94b8' }}
+          >
+            Анализ
+          </Button>
+          <Button
+            size="small"
+            type={view === 'presentation' ? 'primary' : 'default'}
+            onClick={() => onViewChange('presentation')}
+            style={view === 'presentation' ? { background: '#00c9c8', borderColor: '#00c9c8', color: '#0d1c33' } : { color: '#7e94b8' }}
+          >
+            Презентация
+          </Button>
+        </Button.Group>
+
+        <Button
+          size="small"
+          icon={<ReloadOutlined />}
+          loading={regen.isPending}
+          onClick={handleRegen}
+          disabled={!detail}
+          style={{ color: '#7e94b8' }}
+        >
+          Обновить AI
+        </Button>
+
+        <Button
+          size="small"
+          icon={<FilePdfOutlined />}
+          onClick={handlePdf}
+          style={{ color: '#7e94b8' }}
+        >
+          PDF
+        </Button>
+
+        <Dropdown menu={{ items: moreItems }} trigger={['click']}>
+          <Button size="small" icon={<MoreOutlined />} style={{ color: '#7e94b8' }} />
+        </Dropdown>
+      </div>
     </div>
-    <Button
-      size="small"
-      type={view === 'analysis' ? 'primary' : 'default'}
-      onClick={() => onViewChange(view === 'analysis' ? 'presentation' : 'analysis')}
-      style={{ flexShrink: 0 }}
-    >
-      {view === 'analysis' ? 'Презентация' : 'Анализ'}
-    </Button>
-  </div>
-);
+  );
+};
