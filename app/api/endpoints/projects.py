@@ -115,15 +115,23 @@ def list_quarterly_projects(
     category: Optional[str] = Query(None, description="quarterly_tasks | archive_target"),
     status_category: Optional[str] = Query(None, description="new | indeterminate | done"),
     search: Optional[str] = Query(None, description="search by key/summary"),
+    year: Optional[int] = Query(None, description="filter by approved scenario year"),
+    quarter: Optional[int] = Query(None, description="filter by approved scenario quarter (1-4)"),
     db: Session = Depends(get_db),
 ):
-    """Список проектов (parent issues с категорией quarterly_tasks или archive_target)."""
+    """Список проектов.
+
+    Без year+quarter — все эпики с категорией quarterly_tasks/archive_target.
+    С year+quarter — только эпики из approved scenario для данного квартала.
+    """
     team_filter = [t.strip() for t in teams.split(",") if t.strip()] if teams else None
     items = ProjectsService(db).list_projects(
         team_filter=team_filter,
         category=category,
         status_category=status_category,
         search=search,
+        year=year,
+        quarter=quarter,
     )
     total_hours_map = {item.key: item.total_hours for item in items}
 

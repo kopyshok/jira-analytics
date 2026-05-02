@@ -1,5 +1,6 @@
 """ProjectsService: list_projects + get_project_detail."""
 import pytest
+import uuid
 from datetime import datetime
 
 from app.models.issue import Issue
@@ -7,6 +8,9 @@ from app.models.project import Project
 from app.models.worklog import Worklog
 from app.models.employee import Employee
 from app.models.category import Category
+from app.models.backlog_item import BacklogItem
+from app.models.planning_scenario import PlanningScenario
+from app.models.scenario_allocation import ScenarioAllocation
 from app.services.projects_service import ProjectsService
 
 
@@ -138,6 +142,53 @@ def test_get_project_detail_returns_none_for_non_quarterly(db_session):
     db.commit()
     assert ProjectsService(db).get_project_detail("PRJ4-300") is None
     assert ProjectsService(db).get_project_detail("PRJ4-NOTEXIST") is None
+
+
+def test_list_projects_filters_by_approved_scenario(db_session):
+    """Только эпики, утверждённые в approved scenario для (year, quarter)."""
+    db = db_session
+    _make_project(db, "p_sc1", "SCN1")
+    # Два эпика с категорией quarterly_tasks
+    epic_in = Issue(id="sc_in", jira_issue_id="sc1", key="SCN1-1", summary="InScenario",
+                    issue_type="Epic", status="Done", project_id="p_sc1",
+                    category="quarterly_tasks", include_in_analysis=True)
+    epic_out = Issue(id="sc_out", jira_issue_id="sc2", key="SCN1-2", summary="NotInScenario",
+                     issue_type="Epic", status="Done", project_id="p_sc1",
+                     category="quarterly_tasks", include_in_analysis=True)
+    db.add_all([epic_in, epic_out])
+    db.commit()
+
+    # BacklogItem ссылается на epic_in
+    item = BacklogItem(id=str(uuid.uuid4()), issue_id="sc_in", title="In")
+    db.add(item)
+    db.commit()
+
+    # Approved scenario для 2026 Q2
+    scenario = PlanningScenario(id=str(uuid.uuid4()), name="S1",
+                                 year=2026, quarter="Q2", status="approved", team="T")
+    db.add(scenario)
+    db.commit()
+
+    alloc = ScenarioAllocation(id=str(uuid.uuid4()), scenario_id=scenario.id,
+                                backlog_item_id=item.id, included_flag=True)
+    db.add(alloc)
+    db.commit()
+
+    # Без year/quarter — оба
+    all_items = ProjectsService(db).list_projects()
+    all_keys = {i.key for i in all_items}
+    assert "SCN1-1" in all_keys
+    assert "SCN1-2" in all_keys
+
+    # С year=2026, quarter=2 — только SCN1-1
+    filtered = ProjectsService(db).list_projects(year=2026, quarter=2)
+    filtered_keys = {i.key for i in filtered}
+    assert "SCN1-1" in filtered_keys
+    assert "SCN1-2" not in filtered_keys
+
+    # Другой квартал — пусто
+    other_q = ProjectsService(db).list_projects(year=2026, quarter=3)
+    assert other_q == []
 
 
 def test_list_projects_filters_by_team(db_session):

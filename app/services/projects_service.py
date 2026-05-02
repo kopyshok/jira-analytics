@@ -17,6 +17,9 @@ from app.models.issue import Issue
 from app.models.worklog import Worklog
 from app.models.employee import Employee
 from app.models.category import Category
+from app.models.planning_scenario import PlanningScenario
+from app.models.scenario_allocation import ScenarioAllocation
+from app.models.backlog_item import BacklogItem
 
 # Категории, у которых верхний issue считается «проектом».
 PROJECT_CATEGORY_CODES = ("quarterly_tasks", "archive_target")
@@ -125,22 +128,58 @@ class ProjectsService:
         status_category: Optional[str] = None,
         category: Optional[str] = None,
         search: Optional[str] = None,
+        year: Optional[int] = None,
+        quarter: Optional[int] = None,
     ) -> list[ProjectListItem]:
         """Список проектов с метриками.
 
-        Проект = issue с категорией quarterly_tasks или archive_target и
-        без parent_id (корень иерархии).
+        Без year+quarter: проект = issue с категорией quarterly_tasks /
+        archive_target и без parent_id.
+
+        С year+quarter: только эпики, утверждённые в approved scenario
+        для данного квартала.
         """
         db = self._db
 
-        # Загружаем все «проектные» issues (корни иерархии).
-        stmt = (
-            select(Issue)
-            .where(
-                Issue.category.in_(PROJECT_CATEGORY_CODES),
-                Issue.parent_id.is_(None),
+        if year is not None and quarter is not None:
+            # Фильтр по членству в approved scenario.
+            quarter_str = f"Q{quarter}"
+            approved_issue_ids = (
+                db.execute(
+                    select(BacklogItem.issue_id)
+                    .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+                    .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+                    .where(
+                        PlanningScenario.status == "approved",
+                        PlanningScenario.year == year,
+                        PlanningScenario.quarter == quarter_str,
+                        ScenarioAllocation.included_flag.is_(True),
+                        BacklogItem.issue_id.is_not(None),
+                    )
+                )
+                .scalars()
+                .all()
             )
-        )
+            approved_set = {iid for iid in approved_issue_ids if iid}
+            if not approved_set:
+                return []
+
+            stmt = (
+                select(Issue)
+                .where(
+                    Issue.id.in_(approved_set),
+                    Issue.parent_id.is_(None),
+                )
+            )
+        else:
+            # Загружаем все «проектные» issues (корни иерархии).
+            stmt = (
+                select(Issue)
+                .where(
+                    Issue.category.in_(PROJECT_CATEGORY_CODES),
+                    Issue.parent_id.is_(None),
+                )
+            )
         if status_category:
             stmt = stmt.where(Issue.status_category == status_category)
         if category:
