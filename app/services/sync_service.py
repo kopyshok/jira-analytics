@@ -111,7 +111,21 @@ _PLANNED_STRING_SETTING_KEYS = [
     "jira_impact_field_id",
     "jira_risk_field_id",
 ]
-_ALL_PLANNED_KEYS = _PLANNED_NUMERIC_SETTING_KEYS + _PLANNED_STRING_SETTING_KEYS
+_RATING_SETTING_KEYS = [
+    "jira_rating_quality_field_id",
+    "jira_rating_speed_field_id",
+    "jira_rating_result_field_id",
+]
+_PLANNED_DATE_SETTING_KEYS = [
+    "jira_planned_start_date_field_id",
+    "jira_planned_end_date_field_id",
+]
+_ALL_PLANNED_KEYS = (
+    _PLANNED_NUMERIC_SETTING_KEYS
+    + _PLANNED_STRING_SETTING_KEYS
+    + _RATING_SETTING_KEYS
+    + _PLANNED_DATE_SETTING_KEYS
+)
 
 
 def _to_float(raw: Any) -> Optional[float]:
@@ -125,6 +139,19 @@ def _to_float(raw: Any) -> Optional[float]:
         return float(raw)
     try:
         return float(str(raw).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int_rating(raw: Any) -> Optional[int]:
+    """Coerce Jira rating field (str/number/{value}) → int 1-5 или None."""
+    if raw is None:
+        return None
+    try:
+        if isinstance(raw, dict):
+            raw = raw.get("value")
+        val = int(float(str(raw)))
+        return val if 1 <= val <= 5 else None
     except (TypeError, ValueError):
         return None
 
@@ -535,6 +562,27 @@ class SyncService:
         data["duration_launch_days"] = _fld_float("jira_duration_launch_field_id")
         data["impact"] = _fld_level("jira_impact_field_id")
         data["risk"] = _fld_level("jira_risk_field_id")
+
+        # Customer ratings (1-5)
+        for field_key, attr in (
+            ("jira_rating_quality_field_id", "rating_quality"),
+            ("jira_rating_speed_field_id", "rating_speed"),
+            ("jira_rating_result_field_id", "rating_result"),
+        ):
+            fid = planned_ids.get(field_key)
+            if not fid:
+                continue
+            data[attr] = _to_int_rating(extra.get(fid))
+
+        # Plan dates
+        for field_key, attr in (
+            ("jira_planned_start_date_field_id", "planned_start_date"),
+            ("jira_planned_end_date_field_id", "planned_end_date"),
+        ):
+            fid = planned_ids.get(field_key)
+            if not fid:
+                continue
+            data[attr] = _parse_jira_date(extra.get(fid))
 
         return self.issue_repo.upsert_by_field(
             "jira_issue_id",
