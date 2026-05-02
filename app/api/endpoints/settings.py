@@ -60,8 +60,19 @@ def _set_setting(db: Session, key: str, value: Optional[str]) -> None:
         db.add(AppSetting(key=key, value=value))
 
 
+LLM_KEYS = (
+    "llm_provider",
+    "llm_gemini_api_key",
+    "llm_deepseek_api_key",
+    "llm_anthropic_api_key",
+    "llm_openai_api_key",
+)
+
+
 def _is_allowed_generic_key(key: str) -> bool:
     """Limit generic settings to non-secret UI/runtime keys."""
+    if key in LLM_KEYS:
+        return True
     return (
         key.startswith("ui_")
         or key == "worklog_reload_since_date"

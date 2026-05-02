@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.endpoints import admin_users as admin_users_endpoints
 from app.api.endpoints import auth as auth_endpoints
+from app.api.endpoints import llm as llm_endpoints
 from app.api.endpoints import users as users_endpoints
 from app.api.endpoints import (
     absence_reasons,
@@ -108,3 +109,4 @@ api_router.include_router(events_endpoints.router, prefix="/events", tags=["even
 api_router.include_router(auth_endpoints.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users_endpoints.router, prefix="/users", tags=["users"])
 api_router.include_router(admin_users_endpoints.router, prefix="/admin/users", tags=["admin"])
+api_router.include_router(llm_endpoints.router, prefix="/llm", tags=["llm"])
