@@ -12,6 +12,7 @@ import {
   CategoriesEditorPage,
   DashboardPage,
   PlanningPage,
+  ProjectsPage,
   SettingsPage,
   SyncHubPage,
   SyncPage,
@@ -61,6 +62,8 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <ProtectedRoute>{page(<DashboardPage />)}</ProtectedRoute> },
+          { path: 'projects', element: <ProtectedRoute>{page(<ProjectsPage />)}</ProtectedRoute> },
+          { path: 'projects/:key', element: <ProtectedRoute>{page(<ProjectsPage />)}</ProtectedRoute> },
           { path: 'analytics', element: <ProtectedRoute>{page(<AnalyticsPage />)}</ProtectedRoute> },
           { path: 'sync', element: <ProtectedRoute>{page(<SyncHubPage />)}</ProtectedRoute> },
           { path: 'sync-old', element: <ProtectedRoute>{page(<SyncPage />)}</ProtectedRoute> },

@@ -3,6 +3,7 @@ import { Menu } from 'antd';
 import {
   DashboardOutlined,
   BarChartOutlined,
+  ProjectOutlined,
   SyncOutlined,
   TeamOutlined,
   UnorderedListOutlined,
@@ -26,6 +27,7 @@ export default function SideMenu() {
       label: 'ОБЗОР',
       children: [
         { key: '/', icon: <DashboardOutlined />, label: 'Дашборд' },
+        { key: '/projects', icon: <ProjectOutlined />, label: 'Проекты' },
         { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
       ],
     },
@@ -51,11 +53,16 @@ export default function SideMenu() {
     },
   ];
 
+  // Для вложенных маршрутов нормализуем pathname к корневому сегменту
+  const selectedKey = location.pathname.startsWith('/projects')
+    ? '/projects'
+    : location.pathname;
+
   return (
     <Menu
       theme="dark"
       mode="inline"
-      selectedKeys={[location.pathname]}
+      selectedKeys={[selectedKey]}
       items={items}
       onClick={({ key }) => navigate(key)}
       style={{ border: 'none', paddingTop: 8 }}
