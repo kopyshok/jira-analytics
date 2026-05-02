@@ -280,12 +280,15 @@ class WorklogsFullStage(Stage):
         elif isinstance(since, str):
             since = date.fromisoformat(since)
 
-        result = await self.svc.reload_worklogs_since(since=since)
-        if hasattr(result, "worklogs_inserted"):
+        result = await self.svc.update_worklogs_v2(since=since)
+        if hasattr(result, "worklogs_upserted"):
             return {
-                "deleted": result.deleted,
-                "issues_scanned": result.issues_scanned,
-                "worklogs_inserted": result.worklogs_inserted,
+                "worklogs_upserted": result.worklogs_upserted,
+                "worklogs_deleted": result.worklogs_deleted,
+                "issues_scanned": (
+                    result.bucket_a_issues_scanned
+                    + result.bucket_b_issues_scanned
+                ),
             }
         return result or {}
 
