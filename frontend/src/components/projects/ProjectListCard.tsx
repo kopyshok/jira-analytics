@@ -47,6 +47,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
 
   return (
     <div
+      data-testid="project-card"
       onClick={onClick}
       style={{
         display: 'flex',

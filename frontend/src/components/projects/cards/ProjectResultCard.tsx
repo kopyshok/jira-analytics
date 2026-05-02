@@ -1,6 +1,7 @@
 import React from 'react';
-import { Card, Empty } from 'antd';
+import { Card, Empty, Skeleton } from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
+import { useIsFetching } from '@tanstack/react-query';
 import type { ProjectSummary } from '../../../types/projects';
 import { FlowDiagram } from '../shared/FlowDiagram';
 
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
+  const isFetchingSummary = useIsFetching({ queryKey: ['project-summary'] }) > 0;
+
   return (
     <Card
       size="small"
@@ -16,7 +19,9 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
       style={{ background: '#0f2340', border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
-      {!summary ? (
+      {!summary && isFetchingSummary ? (
+        <Skeleton active paragraph={{ rows: 3 }} title={false} />
+      ) : !summary ? (
         <Empty description="AI-резюме генерируется" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
