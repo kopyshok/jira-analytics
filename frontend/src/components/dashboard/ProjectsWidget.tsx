@@ -1,6 +1,9 @@
-import { Card, Spin, Empty } from 'antd';
+import { useState } from 'react';
+import { Card, Spin, Empty, Popover, Button, Checkbox, Space, Tag } from 'antd';
+import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import type { DashboardProjectsResponse, ProjectItem } from '../../types/api';
+import { statusTagColor } from '../../utils/status';
 
 const STATUS_COLORS = {
   done: '#67d68d',
@@ -11,6 +14,61 @@ const STATUS_COLORS = {
 
 const SILENCE_THRESHOLD = 14;
 const DUE_SOON_THRESHOLD = 7;
+
+type ColKey = 'status' | 'subtasks' | 'assignees' | 'due' | 'trend' | 'forecast' | 'progress' | 'factplan' | 'pct';
+type BlockKey = 'donut' | 'kpi' | 'sparklines';
+
+const COLS: { key: ColKey; label: string; width: string; align?: 'right' }[] = [
+  { key: 'status', label: 'Статус', width: '120px' },
+  { key: 'subtasks', label: 'Подзад', width: '70px' },
+  { key: 'assignees', label: 'Команда', width: '70px' },
+  { key: 'due', label: 'Срок', width: '95px' },
+  { key: 'trend', label: 'Тренд', width: '75px' },
+  { key: 'forecast', label: 'Прогноз', width: '85px' },
+  { key: 'progress', label: 'Прогресс', width: '1fr' },
+  { key: 'factplan', label: 'Факт / План', width: '80px', align: 'right' },
+  { key: 'pct', label: '%', width: '50px', align: 'right' },
+];
+
+const BLOCKS: { key: BlockKey; label: string }[] = [
+  { key: 'donut', label: 'Сводка по статусам' },
+  { key: 'kpi', label: 'KPI плитки' },
+  { key: 'sparklines', label: 'Активность по неделям' },
+];
+
+const STORAGE_KEY = 'dashboard.projects.prefs';
+
+type Prefs = {
+  cols: Record<ColKey, boolean>;
+  blocks: Record<BlockKey, boolean>;
+};
+
+const DEFAULT_PREFS: Prefs = {
+  cols: { status: true, subtasks: true, assignees: true, due: true, trend: true, forecast: true, progress: true, factplan: true, pct: true },
+  blocks: { donut: true, kpi: true, sparklines: true },
+};
+
+function loadPrefs(): Prefs {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_PREFS;
+    const parsed = JSON.parse(raw) as Partial<Prefs>;
+    return {
+      cols: { ...DEFAULT_PREFS.cols, ...(parsed.cols ?? {}) },
+      blocks: { ...DEFAULT_PREFS.blocks, ...(parsed.blocks ?? {}) },
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+function savePrefs(prefs: Prefs) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
+}
 
 function loadColor(pct: number): string {
   if (pct > 110) return '#ff4d4f';
@@ -118,21 +176,100 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
   );
 }
 
-function ProjectRow({ project, onClick }: { project: ProjectItem; onClick: () => void }) {
+function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; pct: number; barColor: string }) {
+  const fmtDate = (s: string | null) => s ? new Date(s).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—';
+  switch (key) {
+    case 'status': {
+      const cat = project.status_category === 'overdue' ? 'indeterminate' : project.status_category;
+      return project.status
+        ? <Tag color={statusTagColor(project.status, cat)} style={{ marginInlineEnd: 0 }}>{project.status}</Tag>
+        : <span style={{ color: '#7e94b8', fontSize: 13 }}>—</span>;
+    }
+    case 'subtasks':
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+          <span style={{ color: '#a4b8d8' }}>{project.subtasks_done}/{project.subtasks_total}</span>
+          <div style={{ height: 5, background: '#1c3358', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${project.subtasks_total > 0 ? (project.subtasks_done / project.subtasks_total) * 100 : 0}%`,
+              background: ctx.barColor,
+            }} />
+          </div>
+        </div>
+      );
+    case 'assignees':
+      return <AssigneeStack project={project} />;
+    case 'due':
+      return (
+        <div style={{ fontSize: 13, color: dueColor(project.days_to_due) }}>
+          {project.due_date ? `${fmtDate(project.due_date)} · ${project.days_to_due}д` : '—'}
+        </div>
+      );
+    case 'trend': {
+      const trend = trendArrow(project.trend_dir);
+      return (
+        <div style={{ fontSize: 13, color: trend.color }}>
+          {trend.glyph} {project.trend_hours_week.toFixed(0)} ч
+        </div>
+      );
+    }
+    case 'forecast':
+      return (
+        <div style={{ fontSize: 13, color: project.forecast_close_date ? (project.forecast_in_quarter ? '#67d68d' : '#ff4d4f') : '#7e94b8' }}>
+          {ctx.isDone ? 'завершён' : project.forecast_close_date ? `к ${fmtDate(project.forecast_close_date)}${project.forecast_in_quarter ? '' : ' ⚠'}` : '—'}
+        </div>
+      );
+    case 'progress': {
+      const fillWidth = Math.min(100, ctx.pct);
+      return (
+        <div style={{ height: 12, background: '#1c3358', borderRadius: 6, overflow: 'visible', position: 'relative' }}>
+          <div style={{
+            position: 'absolute', top: 0, left: 0, height: '100%',
+            width: `${fillWidth}%`,
+            background: ctx.barColor,
+            borderRadius: 6,
+          }} />
+        </div>
+      );
+    }
+    case 'factplan':
+      return (
+        <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#a4b8d8' }}>
+          {Math.round(project.fact_hours)} / {Math.round(project.plan_hours)} ч
+        </div>
+      );
+    case 'pct':
+      return (
+        <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, color: loadColor(ctx.pct) }}>
+          {Math.round(ctx.pct)}%
+        </div>
+      );
+  }
+}
+
+function ProjectRow({
+  project,
+  onClick,
+  visibleCols,
+  gridTemplate,
+}: {
+  project: ProjectItem;
+  onClick: () => void;
+  visibleCols: ColKey[];
+  gridTemplate: string;
+}) {
   const isDone = project.status_category === 'done';
   const overrun = project.fact_hours > project.plan_hours && project.plan_hours > 0;
   const pct = project.plan_hours > 0 ? (project.fact_hours / project.plan_hours) * 100 : 0;
   const barColor = STATUS_COLORS[project.status_category] || '#7e94b8';
-  const fillWidth = Math.min(100, pct);
-  const trend = trendArrow(project.trend_dir);
-  const fmtDate = (s: string | null) => s ? new Date(s).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—';
 
   return (
     <div
       onClick={onClick}
       style={{
         display: 'grid',
-        gridTemplateColumns: '12px minmax(220px,1.3fr) 70px 70px 95px 75px 85px 1fr 80px 50px',
+        gridTemplateColumns: gridTemplate,
         gap: 10,
         padding: '8px 0',
         alignItems: 'center',
@@ -161,40 +298,9 @@ function ProjectRow({ project, onClick }: { project: ProjectItem; onClick: () =>
           </span>
         )}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-        <span style={{ color: '#a4b8d8' }}>{project.subtasks_done}/{project.subtasks_total}</span>
-        <div style={{ height: 5, background: '#1c3358', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%',
-            width: `${project.subtasks_total > 0 ? (project.subtasks_done / project.subtasks_total) * 100 : 0}%`,
-            background: barColor,
-          }} />
-        </div>
-      </div>
-      <AssigneeStack project={project} />
-      <div style={{ fontSize: 13, color: dueColor(project.days_to_due) }}>
-        {project.due_date ? `${fmtDate(project.due_date)} · ${project.days_to_due}д` : '—'}
-      </div>
-      <div style={{ fontSize: 13, color: trend.color }}>
-        {trend.glyph} {project.trend_hours_week.toFixed(0)} ч
-      </div>
-      <div style={{ fontSize: 13, color: project.forecast_close_date ? (project.forecast_in_quarter ? '#67d68d' : '#ff4d4f') : '#7e94b8' }}>
-        {isDone ? 'завершён' : project.forecast_close_date ? `к ${fmtDate(project.forecast_close_date)}${project.forecast_in_quarter ? '' : ' ⚠'}` : '—'}
-      </div>
-      <div style={{ height: 12, background: '#1c3358', borderRadius: 6, overflow: 'visible', position: 'relative' }}>
-        <div style={{
-          position: 'absolute', top: 0, left: 0, height: '100%',
-          width: `${fillWidth}%`,
-          background: barColor,
-          borderRadius: 6,
-        }} />
-      </div>
-      <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#a4b8d8' }}>
-        {Math.round(project.fact_hours)} / {Math.round(project.plan_hours)} ч
-      </div>
-      <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, color: loadColor(pct) }}>
-        {Math.round(pct)}%
-      </div>
+      {visibleCols.map((key) => (
+        <div key={key}>{renderCell(key, project, { isDone, pct, barColor })}</div>
+      ))}
     </div>
   );
 }
@@ -286,6 +392,57 @@ function Sparklines({ projects }: { projects: ProjectItem[] }) {
   );
 }
 
+function SettingsPopover({ prefs, setPrefs }: { prefs: Prefs; setPrefs: (p: Prefs) => void }) {
+  const toggleCol = (k: ColKey, on: boolean) => setPrefs({ ...prefs, cols: { ...prefs.cols, [k]: on } });
+  const toggleBlock = (k: BlockKey, on: boolean) => setPrefs({ ...prefs, blocks: { ...prefs.blocks, [k]: on } });
+
+  const content = (
+    <Space direction="vertical" size={12} style={{ minWidth: 220 }}>
+      <div>
+        <div style={{ fontSize: 12, color: '#7e94b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          Колонки
+        </div>
+        <Space direction="vertical" size={4}>
+          {COLS.map((c) => (
+            <Checkbox
+              key={c.key}
+              checked={prefs.cols[c.key]}
+              onChange={(e) => toggleCol(c.key, e.target.checked)}
+            >
+              {c.label}
+            </Checkbox>
+          ))}
+        </Space>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, color: '#7e94b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          Блоки
+        </div>
+        <Space direction="vertical" size={4}>
+          {BLOCKS.map((b) => (
+            <Checkbox
+              key={b.key}
+              checked={prefs.blocks[b.key]}
+              onChange={(e) => toggleBlock(b.key, e.target.checked)}
+            >
+              {b.label}
+            </Checkbox>
+          ))}
+        </Space>
+      </div>
+      <Button size="small" onClick={() => setPrefs(DEFAULT_PREFS)}>
+        Сбросить
+      </Button>
+    </Space>
+  );
+
+  return (
+    <Popover content={content} title="Настройка вида" trigger="click" placement="bottomRight">
+      <Button type="text" icon={<SettingOutlined />} aria-label="Настройка вида" />
+    </Popover>
+  );
+}
+
 interface Props {
   data: DashboardProjectsResponse | undefined;
   loading: boolean;
@@ -293,19 +450,37 @@ interface Props {
 
 export default function ProjectsWidget({ data, loading }: Props) {
   const navigate = useNavigate();
+  const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs());
 
-  if (loading) return <Card title="Проекты квартала"><Spin /></Card>;
-  if (!data) return <Card title="Проекты квартала"><Empty description="Нет данных" /></Card>;
+  const setPrefs = (p: Prefs) => {
+    setPrefsState(p);
+    savePrefs(p);
+  };
+
+  const extra = <SettingsPopover prefs={prefs} setPrefs={setPrefs} />;
+
+  if (loading) return <Card title="Проекты квартала" extra={extra}><Spin /></Card>;
+  if (!data) return <Card title="Проекты квартала" extra={extra}><Empty description="Нет данных" /></Card>;
+
+  const visibleCols = COLS.filter((c) => prefs.cols[c.key]);
+  const tableGrid = ['12px', 'minmax(220px,1.3fr)', ...visibleCols.map((c) => c.width)].join(' ');
+
+  const outerCols = [
+    prefs.blocks.donut ? '220px' : null,
+    '1fr',
+    prefs.blocks.kpi ? '280px' : null,
+    prefs.blocks.sparklines ? '280px' : null,
+  ].filter(Boolean).join(' ');
 
   return (
-    <Card title="Проекты квартала">
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 280px 280px', gap: 20, alignItems: 'flex-start' }}>
-        <Donut data={data} />
+    <Card title="Проекты квартала" extra={extra}>
+      <div style={{ display: 'grid', gridTemplateColumns: outerCols, gap: 20, alignItems: 'flex-start' }}>
+        {prefs.blocks.donut && <Donut data={data} />}
 
         <div>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '12px minmax(220px,1.3fr) 70px 70px 95px 75px 85px 1fr 80px 50px',
+            gridTemplateColumns: tableGrid,
             gap: 10,
             fontSize: 12,
             color: '#7e94b8',
@@ -316,20 +491,19 @@ export default function ProjectsWidget({ data, loading }: Props) {
           }}>
             <span />
             <span>Проект</span>
-            <span>Подзад</span>
-            <span>Команда</span>
-            <span>Срок</span>
-            <span>Тренд</span>
-            <span>Прогноз</span>
-            <span>Прогресс</span>
-            <span style={{ textAlign: 'right' }}>Факт / План</span>
-            <span style={{ textAlign: 'right' }}>%</span>
+            {visibleCols.map((c) => (
+              <span key={c.key} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>
+                {c.label}
+              </span>
+            ))}
           </div>
           {data.projects.map((p) => (
             <ProjectRow
               key={p.issue_key}
               project={p}
-              onClick={() => navigate(`/analytics?project=${p.issue_key}`)}
+              onClick={() => navigate(`/projects/${encodeURIComponent(p.issue_key)}`)}
+              visibleCols={visibleCols.map((c) => c.key)}
+              gridTemplate={tableGrid}
             />
           ))}
           {data.projects.length === 0 && (
@@ -337,9 +511,9 @@ export default function ProjectsWidget({ data, loading }: Props) {
           )}
         </div>
 
-        <KpiTiles data={data} />
+        {prefs.blocks.kpi && <KpiTiles data={data} />}
 
-        <Sparklines projects={data.projects} />
+        {prefs.blocks.sparklines && <Sparklines projects={data.projects} />}
       </div>
     </Card>
   );

@@ -1,6 +1,8 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { Table, Tag } from 'antd';
+import { Button, Table, Tag } from 'antd';
+import { ArrowRightOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router';
 import type { ColumnsType } from 'antd/es/table/interface';
 import type { Key } from 'react';
 import type {
@@ -81,8 +83,11 @@ function buildIssueNode(
   worklogMode: 'inline' | 'drawer',
   periodStart: string,
   periodEnd: string,
+  navigate: ReturnType<typeof useNavigate>,
 ): TreeNode {
   const cleanSummary = stripKeyPrefix(i.summary, i.key);
+  const isProject =
+    i.category === 'quarterly_tasks' || i.category === 'archive_target';
   const node: TreeNode = {
     key: `${prefix}/i:${i.id}`,
     kind: 'issue',
@@ -131,6 +136,19 @@ function buildIssueNode(
         >
           {cleanSummary}
         </span>
+        {isProject && (
+          <Button
+            size="small"
+            type="link"
+            icon={<ArrowRightOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/projects/${encodeURIComponent(i.key)}`);
+            }}
+            title="Открыть страницу проекта"
+            style={{ flexShrink: 0, padding: '0 4px' }}
+          />
+        )}
       </div>,
     ),
     totals: i.totals,
@@ -168,6 +186,7 @@ function buildCategoryNode(
   worklogMode: 'inline' | 'drawer',
   periodStart: string,
   periodEnd: string,
+  navigate: ReturnType<typeof useNavigate>,
 ): TreeNode {
   return {
     key: `${prefix}/c:${c.category_code || '_none'}`,
@@ -198,6 +217,7 @@ function buildCategoryNode(
         worklogMode,
         periodStart,
         periodEnd,
+        navigate,
       ),
     ),
   };
@@ -210,6 +230,7 @@ function buildWorkTypeNode(
   worklogMode: 'inline' | 'drawer',
   periodStart: string,
   periodEnd: string,
+  navigate: ReturnType<typeof useNavigate>,
 ): TreeNode {
   return {
     key: `${prefix}/w:${w.work_type_id}`,
@@ -240,6 +261,7 @@ function buildWorkTypeNode(
         worklogMode,
         periodStart,
         periodEnd,
+        navigate,
       ),
     ),
   };
@@ -253,6 +275,7 @@ function buildEmployeeNode(
   worklogMode: 'inline' | 'drawer',
   periodStart: string,
   periodEnd: string,
+  navigate: ReturnType<typeof useNavigate>,
 ): TreeNode {
   const initials = e.initials || initialsOf(e.name);
   return {
@@ -291,6 +314,7 @@ function buildEmployeeNode(
         worklogMode,
         periodStart,
         periodEnd,
+        navigate,
       ),
     ),
   };
@@ -303,6 +327,7 @@ function buildRoleNode(
   worklogMode: 'inline' | 'drawer',
   periodStart: string,
   periodEnd: string,
+  navigate: ReturnType<typeof useNavigate>,
 ): TreeNode {
   return {
     key: `${prefix}/r:${r.role_code}`,
@@ -336,6 +361,7 @@ function buildRoleNode(
         worklogMode,
         periodStart,
         periodEnd,
+        navigate,
       ),
     ),
   };
@@ -346,6 +372,7 @@ function buildTeamNode(
   worklogMode: 'inline' | 'drawer',
   periodStart: string,
   periodEnd: string,
+  navigate: ReturnType<typeof useNavigate>,
 ): TreeNode {
   const prefix = `team:${t.team || '_none'}`;
   return {
@@ -355,7 +382,7 @@ function buildTeamNode(
     label: indent(0, <b>{t.team || 'Без команды'}</b>),
     totals: t.totals,
     children: t.roles.map((r) =>
-      buildRoleNode(r, prefix, 1, worklogMode, periodStart, periodEnd),
+      buildRoleNode(r, prefix, 1, worklogMode, periodStart, periodEnd, navigate),
     ),
   };
 }
@@ -377,6 +404,7 @@ export default function AnalyticsTable({
 }: Props) {
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
+  const navigate = useNavigate();
   const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string } | null>(null);
 
   const expandedStorageKey = `analytics-tree-expanded:${selectedTeam}`;
@@ -416,7 +444,7 @@ export default function AnalyticsTable({
       : data.teams.filter((t) => (t.team || '_none_') === selectedTeam);
 
   const tableData: TreeNode[] = teams.map((t) =>
-    buildTeamNode(t, worklogMode, periodStart, periodEnd),
+    buildTeamNode(t, worklogMode, periodStart, periodEnd, navigate),
   );
 
   const isBlock = (r: TreeNode) => r.kind === 'worklog-block';

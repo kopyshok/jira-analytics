@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Popover, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
-  DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
+  ArrowRightOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
   InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
@@ -77,6 +77,7 @@ function groupArchiveByQuarter(items: BacklogItemResponse[]): [string, BacklogIt
 
 export default function BacklogPage() {
   const { notification } = App.useApp();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get('view');
@@ -426,6 +427,15 @@ export default function BacklogPage() {
 
   const actionsActive = (r: BacklogItemResponse) => (
     <Space size={4}>
+      {r.jira_key && (
+        <Tooltip title="Открыть страницу проекта">
+          <Button
+            icon={<ArrowRightOutlined />}
+            size="small"
+            onClick={() => navigate(`/projects/${encodeURIComponent(r.jira_key!)}`)}
+          />
+        </Tooltip>
+      )}
       {r.issue_id ? (
         <Popconfirm
           title="Отвязать от Jira?"
