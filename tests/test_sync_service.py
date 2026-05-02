@@ -377,11 +377,12 @@ class TestSyncIssuesParentLinking:
 
         mock_jira = MagicMock()
 
-        async def fake_iter(project_keys, since, extra_fields=None):  # noqa: ARG001
+        # sync_issues теперь использует per-project iter_issues (parallel producers).
+        async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
             yield subtask
             yield epic
 
-        mock_jira.get_issues_updated_since = fake_iter
+        mock_jira.iter_issues = fake_iter_issues
 
         service = SyncService(db_session, mock_jira)
         await service.sync_issues(project_keys=["PRJ"], incremental=False)

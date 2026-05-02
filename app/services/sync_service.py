@@ -679,69 +679,110 @@ class SyncService:
             self.db.query(Issue.key, Issue.id).all()
         )
 
+        # Параллельная выкачка по проектам: cursor pagination Jira
+        # последовательная внутри одного JQL, поэтому общий запрос
+        # `project in (A,B,...)` гонит 1 страницу за раз × 1000+ страниц.
+        # Расщепляем на N producer'ов (один на проект) → asyncio.Queue
+        # → один consumer пишет в БД (Session не coroutine-safe).
+        # На 6 проектах даёт ~5-6× ускорения сетевой части.
+        queue: asyncio.Queue = asyncio.Queue(maxsize=2000)
+        producer_errors: list[Exception] = []
+        base_request_fields = [
+            "summary", "description", "issuetype", "status",
+            "priority", "project", "parent", "creator",
+            "assignee", "created", "updated",
+            "statuscategorychangedate", "duedate",
+        ]
+        request_fields = base_request_fields + list(extra_fields) if extra_fields else None
+
+        async def producer(project_key: str) -> None:
+            try:
+                jql = f'project = "{project_key}"'
+                if since:
+                    jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
+                jql += " ORDER BY updated ASC"
+                async for ji in self.jira.iter_issues(
+                    jql=jql,
+                    max_results=100,
+                    fields=request_fields,
+                ):
+                    await queue.put(ji)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                producer_errors.append(exc)
+            finally:
+                await queue.put(None)  # sentinel per producer
+
+        producers = [asyncio.create_task(producer(p.key)) for p in projects]
+        sentinels_remaining = len(producers)
+
         count = 0
-        unresolved_parents: List[Tuple[str, str]] = []  # (child_issue_id, parent_key)
-        async for jira_issue in self.jira.get_issues_updated_since(
-            project_keys=keys,
-            since=since,
-            extra_fields=extra_fields,
-        ):
-            await self._check_cancelled()
-            # Find local project
-            project = project_cache.get(jira_issue.fields.project.id)
-            if not project:
-                logger.warning(f"Project not found for issue {jira_issue.key}")
-                continue
+        unresolved_parents: List[Tuple[str, str]] = []
+        try:
+            while sentinels_remaining > 0:
+                jira_issue = await queue.get()
+                if jira_issue is None:
+                    sentinels_remaining -= 1
+                    continue
+                await self._check_cancelled()
 
-            # Handle parent (for subtasks)
-            parent_id = None
-            parent_key = jira_issue.fields.parent_key
-            if parent_key:
-                parent_id = issue_id_by_key.get(parent_key)
+                project = project_cache.get(jira_issue.fields.project.id)
+                if not project:
+                    logger.warning(f"Project not found for issue {jira_issue.key}")
+                    continue
 
-            # Ensure creator exists as employee (cached: 119k issues / ~50 unique creators)
-            if jira_issue.fields.creator:
-                self._ensure_employee_cached(jira_issue.fields.creator, employee_cache)
+                parent_id = None
+                parent_key = jira_issue.fields.parent_key
+                if parent_key:
+                    parent_id = issue_id_by_key.get(parent_key)
 
-            # Собираем только те поля, что реально сконфигурированы,
-            # чтобы не затирать колонки в БД, когда админ не задал field_id.
-            # Пустое значение в Jira (None / []) сюда приходит как явный
-            # сигнал «очистить» — см. _upsert_issue.
-            extra_kwargs: dict[str, Any] = {}
-            if extra_fields:
-                extra = jira_issue.fields._extra
-                if product_field_id:
-                    prod = _extract_team_values(extra, product_field_id)
-                    extra_kwargs["team"] = prod[0] if prod else None
-                if participating_field_id:
-                    extra_kwargs["participating_teams"] = _extract_team_values(
-                        extra, participating_field_id
-                    )
-                if goals_field_id:
-                    goals_list = _extract_team_values(extra, goals_field_id)
-                    extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
+                if jira_issue.fields.creator:
+                    self._ensure_employee_cached(jira_issue.fields.creator, employee_cache)
 
-            # Upsert issue
-            issue, created = self._upsert_issue(
-                jira_issue, project.id, parent_id,
-                planned_field_ids=planned_field_ids,
-                **extra_kwargs,
-            )
-            if created:
-                self.stats.issues_created += 1
-            self.stats.issues_synced += 1
-            self.stats.touched_issue_keys.add(jira_issue.key)
-            issue_id_by_key[jira_issue.key] = issue.id
-            count += 1
+                extra_kwargs: dict[str, Any] = {}
+                if extra_fields:
+                    extra = jira_issue.fields._extra
+                    if product_field_id:
+                        prod = _extract_team_values(extra, product_field_id)
+                        extra_kwargs["team"] = prod[0] if prod else None
+                    if participating_field_id:
+                        extra_kwargs["participating_teams"] = _extract_team_values(
+                            extra, participating_field_id
+                        )
+                    if goals_field_id:
+                        goals_list = _extract_team_values(extra, goals_field_id)
+                        extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
 
-            # Отложенно свяжем, если родитель ещё не подтянут (обычно эпик
-            # приходит позже подзадачи в выдаче /search).
-            if parent_key and parent_id is None:
-                unresolved_parents.append((issue.id, parent_key))
+                issue, created = self._upsert_issue(
+                    jira_issue, project.id, parent_id,
+                    planned_field_ids=planned_field_ids,
+                    **extra_kwargs,
+                )
+                if created:
+                    self.stats.issues_created += 1
+                self.stats.issues_synced += 1
+                self.stats.touched_issue_keys.add(jira_issue.key)
+                issue_id_by_key[jira_issue.key] = issue.id
+                count += 1
 
-            if count % 500 == 0:
-                logger.debug(f"Synced {count} issues...")
-                self.db.commit()  # Periodic commit (batch size 500 экономит fsync)
+                if parent_key and parent_id is None:
+                    unresolved_parents.append((issue.id, parent_key))
+
+                if count % 500 == 0:
+                    logger.debug(f"Synced {count} issues...")
+                    self.db.commit()
+        except (asyncio.CancelledError, Exception):
+            # Отменить producers если consumer упал / отменён
+            for p in producers:
+                if not p.done():
+                    p.cancel()
+            raise
+        finally:
+            await asyncio.gather(*producers, return_exceptions=True)
+
+        if producer_errors:
+            raise producer_errors[0]
 
         # Второй проход: теперь все эпики уже в базе, достроим parent_id
         # через cache (без N SELECT).
