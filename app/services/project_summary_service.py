@@ -40,6 +40,9 @@ class ProjectSummaryService:
         existing = self.db.execute(
             select(ProjectAISummary).where(ProjectAISummary.issue_id == epic.id)
         ).scalar_one_or_none()
+        work_breakdown_json = json.dumps(
+            [g.model_dump() for g in summary.work_breakdown], ensure_ascii=False
+        )
         if existing:
             existing.goals_json = json.dumps(summary.goals, ensure_ascii=False)
             existing.result_flow_json = json.dumps(
@@ -48,6 +51,7 @@ class ProjectSummaryService:
                 [c.model_dump() for c in summary.result_checklist], ensure_ascii=False)
             existing.status_text = summary.status_text
             existing.workload_summary = summary.workload_summary
+            existing.work_breakdown_json = work_breakdown_json
             existing.generated_at = datetime.utcnow()
             existing.model_used = meta.get("model", provider.model)
             existing.input_tokens = meta.get("input_tokens")
@@ -63,6 +67,7 @@ class ProjectSummaryService:
                     [c.model_dump() for c in summary.result_checklist], ensure_ascii=False),
                 status_text=summary.status_text,
                 workload_summary=summary.workload_summary,
+                work_breakdown_json=work_breakdown_json,
                 generated_at=datetime.utcnow(),
                 model_used=meta.get("model", provider.model),
                 input_tokens=meta.get("input_tokens"),
@@ -84,7 +89,7 @@ class ProjectSummaryService:
         child_issues = self.db.execute(
             select(Issue).where(Issue.id.in_(child_ids))
         ).scalars().all()
-        child_summaries = [f"{i.key}: {i.summary}" for i in child_issues[:30]]
+        child_summaries = [{"key": i.key, "summary": i.summary} for i in child_issues[:30]]
 
         total_hours = detail.total_hours or 0.0
         return {

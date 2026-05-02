@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, Empty } from 'antd';
 import { useNavigate } from 'react-router';
-import type { CategoryBreakdown } from '../../../types/projects';
+import type { CategoryBreakdown, ProjectSummary, IssueHours } from '../../../types/projects';
 import { DonutChart } from '../shared/DonutChart';
 
 interface Props {
@@ -9,14 +9,51 @@ interface Props {
   totalHours: number;
   weeks: number;
   projectKey: string;
+  summary?: ProjectSummary | null;
+  issueHoursByKey?: IssueHours[];
 }
 
 const DEFAULT_COLOR = '#7e94b8';
+const AI_PALETTE = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#ff4d4f', '#67d68d'];
 
-export const ProjectCategoriesCard: React.FC<Props> = ({ categories, totalHours, weeks, projectKey }) => {
+export const ProjectCategoriesCard: React.FC<Props> = ({
+  categories,
+  totalHours,
+  weeks,
+  projectKey,
+  summary,
+  issueHoursByKey,
+}) => {
   const navigate = useNavigate();
 
-  if (!categories || categories.length === 0) {
+  const groups = summary?.work_breakdown ?? [];
+  const useAI = groups.length > 0 && issueHoursByKey && issueHoursByKey.length > 0;
+
+  const slices = useAI
+    ? (() => {
+        const hoursMap = new Map(issueHoursByKey!.map((r) => [r.key, r.hours]));
+        const raw = groups.map((g, i) => {
+          const hours = g.child_keys.reduce((acc, k) => acc + (hoursMap.get(k) ?? 0), 0);
+          return {
+            code: g.label,
+            label: g.label,
+            hours: Math.round(hours),
+            color: AI_PALETTE[i % AI_PALETTE.length],
+            pct: 0,
+          };
+        });
+        const total = raw.reduce((acc, s) => acc + s.hours, 0);
+        return raw.map((s) => ({ ...s, pct: total ? Math.round((s.hours / total) * 100) : 0 }));
+      })()
+    : categories.map((c) => ({
+        code: c.code,
+        label: c.label,
+        hours: Math.round(c.hours),
+        color: c.color ?? DEFAULT_COLOR,
+        pct: c.pct,
+      }));
+
+  if (slices.length === 0) {
     return (
       <Card
         size="small"
@@ -29,16 +66,11 @@ export const ProjectCategoriesCard: React.FC<Props> = ({ categories, totalHours,
     );
   }
 
-  const slices = categories.map((c) => ({
-    code: c.code,
-    label: c.label,
-    hours: c.hours,
-    color: c.color ?? DEFAULT_COLOR,
-  }));
-
-  const handleSliceClick = (slice: { code: string }) => {
-    navigate(`/analytics?category=${slice.code}&project=${projectKey}`);
-  };
+  const handleSliceClick = useAI
+    ? undefined
+    : (slice: { code: string }) => {
+        navigate(`/analytics?category=${slice.code}&project=${projectKey}`);
+      };
 
   return (
     <Card
@@ -56,26 +88,43 @@ export const ProjectCategoriesCard: React.FC<Props> = ({ categories, totalHours,
           onSliceClick={handleSliceClick}
         />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {categories.map((c) => (
+          {slices.map((s) => (
             <div
-              key={c.code}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-              onClick={() => navigate(`/analytics?category=${c.code}&project=${projectKey}`)}
+              key={s.code}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: useAI ? 'default' : 'pointer',
+              }}
+              onClick={
+                useAI ? undefined : () => navigate(`/analytics?category=${s.code}&project=${projectKey}`)
+              }
             >
               <div
                 style={{
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  background: c.color ?? DEFAULT_COLOR,
+                  background: s.color,
                   flexShrink: 0,
                 }}
               />
-              <span style={{ flex: 1, color: '#cfd8e5', fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {c.label}
+              <span
+                style={{
+                  flex: 1,
+                  color: '#cfd8e5',
+                  fontSize: 12,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {s.label}
               </span>
               <span style={{ color: '#7e94b8', fontSize: 11, whiteSpace: 'nowrap' }}>
-                {Math.round(c.hours)} ч · {c.pct}%
+                {s.hours} ч · {s.pct}%
               </span>
             </div>
           ))}

@@ -35,6 +35,7 @@ class ProjectAISummary(Base):
     input_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     prompt_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
+    work_breakdown_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False,
     )

@@ -83,6 +83,11 @@ class TopIssueSchema(BaseModel):
     hours: float
 
 
+class IssueHoursSchema(BaseModel):
+    key: str
+    hours: float
+
+
 class ProjectDetailSchema(BaseModel):
     key: str
     summary: str
@@ -100,6 +105,7 @@ class ProjectDetailSchema(BaseModel):
     categories: List[CategoryBreakdownSchema]
     employees: List[EmployeeBreakdownSchema]
     top_issues: List[TopIssueSchema]
+    issue_hours_by_key: List[IssueHoursSchema] = []
     rating_quality: Optional[int] = None
     rating_speed: Optional[int] = None
     rating_result: Optional[int] = None
@@ -155,12 +161,18 @@ def list_quarterly_projects(
     return result
 
 
+class WorkBreakdownGroupSchema(BaseModel):
+    label: str
+    child_keys: List[str]
+
+
 class ProjectSummarySchema(BaseModel):
     goals: List[str]
     result_flow_blocks: List[dict]
     result_checklist: List[dict]
     status_text: str
     workload_summary: str
+    work_breakdown: List[WorkBreakdownGroupSchema] = []
     generated_at: datetime
     model_used: str
 
@@ -172,6 +184,7 @@ def _serialize_summary(row) -> ProjectSummarySchema:
         result_checklist=json.loads(row.result_checklist_json),
         status_text=row.status_text,
         workload_summary=row.workload_summary,
+        work_breakdown=json.loads(row.work_breakdown_json) if row.work_breakdown_json else [],
         generated_at=row.generated_at,
         model_used=row.model_used,
     )
@@ -242,6 +255,11 @@ def get_project(key: str, db: Session = Depends(get_db)):
         for t in detail.top_issues
     ]
 
+    issue_hours_by_key = [
+        IssueHoursSchema(key=k, hours=h)
+        for k, h in detail.issue_hours_by_key
+    ]
+
     return ProjectDetailSchema(
         key=detail.key,
         summary=detail.summary,
@@ -259,6 +277,7 @@ def get_project(key: str, db: Session = Depends(get_db)):
         categories=categories,
         employees=employees,
         top_issues=top_issues,
+        issue_hours_by_key=issue_hours_by_key,
         rating_quality=detail.rating_quality,
         rating_speed=detail.rating_speed,
         rating_result=detail.rating_result,

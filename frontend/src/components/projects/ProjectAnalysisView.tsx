@@ -25,6 +25,8 @@ export const ProjectAnalysisView: React.FC<Props> = ({ detail, summary }) => {
           totalHours={detail.total_hours}
           weeks={detail.weeks}
           projectKey={detail.key}
+          summary={summary}
+          issueHoursByKey={detail.issue_hours_by_key}
         />
         <ProjectEmployeesCard employees={detail.employees} projectKey={detail.key} />
       </div>

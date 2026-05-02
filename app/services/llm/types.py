@@ -13,6 +13,12 @@ class ChecklistItem(BaseModel):
     done: bool = True
 
 
+class WorkBreakdownGroup(BaseModel):
+    """Группа дочерних задач по смыслу (AI-кластеризация)."""
+    label: str = Field(max_length=40)
+    child_keys: list[str] = Field(min_length=1, max_length=30)
+
+
 class ProjectSummary(BaseModel):
     """Структурированный AI-результат: цели, flow, чек-лист, статус, нагрузка."""
     goals: list[str] = Field(min_length=1, max_length=5)
@@ -20,3 +26,4 @@ class ProjectSummary(BaseModel):
     result_checklist: list[ChecklistItem] = Field(min_length=0, max_length=6)
     status_text: str
     workload_summary: str
+    work_breakdown: list[WorkBreakdownGroup] = Field(default_factory=list, max_length=6)

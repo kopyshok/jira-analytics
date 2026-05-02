@@ -2,7 +2,7 @@
 from typing import Any
 
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 
 SYSTEM_INSTRUCTION = """\
@@ -16,6 +16,7 @@ SYSTEM_INSTRUCTION = """\
 - result_checklist: массив 3-5 объектов {label, done}. Чек-лист достижений (например "11 дочерних задач", "полный контур").
 - status_text: 1-2 предложения о текущем статусе проекта.
 - workload_summary: 1 предложение о распределении нагрузки между сотрудниками.
+- work_breakdown: массив 3-6 групп {label, child_keys}. Каждая группа — это содержательное направление работ (например «Обмены и регламенты», «Аналитика», «Багфиксы», «Проверка», «Форма/UI»). Названия — на русском, до 40 символов, конкретные для этого проекта (НЕ общие как «Прочее»). child_keys — список Jira-ключей дочерних задач, относящихся к группе. Каждая дочерняя задача должна попасть в ровно одну группу. Если задач мало (<3) — можно одну общую группу «Все работы».
 
 Пиши лаконично, без воды. Не повторяй сами цифры из данных дословно.
 """
@@ -33,7 +34,7 @@ def build_prompt(epic_data: dict[str, Any]) -> str:
         "categories": [{"label": "Аналитика", "hours": 57}, ...],
         "employees": [{"name": "Копышков Н.", "hours": 70.5, "pct": 37.6}, ...],
         "top_issues": [{"key": "PMD-1", "summary": "...", "hours": 49.5}, ...],
-        "child_summaries": ["...", "..."]  # max 30 элементов
+        "child_summaries": [{"key": "PMD-1", "summary": "..."}, ...]  # max 30 элементов
     }
     """
     parts: list[str] = [SYSTEM_INSTRUCTION, "", "ВХОДНЫЕ ДАННЫЕ:"]
@@ -62,9 +63,9 @@ def build_prompt(epic_data: dict[str, Any]) -> str:
 
     summaries = epic_data.get("child_summaries", [])[:30]
     if summaries:
-        parts.append("\nКраткий список дочерних задач:")
+        parts.append("\nКЛЮЧИ ДОЧЕРНИХ ЗАДАЧ С ОПИСАНИЕМ:")
         for s in summaries:
-            parts.append(f"  • {s}")
+            parts.append(f"  • {s['key']}: {s['summary']}")
 
     parts.append("\nВЫДАЙ JSON РЕЗУЛЬТАТ.")
     return "\n".join(parts)

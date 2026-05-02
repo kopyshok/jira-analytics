@@ -45,8 +45,26 @@ GEMINI_RESPONSE_SCHEMA = {
         },
         "status_text": {"type": "string"},
         "workload_summary": {"type": "string"},
+        "work_breakdown": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "child_keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 30,
+                    },
+                },
+                "required": ["label", "child_keys"],
+            },
+            "minItems": 0,
+            "maxItems": 6,
+        },
     },
-    "required": ["goals", "result_flow_blocks", "result_checklist", "status_text", "workload_summary"],
+    "required": ["goals", "result_flow_blocks", "result_checklist", "status_text", "workload_summary", "work_breakdown"],
 }
 
 

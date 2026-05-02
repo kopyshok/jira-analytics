@@ -105,6 +105,7 @@ class ProjectDetail:
     categories: list[CategoryBreakdown] = field(default_factory=list)
     employees: list[EmployeeBreakdown] = field(default_factory=list)
     top_issues: list[TopIssue] = field(default_factory=list)
+    issue_hours_by_key: list[tuple[str, float]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -399,8 +400,8 @@ class ProjectsService:
         for row in wl_rows:
             issue_hours[row.issue_id] += row.hours
 
-        top_issue_ids = sorted(issue_hours, key=lambda k: issue_hours[k], reverse=True)[:5]
         top_issue_map = {iss.id: iss for iss in sub_issues}
+        top_issue_ids = sorted(issue_hours, key=lambda k: issue_hours[k], reverse=True)[:5]
         top_issues = [
             TopIssue(
                 issue_id=iid,
@@ -411,6 +412,13 @@ class ProjectsService:
                 hours=float(round(issue_hours[iid])),
             )
             for iid in top_issue_ids
+            if iid in top_issue_map
+        ]
+
+        # Полный список часов по всем задачам (для AI work_breakdown).
+        issue_hours_by_key = [
+            (top_issue_map[iid].key, float(round(issue_hours[iid])))
+            for iid in issue_hours
             if iid in top_issue_map
         ]
 
@@ -437,6 +445,7 @@ class ProjectsService:
             categories=categories,
             employees=employees,
             top_issues=top_issues,
+            issue_hours_by_key=issue_hours_by_key,
         )
 
     # ------------------------------------------------------------------

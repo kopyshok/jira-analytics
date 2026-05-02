@@ -12,6 +12,7 @@ interface Props {
 }
 
 const COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#7e94b8', '#7e94b8', '#7e94b8'];
+const AI_PALETTE = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#ff4d4f', '#67d68d'];
 
 function initials(name: string): string {
   return name
@@ -122,33 +123,51 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
 
       {/* На что ушло время — всегда */}
       <ProjectStorySection title="На что ушло время">
-        {detail.categories.length > 0 ? (
-          <div style={{ display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
-            <DonutChart
-              slices={detail.categories.map(c => ({ code: c.code, label: c.label, hours: c.hours, color: c.color || '#7e94b8' }))}
-              centerValue={`${detail.total_hours} ч`}
-              centerLabel={`~${detail.weeks} нед`}
-              size={240}
-            />
-            <div style={{ flex: 1, minWidth: 280 }}>
-              {detail.categories.map(c => (
-                <div key={c.code} style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                    <span style={{ color: '#cfd8e5' }}>{c.label}</span>
-                    <span style={{ color: '#fff' }}>
-                      <b>{c.hours}</b> ч ({c.pct}%)
-                    </span>
+        {(() => {
+          const groups = summary?.work_breakdown ?? [];
+          const hasAI = groups.length > 0 && detail.issue_hours_by_key.length > 0;
+          const hoursMap = hasAI
+            ? new Map(detail.issue_hours_by_key.map((r) => [r.key, r.hours]))
+            : null;
+          const timeSlices = hasAI
+            ? (() => {
+                const raw = groups.map((g, i) => {
+                  const hours = g.child_keys.reduce((acc, k) => acc + (hoursMap!.get(k) ?? 0), 0);
+                  return { code: g.label, label: g.label, hours: Math.round(hours), color: AI_PALETTE[i % AI_PALETTE.length], pct: 0 };
+                });
+                const total = raw.reduce((acc, s) => acc + s.hours, 0);
+                return raw.map((s) => ({ ...s, pct: total ? Math.round((s.hours / total) * 100) : 0 }));
+              })()
+            : detail.categories.map((c) => ({ code: c.code, label: c.label, hours: c.hours, color: c.color || '#7e94b8', pct: c.pct }));
+
+          return timeSlices.length > 0 ? (
+            <div style={{ display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
+              <DonutChart
+                slices={timeSlices}
+                centerValue={`${detail.total_hours} ч`}
+                centerLabel={`~${detail.weeks} нед`}
+                size={240}
+              />
+              <div style={{ flex: 1, minWidth: 280 }}>
+                {timeSlices.map((s) => (
+                  <div key={s.code} style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                      <span style={{ color: '#cfd8e5' }}>{s.label}</span>
+                      <span style={{ color: '#fff' }}>
+                        <b>{s.hours}</b> ч ({s.pct}%)
+                      </span>
+                    </div>
+                    <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, marginTop: 4 }}>
+                      <div style={{ width: `${s.pct}%`, height: '100%', background: s.color, borderRadius: 3 }} />
+                    </div>
                   </div>
-                  <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, marginTop: 4 }}>
-                    <div style={{ width: `${c.pct}%`, height: '100%', background: c.color || '#7e94b8', borderRadius: 3 }} />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div style={AI_PLACEHOLDER_STYLE}>Нет данных о затратах времени</div>
-        )}
+          ) : (
+            <div style={AI_PLACEHOLDER_STYLE}>Нет данных о затратах времени</div>
+          );
+        })()}
 
         {detail.top_issues.length > 0 && (
           <>

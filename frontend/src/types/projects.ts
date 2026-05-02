@@ -35,6 +35,11 @@ export interface TopIssue {
   hours: number;
 }
 
+export interface IssueHours {
+  key: string;
+  hours: number;
+}
+
 export interface ProjectDetail {
   key: string;
   summary: string;
@@ -52,6 +57,7 @@ export interface ProjectDetail {
   categories: CategoryBreakdown[];
   employees: EmployeeBreakdown[];
   top_issues: TopIssue[];
+  issue_hours_by_key: IssueHours[];
   rating_quality: number | null;
   rating_speed: number | null;
   rating_result: number | null;
@@ -67,12 +73,18 @@ export interface ChecklistItem {
   done: boolean;
 }
 
+export interface WorkBreakdownGroup {
+  label: string;
+  child_keys: string[];
+}
+
 export interface ProjectSummary {
   goals: string[];
   result_flow_blocks: FlowBlock[];
   result_checklist: ChecklistItem[];
   status_text: string;
   workload_summary: string;
+  work_breakdown: WorkBreakdownGroup[];
   generated_at: string;
   model_used: string;
 }
