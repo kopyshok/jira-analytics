@@ -133,14 +133,21 @@ def test_get_project_detail_aggregates(db_session):
     assert detail.rating_result == 5
 
 
-def test_get_project_detail_returns_none_for_non_quarterly(db_session):
+def test_get_project_detail_returns_detail_for_any_existing_issue(db_session):
+    """Detail возвращает агрегаты для любого issue по key.
+
+    Скоуп «проектности» определяется списком (фильтр сценария или
+    категории) — на уровне detail просто отдаём данные.
+    """
     db = db_session
     _make_project(db, "p4", "PRJ4")
     db.add(Issue(id="ix", jira_issue_id="300", key="PRJ4-300", summary="X",
                  issue_type="Epic", status="Done", project_id="p4",
                  category="tech_debt", include_in_analysis=True))
     db.commit()
-    assert ProjectsService(db).get_project_detail("PRJ4-300") is None
+    detail = ProjectsService(db).get_project_detail("PRJ4-300")
+    assert detail is not None
+    assert detail.key == "PRJ4-300"
     assert ProjectsService(db).get_project_detail("PRJ4-NOTEXIST") is None
 
 

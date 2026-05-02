@@ -136,8 +136,10 @@ class ProjectsService:
         Без year+quarter: проект = issue с категорией quarterly_tasks /
         archive_target и без parent_id.
 
-        С year+quarter: только эпики, утверждённые в approved scenario
-        для данного квартала.
+        С year+quarter: только issues, утверждённые (included_flag=True)
+        в approved scenario для данного квартала. Ограничение
+        parent_id IS NULL не накладывается — utверждённая allocation
+        сама делает issue «проектом квартала».
         """
         db = self._db
 
@@ -164,13 +166,10 @@ class ProjectsService:
             if not approved_set:
                 return []
 
-            stmt = (
-                select(Issue)
-                .where(
-                    Issue.id.in_(approved_set),
-                    Issue.parent_id.is_(None),
-                )
-            )
+            # parent_id НЕ ограничиваем: utверждённый allocation сам по себе
+            # делает issue «проектом квартала», даже если в Jira-иерархии у
+            # него есть родитель (Initiative и т.п.).
+            stmt = select(Issue).where(Issue.id.in_(approved_set))
         else:
             # Загружаем все «проектные» issues (корни иерархии).
             stmt = (
@@ -271,19 +270,14 @@ class ProjectsService:
     def get_project_detail(self, key: str) -> Optional[ProjectDetail]:
         """Полный агрегат по одному проекту.
 
-        Возвращает None если issue не найден или не относится к
-        PROJECT_CATEGORY_CODES.
+        Возвращает None только если issue с таким ключом не найден.
+        Скоуп «проектности» определяется списком (фильтр по сценарию или
+        категории) — на уровне detail просто отдаём агрегаты по issue.
         """
         db = self._db
 
         root: Optional[Issue] = (
-            db.execute(
-                select(Issue).where(
-                    Issue.key == key,
-                    Issue.category.in_(PROJECT_CATEGORY_CODES),
-                    Issue.parent_id.is_(None),
-                )
-            )
+            db.execute(select(Issue).where(Issue.key == key))
             .scalars()
             .first()
         )

@@ -84,10 +84,12 @@ def test_get_project_detail_ok(test_client, test_db_session):
     assert len(body["employees"]) == 1
 
 
-def test_get_project_detail_404_for_non_quarterly(test_client, test_db_session):
+def test_get_project_detail_404_for_unknown_key(test_client, test_db_session):
     _seed(test_db_session)
+    # PRJ-200 (tech_debt category) тоже доступен — detail отдаёт по key.
     r = test_client.get("/api/v1/projects/PRJ-200")
-    assert r.status_code == 404
+    assert r.status_code == 200
+    # Несуществующий key — 404.
     r2 = test_client.get("/api/v1/projects/UNKNOWN")
     assert r2.status_code == 404
 
