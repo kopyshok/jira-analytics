@@ -16,7 +16,7 @@ import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
 import { statusTagColor } from '../../utils/status';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
 
-type RowKind = 'team' | 'role' | 'emp' | 'wt' | 'cat' | 'issue';
+type RowKind = 'team' | 'role' | 'emp' | 'wt' | 'cat' | 'issue' | 'worklog-block';
 
 interface TreeNode {
   key: string;
@@ -30,6 +30,17 @@ interface TreeNode {
   /** Issue Jira key (e.g. PROJ-123) — set only for issue rows */
   issueKey?: string;
 }
+
+const EMPTY_TOTALS: NodeTotals = {
+  fact_hours: 0,
+  plan_hours: null,
+  pct_plan: null,
+  pct_total: 0,
+  worklog_count: 0,
+  issue_count: 0,
+  employee_count: 0,
+  avg_worklog_minutes: 0,
+};
 
 function initialsOf(name: string): string {
   const parts = (name || '').split(/\s+/).filter(Boolean);
@@ -65,9 +76,12 @@ function buildIssueNode(
   i: AnalyticsIssueNode,
   prefix: string,
   depth: number,
+  worklogMode: 'inline' | 'drawer',
+  periodStart: string,
+  periodEnd: string,
 ): TreeNode {
   const cleanSummary = stripKeyPrefix(i.summary, i.key);
-  return {
+  const node: TreeNode = {
     key: `${prefix}/i:${i.id}`,
     kind: 'issue',
     depth,
@@ -78,22 +92,22 @@ function buildIssueNode(
       <div
         style={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           gap: 6,
           minWidth: 0,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
         }}
       >
         <a
           href={`https://itgri.atlassian.net/browse/${i.key}`}
           target="_blank"
           rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
           style={{
             color: '#22d3ee',
             textDecoration: 'underline',
             fontWeight: 600,
             flexShrink: 0,
+            whiteSpace: 'nowrap',
           }}
         >
           {i.key}
@@ -105,12 +119,10 @@ function buildIssueNode(
           {i.status}
         </Tag>
         <span
-          title={cleanSummary}
           style={{
             color: '#e6edf7',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            whiteSpace: 'normal',
+            wordBreak: 'break-word',
             minWidth: 0,
             flex: '1 1 auto',
           }}
@@ -121,12 +133,39 @@ function buildIssueNode(
     ),
     totals: i.totals,
   };
+
+  // В inline-режиме ворклоги задачи показываются как один child-row через
+  // tree-expansion, чтобы не конфликтовать с tree-mode на родительских уровнях.
+  if (worklogMode === 'inline') {
+    node.children = [
+      {
+        key: `${node.key}/wl`,
+        kind: 'worklog-block',
+        depth: depth + 1,
+        label: (
+          <div style={{ paddingLeft: (depth + 1) * 14 }}>
+            <AnalyticsWorklogsBlock
+              issueId={i.id}
+              periodStart={periodStart}
+              periodEnd={periodEnd}
+            />
+          </div>
+        ),
+        totals: EMPTY_TOTALS,
+      },
+    ];
+  }
+
+  return node;
 }
 
 function buildCategoryNode(
   c: AnalyticsCategoryNode,
   prefix: string,
   depth: number,
+  worklogMode: 'inline' | 'drawer',
+  periodStart: string,
+  periodEnd: string,
 ): TreeNode {
   return {
     key: `${prefix}/c:${c.category_code || '_none'}`,
@@ -149,7 +188,16 @@ function buildCategoryNode(
       </span>,
     ),
     totals: c.totals,
-    children: c.issues.map((i) => buildIssueNode(i, `${prefix}/c:${c.category_code || '_none'}`, depth + 1)),
+    children: c.issues.map((i) =>
+      buildIssueNode(
+        i,
+        `${prefix}/c:${c.category_code || '_none'}`,
+        depth + 1,
+        worklogMode,
+        periodStart,
+        periodEnd,
+      ),
+    ),
   };
 }
 
@@ -157,6 +205,9 @@ function buildWorkTypeNode(
   w: AnalyticsWorkTypeNode,
   prefix: string,
   depth: number,
+  worklogMode: 'inline' | 'drawer',
+  periodStart: string,
+  periodEnd: string,
 ): TreeNode {
   return {
     key: `${prefix}/w:${w.work_type_id}`,
@@ -180,7 +231,14 @@ function buildWorkTypeNode(
     ),
     totals: w.totals,
     children: w.categories.map((c) =>
-      buildCategoryNode(c, `${prefix}/w:${w.work_type_id}`, depth + 1),
+      buildCategoryNode(
+        c,
+        `${prefix}/w:${w.work_type_id}`,
+        depth + 1,
+        worklogMode,
+        periodStart,
+        periodEnd,
+      ),
     ),
   };
 }
@@ -190,6 +248,9 @@ function buildEmployeeNode(
   prefix: string,
   depth: number,
   roleColor: string,
+  worklogMode: 'inline' | 'drawer',
+  periodStart: string,
+  periodEnd: string,
 ): TreeNode {
   const initials = e.initials || initialsOf(e.name);
   return {
@@ -221,7 +282,14 @@ function buildEmployeeNode(
     ),
     totals: e.totals,
     children: e.work_types.map((w) =>
-      buildWorkTypeNode(w, `${prefix}/e:${e.employee_id}`, depth + 1),
+      buildWorkTypeNode(
+        w,
+        `${prefix}/e:${e.employee_id}`,
+        depth + 1,
+        worklogMode,
+        periodStart,
+        periodEnd,
+      ),
     ),
   };
 }
@@ -230,6 +298,9 @@ function buildRoleNode(
   r: AnalyticsRoleNode,
   prefix: string,
   depth: number,
+  worklogMode: 'inline' | 'drawer',
+  periodStart: string,
+  periodEnd: string,
 ): TreeNode {
   return {
     key: `${prefix}/r:${r.role_code}`,
@@ -255,12 +326,25 @@ function buildRoleNode(
     ),
     totals: r.totals,
     children: r.employees.map((e) =>
-      buildEmployeeNode(e, `${prefix}/r:${r.role_code}`, depth + 1, r.role_color),
+      buildEmployeeNode(
+        e,
+        `${prefix}/r:${r.role_code}`,
+        depth + 1,
+        r.role_color,
+        worklogMode,
+        periodStart,
+        periodEnd,
+      ),
     ),
   };
 }
 
-function buildTeamNode(t: AnalyticsTeamNode): TreeNode {
+function buildTeamNode(
+  t: AnalyticsTeamNode,
+  worklogMode: 'inline' | 'drawer',
+  periodStart: string,
+  periodEnd: string,
+): TreeNode {
   const prefix = `team:${t.team || '_none'}`;
   return {
     key: prefix,
@@ -268,7 +352,9 @@ function buildTeamNode(t: AnalyticsTeamNode): TreeNode {
     depth: 0,
     label: indent(0, <b>{t.team || 'Без команды'}</b>),
     totals: t.totals,
-    children: t.roles.map((r) => buildRoleNode(r, prefix, 1)),
+    children: t.roles.map((r) =>
+      buildRoleNode(r, prefix, 1, worklogMode, periodStart, periodEnd),
+    ),
   };
 }
 
@@ -296,7 +382,11 @@ export default function AnalyticsTable({
       ? data.teams
       : data.teams.filter((t) => (t.team || '_none_') === selectedTeam);
 
-  const tableData: TreeNode[] = teams.map((t) => buildTeamNode(t));
+  const tableData: TreeNode[] = teams.map((t) =>
+    buildTeamNode(t, worklogMode, periodStart, periodEnd),
+  );
+
+  const isBlock = (r: TreeNode) => r.kind === 'worklog-block';
 
   const allColumns: ColumnsType<TreeNode> = [
     {
@@ -309,11 +399,12 @@ export default function AnalyticsTable({
     {
       title: 'Часы факт',
       key: 'fact_hours',
-      render: (_, r) => (
-        <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
-          {r.totals.fact_hours.toFixed(1)}
-        </span>
-      ),
+      render: (_, r) =>
+        isBlock(r) ? null : (
+          <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
+            {r.totals.fact_hours.toFixed(1)}
+          </span>
+        ),
       width: 100,
       align: 'right',
     },
@@ -321,7 +412,7 @@ export default function AnalyticsTable({
       title: 'Часы план',
       key: 'plan_hours',
       render: (_, r) =>
-        r.totals.plan_hours != null ? Math.round(r.totals.plan_hours) : '—',
+        isBlock(r) ? null : r.totals.plan_hours != null ? Math.round(r.totals.plan_hours) : '—',
       width: 100,
       align: 'right',
     },
@@ -329,48 +420,50 @@ export default function AnalyticsTable({
       title: '% план',
       key: 'pct_plan',
       render: (_, r) =>
-        r.totals.pct_plan != null ? (
-          <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
-            {r.totals.pct_plan.toFixed(0)}%
-          </span>
-        ) : (
-          '—'
-        ),
+        isBlock(r)
+          ? null
+          : r.totals.pct_plan != null
+            ? (
+                <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
+                  {r.totals.pct_plan.toFixed(0)}%
+                </span>
+              )
+            : '—',
       width: 90,
       align: 'right',
     },
     {
       title: '% от итога',
       key: 'pct_total',
-      render: (_, r) => `${r.totals.pct_total.toFixed(1)}%`,
+      render: (_, r) => (isBlock(r) ? null : `${r.totals.pct_total.toFixed(1)}%`),
       width: 100,
       align: 'right',
     },
     {
       title: 'Ворклогов',
       key: 'worklog_count',
-      render: (_, r) => r.totals.worklog_count,
+      render: (_, r) => (isBlock(r) ? null : r.totals.worklog_count),
       width: 100,
       align: 'right',
     },
     {
       title: 'Задач',
       key: 'issue_count',
-      render: (_, r) => r.totals.issue_count,
+      render: (_, r) => (isBlock(r) ? null : r.totals.issue_count),
       width: 80,
       align: 'right',
     },
     {
       title: 'Сотр.',
       key: 'employee_count',
-      render: (_, r) => r.totals.employee_count,
+      render: (_, r) => (isBlock(r) ? null : r.totals.employee_count),
       width: 80,
       align: 'right',
     },
     {
       title: 'Ср.мин',
       key: 'avg_min',
-      render: (_, r) => r.totals.avg_worklog_minutes.toFixed(0),
+      render: (_, r) => (isBlock(r) ? null : r.totals.avg_worklog_minutes.toFixed(0)),
       width: 90,
       align: 'right',
     },
@@ -394,23 +487,13 @@ export default function AnalyticsTable({
         scroll={{ x: 'max-content' }}
         rowClassName={(record) => {
           const cls = [`tree-row-depth-${record.depth}`];
-          if (record.children && record.children.length > 0) cls.push('tree-row-has-children');
+          if (record.children && record.children.length > 0)
+            cls.push('tree-row-has-children');
           return cls.join(' ');
         }}
         expandable={{
           defaultExpandAllRows: false,
-          rowExpandable: (record) =>
-            record.kind === 'issue'
-              ? worklogMode === 'inline'
-              : (record.children?.length ?? 0) > 0,
-          expandedRowRender: (record) =>
-            record.kind === 'issue' && worklogMode === 'inline' && record.issueId ? (
-              <AnalyticsWorklogsBlock
-                issueId={record.issueId}
-                periodStart={periodStart}
-                periodEnd={periodEnd}
-              />
-            ) : null,
+          rowExpandable: (record) => (record.children?.length ?? 0) > 0,
         }}
         onRow={(record) =>
           worklogMode === 'drawer' && record.kind === 'issue' && record.issueId
