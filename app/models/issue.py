@@ -98,6 +98,15 @@ class Issue(Base, SyncedMixin):
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Customer ratings (Jira custom fields, 1-5 шкала)
+    rating_quality: Mapped[Optional[int]] = mapped_column(nullable=True)
+    rating_speed: Mapped[Optional[int]] = mapped_column(nullable=True)
+    rating_result: Mapped[Optional[int]] = mapped_column(nullable=True)
+
+    # Plan dates (зарезервированы под будущий инструмент планирования)
+    planned_start_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    planned_end_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="issues")
     parent: Mapped[Optional["Issue"]] = relationship(
