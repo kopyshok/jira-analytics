@@ -64,7 +64,7 @@ def test_list_projects_filters_by_active_flag(client, db_session):
     )
     db_session.flush()
 
-    response = client.get("/api/v1/projects?is_active=true")
+    response = client.get("/api/v1/projects/all?is_active=true")
 
     assert response.status_code == 200
     assert [row["key"] for row in response.json()] == ["ACT"]
