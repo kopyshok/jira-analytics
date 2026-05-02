@@ -167,6 +167,14 @@ class IssuesIncrementalStage(Stage):
 
     async def run(self, ctx: dict) -> dict:
         result = await self.svc.sync_issues(incremental=True)
+        # Передаём ключи upsert-нутых задач следующим стадиям (MappingStage),
+        # чтобы пересчёт категорий захватил задачи с изменившимся parent_id,
+        # даже если по ним не было новых ворклогов.
+        touched = getattr(self.svc.stats, "touched_issue_keys", None)
+        if isinstance(touched, (set, list, tuple)) and touched:
+            existing = ctx.get("touched_issue_keys") or []
+            merged = set(existing) | set(touched)
+            ctx["touched_issue_keys"] = list(merged)
         return {"updated": result} if isinstance(result, int) else (result or {})
 
     def invalidates(self) -> list[str]:
@@ -247,7 +255,8 @@ class WorklogsDeltaStage(Stage):
             issue_keys = list(getattr(result, "touched_issue_keys", None) or [])
 
         if issue_keys:
-            ctx["touched_issue_keys"] = issue_keys
+            existing = ctx.get("touched_issue_keys") or []
+            ctx["touched_issue_keys"] = list(set(existing) | set(issue_keys))
 
         return {"worklogs_upserted": upserted, "issue_keys_count": len(issue_keys)}
 

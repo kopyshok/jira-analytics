@@ -29,10 +29,48 @@ async def test_projects_stage_calls_sync_service():
 @pytest.mark.asyncio
 async def test_issues_incremental_stage():
     sync_svc = MagicMock(sync_issues=AsyncMock(return_value=12))
+    sync_svc.stats = SimpleNamespace(touched_issue_keys=set())
     stage = IssuesIncrementalStage(sync_svc)
     result = await stage.run({})
     sync_svc.sync_issues.assert_awaited_once_with(incremental=True)
     assert result["updated"] == 12
+
+
+@pytest.mark.asyncio
+async def test_issues_incremental_stage_propagates_touched_keys_to_ctx():
+    """Issues stage кладёт ключи upsert-нутых задач в ctx — нужно для пересчёта
+    категорий по задачам с изменившимся parent_id (без новых ворклогов)."""
+    sync_svc = MagicMock(sync_issues=AsyncMock(return_value=2))
+    sync_svc.stats = SimpleNamespace(touched_issue_keys={"AD-6029", "AD-100"})
+    stage = IssuesIncrementalStage(sync_svc)
+    ctx: dict = {}
+    await stage.run(ctx)
+    assert set(ctx["touched_issue_keys"]) == {"AD-6029", "AD-100"}
+
+
+@pytest.mark.asyncio
+async def test_issues_incremental_stage_merges_with_existing_ctx_keys():
+    """Issues stage не затирает уже накопленные ключи (например от worklogs)."""
+    sync_svc = MagicMock(sync_issues=AsyncMock(return_value=1))
+    sync_svc.stats = SimpleNamespace(touched_issue_keys={"AD-6029"})
+    stage = IssuesIncrementalStage(sync_svc)
+    ctx: dict = {"touched_issue_keys": ["AD-100"]}
+    await stage.run(ctx)
+    assert set(ctx["touched_issue_keys"]) == {"AD-6029", "AD-100"}
+
+
+@pytest.mark.asyncio
+async def test_worklogs_delta_merges_keys_with_existing_ctx():
+    """WorklogsDeltaStage не затирает ключи, добавленные IssuesIncrementalStage."""
+    fake_stats = SimpleNamespace(
+        worklogs_upserted=1,
+        touched_issue_keys={"AD-200"},
+    )
+    sync_svc = _make_sync_svc(update_worklogs_v2=AsyncMock(return_value=fake_stats))
+    ctx: dict = {"touched_issue_keys": ["AD-6029"]}
+    stage = WorklogsDeltaStage(sync_svc)
+    await stage.run(ctx)
+    assert set(ctx["touched_issue_keys"]) == {"AD-6029", "AD-200"}
 
 
 @pytest.mark.asyncio

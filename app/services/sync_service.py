@@ -217,6 +217,7 @@ class SyncStats:
         self.employees_synced = 0
         self.employees_created = 0
         self.errors: List[str] = []
+        self.touched_issue_keys: set[str] = set()
         self.started_at = datetime.utcnow()
         self.finished_at: Optional[datetime] = None
     
@@ -648,6 +649,7 @@ class SyncService:
             if created:
                 self.stats.issues_created += 1
             self.stats.issues_synced += 1
+            self.stats.touched_issue_keys.add(jira_issue.key)
             count += 1
 
             # Отложенно свяжем, если родитель ещё не подтянут (обычно эпик
