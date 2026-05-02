@@ -87,7 +87,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
         {/* Строка 2: метки */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <MetaTag icon="📅">{`${formatDate(item.period_start)} – ${formatDate(item.period_end)}`}</MetaTag>
-          <MetaTag icon="⏱">{`${item.total_hours.toFixed(0)} ч`}</MetaTag>
+          <MetaTag icon="⏱">{`${Math.round(item.total_hours)} ч`}</MetaTag>
           <MetaTag icon="📋">{`${item.child_count} задач`}</MetaTag>
           <MetaTag icon="👥">{`${item.employee_count} участн.`}</MetaTag>
         </div>

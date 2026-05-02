@@ -5,7 +5,6 @@ import { ProjectCategoriesCard } from './cards/ProjectCategoriesCard';
 import { ProjectEmployeesCard } from './cards/ProjectEmployeesCard';
 import { ProjectResultCard } from './cards/ProjectResultCard';
 import { ProjectStatusCard } from './cards/ProjectStatusCard';
-import { ProjectKeyBlocksCard } from './cards/ProjectKeyBlocksCard';
 import { ProjectRatingsCard } from './cards/ProjectRatingsCard';
 import { ProjectTopIssuesCard } from './cards/ProjectTopIssuesCard';
 
@@ -32,8 +31,7 @@ export const ProjectAnalysisView: React.FC<Props> = ({ detail, summary }) => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <ProjectResultCard summary={summary} />
         <ProjectStatusCard summary={summary} detail={detail} />
-        <ProjectKeyBlocksCard categories={detail.categories} projectKey={detail.key} />
-        <ProjectRatingsCard detail={detail} summary={summary} />
+<ProjectRatingsCard detail={detail} summary={summary} />
         <ProjectTopIssuesCard topIssues={detail.top_issues} projectKey={detail.key} />
       </div>
     </div>

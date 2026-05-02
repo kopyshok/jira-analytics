@@ -197,6 +197,14 @@ def test_list_projects_filters_by_approved_scenario(db_session):
     other_q = ProjectsService(db).list_projects(year=2026, quarter=3)
     assert other_q == []
 
+    # team_filter совпадает с PlanningScenario.team="T" — проект есть
+    with_team = ProjectsService(db).list_projects(year=2026, quarter=2, team_filter=["T"])
+    assert any(i.key == "SCN1-1" for i in with_team)
+
+    # team_filter не совпадает — пусто (сценарий фильтруется)
+    wrong_team = ProjectsService(db).list_projects(year=2026, quarter=2, team_filter=["OTHER"])
+    assert wrong_team == []
+
 
 def test_list_projects_filters_by_team(db_session):
     """Глобальный team filter: проект попадает если есть worklog от сотрудника

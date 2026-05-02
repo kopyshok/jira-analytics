@@ -72,7 +72,7 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
                   {emp.name}
                 </span>
                 <span style={{ color: '#7e94b8', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 8 }}>
-                  {emp.hours} ч · {emp.pct}%
+                  {Math.round(emp.hours)} ч · {emp.pct}%
                 </span>
               </div>
               <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>

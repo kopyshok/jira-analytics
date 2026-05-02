@@ -145,16 +145,29 @@ class ProjectsService:
 
         if year is not None and quarter is not None:
             # Фильтр по членству в approved scenario.
+            # team_filter применяется к PlanningScenario.team (команда сценария),
+            # а не к worklog-сотрудникам — новые задачи без worklogs не должны отсекаться.
             quarter_str = f"Q{quarter}"
+            scenarios_q = (
+                select(PlanningScenario.id)
+                .where(
+                    PlanningScenario.status == "approved",
+                    PlanningScenario.year == year,
+                    PlanningScenario.quarter == quarter_str,
+                )
+            )
+            if team_filter:
+                scenarios_q = scenarios_q.where(PlanningScenario.team.in_(team_filter))
+            scenario_ids = db.execute(scenarios_q).scalars().all()
+            if not scenario_ids:
+                return []
+
             approved_issue_ids = (
                 db.execute(
                     select(BacklogItem.issue_id)
                     .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
-                    .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
                     .where(
-                        PlanningScenario.status == "approved",
-                        PlanningScenario.year == year,
-                        PlanningScenario.quarter == quarter_str,
+                        ScenarioAllocation.scenario_id.in_(scenario_ids),
                         ScenarioAllocation.included_flag.is_(True),
                         BacklogItem.issue_id.is_not(None),
                     )
@@ -166,7 +179,7 @@ class ProjectsService:
             if not approved_set:
                 return []
 
-            # parent_id НЕ ограничиваем: utверждённый allocation сам по себе
+            # parent_id НЕ ограничиваем: утверждённый allocation сам по себе
             # делает issue «проектом квартала», даже если в Jira-иерархии у
             # него есть родитель (Initiative и т.п.).
             stmt = select(Issue).where(Issue.id.in_(approved_set))
@@ -230,14 +243,14 @@ class ProjectsService:
             sub_ids = subtree_map[root.id]
             rows = [r for iid in sub_ids for r in wl_by_issue.get(iid, [])]
 
-            # team_filter — проект включается только если есть хотя бы один
-            # worklog от сотрудника из выбранных команд.
-            if team_filter:
+            # Worklog-based team filter — только в legacy-режиме (без year+quarter).
+            # В approved-scenario mode team_filter уже применён к PlanningScenario.team.
+            if team_filter and (year is None or quarter is None):
                 has_team = any(r.team in team_filter for r in rows)
                 if not has_team:
                     continue
 
-            total_hours = sum(r.hours for r in rows)
+            total_hours = float(round(sum(r.hours for r in rows)))
             employees = {r.employee_id for r in rows}
             started_times = [r.started_at for r in rows]
             period_start = min(started_times) if started_times else None
@@ -314,7 +327,7 @@ class ProjectsService:
             emp_meta[row.employee_id] = (row.display_name, row.team)
             started_times.append(row.started_at)
 
-        total_hours = sum(emp_hours.values())
+        total_hours = float(round(sum(emp_hours.values())))
         period_start = min(started_times) if started_times else None
         period_end = max(started_times) if started_times else None
 
@@ -358,7 +371,7 @@ class ProjectsService:
                     code=code,
                     label=cat_meta.get(code, ("Без категории" if code == "uncategorized" else code,))[0],
                     color=cat_meta.get(code, (None, None))[1] if code in cat_meta else None,
-                    hours=hours,
+                    hours=float(round(hours)),
                 )
                 for code, hours in cat_hours.items()
             ],
@@ -373,7 +386,7 @@ class ProjectsService:
                     employee_id=eid,
                     name=emp_meta[eid][0],
                     team=emp_meta[eid][1],
-                    hours=hours,
+                    hours=float(round(hours)),
                 )
                 for eid, hours in emp_hours.items()
             ],
@@ -395,7 +408,7 @@ class ProjectsService:
                 summary=top_issue_map[iid].summary,
                 status=top_issue_map[iid].status,
                 category=top_issue_map[iid].category,
-                hours=issue_hours[iid],
+                hours=float(round(issue_hours[iid])),
             )
             for iid in top_issue_ids
             if iid in top_issue_map

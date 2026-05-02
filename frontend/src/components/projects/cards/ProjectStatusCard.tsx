@@ -47,7 +47,7 @@ export const ProjectStatusCard: React.FC<Props> = ({ summary, detail }) => {
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <KpiTile value={detail.child_count} label="Задач" />
-          <KpiTile value={`${detail.total_hours} ч`} label="Часов" color="#faad14" />
+          <KpiTile value={`${Math.round(detail.total_hours)} ч`} label="Часов" color="#faad14" />
           <KpiTile value={detail.employee_count} label="Участников" />
           <KpiTile value={`${detail.weeks} нед`} label="Недель" />
         </div>

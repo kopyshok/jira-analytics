@@ -46,7 +46,7 @@ export const ProjectTopIssuesCard: React.FC<Props> = ({ topIssues }) => {
                 <span style={{ color: '#cfd8e5', fontSize: 12 }}>{issue.summary}</span>
               </div>
               <span style={{ color: '#7e94b8', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 4 }}>
-                {issue.hours} ч
+                {Math.round(issue.hours)} ч
               </span>
             </div>
           ))}

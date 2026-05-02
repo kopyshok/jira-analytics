@@ -50,7 +50,7 @@ export const ProjectCategoriesCard: React.FC<Props> = ({ categories, totalHours,
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <DonutChart
           slices={slices}
-          centerValue={`${totalHours} ч`}
+          centerValue={`${Math.round(totalHours)} ч`}
           centerLabel={`~${weeks} нед`}
           size={160}
           onSliceClick={handleSliceClick}
@@ -75,7 +75,7 @@ export const ProjectCategoriesCard: React.FC<Props> = ({ categories, totalHours,
                 {c.label}
               </span>
               <span style={{ color: '#7e94b8', fontSize: 11, whiteSpace: 'nowrap' }}>
-                {c.hours} ч · {c.pct}%
+                {Math.round(c.hours)} ч · {c.pct}%
               </span>
             </div>
           ))}
