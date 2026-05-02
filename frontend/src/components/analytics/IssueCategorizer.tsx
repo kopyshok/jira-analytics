@@ -66,8 +66,14 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
     setApplyToSubtree(false);
   };
 
-  const currentCat = categories.find(c => c.code === context.assigned_category);
-  const currentLabel = currentCat?.label ?? (context.assigned_category ? context.assigned_category : 'Без категории');
+  // Effective категория: ручная override либо унаследованная от родителя
+  // (CategoryResolver). Показываем effective чтобы синхронизировать с
+  // иерархическим отчётом — иначе юзер видит «Без категории» хотя задача
+  // в отчёте под категорией предка.
+  const effectiveCode = context.assigned_category ?? context.category ?? null;
+  const isInherited = !context.assigned_category && context.category != null;
+  const effectiveCat = categories.find(c => c.code === effectiveCode);
+  const effectiveLabel = effectiveCat?.label ?? (effectiveCode ?? 'Без категории');
 
   return (
     <div
@@ -111,21 +117,48 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
 
         {/* Current → new category */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <span
-            style={{
-              display: 'inline-block',
-              fontSize: 11,
-              fontWeight: 500,
-              padding: '3px 9px',
-              borderRadius: 10,
-              background: 'rgba(100,116,139,0.12)',
-              color: '#94a3b8',
-              border: '1px solid rgba(100,116,139,0.2)',
-              whiteSpace: 'nowrap',
-            }}
+          <Tooltip
+            title={
+              isInherited
+                ? 'Категория унаследована от родительской задачи. Можно поставить свою — она перекроет наследование.'
+                : undefined
+            }
           >
-            {currentLabel}
-          </span>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 11,
+                fontWeight: 500,
+                padding: '3px 9px',
+                borderRadius: 10,
+                background: isInherited ? 'rgba(34,211,238,0.08)' : 'rgba(100,116,139,0.12)',
+                color: isInherited ? '#67e8f9' : '#94a3b8',
+                border: isInherited
+                  ? '1px solid rgba(34,211,238,0.25)'
+                  : '1px solid rgba(100,116,139,0.2)',
+                whiteSpace: 'nowrap',
+                cursor: isInherited ? 'help' : 'default',
+              }}
+            >
+              {effectiveCat?.color && (
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: effectiveCat.color,
+                    display: 'inline-block',
+                  }}
+                />
+              )}
+              {effectiveLabel}
+              {isInherited && (
+                <span style={{ fontSize: 9, opacity: 0.75, marginLeft: 2 }}>унасл.</span>
+              )}
+            </span>
+          </Tooltip>
           <span style={{ color: '#475569', fontSize: 13 }}>→</span>
           <Select
             disabled={context.is_container}

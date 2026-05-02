@@ -15,6 +15,8 @@ const CARD_BORDER = '1px solid rgba(255,255,255,0.08)';
 interface BreadcrumbsProps {
   ancestors: IssueContextAncestor[];
   currentKey: string;
+  currentSummary: string;
+  currentIssueType: string;
   siblingsTotal: number;
   parentId: string | undefined;
   onDrillDown: (id: string) => void;
@@ -99,68 +101,145 @@ function SiblingPopover({
   );
 }
 
-function Breadcrumbs({ ancestors, currentKey, siblingsTotal, parentId, onDrillDown }: BreadcrumbsProps) {
+interface TreeRowProps {
+  level: number;
+  isLast: boolean;
+  isCurrent: boolean;
+  issueKey: string;
+  summary: string;
+  issueType: string;
+  onClick?: () => void;
+  rightSlot?: React.ReactNode;
+}
+
+function TreeRow({
+  level,
+  isLast,
+  isCurrent,
+  issueKey,
+  summary,
+  issueType,
+  onClick,
+  rightSlot,
+}: TreeRowProps) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
-      {ancestors.map((anc, idx) => (
-        <React.Fragment key={anc.id}>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 5,
-              fontSize: 12,
-              color: '#94a3b8',
-              cursor: 'pointer',
-              padding: '3px 6px',
-              borderRadius: 4,
-            }}
-            onClick={() => onDrillDown(anc.id)}
-            title={anc.summary}
-          >
-            <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#00c9c8' }}>
-              {anc.key}
-            </span>
-            <span style={{
-              maxWidth: 120,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {anc.summary}
-            </span>
-            <span style={{ fontSize: 10, color: '#475569', fontStyle: 'italic' }}>{anc.issue_type}</span>
-            {/* Show siblings pill on the direct parent (last ancestor) */}
-            {idx === ancestors.length - 1 && siblingsTotal > 1 && parentId && (
-              <SiblingPopover
-                parentId={parentId}
-                count={siblingsTotal}
-                onDrillDown={onDrillDown}
-              />
-            )}
-          </span>
-          <span style={{ color: '#334155', fontSize: 12, flexShrink: 0 }}>›</span>
-        </React.Fragment>
-      ))}
-      {/* Current issue */}
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 6,
+        padding: '4px 6px',
+        paddingLeft: 6 + level * 18,
+        borderRadius: 4,
+        cursor: onClick ? 'pointer' : 'default',
+        background: isCurrent ? 'rgba(0,201,200,0.06)' : 'transparent',
+        border: isCurrent
+          ? '1px solid rgba(0,201,200,0.2)'
+          : '1px solid transparent',
+      }}
+      onClick={onClick}
+    >
+      {level > 0 && (
+        <span
+          style={{
+            color: '#334155',
+            fontSize: 12,
+            fontFamily: 'monospace',
+            lineHeight: '18px',
+            flexShrink: 0,
+          }}
+        >
+          {isLast ? '└' : '├'}
+        </span>
+      )}
       <span
         style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 5,
-          fontSize: 12,
-          fontWeight: 700,
-          color: '#e6edf7',
-          background: 'rgba(0,201,200,0.06)',
-          border: '1px solid rgba(0,201,200,0.2)',
+          fontFamily: 'monospace',
+          fontSize: 11,
+          color: '#00c9c8',
+          background: 'rgba(0,201,200,0.08)',
+          border: '1px solid rgba(0,201,200,0.18)',
           borderRadius: 4,
-          padding: '3px 6px',
+          padding: '1px 5px',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+          lineHeight: '16px',
         }}
       >
-        <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#00c9c8' }}>
-          {currentKey}
-        </span>
+        {issueKey}
       </span>
+      <span
+        style={{
+          fontSize: 10,
+          color: '#475569',
+          fontStyle: 'italic',
+          flexShrink: 0,
+          lineHeight: '18px',
+        }}
+      >
+        {issueType}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: isCurrent ? '#e6edf7' : '#cbd5e1',
+          fontWeight: isCurrent ? 600 : 400,
+          flex: '1 1 auto',
+          minWidth: 0,
+          wordBreak: 'break-word',
+          lineHeight: 1.45,
+        }}
+      >
+        {summary}
+      </span>
+      {rightSlot && <span style={{ flexShrink: 0 }}>{rightSlot}</span>}
+    </div>
+  );
+}
+
+function Breadcrumbs({
+  ancestors,
+  currentKey,
+  currentSummary,
+  currentIssueType,
+  siblingsTotal,
+  parentId,
+  onDrillDown,
+}: BreadcrumbsProps) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 12 }}>
+      {ancestors.map((anc, idx) => {
+        const isParent = idx === ancestors.length - 1;
+        return (
+          <TreeRow
+            key={anc.id}
+            level={idx}
+            isLast={false}
+            isCurrent={false}
+            issueKey={anc.key}
+            summary={anc.summary}
+            issueType={anc.issue_type}
+            onClick={() => onDrillDown(anc.id)}
+            rightSlot={
+              isParent && siblingsTotal > 1 && parentId ? (
+                <SiblingPopover
+                  parentId={parentId}
+                  count={siblingsTotal}
+                  onDrillDown={onDrillDown}
+                />
+              ) : null
+            }
+          />
+        );
+      })}
+      <TreeRow
+        level={ancestors.length}
+        isLast={true}
+        isCurrent
+        issueKey={currentKey}
+        summary={currentSummary}
+        issueType={currentIssueType}
+      />
     </div>
   );
 }
@@ -299,18 +378,17 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
         Контекст
       </div>
       <div style={{ padding: '12px 14px' }}>
-        {context.ancestors.length > 0 && (
-          <Breadcrumbs
-            ancestors={context.ancestors}
-            currentKey={context.key}
-            siblingsTotal={context.siblings_total}
-            parentId={parentId}
-            onDrillDown={onDrillDown}
-          />
-        )}
-        {context.ancestors.length > 0 && (
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0 10px' }} />
-        )}
+        <Breadcrumbs
+          ancestors={context.ancestors}
+          currentKey={context.key}
+          currentSummary={context.summary}
+          currentIssueType={context.issue_type}
+          siblingsTotal={context.siblings_total}
+          parentId={parentId}
+          onDrillDown={onDrillDown}
+        />
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0 10px' }} />
+
         {/* Children table */}
         {context.children.length === 0 ? (
           <p style={{ fontSize: 12, color: '#475569', fontStyle: 'italic', padding: '8px 0 2px' }}>
