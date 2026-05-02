@@ -1,8 +1,9 @@
-"""LLM administration: test connection."""
-from fastapi import APIRouter, Depends, HTTPException
+"""LLM administration: test connection, regenerate-all."""
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.jobs.regenerate_summaries import regenerate_outdated_summaries
 from app.services.llm.base import ConfigurationError, get_llm_provider
 
 
@@ -18,3 +19,10 @@ async def test_connection(db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))
     ok = await provider.healthcheck()
     return {"ok": ok, "provider": provider.name, "model": provider.model}
+
+
+@router.post("/regenerate-all")
+async def regenerate_all(background: BackgroundTasks):
+    """Запускает в background регенерацию всех устаревших AI-саммари."""
+    background.add_task(regenerate_outdated_summaries)
+    return {"started": True}

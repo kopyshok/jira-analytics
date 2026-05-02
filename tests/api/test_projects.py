@@ -90,3 +90,16 @@ def test_get_project_detail_404_for_non_quarterly(test_client, test_db_session):
     assert r.status_code == 404
     r2 = test_client.get("/api/v1/projects/UNKNOWN")
     assert r2.status_code == 404
+
+
+def test_summary_returns_null_when_no_cache(test_client, test_db_session):
+    _seed(test_db_session)
+    r = test_client.get("/api/v1/projects/PRJ-100/summary")
+    assert r.status_code == 200
+    assert r.json() is None
+
+
+def test_regenerate_summary_404_for_unknown_key(test_client, test_db_session):
+    _seed(test_db_session)
+    r = test_client.post("/api/v1/projects/UNKNOWN/regenerate-summary")
+    assert r.status_code in (400, 404)

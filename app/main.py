@@ -10,6 +10,8 @@ from app.api.router import api_router
 from app.database import SessionLocal
 from app.repositories.sync_schedule import SyncScheduleRepository
 from app.services.scheduler import SchedulerService, scheduled_pipeline_runner
+from app.jobs.regenerate_summaries import regenerate_outdated_summaries
+from apscheduler.triggers.cron import CronTrigger
 
 settings = get_settings()
 
@@ -31,6 +33,13 @@ async def lifespan(app: FastAPI):
     sched_svc = SchedulerService(trigger_runner=scheduled_pipeline_runner)
     sched_svc.register_jobs(schedules)
     sched_svc.start()
+    sched_svc.scheduler.add_job(
+        regenerate_outdated_summaries,
+        trigger=CronTrigger(hour=3, minute=0),
+        id="regenerate_summaries",
+        replace_existing=True,
+        max_instances=1,
+    )
     app.state.scheduler = sched_svc
 
     yield

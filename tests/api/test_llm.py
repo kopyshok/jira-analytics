@@ -58,3 +58,10 @@ def test_llm_settings_keys_accepted(test_client):
         json={"key": "llm_gemini_api_key", "value": "AIza-fake-test"},
     )
     assert r2.status_code in (200, 204)
+
+
+def test_regenerate_all_returns_started(test_client):
+    """POST /llm/regenerate-all запускает background задачу и возвращает started=True."""
+    r = test_client.post("/api/v1/llm/regenerate-all")
+    assert r.status_code == 200
+    assert r.json() == {"started": True}

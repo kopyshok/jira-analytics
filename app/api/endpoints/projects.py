@@ -3,6 +3,7 @@
 Список синхронизированных проектов для использования во фронтенде.
 """
 
+import json
 from datetime import datetime
 from typing import List, Optional
 
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Project
+from app.services.llm.base import ConfigurationError
+from app.services.project_summary_service import ProjectSummaryService
 from app.services.projects_service import ProjectsService
 
 
@@ -142,6 +145,56 @@ def list_quarterly_projects(
             rating_result=item.rating_result,
         ))
     return result
+
+
+class ProjectSummarySchema(BaseModel):
+    goals: List[str]
+    result_flow_blocks: List[dict]
+    result_checklist: List[dict]
+    status_text: str
+    workload_summary: str
+    generated_at: datetime
+    model_used: str
+
+
+def _serialize_summary(row) -> ProjectSummarySchema:
+    return ProjectSummarySchema(
+        goals=json.loads(row.goals_json),
+        result_flow_blocks=json.loads(row.result_flow_json),
+        result_checklist=json.loads(row.result_checklist_json),
+        status_text=row.status_text,
+        workload_summary=row.workload_summary,
+        generated_at=row.generated_at,
+        model_used=row.model_used,
+    )
+
+
+@router.get("/{key}/summary", response_model=Optional[ProjectSummarySchema])
+async def get_summary(key: str, db: Session = Depends(get_db)):
+    """Текущий AI-саммари из кэша. Возвращает null если ещё не сгенерирован."""
+    row = await ProjectSummaryService(db).get_summary(key)
+    return _serialize_summary(row) if row else None
+
+
+@router.post("/{key}/regenerate-summary", response_model=ProjectSummarySchema)
+async def regenerate_summary(key: str, db: Session = Depends(get_db)):
+    """Синхронная регенерация AI-саммари через LLM. Публикует SSE-событие после успеха."""
+    try:
+        row = await ProjectSummaryService(db).regenerate(key)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ConfigurationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    from app.services.event_bus import get_event_bus
+    import asyncio
+    bus = get_event_bus()
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(bus.publish({"type": "project_summary_generated", "key": key}))
+    except RuntimeError:
+        pass
+    return _serialize_summary(row)
 
 
 @router.get("/{key}", response_model=ProjectDetailSchema)
