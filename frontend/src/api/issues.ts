@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { IssueTreeNode } from '../types/api';
+import type { IssueChildNode, IssueContextResponse, IssueTreeNode } from '../types/api';
 
 export const getIssueTree = (
   params?: { project_keys?: string; teams?: string },
@@ -32,3 +32,9 @@ export const batchSetCategory = (issueIds: string[], categoryCode: string | null
     issue_ids: issueIds,
     category_code: categoryCode,
   });
+
+export const getIssueContext = (issueId: string) =>
+  api.get<IssueContextResponse>(`/issues/${issueId}/context`);
+
+export const getIssueChildren = (parentId: string, limit = 200) =>
+  api.get<IssueChildNode[]>(`/issues/${parentId}/children`, { limit: String(limit) });

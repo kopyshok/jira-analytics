@@ -1,15 +1,22 @@
 """Issue configuration API — tree view, category assignment, analysis flags."""
 
 import json
+from collections import deque
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Issue, Project
+from app.schemas.issue_context import (
+    IssueChildNode,
+    IssueContextAncestor,
+    IssueContextChild,
+    IssueContextResponse,
+)
 from app.services.backlog_service import BacklogService
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
@@ -240,6 +247,7 @@ async def set_issue_category(
     issue_id: str,
     body: SetCategoryRequest,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Назначить категорию на задачу.
 
@@ -279,6 +287,7 @@ async def set_issue_category(
     assigned_category = issue.assigned_category
     include_in_analysis = issue.include_in_analysis
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "analytics"]})
     return {
         "ok": True,
         "key": key,
@@ -293,6 +302,7 @@ async def set_issue_include(
     issue_id: str,
     body: SetIncludeRequest,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Включить/исключить задачу из аналитики."""
     issue = db.get(Issue, issue_id)
@@ -307,6 +317,7 @@ async def set_issue_include(
     key = issue.key
     include_in_analysis = issue.include_in_analysis
     db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "analytics"]})
     return {"ok": True, "key": key, "include_in_analysis": include_in_analysis}
 
 
@@ -363,3 +374,162 @@ async def batch_set_category(
         "archived_ids": archived_ids,
         "skipped_containers": [],
     }
+
+
+# ---------------------------------------------------------------------------
+# Context endpoint
+# ---------------------------------------------------------------------------
+
+def _subtree_count(db: Session, root_id: str) -> int:
+    """BFS вниз — считаем количество задач в поддереве (включая корень)."""
+    count = 1
+    frontier: deque[str] = deque([root_id])
+    visited: set[str] = {root_id}
+    while frontier:
+        batch: list[str] = []
+        while frontier:
+            batch.append(frontier.popleft())
+        children = (
+            db.query(Issue.id)
+            .filter(Issue.parent_id.in_(batch))
+            .all()
+        )
+        for (child_id,) in children:
+            if child_id not in visited:
+                visited.add(child_id)
+                frontier.append(child_id)
+                count += 1
+    return count
+
+
+@router.get("/{issue_id}/context", response_model=IssueContextResponse)
+def get_issue_context(
+    issue_id: str,
+    db: Session = Depends(get_db),
+):
+    """Контекст задачи: предки, дети, количество потомков, флаг контейнера."""
+    issue = db.get(Issue, issue_id)
+    if not issue:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    rules = load_rules(db)
+
+    # --- Ancestors (walk up parent_id, cycle guard max 20 steps) ---
+    ancestors: list[IssueContextAncestor] = []
+    seen_ids: set[str] = {issue.id}
+    current = issue
+    for _ in range(20):
+        if not current.parent_id:
+            break
+        if current.parent_id in seen_ids:
+            break  # cycle protection
+        parent = db.get(Issue, current.parent_id)
+        if not parent:
+            break
+        seen_ids.add(parent.id)
+        ancestors.append(
+            IssueContextAncestor(
+                id=parent.id,
+                key=parent.key,
+                summary=parent.summary,
+                issue_type=parent.issue_type,
+            )
+        )
+        current = parent
+    ancestors.reverse()  # от корня к родителю
+
+    # --- Siblings total (children of direct parent) ---
+    siblings_total = 0
+    if issue.parent_id:
+        siblings_total = (
+            db.query(func.count(Issue.id))
+            .filter(Issue.parent_id == issue.parent_id)
+            .scalar()
+        ) or 0
+
+    # --- Direct children (up to 50) ---
+    direct_children = (
+        db.query(Issue)
+        .filter(Issue.parent_id == issue.id)
+        .limit(50)
+        .all()
+    )
+    children_out: list[IssueContextChild] = []
+    for ch in direct_children:
+        children_out.append(
+            IssueContextChild(
+                id=ch.id,
+                key=ch.key,
+                summary=ch.summary,
+                status=ch.status,
+                status_category=ch.status_category,
+                issue_type=ch.issue_type,
+                category=ch.category,
+                assigned_category=ch.assigned_category,
+                include_in_analysis=ch.include_in_analysis if ch.include_in_analysis is not None else True,
+                subtree_count=_subtree_count(db, ch.id),
+            )
+        )
+
+    # --- is_container ---
+    project = db.get(Project, issue.project_id) if issue.project_id else None
+    project_key = project.key if project else ""
+    is_container = classify(rules, EvaluationInput(
+        project_key=project_key,
+        issue_type=issue.issue_type,
+        has_parent=bool(issue.parent_id),
+    ))
+
+    # --- subtree_count for root issue ---
+    subtree_count = _subtree_count(db, issue.id)
+
+    return IssueContextResponse(
+        id=issue.id,
+        key=issue.key,
+        summary=issue.summary,
+        status=issue.status,
+        status_category=issue.status_category,
+        issue_type=issue.issue_type,
+        category=issue.category,
+        assigned_category=issue.assigned_category,
+        include_in_analysis=issue.include_in_analysis if issue.include_in_analysis is not None else True,
+        is_container=is_container,
+        ancestors=ancestors,
+        siblings_total=siblings_total,
+        children=children_out,
+        subtree_count=subtree_count,
+    )
+
+
+@router.get("/{parent_id}/children", response_model=List[IssueChildNode])
+def get_issue_children(
+    parent_id: str,
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Прямые дети задачи (без рекурсии). Используется для popover соседей."""
+    parent = db.get(Issue, parent_id)
+    if not parent:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    children = (
+        db.query(Issue)
+        .filter(Issue.parent_id == parent_id)
+        .order_by(Issue.key)
+        .limit(limit)
+        .all()
+    )
+    return [
+        IssueChildNode(
+            id=ch.id,
+            key=ch.key,
+            summary=ch.summary,
+            status=ch.status,
+            status_category=ch.status_category,
+            issue_type=ch.issue_type,
+            category=ch.category,
+            assigned_category=ch.assigned_category,
+            include_in_analysis=ch.include_in_analysis if ch.include_in_analysis is not None else True,
+        )
+        for ch in children
+    ]

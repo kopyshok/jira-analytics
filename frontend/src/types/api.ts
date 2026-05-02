@@ -890,3 +890,54 @@ export interface IssueWorklogItem {
   employee_name: string;
   comment: string | null;
 }
+
+// ─── Issue Context (drawer) ───────────────────────────────────────────────
+
+export interface IssueContextAncestor {
+  id: string;
+  key: string;
+  summary: string;
+  issue_type: string;
+}
+
+export interface IssueContextChild {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  status_category: string | null;
+  issue_type: string;
+  category: string | null;
+  assigned_category: string | null;
+  include_in_analysis: boolean;
+  subtree_count: number;
+}
+
+export interface IssueContextResponse {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  status_category: string | null;
+  issue_type: string;
+  category: string | null;
+  assigned_category: string | null;
+  include_in_analysis: boolean;
+  is_container: boolean;
+  ancestors: IssueContextAncestor[];
+  siblings_total: number;
+  children: IssueContextChild[];
+  subtree_count: number;
+}
+
+export interface IssueChildNode {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  status_category: string | null;
+  issue_type: string;
+  category: string | null;
+  assigned_category: string | null;
+  include_in_analysis: boolean;
+}

@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { Table, Tag, Drawer } from 'antd';
+import { Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table/interface';
 import type { Key } from 'react';
 import type {
@@ -16,6 +16,7 @@ import type {
 import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
 import { statusTagColor } from '../../utils/status';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
+import AnalyticsIssueDrawer from './AnalyticsIssueDrawer';
 
 type RowKind = 'team' | 'role' | 'emp' | 'wt' | 'cat' | 'issue' | 'worklog-block';
 
@@ -539,21 +540,13 @@ export default function AnalyticsTable({
             : {}
         }
       />
-      <Drawer
-        title={drawerIssue?.key}
-        open={!!drawerIssue}
+      <AnalyticsIssueDrawer
+        issueId={drawerIssue?.id ?? null}
+        issueKey={drawerIssue?.key ?? null}
+        periodStart={periodStart}
+        periodEnd={periodEnd}
         onClose={() => setDrawerIssue(null)}
-        width={600}
-        destroyOnClose
-      >
-        {drawerIssue && (
-          <AnalyticsWorklogsBlock
-            issueId={drawerIssue.id}
-            periodStart={periodStart}
-            periodEnd={periodEnd}
-          />
-        )}
-      </Drawer>
+      />
     </>
   );
 }

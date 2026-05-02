@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup: Analytics Drawer — Categorize + Worklogs</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d1c33;
+    color: #e6edf7;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 24px;
+  }
+
+  h1.page-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .page-subtitle {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 24px;
+  }
+
+  /* ===== Layout ===== */
+  .layout {
+    display: grid;
+    grid-template-columns: 720px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ===== Drawer shell ===== */
+  .drawer {
+    background: #0f2340;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -8px 0 40px rgba(0,0,0,0.5);
+  }
+
+  /* ===== Drawer Header ===== */
+  .drawer-header {
+    padding: 16px 20px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    background: #0d1c33;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .drawer-header-row1 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .issue-key {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: #00c9c8;
+    background: rgba(0,201,200,0.08);
+    border: 1px solid rgba(0,201,200,0.25);
+    border-radius: 5px;
+    padding: 3px 8px;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .issue-key:hover { background: rgba(0,201,200,0.14); }
+  .status-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .status-wait   { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
+  .status-done   { background: rgba(34,197,94,0.12);  color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+  .status-wip    { background: rgba(96,165,250,0.12); color: #60a5fa; border: 1px solid rgba(96,165,250,0.25); }
+  .status-open   { background: rgba(148,163,184,0.10); color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
+  .close-btn {
+    margin-left: auto;
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 18px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .close-btn:hover { background: rgba(255,255,255,0.06); color: #e6edf7; }
+  .issue-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #e6edf7;
+    line-height: 1.4;
+  }
+
+  /* ===== Drawer Body ===== */
+  .drawer-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+
+  /* ===== Section Card ===== */
+  .section-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-label-right {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #64748b;
+  }
+  .section-body {
+    padding: 12px 14px;
+  }
+
+  /* ===== Breadcrumbs ===== */
+  .breadcrumbs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .bc-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  .bc-item:hover { background: rgba(255,255,255,0.04); color: #e6edf7; }
+  .bc-item .bc-key {
+    font-family: monospace;
+    font-size: 11px;
+    color: #00c9c8;
+  }
+  .bc-item .bc-type {
+    font-size: 10px;
+    color: #475569;
+    font-style: italic;
+  }
+  .bc-sep {
+    color: #334155;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .bc-item.bc-current {
+    font-weight: 700;
+    color: #e6edf7;
+    background: rgba(0,201,200,0.06);
+    border: 1px solid rgba(0,201,200,0.2);
+    cursor: default;
+  }
+  .bc-item.bc-current .bc-key { color: #00c9c8; }
+  .siblings-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: #64748b;
+    background: rgba(100,116,139,0.1);
+    border: 1px solid rgba(100,116,139,0.15);
+    border-radius: 10px;
+    padding: 2px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+  .siblings-pill:hover { color: #94a3b8; border-color: rgba(100,116,139,0.3); }
+
+  /* ===== Children mini-table ===== */
+  .children-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .m-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .m-table th {
+    color: #475569;
+    font-weight: 500;
+    text-align: left;
+    padding: 5px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .m-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: #e2e8f0;
+    vertical-align: middle;
+  }
+  .m-table tr:last-child td { border-bottom: none; }
+  .m-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .key-badge {
+    font-family: monospace;
+    font-size: 11px;
+    color: #00c9c8;
+    background: rgba(0,201,200,0.08);
+    border: 1px solid rgba(0,201,200,0.18);
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .empty-state {
+    font-size: 12px;
+    color: #475569;
+    font-style: italic;
+    padding: 8px 0 2px;
+  }
+
+  /* ===== Category selector ===== */
+  .cat-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .cat-badge-none {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 10px;
+    background: rgba(100,116,139,0.12);
+    color: #94a3b8;
+    border: 1px solid rgba(100,116,139,0.2);
+  }
+  .arrow-icon { color: #475569; font-size: 13px; }
+  .cat-select-open {
+    position: relative;
+    border: 1px solid rgba(0,201,200,0.35);
+    border-radius: 6px;
+    background: #0d1c33;
+    min-width: 220px;
+    overflow: hidden;
+  }
+  .cat-select-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 12px;
+    color: #94a3b8;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    cursor: pointer;
+  }
+  .cat-select-option:last-child { border-bottom: none; }
+  .cat-select-option:hover { background: rgba(255,255,255,0.03); }
+  .cat-select-option.hovered {
+    background: rgba(0,201,200,0.07);
+    color: #e6edf7;
+  }
+  .cat-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-green   { background: #4ade80; }
+  .dot-orange  { background: #fb923c; }
+  .dot-gray    { background: #64748b; }
+  .dot-darkgray { background: #334155; }
+
+  /* Checkbox */
+  .cb-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .cb-box {
+    width: 16px; height: 16px;
+    border: 1.5px solid rgba(0,201,200,0.5);
+    border-radius: 3px;
+    background: rgba(0,201,200,0.1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    color: #00c9c8;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .cb-box.unchecked {
+    background: rgba(100,116,139,0.08);
+    border-color: rgba(100,116,139,0.3);
+    color: transparent;
+  }
+  .cb-box.disabled {
+    background: rgba(100,116,139,0.05);
+    border-color: rgba(100,116,139,0.15);
+    color: #334155;
+    cursor: not-allowed;
+  }
+  .cb-label {
+    font-size: 12px;
+    color: #cbd5e1;
+  }
+  .cb-label.muted { color: #475569; }
+
+  /* Toggle */
+  .toggle-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .toggle-track {
+    width: 34px; height: 18px;
+    border-radius: 9px;
+    background: rgba(100,116,139,0.25);
+    border: 1px solid rgba(100,116,139,0.2);
+    position: relative;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .toggle-track.on {
+    background: rgba(0,201,200,0.3);
+    border-color: rgba(0,201,200,0.4);
+  }
+  .toggle-thumb {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #64748b;
+    transition: left 0.15s;
+  }
+  .toggle-track.on .toggle-thumb {
+    left: 18px;
+    background: #00c9c8;
+  }
+  .toggle-text { font-size: 12px; color: #94a3b8; line-height: 1.4; }
+  .toggle-hint {
+    font-size: 11px;
+    color: #475569;
+    font-style: italic;
+    margin-top: 2px;
+  }
+
+  /* Action buttons */
+  .action-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+  .btn {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    display: inline-block;
+  }
+  .btn-primary {
+    background: #00c9c8;
+    color: #0d1c33;
+  }
+  .btn-primary:hover { background: #00e0df; }
+  .btn-ghost {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.08); color: #e6edf7; }
+
+  /* ===== Worklogs table ===== */
+  .wl-total-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 8px 8px 0;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    margin-top: 4px;
+    font-size: 12px;
+    color: #94a3b8;
+    gap: 6px;
+  }
+  .wl-total-num {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e6edf7;
+  }
+
+  /* ===== Right column — edge cases ===== */
+  .edge-col {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .edge-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 8px;
+  }
+
+  .mini-drawer {
+    background: #0f2340;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    width: 100%;
+  }
+  .mini-header {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: #0d1c33;
+  }
+  .mini-header-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .mini-title {
+    font-size: 11px;
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mini-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .section-card-mini {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .section-label-mini {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #475569;
+    padding: 7px 10px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .section-body-mini {
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  /* Disabled / container state */
+  .cat-select-disabled {
+    border: 1px solid rgba(100,116,139,0.15);
+    border-radius: 6px;
+    background: rgba(100,116,139,0.05);
+    min-width: 180px;
+    overflow: hidden;
+    opacity: 0.5;
+  }
+  .cat-select-disabled .cat-select-option {
+    cursor: not-allowed;
+  }
+
+  .container-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: rgba(251,191,36,0.07);
+    border: 1px solid rgba(251,191,36,0.18);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #fbbf24;
+    line-height: 1.4;
+  }
+  .banner-icon { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Info icon tooltip hint */
+  .info-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #475569;
+    background: rgba(100,116,139,0.08);
+    border: 1px solid rgba(100,116,139,0.15);
+    border-radius: 5px;
+    padding: 3px 8px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .info-icon { color: #64748b; font-size: 12px; }
+
+  /* separator line */
+  .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Drawer: Детальная задача — Категоризация + Ворклоги</h1>
+<p class="page-subtitle">Аналитика → иерархический отчёт → клик по задаче OS-78533</p>
+
+<div class="layout">
+
+  <!-- ==================== MAIN DRAWER ==================== -->
+  <div class="drawer">
+
+    <!-- Header (sticky) -->
+    <div class="drawer-header">
+      <div class="drawer-header-row1">
+        <a class="issue-key" href="#">OS-78533</a>
+        <span class="status-badge status-wait">Ожидает тестирования</span>
+        <span class="close-btn">×</span>
+      </div>
+      <div class="issue-title">Изменить проведение Корректировки задолженности по ВГО в ЕРП</div>
+    </div>
+
+    <!-- Body -->
+    <div class="drawer-body">
+
+      <!-- === BLOCK 1: Context / Hierarchy === -->
+      <div class="section-card">
+        <div class="section-label">Контекст</div>
+        <div class="section-body">
+
+          <!-- Breadcrumbs -->
+          <div class="breadcrumbs">
+            <span class="bc-item">
+              <span class="bc-key">OS-1234</span>
+              <span>ERP — Товарный учёт</span>
+              <span class="bc-type">Эпик</span>
+            </span>
+            <span class="bc-sep">›</span>
+            <span class="bc-item" style="position:relative;">
+              <span class="bc-key">OS-5678</span>
+              <span>Корректировки задолженности</span>
+              <span class="bc-type">Story</span>
+              <span class="siblings-pill">+12 соседей ▾</span>
+            </span>
+            <span class="bc-sep">›</span>
+            <span class="bc-item bc-current">
+              <span class="bc-key">OS-78533</span>
+            </span>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Children table -->
+          <div class="children-label" style="margin-top:10px;">Подзадачи (3)</div>
+          <table class="m-table">
+            <thead>
+              <tr>
+                <th>Ключ</th>
+                <th>Название</th>
+                <th>Статус</th>
+                <th>Категория</th>
+                <th style="text-align:center;">В анализ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="key-badge">OS-78534</span></td>
+                <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Анализ требований</td>
+                <td><span class="status-badge status-done" style="font-size:10px; padding:2px 7px;">Готово</span></td>
+                <td>
+                  <span style="font-size:11px; color:#64748b; background:rgba(100,116,139,0.1); border:1px solid rgba(100,116,139,0.15); border-radius:4px; padding:1px 6px; cursor:pointer;">Без категории ▾</span>
+                </td>
+                <td style="text-align:center;">
+                  <span class="cb-box">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="key-badge">OS-78535</span></td>
+                <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Тестирование</td>
+                <td><span class="status-badge status-wip" style="font-size:10px; padding:2px 7px;">В работе</span></td>
+                <td>
+                  <span style="font-size:11px; color:#64748b; background:rgba(100,116,139,0.1); border:1px solid rgba(100,116,139,0.15); border-radius:4px; padding:1px 6px; cursor:pointer;">Без категории ▾</span>
+                </td>
+                <td style="text-align:center;">
+                  <span class="cb-box">✓</span>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="key-badge">OS-78536</span></td>
+                <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Документация</td>
+                <td><span class="status-badge status-open" style="font-size:10px; padding:2px 7px;">Открыто</span></td>
+                <td>
+                  <span style="font-size:11px; color:#64748b; background:rgba(100,116,139,0.1); border:1px solid rgba(100,116,139,0.15); border-radius:4px; padding:1px 6px; cursor:pointer;">Без категории ▾</span>
+                </td>
+                <td style="text-align:center;">
+                  <span class="cb-box">✓</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+        </div>
+      </div>
+
+      <!-- === BLOCK 2: Categorization === -->
+      <div class="section-card">
+        <div class="section-label">Категория и анализ</div>
+        <div class="section-body">
+
+          <!-- Current category → dropdown -->
+          <div class="cat-row">
+            <span class="cat-badge-none">Без категории</span>
+            <span class="arrow-icon">→</span>
+            <div class="cat-select-open">
+              <div class="cat-select-option">
+                <span class="cat-dot dot-green"></span> Активный стек
+              </div>
+              <div class="cat-select-option hovered">
+                <span class="cat-dot dot-orange"></span> Сопровождение и консультация
+              </div>
+              <div class="cat-select-option">
+                <span class="cat-dot dot-gray"></span> Организационные вопросы
+              </div>
+              <div class="cat-select-option">
+                <span class="cat-dot dot-gray"></span> Прочие / Чужие задачи
+              </div>
+              <div class="cat-select-option">
+                <span class="cat-dot dot-green"></span> Проекты и развитие
+              </div>
+              <div class="cat-select-option">
+                <span class="cat-dot dot-darkgray"></span> Архив прочих задач
+              </div>
+            </div>
+          </div>
+
+          <!-- Include in analysis checkbox -->
+          <div class="cb-row">
+            <span class="cb-box">✓</span>
+            <span class="cb-label">Учитывать в анализе</span>
+          </div>
+
+          <!-- Subtree toggle -->
+          <div class="toggle-row">
+            <div class="toggle-track">
+              <div class="toggle-thumb"></div>
+            </div>
+            <div>
+              <div class="toggle-text">Применить ко всему поддереву <span style="color:#64748b;">(3 задачи)</span></div>
+              <div class="toggle-hint">Категория поставится на эту задачу + всех детей рекурсивно</div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="action-row">
+            <span class="btn btn-ghost">Отмена</span>
+            <span class="btn btn-primary">Сохранить</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- === BLOCK 3: Worklogs === -->
+      <div class="section-card">
+        <div class="section-label">
+          <span>Ворклоги за период <span style="color:#94a3b8; font-weight:500;">(3 шт.)</span></span>
+          <span class="section-label-right">01.05.2026 – 31.05.2026</span>
+        </div>
+        <div class="section-body" style="padding-bottom:4px;">
+          <table class="m-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Сотрудник</th>
+                <th style="text-align:right;">Ч</th>
+                <th>Комментарий</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="white-space:nowrap; color:#64748b;">28.04.2026</td>
+                <td style="white-space:nowrap;">Шутов Сергей</td>
+                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">2.5</td>
+                <td style="color:#94a3b8; font-size:11px;">Анализ задачи и согласование с заказчиком</td>
+              </tr>
+              <tr>
+                <td style="white-space:nowrap; color:#64748b;">29.04.2026</td>
+                <td style="white-space:nowrap;">Шутов Сергей</td>
+                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">4.0</td>
+                <td style="color:#94a3b8; font-size:11px;">Реализация изменений алгоритма проведения</td>
+              </tr>
+              <tr>
+                <td style="white-space:nowrap; color:#64748b;">30.04.2026</td>
+                <td style="white-space:nowrap;">Шутов Сергей</td>
+                <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">2.5</td>
+                <td style="color:#94a3b8; font-size:11px;">Тестирование и фиксы</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="wl-total-row">
+            <span>Итого:</span>
+            <span class="wl-total-num">9.0 ч</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /drawer-body -->
+  </div><!-- /drawer -->
+
+  <!-- ==================== RIGHT COLUMN: EDGE CASES ==================== -->
+  <div class="edge-col">
+
+    <!-- Edge Case A: Leaf task, no children -->
+    <div>
+      <div class="edge-label">A — задача-лист, нет подзадач</div>
+      <div class="mini-drawer">
+        <div class="mini-header">
+          <div class="mini-header-row">
+            <a class="issue-key" href="#" style="font-size:11px;">OS-78534</a>
+            <span class="status-badge status-done" style="font-size:10px; padding:2px 7px;">Готово</span>
+            <span class="close-btn" style="font-size:14px; width:22px; height:22px; margin-left:auto;">×</span>
+          </div>
+          <div class="mini-title">Анализ требований к корректировке задолженности</div>
+        </div>
+        <div class="mini-body">
+          <div class="section-card-mini">
+            <div class="section-label-mini">Контекст</div>
+            <div class="section-body-mini">
+              <div class="breadcrumbs" style="margin-bottom:6px; gap:3px;">
+                <span class="bc-item" style="font-size:11px; padding:2px 4px;">
+                  <span class="bc-key" style="font-size:10px;">OS-1234</span>
+                  <span>ERP</span>
+                </span>
+                <span class="bc-sep" style="font-size:11px;">›</span>
+                <span class="bc-item" style="font-size:11px; padding:2px 4px;">
+                  <span class="bc-key" style="font-size:10px;">OS-78533</span>
+                  <span>Корректировка ВГО</span>
+                </span>
+                <span class="bc-sep" style="font-size:11px;">›</span>
+                <span class="bc-item bc-current" style="font-size:11px; padding:2px 5px;">
+                  <span class="bc-key" style="font-size:10px;">OS-78534</span>
+                </span>
+              </div>
+              <div class="empty-state" style="font-size:11px; margin-top:4px;">У задачи нет подзадач</div>
+            </div>
+          </div>
+          <div class="section-card-mini">
+            <div class="section-label-mini">Категория и анализ</div>
+            <div class="section-body-mini">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+                <span class="cat-badge-none" style="font-size:10px; padding:2px 7px;">Без категории</span>
+                <span class="arrow-icon" style="font-size:11px;">→</span>
+                <span style="font-size:11px; color:#00c9c8; background:rgba(0,201,200,0.07); border:1px solid rgba(0,201,200,0.2); border-radius:4px; padding:2px 8px; cursor:pointer;">Выбрать категорию ▾</span>
+              </div>
+              <div class="cb-row" style="margin-bottom:0;">
+                <span class="cb-box" style="width:14px; height:14px; font-size:10px;">✓</span>
+                <span class="cb-label" style="font-size:11px;">Учитывать в анализе</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edge Case B: Archive category — checkbox disabled -->
+    <div>
+      <div class="edge-label">B — архивная категория (чекбокс отключён)</div>
+      <div class="mini-drawer">
+        <div class="mini-header">
+          <div class="mini-header-row">
+            <a class="issue-key" href="#" style="font-size:11px;">OS-78537</a>
+            <span class="status-badge status-open" style="font-size:10px; padding:2px 7px;">Открыто</span>
+            <span class="close-btn" style="font-size:14px; width:22px; height:22px; margin-left:auto;">×</span>
+          </div>
+          <div class="mini-title">Старая задача из архива консолидации</div>
+        </div>
+        <div class="mini-body">
+          <div class="section-card-mini">
+            <div class="section-label-mini">Категория и анализ</div>
+            <div class="section-body-mini">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
+                <span style="font-size:11px; color:#475569; background:rgba(51,65,85,0.2); border:1px solid rgba(51,65,85,0.3); border-radius:10px; padding:2px 8px;">Архив прочих задач</span>
+                <span class="arrow-icon" style="font-size:11px;">→</span>
+                <span style="font-size:11px; color:#64748b; background:rgba(100,116,139,0.08); border:1px solid rgba(100,116,139,0.15); border-radius:4px; padding:2px 8px; cursor:pointer;">Сменить категорию ▾</span>
+              </div>
+              <div class="cb-row" style="margin-bottom:0; align-items:flex-start;">
+                <span class="cb-box disabled" style="width:14px; height:14px; font-size:10px; margin-top:1px;">✗</span>
+                <div>
+                  <span class="cb-label muted" style="font-size:11px;">Учитывать в анализе</span>
+                  <span class="info-hint" style="font-size:10px; padding:2px 6px;">
+                    <span class="info-icon">ⓘ</span>
+                    снимается автоматически архивной категорией
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edge Case C: Container (Epic) — categorizer disabled -->
+    <div>
+      <div class="edge-label">C — контейнер (эпик), категоризатор недоступен</div>
+      <div class="mini-drawer">
+        <div class="mini-header">
+          <div class="mini-header-row">
+            <a class="issue-key" href="#" style="font-size:11px;">OS-1234</a>
+            <span style="font-size:10px; color:#a78bfa; background:rgba(167,139,250,0.1); border:1px solid rgba(167,139,250,0.2); border-radius:4px; padding:2px 7px; font-weight:600;">Эпик</span>
+            <span class="close-btn" style="font-size:14px; width:22px; height:22px; margin-left:auto;">×</span>
+          </div>
+          <div class="mini-title">ERP — Товарный учёт</div>
+        </div>
+        <div class="mini-body">
+          <div class="section-card-mini">
+            <div class="section-label-mini">Категория и анализ</div>
+            <div class="section-body-mini">
+              <!-- Container banner -->
+              <div class="container-banner" style="margin-bottom:10px; font-size:10px; padding:7px 9px;">
+                <span class="banner-icon">⚠</span>
+                <span>Это контейнер. Категории ставятся детям, не самому контейнеру.</span>
+              </div>
+              <!-- Disabled selector -->
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; opacity:0.4; pointer-events:none;">
+                <span class="cat-badge-none" style="font-size:10px; padding:2px 7px;">Без категории</span>
+                <span class="arrow-icon" style="font-size:11px;">→</span>
+                <span style="font-size:11px; color:#64748b; background:rgba(100,116,139,0.05); border:1px solid rgba(100,116,139,0.1); border-radius:4px; padding:2px 8px; cursor:not-allowed;">Выбрать категорию ▾</span>
+              </div>
+              <div class="cb-row" style="margin-bottom:0; opacity:0.35; pointer-events:none;">
+                <span class="cb-box disabled" style="width:14px; height:14px; font-size:10px;"></span>
+                <span class="cb-label muted" style="font-size:11px;">Учитывать в анализе</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /edge-col -->
+
+</div><!-- /layout -->
+
+</body>
+</html>

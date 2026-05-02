@@ -1,0 +1,456 @@
+<style>
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+  .mockup {
+    background: #141824;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .mockup-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #1a1f2e;
+  }
+  .mockup-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .mockup-body {
+    padding: 16px;
+    background: #1a1f2e;
+  }
+
+  /* --- Table styles --- */
+  .m-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .m-table th {
+    color: #64748b;
+    font-weight: 500;
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    white-space: nowrap;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .m-table th.sortable {
+    cursor: pointer;
+    color: #06b6d4;
+  }
+  .m-table th.sortable::after {
+    content: " ↕";
+    font-size: 10px;
+    opacity: 0.7;
+  }
+  .m-table th.sorted-asc::after {
+    content: " ↑";
+    opacity: 1;
+  }
+  .m-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    color: #e2e8f0;
+    vertical-align: middle;
+  }
+  .m-table tr:last-child td {
+    border-bottom: none;
+  }
+  .m-table tr:hover td {
+    background: rgba(255,255,255,0.03);
+  }
+
+  /* Key badge */
+  .key-badge {
+    font-family: monospace;
+    font-size: 11px;
+    color: #06b6d4;
+    background: rgba(6,182,212,0.1);
+    border: 1px solid rgba(6,182,212,0.2);
+    border-radius: 4px;
+    padding: 2px 5px;
+    white-space: nowrap;
+  }
+
+  /* Status badge */
+  .status {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .status-done    { background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+  .status-wip     { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+  .status-cancel  { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+
+  /* Quarter pill */
+  .qpill {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    white-space: nowrap;
+    background: rgba(139,92,246,0.12);
+    color: #a78bfa;
+    border: 1px solid rgba(139,92,246,0.2);
+  }
+  .qpill-none {
+    background: rgba(100,116,139,0.1);
+    color: #64748b;
+    border: 1px solid rgba(100,116,139,0.15);
+  }
+
+  /* Category tag */
+  .cat {
+    font-size: 10px;
+    color: #94a3b8;
+    background: rgba(148,163,184,0.08);
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 4px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+
+  /* Task name truncate */
+  .task-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* --- Toggle switch (Option B) --- */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .toggle-label {
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .toggle-switch {
+    display: flex;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 11px;
+  }
+  .toggle-btn {
+    padding: 4px 10px;
+    cursor: pointer;
+    color: #64748b;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .toggle-btn.active {
+    background: rgba(6,182,212,0.15);
+    color: #06b6d4;
+    font-weight: 600;
+  }
+
+  /* Group header */
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 4px 6px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-header:hover .group-title { color: #e2e8f0; }
+  .group-chevron {
+    font-size: 10px;
+    color: #64748b;
+    transition: transform 0.15s;
+  }
+  .group-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+  }
+  .group-count {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: rgba(6,182,212,0.12);
+    color: #06b6d4;
+    border: 1px solid rgba(6,182,212,0.2);
+  }
+  .group-count-none {
+    background: rgba(100,116,139,0.1);
+    color: #64748b;
+    border-color: rgba(100,116,139,0.15);
+  }
+  .group-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    margin: 4px 0 2px;
+  }
+
+  /* --- Option cards --- */
+  .options-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  .option {
+    background: #141824;
+    border: 2px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .option:hover {
+    border-color: rgba(6,182,212,0.4);
+    background: rgba(6,182,212,0.04);
+  }
+  .option.selected {
+    border-color: #06b6d4;
+    background: rgba(6,182,212,0.08);
+  }
+  .option-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #06b6d4;
+    margin-bottom: 4px;
+  }
+  .option-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+  .options-title {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+</style>
+
+<div class="split">
+
+  <!-- ===== OPTION A: Flat list ===== -->
+  <div class="mockup">
+    <div class="mockup-header">
+      <span class="mockup-title">Вариант А — плоский список</span>
+    </div>
+    <div class="mockup-body">
+      <table class="m-table">
+        <thead>
+          <tr>
+            <th>Ключ</th>
+            <th>Название</th>
+            <th>Статус</th>
+            <th class="sorted-asc sortable">Квартал</th>
+            <th>Категория</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="key-badge">RFA-241</span></td>
+            <td><div class="task-name">Миграция отчётов на новый API</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="qpill">1 кв. 2026</span></td>
+            <td><span class="cat">Разработка</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-198</span></td>
+            <td><div class="task-name">Рефакторинг модуля авторизации</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="qpill">1 кв. 2026</span></td>
+            <td><span class="cat">Разработка</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-215</span></td>
+            <td><div class="task-name">Выгрузка кадровых данных в 1С</div></td>
+            <td><span class="status status-cancel">Отменено</span></td>
+            <td><span class="qpill">1 кв. 2026</span></td>
+            <td><span class="cat">Интеграция</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-267</span></td>
+            <td><div class="task-name">Дашборд нагрузки команды</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="qpill">2 кв. 2026</span></td>
+            <td><span class="cat">Аналитика</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-279</span></td>
+            <td><div class="task-name">Интеграция с LDAP-каталогом</div></td>
+            <td><span class="status status-wip">В работе</span></td>
+            <td><span class="qpill">2 кв. 2026</span></td>
+            <td><span class="cat">Интеграция</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-183</span></td>
+            <td><div class="task-name">Оптимизация запросов к БД</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="qpill">2 кв. 2026</span></td>
+            <td><span class="cat">Разработка</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-144</span></td>
+            <td><div class="task-name">Настройка мониторинга Grafana</div></td>
+            <td><span class="status status-cancel">Отменено</span></td>
+            <td><span class="qpill qpill-none">—</span></td>
+            <td><span class="cat">Инфра</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-091</span></td>
+            <td><div class="task-name">Перенос файлов на S3-хранилище</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="qpill qpill-none">—</span></td>
+            <td><span class="cat">Инфра</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== OPTION B: Grouped ===== -->
+  <div class="mockup">
+    <div class="mockup-header">
+      <span class="mockup-title">Вариант Б — группировка</span>
+    </div>
+    <div class="mockup-body">
+      <div class="toggle-row">
+        <span class="toggle-label">Группировать по кварталам:</span>
+        <div class="toggle-switch">
+          <div class="toggle-btn">Нет</div>
+          <div class="toggle-btn active">Да</div>
+        </div>
+      </div>
+
+      <!-- Group: Q2 2026 -->
+      <div class="group-header">
+        <span class="group-chevron">▼</span>
+        <span class="group-title">2 кв. 2026</span>
+        <span class="group-count">8 задач</span>
+      </div>
+      <table class="m-table" style="margin-bottom:10px;">
+        <thead>
+          <tr>
+            <th>Ключ</th>
+            <th>Название</th>
+            <th>Статус</th>
+            <th>Категория</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="key-badge">RFA-267</span></td>
+            <td><div class="task-name">Дашборд нагрузки команды</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="cat">Аналитика</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-279</span></td>
+            <td><div class="task-name">Интеграция с LDAP-каталогом</div></td>
+            <td><span class="status status-wip">В работе</span></td>
+            <td><span class="cat">Интеграция</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-183</span></td>
+            <td><div class="task-name">Оптимизация запросов к БД</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="cat">Разработка</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="group-divider"></div>
+
+      <!-- Group: Q1 2026 -->
+      <div class="group-header">
+        <span class="group-chevron">▼</span>
+        <span class="group-title">1 кв. 2026</span>
+        <span class="group-count">5 задач</span>
+      </div>
+      <table class="m-table" style="margin-bottom:10px;">
+        <thead>
+          <tr>
+            <th>Ключ</th>
+            <th>Название</th>
+            <th>Статус</th>
+            <th>Категория</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="key-badge">RFA-241</span></td>
+            <td><div class="task-name">Миграция отчётов на новый API</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="cat">Разработка</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-198</span></td>
+            <td><div class="task-name">Рефакторинг модуля авторизации</div></td>
+            <td><span class="status status-done">Готово</span></td>
+            <td><span class="cat">Разработка</span></td>
+          </tr>
+          <tr>
+            <td><span class="key-badge">RFA-215</span></td>
+            <td><div class="task-name">Выгрузка кадровых данных в 1С</div></td>
+            <td><span class="status status-cancel">Отменено</span></td>
+            <td><span class="cat">Интеграция</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="group-divider"></div>
+
+      <!-- Group: No quarter — always last -->
+      <div class="group-header">
+        <span class="group-chevron">▶</span>
+        <span class="group-title" style="color:#64748b;">Без квартала</span>
+        <span class="group-count group-count-none">3 задачи</span>
+      </div>
+      <!-- collapsed, no table shown -->
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Choice cards -->
+<div class="options-title">Какой вариант вам ближе?</div>
+<div class="options-row">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="option-label">Вариант А — плоский список</div>
+    <div class="option-desc">Колонка «Квартал» рядом с остальными. Сортировка по ней. Минимум изменений в интерфейсе.</div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="option-label">Вариант Б — группировка</div>
+    <div class="option-desc">Переключатель сворачивает задачи по кварталам. Группа «Без квартала» всегда внизу.</div>
+  </div>
+</div>
+
+<script>
+function toggleSelect(el) {
+  document.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+</script>
