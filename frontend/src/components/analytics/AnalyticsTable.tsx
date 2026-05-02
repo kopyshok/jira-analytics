@@ -1,7 +1,8 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, Tag, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table/interface';
+import type { Key } from 'react';
 import type {
   AnalyticsReportResponse,
   AnalyticsTeamNode,
@@ -377,6 +378,37 @@ export default function AnalyticsTable({
   const visibleSet = new Set(visible);
   const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string } | null>(null);
 
+  const expandedStorageKey = `analytics-tree-expanded:${selectedTeam}`;
+  const [expandedRowKeys, setExpandedRowKeys] = useState<readonly Key[]>(() => {
+    try {
+      const raw = localStorage.getItem(expandedStorageKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(expandedStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setExpandedRowKeys(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setExpandedRowKeys([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(expandedStorageKey, JSON.stringify(expandedRowKeys));
+    } catch {
+      /* storage недоступен — ок */
+    }
+  }, [expandedRowKeys, expandedStorageKey]);
+
   const teams =
     selectedTeam === 'all'
       ? data.teams
@@ -492,7 +524,9 @@ export default function AnalyticsTable({
           return cls.join(' ');
         }}
         expandable={{
-          defaultExpandAllRows: false,
+          expandedRowKeys,
+          onExpandedRowsChange: setExpandedRowKeys,
+          expandRowByClick: true,
           rowExpandable: (record) => (record.children?.length ?? 0) > 0,
         }}
         onRow={(record) =>

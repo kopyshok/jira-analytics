@@ -1217,6 +1217,8 @@ class AnalyticsService:
         ORPHAN_WT_LABEL = "Не указана категория/вид работ"
         ORPHAN_CAT_CODE = None
         ORPHAN_CAT_LABEL = "Без категории"
+        EXCLUDED_WT_ID = "__excluded__"
+        EXCLUDED_WT_LABEL = "Исключено из анализа"
 
         # 3. Сотрудники + primary team
         emp_query = self.db.query(Employee).filter(Employee.is_active.is_(True))
@@ -1263,6 +1265,7 @@ class AnalyticsService:
             Issue.category,
             Issue.team,
             Issue.participating_teams,
+            Issue.include_in_analysis,
             func.sum(Worklog.time_spent_seconds).label("secs"),
             func.count(Worklog.id).label("wl_count"),
             func.max(Worklog.started_at).label("last_at"),
@@ -1270,6 +1273,9 @@ class AnalyticsService:
         if assignee_col is not None:
             select_cols.append(assignee_col.label("assignee_name"))
 
+        # Не фильтруем по include_in_analysis: задачи из архивных категорий
+        # отдельно бакетируются как «Исключено из анализа», чтобы сумма факта
+        # сотрудника соответствовала реально зарегистрированным часам в Jira.
         wl_q = (
             self.db.query(*select_cols)
             .join(Issue, Issue.id == Worklog.issue_id)
@@ -1277,7 +1283,6 @@ class AnalyticsService:
                 Worklog.employee_id.in_([e.id for e in employees]),
                 Worklog.started_at >= start_dt,
                 Worklog.started_at <= end_dt,
-                Issue.include_in_analysis != False,  # noqa: E712
             )
         )
         if task_query:
@@ -1287,7 +1292,7 @@ class AnalyticsService:
         group_cols = [
             Worklog.employee_id, Worklog.issue_id, Issue.key, Issue.summary,
             Issue.status, Issue.status_category, Issue.issue_type, Issue.category,
-            Issue.team, Issue.participating_teams,
+            Issue.team, Issue.participating_teams, Issue.include_in_analysis,
         ]
         if assignee_col is not None:
             group_cols.append(assignee_col)
@@ -1316,31 +1321,44 @@ class AnalyticsService:
                 continue
             emp_team = emp_team_by_id.get(emp_id)
 
-            # Cross-team routing
-            is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
+            # Задачи из архивных категорий помечены include_in_analysis=False —
+            # выносим в отдельный bucket, чтобы часы не пропадали из суммы.
+            is_excluded = row.include_in_analysis is False
 
-            if is_foreign and other_foreign_wt is not None:
-                wt_id = other_foreign_wt.id
+            if is_excluded:
+                wt_id = EXCLUDED_WT_ID
                 cat_code_eff = ORPHAN_CAT_CODE
             else:
-                if cat_code is None:
-                    wt_id = ORPHAN_WT_ID
+                # Cross-team routing
+                is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
+
+                if is_foreign and other_foreign_wt is not None:
+                    wt_id = other_foreign_wt.id
                     cat_code_eff = ORPHAN_CAT_CODE
                 else:
-                    mapped_wt = code_to_wt.get(cat_code)
-                    if mapped_wt is None:
+                    if cat_code is None:
                         wt_id = ORPHAN_WT_ID
-                        cat_code_eff = cat_code
+                        cat_code_eff = ORPHAN_CAT_CODE
                     else:
-                        wt_id = mapped_wt
-                        cat_code_eff = cat_code
+                        mapped_wt = code_to_wt.get(cat_code)
+                        if mapped_wt is None:
+                            wt_id = ORPHAN_WT_ID
+                            cat_code_eff = cat_code
+                        else:
+                            wt_id = mapped_wt
+                            cat_code_eff = cat_code
 
             # Дополнительные фильтры
             if work_type_codes:
                 wt_obj = wt_by_id.get(wt_id)
-                wt_code = wt_obj.code if wt_obj else (
-                    "__unmapped__" if wt_id == ORPHAN_WT_ID else None
-                )
+                if wt_obj:
+                    wt_code = wt_obj.code
+                elif wt_id == ORPHAN_WT_ID:
+                    wt_code = "__unmapped__"
+                elif wt_id == EXCLUDED_WT_ID:
+                    wt_code = "__excluded__"
+                else:
+                    wt_code = None
                 if wt_code not in work_type_codes:
                     continue
             if category_codes:
@@ -1419,7 +1437,12 @@ class AnalyticsService:
                         wt_rows: list[dict] = []
                         cats_out: list[AnalyticsCategoryNode] = []
                         wt_obj = wt_by_id.get(wt_id)
-                        wt_label = wt_obj.label if wt_obj else ORPHAN_WT_LABEL
+                        if wt_obj:
+                            wt_label = wt_obj.label
+                        elif wt_id == EXCLUDED_WT_ID:
+                            wt_label = EXCLUDED_WT_LABEL
+                        else:
+                            wt_label = ORPHAN_WT_LABEL
                         for cat_code, issues_list in cats_dict.items():
                             cat_label, cat_color, _ = cat_meta.get(
                                 cat_code or "", (ORPHAN_CAT_LABEL, "#7e94b8", None)
