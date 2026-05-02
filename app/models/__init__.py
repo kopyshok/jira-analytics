@@ -20,6 +20,7 @@ from app.models.role_capacity_rule import RoleCapacityRule
 from app.models.employee_capacity_override import EmployeeCapacityOverride
 from app.models.backlog_item import BacklogItem
 from app.models.planning_scenario import PlanningScenario
+from app.models.project_ai_summary import ProjectAISummary
 from app.models.scenario_allocation import ScenarioAllocation
 from app.models.app_setting import AppSetting
 from app.models.category import Category
@@ -65,6 +66,7 @@ __all__ = [
     "EmployeeCapacityOverride",
     "BacklogItem",
     "PlanningScenario",
+    "ProjectAISummary",
     "ScenarioAllocation",
     "AppSetting",
     "Category",
