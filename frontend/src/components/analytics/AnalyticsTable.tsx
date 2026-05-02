@@ -51,11 +51,22 @@ function pctColor(pct: number | null | undefined): string | undefined {
   return '#67d68d';
 }
 
+function stripKeyPrefix(summary: string, key: string): string {
+  // Некоторые Jira-summary включают ключ в начало («OS-79306 Обмен Розница...»).
+  // Срезаем чтобы не дублировалось со ссылкой-ключом слева.
+  const trimmed = summary.trim();
+  if (trimmed.startsWith(key)) {
+    return trimmed.slice(key.length).replace(/^[\s:.\-—]+/, '');
+  }
+  return trimmed;
+}
+
 function buildIssueNode(
   i: AnalyticsIssueNode,
   prefix: string,
   depth: number,
 ): TreeNode {
+  const cleanSummary = stripKeyPrefix(i.summary, i.key);
   return {
     key: `${prefix}/i:${i.id}`,
     kind: 'issue',
@@ -64,33 +75,49 @@ function buildIssueNode(
     issueKey: i.key,
     label: indent(
       depth,
-      <span
+      <div
         style={{
-          display: 'inline-flex',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
+          display: 'flex',
+          alignItems: 'center',
           gap: 6,
-          rowGap: 2,
+          minWidth: 0,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
         }}
       >
         <a
           href={`https://itgri.atlassian.net/browse/${i.key}`}
           target="_blank"
           rel="noreferrer"
-          style={{ color: '#22d3ee', textDecoration: 'underline', fontWeight: 600 }}
+          style={{
+            color: '#22d3ee',
+            textDecoration: 'underline',
+            fontWeight: 600,
+            flexShrink: 0,
+          }}
         >
           {i.key}
         </a>
         <Tag
           color={statusTagColor(i.status, i.status_category)}
-          style={{ marginInlineEnd: 0 }}
+          style={{ marginInlineEnd: 0, flexShrink: 0 }}
         >
           {i.status}
         </Tag>
-        <span style={{ color: '#e6edf7', flex: '1 1 auto', minWidth: 0 }}>
-          {i.summary}
+        <span
+          title={cleanSummary}
+          style={{
+            color: '#e6edf7',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            minWidth: 0,
+            flex: '1 1 auto',
+          }}
+        >
+          {cleanSummary}
         </span>
-      </span>,
+      </div>,
     ),
     totals: i.totals,
   };
