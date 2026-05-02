@@ -771,6 +771,7 @@ class AnalyticsService:
                 Worklog.employee_id.in_(emp_ids_list),
                 Worklog.started_at >= start_dt,
                 Worklog.started_at <= end_dt,
+                Issue.include_in_analysis != False,  # noqa: E712
             )
             .group_by(
                 Worklog.employee_id,
@@ -863,11 +864,13 @@ class AnalyticsService:
                             Worklog.employee_id,
                             func.sum(Worklog.time_spent_seconds).label("secs"),
                         )
+                        .join(Issue, Issue.id == Worklog.issue_id)
                         .filter(
                             Worklog.employee_id.in_(emp_ids_list),
                             Worklog.issue_id.in_(chunk),
                             Worklog.started_at >= start_dt,
                             Worklog.started_at <= end_dt,
+                            Issue.include_in_analysis != False,  # noqa: E712
                         )
                         .group_by(Worklog.employee_id)
                         .all()
@@ -1274,6 +1277,7 @@ class AnalyticsService:
                 Worklog.employee_id.in_([e.id for e in employees]),
                 Worklog.started_at >= start_dt,
                 Worklog.started_at <= end_dt,
+                Issue.include_in_analysis != False,  # noqa: E712
             )
         )
         if task_query:
