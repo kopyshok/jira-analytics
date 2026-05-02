@@ -7,8 +7,6 @@ import { setIssueCategory, setIssueInclude } from '../../api/issues';
 import { useQueryClient } from '@tanstack/react-query';
 import { statusTagColor } from '../../utils/status';
 
-const JIRA_BASE = 'https://itgri.atlassian.net/browse';
-
 const CARD_BG = 'rgba(255,255,255,0.03)';
 const CARD_BORDER = '1px solid rgba(255,255,255,0.08)';
 
@@ -272,10 +270,6 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
     qc.invalidateQueries({ queryKey: ['issue', 'context', child.id] });
     onSaved();
   };
-
-  const catLabel = child.assigned_category
-    ? (categories.find(c => c.code === child.assigned_category)?.label ?? child.assigned_category)
-    : 'Без категории';
 
   return (
     <tr>

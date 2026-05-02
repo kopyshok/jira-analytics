@@ -1,0 +1,39 @@
+@media print {
+  /* Скрыть application chrome */
+  .ant-layout-sider,
+  .ant-layout-header,
+  .ant-tabs-nav,
+  [data-print-hide="true"] {
+    display: none !important;
+  }
+
+  /* Скрыть list-pane (левая панель проектов) */
+  .projects-master-detail .projects-list-pane,
+  .project-header-actions {
+    display: none !important;
+  }
+
+  body {
+    background: #0d1c33 !important;
+  }
+
+  .presentation-view {
+    max-width: 100% !important;
+    padding: 0 16mm !important;
+  }
+
+  .story-section {
+    page-break-inside: avoid;
+  }
+
+  /* Сохранить цвета */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+}

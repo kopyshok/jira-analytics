@@ -27,7 +27,7 @@ interface DrawerContentProps {
   onSaved: () => void;
 }
 
-function DrawerContent({ issueId, issueKey, periodStart, periodEnd, onDrillDown, onSaved }: DrawerContentProps) {
+function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }: DrawerContentProps) {
   const { data: context, isLoading, isError, refetch } = useIssueContext(issueId);
   const { items: categories } = useCategories();
 
