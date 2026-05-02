@@ -1,301 +1,350 @@
-# Jira Analytics
+# JiraAnalysis
 
-Сервис аналитики трудозатрат на основе данных из Jira Cloud.
+Многопользовательский веб-сервис анализа данных Jira Cloud и квартального планирования ресурсов команды.
 
-## 🚀 Быстрый старт
+## Что это
+
+Тянет issues + worklogs из Jira Cloud, считает фактическую загрузку сотрудников против производственного календаря, ведёт реестр инициатив и сценарии квартального планирования. Каждый пользователь видит свои команды; синхронизация общая, изменения push-ятся в UI через SSE.
+
+### Возможности
+
+- **Dashboard** — KPI по проектам (W1), загрузка по 4 ролям (W2), тепловая карта 5×2 (W3).
+- **Аналитика** — иерархический master-detail отчёт с drill-down до ворклогов, период в шапке, per-user видимость колонок.
+- **Capacity** — план/факт/% по ролям и категориям, отсутствия (Vacation/Absence + reason), копирование правил между месяцами, экспорт в xlsx, тепловая карта, overload >110% красным.
+- **Backlog** — реестр инициатив с lifecycle (Активные/В работе/Архив), автосинхронизация в draft-сценарии.
+- **Planning** — сценарии (draft/approved) с per-role правилами, обязательные работы, посуточная база ресурса, клиент-сайд пересчёт, xlsx «Бухгалтерия» (4 листа).
+- **Projects** — master-detail по проектам, AI-саммари (Gemini 2.0 Flash + cron), оценка заказчика, PDF-печать.
+- **Sync** — единый хаб синхронизации (incremental/full, APScheduler, EventBroadcaster), все sync прерываемы.
+- **Settings** — креды Jira, кастомные поля, иерархия типов задач, производственный календарь РФ, пользователи.
+- **Auth** — email + password JWT, роли (admin/user), управление пользователями.
+
+## Стек
+
+| Слой | Технологии |
+|------|-----------|
+| **Backend** | Python 3.10, FastAPI, SQLAlchemy 2.0, Alembic, APScheduler, httpx (async) |
+| **Frontend** | React 19, TypeScript 6, Vite 8, Ant Design 6 (dark theme), TanStack Query, Recharts |
+| **БД** | SQLite (MVP) → PostgreSQL (готово на уровне ORM) |
+| **Auth** | JWT (python-jose) + bcrypt |
+| **Тесты** | pytest, Playwright (E2E) |
+| **CI** | GitHub Actions (pytest + frontend lint/build + E2E) |
+
+## Требования
+
+- Python 3.10 (на Windows — `py -3.10`; pytest не работает под Python 3.14)
+- Node.js 20+
+- Учётка Jira Cloud + API token: https://id.atlassian.com/manage-profile/security/api-tokens
+
+## Установка
 
 ```bash
-# Клонирование
-git clone https://github.com/kopyshok/jira-analytics.git
-cd jira-analytics
+git clone <repo-url>
+cd JiraAnalysis
+```
 
-# Установка зависимостей
-make dev
+### Backend
 
-# Настройка Jira (см. раздел ниже)
-cp .env.example .env
-# Отредактируйте .env и укажите Jira credentials
+```bash
+# Виртуальное окружение (рекомендуется)
+py -3.10 -m venv venv
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # Linux/Mac
 
-# Миграции
-make migrate
+# Зависимости
+pip install -r requirements.txt
+```
 
-# Запуск backend
-make run
+Что ставится: FastAPI, SQLAlchemy 2.0, Alembic, httpx, openpyxl/reportlab/python-pptx (экспорты), APScheduler, python-jose, passlib[bcrypt], pytest. Полный список — [requirements.txt](requirements.txt).
 
-# Запуск frontend (в отдельном терминале)
+### Frontend
+
+```bash
 cd frontend
-cp .env.example .env
 npm install
-npm run dev
-
-# Smoke-проверка локального запуска (PowerShell, из корня проекта)
-.\scripts\smoke-local.ps1
-
-# Browser E2E без Jira-зависимости (первый запуск скачает Chromium)
-.\scripts\e2e-local.ps1 -InstallBrowsers
+cd ..
 ```
 
-API: http://localhost:8000  
-Документация: http://localhost:8000/docs  
-Frontend: http://localhost:5173
+## Настройка
 
-## 🧪 Рабочий локальный smoke
-
-Для M6 добавлен smoke-runner, который применяет миграции, поднимает отсутствующие
-backend/frontend dev-серверы, проверяет ключевые URL и останавливает только
-те процессы, которые запустил сам:
-
-```powershell
-.\scripts\smoke-local.ps1
-```
-
-Проверяются:
-
-- `GET /health`
-- `GET /api/v1/`
-- `GET /api/v1/projects`
-- `GET /api/v1/employees`
-- frontend `/`
-- Vite module `/src/main.tsx`
-
-Если серверы уже запущены, скрипт переиспользует их:
-
-```powershell
-.\scripts\smoke-local.ps1 -NoStart
-```
-
-## 🎭 Browser E2E
-
-Playwright E2E запускает backend на отдельной SQLite-базе `data/e2e.db`,
-поднимает Vite frontend, проходит по основным разделам SPA, CRUD-потокам и
-download-проверкам экспортов. Тесты падают при browser `console.error` или
-`pageerror`. Jira credentials для этого не нужны.
-Перед запуском база пересоздаётся, применяются Alembic-миграции и seed:
-сотрудник `E2E Analyst` и проект `E2E`.
-
-Первый запуск:
-
-```powershell
-.\scripts\e2e-local.ps1 -InstallBrowsers
-```
-
-Повторные запуски:
-
-```powershell
-.\scripts\e2e-local.ps1
-```
-
-То же из `frontend/`:
+### 1. Backend `.env`
 
 ```bash
-npm run e2e:install
-npm run e2e
+copy .env.example .env       # Windows
+# cp .env.example .env       # Linux/Mac
 ```
 
-## 🔧 Настройка Jira Cloud
+Минимально заполнить:
 
-### 1. Создание API токена
-
-1. Перейдите на https://id.atlassian.com/manage-profile/security/api-tokens
-2. Нажмите "Create API token"
-3. Укажите имя (например, "jira-analytics")
-4. Скопируйте токен
-
-### 2. Настройка .env
-
-```env
-DEBUG=true
+```ini
+# БД
 DATABASE_URL=sqlite:///./data/jira_analytics.db
-CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
+
+# Jira (можно оставить пустым — задать через UI после первого логина)
 JIRA_BASE_URL=https://your-domain.atlassian.net
 JIRA_EMAIL=your-email@example.com
 JIRA_API_TOKEN=your-api-token-here
+
+# Auth — обязательно сменить в проде
+JWT_SECRET_KEY=<случайная_строка_32+_символов>
+JWT_EXPIRE_HOURS=8
+
+# Первый админ (для scripts/create_admin.py)
+ADMIN_EMAIL=admin@company.com
+ADMIN_PASSWORD=<надёжный_пароль>
+
+# CORS
+CORS_ORIGINS=["http://localhost:5173"]
+
+# Опционально
+DEBUG=true
+LOG_LEVEL=INFO
+JIRA_REQUEST_DELAY=0.1
+JIRA_BATCH_SIZE=100
 ```
 
-Frontend читает URL API из `frontend/.env`:
+> Креды Jira лучше задать через UI: **Настройки → Подключение** (хранятся в БД через AppSetting). `.env` — fallback для CI/dev когда DB пустая.
 
-```env
-VITE_API_BASE_URL=http://localhost:8000/api/v1
-```
+### 2. Frontend `.env` (опционально)
 
-### 3. Проверка соединения
+Дефолт API URL — `http://localhost:8000/api/v1`. Если backend на другом хосте/порту:
 
 ```bash
-curl http://localhost:8000/api/v1/sync/test-connection
+copy frontend\.env.example frontend\.env
 ```
 
-## 📡 API эндпоинты
+```ini
+VITE_API_BASE_URL=http://your-host:8000/api/v1
+```
 
-### Синхронизация
-
-| Endpoint | Метод | Описание |
-|----------|-------|----------|
-| `/api/v1/employees` | GET | Список сотрудников |
-| `/api/v1/projects` | GET | Список проектов |
-| `/api/v1/sync/test-connection` | GET | Проверка соединения с Jira |
-| `/api/v1/sync/projects` | POST | Синхронизация проектов |
-| `/api/v1/sync/issues` | POST | Синхронизация задач |
-| `/api/v1/sync/worklogs` | POST | Синхронизация worklogs |
-| `/api/v1/sync/comments` | POST | Синхронизация комментариев |
-| `/api/v1/sync/full` | POST | Полная синхронизация |
-| `/api/v1/sync/status` | GET | Статус синхронизации |
-
-### Примеры запросов
+### 3. Применить миграции
 
 ```bash
-# Проверить соединение
-curl http://localhost:8000/api/v1/sync/test-connection
-
-# Синхронизировать проекты
-curl -X POST http://localhost:8000/api/v1/sync/projects
-
-# Синхронизировать задачи конкретных проектов
-curl -X POST http://localhost:8000/api/v1/sync/issues \
-  -H "Content-Type: application/json" \
-  -d '{"project_keys": ["PRJ", "ECO"], "incremental": true}'
-
-# Полная синхронизация
-curl -X POST http://localhost:8000/api/v1/sync/full
+alembic upgrade head
 ```
 
-## 📁 Структура проекта
+Создаст SQLite БД по пути из `DATABASE_URL` (`data/jira_analytics.db`).
 
-```
-jira-analytics/
-├── app/
-│   ├── api/endpoints/        # FastAPI routers
-│   ├── connectors/           # Jira HTTP client + schemas
-│   ├── models/               # SQLAlchemy models
-│   ├── repositories/         # Data access layer
-│   ├── services/             # Business logic
-│   ├── config.py             # Settings from env
-│   ├── database.py           # Engine + Session + Base
-│   └── main.py               # FastAPI app
-├── frontend/                 # React + TypeScript SPA
-│   ├── src/api/              # API client + domain modules
-│   ├── src/hooks/            # TanStack Query hooks
-│   ├── src/pages/            # Application pages
-│   ├── src/components/       # Shared and layout components
-│   └── src/types/            # API TypeScript interfaces
-├── alembic/
-│   └── versions/
-├── tests/
-├── .env.example
-├── Makefile
-└── requirements.txt
-```
-
-## 🔄 Как работает синхронизация
-
-### Порядок загрузки (граф зависимостей)
-
-```
-1. Projects     ← нет зависимостей
-2. Issues       ← зависит от Projects
-3. Worklogs     ← зависит от Issues, Employees
-   └── Employees создаются автоматически при обнаружении
-```
-
-### Инкрементальная синхронизация
-
-При повторных запусках загружаются только изменённые данные:
-
-```
-JQL: project in (PRJ, ECO) AND updated >= "2024-01-15 10:30"
-```
-
-Курсор (timestamp последней синхронизации) хранится в таблице `sync_state`.
-
-### Rate Limiting
-
-- Задержка 100ms между запросами к Jira API
-- При 429 ошибке — exponential backoff
-- До 100 issues за один запрос
-
-## 🗃️ Модели данных
-
-### Employee (сотрудник)
-- `jira_account_id` — ID аккаунта в Jira
-- `display_name`, `email`, `avatar_url`
-- `role`, `team`, `department` — для аналитики
-
-### Project (проект)
-- `jira_project_id`, `key`, `name`
-- `project_type` (software, business, etc.)
-
-### Issue (задача)
-- `jira_issue_id`, `key`, `summary`
-- `issue_type` (Task, Bug, Story, Epic)
-- `status`, `priority`
-- `parent_id` — для иерархии (Epic → Story → Subtask)
-- `category`, `estimated_hours` — для аналитики
-
-### Worklog (трудозатраты) — ключевая fact-таблица
-- `jira_worklog_id`
-- `started_at`, `hours`, `time_spent_seconds`
-- `issue_id`, `employee_id`
-
-## 🛠️ Makefile команды
+### 4. Создать первого админа
 
 ```bash
-make dev      # Установка зависимостей + создание .env
-make migrate  # Применить миграции
-make run      # Запустить сервер
-make test     # Запустить тесты
-make clean    # Очистить кэш и временные файлы
+py -3.10 scripts/create_admin.py
+# или с явными аргументами:
+py -3.10 scripts/create_admin.py --email admin@company.com --password secret
 ```
 
-Frontend:
+## Запуск
+
+### Dev
+
+Два терминала:
 
 ```bash
+# Terminal 1 — backend
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 — frontend
 cd frontend
-npm install
-npm run lint
-npm run build
 npm run dev
-npm run e2e
 ```
 
-Smoke:
+- UI: http://localhost:5173
+- API: http://localhost:8000
+- OpenAPI docs: http://localhost:8000/docs
+
+Логин — `ADMIN_EMAIL` / `ADMIN_PASSWORD` из `.env`.
+
+### Smoke-тест (Windows)
+
+Поднимает оба сервиса разом и прогоняет проверки:
 
 ```powershell
 .\scripts\smoke-local.ps1
-.\scripts\e2e-local.ps1
 ```
 
-## 📋 Roadmap
+Если уже запущены — `-NoStart` переиспользует.
 
-- [x] **M1** — Технический каркас: FastAPI, SQLite, SQLAlchemy, Alembic
-- [x] **M2** — Jira загрузка: авторизация, sync projects/issues/worklogs
-- [x] **M3** — Факт-аналитика: категории, мэппинг, отчёты
-- [x] **M4** — Планирование: календарь, отпуска, ёмкость, бэклог, сценарии
-- [x] **M5** — Экспорты: xlsx/pdf для аналитики, xlsx/pptx для сценариев
-- [x] **M6** — Стабилизация frontend, smoke/E2E проверки, удобный onboarding
-  - [x] Frontend route-level lazy loading для уменьшения стартового bundle
-  - [x] Локальный smoke-runner для backend + frontend
-  - [x] Browser E2E для основных SPA-маршрутов без Jira credentials
-  - [x] E2E для CRUD-потоков Scope/Capacity/Backlog/Planning на seed-данных
-  - [x] E2E для export/download сценариев
-- [x] **M7** — Triage-флоу: вкладка «Настройка категорий задач»
-  - [x] Dark-тема (`darkAlgorithm`, токены `DARK_THEME`/`CHART_COLORS`) и баг-репортер (`BugReportButton` + `errorStore`)
-  - [x] Объединённая страница Sync+Scope: `TaskSectionsTab`, `CategoryConfigTab`, `SyncControls`; `/scope` → редирект на `/sync`
-  - [x] Live-browse Jira: `/sync/jira-projects|jira-epics|jira-fields|jira-teams` с `in_scope`-флагами; фильтр по команде через per-project JQL probe
-  - [x] AppSetting store для credentials, кастомных полей и UI-персистенса (`ui_team_projects`, `ui_teams_categories`)
-  - [x] Sync кастомных полей: `team` + `participating_teams` (`customfield_11526`), `goals` (`customfield_11421`) — конфигурируемо через AppSetting
-  - [x] Атрибуты статуса: `status_category` (`statusCategory.key`) и `status_changed_at` (`statuscategorychangedate`); теги статусов по цветам; бэкфилл 115k записей
-  - [x] `/issues/tree` с ancestor-context (`is_context=true`), виртуальные группы `__orphans__` и `__operations__`
-  - [x] Наследование `assigned_category` по дереву — категоризация эпика уводит поддерево из «Стек»
-  - [x] 4 таба в CategoryConfigTab: Стек / Активный / Архив квартальных (`archive_target`) / Архив прочих (`archive`); оба архив-кода авто-снимают `include_in_analysis`
-  - [x] Targeted refresh `POST /sync/issues/refresh` и кнопка «Обновить с Jira (N)» — перечитывает видимые задачи без полного resync
-  - [x] Batch-категоризация `/issues/batch-category`, staged pending-cats с локальным патчем кэша дерева
-  - [x] Сортируемые колонки «Статус изменён» (age-подсветка ≥180/≥365 дней) и «Цели» (фиолетовые теги per-value)
+### Production build (frontend)
 
-### ⏸️ Отложено
+```bash
+cd frontend
+npm run build       # → frontend/dist
+```
 
-- [ ] **Run vs Change аналитика** — sync `customfield_11506` и разрез «оперативка vs разработка» на Dashboard/Analytics. Делаем когда PM вернётся к теме.
-- [ ] **Отдельное поле `participating_teams`** — сейчас указывает на тот же `customfield_11526`, что и product team. Перенастроить через `PUT /settings/generic/jira_participating_teams_field_id`, когда появится отдельное поле в Jira.
-- [ ] **Pre-existing failing test** — `tests/test_sync_service.py::TestSyncIssuesParentLinking::test_subtask_before_parent_is_linked_after_second_pass` падает на `fake_iter() got unexpected keyword 'extra_fields'` (мок не обновлён под новую сигнатуру `get_issues_updated_since`).
+Раздавай `dist/` любым статическим веб-сервером. Backend — `uvicorn` без `--reload` за reverse proxy (nginx/traefik).
 
-## 📄 Лицензия
+## Первый запуск — чек-лист
 
-MIT
+1. `pip install -r requirements.txt`
+2. `cd frontend && npm install`
+3. `copy .env.example .env` → задать `JWT_SECRET_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
+4. `alembic upgrade head`
+5. `py -3.10 scripts/create_admin.py`
+6. `uvicorn app.main:app --reload --port 8000`
+7. В другом терминале: `cd frontend && npm run dev`
+8. http://localhost:5173 → залогиниться
+9. **Настройки → Подключение** — URL/email/API token Jira
+10. **Настройки → Поля** — ID кастомных полей (team, goals и т.д.)
+11. **Настройки → Иерархия** — правила parent→child для типов задач
+12. **Sync → Состав работ** — выбрать проекты + команды
+13. **Sync → Управление** — «Полная синхронизация»
+
+## Команды
+
+### Makefile (Linux/Mac)
+
+```bash
+make install                       # pip install
+make run                           # uvicorn :8000
+make test                          # pytest
+make lint                          # ruff + mypy
+make format                        # ruff format
+make migrate                       # alembic upgrade head
+make migration msg='описание'      # новая миграция
+make downgrade                     # alembic downgrade -1
+make clean                         # очистить кеши + БД
+make reset                         # clean + migrate
+```
+
+### Windows (без make)
+
+```powershell
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+py -3.10 -m pytest tests/ -v
+ruff check app/ tests/
+mypy app/
+ruff format app/ tests/
+alembic upgrade head
+alembic revision --autogenerate -m "описание"
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm run dev                # dev :5173
+npm run build              # production build
+npm run lint               # eslint
+npm run e2e:install        # установить браузеры Playwright (один раз)
+npm run e2e                # E2E тесты
+```
+
+## Тесты
+
+### Backend (pytest)
+
+```bash
+py -3.10 -m pytest tests/ -v
+```
+
+### E2E (Playwright)
+
+Отдельная БД `data/e2e.db`, порты `:8010` (backend) / `:5174` (frontend), без Jira credentials. Перед запуском база пересоздаётся, применяются миграции и seed (`E2E Analyst` employee + `E2E` project).
+
+```powershell
+.\scripts\e2e-local.ps1 -InstallBrowsers   # первый раз
+.\scripts\e2e-local.ps1                    # повторные запуски
+```
+
+Падают при browser `console.error` или `pageerror`.
+
+## Структура
+
+```
+app/
+├── api/endpoints/      # FastAPI routers (21 router)
+├── connectors/         # Jira HTTP client + schemas
+├── models/             # SQLAlchemy (29 таблиц, 6 групп)
+├── repositories/       # Data access layer
+├── services/           # Business logic
+├── core/               # security (JWT, bcrypt)
+├── config.py           # Settings из .env
+├── database.py         # Engine + Session + Base
+└── main.py             # FastAPI app
+
+frontend/
+├── src/api/            # API client + domain modules
+├── src/hooks/          # TanStack Query hooks
+├── src/pages/          # 8 страниц (Dashboard, Sync, Analytics, Capacity, Backlog, Planning, Projects, Settings)
+├── src/components/     # Shared + layout
+└── src/types/          # TypeScript interfaces
+
+alembic/versions/       # миграции БД
+tests/                  # pytest
+scripts/                # local_smoke, e2e-local, seed_e2e, create_admin
+docs/                   # дизайн-доки, спеки, планы
+data/                   # SQLite БД (создаётся при первом запуске)
+exports/                # xlsx/pdf отчёты
+```
+
+Детальная документация по слоям — `CLAUDE.md` каждой папки ([app/models](app/models/CLAUDE.md), [app/api](app/api/CLAUDE.md), [app/services](app/services/CLAUDE.md), [app/connectors](app/connectors/CLAUDE.md), [frontend](frontend/CLAUDE.md), [tests](tests/CLAUDE.md)).
+
+## Архитектура
+
+```
+Frontend (React + TanStack Query)
+     ↓ REST + SSE
+Backend (FastAPI)
+     ↓
+Connector (httpx) → Jira Cloud API
+     ↓
+Service Layer (бизнес-логика)
+     ↓
+Repository (SQLAlchemy 2.0 ORM)
+     ↓
+SQLite / PostgreSQL
+```
+
+**Правила:**
+- All SQL через SQLAlchemy ORM — no raw SQL, no vendor-specific SQL
+- All DB changes через Alembic миграции (batch mode для SQLite)
+- UUID string keys (`String(36)`) везде
+- Стандартные timestamps: `created_at`, `updated_at`, `synced_at`
+- Async где возможно (httpx, FastAPI)
+
+**Multi-user:** каждый юзер видит свои команды (`selected_teams`), синхронизация общая, изменения push-ятся в UI через SSE (`entity_changed` event).
+
+## Синхронизация
+
+### Граф зависимостей
+
+```
+1. Projects     ← нет зависимостей
+2. Issues       ← Projects
+3. Worklogs     ← Issues + Employees (Employees авто-создаются)
+```
+
+### Incremental
+
+```
+JQL: project in (PRJ, ECO) AND updated >= "2026-04-15 10:30"
+```
+
+Курсор хранится в `sync_state`. Полная синхронизация (60→25 мин) — bulk worklog API.
+
+### Rate limiting
+
+- Задержка между запросами — `JIRA_REQUEST_DELAY` (default 0.1s)
+- 429 → exponential backoff
+- До `JIRA_BATCH_SIZE` issues за запрос (default 100)
+
+Все sync кнопки прерываемы (AbortController → `request.is_disconnected` → HTTP 499).
+
+## CI
+
+GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) на push/PR:
+
+1. `pytest` (Python 3.10)
+2. Frontend lint + build (Node 20)
+3. Playwright E2E
+
+## Jira Cloud (текущий tenant)
+
+```
+Cloud ID:  00000000-0000-0000-0000-000000000000
+Base URL:  https://example.atlassian.net
+```
+
+## Лицензия
+
+Внутренний продукт.
