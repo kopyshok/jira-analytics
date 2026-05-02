@@ -74,51 +74,57 @@ export default function AnalyticsPage() {
     return periodBounds(period.year, period.quarter, period.month);
   }, [localRange, period]);
 
+  const headerActions = (
+    <Space wrap>
+      <DatePicker.RangePicker
+        value={localRange}
+        onChange={setLocalRange}
+        placeholder={['Уточнить с', 'по']}
+        allowClear
+      />
+      <span>Ворклоги:</span>
+      <Switch
+        checkedChildren="inline"
+        unCheckedChildren="drawer"
+        checked={worklogMode === 'inline'}
+        onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
+      />
+      <Button
+        icon={<SettingOutlined />}
+        onClick={() => setColumnSettingsOpen(true)}
+      >
+        Настройка столбцов
+      </Button>
+      <Button
+        onClick={() => {
+          const p = new URLSearchParams({
+            year: String(period.year),
+            quarter: String(period.quarter),
+            ...(period.month != null ? { month: String(period.month) } : {}),
+            ...(localRange?.[0] ? { start_date: localRange[0].format('YYYY-MM-DD') } : {}),
+            ...(localRange?.[1] ? { end_date: localRange[1].format('YYYY-MM-DD') } : {}),
+            ...(selectedTeam !== 'all' ? { teams: selectedTeam } : selectedTeams.length ? { teams: selectedTeams.join(',') } : {}),
+            ...(employeeId ? { employee_id: employeeId } : {}),
+            ...(taskQ ? { task_query: taskQ } : {}),
+            ...(workType ? { work_type_codes: workType } : {}),
+            ...(category ? { category_codes: category } : {}),
+            ...(visibleColumns.length ? { columns: visibleColumns.join(',') } : {}),
+          });
+          window.location.href = `${import.meta.env.VITE_API_BASE_URL}/analytics/report/export.xlsx?${p.toString()}`;
+        }}
+      >
+        Экспорт XLSX
+      </Button>
+    </Space>
+  );
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <PageHeader eyebrow="Аналитика" title="Иерархический отчёт по часам" />
-
-      <Space wrap>
-        <DatePicker.RangePicker
-          value={localRange}
-          onChange={setLocalRange}
-          placeholder={['Уточнить с', 'по']}
-          allowClear
-        />
-        <span>Ворклоги:</span>
-        <Switch
-          checkedChildren="inline"
-          unCheckedChildren="drawer"
-          checked={worklogMode === 'inline'}
-          onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
-        />
-        <Button
-          icon={<SettingOutlined />}
-          onClick={() => setColumnSettingsOpen(true)}
-        >
-          Настройка столбцов
-        </Button>
-        <Button
-          onClick={() => {
-            const p = new URLSearchParams({
-              year: String(period.year),
-              quarter: String(period.quarter),
-              ...(period.month != null ? { month: String(period.month) } : {}),
-              ...(localRange?.[0] ? { start_date: localRange[0].format('YYYY-MM-DD') } : {}),
-              ...(localRange?.[1] ? { end_date: localRange[1].format('YYYY-MM-DD') } : {}),
-              ...(selectedTeam !== 'all' ? { teams: selectedTeam } : selectedTeams.length ? { teams: selectedTeams.join(',') } : {}),
-              ...(employeeId ? { employee_id: employeeId } : {}),
-              ...(taskQ ? { task_query: taskQ } : {}),
-              ...(workType ? { work_type_codes: workType } : {}),
-              ...(category ? { category_codes: category } : {}),
-              ...(visibleColumns.length ? { columns: visibleColumns.join(',') } : {}),
-            });
-            window.location.href = `${import.meta.env.VITE_API_BASE_URL}/analytics/report/export.xlsx?${p.toString()}`;
-          }}
-        >
-          Экспорт XLSX
-        </Button>
-      </Space>
+      <PageHeader
+        eyebrow="Аналитика"
+        title="Иерархический отчёт по часам"
+        actions={headerActions}
+      />
 
       <AnalyticsColumnSettings
         open={columnSettingsOpen}
