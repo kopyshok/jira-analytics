@@ -63,16 +63,25 @@ class MappingService:
         entity_id: str,
         category: str,
         source_rule: str,
+        cache: Optional[dict] = None,
     ) -> None:
-        """Создать или обновить запись в category_mappings."""
-        existing = (
-            self.db.query(CategoryMapping)
-            .filter(
-                CategoryMapping.entity_type == entity_type,
-                CategoryMapping.entity_id == entity_id,
+        """Создать или обновить запись в category_mappings.
+
+        ``cache`` — опциональный pre-fetched dict ``{(type, entity_id): mapping}``,
+        используется в bulk-recalc чтобы избежать N+1 SELECT на 100k+ задач.
+        Новые записи автоматически добавляются в cache.
+        """
+        if cache is not None:
+            existing = cache.get((entity_type, entity_id))
+        else:
+            existing = (
+                self.db.query(CategoryMapping)
+                .filter(
+                    CategoryMapping.entity_type == entity_type,
+                    CategoryMapping.entity_id == entity_id,
+                )
+                .one_or_none()
             )
-            .one_or_none()
-        )
 
         if existing:
             if (
@@ -91,6 +100,8 @@ class MappingService:
             )
             self.db.add(mapping)
             self.stats.mappings_created += 1
+            if cache is not None:
+                cache[(entity_type, entity_id)] = mapping
 
     def recalculate_issues(self) -> int:
         """Пересчитать категории всех задач.
@@ -109,6 +120,14 @@ class MappingService:
         logger.info("Recalculating categories for all issues...")
 
         issues = self.db.query(Issue).all()
+        # Bulk-prefetch existing mappings — устраняет N SELECT в _upsert_mapping
+        # на 100k+ задач (главная причина 130s+ recalc на полном бэклоге).
+        mapping_cache: dict = {
+            (m.entity_type, m.entity_id): m
+            for m in self.db.query(CategoryMapping)
+            .filter(CategoryMapping.entity_type == "issue")
+            .all()
+        }
         count = 0
         backlog = BacklogService(self.db)
 
@@ -126,6 +145,7 @@ class MappingService:
                 entity_id=issue.id,
                 category=resolution.category_code,
                 source_rule=resolution.source,
+                cache=mapping_cache,
             )
 
             # Синкаем BacklogItem только для реально изменившихся задач —
@@ -152,6 +172,12 @@ class MappingService:
         logger.info("Recalculating categories for worklogs...")
 
         worklogs = self.db.query(Worklog).all()
+        mapping_cache: dict = {
+            (m.entity_type, m.entity_id): m
+            for m in self.db.query(CategoryMapping)
+            .filter(CategoryMapping.entity_type == "worklog")
+            .all()
+        }
         count = 0
 
         for worklog in worklogs:
@@ -162,6 +188,7 @@ class MappingService:
                 entity_id=worklog.id,
                 category=resolution.category_code,
                 source_rule=resolution.source,
+                cache=mapping_cache,
             )
 
             count += 1
