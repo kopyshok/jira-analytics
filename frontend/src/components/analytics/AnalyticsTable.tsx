@@ -13,10 +13,15 @@ import type {
   AnalyticsRoleNode,
 } from '../../types/api';
 import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
+import { statusTagColor } from '../../utils/status';
 import AnalyticsWorklogsBlock from './AnalyticsWorklogsBlock';
+
+type RowKind = 'team' | 'role' | 'emp' | 'wt' | 'cat' | 'issue';
 
 interface TreeNode {
   key: string;
+  kind: RowKind;
+  depth: number;
   label: React.ReactNode;
   totals: NodeTotals;
   children?: TreeNode[];
@@ -26,61 +31,129 @@ interface TreeNode {
   issueKey?: string;
 }
 
+function initialsOf(name: string): string {
+  const parts = (name || '').split(/\s+/).filter(Boolean);
+  if (!parts.length) return '??';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function indent(depth: number, content: React.ReactNode): React.ReactNode {
+  return (
+    <div style={{ paddingLeft: depth * 14, lineHeight: 1.35 }}>{content}</div>
+  );
+}
+
+function pctColor(pct: number | null | undefined): string | undefined {
+  if (pct == null) return undefined;
+  if (pct > 110) return '#ff4d4f';
+  if (pct >= 70) return '#faad14';
+  return '#67d68d';
+}
+
+function buildIssueNode(
+  i: AnalyticsIssueNode,
+  prefix: string,
+  depth: number,
+): TreeNode {
+  return {
+    key: `${prefix}/i:${i.id}`,
+    kind: 'issue',
+    depth,
+    issueId: i.id,
+    issueKey: i.key,
+    label: indent(
+      depth,
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: 6,
+          rowGap: 2,
+        }}
+      >
+        <a
+          href={`https://example.atlassian.net/browse/${i.key}`}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: '#22d3ee', textDecoration: 'underline', fontWeight: 600 }}
+        >
+          {i.key}
+        </a>
+        <Tag
+          color={statusTagColor(i.status, i.status_category)}
+          style={{ marginInlineEnd: 0 }}
+        >
+          {i.status}
+        </Tag>
+        <span style={{ color: '#e6edf7', flex: '1 1 auto', minWidth: 0 }}>
+          {i.summary}
+        </span>
+      </span>,
+    ),
+    totals: i.totals,
+  };
+}
+
 function buildCategoryNode(
   c: AnalyticsCategoryNode,
   prefix: string,
+  depth: number,
 ): TreeNode {
   return {
     key: `${prefix}/c:${c.category_code || '_none'}`,
-    label: (
-      <span style={{ marginLeft: 32 }}>
+    kind: 'cat',
+    depth,
+    label: indent(
+      depth,
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span
           style={{
             display: 'inline-block',
-            width: 8,
-            height: 8,
-            borderRadius: 2,
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
             background: c.color,
-            marginRight: 6,
+            flexShrink: 0,
           }}
         />
-        {c.label}
-      </span>
+        <span>{c.label}</span>
+      </span>,
     ),
     totals: c.totals,
-    children: c.issues.map((i: AnalyticsIssueNode) => ({
-      key: `${prefix}/c:${c.category_code || '_none'}/i:${i.id}`,
-      issueId: i.id,
-      issueKey: i.key,
-      label: (
-        <span style={{ marginLeft: 40 }}>
-          <a
-            href={`https://example.atlassian.net/browse/${i.key}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {i.key}
-          </a>
-          <Tag style={{ marginLeft: 6 }}>{i.status}</Tag>
-          {' '}
-          {i.summary}
-        </span>
-      ),
-      totals: i.totals,
-    })),
+    children: c.issues.map((i) => buildIssueNode(i, `${prefix}/c:${c.category_code || '_none'}`, depth + 1)),
   };
 }
 
 function buildWorkTypeNode(
   w: AnalyticsWorkTypeNode,
   prefix: string,
+  depth: number,
 ): TreeNode {
   return {
     key: `${prefix}/w:${w.work_type_id}`,
-    label: <span style={{ marginLeft: 24 }}>{w.label}</span>,
+    kind: 'wt',
+    depth,
+    label: indent(
+      depth,
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#7e94b8',
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontWeight: 500 }}>{w.label}</span>
+      </span>,
+    ),
     totals: w.totals,
     children: w.categories.map((c) =>
-      buildCategoryNode(c, `${prefix}/w:${w.work_type_id}`),
+      buildCategoryNode(c, `${prefix}/w:${w.work_type_id}`, depth + 1),
     ),
   };
 }
@@ -88,39 +161,87 @@ function buildWorkTypeNode(
 function buildEmployeeNode(
   e: AnalyticsEmployeeNode,
   prefix: string,
+  depth: number,
+  roleColor: string,
 ): TreeNode {
+  const initials = e.initials || initialsOf(e.name);
   return {
     key: `${prefix}/e:${e.employee_id}`,
-    label: <span style={{ marginLeft: 16 }}>{e.name}</span>,
+    kind: 'emp',
+    depth,
+    label: indent(
+      depth,
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 22,
+            height: 22,
+            borderRadius: '50%',
+            background: roleColor,
+            color: '#fff',
+            fontSize: 10,
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {initials}
+        </span>
+        <span style={{ color: '#e6edf7' }}>{e.name}</span>
+      </span>,
+    ),
     totals: e.totals,
     children: e.work_types.map((w) =>
-      buildWorkTypeNode(w, `${prefix}/e:${e.employee_id}`),
+      buildWorkTypeNode(w, `${prefix}/e:${e.employee_id}`, depth + 1),
     ),
   };
 }
 
-function buildRoleNode(r: AnalyticsRoleNode, prefix: string): TreeNode {
+function buildRoleNode(
+  r: AnalyticsRoleNode,
+  prefix: string,
+  depth: number,
+): TreeNode {
   return {
     key: `${prefix}/r:${r.role_code}`,
-    label: (
-      <span style={{ color: r.role_color, marginLeft: 8 }}>
-        {r.role_label}
-      </span>
+    kind: 'role',
+    depth,
+    label: indent(
+      depth,
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            background: r.role_color,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ color: r.role_color, fontWeight: 600 }}>
+          {r.role_label}
+        </span>
+      </span>,
     ),
     totals: r.totals,
     children: r.employees.map((e) =>
-      buildEmployeeNode(e, `${prefix}/r:${r.role_code}`),
+      buildEmployeeNode(e, `${prefix}/r:${r.role_code}`, depth + 1, r.role_color),
     ),
   };
 }
 
-function buildAntTreeNode(t: AnalyticsTeamNode): TreeNode {
+function buildTeamNode(t: AnalyticsTeamNode): TreeNode {
   const prefix = `team:${t.team || '_none'}`;
   return {
     key: prefix,
-    label: <b>{t.team || 'Без команды'}</b>,
+    kind: 'team',
+    depth: 0,
+    label: indent(0, <b>{t.team || 'Без команды'}</b>),
     totals: t.totals,
-    children: t.roles.map((r) => buildRoleNode(r, prefix)),
+    children: t.roles.map((r) => buildRoleNode(r, prefix, 1)),
   };
 }
 
@@ -132,7 +253,13 @@ interface Props {
   periodEnd: string;
 }
 
-export default function AnalyticsTable({ data, selectedTeam, worklogMode, periodStart, periodEnd }: Props) {
+export default function AnalyticsTable({
+  data,
+  selectedTeam,
+  worklogMode,
+  periodStart,
+  periodEnd,
+}: Props) {
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
   const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string } | null>(null);
@@ -140,23 +267,26 @@ export default function AnalyticsTable({ data, selectedTeam, worklogMode, period
   const teams =
     selectedTeam === 'all'
       ? data.teams
-      : data.teams.filter(
-          (t) => (t.team || '_none_') === selectedTeam,
-        );
+      : data.teams.filter((t) => (t.team || '_none_') === selectedTeam);
 
-  const tableData: TreeNode[] = teams.map((t) => buildAntTreeNode(t));
+  const tableData: TreeNode[] = teams.map((t) => buildTeamNode(t));
 
   const allColumns: ColumnsType<TreeNode> = [
     {
       title: 'Группа / Задача',
       dataIndex: 'label',
       key: 'label',
-      width: 400,
+      width: 600,
+      ellipsis: false,
     },
     {
       title: 'Часы факт',
       key: 'fact_hours',
-      render: (_, r) => r.totals.fact_hours.toFixed(1),
+      render: (_, r) => (
+        <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
+          {r.totals.fact_hours.toFixed(1)}
+        </span>
+      ),
       width: 100,
       align: 'right',
     },
@@ -164,9 +294,7 @@ export default function AnalyticsTable({ data, selectedTeam, worklogMode, period
       title: 'Часы план',
       key: 'plan_hours',
       render: (_, r) =>
-        r.totals.plan_hours != null
-          ? Math.round(r.totals.plan_hours)
-          : '—',
+        r.totals.plan_hours != null ? Math.round(r.totals.plan_hours) : '—',
       width: 100,
       align: 'right',
     },
@@ -174,53 +302,58 @@ export default function AnalyticsTable({ data, selectedTeam, worklogMode, period
       title: '% план',
       key: 'pct_plan',
       render: (_, r) =>
-        r.totals.pct_plan != null
-          ? `${r.totals.pct_plan.toFixed(0)}%`
-          : '—',
-      width: 80,
+        r.totals.pct_plan != null ? (
+          <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
+            {r.totals.pct_plan.toFixed(0)}%
+          </span>
+        ) : (
+          '—'
+        ),
+      width: 90,
       align: 'right',
     },
     {
       title: '% от итога',
       key: 'pct_total',
       render: (_, r) => `${r.totals.pct_total.toFixed(1)}%`,
-      width: 90,
+      width: 100,
       align: 'right',
     },
     {
       title: 'Ворклогов',
       key: 'worklog_count',
       render: (_, r) => r.totals.worklog_count,
-      width: 90,
+      width: 100,
       align: 'right',
     },
     {
       title: 'Задач',
       key: 'issue_count',
       render: (_, r) => r.totals.issue_count,
-      width: 70,
+      width: 80,
       align: 'right',
     },
     {
       title: 'Сотр.',
       key: 'employee_count',
       render: (_, r) => r.totals.employee_count,
-      width: 70,
+      width: 80,
       align: 'right',
     },
     {
       title: 'Ср.мин',
       key: 'avg_min',
       render: (_, r) => r.totals.avg_worklog_minutes.toFixed(0),
-      width: 80,
+      width: 90,
       align: 'right',
     },
   ];
 
-  // Mandatory columns always shown: label, fact_hours. Others filtered by visibility.
+  // Mandatory columns always shown: label, fact_hours.
   const MANDATORY_KEYS = new Set(['label', 'fact_hours']);
   const columns = allColumns.filter(
-    (col) => MANDATORY_KEYS.has(col.key as string) || visibleSet.has(col.key as string),
+    (col) =>
+      MANDATORY_KEYS.has(col.key as string) || visibleSet.has(col.key as string),
   );
 
   return (
@@ -231,26 +364,32 @@ export default function AnalyticsTable({ data, selectedTeam, worklogMode, period
         rowKey="key"
         pagination={false}
         size="small"
-        expandable={
-          worklogMode === 'inline'
-            ? {
-                defaultExpandAllRows: false,
-                rowExpandable: (record) => !!record.issueId,
-                expandedRowRender: (record) =>
-                  record.issueId ? (
-                    <AnalyticsWorklogsBlock
-                      issueId={record.issueId}
-                      periodStart={periodStart}
-                      periodEnd={periodEnd}
-                    />
-                  ) : null,
-              }
-            : { defaultExpandAllRows: false }
-        }
+        scroll={{ x: 'max-content' }}
+        rowClassName={(record) => {
+          const cls = [`tree-row-depth-${record.depth}`];
+          if (record.children && record.children.length > 0) cls.push('tree-row-has-children');
+          return cls.join(' ');
+        }}
+        expandable={{
+          defaultExpandAllRows: false,
+          rowExpandable: (record) =>
+            record.kind === 'issue'
+              ? worklogMode === 'inline'
+              : (record.children?.length ?? 0) > 0,
+          expandedRowRender: (record) =>
+            record.kind === 'issue' && worklogMode === 'inline' && record.issueId ? (
+              <AnalyticsWorklogsBlock
+                issueId={record.issueId}
+                periodStart={periodStart}
+                periodEnd={periodEnd}
+              />
+            ) : null,
+        }}
         onRow={(record) =>
-          worklogMode === 'drawer' && record.issueId
+          worklogMode === 'drawer' && record.kind === 'issue' && record.issueId
             ? {
-                onClick: () => setDrawerIssue({ id: record.issueId!, key: record.issueKey! }),
+                onClick: () =>
+                  setDrawerIssue({ id: record.issueId!, key: record.issueKey! }),
                 style: { cursor: 'pointer' },
               }
             : {}
