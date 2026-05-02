@@ -13,6 +13,7 @@ export default function ProjectsPage() {
 
   return (
     <div
+      className="projects-master-detail"
       style={{
         display: 'flex',
         height: 'calc(100vh - 64px)',
@@ -20,7 +21,9 @@ export default function ProjectsPage() {
         overflow: 'hidden',
       }}
     >
-      <ProjectsList selectedKey={key ?? null} onSelect={handleSelect} />
+      <div className="projects-list-pane" style={{ display: 'contents' }}>
+        <ProjectsList selectedKey={key ?? null} onSelect={handleSelect} />
+      </div>
 
       {key ? (
         <ProjectDetailPanel projectKey={key} />

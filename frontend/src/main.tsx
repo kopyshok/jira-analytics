@@ -20,6 +20,7 @@ dayjs.extend(localeData);
 dayjs.locale('ru');
 import { DARK_THEME, FONTS } from './utils/constants';
 import './index.css';
+import './styles/print.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
