@@ -412,6 +412,28 @@ class SyncService:
             self.stats.employees_created += 1
         self.stats.employees_synced += 1
         return employee
+
+    def _ensure_employee_cached(
+        self,
+        jira_user: JiraUserSchema,
+        cache: dict[str, Employee],
+    ) -> Employee:
+        """Cached _ensure_employee: пропускает upsert если employee уже виден
+        в этом sync-run. Используется в hot loops где у одного автора десятки
+        тысяч записей (issues creator / worklog author).
+
+        Trade-off: пропущенный upsert не обновит ``synced_at`` /
+        ``display_name`` / ``avatar_url`` если они изменились в Jira между
+        начальной загрузкой кэша и итерацией. Это приемлемо — данные
+        обновятся на следующем sync.
+        """
+        eid = jira_user.jira_account_id
+        cached = cache.get(eid)
+        if cached is not None:
+            return cached
+        employee = self._ensure_employee(jira_user)
+        cache[eid] = employee
+        return employee
     
     # === Project sync ===
     
@@ -644,6 +666,19 @@ class SyncService:
         # Resolve planned-effort AppSetting ids once, reuse for every issue.
         planned_field_ids = self._resolve_planned_field_ids()
 
+        # Pre-load caches: устраняет N+1 SELECT в hot loop на 100k+ задач.
+        # project_cache: 6 строк, employee_cache: ~500 строк (всего сотрудников),
+        # issue_id_by_key: ~120k пар (key→id) ≈ 12MB на dict.
+        project_cache: dict[str, Project] = {
+            p.jira_project_id: p for p in projects
+        }
+        employee_cache: dict[str, Employee] = {
+            e.jira_account_id: e for e in self.db.query(Employee).all()
+        }
+        issue_id_by_key: dict[str, str] = dict(
+            self.db.query(Issue.key, Issue.id).all()
+        )
+
         count = 0
         unresolved_parents: List[Tuple[str, str]] = []  # (child_issue_id, parent_key)
         async for jira_issue in self.jira.get_issues_updated_since(
@@ -653,7 +688,7 @@ class SyncService:
         ):
             await self._check_cancelled()
             # Find local project
-            project = self._get_project_by_jira_id(jira_issue.fields.project.id)
+            project = project_cache.get(jira_issue.fields.project.id)
             if not project:
                 logger.warning(f"Project not found for issue {jira_issue.key}")
                 continue
@@ -662,13 +697,11 @@ class SyncService:
             parent_id = None
             parent_key = jira_issue.fields.parent_key
             if parent_key:
-                parent = self.issue_repo.get_by_field("key", parent_key)
-                if parent:
-                    parent_id = parent.id
+                parent_id = issue_id_by_key.get(parent_key)
 
-            # Ensure creator exists as employee
+            # Ensure creator exists as employee (cached: 119k issues / ~50 unique creators)
             if jira_issue.fields.creator:
-                self._ensure_employee(jira_issue.fields.creator)
+                self._ensure_employee_cached(jira_issue.fields.creator, employee_cache)
 
             # Собираем только те поля, что реально сконфигурированы,
             # чтобы не затирать колонки в БД, когда админ не задал field_id.
@@ -698,6 +731,7 @@ class SyncService:
                 self.stats.issues_created += 1
             self.stats.issues_synced += 1
             self.stats.touched_issue_keys.add(jira_issue.key)
+            issue_id_by_key[jira_issue.key] = issue.id
             count += 1
 
             # Отложенно свяжем, если родитель ещё не подтянут (обычно эпик
@@ -705,20 +739,21 @@ class SyncService:
             if parent_key and parent_id is None:
                 unresolved_parents.append((issue.id, parent_key))
 
-            if count % 50 == 0:
+            if count % 500 == 0:
                 logger.debug(f"Synced {count} issues...")
-                self.db.commit()  # Periodic commit
+                self.db.commit()  # Periodic commit (batch size 500 экономит fsync)
 
-        # Второй проход: теперь все эпики уже в базе, достроим parent_id.
+        # Второй проход: теперь все эпики уже в базе, достроим parent_id
+        # через cache (без N SELECT).
         if unresolved_parents:
             resolved = 0
             for child_id, parent_key in unresolved_parents:
-                parent = self.issue_repo.get_by_field("key", parent_key)
-                if not parent:
+                parent_id = issue_id_by_key.get(parent_key)
+                if not parent_id:
                     continue
                 child = self.issue_repo.get(child_id)
-                if child and child.parent_id != parent.id:
-                    child.parent_id = parent.id
+                if child and child.parent_id != parent_id:
+                    child.parent_id = parent_id
                     resolved += 1
             if resolved:
                 logger.info(f"Linked {resolved} issues to their parents in second pass")
@@ -1402,13 +1437,26 @@ class SyncService:
             await self._check_cancelled()
             worklogs_by_issue.setdefault(wl.issueId, []).append(wl)
 
+        # Bulk-prefetch issue rows для всех затронутых jira_issue_id одним SELECT
+        # вместо N. Worklog от незнакомой задачи отфильтруется по отсутствию в map.
+        if worklogs_by_issue:
+            issue_rows = (
+                self.db.query(Issue)
+                .filter(Issue.jira_issue_id.in_(list(worklogs_by_issue.keys())))
+                .all()
+            )
+            issue_by_jira_id: dict[str, Issue] = {i.jira_issue_id: i for i in issue_rows}
+        else:
+            issue_by_jira_id = {}
+
+        # Employee cache — типично 30-50 уникальных авторов на 41k ворклогов.
+        employee_cache: dict[str, Employee] = {
+            e.jira_account_id: e for e in self.db.query(Employee).all()
+        }
+
         # Шаг 3: upsert для каждой touched issue, присутствующей в нашей БД
         for jira_issue_id, worklogs in worklogs_by_issue.items():
-            local_issue = (
-                self.db.query(Issue)
-                .filter(Issue.jira_issue_id == jira_issue_id)
-                .one_or_none()
-            )
+            local_issue = issue_by_jira_id.get(jira_issue_id)
             if local_issue is None:
                 continue
             for wl in worklogs:
@@ -1418,22 +1466,24 @@ class SyncService:
                     emailAddress=wl.author.emailAddress,
                     active=True,
                 )
-                employee = self._ensure_employee(author_schema)
+                employee = self._ensure_employee_cached(author_schema, employee_cache)
                 self._upsert_worklog(wl, local_issue.id, employee.id)
                 stats.bucket_a_worklogs_upserted += 1
             stats.touched_issue_keys.add(local_issue.key)
 
-        # Шаг 4: удалить ворклоги удалённые в Jira с момента since
+        # Шаг 4: удалить ворклоги удалённые в Jira с момента since.
+        # Собираем все ID и делаем bulk DELETE вместо N SELECT+DELETE.
+        deleted_ids: set[str] = set()
         async for wl_id in self.jira.iter_deleted_worklog_ids(since_dt):
             await self._check_cancelled()
-            deleted = (
+            deleted_ids.add(str(wl_id))
+        if deleted_ids:
+            removed = (
                 self.db.query(Worklog)
-                .filter(Worklog.jira_worklog_id == str(wl_id))
-                .first()
+                .filter(Worklog.jira_worklog_id.in_(deleted_ids))
+                .delete(synchronize_session=False)
             )
-            if deleted:
-                self.db.delete(deleted)
-                stats.bucket_a_worklogs_deleted += 1
+            stats.bucket_a_worklogs_deleted += removed
 
         self.db.commit()
 

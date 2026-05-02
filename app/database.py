@@ -29,9 +29,23 @@ engine = create_engine(settings.database_url, **_engine_kwargs(settings.database
 if _is_sqlite_url(settings.database_url):
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
-        """Enable foreign key support in SQLite."""
+        """Применить SQLite PRAGMA для каждого нового connection.
+
+        - foreign_keys=ON — обязательное FK enforcement
+        - journal_mode=WAL — write-ahead log: быстрее записи + concurrent reads
+        - synchronous=NORMAL — c WAL даёт data integrity без cost of FULL fsync
+          (теряется только последний commit на power loss, не consistency)
+        - cache_size=-64000 — 64MB page cache (по умолчанию 2MB)
+        - temp_store=MEMORY — temp tables в памяти, не на диск
+        - mmap_size=268435456 — 256MB memory-mapped IO для read-heavy запросов
+        """
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA cache_size=-64000")
+        cursor.execute("PRAGMA temp_store=MEMORY")
+        cursor.execute("PRAGMA mmap_size=268435456")
         cursor.close()
 
 

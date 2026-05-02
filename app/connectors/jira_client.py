@@ -70,7 +70,7 @@ class JiraClient:
         email: Optional[str] = None,
         api_token: Optional[str] = None,
         request_delay: float = 0.1,  # 100ms between requests
-        max_retries: int = 3,
+        max_retries: int = 5,
     ):
         settings = get_settings()
 
@@ -163,9 +163,13 @@ class JiraClient:
                 if attempt == self.max_retries - 1:
                     raise JiraClientError(f"HTTP error: {e}")
             except httpx.RequestError as e:
+                # Network errors (DNS fail / connection refused / timeout):
+                # эти проблемы держатся секунды-минуты, экспоненциальный backoff
+                # с базой 1s даёт 1, 2, 4, 8 сек — хватает на большинство глитчей.
                 if attempt == self.max_retries - 1:
                     raise JiraClientError(f"Request failed: {e}")
-        
+                await asyncio.sleep(1.0 * (2 ** attempt))
+
         raise JiraClientError("Max retries exceeded")
     
     # === User methods ===
