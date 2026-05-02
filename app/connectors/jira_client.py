@@ -127,8 +127,10 @@ class JiraClient:
         
         for attempt in range(self.max_retries):
             try:
-                # Rate limiting delay
-                if attempt > 0 or self.request_delay > 0:
+                # Rate limiting: backoff только на ретрае. Jira Cloud допускает
+                # burst, hardcoded delay на каждом запросе раздувает full sync.
+                # На 429 отдельная ветка ниже спит Retry-After.
+                if attempt > 0:
                     delay = self.request_delay * (2 ** attempt)
                     await asyncio.sleep(delay)
                 
