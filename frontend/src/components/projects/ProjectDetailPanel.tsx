@@ -17,7 +17,7 @@ export const ProjectDetailPanel: React.FC<Props> = ({ projectKey }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get('view') as ViewMode) ?? 'analysis';
 
-  const { data: detail, isLoading: detailLoading } = useProjectDetail(projectKey);
+  const { data: detail, isLoading: detailLoading, error: detailError } = useProjectDetail(projectKey);
   const { data: summary, isLoading: summaryLoading } = useProjectSummary(projectKey);
 
   const handleViewChange = (v: ViewMode) => {
@@ -32,6 +32,14 @@ export const ProjectDetailPanel: React.FC<Props> = ({ projectKey }) => {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (detailError || !detail) {
+    return (
+      <div style={{ flex: 1, padding: 32, color: '#7e94b8' }}>
+        Проект не найден или не помечен категорией «Квартальные задачи» / «Архив квартальных задач».
       </div>
     );
   }

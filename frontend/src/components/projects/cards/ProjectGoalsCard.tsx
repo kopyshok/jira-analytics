@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card, Empty } from 'antd';
+import { Card, Empty, Skeleton } from 'antd';
+import { useIsFetching } from '@tanstack/react-query';
 import type { ProjectSummary } from '../../../types/projects';
 
 interface Props {
@@ -10,9 +11,13 @@ interface Props {
 const GOAL_COLORS = ['#378ADD', '#1D9E75', '#EF9F27'];
 
 export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
+  const isFetchingSummary = useIsFetching({ queryKey: ['project-summary'] }) > 0;
   const goals = summary?.goals;
 
   const renderContent = () => {
+    if (!summary && isFetchingSummary) {
+      return <Skeleton active paragraph={{ rows: 3 }} title={false} />;
+    }
     if (goals && goals.length > 0) {
       return (
         <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>

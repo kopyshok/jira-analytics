@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, Button, Dropdown, message } from 'antd';
+import { Tag, Button, Dropdown } from 'antd';
 import {
   ReloadOutlined,
   FilePdfOutlined,
@@ -47,14 +47,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
 
   const handleRegen = () => {
     if (!detail) return;
-    regen.mutate(detail.key, {
-      onSuccess: () => {
-        message.success('AI-резюме обновлено');
-      },
-      onError: () => {
-        message.error('Ошибка обновления AI-резюме');
-      },
-    });
+    regen.mutate(detail.key);
   };
 
   const handlePdf = () => {
