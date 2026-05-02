@@ -45,7 +45,7 @@ export default function AnalyticsPage() {
   const taskQ = params.get('task') || undefined;
 
   const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('inline');
+  const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('drawer');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
 
   const queryParams = useMemo(() => ({
