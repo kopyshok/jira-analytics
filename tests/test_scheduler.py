@@ -1,9 +1,8 @@
 """Tests for SchedulerService (T19)."""
 
 from datetime import datetime
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from app.services.scheduler import SchedulerService
 

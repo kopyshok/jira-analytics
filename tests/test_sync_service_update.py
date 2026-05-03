@@ -1,8 +1,8 @@
 """Tests for SyncService.update_worklogs_since (upsert-only)."""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 

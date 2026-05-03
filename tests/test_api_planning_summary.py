@@ -114,7 +114,6 @@ def test_resource_summary_basic(client, db_session):
 
 
 def test_copy_rules_from_template(client, db_session):
-    from app.models import RoleCapacityRule
     wt = _wt(db_session, "Орг. работы", "org2")
     sc = PlanningScenario(
         id=str(uuid.uuid4()),

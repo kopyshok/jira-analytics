@@ -13,7 +13,6 @@ from app.services.sync_pipeline import (
     MappingStage,
     ProjectsStage,
     WorklogsDeltaStage,
-    WorklogsFullStage,
 )
 
 

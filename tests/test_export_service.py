@@ -5,7 +5,6 @@
 (листы, строки, слайды). Детальный layout не проверяем.
 """
 
-from datetime import datetime
 from io import BytesIO
 
 import pytest
@@ -13,17 +12,12 @@ import pytest
 from app.models import (
     BacklogItem,
     Category,
-    CategoryMapping,
     Employee,
     EmployeeTeam,
-    Issue,
     MandatoryWorkType,
-    Project,
     Role,
     RoleCapacityRule,
-    Worklog,
 )
-from app.services.categories import CategoryCode
 from app.services.export_service import ExportService
 
 

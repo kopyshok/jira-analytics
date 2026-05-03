@@ -1,7 +1,6 @@
 """Tests for Jira schemas."""
 
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from app.connectors.schemas import (
     JiraCommentSchema,
@@ -9,10 +8,6 @@ from app.connectors.schemas import (
     JiraProjectSchema,
     JiraWorklogSchema,
     JiraIssueSchema,
-    JiraIssueFieldsSchema,
-    JiraIssueTypeSchema,
-    JiraStatusSchema,
-    JiraWorklogAuthorSchema,
 )
 
 

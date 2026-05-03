@@ -1,5 +1,4 @@
 """ProjectsService: list_projects + get_project_detail."""
-import pytest
 import uuid
 from datetime import datetime
 

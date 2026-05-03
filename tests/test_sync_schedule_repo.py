@@ -1,6 +1,5 @@
 """Tests for SyncScheduleRepository."""
 
-import pytest
 
 from app.repositories.sync_schedule import SyncScheduleRepository
 

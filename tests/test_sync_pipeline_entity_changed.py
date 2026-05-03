@@ -1,5 +1,4 @@
 """PipelineOrchestrator публикует entity_changed после pipeline_done."""
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

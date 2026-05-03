@@ -6,7 +6,6 @@ cancel_check возвращает True, и делает это *между* об
 """
 
 import asyncio
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

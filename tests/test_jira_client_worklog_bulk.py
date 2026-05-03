@@ -1,7 +1,7 @@
 """Tests for JiraClient.get_worklogs_updated_since (bulk worklog API)."""
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

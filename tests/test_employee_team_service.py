@@ -1,6 +1,6 @@
 """Тесты авто-определения команды сотрудника из ворклогов."""
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 import pytest
 
 from app.models import Category, Employee, EmployeeTeam, Issue, Project, Worklog

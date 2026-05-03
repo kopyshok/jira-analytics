@@ -1,5 +1,4 @@
 # tests/test_dashboard_endpoints.py
-import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 

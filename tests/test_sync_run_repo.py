@@ -2,9 +2,7 @@
 
 from datetime import datetime, timedelta
 
-import pytest
 
-from app.models.sync_run import SyncRun
 from app.repositories.sync_run import SyncRunRepository
 
 

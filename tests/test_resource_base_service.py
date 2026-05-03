@@ -2,7 +2,6 @@
 
 from datetime import date
 
-import pytest
 
 from app.models import (
     Absence,

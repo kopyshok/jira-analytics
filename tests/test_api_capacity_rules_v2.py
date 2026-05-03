@@ -14,7 +14,6 @@ from app.main import app
 from app.database import Base, get_db
 from app.models import (
     Employee,
-    EmployeeCapacityOverride,
     MandatoryWorkType,
     Role,
     RoleCapacityRule,

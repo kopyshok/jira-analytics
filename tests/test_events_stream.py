@@ -9,10 +9,7 @@ This file only verifies the endpoint is wired correctly (route exists, correct h
 
 import asyncio
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
 
-from app.main import app
 from app.services.event_bus import EventBroadcaster
 
 
@@ -44,8 +41,7 @@ async def test_stream_endpoint_is_registered_and_event_bus_delivers():
 
 def test_stream_content_type_header():
     """Verify the endpoint sets correct SSE headers in the response start."""
-    from app.api.endpoints.events import router, event_stream
-    from fastapi import Request
+    from app.api.endpoints.events import event_stream
 
     # Verify the function is an async generator-backed StreamingResponse producer
     # by checking the route exists and imports pass cleanly

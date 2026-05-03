@@ -5,7 +5,6 @@
 - new BacklogItem auto-allocated to bottom of every draft scenario
 """
 
-from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient

@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone
 
 from app.models.user import User, UserRole

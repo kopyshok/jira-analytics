@@ -173,7 +173,7 @@ def test_sync_archives_item_when_category_leaves_backlog(db_session, proj):
 
 def test_sync_removes_draft_allocation_when_category_leaves(db_session, proj):
     """Архивная категория → allocation в черновом сценарии удаляется."""
-    from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
+    from app.models import PlanningScenario, ScenarioAllocation
     from app.services.backlog_service import BacklogService
 
     issue = _make_issue(db_session, proj, "RFA-5", "initiatives_rfa")
@@ -209,7 +209,7 @@ def test_sync_removes_draft_allocation_when_category_leaves(db_session, proj):
 
 def test_sync_preserves_approved_allocation_when_category_leaves(db_session, proj):
     """Архивная категория → allocation в утверждённом сценарии не трогаем."""
-    from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
+    from app.models import PlanningScenario, ScenarioAllocation
     from app.services.backlog_service import BacklogService
 
     issue = _make_issue(db_session, proj, "RFA-5A", "initiatives_rfa")

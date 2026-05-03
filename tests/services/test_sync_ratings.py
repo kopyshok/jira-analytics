@@ -1,7 +1,5 @@
 """Sync rating-полей + planned dates из Jira custom fields."""
-import pytest
 from app.services.sync_service import _to_int_rating, _parse_jira_date
-from datetime import datetime
 
 
 def test_to_int_rating_valid_range():

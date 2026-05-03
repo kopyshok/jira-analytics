@@ -32,8 +32,6 @@ def e2e_db_session():
     )
 
     # Ensure sync_run and sync_schedule tables exist (may be missing on old e2e.db)
-    import app.models  # noqa: ensure all models are registered
-    from app.database import Base
     from app.models.sync_run import SyncRun
     from app.models.sync_schedule import SyncSchedule
 

@@ -1,7 +1,6 @@
 """Tests for EmployeeTeam model."""
 
 from datetime import datetime
-import pytest
 
 from app.models import Employee, EmployeeTeam
 

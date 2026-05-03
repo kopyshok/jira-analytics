@@ -1,6 +1,5 @@
 """Unit tests for hierarchy rule evaluator."""
 
-import pytest
 
 from app.models.hierarchy_rule import HierarchyRule
 from app.services.hierarchy_rules import EvaluationInput, classify

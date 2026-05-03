@@ -127,6 +127,7 @@ def test_period_partial_update(testclient_db_session):
         app.dependency_overrides.clear()
 
 
+@pytest.mark.no_auth_bypass
 def test_period_requires_auth(testclient_db_session):
     app.dependency_overrides[get_db] = lambda: testclient_db_session
     client = TestClient(app)
