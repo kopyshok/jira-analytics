@@ -4,7 +4,7 @@ import json
 from functools import lru_cache
 from typing import Annotated, Any, Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode
 
 
@@ -37,12 +37,12 @@ class Settings(BaseSettings):
     jira_batch_size: int = 100  # Issues per request
 
     # Auth
-    jwt_secret_key: str = "dev-secret-change-in-production"
+    jwt_secret_key: Optional[str] = None
     jwt_expire_hours: int = 8
 
     # Admin seed (used by scripts/create_admin.py)
-    admin_email: str = ""
-    admin_password: str = ""
+    admin_email: Optional[str] = None
+    admin_password: Optional[str] = None
 
     @field_validator("debug", mode="before")
     @classmethod
@@ -80,6 +80,19 @@ class Settings(BaseSettings):
             for origin in normalized.split(",")
             if origin.strip()
         ]
+
+    @model_validator(mode="after")
+    def _enforce_jwt_secret(self) -> "Settings":
+        """Production must override the JWT secret; dev gets a stable fallback."""
+        placeholder = "dev-secret-change-in-production"
+        if not self.debug:
+            if not self.jwt_secret_key or self.jwt_secret_key == placeholder:
+                raise ValueError(
+                    "JWT_SECRET_KEY must be set to a non-default value when DEBUG is false"
+                )
+        elif not self.jwt_secret_key:
+            self.jwt_secret_key = placeholder
+        return self
 
     class Config:
         env_file = ".env"

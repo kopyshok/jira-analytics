@@ -9,7 +9,7 @@
 посуточные итоги для пересчёта ролевых ёмкостей при выборе инициатив.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
 

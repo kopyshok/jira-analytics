@@ -18,7 +18,7 @@ from app.services.mapping_service import MappingService
 from app.services.production_calendar_service import ProductionCalendarService
 from app.services.sync_lock import SyncLock
 from app.services.sync_pipeline import PipelineOrchestrator, build_pipeline
-from app.services.sync_service import SyncService, SyncStats, ReloadStats, UpdateStats
+from app.services.sync_service import SyncService, ReloadStats, UpdateStats
 from app.repositories.sync_run import SyncRunRepository
 from app.schemas.sync_pipeline import PipelineRequest, TeamRefreshRequest
 
@@ -918,7 +918,6 @@ class JiraUserResponse(BaseModel):
     avatar_url: Optional[str] = None
 
 
-from app.repositories.sync_run import SyncRunRepository
 from app.repositories.sync_schedule import SyncScheduleRepository
 from app.schemas.sync_pipeline import SyncRunOut, SyncScheduleOut, SyncScheduleCreate, SyncScheduleUpdate
 

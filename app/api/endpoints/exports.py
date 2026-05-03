@@ -6,7 +6,6 @@
 """
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -14,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import PlanningScenario
-from app.services.analytics_service import NO_TEAM_TOKEN, parse_teams_csv
 from app.services.export_service import ExportService
 
 

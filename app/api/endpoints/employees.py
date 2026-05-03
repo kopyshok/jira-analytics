@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Employee, EmployeeTeam, Role
+from app.models import Employee, Role
 from app.services.employee_team_service import EmployeeTeamService
 
 

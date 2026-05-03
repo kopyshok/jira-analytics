@@ -1,7 +1,6 @@
 """Ежедневный job: регенерация устаревших AI-саммари."""
 import asyncio
 import logging
-from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
