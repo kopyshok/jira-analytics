@@ -48,13 +48,13 @@ class RcpspLeveler:
         if not assignments:
             return []
         events: List[LevelingEvent] = []
-        max_passes = 10
+        max_passes = 10  # эмпирическая граница; типичный квартал требует ≤3 проходов
         for _ in range(max_passes):
             overloads = self._detect_overload(assignments, availability)
             if not overloads:
                 break
 
-            # Выбрать assignment с max slack для сдвига (наиболее «безопасный»)
+            # MSL: выбрать наиболее ограниченный (min slack) среди подвижных — сохраняем большой slack для будущих перегрузок
             target_day, target_emp = next(iter(overloads.keys()))
             candidates = [
                 a
@@ -67,7 +67,7 @@ class RcpspLeveler:
             if not candidates:
                 break
             # Оставить только те, у кого есть slack для сдвига (slack > 0)
-            movable = [a for a in candidates if (a.slack_days or 0.0) > 0]
+            movable = [a for a in candidates if (a.slack_days or 0.0) > 0.01]
             if not movable:
                 break
             # Выбрать кандидата с минимальным slack (наиболее ограниченный, но подвижный)
