@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from typing import Optional, List, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 _JIRA_TZ_RE = re.compile(r"([+-])(\d{2})(\d{2})$")

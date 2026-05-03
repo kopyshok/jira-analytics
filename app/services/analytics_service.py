@@ -15,13 +15,11 @@ from typing import Optional
 from sqlalchemy import func, and_, or_, select, exists
 from sqlalchemy.orm import Session
 
-from app.models import Worklog, Issue, Employee, Project, CategoryMapping, EmployeeTeam
+from app.models import Worklog, Issue, Employee, EmployeeTeam
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
 from app.models import MandatoryWorkType, RoleCapacityRule, Category, Role
 from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
-from app.models.scenario_norm_snapshot import ScenarioNormSnapshot
-from app.models.scenario_revision import ScenarioRevision
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
@@ -30,7 +28,6 @@ from app.schemas.dashboard import (
     CategoryMetaItem,
     EmployeeWorklogActivity,
 )
-from app.services.categories import CATEGORY_LABELS, get_category_labels
 from app.utils.period import quarter_to_dates
 
 

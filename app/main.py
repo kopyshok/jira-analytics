@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,13 +16,19 @@ from apscheduler.triggers.cron import CronTrigger
 
 settings = get_settings()
 
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
-    print(f"Starting {settings.app_name} v{settings.app_version}")
-    print(f"Debug mode: {settings.debug}")
-    print(f"Database: {settings.database_url}")
+    logger.info("Starting %s v%s", settings.app_name, settings.app_version)
+    logger.info("Debug mode: %s", settings.debug)
+    logger.info("Database: %s", settings.database_url)
 
     # --- Scheduler ---
     db = SessionLocal()
@@ -46,7 +53,7 @@ async def lifespan(app: FastAPI):
 
     # --- Shutdown ---
     sched_svc.shutdown()
-    print("Shutting down...")
+    logger.info("Shutting down...")
 
 
 app = FastAPI(
@@ -61,8 +68,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 # Include API routes
