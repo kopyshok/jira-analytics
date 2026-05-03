@@ -188,7 +188,7 @@ export const AITab: React.FC = () => {
           <Input.Password placeholder="AIza..." autoComplete="off" />
         </Form.Item>
 
-        <Divider orientation="left" plain>
+        <Divider plain>
           Системный промпт саммари
         </Divider>
 
