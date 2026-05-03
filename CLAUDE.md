@@ -7,7 +7,7 @@
 | Где работаешь | Что читать |
 |---|---|
 | `app/models/` | [app/models/CLAUDE.md](app/models/CLAUDE.md) — 29 таблиц (6 групп), UUID + timestamp инварианты, M:N single-primary, AppSetting keys |
-| `app/api/` | [app/api/CLAUDE.md](app/api/CLAUDE.md) — 21 router, паттерны (CRUD/batch/SSE), scenario flow, issue tree, ORM caveat |
+| `app/api/` | [app/api/CLAUDE.md](app/api/CLAUDE.md) — 27 routers (включая auth/users/admin/llm/teams/events/roles), паттерны (CRUD/batch/SSE), scenario flow, issue tree, ORM caveat |
 | `app/services/` | [app/services/CLAUDE.md](app/services/CLAUDE.md) — CategoryResolver, MappingService, CapacityService, ResourceBaseService, EmployeeTeamService, ExportService, PlanningService, SyncService (+ Worklog buckets), AnalyticsService, BacklogService, ProductionCalendarService |
 | `app/connectors/` | [app/connectors/CLAUDE.md](app/connectors/CLAUDE.md) — Jira API caveats: cursor pagination, field discovery, team filter probe, rate limiting, credentials resolution |
 | `tests/` | [tests/CLAUDE.md](tests/CLAUDE.md) — conftest cleanup инвариант + endpoint test ORM caveat |
@@ -15,7 +15,9 @@
 
 ## Project Context
 
-Локальный сервис для анализа данных Jira Cloud и квартального планирования. MVP на SQLite, ORM-уровневая совместимость с PostgreSQL поддерживается. Single-user mode (project manager).
+Сервис анализа данных Jira Cloud и квартального планирования. MVP на SQLite, ORM-уровневая совместимость с PostgreSQL поддерживается.
+
+**Целевой режим: многопользовательский.** Сервис будет опубликован для команды компании. Несколько сотрудников работают одновременно, у каждого своя команда (фильтрация по team). Синхронизация с Jira — общая, по расписанию. Все архитектурные решения принимаются исходя из этого режима: server-side push вместо client-only инвалидации, масштабируемость, изоляция данных по команде.
 
 ## Tech Stack
 

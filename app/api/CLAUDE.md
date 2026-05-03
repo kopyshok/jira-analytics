@@ -1,17 +1,30 @@
 # app/api — FastAPI routers
 
-21 router include в `app/api/router.py`. Все эндпоинты под `/api/v1/`.
+27 routers include в `app/api/router.py`. Все эндпоинты под `/api/v1/`.
+
+## Auth gating (router.py)
+
+`api_router` применяет dependency на уровне include:
+- **Public** (без auth): `/auth` (login + me), `/users` (current user self-service)
+- **Authenticated** (`Depends(get_current_user)`): все business routers — analytics/sync/capacity/planning/backlog/exports/categories/issues/projects/employees/teams/scope/mapping/production-calendar/mandatory-work-types/role-rules/employee-overrides/absence-reasons/roles/events/llm/jira browse
+- **Admin-only** (`Depends(require_admin)`): `/admin/users`, `/settings`, `/hierarchy-rules`
+
+Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — backend проверяет каждый запрос.
 
 ## Routers
 
 | Prefix | File | Назначение |
 |---|---|---|
+| `/auth` | `auth.py` | login + me (current user) |
+| `/users` | `users.py` | self-service: GET/PUT /me/period, /me/analytics-columns, /me/teams |
+| `/admin/users` | `admin_users.py` | **admin-only** — list/create/update/reset_password |
 | `/employees` | `employees.py` | список + create-from-Jira + recalc-active + auto-detect-teams + M:N teams CRUD |
 | `/projects` | `projects.py` | GET-only список локально известных проектов |
-| `/sync` | `sync.py` | sync triggers (full/projects/issues/teams/worklogs) + browse Jira live (`/jira-projects`, `/jira-epics`, `/jira-fields`, `/jira-issuetypes`, `/jira-teams`) + targeted refresh + SSE-стримы worklog reload/update |
+| `/teams` | `teams.py` | GET local teams (для global team filter) |
+| `/sync` | `sync.py` | sync triggers (full/projects/issues/teams/worklogs) + browse Jira live (`/jira-projects`, `/jira-epics`, `/jira-fields`, `/jira-issuetypes`, `/jira-teams`) + targeted refresh + SSE-стримы worklog reload/update + sync schedule + history |
 | `/jira` | `sync.jira_router` | алиас для browse Jira (см. выше) |
 | `/scope` | `scope.py` | scope projects + roots + category overrides |
-| `/analytics` | `analytics.py` | dashboard widgets + hours by-{employee\|project\|category\|period} + context-switching |
+| `/analytics` | `analytics.py` | dashboard widgets + hours by-{employee\|project\|category\|period} + hierarchical report + context-switching |
 | `/mapping` | `mapping.py` | recalculate categories (all / issues / worklogs) |
 | `/capacity` | `capacity.py` | absences CRUD + batch + monthly/quarterly capacity + team |
 | `/capacity/role-rules` | `role_capacity_rules.py` | GET + batch PUT (атомарная замена + 422 если Σ ≠ 100% по роли) + copy-to-quarter |
@@ -20,13 +33,15 @@
 | `/backlog` | `backlog.py` | CRUD + refresh-from-jira + link/unlink-jira + archive/restore |
 | `/planning` | `planning.py` | scenarios CRUD + allocations + rules + revisions + resource base (см. ниже) |
 | `/exports` | `exports.py` | analytics.xlsx\|pdf, scenarios/{id}.xlsx\|pptx, capacity.xlsx |
-| `/settings` | `settings.py` | `/jira` (GET\|PUT, redacts token) + `/jira/test` + `/generic` (PUT) + `/generic/{key}` (GET) |
+| `/settings` | `settings.py` | **admin-only** — `/jira` (GET\|PUT, redacts token) + `/jira/test` + `/generic` (PUT) + `/generic/{key}` (GET) |
 | `/categories` | `categories.py` | CRUD; `PUT /{id}` принимает `work_type_id: str \| null` (валидация: MandatoryWorkType существует и активен) |
 | `/issues` | `issue_config.py` | tree + per-issue category/include + batch-category |
-| `/hierarchy-rules` | `hierarchy_rules.py` | CRUD + reorder |
+| `/hierarchy-rules` | `hierarchy_rules.py` | **admin-only** — CRUD + reorder |
 | `/production-calendar` | `production_calendar.py` | GET + PUT single-day + DELETE manual + `POST /sync` pull RU календарь |
 | `/mandatory-work-types` | `mandatory_work_types.py` | CRUD + reorder |
 | `/roles` | `roles.py` | CRUD + reorder |
+| `/events` | `events.py` | SSE entity_changed broadcaster (см. EventBroadcaster) |
+| `/llm` | `llm.py` | AI summary/work_breakdown через Gemini (`/llm/test` + project summaries) |
 
 ## Паттерны
 
