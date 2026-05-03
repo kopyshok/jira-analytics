@@ -4,23 +4,26 @@ from datetime import datetime
 from typing import Optional
 import uuid
 
-from sqlalchemy import DateTime, func
+from sqlalchemy import DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
 
 
 class TimestampMixin:
     """Mixin for created_at and updated_at timestamps."""
-    
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=func.now(),
+        default=_utcnow,
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=func.now(),
-        onupdate=func.now(),
+        default=_utcnow,
+        onupdate=_utcnow,
         nullable=False,
     )
 

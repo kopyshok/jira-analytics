@@ -33,6 +33,7 @@ def _seed(db: Session, email: str, role: UserRole = UserRole.manager,
     )
     db.add(u)
     db.commit()
+    db.refresh(u)
     return u
 
 
