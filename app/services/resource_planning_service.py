@@ -22,6 +22,7 @@ from app.models import (
     ScenarioAllocation,
 )
 from app.models.employee_team import EmployeeTeam
+from app.services.rcpsp_leveler import RcpspLeveler
 
 PHASE_ORDER = ["analyst", "dev", "qa", "opo"]
 PHASE_HOURS_FIELD = {
@@ -244,14 +245,11 @@ class ResourcePlanningService:
         self._compute_cpm(new_assignments, q_end)
 
         # RCPSP-выравнивание перегрузок
-        from app.services.rcpsp_leveler import RcpspLeveler
-
         leveler = RcpspLeveler()
         role_pools = self._build_role_pools(employees)
         leveling_events = leveler.level(new_assignments, remaining, q_end, role_pools)
-        # Recompute CPM after possible shifts
-        if leveling_events:
-            self._compute_cpm(new_assignments, q_end)
+        # Always recompute CPM — leveling may have shifted dates; cheap O(N) anyway
+        self._compute_cpm(new_assignments, q_end)
         # Cache events for Stage B persist_conflicts
         self._last_leveling_events = leveling_events
 
