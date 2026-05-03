@@ -105,6 +105,8 @@ class RcpspLeveler:
                 continue
 
             # Try reassign — pick any candidate (not just movable), prefer one with no slack
+            # Расширено: пробуем все кандидаты (не только первый), поскольку peer может быть
+            # несовместим с конкретным окном; перебираем от наиболее ограниченного.
             candidates.sort(key=lambda a: a.slack_days or 0.0)
             for target in candidates:
                 peers = role_pools.get(target_emp, [])
@@ -112,13 +114,14 @@ class RcpspLeveler:
                 for peer_id in peers:
                     if peer_id == target_emp:
                         continue
+                    original_emp = target.employee_id
                     if self._try_reassign(target, peer_id, availability, assignments):
                         events.append(
                             LevelingEvent(
                                 assignment_id=target.id,
                                 action="reassign",
-                                reason=f"Переназначен с {target_emp} на {peer_id} (peer той же роли)",
-                                from_employee_id=target_emp,
+                                reason=f"Переназначен с {original_emp} на {peer_id} (peer той же роли)",
+                                from_employee_id=original_emp,
                                 to_employee_id=peer_id,
                                 overload_pct=(
                                     overloads[(target_day, target_emp)]
