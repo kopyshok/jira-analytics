@@ -1,6 +1,5 @@
 """Resource Planning API — ScheduledBlocks + ResourcePlan + Gantt projection."""
 
-from collections import defaultdict
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -19,13 +18,11 @@ from app.models import (
 from app.models.user import User
 from app.services.resource_planning_service import ResourcePlanningService
 
-_ANALYST_ROLE_CODES = {"аналитик", "analyst", "an"}
-_DEV_ROLE_CODES = {"разработчик", "developer", "dev", "rp"}
-
 router = APIRouter()
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────
+
 
 class ScheduledBlockCreate(BaseModel):
     team: Optional[str] = None
@@ -87,12 +84,22 @@ class AssignmentOut(BaseModel):
 
 
 class ConflictOut(BaseModel):
+    id: str
     type: str
     severity: str
+    status: str
     backlog_item_id: Optional[str]
     backlog_item_title: Optional[str]
     employee_id: Optional[str]
+    assignment_id: Optional[str]
+    window_start: Optional[datetime]
+    window_end: Optional[datetime]
+    metric_value: Optional[float]
     message: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class GanttProjection(BaseModel):
@@ -109,6 +116,7 @@ class AssignmentPatch(BaseModel):
 
 
 # ── ScheduledBlocks ────────────────────────────────────────────────────────
+
 
 @router.get("/scheduled-blocks", response_model=List[ScheduledBlockOut])
 def list_scheduled_blocks(
@@ -168,6 +176,7 @@ def delete_scheduled_block(
 
 
 # ── ResourcePlans ──────────────────────────────────────────────────────────
+
 
 @router.get("/resource-plans", response_model=List[ResourcePlanOut])
 def list_plans(
@@ -246,13 +255,17 @@ def get_gantt(
     if not plan:
         raise HTTPException(404)
 
-    assignments_raw = db.execute(
-        select(ResourcePlanAssignment)
-        .options(joinedload(ResourcePlanAssignment.backlog_item))
-        .options(joinedload(ResourcePlanAssignment.employee))
-        .where(ResourcePlanAssignment.plan_id == plan_id)
-        .order_by(ResourcePlanAssignment.start_date)
-    ).scalars().all()
+    assignments_raw = (
+        db.execute(
+            select(ResourcePlanAssignment)
+            .options(joinedload(ResourcePlanAssignment.backlog_item))
+            .options(joinedload(ResourcePlanAssignment.employee))
+            .where(ResourcePlanAssignment.plan_id == plan_id)
+            .order_by(ResourcePlanAssignment.start_date)
+        )
+        .scalars()
+        .all()
+    )
 
     assignments = [
         AssignmentOut(
@@ -348,65 +361,100 @@ def patch_assignment(
 
 
 def _detect_conflicts(plan, assignments, db):
-    conflicts = []
-    svc = ResourcePlanningService(db)
-    _, q_end = svc._quarter_bounds(plan)
+    """Read persistent conflicts from DB. Detection runs in compute_schedule."""
+    from app.models import PlanConflict, BacklogItem
 
-    # QUARTER_OVERFLOW
-    for a in assignments:
-        if a.phase == "opo" and a.end_date and a.end_date > q_end:
-            conflicts.append(ConflictOut(
-                type="QUARTER_OVERFLOW",
-                severity="critical",
-                backlog_item_id=a.backlog_item_id,
-                backlog_item_title=a.backlog_item.title if a.backlog_item else "",
-                employee_id=None,
-                message=f"Инициатива не вмещается в квартал: ОПЭ заканчивается {a.end_date}",
-            ))
+    rows = (
+        db.execute(select(PlanConflict).where(PlanConflict.plan_id == plan.id))
+        .scalars()
+        .all()
+    )
 
-    # SPLIT_REQUIRED: any phase with max(part_number) > 1
-    phase_max_part: dict = defaultdict(int)
-    item_titles: dict = {}
-    for a in assignments:
-        key = (a.backlog_item_id, a.phase)
-        phase_max_part[key] = max(phase_max_part[key], a.part_number)
-        if a.backlog_item:
-            item_titles[a.backlog_item_id] = a.backlog_item.title
-    split_items: set = set()
-    for (item_id, _), max_part in phase_max_part.items():
-        if max_part > 1 and item_id not in split_items:
-            split_items.add(item_id)
-            conflicts.append(ConflictOut(
-                type="SPLIT_REQUIRED",
-                severity="info",
-                backlog_item_id=item_id,
-                backlog_item_title=item_titles.get(item_id, ""),
-                employee_id=None,
-                message="Инициатива разбита на части из-за заблокированного периода",
-            ))
+    item_ids = {r.backlog_item_id for r in rows if r.backlog_item_id}
+    titles: dict = {}
+    if item_ids:
+        bi_rows = (
+            db.execute(select(BacklogItem).where(BacklogItem.id.in_(item_ids)))
+            .scalars()
+            .all()
+        )
+        titles = {b.id: b.title for b in bi_rows}
 
-    # NO_ANALYST / NO_DEV — skip if plan has no team assigned
-    if plan.team:
-        employees = svc._load_employees(plan)
-        has_analyst = any(e.role and e.role.lower() in _ANALYST_ROLE_CODES for e in employees)
-        has_dev = any(e.role and e.role.lower() in _DEV_ROLE_CODES for e in employees)
-        if not has_analyst:
-            conflicts.append(ConflictOut(
-                type="NO_ANALYST",
-                severity="critical",
-                backlog_item_id=None,
-                backlog_item_title=None,
-                employee_id=None,
-                message=f"В команде «{plan.team}» нет аналитиков. Расписание аналитической фазы невозможно.",
-            ))
-        if not has_dev:
-            conflicts.append(ConflictOut(
-                type="NO_DEV",
-                severity="critical",
-                backlog_item_id=None,
-                backlog_item_title=None,
-                employee_id=None,
-                message=f"В команде «{plan.team}» нет разработчиков. Расписание фазы разработки невозможно.",
-            ))
+    return [
+        ConflictOut(
+            id=r.id,
+            type=r.type,
+            severity=r.severity,
+            status=r.status,
+            backlog_item_id=r.backlog_item_id,
+            backlog_item_title=titles.get(r.backlog_item_id)
+            if r.backlog_item_id
+            else None,
+            employee_id=r.employee_id,
+            assignment_id=r.assignment_id,
+            window_start=r.window_start,
+            window_end=r.window_end,
+            metric_value=r.metric_value,
+            message=r.message,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+        )
+        for r in rows
+    ]
 
-    return conflicts
+
+class ConflictPatch(BaseModel):
+    status: str  # acknowledged | muted | open | resolved
+
+
+@router.patch(
+    "/resource-plans/{plan_id}/conflicts/{conflict_id}",
+    response_model=ConflictOut,
+)
+def patch_conflict(
+    plan_id: str,
+    conflict_id: str,
+    data: ConflictPatch,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models import PlanConflict, BacklogItem
+
+    valid = {"open", "acknowledged", "muted", "resolved"}
+    if data.status not in valid:
+        raise HTTPException(422, f"status must be one of {sorted(valid)}")
+
+    c = db.execute(
+        select(PlanConflict).where(
+            PlanConflict.id == conflict_id,
+            PlanConflict.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "Conflict not found")
+
+    c.status = data.status
+
+    title = None
+    if c.backlog_item_id:
+        b = db.get(BacklogItem, c.backlog_item_id)
+        title = b.title if b else None
+    snap = {
+        "id": c.id,
+        "type": c.type,
+        "severity": c.severity,
+        "status": c.status,
+        "backlog_item_id": c.backlog_item_id,
+        "backlog_item_title": title,
+        "employee_id": c.employee_id,
+        "assignment_id": c.assignment_id,
+        "window_start": c.window_start,
+        "window_end": c.window_end,
+        "metric_value": c.metric_value,
+        "message": c.message,
+        "created_at": c.created_at,
+        "updated_at": c.updated_at,
+    }
+
+    db.commit()
+    return ConflictOut(**snap)
