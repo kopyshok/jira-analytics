@@ -38,6 +38,9 @@ class LevelingEvent:
 class RcpspLeveler:
     """Выравнивание ресурсной нагрузки после первичного scheduling pass."""
 
+    def __init__(self) -> None:
+        self._escalated_keys: set = set()
+
     def level(
         self,
         assignments: List[ResourcePlanAssignment],
@@ -48,11 +51,27 @@ class RcpspLeveler:
         """Главный entrypoint. Мутирует assignments на месте, возвращает событий."""
         if not assignments:
             return []
+        self._escalated_keys = set()
         role_pools = role_pools or {}
         events: List[LevelingEvent] = []
         max_passes = 20  # увеличено с 10: reassign может потребовать больше итераций
         for _ in range(max_passes):
             overloads = self._detect_overload(assignments, availability)
+            if not overloads:
+                break
+            # Пропустить уже эскалированные (assignment, day) чтобы не зациклиться
+            overloads = {
+                k: v
+                for k, v in overloads.items()
+                if not any(
+                    (a.id, k[0]) in self._escalated_keys
+                    for a in assignments
+                    if a.employee_id == k[1]
+                    and a.start_date
+                    and a.end_date
+                    and a.start_date <= k[0] <= a.end_date
+                )
+            }
             if not overloads:
                 break
 
@@ -142,8 +161,32 @@ class RcpspLeveler:
                 if reassigned:
                     break
             if not applied:
-                # Эскалация в Task A.5
-                break
+                # Эскалация: ни delay, ни reassign не смогли разрешить перегрузку
+                # Берём первого кандидата как детерминированную цель для escalate
+                esc_target = candidates[0]
+                day_key = (target_day, target_emp)
+                events.append(
+                    LevelingEvent(
+                        assignment_id=esc_target.id,
+                        action="escalate",
+                        reason=(
+                            f"Не удалось разрешить перегрузку {target_emp} {target_day}: "
+                            "slack=0, peers заняты"
+                        ),
+                        overload_pct=(
+                            overloads[day_key]
+                            / max(
+                                0.01,
+                                availability.get(target_emp, {}).get(target_day, 0.0),
+                            )
+                        )
+                        * 100,
+                        affected_dates=[target_day],
+                    )
+                )
+                # Помечаем (assignment, day) как escalated чтобы не зацикливаться
+                self._escalated_keys.add((esc_target.id, target_day))
+                # Не делаем break — продолжаем: могут быть другие перегрузки
         return events
 
     def _try_reassign(
