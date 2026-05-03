@@ -100,7 +100,11 @@ export default function ScenarioComparatorPage() {
               size="small"
               pagination={{ pageSize: 20 }}
               columns={[
-                { title: 'Инициатива', dataIndex: 'backlog_item_id' },
+                {
+                  title: 'Инициатива',
+                  dataIndex: 'backlog_item_title',
+                  render: (title: string | null, row: AssignmentShift) => title ?? row.backlog_item_id,
+                },
                 { title: 'Фаза', dataIndex: 'phase' },
                 { title: 'Часть', dataIndex: 'part_number' },
                 {

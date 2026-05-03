@@ -72,6 +72,14 @@ export default function ConflictPanel({ conflicts, planId }: Props) {
         ),
         children: (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(() => {
+              const hiddenCount = conflicts.length - visible.length;
+              return hiddenCount > 0 ? (
+                <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 8, fontStyle: 'italic' }}>
+                  Скрыто: {hiddenCount} (mute/resolved)
+                </div>
+              ) : null;
+            })()}
             {visible.map(c => (
               <Alert
                 key={c.id}

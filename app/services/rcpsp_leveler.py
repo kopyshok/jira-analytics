@@ -54,7 +54,7 @@ class RcpspLeveler:
         self._escalated_keys = set()
         role_pools = role_pools or {}
         events: List[LevelingEvent] = []
-        max_passes = 20  # увеличено с 10: reassign может потребовать больше итераций
+        max_passes = 50  # увеличено с 20: reassign может потребовать больше итераций в сложных графах
         for _ in range(max_passes):
             overloads = self._detect_overload(assignments, availability)
             overloads = {

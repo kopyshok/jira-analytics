@@ -57,6 +57,12 @@ class ResourcePlan(Base, TimestampMixin):
         "ResourcePlan",
         remote_side="ResourcePlan.id",
         foreign_keys=[parent_plan_id],
+        back_populates="forks",
+    )
+    forks: Mapped[List["ResourcePlan"]] = relationship(
+        "ResourcePlan",
+        back_populates="parent",
+        foreign_keys="[ResourcePlan.parent_plan_id]",
     )
     assignments: Mapped[List["ResourcePlanAssignment"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"

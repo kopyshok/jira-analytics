@@ -27,6 +27,7 @@ export interface ResourcePlan {
 
 export interface AssignmentShift {
   backlog_item_id: string;
+  backlog_item_title?: string | null;
   phase: string;
   part_number: number;
   kind: 'added' | 'removed' | 'shifted';
