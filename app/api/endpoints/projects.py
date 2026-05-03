@@ -200,12 +200,20 @@ async def get_summary(key: str, db: Session = Depends(get_db)):
 @router.post("/{key}/regenerate-summary", response_model=ProjectSummarySchema)
 async def regenerate_summary(key: str, db: Session = Depends(get_db)):
     """Синхронная регенерация AI-саммари через LLM. Публикует SSE-событие после успеха."""
+    import httpx
     try:
         row = await ProjectSummaryService(db).regenerate(key)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ConfigurationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
+        if status == 429:
+            raise HTTPException(status_code=503, detail="LLM rate limit. Подождите минуту или смените модель в Настройках → AI.")
+        raise HTTPException(status_code=503, detail=f"LLM ответил {status}. Проверьте ключ и модель в Настройках → AI.")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="LLM не ответил за 30с. Попробуйте более быструю модель в Настройках → AI.")
     from app.services.event_bus import get_event_bus
     import asyncio
     bus = get_event_bus()

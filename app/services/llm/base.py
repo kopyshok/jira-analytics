@@ -42,5 +42,8 @@ def get_llm_provider(db: Session) -> LLMProvider:
         api_key = _get_app_setting(db, "llm_gemini_api_key")
         if not api_key:
             raise ConfigurationError("Gemini API key not configured")
+        model = _get_app_setting(db, "llm_gemini_model")
+        if model:
+            return GeminiProvider(api_key=api_key, model=model)
         return GeminiProvider(api_key=api_key)
     raise ConfigurationError(f"LLM provider '{provider_name}' not supported")

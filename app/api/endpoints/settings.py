@@ -63,6 +63,7 @@ def _set_setting(db: Session, key: str, value: Optional[str]) -> None:
 LLM_KEYS = (
     "llm_provider",
     "llm_gemini_api_key",
+    "llm_gemini_model",
     "llm_deepseek_api_key",
     "llm_anthropic_api_key",
     "llm_openai_api_key",
