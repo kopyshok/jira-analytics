@@ -56,7 +56,6 @@ export default function DependencyArrows({
 
     const cRect = container.getBoundingClientRect();
 
-    const svgEl: SVGSVGElement = svg;
     function drawArrow(
       x1: number, y1: number, x2: number, y2: number,
       color: string, width: string, dashArray: string, markerId: string,
@@ -69,7 +68,7 @@ export default function DependencyArrows({
       path.setAttribute('fill', 'none');
       if (dashArray) path.setAttribute('stroke-dasharray', dashArray);
       path.setAttribute('marker-end', `url(#${markerId})`);
-      svgEl.appendChild(path);
+      (svg as SVGSVGElement).appendChild(path);
     }
 
     // Intra-initiative arrows (phase → next phase, same item)
@@ -130,7 +129,7 @@ export default function DependencyArrows({
         for (let i = 0; i < orderedItems.length - 1; i++) {
           const [fromItemId, fromParts] = orderedItems[i];
           const [toItemId] = orderedItems[i + 1];
-          const maxPart = Math.max(...fromParts.map(a => a.part_number));
+          const maxPart = Math.max(...fromParts.map(a => a.part_number), 0);
           const fromEl = rowRefs.current.get(`${fromItemId}-analyst-${maxPart}`);
           const toEl = rowRefs.current.get(`${toItemId}-analyst-1`);
           if (!fromEl || !toEl) continue;
