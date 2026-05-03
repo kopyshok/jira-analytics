@@ -239,6 +239,8 @@ class ResourcePlanningService:
         for a in new_assignments:
             self.db.add(a)
 
+        self._compute_cpm(plan, new_assignments)
+
         plan.status = "ready"
         plan.computed_at = datetime.utcnow()
         self.db.commit()
@@ -403,3 +405,30 @@ class ResourcePlanningService:
                 result[phase][item.id] = chosen
 
         return result
+
+    def _compute_cpm(
+        self,
+        plan: "ResourcePlan",
+        assignments: List["ResourcePlanAssignment"],
+    ) -> None:
+        """Вычислить slack_days и is_on_critical_path для всех назначений.
+
+        В последовательной цепи фаз (analyst→dev→qa→opo) каждая фаза
+        инициативы имеет одинаковый total float = q_end - last_phase_end.
+        """
+        _, q_end = self._quarter_bounds(plan)
+
+        by_item: Dict[str, List["ResourcePlanAssignment"]] = defaultdict(list)
+        for a in assignments:
+            by_item[a.backlog_item_id].append(a)
+
+        for item_assignments in by_item.values():
+            opo = [a for a in item_assignments if a.phase == "opo" and a.end_date]
+            all_dated = [a for a in item_assignments if a.end_date]
+            if not all_dated:
+                continue
+            last_end = max(a.end_date for a in (opo if opo else all_dated))
+            slack = (q_end - last_end).days
+            for a in item_assignments:
+                a.slack_days = float(slack)
+                a.is_on_critical_path = slack <= 0
