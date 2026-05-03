@@ -36,6 +36,7 @@ DEFAULT_HOURS_PER_DAY = 6.0
 class ResourcePlanningService:
     def __init__(self, db: Session):
         self.db = db
+        self._last_leveling_events: List = []
 
     def build_availability(
         self,
@@ -239,7 +240,20 @@ class ResourcePlanningService:
         for a in new_assignments:
             self.db.add(a)
 
+        # CPM на первичных датах
         self._compute_cpm(new_assignments, q_end)
+
+        # RCPSP-выравнивание перегрузок
+        from app.services.rcpsp_leveler import RcpspLeveler
+
+        leveler = RcpspLeveler()
+        role_pools = self._build_role_pools(employees)
+        leveling_events = leveler.level(new_assignments, remaining, q_end, role_pools)
+        # Recompute CPM after possible shifts
+        if leveling_events:
+            self._compute_cpm(new_assignments, q_end)
+        # Cache events for Stage B persist_conflicts
+        self._last_leveling_events = leveling_events
 
         plan.status = "ready"
         plan.computed_at = datetime.utcnow()
@@ -373,10 +387,7 @@ class ResourcePlanningService:
             or role_emp.get("dev", [])
             or role_emp.get("rp", [])
         )
-        qa_ids = (
-            role_emp.get("qa", [])
-            or role_emp.get("тестировщик", [])
-        )
+        qa_ids = role_emp.get("qa", []) or role_emp.get("тестировщик", [])
 
         # Fallback: if roles not resolved, use all employees
         all_ids = [e.id for e in employees]
@@ -404,6 +415,18 @@ class ResourcePlanningService:
                 load[chosen] += getattr(item, hours_field) or 0.0
                 result[phase][item.id] = chosen
 
+        return result
+
+    def _build_role_pools(self, employees: List[Employee]) -> Dict[str, List[str]]:
+        """{employee_id: [peer_ids same role]} для reassign-стратегии."""
+        by_role: Dict[str, List[str]] = defaultdict(list)
+        for e in employees:
+            if e.role:
+                by_role[e.role.lower()].append(e.id)
+        result: Dict[str, List[str]] = {}
+        for e in employees:
+            if e.role:
+                result[e.id] = by_role[e.role.lower()]
         return result
 
     def _compute_cpm(
