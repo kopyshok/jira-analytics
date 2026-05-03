@@ -7,12 +7,11 @@ from app.api.endpoints import auth as auth_endpoints
 from app.api.endpoints import llm as llm_endpoints
 from app.api.endpoints import users as users_endpoints
 from app.api.endpoints import (
-    absence_reasons,
     analytics,
     backlog,
     capacity,
+    capacity_rules,
     categories,
-    employee_capacity_overrides,
     employees,
     events as events_endpoints,
     exports,
@@ -23,7 +22,6 @@ from app.api.endpoints import (
     planning,
     production_calendar,
     projects,
-    role_capacity_rules,
     roles as roles_endpoints,
     scope,
     settings,
@@ -125,19 +123,19 @@ api_router.include_router(
     dependencies=_auth_dep,
 )
 api_router.include_router(
-    role_capacity_rules.router,
+    capacity_rules.role_rules_router,
     prefix="/capacity/role-rules",
     tags=["capacity-rules"],
     dependencies=_auth_dep,
 )
 api_router.include_router(
-    employee_capacity_overrides.router,
+    capacity_rules.employee_overrides_router,
     prefix="/capacity/employee-overrides",
     tags=["capacity-rules"],
     dependencies=_auth_dep,
 )
 api_router.include_router(
-    absence_reasons.router,
+    capacity_rules.absence_reasons_router,
     prefix="/capacity/absence-reasons",
     tags=["capacity-rules"],
     dependencies=_auth_dep,

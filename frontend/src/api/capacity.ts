@@ -5,9 +5,7 @@ import type {
   MandatoryWorkTypeCreate,
   MandatoryWorkTypeUpdate,
   RoleCapacityRule,
-  RoleCapacityRuleCreate,
   EmployeeCapacityOverride,
-  EmployeeCapacityOverrideCreate,
   CopyRulesRequest,
   CopyRulesResponse,
 } from '../types/api';
@@ -47,15 +45,6 @@ export const getRoleCapacityRules = (year: number, quarter: number) =>
     { year: String(year), quarter: String(quarter) },
   );
 
-export const createRoleCapacityRule = (body: RoleCapacityRuleCreate) =>
-  api.post<RoleCapacityRule>('/capacity/role-rules', body);
-
-export const updateRoleCapacityRule = (id: string, body: { percent_of_norm: number }) =>
-  api.patch<RoleCapacityRule>(`/capacity/role-rules/${id}`, body);
-
-export const deleteRoleCapacityRule = (id: string) =>
-  api.del<void>(`/capacity/role-rules/${id}`);
-
 export const copyRoleCapacityRulesToQuarter = (body: CopyRulesRequest) =>
   api.post<CopyRulesResponse>('/capacity/role-rules/copy-to-quarter', body);
 
@@ -71,16 +60,6 @@ export const getEmployeeCapacityOverrides = (params: {
   if (params.employee_id) qp.employee_id = params.employee_id;
   return api.get<EmployeeCapacityOverride[]>('/capacity/employee-overrides', qp);
 };
-
-export const createEmployeeCapacityOverride = (body: EmployeeCapacityOverrideCreate) =>
-  api.post<EmployeeCapacityOverride>('/capacity/employee-overrides', body);
-
-export const updateEmployeeCapacityOverride = (
-  id: string, body: { percent_of_norm: number },
-) => api.patch<EmployeeCapacityOverride>(`/capacity/employee-overrides/${id}`, body);
-
-export const deleteEmployeeCapacityOverride = (id: string) =>
-  api.del<void>(`/capacity/employee-overrides/${id}`);
 
 // === Team recalc ===
 
