@@ -1,5 +1,6 @@
 """Resource Planning API — ScheduledBlocks + ResourcePlan + Gantt projection."""
 
+from collections import defaultdict
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -17,6 +18,9 @@ from app.models import (
 )
 from app.models.user import User
 from app.services.resource_planning_service import ResourcePlanningService
+
+_ANALYST_ROLE_CODES = {"аналитик", "analyst", "an"}
+_DEV_ROLE_CODES = {"разработчик", "developer", "dev", "rp"}
 
 router = APIRouter()
 
@@ -296,6 +300,12 @@ def patch_assignment(
     if not a:
         raise HTTPException(404, "Assignment not found")
 
+    patch = data.model_dump(exclude_unset=True)
+    new_start = patch.get("start_date", a.start_date)
+    new_end = patch.get("end_date", a.end_date)
+    if new_start and new_end and new_end < new_start:
+        raise HTTPException(422, "end_date must be >= start_date")
+
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(a, k, v)
 
@@ -338,7 +348,6 @@ def patch_assignment(
 
 
 def _detect_conflicts(plan, assignments, db):
-    from collections import defaultdict
     conflicts = []
     svc = ResourcePlanningService(db)
     _, q_end = svc._quarter_bounds(plan)
@@ -377,11 +386,9 @@ def _detect_conflicts(plan, assignments, db):
             ))
 
     # NO_ANALYST / NO_DEV
-    analyst_codes = {"аналитик", "analyst", "an"}
-    dev_codes = {"разработчик", "developer", "dev", "rp"}
     employees = svc._load_employees(plan)
-    has_analyst = any(e.role and e.role.lower() in analyst_codes for e in employees)
-    has_dev = any(e.role and e.role.lower() in dev_codes for e in employees)
+    has_analyst = any(e.role and e.role.lower() in _ANALYST_ROLE_CODES for e in employees)
+    has_dev = any(e.role and e.role.lower() in _DEV_ROLE_CODES for e in employees)
     if not has_analyst:
         conflicts.append(ConflictOut(
             type="NO_ANALYST",
