@@ -3,6 +3,7 @@ import {
   computeResourcePlan, createResourcePlan, createScheduledBlock,
   deleteResourcePlan, deleteScheduledBlock, getGanttProjection,
   getResourcePlans, getScheduledBlocks, updateScheduledBlock,
+  patchAssignment, type AssignmentPatch,
 } from '../api/resourcePlanning';
 
 export const useScheduledBlocks = (team?: string) =>
@@ -78,3 +79,22 @@ export const useGanttProjection = (planId: string | null) =>
     enabled: !!planId,
     staleTime: 60_000,
   });
+
+export function usePatchAssignment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      planId,
+      assignmentId,
+      data,
+    }: {
+      planId: string;
+      assignmentId: string;
+      data: AssignmentPatch;
+    }) => patchAssignment(planId, assignmentId, data),
+    onSuccess: (_, { planId }) => {
+      qc.invalidateQueries({ queryKey: ['gantt', planId] });
+      qc.invalidateQueries({ queryKey: ['resource-plans'] });
+    },
+  });
+}

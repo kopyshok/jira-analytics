@@ -68,3 +68,19 @@ export const PHASE_LABELS: Record<string, string> = {
   qa: 'Тестирование',
   opo: 'ОПЭ',
 };
+
+// Palette for coloring initiatives in Resource Track view (cycles when > 8 items)
+export const ITEM_PALETTE = [
+  '#2a7fbf',
+  '#e8864a',
+  '#52d364',
+  '#d4567a',
+  '#a36bdb',
+  '#c8a82a',
+  '#4ab8d4',
+  '#d48b4a',
+];
+
+export function getItemColor(itemIndex: number): string {
+  return ITEM_PALETTE[itemIndex % ITEM_PALETTE.length];
+}

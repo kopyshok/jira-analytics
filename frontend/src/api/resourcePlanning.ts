@@ -52,6 +52,13 @@ export interface GanttProjection {
   conflicts: ConflictOut[];
 }
 
+export interface AssignmentPatch {
+  employee_id?: string | null;
+  start_date?: string;
+  end_date?: string;
+  hours_allocated?: number;
+}
+
 export const getScheduledBlocks = (team?: string) =>
   api.get<ScheduledBlock[]>('/resource-planning/scheduled-blocks', team ? { team } : undefined);
 
@@ -78,3 +85,14 @@ export const computeResourcePlan = (id: string) =>
 
 export const getGanttProjection = (id: string) =>
   api.get<GanttProjection>(`/resource-planning/resource-plans/${id}/gantt`);
+
+export async function patchAssignment(
+  planId: string,
+  assignmentId: string,
+  data: AssignmentPatch,
+): Promise<AssignmentOut> {
+  return api.patch<AssignmentOut>(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}`,
+    data,
+  );
+}
