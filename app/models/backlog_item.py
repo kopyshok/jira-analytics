@@ -54,6 +54,14 @@ class BacklogItem(Base, TimestampMixin):
     opo_analyst_ratio: Mapped[Optional[float]] = mapped_column(
         Float, nullable=True, default=0.5, server_default="0.5",
     )
+    # PERT-множители для трёх точечной оценки: оптимистичный и пессимистичный сценарии.
+    # t_o = estimate * optimistic_multiplier, t_p = estimate * pessimistic_multiplier.
+    optimistic_multiplier: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.7, server_default="0.7",
+    )
+    pessimistic_multiplier: Mapped[float] = mapped_column(
+        Float, nullable=False, default=1.5, server_default="1.5",
+    )
 
     priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     impact: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
