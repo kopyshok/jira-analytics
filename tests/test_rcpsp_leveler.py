@@ -42,3 +42,27 @@ def test_leveler_detects_overload_when_two_assignments_share_employee_day():
     overloads = leveler._detect_overload([a1, a2], avail)
     assert (date(2026, 4, 1), "EMP-1") in overloads
     assert overloads[(date(2026, 4, 1), "EMP-1")] == 10.0  # сумма demand
+
+
+def test_delay_within_slack_shifts_assignment_when_slack_available():
+    """Если у назначения есть slack ≥ overload_days, оно сдвигается, не эскалируется."""
+    leveler = RcpspLeveler()
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 6.0, item_id="I1"
+    )
+    # a2 имеет slack=5 — может быть отодвинут на 1 день
+    a2 = _mk_assignment(
+        "A2", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 4.0, item_id="I2"
+    )
+    a2.slack_days = 5.0
+    avail = {"EMP-1": {date(2026, 4, 1): 8.0, date(2026, 4, 2): 8.0}}
+    events = leveler.level([a1, a2], avail, q_end=date(2026, 4, 30))
+
+    # a2 должен сдвинуться на 1 день
+    assert a2.start_date == date(2026, 4, 2)
+    assert a2.end_date == date(2026, 4, 2)
+    # должно быть событие delay
+    delay_events = [e for e in events if e.action == "delay"]
+    assert len(delay_events) == 1
+    assert delay_events[0].assignment_id == "A2"
+    assert delay_events[0].delta_days == 1

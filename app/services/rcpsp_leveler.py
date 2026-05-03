@@ -47,7 +47,95 @@ class RcpspLeveler:
         """Главный entrypoint. Мутирует assignments на месте, возвращает событий."""
         if not assignments:
             return []
-        return []
+        events: List[LevelingEvent] = []
+        max_passes = 10
+        for _ in range(max_passes):
+            overloads = self._detect_overload(assignments, availability)
+            if not overloads:
+                break
+
+            # Выбрать assignment с max slack для сдвига (наиболее «безопасный»)
+            target_day, target_emp = next(iter(overloads.keys()))
+            candidates = [
+                a
+                for a in assignments
+                if a.employee_id == target_emp
+                and a.start_date
+                and a.end_date
+                and a.start_date <= target_day <= a.end_date
+            ]
+            if not candidates:
+                break
+            # Оставить только те, у кого есть slack для сдвига (slack > 0)
+            movable = [a for a in candidates if (a.slack_days or 0.0) > 0]
+            if not movable:
+                break
+            # Выбрать кандидата с минимальным slack (наиболее ограниченный, но подвижный)
+            movable.sort(key=lambda a: a.slack_days or 0.0)
+            target = movable[0]
+            shift = 1
+            applied = False
+            while shift <= int(target.slack_days or 0):
+                if self._try_delay(target, shift, availability, q_end):
+                    events.append(
+                        LevelingEvent(
+                            assignment_id=target.id,
+                            action="delay",
+                            reason=f"Сдвинут на {shift} д. для разрешения перегрузки {target_emp} {target_day}",
+                            delta_days=shift,
+                            overload_pct=(
+                                overloads[(target_day, target_emp)]
+                                / max(
+                                    0.01,
+                                    availability.get(target_emp, {}).get(
+                                        target_day, 0.0
+                                    ),
+                                )
+                            )
+                            * 100,
+                            affected_dates=[target_day],
+                        )
+                    )
+                    applied = True
+                    break
+                shift += 1
+            if not applied:
+                # Не смогли сдвинуть — эскалация (Task A.5)
+                break
+        return events
+
+    def _try_delay(
+        self,
+        assignment: ResourcePlanAssignment,
+        delta_days: int,
+        availability: Dict[str, Dict[date, float]],
+        q_end: date,
+    ) -> bool:
+        """Сдвинуть assignment на delta_days вперёд, если позволяет slack и доступность.
+
+        Возвращает True если сдвиг применён.
+        """
+        if not assignment.start_date or not assignment.end_date:
+            return False
+        slack = assignment.slack_days or 0.0
+        if delta_days > slack:
+            return False
+        new_start = assignment.start_date + timedelta(days=delta_days)
+        new_end = assignment.end_date + timedelta(days=delta_days)
+        if new_end > q_end:
+            return False
+        # Проверить что новые даты доступны (не нулевая availability)
+        emp = assignment.employee_id
+        if emp:
+            d = new_start
+            while d <= new_end:
+                if availability.get(emp, {}).get(d, 0.0) <= 0.01:
+                    return False
+                d += timedelta(days=1)
+        assignment.start_date = new_start
+        assignment.end_date = new_end
+        assignment.slack_days = max(0.0, slack - delta_days)
+        return True
 
     def _detect_overload(
         self,
