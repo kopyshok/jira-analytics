@@ -22,6 +22,7 @@ from app.api.endpoints import (
     planning,
     production_calendar,
     projects,
+    resource_planning,
     roles as roles_endpoints,
     scope,
     settings,
@@ -148,6 +149,12 @@ api_router.include_router(
 )
 api_router.include_router(
     llm_endpoints.router, prefix="/llm", tags=["llm"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    resource_planning.router,
+    prefix="/resource-planning",
+    tags=["resource-planning"],
+    dependencies=_auth_dep,
 )
 
 # Admin-only routers
