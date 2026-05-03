@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.planning_scenario import PlanningScenario
     from app.models.resource_plan_assignment import ResourcePlanAssignment
     from app.models.plan_item_dependency import PlanItemDependency
+    from app.models.plan_conflict import PlanConflict
 
 
 class ResourcePlan(Base, TimestampMixin):
@@ -38,5 +39,8 @@ class ResourcePlan(Base, TimestampMixin):
         back_populates="plan", cascade="all, delete-orphan"
     )
     dependencies: Mapped[List["PlanItemDependency"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan"
+    )
+    conflicts: Mapped[List["PlanConflict"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"
     )
