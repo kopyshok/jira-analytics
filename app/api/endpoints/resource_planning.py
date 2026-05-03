@@ -306,7 +306,7 @@ def patch_assignment(
     if new_start and new_end and new_end < new_start:
         raise HTTPException(422, "end_date must be >= start_date")
 
-    for k, v in data.model_dump(exclude_unset=True).items():
+    for k, v in patch.items():
         setattr(a, k, v)
 
     plan = db.get(ResourcePlan, plan_id)
@@ -385,27 +385,28 @@ def _detect_conflicts(plan, assignments, db):
                 message="Инициатива разбита на части из-за заблокированного периода",
             ))
 
-    # NO_ANALYST / NO_DEV
-    employees = svc._load_employees(plan)
-    has_analyst = any(e.role and e.role.lower() in _ANALYST_ROLE_CODES for e in employees)
-    has_dev = any(e.role and e.role.lower() in _DEV_ROLE_CODES for e in employees)
-    if not has_analyst:
-        conflicts.append(ConflictOut(
-            type="NO_ANALYST",
-            severity="critical",
-            backlog_item_id=None,
-            backlog_item_title=None,
-            employee_id=None,
-            message=f"В команде «{plan.team}» нет аналитиков. Расписание аналитической фазы невозможно.",
-        ))
-    if not has_dev:
-        conflicts.append(ConflictOut(
-            type="NO_DEV",
-            severity="critical",
-            backlog_item_id=None,
-            backlog_item_title=None,
-            employee_id=None,
-            message=f"В команде «{plan.team}» нет разработчиков. Расписание фазы разработки невозможно.",
-        ))
+    # NO_ANALYST / NO_DEV — skip if plan has no team assigned
+    if plan.team:
+        employees = svc._load_employees(plan)
+        has_analyst = any(e.role and e.role.lower() in _ANALYST_ROLE_CODES for e in employees)
+        has_dev = any(e.role and e.role.lower() in _DEV_ROLE_CODES for e in employees)
+        if not has_analyst:
+            conflicts.append(ConflictOut(
+                type="NO_ANALYST",
+                severity="critical",
+                backlog_item_id=None,
+                backlog_item_title=None,
+                employee_id=None,
+                message=f"В команде «{plan.team}» нет аналитиков. Расписание аналитической фазы невозможно.",
+            ))
+        if not has_dev:
+            conflicts.append(ConflictOut(
+                type="NO_DEV",
+                severity="critical",
+                backlog_item_id=None,
+                backlog_item_title=None,
+                employee_id=None,
+                message=f"В команде «{plan.team}» нет разработчиков. Расписание фазы разработки невозможно.",
+            ))
 
     return conflicts
