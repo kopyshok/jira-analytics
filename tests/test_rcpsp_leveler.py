@@ -106,5 +106,5 @@ def test_escalate_when_no_slack_no_peer():
         [a1, a2], avail, q_end=date(2026, 4, 30), role_pools={"EMP-1": ["EMP-1"]}
     )
     esc = [e for e in events if e.action == "escalate"]
-    assert len(esc) >= 1
+    assert len(esc) == 1
     assert esc[0].overload_pct >= 100.0

@@ -39,7 +39,7 @@ class RcpspLeveler:
     """Выравнивание ресурсной нагрузки после первичного scheduling pass."""
 
     def __init__(self) -> None:
-        self._escalated_keys: set = set()
+        self._escalated_keys: set[tuple[date, str]] = set()
 
     def level(
         self,
@@ -57,20 +57,8 @@ class RcpspLeveler:
         max_passes = 20  # увеличено с 10: reassign может потребовать больше итераций
         for _ in range(max_passes):
             overloads = self._detect_overload(assignments, availability)
-            if not overloads:
-                break
-            # Пропустить уже эскалированные (assignment, day) чтобы не зациклиться
             overloads = {
-                k: v
-                for k, v in overloads.items()
-                if not any(
-                    (a.id, k[0]) in self._escalated_keys
-                    for a in assignments
-                    if a.employee_id == k[1]
-                    and a.start_date
-                    and a.end_date
-                    and a.start_date <= k[0] <= a.end_date
-                )
+                k: v for k, v in overloads.items() if k not in self._escalated_keys
             }
             if not overloads:
                 break
@@ -85,12 +73,21 @@ class RcpspLeveler:
                 and a.start_date <= target_day <= a.end_date
             ]
             if not candidates:
+                # Defensive: _detect_overload only flags employees with demand, so this
+                # should be unreachable. Break terminates the pass cleanly if it ever happens.
                 break
 
             # MSL: выбрать наиболее ограниченный (min slack) среди подвижных — сохраняем большой slack для будущих перегрузок
             movable = [a for a in candidates if (a.slack_days or 0.0) > 0.01]
 
             applied = False
+            delay_failed_reason: Optional[str] = (
+                None  # "no_slack" | "no_capacity_in_window"
+            )
+            reassign_failed_reason: Optional[str] = (
+                None  # "no_peers" | "all_peers_busy"
+            )
+
             # Try delay first
             if movable:
                 movable.sort(key=lambda a: a.slack_days or 0.0)
@@ -120,6 +117,11 @@ class RcpspLeveler:
                         applied = True
                         break
                     shift += 1
+                if not applied:
+                    delay_failed_reason = "no_capacity_in_window"
+            else:
+                delay_failed_reason = "no_slack"
+
             if applied:
                 continue
 
@@ -127,52 +129,69 @@ class RcpspLeveler:
             # Расширено: пробуем все кандидаты (не только первый), поскольку peer может быть
             # несовместим с конкретным окном; перебираем от наиболее ограниченного.
             candidates.sort(key=lambda a: a.slack_days or 0.0)
-            for target in candidates:
-                peers = role_pools.get(target_emp, [])
-                reassigned = False
-                for peer_id in peers:
-                    if peer_id == target_emp:
-                        continue
-                    original_emp = target.employee_id
-                    if self._try_reassign(target, peer_id, availability, assignments):
-                        events.append(
-                            LevelingEvent(
-                                assignment_id=target.id,
-                                action="reassign",
-                                reason=f"Переназначен с {original_emp} на {peer_id} (peer той же роли)",
-                                from_employee_id=original_emp,
-                                to_employee_id=peer_id,
-                                overload_pct=(
-                                    overloads[(target_day, target_emp)]
-                                    / max(
-                                        0.01,
-                                        availability.get(target_emp, {}).get(
-                                            target_day, 0.0
-                                        ),
+            peers_for_target = role_pools.get(target_emp, [])
+            peers_excl_self = [p for p in peers_for_target if p != target_emp]
+            if not peers_excl_self:
+                reassign_failed_reason = "no_peers"
+            else:
+                for target in candidates:
+                    reassigned = False
+                    for peer_id in peers_excl_self:
+                        original_emp = target.employee_id
+                        if self._try_reassign(
+                            target, peer_id, availability, assignments
+                        ):
+                            events.append(
+                                LevelingEvent(
+                                    assignment_id=target.id,
+                                    action="reassign",
+                                    reason=f"Переназначен с {original_emp} на {peer_id} (peer той же роли)",
+                                    from_employee_id=original_emp,
+                                    to_employee_id=peer_id,
+                                    overload_pct=(
+                                        overloads[(target_day, target_emp)]
+                                        / max(
+                                            0.01,
+                                            availability.get(target_emp, {}).get(
+                                                target_day, 0.0
+                                            ),
+                                        )
                                     )
+                                    * 100,
+                                    affected_dates=[target_day],
                                 )
-                                * 100,
-                                affected_dates=[target_day],
                             )
-                        )
-                        applied = True
-                        reassigned = True
+                            applied = True
+                            reassigned = True
+                            break
+                    if reassigned:
                         break
-                if reassigned:
-                    break
+                if not applied:
+                    reassign_failed_reason = "all_peers_busy"
+
             if not applied:
                 # Эскалация: ни delay, ни reassign не смогли разрешить перегрузку
                 # Берём первого кандидата как детерминированную цель для escalate
                 esc_target = candidates[0]
                 day_key = (target_day, target_emp)
+                parts: List[str] = []
+                if delay_failed_reason == "no_slack":
+                    parts.append("нет slack")
+                elif delay_failed_reason == "no_capacity_in_window":
+                    parts.append("нет окон у текущего исполнителя")
+                if reassign_failed_reason == "no_peers":
+                    parts.append("нет peers той же роли")
+                elif reassign_failed_reason == "all_peers_busy":
+                    parts.append("все peers заняты")
+                reason = (
+                    f"Не удалось разрешить перегрузку {target_emp} {target_day}: "
+                    + ("; ".join(parts) if parts else "неизвестная причина")
+                )
                 events.append(
                     LevelingEvent(
                         assignment_id=esc_target.id,
                         action="escalate",
-                        reason=(
-                            f"Не удалось разрешить перегрузку {target_emp} {target_day}: "
-                            "slack=0, peers заняты"
-                        ),
+                        reason=reason,
                         overload_pct=(
                             overloads[day_key]
                             / max(
@@ -184,8 +203,8 @@ class RcpspLeveler:
                         affected_dates=[target_day],
                     )
                 )
-                # Помечаем (assignment, day) как escalated чтобы не зацикливаться
-                self._escalated_keys.add((esc_target.id, target_day))
+                # Помечаем (day, emp) как escalated чтобы не зациклиться
+                self._escalated_keys.add((target_day, target_emp))
                 # Не делаем break — продолжаем: могут быть другие перегрузки
         return events
 
