@@ -253,6 +253,10 @@ class ResourcePlanningService:
         # Cache events for Stage B persist_conflicts
         self._last_leveling_events = leveling_events
 
+        # Persist conflicts (Stage B)
+        detected = self._build_conflict_dicts(plan, new_assignments, employees, q_end)
+        self._persist_conflicts(plan_id, detected)
+
         plan.status = "ready"
         plan.computed_at = datetime.utcnow()
         self.db.commit()
@@ -452,3 +456,213 @@ class ResourcePlanningService:
             for a in item_assignments:
                 a.slack_days = float(slack)
                 a.is_on_critical_path = slack <= 0
+
+    # ------------------------------------------------------------------
+    # Stage B — conflict detection & persistence
+    # ------------------------------------------------------------------
+
+    def _persist_conflicts(
+        self,
+        plan_id: str,
+        detected: List[dict],
+    ) -> None:
+        """Upsert конфликтов по detection_key. Сохраняет status существующих.
+
+        Удаляет конфликты которых больше нет в detected (помимо muted — они остаются).
+        """
+        from app.models import PlanConflict
+
+        existing = (
+            self.db.execute(select(PlanConflict).where(PlanConflict.plan_id == plan_id))
+            .scalars()
+            .all()
+        )
+        existing_by_key = {c.detection_key: c for c in existing}
+        detected_keys = {d["detection_key"] for d in detected}
+
+        for d in detected:
+            key = d["detection_key"]
+            if key in existing_by_key:
+                c = existing_by_key[key]
+                c.severity = d["severity"]
+                c.message = d["message"]
+                c.metric_value = d.get("metric_value")
+                c.window_start = d.get("window_start")
+                c.window_end = d.get("window_end")
+                c.backlog_item_id = d.get("backlog_item_id")
+                c.employee_id = d.get("employee_id")
+                c.assignment_id = d.get("assignment_id")
+            else:
+                self.db.add(
+                    PlanConflict(
+                        plan_id=plan_id,
+                        type=d["type"],
+                        severity=d["severity"],
+                        status="open",
+                        detection_key=key,
+                        message=d["message"],
+                        metric_value=d.get("metric_value"),
+                        window_start=d.get("window_start"),
+                        window_end=d.get("window_end"),
+                        backlog_item_id=d.get("backlog_item_id"),
+                        employee_id=d.get("employee_id"),
+                        assignment_id=d.get("assignment_id"),
+                    )
+                )
+
+        for key, c in existing_by_key.items():
+            if key not in detected_keys and c.status != "muted":
+                self.db.delete(c)
+
+    def _build_conflict_dicts(
+        self,
+        plan: ResourcePlan,
+        assignments: List[ResourcePlanAssignment],
+        employees: List[Employee],
+        q_end: date,
+    ) -> List[dict]:
+        """Собрать единый список dict-конфликтов для _persist_conflicts.
+
+        Включает:
+        - QUARTER_OVERFLOW (опэ-фаза заходит за квартал)
+        - SPLIT_REQUIRED (part_number > 1)
+        - NO_ANALYST / NO_DEV (нет в команде)
+        - OVERLOAD_LIGHT/MED/HIGH из _last_leveling_events (action='escalate')
+        - LEVELING_DELAY / LEVELING_REASSIGN (info — что leveler сделал)
+        - LATE_START (фаза стартует позже целевой даты — slack_days < 0)
+        """
+        from datetime import datetime as _dt
+
+        result: List[dict] = []
+        item_titles: Dict[str, str] = {}
+        for a in assignments:
+            if a.backlog_item_id and a.backlog_item:
+                item_titles[a.backlog_item_id] = a.backlog_item.title
+
+        # QUARTER_OVERFLOW
+        for a in assignments:
+            if a.phase == "opo" and a.end_date and a.end_date > q_end:
+                result.append(
+                    {
+                        "type": "QUARTER_OVERFLOW",
+                        "severity": "critical",
+                        "detection_key": f"QUARTER_OVERFLOW:{a.backlog_item_id}",
+                        "message": f"Инициатива «{item_titles.get(a.backlog_item_id, '')}» не вмещается в квартал: ОПЭ заканчивается {a.end_date}",
+                        "backlog_item_id": a.backlog_item_id,
+                        "assignment_id": a.id,
+                    }
+                )
+
+        # SPLIT_REQUIRED — once per item when any phase has part_number > 1
+        max_part: Dict[tuple, int] = defaultdict(int)
+        for a in assignments:
+            max_part[(a.backlog_item_id, a.phase)] = max(
+                max_part[(a.backlog_item_id, a.phase)], a.part_number
+            )
+        seen_split: set = set()
+        for (item_id, _phase), mp in max_part.items():
+            if mp > 1 and item_id not in seen_split:
+                seen_split.add(item_id)
+                result.append(
+                    {
+                        "type": "SPLIT_REQUIRED",
+                        "severity": "info",
+                        "detection_key": f"SPLIT_REQUIRED:{item_id}",
+                        "message": f"Инициатива «{item_titles.get(item_id, '')}» разбита на части из-за заблокированного периода",
+                        "backlog_item_id": item_id,
+                    }
+                )
+
+        # LATE_START — slack_days < 0
+        for a in assignments:
+            if a.slack_days is not None and a.slack_days < 0:
+                result.append(
+                    {
+                        "type": "LATE_START",
+                        "severity": "warning",
+                        "detection_key": f"LATE_START:{a.id}",
+                        "message": f"Фаза «{a.phase}» инициативы «{item_titles.get(a.backlog_item_id, '')}» стартует слишком поздно (отставание {abs(a.slack_days):.0f} д.)",
+                        "metric_value": float(a.slack_days),
+                        "backlog_item_id": a.backlog_item_id,
+                        "assignment_id": a.id,
+                        "employee_id": a.employee_id,
+                    }
+                )
+
+        # NO_ANALYST / NO_DEV
+        ANALYST_CODES = {"аналитик", "analyst", "an"}
+        DEV_CODES = {"разработчик", "developer", "dev", "rp"}
+        if plan.team:
+            has_analyst = any(
+                e.role and e.role.lower() in ANALYST_CODES for e in employees
+            )
+            has_dev = any(e.role and e.role.lower() in DEV_CODES for e in employees)
+            if not has_analyst:
+                result.append(
+                    {
+                        "type": "NO_ANALYST",
+                        "severity": "critical",
+                        "detection_key": f"NO_ANALYST:{plan.team}",
+                        "message": f"В команде «{plan.team}» нет аналитиков. Расписание аналитической фазы невозможно.",
+                    }
+                )
+            if not has_dev:
+                result.append(
+                    {
+                        "type": "NO_DEV",
+                        "severity": "critical",
+                        "detection_key": f"NO_DEV:{plan.team}",
+                        "message": f"В команде «{plan.team}» нет разработчиков. Расписание фазы разработки невозможно.",
+                    }
+                )
+
+        # OVERLOAD_* + LEVELING_* from leveling events
+        for ev in self._last_leveling_events:
+            if ev.action == "escalate":
+                pct = ev.overload_pct
+                if pct > 120:
+                    sev, type_ = "critical", "OVERLOAD_HIGH"
+                elif pct > 110:
+                    sev, type_ = "warning", "OVERLOAD_MED"
+                else:
+                    sev, type_ = "warning", "OVERLOAD_LIGHT"
+                day = ev.affected_dates[0] if ev.affected_dates else None
+                result.append(
+                    {
+                        "type": type_,
+                        "severity": sev,
+                        "detection_key": f"{type_}:{ev.assignment_id}:{day}",
+                        "message": f"Перегрузка {pct:.0f}% на {day}: {ev.reason}",
+                        "metric_value": pct,
+                        "assignment_id": ev.assignment_id,
+                        "window_start": _dt.combine(day, _dt.min.time())
+                        if day
+                        else None,
+                        "window_end": _dt.combine(day, _dt.min.time()) if day else None,
+                    }
+                )
+            elif ev.action == "delay":
+                day = ev.affected_dates[0] if ev.affected_dates else None
+                result.append(
+                    {
+                        "type": "LEVELING_DELAY",
+                        "severity": "info",
+                        "detection_key": f"LEVELING_DELAY:{ev.assignment_id}:{day}",
+                        "message": ev.reason,
+                        "metric_value": float(ev.delta_days),
+                        "assignment_id": ev.assignment_id,
+                    }
+                )
+            elif ev.action == "reassign":
+                result.append(
+                    {
+                        "type": "LEVELING_REASSIGN",
+                        "severity": "info",
+                        "detection_key": f"LEVELING_REASSIGN:{ev.assignment_id}",
+                        "message": ev.reason,
+                        "assignment_id": ev.assignment_id,
+                        "employee_id": ev.to_employee_id,
+                    }
+                )
+
+        return result
