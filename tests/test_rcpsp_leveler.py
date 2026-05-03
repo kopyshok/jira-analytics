@@ -89,3 +89,22 @@ def test_reassign_to_peer_when_delay_not_possible():
     assert reassign_events[0].assignment_id == "A2"
     assert reassign_events[0].to_employee_id == "EMP-2"
     assert a2.employee_id == "EMP-2"
+
+
+def test_escalate_when_no_slack_no_peer():
+    """Slack=0 + нет peer → событие escalate с overload_pct."""
+    leveler = RcpspLeveler()
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 6.0, item_id="I1"
+    )
+    a2 = _mk_assignment(
+        "A2", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 4.0, item_id="I2"
+    )
+    a2.slack_days = 0.0
+    avail = {"EMP-1": {date(2026, 4, 1): 8.0}}
+    events = leveler.level(
+        [a1, a2], avail, q_end=date(2026, 4, 30), role_pools={"EMP-1": ["EMP-1"]}
+    )
+    esc = [e for e in events if e.action == "escalate"]
+    assert len(esc) >= 1
+    assert esc[0].overload_pct >= 100.0
