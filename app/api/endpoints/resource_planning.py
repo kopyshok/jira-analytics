@@ -97,6 +97,13 @@ class GanttProjection(BaseModel):
     conflicts: List[ConflictOut]
 
 
+class AssignmentPatch(BaseModel):
+    employee_id: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    hours_allocated: Optional[float] = None
+
+
 # ── ScheduledBlocks ────────────────────────────────────────────────────────
 
 @router.get("/scheduled-blocks", response_model=List[ScheduledBlockOut])
@@ -266,10 +273,77 @@ def get_gantt(
     return GanttProjection(plan=plan, assignments=assignments, conflicts=conflicts)
 
 
+@router.patch(
+    "/resource-plans/{plan_id}/assignments/{assignment_id}",
+    response_model=AssignmentOut,
+)
+def patch_assignment(
+    plan_id: str,
+    assignment_id: str,
+    data: AssignmentPatch,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    a = db.execute(
+        select(ResourcePlanAssignment)
+        .options(joinedload(ResourcePlanAssignment.backlog_item))
+        .options(joinedload(ResourcePlanAssignment.employee))
+        .where(
+            ResourcePlanAssignment.id == assignment_id,
+            ResourcePlanAssignment.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+
+    for k, v in data.model_dump(exclude_unset=True).items():
+        setattr(a, k, v)
+
+    plan = db.get(ResourcePlan, plan_id)
+    if plan:
+        plan.status = "stale"
+
+    # Snapshot values before commit (SQLite session expire caveat)
+    a_id = a.id
+    a_backlog_item_id = a.backlog_item_id
+    a_backlog_item_title = a.backlog_item.title if a.backlog_item else ""
+    a_phase = a.phase
+    a_part_number = a.part_number
+    a_hours_allocated = a.hours_allocated
+    a_start_date = a.start_date
+    a_end_date = a.end_date
+    a_is_on_critical_path = a.is_on_critical_path
+    a_slack_days = a.slack_days
+    a_employee_id = a.employee_id
+
+    db.commit()
+    db.refresh(a)
+
+    emp_name = a.employee.display_name if a.employee else None
+
+    return AssignmentOut(
+        id=a_id,
+        backlog_item_id=a_backlog_item_id,
+        backlog_item_title=a_backlog_item_title,
+        phase=a_phase,
+        employee_id=a_employee_id,
+        employee_name=emp_name,
+        part_number=a_part_number,
+        hours_allocated=a_hours_allocated,
+        start_date=a_start_date,
+        end_date=a_end_date,
+        is_on_critical_path=a_is_on_critical_path,
+        slack_days=a_slack_days,
+    )
+
+
 def _detect_conflicts(plan, assignments, db):
+    from collections import defaultdict
     conflicts = []
     svc = ResourcePlanningService(db)
-    q_start, q_end = svc._quarter_bounds(plan)
+    _, q_end = svc._quarter_bounds(plan)
+
+    # QUARTER_OVERFLOW
     for a in assignments:
         if a.phase == "opo" and a.end_date and a.end_date > q_end:
             conflicts.append(ConflictOut(
@@ -280,4 +354,51 @@ def _detect_conflicts(plan, assignments, db):
                 employee_id=None,
                 message=f"Инициатива не вмещается в квартал: ОПЭ заканчивается {a.end_date}",
             ))
+
+    # SPLIT_REQUIRED: any phase with max(part_number) > 1
+    phase_max_part: dict = defaultdict(int)
+    item_titles: dict = {}
+    for a in assignments:
+        key = (a.backlog_item_id, a.phase)
+        phase_max_part[key] = max(phase_max_part[key], a.part_number)
+        if a.backlog_item:
+            item_titles[a.backlog_item_id] = a.backlog_item.title
+    split_items: set = set()
+    for (item_id, _), max_part in phase_max_part.items():
+        if max_part > 1 and item_id not in split_items:
+            split_items.add(item_id)
+            conflicts.append(ConflictOut(
+                type="SPLIT_REQUIRED",
+                severity="info",
+                backlog_item_id=item_id,
+                backlog_item_title=item_titles.get(item_id, ""),
+                employee_id=None,
+                message="Инициатива разбита на части из-за заблокированного периода",
+            ))
+
+    # NO_ANALYST / NO_DEV
+    analyst_codes = {"аналитик", "analyst", "an"}
+    dev_codes = {"разработчик", "developer", "dev", "rp"}
+    employees = svc._load_employees(plan)
+    has_analyst = any(e.role and e.role.lower() in analyst_codes for e in employees)
+    has_dev = any(e.role and e.role.lower() in dev_codes for e in employees)
+    if not has_analyst:
+        conflicts.append(ConflictOut(
+            type="NO_ANALYST",
+            severity="critical",
+            backlog_item_id=None,
+            backlog_item_title=None,
+            employee_id=None,
+            message=f"В команде «{plan.team}» нет аналитиков. Расписание аналитической фазы невозможно.",
+        ))
+    if not has_dev:
+        conflicts.append(ConflictOut(
+            type="NO_DEV",
+            severity="critical",
+            backlog_item_id=None,
+            backlog_item_title=None,
+            employee_id=None,
+            message=f"В команде «{plan.team}» нет разработчиков. Расписание фазы разработки невозможно.",
+        ))
+
     return conflicts
