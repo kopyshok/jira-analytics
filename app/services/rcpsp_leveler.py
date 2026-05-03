@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Tuple
 
 from app.models import ResourcePlanAssignment
 
@@ -53,18 +53,18 @@ class RcpspLeveler:
         self,
         assignments: List[ResourcePlanAssignment],
         availability: Dict[str, Dict[date, float]],
-    ) -> Dict[tuple, float]:
+    ) -> Dict[Tuple[date, str], float]:
         """Возвращает {(date, employee_id): demand_hours} там где demand > available.
 
         Demand на день = hours_allocated, распределённые равномерно по дням сегмента.
         """
-        demand: Dict[tuple, float] = defaultdict(float)
+        demand: Dict[Tuple[date, str], float] = defaultdict(float)
         for a in assignments:
             if (
                 not a.start_date
                 or not a.end_date
                 or not a.employee_id
-                or not a.hours_allocated
+                or a.hours_allocated is None
             ):
                 continue
             days = (a.end_date - a.start_date).days + 1
@@ -76,7 +76,7 @@ class RcpspLeveler:
                 demand[(d, a.employee_id)] += per_day
                 d += timedelta(days=1)
 
-        overloads: Dict[tuple, float] = {}
+        overloads: Dict[Tuple[date, str], float] = {}
         for key, dem in demand.items():
             d, emp = key
             avail = availability.get(emp, {}).get(d, 0.0)
