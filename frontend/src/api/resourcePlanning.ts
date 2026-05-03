@@ -54,10 +54,21 @@ export interface ConflictOut {
   updated_at: string;
 }
 
+export interface InitiativePertOut {
+  backlog_item_id: string;
+  backlog_item_title: string;
+  most_likely_finish: string | null;
+  p50_finish: string | null;
+  p90_finish: string | null;
+  sigma_days: number;
+  on_critical_path_only: boolean;
+}
+
 export interface GanttProjection {
   plan: ResourcePlan;
   assignments: AssignmentOut[];
   conflicts: ConflictOut[];
+  pert_projection: InitiativePertOut[];
 }
 
 export interface AssignmentPatch {

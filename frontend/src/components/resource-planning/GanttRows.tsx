@@ -15,7 +15,7 @@ interface Props {
 
 const ROW_HEIGHT = 36;
 
-function PortfolioRows({ assignments, timeline, leftColWidth }: Omit<Props, 'viewMode'>) {
+function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
@@ -32,6 +32,10 @@ function PortfolioRows({ assignments, timeline, leftColWidth }: Omit<Props, 'vie
       {byItem.map(([itemId, { title, assignments: itemAssignments }], idx) => (
         <div
           key={itemId}
+          ref={el => {
+            if (el) rowRefs.current.set(itemId, el);
+            else rowRefs.current.delete(itemId);
+          }}
           style={{
             display: 'flex',
             height: ROW_HEIGHT,
@@ -114,12 +118,18 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
         const phases = ['analyst', 'dev', 'qa', 'opo'] as const;
         return (
           <div key={itemId}>
-            <div style={{
-              display: 'flex',
-              height: ROW_HEIGHT,
-              borderBottom: '1px solid #1e3a5f',
-              background: 'rgba(0,201,200,0.05)',
-            }}>
+            <div
+              ref={el => {
+                if (el) rowRefs.current.set(itemId, el);
+                else rowRefs.current.delete(itemId);
+              }}
+              style={{
+                display: 'flex',
+                height: ROW_HEIGHT,
+                borderBottom: '1px solid #1e3a5f',
+                background: 'rgba(0,201,200,0.05)',
+              }}
+            >
               <div style={{
                 width: leftColWidth,
                 flexShrink: 0,
