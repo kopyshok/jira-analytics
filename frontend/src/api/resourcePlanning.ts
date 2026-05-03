@@ -20,6 +20,35 @@ export interface ResourcePlan {
   status: 'draft' | 'computing' | 'ready' | 'stale';
   computed_at: string | null;
   created_at: string;
+  parent_plan_id: string | null;
+  is_baseline: boolean;
+  label: string | null;
+}
+
+export interface AssignmentShift {
+  backlog_item_id: string;
+  phase: string;
+  part_number: number;
+  kind: 'added' | 'removed' | 'shifted';
+  start_delta_days?: number;
+  end_delta_days?: number;
+  employee_changed?: boolean;
+}
+
+export interface PlanDiffMetrics {
+  assignments_count: number;
+  critical_path_count: number;
+  last_end_date: string | null;
+  conflicts_open: number;
+  conflicts_critical: number;
+}
+
+export interface PlanDiff {
+  baseline_id: string;
+  scenario_id: string;
+  assignment_shifts: AssignmentShift[];
+  baseline_metrics: PlanDiffMetrics;
+  scenario_metrics: PlanDiffMetrics;
 }
 
 export interface AssignmentOut {
@@ -110,6 +139,12 @@ export const patchConflict = (planId: string, conflictId: string, status: Confli
     `/resource-planning/resource-plans/${planId}/conflicts/${conflictId}`,
     { status },
   );
+
+export const forkPlan = (planId: string, label?: string) =>
+  api.post<ResourcePlan>(`/resource-planning/resource-plans/${planId}/fork`, { label });
+
+export const getPlanDiff = (scenarioId: string, baselineId: string) =>
+  api.get<PlanDiff>(`/resource-planning/resource-plans/${scenarioId}/diff/${baselineId}`);
 
 export async function patchAssignment(
   planId: string,

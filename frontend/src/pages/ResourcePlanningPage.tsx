@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router';
-import { App, Button, Empty, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
+import { useSearchParams, useNavigate } from 'react-router';
+import { App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
 import {
   BarChartOutlined,
   CalculatorOutlined,
@@ -15,7 +15,7 @@ import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlock
 import type { ViewMode } from '../components/resource-planning/GanttRows';
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
-  useScheduledBlocks, useCreateResourcePlan,
+  useScheduledBlocks, useCreateResourcePlan, useForkPlan,
 } from '../hooks/useResourcePlanning';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 
@@ -25,11 +25,15 @@ export default function ResourcePlanningPage() {
   const { selectedTeams } = useGlobalTeamFilter();
   const team = selectedTeams[0] ?? '';
 
+  const navigate = useNavigate();
   const [planId, setPlanId] = useState<string | null>(searchParams.get('plan_id'));
   const [viewMode, setViewMode] = useState<ViewMode>('two-level');
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [showRelayArrows, setShowRelayArrows] = useState(true);
   const [showPert, setShowPert] = useState(false);
+  const [forkModalOpen, setForkModalOpen] = useState(false);
+  const [forkLabel, setForkLabel] = useState('');
+  const forkMutation = useForkPlan();
 
   const scenarioId = searchParams.get('scenario_id');
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
@@ -112,6 +116,21 @@ export default function ResourcePlanningPage() {
             {gantt.plan.status === 'ready' ? 'Готово' : gantt.plan.status}
           </Tag>
         )}
+        {gantt?.plan.label && <Tag color="purple">{gantt.plan.label}</Tag>}
+        {gantt?.plan.is_baseline && <Tag color="cyan">Базовый</Tag>}
+        {planId && gantt && (
+          <Button size="small" onClick={() => setForkModalOpen(true)}>
+            Сделать копию
+          </Button>
+        )}
+        {gantt?.plan.parent_plan_id && (
+          <Button
+            size="small"
+            onClick={() => navigate(`/resource-planning/compare?base=${gantt.plan.parent_plan_id}&scen=${planId}`)}
+          >
+            Сравнить с базовым
+          </Button>
+        )}
 
         <Space size={4} style={{ marginLeft: 'auto' }}>
           {viewMode !== 'resource-track' && (
@@ -160,6 +179,35 @@ export default function ResourcePlanningPage() {
       )}
 
       <ScheduledBlocksModal open={blocksOpen} onClose={() => setBlocksOpen(false)} team={team || undefined} />
+
+      <Modal
+        open={forkModalOpen}
+        title="Сделать копию плана"
+        okText="Создать"
+        cancelText="Отмена"
+        onOk={async () => {
+          if (!planId) return;
+          try {
+            const newPlan = await forkMutation.mutateAsync({ planId, label: forkLabel || undefined });
+            setForkModalOpen(false);
+            setForkLabel('');
+            setPlanId(newPlan.id);
+            setSearchParams({ plan_id: newPlan.id });
+            message.success('План скопирован');
+          } catch {
+            message.error('Ошибка создания копии');
+          }
+        }}
+        onCancel={() => { setForkModalOpen(false); setForkLabel(''); }}
+        confirmLoading={forkMutation.isPending}
+      >
+        <Input
+          placeholder="Метка сценария (например: «+1 разработчик»)"
+          value={forkLabel}
+          onChange={e => setForkLabel(e.target.value)}
+          autoFocus
+        />
+      </Modal>
     </div>
   );
 }
