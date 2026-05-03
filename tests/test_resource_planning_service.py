@@ -311,6 +311,165 @@ def test_last_leveling_events_initialized_empty():
     assert svc._last_leveling_events == []
 
 
+# ── _build_conflict_dicts tests ────────────────────────────────────────────
+
+
+def test_build_conflict_dicts_quarter_overflow():
+    """opo assignment ending past q_end → QUARTER_OVERFLOW conflict."""
+    db = MagicMock()
+    svc = ResourcePlanningService(db)
+
+    q_end = date(2026, 3, 31)
+
+    plan = MagicMock()
+    plan.team = "TeamA"
+
+    a = MagicMock()
+    a.id = "asgn-1"
+    a.backlog_item_id = "item-1"
+    a.backlog_item = MagicMock()
+    a.backlog_item.title = "Init A"
+    a.phase = "opo"
+    a.end_date = date(2026, 4, 5)  # past quarter end
+    a.part_number = 1
+    a.slack_days = None
+
+    employees = [MagicMock(role="analyst"), MagicMock(role="dev")]
+    for e in employees:
+        e.role = e.role
+
+    result = svc._build_conflict_dicts(plan, [a], employees, q_end)
+
+    overflow = [r for r in result if r["type"] == "QUARTER_OVERFLOW"]
+    assert len(overflow) == 1
+    assert overflow[0]["severity"] == "critical"
+    assert overflow[0]["detection_key"] == "QUARTER_OVERFLOW:item-1"
+    assert overflow[0]["backlog_item_id"] == "item-1"
+
+
+def test_build_conflict_dicts_split_required():
+    """Assignment with part_number=2 → SPLIT_REQUIRED conflict (once per item)."""
+    db = MagicMock()
+    svc = ResourcePlanningService(db)
+
+    q_end = date(2026, 3, 31)
+
+    plan = MagicMock()
+    plan.team = "TeamA"
+
+    a1 = MagicMock()
+    a1.id = "asgn-1"
+    a1.backlog_item_id = "item-2"
+    a1.backlog_item = MagicMock()
+    a1.backlog_item.title = "Init B"
+    a1.phase = "analyst"
+    a1.end_date = date(2026, 2, 10)
+    a1.part_number = 1
+    a1.slack_days = 5.0
+
+    a2 = MagicMock()
+    a2.id = "asgn-2"
+    a2.backlog_item_id = "item-2"
+    a2.backlog_item = MagicMock()
+    a2.backlog_item.title = "Init B"
+    a2.phase = "analyst"
+    a2.end_date = date(2026, 2, 20)
+    a2.part_number = 2
+    a2.slack_days = 5.0
+
+    employees = [MagicMock(role="analyst"), MagicMock(role="dev")]
+
+    result = svc._build_conflict_dicts(plan, [a1, a2], employees, q_end)
+
+    splits = [r for r in result if r["type"] == "SPLIT_REQUIRED"]
+    assert len(splits) == 1
+    assert splits[0]["detection_key"] == "SPLIT_REQUIRED:item-2"
+    assert splits[0]["severity"] == "info"
+
+
+def test_build_conflict_dicts_no_analyst_when_team_has_no_analysts():
+    """Empty employees list + plan.team set → NO_ANALYST conflict."""
+    db = MagicMock()
+    svc = ResourcePlanningService(db)
+
+    q_end = date(2026, 3, 31)
+
+    plan = MagicMock()
+    plan.team = "TeamX"
+
+    result = svc._build_conflict_dicts(plan, [], [], q_end)
+
+    no_analyst = [r for r in result if r["type"] == "NO_ANALYST"]
+    assert len(no_analyst) == 1
+    assert no_analyst[0]["severity"] == "critical"
+    assert no_analyst[0]["detection_key"] == "NO_ANALYST:TeamX"
+
+
+def test_build_conflict_dicts_late_start():
+    """Assignment with slack_days=-3 → LATE_START conflict."""
+    db = MagicMock()
+    svc = ResourcePlanningService(db)
+
+    q_end = date(2026, 3, 31)
+
+    plan = MagicMock()
+    plan.team = "TeamA"
+
+    a = MagicMock()
+    a.id = "asgn-late"
+    a.backlog_item_id = "item-3"
+    a.backlog_item = MagicMock()
+    a.backlog_item.title = "Init C"
+    a.phase = "dev"
+    a.end_date = date(2026, 3, 20)
+    a.part_number = 1
+    a.slack_days = -3.0
+    a.employee_id = "emp-1"
+
+    employees = [MagicMock(role="analyst"), MagicMock(role="dev")]
+
+    result = svc._build_conflict_dicts(plan, [a], employees, q_end)
+
+    late = [r for r in result if r["type"] == "LATE_START"]
+    assert len(late) == 1
+    assert late[0]["severity"] == "warning"
+    assert late[0]["detection_key"] == "LATE_START:asgn-late"
+    assert late[0]["metric_value"] == -3.0
+    assert late[0]["assignment_id"] == "asgn-late"
+
+
+def test_build_conflict_dicts_overload_high_from_escalate_event():
+    """LevelingEvent(action='escalate', overload_pct=150) → OVERLOAD_HIGH, severity=critical."""
+    from app.services.rcpsp_leveler import LevelingEvent
+
+    db = MagicMock()
+    svc = ResourcePlanningService(db)
+
+    q_end = date(2026, 3, 31)
+
+    plan = MagicMock()
+    plan.team = "TeamA"
+
+    ev = LevelingEvent(
+        assignment_id="asgn-5",
+        action="escalate",
+        reason="нет слака для сдвига",
+        overload_pct=150.0,
+        affected_dates=[date(2026, 2, 15)],
+    )
+    svc._last_leveling_events = [ev]
+
+    employees = [MagicMock(role="analyst"), MagicMock(role="dev")]
+
+    result = svc._build_conflict_dicts(plan, [], employees, q_end)
+
+    overload = [r for r in result if r["type"] == "OVERLOAD_HIGH"]
+    assert len(overload) == 1
+    assert overload[0]["severity"] == "critical"
+    assert overload[0]["metric_value"] == 150.0
+    assert overload[0]["assignment_id"] == "asgn-5"
+
+
 # ── compute_schedule leveler integration smoke ─────────────────────────────
 # NOTE: A full integration smoke test (1 plan + 2 overlapping items → leveler runs)
 # requires a real SQLAlchemy Session with migrations applied, plus ScenarioAllocation
