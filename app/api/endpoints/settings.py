@@ -67,6 +67,7 @@ LLM_KEYS = (
     "llm_deepseek_api_key",
     "llm_anthropic_api_key",
     "llm_openai_api_key",
+    "llm_project_summary_system_prompt",
 )
 
 

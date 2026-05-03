@@ -10,7 +10,7 @@ from app.database import SessionLocal
 from app.models.issue import Issue
 from app.models.project_ai_summary import ProjectAISummary
 from app.models.worklog import Worklog
-from app.services.llm.prompt import PROMPT_VERSION
+from app.services.llm.prompt import current_prompt_version
 from app.services.project_summary_service import ProjectSummaryService
 from app.services.projects_service import PROJECT_CATEGORY_CODES
 
@@ -33,6 +33,7 @@ async def regenerate_outdated_summaries() -> dict:
 
         stats = {"processed": 0, "regenerated": 0, "skipped": 0, "errors": 0}
         svc = ProjectSummaryService(db)
+        prompt_ver = current_prompt_version(db)
 
         for epic in epics:
             stats["processed"] += 1
@@ -40,7 +41,7 @@ async def regenerate_outdated_summaries() -> dict:
                 select(ProjectAISummary).where(ProjectAISummary.issue_id == epic.id)
             ).scalar_one_or_none()
 
-            if not _needs_regeneration(db, epic, existing):
+            if not _needs_regeneration(db, epic, existing, prompt_ver):
                 stats["skipped"] += 1
                 continue
 
@@ -58,11 +59,11 @@ async def regenerate_outdated_summaries() -> dict:
         db.close()
 
 
-def _needs_regeneration(db: Session, epic: Issue, existing) -> bool:
+def _needs_regeneration(db: Session, epic: Issue, existing, prompt_ver: str) -> bool:
     """Проверить нужна ли регенерация для данного эпика."""
     if existing is None:
         return True
-    if existing.prompt_version != PROMPT_VERSION:
+    if existing.prompt_version != prompt_ver:
         return True
     # Любой worklog по эпику или его детям обновлялся после generated_at?
     from app.services.projects_service import ProjectsService

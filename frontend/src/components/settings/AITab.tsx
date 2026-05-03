@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Select, Space, App, Typography, Tag } from 'antd';
-import { llmApi, type GeminiModelInfo } from '../../api/llm';
+import { Button, Card, Form, Input, Select, Space, App, Typography, Tag, Divider, Alert } from 'antd';
+import { llmApi, type GeminiModelInfo, type PromptDefault } from '../../api/llm';
 import { api } from '../../api/client';
 
 const FALLBACK_MODELS: GeminiModelInfo[] = [
@@ -16,20 +16,37 @@ const FALLBACK_MODELS: GeminiModelInfo[] = [
 ];
 
 const RECOMMENDED_FREE = 'gemini-3.1-flash-lite-preview';
+const PROMPT_KEY = 'llm_project_summary_system_prompt';
+
+type FormValues = {
+  provider: string;
+  gemini_key: string;
+  gemini_model: string;
+  prompt_role: string;
+};
 
 export const AITab: React.FC = () => {
-  const { message } = App.useApp();
-  const [form] = Form.useForm();
+  const { message, modal } = App.useApp();
+  const [form] = Form.useForm<FormValues>();
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState<GeminiModelInfo[]>(FALLBACK_MODELS);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [promptDefault, setPromptDefault] = useState<PromptDefault | null>(null);
 
   useEffect(() => {
     (async () => {
       const provider = await loadSetting('llm_provider', 'gemini');
       const geminiKey = await loadSetting('llm_gemini_api_key', '');
       const geminiModel = await loadSetting('llm_gemini_model', RECOMMENDED_FREE);
-      form.setFieldsValue({ provider, gemini_key: geminiKey, gemini_model: geminiModel });
+      const def = await llmApi.getPromptDefault().catch(() => null);
+      setPromptDefault(def);
+      const promptRole = (await loadSetting(PROMPT_KEY, '')) || (def?.system_role ?? '');
+      form.setFieldsValue({
+        provider,
+        gemini_key: geminiKey,
+        gemini_model: geminiModel,
+        prompt_role: promptRole,
+      });
       if (geminiKey) await refreshModels(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,7 +65,7 @@ export const AITab: React.FC = () => {
     }
   };
 
-  const onSave = async (values: { provider: string; gemini_key: string; gemini_model: string }) => {
+  const onSave = async (values: FormValues) => {
     setLoading(true);
     try {
       await api.put('/settings/generic', { key: 'llm_provider', value: values.provider });
@@ -56,6 +73,13 @@ export const AITab: React.FC = () => {
       if (values.gemini_key) {
         await api.put('/settings/generic', { key: 'llm_gemini_api_key', value: values.gemini_key });
       }
+      // Если текст совпадает с дефолтом — не сохраняем (хранится null → берётся дефолт).
+      const role = (values.prompt_role ?? '').trim();
+      const isDefault = promptDefault && role === promptDefault.system_role.trim();
+      await api.put('/settings/generic', {
+        key: PROMPT_KEY,
+        value: isDefault || !role ? null : values.prompt_role,
+      });
       message.success('Настройки AI сохранены');
     } finally {
       setLoading(false);
@@ -79,6 +103,19 @@ export const AITab: React.FC = () => {
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : 'Не удалось запустить');
     }
+  };
+
+  const onResetPrompt = () => {
+    if (!promptDefault) return;
+    modal.confirm({
+      title: 'Сбросить промпт к дефолту?',
+      content: 'Текущий текст будет заменён стандартным.',
+      okText: 'Сбросить',
+      cancelText: 'Отмена',
+      onOk: () => {
+        form.setFieldValue('prompt_role', promptDefault.system_role);
+      },
+    });
   };
 
   const modelOptions = models.map((m) => ({
@@ -150,6 +187,50 @@ export const AITab: React.FC = () => {
         >
           <Input.Password placeholder="AIza..." autoComplete="off" />
         </Form.Item>
+
+        <Divider orientation="left" plain>
+          Системный промпт саммари
+        </Divider>
+
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Редактируется только роль / тон / стиль"
+          description="Описание JSON-формата (поля goals, result_flow_blocks и т.д.) — фиксированное и подмешивается автоматически. Менять формат через UI нельзя — иначе сломается парсинг ответа."
+        />
+
+        <Form.Item
+          label={
+            <Space>
+              <span>Текст промпта (роль и инструкции стиля)</span>
+              <Button size="small" type="link" onClick={onResetPrompt} disabled={!promptDefault}>
+                Сбросить к дефолту
+              </Button>
+            </Space>
+          }
+          name="prompt_role"
+          extra={
+            <Typography.Text type="secondary">
+              При смене текста все существующие саммари помечаются устаревшими и
+              будут перегенерированы в ближайший проход (или сразу — кнопка
+              «Перегенерировать все саммари»).
+            </Typography.Text>
+          }
+        >
+          <Input.TextArea autoSize={{ minRows: 6, maxRows: 20 }} />
+        </Form.Item>
+
+        {promptDefault && (
+          <Form.Item label="Описание формата (read-only)">
+            <Input.TextArea
+              value={promptDefault.format_spec}
+              readOnly
+              autoSize={{ minRows: 4, maxRows: 12 }}
+              style={{ background: 'rgba(255,255,255,0.04)', cursor: 'not-allowed' }}
+            />
+          </Form.Item>
+        )}
 
         <Form.Item>
           <Space>

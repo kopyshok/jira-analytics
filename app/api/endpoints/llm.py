@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.jobs.regenerate_summaries import regenerate_outdated_summaries
 from app.services.llm.base import ConfigurationError, get_llm_provider
+from app.services.llm.prompt import DEFAULT_SYSTEM_ROLE, FORMAT_SPEC
 from app.models.app_setting import AppSetting
 
 
@@ -28,6 +29,17 @@ async def regenerate_all(background: BackgroundTasks):
     """Запускает в background регенерацию всех устаревших AI-саммари."""
     background.add_task(regenerate_outdated_summaries)
     return {"started": True}
+
+
+@router.get("/prompt-default")
+async def get_prompt_default():
+    """Дефолтный текст системного промпта (роль/тон) + read-only описание формата.
+
+    `system_role` — редактируется пользователем через AppSetting
+    `llm_project_summary_system_prompt`. `format_spec` — хардкод JSON-схемы,
+    нельзя менять без правки backend-схемы.
+    """
+    return {"system_role": DEFAULT_SYSTEM_ROLE, "format_spec": FORMAT_SPEC}
 
 
 # Префиксы моделей, не подходящих для текстового AI-саммари

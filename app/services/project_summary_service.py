@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.issue import Issue
 from app.models.project_ai_summary import ProjectAISummary
 from app.services.llm.base import get_llm_provider
-from app.services.llm.prompt import build_prompt, PROMPT_VERSION
+from app.services.llm.prompt import build_prompt, current_prompt_version
 from app.services.projects_service import ProjectsService
 
 
@@ -34,7 +34,8 @@ class ProjectSummaryService:
 
         epic_data = self._build_epic_data(epic)
         provider = get_llm_provider(self.db)
-        prompt = build_prompt(epic_data)
+        prompt = build_prompt(epic_data, db=self.db)
+        prompt_ver = current_prompt_version(self.db)
         summary, meta = await provider.summarize_project(prompt)
 
         existing = self.db.execute(
@@ -56,7 +57,7 @@ class ProjectSummaryService:
             existing.model_used = meta.get("model", provider.model)
             existing.input_tokens = meta.get("input_tokens")
             existing.output_tokens = meta.get("output_tokens")
-            existing.prompt_version = PROMPT_VERSION
+            existing.prompt_version = prompt_ver
         else:
             existing = ProjectAISummary(
                 issue_id=epic.id,
@@ -72,7 +73,7 @@ class ProjectSummaryService:
                 model_used=meta.get("model", provider.model),
                 input_tokens=meta.get("input_tokens"),
                 output_tokens=meta.get("output_tokens"),
-                prompt_version=PROMPT_VERSION,
+                prompt_version=prompt_ver,
             )
             self.db.add(existing)
         self.db.commit()
