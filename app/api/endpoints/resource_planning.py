@@ -531,3 +531,103 @@ def patch_conflict(
 
     db.commit()
     return ConflictOut(**snap)
+
+
+# ── Fork ───────────────────────────────────────────────────────────────────
+
+
+class ForkRequest(BaseModel):
+    label: Optional[str] = None
+
+
+@router.post(
+    "/resource-plans/{plan_id}/fork",
+    response_model=ResourcePlanOut,
+    status_code=201,
+)
+def fork_plan(
+    plan_id: str,
+    data: ForkRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models import PlanItemDependency
+
+    src = db.get(ResourcePlan, plan_id)
+    if not src:
+        raise HTTPException(404, "ResourcePlan not found")
+
+    new_plan = ResourcePlan(
+        scenario_id=src.scenario_id,
+        team=src.team,
+        quarter=src.quarter,
+        year=src.year,
+        status=src.status,
+        parent_plan_id=src.id,
+        is_baseline=False,
+        label=data.label,
+    )
+    db.add(new_plan)
+    db.flush()
+
+    src_assignments = (
+        db.execute(
+            select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.plan_id == src.id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for a in src_assignments:
+        db.add(
+            ResourcePlanAssignment(
+                plan_id=new_plan.id,
+                backlog_item_id=a.backlog_item_id,
+                phase=a.phase,
+                employee_id=a.employee_id,
+                part_number=a.part_number,
+                hours_allocated=a.hours_allocated,
+                start_date=a.start_date,
+                end_date=a.end_date,
+                is_on_critical_path=a.is_on_critical_path,
+                slack_days=a.slack_days,
+            )
+        )
+
+    src_deps = (
+        db.execute(
+            select(PlanItemDependency).where(PlanItemDependency.plan_id == src.id)
+        )
+        .scalars()
+        .all()
+    )
+    for d in src_deps:
+        db.add(
+            PlanItemDependency(
+                plan_id=new_plan.id,
+                from_item_id=d.from_item_id,
+                to_item_id=d.to_item_id,
+                dep_type=d.dep_type,
+                lag_days=d.lag_days,
+                source=d.source,
+            )
+        )
+
+    # Conflicts intentionally NOT cloned (forks start clean)
+
+    snap = {
+        "id": new_plan.id,
+        "scenario_id": new_plan.scenario_id,
+        "team": new_plan.team,
+        "quarter": new_plan.quarter,
+        "year": new_plan.year,
+        "status": new_plan.status,
+        "computed_at": new_plan.computed_at,
+        "created_at": new_plan.created_at,
+        "parent_plan_id": new_plan.parent_plan_id,
+        "is_baseline": new_plan.is_baseline,
+        "label": new_plan.label,
+    }
+    db.commit()
+    return ResourcePlanOut(**snap)
