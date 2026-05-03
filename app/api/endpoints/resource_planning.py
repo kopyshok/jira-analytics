@@ -533,6 +533,35 @@ def patch_conflict(
     return ConflictOut(**snap)
 
 
+# ── Diff ───────────────────────────────────────────────────────────────────
+
+
+class PlanDiffOut(BaseModel):
+    baseline_id: str
+    scenario_id: str
+    assignment_shifts: List[dict]
+    baseline_metrics: dict
+    scenario_metrics: dict
+
+
+@router.get(
+    "/resource-plans/{scenario_id}/diff/{baseline_id}",
+    response_model=PlanDiffOut,
+)
+def get_plan_diff(
+    scenario_id: str,
+    baseline_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.services.plan_diff import diff_plans
+
+    try:
+        return diff_plans(db, baseline_id, scenario_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
 # ── Fork ───────────────────────────────────────────────────────────────────
 
 

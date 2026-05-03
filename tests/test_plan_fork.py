@@ -88,3 +88,53 @@ def test_fork_unknown_plan_returns_404(client):
         json={"label": "test"},
     )
     assert r.status_code == 404
+
+
+def test_diff_endpoint_returns_metrics(client, db_session):
+    from datetime import date
+
+    base = ResourcePlan(
+        team="T", quarter="Q2", year=2026, status="ready", is_baseline=True
+    )
+    scen = ResourcePlan(team="T", quarter="Q2", year=2026, status="ready")
+    db_session.add_all([base, scen])
+    db_session.commit()
+    db_session.refresh(base)
+    db_session.refresh(scen)
+
+    db_session.add(
+        ResourcePlanAssignment(
+            plan_id=base.id,
+            backlog_item_id="BI-1",
+            phase="dev",
+            part_number=1,
+            hours_allocated=10.0,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 5),
+        )
+    )
+    db_session.add(
+        ResourcePlanAssignment(
+            plan_id=scen.id,
+            backlog_item_id="BI-1",
+            phase="dev",
+            part_number=1,
+            hours_allocated=10.0,
+            start_date=date(2026, 4, 8),
+            end_date=date(2026, 4, 12),
+        )
+    )
+    db_session.commit()
+
+    r = client.get(f"/api/v1/resource-planning/resource-plans/{scen.id}/diff/{base.id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["baseline_id"] == base.id
+    assert body["scenario_id"] == scen.id
+    assert len(body["assignment_shifts"]) == 1
+    assert body["assignment_shifts"][0]["start_delta_days"] == 7
+
+
+def test_diff_endpoint_404_for_unknown(client):
+    r = client.get("/api/v1/resource-planning/resource-plans/no-scen/diff/no-base")
+    assert r.status_code == 404
