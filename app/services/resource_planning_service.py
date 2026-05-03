@@ -247,7 +247,7 @@ class ResourcePlanningService:
         # RCPSP-выравнивание перегрузок
         leveler = RcpspLeveler()
         role_pools = self._build_role_pools(employees)
-        leveling_events = leveler.level(new_assignments, remaining, q_end, role_pools)
+        leveling_events = leveler.level(new_assignments, avail, q_end, role_pools)
         # Always recompute CPM — leveling may have shifted dates; cheap O(N) anyway
         self._compute_cpm(new_assignments, q_end)
         # Cache events for Stage B persist_conflicts

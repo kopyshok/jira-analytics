@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ResourcePlan, ResourcePlanAssignment, PlanConflict
+from app.models.backlog_item import BacklogItem
 
 
 def diff_plans(db: Session, baseline_id: str, scenario_id: str) -> Dict:
@@ -34,6 +35,16 @@ def diff_plans(db: Session, baseline_id: str, scenario_id: str) -> Dict:
         .all()
     )
 
+    all_item_ids = {a.backlog_item_id for a in base_a + scen_a if a.backlog_item_id}
+    titles: Dict[str, str] = {}
+    if all_item_ids:
+        title_rows = (
+            db.execute(select(BacklogItem).where(BacklogItem.id.in_(all_item_ids)))
+            .scalars()
+            .all()
+        )
+        titles = {b.id: b.title for b in title_rows}
+
     base_by_key = {(a.backlog_item_id, a.phase, a.part_number): a for a in base_a}
     scen_by_key = {(a.backlog_item_id, a.phase, a.part_number): a for a in scen_a}
 
@@ -44,6 +55,7 @@ def diff_plans(db: Session, baseline_id: str, scenario_id: str) -> Dict:
             shifts.append(
                 {
                     "backlog_item_id": key[0],
+                    "backlog_item_title": titles.get(key[0]),
                     "phase": key[1],
                     "part_number": key[2],
                     "kind": "added",
@@ -58,6 +70,7 @@ def diff_plans(db: Session, baseline_id: str, scenario_id: str) -> Dict:
             shifts.append(
                 {
                     "backlog_item_id": key[0],
+                    "backlog_item_title": titles.get(key[0]),
                     "phase": key[1],
                     "part_number": key[2],
                     "kind": "shifted",
@@ -73,6 +86,7 @@ def diff_plans(db: Session, baseline_id: str, scenario_id: str) -> Dict:
             shifts.append(
                 {
                     "backlog_item_id": key[0],
+                    "backlog_item_title": titles.get(key[0]),
                     "phase": key[1],
                     "part_number": key[2],
                     "kind": "removed",
