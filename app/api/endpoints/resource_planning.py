@@ -62,6 +62,9 @@ class ResourcePlanOut(BaseModel):
     status: str
     computed_at: Optional[datetime]
     created_at: datetime
+    parent_plan_id: Optional[str]
+    is_baseline: bool
+    label: Optional[str]
 
     model_config = {"from_attributes": True}
 
