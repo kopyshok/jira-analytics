@@ -11,3 +11,4 @@ export const PlanningPage = lazy(() => import('./PlanningPage'));
 export const SettingsPage = lazy(() => import('./SettingsPage'));
 export const ProjectsPage = lazy(() => import('./ProjectsPage'));
 export const ResourcePlanningPage = lazy(() => import('./ResourcePlanningPage'));
+export const ScenarioComparatorPage = lazy(() => import('./ScenarioComparatorPage'));

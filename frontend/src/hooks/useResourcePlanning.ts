@@ -5,6 +5,7 @@ import {
   getResourcePlans, getScheduledBlocks, updateScheduledBlock,
   patchAssignment, type AssignmentPatch,
   patchConflict, type ConflictOut,
+  forkPlan, getPlanDiff,
 } from '../api/resourcePlanning';
 
 export const useScheduledBlocks = (team?: string) =>
@@ -108,5 +109,23 @@ export function usePatchAssignment() {
       qc.invalidateQueries({ queryKey: ['gantt', planId] });
       qc.invalidateQueries({ queryKey: ['resource-plans'] });
     },
+  });
+}
+
+export function useForkPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, label }: { planId: string; label?: string }) =>
+      forkPlan(planId, label),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['resource-plans'] }),
+  });
+}
+
+export function usePlanDiff(scenarioId: string | null, baselineId: string | null) {
+  return useQuery({
+    queryKey: ['plan-diff', scenarioId, baselineId],
+    queryFn: () => getPlanDiff(scenarioId!, baselineId!),
+    enabled: !!scenarioId && !!baselineId,
+    staleTime: 30_000,
   });
 }
