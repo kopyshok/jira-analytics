@@ -4,6 +4,7 @@ import {
   deleteResourcePlan, deleteScheduledBlock, getGanttProjection,
   getResourcePlans, getScheduledBlocks, updateScheduledBlock,
   patchAssignment, type AssignmentPatch,
+  patchConflict, type ConflictOut,
 } from '../api/resourcePlanning';
 
 export const useScheduledBlocks = (team?: string) =>
@@ -79,6 +80,17 @@ export const useGanttProjection = (planId: string | null) =>
     enabled: !!planId,
     staleTime: 60_000,
   });
+
+export function usePatchConflict(planId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ conflictId, status }: { conflictId: string; status: ConflictOut['status'] }) =>
+      patchConflict(planId!, conflictId, status),
+    onSuccess: () => {
+      if (planId) qc.invalidateQueries({ queryKey: ['gantt', planId] });
+    },
+  });
+}
 
 export function usePatchAssignment() {
   const qc = useQueryClient();

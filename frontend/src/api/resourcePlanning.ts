@@ -38,12 +38,20 @@ export interface AssignmentOut {
 }
 
 export interface ConflictOut {
+  id: string;
   type: string;
   severity: 'critical' | 'warning' | 'info';
+  status: 'open' | 'acknowledged' | 'muted' | 'resolved';
   backlog_item_id: string | null;
   backlog_item_title: string | null;
   employee_id: string | null;
+  assignment_id: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  metric_value: number | null;
   message: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface GanttProjection {
@@ -85,6 +93,12 @@ export const computeResourcePlan = (id: string) =>
 
 export const getGanttProjection = (id: string) =>
   api.get<GanttProjection>(`/resource-planning/resource-plans/${id}/gantt`);
+
+export const patchConflict = (planId: string, conflictId: string, status: ConflictOut['status']) =>
+  api.patch<ConflictOut>(
+    `/resource-planning/resource-plans/${planId}/conflicts/${conflictId}`,
+    { status },
+  );
 
 export async function patchAssignment(
   planId: string,

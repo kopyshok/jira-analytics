@@ -135,7 +135,7 @@ export default function ResourcePlanningPage() {
         </Space>
       </div>
 
-      {gantt && <ConflictPanel conflicts={gantt.conflicts} />}
+      {gantt && <ConflictPanel conflicts={gantt.conflicts} planId={planId} />}
 
       {ganttLoading && <Spin style={{ display: 'block', margin: '80px auto' }} />}
       {!planId && !ganttLoading && (
