@@ -39,6 +39,7 @@ export default function SideMenu() {
         { key: '/capacity', icon: <TeamOutlined />, label: 'Ресурсы' },
         { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Целевые задачи' },
         { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Сценарии' },
+        { key: '/resource-planning', icon: <ProjectOutlined />, label: 'Ресурс. планир.' },
       ],
     },
     {

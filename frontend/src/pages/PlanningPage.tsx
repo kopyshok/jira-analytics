@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -9,7 +9,7 @@ import {
   Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
-  CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
+  BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
   DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined, HolderOutlined, PlusOutlined,
   RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
@@ -217,6 +217,7 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
 
 export default function PlanningPage() {
   const { notification } = App.useApp();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'distribution' | 'rules'>('distribution');
@@ -572,6 +573,15 @@ export default function PlanningPage() {
                     loading={revert.isPending}
                   >
                     В черновик
+                  </Button>
+                )}
+                {isApproved && scenario && (
+                  <Button
+                    size="small"
+                    icon={<BarChartOutlined />}
+                    onClick={() => navigate(`/resource-planning?scenario_id=${scenario.id}&quarter=${scenario.quarter}&year=${scenario.year}`)}
+                  >
+                    Диаграмма
                   </Button>
                 )}
                 {isDraft && (

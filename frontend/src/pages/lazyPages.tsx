@@ -10,3 +10,4 @@ export const BacklogPage = lazy(() => import('./BacklogPage'));
 export const PlanningPage = lazy(() => import('./PlanningPage'));
 export const SettingsPage = lazy(() => import('./SettingsPage'));
 export const ProjectsPage = lazy(() => import('./ProjectsPage'));
+export const ResourcePlanningPage = lazy(() => import('./ResourcePlanningPage'));
