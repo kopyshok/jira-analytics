@@ -102,10 +102,21 @@ class ConflictOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class InitiativePertOut(BaseModel):
+    backlog_item_id: str
+    backlog_item_title: str
+    most_likely_finish: Optional[date]
+    p50_finish: Optional[date]
+    p90_finish: Optional[date]
+    sigma_days: float
+    on_critical_path_only: bool
+
+
 class GanttProjection(BaseModel):
     plan: ResourcePlanOut
     assignments: List[AssignmentOut]
     conflicts: List[ConflictOut]
+    pert_projection: List[InitiativePertOut]
 
 
 class AssignmentPatch(BaseModel):
@@ -245,6 +256,59 @@ def compute_plan(
     return plan
 
 
+def _compute_pert_projection(plan, assignments, db):
+    """PERT P50/P90 finish per initiative based on critical-path phases."""
+    from collections import defaultdict
+    from datetime import timedelta as _td
+
+    from app.models import BacklogItem
+    from app.services.pert_calculator import aggregate_path_pert, p_quantile_finish
+
+    by_item: dict = defaultdict(list)
+    for a in assignments:
+        if a.is_on_critical_path and a.start_date and a.end_date:
+            by_item[a.backlog_item_id].append(a)
+
+    item_ids = list(by_item.keys())
+    if not item_ids:
+        return []
+    items = (
+        db.execute(select(BacklogItem).where(BacklogItem.id.in_(item_ids)))
+        .scalars()
+        .all()
+    )
+    items_by_id = {i.id: i for i in items}
+
+    result = []
+    for item_id, phases_assigns in by_item.items():
+        bi = items_by_id.get(item_id)
+        if not bi:
+            continue
+        opt = bi.optimistic_multiplier or 0.7
+        pess = bi.pessimistic_multiplier or 1.5
+        triples = []
+        most_likely_finish = max(a.end_date for a in phases_assigns)
+        for a in phases_assigns:
+            days = (a.end_date - a.start_date).days + 1
+            triples.append((days * opt, float(days), days * pess))
+        mean, sigma = aggregate_path_pert(triples)
+        first_start = min(a.start_date for a in phases_assigns)
+        p50 = first_start + _td(days=int(round(p_quantile_finish(mean, sigma, 0.5))))
+        p90 = first_start + _td(days=int(round(p_quantile_finish(mean, sigma, 0.9))))
+        result.append(
+            InitiativePertOut(
+                backlog_item_id=item_id,
+                backlog_item_title=bi.title,
+                most_likely_finish=most_likely_finish,
+                p50_finish=p50,
+                p90_finish=p90,
+                sigma_days=sigma,
+                on_critical_path_only=True,
+            )
+        )
+    return result
+
+
 @router.get("/resource-plans/{plan_id}/gantt", response_model=GanttProjection)
 def get_gantt(
     plan_id: str,
@@ -286,8 +350,14 @@ def get_gantt(
     ]
 
     conflicts = _detect_conflicts(plan, assignments_raw, db)
+    pert_projection = _compute_pert_projection(plan, assignments_raw, db)
 
-    return GanttProjection(plan=plan, assignments=assignments, conflicts=conflicts)
+    return GanttProjection(
+        plan=plan,
+        assignments=assignments,
+        conflicts=conflicts,
+        pert_projection=pert_projection,
+    )
 
 
 @router.patch(
