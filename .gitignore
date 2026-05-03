@@ -36,6 +36,12 @@ exports/
 # Logs
 *.log
 logs/
+uvicorn.*
+
+# Local screenshots / scratch images at repo root
+/*.png
+/*.jpg
+/*.jpeg
 
 # Testing
 .coverage
