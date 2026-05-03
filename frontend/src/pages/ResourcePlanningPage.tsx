@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { App, Button, Empty, Select, Segmented, Space, Spin, Tag } from 'antd';
-import { BarChartOutlined, CalculatorOutlined, ScheduleOutlined, SettingOutlined } from '@ant-design/icons';
+import { App, Button, Empty, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
+import {
+  BarChartOutlined,
+  CalculatorOutlined,
+  ScheduleOutlined,
+  SettingOutlined,
+  TeamOutlined,
+} from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import GanttChart from '../components/resource-planning/GanttChart';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
@@ -22,6 +28,7 @@ export default function ResourcePlanningPage() {
   const [planId, setPlanId] = useState<string | null>(searchParams.get('plan_id'));
   const [viewMode, setViewMode] = useState<ViewMode>('two-level');
   const [blocksOpen, setBlocksOpen] = useState(false);
+  const [showRelayArrows, setShowRelayArrows] = useState(true);
 
   const scenarioId = searchParams.get('scenario_id');
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
@@ -30,7 +37,6 @@ export default function ResourcePlanningPage() {
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
 
-  // Auto-create plan when navigating from approved scenario
   useEffect(() => {
     if (scenarioId && !planId && !plansLoading) {
       const existing = plans.find(p => p.scenario_id === scenarioId);
@@ -105,15 +111,28 @@ export default function ResourcePlanningPage() {
             {gantt.plan.status === 'ready' ? 'Готово' : gantt.plan.status}
           </Tag>
         )}
-        <Segmented
-          value={viewMode}
-          onChange={v => setViewMode(v as ViewMode)}
-          options={[
-            { label: 'Портфель', value: 'portfolio', icon: <BarChartOutlined /> },
-            { label: 'Фазы', value: 'two-level', icon: <ScheduleOutlined /> },
-          ]}
-          style={{ marginLeft: 'auto' }}
-        />
+
+        <Space size={4} style={{ marginLeft: 'auto' }}>
+          {viewMode !== 'resource-track' && (
+            <Space size={4}>
+              <Switch
+                checked={showRelayArrows}
+                onChange={setShowRelayArrows}
+                size="small"
+              />
+              <span style={{ fontSize: 12, color: '#8ab0d8' }}>Связи</span>
+            </Space>
+          )}
+          <Segmented
+            value={viewMode}
+            onChange={v => setViewMode(v as ViewMode)}
+            options={[
+              { label: 'Портфель', value: 'portfolio', icon: <BarChartOutlined /> },
+              { label: 'Фазы', value: 'two-level', icon: <ScheduleOutlined /> },
+              { label: 'Ресурсы', value: 'resource-track', icon: <TeamOutlined /> },
+            ]}
+          />
+        </Space>
       </div>
 
       {gantt && <ConflictPanel conflicts={gantt.conflicts} />}
@@ -129,6 +148,7 @@ export default function ResourcePlanningPage() {
           quarter={gantt.plan.quarter ?? 'Q1'}
           year={gantt.plan.year ?? new Date().getFullYear()}
           viewMode={viewMode}
+          showRelayArrows={showRelayArrows}
         />
       )}
 

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { AssignmentOut } from '../../api/resourcePlanning';
 import type { GanttTimeline } from '../../utils/gantt';
-import { dateToLeft, datesToWidth, PHASE_COLORS, PHASE_LABELS } from '../../utils/gantt';
+import { dateToLeft, datesToWidth, PHASE_COLORS, PHASE_LABELS, getItemColor } from '../../utils/gantt';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track';
 
@@ -10,6 +10,7 @@ interface Props {
   timeline: GanttTimeline;
   viewMode: ViewMode;
   leftColWidth: number;
+  rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
 }
 
 const ROW_HEIGHT = 36;
@@ -95,7 +96,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth }: Omit<Props, 'vie
   );
 }
 
-function TwoLevelRows({ assignments, timeline, leftColWidth }: Omit<Props, 'viewMode'>) {
+function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
@@ -194,9 +195,14 @@ function TwoLevelRows({ assignments, timeline, leftColWidth }: Omit<Props, 'view
                     {phaseAssignments.filter(a => a.start_date && a.end_date).map(a => {
                       const left = dateToLeft(a.start_date!, timeline);
                       const width = datesToWidth(a.start_date!, a.end_date!, timeline);
+                      const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
                       return (
                         <div
                           key={a.id}
+                          ref={el => {
+                            if (el) rowRefs.current.set(refKey, el);
+                            else rowRefs.current.delete(refKey);
+                          }}
                           title={`${PHASE_LABELS[a.phase]}, ч. ${a.part_number} — ${a.hours_allocated?.toFixed(0)}ч`}
                           style={{
                             position: 'absolute',
@@ -226,7 +232,101 @@ function TwoLevelRows({ assignments, timeline, leftColWidth }: Omit<Props, 'view
   );
 }
 
+function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
+  const itemOrder = useMemo(
+    () => [...new Set(assignments.map(a => a.backlog_item_id))],
+    [assignments],
+  );
+
+  const byEmployee = useMemo(() => {
+    const map = new Map<string, { name: string; assignments: AssignmentOut[] }>();
+    for (const a of assignments) {
+      const empId = a.employee_id ?? '__unassigned__';
+      if (!map.has(empId)) {
+        map.set(empId, { name: a.employee_name ?? 'Без исполнителя', assignments: [] });
+      }
+      map.get(empId)!.assignments.push(a);
+    }
+    return [...map.entries()];
+  }, [assignments]);
+
+  return (
+    <>
+      {byEmployee.map(([empId, { name, assignments: empAssignments }]) => (
+        <div
+          key={empId}
+          style={{
+            display: 'flex',
+            height: ROW_HEIGHT + 4,
+            borderBottom: '1px solid #1e3a5f',
+            background: 'rgba(0,201,200,0.03)',
+          }}
+        >
+          <div style={{
+            width: leftColWidth,
+            flexShrink: 0,
+            borderRight: '1px solid #1e3a5f',
+            padding: '0 12px',
+            display: 'flex',
+            alignItems: 'center',
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#fff',
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+          }}>
+            {name}
+          </div>
+          <div style={{ flex: 1, position: 'relative' }}>
+            {empAssignments.filter(a => a.start_date && a.end_date).map(a => {
+              const idx = itemOrder.indexOf(a.backlog_item_id);
+              const color = getItemColor(idx);
+              const left = dateToLeft(a.start_date!, timeline);
+              const width = datesToWidth(a.start_date!, a.end_date!, timeline);
+              const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
+              return (
+                <div
+                  key={a.id}
+                  ref={el => {
+                    if (el) rowRefs.current.set(refKey, el);
+                    else rowRefs.current.delete(refKey);
+                  }}
+                  title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)`}
+                  style={{
+                    position: 'absolute',
+                    left: `${left}%`,
+                    width: `${Math.max(width, 0.8)}%`,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    height: 22,
+                    background: color,
+                    opacity: 0.85,
+                    borderRadius: 3,
+                    zIndex: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    paddingLeft: 4,
+                    fontSize: 9,
+                    color: '#fff',
+                    fontWeight: 700,
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {a.backlog_item_title}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default function GanttRows(props: Props) {
   if (props.viewMode === 'portfolio') return <PortfolioRows {...props} />;
+  if (props.viewMode === 'resource-track') return <ResourceTrackRows {...props} />;
   return <TwoLevelRows {...props} />;
 }

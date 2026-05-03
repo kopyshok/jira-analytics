@@ -15,9 +15,17 @@ interface Props {
   quarter: string;
   year: number;
   viewMode: ViewMode;
+  showRelayArrows?: boolean;
 }
 
-export default function GanttChart({ assignments, blocks, quarter, year, viewMode }: Props) {
+export default function GanttChart({
+  assignments,
+  blocks,
+  quarter,
+  year,
+  viewMode,
+  showRelayArrows = true,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
 
@@ -68,6 +76,7 @@ export default function GanttChart({ assignments, blocks, quarter, year, viewMod
           assignments={assignments}
           rowRefs={rowRefs}
           containerRef={containerRef as React.RefObject<HTMLDivElement>}
+          showRelayArrows={showRelayArrows}
         />
 
         <GanttRows
@@ -75,6 +84,7 @@ export default function GanttChart({ assignments, blocks, quarter, year, viewMod
           timeline={timeline}
           viewMode={viewMode}
           leftColWidth={LEFT_COL}
+          rowRefs={rowRefs}
         />
       </div>
     </div>
