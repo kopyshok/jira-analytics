@@ -45,6 +45,7 @@ from app.models.user import User, UserRole  # noqa: F401
 from app.models.scheduled_block import ScheduledBlock
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
+from app.models.plan_item_dependency import PlanItemDependency
 
 __all__ = [
     "TimestampMixin",
@@ -95,4 +96,5 @@ __all__ = [
     "ScheduledBlock",
     "ResourcePlan",
     "ResourcePlanAssignment",
+    "PlanItemDependency",
 ]

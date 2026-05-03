@@ -12,6 +12,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.planning_scenario import PlanningScenario
     from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.plan_item_dependency import PlanItemDependency
 
 
 class ResourcePlan(Base, TimestampMixin):
@@ -34,5 +35,8 @@ class ResourcePlan(Base, TimestampMixin):
 
     scenario: Mapped[Optional["PlanningScenario"]] = relationship("PlanningScenario")
     assignments: Mapped[List["ResourcePlanAssignment"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan"
+    )
+    dependencies: Mapped[List["PlanItemDependency"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"
     )
