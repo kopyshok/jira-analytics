@@ -43,18 +43,19 @@ class RcpspLeveler:
         assignments: List[ResourcePlanAssignment],
         availability: Dict[str, Dict[date, float]],
         q_end: date,
+        role_pools: Optional[Dict[str, List[str]]] = None,
     ) -> List[LevelingEvent]:
         """Главный entrypoint. Мутирует assignments на месте, возвращает событий."""
         if not assignments:
             return []
+        role_pools = role_pools or {}
         events: List[LevelingEvent] = []
-        max_passes = 10  # эмпирическая граница; типичный квартал требует ≤3 проходов
+        max_passes = 20  # увеличено с 10: reassign может потребовать больше итераций
         for _ in range(max_passes):
             overloads = self._detect_overload(assignments, availability)
             if not overloads:
                 break
 
-            # MSL: выбрать наиболее ограниченный (min slack) среди подвижных — сохраняем большой slack для будущих перегрузок
             target_day, target_emp = next(iter(overloads.keys()))
             candidates = [
                 a
@@ -66,43 +67,122 @@ class RcpspLeveler:
             ]
             if not candidates:
                 break
-            # Оставить только те, у кого есть slack для сдвига (slack > 0)
+
+            # MSL: выбрать наиболее ограниченный (min slack) среди подвижных — сохраняем большой slack для будущих перегрузок
             movable = [a for a in candidates if (a.slack_days or 0.0) > 0.01]
-            if not movable:
-                break
-            # Выбрать кандидата с минимальным slack (наиболее ограниченный, но подвижный)
-            movable.sort(key=lambda a: a.slack_days or 0.0)
-            target = movable[0]
-            shift = 1
+
             applied = False
-            while shift <= int(target.slack_days or 0):
-                if self._try_delay(target, shift, availability, q_end):
-                    events.append(
-                        LevelingEvent(
-                            assignment_id=target.id,
-                            action="delay",
-                            reason=f"Сдвинут на {shift} д. для разрешения перегрузки {target_emp} {target_day}",
-                            delta_days=shift,
-                            overload_pct=(
-                                overloads[(target_day, target_emp)]
-                                / max(
-                                    0.01,
-                                    availability.get(target_emp, {}).get(
-                                        target_day, 0.0
-                                    ),
+            # Try delay first
+            if movable:
+                movable.sort(key=lambda a: a.slack_days or 0.0)
+                target = movable[0]
+                shift = 1
+                while shift <= int(target.slack_days or 0):
+                    if self._try_delay(target, shift, availability, q_end):
+                        events.append(
+                            LevelingEvent(
+                                assignment_id=target.id,
+                                action="delay",
+                                reason=f"Сдвинут на {shift} д. для разрешения перегрузки {target_emp} {target_day}",
+                                delta_days=shift,
+                                overload_pct=(
+                                    overloads[(target_day, target_emp)]
+                                    / max(
+                                        0.01,
+                                        availability.get(target_emp, {}).get(
+                                            target_day, 0.0
+                                        ),
+                                    )
                                 )
+                                * 100,
+                                affected_dates=[target_day],
                             )
-                            * 100,
-                            affected_dates=[target_day],
                         )
-                    )
-                    applied = True
+                        applied = True
+                        break
+                    shift += 1
+            if applied:
+                continue
+
+            # Try reassign — pick any candidate (not just movable), prefer one with no slack
+            candidates.sort(key=lambda a: a.slack_days or 0.0)
+            for target in candidates:
+                peers = role_pools.get(target_emp, [])
+                reassigned = False
+                for peer_id in peers:
+                    if peer_id == target_emp:
+                        continue
+                    if self._try_reassign(target, peer_id, availability, assignments):
+                        events.append(
+                            LevelingEvent(
+                                assignment_id=target.id,
+                                action="reassign",
+                                reason=f"Переназначен с {target_emp} на {peer_id} (peer той же роли)",
+                                from_employee_id=target_emp,
+                                to_employee_id=peer_id,
+                                overload_pct=(
+                                    overloads[(target_day, target_emp)]
+                                    / max(
+                                        0.01,
+                                        availability.get(target_emp, {}).get(
+                                            target_day, 0.0
+                                        ),
+                                    )
+                                )
+                                * 100,
+                                affected_dates=[target_day],
+                            )
+                        )
+                        applied = True
+                        reassigned = True
+                        break
+                if reassigned:
                     break
-                shift += 1
             if not applied:
-                # Не смогли сдвинуть — эскалация (Task A.5)
+                # Эскалация в Task A.5
                 break
         return events
+
+    def _try_reassign(
+        self,
+        assignment: ResourcePlanAssignment,
+        peer_id: str,
+        availability: Dict[str, Dict[date, float]],
+        all_assignments: List[ResourcePlanAssignment],
+    ) -> bool:
+        """Переназначить на peer если у него хватает доступности в окне assignment."""
+        if (
+            not assignment.start_date
+            or not assignment.end_date
+            or assignment.hours_allocated is None
+        ):
+            return False
+        days = (assignment.end_date - assignment.start_date).days + 1
+        per_day = assignment.hours_allocated / days
+        # Проверить peer доступность с учётом его текущих назначений
+        peer_demand: Dict[date, float] = defaultdict(float)
+        for a in all_assignments:
+            if (
+                a.employee_id != peer_id
+                or not a.start_date
+                or not a.end_date
+                or a.hours_allocated is None
+            ):
+                continue
+            a_days = (a.end_date - a.start_date).days + 1
+            a_per_day = a.hours_allocated / a_days
+            d = a.start_date
+            while d <= a.end_date:
+                peer_demand[d] += a_per_day
+                d += timedelta(days=1)
+        d = assignment.start_date
+        while d <= assignment.end_date:
+            free = availability.get(peer_id, {}).get(d, 0.0) - peer_demand.get(d, 0.0)
+            if free < per_day - 0.01:
+                return False
+            d += timedelta(days=1)
+        assignment.employee_id = peer_id
+        return True
 
     def _try_delay(
         self,
