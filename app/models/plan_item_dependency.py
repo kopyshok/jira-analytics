@@ -32,9 +32,9 @@ class PlanItemDependency(Base, TimestampMixin):
     to_item_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("backlog_items.id", ondelete="CASCADE")
     )
-    dep_type: Mapped[str] = mapped_column(String(4), default="FS")
-    lag_days: Mapped[int] = mapped_column(Integer, default=0)
-    source: Mapped[str] = mapped_column(String(16), default="manual")
+    dep_type: Mapped[str] = mapped_column(String(4), nullable=False, default="FS", server_default="FS")
+    lag_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual", server_default="manual")
 
     plan: Mapped["ResourcePlan"] = relationship(back_populates="dependencies")
     from_item: Mapped["BacklogItem"] = relationship(foreign_keys=[from_item_id])
