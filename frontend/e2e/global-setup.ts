@@ -29,6 +29,7 @@ function runPythonModule(args: string[]) {
           ...process.env,
           DATABASE_URL: 'sqlite:///./data/e2e.db',
           DEBUG: 'false',
+          JWT_SECRET_KEY: 'e2e-test-secret-not-for-production-32-chars-long-please-yes',
         },
       });
       return;
