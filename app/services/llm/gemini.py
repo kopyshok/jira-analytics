@@ -16,7 +16,6 @@ logger = logging.getLogger("jira_analytics.llm")
 
 
 _BUCKETS = ["analysis", "development", "testing", "ope"]
-_BUCKET_LABELS = ["Анализ", "Разработка", "Тестирование", "ОПЭ"]
 
 
 GEMINI_RESPONSE_SCHEMA = {
@@ -44,7 +43,7 @@ GEMINI_RESPONSE_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "bucket": {"type": "string", "enum": _BUCKETS},
-                    "label": {"type": "string", "enum": _BUCKET_LABELS},
+                    "label": {"type": "string"},
                     "child_keys": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -53,8 +52,8 @@ GEMINI_RESPONSE_SCHEMA = {
                 },
                 "required": ["bucket", "label", "child_keys"],
             },
-            "minItems": 0,
-            "maxItems": 4,
+            "minItems": 1,
+            "maxItems": 8,
         },
     },
     "required": ["goals", "result_checklist", "status_text", "workload_summary", "work_breakdown"],
