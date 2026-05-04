@@ -23,6 +23,7 @@ from app.api.endpoints import (
     production_calendar,
     projects,
     resource_planning,
+    resource_planning_v2,
     roles as roles_endpoints,
     scope,
     settings,
@@ -154,6 +155,12 @@ api_router.include_router(
     resource_planning.router,
     prefix="/resource-planning",
     tags=["resource-planning"],
+    dependencies=_auth_dep,
+)
+api_router.include_router(
+    resource_planning_v2.router,
+    prefix="/resource-planning-v2",
+    tags=["resource-planning-v2"],
     dependencies=_auth_dep,
 )
 
