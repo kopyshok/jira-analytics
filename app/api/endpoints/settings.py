@@ -66,6 +66,7 @@ LLM_KEYS = (
     "llm_gemini_model",
     "llm_openrouter_api_key",
     "llm_openrouter_model",
+    "llm_openrouter_fallback_models",
     "llm_deepseek_api_key",
     "llm_anthropic_api_key",
     "llm_openai_api_key",

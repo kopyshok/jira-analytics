@@ -52,7 +52,10 @@ def get_llm_provider(db: Session) -> LLMProvider:
         if not api_key:
             raise ConfigurationError("OpenRouter API key not configured")
         model = _get_app_setting(db, "llm_openrouter_model")
+        fallback_csv = _get_app_setting(db, "llm_openrouter_fallback_models") or ""
+        fallback_models = [m.strip() for m in fallback_csv.split(",") if m.strip()]
+        kwargs: dict = {"api_key": api_key, "fallback_models": fallback_models}
         if model:
-            return OpenRouterProvider(api_key=api_key, model=model)
-        return OpenRouterProvider(api_key=api_key)
+            kwargs["model"] = model
+        return OpenRouterProvider(**kwargs)
     raise ConfigurationError(f"LLM provider '{provider_name}' not supported")
