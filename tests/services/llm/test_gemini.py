@@ -13,9 +13,9 @@ async def test_summarize_returns_parsed_summary():
         "candidates": [{
             "content": {"parts": [{"text":
                 '{"goals":["g1","g2","g3"],'
-                '"result_flow_blocks":[{"label":"A","status":"source"}],'
-                '"result_checklist":[{"label":"x","done":true}],'
-                '"status_text":"OK","workload_summary":"WS"}'
+                '"result_checklist":[{"label":"x","done":true,"category":"analysis"}],'
+                '"status_text":"OK","workload_summary":"WS",'
+                '"work_breakdown":[{"bucket":"analysis","label":"Анализ","child_keys":["A-1"]}]}'
             }]},
         }],
         "usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 50},
@@ -25,7 +25,8 @@ async def test_summarize_returns_parsed_summary():
 
     assert isinstance(summary, ProjectSummary)
     assert summary.goals == ["g1", "g2", "g3"]
-    assert summary.result_flow_blocks[0].status == "source"
+    assert summary.result_checklist[0].category == "analysis"
+    assert summary.work_breakdown[0].bucket == "analysis"
     assert meta["input_tokens"] == 100
     assert meta["output_tokens"] == 50
     assert meta["model"] == "gemini-2.0-flash"

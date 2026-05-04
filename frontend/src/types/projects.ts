@@ -63,24 +63,22 @@ export interface ProjectDetail {
   rating_result: number | null;
 }
 
-export interface FlowBlock {
-  label: string;
-  status: 'source' | 'flow' | 'done';
-}
+export type WorkBucket = 'analysis' | 'development' | 'testing' | 'ope';
 
 export interface ChecklistItem {
   label: string;
   done: boolean;
+  category: WorkBucket;
 }
 
 export interface WorkBreakdownGroup {
-  label: string;
+  bucket: WorkBucket;
+  label: 'Анализ' | 'Разработка' | 'Тестирование' | 'ОПЭ';
   child_keys: string[];
 }
 
 export interface ProjectSummary {
   goals: string[];
-  result_flow_blocks: FlowBlock[];
   result_checklist: ChecklistItem[];
   status_text: string;
   workload_summary: string;

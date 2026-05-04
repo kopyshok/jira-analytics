@@ -3,27 +3,30 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class FlowBlock(BaseModel):
-    label: str
-    status: Literal["source", "flow", "done"] = "flow"
+WorkBucket = Literal["analysis", "development", "testing", "ope"]
 
 
 class ChecklistItem(BaseModel):
-    label: str
-    done: bool = True
+    """Достижение проекта. `category` привязывает к работе из `work_breakdown`."""
+    label: str = Field(max_length=120)
+    done: bool = False
+    category: WorkBucket
+
+
+WorkBucketLabel = Literal["Анализ", "Разработка", "Тестирование", "ОПЭ"]
 
 
 class WorkBreakdownGroup(BaseModel):
-    """Группа дочерних задач по смыслу (AI-кластеризация)."""
-    label: str = Field(max_length=80)
-    child_keys: list[str] = Field(min_length=1, max_length=30)
+    """Фиксированная категория трудозатрат: AI распределяет дочерние задачи."""
+    bucket: WorkBucket
+    label: WorkBucketLabel
+    child_keys: list[str] = Field(default_factory=list, max_length=50)
 
 
 class ProjectSummary(BaseModel):
-    """Структурированный AI-результат: цели, flow, чек-лист, статус, нагрузка."""
+    """Структурированный AI-результат: цели, чек-лист, статус, нагрузка, разбивка."""
     goals: list[str] = Field(min_length=1, max_length=5)
-    result_flow_blocks: list[FlowBlock] = Field(min_length=1, max_length=6)
-    result_checklist: list[ChecklistItem] = Field(min_length=0, max_length=6)
+    result_checklist: list[ChecklistItem] = Field(min_length=0, max_length=8)
     status_text: str
     workload_summary: str
-    work_breakdown: list[WorkBreakdownGroup] = Field(default_factory=list, max_length=6)
+    work_breakdown: list[WorkBreakdownGroup] = Field(default_factory=list, max_length=4)

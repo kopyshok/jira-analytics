@@ -46,12 +46,12 @@ class ProjectSummaryService:
         work_breakdown_json = json.dumps(
             [g.model_dump() for g in summary.work_breakdown], ensure_ascii=False
         )
+        checklist_json = json.dumps(
+            [c.model_dump() for c in summary.result_checklist], ensure_ascii=False
+        )
         if existing:
             existing.goals_json = json.dumps(summary.goals, ensure_ascii=False)
-            existing.result_flow_json = json.dumps(
-                [b.model_dump() for b in summary.result_flow_blocks], ensure_ascii=False)
-            existing.result_checklist_json = json.dumps(
-                [c.model_dump() for c in summary.result_checklist], ensure_ascii=False)
+            existing.result_checklist_json = checklist_json
             existing.status_text = summary.status_text
             existing.workload_summary = summary.workload_summary
             existing.work_breakdown_json = work_breakdown_json
@@ -64,10 +64,7 @@ class ProjectSummaryService:
             existing = ProjectAISummary(
                 issue_id=epic.id,
                 goals_json=json.dumps(summary.goals, ensure_ascii=False),
-                result_flow_json=json.dumps(
-                    [b.model_dump() for b in summary.result_flow_blocks], ensure_ascii=False),
-                result_checklist_json=json.dumps(
-                    [c.model_dump() for c in summary.result_checklist], ensure_ascii=False),
+                result_checklist_json=checklist_json,
                 status_text=summary.status_text,
                 workload_summary=summary.workload_summary,
                 work_breakdown_json=work_breakdown_json,
@@ -97,6 +94,7 @@ class ProjectSummaryService:
                 "key": i.key,
                 "summary": i.summary,
                 "status": i.status,
+                "issue_type": i.issue_type,
                 "is_done": (i.status_category == "done"),
                 "description": (i.description or "")[:8000] or None,
                 "goal_text": (i.goal_text or "") or None,

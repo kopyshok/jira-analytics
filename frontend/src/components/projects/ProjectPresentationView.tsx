@@ -1,7 +1,6 @@
 import React from 'react';
 import { ProjectHero } from './presentation/ProjectHero';
 import { ProjectStorySection } from './presentation/ProjectStorySection';
-import { FlowDiagram } from './shared/FlowDiagram';
 import { DonutChart } from './shared/DonutChart';
 import { StarRating } from './shared/StarRating';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
@@ -71,18 +70,29 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
       <ProjectStorySection title="Какой результат">
         {summary ? (
           <>
-            <FlowDiagram blocks={summary.result_flow_blocks} />
-            {summary.status_text && (
-              <p style={{ marginTop: 16, fontSize: 16, color: '#67d68d' }}>{summary.status_text}</p>
-            )}
             {summary.result_checklist.length > 0 && (
-              <div style={{ marginTop: 16, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {summary.result_checklist.map((c, i) => (
-                  <span key={i} style={{ fontSize: 14, color: c.done ? '#67d68d' : '#7e94b8' }}>
-                    {c.done ? '✓' : '○'} {c.label}
-                  </span>
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 16 }}>
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        color: c.done ? '#67d68d' : 'rgba(255,255,255,0.25)',
+                        fontWeight: 700,
+                        width: 20,
+                      }}
+                    >
+                      {c.done ? '✓' : '○'}
+                    </span>
+                    <span style={{ color: c.done ? '#fff' : '#7e94b8' }}>{c.label}</span>
+                  </div>
                 ))}
               </div>
+            )}
+            {summary.status_text && (
+              <p style={{ marginTop: 24, fontSize: 14, color: '#cfd8e5', fontStyle: 'italic', lineHeight: 1.6 }}>
+                {summary.status_text}
+              </p>
             )}
           </>
         ) : (

@@ -26,7 +26,6 @@ class ProjectAISummary(Base):
         unique=True, index=True, nullable=False,
     )
     goals_json: Mapped[str] = mapped_column(Text, nullable=False)
-    result_flow_json: Mapped[str] = mapped_column(Text, nullable=False)
     result_checklist_json: Mapped[str] = mapped_column(Text, nullable=False)
     status_text: Mapped[str] = mapped_column(Text, nullable=False)
     workload_summary: Mapped[str] = mapped_column(Text, nullable=False)

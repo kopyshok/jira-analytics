@@ -15,22 +15,14 @@ from app.services.llm.types import ProjectSummary
 logger = logging.getLogger("jira_analytics.llm")
 
 
+_BUCKETS = ["analysis", "development", "testing", "ope"]
+_BUCKET_LABELS = ["Анализ", "Разработка", "Тестирование", "ОПЭ"]
+
+
 GEMINI_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
         "goals": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5},
-        "result_flow_blocks": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "label": {"type": "string"},
-                    "status": {"type": "string", "enum": ["source", "flow", "done"]},
-                },
-                "required": ["label", "status"],
-            },
-            "minItems": 1, "maxItems": 6,
-        },
         "result_checklist": {
             "type": "array",
             "items": {
@@ -38,10 +30,11 @@ GEMINI_RESPONSE_SCHEMA = {
                 "properties": {
                     "label": {"type": "string"},
                     "done": {"type": "boolean"},
+                    "category": {"type": "string", "enum": _BUCKETS},
                 },
-                "required": ["label", "done"],
+                "required": ["label", "done", "category"],
             },
-            "minItems": 0, "maxItems": 6,
+            "minItems": 0, "maxItems": 8,
         },
         "status_text": {"type": "string"},
         "workload_summary": {"type": "string"},
@@ -50,21 +43,21 @@ GEMINI_RESPONSE_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "label": {"type": "string"},
+                    "bucket": {"type": "string", "enum": _BUCKETS},
+                    "label": {"type": "string", "enum": _BUCKET_LABELS},
                     "child_keys": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "minItems": 1,
-                        "maxItems": 30,
+                        "maxItems": 50,
                     },
                 },
-                "required": ["label", "child_keys"],
+                "required": ["bucket", "label", "child_keys"],
             },
             "minItems": 0,
-            "maxItems": 6,
+            "maxItems": 4,
         },
     },
-    "required": ["goals", "result_flow_blocks", "result_checklist", "status_text", "workload_summary", "work_breakdown"],
+    "required": ["goals", "result_checklist", "status_text", "workload_summary", "work_breakdown"],
 }
 
 

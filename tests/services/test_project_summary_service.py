@@ -12,7 +12,7 @@ from app.database import Base
 from app.models.issue import Issue
 from app.models.project import Project
 from app.models.project_ai_summary import ProjectAISummary
-from app.services.llm.types import ProjectSummary, FlowBlock, ChecklistItem
+from app.services.llm.types import ProjectSummary, ChecklistItem, WorkBreakdownGroup
 from app.services.project_summary_service import ProjectSummaryService
 
 
@@ -56,8 +56,9 @@ async def test_get_summary_returns_cached_row(test_db_session):
     cached = ProjectAISummary(
         issue_id="i1",
         goals_json=json.dumps(["a", "b", "c"], ensure_ascii=False),
-        result_flow_json=json.dumps([{"label": "X", "status": "source"}], ensure_ascii=False),
-        result_checklist_json=json.dumps([{"label": "y", "done": True}], ensure_ascii=False),
+        result_checklist_json=json.dumps(
+            [{"label": "y", "done": True, "category": "analysis"}], ensure_ascii=False
+        ),
         status_text="Cached", workload_summary="WS",
         generated_at=datetime.utcnow(), model_used="gemini-2.0-flash",
     )
@@ -74,9 +75,11 @@ async def test_regenerate_calls_llm_and_writes_cache(test_db_session):
     _seed_epic(db)
     fake = ProjectSummary(
         goals=["g1", "g2", "g3"],
-        result_flow_blocks=[FlowBlock(label="X", status="source")],
-        result_checklist=[ChecklistItem(label="ok", done=True)],
+        result_checklist=[ChecklistItem(label="ok", done=True, category="analysis")],
         status_text="ST", workload_summary="WS",
+        work_breakdown=[
+            WorkBreakdownGroup(bucket="analysis", label="Анализ", child_keys=["X-1"]),
+        ],
     )
     fake_meta = {"input_tokens": 100, "output_tokens": 50, "model": "gemini-2.0-flash"}
 

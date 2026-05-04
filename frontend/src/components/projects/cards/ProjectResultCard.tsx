@@ -3,7 +3,6 @@ import { Card, Empty, Skeleton } from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
 import { useIsFetching } from '@tanstack/react-query';
 import type { ProjectSummary } from '../../../types/projects';
-import { FlowDiagram } from '../shared/FlowDiagram';
 
 interface Props {
   summary: ProjectSummary | null | undefined;
@@ -24,10 +23,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
       ) : !summary ? (
         <Empty description="AI-резюме генерируется" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {summary.result_flow_blocks && summary.result_flow_blocks.length > 0 && (
-            <FlowDiagram blocks={summary.result_flow_blocks} />
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {summary.result_checklist && summary.result_checklist.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {summary.result_checklist.map((item, i) => (
@@ -43,6 +39,20 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
                   <span style={{ color: item.done ? '#cfd8e5' : '#7e94b8', fontSize: 13 }}>{item.label}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {summary.status_text && (
+            <div
+              style={{
+                marginTop: 4,
+                paddingTop: 8,
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                color: '#cfd8e5',
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              {summary.status_text}
             </div>
           )}
         </div>

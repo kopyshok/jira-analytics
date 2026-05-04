@@ -139,7 +139,6 @@ def list_quarterly_projects(
         year=year,
         quarter=quarter,
     )
-    total_hours_map = {item.key: item.total_hours for item in items}
 
     result = []
     for item in items:
@@ -162,13 +161,13 @@ def list_quarterly_projects(
 
 
 class WorkBreakdownGroupSchema(BaseModel):
+    bucket: str
     label: str
     child_keys: List[str]
 
 
 class ProjectSummarySchema(BaseModel):
     goals: List[str]
-    result_flow_blocks: List[dict]
     result_checklist: List[dict]
     status_text: str
     workload_summary: str
@@ -180,7 +179,6 @@ class ProjectSummarySchema(BaseModel):
 def _serialize_summary(row) -> ProjectSummarySchema:
     return ProjectSummarySchema(
         goals=json.loads(row.goals_json),
-        result_flow_blocks=json.loads(row.result_flow_json),
         result_checklist=json.loads(row.result_checklist_json),
         status_text=row.status_text,
         workload_summary=row.workload_summary,

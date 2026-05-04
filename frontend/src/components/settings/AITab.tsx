@@ -351,7 +351,7 @@ export const AITab: React.FC = () => {
           showIcon
           style={{ marginBottom: 12 }}
           message="Редактируется только роль / тон / стиль"
-          description="Описание JSON-формата (поля goals, result_flow_blocks и т.д.) — фиксированное и подмешивается автоматически. Менять формат через UI нельзя — иначе сломается парсинг ответа."
+          description="Описание JSON-формата (поля goals, result_checklist, work_breakdown и т.д.) — фиксированное и подмешивается автоматически. Менять формат через UI нельзя — иначе сломается парсинг ответа."
         />
 
         <Form.Item
