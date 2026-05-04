@@ -1,1 +1,1 @@
-export { default as SvarGanttChart } from './SvarGanttChart';
+export { default as OptimizeButton } from './OptimizeButton';

@@ -11,8 +11,9 @@ test('resource planning v2 page loads with beta tag', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Планирование' })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('β').first()).toBeVisible();
-  await expect(page.getByText('По задачам')).toBeVisible();
-  await expect(page.getByText('По сотрудникам')).toBeVisible();
+  await expect(page.getByText('Портфель')).toBeVisible();
+  await expect(page.getByText('Фазы')).toBeVisible();
+  await expect(page.getByText('Ресурсы').first()).toBeVisible();
 });
 
 test('sidebar shows both planning entries (legacy + beta)', async ({ page }) => {
