@@ -14,13 +14,55 @@ interface Props {
 }
 
 const ROW_HEIGHT = 36;
+const JIRA_BASE = 'https://itgri.atlassian.net';
+
+function ItemTitleCell({
+  title, jiraKey, leftColWidth, fontWeight = 600,
+}: { title: string; jiraKey: string | null; leftColWidth: number; fontWeight?: number }) {
+  return (
+    <div style={{
+      width: leftColWidth,
+      flexShrink: 0,
+      borderRight: '1px solid #1e3a5f',
+      padding: '6px 12px',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      gap: 2,
+      fontSize: 13,
+      fontWeight,
+      color: '#fff',
+      overflow: 'hidden',
+    }}>
+      {jiraKey && (
+        <a
+          href={`${JIRA_BASE}/browse/${jiraKey}`}
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontSize: 10, color: '#7a9ab8', textDecoration: 'none', letterSpacing: 0.3 }}
+        >
+          {jiraKey}
+        </a>
+      )}
+      <div style={{
+        fontSize: 13, lineHeight: 1.3, whiteSpace: 'normal', wordBreak: 'break-word',
+      }}>
+        {title}
+      </div>
+    </div>
+  );
+}
 
 function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
   const byItem = useMemo(() => {
-    const map = new Map<string, { title: string; assignments: AssignmentOut[] }>();
+    const map = new Map<string, { title: string; key: string | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
       if (!map.has(a.backlog_item_id)) {
-        map.set(a.backlog_item_id, { title: a.backlog_item_title, assignments: [] });
+        map.set(a.backlog_item_id, {
+          title: a.backlog_item_title,
+          key: a.backlog_item_key,
+          assignments: [],
+        });
       }
       map.get(a.backlog_item_id)!.assignments.push(a);
     }
@@ -29,7 +71,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pr
 
   return (
     <>
-      {byItem.map(([itemId, { title, assignments: itemAssignments }], idx) => (
+      {byItem.map(([itemId, { title, key, assignments: itemAssignments }], idx) => (
         <div
           key={itemId}
           ref={el => {
@@ -38,27 +80,12 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pr
           }}
           style={{
             display: 'flex',
-            height: ROW_HEIGHT,
+            minHeight: ROW_HEIGHT,
             borderBottom: '1px solid #0e2540',
             background: idx % 2 === 0 ? 'rgba(0,201,200,0.03)' : 'transparent',
           }}
         >
-          <div style={{
-            width: leftColWidth,
-            flexShrink: 0,
-            borderRight: '1px solid #1e3a5f',
-            padding: '0 12px',
-            display: 'flex',
-            alignItems: 'center',
-            fontSize: 13,
-            fontWeight: 600,
-            color: '#fff',
-            overflow: 'hidden',
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-          }}>
-            {title}
-          </div>
+          <ItemTitleCell title={title} jiraKey={key} leftColWidth={leftColWidth} />
           <div style={{ flex: 1, position: 'relative' }}>
             {itemAssignments.filter(a => a.start_date && a.end_date).map(a => {
               const left = dateToLeft(a.start_date!, timeline);
@@ -102,10 +129,14 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pr
 
 function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
   const byItem = useMemo(() => {
-    const map = new Map<string, { title: string; assignments: AssignmentOut[] }>();
+    const map = new Map<string, { title: string; key: string | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
       if (!map.has(a.backlog_item_id)) {
-        map.set(a.backlog_item_id, { title: a.backlog_item_title, assignments: [] });
+        map.set(a.backlog_item_id, {
+          title: a.backlog_item_title,
+          key: a.backlog_item_key,
+          assignments: [],
+        });
       }
       map.get(a.backlog_item_id)!.assignments.push(a);
     }
@@ -114,7 +145,7 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
 
   return (
     <>
-      {byItem.map(([itemId, { title, assignments: ia }]) => {
+      {byItem.map(([itemId, { title, key, assignments: ia }]) => {
         const phases = ['analyst', 'dev', 'qa', 'opo'] as const;
         return (
           <div key={itemId}>
@@ -125,27 +156,12 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
               }}
               style={{
                 display: 'flex',
-                height: ROW_HEIGHT,
+                minHeight: ROW_HEIGHT,
                 borderBottom: '1px solid #1e3a5f',
                 background: 'rgba(0,201,200,0.05)',
               }}
             >
-              <div style={{
-                width: leftColWidth,
-                flexShrink: 0,
-                borderRight: '1px solid #1e3a5f',
-                padding: '0 12px',
-                display: 'flex',
-                alignItems: 'center',
-                fontSize: 13,
-                fontWeight: 700,
-                color: '#fff',
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
-              }}>
-                {title}
-              </div>
+              <ItemTitleCell title={title} jiraKey={key} leftColWidth={leftColWidth} fontWeight={700} />
               <div style={{ flex: 1, position: 'relative' }}>
                 {(() => {
                   const starts = ia.filter(a => a.start_date).map(a => a.start_date!).sort();
