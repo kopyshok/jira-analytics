@@ -55,16 +55,19 @@ export interface PlanDiff {
 export interface AssignmentOut {
   id: string;
   backlog_item_id: string;
+  backlog_item_key: string | null;
   backlog_item_title: string;
   phase: 'analyst' | 'dev' | 'qa' | 'opo';
   employee_id: string | null;
   employee_name: string | null;
+  employee_role: string | null;
   part_number: number;
   hours_allocated: number | null;
   start_date: string | null;
   end_date: string | null;
   is_on_critical_path: boolean;
   slack_days: number | null;
+  is_pinned: boolean;
 }
 
 export interface ConflictOut {
