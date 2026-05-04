@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 import httpx
+from pydantic import ValidationError
 
 from app.services.llm.gemini import GEMINI_RESPONSE_SCHEMA
 from app.services.llm.types import ProjectSummary
@@ -119,7 +120,13 @@ class OpenRouterProvider:
             "output_tokens": usage.get("completion_tokens"),
             "model": model,
         }
-        return ProjectSummary.model_validate(data), meta
+        try:
+            summary = ProjectSummary.model_validate(data)
+        except ValidationError as e:
+            raise LLMResponseError(
+                f"Модель {model} вернула JSON не по схеме: {e}"
+            ) from e
+        return summary, meta
 
     async def healthcheck(self) -> bool:
         """Проверяет валидность ключа через `/auth/key` — не тратит квоту модели.

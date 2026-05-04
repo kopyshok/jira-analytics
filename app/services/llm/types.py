@@ -15,7 +15,7 @@ class ChecklistItem(BaseModel):
 
 class WorkBreakdownGroup(BaseModel):
     """Группа дочерних задач по смыслу (AI-кластеризация)."""
-    label: str = Field(max_length=40)
+    label: str = Field(max_length=80)
     child_keys: list[str] = Field(min_length=1, max_length=30)
 
 
