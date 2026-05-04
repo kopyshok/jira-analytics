@@ -201,12 +201,15 @@ async def get_summary(key: str, db: Session = Depends(get_db)):
 async def regenerate_summary(key: str, db: Session = Depends(get_db)):
     """Синхронная регенерация AI-саммари через LLM. Публикует SSE-событие после успеха."""
     import httpx
+    from app.services.llm.openrouter import LLMResponseError
     try:
         row = await ProjectSummaryService(db).regenerate(key)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except LLMResponseError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except ConfigurationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
         if status == 429:
