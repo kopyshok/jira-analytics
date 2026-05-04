@@ -40,6 +40,7 @@ export default function SideMenu() {
         { key: '/backlog', icon: <UnorderedListOutlined />, label: 'Целевые задачи' },
         { key: '/planning', icon: <FundProjectionScreenOutlined />, label: 'Сценарии' },
         { key: '/resource-planning', icon: <ProjectOutlined />, label: 'Ресурс. планир.' },
+        { key: '/resource-planning-v2', icon: <ProjectOutlined />, label: <>Планирование <span style={{ marginLeft: 4, padding: '0 6px', background: '#722ed1', borderRadius: 4, fontSize: 10, color: '#fff' }}>β</span></> },
       ],
     },
     {
