@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # Auth
     jwt_secret_key: Optional[str] = None
     jwt_expire_hours: int = 8
+    auth_cookie_name: str = "access_token"
+    # Прод-режим должен слать cookie только по HTTPS. Dev (debug=True) → False.
+    auth_cookie_secure: Optional[bool] = None
+    auth_cookie_samesite: str = "lax"
 
     # Admin seed (used by scripts/create_admin.py)
     admin_email: Optional[str] = None
@@ -92,6 +96,8 @@ class Settings(BaseSettings):
                 )
         elif not self.jwt_secret_key:
             self.jwt_secret_key = placeholder
+        if self.auth_cookie_secure is None:
+            self.auth_cookie_secure = not self.debug
         return self
 
     class Config:

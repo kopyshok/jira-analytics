@@ -21,10 +21,9 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const { access_token } = await apiLogin(values.email, values.password);
-      localStorage.setItem('auth_token', access_token);
+      await apiLogin(values.email, values.password);
       const profile = await getMe();
-      login(access_token, profile);
+      login(profile);
       const redirect =
         profile.role === 'manager' && profile.default_team
           ? `/?teams=${encodeURIComponent(profile.default_team)}`

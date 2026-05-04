@@ -20,8 +20,8 @@ export default function AppLayout() {
   const navigate = useNavigate();
   useEventStream();
 
-  const handleLogout = useCallback(() => {
-    logout();
+  const handleLogout = useCallback(async () => {
+    await logout();
     navigate('/login', { replace: true });
   }, [logout, navigate]);
 

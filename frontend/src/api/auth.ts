@@ -19,6 +19,10 @@ export function login(email: string, password: string): Promise<TokenResponse> {
   return api.post<TokenResponse>('/auth/login', { email, password });
 }
 
+export function logout(): Promise<void> {
+  return api.post<void>('/auth/logout');
+}
+
 export function getMe(): Promise<UserProfile> {
   return api.get<UserProfile>('/auth/me');
 }

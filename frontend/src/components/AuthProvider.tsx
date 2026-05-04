@@ -1,19 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { getMe, updateMyTeams, type UserProfile } from '../api/auth';
+import { getMe, logout as apiLogout, updateMyTeams, type UserProfile } from '../api/auth';
+import { AUTH_EXPIRED_EVENT } from '../api/client';
 import { AuthContext, type AuthState } from '../hooks/useAuth';
-
-const TOKEN_KEY = 'auth_token';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState(true);
 
+  // На монтировании пробуем поднять профиль по cookie. 401 = не залогинен.
   useEffect(() => {
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
     let cancelled = false;
     getMe()
       .then(async (me) => {
@@ -30,33 +25,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {
-        if (cancelled) return;
-        localStorage.removeItem(TOKEN_KEY);
-        setToken(null);
+        if (!cancelled) setUser(null);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [token]);
+  }, []);
 
-  const login = useCallback((newToken: string, profile: UserProfile) => {
-    localStorage.setItem(TOKEN_KEY, newToken);
-    setToken(newToken);
+  // 401 от любого endpoint → клиент эмитит auth:expired → сбрасываем профиль.
+  useEffect(() => {
+    const handler = () => setUser(null);
+    window.addEventListener(AUTH_EXPIRED_EVENT, handler);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
+  }, []);
+
+  const login = useCallback((profile: UserProfile) => {
     setUser(profile);
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    setToken(null);
+  const logout = useCallback(async () => {
+    try {
+      await apiLogout();
+    } catch {
+      /* even if request fails, drop client state */
+    }
     setUser(null);
   }, []);
 
   const updateUser = useCallback((next: UserProfile) => setUser(next), []);
 
   const value = useMemo<AuthState>(
-    () => ({ user, token, isLoading, login, logout, updateUser }),
-    [user, token, isLoading, login, logout, updateUser],
+    () => ({ user, isLoading, login, logout, updateUser }),
+    [user, isLoading, login, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
