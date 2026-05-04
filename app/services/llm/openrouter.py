@@ -3,6 +3,11 @@
 Endpoint: https://openrouter.ai/api/v1/chat/completions
 Free models: суффикс ":free" в id (deepseek-chat, llama, qwen, gemma и др.).
 Free tier: ~20 RPM / 50 RPD на ключ (общая квота для всех :free моделей).
+
+Fallback chain: при 429/5xx или некорректном ответе primary-модели
+прозрачно пробует следующую из `fallback_models`. Возвращает результат
+первой успешной модели и пишет её id в `meta['model']`. Если все упали —
+бросает последнюю ошибку.
 """
 import json
 import logging
@@ -26,18 +31,53 @@ _BASE_URL = "https://openrouter.ai/api/v1"
 _REFERER = "http://localhost"
 _TITLE = "JiraAnalysis"
 
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+
 
 class OpenRouterProvider:
     name = "openrouter"
 
-    def __init__(self, api_key: str, model: str = _DEFAULT_MODEL) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = _DEFAULT_MODEL,
+        fallback_models: list[str] | None = None,
+    ) -> None:
         self.api_key = api_key
         self.model = model
+        self.fallback_models = fallback_models or []
         self.last_error: str | None = None
 
     async def summarize_project(self, prompt: str, *, expect_json: bool = True) -> tuple[ProjectSummary, dict]:
+        chain = [self.model] + [m for m in self.fallback_models if m and m != self.model]
+        last_exc: Exception | None = None
+        for attempt_model in chain:
+            try:
+                return await self._call_model(attempt_model, prompt, expect_json=expect_json)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in _RETRY_STATUSES:
+                    logger.warning(
+                        "OpenRouter %s → HTTP %s, fallback к следующей модели",
+                        attempt_model, e.response.status_code,
+                    )
+                    last_exc = e
+                    continue
+                raise
+            except LLMResponseError as e:
+                logger.warning("OpenRouter %s → %s, fallback к следующей модели", attempt_model, e)
+                last_exc = e
+                continue
+            except httpx.TimeoutException as e:
+                logger.warning("OpenRouter %s → timeout, fallback к следующей модели", attempt_model)
+                last_exc = e
+                continue
+        if last_exc is not None:
+            raise last_exc
+        raise LLMResponseError("Не удалось вызвать ни одну модель OpenRouter (пустая цепочка)")
+
+    async def _call_model(self, model: str, prompt: str, *, expect_json: bool) -> tuple[ProjectSummary, dict]:
         body: dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
         }
@@ -57,20 +97,19 @@ class OpenRouterProvider:
         except (KeyError, IndexError, TypeError) as e:
             raise LLMResponseError(
                 f"OpenRouter вернул неожиданную структуру ответа ({type(e).__name__}). "
-                f"Модель {self.model} могла вернуть пустой ответ или ошибку без HTTP-кода. "
+                f"Модель {model} могла вернуть пустой ответ или ошибку без HTTP-кода. "
                 f"Тело: {str(resp)[:500]}"
             ) from e
         if not text.strip():
             raise LLMResponseError(
-                f"Модель {self.model} вернула пустой ответ. "
-                f"Возможно она не поддерживает response_format=json_schema. "
-                f"Попробуйте другую модель в Настройках → AI."
+                f"Модель {model} вернула пустой ответ. "
+                f"Возможно она не поддерживает response_format=json_schema."
             )
         try:
             data = json.loads(text)
         except json.JSONDecodeError as e:
             raise LLMResponseError(
-                f"Модель {self.model} вернула не-JSON. Возможно она игнорирует response_format. "
+                f"Модель {model} вернула не-JSON. Возможно она игнорирует response_format. "
                 f"Первые 300 символов: {text[:300]}"
             ) from e
 
@@ -78,7 +117,7 @@ class OpenRouterProvider:
         meta = {
             "input_tokens": usage.get("prompt_tokens"),
             "output_tokens": usage.get("completion_tokens"),
-            "model": self.model,
+            "model": model,
         }
         return ProjectSummary.model_validate(data), meta
 

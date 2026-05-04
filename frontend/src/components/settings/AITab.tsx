@@ -41,8 +41,15 @@ type FormValues = {
   gemini_model: string;
   openrouter_key: string;
   openrouter_model: string;
+  openrouter_fallback_models: string[];
   prompt_role: string;
 };
+
+const DEFAULT_OPENROUTER_FALLBACKS = [
+  'nousresearch/hermes-3-llama-3.1-405b:free',
+  'openai/gpt-oss-120b:free',
+  'google/gemma-3-27b-it:free',
+];
 
 export const AITab: React.FC = () => {
   const { message, modal } = App.useApp();
@@ -65,6 +72,11 @@ export const AITab: React.FC = () => {
       const geminiModel = await loadSetting('llm_gemini_model', RECOMMENDED_GEMINI);
       const openRouterKey = await loadSetting('llm_openrouter_api_key', '');
       const openRouterModel = await loadSetting('llm_openrouter_model', RECOMMENDED_OPENROUTER);
+      const fallbackCsv = await loadSetting(
+        'llm_openrouter_fallback_models',
+        DEFAULT_OPENROUTER_FALLBACKS.join(','),
+      );
+      const fallbackList = fallbackCsv.split(',').map((s) => s.trim()).filter(Boolean);
       const def = await llmApi.getPromptDefault().catch(() => null);
       setPromptDefault(def);
       const promptRole = (await loadSetting(PROMPT_KEY, '')) || (def?.system_role ?? '');
@@ -75,6 +87,7 @@ export const AITab: React.FC = () => {
         gemini_model: geminiModel,
         openrouter_key: openRouterKey,
         openrouter_model: openRouterModel,
+        openrouter_fallback_models: fallbackList,
         prompt_role: promptRole,
       });
       if (geminiKey) await refreshGeminiModels(true);
@@ -120,6 +133,10 @@ export const AITab: React.FC = () => {
       }
 
       await api.put('/settings/generic', { key: 'llm_openrouter_model', value: values.openrouter_model });
+      await api.put('/settings/generic', {
+        key: 'llm_openrouter_fallback_models',
+        value: (values.openrouter_fallback_models || []).join(','),
+      });
       if (values.openrouter_key) {
         await api.put('/settings/generic', { key: 'llm_openrouter_api_key', value: values.openrouter_key });
       }
@@ -296,6 +313,26 @@ export const AITab: React.FC = () => {
             }
           >
             <Select options={openRouterOptions} optionLabelProp="label" popupMatchSelectWidth={false} />
+          </Form.Item>
+
+          <Form.Item
+            label="Запасные модели (fallback)"
+            name="openrouter_fallback_models"
+            extra={
+              <Typography.Text type="secondary">
+                При 429/5xx или некорректном ответе основной модели — пробуем по порядку
+                эту цепочку. Используйте модели РАЗНЫХ провайдеров для устойчивости.
+                Дефолт: Hermes 405B → GPT-OSS 120B → Gemma 3 27B.
+              </Typography.Text>
+            }
+          >
+            <Select
+              mode="multiple"
+              options={openRouterOptions}
+              optionLabelProp="label"
+              popupMatchSelectWidth={false}
+              placeholder="Выберите модели для авто-перебора при ошибке"
+            />
           </Form.Item>
 
           <Form.Item
