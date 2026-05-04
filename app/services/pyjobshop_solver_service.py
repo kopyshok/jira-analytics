@@ -19,7 +19,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import Optional, TypedDict
 
-from sqlalchemy import select
+from sqlalchemy import or_, and_, select
 from sqlalchemy.orm import Session
 
 from app.models.absence import Absence
@@ -28,6 +28,7 @@ from app.models.employee import Employee
 from app.models.production_calendar_day import ProductionCalendarDay
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
+from app.models.scheduled_block import ScheduledBlock
 
 
 # Маппинг phase → роли которые могут эту phase исполнять.
@@ -260,6 +261,31 @@ class PyJobShopSolverService:
         for absence in absences:
             d = absence.start_date
             while d <= absence.end_date:
+                absent_days.add(d)
+                d += timedelta(days=1)
+
+        # Дни заблокированных периодов (employee-scope и team-scope).
+        # TODO: role-scoped blocks не применяются — Employee.role это строковый код,
+        # не FK; join с Role требует дополнительной логики (отложено).
+        horizon_start = anchor
+        horizon_end = anchor + timedelta(days=horizon_days - 1)
+        blocks = list(self.db.scalars(
+            select(ScheduledBlock).where(
+                or_(
+                    ScheduledBlock.employee_id == emp.id,
+                    and_(
+                        ScheduledBlock.team == emp.team,
+                        ScheduledBlock.employee_id.is_(None),
+                        ScheduledBlock.role_id.is_(None),
+                    ),
+                ),
+                ScheduledBlock.end_date >= horizon_start,
+                ScheduledBlock.start_date <= horizon_end,
+            )
+        ))
+        for block in blocks:
+            d = block.start_date
+            while d <= block.end_date:
                 absent_days.add(d)
                 d += timedelta(days=1)
 
