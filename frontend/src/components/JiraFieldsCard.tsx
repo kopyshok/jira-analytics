@@ -29,6 +29,15 @@ const GROUPS: FieldGroup[] = [
     ],
   },
   {
+    panelKey: 'description_extra',
+    title: 'Описание задачи (для AI-саммари)',
+    subtitle: 'Кастомные поля с целями и текущим поведением — попадают в промпт LLM',
+    fields: [
+      { key: 'jira_goal_field_id', label: 'Цель задачи' },
+      { key: 'jira_current_behavior_field_id', label: 'Текущее поведение' },
+    ],
+  },
+  {
     panelKey: 'planned_hours',
     title: 'Плановые трудозатраты (часы)',
     fields: [
@@ -152,7 +161,7 @@ export default function JiraFieldsCard() {
     >
       <Form layout="vertical">
         <Collapse
-          defaultActiveKey={['core', 'planned_hours', 'prioritization', 'customer_rating']}
+          defaultActiveKey={['core', 'description_extra', 'planned_hours', 'prioritization', 'customer_rating']}
           items={GROUPS.map(g => ({
             key: g.panelKey,
             label: g.title,
