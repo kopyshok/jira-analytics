@@ -502,7 +502,8 @@ class ResourcePlanningService:
     ) -> Dict[str, Dict[str, Optional[str]]]:
         """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
-        - analyst: исполнитель инициативы (если его роль ∈ ANALYST_ROLES). Иначе None.
+        - analyst: исполнитель инициативы (`assignee_employee_id`), независимо от его роли.
+                   Если у задачи нет исполнителя — None.
         - dev:     greedy по минимальной нагрузке в пуле DEV_ROLES (fallback — все).
         - qa:      всегда None (часы-only, дату назначаем без сотрудника).
         - opo:     placeholder analyst_id или dev_id; реально создаётся как 2 строки
@@ -522,15 +523,13 @@ class ResourcePlanningService:
         result: Dict[str, Dict[str, Optional[str]]] = {p: {} for p in PHASE_ORDER}
 
         for item in items:
-            # ── analyst ────────────────────────────────────────────────
+            # ── analyst — исполнитель из сценария ─────────────────────
             analyst_id: Optional[str] = None
             pin_an = pinned.get((item.id, "analyst", 1))
             if pin_an:
                 analyst_id = pin_an
-            elif item.assignee_employee_id:
-                emp = by_id.get(item.assignee_employee_id)
-                if emp and (emp.role or "").lower() in ANALYST_ROLES:
-                    analyst_id = emp.id
+            elif item.assignee_employee_id and item.assignee_employee_id in by_id:
+                analyst_id = item.assignee_employee_id
             if analyst_id:
                 load[analyst_id] += item.estimate_analyst_hours or 0.0
             result["analyst"][item.id] = analyst_id

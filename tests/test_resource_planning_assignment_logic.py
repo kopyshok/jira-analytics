@@ -86,8 +86,8 @@ def test_analyst_role_consultant_accepted(db_session):
     assert result["analyst"][item.id] == consultant.id
 
 
-def test_analyst_none_if_assignee_role_not_acceptable(db_session):
-    """Если роль исполнителя — dev, аналитик не назначается."""
+def test_analyst_assigned_regardless_of_role(db_session):
+    """Аналитиком становится исполнитель сценария независимо от его роли."""
     dev = _make_emp(db_session, "Разраб", "developer")
     item = _make_item(
         db_session,
@@ -96,7 +96,7 @@ def test_analyst_none_if_assignee_role_not_acceptable(db_session):
     )
     svc = ResourcePlanningService(db_session)
     result = svc._assign_employees([item], [dev])
-    assert result["analyst"].get(item.id) is None
+    assert result["analyst"][item.id] == dev.id
 
 
 def test_analyst_none_if_no_assignee(db_session):
