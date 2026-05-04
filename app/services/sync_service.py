@@ -536,6 +536,8 @@ class SyncService:
         team: Any = _UNSET,
         participating_teams: Any = _UNSET,
         goals: Any = _UNSET,
+        goal_text: Any = _UNSET,
+        current_behavior: Any = _UNSET,
         planned_field_ids: Optional[dict[str, Optional[str]]] = None,
     ) -> Tuple[Issue, bool]:
         """Upsert issue from Jira.
@@ -576,6 +578,10 @@ class SyncService:
             )
         if goals is not _UNSET:
             data["goals"] = goals
+        if goal_text is not _UNSET:
+            data["goal_text"] = goal_text
+        if current_behavior is not _UNSET:
+            data["current_behavior"] = current_behavior
 
         # Planned effort / impact / risk — extract from _extra if the matching
         # AppSetting field id is configured. Empty or unset ids → no-op (NULL).
