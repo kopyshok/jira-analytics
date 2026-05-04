@@ -3,10 +3,9 @@ import type { UserProfile } from '../api/auth';
 
 export interface AuthState {
   user: UserProfile | null;
-  token: string | null;
   isLoading: boolean;
-  login: (token: string, user: UserProfile) => void;
-  logout: () => void;
+  login: (user: UserProfile) => void;
+  logout: () => Promise<void>;
   updateUser: (u: UserProfile) => void;
 }
 

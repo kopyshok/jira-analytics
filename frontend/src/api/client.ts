@@ -3,6 +3,9 @@ import { pushError } from '../utils/errorStore';
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 export const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
 
+/** Эмитится при HTTP 401 от любого API-вызова. AuthProvider слушает и чистит сессию. */
+export const AUTH_EXPIRED_EVENT = 'auth:expired';
+
 export const boolParam = (v?: boolean): string | undefined =>
   v === undefined ? undefined : v ? 'true' : 'false';
 
@@ -35,11 +38,6 @@ function isSuppressed404(method: string, status: number | null, url: string): bo
   return false;
 }
 
-function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('auth_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 async function request<T>(
   method: string,
   path: string,
@@ -59,11 +57,11 @@ async function request<T>(
     res = await fetch(url.toString(), {
       method,
       headers: {
-        ...getAuthHeader(),
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
       signal,
+      credentials: 'include',
     });
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
@@ -78,7 +76,11 @@ async function request<T>(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     const detail = err.detail || res.statusText;
-    if (!isSuppressed404(method, res.status, url.toString())) {
+    // 401 = истёк/невалидный cookie. Сообщаем AuthProvider — он сбросит user
+    // и ProtectedRoute перенаправит на /login. В errorStore не льём.
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+    } else if (!isSuppressed404(method, res.status, url.toString())) {
       pushError({
         ts: new Date().toISOString(), method, url: url.toString(),
         status: res.status, detail,
@@ -114,7 +116,7 @@ export const api = {
         if (v !== undefined && v !== '') url.searchParams.set(k, v);
       });
     }
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { credentials: 'include' });
     if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
     const blob = await res.blob();
     const filename = path.split('/').pop() || 'download';

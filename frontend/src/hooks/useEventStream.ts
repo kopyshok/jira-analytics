@@ -1,23 +1,29 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { EVENTS_STREAM_URL, type GlobalEvent } from '../api/events';
+import { useAuth } from './useAuth';
 
 /**
  * Подключается к SSE-потоку /events/stream и инвалидирует кэши TanStack Query
- * по entity_changed событиям. Подключается один раз при монтировании AppLayout.
+ * по entity_changed событиям. Подключается один раз при монтировании AppLayout
+ * и только если пользователь залогинен (иначе будет 401-спам).
  * При потере соединения переподключается через 5 секунд.
+ *
+ * Аутентификация через httpOnly cookie + EventSource(..., { withCredentials: true }).
  */
 export function useEventStream() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const esRef = useRef<EventSource | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     let destroyed = false;
 
     function connect() {
       if (destroyed) return;
-      const es = new EventSource(EVENTS_STREAM_URL);
+      const es = new EventSource(EVENTS_STREAM_URL, { withCredentials: true });
       esRef.current = es;
 
       es.onmessage = (e) => {
@@ -47,7 +53,7 @@ export function useEventStream() {
       esRef.current?.close();
       esRef.current = null;
     };
-  }, [qc]);
+  }, [qc, user]);
 }
 
 function handleEvent(event: GlobalEvent, qc: ReturnType<typeof useQueryClient>) {
