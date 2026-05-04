@@ -57,6 +57,40 @@ def _extract_team_values(extra: dict, field_id: Optional[str]) -> List[str]:
     return []
 
 
+def _extract_text_field(extra: dict, field_id: str) -> Optional[str]:
+    """Достать text/ADF-значение кастомного поля из `_extra`.
+
+    Поддерживает форматы:
+    - plain string: "текст"
+    - ADF doc: {type: "doc", content: [{type: "paragraph", content: [{type: "text", text: "..."}]}]}
+    """
+    if not field_id:
+        return None
+    value = extra.get(field_id)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, dict) and value.get("type") == "doc":
+        return _adf_to_text(value).strip() or None
+    return None
+
+
+def _adf_to_text(node: dict) -> str:
+    """Рекурсивный обход ADF дерева — конкатенация text-нод с переводами строк после параграфов."""
+    if not isinstance(node, dict):
+        return ""
+    parts: list[str] = []
+    if node.get("type") == "text":
+        parts.append(node.get("text", ""))
+    for child in node.get("content", []) or []:
+        parts.append(_adf_to_text(child))
+    text = "".join(parts)
+    if node.get("type") in {"paragraph", "heading", "listItem", "bulletList", "orderedList"}:
+        text += "\n"
+    return text
+
+
 def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
     """Parse Jira timestamp (ISO 8601 with timezone, e.g. ``2026-04-17T10:48:33.357+0000``).
 
@@ -656,8 +690,13 @@ class SyncService:
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
+        goal_field_id = self._get_setting("jira_goal_field_id")
+        behavior_field_id = self._get_setting("jira_current_behavior_field_id")
         extra_fields = [
-            fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
+            fid for fid in (
+                product_field_id, participating_field_id, goals_field_id,
+                goal_field_id, behavior_field_id,
+            ) if fid
         ]
         # Also request planned-effort / impact / risk custom fields when configured.
         for fid in self._configured_planned_field_ids():
@@ -753,6 +792,10 @@ class SyncService:
                     if goals_field_id:
                         goals_list = _extract_team_values(extra, goals_field_id)
                         extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
+                    if goal_field_id:
+                        extra_kwargs["goal_text"] = _extract_text_field(extra, goal_field_id)
+                    if behavior_field_id:
+                        extra_kwargs["current_behavior"] = _extract_text_field(extra, behavior_field_id)
 
                 issue, created = self._upsert_issue(
                     jira_issue, project.id, parent_id,
@@ -821,8 +864,13 @@ class SyncService:
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
+        goal_field_id = self._get_setting("jira_goal_field_id")
+        behavior_field_id = self._get_setting("jira_current_behavior_field_id")
         extra_fields = [
-            fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
+            fid for fid in (
+                product_field_id, participating_field_id, goals_field_id,
+                goal_field_id, behavior_field_id,
+            ) if fid
         ]
         for fid in self._configured_planned_field_ids():
             if fid not in extra_fields:
@@ -883,6 +931,10 @@ class SyncService:
                     if goals_field_id:
                         goals_list = _extract_team_values(extra, goals_field_id)
                         extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
+                    if goal_field_id:
+                        extra_kwargs["goal_text"] = _extract_text_field(extra, goal_field_id)
+                    if behavior_field_id:
+                        extra_kwargs["current_behavior"] = _extract_text_field(extra, behavior_field_id)
 
                 self._upsert_issue(
                     jira_issue, project.id, parent_id,
@@ -915,8 +967,13 @@ class SyncService:
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
+        goal_field_id = self._get_setting("jira_goal_field_id")
+        behavior_field_id = self._get_setting("jira_current_behavior_field_id")
         extra_fields = [
-            fid for fid in (product_field_id, participating_field_id, goals_field_id) if fid
+            fid for fid in (
+                product_field_id, participating_field_id, goals_field_id,
+                goal_field_id, behavior_field_id,
+            ) if fid
         ]
         for fid in self._configured_planned_field_ids():
             if fid not in extra_fields:
@@ -1000,6 +1057,10 @@ class SyncService:
                     if goals_field_id:
                         goals_list = _extract_team_values(extra, goals_field_id)
                         extra_kwargs["goals"] = ", ".join(goals_list) if goals_list else ""
+                    if goal_field_id:
+                        extra_kwargs["goal_text"] = _extract_text_field(extra, goal_field_id)
+                    if behavior_field_id:
+                        extra_kwargs["current_behavior"] = _extract_text_field(extra, behavior_field_id)
 
                     _, was_created = self._upsert_issue(
                         jira_issue, project.id, parent_id,
