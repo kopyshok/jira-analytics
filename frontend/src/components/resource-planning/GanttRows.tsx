@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import type { AssignmentOut } from '../../api/resourcePlanning';
+import type { EmployeeResponse } from '../../types/api';
 import type { GanttTimeline } from '../../utils/gantt';
 import { dateToLeft, datesToWidth, PHASE_COLORS, PHASE_LABELS, getItemColor } from '../../utils/gantt';
+import EmployeeAvatar from './EmployeeAvatar';
+import AssignEmployeePopover from './AssignEmployeePopover';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track';
 
@@ -11,7 +14,11 @@ interface Props {
   viewMode: ViewMode;
   leftColWidth: number;
   rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
+  planId: string;
+  employees: EmployeeResponse[];
 }
+
+type SubProps = Omit<Props, 'viewMode'>;
 
 const ROW_HEIGHT = 36;
 const JIRA_BASE = 'https://itgri.atlassian.net';
@@ -53,7 +60,7 @@ function ItemTitleCell({
   );
 }
 
-function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
+function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, employees }: SubProps) {
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; key: string | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
@@ -91,9 +98,8 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pr
               const left = dateToLeft(a.start_date!, timeline);
               const width = datesToWidth(a.start_date!, a.end_date!, timeline);
               const color = PHASE_COLORS[a.phase] ?? '#888';
-              return (
+              const bar = (
                 <div
-                  key={a.id}
                   title={`${PHASE_LABELS[a.phase]} — ${a.employee_name ?? '—'} (${a.hours_allocated?.toFixed(0)}ч)`}
                   style={{
                     position: 'absolute',
@@ -114,10 +120,29 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pr
                     fontWeight: 700,
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
+                    cursor: a.phase === 'qa' ? 'default' : 'pointer',
+                    outline: a.is_pinned ? '1px solid #00c9c8' : 'none',
+                    gap: 4,
                   }}
                 >
-                  {PHASE_LABELS[a.phase]}
+                  {a.phase !== 'qa' && a.employee_name && (
+                    <EmployeeAvatar name={a.employee_name} role={a.employee_role} size={16} />
+                  )}
+                  <span style={{ fontSize: 9 }}>{PHASE_LABELS[a.phase]}</span>
                 </div>
+              );
+              return (
+                <AssignEmployeePopover
+                  key={a.id}
+                  assignmentId={a.id}
+                  planId={planId}
+                  phase={a.phase}
+                  currentEmployeeId={a.employee_id}
+                  employees={employees}
+                  isPinned={a.is_pinned}
+                >
+                  {bar}
+                </AssignEmployeePopover>
               );
             })}
           </div>
@@ -127,7 +152,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pr
   );
 }
 
-function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
+function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs, planId, employees }: SubProps) {
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; key: string | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
@@ -190,7 +215,8 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
               const phaseAssignments = ia.filter(a => a.phase === phase);
               if (phaseAssignments.length === 0) return null;
               const color = PHASE_COLORS[phase];
-              const empName = phaseAssignments[0].employee_name ?? '—';
+              const empName = phaseAssignments[0].employee_name;
+              const empRole = phaseAssignments[0].employee_role;
               return (
                 <div
                   key={phase}
@@ -213,8 +239,12 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
                   }}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
                     {PHASE_LABELS[phase]}
-                    <span style={{ fontSize: 10, color: '#4a6a90', marginLeft: 'auto', paddingRight: 4 }}>
-                      {empName}
+                    <span style={{ marginLeft: 'auto', paddingRight: 4 }}>
+                      {phase === 'qa' ? (
+                        <span style={{ fontSize: 10, color: '#4a6a90' }}>—</span>
+                      ) : (
+                        <EmployeeAvatar name={empName} role={empRole} size={18} />
+                      )}
                     </span>
                   </div>
                   <div style={{ flex: 1, position: 'relative' }}>
@@ -222,9 +252,8 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
                       const left = dateToLeft(a.start_date!, timeline);
                       const width = datesToWidth(a.start_date!, a.end_date!, timeline);
                       const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
-                      return (
+                      const bar = (
                         <div
-                          key={a.id}
                           ref={el => {
                             if (el) rowRefs.current.set(refKey, el);
                             else rowRefs.current.delete(refKey);
@@ -242,9 +271,24 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
                             borderRadius: 3,
                             border: a.is_on_critical_path ? '1px solid #e85d4a' : 'none',
                             boxShadow: a.is_on_critical_path ? '0 0 6px rgba(232,93,74,0.5)' : 'none',
+                            outline: a.is_pinned ? '1px solid #00c9c8' : 'none',
                             zIndex: 2,
+                            cursor: a.phase === 'qa' ? 'default' : 'pointer',
                           }}
                         />
+                      );
+                      return (
+                        <AssignEmployeePopover
+                          key={a.id}
+                          assignmentId={a.id}
+                          planId={planId}
+                          phase={a.phase}
+                          currentEmployeeId={a.employee_id}
+                          employees={employees}
+                          isPinned={a.is_pinned}
+                        >
+                          {bar}
+                        </AssignEmployeePopover>
                       );
                     })}
                   </div>
@@ -258,7 +302,7 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Pro
   );
 }
 
-function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs }: Omit<Props, 'viewMode'>) {
+function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs, planId, employees }: SubProps) {
   const itemOrder = useMemo(
     () => [...new Set(assignments.map(a => a.backlog_item_id))],
     [assignments],
@@ -301,8 +345,10 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs }: Omi
             overflow: 'hidden',
             whiteSpace: 'nowrap',
             textOverflow: 'ellipsis',
+            gap: 8,
           }}>
-            {name}
+            <EmployeeAvatar name={empAssignments[0]?.employee_name ?? null} role={empAssignments[0]?.employee_role} size={20} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
           </div>
           <div style={{ flex: 1, position: 'relative' }}>
             {empAssignments.filter(a => a.start_date && a.end_date).map(a => {
@@ -311,9 +357,8 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs }: Omi
               const left = dateToLeft(a.start_date!, timeline);
               const width = datesToWidth(a.start_date!, a.end_date!, timeline);
               const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
-              return (
+              const bar = (
                 <div
-                  key={a.id}
                   ref={el => {
                     if (el) rowRefs.current.set(refKey, el);
                     else rowRefs.current.delete(refKey);
@@ -338,10 +383,25 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs }: Omi
                     fontWeight: 700,
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
+                    cursor: a.phase === 'qa' ? 'default' : 'pointer',
+                    outline: a.is_pinned ? '1px solid #00c9c8' : 'none',
                   }}
                 >
                   {a.backlog_item_title}
                 </div>
+              );
+              return (
+                <AssignEmployeePopover
+                  key={a.id}
+                  assignmentId={a.id}
+                  planId={planId}
+                  phase={a.phase}
+                  currentEmployeeId={a.employee_id}
+                  employees={employees}
+                  isPinned={a.is_pinned}
+                >
+                  {bar}
+                </AssignEmployeePopover>
               );
             })}
           </div>

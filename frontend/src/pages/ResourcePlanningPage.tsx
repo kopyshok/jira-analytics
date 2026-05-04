@@ -17,6 +17,7 @@ import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
   useScheduledBlocks, useCreateResourcePlan, useForkPlan,
 } from '../hooks/useResourcePlanning';
+import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 
 export default function ResourcePlanningPage() {
@@ -38,6 +39,8 @@ export default function ResourcePlanningPage() {
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
   const { data: gantt, isLoading: ganttLoading } = useGanttProjection(planId);
   const { data: blocks = [] } = useScheduledBlocks(team || undefined);
+  const { data: allEmployees = [] } = useEmployees({ isActive: true });
+  const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
 
@@ -165,7 +168,7 @@ export default function ResourcePlanningPage() {
       {!planId && !ganttLoading && (
         <Empty description="Выберите план или создайте его из утверждённого сценария" />
       )}
-      {gantt && !ganttLoading && (
+      {gantt && !ganttLoading && planId && (
         <GanttChart
           assignments={gantt.assignments}
           blocks={blocks}
@@ -173,6 +176,8 @@ export default function ResourcePlanningPage() {
           year={gantt.plan.year ?? new Date().getFullYear()}
           viewMode={viewMode}
           showRelayArrows={showRelayArrows}
+          planId={planId}
+          employees={employees}
         />
       )}
 
