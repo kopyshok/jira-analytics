@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Select, Space, App, Typography, Tag, Divider, Alert } from 'antd';
+import { EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
+import type { InputProps } from 'antd';
 import {
   llmApi,
   type GeminiModelInfo,
@@ -265,7 +267,7 @@ export const AITab: React.FC = () => {
             name="gemini_key"
             extra="Получить ключ можно на makersuite.google.com"
           >
-            <Input placeholder="AIza..." autoComplete="off" name="gemini_api_key_field" />
+            <MaskedInput placeholder="AIza..." name="gemini_api_key_field" />
           </Form.Item>
         </div>
 
@@ -301,7 +303,7 @@ export const AITab: React.FC = () => {
             name="openrouter_key"
             extra="Получить ключ: openrouter.ai/keys"
           >
-            <Input placeholder="sk-or-v1-..." autoComplete="off" name="openrouter_api_key_field" />
+            <MaskedInput placeholder="sk-or-v1-..." name="openrouter_api_key_field" />
           </Form.Item>
         </div>
 
@@ -357,6 +359,36 @@ export const AITab: React.FC = () => {
         </Form.Item>
       </Form>
     </Card>
+  );
+};
+
+/**
+ * Текстовый Input с CSS-маскировкой (`-webkit-text-security: disc`) и
+ * глазиком-переключателем. Не использует `type="password"` — браузер не
+ * предлагает сохранить пароль.
+ */
+const MaskedInput: React.FC<InputProps> = (props) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <Input
+      {...props}
+      autoComplete="off"
+      style={{
+        ...(props.style || {}),
+        WebkitTextSecurity: visible ? 'none' : 'disc',
+        textSecurity: visible ? 'none' : 'disc',
+      } as React.CSSProperties}
+      suffix={
+        <Button
+          type="text"
+          size="small"
+          icon={visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+          onClick={() => setVisible((v) => !v)}
+          tabIndex={-1}
+          style={{ border: 'none', padding: 0 }}
+        />
+      }
+    />
   );
 };
 
