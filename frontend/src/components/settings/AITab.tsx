@@ -265,7 +265,7 @@ export const AITab: React.FC = () => {
             name="gemini_key"
             extra="Получить ключ можно на makersuite.google.com"
           >
-            <Input.Password placeholder="AIza..." autoComplete="off" />
+            <Input placeholder="AIza..." autoComplete="off" name="gemini_api_key_field" />
           </Form.Item>
         </div>
 
@@ -301,7 +301,7 @@ export const AITab: React.FC = () => {
             name="openrouter_key"
             extra="Получить ключ: openrouter.ai/keys"
           >
-            <Input.Password placeholder="sk-or-v1-..." autoComplete="off" />
+            <Input placeholder="sk-or-v1-..." autoComplete="off" name="openrouter_api_key_field" />
           </Form.Item>
         </div>
 
