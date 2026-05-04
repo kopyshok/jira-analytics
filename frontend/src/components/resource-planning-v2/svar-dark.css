@@ -1,0 +1,127 @@
+/* Dark theme overrides for wx-react-gantt */
+
+/* Container */
+.wx-willow-theme {
+  --wx-background: #0f2340;
+  --wx-color-primary: #00c9c8;
+  --wx-color-font: #e8eef9;
+  --wx-color-font-alt: #8ab0d8;
+  --wx-border-color: #1e3a5f;
+  --wx-gantt-scale-bg: #091527;
+  --wx-gantt-row-bg: #0f2340;
+  --wx-gantt-row-bg-even: #0d1c33;
+  --wx-gantt-task-bg: #00c9c8;
+  --wx-gantt-task-color: #091527;
+  --wx-gantt-summary-bg: #1e3a5f;
+  --wx-gantt-milestone-bg: #00c9c8;
+  --wx-table-header-bg: #091527;
+  color: #e8eef9;
+  background: #0f2340;
+}
+
+/* Grid/table header */
+.wx-willow-theme .wx-grid-header,
+.wx-willow-theme .wx-table-header,
+.wx-willow-theme [class*="header"],
+.wx-willow-theme .wx-scale {
+  background: #091527 !important;
+  color: #8ab0d8 !important;
+  border-color: #1e3a5f !important;
+}
+
+/* Rows */
+.wx-willow-theme .wx-row,
+.wx-willow-theme [class*="row"] {
+  background: #0f2340;
+  border-color: #1e3a5f !important;
+  color: #e8eef9 !important;
+}
+
+.wx-willow-theme .wx-row:nth-child(even),
+.wx-willow-theme [class*="row"]:nth-child(even) {
+  background: #0d1c33;
+}
+
+.wx-willow-theme .wx-row:hover,
+.wx-willow-theme [class*="row"]:hover {
+  background: #1e3a5f !important;
+}
+
+/* Task bars */
+.wx-willow-theme .wx-task,
+.wx-willow-theme [class*="task-bar"],
+.wx-willow-theme [class*="task_bar"] {
+  background: #00c9c8 !important;
+  color: #091527 !important;
+  border-radius: 3px;
+}
+
+/* Summary bars */
+.wx-willow-theme .wx-summary,
+.wx-willow-theme [class*="summary"] {
+  background: #1e3a5f !important;
+  color: #e8eef9 !important;
+}
+
+/* Critical path */
+.wx-willow-theme .wx-critical .wx-task,
+.wx-willow-theme [class*="critical"] [class*="task"] {
+  background: #ff4d4f !important;
+}
+
+/* Borders and lines */
+.wx-willow-theme,
+.wx-willow-theme * {
+  border-color: #1e3a5f;
+}
+
+.wx-willow-theme .wx-grid,
+.wx-willow-theme [class*="grid"] {
+  background: #0f2340;
+  border-color: #1e3a5f !important;
+}
+
+/* Scrollbars */
+.wx-willow-theme ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.wx-willow-theme ::-webkit-scrollbar-track {
+  background: #091527;
+}
+
+.wx-willow-theme ::-webkit-scrollbar-thumb {
+  background: #1e3a5f;
+  border-radius: 4px;
+}
+
+.wx-willow-theme ::-webkit-scrollbar-thumb:hover {
+  background: #00c9c8;
+}
+
+/* Today marker */
+.wx-willow-theme .wx-today,
+.wx-willow-theme [class*="today"] {
+  background: rgba(0, 201, 200, 0.15) !important;
+  border-color: #00c9c8 !important;
+}
+
+/* Links / arrows */
+.wx-willow-theme .wx-link,
+.wx-willow-theme [class*="link"] {
+  stroke: #8ab0d8;
+}
+
+/* Text inside bars */
+.wx-willow-theme .wx-task-label,
+.wx-willow-theme [class*="task-label"],
+.wx-willow-theme [class*="label"] {
+  color: #091527;
+}
+
+/* Resizer */
+.wx-willow-theme .wx-resizer,
+.wx-willow-theme [class*="resizer"] {
+  background: #1e3a5f;
+}
