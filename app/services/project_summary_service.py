@@ -6,8 +6,10 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.app_setting import AppSetting
 from app.models.issue import Issue
 from app.models.project_ai_summary import ProjectAISummary
+from app.services.confluence_service import ConfluenceService, extract_confluence_urls
 from app.services.llm.base import get_llm_provider
 from app.services.llm.prompt import build_prompt, current_prompt_version
 from app.services.projects_service import ProjectsService
@@ -32,7 +34,7 @@ class ProjectSummaryService:
         if not epic:
             raise ValueError(f"Issue {key} not found")
 
-        epic_data = self._build_epic_data(epic)
+        epic_data = await self._build_epic_data_async(epic)
         provider = get_llm_provider(self.db)
         prompt = build_prompt(epic_data, db=self.db)
         prompt_ver = current_prompt_version(self.db)
@@ -80,8 +82,8 @@ class ProjectSummaryService:
         self.db.refresh(existing)
         return existing
 
-    def _build_epic_data(self, epic: Issue) -> dict:
-        """Собрать данные для промпта."""
+    async def _build_epic_data_async(self, epic: Issue) -> dict:
+        """Собрать данные для промпта (async — fetch Confluence)."""
         detail = ProjectsService(self.db).get_project_detail(epic.key)
         if not detail:
             return {"key": epic.key, "summary": epic.summary}
@@ -90,7 +92,39 @@ class ProjectSummaryService:
         child_issues = self.db.execute(
             select(Issue).where(Issue.id.in_(child_ids))
         ).scalars().all()
-        child_summaries = [{"key": i.key, "summary": i.summary} for i in child_issues[:30]]
+        child_summaries = [
+            {
+                "key": i.key,
+                "summary": i.summary,
+                "description": (i.description or "")[:8000] or None,
+                "goal_text": (i.goal_text or "") or None,
+                "current_behavior": (i.current_behavior or "") or None,
+            }
+            for i in child_issues[:30]
+        ]
+
+        # Confluence: ссылки из эпика + всех детей
+        base = self.db.query(AppSetting).filter(
+            AppSetting.key == "jira_base_url"
+        ).first()
+        base_url = base.value if base and base.value else ""
+        all_urls: list[str] = []
+        seen: set[str] = set()
+        for txt in [epic.description] + [i.description for i in child_issues]:
+            for u in extract_confluence_urls(txt, base_url):
+                if u not in seen:
+                    seen.add(u)
+                    all_urls.append(u)
+        # лимит 10 страниц на эпик чтобы не раздувать токены
+        confluence = await ConfluenceService(self.db).fetch_pages(all_urls[:10])
+        confluence_pages = [
+            {
+                "title": p.title,
+                "url": p.source_url,
+                "body_text": p.body_text[:8000],
+            }
+            for p in confluence
+        ]
 
         total_hours = detail.total_hours or 0.0
         return {
@@ -118,4 +152,5 @@ class ProjectSummaryService:
                 for t in detail.top_issues
             ],
             "child_summaries": child_summaries,
+            "confluence_pages": confluence_pages,
         }
