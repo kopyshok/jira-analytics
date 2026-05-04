@@ -33,6 +33,15 @@ PHASE_HOURS_FIELD = {
 }
 DEFAULT_HOURS_PER_DAY = 6.0
 
+# Допустимые роли исполнителя для аналитической фазы.
+ANALYST_ROLES = {
+    "аналитик", "analyst", "an",
+    "рп", "rp",
+    "консультант", "consultant",
+}
+# Роли пула разработки.
+DEV_ROLES = {"разработчик", "developer", "dev", "программист"}
+
 
 class ResourcePlanningService:
     def __init__(self, db: Session):
@@ -157,15 +166,35 @@ class ResourcePlanningService:
     # ------------------------------------------------------------------
 
     def compute_schedule(self, plan_id: str) -> None:
-        """Рассчитать расписание фаз для всех инициатив плана."""
+        """Рассчитать расписание фаз для всех инициатив плана.
+
+        Pinned-назначения (``is_pinned=True``) не пересчитываются и не удаляются:
+        используются как фиксированный сотрудник в `_assign_employees`, а старые
+        строки сохраняются в БД и сливаются с новыми non-pinned результатами.
+        """
         plan = self.db.get(ResourcePlan, plan_id)
         if not plan:
             raise ValueError(f"ResourcePlan {plan_id} not found")
 
-        # Delete old assignments
+        # Сохранить pinned до удаления, удалить только non-pinned
+        pinned_existing = list(
+            self.db.execute(
+                select(ResourcePlanAssignment).where(
+                    ResourcePlanAssignment.plan_id == plan_id,
+                    ResourcePlanAssignment.is_pinned == True,  # noqa: E712
+                )
+            ).scalars()
+        )
+        pinned_map: Dict[Tuple[str, str, int], str] = {
+            (a.backlog_item_id, a.phase, a.part_number): a.employee_id
+            for a in pinned_existing
+            if a.employee_id is not None
+        }
+
         self.db.execute(
             ResourcePlanAssignment.__table__.delete().where(
-                ResourcePlanAssignment.plan_id == plan_id
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.is_pinned == False,  # noqa: E712
             )
         )
 
@@ -194,30 +223,129 @@ class ResourcePlanningService:
 
         avail = self.build_availability(employees, q_start, q_end, list(blocks))
 
-        assignments_by_role = self._assign_employees(items, employees)
+        assignments_by_role = self._assign_employees(
+            items, employees, pinned=pinned_map
+        )
 
         # Mutable remaining hours copy
         remaining: Dict[str, Dict[date, float]] = {
             eid: dict(days) for eid, days in avail.items()
         }
 
-        new_assignments: List[ResourcePlanAssignment] = []
+        # Преварительно вычесть часы pinned-сегментов из remaining чтобы не
+        # перегрузить тех же сотрудников при пересчёте non-pinned фаз.
+        for a in pinned_existing:
+            if (
+                a.employee_id
+                and a.start_date
+                and a.end_date
+                and a.hours_allocated
+                and a.employee_id in remaining
+            ):
+                # Грубо: распределяем поровну по дням сегмента (только в дни с >0 avail)
+                days_in_seg = [
+                    d for d in remaining[a.employee_id]
+                    if a.start_date <= d <= a.end_date
+                    and remaining[a.employee_id][d] > 0
+                ]
+                if days_in_seg:
+                    per_day = a.hours_allocated / len(days_in_seg)
+                    for d in days_in_seg:
+                        remaining[a.employee_id][d] = max(
+                            0.0, remaining[a.employee_id][d] - per_day
+                        )
+
+        new_assignments: List[ResourcePlanAssignment] = list(pinned_existing)
+
+        # Скип фаз/частей которые уже зафиксированы pin'ом
+        pinned_phase_keys = {
+            (a.backlog_item_id, a.phase) for a in pinned_existing
+        }
+
         for item in items:
             phase_end: Optional[date] = None
             for phase in PHASE_ORDER:
                 hours_field = PHASE_HOURS_FIELD[phase]
-                hours = getattr(item, hours_field) or 0.0
+                hours = float(getattr(item, hours_field) or 0.0)
                 if hours <= 0:
                     continue
 
-                employee_id = assignments_by_role.get(phase, {}).get(item.id)
-                if not employee_id:
+                # Если фаза целиком pinned — её даты как «end» для cascade
+                if (item.id, phase) in pinned_phase_keys:
+                    phase_pinned = [
+                        a for a in pinned_existing
+                        if a.backlog_item_id == item.id and a.phase == phase
+                    ]
+                    pe = max(
+                        (a.end_date for a in phase_pinned if a.end_date),
+                        default=phase_end,
+                    )
+                    if pe:
+                        phase_end = pe
                     continue
 
                 earliest_start = max(
                     q_start,
                     (phase_end + timedelta(days=1)) if phase_end else q_start,
                 )
+
+                if phase == "qa":
+                    # QA — часы-only, без сотрудника. Длина = ceil(hours / 6) дней.
+                    seg_start = earliest_start
+                    days_needed = max(1, int((hours + DEFAULT_HOURS_PER_DAY - 0.001)
+                                             // DEFAULT_HOURS_PER_DAY))
+                    seg_end = seg_start + timedelta(days=days_needed - 1)
+                    if seg_end > q_end:
+                        seg_end = q_end
+                    a = ResourcePlanAssignment(
+                        plan_id=plan_id,
+                        backlog_item_id=item.id,
+                        phase="qa",
+                        employee_id=None,
+                        part_number=1,
+                        hours_allocated=hours,
+                        start_date=seg_start,
+                        end_date=seg_end,
+                    )
+                    new_assignments.append(a)
+                    phase_end = seg_end
+                    continue
+
+                if phase == "opo":
+                    analyst_id = assignments_by_role["analyst"].get(item.id)
+                    dev_id = assignments_by_role["dev"].get(item.id)
+                    parts = self._opo_split(item, analyst_id, dev_id)
+                    last_end: Optional[date] = None
+                    for emp_id, p_hours in parts:
+                        if not emp_id or p_hours <= 0:
+                            continue
+                        segments = self._allocate_hours(
+                            emp_id, p_hours, earliest_start, q_end, remaining
+                        )
+                        for seg_start, seg_end, seg_hours, part_num in segments:
+                            a = ResourcePlanAssignment(
+                                plan_id=plan_id,
+                                backlog_item_id=item.id,
+                                phase="opo",
+                                employee_id=emp_id,
+                                part_number=part_num,
+                                hours_allocated=seg_hours,
+                                start_date=seg_start,
+                                end_date=seg_end,
+                            )
+                            new_assignments.append(a)
+                        if segments:
+                            seg_last = segments[-1][1]
+                            if last_end is None or seg_last > last_end:
+                                last_end = seg_last
+                    if last_end:
+                        phase_end = last_end
+                    continue
+
+                # analyst / dev — обычное allocation для одного сотрудника
+                employee_id = assignments_by_role.get(phase, {}).get(item.id)
+                if not employee_id:
+                    continue
 
                 segments = self._allocate_hours(
                     employee_id, hours, earliest_start, q_end, remaining
@@ -239,7 +367,8 @@ class ResourcePlanningService:
                     phase_end = segments[-1][1]
 
         for a in new_assignments:
-            self.db.add(a)
+            if a not in pinned_existing:
+                self.db.add(a)
 
         # CPM на первичных датах
         self._compute_cpm(new_assignments, q_end)
@@ -366,58 +495,80 @@ class ResourcePlanningService:
         return q_start, q_end
 
     def _assign_employees(
-        self, items: List[BacklogItem], employees: List[Employee]
-    ) -> Dict[str, Dict[str, str]]:
-        """Greedy assignment: {phase: {item_id: employee_id}}.
+        self,
+        items: List[BacklogItem],
+        employees: List[Employee],
+        pinned: Optional[Dict[Tuple[str, str, int], str]] = None,
+    ) -> Dict[str, Dict[str, Optional[str]]]:
+        """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
-        Назначает аналитика и разработчика на инициативу по минимальной нагрузке.
-        Employee.role — строковый код из реестра ролей (напр. 'analyst', 'аналитик').
+        - analyst: исполнитель инициативы (если его роль ∈ ANALYST_ROLES). Иначе None.
+        - dev:     greedy по минимальной нагрузке в пуле DEV_ROLES (fallback — все).
+        - qa:      всегда None (часы-only, дату назначаем без сотрудника).
+        - opo:     placeholder analyst_id или dev_id; реально создаётся как 2 строки
+                   через `_opo_split` в compute_schedule.
+
+        ``pinned`` — словарь {(item_id, phase, part_number): employee_id}. Если
+        для (item, phase, 1) есть pin — используется он, обычная логика игнорится.
         """
-        role_emp: Dict[str, List[str]] = defaultdict(list)
-        for e in employees:
-            if e.role:
-                role_emp[e.role.lower()].append(e.id)
+        pinned = pinned or {}
 
-        analyst_ids = (
-            role_emp.get("аналитик", [])
-            or role_emp.get("analyst", [])
-            or role_emp.get("an", [])
-        )
-        dev_ids = (
-            role_emp.get("разработчик", [])
-            or role_emp.get("developer", [])
-            or role_emp.get("dev", [])
-            or role_emp.get("rp", [])
-        )
-        qa_ids = role_emp.get("qa", []) or role_emp.get("тестировщик", [])
-
-        # Fallback: if roles not resolved, use all employees
-        all_ids = [e.id for e in employees]
-        if not analyst_ids:
-            analyst_ids = all_ids
+        by_id: Dict[str, Employee] = {e.id: e for e in employees}
+        dev_ids = [e.id for e in employees if (e.role or "").lower() in DEV_ROLES]
         if not dev_ids:
-            dev_ids = all_ids
-        if not qa_ids:
-            qa_ids = all_ids
+            dev_ids = [e.id for e in employees]
 
         load: Dict[str, float] = defaultdict(float)
-        result: Dict[str, Dict[str, str]] = {p: {} for p in PHASE_ORDER}
+        result: Dict[str, Dict[str, Optional[str]]] = {p: {} for p in PHASE_ORDER}
 
         for item in items:
-            for phase, pool in [
-                ("analyst", analyst_ids),
-                ("dev", dev_ids),
-                ("qa", qa_ids),
-                ("opo", analyst_ids + dev_ids),
-            ]:
-                if not pool:
-                    continue
-                chosen = min(pool, key=lambda eid: load[eid])
-                hours_field = PHASE_HOURS_FIELD[phase]
-                load[chosen] += getattr(item, hours_field) or 0.0
-                result[phase][item.id] = chosen
+            # ── analyst ────────────────────────────────────────────────
+            analyst_id: Optional[str] = None
+            pin_an = pinned.get((item.id, "analyst", 1))
+            if pin_an:
+                analyst_id = pin_an
+            elif item.assignee_employee_id:
+                emp = by_id.get(item.assignee_employee_id)
+                if emp and (emp.role or "").lower() in ANALYST_ROLES:
+                    analyst_id = emp.id
+            if analyst_id:
+                load[analyst_id] += item.estimate_analyst_hours or 0.0
+            result["analyst"][item.id] = analyst_id
+
+            # ── dev ────────────────────────────────────────────────────
+            dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
+            if not dev_id and dev_ids:
+                dev_id = min(dev_ids, key=lambda eid: load[eid])
+            if dev_id:
+                load[dev_id] += item.estimate_dev_hours or 0.0
+            result["dev"][item.id] = dev_id
+
+            # ── qa: без сотрудника ─────────────────────────────────────
+            result["qa"][item.id] = None
+
+            # ── opo: маркер для compute_schedule, реально 2 строки ────
+            result["opo"][item.id] = analyst_id or dev_id
 
         return result
+
+    def _opo_split(
+        self,
+        item: BacklogItem,
+        analyst_id: Optional[str],
+        dev_id: Optional[str],
+    ) -> List[Tuple[Optional[str], float]]:
+        """ОПЭ → 2 куска: [(analyst_id, an_hours), (dev_id, dev_hours)].
+
+        Доля аналитика = ``item.opo_analyst_ratio`` (default 0.5).
+        Часы округляются до 2 знаков; сумма равна total (последний кусок добирает остаток).
+        """
+        total = float(item.estimate_opo_hours or 0.0)
+        ratio = (
+            item.opo_analyst_ratio if item.opo_analyst_ratio is not None else 0.5
+        )
+        an_hours = round(total * ratio, 2)
+        dev_hours = round(total - an_hours, 2)
+        return [(analyst_id, an_hours), (dev_id, dev_hours)]
 
     def _build_role_pools(self, employees: List[Employee]) -> Dict[str, List[str]]:
         """{employee_id: [peer_ids same role]} для reassign-стратегии."""
