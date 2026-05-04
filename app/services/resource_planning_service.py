@@ -446,9 +446,11 @@ class ResourcePlanningService:
     def _load_items(self, plan: ResourcePlan) -> List[BacklogItem]:
         """Загрузить включённые инициативы сценария, отсортированные по приоритету."""
         if plan.scenario_id:
+            from sqlalchemy.orm import joinedload
             rows = (
                 self.db.execute(
                     select(BacklogItem)
+                    .options(joinedload(BacklogItem.issue))
                     .join(
                         ScenarioAllocation,
                         ScenarioAllocation.backlog_item_id == BacklogItem.id,
@@ -515,6 +517,15 @@ class ResourcePlanningService:
         pinned = pinned or {}
 
         by_id: Dict[str, Employee] = {e.id: e for e in employees}
+        # Резолв по display_name для fallback (если bk.assignee_employee_id NULL,
+        # но в связанной Issue есть assignee_display_name — пробуем найти сотрудника).
+        by_name: Dict[str, str] = {}
+        for e in employees:
+            if e.display_name:
+                # При коллизии имён берём первого; production-correct fix —
+                # заполнять BacklogItem.assignee_employee_id при refresh-from-jira.
+                by_name.setdefault(e.display_name.strip().lower(), e.id)
+
         dev_ids = [e.id for e in employees if (e.role or "").lower() in DEV_ROLES]
         if not dev_ids:
             dev_ids = [e.id for e in employees]
@@ -530,6 +541,11 @@ class ResourcePlanningService:
                 analyst_id = pin_an
             elif item.assignee_employee_id and item.assignee_employee_id in by_id:
                 analyst_id = item.assignee_employee_id
+            elif item.issue_id:
+                # Fallback: резолв по Issue.assignee_display_name
+                issue = item.issue
+                if issue and issue.assignee_display_name:
+                    analyst_id = by_name.get(issue.assignee_display_name.strip().lower())
             if analyst_id:
                 load[analyst_id] += item.estimate_analyst_hours or 0.0
             result["analyst"][item.id] = analyst_id

@@ -45,7 +45,7 @@ export default function ResourcePlanningPage() {
   const createPlan = useCreateResourcePlan();
 
   useEffect(() => {
-    if (scenarioId && !planId && !plansLoading) {
+    if (scenarioId && !planId && !plansLoading && !createPlan.isPending) {
       const existing = plans.find(p => p.scenario_id === scenarioId);
       if (existing) {
         setPlanId(existing.id);
@@ -63,7 +63,7 @@ export default function ResourcePlanningPage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenarioId, planId, plansLoading, plans.length]);
+  }, [scenarioId, planId, plansLoading, plans.length, createPlan.isPending]);
 
   const handleCompute = async () => {
     if (!planId) return;
@@ -118,11 +118,18 @@ export default function ResourcePlanningPage() {
             Пересчитать
           </Button>
         )}
-        {gantt && (
-          <Tag color={gantt.plan.status === 'ready' ? 'cyan' : 'orange'}>
-            {gantt.plan.status === 'ready' ? 'Готово' : gantt.plan.status}
-          </Tag>
-        )}
+        {gantt && (() => {
+          const s = gantt.plan.status;
+          const label = s === 'ready' ? 'Готово'
+            : s === 'stale' ? 'Требуется пересчёт'
+            : s === 'computing' ? 'Считается…'
+            : 'Черновик';
+          const color = s === 'ready' ? 'cyan'
+            : s === 'stale' ? 'orange'
+            : s === 'computing' ? 'blue'
+            : 'default';
+          return <Tag color={color}>{label}</Tag>;
+        })()}
         {gantt?.plan.label && <Tag color="purple">{gantt.plan.label}</Tag>}
         {gantt?.plan.is_baseline && <Tag color="cyan">Базовый</Tag>}
         {planId && gantt && (

@@ -634,8 +634,22 @@ async def approve_scenario(
             ))
 
     scenario.status = "approved"
+
+    # Помечаем существующие ResourcePlan этого сценария как stale —
+    # утверждение могло изменить состав инициатив, нужно пересчитать.
+    from app.models import ResourcePlan
+    plans_to_stale = db.query(ResourcePlan).filter(
+        ResourcePlan.scenario_id == scenario_id,
+        ResourcePlan.status != "stale",
+    ).all()
+    for p in plans_to_stale:
+        p.status = "stale"
+
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
+    entities = ["planning", "backlog"]
+    if plans_to_stale:
+        entities.append("resource_planning")
+    await event_bus.publish({"type": "entity_changed", "entities": entities})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
 

@@ -199,13 +199,29 @@ def delete_scheduled_block(
 @router.get("/resource-plans", response_model=List[ResourcePlanOut])
 def list_plans(
     team: Optional[str] = Query(None),
+    include_forks: bool = Query(False),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    """Список планов. По умолчанию: один план на сценарий (latest), форки скрыты.
+
+    Форки доступны через `include_forks=true` или через явный GET /resource-plans/{id}.
+    """
     q = select(ResourcePlan).order_by(ResourcePlan.created_at.desc())
     if team:
         q = q.where(ResourcePlan.team == team)
-    return db.execute(q).scalars().all()
+    if not include_forks:
+        q = q.where(ResourcePlan.parent_plan_id.is_(None))
+    rows = db.execute(q).scalars().all()
+    if include_forks:
+        return rows
+    # Дедуп: один план на (scenario_id, team, quarter, year). При коллизии — latest.
+    seen: dict = {}
+    for p in rows:
+        key = (p.scenario_id, p.team, p.quarter, p.year)
+        if key not in seen:
+            seen[key] = p
+    return list(seen.values())
 
 
 @router.post("/resource-plans", response_model=ResourcePlanOut, status_code=201)
