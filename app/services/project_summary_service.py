@@ -96,6 +96,8 @@ class ProjectSummaryService:
             {
                 "key": i.key,
                 "summary": i.summary,
+                "status": i.status,
+                "is_done": (i.status_category == "done"),
                 "description": (i.description or "")[:8000] or None,
                 "goal_text": (i.goal_text or "") or None,
                 "current_behavior": (i.current_behavior or "") or None,
