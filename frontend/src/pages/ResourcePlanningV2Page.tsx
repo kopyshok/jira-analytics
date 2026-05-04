@@ -4,6 +4,8 @@ import { Empty, Segmented, Select, Spin, Tag } from 'antd';
 import { ScheduleOutlined, TeamOutlined } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import SvarGanttChart from '../components/resource-planning-v2/SvarGanttChart';
+import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
+import OptimizeButton from '../components/resource-planning-v2/OptimizeButton';
 import { useGanttProjection, useResourcePlans } from '../hooks/useResourcePlanning';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 
@@ -47,6 +49,13 @@ export default function ResourcePlanningV2Page() {
           style={{ minWidth: 320 }}
           allowClear
         />
+        <PlanQualityBadge planId={planId} />
+        {planId && (
+          <OptimizeButton
+            planId={planId}
+            onSwitchPlan={id => { setPlanId(id); setSearchParams({ plan_id: id }); }}
+          />
+        )}
         <Segmented
           value={viewMode}
           onChange={(v: string | number) => setViewMode(v as 'task' | 'employee')}
