@@ -62,6 +62,10 @@ class Issue(Base, SyncedMixin):
     # Тянется через AppSetting.jira_goals_field_id, сохраняется плоской
     # строкой (comma-joined для multi-select).
     goals: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Кастомные текстовые поля Jira: «Цель задачи», «Описание текущего поведения».
+    # IDs настраиваются через AppSetting (`jira_goal_field_id`, `jira_current_behavior_field_id`).
+    goal_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    current_behavior: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Planned effort (from Jira «Плановые трудозатраты» tab — RFA/ITL)
     planned_analyst_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
