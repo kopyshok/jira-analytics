@@ -47,6 +47,7 @@ from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.plan_item_dependency import PlanItemDependency
 from app.models.plan_conflict import PlanConflict
+from app.models.confluence_page_cache import ConfluencePageCache
 
 __all__ = [
     "TimestampMixin",
@@ -99,4 +100,5 @@ __all__ = [
     "ResourcePlanAssignment",
     "PlanItemDependency",
     "PlanConflict",
+    "ConfluencePageCache",
 ]
