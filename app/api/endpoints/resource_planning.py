@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models import (
+    BacklogItem,
     ResourcePlan,
     ResourcePlanAssignment,
     ScheduledBlock,
@@ -72,16 +73,19 @@ class ResourcePlanOut(BaseModel):
 class AssignmentOut(BaseModel):
     id: str
     backlog_item_id: str
+    backlog_item_key: Optional[str] = None  # Jira issue key
     backlog_item_title: str
     phase: str
     employee_id: Optional[str]
     employee_name: Optional[str]
+    employee_role: Optional[str] = None  # для аватарок-цвета
     part_number: int
     hours_allocated: Optional[float]
     start_date: Optional[date]
     end_date: Optional[date]
     is_on_critical_path: bool
     slack_days: Optional[float]
+    is_pinned: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -325,7 +329,9 @@ def get_gantt(
     assignments_raw = (
         db.execute(
             select(ResourcePlanAssignment)
-            .options(joinedload(ResourcePlanAssignment.backlog_item))
+            .options(
+                joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue)
+            )
             .options(joinedload(ResourcePlanAssignment.employee))
             .where(ResourcePlanAssignment.plan_id == plan_id)
             .order_by(ResourcePlanAssignment.start_date)
@@ -338,16 +344,19 @@ def get_gantt(
         AssignmentOut(
             id=a.id,
             backlog_item_id=a.backlog_item_id,
+            backlog_item_key=(a.backlog_item.issue.key if a.backlog_item and a.backlog_item.issue else None),
             backlog_item_title=a.backlog_item.title if a.backlog_item else "",
             phase=a.phase,
             employee_id=a.employee_id,
             employee_name=a.employee.display_name if a.employee else None,
+            employee_role=(a.employee.role if a.employee else None),
             part_number=a.part_number,
             hours_allocated=a.hours_allocated,
             start_date=a.start_date,
             end_date=a.end_date,
             is_on_critical_path=a.is_on_critical_path,
             slack_days=a.slack_days,
+            is_pinned=a.is_pinned,
         )
         for a in assignments_raw
     ]
@@ -376,7 +385,9 @@ def patch_assignment(
 ):
     a = db.execute(
         select(ResourcePlanAssignment)
-        .options(joinedload(ResourcePlanAssignment.backlog_item))
+        .options(
+            joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue)
+        )
         .options(joinedload(ResourcePlanAssignment.employee))
         .where(
             ResourcePlanAssignment.id == assignment_id,
@@ -392,6 +403,10 @@ def patch_assignment(
     if new_start and new_end and new_end < new_start:
         raise HTTPException(422, "end_date must be >= start_date")
 
+    # Явный выбор сотрудника — закрепить назначение
+    if "employee_id" in patch:
+        a.is_pinned = True
+
     for k, v in patch.items():
         setattr(a, k, v)
 
@@ -402,6 +417,7 @@ def patch_assignment(
     # Snapshot values before commit (SQLite session expire caveat)
     a_id = a.id
     a_backlog_item_id = a.backlog_item_id
+    a_backlog_item_key = (a.backlog_item.issue.key if a.backlog_item and a.backlog_item.issue else None)
     a_backlog_item_title = a.backlog_item.title if a.backlog_item else ""
     a_phase = a.phase
     a_part_number = a.part_number
@@ -411,6 +427,8 @@ def patch_assignment(
     a_is_on_critical_path = a.is_on_critical_path
     a_slack_days = a.slack_days
     a_employee_id = a.employee_id
+    a_employee_role = a.employee.role if a.employee else None
+    a_is_pinned = a.is_pinned
 
     db.commit()
     db.refresh(a)
@@ -420,16 +438,19 @@ def patch_assignment(
     return AssignmentOut(
         id=a_id,
         backlog_item_id=a_backlog_item_id,
+        backlog_item_key=a_backlog_item_key,
         backlog_item_title=a_backlog_item_title,
         phase=a_phase,
         employee_id=a_employee_id,
         employee_name=emp_name,
+        employee_role=a_employee_role,
         part_number=a_part_number,
         hours_allocated=a_hours_allocated,
         start_date=a_start_date,
         end_date=a_end_date,
         is_on_critical_path=a_is_on_critical_path,
         slack_days=a_slack_days,
+        is_pinned=a_is_pinned,
     )
 
 
