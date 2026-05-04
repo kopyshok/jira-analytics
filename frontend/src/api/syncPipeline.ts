@@ -34,6 +34,7 @@ export async function runPipelineStream(
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify(req),
       signal,
+      credentials: 'include',
     });
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;

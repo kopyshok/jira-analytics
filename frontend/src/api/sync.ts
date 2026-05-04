@@ -59,6 +59,7 @@ export async function reloadWorklogsStream(
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify(req),
       signal,
+      credentials: 'include',
     });
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
@@ -142,6 +143,7 @@ export async function updateWorklogsStream(
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify(req),
       signal,
+      credentials: 'include',
     });
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
