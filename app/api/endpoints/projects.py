@@ -161,7 +161,7 @@ def list_quarterly_projects(
 
 
 class WorkBreakdownGroupSchema(BaseModel):
-    bucket: str
+    bucket: Optional[str] = None
     label: str
     child_keys: List[str]
 
@@ -176,13 +176,26 @@ class ProjectSummarySchema(BaseModel):
     model_used: str
 
 
+# Back-fill: старые кэшированные саммари (до v5) хранят work_breakdown без bucket.
+_LABEL_TO_BUCKET = {
+    "Анализ": "analysis",
+    "Разработка": "development",
+    "Тестирование": "testing",
+    "ОПЭ": "ope",
+}
+
+
 def _serialize_summary(row) -> ProjectSummarySchema:
+    wb_raw = json.loads(row.work_breakdown_json) if row.work_breakdown_json else []
+    for g in wb_raw:
+        if "bucket" not in g or not g.get("bucket"):
+            g["bucket"] = _LABEL_TO_BUCKET.get(g.get("label", ""))
     return ProjectSummarySchema(
         goals=json.loads(row.goals_json),
         result_checklist=json.loads(row.result_checklist_json),
         status_text=row.status_text,
         workload_summary=row.workload_summary,
-        work_breakdown=json.loads(row.work_breakdown_json) if row.work_breakdown_json else [],
+        work_breakdown=wb_raw,
         generated_at=row.generated_at,
         model_used=row.model_used,
     )
