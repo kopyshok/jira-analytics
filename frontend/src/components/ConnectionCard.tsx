@@ -76,18 +76,24 @@ export default function ConnectionCard() {
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             style={{ width: 360 }}
+            autoComplete="off"
+            name="jira-base-url"
           />
           <Input
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={{ width: 260 }}
+            autoComplete="off"
+            name="jira-email"
           />
           <Input.Password
             placeholder={settings.data?.has_token ? 'Токен сохранён (введите новый для замены)' : 'API Token'}
             value={token}
             onChange={(e) => setToken(e.target.value)}
             style={{ width: 300 }}
+            autoComplete="new-password"
+            name="jira-api-token"
           />
         </Space>
         <Space>
