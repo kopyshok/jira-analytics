@@ -28,6 +28,17 @@ class LLMResponseError(Exception):
 
 
 _DEFAULT_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
+
+# Цепочка по умолчанию — модели РАЗНЫХ провайдеров. Используется когда
+# AppSetting `llm_openrouter_fallback_models` отсутствует (None). Если
+# пользователь явно сохранил пустую строку — fallback отключён, остаётся
+# только primary.
+_DEFAULT_FALLBACK_MODELS = [
+    "nousresearch/hermes-3-llama-3.1-405b:free",
+    "openai/gpt-oss-120b:free",
+    "google/gemma-3-27b-it:free",
+    "z-ai/glm-4.5-air:free",
+]
 _BASE_URL = "https://openrouter.ai/api/v1"
 _REFERER = "http://localhost"
 _TITLE = "JiraAnalysis"
@@ -46,7 +57,11 @@ class OpenRouterProvider:
     ) -> None:
         self.api_key = api_key
         self.model = model
-        self.fallback_models = fallback_models or []
+        # None → встроенный дефолтный список (RUS-подходящие, разные провайдеры).
+        # [] (явный пустой) → fallback отключён, только primary.
+        self.fallback_models = (
+            list(_DEFAULT_FALLBACK_MODELS) if fallback_models is None else fallback_models
+        )
         self.last_error: str | None = None
 
     async def summarize_project(self, prompt: str, *, expect_json: bool = True) -> tuple[ProjectSummary, dict]:
