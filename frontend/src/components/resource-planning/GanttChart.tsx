@@ -1,14 +1,13 @@
 import { useRef, useMemo } from 'react';
-import type { AssignmentOut, InitiativePertOut, ScheduledBlock } from '../../api/resourcePlanning';
+import type { AssignmentOut, ScheduledBlock } from '../../api/resourcePlanning';
 import { buildTimeline, dateToLeft, quarterBounds } from '../../utils/gantt';
 import type { ViewMode } from './GanttRows';
 import TimelineHeader from './TimelineHeader';
 import GanttRows from './GanttRows';
 import BlockedZones from './BlockedZones';
 import DependencyArrows from './DependencyArrows';
-import PertOverlay from './PertOverlay';
 
-const LEFT_COL = 240;
+const LEFT_COL = 280;
 
 interface Props {
   assignments: AssignmentOut[];
@@ -17,8 +16,6 @@ interface Props {
   year: number;
   viewMode: ViewMode;
   showRelayArrows?: boolean;
-  pert?: InitiativePertOut[];
-  showPert?: boolean;
 }
 
 export default function GanttChart({
@@ -28,8 +25,6 @@ export default function GanttChart({
   year,
   viewMode,
   showRelayArrows = true,
-  pert = [],
-  showPert = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -83,11 +78,6 @@ export default function GanttChart({
           containerRef={containerRef as React.RefObject<HTMLDivElement>}
           showRelayArrows={showRelayArrows}
         />
-
-        {/* PERT P50/P90 markers */}
-        {showPert && pert.length > 0 && (
-          <PertOverlay pert={pert} timeline={timeline} rowRefs={rowRefs} />
-        )}
 
         <GanttRows
           assignments={assignments}

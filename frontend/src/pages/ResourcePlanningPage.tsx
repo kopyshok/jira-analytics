@@ -30,7 +30,6 @@ export default function ResourcePlanningPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('two-level');
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [showRelayArrows, setShowRelayArrows] = useState(true);
-  const [showPert, setShowPert] = useState(false);
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkLabel, setForkLabel] = useState('');
   const forkMutation = useForkPlan();
@@ -73,10 +72,15 @@ export default function ResourcePlanningPage() {
     }
   };
 
-  const planOptions = plans.map(p => ({
-    label: `${p.quarter} ${p.year} — ${p.team ?? '—'} [${p.status}]`,
-    value: p.id,
-  }));
+  const planOptions = plans.map(p => {
+    const isCopy = !!p.parent_plan_id;
+    const labelText = p.label ? ` · ${p.label}` : '';
+    const copyMark = isCopy ? ' (копия)' : '';
+    return {
+      label: `${p.quarter} ${p.year} — ${p.team ?? '—'}${copyMark}${labelText} [${p.status}]`,
+      value: p.id,
+    };
+  });
 
   return (
     <div style={{ padding: '16px 24px' }}>
@@ -143,10 +147,6 @@ export default function ResourcePlanningPage() {
               <span style={{ fontSize: 12, color: '#8ab0d8' }}>Связи</span>
             </Space>
           )}
-          <Space size={4}>
-            <Switch checked={showPert} onChange={setShowPert} size="small" />
-            <span style={{ fontSize: 12, color: '#8ab0d8' }}>P50/P90</span>
-          </Space>
           <Segmented
             value={viewMode}
             onChange={v => setViewMode(v as ViewMode)}
@@ -173,8 +173,6 @@ export default function ResourcePlanningPage() {
           year={gantt.plan.year ?? new Date().getFullYear()}
           viewMode={viewMode}
           showRelayArrows={showRelayArrows}
-          pert={gantt.pert_projection}
-          showPert={showPert}
         />
       )}
 
