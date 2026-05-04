@@ -60,16 +60,21 @@ class OpenRouterProvider:
         return ProjectSummary.model_validate(data), meta
 
     async def healthcheck(self) -> bool:
+        """Проверяет валидность ключа через `/auth/key` — не тратит квоту модели.
+
+        Реальный generation-вызов жёг бы upstream rate-limit (free-модели часто
+        в 429), и проверка падала бы по причинам, не связанным с настройкой.
+        """
         self.last_error = None
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": _REFERER,
+            "X-Title": _TITLE,
+        }
         try:
-            await self._post(
-                f"{_BASE_URL}/chat/completions",
-                {
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 5,
-                },
-            )
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                r = await client.get(f"{_BASE_URL}/auth/key", headers=headers)
+                r.raise_for_status()
             return True
         except httpx.HTTPStatusError as e:
             body = e.response.text[:500]
