@@ -90,6 +90,54 @@ async def list_gemini_models(db: Session = Depends(get_db)):
     return out
 
 
+@router.get("/openrouter/models")
+async def list_openrouter_models(db: Session = Depends(get_db)):
+    """Список бесплатных моделей OpenRouter (pricing.prompt == 0 AND completion == 0).
+
+    Сортировка: context_length desc. Возвращает `{id, label, context_length}`.
+    """
+    row = db.query(AppSetting).filter(AppSetting.key == "llm_openrouter_api_key").first()
+    if not row or not row.value:
+        raise HTTPException(status_code=400, detail="OpenRouter API key not configured")
+
+    url = "https://openrouter.ai/api/v1/models"
+    headers = {"Authorization": f"Bearer {row.value}"}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(url, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=503, detail=f"OpenRouter API ответил {e.response.status_code}")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"OpenRouter API недоступен: {e}")
+
+    out: list[dict] = []
+    for m in data.get("data", []):
+        pricing = m.get("pricing") or {}
+        prompt_price = str(pricing.get("prompt", "0"))
+        completion_price = str(pricing.get("completion", "0"))
+        if not (_is_zero(prompt_price) and _is_zero(completion_price)):
+            continue
+        model_id = m.get("id", "")
+        if not model_id:
+            continue
+        out.append({
+            "id": model_id,
+            "label": m.get("name", model_id),
+            "context_length": m.get("context_length") or 0,
+        })
+    out.sort(key=lambda x: (-x["context_length"], x["id"]))
+    return out
+
+
+def _is_zero(price: str) -> bool:
+    try:
+        return float(price) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
 def _gemini_version_key(model_id: str) -> float:
     """Извлечь версию (3.1, 2.5, 2.0, 1.5) для сортировки. Latest/preview → high."""
     if "latest" in model_id:

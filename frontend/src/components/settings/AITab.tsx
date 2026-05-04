@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Select, Space, App, Typography, Tag, Divider, Alert } from 'antd';
-import { llmApi, type GeminiModelInfo, type PromptDefault } from '../../api/llm';
+import {
+  llmApi,
+  type GeminiModelInfo,
+  type OpenRouterModelInfo,
+  type PromptDefault,
+} from '../../api/llm';
 import { api } from '../../api/client';
 
-const FALLBACK_MODELS: GeminiModelInfo[] = [
+const FALLBACK_GEMINI_MODELS: GeminiModelInfo[] = [
   { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview (рекомендуется на free)', version: 3.1 },
   { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview', version: 3.1 },
   { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', version: 3.0 },
@@ -15,13 +20,24 @@ const FALLBACK_MODELS: GeminiModelInfo[] = [
   { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', version: 2.0 },
 ];
 
-const RECOMMENDED_FREE = 'gemini-3.1-flash-lite-preview';
+const FALLBACK_OPENROUTER_MODELS: OpenRouterModelInfo[] = [
+  { id: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek V3.1 (free, рекомендуется)', context_length: 163840 },
+  { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (free, reasoning)', context_length: 163840 },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B Instruct (free)', context_length: 65536 },
+  { id: 'qwen/qwen-2.5-72b-instruct:free', label: 'Qwen 2.5 72B (free)', context_length: 32768 },
+  { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (free)', context_length: 96000 },
+];
+
+const RECOMMENDED_GEMINI = 'gemini-3.1-flash-lite-preview';
+const RECOMMENDED_OPENROUTER = 'deepseek/deepseek-chat-v3.1:free';
 const PROMPT_KEY = 'llm_project_summary_system_prompt';
 
 type FormValues = {
   provider: string;
   gemini_key: string;
   gemini_model: string;
+  openrouter_key: string;
+  openrouter_model: string;
   prompt_role: string;
 };
 
@@ -29,39 +45,64 @@ export const AITab: React.FC = () => {
   const { message, modal } = App.useApp();
   const [form] = Form.useForm<FormValues>();
   const [loading, setLoading] = useState(false);
-  const [models, setModels] = useState<GeminiModelInfo[]>(FALLBACK_MODELS);
-  const [modelsLoading, setModelsLoading] = useState(false);
+  const [provider, setProvider] = useState<string>('gemini');
+
+  const [geminiModels, setGeminiModels] = useState<GeminiModelInfo[]>(FALLBACK_GEMINI_MODELS);
+  const [geminiModelsLoading, setGeminiModelsLoading] = useState(false);
+
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModelInfo[]>(FALLBACK_OPENROUTER_MODELS);
+  const [openRouterModelsLoading, setOpenRouterModelsLoading] = useState(false);
+
   const [promptDefault, setPromptDefault] = useState<PromptDefault | null>(null);
 
   useEffect(() => {
     (async () => {
-      const provider = await loadSetting('llm_provider', 'gemini');
+      const prov = await loadSetting('llm_provider', 'gemini');
       const geminiKey = await loadSetting('llm_gemini_api_key', '');
-      const geminiModel = await loadSetting('llm_gemini_model', RECOMMENDED_FREE);
+      const geminiModel = await loadSetting('llm_gemini_model', RECOMMENDED_GEMINI);
+      const openRouterKey = await loadSetting('llm_openrouter_api_key', '');
+      const openRouterModel = await loadSetting('llm_openrouter_model', RECOMMENDED_OPENROUTER);
       const def = await llmApi.getPromptDefault().catch(() => null);
       setPromptDefault(def);
       const promptRole = (await loadSetting(PROMPT_KEY, '')) || (def?.system_role ?? '');
+      setProvider(prov);
       form.setFieldsValue({
-        provider,
+        provider: prov,
         gemini_key: geminiKey,
         gemini_model: geminiModel,
+        openrouter_key: openRouterKey,
+        openrouter_model: openRouterModel,
         prompt_role: promptRole,
       });
-      if (geminiKey) await refreshModels(true);
+      if (geminiKey) await refreshGeminiModels(true);
+      if (openRouterKey) await refreshOpenRouterModels(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refreshModels = async (silent = false) => {
-    setModelsLoading(true);
+  const refreshGeminiModels = async (silent = false) => {
+    setGeminiModelsLoading(true);
     try {
       const list = await llmApi.listGeminiModels();
-      if (list && list.length) setModels(list);
-      if (!silent) message.success(`Загружено ${list.length} моделей`);
+      if (list && list.length) setGeminiModels(list);
+      if (!silent) message.success(`Загружено ${list.length} моделей Gemini`);
     } catch (e: unknown) {
       if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
     } finally {
-      setModelsLoading(false);
+      setGeminiModelsLoading(false);
+    }
+  };
+
+  const refreshOpenRouterModels = async (silent = false) => {
+    setOpenRouterModelsLoading(true);
+    try {
+      const list = await llmApi.listOpenRouterModels();
+      if (list && list.length) setOpenRouterModels(list);
+      if (!silent) message.success(`Загружено ${list.length} бесплатных моделей OpenRouter`);
+    } catch (e: unknown) {
+      if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
+    } finally {
+      setOpenRouterModelsLoading(false);
     }
   };
 
@@ -69,11 +110,17 @@ export const AITab: React.FC = () => {
     setLoading(true);
     try {
       await api.put('/settings/generic', { key: 'llm_provider', value: values.provider });
+
       await api.put('/settings/generic', { key: 'llm_gemini_model', value: values.gemini_model });
       if (values.gemini_key) {
         await api.put('/settings/generic', { key: 'llm_gemini_api_key', value: values.gemini_key });
       }
-      // Если текст совпадает с дефолтом — не сохраняем (хранится null → берётся дефолт).
+
+      await api.put('/settings/generic', { key: 'llm_openrouter_model', value: values.openrouter_model });
+      if (values.openrouter_key) {
+        await api.put('/settings/generic', { key: 'llm_openrouter_api_key', value: values.openrouter_key });
+      }
+
       const role = (values.prompt_role ?? '').trim();
       const isDefault = promptDefault && role === promptDefault.system_role.trim();
       await api.put('/settings/generic', {
@@ -118,14 +165,32 @@ export const AITab: React.FC = () => {
     });
   };
 
-  const modelOptions = models.map((m) => ({
+  const geminiOptions = geminiModels.map((m) => ({
     value: m.id,
     label: (
       <span>
         {m.label}
-        {m.id === RECOMMENDED_FREE && (
+        {m.id === RECOMMENDED_GEMINI && (
           <Tag color="green" style={{ marginLeft: 8 }}>
             free 15 RPM / 500 RPD
+          </Tag>
+        )}
+      </span>
+    ),
+    searchText: `${m.label} ${m.id}`,
+  }));
+
+  const openRouterOptions = openRouterModels.map((m) => ({
+    value: m.id,
+    label: (
+      <span>
+        {m.label}{' '}
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          {m.id} · {Math.round(m.context_length / 1000)}k ctx
+        </Typography.Text>
+        {m.id === RECOMMENDED_OPENROUTER && (
+          <Tag color="green" style={{ marginLeft: 8 }}>
+            рекомендуется
           </Tag>
         )}
       </span>
@@ -138,11 +203,21 @@ export const AITab: React.FC = () => {
       title="AI-провайдер"
       extra={<Button onClick={onRegenAll}>Перегенерировать все саммари</Button>}
     >
-      <Form form={form} layout="vertical" onFinish={onSave} disabled={loading} autoComplete="off">
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={onSave}
+        disabled={loading}
+        autoComplete="off"
+        onValuesChange={(changed) => {
+          if (changed.provider) setProvider(changed.provider);
+        }}
+      >
         <Form.Item label="Провайдер" name="provider">
           <Select
             options={[
               { value: 'gemini', label: 'Google Gemini' },
+              { value: 'openrouter', label: 'OpenRouter (десятки free-моделей)' },
               { value: 'deepseek', label: 'DeepSeek V3 (заглушка)', disabled: true },
               { value: 'anthropic', label: 'Anthropic Claude (заглушка)', disabled: true },
               { value: 'openai', label: 'OpenAI GPT (заглушка)', disabled: true },
@@ -150,47 +225,79 @@ export const AITab: React.FC = () => {
           />
         </Form.Item>
 
-        <Form.Item
-          label={
-            <Space>
-              <span>Модель Gemini</span>
-              <Button
-                size="small"
-                type="link"
-                loading={modelsLoading}
-                onClick={() => refreshModels(false)}
-              >
-                Обновить список
-              </Button>
-            </Space>
-          }
-          name="gemini_model"
-          extra={
-            <Typography.Text type="secondary">
-              Free tier лимиты разные. 3.1 Flash Lite = 15 RPM × 500 RPD (лучше всех).
-              2.5 Flash = 5 RPM × 20 RPD (быстро упрётся). Pro / 2.0 — только paid.
-              При HTTP 429 «too many requests» — переключитесь на модель с большей квотой.
-            </Typography.Text>
-          }
-        >
-          <Select
-            options={modelOptions}
-            optionLabelProp="label"
-            popupMatchSelectWidth={false}
-          />
-        </Form.Item>
+        <div style={{ display: provider === 'gemini' ? 'block' : 'none' }}>
+          <Form.Item
+            label={
+              <Space>
+                <span>Модель Gemini</span>
+                <Button
+                  size="small"
+                  type="link"
+                  loading={geminiModelsLoading}
+                  onClick={() => refreshGeminiModels(false)}
+                >
+                  Обновить список
+                </Button>
+              </Space>
+            }
+            name="gemini_model"
+            extra={
+              <Typography.Text type="secondary">
+                Free tier лимиты разные. 3.1 Flash Lite = 15 RPM × 500 RPD (лучше всех).
+                2.5 Flash = 5 RPM × 20 RPD (быстро упрётся). Pro / 2.0 — только paid.
+                При HTTP 429 «too many requests» — переключитесь на модель с большей квотой.
+              </Typography.Text>
+            }
+          >
+            <Select options={geminiOptions} optionLabelProp="label" popupMatchSelectWidth={false} />
+          </Form.Item>
 
-        <Form.Item
-          label="API key (Gemini)"
-          name="gemini_key"
-          extra="Получить ключ можно на makersuite.google.com"
-        >
-          <Input.Password placeholder="AIza..." autoComplete="off" />
-        </Form.Item>
+          <Form.Item
+            label="API key (Gemini)"
+            name="gemini_key"
+            extra="Получить ключ можно на makersuite.google.com"
+          >
+            <Input.Password placeholder="AIza..." autoComplete="off" />
+          </Form.Item>
+        </div>
 
-        <Divider plain>
-          Системный промпт саммари
-        </Divider>
+        <div style={{ display: provider === 'openrouter' ? 'block' : 'none' }}>
+          <Form.Item
+            label={
+              <Space>
+                <span>Модель OpenRouter</span>
+                <Button
+                  size="small"
+                  type="link"
+                  loading={openRouterModelsLoading}
+                  onClick={() => refreshOpenRouterModels(false)}
+                >
+                  Обновить список
+                </Button>
+              </Space>
+            }
+            name="openrouter_model"
+            extra={
+              <Typography.Text type="secondary">
+                Только бесплатные модели (суффикс «:free»). Общая квота на ключ — ~20 RPM / 50 RPD
+                на все free-модели вместе. DeepSeek V3.1 — лучший русский + большой контекст.
+                При 429 — подождать минуту или сменить модель.
+              </Typography.Text>
+            }
+          >
+            <Select options={openRouterOptions} optionLabelProp="label" popupMatchSelectWidth={false} />
+          </Form.Item>
+
+          <Form.Item
+            label="API key (OpenRouter)"
+            name="openrouter_key"
+            extra="Получить ключ: openrouter.ai/keys"
+          >
+            <Input.Password placeholder="sk-or-v1-..." autoComplete="off" />
+          </Form.Item>
+        </div>
+
+        <Divider plain>Системный промпт саммари</Divider>
 
         <Alert
           type="info"

@@ -1,6 +1,6 @@
 """LLM-провайдер интерфейс + factory.
 
-Старт: только Gemini. DeepSeek/Anthropic/OpenAI — заглушки на будущее.
+Поддержка: Gemini (Google AI Studio), OpenRouter (десятки free-моделей).
 """
 from typing import Protocol, runtime_checkable
 
@@ -46,4 +46,13 @@ def get_llm_provider(db: Session) -> LLMProvider:
         if model:
             return GeminiProvider(api_key=api_key, model=model)
         return GeminiProvider(api_key=api_key)
+    if provider_name == "openrouter":
+        from app.services.llm.openrouter import OpenRouterProvider
+        api_key = _get_app_setting(db, "llm_openrouter_api_key")
+        if not api_key:
+            raise ConfigurationError("OpenRouter API key not configured")
+        model = _get_app_setting(db, "llm_openrouter_model")
+        if model:
+            return OpenRouterProvider(api_key=api_key, model=model)
+        return OpenRouterProvider(api_key=api_key)
     raise ConfigurationError(f"LLM provider '{provider_name}' not supported")
