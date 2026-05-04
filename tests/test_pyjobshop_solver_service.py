@@ -4,8 +4,11 @@ import uuid
 from datetime import date
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.absence import Absence
+from app.models.absence_reason import AbsenceReason
 from app.models.employee import Employee
 from app.models.backlog_item import BacklogItem
 from app.models.resource_plan import ResourcePlan
@@ -70,3 +73,70 @@ def test_solver_assigns_dev_to_developer(simple_plan, db_session: Session):
     a = result["assignments"][0]
     # Один dev на эту задачу — должен быть назначен наш единственный разработчик
     assert a["assignee_employee_id"] == emp.id
+
+
+def test_solver_respects_employee_absence(db_session: Session):
+    """Задача не может стартовать в период отсутствия сотрудника."""
+    # Q2 2026 starts 2026-04-01; employee is absent 2026-04-01 – 2026-04-15
+    emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:8],
+        display_name="DevAbsent",
+        team="B",
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(emp)
+    db_session.flush()
+
+    # Получаем или создаём причину отсутствия
+    reason = db_session.scalars(
+        select(AbsenceReason).where(AbsenceReason.code == "vacation")
+    ).first()
+    if reason is None:
+        reason = AbsenceReason(code="vacation", label="Отпуск")
+        db_session.add(reason)
+        db_session.flush()
+
+    absence = Absence(
+        employee_id=emp.id,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 15),
+        reason_id=reason.id,
+    )
+    db_session.add(absence)
+    db_session.flush()
+
+    item = BacklogItem(
+        title="Task After Absence",
+        priority=1,
+        estimate_dev_hours=8.0,
+        estimate_analyst_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="B", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assignment = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="dev",
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 16),
+        end_date=date(2026, 4, 16),
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    a = result["assignments"][0]
+    assert a["assignee_employee_id"] == emp.id
+    # Задача должна стартовать ПОСЛЕ окончания отпуска (2026-04-15)
+    assert a["start_date"] >= date(2026, 4, 16)

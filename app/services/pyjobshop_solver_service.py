@@ -22,8 +22,10 @@ from typing import Optional, TypedDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.absence import Absence
 from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
+from app.models.production_calendar_day import ProductionCalendarDay
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 
@@ -104,18 +106,34 @@ class PyJobShopSolverService:
 
         model = Model()
 
+        anchor = self._anchor_date(plan)
+        horizon_days = self._horizon_days(plan)
+
+        # Загружаем производственный календарь один раз для всего горизонта
+        horizon_end = anchor + timedelta(days=horizon_days - 1)
+        cal_overrides: dict[date, bool] = {
+            row.date: row.is_workday
+            for row in self.db.scalars(
+                select(ProductionCalendarDay).where(
+                    ProductionCalendarDay.date >= anchor,
+                    ProductionCalendarDay.date <= horizon_end,
+                )
+            )
+        }
+
         # Один renewable resource на сотрудника. Ёмкость = 8 единиц/день
         # (1 unit = 1 час, 8 ч — стандартный рабочий день).
         # resource_idx_to_emp_id используется для восстановления результата.
         resource_idx_to_emp_id: dict[int, str] = {}
         emp_id_to_resource_idx: dict[str, int] = {}
         for idx, emp in enumerate(employees):
-            model.add_renewable(capacity=HOURS_PER_DAY, name=emp.id)
+            breaks = self._employee_breaks(emp, anchor, horizon_days, cal_overrides)
+            model.add_renewable(capacity=HOURS_PER_DAY, breaks=breaks, name=emp.id)
             resource_idx_to_emp_id[idx] = emp.id
             emp_id_to_resource_idx[emp.id] = idx
 
-        # Горизонт планирования в часах (рабочих)
-        horizon_slots = self._horizon_days(plan) * HOURS_PER_DAY
+        # Горизонт планирования в часах
+        horizon_slots = horizon_days * HOURS_PER_DAY
 
         # Job per backlog_item, Task per assignment row
         jobs: dict[str, object] = {}
@@ -166,7 +184,6 @@ class PyJobShopSolverService:
         # с полями start, end, mode, resources (индекс в model.resources).
         # Порядок tasks совпадает с порядком добавления через add_task().
         solution_tasks = list(result.best.tasks) if result.best is not None else []
-        anchor = self._anchor_date(plan)
 
         # Собираем per-assignment данные, порядок task'ов = порядок assignments
         per_assignment: dict[str, PhaseAllocation] = {}
@@ -221,6 +238,48 @@ class PyJobShopSolverService:
             solver_status=status_str,
             solve_time_ms=int((time.monotonic() - t0) * 1000),
         )
+
+    def _employee_breaks(
+        self,
+        emp: Employee,
+        anchor: date,
+        horizon_days: int,
+        cal_overrides: dict[date, bool],
+    ) -> list[tuple[int, int]]:
+        """Возвращает список break-интервалов (start_slot, end_slot) для сотрудника.
+
+        Break = любой день горизонта, когда сотрудник недоступен:
+        - выходной/праздник по производственному календарю;
+        - период отсутствия (Absence).
+        """
+        # Дни отсутствия сотрудника
+        absent_days: set[date] = set()
+        absences = list(self.db.scalars(
+            select(Absence).where(Absence.employee_id == emp.id)
+        ))
+        for absence in absences:
+            d = absence.start_date
+            while d <= absence.end_date:
+                absent_days.add(d)
+                d += timedelta(days=1)
+
+        breaks: list[tuple[int, int]] = []
+        for day_offset in range(horizon_days):
+            d = anchor + timedelta(days=day_offset)
+            # Производственный календарь: приоритет у переопределений,
+            # дефолт — weekday < 5 рабочий, иначе выходной.
+            if d in cal_overrides:
+                is_workday = cal_overrides[d]
+            else:
+                is_workday = d.weekday() < 5
+
+            unavailable = not is_workday or d in absent_days
+            if unavailable:
+                slot_start = day_offset * HOURS_PER_DAY
+                slot_end = slot_start + HOURS_PER_DAY
+                breaks.append((slot_start, slot_end))
+
+        return breaks
 
     def _employee_can_do_phase(self, emp: Employee, phase: str) -> bool:
         """Проверяет, подходит ли роль сотрудника для данной phase."""
