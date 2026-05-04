@@ -1,5 +1,6 @@
 import { useRef, useMemo } from 'react';
 import type { AssignmentOut, ScheduledBlock } from '../../api/resourcePlanning';
+import type { EmployeeResponse } from '../../types/api';
 import { buildTimeline, dateToLeft, quarterBounds } from '../../utils/gantt';
 import type { ViewMode } from './GanttRows';
 import TimelineHeader from './TimelineHeader';
@@ -16,6 +17,8 @@ interface Props {
   year: number;
   viewMode: ViewMode;
   showRelayArrows?: boolean;
+  planId: string;
+  employees: EmployeeResponse[];
 }
 
 export default function GanttChart({
@@ -25,6 +28,8 @@ export default function GanttChart({
   year,
   viewMode,
   showRelayArrows = true,
+  planId,
+  employees,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -85,6 +90,8 @@ export default function GanttChart({
           viewMode={viewMode}
           leftColWidth={LEFT_COL}
           rowRefs={rowRefs}
+          planId={planId}
+          employees={employees}
         />
       </div>
     </div>
