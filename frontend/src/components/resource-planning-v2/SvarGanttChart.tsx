@@ -1,18 +1,17 @@
-import { Gantt, Willow } from 'wx-react-gantt';
-import 'wx-react-gantt/dist/gantt.css';
+import { useEffect, useRef } from 'react';
+import Gantt from 'frappe-gantt';
+import './frappe-gantt-base.css';
 import './svar-dark.css';
-
 import type { AssignmentOut } from '../../api/resourcePlanning';
 
-interface GanttTask {
+interface FrappeTask {
   id: string;
-  text: string;
-  start: Date;
-  end: Date;
-  type: 'task' | 'summary' | 'milestone';
-  parent?: string;
-  open?: boolean;
-  progress?: number;
+  name: string;
+  start: string;  // YYYY-MM-DD
+  end: string;
+  progress: number;
+  dependencies?: string;  // comma-separated FrappeTask.id
+  custom_class?: string;
 }
 
 interface Props {
@@ -20,124 +19,66 @@ interface Props {
   viewMode: 'task' | 'employee';
 }
 
-function parseDate(iso: string): Date {
-  return new Date(iso);
+function fmtDate(d: string | null): string | null {
+  if (!d) return null;
+  return d.slice(0, 10);  // strip time if any
 }
 
-function buildTasksByTask(assignments: AssignmentOut[]): GanttTask[] {
+function buildTasks(assignments: AssignmentOut[], viewMode: 'task' | 'employee'): FrappeTask[] {
   const valid = assignments.filter(a => a.start_date && a.end_date);
-  const groups = new Map<string, AssignmentOut[]>();
-  for (const a of valid) {
-    const list = groups.get(a.backlog_item_id) ?? [];
-    list.push(a);
-    groups.set(a.backlog_item_id, list);
+  if (viewMode === 'task') {
+    return valid.map((a, idx) => ({
+      id: `t-${a.id || idx}`,
+      name: `${a.backlog_item_key ?? a.backlog_item_id.slice(0, 6)} · ${a.phase}${a.employee_name ? ' · ' + a.employee_name : ''}`,
+      start: fmtDate(a.start_date)!,
+      end: fmtDate(a.end_date)!,
+      progress: 0,
+      custom_class: a.is_pinned ? 'pinned' : `phase-${a.phase}`,
+    }));
   }
-
-  const tasks: GanttTask[] = [];
-  for (const [itemId, items] of groups) {
-    const starts = items.map(a => parseDate(a.start_date!).getTime());
-    const ends = items.map(a => parseDate(a.end_date!).getTime());
-    const parentStart = new Date(Math.min(...starts));
-    const parentEnd = new Date(Math.max(...ends));
-    const label = items[0].backlog_item_key ?? itemId.slice(0, 6);
-    tasks.push({
-      id: `item-${itemId}`,
-      text: label,
-      start: parentStart,
-      end: parentEnd,
-      type: 'summary',
-      open: false,
-    });
-    for (const a of items) {
-      const phaseLabels: Record<string, string> = {
-        analyst: 'Анализ',
-        dev: 'Разработка',
-        qa: 'Тестирование',
-        opo: 'ОПЭ',
-      };
-      tasks.push({
-        id: a.id,
-        text: phaseLabels[a.phase] ?? a.phase,
-        start: parseDate(a.start_date!),
-        end: parseDate(a.end_date!),
-        type: 'task',
-        parent: `item-${itemId}`,
-      });
-    }
-  }
-  return tasks;
+  // viewMode === 'employee'
+  // Frappe doesn't natively group, so we just sort by employee_name and prefix the name
+  const sorted = [...valid].sort((a, b) => (a.employee_name ?? '~').localeCompare(b.employee_name ?? '~'));
+  return sorted.map((a, idx) => ({
+    id: `e-${a.id || idx}`,
+    name: `${a.employee_name ?? '(пул)'} — ${a.backlog_item_key ?? '?'} · ${a.phase}`,
+    start: fmtDate(a.start_date)!,
+    end: fmtDate(a.end_date)!,
+    progress: 0,
+    custom_class: `phase-${a.phase}`,
+  }));
 }
-
-function buildTasksByEmployee(assignments: AssignmentOut[]): GanttTask[] {
-  const valid = assignments.filter(a => a.start_date && a.end_date);
-  const groups = new Map<string, AssignmentOut[]>();
-  for (const a of valid) {
-    const key = a.employee_id ?? '__pool__';
-    const list = groups.get(key) ?? [];
-    list.push(a);
-    groups.set(key, list);
-  }
-
-  const tasks: GanttTask[] = [];
-  for (const [empKey, items] of groups) {
-    const starts = items.map(a => parseDate(a.start_date!).getTime());
-    const ends = items.map(a => parseDate(a.end_date!).getTime());
-    const parentStart = new Date(Math.min(...starts));
-    const parentEnd = new Date(Math.max(...ends));
-    const empName = items[0].employee_name ?? '(Пул)';
-    tasks.push({
-      id: `emp-${empKey}`,
-      text: empName,
-      start: parentStart,
-      end: parentEnd,
-      type: 'summary',
-      open: false,
-    });
-    for (const a of items) {
-      const itemLabel = a.backlog_item_key ?? a.backlog_item_id.slice(0, 6);
-      const phaseLabels: Record<string, string> = {
-        analyst: 'Анализ',
-        dev: 'Разработка',
-        qa: 'Тестирование',
-        opo: 'ОПЭ',
-      };
-      tasks.push({
-        id: a.id,
-        text: `${itemLabel} · ${phaseLabels[a.phase] ?? a.phase}`,
-        start: parseDate(a.start_date!),
-        end: parseDate(a.end_date!),
-        type: 'task',
-        parent: `emp-${empKey}`,
-      });
-    }
-  }
-  return tasks;
-}
-
-const scales = [
-  { unit: 'month', step: 1, format: 'MMMM yyyy' },
-  { unit: 'day', step: 1, format: 'd' },
-];
 
 export default function SvarGanttChart({ assignments, viewMode }: Props) {
-  const tasks =
-    viewMode === 'task'
-      ? buildTasksByTask(assignments)
-      : buildTasksByEmployee(assignments);
+  const ref = useRef<HTMLDivElement>(null);
+  const ganttRef = useRef<Gantt | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const tasks = buildTasks(assignments, viewMode);
+    if (tasks.length === 0) {
+      // Frappe doesn't handle empty arrays well — clear the container
+      ref.current.innerHTML = '<div style="color:#8ab0d8;padding:24px">Нет задач для отображения</div>';
+      return;
+    }
+    // Recreate on every change — simpler than diffing
+    ref.current.innerHTML = '';
+    try {
+      ganttRef.current = new Gantt(ref.current, tasks, {
+        view_mode: 'Day',
+        bar_height: 24,
+        bar_corner_radius: 3,
+        padding: 18,
+        popup_on: 'hover',
+      });
+    } catch (e) {
+      console.error('Gantt render error', e);
+    }
+  }, [assignments, viewMode]);
 
   return (
-    <div
-      style={{
-        height: 600,
-        background: '#0f2340',
-        borderRadius: 8,
-        padding: 8,
-        overflow: 'hidden',
-      }}
-    >
-      <Willow>
-        <Gantt tasks={tasks} links={[]} scales={scales} />
-      </Willow>
+    <div style={{ height: 600, background: '#0f2340', borderRadius: 8, padding: 8, overflow: 'auto' }}>
+      <div ref={ref} className="frappe-gantt-host" />
     </div>
   );
 }
