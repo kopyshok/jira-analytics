@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.models.absence import Absence
 from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
+from app.models.plan_item_dependency import PlanItemDependency
 from app.models.production_calendar_day import ProductionCalendarDay
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
@@ -136,12 +137,40 @@ class PyJobShopSolverService:
         # Горизонт планирования в часах
         horizon_slots = horizon_days * HOURS_PER_DAY
 
-        # Job per backlog_item, Task per assignment row
+        # Загружаем зависимости (FS) для плана
+        fs_deps = list(self.db.scalars(
+            select(PlanItemDependency).where(
+                PlanItemDependency.plan_id == plan_id,
+                PlanItemDependency.dep_type == "FS",
+            )
+        ))
+        # TODO: SS/FF/SF зависимости не поддерживаются в v1, пропускаются.
+
+        # Загружаем backlog_items для priority weight
+        item_ids = list({a.backlog_item_id for a in assignments})
+        backlog_items: dict[str, BacklogItem] = {
+            item.id: item
+            for item in self.db.scalars(
+                select(BacklogItem).where(BacklogItem.id.in_(item_ids))
+            )
+        }
+
+        # Job per backlog_item, Task per assignment row.
+        # task_id → Task object (для построения FS-ограничений).
         jobs: dict[str, object] = {}
+        # backlog_item_id → список Task (для FS: last task of from_item, first task of to_item)
+        item_tasks: dict[str, list[object]] = {}
 
         for a in assignments:
             if a.backlog_item_id not in jobs:
-                jobs[a.backlog_item_id] = model.add_job()
+                # C. Priority weight: priority 1 → weight 10, priority 10 → weight 1, None → 6
+                bi = backlog_items.get(a.backlog_item_id)
+                priority = bi.priority if bi is not None else None
+                weight = max(1, 11 - (priority if priority is not None else 5))
+                # due_date = конец горизонта (soft deadline для tardiness objective)
+                jobs[a.backlog_item_id] = model.add_job(
+                    weight=weight, due_date=horizon_slots
+                )
 
             duration_slots = max(1, int(a.hours_allocated or 1))
             task = model.add_task(
@@ -149,6 +178,23 @@ class PyJobShopSolverService:
                 latest_end=horizon_slots,
                 name=a.id,
             )
+            item_tasks.setdefault(a.backlog_item_id, []).append(task)
+
+            # B. Pinned assignment: если is_pinned и employee_id задан — единственный mode.
+            if a.is_pinned and a.employee_id and a.employee_id in emp_id_to_resource_idx:
+                pinned_emp = next(
+                    (e for e in employees if e.id == a.employee_id), None
+                )
+                if pinned_emp is not None:
+                    r_idx = emp_id_to_resource_idx[pinned_emp.id]
+                    resource = model.resources[r_idx]
+                    model.add_mode(
+                        task=task,
+                        resources=[resource],
+                        duration=duration_slots,
+                        demands=[HOURS_PER_DAY],
+                    )
+                    continue  # не добавляем прочие mode для этой task
 
             # Mode per eligible employee (skill match)
             eligible_employees = [
@@ -167,6 +213,24 @@ class PyJobShopSolverService:
                     duration=duration_slots,
                     demands=[HOURS_PER_DAY],
                 )
+
+        # A. FS Dependencies: last task of from_item must end before first task of to_item.
+        # TODO: lag_days не учитывается в v1 (add_end_before_start принимает delay в слотах,
+        # но конвертация рабочих дней → слотов требует учёта выходных; отложено).
+        for dep in fs_deps:
+            from_tasks = item_tasks.get(dep.from_item_id, [])
+            to_tasks = item_tasks.get(dep.to_item_id, [])
+            if not from_tasks or not to_tasks:
+                continue
+            # В v1 предполагаем одну phase на item; для multi-phase берём последнюю/первую
+            # по порядку добавления (который совпадает с порядком assignments).
+            # Корректная реализация требует CPM-анализа; для FS "один successor" — достаточно.
+            for from_task in from_tasks:
+                for to_task in to_tasks:
+                    model.add_end_before_start(from_task, to_task)
+
+        # C. Objective: minimize total weighted tardiness (weight учтён в add_job выше).
+        model.set_objective(weight_total_tardiness=1)
 
         result = model.solve(time_limit=self.time_limit_sec, display=False)
 

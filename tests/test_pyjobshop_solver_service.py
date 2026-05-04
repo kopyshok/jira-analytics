@@ -11,6 +11,7 @@ from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
 from app.models.employee import Employee
 from app.models.backlog_item import BacklogItem
+from app.models.plan_item_dependency import PlanItemDependency
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.scheduled_block import ScheduledBlock
@@ -202,6 +203,171 @@ def test_solver_respects_employee_blocked_zone(db_session: Session):
     assert a["assignee_employee_id"] == emp.id
     # Задача должна стартовать не раньше 2026-04-13 (первый рабочий день после блока)
     assert a["start_date"] >= date(2026, 4, 13)
+
+
+def test_solver_respects_fs_dependency(db_session: Session):
+    """Задача B с зависимостью FS от A должна стартовать не раньше окончания A."""
+    emp = _make_employee(db_session, role="developer", team="E")
+
+    item_a = BacklogItem(
+        title="Item A",
+        priority=1,
+        estimate_dev_hours=8.0,
+        estimate_analyst_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+    )
+    item_b = BacklogItem(
+        title="Item B",
+        priority=2,
+        estimate_dev_hours=8.0,
+        estimate_analyst_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+    )
+    db_session.add_all([item_a, item_b])
+    db_session.flush()
+
+    plan = ResourcePlan(team="E", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assign_a = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item_a.id,
+        phase="dev",
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 1),
+    )
+    assign_b = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item_b.id,
+        phase="dev",
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 2),
+        end_date=date(2026, 4, 2),
+    )
+    db_session.add_all([assign_a, assign_b])
+    db_session.flush()
+
+    dep = PlanItemDependency(
+        plan_id=plan.id,
+        from_item_id=item_a.id,
+        to_item_id=item_b.id,
+        dep_type="FS",
+        lag_days=0,
+        source="manual",
+    )
+    db_session.add(dep)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assignments = {a["backlog_item_id"]: a for a in result["assignments"]}
+    assert item_a.id in assignments
+    assert item_b.id in assignments
+    # B должен стартовать не раньше окончания A
+    assert assignments[item_b.id]["start_date"] >= assignments[item_a.id]["end_date"]
+
+
+def test_solver_respects_pinned_assignment(db_session: Session):
+    """Закреплённый (is_pinned) исполнитель не должен быть переназначен."""
+    emp_x = _make_employee(db_session, role="developer", team="F")
+    emp_y = _make_employee(db_session, role="developer", team="F")
+
+    item = BacklogItem(
+        title="Pinned Item",
+        priority=1,
+        estimate_dev_hours=8.0,
+        estimate_analyst_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="F", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assignment = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="dev",
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 1),
+        employee_id=emp_x.id,
+        is_pinned=True,
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    a = result["assignments"][0]
+    # Закреплённый исполнитель должен сохраниться
+    assert a["assignee_employee_id"] == emp_x.id
+
+
+def test_solver_prefers_higher_priority(db_session: Session):
+    """Задача с приоритетом 1 должна стартовать раньше, чем с приоритетом 10."""
+    emp = _make_employee(db_session, role="developer", team="G")
+
+    item_hi = BacklogItem(
+        title="High Priority",
+        priority=1,
+        estimate_dev_hours=8.0,
+        estimate_analyst_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+    )
+    item_lo = BacklogItem(
+        title="Low Priority",
+        priority=10,
+        estimate_dev_hours=8.0,
+        estimate_analyst_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+    )
+    db_session.add_all([item_hi, item_lo])
+    db_session.flush()
+
+    plan = ResourcePlan(team="G", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assign_hi = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item_hi.id,
+        phase="dev",
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 1),
+    )
+    assign_lo = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item_lo.id,
+        phase="dev",
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 2),
+        end_date=date(2026, 4, 2),
+    )
+    db_session.add_all([assign_hi, assign_lo])
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assignments = {a["backlog_item_id"]: a for a in result["assignments"]}
+    assert item_hi.id in assignments
+    assert item_lo.id in assignments
+    # Высокоприоритетная задача должна стартовать раньше низкоприоритетной
+    assert assignments[item_hi.id]["start_date"] <= assignments[item_lo.id]["start_date"]
 
 
 def test_solver_respects_team_wide_block(db_session: Session):
