@@ -160,8 +160,36 @@ class PyJobShopSolverService:
         jobs: dict[str, object] = {}
         # backlog_item_id → список Task (для FS: last task of from_item, first task of to_item)
         item_tasks: dict[str, list[object]] = {}
+        # Параллельно solution_tasks: какие assignments реально добавлены в модель.
+        # Skipped assignments (no eligible employees) — не в этом списке, попадают в infeasible.
+        added_assignments: list[ResourcePlanAssignment] = []
+        skipped_item_ids: set[str] = set()
 
         for a in assignments:
+            # B. Pinned assignment: если is_pinned и employee_id задан — единственный mode.
+            pinned_resource_idx: Optional[int] = None
+            if a.is_pinned and a.employee_id and a.employee_id in emp_id_to_resource_idx:
+                pinned_resource_idx = emp_id_to_resource_idx[a.employee_id]
+
+            # Mode per eligible employee (skill match)
+            if pinned_resource_idx is not None:
+                eligible_resource_indices = [pinned_resource_idx]
+            else:
+                eligible_resource_indices = [
+                    emp_id_to_resource_idx[emp.id]
+                    for emp in employees
+                    if self._employee_can_do_phase(emp, a.phase)
+                    and emp.id in emp_id_to_resource_idx
+                ]
+
+            if not eligible_resource_indices:
+                # Нет ни одного сотрудника подходящей роли в команде — фаза не может
+                # быть запланирована солвером. Помечаем backlog_item как infeasible
+                # и не добавляем task в модель (иначе pyjobshop падает с
+                # "Processing modes missing for task N").
+                skipped_item_ids.add(a.backlog_item_id)
+                continue
+
             if a.backlog_item_id not in jobs:
                 # C. Priority weight: priority 1 → weight 10, priority 10 → weight 1, None → 6
                 bi = backlog_items.get(a.backlog_item_id)
@@ -179,30 +207,9 @@ class PyJobShopSolverService:
                 name=a.id,
             )
             item_tasks.setdefault(a.backlog_item_id, []).append(task)
+            added_assignments.append(a)
 
-            # B. Pinned assignment: если is_pinned и employee_id задан — единственный mode.
-            if a.is_pinned and a.employee_id and a.employee_id in emp_id_to_resource_idx:
-                pinned_emp = next(
-                    (e for e in employees if e.id == a.employee_id), None
-                )
-                if pinned_emp is not None:
-                    r_idx = emp_id_to_resource_idx[pinned_emp.id]
-                    resource = model.resources[r_idx]
-                    model.add_mode(
-                        task=task,
-                        resources=[resource],
-                        duration=duration_slots,
-                        demands=[HOURS_PER_DAY],
-                    )
-                    continue  # не добавляем прочие mode для этой task
-
-            # Mode per eligible employee (skill match)
-            eligible_employees = [
-                emp for emp in employees
-                if self._employee_can_do_phase(emp, a.phase)
-            ]
-            for emp in eligible_employees:
-                r_idx = emp_id_to_resource_idx[emp.id]
+            for r_idx in eligible_resource_indices:
                 resource = model.resources[r_idx]
                 # demand = HOURS_PER_DAY означает "сотрудник занят весь рабочий
                 # день"; duration = кол-во часов (task растягивается на несколько
@@ -240,20 +247,21 @@ class PyJobShopSolverService:
         if status_str == "INFEASIBLE":
             return SolverResult(
                 assignments=[],
-                infeasible_items=list(jobs.keys()),
+                infeasible_items=list(set(jobs.keys()) | skipped_item_ids),
                 solver_status="INFEASIBLE",
                 solve_time_ms=int((time.monotonic() - t0) * 1000),
             )
 
         # Извлечь результат. PyJobShop solution: result.best.tasks[i] — ScheduledTask
         # с полями start, end, mode, resources (индекс в model.resources).
-        # Порядок tasks совпадает с порядком добавления через add_task().
+        # Порядок tasks совпадает с порядком добавления через add_task() — то есть
+        # с порядком added_assignments (skipped исключены).
         solution_tasks = list(result.best.tasks) if result.best is not None else []
 
-        # Собираем per-assignment данные, порядок task'ов = порядок assignments
+        # Собираем per-assignment данные, порядок task'ов = порядок added_assignments
         per_assignment: dict[str, PhaseAllocation] = {}
         for idx, sol_task in enumerate(solution_tasks):
-            a = assignments[idx]
+            a = added_assignments[idx]
             start_d = self._slot_to_date(anchor, sol_task.start)
             end_d = self._slot_to_date(anchor, sol_task.end)
 
@@ -279,12 +287,19 @@ class PyJobShopSolverService:
         out_assignments: list[SolverAssignment] = []
         infeasible: list[str] = []
 
+        # Полностью пропущенные backlog_items (ни одной фазы не размещено)
+        infeasible.extend(sorted(skipped_item_ids))
+
         for item_id, item_assignments in item_groups.items():
+            if item_id in skipped_item_ids and item_id not in jobs:
+                # Уже добавлено в infeasible выше, нет ни одной задачи в модели
+                continue
             phase_breakdown = [
                 per_assignment[a.id] for a in item_assignments if a.id in per_assignment
             ]
             if not phase_breakdown:
-                infeasible.append(item_id)
+                if item_id not in infeasible:
+                    infeasible.append(item_id)
                 continue
 
             # Главный assignee = тот у кого самая длинная phase
