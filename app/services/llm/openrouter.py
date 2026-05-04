@@ -17,6 +17,10 @@ from app.services.llm.types import ProjectSummary
 logger = logging.getLogger("jira_analytics.llm")
 
 
+class LLMResponseError(Exception):
+    """LLM вернул некорректный ответ (пустой, не-JSON, неверная структура)."""
+
+
 _DEFAULT_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
 _BASE_URL = "https://openrouter.ai/api/v1"
 _REFERER = "http://localhost"
@@ -48,8 +52,27 @@ class OpenRouterProvider:
             }
 
         resp = await self._post(f"{_BASE_URL}/chat/completions", body)
-        text = resp["choices"][0]["message"]["content"]
-        data = json.loads(text)
+        try:
+            text = resp["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError) as e:
+            raise LLMResponseError(
+                f"OpenRouter вернул неожиданную структуру ответа ({type(e).__name__}). "
+                f"Модель {self.model} могла вернуть пустой ответ или ошибку без HTTP-кода. "
+                f"Тело: {str(resp)[:500]}"
+            ) from e
+        if not text.strip():
+            raise LLMResponseError(
+                f"Модель {self.model} вернула пустой ответ. "
+                f"Возможно она не поддерживает response_format=json_schema. "
+                f"Попробуйте другую модель в Настройках → AI."
+            )
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise LLMResponseError(
+                f"Модель {self.model} вернула не-JSON. Возможно она игнорирует response_format. "
+                f"Первые 300 символов: {text[:300]}"
+            ) from e
 
         usage = resp.get("usage", {}) or {}
         meta = {
