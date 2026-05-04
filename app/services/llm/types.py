@@ -7,19 +7,18 @@ WorkBucket = Literal["analysis", "development", "testing", "ope"]
 
 
 class ChecklistItem(BaseModel):
-    """Достижение проекта. `category` привязывает к работе из `work_breakdown`."""
+    """Достижение проекта. `category` привязывает к bucket'у из `work_breakdown`."""
     label: str = Field(max_length=120)
     done: bool = False
     category: WorkBucket
 
 
-WorkBucketLabel = Literal["Анализ", "Разработка", "Тестирование", "ОПЭ"]
-
-
 class WorkBreakdownGroup(BaseModel):
-    """Фиксированная категория трудозатрат: AI распределяет дочерние задачи."""
+    """Группа трудозатрат: bucket — характер работ (4 типа для цвета),
+    label — содержательная формулировка КОНКРЕТНОЙ работы.
+    Допустимо несколько групп с одинаковым bucket."""
     bucket: WorkBucket
-    label: WorkBucketLabel
+    label: str = Field(max_length=80)
     child_keys: list[str] = Field(default_factory=list, max_length=50)
 
 
@@ -29,4 +28,4 @@ class ProjectSummary(BaseModel):
     result_checklist: list[ChecklistItem] = Field(min_length=0, max_length=8)
     status_text: str
     workload_summary: str
-    work_breakdown: list[WorkBreakdownGroup] = Field(default_factory=list, max_length=4)
+    work_breakdown: list[WorkBreakdownGroup] = Field(default_factory=list, max_length=8)

@@ -73,7 +73,7 @@ export interface ChecklistItem {
 
 export interface WorkBreakdownGroup {
   bucket: WorkBucket;
-  label: 'Анализ' | 'Разработка' | 'Тестирование' | 'ОПЭ';
+  label: string;
   child_keys: string[];
 }
 
