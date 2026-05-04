@@ -21,7 +21,8 @@ async def test_connection(db: Session = Depends(get_db)):
     except ConfigurationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     ok = await provider.healthcheck()
-    return {"ok": ok, "provider": provider.name, "model": provider.model}
+    error = getattr(provider, "last_error", None) if not ok else None
+    return {"ok": ok, "provider": provider.name, "model": provider.model, "error": error}
 
 
 @router.post("/regenerate-all")

@@ -5,7 +5,7 @@ export type OpenRouterModelInfo = { id: string; label: string; context_length: n
 export type PromptDefault = { system_role: string; format_spec: string };
 
 export const llmApi = {
-  test: () => api.post<{ ok: boolean; provider: string; model: string }>('/llm/test'),
+  test: () => api.post<{ ok: boolean; provider: string; model: string; error?: string | null }>('/llm/test'),
   regenerateAll: () => api.post<{ started: boolean }>('/llm/regenerate-all'),
   listGeminiModels: () => api.get<GeminiModelInfo[]>('/llm/gemini/models'),
   listOpenRouterModels: () => api.get<OpenRouterModelInfo[]>('/llm/openrouter/models'),

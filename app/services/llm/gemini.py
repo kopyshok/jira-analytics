@@ -74,6 +74,7 @@ class GeminiProvider:
     def __init__(self, api_key: str, model: str = "gemini-2.0-flash") -> None:
         self.api_key = api_key
         self.model = model
+        self.last_error: str | None = None
         self._base = "https://generativelanguage.googleapis.com/v1beta/models"
 
     async def summarize_project(self, prompt: str, *, expect_json: bool = True) -> tuple[ProjectSummary, dict]:
@@ -100,12 +101,19 @@ class GeminiProvider:
 
     async def healthcheck(self) -> bool:
         """Минимальный prompt 'ping' — проверка ключа и соединения."""
+        self.last_error = None
         try:
             url = f"{self._base}/{self.model}:generateContent?key={self.api_key}"
             await self._post(url, {"contents": [{"parts": [{"text": "ping"}]}]})
             return True
+        except httpx.HTTPStatusError as e:
+            body = e.response.text[:500]
+            self.last_error = f"HTTP {e.response.status_code}: {body}"
+            logger.warning("Gemini healthcheck failed: %s", self.last_error)
+            return False
         except Exception as e:
-            logger.warning("Gemini healthcheck failed: %s", e)
+            self.last_error = f"{type(e).__name__}: {e}"
+            logger.warning("Gemini healthcheck failed: %s", self.last_error)
             return False
 
     async def _post(self, url: str, body: dict) -> dict:

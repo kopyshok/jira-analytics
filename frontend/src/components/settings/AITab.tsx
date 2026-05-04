@@ -21,15 +21,16 @@ const FALLBACK_GEMINI_MODELS: GeminiModelInfo[] = [
 ];
 
 const FALLBACK_OPENROUTER_MODELS: OpenRouterModelInfo[] = [
-  { id: 'deepseek/deepseek-chat-v3.1:free', label: 'DeepSeek V3.1 (free, рекомендуется)', context_length: 163840 },
-  { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (free, reasoning)', context_length: 163840 },
-  { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B Instruct (free)', context_length: 65536 },
-  { id: 'qwen/qwen-2.5-72b-instruct:free', label: 'Qwen 2.5 72B (free)', context_length: 32768 },
-  { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (free)', context_length: 96000 },
+  { id: 'qwen/qwen3-next-80b-a3b-instruct:free', label: 'Qwen3-Next 80B Instruct (free, рекомендуется)', context_length: 262144 },
+  { id: 'nousresearch/hermes-3-llama-3.1-405b:free', label: 'Hermes 3 Llama 3.1 405B (free)', context_length: 131072 },
+  { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B IT (free)', context_length: 131072 },
+  { id: 'z-ai/glm-4.5-air:free', label: 'GLM 4.5 Air (free)', context_length: 131072 },
+  { id: 'openai/gpt-oss-120b:free', label: 'GPT-OSS 120B (free)', context_length: 131072 },
+  { id: 'qwen/qwen3-coder:free', label: 'Qwen3 Coder (free)', context_length: 262000 },
 ];
 
 const RECOMMENDED_GEMINI = 'gemini-3.1-flash-lite-preview';
-const RECOMMENDED_OPENROUTER = 'deepseek/deepseek-chat-v3.1:free';
+const RECOMMENDED_OPENROUTER = 'qwen/qwen3-next-80b-a3b-instruct:free';
 const PROMPT_KEY = 'llm_project_summary_system_prompt';
 
 type FormValues = {
@@ -136,8 +137,15 @@ export const AITab: React.FC = () => {
   const onTest = async () => {
     try {
       const r = await llmApi.test();
-      if (r.ok) message.success(`${r.provider} ${r.model}: подключение работает`);
-      else message.warning(`${r.provider} ${r.model}: подключение не удалось`);
+      if (r.ok) {
+        message.success(`${r.provider} ${r.model}: подключение работает`);
+      } else {
+        modal.error({
+          title: `${r.provider} ${r.model}: подключение не удалось`,
+          content: r.error || 'Причина неизвестна (см. логи backend).',
+          width: 720,
+        });
+      }
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : 'Ошибка подключения');
     }

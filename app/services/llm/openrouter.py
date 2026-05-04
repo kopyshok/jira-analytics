@@ -17,7 +17,7 @@ from app.services.llm.types import ProjectSummary
 logger = logging.getLogger("jira_analytics.llm")
 
 
-_DEFAULT_MODEL = "deepseek/deepseek-chat-v3.1:free"
+_DEFAULT_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
 _BASE_URL = "https://openrouter.ai/api/v1"
 _REFERER = "http://localhost"
 _TITLE = "JiraAnalysis"
@@ -29,6 +29,7 @@ class OpenRouterProvider:
     def __init__(self, api_key: str, model: str = _DEFAULT_MODEL) -> None:
         self.api_key = api_key
         self.model = model
+        self.last_error: str | None = None
 
     async def summarize_project(self, prompt: str, *, expect_json: bool = True) -> tuple[ProjectSummary, dict]:
         body: dict[str, Any] = {
@@ -59,6 +60,7 @@ class OpenRouterProvider:
         return ProjectSummary.model_validate(data), meta
 
     async def healthcheck(self) -> bool:
+        self.last_error = None
         try:
             await self._post(
                 f"{_BASE_URL}/chat/completions",
@@ -69,8 +71,14 @@ class OpenRouterProvider:
                 },
             )
             return True
+        except httpx.HTTPStatusError as e:
+            body = e.response.text[:500]
+            self.last_error = f"HTTP {e.response.status_code}: {body}"
+            logger.warning("OpenRouter healthcheck failed: %s", self.last_error)
+            return False
         except Exception as e:
-            logger.warning("OpenRouter healthcheck failed: %s", e)
+            self.last_error = f"{type(e).__name__}: {e}"
+            logger.warning("OpenRouter healthcheck failed: %s", self.last_error)
             return False
 
     async def _post(self, url: str, body: dict) -> dict:
