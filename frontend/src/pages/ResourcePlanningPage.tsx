@@ -9,6 +9,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
+import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 import GanttChart from '../components/resource-planning/GanttChart';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
@@ -132,6 +133,7 @@ export default function ResourcePlanningPage() {
         })()}
         {gantt?.plan.label && <Tag color="purple">{gantt.plan.label}</Tag>}
         {gantt?.plan.is_baseline && <Tag color="cyan">Базовый</Tag>}
+        <PlanQualityBadge planId={planId} />
         {planId && gantt && (
           <Button size="small" onClick={() => setForkModalOpen(true)}>
             Сделать копию
