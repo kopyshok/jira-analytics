@@ -838,6 +838,7 @@ export interface AnalyticsIssueNode {
   category: string | null;
   last_worklog_at: string | null;
   assignee_name: string | null;
+  is_foreign: boolean;
   totals: NodeTotals;
 }
 

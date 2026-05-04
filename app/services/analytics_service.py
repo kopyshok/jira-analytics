@@ -759,6 +759,7 @@ class AnalyticsService:
             self.db.query(
                 Worklog.employee_id,
                 Issue.category,
+                Issue.assigned_category,
                 Issue.team,
                 Issue.participating_teams,
                 func.sum(Worklog.time_spent_seconds).label("secs"),
@@ -773,6 +774,7 @@ class AnalyticsService:
             .group_by(
                 Worklog.employee_id,
                 Issue.category,
+                Issue.assigned_category,
                 Issue.team,
                 Issue.participating_teams,
             )
@@ -784,13 +786,16 @@ class AnalyticsService:
         ORPHAN_WT_LABEL = "Не указана категория/вид работ"
 
         fact_per_emp_wt: dict[str, dict[str, float]] = {e.id: {} for e in employees}
-        for emp_id, cat_code, issue_team, parts_json, secs in wl_rows:
+        for emp_id, cat_code, assigned_cat, issue_team, parts_json, secs in wl_rows:
             h = (secs or 0) / 3600.0
             emp_team = emp_team_by_id.get(emp_id)
 
             is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
 
-            if is_foreign and other_foreign_wt is not None:
+            # Чужая задача без ручной assigned_category → other_foreign.
+            # Если категория проставлена руками — она перебивает foreign-routing,
+            # факт идёт в work_type категории как у нормальной задачи.
+            if is_foreign and other_foreign_wt is not None and not assigned_cat:
                 fact_per_emp_wt[emp_id][other_foreign_wt.id] = (
                     fact_per_emp_wt[emp_id].get(other_foreign_wt.id, 0.0) + h
                 )
@@ -1260,6 +1265,7 @@ class AnalyticsService:
             Issue.status_category,
             Issue.issue_type,
             Issue.category,
+            Issue.assigned_category,
             Issue.team,
             Issue.participating_teams,
             Issue.include_in_analysis,
@@ -1289,6 +1295,7 @@ class AnalyticsService:
         group_cols = [
             Worklog.employee_id, Worklog.issue_id, Issue.key, Issue.summary,
             Issue.status, Issue.status_category, Issue.issue_type, Issue.category,
+            Issue.assigned_category,
             Issue.team, Issue.participating_teams, Issue.include_in_analysis,
         ]
         if assignee_col is not None:
@@ -1306,6 +1313,7 @@ class AnalyticsService:
             emp_id = row.employee_id
             issue_id = row.issue_id
             cat_code = row.category
+            assigned_cat = row.assigned_category
             issue_team = row.team
             parts_json = row.participating_teams
             secs = row.secs or 0
@@ -1321,15 +1329,17 @@ class AnalyticsService:
             # Задачи из архивных категорий помечены include_in_analysis=False —
             # выносим в отдельный bucket, чтобы часы не пропадали из суммы.
             is_excluded = row.include_in_analysis is False
+            is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
 
             if is_excluded:
                 wt_id = EXCLUDED_WT_ID
                 cat_code_eff = ORPHAN_CAT_CODE
             else:
-                # Cross-team routing
-                is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
-
-                if is_foreign and other_foreign_wt is not None:
+                # Cross-team routing: чужая задача → other_foreign work_type,
+                # ЕСЛИ нет ручной assigned_category. Явная ручная категория
+                # перебивает foreign-routing — отчёт показывает её под нормальным
+                # work_type, а сама задача помечается флагом is_foreign для UI.
+                if is_foreign and other_foreign_wt is not None and not assigned_cat:
                     wt_id = other_foreign_wt.id
                     cat_code_eff = ORPHAN_CAT_CODE
                 else:
@@ -1376,6 +1386,7 @@ class AnalyticsService:
                     "fact_hours": 0.0, "wl_count": 0,
                     "last_at": None,
                     "assignee_name": assignee_name_val,
+                    "is_foreign": is_foreign,
                 }
                 bucket[key] = entry
             entry["fact_hours"] += h
@@ -1452,6 +1463,7 @@ class AnalyticsService:
                                     issue_type=v["issue_type"], category=v["category"],
                                     last_worklog_at=v["last_at"],
                                     assignee_name=v.get("assignee_name"),
+                                    is_foreign=v.get("is_foreign", False),
                                     totals=calc_totals([v], parent_total=grand_total_fact),
                                 ))
                             cats_out.append(AnalyticsCategoryNode(

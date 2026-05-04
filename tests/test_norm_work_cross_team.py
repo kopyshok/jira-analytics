@@ -249,6 +249,25 @@ def test_empty_issue_team_is_foreign(db_session, client):
     assert _wt_label_hours(block, "Прочие") == 2.0
 
 
+def test_assigned_category_overrides_foreign_routing(db_session, client):
+    """Чужая задача с ручной assigned_category идёт в WT категории, не в other_foreign."""
+    _seed_work_types_and_categories(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_employee(db_session, "С Категорией", "Команда A")
+    issue = _seed_issue(db_session, project, "OVR-1", team="Команда B")
+    issue.assigned_category = "support_consultation"
+    db_session.commit()
+    _seed_worklog(db_session, issue, emp, 5.0)
+
+    resp = client.get(
+        "/api/v1/analytics/dashboard/norm-work",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A"},
+    )
+    block = _find_emp_breakdown(resp.json(), emp.id)
+    assert _wt_label_hours(block, "Сопровождение") == 5.0
+    assert _wt_label_hours(block, "Прочие") in (None, 0.0)
+
+
 def test_other_foreign_row_visible_when_plan_zero_fact_positive(db_session, client):
     """Строка other_foreign показывается с plan=0 fact>0 (пользовательский фронт перекрасит в красный)."""
     _seed_work_types_and_categories(db_session)

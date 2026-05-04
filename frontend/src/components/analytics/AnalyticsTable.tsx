@@ -125,6 +125,15 @@ function buildIssueNode(
         >
           {i.status}
         </Tag>
+        {i.is_foreign && (
+          <Tag
+            color="orange"
+            style={{ marginInlineEnd: 0, flexShrink: 0 }}
+            title="Задача чужой команды (списание часов вне scope сотрудника)"
+          >
+            Чужая
+          </Tag>
+        )}
         <span
           style={{
             color: '#e6edf7',

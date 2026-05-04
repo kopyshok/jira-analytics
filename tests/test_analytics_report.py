@@ -264,3 +264,56 @@ def test_report_endpoint_filters(db_session, client):
     )
     data = resp.json()
     assert data["grand_totals"]["fact_hours"] == 3.0
+
+
+def _all_issues(data):
+    return [
+        i for t in data.teams for r in t.roles for e in r.employees
+        for w in e.work_types for c in w.categories for i in c.issues
+    ]
+
+
+def test_foreign_issue_without_assigned_routes_to_other_foreign(db_session):
+    """Чужая задача без ручной категории идёт в other_foreign + Без категории."""
+    from app.services.analytics_service import AnalyticsService
+    _seed_minimal(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_emp(db_session, "Свой", "Команда A")
+    # Issue.category проставлен (наследование), но assigned_category=None.
+    issue = _seed_issue(db_session, project, "FOR-1", "Команда B", "support_consultation")
+    _seed_worklog(db_session, issue, emp, 4.0)
+
+    svc = AnalyticsService(db_session)
+    data = svc.get_hierarchical_report(year=2026, quarter=2, teams=["Команда A"])
+    issues = _all_issues(data)
+    assert len(issues) == 1
+    assert issues[0].is_foreign is True
+    # WT = other_foreign, категория = ORPHAN ("Без категории")
+    wt_node = data.teams[0].roles[0].employees[0].work_types[0]
+    assert wt_node.label == "Прочие / Чужие задачи"
+    cat_node = wt_node.categories[0]
+    assert cat_node.category_code is None
+    assert cat_node.label == "Без категории"
+
+
+def test_foreign_issue_with_assigned_category_overrides_routing(db_session):
+    """Ручная assigned_category перебивает foreign-routing: задача под нормальным
+    work_type категории, is_foreign=True для UI-метки."""
+    from app.services.analytics_service import AnalyticsService
+    _seed_minimal(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_emp(db_session, "Свой", "Команда A")
+    issue = _seed_issue(db_session, project, "FOR-2", "Команда B", "support_consultation")
+    issue.assigned_category = "support_consultation"
+    db_session.commit()
+    _seed_worklog(db_session, issue, emp, 4.0)
+
+    svc = AnalyticsService(db_session)
+    data = svc.get_hierarchical_report(year=2026, quarter=2, teams=["Команда A"])
+    issues = _all_issues(data)
+    assert len(issues) == 1
+    assert issues[0].is_foreign is True
+    wt_node = data.teams[0].roles[0].employees[0].work_types[0]
+    assert wt_node.label == "Сопровождение и консультация"
+    cat_node = wt_node.categories[0]
+    assert cat_node.category_code == "support_consultation"
