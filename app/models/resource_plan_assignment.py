@@ -41,6 +41,9 @@ class ResourcePlanAssignment(Base, TimestampMixin):
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     is_on_critical_path: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     slack_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0", index=True
+    )
 
     plan: Mapped["ResourcePlan"] = relationship(back_populates="assignments")
     backlog_item: Mapped["BacklogItem"] = relationship("BacklogItem")
