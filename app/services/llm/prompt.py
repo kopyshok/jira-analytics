@@ -5,7 +5,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 
-_BASE_VERSION = "v2"
+_BASE_VERSION = "v3"
 
 
 # Редактируемая часть — роль/тон/инструкции стиля. Пользователь может переопределить
@@ -65,25 +65,12 @@ PROMPT_VERSION = compute_prompt_version(DEFAULT_SYSTEM_ROLE)
 
 
 def build_prompt(epic_data: dict[str, Any], db: Optional[Session] = None) -> str:
-    """Build user prompt из агрегированных данных по эпику.
-
-    epic_data ожидается в форме:
-    {
-        "key": "PRJ-1", "summary": "...", "description": "...",
-        "status": "Done", "is_done": True,
-        "child_count": 11, "employee_count": 7, "total_hours": 187.4,
-        "period_start": "2026-02-12", "period_end": "2026-03-25",
-        "categories": [{"label": "Аналитика", "hours": 57}, ...],
-        "employees": [{"name": "Копышков Н.", "hours": 70.5, "pct": 37.6}, ...],
-        "top_issues": [{"key": "PMD-1", "summary": "...", "hours": 49.5}, ...],
-        "child_summaries": [{"key": "PMD-1", "summary": "..."}, ...]  # max 30 элементов
-    }
-    """
+    """Build user prompt из агрегированных данных по эпику."""
     role = get_system_role(db)
     parts: list[str] = [role, "", FORMAT_SPEC, "", "ВХОДНЫЕ ДАННЫЕ:"]
     parts.append(f"Проект: {epic_data['summary']} ({epic_data['key']})")
     if epic_data.get("description"):
-        desc = epic_data["description"][:1500]
+        desc = epic_data["description"][:8000]
         parts.append(f"Описание: {desc}")
     parts.append(f"Статус: {epic_data['status']} (закрыт: {epic_data.get('is_done', False)})")
     parts.append(
@@ -106,9 +93,22 @@ def build_prompt(epic_data: dict[str, Any], db: Optional[Session] = None) -> str
 
     summaries = epic_data.get("child_summaries", [])[:30]
     if summaries:
-        parts.append("\nКЛЮЧИ ДОЧЕРНИХ ЗАДАЧ С ОПИСАНИЕМ:")
+        parts.append("\nДОЧЕРНИЕ ЗАДАЧИ:")
         for s in summaries:
-            parts.append(f"  • {s['key']}: {s['summary']}")
+            parts.append(f"\n— {s['key']} — {s['summary']}")
+            if s.get("goal_text"):
+                parts.append(f"  Цель: {s['goal_text'][:8000]}")
+            if s.get("current_behavior"):
+                parts.append(f"  Текущее поведение: {s['current_behavior'][:8000]}")
+            if s.get("description"):
+                parts.append(f"  Описание: {s['description'][:8000]}")
+
+    pages = epic_data.get("confluence_pages", [])
+    if pages:
+        parts.append("\nCONFLUENCE-СТРАНИЦЫ (полные ТЗ по ссылкам из задач):")
+        for pg in pages[:10]:
+            parts.append(f"\n— {pg['title']} ({pg['url']})")
+            parts.append(pg['body_text'][:8000])
 
     parts.append("\nВЫДАЙ JSON РЕЗУЛЬТАТ.")
     return "\n".join(parts)
