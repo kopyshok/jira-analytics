@@ -98,9 +98,10 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
               const left = dateToLeft(a.start_date!, timeline);
               const width = datesToWidth(a.start_date!, a.end_date!, timeline);
               const color = PHASE_COLORS[a.phase] ?? '#888';
+              const isChunked = a.chunks_total != null && a.chunks_total > 1;
               const bar = (
                 <div
-                  title={`${PHASE_LABELS[a.phase]} — ${a.employee_name ?? '—'} (${a.hours_allocated?.toFixed(0)}ч)`}
+                  title={`${PHASE_LABELS[a.phase]}${isChunked ? ` (${(a.chunk_index ?? 0) + 1}/${a.chunks_total})` : ''} — ${a.employee_name ?? '—'} (${a.hours_allocated?.toFixed(0)}ч)`}
                   style={{
                     position: 'absolute',
                     left: `${left}%`,
@@ -129,6 +130,17 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
                     <EmployeeAvatar name={a.employee_name} role={a.employee_role} size={16} />
                   )}
                   <span style={{ fontSize: 9 }}>{PHASE_LABELS[a.phase]}</span>
+                  {isChunked && (
+                    <span style={{
+                      fontSize: 8,
+                      background: 'rgba(0,0,0,0.25)',
+                      borderRadius: 2,
+                      padding: '0 2px',
+                      flexShrink: 0,
+                    }}>
+                      {(a.chunk_index ?? 0) + 1}/{a.chunks_total}
+                    </span>
+                  )}
                 </div>
               );
               return (
@@ -252,13 +264,14 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs, planId, em
                       const left = dateToLeft(a.start_date!, timeline);
                       const width = datesToWidth(a.start_date!, a.end_date!, timeline);
                       const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
+                      const isChunkedRow = a.chunks_total != null && a.chunks_total > 1;
                       const bar = (
                         <div
                           ref={el => {
                             if (el) rowRefs.current.set(refKey, el);
                             else rowRefs.current.delete(refKey);
                           }}
-                          title={`${PHASE_LABELS[a.phase]}, ч. ${a.part_number} — ${a.hours_allocated?.toFixed(0)}ч`}
+                          title={`${PHASE_LABELS[a.phase]}${isChunkedRow ? ` (${(a.chunk_index ?? 0) + 1}/${a.chunks_total})` : `, ч. ${a.part_number}`} — ${a.hours_allocated?.toFixed(0)}ч`}
                           style={{
                             position: 'absolute',
                             left: `${left}%`,
@@ -274,8 +287,25 @@ function TwoLevelRows({ assignments, timeline, leftColWidth, rowRefs, planId, em
                             outline: a.is_pinned ? '1px solid #00c9c8' : 'none',
                             zIndex: 2,
                             cursor: a.phase === 'qa' ? 'default' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                           }}
-                        />
+                        >
+                          {isChunkedRow && (
+                            <span style={{
+                              fontSize: 8,
+                              color: '#0d1c33',
+                              fontWeight: 700,
+                              background: 'rgba(0,0,0,0.2)',
+                              borderRadius: 2,
+                              padding: '0 2px',
+                              pointerEvents: 'none',
+                            }}>
+                              {(a.chunk_index ?? 0) + 1}/{a.chunks_total}
+                            </span>
+                          )}
+                        </div>
                       );
                       return (
                         <AssignEmployeePopover

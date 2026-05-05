@@ -70,6 +70,10 @@ export interface AssignmentOut {
   is_pinned: boolean;
   scenario_assignee_employee_id?: string | null;
   scenario_assignee_name?: string | null;
+  /** Авто-сплит: 0-based индекс куска; null если фаза не сплитована */
+  chunk_index?: number | null;
+  /** Авто-сплит: общее число кусков; null если фаза не сплитована */
+  chunks_total?: number | null;
 }
 
 export interface ConflictOut {
