@@ -80,6 +80,17 @@ class BacklogItem(Base, TimestampMixin):
     customer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    # Jira involvement (0.0..1.0) and calendar duration (days) — sourced from Issue.
+    # NULL = not set in Jira; solver falls back to hours_allocated / 8.
+    involvement_analyst: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    involvement_dev: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    involvement_qa: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    involvement_launch: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_analyst_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_dev_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_qa_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration_launch_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # Relationships
     project: Mapped[Optional["Project"]] = relationship(back_populates="backlog_items")
     issue: Mapped[Optional["Issue"]] = relationship("Issue")
