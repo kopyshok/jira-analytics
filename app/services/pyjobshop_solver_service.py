@@ -62,12 +62,17 @@ PHASE_TO_FIELD: dict[str, tuple[str, str]] = {
 }
 
 
+MIN_CHUNK_DAYS = 1  # Минимальный размер куска при авто-сплите (в рабочих днях)
+
+
 class PhaseAllocation(TypedDict):
     phase: str
     hours: float
     employee_id: Optional[str]
     start_date: date
     end_date: date
+    chunk_index: int   # 0-based; 0 для несплитованных фаз
+    chunks_total: int  # 1 для несплитованных фаз
 
 
 class SolverAssignment(TypedDict):
@@ -101,6 +106,116 @@ def _resolve_parallel_count(item: Optional[BacklogItem], phase: str) -> int:
     if n_proj and int(n_proj) > 0:
         return int(n_proj)
     return 1
+
+
+def _compute_split_decisions(
+    assignments: list["ResourcePlanAssignment"],
+    employees: list["Employee"],
+    backlog_items: dict[str, "BacklogItem"],
+    anchor: date,
+    horizon_days: int,
+    cal_overrides: dict[date, bool],
+) -> dict[str, int]:
+    """Эвристика авто-сплита: делит длинные аналитические фазы пополам, пока план влезает в квартал.
+
+    ВАЖНО: это не CP-SAT optional split — это preprocessing-шаг, который укрупнённо оценивает
+    загрузку и принимает решение до построения CP-SAT модели. Результат — словарь
+    {assignment.id → число кусков (степень 2: 2, 4, 8...)}. assignment.id попадает в словарь
+    только если требует сплита; отсутствие в словаре = 1 кусок (без сплита).
+
+    Алгоритм:
+    1. Считаем суммарный demand (duration_days × involvement) по всем фазам.
+    2. Считаем суммарный capacity (рабочих дней × 8) по всем сотрудникам.
+    3. Если demand ≤ capacity — возвращаем пустой dict (сплит не нужен).
+    4. Сортируем analyst-фазы по убыванию duration_days. Пополам делим самую длинную,
+       пока план не укладывается или пока не достигнем MIN_CHUNK_DAYS.
+
+    Нет гарантии что CP-SAT solver после сплита сгенерирует FEASIBLE результат —
+    solver имеет свои ограничения (breaks, pinned assignments, etc.). Сплит лишь
+    позволяет solver'у «разбросать» длинную фазу по кускам и потенциально вместить
+    больше задач в горизонт квартала.
+
+    Примечание: так как в CP-SAT модели НЕТ явной FS-зависимости analyst→dev внутри
+    одной инициативы, сплит аналитической фазы не ускоряет старт dev-фазы. Эффект
+    сплита — распределение нагрузки аналитика по квартальному горизонту.
+    """
+    # Число рабочих дней в горизонте для каждого сотрудника
+    total_capacity_days = 0.0
+    for emp in employees:
+        # Упрощённый подсчёт: calendar days - non-workdays (без breaks сотрудника)
+        for day_offset in range(horizon_days):
+            d = anchor + timedelta(days=day_offset)
+            if d in cal_overrides:
+                is_workday = cal_overrides[d]
+            else:
+                is_workday = d.weekday() < 5
+            if is_workday:
+                total_capacity_days += 1.0
+
+    if total_capacity_days <= 0:
+        return {}
+
+    # demand_days[a.id] = ожидаемая длительность в днях (с учётом parallel_count)
+    demand_days: dict[str, float] = {}
+    for a in assignments:
+        bi = backlog_items.get(a.backlog_item_id)
+        inv_field, dur_field = PHASE_TO_FIELD.get(a.phase, (None, None))
+        involvement = (
+            float(getattr(bi, inv_field, None) or 1.0)
+            if (bi and inv_field) else 1.0
+        )
+        duration_days_raw = (
+            float(getattr(bi, dur_field, None) or 0)
+            if (bi and dur_field) else 0.0
+        )
+        if duration_days_raw <= 0:
+            fallback_hours = float(a.hours_allocated or 1)
+            duration_days_raw = fallback_hours / max(0.1, involvement * HOURS_PER_DAY)
+        parallel_n = _resolve_parallel_count(bi, a.phase)
+        duration_days_raw = duration_days_raw / max(1, parallel_n)
+        demand_days[a.id] = duration_days_raw
+
+    total_demand_days = sum(demand_days.values())
+    if total_demand_days <= total_capacity_days:
+        return {}
+
+    # Собираем только analyst-фазы, которые можно сплитить
+    analyst_ids = [a.id for a in assignments if a.phase == "analyst"]
+    if not analyst_ids:
+        return {}
+
+    split_map: dict[str, int] = {}  # assignment_id → число кусков
+
+    for _ in range(20):  # ограничение итераций на случай застревания
+        # Пересчитываем текущий total_demand с учётом уже принятых решений о сплите
+        current_demand = 0.0
+        for a in assignments:
+            chunks = split_map.get(a.id, 1)
+            # Сплит уменьшает duration каждого куска, но их N штук — суммарная нагрузка
+            # на ресурс та же. Поэтому total_demand_days при сплите не меняется.
+            # Сплит решает другую проблему: если один длинный кусок не помещается
+            # в интервал до конца квартала — N коротких кусков могут. Для упрощения
+            # считаем что если суммарный demand > capacity, то сплит нужен.
+            current_demand += demand_days[a.id]
+        if current_demand <= total_capacity_days:
+            break
+
+        # Найти самую длинную analyst-фазу, которую ещё можно сплитить
+        candidates = []
+        for aid in analyst_ids:
+            chunks = split_map.get(aid, 1)
+            chunk_size = demand_days[aid] / chunks
+            if chunk_size > MIN_CHUNK_DAYS:
+                candidates.append((chunk_size, aid))
+        if not candidates:
+            break  # все достигли MIN_CHUNK_DAYS — дальше дробить нельзя
+
+        candidates.sort(reverse=True)
+        _, longest_id = candidates[0]
+        current_chunks = split_map.get(longest_id, 1)
+        split_map[longest_id] = current_chunks * 2
+
+    return split_map
 
 
 class PyJobShopSolverService:
@@ -192,17 +307,23 @@ class PyJobShopSolverService:
             )
         }
 
-        # Job per backlog_item, Task per assignment row.
+        # Авто-сплит: определяем, какие analyst-фазы надо разбить на куски.
+        # Возвращает {assignment.id → число кусков}; отсутствие = 1 кусок.
+        split_decisions = _compute_split_decisions(
+            assignments, employees, backlog_items, anchor, horizon_days, cal_overrides
+        )
+
+        # Job per backlog_item, Task per assignment row (или N tasks для split).
         # task_id → Task object (для построения FS-ограничений).
         jobs: dict[str, object] = {}
-        # backlog_item_id → список Task (для FS: last task of from_item, first task of to_item)
+        # backlog_item_id → список ALL Task-объектов (для cross-item FS deps).
         item_tasks: dict[str, list[object]] = {}
-        # Параллельно solution_tasks: какие assignments реально добавлены в модель.
-        # Skipped assignments (no eligible employees) — не в этом списке, попадают в infeasible.
-        added_assignments: list[ResourcePlanAssignment] = []
+        # Параллельно solution_tasks: какие (assignment, chunk_index, chunks_total)
+        # реально добавлены в модель в порядке add_task(). Skipped — не в списке.
+        # Tuple: (assignment, chunk_index 0-based, chunks_total)
+        added_assignment_chunks: list[tuple[ResourcePlanAssignment, int, int]] = []
         skipped_item_ids: set[str] = set()
-        # Для warm start (F7): индекс assignment.id → {resource_idx → global_mode_idx}.
-        # Глобальный mode_idx — позиция mode в model.data().modes (counter).
+        # Для warm start (F7): не используется при сплите, оставлен для совместимости.
         global_mode_idx = 0
         assignment_modes: dict[str, dict[int, int]] = {}
 
@@ -263,32 +384,47 @@ class PyJobShopSolverService:
             # Параллельное выполнение N человек сокращает calendar span в N раз.
             # ОПЭ (phase='opo') не параллелится → N=1.
             parallel_n = _resolve_parallel_count(bi, a.phase)
-            duration_slots = max(1, int(round(duration_days_raw * HOURS_PER_DAY / parallel_n)))
             demand_per_slot = max(1, int(round(involvement * HOURS_PER_DAY)))
 
-            task = model.add_task(
-                job=jobs[a.backlog_item_id],
-                latest_end=horizon_slots,
-                name=a.id,
-            )
-            item_tasks.setdefault(a.backlog_item_id, []).append(task)
-            added_assignments.append(a)
+            # Авто-сплит: для analyst-фазы создаём chunks_total отдельных CP-SAT задач
+            # с duration = original_duration / chunks_total.
+            # FS-цепочка chunk_0 → chunk_1 → ... → chunk_{N-1}.
+            chunks_total = split_decisions.get(a.id, 1)
+            full_duration_slots = max(1, int(round(duration_days_raw * HOURS_PER_DAY / parallel_n)))
+            chunk_duration_slots = max(1, full_duration_slots // chunks_total)
 
-            mode_map: dict[int, int] = {}
-            for r_idx in eligible_resource_indices:
-                resource = model.resources[r_idx]
-                # demand = кол-во ч/день занятости сотрудника (involvement × 8);
-                # duration = длительность задачи в часах (calendar days × 8).
-                # При involvement=1.0 поведение совпадает со старым (8 ч/день).
-                model.add_mode(
-                    task=task,
-                    resources=[resource],
-                    duration=duration_slots,
-                    demands=[demand_per_slot],
+            chunk_tasks: list[object] = []
+            for chunk_idx in range(chunks_total):
+                task = model.add_task(
+                    job=jobs[a.backlog_item_id],
+                    latest_end=horizon_slots,
+                    name=f"{a.id}__chunk{chunk_idx}",
                 )
-                mode_map[r_idx] = global_mode_idx
-                global_mode_idx += 1
-            assignment_modes[a.id] = mode_map
+                chunk_tasks.append(task)
+                item_tasks.setdefault(a.backlog_item_id, []).append(task)
+                added_assignment_chunks.append((a, chunk_idx, chunks_total))
+
+                mode_map: dict[int, int] = {}
+                for r_idx in eligible_resource_indices:
+                    resource = model.resources[r_idx]
+                    # demand = кол-во ч/день занятости сотрудника (involvement × 8);
+                    # duration = длительность задачи в часах (calendar days × 8).
+                    # При involvement=1.0 поведение совпадает со старым (8 ч/день).
+                    model.add_mode(
+                        task=task,
+                        resources=[resource],
+                        duration=chunk_duration_slots,
+                        demands=[demand_per_slot],
+                    )
+                    mode_map[r_idx] = global_mode_idx
+                    global_mode_idx += 1
+                # Для первого куска сохраняем modes (warm start совместимость)
+                if chunk_idx == 0:
+                    assignment_modes[a.id] = mode_map
+
+            # FS-цепочка между кусками (chunk_0.end → chunk_1.start → ...)
+            for i in range(len(chunk_tasks) - 1):
+                model.add_end_before_start(chunk_tasks[i], chunk_tasks[i + 1])
 
         # A. FS Dependencies: last task of from_item must end before first task of to_item.
         # lag_days временно не учитывается — был подозрением на SIGSEGV под
@@ -334,10 +470,11 @@ class PyJobShopSolverService:
         # с порядком added_assignments (skipped исключены).
         solution_tasks = list(result.best.tasks) if result.best is not None else []
 
-        # Собираем per-assignment данные, порядок task'ов = порядок added_assignments
-        per_assignment: dict[str, PhaseAllocation] = {}
+        # Собираем per-assignment данные. При сплите одна assignment даёт N PhaseAllocation.
+        # Ключ: (assignment.id, chunk_index) → PhaseAllocation.
+        per_chunk: dict[tuple[str, int], PhaseAllocation] = {}
         for idx, sol_task in enumerate(solution_tasks):
-            a = added_assignments[idx]
+            a, chunk_idx, chunks_total = added_assignment_chunks[idx]
             start_d = self._slot_to_date(anchor, sol_task.start)
             end_d = self._slot_to_date(anchor, sol_task.end)
 
@@ -347,12 +484,14 @@ class PyJobShopSolverService:
                 r_idx = sol_task.resources[0]
                 chosen_emp_id = resource_idx_to_emp_id.get(r_idx)
 
-            per_assignment[a.id] = PhaseAllocation(
+            per_chunk[(a.id, chunk_idx)] = PhaseAllocation(
                 phase=a.phase,
-                hours=a.hours_allocated or 0.0,
+                hours=(a.hours_allocated or 0.0) / max(1, chunks_total),
                 employee_id=chosen_emp_id,
                 start_date=start_d,
                 end_date=end_d,
+                chunk_index=chunk_idx,
+                chunks_total=chunks_total,
             )
 
         # Группируем по backlog_item
@@ -370,9 +509,15 @@ class PyJobShopSolverService:
             if item_id in skipped_item_ids and item_id not in jobs:
                 # Уже добавлено в infeasible выше, нет ни одной задачи в модели
                 continue
-            phase_breakdown = [
-                per_assignment[a.id] for a in item_assignments if a.id in per_assignment
-            ]
+            # Собираем phase_breakdown: для сплитованных фаз — по одной записи на кусок
+            phase_breakdown: list[PhaseAllocation] = []
+            for a in item_assignments:
+                chunks_total = split_decisions.get(a.id, 1)
+                for chunk_idx in range(chunks_total):
+                    alloc = per_chunk.get((a.id, chunk_idx))
+                    if alloc is not None:
+                        phase_breakdown.append(alloc)
+
             if not phase_breakdown:
                 if item_id not in infeasible:
                     infeasible.append(item_id)

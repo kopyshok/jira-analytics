@@ -924,3 +924,199 @@ def test_solver_parallel_count_default_one(db_session: Session):
         f"Без parallel_count_qa span должен быть ≥3 рабочих дня (duration_qa_days=4), "
         f"получили {working_days} ({a['start_date']} – {a['end_date']})"
     )
+
+
+# ── Phase 5: Auto-Split ─────────────────────────────────────────────────────
+
+
+def test_auto_split_triggers_on_overflow(db_session: Session):
+    """При переполнении квартала _compute_split_decisions фиксирует нужные куски,
+    а solver создаёт несколько chunk-задач в phase_breakdown.
+
+    Используем involvement=0.4 чтобы 2 задачи × 50 дней могли перекрываться
+    у одного аналитика (0.4 + 0.4 = 0.8 ≤ 1.0 capacity), но суммарный demand
+    50 + 50 = 100 дней > capacity ~95 дней → _compute_split_decisions решит сплитить.
+
+    Важно: CP-SAT всё равно может найти FEASIBLE решение с перекрытием, потому что
+    involvement < 1.0 позволяет двум задачам работать у одного аналитика одновременно.
+    """
+    emp = _make_employee(db_session, role="analyst", team="AS1")
+
+    item1 = BacklogItem(
+        title="Long Analyst 1",
+        priority=1,
+        estimate_analyst_hours=400.0,  # 50 дней × 8ч
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+        duration_analyst_days=50.0,
+        involvement_analyst=0.4,
+    )
+    item2 = BacklogItem(
+        title="Long Analyst 2",
+        priority=2,
+        estimate_analyst_hours=400.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+        duration_analyst_days=50.0,
+        involvement_analyst=0.4,
+    )
+    db_session.add_all([item1, item2])
+    db_session.flush()
+
+    plan = ResourcePlan(team="AS1", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    db_session.add_all([
+        ResourcePlanAssignment(
+            plan_id=plan.id,
+            backlog_item_id=item1.id,
+            phase="analyst",
+            hours_allocated=400.0,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 6, 30),
+        ),
+        ResourcePlanAssignment(
+            plan_id=plan.id,
+            backlog_item_id=item2.id,
+            phase="analyst",
+            hours_allocated=400.0,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 6, 30),
+        ),
+    ])
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE", "TIME_LIMIT"), (
+        f"Solver неожиданно вернул {result['solver_status']}. "
+        f"Hint: involvement=0.4 должно позволять перекрытие задач."
+    )
+
+    # Собираем все analyst PhaseAllocation
+    all_analyst_allocs = [
+        p
+        for sa in result["assignments"]
+        for p in sa["phase_breakdown"]
+        if p["phase"] == "analyst"
+    ]
+    assert len(result["assignments"]) >= 1, "Solver должен вернуть хотя бы 1 assignment"
+
+    # Проверяем структуру PhaseAllocation: chunk_index и chunks_total присутствуют
+    for alloc in all_analyst_allocs:
+        assert "chunk_index" in alloc, "PhaseAllocation должен содержать chunk_index"
+        assert "chunks_total" in alloc, "PhaseAllocation должен содержать chunks_total"
+        assert alloc["chunks_total"] >= 1
+
+    # При overflow хотя бы одна запись должна иметь chunks_total > 1
+    split_allocs = [p for p in all_analyst_allocs if p["chunks_total"] > 1]
+    assert len(split_allocs) > 0, (
+        f"Ожидался авто-сплит при переполнении (суммарный demand 100 дней > capacity ~95), "
+        f"но все chunks_total == 1. Всего analyst allocs: {len(all_analyst_allocs)}"
+    )
+
+
+def test_auto_split_skipped_when_fits(db_session: Session):
+    """Маленький план, укладывающийся в квартал — сплит не применяется.
+
+    1 аналитик, 1 задача analyst=5 дней. Capacity ~95 дней >> 5 дней → сплит не нужен.
+    Ожидаем: ровно 1 PhaseAllocation с chunks_total=1.
+    """
+    emp = _make_employee(db_session, role="analyst", team="AS2")
+
+    item = BacklogItem(
+        title="Small Analyst",
+        priority=1,
+        estimate_analyst_hours=40.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+        duration_analyst_days=5.0,
+        involvement_analyst=1.0,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="AS2", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    db_session.add(ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="analyst",
+        hours_allocated=40.0,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 7),
+    ))
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    breakdown = result["assignments"][0]["phase_breakdown"]
+    analyst_allocs = [p for p in breakdown if p["phase"] == "analyst"]
+    assert len(analyst_allocs) == 1, f"Без сплита должна быть 1 запись, получено {len(analyst_allocs)}"
+    assert analyst_allocs[0]["chunks_total"] == 1, (
+        f"chunks_total должен быть 1 без сплита, получено {analyst_allocs[0]['chunks_total']}"
+    )
+    assert analyst_allocs[0]["chunk_index"] == 0, (
+        f"chunk_index должен быть 0 без сплита, получено {analyst_allocs[0]['chunk_index']}"
+    )
+
+
+def test_auto_split_min_chunk_days(db_session: Session):
+    """Проверяет что сплит не разбивает кусок меньше MIN_CHUNK_DAYS (1 день).
+
+    Даже при большом переполнении алгоритм останавливается когда chunk_size ≤ 1.
+    Создаём 10 analyst-задач × 20 дней = 200 дней при capacity ~95 дней.
+    Ожидаем: solver возвращает результат, а chunk_size каждого куска ≥ 1 слот.
+    """
+    from app.services.pyjobshop_solver_service import MIN_CHUNK_DAYS
+
+    emp = _make_employee(db_session, role="analyst", team="AS3")
+    plan = ResourcePlan(team="AS3", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    for i in range(10):
+        item = BacklogItem(
+            title=f"Big Analyst {i}",
+            priority=i + 1,
+            estimate_analyst_hours=160.0,
+            estimate_dev_hours=0.0,
+            estimate_qa_hours=0.0,
+            estimate_opo_hours=0.0,
+            duration_analyst_days=20.0,
+            involvement_analyst=1.0,
+        )
+        db_session.add(item)
+        db_session.flush()
+        db_session.add(ResourcePlanAssignment(
+            plan_id=plan.id,
+            backlog_item_id=item.id,
+            phase="analyst",
+            hours_allocated=160.0,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 6, 30),
+        ))
+
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    # Solver должен вернуть результат без краша
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE", "TIME_LIMIT", "INFEASIBLE")
+
+    # Если есть успешные assignments — проверяем что chunk_size ≥ MIN_CHUNK_DAYS
+    for sa in result["assignments"]:
+        for alloc in sa["phase_breakdown"]:
+            if alloc["phase"] == "analyst" and alloc["chunks_total"] > 1:
+                chunk_days = (alloc["end_date"] - alloc["start_date"]).days + 1
+                assert chunk_days >= MIN_CHUNK_DAYS, (
+                    f"Кусок слишком мал: {chunk_days} дней < MIN_CHUNK_DAYS={MIN_CHUNK_DAYS}"
+                )

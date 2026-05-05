@@ -91,6 +91,11 @@ class AssignmentOut(BaseModel):
     # группировки/сортировки задач на Gantt.
     scenario_assignee_employee_id: Optional[str] = None
     scenario_assignee_name: Optional[str] = None
+    # Авто-сплит: chunk_index/chunks_total заполняются Gantt-эндпоинтом
+    # если для (backlog_item_id, phase) существует несколько строк (кусков).
+    # chunk_index = part_number - 1 (0-based); chunks_total = кол-во кусков.
+    chunk_index: Optional[int] = None
+    chunks_total: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -367,6 +372,12 @@ def get_gantt(
         .all()
     )
 
+    # Вычисляем chunks_total per (backlog_item_id, phase): если строк > 1 — это сплит.
+    from collections import Counter as _Counter
+    phase_counts: dict[tuple, int] = _Counter(
+        (a.backlog_item_id, a.phase) for a in assignments_raw
+    )
+
     assignments = [
         AssignmentOut(
             id=a.id,
@@ -392,6 +403,8 @@ def get_gantt(
                 if a.backlog_item and a.backlog_item.assignee
                 else None
             ),
+            chunk_index=(a.part_number - 1) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
+            chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
         )
         for a in assignments_raw
     ]

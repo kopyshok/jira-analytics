@@ -159,21 +159,44 @@ def optimize_plan(plan_id: str, db: Session = Depends(get_db)) -> OptimizeRespon
             )
         )
 
-    # 4. Применяем результат солвера к назначениям форка по phase-коду
+    # 4. Применяем результат солвера к назначениям форка по phase-коду.
+    # При авто-сплите один (item, phase) может дать N PhaseAllocation с chunk_index 0..N-1.
+    # chunk_index=0 обновляет существующую строку; chunk_index>0 создаёт доп. строки.
     for solver_a in result["assignments"]:
         item_id = solver_a["backlog_item_id"]
         for phase_alloc in solver_a["phase_breakdown"]:
             phase = phase_alloc["phase"]
+            chunk_idx = phase_alloc.get("chunk_index", 0)
+            chunks_total = phase_alloc.get("chunks_total", 1)
             fork_row = fork_assignment_map.get((item_id, phase))
             if fork_row is None:
                 continue
             # 5. Пинованные строки не перезаписываем
             if fork_row.is_pinned:
                 continue
-            fork_row.start_date = phase_alloc["start_date"]
-            fork_row.end_date = phase_alloc["end_date"]
-            if phase_alloc["employee_id"] is not None:
-                fork_row.employee_id = phase_alloc["employee_id"]
+            if chunk_idx == 0:
+                # Первый кусок — обновляем существующую строку
+                fork_row.start_date = phase_alloc["start_date"]
+                fork_row.end_date = phase_alloc["end_date"]
+                fork_row.part_number = 1
+                if phase_alloc["employee_id"] is not None:
+                    fork_row.employee_id = phase_alloc["employee_id"]
+            else:
+                # Дополнительный кусок — новая строка в форке
+                extra = ResourcePlanAssignment(
+                    plan_id=fork.id,
+                    backlog_item_id=item_id,
+                    phase=phase,
+                    employee_id=phase_alloc["employee_id"] or fork_row.employee_id,
+                    part_number=chunk_idx + 1,
+                    hours_allocated=phase_alloc["hours"],
+                    start_date=phase_alloc["start_date"],
+                    end_date=phase_alloc["end_date"],
+                    is_on_critical_path=False,
+                    slack_days=None,
+                    is_pinned=False,
+                )
+                db.add(extra)
 
     db.commit()
 
@@ -286,13 +309,31 @@ def _apply_solver_result_as_fork(
         item_id = solver_a["backlog_item_id"]
         for phase_alloc in solver_a["phase_breakdown"]:
             phase = phase_alloc["phase"]
+            chunk_idx = phase_alloc.get("chunk_index", 0)
             fork_row = fork_assignment_map.get((item_id, phase))
             if fork_row is None or fork_row.is_pinned:
                 continue
-            fork_row.start_date = phase_alloc["start_date"]
-            fork_row.end_date = phase_alloc["end_date"]
-            if phase_alloc["employee_id"] is not None:
-                fork_row.employee_id = phase_alloc["employee_id"]
+            if chunk_idx == 0:
+                fork_row.start_date = phase_alloc["start_date"]
+                fork_row.end_date = phase_alloc["end_date"]
+                fork_row.part_number = 1
+                if phase_alloc["employee_id"] is not None:
+                    fork_row.employee_id = phase_alloc["employee_id"]
+            else:
+                extra = ResourcePlanAssignment(
+                    plan_id=fork.id,
+                    backlog_item_id=item_id,
+                    phase=phase,
+                    employee_id=phase_alloc["employee_id"] or fork_row.employee_id,
+                    part_number=chunk_idx + 1,
+                    hours_allocated=phase_alloc.get("hours", 0.0),
+                    start_date=phase_alloc["start_date"],
+                    end_date=phase_alloc["end_date"],
+                    is_on_critical_path=False,
+                    slack_days=None,
+                    is_pinned=False,
+                )
+                db.add(extra)
 
     db.commit()
     return fork
