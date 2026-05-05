@@ -1,0 +1,18 @@
+.dhtmlx-gantt-host .gantt_container { background: #0f2340; color: #e8eef9; border: 0; }
+.dhtmlx-gantt-host .gantt_grid { background: #091527; border-right: 1px solid #1d2f4f; }
+.dhtmlx-gantt-host .gantt_grid_scale, .dhtmlx-gantt-host .gantt_task_scale { background: #091527; color: #8ab0d8; border-color: #1d2f4f; }
+.dhtmlx-gantt-host .gantt_task_row { background: #0d1c33; border-bottom: 1px solid #1d2f4f; }
+.dhtmlx-gantt-host .gantt_task_row.odd { background: #0f2340; }
+.dhtmlx-gantt-host .gantt_grid_data .gantt_row { background: transparent; color: #e8eef9; border-bottom: 1px solid #1d2f4f; }
+.dhtmlx-gantt-host .gantt_grid_data .gantt_row:hover { background: rgba(0, 201, 200, 0.06); }
+.dhtmlx-gantt-host .gantt_task_line { border: 0; border-radius: 4px; }
+.dhtmlx-gantt-host .gantt_task_line.phase-analyst { background: #1668dc; }
+.dhtmlx-gantt-host .gantt_task_line.phase-dev { background: #00c9c8; }
+.dhtmlx-gantt-host .gantt_task_line.phase-qa { background: #722ed1; }
+.dhtmlx-gantt-host .gantt_task_line.phase-opo { background: #fa8c16; }
+.dhtmlx-gantt-host .gantt_task_line.gantt_project { background: #1d2f4f; }
+.dhtmlx-gantt-host .gantt_task_line .gantt_task_content { color: #fff; font-weight: 500; }
+.dhtmlx-gantt-host .gantt_task_link .gantt_line_wrapper div { background: #8ab0d8 !important; }
+.dhtmlx-gantt-host .gantt_task_link .gantt_link_arrow_right { border-left-color: #8ab0d8; }
+.dhtmlx-gantt-host .gantt_grid_head_cell { color: #8ab0d8; border-color: #1d2f4f; }
+.dhtmlx-gantt-host .gantt_today { background: rgba(0, 201, 200, 0.08); }
