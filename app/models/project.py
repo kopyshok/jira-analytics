@@ -2,7 +2,7 @@
 
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import String, Text
+from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import SyncedMixin, generate_uuid
@@ -33,6 +33,12 @@ class Project(Base, SyncedMixin):
     
     # Analytics fields
     is_active: Mapped[bool] = mapped_column(default=True)
+
+    # Parallel staffing per role: how many employees can work on this phase simultaneously.
+    # NULL / 1 = single-threaded (default).
+    parallel_count_analyst: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    parallel_count_dev: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    parallel_count_qa: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Relationships
     issues: Mapped[List["Issue"]] = relationship(back_populates="project")

@@ -91,6 +91,11 @@ class BacklogItem(Base, TimestampMixin):
     duration_qa_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     duration_launch_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # Per-item parallel staffing overrides (NULL = inherit from project, project NULL = 1).
+    parallel_count_analyst: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    parallel_count_dev: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    parallel_count_qa: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     # Relationships
     project: Mapped[Optional["Project"]] = relationship(back_populates="backlog_items")
     issue: Mapped[Optional["Issue"]] = relationship("Issue")
