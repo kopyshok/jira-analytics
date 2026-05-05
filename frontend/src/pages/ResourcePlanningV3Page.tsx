@@ -7,6 +7,8 @@ import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import ClassicMode from '../components/resource-planning-v3/modes/ClassicMode';
 import ResourceCentricMode from '../components/resource-planning-v3/modes/ResourceCentricMode';
 import RoadmapMode from '../components/resource-planning-v3/modes/RoadmapMode';
+import OptimizeButton from '../components/resource-planning-v2/OptimizeButton';
+import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 
 type Mode = 'classic' | 'resource' | 'roadmap';
 
@@ -62,6 +64,13 @@ export default function ResourcePlanningV3Page() {
             { label: 'Roadmap', value: 'roadmap' },
           ]}
         />
+        <PlanQualityBadge planId={planId} />
+        {planId && (
+          <OptimizeButton
+            planId={planId}
+            onSwitchPlan={id => handlePlanChange(id)}
+          />
+        )}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         {!planId && !ganttLoading && (
