@@ -1,7 +1,7 @@
 """Unit tests for PyJobShopSolverService на синтетических данных."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -552,6 +552,185 @@ def test_solver_keeps_opo_parallel(db_session: Session):
     assert date_spread <= 1, (
         f"Строки opo должны стартовать одновременно (≤1 день разницы), "
         f"получено: {start_dates}"
+    )
+
+
+def _count_working_days(start: date, end: date) -> int:
+    """Число рабочих дней (пн-пт) в диапазоне [start, end] включительно."""
+    count = 0
+    d = start
+    while d <= end:
+        if d.weekday() < 5:
+            count += 1
+        d += timedelta(days=1)
+    return count
+
+
+def test_solver_uses_jira_duration(db_session: Session):
+    """Солвер использует duration_analyst_days=4 из BacklogItem, игнорируя hours_allocated=16.
+
+    При involvement=0.5 и duration=4 дня задача должна занять ~4 рабочих дня,
+    а не 2 (как было бы при старом поведении: 16ч / 8 = 2 дня).
+    """
+    emp = _make_employee(db_session, role="analyst", team="JD1")
+
+    item = BacklogItem(
+        title="JiraDuration Item",
+        priority=1,
+        estimate_analyst_hours=16.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+        involvement_analyst=0.5,
+        duration_analyst_days=4.0,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="JD1", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assignment = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="analyst",
+        hours_allocated=16.0,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 2),
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    a = result["assignments"][0]
+    # Span должен быть ≥ 3 рабочих дня (duration=4 дня × 8 slots / 4 demand_per_slot)
+    working_days = _count_working_days(a["start_date"], a["end_date"])
+    assert working_days >= 3, (
+        f"Ожидали ≥3 рабочих дня (duration_analyst_days=4), получили {working_days} "
+        f"({a['start_date']} – {a['end_date']})"
+    )
+
+
+def test_solver_parallel_via_involvement(db_session: Session):
+    """Два BacklogItem с involvement=0.4 планируются параллельно у одного сотрудника.
+
+    0.4 + 0.4 = 0.8 ≤ 1.0 — оба укладываются в рабочий день одновременно,
+    поэтому start_date второй задачи не должен быть отложен на следующую неделю.
+    """
+    emp = _make_employee(db_session, role="analyst", team="PAR1")
+
+    item1 = BacklogItem(
+        title="Parallel Item 1",
+        priority=1,
+        estimate_analyst_hours=20.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+        involvement_analyst=0.4,
+        duration_analyst_days=5.0,
+    )
+    item2 = BacklogItem(
+        title="Parallel Item 2",
+        priority=1,
+        estimate_analyst_hours=20.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+        involvement_analyst=0.4,
+        duration_analyst_days=5.0,
+    )
+    db_session.add_all([item1, item2])
+    db_session.flush()
+
+    plan = ResourcePlan(team="PAR1", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    db_session.add_all([
+        ResourcePlanAssignment(
+            plan_id=plan.id,
+            backlog_item_id=item1.id,
+            phase="analyst",
+            hours_allocated=20.0,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 5),
+        ),
+        ResourcePlanAssignment(
+            plan_id=plan.id,
+            backlog_item_id=item2.id,
+            phase="analyst",
+            hours_allocated=20.0,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 5),
+        ),
+    ])
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 2
+
+    starts = sorted(a["start_date"] for a in result["assignments"])
+    # При параллельном исполнении start_date расходятся не более чем на 1 день
+    spread = (starts[-1] - starts[0]).days
+    assert spread <= 1, (
+        f"Задачи с involvement=0.4 должны исполняться параллельно (≤1 день разницы), "
+        f"получили start_dates: {starts}"
+    )
+
+
+def test_solver_default_involvement_unchanged(db_session: Session):
+    """BacklogItem без involvement/duration ведёт себя как раньше.
+
+    Регрессия: hours_allocated=8, нет involvement → duration_slots=8,
+    demand=8 → задача занимает 1 рабочий день у разработчика.
+    """
+    emp = _make_employee(db_session, role="developer", team="REG1")
+
+    item = BacklogItem(
+        title="Default Behavior",
+        priority=1,
+        estimate_dev_hours=8.0,
+        estimate_analyst_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+        # involvement_dev и duration_dev_days не заданы — None
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="REG1", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assignment = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="dev",
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 1),
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    a = result["assignments"][0]
+    assert a["assignee_employee_id"] == emp.id
+    # Задача назначена и span разумный (≤ 3 рабочих дня для 8ч задачи).
+    # PyJobShop возвращает end=start+duration (включительно), поэтому 8-часовая
+    # задача (1 рабочий день) может дать span в 2 дня по slot_to_date арифметике.
+    working_days = _count_working_days(a["start_date"], a["end_date"])
+    assert working_days <= 3, (
+        f"Ожидали ≤3 рабочих дня для 8ч задачи, получили {working_days}"
     )
 
 

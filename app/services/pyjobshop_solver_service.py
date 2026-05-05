@@ -52,6 +52,15 @@ PHASE_ASSIGNEE_PRIORITY: list[str] = ["analyst", "dev", "qa", "opo"]
 # Часов в рабочем дне (ёмкость 1 renewable = 8 единиц, 1 unit = 1 час).
 HOURS_PER_DAY = 8
 
+# Маппинг phase → (поле involvement, поле duration_days) в BacklogItem.
+# Используется солвером для вычисления длительности и нагрузки по фазе.
+PHASE_TO_FIELD: dict[str, tuple[str, str]] = {
+    "analyst": ("involvement_analyst", "duration_analyst_days"),
+    "dev":     ("involvement_dev",     "duration_dev_days"),
+    "qa":      ("involvement_qa",      "duration_qa_days"),
+    "opo":     ("involvement_launch",  "duration_launch_days"),
+}
+
 
 class PhaseAllocation(TypedDict):
     phase: str
@@ -214,7 +223,26 @@ class PyJobShopSolverService:
                     weight=weight, due_date=horizon_slots
                 )
 
-            duration_slots = max(1, int(a.hours_allocated or 1))
+            # Вычисляем длительность и нагрузку с учётом Jira-полей involvement/duration.
+            # Если поля не заданы — поведение совпадает со старым (involvement=1.0,
+            # duration = hours_allocated/8), то есть сотрудник занят весь день.
+            inv_field, dur_field = PHASE_TO_FIELD.get(a.phase, (None, None))
+            bi = backlog_items.get(a.backlog_item_id)
+            involvement = (
+                float(getattr(bi, inv_field, None) or 1.0)
+                if (bi and inv_field) else 1.0
+            )
+            duration_days_raw = (
+                float(getattr(bi, dur_field, None) or 0)
+                if (bi and dur_field) else 0.0
+            )
+            if duration_days_raw <= 0:
+                # Fallback: часы / (involvement × 8)
+                fallback_hours = float(a.hours_allocated or 1)
+                duration_days_raw = fallback_hours / max(0.1, involvement * HOURS_PER_DAY)
+            duration_slots = max(1, int(round(duration_days_raw * HOURS_PER_DAY)))
+            demand_per_slot = max(1, int(round(involvement * HOURS_PER_DAY)))
+
             task = model.add_task(
                 job=jobs[a.backlog_item_id],
                 latest_end=horizon_slots,
@@ -226,14 +254,14 @@ class PyJobShopSolverService:
             mode_map: dict[int, int] = {}
             for r_idx in eligible_resource_indices:
                 resource = model.resources[r_idx]
-                # demand = HOURS_PER_DAY означает "сотрудник занят весь рабочий
-                # день"; duration = кол-во часов (task растягивается на несколько
-                # дней, если duration > capacity).
+                # demand = кол-во ч/день занятости сотрудника (involvement × 8);
+                # duration = длительность задачи в часах (calendar days × 8).
+                # При involvement=1.0 поведение совпадает со старым (8 ч/день).
                 model.add_mode(
                     task=task,
                     resources=[resource],
                     duration=duration_slots,
-                    demands=[HOURS_PER_DAY],
+                    demands=[demand_per_slot],
                 )
                 mode_map[r_idx] = global_mode_idx
                 global_mode_idx += 1
