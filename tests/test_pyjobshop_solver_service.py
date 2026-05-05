@@ -767,3 +767,160 @@ def test_solver_fs_dependency_respects_lag_days(db_session):
     start_b = assignments[item_b.id]["start_date"]
     delta_days = (start_b - end_a).days
     assert delta_days >= 2, f"delta={delta_days}"
+
+
+def test_solver_parallel_count_qa_halves_duration(db_session: Session):
+    """BacklogItem.parallel_count_qa=2 сокращает span фазы QA вдвое.
+
+    duration_qa_days=4 с parallel_count_qa=2 → duration_slots=16 (~2 рабочих дня, ≤3 с запасом).
+    """
+    emp = _make_employee(db_session, role="qa", team="PC1")
+
+    item = BacklogItem(
+        title="Parallel QA Item",
+        priority=1,
+        estimate_qa_hours=32.0,
+        estimate_analyst_hours=0.0,
+        estimate_dev_hours=0.0,
+        estimate_opo_hours=0.0,
+        duration_qa_days=4.0,
+        parallel_count_qa=2,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="PC1", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assignment = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="qa",
+        hours_allocated=32.0,
+        start_date=date(2026, 4, 7),
+        end_date=date(2026, 4, 9),
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    a = result["assignments"][0]
+    working_days = _count_working_days(a["start_date"], a["end_date"])
+    assert working_days <= 3, (
+        f"parallel_count_qa=2 должен уложить 4-дневную QA в ≤3 рабочих дня, "
+        f"получили {working_days} ({a['start_date']} – {a['end_date']})"
+    )
+
+
+def test_solver_parallel_count_inherits_from_project(db_session: Session):
+    """parallel_count_qa=2 на Project, NULL на BacklogItem — наследуется.
+
+    Поведение идентично явному заданию на уровне backlog item:
+    duration_qa_days=4, N=2 → ≤3 рабочих дня.
+    """
+    from app.models.project import Project
+
+    project = Project(
+        jira_project_id="PC2_PROJ",
+        key="PC2",
+        name="PC2 Project",
+        parallel_count_qa=2,
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    emp = _make_employee(db_session, role="qa", team="PC2")
+
+    item = BacklogItem(
+        title="Inherit QA Item",
+        priority=1,
+        estimate_qa_hours=32.0,
+        estimate_analyst_hours=0.0,
+        estimate_dev_hours=0.0,
+        estimate_opo_hours=0.0,
+        duration_qa_days=4.0,
+        project_id=project.id,
+        # parallel_count_qa не задан на item — должен взяться из project
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="PC2", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assignment = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="qa",
+        hours_allocated=32.0,
+        start_date=date(2026, 4, 7),
+        end_date=date(2026, 4, 9),
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    a = result["assignments"][0]
+    working_days = _count_working_days(a["start_date"], a["end_date"])
+    assert working_days <= 3, (
+        f"project.parallel_count_qa=2 должен наследоваться и дать ≤3 рабочих дня, "
+        f"получили {working_days} ({a['start_date']} – {a['end_date']})"
+    )
+
+
+def test_solver_parallel_count_default_one(db_session: Session):
+    """Без parallel_count_qa span = полная duration_qa_days (нет ускорения).
+
+    duration_qa_days=4, parallel_count не задан → span должен быть ≥3 рабочих дня.
+    Для сравнения: с parallel_count_qa=2 было бы ≤2 рабочих дня.
+    Используем небольшую длительность (≤5 дней), чтобы task влезал в одну рабочую неделю
+    (solver non-preemptive, не может перешагнуть выходные mid-task).
+    """
+    emp = _make_employee(db_session, role="qa", team="PC3")
+
+    item = BacklogItem(
+        title="No Parallel QA",
+        priority=1,
+        estimate_qa_hours=32.0,
+        estimate_analyst_hours=0.0,
+        estimate_dev_hours=0.0,
+        estimate_opo_hours=0.0,
+        duration_qa_days=4.0,
+        # parallel_count_qa не задан → N=1
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="PC3", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    assignment = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="qa",
+        hours_allocated=32.0,
+        start_date=date(2026, 4, 7),
+        end_date=date(2026, 4, 10),
+    )
+    db_session.add(assignment)
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert len(result["assignments"]) == 1
+    a = result["assignments"][0]
+    working_days = _count_working_days(a["start_date"], a["end_date"])
+    assert working_days >= 3, (
+        f"Без parallel_count_qa span должен быть ≥3 рабочих дня (duration_qa_days=4), "
+        f"получили {working_days} ({a['start_date']} – {a['end_date']})"
+    )

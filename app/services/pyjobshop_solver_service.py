@@ -20,7 +20,7 @@ from datetime import date, timedelta
 from typing import Optional, TypedDict
 
 from sqlalchemy import or_, and_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.absence import Absence
 from app.models.backlog_item import BacklogItem
@@ -83,6 +83,24 @@ class SolverResult(TypedDict):
     infeasible_items: list[str]
     solver_status: str
     solve_time_ms: int
+
+
+def _resolve_parallel_count(item: Optional[BacklogItem], phase: str) -> int:
+    """Per-phase parallel count: backlog override → project default → 1.
+
+    ОПЭ (phase='opo') не параллелится — возвращает 1.
+    """
+    field = f"parallel_count_{phase}"
+    if field not in ("parallel_count_analyst", "parallel_count_dev", "parallel_count_qa"):
+        return 1
+    n_item = getattr(item, field, None) if item else None
+    if n_item and int(n_item) > 0:
+        return int(n_item)
+    proj = item.project if (item and item.project) else None
+    n_proj = getattr(proj, field, None) if proj else None
+    if n_proj and int(n_proj) > 0:
+        return int(n_proj)
+    return 1
 
 
 class PyJobShopSolverService:
@@ -163,12 +181,14 @@ class PyJobShopSolverService:
         ))
         # TODO: SS/FF/SF зависимости не поддерживаются в v1, пропускаются.
 
-        # Загружаем backlog_items для priority weight
+        # Загружаем backlog_items для priority weight + parallel_count (project нужен joinedload).
         item_ids = list({a.backlog_item_id for a in assignments})
         backlog_items: dict[str, BacklogItem] = {
             item.id: item
             for item in self.db.scalars(
-                select(BacklogItem).where(BacklogItem.id.in_(item_ids))
+                select(BacklogItem)
+                .options(joinedload(BacklogItem.project))
+                .where(BacklogItem.id.in_(item_ids))
             )
         }
 
@@ -240,7 +260,10 @@ class PyJobShopSolverService:
                 # Fallback: часы / (involvement × 8)
                 fallback_hours = float(a.hours_allocated or 1)
                 duration_days_raw = fallback_hours / max(0.1, involvement * HOURS_PER_DAY)
-            duration_slots = max(1, int(round(duration_days_raw * HOURS_PER_DAY)))
+            # Параллельное выполнение N человек сокращает calendar span в N раз.
+            # ОПЭ (phase='opo') не параллелится → N=1.
+            parallel_n = _resolve_parallel_count(bi, a.phase)
+            duration_slots = max(1, int(round(duration_days_raw * HOURS_PER_DAY / parallel_n)))
             demand_per_slot = max(1, int(round(involvement * HOURS_PER_DAY)))
 
             task = model.add_task(
