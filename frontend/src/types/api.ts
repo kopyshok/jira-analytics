@@ -427,6 +427,10 @@ export interface BacklogItemResponse {
   duration_dev_days: number | null;
   duration_qa_days: number | null;
   duration_launch_days: number | null;
+  // Parallel staffing overrides (null = inherit from project default, which defaults to 1).
+  parallel_count_analyst: number | null;
+  parallel_count_dev: number | null;
+  parallel_count_qa: number | null;
 }
 
 export interface BacklogRefreshResult {

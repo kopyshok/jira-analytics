@@ -24,6 +24,9 @@ export const createBacklogItem = (data: {
   opo_analyst_ratio?: number;
   impact?: BacklogImpactRisk;
   risk?: BacklogImpactRisk;
+  parallel_count_analyst?: number;
+  parallel_count_dev?: number;
+  parallel_count_qa?: number;
 }) => api.post<BacklogItemResponse>('/backlog', data);
 
 export const updateBacklogItem = (id: string, data: Partial<{
@@ -39,6 +42,9 @@ export const updateBacklogItem = (id: string, data: Partial<{
   risk: BacklogImpactRisk;
   assignee_employee_id: string | null;
   customer: string | null;
+  parallel_count_analyst: number | null;
+  parallel_count_dev: number | null;
+  parallel_count_qa: number | null;
 }>) => api.patch<BacklogItemResponse>(`/backlog/${id}`, data);
 
 export interface DeleteBacklogResult {

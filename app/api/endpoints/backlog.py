@@ -44,6 +44,9 @@ class BacklogItemCreate(BaseModel):
     opo_analyst_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     impact: Optional[str] = None
     risk: Optional[str] = None
+    parallel_count_analyst: Optional[int] = Field(default=None, ge=1, le=5)
+    parallel_count_dev: Optional[int] = Field(default=None, ge=1, le=5)
+    parallel_count_qa: Optional[int] = Field(default=None, ge=1, le=5)
 
 
 class BacklogItemUpdate(BaseModel):
@@ -57,6 +60,9 @@ class BacklogItemUpdate(BaseModel):
     opo_analyst_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     impact: Optional[str] = None
     risk: Optional[str] = None
+    parallel_count_analyst: Optional[int] = Field(default=None, ge=1, le=5)
+    parallel_count_dev: Optional[int] = Field(default=None, ge=1, le=5)
+    parallel_count_qa: Optional[int] = Field(default=None, ge=1, le=5)
 
 
 class ScenarioRef(BaseModel):
@@ -91,6 +97,10 @@ class BacklogItemResponse(BaseModel):
     jira_status_category: Optional[str] = None
     jira_status_changed_at: Optional[datetime] = None
     quarter_label: Optional[str] = None
+    # Parallel staffing overrides (NULL = inherit project default).
+    parallel_count_analyst: Optional[int] = None
+    parallel_count_dev: Optional[int] = None
+    parallel_count_qa: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -234,6 +244,9 @@ def _to_response(
         jira_status_category=issue.status_category if issue else None,
         jira_status_changed_at=issue.status_changed_at if issue else None,
         quarter_label=quarter_label,
+        parallel_count_analyst=item.parallel_count_analyst,
+        parallel_count_dev=item.parallel_count_dev,
+        parallel_count_qa=item.parallel_count_qa,
     )
 
 

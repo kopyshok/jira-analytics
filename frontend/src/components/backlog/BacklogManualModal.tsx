@@ -20,6 +20,9 @@ interface FormValues {
   opo_analyst_ratio?: number;
   impact?: BacklogImpactRisk;
   risk?: BacklogImpactRisk;
+  parallel_count_analyst?: number;
+  parallel_count_dev?: number;
+  parallel_count_qa?: number;
 }
 
 const IMPACT_RISK_OPTIONS = [
@@ -51,6 +54,9 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
         opo_analyst_ratio: item.opo_analyst_ratio ?? 0.5,
         impact: item.impact ?? undefined,
         risk: item.risk ?? undefined,
+        parallel_count_analyst: item.parallel_count_analyst ?? undefined,
+        parallel_count_dev: item.parallel_count_dev ?? undefined,
+        parallel_count_qa: item.parallel_count_qa ?? undefined,
       });
     } else {
       form.resetFields();
@@ -140,6 +146,24 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
           tooltip="Какая часть часов ОПЭ ложится на АН; остальное — на ПР"
         >
           <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+        </Form.Item>
+
+        <Form.Item
+          label="Параллельность (чел. по ролям)"
+          tooltip="Сколько человек работают на фазе одновременно — сокращает календарный срок. Пусто = брать из настроек проекта (по умолчанию 1)."
+          style={{ marginBottom: 0 }}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <Form.Item name="parallel_count_analyst" label="АН">
+              <InputNumber min={1} max={5} precision={0} placeholder="из проекта" style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="parallel_count_dev" label="ПР">
+              <InputNumber min={1} max={5} precision={0} placeholder="из проекта" style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="parallel_count_qa" label="ТС">
+              <InputNumber min={1} max={5} precision={0} placeholder="из проекта" style={{ width: '100%' }} />
+            </Form.Item>
+          </div>
         </Form.Item>
 
         <Form.Item label="Приоритизация" style={{ marginBottom: 0 }}>
