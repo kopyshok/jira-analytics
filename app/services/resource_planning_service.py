@@ -314,6 +314,19 @@ class ResourcePlanningService:
                 if phase == "opo":
                     analyst_id = assignments_by_role["analyst"].get(item.id)
                     dev_id = assignments_by_role["dev"].get(item.id)
+                    # Если у инициативы нет исполнителя-аналитика — взять любого из
+                    # пула аналитических ролей (независимо от assignee).
+                    if not analyst_id:
+                        opo_analyst_pool = [
+                            e.id for e in employees
+                            if (e.role or "").lower() in ANALYST_ROLES
+                        ]
+                        if opo_analyst_pool:
+                            # min-load: выбрать наименее загруженного по remaining
+                            analyst_id = min(
+                                opo_analyst_pool,
+                                key=lambda eid: -sum(remaining.get(eid, {}).values()),
+                            )
                     parts = self._opo_split(item, analyst_id, dev_id)
                     last_end: Optional[date] = None
                     for emp_id, p_hours in parts:

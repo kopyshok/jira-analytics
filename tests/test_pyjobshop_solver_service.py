@@ -481,6 +481,80 @@ def test_solver_main_assignee_prefers_analyst_phase(db_session):
     assert matching[0]["assignee_employee_id"] != qa.id
 
 
+def test_solver_keeps_opo_parallel(db_session: Session):
+    """Два opo-ряда (analyst + dev) с pre-assigned исполнителями запускаются параллельно.
+
+    Оба ряда помечены is_pinned=True, что заставляет солвер использовать именно
+    указанного сотрудника. Ожидаем: оба scheduled, start_date расходятся не более
+    чем на 1 день (параллельное исполнение, не последовательное).
+    """
+    analyst_emp = _make_employee(db_session, role="analyst", team="OPO_S")
+    dev_emp = _make_employee(db_session, role="developer", team="OPO_S")
+
+    item = BacklogItem(
+        title="OPO Parallel Item",
+        priority=1,
+        estimate_analyst_hours=0.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=16.0,
+        opo_analyst_ratio=0.5,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plan = ResourcePlan(team="OPO_S", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan)
+    db_session.flush()
+
+    # Оба ряда pinned к конкретным сотрудникам, обоим стартовать в один день
+    opo_start = date(2026, 4, 7)  # Понедельник Q2 2026
+    assign_analyst = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="opo",
+        hours_allocated=8.0,
+        start_date=opo_start,
+        end_date=opo_start,
+        employee_id=analyst_emp.id,
+        is_pinned=True,
+    )
+    assign_dev = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="opo",
+        hours_allocated=8.0,
+        start_date=opo_start,
+        end_date=opo_start,
+        employee_id=dev_emp.id,
+        is_pinned=True,
+    )
+    db_session.add_all([assign_analyst, assign_dev])
+    db_session.commit()
+
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    # Оба ряда должны быть в phase_breakdown
+    assert len(result["assignments"]) == 1
+    breakdown = result["assignments"][0]["phase_breakdown"]
+    opo_rows = [p for p in breakdown if p["phase"] == "opo"]
+    assert len(opo_rows) == 2, f"Ожидалось 2 opo-строки в breakdown, получено {len(opo_rows)}"
+
+    # Оба сотрудника назначены
+    assigned_emps = {p["employee_id"] for p in opo_rows}
+    assert analyst_emp.id in assigned_emps, "analyst должен быть в opo breakdown"
+    assert dev_emp.id in assigned_emps, "developer должен быть в opo breakdown"
+
+    # Параллельность: start_date обоих ряд расходится не более чем на 1 день
+    start_dates = [p["start_date"] for p in opo_rows]
+    date_spread = abs((start_dates[0] - start_dates[1]).days)
+    assert date_spread <= 1, (
+        f"Строки opo должны стартовать одновременно (≤1 день разницы), "
+        f"получено: {start_dates}"
+    )
+
+
 import pytest as _pytest
 
 

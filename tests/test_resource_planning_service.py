@@ -1,7 +1,10 @@
 """Tests for ResourcePlanningService."""
 
+import uuid
 from datetime import date
 from unittest.mock import MagicMock
+
+from sqlalchemy.orm import Session
 
 from app.services.resource_planning_service import (
     DEFAULT_HOURS_PER_DAY,
@@ -477,3 +480,132 @@ def test_build_conflict_dicts_overload_high_from_escalate_event():
 # The leveler logic is covered by tests/test_rcpsp_leveler.py; the wire-up is
 # validated by the unit tests above (_build_role_pools + _last_leveling_events init)
 # and by running the full test suite without regressions.
+
+
+# ── ОПЭ parallel integration test ─────────────────────────────────────────
+
+def test_opo_rows_start_simultaneously(db_session: Session) -> None:
+    """ОПЭ фаза создаёт 2 параллельных строки (analyst + dev) с одинаковым start_date.
+
+    Строки должны:
+    - иметь phase="opo"
+    - иметь hours=8.0 каждая (total=16, ratio=0.5)
+    - принадлежать разным сотрудникам
+    - иметь одинаковый start_date (запуск в параллель после QA)
+    """
+    from sqlalchemy import select
+
+    from app.models.backlog_item import BacklogItem
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.scenario_allocation import ScenarioAllocation
+
+    team = "OPO_TEST"
+
+    # Три сотрудника: analyst, developer, qa
+    def _emp(role: str) -> Employee:
+        e = Employee(
+            jira_account_id=uuid.uuid4().hex[:16],
+            display_name=f"{role.capitalize()}-opo",
+            team=team,
+            is_active=True,
+            role=role,
+        )
+        db_session.add(e)
+        db_session.flush()
+        et = EmployeeTeam(employee_id=e.id, team=team, is_primary=True)
+        db_session.add(et)
+        return e
+
+    analyst_emp = _emp("analyst")
+    dev_emp = _emp("developer")
+    _emp("qa")
+
+    # BacklogItem: только QA + ОПЭ часы, без assignee (чтобы экспонировать баг)
+    item = BacklogItem(
+        title="ОПЭ test item",
+        priority=1,
+        estimate_analyst_hours=0.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=8.0,
+        estimate_opo_hours=16.0,
+        opo_analyst_ratio=0.5,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    # Сценарий + план
+    scenario = PlanningScenario(
+        name="opo-test-scenario",
+        quarter="Q2",
+        year=2026,
+        status="draft",
+        team=team,
+    )
+    db_session.add(scenario)
+    db_session.flush()
+
+    alloc = ScenarioAllocation(
+        scenario_id=scenario.id,
+        backlog_item_id=item.id,
+        included_flag=True,
+    )
+    db_session.add(alloc)
+
+    plan = ResourcePlan(
+        team=team,
+        quarter="Q2",
+        year=2026,
+        status="draft",
+        scenario_id=scenario.id,
+    )
+    db_session.add(plan)
+    db_session.commit()
+
+    # Запустить планировщик
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan.id)
+
+    # Проверить результат
+    rows = (
+        db_session.execute(
+            select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.plan_id == plan.id,
+                ResourcePlanAssignment.phase == "opo",
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Сгруппировать по сотруднику — могут быть split-сегменты внутри одного сотрудника
+    from collections import defaultdict as _defaultdict
+    hours_by_emp: dict = _defaultdict(float)
+    start_by_emp: dict = {}
+    for r in rows:
+        hours_by_emp[r.employee_id] += r.hours_allocated
+        if r.employee_id not in start_by_emp or r.start_date < start_by_emp[r.employee_id]:
+            start_by_emp[r.employee_id] = r.start_date
+
+    assert len(hours_by_emp) == 2, (
+        f"Ожидалось 2 сотрудника в opo, получено {len(hours_by_emp)}. "
+        f"Баг: если assignee не задан, analyst_id=None и строка analyst пропускается."
+    )
+    assert analyst_emp.id in hours_by_emp, "analyst должен быть в opo"
+    assert dev_emp.id in hours_by_emp, "developer должен быть в opo"
+
+    assert abs(hours_by_emp[analyst_emp.id] - 8.0) < 0.01, (
+        f"analyst opo: ожидалось 8.0ч, получено {hours_by_emp[analyst_emp.id]}"
+    )
+    assert abs(hours_by_emp[dev_emp.id] - 8.0) < 0.01, (
+        f"developer opo: ожидалось 8.0ч, получено {hours_by_emp[dev_emp.id]}"
+    )
+
+    # Оба сотрудника должны стартовать в один день (параллельное выполнение)
+    assert start_by_emp[analyst_emp.id] == start_by_emp[dev_emp.id], (
+        f"Строки opo должны стартовать одновременно: "
+        f"analyst={start_by_emp[analyst_emp.id]}, dev={start_by_emp[dev_emp.id]}"
+    )
