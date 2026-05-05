@@ -418,6 +418,15 @@ export interface BacklogItemResponse {
   jira_status_category: string | null;
   jira_status_changed_at: string | null;
   quarter_label: string | null;
+  // Jira involvement (0–1) and calendar duration (days) — read-only, sourced from Jira.
+  involvement_analyst: number | null;
+  involvement_dev: number | null;
+  involvement_qa: number | null;
+  involvement_launch: number | null;
+  duration_analyst_days: number | null;
+  duration_dev_days: number | null;
+  duration_qa_days: number | null;
+  duration_launch_days: number | null;
 }
 
 export interface BacklogRefreshResult {

@@ -316,8 +316,10 @@ export default function BacklogPage() {
           hours: number,
           field: 'estimate_analyst_hours' | 'estimate_dev_hours' | 'estimate_qa_hours' | 'estimate_opo_hours',
           color: string,
+          involvement?: number | null,
+          durationDays?: number | null,
         ) => {
-          const cell = <BacklogRoleCell label={label} hours={hours} total={total} color={color} />;
+          const cell = <BacklogRoleCell label={label} hours={hours} total={total} color={color} involvement={involvement} durationDays={durationDays} />;
           if (!isEditable) return cell;
           return (
             <Popover
@@ -354,10 +356,10 @@ export default function BacklogPage() {
 
         return (
           <div style={{ display: 'flex', gap: 4 }}>
-            {makeCell('АН', an, 'estimate_analyst_hours', getRoleColor(roles, 'analyst'))}
-            {makeCell('ПР', de, 'estimate_dev_hours', getRoleColor(roles, 'dev'))}
-            {makeCell('ТС', qa, 'estimate_qa_hours', getRoleColor(roles, 'qa'))}
-            {makeCell('ОПЭ', op, 'estimate_opo_hours', OPO_COLOR)}
+            {makeCell('АН', an, 'estimate_analyst_hours', getRoleColor(roles, 'analyst'), r.involvement_analyst, r.duration_analyst_days)}
+            {makeCell('ПР', de, 'estimate_dev_hours', getRoleColor(roles, 'dev'), r.involvement_dev, r.duration_dev_days)}
+            {makeCell('ТС', qa, 'estimate_qa_hours', getRoleColor(roles, 'qa'), r.involvement_qa, r.duration_qa_days)}
+            {makeCell('ОПЭ', op, 'estimate_opo_hours', OPO_COLOR, r.involvement_launch, r.duration_launch_days)}
           </div>
         );
       },

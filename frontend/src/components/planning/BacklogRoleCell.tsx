@@ -1,3 +1,4 @@
+import { Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
 
 interface BacklogRoleCellProps {
@@ -5,13 +6,22 @@ interface BacklogRoleCellProps {
   hours: number;
   total: number;       // sum of all 4 roles — used to compute pct
   color: string;       // hex role color
+  // Optional Jira-sourced fields — shown in tooltip when present.
+  involvement?: number | null;   // 0..1 fraction of working day
+  durationDays?: number | null;  // calendar duration in days
 }
 
-export default function BacklogRoleCell({ label, hours, total, color }: BacklogRoleCellProps) {
+export default function BacklogRoleCell({ label, hours, total, color, involvement, durationDays }: BacklogRoleCellProps) {
   const pct = total > 0 ? Math.round((hours / total) * 100) : 0;
   const empty = hours === 0;
 
-  return (
+  const hasJiraData = (involvement != null) || (durationDays != null);
+  const tooltipLines: string[] = [];
+  if (durationDays != null) tooltipLines.push(`${durationDays} дн`);
+  if (involvement != null) tooltipLines.push(`${Math.round(involvement * 100)}% занятость`);
+  const tooltipTitle = hasJiraData ? tooltipLines.join(', ') : undefined;
+
+  const cell = (
     <div
       style={{
         flex: 1,
@@ -74,5 +84,13 @@ export default function BacklogRoleCell({ label, hours, total, color }: BacklogR
         {empty ? '0%' : `${pct}%`}
       </div>
     </div>
+  );
+
+  if (!hasJiraData) return cell;
+
+  return (
+    <Tooltip title={tooltipTitle}>
+      {cell}
+    </Tooltip>
   );
 }
