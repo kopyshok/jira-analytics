@@ -93,6 +93,15 @@ class BacklogService:
             existing.estimate_opo_hours = issue.planned_opo_hours
             existing.impact = issue.impact
             existing.risk = issue.risk
+            # Jira involvement + calendar duration — propagate as-is (None allowed).
+            existing.involvement_analyst = issue.involvement_analyst
+            existing.involvement_dev = issue.involvement_dev
+            existing.involvement_qa = issue.involvement_qa
+            existing.involvement_launch = issue.involvement_launch
+            existing.duration_analyst_days = issue.duration_analyst_days
+            existing.duration_dev_days = issue.duration_dev_days
+            existing.duration_qa_days = issue.duration_qa_days
+            existing.duration_launch_days = issue.duration_launch_days
             # PM выбрал «Jira — источник истины»: затираем ручной приоритет
             # значением из Jira (None, если в Jira пусто или неизвестное значение).
             existing.priority = _jira_priority_to_int(issue.priority)
