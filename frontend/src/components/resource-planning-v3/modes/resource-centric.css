@@ -370,12 +370,22 @@
 /* ===== DHTMLX GANTT OVERRIDES ===== */
 .dhtmlx-resource-mode .gantt_container,
 .dhtmlx-resource-mode .gantt_task,
-.dhtmlx-resource-mode .gantt_grid {
-  background: var(--bg-base);
-  color: var(--text-primary);
-  border-color: var(--border);
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: 12px;
+.dhtmlx-resource-mode .gantt_grid,
+.dhtmlx-resource-mode .gantt_data_area,
+.dhtmlx-resource-mode .gantt_grid_data,
+.dhtmlx-resource-mode .gantt_task_bg {
+  background: var(--bg-base) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+  font-family: 'Segoe UI', system-ui, sans-serif !important;
+  font-size: 12px !important;
+}
+
+.dhtmlx-resource-mode .gantt_grid_head_cell {
+  background: var(--bg-panel) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border) !important;
+  font-size: 11px !important;
 }
 
 .dhtmlx-resource-mode .gantt_grid_scale,

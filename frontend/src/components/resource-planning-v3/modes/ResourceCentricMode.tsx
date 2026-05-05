@@ -1,158 +1,93 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Empty } from 'antd';
 import { gantt } from 'dhtmlx-gantt';
 import 'dhtmlx-gantt/codebase/dhtmlxgantt.css';
 import './resource-centric.css';
+import type { AssignmentOut, ConflictOut } from '../../../api/resourcePlanning';
+import type { EmployeeResponse } from '../../../types/api';
 
-// TODO: replace with useGanttProjection data
-const INITIATIVES = [
-  { id: 'i1',  key: 'RPM-001', name: 'Реестр сделок v2',          color: '#1677ff', progress: 0.45 },
-  { id: 'i2',  key: 'RPM-002', name: 'Миграция Bitrix24 API',     color: '#722ed1', progress: 0.20 },
-  { id: 'i3',  key: 'RPM-003', name: 'Дашборд продаж',            color: '#13c2c2', progress: 0.70 },
-  { id: 'i4',  key: 'RPM-004', name: 'Интеграция с 1С',           color: '#eb2f96', progress: 0.10 },
-  { id: 'i5',  key: 'RPM-005', name: 'Личный кабинет клиента',    color: '#fa8c16', progress: 0.60 },
-  { id: 'i6',  key: 'RPM-006', name: 'Электронный документооборот', color: '#52c41a', progress: 0.30 },
-  { id: 'i7',  key: 'RPM-007', name: 'Мобильное приложение v3',   color: '#fadb14', progress: 0.05 },
-  { id: 'i8',  key: 'RPM-008', name: 'Переход на PostgreSQL',      color: '#f5222d', progress: 0.80 },
-  { id: 'i9',  key: 'RPM-009', name: 'HR-портал',                 color: '#2f54eb', progress: 0.50 },
-  { id: 'i10', key: 'RPM-010', name: 'Аналитика KPI',             color: '#08979c', progress: 0.15 },
-] as const;
-
-const ROLES = [
-  { id: 'analyst', name: 'Аналитики',    color: '#69b1ff', icon: '🔍' },
-  { id: 'dev',     name: 'Разработчики', color: '#b37feb', icon: '💻' },
-  { id: 'qa',      name: 'Тестировщики', color: '#95de64', icon: '🧪' },
-  { id: 'ope',     name: 'ОПЭ',          color: '#ffa940', icon: '🚀' },
-] as const;
-
-const EMPLOYEES = [
-  { id: 'e_a1', name: 'Смирнова А.Д.',  role: 'analyst', capacity: 8, parent: 'g_analyst' },
-  { id: 'e_a2', name: 'Козлов П.В.',    role: 'analyst', capacity: 8, parent: 'g_analyst' },
-  { id: 'e_a3', name: 'Новикова Е.С.',  role: 'analyst', capacity: 6, parent: 'g_analyst' },
-  { id: 'e_d1', name: 'Петров И.А.',    role: 'dev',     capacity: 8, parent: 'g_dev' },
-  { id: 'e_d2', name: 'Иванова М.Н.',   role: 'dev',     capacity: 8, parent: 'g_dev' },
-  { id: 'e_d3', name: 'Федоров К.Г.',   role: 'dev',     capacity: 8, parent: 'g_dev' },
-  { id: 'e_d4', name: 'Соколов В.Р.',   role: 'dev',     capacity: 8, parent: 'g_dev' },
-  { id: 'e_d5', name: 'Лебедева О.М.',  role: 'dev',     capacity: 6, parent: 'g_dev' },
-  { id: 'e_q1', name: 'Морозова Д.В.',  role: 'qa',      capacity: 8, parent: 'g_qa' },
-  { id: 'e_q2', name: 'Волков С.Т.',    role: 'qa',      capacity: 8, parent: 'g_qa' },
-  { id: 'e_q3', name: 'Попова Н.И.',    role: 'qa',      capacity: 8, parent: 'g_qa' },
-  { id: 'e_o1', name: 'Орлов Б.Д.',     role: 'ope',     capacity: 8, parent: 'g_ope' },
-  { id: 'e_o2', name: 'Крылова Т.А.',   role: 'ope',     capacity: 8, parent: 'g_ope' },
-];
-
-const PHASE_META: Record<string, { label: string; barColor: string; textColor: string }> = {
-  'А': { label: 'Анализ',        barColor: '#2563d4', textColor: '#a8c8ff' },
-  'Р': { label: 'Разработка',    barColor: '#6d28d9', textColor: '#c4b5fd' },
-  'Т': { label: 'Тестирование',  barColor: '#16a34a', textColor: '#86efac' },
-  'О': { label: 'ОПЭ',           barColor: '#b45309', textColor: '#fcd34d' },
+const PHASE_LABELS: Record<string, string> = { analyst: 'Анализ', dev: 'Разработка', qa: 'Тестирование', opo: 'ОПЭ' };
+const PHASE_LETTERS: Record<string, string> = { analyst: 'А', dev: 'Р', qa: 'Т', opo: 'О' };
+const PHASE_COLORS: Record<string, { bar: string; text: string }> = {
+  analyst: { bar: '#2563d4', text: '#a8c8ff' },
+  dev:     { bar: '#6d28d9', text: '#c4b5fd' },
+  qa:      { bar: '#16a34a', text: '#86efac' },
+  opo:     { bar: '#b45309', text: '#fcd34d' },
+};
+const ROLE_META: Record<string, { name: string; color: string; icon: string }> = {
+  analyst: { name: 'Аналитики',    color: '#69b1ff', icon: '🔍' },
+  dev:     { name: 'Разработчики', color: '#b37feb', icon: '💻' },
+  qa:      { name: 'Тестировщики', color: '#95de64', icon: '🧪' },
+  opo:     { name: 'ОПЭ',          color: '#ffa940', icon: '🚀' },
 };
 
-const TASKS_RAW = [
-  { id: 't01', emp: 'e_a1', init: 'i1',  phase: 'А', start: '2026-07-01', end: '2026-07-18', conflict: false },
-  { id: 't02', emp: 'e_a1', init: 'i3',  phase: 'А', start: '2026-07-21', end: '2026-08-08', conflict: false },
-  { id: 't03', emp: 'e_a1', init: 'i6',  phase: 'А', start: '2026-08-10', end: '2026-09-05', conflict: true  },
-  { id: 't04', emp: 'e_a2', init: 'i2',  phase: 'А', start: '2026-07-01', end: '2026-07-25', conflict: false },
-  { id: 't05', emp: 'e_a2', init: 'i4',  phase: 'А', start: '2026-07-28', end: '2026-08-28', conflict: false },
-  { id: 't06', emp: 'e_a3', init: 'i9',  phase: 'А', start: '2026-07-01', end: '2026-08-15', conflict: false },
-  { id: 't07', emp: 'e_a3', init: 'i10', phase: 'А', start: '2026-08-18', end: '2026-09-30', conflict: false },
-  { id: 't08', emp: 'e_d1', init: 'i1',  phase: 'Р', start: '2026-07-20', end: '2026-08-20', conflict: false },
-  { id: 't09', emp: 'e_d1', init: 'i8',  phase: 'Р', start: '2026-08-05', end: '2026-09-10', conflict: true  },
-  { id: 't10', emp: 'e_d2', init: 'i3',  phase: 'Р', start: '2026-07-01', end: '2026-08-01', conflict: false },
-  { id: 't11', emp: 'e_d2', init: 'i5',  phase: 'Р', start: '2026-08-04', end: '2026-09-20', conflict: false },
-  { id: 't12', emp: 'e_d3', init: 'i2',  phase: 'Р', start: '2026-07-28', end: '2026-09-05', conflict: false },
-  { id: 't13', emp: 'e_d3', init: 'i7',  phase: 'Р', start: '2026-09-01', end: '2026-09-30', conflict: true  },
-  { id: 't14', emp: 'e_d4', init: 'i4',  phase: 'Р', start: '2026-08-01', end: '2026-09-15', conflict: false },
-  { id: 't15', emp: 'e_d4', init: 'i6',  phase: 'Р', start: '2026-09-10', end: '2026-09-30', conflict: false },
-  { id: 't16', emp: 'e_d5', init: 'i9',  phase: 'Р', start: '2026-08-10', end: '2026-09-30', conflict: false },
-  { id: 't17', emp: 'e_q1', init: 'i3',  phase: 'Т', start: '2026-07-15', end: '2026-08-05', conflict: false },
-  { id: 't18', emp: 'e_q1', init: 'i8',  phase: 'Т', start: '2026-08-01', end: '2026-09-10', conflict: true  },
-  { id: 't19', emp: 'e_q2', init: 'i1',  phase: 'Т', start: '2026-08-22', end: '2026-09-20', conflict: false },
-  { id: 't20', emp: 'e_q2', init: 'i5',  phase: 'Т', start: '2026-09-15', end: '2026-09-30', conflict: false },
-  { id: 't21', emp: 'e_q3', init: 'i2',  phase: 'Т', start: '2026-09-01', end: '2026-09-30', conflict: false },
-  { id: 't22', emp: 'e_q3', init: 'i7',  phase: 'Т', start: '2026-09-10', end: '2026-09-30', conflict: false },
-  { id: 't23', emp: 'e_o1', init: 'i3',  phase: 'О', start: '2026-08-10', end: '2026-08-31', conflict: false },
-  { id: 't24', emp: 'e_o1', init: 'i8',  phase: 'О', start: '2026-09-01', end: '2026-09-30', conflict: false },
-  { id: 't25', emp: 'e_o2', init: 'i1',  phase: 'О', start: '2026-09-15', end: '2026-09-30', conflict: false },
-  { id: 't26', emp: 'e_o2', init: 'i5',  phase: 'О', start: '2026-09-20', end: '2026-09-30', conflict: false },
-];
-
-const initMap: Record<string, typeof INITIATIVES[number]> = {};
-INITIATIVES.forEach(i => { initMap[i.id] = i; });
-const empMap: Record<string, typeof EMPLOYEES[number]> = {};
-EMPLOYEES.forEach(e => { empMap[e.id] = e; });
-const roleMap: Record<string, typeof ROLES[number]> = {};
-ROLES.forEach(r => { roleMap[r.id] = r; });
-
-function buildGanttData() {
-  const tasks: any[] = [];
-  let order = 1;
-
-  ROLES.forEach(role => {
-    tasks.push({
-      id: 'g_' + role.id,
-      text: role.name,
-      type: 'project',
-      open: true,
-      render: 'split',
-      color: 'transparent',
-      _isGroup: true,
-      _role: role.id,
-      _roleColor: role.color,
-      order: order++,
-    });
-
-    EMPLOYEES.filter(e => e.role === role.id).forEach(emp => {
-      tasks.push({
-        id: emp.id,
-        text: emp.name,
-        type: 'project',
-        parent: 'g_' + role.id,
-        open: true,
-        render: 'split',
-        color: 'transparent',
-        _isEmployee: true,
-        _emp: emp,
-        _role: role.id,
-        _roleColor: role.color,
-        order: order++,
-      });
-
-      TASKS_RAW.filter(t => t.emp === emp.id).forEach(t => {
-        const init = initMap[t.init];
-        const phaseMeta = PHASE_META[t.phase];
-        const barColor = phaseMeta ? phaseMeta.barColor : (init?.color ?? '#888');
-        tasks.push({
-          id: t.id,
-          text: t.phase + ' · ' + (init?.name ?? t.init),
-          start_date: t.start,
-          end_date: t.end,
-          parent: emp.id,
-          color: barColor,
-          _conflict: t.conflict,
-          _init: init,
-          _phase: t.phase,
-          _emp: emp,
-          order: order++,
-          progress: init?.progress ?? 0,
-          readonly: false,
-        });
-      });
-    });
-  });
-
-  return { data: tasks, links: [] };
+/** Infer role bucket from Employee.role string */
+function inferRoleBucket(role: string | null): string {
+  if (!role) return 'dev';
+  const r = role.toLowerCase();
+  if (r.includes('analyst') || r.includes('аналитик')) return 'analyst';
+  if (r.includes('qa') || r.includes('тест') || r.includes('test')) return 'qa';
+  if (r.includes('ope') || r.includes('опэ')) return 'opo';
+  return 'dev';
 }
 
-export default function ResourceCentricMode() {
+function quarterBounds(quarter: string, year: number): [Date, Date] {
+  const q = parseInt(quarter.replace('Q', ''), 10) || 3;
+  const startMonth = (q - 1) * 3;
+  return [new Date(year, startMonth, 1), new Date(year, startMonth + 3, 1)];
+}
+
+interface Props {
+  assignments: AssignmentOut[];
+  conflicts: ConflictOut[];
+  employees: EmployeeResponse[];
+  quarter: string;
+  year: number;
+}
+
+export default function ResourceCentricMode({ assignments, conflicts, employees, quarter, year }: Props) {
   const ganttRef = useRef<HTMLDivElement>(null);
   const toastContainerRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarTitle, setSidebarTitle] = useState('Детали инициативы');
   const [sidebarContent, setSidebarContent] = useState<string>('');
-  const [scaleActive, setScaleActive] = useState<'week'|'day'|'month'>('week');
-  const [activeQuarter, setActiveQuarter] = useState<'Q2'|'Q3'|'Q4'>('Q3');
+  const [scaleActive, setScaleActive] = useState<'week' | 'day' | 'month'>('week');
   const [roleFilter, setRoleFilter] = useState('');
   const [initFilter, setInitFilter] = useState('');
+
+  const [qStart, qEnd] = useMemo(() => quarterBounds(quarter, year), [quarter, year]);
+
+  const validAssignments = useMemo(
+    () => assignments.filter(a => a.start_date && a.end_date),
+    [assignments]
+  );
+
+  const activeConflicts = useMemo(
+    () => conflicts.filter(c => c.status !== 'resolved'),
+    [conflicts]
+  );
+
+  // Build employee map
+  const empMap = useMemo(() => {
+    const m = new Map<string, EmployeeResponse>();
+    employees.forEach(e => m.set(e.id, e));
+    return m;
+  }, [employees]);
+
+  // Unique initiatives from assignments
+  const initiatives = useMemo(() => {
+    const m = new Map<string, { id: string; key: string | null; name: string }>();
+    for (const a of validAssignments) {
+      if (!m.has(a.backlog_item_id)) {
+        m.set(a.backlog_item_id, {
+          id: a.backlog_item_id,
+          key: a.backlog_item_key,
+          name: a.backlog_item_title,
+        });
+      }
+    }
+    return Array.from(m.values());
+  }, [validAssignments]);
 
   const showToast = useCallback((icon: string, msg: string) => {
     const container = toastContainerRef.current;
@@ -165,77 +100,82 @@ export default function ResourceCentricMode() {
   }, []);
 
   const showConflictPanel = useCallback(() => {
-    const conflicts = TASKS_RAW.filter(t => t.conflict);
-    let html = `<div style="font-size:13px;font-weight:600;color:#ff4d4f;margin-bottom:14px;">⚠ Конфликты перегрузки (${conflicts.length})</div>`;
-    conflicts.forEach(t => {
-      const init = initMap[t.init];
-      const emp = empMap[t.emp];
+    let html = `<div style="font-size:13px;font-weight:600;color:#ff4d4f;margin-bottom:14px;">⚠ Конфликты (${activeConflicts.length})</div>`;
+    if (activeConflicts.length === 0) {
+      html += `<div style="color:#595959;text-align:center;padding:16px;">Конфликтов нет</div>`;
+    }
+    activeConflicts.forEach(c => {
       html += `<div style="padding:10px 12px;background:rgba(255,77,79,0.08);border:1px solid rgba(255,77,79,0.25);border-radius:6px;margin-bottom:8px;">
-        <div style="font-weight:600;color:#e6e6e6;margin-bottom:4px;">${init?.name ?? t.init} · ${t.phase}</div>
-        <div style="font-size:11px;color:#8c8c8c;">${emp?.name ?? t.emp} · ${t.start} – ${t.end}</div>
-        <div style="font-size:11px;color:#ff4d4f;margin-top:4px;">Перегруз: 11ч из 8ч доступных</div>
+        <div style="font-weight:600;color:#e6e6e6;margin-bottom:4px;">${c.backlog_item_title ?? '—'} · ${c.severity}</div>
+        <div style="font-size:11px;color:#8c8c8c;">${c.window_start ?? ''} – ${c.window_end ?? ''}</div>
+        <div style="font-size:11px;color:#ff4d4f;margin-top:4px;">${c.message}</div>
       </div>`;
     });
     setSidebarTitle('Конфликты');
     setSidebarContent(html);
     setSidebarOpen(true);
-  }, []);
+  }, [activeConflicts]);
 
   const showTaskDetail = useCallback((task: any) => {
-    const init = task._init ?? {};
-    const phase = task._phase;
-    const phaseLabels: Record<string, string> = { 'А': 'Анализ', 'Р': 'Разработка', 'Т': 'Тестирование', 'О': 'ОПЭ' };
-    const phaseColors: Record<string, string> = { 'А': '#1677ff', 'Р': '#722ed1', 'Т': '#52c41a', 'О': '#fa8c16' };
+    const itemId: string = task._itemId;
+    const phase: string = task._phase;
 
-    const initTasks = TASKS_RAW.filter(t => t.init === (init.id ?? ''));
-    const phases = ['А', 'Р', 'Т', 'О'];
+    const itemAssignments = validAssignments.filter(a => a.backlog_item_id === itemId);
+    const initName = itemAssignments[0]?.backlog_item_title ?? task.text;
+    const initKey = itemAssignments[0]?.backlog_item_key ?? '';
 
+    const phases: string[] = ['analyst', 'dev', 'qa', 'opo'];
     const phaseItems = phases.map(ph => {
-      const phaseTasks = initTasks.filter(t => t.phase === ph);
+      const phaseTasks = itemAssignments.filter(a => a.phase === ph);
       if (!phaseTasks.length) return '';
-      const firstStart = phaseTasks.reduce((a, t) => t.start < a ? t.start : a, phaseTasks[0].start);
-      const lastEnd = phaseTasks.reduce((a, t) => t.end > a ? t.end : a, phaseTasks[0].end);
-      const hasConflict = phaseTasks.some(t => t.conflict);
-      const now = new Date(2026, 6, 15);
-      const startD = new Date(firstStart), endD = new Date(lastEnd);
+      const minStart = phaseTasks.reduce((m, a) => (a.start_date! < m ? a.start_date! : m), phaseTasks[0].start_date!);
+      const maxEnd = phaseTasks.reduce((m, a) => (a.end_date! > m ? a.end_date! : m), phaseTasks[0].end_date!);
+      const hasConflict = activeConflicts.some(c => c.backlog_item_id === itemId);
+      const now = new Date();
+      const startD = new Date(minStart), endD = new Date(maxEnd);
       let status = 'pending', statusLabel = 'Ожидание';
       if (endD < now) { status = 'done'; statusLabel = 'Готово'; }
       else if (startD <= now) { status = 'active'; statusLabel = 'В работе'; }
       if (hasConflict) { status = 'conflict'; statusLabel = 'Конфликт'; }
+      const phColor = PHASE_COLORS[ph]?.bar ?? '#888';
+      const letter = PHASE_LETTERS[ph] ?? ph[0].toUpperCase();
       return `<div class="phase-item">
-        <div class="phase-icon" style="background:${phaseColors[ph]}22;color:${phaseColors[ph]};border:1px solid ${phaseColors[ph]}44;">${ph}</div>
+        <div class="phase-icon" style="background:${phColor}22;color:${phColor};border:1px solid ${phColor}44;">${letter}</div>
         <div class="phase-info">
-          <div class="phase-name">${phaseLabels[ph]}</div>
-          <div class="phase-dates">${firstStart.slice(5)} — ${lastEnd.slice(5)}</div>
+          <div class="phase-name">${PHASE_LABELS[ph] ?? ph}</div>
+          <div class="phase-dates">${minStart.slice(5)} — ${maxEnd.slice(5)}</div>
         </div>
         <div class="phase-status ${status}">${statusLabel}</div>
       </div>`;
     }).join('');
 
-    const assigneeIds = [...new Set(initTasks.map(t => t.emp))];
+    const assigneeIds = [...new Set(itemAssignments.map(a => a.employee_id).filter(Boolean) as string[])];
     const chipHtml = assigneeIds.map(eid => {
-      const e = empMap[eid];
-      if (!e) return '';
-      const r = roleMap[e.role];
-      const initials = e.name.split(' ').map((p: string) => p[0]).join('').slice(0,2);
-      return `<div class="assignee-chip"><div class="chip-avatar" style="background:${r?.color ?? '#888'}cc">${initials}</div><span>${e.name}</span></div>`;
+      const e = empMap.get(eid);
+      if (!e) {
+        const a = itemAssignments.find(x => x.employee_id === eid);
+        const name = a?.employee_name ?? eid;
+        const initials = name.split(' ').map((p: string) => p[0]).join('').slice(0, 2);
+        return `<div class="assignee-chip"><div class="chip-avatar" style="background:#555">${initials}</div><span>${name}</span></div>`;
+      }
+      const roleBucket = inferRoleBucket(e.role);
+      const color = ROLE_META[roleBucket]?.color ?? '#888';
+      const initials = e.display_name.split(' ').map((p: string) => p[0]).join('').slice(0, 2);
+      return `<div class="assignee-chip"><div class="chip-avatar" style="background:${color}cc">${initials}</div><span>${e.display_name}</span></div>`;
     }).join('');
 
-    const progressPct = Math.round((init.progress ?? 0) * 100);
+    const conflictCount = activeConflicts.filter(c => c.backlog_item_id === itemId).length;
+    const phaseLabel = PHASE_LABELS[phase] ?? phase;
 
-    setSidebarTitle(init.name ?? task.text);
+    setSidebarTitle(initName);
     setSidebarContent(`
-      <div class="detail-init-color" style="background:${init.color ?? '#1677ff'};"></div>
-      <div class="detail-name">${init.name ?? task.text}</div>
-      <div class="detail-key">${init.key ?? ''}</div>
-      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${progressPct}%;background:${init.color ?? 'var(--accent)'};"></div></div>
-      <div style="font-size:11px;color:var(--text-muted);margin:6px 0 16px;text-align:right;">${progressPct}% завершено</div>
+      <div class="detail-name">${initName}</div>
+      <div class="detail-key">${initKey}</div>
       <div class="detail-section">
         <div class="detail-section-title">Параметры</div>
-        <div class="detail-row"><span class="detail-label">Статус</span><span class="detail-value" style="color:var(--ok);">В работе</span></div>
-        <div class="detail-row"><span class="detail-label">Квартал</span><span class="detail-value">Q3 2026</span></div>
-        <div class="detail-row"><span class="detail-label">Фаза выбрана</span><span class="detail-value">${phaseLabels[phase] ?? phase}</span></div>
-        ${task._conflict ? `<div class="detail-row"><span class="detail-label" style="color:var(--danger);">⚠ Перегруз</span><span class="detail-value" style="color:var(--danger);">11ч / 8ч</span></div>` : ''}
+        <div class="detail-row"><span class="detail-label">Квартал</span><span class="detail-value">${quarter} ${year}</span></div>
+        <div class="detail-row"><span class="detail-label">Выбранная фаза</span><span class="detail-value">${phaseLabel}</span></div>
+        ${conflictCount > 0 ? `<div class="detail-row"><span class="detail-label" style="color:var(--danger);">⚠ Конфликты</span><span class="detail-value" style="color:var(--danger);">${conflictCount}</span></div>` : ''}
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Фазы инициативы</div>
@@ -247,7 +187,117 @@ export default function ResourceCentricMode() {
       </div>
     `);
     setSidebarOpen(true);
-  }, []);
+  }, [validAssignments, empMap, activeConflicts, quarter, year]);
+
+  // Build gantt data
+  const ganttData = useMemo(() => {
+    const tasks: any[] = [];
+    let order = 1;
+
+    // Group employees by role bucket
+    const empsByRole = new Map<string, EmployeeResponse[]>();
+    for (const e of employees) {
+      const bucket = inferRoleBucket(e.role);
+      if (!empsByRole.has(bucket)) empsByRole.set(bucket, []);
+      empsByRole.get(bucket)!.push(e);
+    }
+
+    // Also handle pool assignments (no employee_id)
+    const roleOrder = ['analyst', 'dev', 'qa', 'opo'];
+    for (const roleId of roleOrder) {
+      const roleMeta = ROLE_META[roleId];
+      const groupId = 'g_' + roleId;
+      tasks.push({
+        id: groupId,
+        text: roleMeta.name,
+        type: 'project',
+        open: true,
+        render: 'split',
+        color: 'transparent',
+        _isGroup: true,
+        _role: roleId,
+        _roleColor: roleMeta.color,
+        order: order++,
+      });
+
+      const roleEmps = empsByRole.get(roleId) ?? [];
+      for (const emp of roleEmps) {
+        tasks.push({
+          id: emp.id,
+          text: emp.display_name,
+          type: 'project',
+          parent: groupId,
+          open: true,
+          render: 'split',
+          color: 'transparent',
+          _isEmployee: true,
+          _emp: emp,
+          _role: roleId,
+          _roleColor: roleMeta.color,
+          order: order++,
+        });
+
+        const empAssignments = validAssignments.filter(a => a.employee_id === emp.id && a.phase === roleId);
+        for (const a of empAssignments) {
+          const phaseMeta = PHASE_COLORS[a.phase];
+          const hasConflict = activeConflicts.some(
+            c => (c.backlog_item_id === a.backlog_item_id) || (c.employee_id === emp.id)
+          );
+          tasks.push({
+            id: a.id,
+            text: (PHASE_LETTERS[a.phase] ?? a.phase) + ' · ' + (a.backlog_item_key ?? a.backlog_item_title),
+            start_date: a.start_date!,
+            end_date: a.end_date!,
+            parent: emp.id,
+            color: phaseMeta?.bar ?? '#888',
+            _conflict: hasConflict,
+            _itemId: a.backlog_item_id,
+            _phase: a.phase,
+            _emp: emp,
+            order: order++,
+            progress: 0,
+          });
+        }
+      }
+
+      // Pool assignments for this role
+      const poolAssignments = validAssignments.filter(a => !a.employee_id && a.phase === roleId);
+      if (poolAssignments.length > 0) {
+        const poolId = 'pool_' + roleId;
+        tasks.push({
+          id: poolId,
+          text: '(пул)',
+          type: 'project',
+          parent: groupId,
+          open: true,
+          render: 'split',
+          color: 'transparent',
+          _isEmployee: true,
+          _emp: { id: poolId, display_name: '(пул)', role: roleId },
+          _role: roleId,
+          _roleColor: roleMeta.color,
+          order: order++,
+        });
+        for (const a of poolAssignments) {
+          tasks.push({
+            id: a.id,
+            text: (PHASE_LETTERS[a.phase] ?? a.phase) + ' · ' + (a.backlog_item_key ?? a.backlog_item_title),
+            start_date: a.start_date!,
+            end_date: a.end_date!,
+            parent: poolId,
+            color: PHASE_COLORS[a.phase]?.bar ?? '#888',
+            _conflict: false,
+            _itemId: a.backlog_item_id,
+            _phase: a.phase,
+            order: order++,
+            progress: 0,
+          });
+        }
+      }
+    }
+
+    return { data: tasks, links: [] };
+  }, [validAssignments, employees, activeConflicts]);
 
   useEffect(() => {
     if (!ganttRef.current) return;
@@ -284,14 +334,15 @@ export default function ResourceCentricMode() {
     (gantt.config as any).round_dnd_dates = true;
     (gantt.config as any).drag_progress = false;
     (gantt.config as any).multiselect = false;
+    gantt.config.date_format = '%Y-%m-%d';
 
     gantt.config.scales = [
       { unit: 'month', step: 1, format: '%F %Y' },
-      { unit: 'week',  step: 1, format: 'Нед %W' },
+      { unit: 'week', step: 1, format: 'Нед %W' },
     ] as any;
 
-    gantt.config.start_date = new Date(2026, 6, 1);
-    gantt.config.end_date   = new Date(2026, 9, 1);
+    gantt.config.start_date = qStart;
+    gantt.config.end_date = qEnd;
 
     gantt.config.columns = [
       {
@@ -301,14 +352,16 @@ export default function ResourceCentricMode() {
         tree: true,
         template: (task: any) => {
           if (task._isGroup) {
-            const role = roleMap[task._role];
+            const role = ROLE_META[task._role];
             return `<div class="group-cell"><div class="role-dot" style="background:${role?.color}"></div><span>${role?.icon} ${role?.name}</span></div>`;
           }
           if (task._isEmployee) {
-            const emp = task._emp;
-            const role = roleMap[emp.role];
-            const initials = emp.name.split(' ').map((p: string) => p[0]).join('').slice(0,2);
-            return `<div class="employee-cell"><div class="emp-avatar" style="background:${role?.color}cc">${initials}</div><div class="emp-info"><div class="emp-name">${emp.name}</div><div class="emp-role">${role?.name}</div></div></div>`;
+            const emp = task._emp as EmployeeResponse | { id: string; display_name: string; role: string | null };
+            const roleBucket = inferRoleBucket((emp as EmployeeResponse).role ?? null);
+            const color = ROLE_META[roleBucket]?.color ?? '#888';
+            const name = (emp as EmployeeResponse).display_name ?? (emp as any).name ?? '?';
+            const initials = name.split(' ').map((p: string) => p[0]).join('').slice(0, 2);
+            return `<div class="employee-cell"><div class="emp-avatar" style="background:${color}cc">${initials}</div><div class="emp-info"><div class="emp-name">${name}</div><div class="emp-role">${ROLE_META[roleBucket]?.name ?? ''}</div></div></div>`;
           }
           return '';
         }
@@ -322,20 +375,17 @@ export default function ResourceCentricMode() {
 
     gantt.templates.task_text = (_start: any, _end: any, task: any) => {
       if (task._isGroup || task._isEmployee) return '';
-      const init = task._init;
-      return `<span style="opacity:0.85;">${task._phase}</span> ${init?.name ?? task.text}`;
+      return task.text;
     };
 
     gantt.templates.tooltip_text = (_start: any, _end: any, task: any) => {
       if (task._isGroup || task._isEmployee) return '';
-      const init = task._init ?? {};
-      const phase = PHASE_META[task._phase] ?? {};
+      const phase = task._phase ?? '';
       let html = `<div style="min-width:200px;">
-        <div style="font-weight:700;color:#e6e6e6;margin-bottom:6px;">${init.name ?? task.text}</div>
-        <div style="color:#8c8c8c;font-size:11px;margin-bottom:4px;">Фаза: <span style="color:#e6e6e6;">${task._phase} — ${(phase as any).label ?? ''}</span></div>
-        <div style="color:#8c8c8c;font-size:11px;margin-bottom:4px;">Прогресс: ${Math.round((task.progress||0)*100)}%</div>`;
+        <div style="font-weight:700;color:#e6e6e6;margin-bottom:6px;">${task.text}</div>
+        <div style="color:#8c8c8c;font-size:11px;margin-bottom:4px;">Фаза: <span style="color:#e6e6e6;">${PHASE_LABELS[phase] ?? phase}</span></div>`;
       if (task._conflict) {
-        html += `<div style="color:#ff4d4f;font-weight:600;margin-top:8px;padding:6px 8px;background:rgba(255,77,79,0.1);border-radius:4px;border:1px solid rgba(255,77,79,0.3);">⚠ Перегруз: 11ч из 8ч доступных</div>`;
+        html += `<div style="color:#ff4d4f;font-weight:600;margin-top:8px;padding:6px 8px;background:rgba(255,77,79,0.1);border-radius:4px;border:1px solid rgba(255,77,79,0.3);">⚠ Конфликт перегрузки</div>`;
       }
       html += '</div>';
       return html;
@@ -343,8 +393,8 @@ export default function ResourceCentricMode() {
 
     gantt.templates.task_row_class = (_start: any, _end: any, task: any) => {
       if (!task._isEmployee) return '';
-      const empId = task.id;
-      const hasConflict = TASKS_RAW.some(t => t.emp === empId && t.conflict);
+      const empId = task.id as string;
+      const hasConflict = activeConflicts.some(c => c.employee_id === empId);
       return hasConflict ? 'overloaded' : '';
     };
 
@@ -362,9 +412,7 @@ export default function ResourceCentricMode() {
     gantt.attachEvent('onAfterTaskDrag', (id: any, mode: any) => {
       const task = gantt.getTask(id);
       if (!task || task._isGroup || task._isEmployee) return;
-      if (mode === 'move') {
-        showToast('✅', `Назначено · ${task._init?.name ?? ''}`);
-      }
+      if (mode === 'move') showToast('✅', `Перемещено · ${task.text}`);
     });
 
     gantt.attachEvent('onTaskClick', (id: any) => {
@@ -377,13 +425,15 @@ export default function ResourceCentricMode() {
     gantt.attachEvent('onBeforeLightbox', () => false);
 
     gantt.init(ganttRef.current);
-    gantt.parse(buildGanttData());
+    if (ganttData.data.length > 0) {
+      gantt.parse(ganttData);
+    }
 
     return () => {
       try { gantt.clearAll(); } catch { /* ignore */ }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ganttData, qStart, qEnd]);
 
   const setScale = (mode: 'week' | 'day' | 'month') => {
     setScaleActive(mode);
@@ -400,26 +450,26 @@ export default function ResourceCentricMode() {
     gantt.render();
   };
 
-  const setQuarterRange = (q: 'Q2'|'Q3'|'Q4') => {
-    setActiveQuarter(q);
-    if (q === 'Q2') { gantt.config.start_date = new Date(2026, 3, 1); gantt.config.end_date = new Date(2026, 6, 1); }
-    else if (q === 'Q3') { gantt.config.start_date = new Date(2026, 6, 1); gantt.config.end_date = new Date(2026, 9, 1); }
-    else { gantt.config.start_date = new Date(2026, 9, 1); gantt.config.end_date = new Date(2027, 0, 1); }
-    gantt.render();
-  };
-
   const applyFilter = (newRole?: string, newInit?: string) => {
     const r = newRole !== undefined ? newRole : roleFilter;
     const initId = newInit !== undefined ? newInit : initFilter;
     (gantt as any).filter_task = (_id: any, task: any) => {
       if (task._isGroup) { if (r && task._role !== r) return false; return true; }
       if (task._isEmployee) { if (r && task._role !== r) return false; return true; }
-      if (r && task._emp && task._emp.role !== r) return false;
-      if (initId && task._init && task._init.id !== initId) return false;
+      if (r && task._phase !== r) return false;
+      if (initId && task._itemId !== initId) return false;
       return true;
     };
     gantt.render();
   };
+
+  if (validAssignments.length === 0) {
+    return (
+      <div className="dhtmlx-resource-mode" style={{ position: 'relative' }}>
+        <Empty description="Нет данных для отображения" style={{ paddingTop: 80, color: '#8c8c8c' }} />
+      </div>
+    );
+  }
 
   return (
     <div className="dhtmlx-resource-mode" style={{ position: 'relative' }}>
@@ -428,17 +478,12 @@ export default function ResourceCentricMode() {
         <div className="app-header__logo">
           <div className="app-header__icon">📅</div>
           <div>
-            <div className="app-header__title">Планирование ресурсов · Ресурсо-центричный</div>
-            <div className="app-header__subtitle">Квартальный план · Q3 2026</div>
+            <div className="app-header__title">Планирование · Ресурсо-центричный</div>
+            <div className="app-header__subtitle">{quarter} {year}</div>
           </div>
         </div>
         <div className="header-divider" />
         <div className="header-controls">
-          <div className="quarter-selector">
-            {(['Q2','Q3','Q4'] as const).map(q => (
-              <button key={q} className={`quarter-btn${activeQuarter === q ? ' active' : ''}`} onClick={() => setQuarterRange(q)}>{q}</button>
-            ))}
-          </div>
           <div className="scale-toggle">
             <button className={`scale-btn${scaleActive === 'week' ? ' active' : ''}`} onClick={() => setScale('week')}>Нед</button>
             <button className={`scale-btn${scaleActive === 'day' ? ' active' : ''}`} onClick={() => setScale('day')}>День</button>
@@ -449,11 +494,11 @@ export default function ResourceCentricMode() {
             <option value="analyst">Аналитики</option>
             <option value="dev">Разработчики</option>
             <option value="qa">Тестировщики</option>
-            <option value="ope">ОПЭ</option>
+            <option value="opo">ОПЭ</option>
           </select>
           <select className="select-control" value={initFilter} onChange={e => { setInitFilter(e.target.value); applyFilter(undefined, e.target.value); }}>
             <option value="">Все инициативы</option>
-            {INITIATIVES.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+            {initiatives.map(i => <option key={i.id} value={i.id}>{i.key ? `${i.key} · ` : ''}{i.name}</option>)}
           </select>
           <button className="btn" onClick={() => (gantt as any).collapseAll()}>⊟ Свернуть</button>
           <button className="btn" onClick={() => (gantt as any).expandAll()}>⊞ Развернуть</button>
@@ -461,9 +506,8 @@ export default function ResourceCentricMode() {
         <div className="header-spacer" />
         <div className="conflict-badge" onClick={showConflictPanel}>
           <div className="conflict-dot"></div>
-          <span>5 конфликтов</span>
+          <span>{activeConflicts.length} конфликтов</span>
         </div>
-        <button className="btn btn--primary" onClick={() => showToast('🚀', 'Solver запущен — оптимизация...')}>⚡ Solver</button>
         <button className="btn" onClick={() => setSidebarOpen(v => !v)}>☰ Детали</button>
       </header>
 
@@ -474,21 +518,13 @@ export default function ResourceCentricMode() {
           <div className="legend-bar">
             <span className="legend-label">Фазы:</span>
             <div className="legend-group">
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#8ab4f8' }}></div> А — Анализ</div>
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#b69cfa' }}></div> Р — Разработка</div>
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#7ec98a' }}></div> Т — Тестирование</div>
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#ffb86c' }}></div> О — ОПЭ</div>
+              <div className="legend-item"><div className="legend-dot" style={{ background: '#8ab4f8' }}></div> А — Анализ</div>
+              <div className="legend-item"><div className="legend-dot" style={{ background: '#b69cfa' }}></div> Р — Разработка</div>
+              <div className="legend-item"><div className="legend-dot" style={{ background: '#7ec98a' }}></div> Т — Тестирование</div>
+              <div className="legend-item"><div className="legend-dot" style={{ background: '#ffb86c' }}></div> О — ОПЭ</div>
             </div>
             <div className="legend-sep" />
-            <span className="legend-label">Роли:</span>
-            <div className="legend-group">
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#69b1ff' }}></div> Аналитик</div>
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#b37feb' }}></div> Разработчик</div>
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#95de64' }}></div> Тестировщик</div>
-              <div className="legend-item"><div className="legend-dot" style={{ background:'#ffa940' }}></div> ОПЭ</div>
-            </div>
-            <div className="legend-sep" />
-            <div className="legend-item"><div className="legend-dot" style={{ background:'#ff4d4f', opacity:0.7 }}></div> Перегруз</div>
+            <div className="legend-item"><div className="legend-dot" style={{ background: '#ff4d4f', opacity: 0.7 }}></div> Перегруз</div>
           </div>
         </div>
 
@@ -499,7 +535,7 @@ export default function ResourceCentricMode() {
           </div>
           <div className="sidebar-body">
             {sidebarContent ? (
-              <div dangerouslySetInnerHTML={{ __html: sidebarContent }} />
+              <div className="dhtmlx-resource-mode" style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: sidebarContent }} />
             ) : (
               <div className="sidebar-empty">
                 <div className="sidebar-empty-icon">📋</div>
