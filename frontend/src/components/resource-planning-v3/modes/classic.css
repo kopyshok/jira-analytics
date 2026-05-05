@@ -1,0 +1,455 @@
+/* ── ClassicMode scoped CSS ──────────────────────────────────── */
+.dhtmlx-classic-mode {
+  --bg:         #141414;
+  --surface:    #1f1f1f;
+  --surface2:   #262626;
+  --border:     #303030;
+  --border2:    #3a3a3a;
+  --text:       #e6e6e6;
+  --text-muted: #8c8c8c;
+  --accent:     #1677ff;
+  --accent-dim: #0d4faf;
+  --green:      #52c41a;
+  --yellow:     #faad14;
+  --red:        #ff4d4f;
+  --analyst:    #5b8dee;
+  --dev:        #36cfc9;
+  --qa:         #9254de;
+  --ope:        #fa8c16;
+  --header-h:   52px;
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.dhtmlx-classic-mode *, .dhtmlx-classic-mode *::before, .dhtmlx-classic-mode *::after {
+  box-sizing: border-box;
+}
+
+/* ── Top Header ──────────────────────────────────────────── */
+.dhtmlx-classic-mode .page-header {
+  height: var(--header-h);
+  min-height: var(--header-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 20px;
+  flex-shrink: 0;
+  z-index: 200;
+}
+
+.dhtmlx-classic-mode .header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.dhtmlx-classic-mode .header-title span {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 13px;
+  margin-left: 6px;
+}
+
+.dhtmlx-classic-mode .header-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border2);
+  flex-shrink: 0;
+}
+
+.dhtmlx-classic-mode .header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.dhtmlx-classic-mode .ctrl-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dhtmlx-classic-mode .ctrl-select {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 26px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238c8c8c'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.dhtmlx-classic-mode .ctrl-select:hover { border-color: var(--accent); }
+
+.dhtmlx-classic-mode .header-spacer { flex: 1; }
+
+.dhtmlx-classic-mode .legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.dhtmlx-classic-mode .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dhtmlx-classic-mode .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Conflict badge ──────────────────────────────────────── */
+.dhtmlx-classic-mode .conflict-badge {
+  background: rgba(255,77,79,0.15);
+  border: 1px solid rgba(255,77,79,0.4);
+  color: var(--red);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.dhtmlx-classic-mode .conflict-badge:hover { background: rgba(255,77,79,0.25); }
+
+/* ── Splitter layout ─────────────────────────────────────── */
+.dhtmlx-classic-mode .gantt-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.dhtmlx-classic-mode #gantt-container-classic {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dhtmlx-classic-mode .splitter {
+  height: 5px;
+  background: var(--border);
+  cursor: ns-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+.dhtmlx-classic-mode .splitter:hover, .dhtmlx-classic-mode .splitter.dragging {
+  background: var(--accent);
+}
+
+.dhtmlx-classic-mode #resource-container-classic {
+  height: 220px;
+  min-height: 100px;
+  max-height: 50vh;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* ── DHTMLX Dark Theme Override ──────────────────────────── */
+.dhtmlx-classic-mode .gantt_container,
+.dhtmlx-classic-mode .gantt_grid,
+.dhtmlx-classic-mode .gantt_task {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  font-family: 'Segoe UI', system-ui, sans-serif !important;
+  font-size: 12px !important;
+}
+
+.dhtmlx-classic-mode .gantt_grid_head_cell,
+.dhtmlx-classic-mode .gantt_scale_cell,
+.dhtmlx-classic-mode .gantt_scale_line {
+  background: var(--surface2) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border) !important;
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dhtmlx-classic-mode .gantt_row,
+.dhtmlx-classic-mode .gantt_task_row {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+.dhtmlx-classic-mode .gantt_row:nth-child(even),
+.dhtmlx-classic-mode .gantt_task_row:nth-child(even) {
+  background: var(--surface2) !important;
+}
+
+.dhtmlx-classic-mode .gantt_row.gantt_selected,
+.dhtmlx-classic-mode .gantt_task_row.gantt_selected {
+  background: rgba(22,119,255,0.12) !important;
+}
+
+.dhtmlx-classic-mode .gantt_row:hover,
+.dhtmlx-classic-mode .gantt_task_row:hover {
+  background: rgba(22,119,255,0.07) !important;
+}
+
+.dhtmlx-classic-mode .gantt_cell {
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.dhtmlx-classic-mode .gantt_grid_scale,
+.dhtmlx-classic-mode .gantt_task_scale {
+  border-color: var(--border) !important;
+}
+
+.dhtmlx-classic-mode .gantt_ver_scroll,
+.dhtmlx-classic-mode .gantt_hor_scroll {
+  background: var(--surface2) !important;
+}
+
+/* Bars */
+.dhtmlx-classic-mode .gantt_task_line {
+  border-radius: 3px !important;
+  border: none !important;
+}
+
+.dhtmlx-classic-mode .gantt_task_progress {
+  border-radius: 3px 0 0 3px !important;
+  opacity: 0.4;
+}
+
+.dhtmlx-classic-mode .gantt_task_content {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: #fff !important;
+  padding: 0 8px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Links / arrows */
+.dhtmlx-classic-mode .gantt_task_link .gantt_line_wrapper div,
+.dhtmlx-classic-mode .gantt_line_wrapper div {
+  background: #555 !important;
+}
+.dhtmlx-classic-mode .gantt_task_link .gantt_link_arrow {
+  border-color: #555 !important;
+}
+
+/* Parent (summary) rows */
+.dhtmlx-classic-mode .gantt_task_line.gantt_project {
+  border-radius: 0 !important;
+  height: 8px !important;
+  top: 50% !important;
+  transform: translateY(-50%);
+  background: #3a3a3a !important;
+}
+
+.dhtmlx-classic-mode .gantt_task_line.gantt_project::before,
+.dhtmlx-classic-mode .gantt_task_line.gantt_project::after {
+  border-top-color: #3a3a3a !important;
+}
+
+/* Weekends */
+.dhtmlx-classic-mode .gantt_task_cell.week_end {
+  background: rgba(255,255,255,0.025) !important;
+}
+
+/* Today line */
+.dhtmlx-classic-mode .gantt_marker.today_line {
+  background: rgba(22,119,255,0.6) !important;
+  width: 2px !important;
+}
+
+/* Tooltip */
+.dhtmlx-classic-mode .gantt_tooltip {
+  background: #2a2a2a !important;
+  border: 1px solid var(--border2) !important;
+  color: var(--text) !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+}
+
+/* Grid column */
+.dhtmlx-classic-mode .gantt_grid_data .gantt_cell:first-child {
+  font-weight: 500;
+}
+
+/* Conflict task */
+.dhtmlx-classic-mode .gantt_task_line.conflict-task {
+  box-shadow: 0 0 0 2px rgba(255,77,79,0.5) !important;
+}
+
+/* ── Resource diagram styling ────────────────────────────── */
+.dhtmlx-classic-mode .resource-header {
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.dhtmlx-classic-mode .resource-header .rh-tag {
+  background: rgba(22,119,255,0.15);
+  border: 1px solid rgba(22,119,255,0.3);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 10px;
+}
+
+.dhtmlx-classic-mode #resource-gantt-container-classic {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Conflict panel ──────────────────────────────────────── */
+.dhtmlx-classic-mode .conflict-panel {
+  position: absolute;
+  top: calc(var(--header-h) + 12px);
+  right: 16px;
+  width: 320px;
+  background: var(--surface);
+  border: 1px solid rgba(255,77,79,0.4);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 500;
+  display: none;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow: hidden;
+}
+
+.dhtmlx-classic-mode .conflict-panel.visible { display: flex; }
+
+.dhtmlx-classic-mode .conflict-panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dhtmlx-classic-mode .conflict-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red);
+}
+
+.dhtmlx-classic-mode .conflict-panel-close {
+  width: 24px;
+  height: 24px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.dhtmlx-classic-mode .conflict-panel-close:hover { color: var(--text); }
+
+.dhtmlx-classic-mode .conflict-list {
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.dhtmlx-classic-mode .conflict-item {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.dhtmlx-classic-mode .conflict-item:last-child { border-bottom: none; }
+.dhtmlx-classic-mode .conflict-item:hover { background: var(--surface2); }
+
+.dhtmlx-classic-mode .conflict-item-person {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.dhtmlx-classic-mode .conflict-item-dates {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.dhtmlx-classic-mode .conflict-item-load {
+  font-size: 11px;
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* ── Status bar ──────────────────────────────────────────── */
+.dhtmlx-classic-mode .status-bar {
+  height: 24px;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.dhtmlx-classic-mode .status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-right: 4px;
+}
+
+/* Scrollbar */
+.dhtmlx-classic-mode ::-webkit-scrollbar { width: 6px; height: 6px; }
+.dhtmlx-classic-mode ::-webkit-scrollbar-track { background: var(--surface); }
+.dhtmlx-classic-mode ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+.dhtmlx-classic-mode ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
