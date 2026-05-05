@@ -22,6 +22,7 @@ import {
   fetchScenarioRevisions,
   fetchRevisionDiff,
 } from '../api/planning';
+import { updateBacklogItem } from '../api/backlog';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
@@ -332,6 +333,23 @@ export function useRevisionDiff(scenarioId: string | undefined, r1: number | nul
     queryKey: ['planning', 'scenario', scenarioId, 'revisions', 'diff', r1, r2],
     queryFn: () => fetchRevisionDiff(scenarioId!, r1!, r2!),
     enabled: !!scenarioId && r1 != null && r2 != null && r1 !== r2,
+  });
+}
+
+export function usePatchBacklogPriority() {
+  const qc = useQueryClient();
+  const { notification } = App.useApp();
+  return useMutation({
+    mutationFn: ({ backlogItemId, priority }: { backlogItemId: string; priority: number | null }) =>
+      updateBacklogItem(backlogItemId, { priority: priority ?? undefined }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['backlog'] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
+      qc.invalidateQueries({ queryKey: ['planning', 'allocations'] });
+    },
+    onError: () => {
+      notification.error({ title: 'Не удалось сохранить приоритет' });
+    },
   });
 }
 

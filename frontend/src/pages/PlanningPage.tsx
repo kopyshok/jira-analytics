@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
-  Alert, App, Badge, Button, Card, Checkbox, Popconfirm, Select, Space, Tag, Tooltip,
+  Alert, App, Badge, Button, Card, Checkbox, InputNumber, Popconfirm, Select, Space, Tag, Tooltip,
 } from 'antd';
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
@@ -40,9 +40,11 @@ import {
   useReorderAllocations,
   useCapacityDiff,
   useAcknowledgeDrift,
+  usePatchBacklogPriority,
 } from '../hooks/usePlanning';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { downloadScenarioXlsx } from '../api/exports';
 import { DARK_THEME, FONTS } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
@@ -218,7 +220,7 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
 export default function PlanningPage() {
   const { notification } = App.useApp();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [scenarioId, setScenarioId] = usePersistedSearchParam('scenario', 'planning_scenario_id');
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'distribution' | 'rules'>('distribution');
   const [celebrate, setCelebrate] = useState(false);
@@ -271,14 +273,6 @@ export default function PlanningPage() {
     }, 600);
   };
 
-  const scenarioId = searchParams.get('scenario') || null;
-  const setScenarioId = (id: string | null) => {
-    const next = new URLSearchParams(searchParams);
-    if (id) next.set('scenario', id);
-    else next.delete('scenario');
-    setSearchParams(next, { replace: true });
-  };
-
   const { data: roles = [] } = useRoles();
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
@@ -290,6 +284,7 @@ export default function PlanningPage() {
 
   const patchAlloc = usePatchAllocation();
   const patchAssignee = usePatchAllocationAssignee();
+  const patchBacklogPriority = usePatchBacklogPriority();
   const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
   const approve = useApproveScenario();
@@ -799,21 +794,48 @@ export default function PlanningPage() {
                           />
                         </div>
                         <span
+                          onClick={(e) => e.stopPropagation()}
                           style={{
-                            width: 24,
+                            width: 32,
                             height: 24,
                             borderRadius: 4,
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             background: priorityCyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
-                            color: priorityCyan ? '#003a3a' : DARK_THEME.textMuted,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            fontFamily: FONTS.mono,
                           }}
                         >
-                          {a.priority ?? '—'}
+                          <InputNumber
+                            min={1}
+                            max={10}
+                            value={a.priority}
+                            disabled={!isDraft}
+                            variant="borderless"
+                            size="small"
+                            controls={false}
+                            style={{
+                              width: 32,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              fontFamily: FONTS.mono,
+                              color: priorityCyan ? '#003a3a' : DARK_THEME.textMuted,
+                              padding: 0,
+                            }}
+                            placeholder="—"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const raw = e.target.value;
+                              const parsed = raw === '' ? null : parseInt(raw, 10);
+                              const next = parsed === null || isNaN(parsed) ? null : Math.min(10, Math.max(1, parsed));
+                              if (next !== a.priority) {
+                                patchBacklogPriority.mutate({ backlogItemId: a.backlog_item_id, priority: next });
+                              }
+                            }}
+                          />
                         </span>
                         <div>
                           <div style={{ color: DARK_THEME.textPrimary, fontSize: 14, marginBottom: 3 }}>

@@ -49,7 +49,7 @@ class BacklogItemCreate(BaseModel):
 class BacklogItemUpdate(BaseModel):
     title: Optional[str] = None
     project_id: Optional[str] = None
-    priority: Optional[int] = None
+    priority: Optional[int] = Field(default=None, ge=1, le=10)
     estimate_analyst_hours: Optional[float] = Field(default=None, ge=0)
     estimate_dev_hours: Optional[float] = Field(default=None, ge=0)
     estimate_qa_hours: Optional[float] = Field(default=None, ge=0)
