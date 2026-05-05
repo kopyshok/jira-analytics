@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import { App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
 import {
   BarChartOutlined,
+  CalculatorOutlined,
   ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
@@ -16,19 +17,21 @@ import OptimizeButton from '../components/resource-planning-v2/OptimizeButton';
 import type { ViewMode } from '../components/resource-planning/GanttRows';
 import {
   useGanttProjection, useResourcePlans, useCreateResourcePlan,
-  useScheduledBlocks, useForkPlan,
+  useScheduledBlocks, useForkPlan, useComputeResourcePlan,
 } from '../hooks/useResourcePlanning';
 import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
+import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
 
 export default function ResourcePlanningV2Page() {
   const { message } = App.useApp();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const { selectedTeams } = useGlobalTeamFilter();
   const team = selectedTeams[0] ?? '';
 
   const navigate = useNavigate();
-  const [planId, setPlanId] = useState<string | null>(searchParams.get('plan_id'));
+  const [planId, setPlanId] = usePersistedSearchParam('plan_id', 'resource_planning_v2_plan_id');
   const [viewMode, setViewMode] = useState<ViewMode>('two-level');
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [showRelayArrows, setShowRelayArrows] = useState(true);
@@ -43,13 +46,23 @@ export default function ResourcePlanningV2Page() {
   const { data: allEmployees = [] } = useEmployees({ isActive: true });
   const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
   const createPlan = useCreateResourcePlan();
+  const compute = useComputeResourcePlan();
+
+  const handleCompute = async () => {
+    if (!planId) return;
+    try {
+      await compute.mutateAsync(planId);
+      message.success('Расписание рассчитано');
+    } catch {
+      message.error('Ошибка расчёта');
+    }
+  };
 
   useEffect(() => {
     if (scenarioId && !planId && !plansLoading && !createPlan.isPending) {
       const existing = plans.find(p => p.scenario_id === scenarioId);
       if (existing) {
         setPlanId(existing.id);
-        setSearchParams({ plan_id: existing.id });
       } else if (plans.length === 0) {
         createPlan.mutateAsync({
           scenario_id: scenarioId,
@@ -58,12 +71,16 @@ export default function ResourcePlanningV2Page() {
           year: parseInt(searchParams.get('year') ?? String(new Date().getFullYear())),
         }).then(plan => {
           setPlanId(plan.id);
-          setSearchParams({ plan_id: plan.id });
         }).catch(() => message.error('Ошибка создания плана'));
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenarioId, planId, plansLoading, plans.length, createPlan.isPending]);
+
+  const sortedAssignments = useMemo(
+    () => (gantt ? sortAssignmentsByScenarioAssignee(gantt.assignments) : []),
+    [gantt],
+  );
 
   const planOptions = plans.map(p => {
     const isCopy = !!p.parent_plan_id;
@@ -107,9 +124,18 @@ export default function ResourcePlanningV2Page() {
         <Space wrap>
           <PlanQualityBadge planId={planId} />
           {planId && (
+            <Button
+              icon={<CalculatorOutlined />}
+              loading={compute.isPending || gantt?.plan.status === 'computing'}
+              onClick={handleCompute}
+            >
+              Распределить (legacy)
+            </Button>
+          )}
+          {planId && (
             <OptimizeButton
               planId={planId}
-              onSwitchPlan={id => { setPlanId(id); setSearchParams({ plan_id: id }); }}
+              onSwitchPlan={id => setPlanId(id)}
             />
           )}
           {isAutoFork && gantt?.plan.parent_plan_id && (
@@ -131,7 +157,7 @@ export default function ResourcePlanningV2Page() {
           loading={plansLoading}
           placeholder="Выберите план"
           value={planId}
-          onChange={id => { setPlanId(id); setSearchParams(id ? { plan_id: id } : {}); }}
+          onChange={id => setPlanId(id)}
           options={planOptions}
           style={{ minWidth: 320 }}
           allowClear
@@ -195,7 +221,7 @@ export default function ResourcePlanningV2Page() {
       )}
       {gantt && !ganttLoading && planId && (
         <GanttChart
-          assignments={gantt.assignments}
+          assignments={sortedAssignments}
           blocks={blocks}
           quarter={gantt.plan.quarter ?? 'Q1'}
           year={gantt.plan.year ?? new Date().getFullYear()}
@@ -220,7 +246,6 @@ export default function ResourcePlanningV2Page() {
             setForkModalOpen(false);
             setForkLabel('');
             setPlanId(newPlan.id);
-            setSearchParams({ plan_id: newPlan.id });
             message.success('План скопирован');
           } catch {
             message.error('Ошибка создания копии');

@@ -33,13 +33,21 @@ from app.models.scheduled_block import ScheduledBlock
 
 
 # Маппинг phase → роли которые могут эту phase исполнять.
-# Employee.role хранит строковый код из реестра ролей; сравнение — подстрока.
+# Employee.role хранит строковый код из реестра ролей; сравнение — точное
+# (case-insensitive). Если у компании роль называется иначе — добавьте код
+# роли в нужный набор. Раньше использовалась подстрока (`in`), что приводило
+# к ложным совпадениям типа «ba-team-lead» → analyst.
 PHASE_ROLE_MATCH: dict[str, set[str]] = {
     "analyst": {"analyst", "ba", "аналитик"},
     "dev": {"developer", "dev", "разработчик"},
     "qa": {"qa", "tester", "тестировщик"},
     "opo": {"developer", "dev", "analyst", "ba"},  # ОПЭ делят dev и analyst
 }
+
+# Порядок ролей для выбора главного assignee инициативы. Первая фаза из этого
+# списка с назначенным employee_id становится представителем задачи на Gantt.
+# Раньше брали phase с max часами — на Gantt всплывал QA вместо аналитика.
+PHASE_ASSIGNEE_PRIORITY: list[str] = ["analyst", "dev", "qa", "opo"]
 
 # Часов в рабочем дне (ёмкость 1 renewable = 8 единиц, 1 unit = 1 час).
 HOURS_PER_DAY = 8
@@ -71,7 +79,7 @@ class SolverResult(TypedDict):
 class PyJobShopSolverService:
     """Constraint-based оптимизатор ресурсного плана."""
 
-    def __init__(self, db: Session, time_limit_sec: int = 30):
+    def __init__(self, db: Session, time_limit_sec: int = 15):
         self.db = db
         self.time_limit_sec = time_limit_sec
 
@@ -164,6 +172,10 @@ class PyJobShopSolverService:
         # Skipped assignments (no eligible employees) — не в этом списке, попадают в infeasible.
         added_assignments: list[ResourcePlanAssignment] = []
         skipped_item_ids: set[str] = set()
+        # Для warm start (F7): индекс assignment.id → {resource_idx → global_mode_idx}.
+        # Глобальный mode_idx — позиция mode в model.data().modes (counter).
+        global_mode_idx = 0
+        assignment_modes: dict[str, dict[int, int]] = {}
 
         for a in assignments:
             # B. Pinned assignment: если is_pinned и employee_id задан — единственный mode.
@@ -191,10 +203,12 @@ class PyJobShopSolverService:
                 continue
 
             if a.backlog_item_id not in jobs:
-                # C. Priority weight: priority 1 → weight 10, priority 10 → weight 1, None → 6
+                # C. Priority weight: priority 1 → weight 10, priority 10 → weight 1.
+                # priority=None → weight=1 (хвост): без явного приоритета задача
+                # не должна получать «средний» вес и пролезать вперёд приоритетных.
                 bi = backlog_items.get(a.backlog_item_id)
                 priority = bi.priority if bi is not None else None
-                weight = max(1, 11 - (priority if priority is not None else 5))
+                weight = max(1, 11 - priority) if priority is not None else 1
                 # due_date = конец горизонта (soft deadline для tardiness objective)
                 jobs[a.backlog_item_id] = model.add_job(
                     weight=weight, due_date=horizon_slots
@@ -209,6 +223,7 @@ class PyJobShopSolverService:
             item_tasks.setdefault(a.backlog_item_id, []).append(task)
             added_assignments.append(a)
 
+            mode_map: dict[int, int] = {}
             for r_idx in eligible_resource_indices:
                 resource = model.resources[r_idx]
                 # demand = HOURS_PER_DAY означает "сотрудник занят весь рабочий
@@ -220,26 +235,36 @@ class PyJobShopSolverService:
                     duration=duration_slots,
                     demands=[HOURS_PER_DAY],
                 )
+                mode_map[r_idx] = global_mode_idx
+                global_mode_idx += 1
+            assignment_modes[a.id] = mode_map
 
         # A. FS Dependencies: last task of from_item must end before first task of to_item.
-        # TODO: lag_days не учитывается в v1 (add_end_before_start принимает delay в слотах,
-        # но конвертация рабочих дней → слотов требует учёта выходных; отложено).
+        # lag_days временно не учитывается — был подозрением на SIGSEGV под
+        # Windows (откат вместе с F5/F7). Вернём после стабилизации.
         for dep in fs_deps:
             from_tasks = item_tasks.get(dep.from_item_id, [])
             to_tasks = item_tasks.get(dep.to_item_id, [])
             if not from_tasks or not to_tasks:
                 continue
-            # В v1 предполагаем одну phase на item; для multi-phase берём последнюю/первую
-            # по порядку добавления (который совпадает с порядком assignments).
-            # Корректная реализация требует CPM-анализа; для FS "один successor" — достаточно.
             for from_task in from_tasks:
                 for to_task in to_tasks:
                     model.add_end_before_start(from_task, to_task)
 
-        # C. Objective: minimize total weighted tardiness (weight учтён в add_job выше).
+        # C. Objective: weighted_tardiness. Двойная цель (tardiness+flow_time)
+        # вызывала SIGSEGV в OR-Tools под Windows — откат на single objective.
+        # Чтобы задачи не разъезжались по горизонту, weight через add_job уже
+        # применён (priority 1→10, None→1).
         model.set_objective(weight_total_tardiness=1)
 
-        result = model.solve(time_limit=self.time_limit_sec, display=False)
+        # F7. Warm start временно отключён: вызывает SIGSEGV в OR-Tools
+        # под Windows на некоторых hint-комбинациях. Вернёмся когда найдём
+        # минимальный воспроизводящий пример или обновим pyjobshop.
+        # См. _build_warm_start ниже — оставлен как future reference.
+        result = model.solve(
+            time_limit=self.time_limit_sec,
+            display=False,
+        )
 
         # Статус решения
         status_str = result.status.name if hasattr(result, "status") else "UNKNOWN"
@@ -302,11 +327,26 @@ class PyJobShopSolverService:
                     infeasible.append(item_id)
                 continue
 
-            # Главный assignee = тот у кого самая длинная phase
-            main = max(phase_breakdown, key=lambda p: p["hours"])
+            # Главный assignee — первая фаза из PHASE_ASSIGNEE_PRIORITY
+            # с назначенным employee_id. Раньше брали phase с max часами,
+            # из-за чего на Gantt появлялся QA вместо аналитика.
+            phase_to_alloc = {p["phase"]: p for p in phase_breakdown}
+            main_employee_id: Optional[str] = None
+            for ph in PHASE_ASSIGNEE_PRIORITY:
+                alloc = phase_to_alloc.get(ph)
+                if alloc and alloc["employee_id"]:
+                    main_employee_id = alloc["employee_id"]
+                    break
+            if main_employee_id is None:
+                # Fallback: любой назначенный
+                for p in phase_breakdown:
+                    if p["employee_id"]:
+                        main_employee_id = p["employee_id"]
+                        break
+
             out_assignments.append(SolverAssignment(
                 backlog_item_id=item_id,
-                assignee_employee_id=main["employee_id"],
+                assignee_employee_id=main_employee_id,
                 start_date=min(p["start_date"] for p in phase_breakdown),
                 end_date=max(p["end_date"] for p in phase_breakdown),
                 phase_breakdown=phase_breakdown,
@@ -318,6 +358,80 @@ class PyJobShopSolverService:
             solver_status=status_str,
             solve_time_ms=int((time.monotonic() - t0) * 1000),
         )
+
+    def _build_warm_start(
+        self,
+        model,
+        added_assignments: list[ResourcePlanAssignment],
+        assignment_modes: dict[str, dict[int, int]],
+        anchor: date,
+        horizon_slots: int,
+    ):
+        """Строит initial_solution для PyJobShop из текущих start_date/employee.
+
+        Возвращает Solution или None если нельзя построить полный hint.
+        """
+        from pyjobshop.Solution import ScheduledTask, Solution
+
+        # Если хоть одна задача стоит до anchor (план был построен на старый
+        # квартал-старт, а anchor сдвинут на today), warm start даст плохой
+        # hint — все clamped в start_slot=0, конфликты ресурсов. Лучше пусть
+        # solver строит с нуля.
+        for a in added_assignments:
+            if a.start_date is not None and a.start_date < anchor:
+                return None
+
+        scheduled: list[ScheduledTask] = []
+        for a in added_assignments:
+            mode_map = assignment_modes.get(a.id, {})
+            if not mode_map:
+                return None
+            # Выбираем resource_idx: текущий employee_id если он среди eligible,
+            # иначе первый eligible как fallback. resource.name = employee.id
+            # (см. add_renewable выше).
+            resource_idx: Optional[int] = None
+            if a.employee_id is not None:
+                for r_idx in mode_map:
+                    if model.resources[r_idx].name == a.employee_id:
+                        resource_idx = r_idx
+                        break
+            if resource_idx is None:
+                # Fallback на первый eligible
+                resource_idx = next(iter(mode_map))
+            mode_idx = mode_map[resource_idx]
+
+            # Конвертируем даты в slots
+            if a.start_date is None or a.end_date is None:
+                # Нет текущих дат — ставим в начало горизонта на duration
+                start_slot = 0
+                end_slot = max(1, int(a.hours_allocated or 1))
+            else:
+                start_offset = (a.start_date - anchor).days
+                if start_offset < 0:
+                    start_offset = 0
+                start_slot = start_offset * HOURS_PER_DAY
+                duration = max(1, int(a.hours_allocated or 1))
+                end_slot = start_slot + duration
+
+            if start_slot >= horizon_slots or end_slot > horizon_slots:
+                return None
+
+            scheduled.append(
+                ScheduledTask(
+                    mode=mode_idx,
+                    resources=[resource_idx],
+                    start=start_slot,
+                    end=end_slot,
+                )
+            )
+
+        if not scheduled:
+            return None
+        try:
+            return Solution(model.data(), scheduled)
+        except Exception:
+            # Если что-то пошло не так — solver просто решит без hint.
+            return None
 
     def _employee_breaks(
         self,
@@ -387,23 +501,35 @@ class PyJobShopSolverService:
         return breaks
 
     def _employee_can_do_phase(self, emp: Employee, phase: str) -> bool:
-        """Проверяет, подходит ли роль сотрудника для данной phase."""
+        """Проверяет, подходит ли роль сотрудника для данной phase.
+
+        Сравнение точное (case-insensitive). Если у сотрудника
+        ``role='developer-lead'``, он не подойдёт под phase=dev — нужен ровно
+        один из кодов в ``PHASE_ROLE_MATCH[phase]``. Это лечит ситуацию когда
+        тимлид с ролью «ba-team-lead» получал аналитические задачи.
+        """
         if not emp.role:
             return False
-        role = emp.role.lower()
-        return any(token in role for token in PHASE_ROLE_MATCH.get(phase, set()))
+        return emp.role.lower() in PHASE_ROLE_MATCH.get(phase, set())
 
     def _horizon_days(self, plan: ResourcePlan) -> int:
         """Горизонт квартала в рабочих днях (с запасом)."""
         return 95
 
     def _anchor_date(self, plan: ResourcePlan) -> date:
-        """Первый день квартала плана."""
+        """Стартовая дата планирования: max(начало квартала, сегодня).
+
+        Раньше брался первый день квартала — solver мог приземлять задачи в
+        прошлое (например, при оптимизации в середине квартала). Теперь
+        задачи не уезжают раньше «сегодня».
+        """
+        today = date.today()
         if not plan.year or not plan.quarter:
-            return date.today()
+            return today
         q = int(plan.quarter.replace("Q", ""))
         start_month = (q - 1) * 3 + 1
-        return date(plan.year, start_month, 1)
+        quarter_start = date(plan.year, start_month, 1)
+        return max(quarter_start, today)
 
     def _slot_to_date(self, anchor: date, slot: int) -> date:
         """Конвертирует слот (1 unit = 1 час) в дату."""

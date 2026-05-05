@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Empty, Segmented, Select, Spin, Tag } from 'antd';
-import { useGanttProjection, useResourcePlans } from '../hooks/useResourcePlanning';
+import { App, Button, Empty, Segmented, Select, Spin, Tag } from 'antd';
+import { CalculatorOutlined } from '@ant-design/icons';
+import { useGanttProjection, useResourcePlans, useComputeResourcePlan } from '../hooks/useResourcePlanning';
 import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
+import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
 import ClassicMode from '../components/resource-planning-v3/modes/ClassicMode';
 import ResourceCentricMode from '../components/resource-planning-v3/modes/ResourceCentricMode';
 import RoadmapMode from '../components/resource-planning-v3/modes/RoadmapMode';
@@ -13,12 +16,13 @@ import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 type Mode = 'classic' | 'resource' | 'roadmap';
 
 export default function ResourcePlanningV3Page() {
+  const { message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedTeams } = useGlobalTeamFilter();
   const team = selectedTeams[0] ?? '';
   const initialMode = (searchParams.get('mode') as Mode) || 'classic';
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [planId, setPlanId] = useState<string | null>(searchParams.get('plan_id'));
+  const [planId, setPlanId] = usePersistedSearchParam('plan_id', 'resource_planning_v3_plan_id');
 
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
   const { data: gantt, isLoading: ganttLoading } = useGanttProjection(planId);
@@ -32,11 +36,22 @@ export default function ResourcePlanningV3Page() {
     setSearchParams(next);
   };
 
-  const handlePlanChange = (id: string | null) => {
-    setPlanId(id);
-    const next = new URLSearchParams(searchParams);
-    if (id) next.set('plan_id', id); else next.delete('plan_id');
-    setSearchParams(next);
+  const handlePlanChange = (id: string | null) => setPlanId(id);
+
+  const sortedAssignments = useMemo(
+    () => (gantt ? sortAssignmentsByScenarioAssignee(gantt.assignments) : []),
+    [gantt],
+  );
+
+  const compute = useComputeResourcePlan();
+  const handleCompute = async () => {
+    if (!planId) return;
+    try {
+      await compute.mutateAsync(planId);
+      message.success('Расписание рассчитано');
+    } catch {
+      message.error('Ошибка расчёта');
+    }
   };
 
   return (
@@ -66,6 +81,15 @@ export default function ResourcePlanningV3Page() {
         />
         <PlanQualityBadge planId={planId} />
         {planId && (
+          <Button
+            icon={<CalculatorOutlined />}
+            loading={compute.isPending || gantt?.plan.status === 'computing'}
+            onClick={handleCompute}
+          >
+            Распределить (legacy)
+          </Button>
+        )}
+        {planId && (
           <OptimizeButton
             planId={planId}
             onSwitchPlan={id => handlePlanChange(id)}
@@ -81,7 +105,7 @@ export default function ResourcePlanningV3Page() {
           <>
             {mode === 'classic' && (
               <ClassicMode
-                assignments={gantt.assignments}
+                assignments={sortedAssignments}
                 conflicts={gantt.conflicts}
                 employees={employees}
                 quarter={gantt.plan.quarter ?? 'Q3'}
@@ -90,7 +114,7 @@ export default function ResourcePlanningV3Page() {
             )}
             {mode === 'resource' && (
               <ResourceCentricMode
-                assignments={gantt.assignments}
+                assignments={sortedAssignments}
                 conflicts={gantt.conflicts}
                 employees={employees}
                 quarter={gantt.plan.quarter ?? 'Q3'}
@@ -99,7 +123,7 @@ export default function ResourcePlanningV3Page() {
             )}
             {mode === 'roadmap' && (
               <RoadmapMode
-                assignments={gantt.assignments}
+                assignments={sortedAssignments}
                 conflicts={gantt.conflicts}
                 employees={employees}
                 quarter={gantt.plan.quarter ?? 'Q3'}

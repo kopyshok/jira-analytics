@@ -428,3 +428,89 @@ def test_solver_respects_team_wide_block(db_session: Session):
     assert a["assignee_employee_id"] == emp.id
     # Задача должна стартовать не раньше 2026-04-13 (первый рабочий день после блока)
     assert a["start_date"] >= date(2026, 4, 13)
+
+
+
+def test_solver_skill_match_is_exact(db_session):
+    """Сотрудник с ролью developer-lead НЕ подходит под phase=dev."""
+    import uuid
+    from datetime import date
+    from app.models.employee import Employee
+    from app.models.backlog_item import BacklogItem
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.services.pyjobshop_solver_service import PyJobShopSolverService
+
+    lead = Employee(jira_account_id=uuid.uuid4().hex[:16], display_name="Lead", team="SK", is_active=True, role="developer-lead")
+    db_session.add(lead); db_session.flush()
+    item = BacklogItem(title="Dev work", priority=1, estimate_dev_hours=8.0, estimate_analyst_hours=0.0, estimate_qa_hours=0.0, estimate_opo_hours=0.0)
+    db_session.add(item); db_session.flush()
+    plan = ResourcePlan(team="SK", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan); db_session.flush()
+    db_session.add(ResourcePlanAssignment(plan_id=plan.id, backlog_item_id=item.id, phase="dev", hours_allocated=8.0, start_date=date(2026,4,1), end_date=date(2026,4,1)))
+    db_session.commit()
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+    assert item.id in result["infeasible_items"]
+    assert all(a.get("assignee_employee_id") != lead.id for a in result["assignments"])
+
+
+def test_solver_main_assignee_prefers_analyst_phase(db_session):
+    """Multi-phase: analyst главный даже если QA длиннее."""
+    from datetime import date
+    from app.models.backlog_item import BacklogItem
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.services.pyjobshop_solver_service import PyJobShopSolverService
+
+    analyst = _make_employee(db_session, role="analyst", team="MP")
+    qa = _make_employee(db_session, role="qa", team="MP")
+    item = BacklogItem(title="Multi", priority=1, estimate_analyst_hours=8.0, estimate_dev_hours=0.0, estimate_qa_hours=40.0, estimate_opo_hours=0.0)
+    db_session.add(item); db_session.flush()
+    plan = ResourcePlan(team="MP", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan); db_session.flush()
+    db_session.add_all([
+        ResourcePlanAssignment(plan_id=plan.id, backlog_item_id=item.id, phase="analyst", hours_allocated=8.0, start_date=date(2026,4,1), end_date=date(2026,4,1)),
+        ResourcePlanAssignment(plan_id=plan.id, backlog_item_id=item.id, phase="qa", hours_allocated=40.0, start_date=date(2026,4,2), end_date=date(2026,4,7)),
+    ])
+    db_session.commit()
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    matching = [a for a in result["assignments"] if a["backlog_item_id"] == item.id]
+    assert len(matching) == 1
+    assert matching[0]["assignee_employee_id"] == analyst.id
+    assert matching[0]["assignee_employee_id"] != qa.id
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.skip(reason="F6 lag_days откатан — SIGSEGV в OR-Tools/Windows")
+def test_solver_fs_dependency_respects_lag_days(db_session):
+    """FS lag_days=2 → B стартует не раньше end_a + 2 дня."""
+    from datetime import date
+    from app.models.backlog_item import BacklogItem
+    from app.models.plan_item_dependency import PlanItemDependency
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.services.pyjobshop_solver_service import PyJobShopSolverService
+
+    emp = _make_employee(db_session, role="developer", team="LG")
+    item_a = BacklogItem(title="A", priority=1, estimate_dev_hours=8.0, estimate_analyst_hours=0.0, estimate_qa_hours=0.0, estimate_opo_hours=0.0)
+    item_b = BacklogItem(title="B", priority=2, estimate_dev_hours=8.0, estimate_analyst_hours=0.0, estimate_qa_hours=0.0, estimate_opo_hours=0.0)
+    db_session.add_all([item_a, item_b]); db_session.flush()
+    plan = ResourcePlan(team="LG", quarter="Q2", year=2026, status="draft")
+    db_session.add(plan); db_session.flush()
+    db_session.add_all([
+        ResourcePlanAssignment(plan_id=plan.id, backlog_item_id=item_a.id, phase="dev", hours_allocated=8.0, start_date=date(2026,4,1), end_date=date(2026,4,1)),
+        ResourcePlanAssignment(plan_id=plan.id, backlog_item_id=item_b.id, phase="dev", hours_allocated=8.0, start_date=date(2026,4,2), end_date=date(2026,4,2)),
+    ])
+    db_session.flush()
+    db_session.add(PlanItemDependency(plan_id=plan.id, from_item_id=item_a.id, to_item_id=item_b.id, dep_type="FS", lag_days=2, source="manual"))
+    db_session.commit()
+    result = PyJobShopSolverService(db_session).solve(plan.id)
+    assert result["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assignments = {a["backlog_item_id"]: a for a in result["assignments"]}
+    end_a = assignments[item_a.id]["end_date"]
+    start_b = assignments[item_b.id]["start_date"]
+    delta_days = (start_b - end_a).days
+    assert delta_days >= 2, f"delta={delta_days}"

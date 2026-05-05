@@ -1,37 +1,75 @@
-import { useState } from 'react';
-import { Button, Modal, App } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
-import { useOptimizePlan } from '../../hooks/useResourcePlanningV2';
-import type { OptimizeResult } from '../../api/resourcePlanningV2';
+import { useRef, useState } from 'react';
+import { Button, Modal, App, Space, Tooltip } from 'antd';
+import { ThunderboltOutlined, StopOutlined } from '@ant-design/icons';
+import { optimizeStream, type OptimizeResult } from '../../api/resourcePlanningV2';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Props {
   planId: string;
   onSwitchPlan: (newPlanId: string) => void;
 }
 
+const SOFT_LIMIT_MS = 15_000;
+
 export default function OptimizeButton({ planId, onSwitchPlan }: Props) {
   const { message } = App.useApp();
+  const queryClient = useQueryClient();
+  const [running, setRunning] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [result, setResult] = useState<OptimizeResult | null>(null);
-  const optimize = useOptimizePlan();
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleClick = async () => {
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setRunning(true);
+    setElapsedMs(0);
     try {
-      const r = await optimize.mutateAsync(planId);
+      const r = await optimizeStream(planId, e => setElapsedMs(e.elapsed_ms), ctrl.signal);
       setResult(r);
+      queryClient.invalidateQueries({ queryKey: ['resource-plans'] });
     } catch (err: unknown) {
-      // api/client.ts throws new Error(detail) where detail may be stringified object
-      // for 409 INFEASIBLE the detail object is already pushed to errorStore by the client
       const msg = err instanceof Error ? err.message : 'Ошибка оптимизации';
-      // If detail was coerced from object it becomes '[object Object]' — show generic
-      message.error(msg === '[object Object]' ? 'Невозможно оптимизировать: задачи не помещаются в период' : msg);
+      if ((err as Error)?.name === 'AbortError') {
+        message.info('Оптимизация отменена');
+      } else {
+        message.error(
+          msg.includes('feasible')
+            ? 'Невозможно оптимизировать: задачи не помещаются в период'
+            : msg,
+        );
+      }
+    } finally {
+      setRunning(false);
+      abortRef.current = null;
     }
   };
 
+  const handleCancel = () => abortRef.current?.abort();
+
+  const elapsedSec = (elapsedMs / 1000).toFixed(0);
+  const isOverdue = elapsedMs > SOFT_LIMIT_MS;
+
   return (
     <>
-      <Button type="primary" icon={<ThunderboltOutlined />} loading={optimize.isPending} onClick={handleClick}>
-        Оптимизировать
-      </Button>
+      {running ? (
+        <Space>
+          <Tooltip title={`Solver работает (мягкий лимит 15 сек). Можно отменить.`}>
+            <Button type="primary" icon={<ThunderboltOutlined />} loading>
+              {isOverdue ? `${elapsedSec} сек… (заканчивает)` : `Оптимизирую… ${elapsedSec} сек`}
+            </Button>
+          </Tooltip>
+          <Button danger icon={<StopOutlined />} size="small" onClick={handleCancel}>
+            Отменить
+          </Button>
+        </Space>
+      ) : (
+        <Tooltip title="Запустить PyJobShop-солвер. До 15 сек на план.">
+          <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleClick}>
+            Оптимизировать
+          </Button>
+        </Tooltip>
+      )}
       <Modal
         open={!!result}
         title="Оптимизация завершена"

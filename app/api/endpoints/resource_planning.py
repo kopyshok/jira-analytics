@@ -86,6 +86,11 @@ class AssignmentOut(BaseModel):
     is_on_critical_path: bool
     slack_days: Optional[float]
     is_pinned: bool = False
+    # Главный исполнитель инициативы из утверждённого сценария
+    # (BacklogItem.assignee_employee_id). Используется фронтом для
+    # группировки/сортировки задач на Gantt.
+    scenario_assignee_employee_id: Optional[str] = None
+    scenario_assignee_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -346,13 +351,19 @@ def get_gantt(
         db.execute(
             select(ResourcePlanAssignment)
             .options(
-                joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue)
+                joinedload(ResourcePlanAssignment.backlog_item)
+                .joinedload(BacklogItem.issue)
+            )
+            .options(
+                joinedload(ResourcePlanAssignment.backlog_item)
+                .joinedload(BacklogItem.assignee)
             )
             .options(joinedload(ResourcePlanAssignment.employee))
             .where(ResourcePlanAssignment.plan_id == plan_id)
             .order_by(ResourcePlanAssignment.start_date)
         )
         .scalars()
+        .unique()
         .all()
     )
 
@@ -373,6 +384,14 @@ def get_gantt(
             is_on_critical_path=a.is_on_critical_path,
             slack_days=a.slack_days,
             is_pinned=a.is_pinned,
+            scenario_assignee_employee_id=(
+                a.backlog_item.assignee_employee_id if a.backlog_item else None
+            ),
+            scenario_assignee_name=(
+                a.backlog_item.assignee.display_name
+                if a.backlog_item and a.backlog_item.assignee
+                else None
+            ),
         )
         for a in assignments_raw
     ]

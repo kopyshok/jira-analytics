@@ -68,6 +68,8 @@ export interface AssignmentOut {
   is_on_critical_path: boolean;
   slack_days: number | null;
   is_pinned: boolean;
+  scenario_assignee_employee_id?: string | null;
+  scenario_assignee_name?: string | null;
 }
 
 export interface ConflictOut {
