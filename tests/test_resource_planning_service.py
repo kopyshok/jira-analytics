@@ -1,7 +1,7 @@
 """Tests for ResourcePlanningService."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 from sqlalchemy.orm import Session
@@ -609,3 +609,548 @@ def test_opo_rows_start_simultaneously(db_session: Session) -> None:
         f"Строки opo должны стартовать одновременно: "
         f"analyst={start_by_emp[analyst_emp.id]}, dev={start_by_emp[dev_emp.id]}"
     )
+
+
+# ── Phase 3: _resolve_phase_calendar_days unit tests ──────────────────────
+
+
+def test_resolve_phase_calendar_days_uses_duration_field():
+    """duration_analyst_days=5 overrides hours/8 calculation; jira_field_set=True."""
+    from app.services.resource_planning_service import _resolve_phase_calendar_days
+
+    item = MagicMock()
+    item.duration_analyst_days = 5.0
+    item.involvement_analyst = None
+
+    cal_days, jira_set = _resolve_phase_calendar_days(item, "analyst", 8.0)
+    assert cal_days == 5.0
+    assert jira_set is True
+
+
+def test_resolve_phase_calendar_days_uses_involvement_when_no_duration():
+    """involvement_dev=0.5, no duration → 16h / (8×0.5) = 4.0 days; jira_field_set=True."""
+    from app.services.resource_planning_service import _resolve_phase_calendar_days
+
+    item = MagicMock()
+    item.duration_dev_days = None
+    item.involvement_dev = 0.5
+
+    cal_days, jira_set = _resolve_phase_calendar_days(item, "dev", 16.0)
+    assert abs(cal_days - 4.0) < 0.01
+    assert jira_set is True
+
+
+def test_resolve_phase_calendar_days_default_fallback():
+    """No duration, no involvement → hours/8; jira_field_set=False."""
+    from app.services.resource_planning_service import _resolve_phase_calendar_days
+
+    item = MagicMock()
+    item.duration_dev_days = None
+    item.involvement_dev = None
+
+    cal_days, jira_set = _resolve_phase_calendar_days(item, "dev", 16.0)
+    assert abs(cal_days - 2.0) < 0.01
+    assert jira_set is False
+
+
+# ── Phase 3+4: compute_schedule integration tests ─────────────────────────
+
+
+def test_compute_uses_duration_days(db_session: Session) -> None:
+    """estimate_analyst_hours=8, duration_analyst_days=5 → analyst spans 5 working days."""
+    from sqlalchemy import select
+
+    from app.models.backlog_item import BacklogItem
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.scenario_allocation import ScenarioAllocation
+
+    team = "DURTEST1"
+
+    analyst_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="DurTestAnalyst1",
+        team=team,
+        is_active=True,
+        role="analyst",
+    )
+    db_session.add(analyst_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=analyst_emp.id, team=team, is_primary=True))
+
+    item = BacklogItem(
+        title="DurTest item 1",
+        priority=1,
+        estimate_analyst_hours=8.0,
+        duration_analyst_days=5.0,
+        assignee_employee_id=analyst_emp.id,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    scenario = PlanningScenario(
+        name="dur-test-1", quarter="Q2", year=2026, status="draft", team=team
+    )
+    db_session.add(scenario)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True
+    ))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan.id)
+
+    rows = db_session.scalars(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan.id,
+            ResourcePlanAssignment.phase == "analyst",
+        )
+    ).all()
+
+    assert len(rows) >= 1
+    all_start = min(r.start_date for r in rows)
+    all_end = max(r.end_date for r in rows)
+    # Count working days from start to end (inclusive)
+    span_days = 0
+    d = all_start
+    while d <= all_end:
+        if d.weekday() < 5:
+            span_days += 1
+        d += timedelta(days=1)
+
+    assert span_days >= 5, (
+        f"Ожидалось span ≥ 5 рабочих дней (duration_analyst_days=5), получено {span_days}"
+    )
+
+
+def test_compute_uses_involvement_when_no_duration(db_session: Session) -> None:
+    """estimate_dev_hours=16, involvement_dev=0.5, no duration → span ~4 working days."""
+    from datetime import timedelta
+    from sqlalchemy import select
+
+    from app.models.backlog_item import BacklogItem
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.scenario_allocation import ScenarioAllocation
+
+    team = "INVTEST1"
+
+    dev_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="InvTestDev1",
+        team=team,
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(dev_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=dev_emp.id, team=team, is_primary=True))
+
+    item = BacklogItem(
+        title="Inv test item 1",
+        priority=1,
+        estimate_dev_hours=16.0,
+        involvement_dev=0.5,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    scenario = PlanningScenario(
+        name="inv-test-1", quarter="Q2", year=2026, status="draft", team=team
+    )
+    db_session.add(scenario)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True
+    ))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan.id)
+
+    rows = db_session.scalars(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan.id,
+            ResourcePlanAssignment.phase == "dev",
+        )
+    ).all()
+
+    assert len(rows) >= 1
+    all_start = min(r.start_date for r in rows)
+    all_end = max(r.end_date for r in rows)
+    span_days = 0
+    d = all_start
+    while d <= all_end:
+        if d.weekday() < 5:
+            span_days += 1
+        d += timedelta(days=1)
+
+    # involvement=0.5 → 16 / (8×0.5) = 4 working days
+    assert span_days >= 4, (
+        f"Ожидалось span ≥ 4 рабочих дней (involvement=0.5, 16h), получено {span_days}"
+    )
+
+
+def test_compute_default_no_jira_fields(db_session: Session) -> None:
+    """estimate_dev_hours=16, no involvement or duration → 2 working days (16/8)."""
+    from datetime import timedelta
+    from sqlalchemy import select
+
+    from app.models.backlog_item import BacklogItem
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.scenario_allocation import ScenarioAllocation
+
+    team = "DEFTEST1"
+
+    dev_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="DefTestDev1",
+        team=team,
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(dev_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=dev_emp.id, team=team, is_primary=True))
+
+    item = BacklogItem(
+        title="Default test item 1",
+        priority=1,
+        estimate_dev_hours=16.0,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    scenario = PlanningScenario(
+        name="def-test-1", quarter="Q2", year=2026, status="draft", team=team
+    )
+    db_session.add(scenario)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True
+    ))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan.id)
+
+    rows = db_session.scalars(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan.id,
+            ResourcePlanAssignment.phase == "dev",
+        )
+    ).all()
+
+    assert len(rows) >= 1
+    all_start = min(r.start_date for r in rows)
+    all_end = max(r.end_date for r in rows)
+    # 16h / 6h_per_day (DEFAULT_HOURS_PER_DAY) = ~3 calendar days
+    # phase_end cursor is max(raw_end, cal_end) where cal_days=16/8=2 working days
+    # The raw_end already spans ceil(16/6)=3 calendar days, cal_end=2 working days.
+    # So span could be 2-3 depending on weekdays. Just assert it's ≤ 5 days (not stretched).
+    span_days = 0
+    d = all_start
+    while d <= all_end:
+        if d.weekday() < 5:
+            span_days += 1
+        d += timedelta(days=1)
+
+    assert span_days <= 5, (
+        f"Без Jira-полей span должен быть ≤ 5 рабочих дней, получено {span_days}"
+    )
+
+
+# ── Phase 4: parallel_count_* integration test ────────────────────────────
+
+
+def test_compute_parallel_count_shortens_qa_span(db_session: Session) -> None:
+    """parallel_count_qa=2 + duration_qa_days=10 → QA span halved to ~5 working days."""
+    from datetime import timedelta
+    from sqlalchemy import select
+
+    from app.models.backlog_item import BacklogItem
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.scenario_allocation import ScenarioAllocation
+
+    team = "PARTEST1"
+
+    # QA phase is hours-only in legacy (no employee), uses days_needed from hours.
+    # parallel_count_qa affects the cursor via _resolve_phase_calendar_days.
+    # But QA span in legacy is computed differently (ceil(hours/6)).
+    # For Task B test we use dev phase with duration_dev_days + parallel_count_dev.
+    dev_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="ParTestDev1",
+        team=team,
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(dev_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=dev_emp.id, team=team, is_primary=True))
+
+    item = BacklogItem(
+        title="ParTest item 1",
+        priority=1,
+        estimate_dev_hours=80.0,
+        duration_dev_days=10.0,
+        parallel_count_dev=2,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    scenario = PlanningScenario(
+        name="par-test-1", quarter="Q2", year=2026, status="draft", team=team
+    )
+    db_session.add(scenario)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True
+    ))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan.id)
+
+    rows = db_session.scalars(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan.id,
+            ResourcePlanAssignment.phase == "dev",
+        )
+    ).all()
+
+    assert len(rows) >= 1
+    all_start = min(r.start_date for r in rows)
+    all_end = max(r.end_date for r in rows)
+    span_days = 0
+    d = all_start
+    while d <= all_end:
+        if d.weekday() < 5:
+            span_days += 1
+        d += timedelta(days=1)
+
+    # parallel_count_dev=2 + duration_dev_days=10 → cal_days = 10/2 = 5 working days
+    # phase_end cursor = max(raw_end, cal_end=5 working days from start)
+    assert span_days <= 7, (
+        f"parallel_count_dev=2 + duration=10 → span ≤ 7 рабочих дней, получено {span_days}"
+    )
+
+
+# ── Phase 5: auto-split analyst tests ─────────────────────────────────────
+
+
+def test_legacy_split_skipped_when_fits(db_session: Session) -> None:
+    """Small plan that fits in quarter → no analyst split (single row)."""
+    from sqlalchemy import select
+
+    from app.models.backlog_item import BacklogItem
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.scenario_allocation import ScenarioAllocation
+
+    team = "SPLITSKIP1"
+
+    analyst_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="SplitSkipAnalyst",
+        team=team,
+        is_active=True,
+        role="analyst",
+    )
+    db_session.add(analyst_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=analyst_emp.id, team=team, is_primary=True))
+
+    dev_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="SplitSkipDev",
+        team=team,
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(dev_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=dev_emp.id, team=team, is_primary=True))
+
+    item = BacklogItem(
+        title="Small fit item",
+        priority=1,
+        estimate_analyst_hours=8.0,
+        estimate_dev_hours=8.0,
+        assignee_employee_id=analyst_emp.id,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    scenario = PlanningScenario(
+        name="split-skip-1", quarter="Q2", year=2026, status="draft", team=team
+    )
+    db_session.add(scenario)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True
+    ))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan.id)
+
+    analyst_rows = db_session.scalars(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan.id,
+            ResourcePlanAssignment.phase == "analyst",
+        )
+    ).all()
+
+    # Small plan fits → no split, part_number should all be 1
+    part_numbers = {r.part_number for r in analyst_rows}
+    assert part_numbers == {1}, (
+        f"Маленький план вмещается — сплит не нужен, part_numbers={part_numbers}"
+    )
+
+
+def test_legacy_split_triggers_when_overflow(db_session: Session) -> None:
+    """Overloaded plan → analyst split produces multiple rows; dev starts before analyst ends."""
+    from datetime import timedelta
+    from sqlalchemy import select
+
+    from app.models.backlog_item import BacklogItem
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.resource_plan import ResourcePlan
+    from app.models.resource_plan_assignment import ResourcePlanAssignment
+    from app.models.scenario_allocation import ScenarioAllocation
+
+    team = "SPLITOVF1"
+
+    analyst_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="SplitOvfAnalyst",
+        team=team,
+        is_active=True,
+        role="analyst",
+    )
+    db_session.add(analyst_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=analyst_emp.id, team=team, is_primary=True))
+
+    dev_emp = Employee(
+        jira_account_id=uuid.uuid4().hex[:16],
+        display_name="SplitOvfDev",
+        team=team,
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(dev_emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=dev_emp.id, team=team, is_primary=True))
+
+    # Large analyst item — 400h → 50 working days (well beyond a quarter)
+    big_item = BacklogItem(
+        title="Big analyst item",
+        priority=1,
+        estimate_analyst_hours=400.0,
+        estimate_dev_hours=8.0,
+        assignee_employee_id=analyst_emp.id,
+    )
+    db_session.add(big_item)
+    db_session.flush()
+
+    # Extra dummy items to push total demand well over capacity
+    dummy_items = []
+    for i in range(5):
+        d_item = BacklogItem(
+            title=f"Dummy {i}",
+            priority=i + 2,
+            estimate_analyst_hours=100.0,
+            assignee_employee_id=analyst_emp.id,
+        )
+        db_session.add(d_item)
+        dummy_items.append(d_item)
+    db_session.flush()
+
+    scenario = PlanningScenario(
+        name="split-ovf-1", quarter="Q2", year=2026, status="draft", team=team
+    )
+    db_session.add(scenario)
+    db_session.flush()
+
+    db_session.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=big_item.id, included_flag=True
+    ))
+    for d_item in dummy_items:
+        db_session.add(ScenarioAllocation(
+            scenario_id=scenario.id, backlog_item_id=d_item.id, included_flag=True
+        ))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan.id)
+
+    analyst_rows = db_session.scalars(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan.id,
+            ResourcePlanAssignment.phase == "analyst",
+            ResourcePlanAssignment.backlog_item_id == big_item.id,
+        )
+    ).all()
+
+    dev_rows = db_session.scalars(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan.id,
+            ResourcePlanAssignment.phase == "dev",
+            ResourcePlanAssignment.backlog_item_id == big_item.id,
+        )
+    ).all()
+
+    # Should have split — multiple analyst rows
+    assert len(analyst_rows) >= 2, (
+        f"Overflow → ожидалось ≥ 2 analyst rows (split), получено {len(analyst_rows)}"
+    )
+
+    # Dev should start before analyst phase would have ended (earlier-start effect)
+    if dev_rows:
+        analyst_end = max(r.end_date for r in analyst_rows)
+        dev_start = min(r.start_date for r in dev_rows)
+        # Dev start must be strictly before the last analyst chunk ends
+        assert dev_start < analyst_end, (
+            f"Dev стартует раньше окончания всей analyst фазы: "
+            f"dev_start={dev_start}, analyst_end={analyst_end}"
+        )

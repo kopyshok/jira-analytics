@@ -42,6 +42,83 @@ ANALYST_ROLES = {
 # Роли пула разработки.
 DEV_ROLES = {"разработчик", "developer", "dev", "программист"}
 
+# Phase 3: маппинг phase → (поле duration_days, поле involvement) в BacklogItem.
+PHASE_DURATION_FIELDS: Dict[str, Tuple[str, str]] = {
+    "analyst": ("duration_analyst_days", "involvement_analyst"),
+    "dev":     ("duration_dev_days",     "involvement_dev"),
+    "qa":      ("duration_qa_days",      "involvement_qa"),
+    "opo":     ("duration_launch_days",  "involvement_launch"),
+}
+
+# Phase 5: минимальный размер куска при авто-сплите аналитической фазы (рабочие дни).
+MIN_CHUNK_DAYS = 1
+
+
+def _resolve_phase_calendar_days(
+    item: "BacklogItem", phase: str, hours: float
+) -> Tuple[float, bool]:
+    """Вычислить длину фазы в календарных рабочих днях.
+
+    Возвращает (cal_days, jira_field_set).
+    jira_field_set=True если duration_days или involvement задан явно (из Jira).
+
+    Fallback-цепочка:
+      1. duration_<phase>_days (из Jira) — используется напрямую.
+      2. estimate_hours / (involvement × 8) — если задана занятость.
+      3. estimate_hours / 8 — базовый fallback.
+    """
+    dur_field, inv_field = PHASE_DURATION_FIELDS.get(phase, (None, None))
+    if dur_field:
+        dur = getattr(item, dur_field, None)
+        if dur:
+            return float(dur), True
+    inv: float = 1.0
+    jira_inv_set = False
+    if inv_field:
+        raw_inv = getattr(item, inv_field, None)
+        if raw_inv:
+            inv = float(raw_inv)
+            jira_inv_set = True
+    return max(1.0, hours / max(0.1, inv * 8.0)), jira_inv_set
+
+
+def _resolve_parallel_count_legacy(item: "BacklogItem", phase: str) -> int:
+    """Per-phase parallel count для legacy compute_schedule.
+
+    Разрешение: item override → project default → 1.
+    ОПЭ не параллелится (возвращает 1).
+    """
+    field = f"parallel_count_{phase}"
+    if field not in ("parallel_count_analyst", "parallel_count_dev", "parallel_count_qa"):
+        return 1
+    n_item = getattr(item, field, None)
+    if n_item and int(n_item) > 0:
+        return int(n_item)
+    proj = item.project if item else None
+    n_proj = getattr(proj, field, None) if proj else None
+    if n_proj and int(n_proj) > 0:
+        return int(n_proj)
+    return 1
+
+
+def _advance_working_days(start: date, days: int) -> date:
+    """Вернуть дату через N рабочих дней начиная с start (включительно).
+
+    Упрощённый расчёт без учёта праздников (только Пн–Пт). Используется
+    для вычисления end-cursor при duration_days / parallel_count.
+    """
+    n = max(1, int(days))
+    d = start
+    counted = 0
+    while counted < n:
+        if d.weekday() < 5:
+            counted += 1
+            if counted < n:
+                d += timedelta(days=1)
+        else:
+            d += timedelta(days=1)
+    return d
+
 
 class ResourcePlanningService:
     def __init__(self, db: Session):
@@ -262,6 +339,13 @@ class ResourcePlanningService:
             (a.backlog_item_id, a.phase) for a in pinned_existing
         }
 
+        # Phase 5: вычислить решения о сплите аналитических фаз до основного цикла.
+        # _analyst_split_map: {(item_id, "analyst") → N кусков}
+        # _analyst_first_chunk_end: {item_id → end_date первого куска} — заполняется
+        # в ходе основного цикла, затем используется для earliest_start dev-фазы.
+        _analyst_split_map = self._compute_legacy_split_map(items, employees, q_start, q_end)
+        _analyst_first_chunk_end: Dict[str, Optional[date]] = {}
+
         for item in items:
             phase_end: Optional[date] = None
             for phase in PHASE_ORDER:
@@ -284,10 +368,25 @@ class ResourcePlanningService:
                         phase_end = pe
                     continue
 
-                earliest_start = max(
-                    q_start,
-                    (phase_end + timedelta(days=1)) if phase_end else q_start,
-                )
+                # Phase 5: dev-фаза стартует после первого куска аналитической фазы,
+                # если аналитик был разбит на куски (earlier_start эффект).
+                if phase == "dev" and item.id in _analyst_first_chunk_end:
+                    first_chunk_end = _analyst_first_chunk_end[item.id]
+                    if first_chunk_end is not None:
+                        earliest_start = max(
+                            q_start,
+                            first_chunk_end + timedelta(days=1),
+                        )
+                    else:
+                        earliest_start = max(
+                            q_start,
+                            (phase_end + timedelta(days=1)) if phase_end else q_start,
+                        )
+                else:
+                    earliest_start = max(
+                        q_start,
+                        (phase_end + timedelta(days=1)) if phase_end else q_start,
+                    )
 
                 if phase == "qa":
                     # QA — часы-only, без сотрудника. Длина = ceil(hours / 6) дней.
@@ -360,10 +459,83 @@ class ResourcePlanningService:
                 if not employee_id:
                     continue
 
-                segments = self._allocate_hours(
-                    employee_id, hours, earliest_start, q_end, remaining
+                # Phase 3+4: вычисляем календарную длину фазы с учётом
+                # duration_days / involvement / parallel_count.
+                cal_days, jira_cal_set = _resolve_phase_calendar_days(item, phase, hours)
+                parallel_n = _resolve_parallel_count_legacy(item, phase)
+                if parallel_n > 1:
+                    jira_cal_set = True
+                cal_days = max(1.0, cal_days / max(1, parallel_n))
+
+                # Авто-сплит аналитической фазы (Phase 5): если для этого item
+                # решение о сплите уже принято — используем его.
+                analyst_split_chunks = _analyst_split_map.get((item.id, phase), 1)
+                if analyst_split_chunks > 1:
+                    # Делим фазу на N равных кусков; dev стартует после первого куска.
+                    chunk_cal_days = max(1.0, cal_days / analyst_split_chunks)
+                    chunk_hours = hours / analyst_split_chunks
+                    first_chunk_end: Optional[date] = None
+                    last_chunk_end: Optional[date] = None
+                    for chunk_idx in range(1, analyst_split_chunks + 1):
+                        chunk_start = earliest_start if chunk_idx == 1 else (
+                            (last_chunk_end + timedelta(days=1)) if last_chunk_end else earliest_start
+                        )
+                        chunk_segs = self._allocate_hours(
+                            employee_id, chunk_hours, chunk_start, q_end, remaining
+                        )
+                        for seg_start, seg_end, seg_hours, seg_part in chunk_segs:
+                            a = ResourcePlanAssignment(
+                                plan_id=plan_id,
+                                backlog_item_id=item.id,
+                                phase=phase,
+                                employee_id=employee_id,
+                                part_number=chunk_idx,
+                                hours_allocated=seg_hours,
+                                start_date=seg_start,
+                                end_date=seg_end,
+                            )
+                            new_assignments.append(a)
+                        # Calendar-based end for this chunk
+                        cal_end = _advance_working_days(chunk_start, int(chunk_cal_days))
+                        chunk_end = max(
+                            chunk_segs[-1][1] if chunk_segs else chunk_start,
+                            cal_end,
+                        )
+                        if first_chunk_end is None:
+                            first_chunk_end = chunk_end
+                        last_chunk_end = chunk_end
+                    # Dev starts after first chunk; overall phase_end after last chunk.
+                    _analyst_first_chunk_end[item.id] = first_chunk_end
+                    phase_end = last_chunk_end
+                    continue
+
+                # Phase 3+4: when Jira fields are set, cal_end is authoritative.
+                # - Limit alloc_deadline to cal_end so hours don't spill beyond it
+                #   (parallel_count shortens; too many hours simply don't fit).
+                # - Extend last segment's end_date to cal_end when hours exhaust early
+                #   (involvement/duration makes phase longer than hours alone).
+                # Without Jira fields — legacy behavior: deadline = q_end.
+                cal_end = min(
+                    _advance_working_days(earliest_start, int(cal_days)),
+                    q_end,
                 )
-                for seg_start, seg_end, seg_hours, part_num in segments:
+                alloc_deadline = cal_end if jira_cal_set else q_end
+
+                segments = self._allocate_hours(
+                    employee_id, hours, earliest_start, alloc_deadline, remaining
+                )
+
+                if jira_cal_set:
+                    effective_end = cal_end
+                elif segments:
+                    effective_end = segments[-1][1]
+                else:
+                    effective_end = None
+
+                for idx, (seg_start, seg_end, seg_hours, part_num) in enumerate(segments):
+                    # When Jira cal sets a wider span, stretch the last segment's end.
+                    if jira_cal_set and idx == len(segments) - 1:
+                        seg_end = effective_end
                     a = ResourcePlanAssignment(
                         plan_id=plan_id,
                         backlog_item_id=item.id,
@@ -376,8 +548,8 @@ class ResourcePlanningService:
                     )
                     new_assignments.append(a)
 
-                if segments:
-                    phase_end = segments[-1][1]
+                if effective_end is not None:
+                    phase_end = effective_end
 
         for a in new_assignments:
             if a not in pinned_existing:
@@ -597,6 +769,104 @@ class ResourcePlanningService:
         an_hours = round(total * ratio, 2)
         dev_hours = round(total - an_hours, 2)
         return [(analyst_id, an_hours), (dev_id, dev_hours)]
+
+    def _compute_legacy_split_map(
+        self,
+        items: List[BacklogItem],
+        employees: List[Employee],
+        q_start: date,
+        q_end: date,
+    ) -> Dict[Tuple[str, str], int]:
+        """Phase 5: эвристика авто-сплита аналитических фаз для legacy-планировщика.
+
+        Алгоритм:
+        1. Суммируем demand (в рабочих днях) по всем фазам всех инициатив.
+        2. Суммируем capacity (рабочих дней × 1 ресурс) по всем сотрудникам.
+        3. Если demand ≤ capacity — возвращаем пустой dict.
+        4. Среди аналитических фаз итеративно делим самую длинную пополам,
+           пока план не вместится или chunk_days не достигнет MIN_CHUNK_DAYS.
+
+        Возвращает {(item_id, "analyst"): N} только для фаз, требующих сплита.
+        """
+        horizon_days = (q_end - q_start).days + 1
+
+        # Capacity: число рабочих дней квартала × кол-во сотрудников
+        total_capacity_days = 0.0
+        for _ in employees:
+            d = q_start
+            while d <= q_end:
+                if d.weekday() < 5:
+                    total_capacity_days += 1.0
+                d += timedelta(days=1)
+
+        if total_capacity_days <= 0:
+            return {}
+
+        # Demand: длина каждой фазы каждой инициативы в рабочих днях.
+        # Используем ту же fallback-цепочку что и в основном цикле.
+        demand_by_item_phase: Dict[Tuple[str, str], float] = {}
+        for item in items:
+            for phase in PHASE_ORDER:
+                hours_field = PHASE_HOURS_FIELD[phase]
+                hours = float(getattr(item, hours_field) or 0.0)
+                if hours <= 0:
+                    continue
+                cal_days, _ = _resolve_phase_calendar_days(item, phase, hours)
+                parallel_n = _resolve_parallel_count_legacy(item, phase)
+                cal_days = max(1.0, cal_days / max(1, parallel_n))
+                demand_by_item_phase[(item.id, phase)] = cal_days
+
+        total_demand = sum(demand_by_item_phase.values())
+        if total_demand <= total_capacity_days:
+            return {}
+
+        # Собираем аналитические фазы для сплита
+        analyst_keys = [
+            (item.id, "analyst")
+            for item in items
+            if (item.id, "analyst") in demand_by_item_phase
+        ]
+        if not analyst_keys:
+            return {}
+
+        split_map: Dict[Tuple[str, str], int] = {}
+
+        for _ in range(20):
+            current_demand = sum(
+                demand_by_item_phase[k] / max(1, split_map.get(k, 1))
+                * split_map.get(k, 1)
+                for k in demand_by_item_phase
+            )
+            # demand не уменьшается от сплита сам по себе — сплит лишь даёт
+            # возможность «вписать» длинные фазы в горизонт; прерываем итерацию.
+            break
+
+        # Простая однопроходная версия: делим самую длинную аналитическую фазу
+        # пополам, пока total_demand (без учёта параллелизма — эвристика) > capacity.
+        working_demand = dict(demand_by_item_phase)
+        for _ in range(20):
+            if sum(working_demand.values()) <= total_capacity_days:
+                break
+            candidates = [
+                (working_demand[(iid, "analyst")], (iid, "analyst"))
+                for iid in [item.id for item in items]
+                if (iid, "analyst") in working_demand
+                and working_demand[(iid, "analyst")] / max(1, split_map.get((iid, "analyst"), 1)) > MIN_CHUNK_DAYS
+            ]
+            if not candidates:
+                break
+            candidates.sort(reverse=True)
+            _, target_key = candidates[0]
+            current_chunks = split_map.get(target_key, 1)
+            split_map[target_key] = current_chunks * 2
+            # Сплит уменьшает видимую «нагрузку» за счёт параллелизации кусков
+            # (все куски всё равно выполняются, но могут идти параллельно с dev).
+            # Для целей вычисления overflow считаем: каждый кусок = chunk_days.
+            chunk_days = demand_by_item_phase[target_key] / split_map[target_key]
+            if chunk_days <= MIN_CHUNK_DAYS:
+                break
+
+        return split_map
 
     def _build_role_pools(self, employees: List[Employee]) -> Dict[str, List[str]]:
         """{employee_id: [peer_ids same role]} для reassign-стратегии."""
