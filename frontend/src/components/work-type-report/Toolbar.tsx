@@ -1,5 +1,5 @@
 import { Button, Radio, Tag, Tooltip } from 'antd';
-import { ReloadOutlined, DownloadOutlined, PrinterOutlined } from '@ant-design/icons';
+import { ReloadOutlined, DownloadOutlined, PrinterOutlined, TagsOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import { DARK_THEME } from '../../utils/constants';
@@ -14,6 +14,7 @@ interface Props {
   workTypeId: string;
   onWorkTypeChange: (id: string) => void;
   report: WorkTypeReportResponse | undefined;
+  onOpenDictionary?: () => void;
 }
 
 function FreshnessPill({ report }: { report: WorkTypeReportResponse | undefined }) {
@@ -34,7 +35,7 @@ function FreshnessPill({ report }: { report: WorkTypeReportResponse | undefined 
   );
 }
 
-export default function Toolbar({ workTypeId, onWorkTypeChange, report }: Props) {
+export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDictionary }: Props) {
   const { data: workTypes, isLoading: wtLoading } = useMandatoryWorkTypes();
   const buildMutation = useBuildWorkTypeReport();
   const { period } = useGlobalPeriod();
@@ -89,6 +90,15 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report }: Props)
 
       {/* Freshness pill */}
       <FreshnessPill report={report} />
+
+      {/* Dictionary button */}
+      <Button
+        icon={<TagsOutlined />}
+        size="small"
+        onClick={onOpenDictionary}
+      >
+        Словарь тем
+      </Button>
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>

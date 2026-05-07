@@ -13,6 +13,8 @@ import OutliersPanel from '../components/work-type-report/OutliersPanel';
 import RecommendationCard from '../components/work-type-report/RecommendationCard';
 import IssueDrillDownDrawer from '../components/work-type-report/IssueDrillDownDrawer';
 import ManualReviewBlock from '../components/work-type-report/ManualReviewBlock';
+import CandidatesPanel from '../components/work-type-report/CandidatesPanel';
+import ThemeDictionaryDrawer from '../components/work-type-report/ThemeDictionaryDrawer';
 import { useThemeList } from '../hooks/useThemeDictionary';
 import { useWorkTypeReport } from '../hooks/useWorkTypeReport';
 import { useMandatoryWorkTypes } from '../hooks/useMandatoryWorkTypes';
@@ -71,6 +73,7 @@ export default function WorkTypeReportPage() {
   const [groupingDims, setGroupingDims] = useState<GroupingDim[]>(['theme', 'issue']);
   const [highlightThemeId, setHighlightThemeId] = useState<string | null>(null);
   const [drillIssue, setDrillIssue] = useState<{ id: string; key: string } | null>(null);
+  const [dictionaryDrawer, setDictionaryDrawer] = useState<{ open: boolean; tab: 'active' | 'archived' | 'candidates' }>({ open: false, tab: 'active' });
 
   const activeTypes = useMemo(() => workTypes ?? [], [workTypes]);
 
@@ -177,6 +180,7 @@ export default function WorkTypeReportPage() {
             workTypeId={workTypeId ?? ''}
             onWorkTypeChange={handleWorkTypeChange}
             report={report}
+            onOpenDictionary={() => setDictionaryDrawer({ open: true, tab: 'active' })}
           />
           {report && (
             <>
@@ -236,6 +240,13 @@ export default function WorkTypeReportPage() {
                     </div>
                   )}
                 </Card>
+
+                {report.data.candidates.length > 0 && (
+                  <CandidatesPanel
+                    candidates={report.data.candidates}
+                    onOpenDrawer={() => setDictionaryDrawer({ open: true, tab: 'candidates' })}
+                  />
+                )}
               </Col>
             </Row>
           )}
@@ -279,6 +290,16 @@ export default function WorkTypeReportPage() {
         themeName={drillClassification.themeName}
         contribution={drillClassification.contribution}
         needsManualClassify={drillNeedsManualClassify}
+      />
+
+      {/* Theme dictionary drawer */}
+      <ThemeDictionaryDrawer
+        open={dictionaryDrawer.open}
+        workTypeId={workTypeId ?? ''}
+        initialTab={dictionaryDrawer.tab}
+        candidates={report?.data.candidates ?? []}
+        snapshotId={report?.snapshot_id ?? null}
+        onClose={() => setDictionaryDrawer((s) => ({ ...s, open: false }))}
       />
     </div>
   );
