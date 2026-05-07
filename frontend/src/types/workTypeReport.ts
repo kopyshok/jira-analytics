@@ -51,18 +51,19 @@ export interface ThemeListResponse {
 
 // ---- Snapshot data shapes ----
 
-export interface TopEmployee {
+export interface ThemeEmployeeBreakdown {
   employee_id: string;
-  full_name: string;
   hours: number;
-  pct: number;
+  name: string;
+  role: string;
+  team: string;
 }
 
-export interface TopTask {
-  issue_id: string;
+export interface ThemeTopTask {
   key: string;
   summary: string;
   hours: number;
+  contribution: string | null;
 }
 
 export interface ThemeIssue {
@@ -70,24 +71,26 @@ export interface ThemeIssue {
   key: string;
   summary: string;
   hours: number;
-  [key: string]: unknown;
+  contribution: string | null;
+  employee_breakdown: { name: string; role: string; team: string; hours: number }[];
 }
 
 export interface ThemeTotals {
   hours: number;
-  tasks: number;
+  pct: number;
+  tasks_count: number;
   employees_count: number;
-  pct_of_work_type: number;
 }
 
 export interface Theme {
   theme_id: string | null;
-  theme_name: string;
+  name: string;
+  color: string;
   is_new: boolean;
-  is_low_confidence: boolean;
+  is_low_confidence?: boolean;
   totals: ThemeTotals;
-  top_employees: TopEmployee[];
-  top_tasks: TopTask[];
+  by_employee: ThemeEmployeeBreakdown[];
+  top_tasks: ThemeTopTask[];
   issues: ThemeIssue[];
   evidence_keys: string[];
   narrative: string;
