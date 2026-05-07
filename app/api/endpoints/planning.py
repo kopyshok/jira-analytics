@@ -648,7 +648,11 @@ async def approve_scenario(
     for p in plans_to_stale:
         p.status = "stale"
 
-    # Reclassify included initiatives_rfa issues → quarterly_tasks
+    # Reclassify included initiatives_rfa issues → quarterly_tasks.
+    # ВАЖНО: scenario.status = "approved" должен быть выставлен ДО этого блока.
+    # sync_from_issue делает flush(), который записывает статус в транзакцию;
+    # _remove_draft_allocations затем корректно пропускает текущий сценарий
+    # при запросе черновиков.
     resolver = CategoryResolver(db)
     backlog_svc = BacklogService(db)
     reclassified_item_ids: list[str] = []
@@ -659,6 +663,8 @@ async def approve_scenario(
         if issue is None or issue.category != BACKLOG_CATEGORY:
             continue
         issue.assigned_category = "quarterly_tasks"
+        # assigned_category — источник истины; resolver подтверждает его и
+        # учтёт любые будущие изменения приоритета overrides.
         issue.category = resolver.resolve_for_issue(issue).category_code
         backlog_svc.sync_from_issue(issue)
         reclassified_item_ids.append(item.id)
