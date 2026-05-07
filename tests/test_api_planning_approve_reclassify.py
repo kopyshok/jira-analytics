@@ -86,3 +86,79 @@ def test_approved_scenario_shows_all_items(client, seeded, testclient_db_session
     assert "b-rfa" in item_ids
     assert "b-qrt" in item_ids
     assert "b-child" in item_ids
+
+
+def test_approve_reclassifies_included_issues(client, seeded, testclient_db_session):
+    """Approving a scenario reclassifies included initiatives_rfa → quarterly_tasks."""
+    db = testclient_db_session
+
+    # Create draft scenario — only b-rfa shown (filter from Task 2)
+    r = client.post("/api/v1/planning/scenarios", json={"name": "Q3", "year": 2026, "quarter": 3})
+    assert r.status_code == 201, r.text
+    sid = r.json()["id"]
+
+    # Mark b-rfa as included
+    allocs_r = client.get(f"/api/v1/planning/scenarios/{sid}/allocations")
+    alloc_id = next(a["id"] for a in allocs_r.json() if a["backlog_item_id"] == "b-rfa")
+    r = client.patch(f"/api/v1/planning/scenarios/{sid}/allocations/{alloc_id}", json={"included": True})
+    assert r.status_code == 200, r.text
+
+    # Approve
+    r = client.post(f"/api/v1/planning/scenarios/{sid}/approve")
+    assert r.status_code == 200, r.text
+
+    # Check issue category changed
+    from app.models import Issue
+    db.expire_all()
+    issue = db.query(Issue).filter_by(id="i-rfa").one()
+    assert issue.assigned_category == "quarterly_tasks"
+    assert issue.category == "quarterly_tasks"
+
+
+def test_approve_does_not_reclassify_excluded_issues(client, seeded, testclient_db_session):
+    """Issues not included (included_flag=False) must NOT be reclassified on approve."""
+    db = testclient_db_session
+
+    # Create draft scenario — b-rfa auto-added with included_flag=False
+    r = client.post("/api/v1/planning/scenarios", json={"name": "Q3 B", "year": 2026, "quarter": 3})
+    assert r.status_code == 201, r.text
+    sid = r.json()["id"]
+
+    # Approve WITHOUT marking b-rfa as included
+    r = client.post(f"/api/v1/planning/scenarios/{sid}/approve")
+    assert r.status_code == 200, r.text
+
+    from app.models import Issue
+    db.expire_all()
+    issue = db.query(Issue).filter_by(id="i-rfa").one()
+    assert issue.category == "initiatives_rfa", "excluded issue must not be reclassified"
+
+
+def test_approve_removes_included_from_other_drafts(client, seeded, testclient_db_session):
+    """After approval, reclassified items must be removed from other draft scenarios."""
+    db = testclient_db_session
+    from app.models import ScenarioAllocation
+
+    # Create two draft scenarios — both get b-rfa
+    r1 = client.post("/api/v1/planning/scenarios", json={"name": "Q3 A", "year": 2026, "quarter": 3})
+    sid1 = r1.json()["id"]
+    r2 = client.post("/api/v1/planning/scenarios", json={"name": "Q3 B", "year": 2026, "quarter": 3})
+    sid2 = r2.json()["id"]
+
+    # Mark b-rfa as included in scenario 1
+    allocs_r = client.get(f"/api/v1/planning/scenarios/{sid1}/allocations")
+    alloc_id = next(a["id"] for a in allocs_r.json() if a["backlog_item_id"] == "b-rfa")
+    client.patch(f"/api/v1/planning/scenarios/{sid1}/allocations/{alloc_id}", json={"included": True})
+
+    # Approve scenario 1
+    r = client.post(f"/api/v1/planning/scenarios/{sid1}/approve")
+    assert r.status_code == 200, r.text
+
+    # b-rfa must no longer be in scenario 2's allocations
+    db.expire_all()
+    alloc_in_s2 = (
+        db.query(ScenarioAllocation)
+        .filter_by(scenario_id=sid2, backlog_item_id="b-rfa")
+        .one_or_none()
+    )
+    assert alloc_in_s2 is None, "reclassified item must be removed from other draft scenarios"

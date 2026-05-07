@@ -648,10 +648,30 @@ async def approve_scenario(
     for p in plans_to_stale:
         p.status = "stale"
 
+    # Reclassify included initiatives_rfa issues → quarterly_tasks
+    resolver = CategoryResolver(db)
+    backlog_svc = BacklogService(db)
+    reclassified_item_ids: list[str] = []
+    for alloc, item in included_rows:
+        if item.issue_id is None:
+            continue
+        issue = db.get(Issue, item.issue_id)
+        if issue is None or issue.category != BACKLOG_CATEGORY:
+            continue
+        issue.assigned_category = "quarterly_tasks"
+        issue.category = resolver.resolve_for_issue(issue).category_code
+        backlog_svc.sync_from_issue(issue)
+        reclassified_item_ids.append(item.id)
+
+    for item_id in reclassified_item_ids:
+        backlog_svc._remove_draft_allocations(item_id)
+
     db.commit()
     entities = ["planning", "backlog"]
     if plans_to_stale:
         entities.append("resource_planning")
+    if reclassified_item_ids:
+        entities.append("issues")
     await event_bus.publish({"type": "entity_changed", "entities": entities})
     db.refresh(scenario)
     return _to_scenario_resp(scenario)
