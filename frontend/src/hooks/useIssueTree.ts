@@ -48,7 +48,6 @@ export function useBatchSetCategory() {
 }
 
 export function useVerifyIssue() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({
       issueId,
@@ -59,8 +58,5 @@ export function useVerifyIssue() {
       cascade: boolean;
       requireChildVerification: boolean;
     }) => verifyIssue(issueId, cascade, requireChildVerification),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-    },
   });
 }

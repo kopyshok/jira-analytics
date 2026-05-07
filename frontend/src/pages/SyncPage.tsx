@@ -84,6 +84,20 @@ function countUnverifiedBelow(node: TreeNodeWithChildren): number {
   return count;
 }
 
+function patchVerified(nodes: IssueTreeNode[], issueId: string, cascade: boolean): IssueTreeNode[] {
+  return nodes.map(n => {
+    if (n.id === issueId) {
+      const markTree = (node: IssueTreeNode): IssueTreeNode => ({
+        ...node,
+        category_verified: true,
+        children: cascade ? node.children.map(markTree) : node.children,
+      });
+      return markTree(n);
+    }
+    return { ...n, children: patchVerified(n.children, issueId, cascade) };
+  });
+}
+
 function matchesTab(effective: string | null, verified: boolean, tab: InnerTab): boolean {
   if (!verified) return tab === 'stack';
   switch (tab) {
@@ -439,15 +453,22 @@ export function CategoryConfigTab() {
     cascade: boolean,
   ) => {
     const requireChildVerification = pendingVerifyFlags.get(issueId) ?? false;
+    // Optimistic: patch cache immediately so items fade out without refetch
+    const previous = qc.getQueryData<IssueTreeNode[]>(treeQueryKey);
+    qc.setQueryData<IssueTreeNode[]>(treeQueryKey, old =>
+      old ? patchVerified(old, issueId, cascade) : old,
+    );
     verifyMut.mutate(
       { issueId, cascade, requireChildVerification },
       {
         onError: (err) => {
+          // Rollback on failure
+          qc.setQueryData(treeQueryKey, previous);
           notification.error({ message: 'Ошибка верификации', description: (err as Error).message });
         },
       },
     );
-  }, [pendingVerifyFlags, verifyMut, notification]);
+  }, [pendingVerifyFlags, verifyMut, notification, qc, treeQueryKey]);
 
   const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
