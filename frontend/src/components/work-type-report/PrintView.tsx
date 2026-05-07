@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { Spin, Button } from 'antd';
+import { Spin, Button, ConfigProvider, theme } from 'antd';
 import { PrinterOutlined } from '@ant-design/icons';
 import { PieChart, Pie, Cell } from 'recharts';
 import { useWorkTypeReport } from '../../hooks/useWorkTypeReport';
@@ -163,6 +164,33 @@ export default function PrintView() {
     { enabled: !!(workTypeId && year && quarter) },
   );
 
+  const themes = useMemo(() => report?.data.themes ?? [], [report]);
+  const outliers = useMemo(() => report?.data.outliers ?? [], [report]);
+  const totalsHours = report?.data.totals.hours ?? 0;
+
+  // Donut slices
+  const slices = useMemo(() => buildSlices(themes, totalsHours), [themes, totalsHours]);
+
+  // Top-3 themes (by hours)
+  const top3 = useMemo(
+    () => [...themes].sort((a, b) => b.totals.hours - a.totals.hours).slice(0, 3),
+    [themes],
+  );
+
+  // Top-5 outliers
+  const top5outliers = useMemo(() => outliers.slice(0, 5), [outliers]);
+
+  // Summary map for outliers
+  const summaryById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of themes) {
+      for (const i of t.issues) {
+        if (i.summary) map.set(i.issue_id, i.summary);
+      }
+    }
+    return map;
+  }, [themes]);
+
   if (isLoading) {
     return (
       <div className="work-type-print-view" style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
@@ -180,37 +208,22 @@ export default function PrintView() {
   }
 
   const { data, generated_at, team_set, dictionary_version, model_id, prompt_version } = report;
-  const { headline, totals, themes, outliers, recommendation, is_fallback_narrative } = data;
+  const { headline, totals, recommendation, is_fallback_narrative } = data;
 
   // Period label
   const monthName = month ? MONTH_NAMES[month] : undefined;
   const periodLabel = `${year} Q${quarter}${monthName ? ` · ${monthName}` : ''}`;
 
-  // Donut slices
-  const slices = buildSlices(themes, totals.hours);
-
-  // Top-3 themes (by hours)
-  const top3 = [...themes].sort((a, b) => b.totals.hours - a.totals.hours).slice(0, 3);
-
-  // Top-5 outliers
-  const top5outliers = outliers.slice(0, 5);
-
-  // Summary map for outliers
-  const summaryById = new Map<string, string>();
-  for (const t of themes) {
-    for (const i of t.issues) {
-      if (i.summary) summaryById.set(i.issue_id, i.summary);
-    }
-  }
-
   return (
     <div className="work-type-print-view">
       {/* Print button — hidden in actual print */}
       <div className="print-hide-btn" style={{ marginBottom: 20, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-        <Button icon={<PrinterOutlined />} type="primary" onClick={() => window.print()}>
-          Печать / PDF
-        </Button>
-        <Button onClick={() => window.close()}>Закрыть</Button>
+        <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+          <Button icon={<PrinterOutlined />} type="primary" onClick={() => window.print()}>
+            Печать / PDF
+          </Button>
+          <Button onClick={() => window.close()}>Закрыть</Button>
+        </ConfigProvider>
       </div>
 
       {/* ── Section 1: Title block ── */}
