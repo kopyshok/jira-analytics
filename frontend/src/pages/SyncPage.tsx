@@ -75,7 +75,8 @@ type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 const INITIATIVES_CODE = 'initiatives_rfa';
 
-function matchesTab(effective: string | null, tab: InnerTab): boolean {
+function matchesTab(effective: string | null, verified: boolean, tab: InnerTab): boolean {
+  if (!verified) return tab === 'stack';
   switch (tab) {
     case 'stack': return effective === null;
     case 'active':
@@ -251,7 +252,7 @@ export function CategoryConfigTab() {
         if (n.issue_type === 'group') return (n.children?.length ?? 0) > 0;
         if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
         if (n.is_context) return (n.children?.length ?? 0) > 0;
-        const selfMatches = matchesTab(effectiveFor(n), tab);
+        const selfMatches = matchesTab(effectiveFor(n), n.category_verified ?? true, tab);
         return selfMatches || (n.children?.length ?? 0) > 0;
       });
     return walk(issueTree.data ?? [], 0, null);
@@ -282,7 +283,7 @@ export function CategoryConfigTab() {
     const walk = (arr: TreeNodeWithChildren[]) => {
       arr.forEach(node => {
         if (node.issue_type !== 'group' && !node.is_context) {
-          if (matchesTab(effectiveFor(node), tab)) n++;
+          if (matchesTab(effectiveFor(node), node.category_verified ?? true, tab)) n++;
         }
         if (node.children) walk(node.children);
       });
