@@ -28,21 +28,24 @@ export default function ManualReviewBlock({ items, workTypeId, themes }: Props) 
   const setThemeId = (issueId: string, themeId: string | null) => {
     setRowState((prev) => ({
       ...prev,
-      [issueId]: { ...getRowState(issueId), themeId },
+      [issueId]: { ...(prev[issueId] ?? { themeId: null, saving: false }), themeId },
     }));
   };
 
   const handleAssign = (issueId: string) => {
     const state = getRowState(issueId);
     if (!state.themeId) return;
-    setRowState((prev) => ({ ...prev, [issueId]: { ...state, saving: true } }));
+    setRowState((prev) => ({
+      ...prev,
+      [issueId]: { ...(prev[issueId] ?? { themeId: null, saving: false }), saving: true },
+    }));
     classify.mutate(
       { issue_id: issueId, work_type_id: workTypeId, theme_id: state.themeId },
       {
         onSettled: () => {
           setRowState((prev) => ({
             ...prev,
-            [issueId]: { ...getRowState(issueId), saving: false },
+            [issueId]: { ...(prev[issueId] ?? { themeId: null, saving: false }), saving: false },
           }));
         },
       },

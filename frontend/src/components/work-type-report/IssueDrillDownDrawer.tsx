@@ -97,12 +97,14 @@ function ClassificationSection({
   themeName,
   contribution,
   needsManualClassify,
+  onClose,
 }: {
   issueId: string;
   workTypeId: string;
   themeName?: string | null;
   contribution?: string | null;
   needsManualClassify?: boolean;
+  onClose: () => void;
 }) {
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
   const { data: themeList } = useThemeList(workTypeId, false);
@@ -115,7 +117,10 @@ function ClassificationSection({
       message.warning('Выберите тему');
       return;
     }
-    classify.mutate({ issue_id: issueId, work_type_id: workTypeId, theme_id: selectedThemeId });
+    classify.mutate(
+      { issue_id: issueId, work_type_id: workTypeId, theme_id: selectedThemeId },
+      { onSuccess: () => onClose() },
+    );
   };
 
   return (
@@ -178,7 +183,8 @@ function DrawerContent({
   themeName,
   contribution,
   needsManualClassify,
-}: Omit<Props, 'open' | 'onClose'> & { issueId: string; issueKey: string }) {
+  onClose,
+}: Omit<Props, 'open'> & { issueId: string; issueKey: string }) {
   const { data: context, isLoading, isError, refetch } = useIssueContext(issueId);
 
   if (isLoading) {
@@ -315,6 +321,7 @@ function DrawerContent({
           themeName={themeName}
           contribution={contribution}
           needsManualClassify={needsManualClassify}
+          onClose={onClose}
         />
       </div>
     </div>
@@ -341,7 +348,6 @@ export default function IssueDrillDownDrawer({
       onClose={onClose}
       placement="right"
       width={600}
-      destroyOnClose={false}
       closable
       title={
         issueKey ? (
