@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -32,6 +32,7 @@ from app.models import (
     BacklogItem,
     Employee,
     EmployeeTeam,
+    Issue,
     PlanningScenario,
     RoleCapacityRule,
     ScenarioAbsenceSnapshot,
@@ -52,6 +53,8 @@ from app.services.capacity_service import CapacityService
 from app.services.resource_base_service import ResourceBaseService
 from app.services.snapshot_writer import SnapshotWriter
 from app.services.event_bus import EventBroadcaster, get_event_bus
+from app.services.backlog_service import BacklogService, BACKLOG_CATEGORY
+from app.services.category_resolver import CategoryResolver
 
 
 router = APIRouter()
@@ -987,21 +990,37 @@ async def list_scenario_allocations(
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
-    rows = (
+    query = (
         db.query(ScenarioAllocation, BacklogItem)
         .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
         .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
         .filter(ScenarioAllocation.scenario_id == scenario_id)
-        .order_by(
-            # Per-scenario manual order (sort_order). NULL — в конец как fallback.
+    )
+
+    if scenario.status == "draft":
+        allowed_issue_ids = (
+            db.query(Issue.id)
+            .filter(
+                Issue.category == BACKLOG_CATEGORY,
+                Issue.parent_id.is_(None),
+            )
+            .scalar_subquery()
+        )
+        query = query.filter(
+            or_(
+                BacklogItem.issue_id.is_(None),
+                BacklogItem.issue_id.in_(allowed_issue_ids),
+            )
+        )
+
+    rows = (
+        query.order_by(
             ScenarioAllocation.sort_order.is_(None),
             ScenarioAllocation.sort_order,
             BacklogItem.title,
         )
         .all()
     )
-    # Lookup для автоматического разрешения роли по имени из Jira, когда
-    # assignee_employee_id не заполнен вручную.
     active_employees = db.query(Employee).filter(Employee.is_active == True).all()  # noqa: E712
     emp_role_by_name = {e.display_name: e.role for e in active_employees if e.role}
     return [_to_allocation_resp(alloc, item, emp_role_by_name) for alloc, item in rows]
