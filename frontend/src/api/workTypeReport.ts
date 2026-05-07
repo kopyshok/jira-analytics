@@ -77,5 +77,5 @@ export const workTypeReportApi = {
 
   /** Download xlsx binary — used by toolbar (Task 12). Returns void; triggers browser download. */
   downloadXlsx: (snapshotId: string) =>
-    api.download(`/work-type-report/export/xlsx/${encodeURIComponent(snapshotId)}`),
+    api.download(`/work-type-report/export/${encodeURIComponent(snapshotId)}.xlsx`),
 };

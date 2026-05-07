@@ -7,8 +7,7 @@ import { useMandatoryWorkTypes } from '../../hooks/useMandatoryWorkTypes';
 import { useBuildWorkTypeReport } from '../../hooks/useWorkTypeReport';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
-import GlobalPeriodPicker from '../shared/GlobalPeriodPicker';
-import GlobalTeamFilterButton from '../Layout/GlobalTeamFilterButton';
+import { workTypeReportApi } from '../../api/workTypeReport';
 import type { WorkTypeReportResponse } from '../../types/workTypeReport';
 
 interface Props {
@@ -41,7 +40,7 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report }: Props)
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
 
-  const activeTypes = (workTypes ?? []).filter((wt) => wt.is_active);
+  const activeTypes = workTypes ?? [];
 
   const handleRebuild = () => {
     buildMutation.mutate({
@@ -56,9 +55,7 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report }: Props)
 
   const handleXlsx = () => {
     if (report?.snapshot_id) {
-      void import('../../api/workTypeReport').then(({ workTypeReportApi }) => {
-        workTypeReportApi.downloadXlsx(report.snapshot_id);
-      });
+      workTypeReportApi.downloadXlsx(report.snapshot_id);
     }
   };
 
@@ -89,12 +86,6 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report }: Props)
           </Radio.Button>
         ))}
       </Radio.Group>
-
-      {/* Team filter */}
-      <GlobalTeamFilterButton />
-
-      {/* Period picker */}
-      <GlobalPeriodPicker />
 
       {/* Freshness pill */}
       <FreshnessPill report={report} />

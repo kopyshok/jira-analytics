@@ -26,11 +26,11 @@ const PLACEHOLDER_STYLE: React.CSSProperties = {
 
 export default function WorkTypeReportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: workTypes } = useMandatoryWorkTypes();
+  const { data: workTypes, isLoading: wtLoading } = useMandatoryWorkTypes();
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
 
-  const activeTypes = (workTypes ?? []).filter((wt) => wt.is_active);
+  const activeTypes = workTypes ?? [];
 
   // Sync workTypeId to URL; default to first active type
   const urlWorkTypeId = searchParams.get('work_type_id');
@@ -73,6 +73,7 @@ export default function WorkTypeReportPage() {
   const report = reportQuery.data;
 
   const isLoading =
+    wtLoading ||
     (themesQuery.isLoading && !themesQuery.data) ||
     (reportQuery.isLoading && !reportQuery.data);
 

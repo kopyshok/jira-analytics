@@ -187,7 +187,7 @@ def test_export_xlsx_returns_blob(client, setup):
         "teams": [], "force_refresh": False,
     })
     snap_id = r.json()["snapshot_id"]
-    r = client.get(f"/api/v1/work-type-report/export/xlsx/{snap_id}")
+    r = client.get(f"/api/v1/work-type-report/export/{snap_id}.xlsx")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument")
     assert len(r.content) > 200  # non-empty xlsx

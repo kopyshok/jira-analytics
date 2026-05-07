@@ -317,7 +317,7 @@ def delete_layout(
     return {"ok": True}
 
 
-@router.get("/export/xlsx/{snapshot_id}")
+@router.get("/export/{snapshot_id}.xlsx")
 def export_xlsx(
     snapshot_id: str,
     db: Session = Depends(get_db),
