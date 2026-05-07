@@ -91,6 +91,110 @@ class GeminiProvider:
         }
         return ProjectSummary.model_validate(data), meta
 
+    async def classify_issue(self, prompt: str, themes_payload: list[dict]) -> tuple["ClassificationResult", dict]:
+        """Map-фаза тематического отчёта. Gemini без fallback-цепочки — single call."""
+        from app.services.llm.work_type_classifier import ClassificationResult
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "theme_id": {"type": "string", "nullable": True},
+                "candidate_name": {"type": "string", "nullable": True},
+                "contribution_text": {"type": "string", "nullable": True},
+                "confidence": {"type": "number"},
+            },
+            "required": ["theme_id", "confidence"],
+        }
+        body: dict[str, Any] = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+            },
+        }
+        url = f"{self._base}/{self.model}:generateContent?key={self.api_key}"
+        resp = await self._post(url, body)
+        text = resp["candidates"][0]["content"]["parts"][0]["text"]
+        obj = json.loads(text)
+
+        meta = {
+            "input_tokens": resp.get("usageMetadata", {}).get("promptTokenCount"),
+            "output_tokens": resp.get("usageMetadata", {}).get("candidatesTokenCount"),
+            "model": self.model,
+        }
+        valid_ids = {t["id"] for t in themes_payload}
+        tid = obj.get("theme_id")
+        if tid and tid not in valid_ids:
+            tid = None
+        return ClassificationResult(
+            theme_id=tid,
+            candidate_name=(obj.get("candidate_name") or "").strip()[:255] or None,
+            contribution_text=(obj.get("contribution_text") or "").strip()[:200] or None,
+            confidence=float(obj.get("confidence") or 0.0),
+            nature_tag=None,
+        ), meta
+
+    async def synthesize_work_type_report(self, prompt: str) -> tuple[dict, dict]:
+        """Reduce-фаза. Возвращает сырой JSON + meta. Validation делает caller."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "headline": {"type": "string"},
+                "themes_narratives": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "theme_id": {"type": "string", "nullable": True},
+                            "narrative": {"type": "string"},
+                            "evidence_keys": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["narrative"],
+                    },
+                },
+                "outliers_explanations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string"},
+                            "explanation": {"type": "string"},
+                        },
+                        "required": ["key", "explanation"],
+                    },
+                },
+                "recommendation": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "expected_impact": {"type": "string"},
+                    },
+                    "required": ["text", "expected_impact"],
+                },
+            },
+            "required": ["headline", "themes_narratives", "outliers_explanations", "recommendation"],
+        }
+        body: dict[str, Any] = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+            },
+        }
+        url = f"{self._base}/{self.model}:generateContent?key={self.api_key}"
+        resp = await self._post(url, body)
+        text = resp["candidates"][0]["content"]["parts"][0]["text"]
+        data = json.loads(text)
+
+        meta = {
+            "input_tokens": resp.get("usageMetadata", {}).get("promptTokenCount"),
+            "output_tokens": resp.get("usageMetadata", {}).get("candidatesTokenCount"),
+            "model": self.model,
+        }
+        return data, meta
+
     async def healthcheck(self) -> bool:
         """Минимальный prompt 'ping' — проверка ключа и соединения."""
         self.last_error = None

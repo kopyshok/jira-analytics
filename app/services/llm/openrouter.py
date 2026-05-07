@@ -91,19 +91,23 @@ class OpenRouterProvider:
             raise last_exc
         raise LLMResponseError("Не удалось вызвать ни одну модель OpenRouter (пустая цепочка)")
 
-    async def _call_model(self, model: str, prompt: str, *, expect_json: bool) -> tuple[ProjectSummary, dict]:
+    async def _call_json(self, model: str, prompt: str, schema: dict | None = None) -> tuple[dict, dict]:
+        """POST /chat/completions с опциональной JSON-схемой → (data_dict, meta).
+
+        Не валидирует содержимое — caller сам разбирает dict.
+        """
         body: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
         }
-        if expect_json:
+        if schema is not None:
             body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "project_summary",
+                    "name": "response",
                     "strict": True,
-                    "schema": GEMINI_RESPONSE_SCHEMA,
+                    "schema": schema,
                 },
             }
 
@@ -135,13 +139,120 @@ class OpenRouterProvider:
             "output_tokens": usage.get("completion_tokens"),
             "model": model,
         }
+        return data, meta
+
+    async def _call_model(self, model: str, prompt: str, *, expect_json: bool) -> tuple[ProjectSummary, dict]:
+        schema = GEMINI_RESPONSE_SCHEMA if expect_json else None
+        data, meta = await self._call_json(model, prompt, schema)
         try:
-            summary = ProjectSummary.model_validate(data)
+            return ProjectSummary.model_validate(data), meta
         except ValidationError as e:
-            raise LLMResponseError(
-                f"Модель {model} вернула JSON не по схеме: {e}"
-            ) from e
-        return summary, meta
+            raise LLMResponseError(f"Модель {model} вернула JSON не по схеме: {e}") from e
+
+    async def classify_issue(self, prompt: str, themes_payload: list[dict]) -> tuple["ClassificationResult", dict]:
+        """Map-фаза тематического отчёта. См. WorkTypeClassifier.
+
+        Возвращает ClassificationResult + meta. Использует fallback-цепочку.
+        """
+        from app.services.llm.work_type_classifier import ClassificationResult
+
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "theme_id": {"type": ["string", "null"]},
+                "candidate_name": {"type": ["string", "null"]},
+                "contribution_text": {"type": ["string", "null"], "maxLength": 200},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            "required": ["theme_id", "confidence"],
+        }
+        valid_ids = {t["id"] for t in themes_payload}
+        chain = [self.model] + [m for m in self.fallback_models if m and m != self.model]
+        last_exc: Exception | None = None
+        for model_id in chain:
+            try:
+                obj, meta = await self._call_json(model_id, prompt, schema)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in _RETRY_STATUSES:
+                    logger.warning("OpenRouter %s → HTTP %s, fallback", model_id, e.response.status_code)
+                    last_exc = e
+                    continue
+                raise
+            except (LLMResponseError, httpx.TimeoutException) as e:
+                logger.warning("OpenRouter %s classify_issue → %s, fallback", model_id, e)
+                last_exc = e
+                continue
+
+            tid = obj.get("theme_id")
+            if tid and tid not in valid_ids:
+                tid = None  # AI hallucinated id — treat as candidate
+            return ClassificationResult(
+                theme_id=tid,
+                candidate_name=(obj.get("candidate_name") or "").strip()[:255] or None,
+                contribution_text=(obj.get("contribution_text") or "").strip()[:200] or None,
+                confidence=float(obj.get("confidence") or 0.0),
+                nature_tag=None,
+            ), meta
+        if last_exc is not None:
+            raise last_exc
+        raise LLMResponseError("classify_issue: пустая цепочка моделей")
+
+    async def synthesize_work_type_report(self, prompt: str) -> tuple[dict, dict]:
+        """Reduce-фаза. Возвращает сырой JSON-ответ + meta. Validation делает caller."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "headline": {"type": "string", "maxLength": 200},
+                "themes_narratives": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "theme_id": {"type": ["string", "null"]},
+                            "narrative": {"type": "string"},
+                            "evidence_keys": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["narrative"],
+                    },
+                },
+                "outliers_explanations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string"},
+                            "explanation": {"type": "string"},
+                        },
+                        "required": ["key", "explanation"],
+                    },
+                },
+                "recommendation": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "expected_impact": {"type": "string"},
+                    },
+                    "required": ["text", "expected_impact"],
+                },
+            },
+            "required": ["headline", "themes_narratives", "outliers_explanations", "recommendation"],
+        }
+        chain = [self.model] + [m for m in self.fallback_models if m and m != self.model]
+        last_exc: Exception | None = None
+        for model_id in chain:
+            try:
+                return await self._call_json(model_id, prompt, schema)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in _RETRY_STATUSES:
+                    last_exc = e
+                    continue
+                raise
+            except (LLMResponseError, httpx.TimeoutException) as e:
+                last_exc = e
+                continue
+        if last_exc is not None:
+            raise last_exc
+        raise LLMResponseError("synthesize_work_type_report: пустая цепочка моделей")
 
     async def healthcheck(self) -> bool:
         """Проверяет валидность ключа через `/auth/key` — не тратит квоту модели.
