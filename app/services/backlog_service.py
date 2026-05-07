@@ -117,7 +117,7 @@ class BacklogService:
             existing.estimate_hours = total or None
             existing.archived_at = None
             self.db.flush()
-            if is_new or was_archived:
+            if (is_new or was_archived) and issue.parent_id is None:
                 self._ensure_draft_allocations(existing.id)
             return existing
 
