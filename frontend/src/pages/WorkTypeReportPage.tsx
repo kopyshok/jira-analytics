@@ -1,17 +1,21 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Card, Spin } from 'antd';
+import { Card, Col, Row, Spin } from 'antd';
 import PageHeader from '../components/shared/PageHeader';
 import Toolbar from '../components/work-type-report/Toolbar';
 import AiHeadline from '../components/work-type-report/AiHeadline';
 import KpiRow from '../components/work-type-report/KpiRow';
 import EmptyState from '../components/work-type-report/EmptyState';
+import ThemeDistribution from '../components/work-type-report/ThemeDistribution';
+import GroupingControl from '../components/work-type-report/GroupingControl';
+import HierarchyTable from '../components/work-type-report/HierarchyTable';
 import { useThemeList } from '../hooks/useThemeDictionary';
 import { useWorkTypeReport } from '../hooks/useWorkTypeReport';
 import { useMandatoryWorkTypes } from '../hooks/useMandatoryWorkTypes';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { DARK_THEME } from '../utils/constants';
+import type { GroupingDim } from '../types/workTypeReport';
 
 const PLACEHOLDER_STYLE: React.CSSProperties = {
   background: DARK_THEME.darkRows,
@@ -29,6 +33,9 @@ export default function WorkTypeReportPage() {
   const { data: workTypes, isLoading: wtLoading } = useMandatoryWorkTypes();
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
+
+  const [groupingDims, setGroupingDims] = useState<GroupingDim[]>(['theme', 'issue']);
+  const [highlightThemeId, setHighlightThemeId] = useState<string | null>(null);
 
   const activeTypes = workTypes ?? [];
 
@@ -103,20 +110,42 @@ export default function WorkTypeReportPage() {
             </>
           )}
 
-          {/* Placeholder — Task 13: theme distribution + hierarchy */}
-          <Card style={PLACEHOLDER_STYLE as React.CSSProperties}>
-            <span>Распределение тем — Task 13</span>
-          </Card>
+          {report && (
+            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+              <Col xs={24} lg={10}>
+                <ThemeDistribution
+                  themes={report.data.themes}
+                  totalHours={report.data.totals.hours}
+                  onThemeClick={setHighlightThemeId}
+                />
+              </Col>
+              <Col xs={24} lg={14}>
+                {/* Placeholder — Task 14: outliers + recommendation */}
+                <Card style={PLACEHOLDER_STYLE as React.CSSProperties}>
+                  <span>Outliers / Рекомендация — Task 14</span>
+                </Card>
+              </Col>
+            </Row>
+          )}
 
-          {/* Placeholder — Task 13: theme hierarchy table */}
-          <Card style={PLACEHOLDER_STYLE as React.CSSProperties}>
-            <span>Иерархия — Task 13</span>
-          </Card>
+          {report && (
+            <GroupingControl
+              workTypeId={workTypeId!}
+              groupingDims={groupingDims}
+              onChange={setGroupingDims}
+            />
+          )}
 
-          {/* Placeholder — Task 14: outliers + recommendation */}
-          <Card style={PLACEHOLDER_STYLE as React.CSSProperties}>
-            <span>Outliers / Рекомендация — Task 14</span>
-          </Card>
+          {report && (
+            <HierarchyTable
+              themes={report.data.themes}
+              groupingDims={groupingDims}
+              highlightThemeId={highlightThemeId}
+              onIssueClick={() => {
+                /* Task 14: wire to IssueDrillDownDrawer */
+              }}
+            />
+          )}
         </>
       )}
     </div>
