@@ -54,7 +54,7 @@ interface ThemeEditModalContentProps {
 function ThemeEditModalContent({ initial, workTypeId, isCreate, onClose }: ThemeEditModalContentProps) {
   const [name, setName] = useState(initial.name ?? '');
   const [description, setDescription] = useState(initial.description ?? '');
-  const [color, setColor] = useState(initial.color ?? '#00c9c8');
+  const [color, setColor] = useState(initial.color ?? DARK_THEME.cyanPrimary);
   const [sortOrder, setSortOrder] = useState<number>(initial.sort_order ?? 0);
 
   const createMutation = useCreateTheme();
@@ -140,7 +140,7 @@ interface AcceptModalContentProps {
 
 function AcceptModalContent({ candidate, snapshotId, onClose }: AcceptModalContentProps) {
   const [name, setName] = useState(candidate.proposed_name);
-  const [color, setColor] = useState('#00c9c8');
+  const [color, setColor] = useState(DARK_THEME.cyanPrimary);
   const mutation = useAcceptCandidate();
 
   const handleOk = () => {
@@ -584,10 +584,6 @@ export default function ThemeDictionaryDrawer({
   snapshotId,
   onClose,
 }: Props) {
-  // activeKey initializes from initialTab; changes are user-driven.
-  // When the drawer re-opens on a different tab, `key` on Tabs resets it.
-  const [activeKey, setActiveKey] = useState<string>(initialTab);
-
   // We need active themes for the candidate merge dropdown
   const { data: activeThemesData } = useThemeList(workTypeId, false);
   const activeThemes = activeThemesData?.themes ?? [];
@@ -625,12 +621,9 @@ export default function ThemeDictionaryDrawer({
         header: { background: DARK_THEME.cardBg, borderBottom: `1px solid ${DARK_THEME.border}` },
       }}
     >
-      {/* key resets tab selection when drawer opens on a different initialTab */}
       <Tabs
         key={open ? initialTab : 'closed'}
-        activeKey={activeKey}
         defaultActiveKey={initialTab}
-        onChange={setActiveKey}
         items={items}
         size="small"
       />

@@ -14,7 +14,7 @@ interface Props {
   workTypeId: string;
   onWorkTypeChange: (id: string) => void;
   report: WorkTypeReportResponse | undefined;
-  onOpenDictionary?: () => void;
+  onOpenDictionary: () => void;
 }
 
 function FreshnessPill({ report }: { report: WorkTypeReportResponse | undefined }) {
