@@ -3,6 +3,7 @@ import { Menu } from 'antd';
 import {
   DashboardOutlined,
   BarChartOutlined,
+  BulbOutlined,
   ProjectOutlined,
   SyncOutlined,
   TeamOutlined,
@@ -29,6 +30,7 @@ export default function SideMenu() {
         { key: '/', icon: <DashboardOutlined />, label: 'Дашборд' },
         { key: '/projects', icon: <ProjectOutlined />, label: 'Проекты' },
         { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
+        { key: '/analytics/work-type-report', icon: <BulbOutlined />, label: 'Тематический отчёт' },
       ],
     },
     {

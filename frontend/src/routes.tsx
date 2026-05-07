@@ -20,6 +20,7 @@ import {
   SettingsPage,
   SyncHubPage,
   SyncPage,
+  WorkTypeReportPage,
 } from './pages/lazyPages';
 import LoginPage from './pages/LoginPage';
 
@@ -69,6 +70,7 @@ export const router = createBrowserRouter([
           { path: 'projects', element: <ProtectedRoute>{page(<ProjectsPage />)}</ProtectedRoute> },
           { path: 'projects/:key', element: <ProtectedRoute>{page(<ProjectsPage />)}</ProtectedRoute> },
           { path: 'analytics', element: <ProtectedRoute>{page(<AnalyticsPage />)}</ProtectedRoute> },
+          { path: 'analytics/work-type-report', element: <ProtectedRoute>{page(<WorkTypeReportPage />)}</ProtectedRoute> },
           { path: 'sync', element: <ProtectedRoute>{page(<SyncHubPage />)}</ProtectedRoute> },
           { path: 'sync-old', element: <ProtectedRoute>{page(<SyncPage />)}</ProtectedRoute> },
           { path: 'categories', element: <ProtectedRoute>{page(<CategoriesEditorPage />)}</ProtectedRoute> },
