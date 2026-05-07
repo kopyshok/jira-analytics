@@ -652,14 +652,10 @@ class SyncService:
             data,
         )
         if created:
-            auto_verify = False
-            if parent_id:
-                parent = self.db.get(Issue, parent_id)
-                if (parent
-                        and parent.category_verified
-                        and not parent.require_child_verification):
-                    auto_verify = True
-            issue.category_verified = auto_verify
+            # Все новые задачи идут в «Стек задач к разбору».
+            # require_child_verification на родителе — только UI-подсказка при
+            # верификации; не влияет на попадание в стек при синке.
+            issue.category_verified = False
         return issue, created
     
     async def sync_issues(
