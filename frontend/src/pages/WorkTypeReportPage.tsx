@@ -82,12 +82,6 @@ export default function WorkTypeReportPage() {
     <div>
       <PageHeader eyebrow="АНАЛИТИКА" title="Тематический отчёт" />
 
-      <Toolbar
-        workTypeId={workTypeId ?? ''}
-        onWorkTypeChange={handleWorkTypeChange}
-        report={report}
-      />
-
       {isLoading ? (
         <div style={{ display: 'grid', placeItems: 'center', minHeight: 300 }}>
           <Spin size="large" />
@@ -96,6 +90,11 @@ export default function WorkTypeReportPage() {
         <EmptyState workTypeId={workTypeId} />
       ) : (
         <>
+          <Toolbar
+            workTypeId={workTypeId ?? ''}
+            onWorkTypeChange={handleWorkTypeChange}
+            report={report}
+          />
           {report && (
             <>
               <AiHeadline report={report} />
