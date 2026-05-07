@@ -76,3 +76,26 @@ def test_list_active_excludes_archived(db_session, wt):
     svc.archive_theme(b.id)
     active = svc.list_active(wt.id)
     assert [t.id for t in active] == [a.id]
+
+
+def test_restore_theme_bumps_version(db_session, wt):
+    svc = ThemeDictionaryService(db_session)
+    t = svc.create_theme(work_type_id=wt.id, name="A")
+    svc.archive_theme(t.id)
+    db_session.refresh(wt)
+    v = wt.theme_dict_version
+    svc.restore_theme(t.id)
+    db_session.refresh(wt); db_session.refresh(t)
+    assert t.is_archived is False
+    assert wt.theme_dict_version == v + 1
+
+
+def test_restore_active_theme_is_noop(db_session, wt):
+    """Restoring an already-active theme should not bump version."""
+    svc = ThemeDictionaryService(db_session)
+    t = svc.create_theme(work_type_id=wt.id, name="A")
+    db_session.refresh(wt)
+    v = wt.theme_dict_version
+    svc.restore_theme(t.id)
+    db_session.refresh(wt)
+    assert wt.theme_dict_version == v

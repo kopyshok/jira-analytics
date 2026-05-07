@@ -51,7 +51,11 @@ class ThemeDictionaryService:
     ) -> Theme:
         """Создать новую тему и поднять версию словаря."""
         existing = self.db.execute(
-            select(Theme).where(Theme.work_type_id == work_type_id, Theme.name == name)
+            select(Theme).where(
+                Theme.work_type_id == work_type_id,
+                Theme.name == name,
+                Theme.is_archived.is_(False),
+            )
         ).scalar_one_or_none()
         if existing:
             raise ValueError(f"Theme '{name}' already exists for work_type={work_type_id}")
@@ -78,7 +82,7 @@ class ThemeDictionaryService:
         color: Optional[str] = None,
         sort_order: Optional[int] = None,
     ) -> Theme:
-        """Обновить поля темы; поднять версию словаря если было изменение."""
+        """Обновить тему. None в любом параметре = «не менять»."""
         t = self.db.get(Theme, theme_id)
         if not t:
             raise ValueError(f"Theme {theme_id} not found")
@@ -89,6 +93,7 @@ class ThemeDictionaryService:
                     Theme.work_type_id == t.work_type_id,
                     Theme.name == name,
                     Theme.id != t.id,
+                    Theme.is_archived.is_(False),
                 )
             ).scalar_one_or_none()
             if dup:
@@ -134,11 +139,8 @@ class ThemeDictionaryService:
         self.db.refresh(t)
         return t
 
-    def merge_theme(self, *, src_id: str, dst_id: str) -> None:
-        """Перенести все классификации из src в dst, src архивировать.
-
-        Операция атомарна: все изменения фиксируются в одной транзакции.
-        """
+    def merge_theme(self, *, src_id: str, dst_id: str) -> Theme:
+        """Перенести все классификации из src в dst, src архивировать."""
         src = self.db.get(Theme, src_id)
         dst = self.db.get(Theme, dst_id)
         if not src or not dst:
@@ -153,6 +155,8 @@ class ThemeDictionaryService:
         src.is_archived = True
         self._bump_version(src.work_type_id)
         self.db.commit()
+        self.db.refresh(dst)
+        return dst
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -161,5 +165,6 @@ class ThemeDictionaryService:
     def _bump_version(self, work_type_id: str) -> None:
         """Инкрементировать theme_dict_version для вида работ."""
         wt = self.db.get(MandatoryWorkType, work_type_id)
-        if wt:
-            wt.theme_dict_version = (wt.theme_dict_version or 0) + 1
+        if not wt:
+            raise ValueError(f"MandatoryWorkType {work_type_id} not found")
+        wt.theme_dict_version = (wt.theme_dict_version or 0) + 1
