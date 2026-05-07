@@ -8,17 +8,13 @@ interface Props {
   onIssueClick?: (issueKey: string) => void;
 }
 
-const ISSUE_KEY_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
-
 function renderNarrative(
   text: string,
   onIssueClick?: (k: string) => void,
 ): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  ISSUE_KEY_RE.lastIndex = 0;
-  while ((match = ISSUE_KEY_RE.exec(text)) !== null) {
+  for (const match of text.matchAll(/\b([A-Z][A-Z0-9]+-\d+)\b/g)) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
