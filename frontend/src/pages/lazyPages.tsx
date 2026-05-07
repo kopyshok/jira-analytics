@@ -15,3 +15,4 @@ export const ResourcePlanningV2Page = lazy(() => import('./ResourcePlanningV2Pag
 export const ResourcePlanningV3Page = lazy(() => import('./ResourcePlanningV3Page'));
 export const ScenarioComparatorPage = lazy(() => import('./ScenarioComparatorPage'));
 export const WorkTypeReportPage = lazy(() => import('./WorkTypeReportPage'));
+export const WorkTypeReportPrintPage = lazy(() => import('./WorkTypeReportPrintPage'));

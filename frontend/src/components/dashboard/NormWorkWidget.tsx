@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form } from 'antd';
-import { SettingOutlined } from '@ant-design/icons';
+import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form, Button } from 'antd';
+import { SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
+import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
+import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import type {
   DashboardNormWorkResponse,
   NormWorkRoleGroup,
@@ -45,7 +47,14 @@ function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: s
   );
 }
 
-function WorkTypeRow({ wt, t, onOpen }: { wt: NormWorkTypeBreakdown; t: Thresholds; onOpen?: () => void }) {
+function WorkTypeRow({
+  wt, t, onOpen, onOpenThematic,
+}: {
+  wt: NormWorkTypeBreakdown;
+  t: Thresholds;
+  onOpen?: () => void;
+  onOpenThematic?: () => void;
+}) {
   // План 0 + факт > 0 = всегда перегруз (например, чужие/прочие задачи без выделенного плана)
   const overflowZeroPlan = wt.plan_hours === 0 && wt.fact_hours > 0;
   const color = overflowZeroPlan ? '#ff4d4f' : statusColor(wt.pct, t);
@@ -54,7 +63,7 @@ function WorkTypeRow({ wt, t, onOpen }: { wt: NormWorkTypeBreakdown; t: Threshol
     : (overflowZeroPlan ? 100 : 0);
   return (
     <div onClick={onOpen} style={{
-      display: 'grid', gridTemplateColumns: '1fr auto 60px',
+      display: 'grid', gridTemplateColumns: '1fr auto 60px auto',
       gap: 8, alignItems: 'center', padding: '3px 0',
       cursor: onOpen ? 'pointer' : 'default',
     }}>
@@ -77,16 +86,41 @@ function WorkTypeRow({ wt, t, onOpen }: { wt: NormWorkTypeBreakdown; t: Threshol
       }}>
         {Math.round(wt.fact_hours)}/{Math.round(wt.plan_hours)}
       </span>
+      {onOpenThematic ? (
+        <Tooltip title="Тематический отчёт">
+          <Button
+            type="link"
+            size="small"
+            icon={<BarChartOutlined />}
+            style={{ padding: 0, height: 'auto', color: '#00c9c8' }}
+            onClick={(e) => { e.stopPropagation(); onOpenThematic(); }}
+          />
+        </Tooltip>
+      ) : (
+        <span />
+      )}
     </div>
   );
 }
 
 function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWorkRoleGroup; t: Thresholds }) {
   const navigate = useNavigate();
+  const { period } = useGlobalPeriod();
+  const { selectedTeams } = useGlobalTeamFilter();
   const color = statusColor(emp.pct, t);
   const openAnalytics = (extra: Record<string, string> = {}) => {
     const params = new URLSearchParams({ employee: emp.employee_id, ...extra });
     navigate(`/analytics?${params.toString()}`);
+  };
+  const openThematic = (wt: NormWorkTypeBreakdown) => {
+    const params = new URLSearchParams({
+      work_type_id: wt.work_type_id,
+      year: String(period.year),
+      quarter: String(period.quarter),
+      ...(period.month != null ? { month: String(period.month) } : {}),
+      ...(selectedTeams.length > 0 ? { teams: selectedTeams.join(',') } : {}),
+    });
+    navigate(`/analytics/work-type-report?${params.toString()}`);
   };
   return (
     <div style={{ paddingBottom: 12, borderBottom: '1px solid rgba(28,51,88,.5)', marginBottom: 12 }}>
@@ -118,6 +152,7 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
             wt={wt}
             t={t}
             onOpen={wt.work_type_code ? () => openAnalytics({ work_type: wt.work_type_code! }) : undefined}
+            onOpenThematic={() => openThematic(wt)}
           />
         ))}
       </div>

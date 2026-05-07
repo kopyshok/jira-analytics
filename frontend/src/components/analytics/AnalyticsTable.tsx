@@ -1,8 +1,10 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { Button, Table, Tag } from 'antd';
+import { Button, Table, Tag, Tooltip } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
+import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
+import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import type { ColumnsType } from 'antd/es/table/interface';
 import type { Key } from 'react';
 import type {
@@ -240,7 +242,15 @@ function buildWorkTypeNode(
   periodStart: string,
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
+  thematicParams: URLSearchParams | null,
 ): TreeNode {
+  const thematicUrl = thematicParams
+    ? `/analytics/work-type-report?${new URLSearchParams({
+        ...Object.fromEntries(thematicParams),
+        work_type_id: w.work_type_id,
+      }).toString()}`
+    : null;
+
   return {
     key: `${prefix}/w:${w.work_type_id}`,
     kind: 'wt',
@@ -259,6 +269,20 @@ function buildWorkTypeNode(
           }}
         />
         <span style={{ fontWeight: 500 }}>{w.label}</span>
+        {thematicUrl && (
+          <Tooltip title="Тематический отчёт">
+            <Button
+              type="link"
+              size="small"
+              icon={<ArrowRightOutlined />}
+              style={{ padding: '0 2px', height: 'auto', color: '#00c9c8', marginLeft: 2 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(thematicUrl);
+              }}
+            />
+          </Tooltip>
+        )}
       </span>,
     ),
     totals: w.totals,
@@ -285,6 +309,7 @@ function buildEmployeeNode(
   periodStart: string,
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
+  thematicParams: URLSearchParams | null,
 ): TreeNode {
   const initials = e.initials || initialsOf(e.name);
   return {
@@ -324,6 +349,7 @@ function buildEmployeeNode(
         periodStart,
         periodEnd,
         navigate,
+        thematicParams,
       ),
     ),
   };
@@ -337,6 +363,7 @@ function buildRoleNode(
   periodStart: string,
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
+  thematicParams: URLSearchParams | null,
 ): TreeNode {
   return {
     key: `${prefix}/r:${r.role_code}`,
@@ -371,6 +398,7 @@ function buildRoleNode(
         periodStart,
         periodEnd,
         navigate,
+        thematicParams,
       ),
     ),
   };
@@ -382,6 +410,7 @@ function buildTeamNode(
   periodStart: string,
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
+  thematicParams: URLSearchParams | null,
 ): TreeNode {
   const prefix = `team:${t.team || '_none'}`;
   return {
@@ -391,7 +420,7 @@ function buildTeamNode(
     label: indent(0, <b>{t.team || 'Без команды'}</b>),
     totals: t.totals,
     children: t.roles.map((r) =>
-      buildRoleNode(r, prefix, 1, worklogMode, periodStart, periodEnd, navigate),
+      buildRoleNode(r, prefix, 1, worklogMode, periodStart, periodEnd, navigate, thematicParams),
     ),
   };
 }
@@ -414,7 +443,17 @@ export default function AnalyticsTable({
   const { visible } = useAnalyticsColumns();
   const visibleSet = new Set(visible);
   const navigate = useNavigate();
+  const { period } = useGlobalPeriod();
+  const { selectedTeams } = useGlobalTeamFilter();
   const [drawerIssue, setDrawerIssue] = useState<{ id: string; key: string } | null>(null);
+
+  // Params for thematic report deep-links (work_type_id is added per-row)
+  const thematicBaseParams = new URLSearchParams({
+    year: String(period.year),
+    quarter: String(period.quarter),
+    ...(period.month != null ? { month: String(period.month) } : {}),
+    ...(selectedTeams.length > 0 ? { teams: selectedTeams.join(',') } : {}),
+  });
 
   const expandedStorageKey = `analytics-tree-expanded:${selectedTeam}`;
   const [expandedRowKeys, setExpandedRowKeys] = useState<readonly Key[]>(() => {
@@ -453,7 +492,7 @@ export default function AnalyticsTable({
       : data.teams.filter((t) => (t.team || '_none_') === selectedTeam);
 
   const tableData: TreeNode[] = teams.map((t) =>
-    buildTeamNode(t, worklogMode, periodStart, periodEnd, navigate),
+    buildTeamNode(t, worklogMode, periodStart, periodEnd, navigate, thematicBaseParams),
   );
 
   const isBlock = (r: TreeNode) => r.kind === 'worklog-block';

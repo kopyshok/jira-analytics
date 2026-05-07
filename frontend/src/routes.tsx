@@ -21,6 +21,7 @@ import {
   SyncHubPage,
   SyncPage,
   WorkTypeReportPage,
+  WorkTypeReportPrintPage,
 } from './pages/lazyPages';
 import LoginPage from './pages/LoginPage';
 
@@ -84,6 +85,10 @@ export const router = createBrowserRouter([
           { path: 'resource-planning/compare', element: <ProtectedRoute>{page(<ScenarioComparatorPage />)}</ProtectedRoute> },
           { path: 'settings', element: <ProtectedRoute adminOnly>{page(<SettingsPage />)}</ProtectedRoute> },
         ],
+      },
+      {
+        path: '/analytics/work-type-report/print',
+        element: <ProtectedRoute>{page(<WorkTypeReportPrintPage />)}</ProtectedRoute>,
       },
       {
         path: '/login',

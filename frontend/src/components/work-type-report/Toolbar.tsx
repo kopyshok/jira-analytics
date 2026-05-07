@@ -122,7 +122,17 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDi
         <Button
           icon={<PrinterOutlined />}
           size="small"
-          onClick={() => {/* Task 16 */}}
+          disabled={!workTypeId}
+          onClick={() => {
+            const params = new URLSearchParams({
+              work_type_id: workTypeId,
+              year: String(period.year),
+              quarter: String(period.quarter),
+              ...(period.month != null ? { month: String(period.month) } : {}),
+              ...(selectedTeams.length > 0 ? { teams: selectedTeams.join(',') } : {}),
+            });
+            window.open(`/analytics/work-type-report/print?${params.toString()}`, '_blank');
+          }}
         >
           PDF для руководства
         </Button>
