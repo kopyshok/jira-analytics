@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, boolParam } from './client';
 import type {
   ThemeListResponse,
   ThemeOut,
@@ -15,7 +15,7 @@ export const themesApi = {
   ) =>
     api.get<ThemeListResponse>(
       '/themes',
-      { work_type_id: workTypeId, include_archived: includeArchived ? 'true' : 'false' },
+      { work_type_id: workTypeId, include_archived: boolParam(includeArchived) },
       signal,
     ),
 

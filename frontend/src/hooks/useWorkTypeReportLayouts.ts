@@ -50,10 +50,10 @@ export function useUpdateLayout() {
 export function useDeleteLayout() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ layoutId, workTypeId }: { layoutId: string; workTypeId: string }) =>
-      workTypeReportApi.deleteLayout(layoutId).then((r) => ({ ...r, workTypeId })),
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: layoutListKey(data.workTypeId) });
+    mutationFn: ({ layoutId }: { layoutId: string; workTypeId: string }) =>
+      workTypeReportApi.deleteLayout(layoutId),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: layoutListKey(vars.workTypeId) });
       message.success('Макет удалён');
     },
     onError: (e: unknown) => {
