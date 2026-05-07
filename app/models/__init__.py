@@ -48,6 +48,10 @@ from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.plan_item_dependency import PlanItemDependency
 from app.models.plan_conflict import PlanConflict
 from app.models.confluence_page_cache import ConfluencePageCache
+from app.models.theme import Theme
+from app.models.issue_classification import IssueClassification
+from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
+from app.models.work_type_report_layout import WorkTypeReportLayout
 
 __all__ = [
     "TimestampMixin",
@@ -101,4 +105,8 @@ __all__ = [
     "PlanItemDependency",
     "PlanConflict",
     "ConfluencePageCache",
+    "Theme",
+    "IssueClassification",
+    "WorkTypeReportSnapshot",
+    "WorkTypeReportLayout",
 ]
