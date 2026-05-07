@@ -88,6 +88,12 @@ class Issue(Base, SyncedMixin):
     risk: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    category_verified: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="1", nullable=False
+    )
+    require_child_verification: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
     include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=True)
     # Задача попала в БД только через worklog автора (Bucket B) — не входит в
     # основной scope проекта. Используется для фильтрации в аналитике.
