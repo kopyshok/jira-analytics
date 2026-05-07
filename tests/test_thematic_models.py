@@ -35,23 +35,28 @@ def test_theme_unique_per_work_type(db_session):
 
 def test_snapshot_unique_key(db_session):
     wt = MandatoryWorkType(code="t3", label="T3", sort_order=1)
-    db_session.add(wt)
-    db_session.commit()
+    db_session.add(wt); db_session.commit()
     s = WorkTypeReportSnapshot(
-        work_type_id=wt.id,
-        year=2026,
-        quarter=2,
-        month=4,
-        start_date=date(2026, 4, 1),
-        end_date=date(2026, 4, 30),
-        team_set_hash="abc",
-        team_set_json=json.dumps([]),
-        snapshot_data=json.dumps({}),
-        dictionary_version=1,
+        work_type_id=wt.id, year=2026, quarter=2, month=4,
+        start_date=date(2026,4,1), end_date=date(2026,4,30),
+        team_set_hash="abc", team_set_json=json.dumps([]),
+        snapshot_data=json.dumps({}), dictionary_version=1,
     )
-    db_session.add(s)
-    db_session.commit()
+    db_session.add(s); db_session.commit()
     assert s.id
+
+    # Duplicate (same key) should fail
+    dup = WorkTypeReportSnapshot(
+        work_type_id=wt.id, year=2026, quarter=2, month=4,
+        start_date=date(2026,4,1), end_date=date(2026,4,30),
+        team_set_hash="abc", team_set_json=json.dumps([]),
+        snapshot_data=json.dumps({}), dictionary_version=2,
+    )
+    db_session.add(dup)
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+    with pytest.raises(IntegrityError):
+        db_session.commit()
 
 
 def test_work_type_has_dict_version(db_session):

@@ -27,3 +27,6 @@ class WorkTypeReportSnapshot(Base):
     prompt_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     created_by: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<WorkTypeReportSnapshot wt={self.work_type_id} {self.year}Q{self.quarter}{f'/{self.month:02d}' if self.month else ''}>"

@@ -1,14 +1,13 @@
 """IssueClassification — Map-phase cache (per issue × work type)."""
 from typing import Optional
-from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.models.base import generate_uuid
+from app.models.base import TimestampMixin, generate_uuid
 
 
-class IssueClassification(Base):
+class IssueClassification(Base, TimestampMixin):
     __tablename__ = "issue_classifications"
     __table_args__ = (UniqueConstraint("issue_id", "work_type_id", name="uq_classifications_issue_wt"),)
 
@@ -26,5 +25,6 @@ class IssueClassification(Base):
     dictionary_version: Mapped[int] = mapped_column(Integer, nullable=False)
     failed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     failure_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<IssueClassification issue={self.issue_id} wt={self.work_type_id} theme={self.theme_id}>"
