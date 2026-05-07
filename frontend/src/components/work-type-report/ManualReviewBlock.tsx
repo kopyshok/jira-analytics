@@ -19,6 +19,7 @@ interface RowState {
 export default function ManualReviewBlock({ items, workTypeId, themes }: Props) {
   const classify = useManualClassify();
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
+  const [processedIssueIds, setProcessedIssueIds] = useState<Set<string>>(new Set());
 
   if (items.length === 0) return null;
 
@@ -42,6 +43,9 @@ export default function ManualReviewBlock({ items, workTypeId, themes }: Props) 
     classify.mutate(
       { issue_id: issueId, work_type_id: workTypeId, theme_id: state.themeId },
       {
+        onSuccess: () => {
+          setProcessedIssueIds((prev) => new Set([...prev, issueId]));
+        },
         onSettled: () => {
           setRowState((prev) => ({
             ...prev,
@@ -97,16 +101,21 @@ export default function ManualReviewBlock({ items, workTypeId, themes }: Props) 
       title: 'Тема',
       key: 'theme',
       width: 180,
-      render: (_, row) => (
-        <Select
-          placeholder="Тема"
-          size="small"
-          style={{ width: '100%' }}
-          value={getRowState(row.issue_id).themeId}
-          onChange={(v) => setThemeId(row.issue_id, v)}
-          options={themeOptions}
-        />
-      ),
+      render: (_, row) => {
+        const state = getRowState(row.issue_id);
+        const isProcessed = processedIssueIds.has(row.issue_id);
+        return (
+          <Select
+            placeholder="Тема"
+            size="small"
+            style={{ width: '100%' }}
+            value={state.themeId}
+            onChange={(v) => setThemeId(row.issue_id, v)}
+            options={themeOptions}
+            disabled={state.saving || isProcessed}
+          />
+        );
+      },
     },
     {
       title: '',
@@ -114,15 +123,16 @@ export default function ManualReviewBlock({ items, workTypeId, themes }: Props) 
       width: 90,
       render: (_, row) => {
         const state = getRowState(row.issue_id);
+        const isProcessed = processedIssueIds.has(row.issue_id);
         return (
           <Button
             size="small"
             type="primary"
             loading={state.saving}
-            disabled={!state.themeId}
+            disabled={!state.themeId || isProcessed}
             onClick={() => handleAssign(row.issue_id)}
           >
-            Назначить
+            {isProcessed ? 'Готово' : 'Назначить'}
           </Button>
         );
       },
@@ -144,14 +154,20 @@ export default function ManualReviewBlock({ items, workTypeId, themes }: Props) 
           key: 'manual-review',
           label: header,
           children: (
-            <Table<ManualReviewIssue>
-              dataSource={items}
-              columns={columns}
-              rowKey="issue_id"
-              pagination={false}
-              size="small"
-              style={{ background: DARK_THEME.cardBg }}
-            />
+            <>
+              <Table<ManualReviewIssue>
+                dataSource={items}
+                columns={columns}
+                rowKey="issue_id"
+                pagination={false}
+                size="small"
+                style={{ background: DARK_THEME.cardBg }}
+                rowClassName={(row) =>
+                  processedIssueIds.has(row.issue_id) ? 'manual-review-processed' : ''
+                }
+              />
+              <style>{`.manual-review-processed td { opacity: 0.5; }`}</style>
+            </>
           ),
         }]}
         style={{

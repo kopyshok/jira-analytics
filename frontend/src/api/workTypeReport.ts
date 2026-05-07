@@ -7,7 +7,6 @@ import type {
   ManualClassifyRequest,
   LayoutOut,
   LayoutCreateRequest,
-  LayoutUpdateRequest,
 } from '../types/workTypeReport';
 
 export interface GetReportParams {
@@ -68,9 +67,6 @@ export const workTypeReportApi = {
 
   createLayout: (body: LayoutCreateRequest) =>
     api.post<LayoutOut>('/work-type-report/layouts', body),
-
-  updateLayout: (layoutId: string, body: LayoutUpdateRequest) =>
-    api.patch<LayoutOut>(`/work-type-report/layouts/${encodeURIComponent(layoutId)}`, body),
 
   deleteLayout: (layoutId: string) =>
     api.del<{ ok: true }>(`/work-type-report/layouts/${encodeURIComponent(layoutId)}`),

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { Spin, Button, ConfigProvider, theme } from 'antd';
 import { PrinterOutlined } from '@ant-design/icons';
@@ -6,50 +6,13 @@ import { PieChart, Pie, Cell } from 'recharts';
 import { useWorkTypeReport } from '../../hooks/useWorkTypeReport';
 import { FONTS, MONTH_NAMES } from '../../utils/constants';
 import type { Theme, Outlier } from '../../types/workTypeReport';
+import { buildSlices, REASON_LABELS } from './utils';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 
 dayjs.locale('ru');
 
-// Reason code → human label
-const REASON_LABELS: Record<string, string> = {
-  high_hours: 'Часы выше нормы',
-  many_reopens: 'Часто переоткрывалась',
-  many_workers: 'Много исполнителей',
-  stale: 'Долго без активности',
-  hours_high: 'Часы выше нормы',
-  reopen_count: 'Часто переоткрывалась',
-  workers_many: 'Много исполнителей',
-  stale_dormant: 'Долго без активности',
-};
-
 const OTHER_COLOR = '#9ab0c8';
-const MAX_DONUT = 5;
-
-interface Slice {
-  name: string;
-  hours: number;
-  pct: number;
-  color: string;
-}
-
-function buildSlices(themes: Theme[], totalHours: number): Slice[] {
-  const sorted = [...themes].sort((a, b) => b.totals.hours - a.totals.hours);
-  const top = sorted.slice(0, MAX_DONUT);
-  const rest = sorted.slice(MAX_DONUT);
-  const slices: Slice[] = top.map((t) => ({
-    name: t.name,
-    hours: t.totals.hours,
-    pct: t.totals.pct,
-    color: t.color,
-  }));
-  if (rest.length > 0) {
-    const otherHours = rest.reduce((s, t) => s + t.totals.hours, 0);
-    const otherPct = totalHours > 0 ? (otherHours / totalHours) * 100 : 0;
-    slices.push({ name: 'Другое', hours: otherHours, pct: otherPct, color: OTHER_COLOR });
-  }
-  return slices;
-}
 
 function TopThemeBlock({ theme, rank }: { theme: Theme; rank: number }) {
   const top3 = theme.top_tasks.slice(0, 3);
@@ -169,7 +132,7 @@ export default function PrintView() {
   const totalsHours = report?.data.totals.hours ?? 0;
 
   // Donut slices
-  const slices = useMemo(() => buildSlices(themes, totalsHours), [themes, totalsHours]);
+  const slices = useMemo(() => buildSlices(themes, totalsHours, OTHER_COLOR), [themes, totalsHours]);
 
   // Top-3 themes (by hours)
   const top3 = useMemo(
@@ -190,6 +153,12 @@ export default function PrintView() {
     }
     return map;
   }, [themes]);
+
+  // Add/remove body class to override dark background from projects print CSS
+  useEffect(() => {
+    document.body.classList.add('work-type-print-active');
+    return () => document.body.classList.remove('work-type-print-active');
+  }, []);
 
   if (isLoading) {
     return (
@@ -274,7 +243,7 @@ export default function PrintView() {
           {is_fallback_narrative && (
             <span style={{ color: '#b45309', fontWeight: 600 }}>Шаблонный нарратив (AI недоступен)</span>
           )}
-          {!is_fallback_narrative && <span style={{ color: '#065f46', fontWeight: 600 }}>AI-анализ</span>}
+          {!is_fallback_narrative && <span style={{ color: '#065f46', fontWeight: 600 }}>AI-сводка</span>}
           <span>
             {totals.tasks.toLocaleString('ru')} задач · {Math.round(totals.hours).toLocaleString('ru')} ч
           </span>

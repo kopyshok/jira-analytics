@@ -2,7 +2,6 @@ import React from 'react';
 import { DARK_THEME } from '../../utils/constants';
 
 interface Props {
-  themeId: string | null;
   narrative: string;
   evidenceKeys: string[];
   onIssueClick?: (issueKey: string) => void;
@@ -48,7 +47,7 @@ export default function ThemeNarrativeRow({ narrative, evidenceKeys, onIssueClic
           fontSize: 12,
         }}
       >
-        «AI-narrative недоступен»
+        «AI-описание недоступно»
       </div>
     );
   }

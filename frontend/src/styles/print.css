@@ -1,4 +1,18 @@
 /* Print-view layout (light theme, used by WorkTypeReportPrintPage) */
+
+/* Override dark body background when work-type print view is active */
+body.work-type-print-active {
+  background: #fff !important;
+  color: #1a1a1a !important;
+}
+
+@media print {
+  body.work-type-print-active {
+    background: #fff !important;
+    color: #1a1a1a !important;
+  }
+}
+
 .work-type-print-view {
   background: #ffffff;
   color: #1a1a1a;
@@ -26,6 +40,12 @@
 
   body {
     background: #0d1c33 !important;
+  }
+
+  /* Work-type print view overrides dark body */
+  body.work-type-print-active {
+    background: #fff !important;
+    color: #1a1a1a !important;
   }
 
   .presentation-view {

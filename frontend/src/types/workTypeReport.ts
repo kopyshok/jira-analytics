@@ -35,18 +35,8 @@ export interface ThemeMergeRequest {
   target_theme_id: string;
 }
 
-/** Кандидат из ведра «Другое» — возвращается /themes GET вместе со словарём */
-export interface ThemeCandidate {
-  proposed_name: string;
-  issues_count: number;
-  hours: number;
-  sample_keys: string[];
-  snapshot_id: string;
-}
-
 export interface ThemeListResponse {
   themes: ThemeOut[];
-  candidates: ThemeCandidate[];
 }
 
 // ---- Snapshot data shapes ----
@@ -212,13 +202,6 @@ export interface LayoutCreateRequest {
   work_type_id: string;
   name: string;
   grouping_dims: GroupingDim[];
-  visible_columns?: string[] | null;
-  is_default?: boolean;
-}
-
-export interface LayoutUpdateRequest {
-  name?: string;
-  grouping_dims?: GroupingDim[];
   visible_columns?: string[] | null;
   is_default?: boolean;
 }

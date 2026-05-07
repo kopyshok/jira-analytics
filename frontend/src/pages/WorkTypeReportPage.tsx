@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Card, Col, Row, Spin, Typography } from 'antd';
 import PageHeader from '../components/shared/PageHeader';
@@ -17,6 +17,7 @@ import CandidatesPanel from '../components/work-type-report/CandidatesPanel';
 import ThemeDictionaryDrawer from '../components/work-type-report/ThemeDictionaryDrawer';
 import { useThemeList } from '../hooks/useThemeDictionary';
 import { useWorkTypeReport } from '../hooks/useWorkTypeReport';
+import { useLayoutList } from '../hooks/useWorkTypeReportLayouts';
 import { useMandatoryWorkTypes } from '../hooks/useMandatoryWorkTypes';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -71,6 +72,7 @@ export default function WorkTypeReportPage() {
   const { selectedTeams } = useGlobalTeamFilter();
 
   const [groupingDims, setGroupingDims] = useState<GroupingDim[]>(['theme', 'issue']);
+  const appliedDefaultRef = useRef<string | null>(null);
   const [highlightThemeId, setHighlightThemeId] = useState<string | null>(null);
   const [drillIssue, setDrillIssue] = useState<{ id: string; key: string } | null>(null);
   const [dictionaryDrawer, setDictionaryDrawer] = useState<{ open: boolean; tab: 'active' | 'archived' | 'candidates' }>({ open: false, tab: 'active' });
@@ -101,6 +103,7 @@ export default function WorkTypeReportPage() {
   };
 
   // Data fetching
+  const layoutListQuery = useLayoutList(workTypeId);
   const themesQuery = useThemeList(workTypeId, false);
   const reportQuery = useWorkTypeReport(
     {
@@ -122,6 +125,17 @@ export default function WorkTypeReportPage() {
     (reportQuery.isLoading && !reportQuery.data);
 
   const isEmpty = themes.length === 0 && !report;
+
+  // Auto-apply default layout once per work-type-id
+  useEffect(() => {
+    if (!workTypeId || appliedDefaultRef.current === workTypeId) return;
+    const def = layoutListQuery.data?.find((l) => l.is_default);
+    if (def) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setGroupingDims(def.grouping_dims);
+      appliedDefaultRef.current = workTypeId;
+    }
+  }, [workTypeId, layoutListQuery.data]);
 
   // Derived helpers
   const summaryById = useMemo(
@@ -147,21 +161,6 @@ export default function WorkTypeReportPage() {
 
   const handleIssueClick = (issueId: string, issueKey: string) => {
     setDrillIssue({ id: issueId, key: issueKey });
-  };
-
-  // HierarchyTable passes key only (legacy); we need id too.
-  // We build a key→id map for the HierarchyTable click bridging.
-  const keyToId = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const t of report?.data.themes ?? []) {
-      for (const i of t.issues) m.set(i.key, i.issue_id);
-    }
-    return m;
-  }, [report?.data.themes]);
-
-  const handleIssueKeyClick = (issueKey: string) => {
-    const issueId = keyToId.get(issueKey);
-    if (issueId) setDrillIssue({ id: issueId, key: issueKey });
   };
 
   return (
@@ -264,7 +263,7 @@ export default function WorkTypeReportPage() {
               themes={report.data.themes}
               groupingDims={groupingDims}
               highlightThemeId={highlightThemeId}
-              onIssueClick={handleIssueKeyClick}
+              onIssueClick={handleIssueClick}
             />
           )}
 

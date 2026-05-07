@@ -1,19 +1,7 @@
 import { Tag } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
 import type { Outlier } from '../../types/workTypeReport';
-
-// Reason code → human label (from app/services/work_type_outlier_detector.py)
-const REASON_LABELS: Record<string, string> = {
-  high_hours: 'Часы выше нормы',
-  many_reopens: 'Часто переоткрывалась',
-  many_workers: 'Много исполнителей',
-  stale: 'Долго без активности',
-  // legacy codes in case snapshot was built with old detector
-  hours_high: 'Часы выше нормы',
-  reopen_count: 'Часто переоткрывалась',
-  workers_many: 'Много исполнителей',
-  stale_dormant: 'Долго без активности',
-};
+import { REASON_LABELS } from './utils';
 
 interface Props {
   outliers: Outlier[];

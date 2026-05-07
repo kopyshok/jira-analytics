@@ -35,16 +35,7 @@ function KpiCard({ value, label, format }: KpiCardProps) {
       >
         {display}
       </div>
-      <div style={{ fontSize: 12, color: DARK_THEME.textMuted, marginBottom: 8 }}>{label}</div>
-      {/* Sparkline placeholder — will be replaced in Task 13 */}
-      <div
-        style={{
-          height: 40,
-          opacity: 0.4,
-          background: `linear-gradient(90deg, ${DARK_THEME.border} 0%, transparent 100%)`,
-          borderRadius: 4,
-        }}
-      />
+      <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>{label}</div>
     </Card>
   );
 }

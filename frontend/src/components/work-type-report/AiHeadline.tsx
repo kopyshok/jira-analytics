@@ -60,11 +60,11 @@ export default function AiHeadline({ report }: Props) {
           color={isFallback ? 'gold' : 'green'}
           style={{ marginInlineEnd: 0, fontSize: 11 }}
         >
-          {isFallback ? 'fallback' : 'high'}
+          {isFallback ? 'шаблон' : 'AI'}
         </Tag>
         {isFallback && (
           <span style={{ color: DARK_THEME.amber, fontSize: 11 }}>
-            Нарратив построен по шаблону — AI-анализ недоступен
+            Нарратив построен по шаблону — AI-сводка недоступна
           </span>
         )}
       </div>

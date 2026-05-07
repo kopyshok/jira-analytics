@@ -10,7 +10,7 @@ interface Props {
   themes: Theme[];
   groupingDims: GroupingDim[];
   highlightThemeId?: string | null;
-  onIssueClick?: (issueKey: string) => void;
+  onIssueClick?: (issueId: string, issueKey: string) => void;
 }
 
 // ---- Row kinds ----
@@ -32,6 +32,7 @@ interface TableRow {
   theme_narrative?: string;
   theme_evidence_keys?: string[];
   // issue-specific
+  issue_id?: string;
   issue_key?: string;
   issue_summary?: string;
   children?: TableRow[];
@@ -74,6 +75,7 @@ function issueRow(fi: FlatIssue, keyPrefix: string): TableRow {
     pct: 0, // computed from totalHours later if needed; not per-issue in theme data
     tasks_count: 1,
     employees_count: fi.employee_breakdown.length,
+    issue_id: fi.issue_id,
     issue_key: fi.key,
     issue_summary: fi.summary,
   };
@@ -258,6 +260,11 @@ export default function HierarchyTable({
       // Reset expiry on new highlight (standard "sync derived state from prop" pattern)
       setHighlightExpired(false);
     }
+    // Scroll to the highlighted row
+    const row = document.querySelector(`tr[data-row-key="${CSS.escape(key)}"]`);
+    if (row) {
+      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => {
       setHighlightExpired(true); // inside async callback — not flagged
@@ -299,7 +306,7 @@ export default function HierarchyTable({
               )}
               {row.theme_is_low_confidence && (
                 <Tag color="warning" style={{ marginInlineEnd: 0, fontSize: 11 }}>
-                  low confidence
+                  низкая уверенность
                 </Tag>
               )}
             </span>
@@ -310,7 +317,7 @@ export default function HierarchyTable({
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
               <a
                 style={{ color: DARK_THEME.cyanPrimary, fontWeight: 600, flexShrink: 0 }}
-                onClick={() => onIssueClick?.(row.issue_key!)}
+                onClick={() => onIssueClick?.(row.issue_id!, row.issue_key!)}
               >
                 {row.issue_key}
               </a>
@@ -404,12 +411,24 @@ export default function HierarchyTable({
           // Narrative row for theme rows rendered via expandedRowRender
           expandedRowRender: (row) => {
             if (row.kind !== 'theme') return null;
+            // ThemeNarrativeRow uses key-only links from narrative text;
+            // build a per-theme key→id map to bridge to the (id, key) signature.
+            const keyToId = new Map(
+              (themes.find((t) => `theme:${t.theme_id ?? '_none'}` === row.key)?.issues ?? []).map(
+                (i) => [i.key, i.issue_id],
+              ),
+            );
+            const handleNarrativeIssueClick = onIssueClick
+              ? (issueKey: string) => {
+                  const issueId = keyToId.get(issueKey);
+                  if (issueId) onIssueClick(issueId, issueKey);
+                }
+              : undefined;
             return (
               <ThemeNarrativeRow
-                themeId={row.theme_id ?? null}
                 narrative={row.theme_narrative ?? ''}
                 evidenceKeys={row.theme_evidence_keys ?? []}
-                onIssueClick={onIssueClick}
+                onIssueClick={handleNarrativeIssueClick}
               />
             );
           },
