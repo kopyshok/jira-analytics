@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,7 @@ from app.schemas.work_type_report import (
 from app.services.work_type_report_service import WorkTypeReportService
 from app.services.theme_dictionary_service import ThemeDictionaryService
 from app.services.llm.base import get_llm_provider
+from app.services.work_type_report_xlsx import export_snapshot_to_xlsx
 
 
 router = APIRouter()
@@ -313,3 +315,24 @@ def delete_layout(
         raise HTTPException(404, "Layout not found")
     db.delete(row); db.commit()
     return {"ok": True}
+
+
+@router.get("/export/xlsx/{snapshot_id}")
+def export_xlsx(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    snap = db.get(WorkTypeReportSnapshot, snapshot_id)
+    if not snap:
+        raise HTTPException(404, "Snapshot not found")
+    blob = export_snapshot_to_xlsx(snap)
+    fname = f"thematic-{snap.year}q{snap.quarter}"
+    if snap.month:
+        fname += f"-m{snap.month:02d}"
+    fname += f"-{snap.work_type_id[:8]}.xlsx"
+    return Response(
+        content=blob,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )

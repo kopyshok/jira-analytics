@@ -179,3 +179,15 @@ def test_layout_default_singleton_per_user_wt(client, setup):
     layouts = client.get(f"/api/v1/work-type-report/layouts?work_type_id={setup['wt'].id}").json()
     defaults = [l for l in layouts if l["is_default"]]
     assert len(defaults) == 1 and defaults[0]["id"] == r2.json()["id"]
+
+
+def test_export_xlsx_returns_blob(client, setup):
+    r = client.post("/api/v1/work-type-report", json={
+        "work_type_id": setup["wt"].id, "year": 2026, "quarter": 2, "month": 4,
+        "teams": [], "force_refresh": False,
+    })
+    snap_id = r.json()["snapshot_id"]
+    r = client.get(f"/api/v1/work-type-report/export/xlsx/{snap_id}")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument")
+    assert len(r.content) > 200  # non-empty xlsx
