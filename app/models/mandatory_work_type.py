@@ -23,6 +23,7 @@ class MandatoryWorkType(Base, TimestampMixin):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     subtracts_from_pool: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    theme_dict_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     def __repr__(self) -> str:
         return f"<MandatoryWorkType {self.code}>"
