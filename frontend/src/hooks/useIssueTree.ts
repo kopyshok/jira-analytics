@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getIssueTree, setIssueCategory, setIssueInclude, batchSetCategory } from '../api/issues';
+import { getIssueTree, setIssueCategory, setIssueInclude, batchSetCategory, verifyIssue } from '../api/issues';
 
 export function useIssueTree(params?: { project_keys?: string; teams?: string }) {
   return useQuery({
@@ -44,5 +44,23 @@ export function useBatchSetCategory() {
     mutationFn: ({ issueIds, categoryCode }: { issueIds: string[]; categoryCode: string | null }) =>
       batchSetCategory(issueIds, categoryCode),
     onSuccess: () => invalidateCategoryDependents(qc),
+  });
+}
+
+export function useVerifyIssue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      issueId,
+      cascade,
+      requireChildVerification,
+    }: {
+      issueId: string;
+      cascade: boolean;
+      requireChildVerification: boolean;
+    }) => verifyIssue(issueId, cascade, requireChildVerification),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+    },
   });
 }
