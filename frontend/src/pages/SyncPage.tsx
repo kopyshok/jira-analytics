@@ -370,7 +370,9 @@ export function CategoryConfigTab() {
       });
     };
     walk(tabData, []);
-    setExpandedRowKeys(Array.from(keys));
+    // Мерджим в существующее состояние, а не заменяем — иначе setQueryData
+    // (оптимистичный патч верификации) триггерит эффект и схлопывает дерево.
+    setExpandedRowKeys(prev => Array.from(new Set([...prev, ...keys])));
     // tabData умышленно не в зависимостях: он пересобирается на каждом pendingCats-
     // клике, а сброс раскрытия нам нужен только на структурных изменениях.
     // eslint-disable-next-line react-hooks/exhaustive-deps
