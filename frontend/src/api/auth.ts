@@ -7,6 +7,7 @@ export interface UserProfile {
   role: 'admin' | 'super_manager' | 'manager';
   default_team: string | null;
   selected_teams: string[];
+  selected_theme: string;
   is_active: boolean;
 }
 

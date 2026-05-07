@@ -19,6 +19,10 @@ class ColumnsPayload(BaseModel):
     columns: list[str]
 
 
+class ThemePayload(BaseModel):
+    theme: str
+
+
 @router.get("/me/period")
 def get_my_period(current_user: User = Depends(get_current_user)):
     return current_user.selected_period
@@ -49,3 +53,25 @@ def set_my_columns(
     current_user.analytics_columns = payload.columns
     db.commit()
     return {"ok": True}
+
+
+VALID_THEMES = {"dark-blue", "dark-slate", "dark-charcoal"}
+
+
+@router.get("/me/theme")
+def get_my_theme(current_user: User = Depends(get_current_user)):
+    return {"theme": current_user.selected_theme}
+
+
+@router.put("/me/theme")
+def set_my_theme(
+    payload: ThemePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.theme not in VALID_THEMES:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=f"Неизвестная тема: {payload.theme}")
+    current_user.selected_theme = payload.theme
+    db.commit()
+    return {"ok": True, "theme": payload.theme}

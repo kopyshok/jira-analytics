@@ -54,6 +54,77 @@ export const DARK_THEME = {
   textDim: '#4a6a8a',
 } as const;
 
+export type AppTheme = 'dark-blue' | 'dark-slate' | 'dark-charcoal';
+
+export interface ThemeTokens {
+  pageBg: string;
+  sidebarBg: string;
+  cardBg: string;
+  darkAccent: string;
+  border: string;
+  darkRows: string;
+  primary: string;
+  primarySecondary: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  textHint: string;
+}
+
+export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
+  'dark-blue': {
+    label: 'Тёмно-синий',
+    tokens: {
+      pageBg: '#0d1c33',
+      sidebarBg: '#091527',
+      cardBg: '#0f2340',
+      darkAccent: '#0a2a44',
+      border: '#1e3356',
+      darkRows: '#152740',
+      primary: '#00c9c8',
+      primarySecondary: '#4db8e8',
+      textPrimary: '#e8f0fa',
+      textSecondary: '#c5d8ee',
+      textMuted: '#8faec8',
+      textHint: '#6b8aaa',
+    },
+  },
+  'dark-slate': {
+    label: 'Серо-синий',
+    tokens: {
+      pageBg: '#0f172a',
+      sidebarBg: '#0a111f',
+      cardBg: '#1e293b',
+      darkAccent: '#172034',
+      border: '#334155',
+      darkRows: '#1a2c42',
+      primary: '#3b82f6',
+      primarySecondary: '#60a5fa',
+      textPrimary: '#e2e8f0',
+      textSecondary: '#cbd5e1',
+      textMuted: '#94a3b8',
+      textHint: '#64748b',
+    },
+  },
+  'dark-charcoal': {
+    label: 'Тёплый',
+    tokens: {
+      pageBg: '#1a1714',
+      sidebarBg: '#141210',
+      cardBg: '#201d19',
+      darkAccent: '#252219',
+      border: '#2d2922',
+      darkRows: '#1e1b17',
+      primary: '#d97706',
+      primarySecondary: '#f59e0b',
+      textPrimary: '#e8e0d5',
+      textSecondary: '#d4c9bb',
+      textMuted: '#9d8f80',
+      textHint: '#7d6f62',
+    },
+  },
+};
+
 /** Typography stack — distinctive, not system-font slop */
 export const FONTS = {
   display: "'Fraunces', 'Georgia', serif",

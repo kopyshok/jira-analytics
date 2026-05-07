@@ -18,7 +18,8 @@ import { router } from './routes';
 dayjs.extend(weekday);
 dayjs.extend(localeData);
 dayjs.locale('ru');
-import { DARK_THEME, FONTS } from './utils/constants';
+import { APP_THEMES, FONTS } from './utils/constants';
+import { ThemeProvider, useAppTheme } from './contexts/ThemeContext';
 import './index.css';
 import './styles/print.css';
 
@@ -28,70 +29,72 @@ const queryClient = new QueryClient({
   },
 });
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+function ThemedApp() {
+  const { theme: themeName } = useAppTheme();
+  const t = APP_THEMES[themeName].tokens;
+  return (
     <ConfigProvider
       locale={ruRU}
       theme={{
         algorithm: theme.darkAlgorithm,
         token: {
-          colorPrimary: DARK_THEME.cyanPrimary,
-          colorBgContainer: DARK_THEME.cardBg,
-          colorBgElevated: DARK_THEME.cardBg,
-          colorBgLayout: DARK_THEME.pageBg,
-          colorBorderSecondary: DARK_THEME.border,
-          colorText: DARK_THEME.textPrimary,
-          colorTextSecondary: DARK_THEME.textSecondary,
-          colorTextTertiary: DARK_THEME.textMuted,
-          colorTextQuaternary: DARK_THEME.textHint,
+          colorPrimary: t.primary,
+          colorBgContainer: t.cardBg,
+          colorBgElevated: t.cardBg,
+          colorBgLayout: t.pageBg,
+          colorBorderSecondary: t.border,
+          colorText: t.textPrimary,
+          colorTextSecondary: t.textSecondary,
+          colorTextTertiary: t.textMuted,
+          colorTextQuaternary: t.textHint,
           borderRadius: 8,
-          colorLink: DARK_THEME.cyanSecondary,
+          colorLink: t.primarySecondary,
           fontFamily: FONTS.body,
           fontFamilyCode: FONTS.mono,
           fontSize: 14,
         },
         components: {
           Layout: {
-            siderBg: DARK_THEME.sidebarBg,
-            headerBg: DARK_THEME.sidebarBg,
-            bodyBg: DARK_THEME.pageBg,
+            siderBg: t.sidebarBg,
+            headerBg: t.sidebarBg,
+            bodyBg: t.pageBg,
           },
           Menu: {
-            darkItemBg: DARK_THEME.sidebarBg,
-            darkItemSelectedBg: DARK_THEME.darkAccent,
-            darkItemColor: DARK_THEME.textMuted,
-            darkItemSelectedColor: DARK_THEME.cyanPrimary,
-            darkItemHoverColor: DARK_THEME.cyanSecondary,
+            darkItemBg: t.sidebarBg,
+            darkItemSelectedBg: t.darkAccent,
+            darkItemColor: t.textMuted,
+            darkItemSelectedColor: t.primary,
+            darkItemHoverColor: t.primarySecondary,
           },
           Card: {
-            colorBgContainer: DARK_THEME.cardBg,
-            colorBorderSecondary: DARK_THEME.border,
+            colorBgContainer: t.cardBg,
+            colorBorderSecondary: t.border,
           },
           Table: {
-            colorBgContainer: DARK_THEME.cardBg,
-            headerBg: DARK_THEME.darkAccent,
-            rowHoverBg: DARK_THEME.darkRows,
-            borderColor: DARK_THEME.border,
+            colorBgContainer: t.cardBg,
+            headerBg: t.darkAccent,
+            rowHoverBg: t.darkRows,
+            borderColor: t.border,
           },
           Modal: {
-            contentBg: DARK_THEME.cardBg,
-            headerBg: DARK_THEME.cardBg,
+            contentBg: t.cardBg,
+            headerBg: t.cardBg,
           },
           Statistic: {
-            colorTextDescription: DARK_THEME.textMuted,
+            colorTextDescription: t.textMuted,
             contentFontSize: 32,
           },
           Typography: {
             fontWeightStrong: 700,
           },
           Tabs: {
-            inkBarColor: DARK_THEME.cyanPrimary,
-            itemActiveColor: DARK_THEME.cyanPrimary,
-            itemSelectedColor: DARK_THEME.cyanPrimary,
+            inkBarColor: t.primary,
+            itemActiveColor: t.primary,
+            itemSelectedColor: t.primary,
           },
           Collapse: {
-            headerBg: DARK_THEME.darkAccent,
-            contentBg: DARK_THEME.cardBg,
+            headerBg: t.darkAccent,
+            contentBg: t.cardBg,
           },
         },
       }}
@@ -102,5 +105,13 @@ createRoot(document.getElementById('root')!).render(
         </QueryClientProvider>
       </AntApp>
     </ConfigProvider>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <ThemeProvider>
+      <ThemedApp />
+    </ThemeProvider>
   </StrictMode>,
 );

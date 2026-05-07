@@ -21,6 +21,7 @@ class UserResponse(BaseModel):
     role: UserRole
     default_team: str | None
     selected_teams: list[str] = []
+    selected_theme: str = "dark-blue"
     is_active: bool
     created_at: datetime
     updated_at: datetime

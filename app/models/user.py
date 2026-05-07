@@ -37,6 +37,9 @@ class User(Base, TimestampMixin):
     analytics_columns_raw: Mapped[str] = mapped_column(
         "analytics_columns", Text, nullable=False, default="[]"
     )
+    selected_theme: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="dark-blue", server_default="dark-blue"
+    )
 
     @property
     def selected_teams(self) -> list[str]:
