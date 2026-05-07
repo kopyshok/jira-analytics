@@ -153,6 +153,8 @@ export interface IssueTreeNode {
   goals: string | null;
   is_context: boolean;
   is_container: boolean;
+  category_verified: boolean;
+  require_child_verification: boolean;
   children: IssueTreeNode[];
 }
 

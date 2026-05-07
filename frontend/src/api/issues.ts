@@ -33,6 +33,21 @@ export const batchSetCategory = (issueIds: string[], categoryCode: string | null
     category_code: categoryCode,
   });
 
+export interface VerifyIssueResponse {
+  ok: boolean;
+  verified_count: number;
+}
+
+export const verifyIssue = (
+  issueId: string,
+  cascade: boolean,
+  requireChildVerification: boolean,
+) =>
+  api.post<VerifyIssueResponse>(`/issues/${issueId}/verify`, {
+    cascade,
+    require_child_verification: requireChildVerification,
+  });
+
 export const getIssueContext = (issueId: string) =>
   api.get<IssueContextResponse>(`/issues/${issueId}/context`);
 
