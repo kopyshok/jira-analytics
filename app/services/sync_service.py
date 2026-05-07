@@ -646,11 +646,21 @@ class SyncService:
                 continue
             data[attr] = _parse_jira_date(extra.get(fid))
 
-        return self.issue_repo.upsert_by_field(
+        issue, created = self.issue_repo.upsert_by_field(
             "jira_issue_id",
             jira_issue.id,
             data,
         )
+        if created:
+            auto_verify = False
+            if parent_id:
+                parent = self.db.get(Issue, parent_id)
+                if (parent
+                        and parent.category_verified
+                        and not parent.require_child_verification):
+                    auto_verify = True
+            issue.category_verified = auto_verify
+        return issue, created
     
     async def sync_issues(
         self,
