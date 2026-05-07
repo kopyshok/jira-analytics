@@ -1015,12 +1015,15 @@ async def list_scenario_allocations(
 
     rows = (
         query.order_by(
+            # Per-scenario manual order (sort_order). NULL — в конец как fallback.
             ScenarioAllocation.sort_order.is_(None),
             ScenarioAllocation.sort_order,
             BacklogItem.title,
         )
         .all()
     )
+    # Lookup для автоматического разрешения роли по имени из Jira, когда
+    # assignee_employee_id не заполнен вручную.
     active_employees = db.query(Employee).filter(Employee.is_active == True).all()  # noqa: E712
     emp_role_by_name = {e.display_name: e.role for e in active_employees if e.role}
     return [_to_allocation_resp(alloc, item, emp_role_by_name) for alloc, item in rows]
