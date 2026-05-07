@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table/interface';
 import type { Key } from 'react';
@@ -227,11 +227,17 @@ export default function HierarchyTable({
   highlightThemeId,
   onIssueClick,
 }: Props) {
-  const totalHours = themes.reduce((s, t) => s + t.totals.hours, 0);
-  const rows = buildRows(themes, groupingDims, totalHours);
+  const totalHours = useMemo(
+    () => themes.reduce((s, t) => s + t.totals.hours, 0),
+    [themes],
+  );
+  const rows = useMemo(
+    () => buildRows(themes, groupingDims, totalHours),
+    [themes, groupingDims, totalHours],
+  );
 
   // Default expand top 3 theme/group rows
-  const defaultKeys: Key[] = rows.slice(0, 3).map((r) => r.key);
+  const defaultKeys: Key[] = useMemo(() => rows.slice(0, 3).map((r) => r.key), [rows]);
   const [expandedRowKeys, setExpandedRowKeys] = useState<readonly Key[]>(defaultKeys);
 
   // Highlight: show a CSS pulse on the matched theme row for 2s when highlightThemeId changes.
