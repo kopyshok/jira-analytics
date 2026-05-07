@@ -554,6 +554,8 @@ def get_issue_context(
         siblings_total=siblings_total,
         children=children_out,
         subtree_count=subtree_count,
+        description=issue.description,
+        goals=issue.goals,
     )
 
 

@@ -182,6 +182,39 @@ class TestIssueContextCycleProtection:
         assert resp.json()["ancestors"] == []
 
 
+class TestIssueContextDescriptionGoals:
+    def test_description_and_goals_returned(self, client, db_session, project):
+        """Endpoint exposes description and goals from Issue model."""
+        issue = Issue(
+            jira_issue_id="90",
+            key="DG-1",
+            summary="With desc",
+            issue_type="Task",
+            status="Open",
+            status_category="new",
+            project_id=project.id,
+            include_in_analysis=True,
+            description="Some long description text",
+            goals="Goal A, Goal B",
+        )
+        db_session.add(issue)
+        db_session.flush()
+
+        resp = client.get(f"/api/v1/issues/{issue.id}/context")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["description"] == "Some long description text"
+        assert data["goals"] == "Goal A, Goal B"
+
+    def test_null_description_and_goals(self, client, db_session, project):
+        issue = _issue(db_session, project.id, "91", "DG-2", "No desc")
+        resp = client.get(f"/api/v1/issues/{issue.id}/context")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["description"] is None
+        assert data["goals"] is None
+
+
 class TestIssueChildren:
     def test_returns_direct_children(self, client, db_session, project):
         parent = _issue(db_session, project.id, "70", "CH-1", "Parent")

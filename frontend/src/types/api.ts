@@ -944,6 +944,8 @@ export interface IssueContextResponse {
   siblings_total: number;
   children: IssueContextChild[];
   subtree_count: number;
+  description?: string | null;
+  goals?: string | null;
 }
 
 export interface IssueChildNode {

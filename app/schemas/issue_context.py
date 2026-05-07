@@ -40,6 +40,8 @@ class IssueContextResponse(BaseModel):
     siblings_total: int
     children: List[IssueContextChild]
     subtree_count: int
+    description: Optional[str] = None
+    goals: Optional[str] = None
 
 
 class IssueChildNode(BaseModel):

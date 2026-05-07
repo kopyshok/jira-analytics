@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Card, Col, Row, Spin } from 'antd';
+import { Card, Col, Row, Spin, Typography } from 'antd';
 import PageHeader from '../components/shared/PageHeader';
 import Toolbar from '../components/work-type-report/Toolbar';
 import AiHeadline from '../components/work-type-report/AiHeadline';
@@ -9,24 +9,58 @@ import EmptyState from '../components/work-type-report/EmptyState';
 import ThemeDistribution from '../components/work-type-report/ThemeDistribution';
 import GroupingControl from '../components/work-type-report/GroupingControl';
 import HierarchyTable from '../components/work-type-report/HierarchyTable';
+import OutliersPanel from '../components/work-type-report/OutliersPanel';
+import RecommendationCard from '../components/work-type-report/RecommendationCard';
+import IssueDrillDownDrawer from '../components/work-type-report/IssueDrillDownDrawer';
+import ManualReviewBlock from '../components/work-type-report/ManualReviewBlock';
 import { useThemeList } from '../hooks/useThemeDictionary';
 import { useWorkTypeReport } from '../hooks/useWorkTypeReport';
 import { useMandatoryWorkTypes } from '../hooks/useMandatoryWorkTypes';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { DARK_THEME } from '../utils/constants';
-import type { GroupingDim } from '../types/workTypeReport';
+import type { GroupingDim, Theme } from '../types/workTypeReport';
 
-const PLACEHOLDER_STYLE: React.CSSProperties = {
-  background: DARK_THEME.darkRows,
-  border: `1px dashed ${DARK_THEME.border}`,
-  borderRadius: 8,
-  padding: '24px 20px',
-  marginBottom: 16,
-  color: DARK_THEME.textMuted,
-  fontSize: 13,
-  textAlign: 'center',
-};
+/** Returns ISO date bounds for a quarter (or a specific month). */
+function periodBounds(year: number, quarter: number, month?: number): { start: string; end: string } {
+  if (month != null) {
+    const mm = String(month).padStart(2, '0');
+    const lastDay = new Date(year, month, 0).getDate();
+    return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${lastDay}` };
+  }
+  const qStartMonth = (quarter - 1) * 3 + 1;
+  const qEndMonth = qStartMonth + 2;
+  const lastDay = new Date(year, qEndMonth, 0).getDate();
+  return {
+    start: `${year}-${String(qStartMonth).padStart(2, '0')}-01`,
+    end: `${year}-${String(qEndMonth).padStart(2, '0')}-${lastDay}`,
+  };
+}
+
+/** Build a map from issue_id → summary scanning all theme issues. */
+function buildSummaryById(themes: Theme[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const t of themes) {
+    for (const i of t.issues) {
+      if (i.summary) m.set(i.issue_id, i.summary);
+    }
+  }
+  return m;
+}
+
+/** Find which theme (and contribution) an issue belongs to in the snapshot. */
+function findIssueClassification(
+  themes: Theme[],
+  issueId: string,
+): { themeName: string | null; contribution: string | null } {
+  for (const t of themes) {
+    const found = t.issues.find((i) => i.issue_id === issueId);
+    if (found) {
+      return { themeName: t.name ?? null, contribution: found.contribution ?? null };
+    }
+  }
+  return { themeName: null, contribution: null };
+}
 
 export default function WorkTypeReportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -36,14 +70,14 @@ export default function WorkTypeReportPage() {
 
   const [groupingDims, setGroupingDims] = useState<GroupingDim[]>(['theme', 'issue']);
   const [highlightThemeId, setHighlightThemeId] = useState<string | null>(null);
+  const [drillIssue, setDrillIssue] = useState<{ id: string; key: string } | null>(null);
 
-  const activeTypes = workTypes ?? [];
+  const activeTypes = useMemo(() => workTypes ?? [], [workTypes]);
 
   // Sync workTypeId to URL; default to first active type
   const urlWorkTypeId = searchParams.get('work_type_id');
   const workTypeId = urlWorkTypeId ?? (activeTypes[0]?.id ?? null);
 
-  // Once we know the default, write it to URL so it's bookmarkable
   useEffect(() => {
     if (!urlWorkTypeId && activeTypes.length > 0) {
       setSearchParams(
@@ -86,6 +120,47 @@ export default function WorkTypeReportPage() {
 
   const isEmpty = themes.length === 0 && !report;
 
+  // Derived helpers
+  const summaryById = useMemo(
+    () => buildSummaryById(report?.data.themes ?? []),
+    [report?.data.themes],
+  );
+
+  const { start: periodStart, end: periodEnd } = useMemo(
+    () => periodBounds(period.year, period.quarter, period.month),
+    [period.year, period.quarter, period.month],
+  );
+
+  // Drill-issue classification info derived from snapshot
+  const drillClassification = useMemo(() => {
+    if (!drillIssue || !report) return { themeName: null, contribution: null };
+    return findIssueClassification(report.data.themes, drillIssue.id);
+  }, [drillIssue, report]);
+
+  const drillNeedsManualClassify = useMemo(() => {
+    if (!drillIssue || !report) return false;
+    return report.data.manual_review_required.some((m) => m.issue_id === drillIssue.id);
+  }, [drillIssue, report]);
+
+  const handleIssueClick = (issueId: string, issueKey: string) => {
+    setDrillIssue({ id: issueId, key: issueKey });
+  };
+
+  // HierarchyTable passes key only (legacy); we need id too.
+  // We build a key→id map for the HierarchyTable click bridging.
+  const keyToId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of report?.data.themes ?? []) {
+      for (const i of t.issues) m.set(i.key, i.issue_id);
+    }
+    return m;
+  }, [report?.data.themes]);
+
+  const handleIssueKeyClick = (issueKey: string) => {
+    const issueId = keyToId.get(issueKey);
+    if (issueId) setDrillIssue({ id: issueId, key: issueKey });
+  };
+
   return (
     <div>
       <PageHeader eyebrow="АНАЛИТИКА" title="Тематический отчёт" />
@@ -120,9 +195,46 @@ export default function WorkTypeReportPage() {
                 />
               </Col>
               <Col xs={24} lg={14}>
-                {/* Placeholder — Task 14: outliers + recommendation */}
-                <Card style={PLACEHOLDER_STYLE as React.CSSProperties}>
-                  <span>Outliers / Рекомендация — Task 14</span>
+                <Card
+                  style={{
+                    background: DARK_THEME.cardBg,
+                    border: `1px solid ${DARK_THEME.border}`,
+                    borderRadius: 8,
+                  }}
+                  styles={{ body: { padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 } }}
+                >
+                  {report.data.recommendation?.text && (
+                    <RecommendationCard recommendation={report.data.recommendation} />
+                  )}
+
+                  {report.data.outliers.length > 0 && (
+                    <div>
+                      <Typography.Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          color: DARK_THEME.textHint,
+                          display: 'block',
+                          marginBottom: 8,
+                        }}
+                      >
+                        Аномалии
+                      </Typography.Text>
+                      <OutliersPanel
+                        outliers={report.data.outliers}
+                        summaryById={summaryById}
+                        onOutlierClick={handleIssueClick}
+                      />
+                    </div>
+                  )}
+
+                  {!report.data.recommendation?.text && report.data.outliers.length === 0 && (
+                    <div style={{ color: DARK_THEME.textMuted, fontSize: 13, textAlign: 'center', padding: '12px 0' }}>
+                      Аномалий и рекомендаций нет
+                    </div>
+                  )}
                 </Card>
               </Col>
             </Row>
@@ -141,13 +253,33 @@ export default function WorkTypeReportPage() {
               themes={report.data.themes}
               groupingDims={groupingDims}
               highlightThemeId={highlightThemeId}
-              onIssueClick={() => {
-                /* Task 14: wire to IssueDrillDownDrawer */
-              }}
+              onIssueClick={handleIssueKeyClick}
+            />
+          )}
+
+          {report && (
+            <ManualReviewBlock
+              items={report.data.manual_review_required}
+              workTypeId={workTypeId ?? ''}
+              themes={themes}
             />
           )}
         </>
       )}
+
+      {/* Drill-down drawer — rendered at page level, outside the conditional blocks */}
+      <IssueDrillDownDrawer
+        open={!!drillIssue}
+        issueId={drillIssue?.id ?? null}
+        issueKey={drillIssue?.key ?? null}
+        workTypeId={workTypeId ?? ''}
+        periodStart={periodStart}
+        periodEnd={periodEnd}
+        onClose={() => setDrillIssue(null)}
+        themeName={drillClassification.themeName}
+        contribution={drillClassification.contribution}
+        needsManualClassify={drillNeedsManualClassify}
+      />
     </div>
   );
 }
