@@ -54,6 +54,8 @@ class IssueTreeNode(BaseModel):
     # типы (Эпик, Main box и т.п.) являются родителями по определению —
     # категоризации не подлежат, UI блокирует Select.
     is_container: bool = False
+    category_verified: bool = True
+    require_child_verification: bool = False
     children: List["IssueTreeNode"] = []
 
 
@@ -69,6 +71,11 @@ class SetIncludeRequest(BaseModel):
 class BatchCategoryRequest(BaseModel):
     issue_ids: List[str]
     category_code: Optional[str] = None
+
+
+class VerifyRequest(BaseModel):
+    cascade: bool = False
+    require_child_verification: bool = False
 
 
 # --- Endpoints ---
@@ -169,6 +176,8 @@ async def get_issue_tree(
             goals=issue.goals or None,
             is_context=issue.id in context_ids,
             is_container=is_container_node,
+            category_verified=issue.category_verified if issue.category_verified is not None else True,
+            require_child_verification=issue.require_child_verification if issue.require_child_verification is not None else False,
         )
         node_map[issue.id] = node
 
@@ -374,6 +383,53 @@ async def batch_set_category(
         "archived_ids": archived_ids,
         "skipped_containers": [],
     }
+
+
+def _collect_unverified_descendants(db: Session, parent_id: str) -> list[Issue]:
+    """BFS — все потомки с category_verified=False."""
+    result: list[Issue] = []
+    frontier = [parent_id]
+    while frontier:
+        children = db.query(Issue).filter(Issue.parent_id.in_(frontier)).all()
+        frontier = []
+        for ch in children:
+            if not ch.category_verified:
+                result.append(ch)
+            frontier.append(ch.id)
+    return result
+
+
+@router.post("/{issue_id}/verify")
+async def verify_issue(
+    issue_id: str,
+    body: VerifyRequest,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Подтвердить категорию задачи (переводит из «Стека к разбору» в нужную вкладку).
+
+    cascade=True — рекурсивно подтверждает всех непроверенных потомков.
+    require_child_verification сохраняется на задаче и управляет тем,
+    попадут ли будущие новые дочерние задачи в стек автоматически.
+    """
+    issue = db.get(Issue, issue_id)
+    if not issue:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    verified_count = 0
+    if not issue.category_verified:
+        issue.category_verified = True
+        verified_count += 1
+    issue.require_child_verification = body.require_child_verification
+
+    if body.cascade:
+        for descendant in _collect_unverified_descendants(db, issue_id):
+            descendant.category_verified = True
+            verified_count += 1
+
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues"]})
+    return {"ok": True, "verified_count": verified_count}
 
 
 # ---------------------------------------------------------------------------
