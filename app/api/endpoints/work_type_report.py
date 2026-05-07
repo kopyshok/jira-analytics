@@ -5,7 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -265,7 +265,9 @@ def create_layout(
         visible_columns_json=json.dumps(payload.visible_columns, ensure_ascii=False) if payload.visible_columns else None,
         is_default=payload.is_default,
     )
-    db.add(row); db.commit(); db.refresh(row)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
     return _layout_to_out(row)
 
 
@@ -300,7 +302,8 @@ def update_layout(
         row.is_default = True
     elif payload.is_default is False:
         row.is_default = False
-    db.commit(); db.refresh(row)
+    db.commit()
+    db.refresh(row)
     return _layout_to_out(row)
 
 
@@ -313,7 +316,8 @@ def delete_layout(
     row = db.get(WorkTypeReportLayout, layout_id)
     if not row or row.user_id != current_user.id:
         raise HTTPException(404, "Layout not found")
-    db.delete(row); db.commit()
+    db.delete(row)
+    db.commit()
     return {"ok": True}
 
 
