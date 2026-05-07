@@ -30,6 +30,7 @@ from app.api.endpoints import (
     sync,
     teams as teams_endpoints,
     themes as themes_endpoints,
+    work_type_report as wtr_endpoints,
 )
 from app.core.auth_deps import get_current_user, require_admin
 
@@ -166,6 +167,9 @@ api_router.include_router(
 )
 api_router.include_router(
     themes_endpoints.router, prefix="/themes", tags=["themes"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    wtr_endpoints.router, prefix="/work-type-report", tags=["work-type-report"], dependencies=_auth_dep,
 )
 
 # Admin-only routers
