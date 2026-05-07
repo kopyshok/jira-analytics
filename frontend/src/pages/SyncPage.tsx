@@ -188,7 +188,7 @@ export function CategoryConfigTab() {
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
 
   const [widths, setWidths] = useState<Record<string, number>>({
-    key: 110, summary: 380, status: 140, statusChanged: 150, goals: 110,
+    key: 130, summary: 380, status: 140, statusChanged: 150, goals: 110,
     category: 260, include: 80,
     requireChildVerification: 120, verify: 160,
   });
@@ -362,9 +362,22 @@ export function CategoryConfigTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issueTree.data, innerTab, selectedTeams, hiddenStatuses]);
   const tableExpandable = useMemo(
-    () => ({ expandedRowKeys, onExpandedRowsChange: setExpandedRowKeys }),
+    () => ({ expandedRowKeys, onExpandedRowsChange: setExpandedRowKeys, expandRowByClick: true }),
     [expandedRowKeys],
   );
+
+  const expandAll = useCallback(() => {
+    const ids: string[] = [];
+    const walk = (nodes: TreeNodeWithChildren[]) => {
+      nodes.forEach(n => {
+        if (n.children?.length) { ids.push(n.id); walk(n.children); }
+      });
+    };
+    walk(tabData);
+    setExpandedRowKeys(ids);
+  }, [tabData]);
+
+  const collapseAll = useCallback(() => setExpandedRowKeys([]), []);
 
   // Counts walk the whole tree — memoise per tab so selectedIds changes
   // don't re-trigger four tree walks. countTriage closes over pendingCats
@@ -547,9 +560,9 @@ export function CategoryConfigTab() {
         width: widths.key,
         render: (key: string, record: IssueTreeNode) => {
           if (record.issue_type === 'group' || !key) return null;
-          if (!jiraBaseUrl) return <Text strong>{key}</Text>;
+          if (!jiraBaseUrl) return <Text strong style={{ whiteSpace: 'nowrap' }}>{key}</Text>;
           return (
-            <Typography.Link href={`${jiraBaseUrl}/browse/${key}`} target="_blank" rel="noreferrer">
+            <Typography.Link href={`${jiraBaseUrl}/browse/${key}`} target="_blank" rel="noreferrer" style={{ whiteSpace: 'nowrap' }}>
               {key}
             </Typography.Link>
           );
@@ -779,6 +792,8 @@ export function CategoryConfigTab() {
           options={uniqueStatuses.map(s => ({ value: s, label: s }))}
           maxTagCount="responsive"
         />
+        <Button size="small" onClick={expandAll}>Развернуть всё</Button>
+        <Button size="small" onClick={collapseAll}>Свернуть всё</Button>
         {issueTree.isFetching && (
           <Button
             danger
