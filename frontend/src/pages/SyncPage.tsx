@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import {
   Button, Card, Space, Table, Tag, App,
-  Tabs, Select, Typography, Modal, Checkbox, Popconfirm, DatePicker, Progress,
+  Tabs, Select, Typography, Modal, Checkbox, Popconfirm, DatePicker, Progress, Switch,
 } from 'antd';
 import {
   SyncOutlined, ReloadOutlined,
@@ -25,7 +25,7 @@ import { formatDate, formatDateOnly, daysSince } from '../utils/format';
 import { statusTagColor } from '../utils/status';
 import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
-import { useIssueTree, useSetIssueInclude, useBatchSetCategory } from '../hooks/useIssueTree';
+import { useIssueTree, useSetIssueInclude, useBatchSetCategory, useVerifyIssue } from '../hooks/useIssueTree';
 import PageHeader from '../components/shared/PageHeader';
 import type { IssueTreeNode } from '../types/api';
 import type {
@@ -74,6 +74,15 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
 type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 const INITIATIVES_CODE = 'initiatives_rfa';
+
+function countUnverifiedBelow(node: TreeNodeWithChildren): number {
+  let count = 0;
+  for (const child of node.children ?? []) {
+    if (!child.category_verified) count++;
+    count += countUnverifiedBelow(child);
+  }
+  return count;
+}
 
 function matchesTab(effective: string | null, verified: boolean, tab: InnerTab): boolean {
   if (!verified) return tab === 'stack';
@@ -179,13 +188,17 @@ export function CategoryConfigTab() {
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
 
   const [widths, setWidths] = useState<Record<string, number>>({
-    key: 110, summary: 380, status: 140, statusChanged: 150, goals: 110, category: 260, include: 80,
+    key: 110, summary: 380, status: 140, statusChanged: 150, goals: 110,
+    category: 260, include: 80,
+    requireChildVerification: 120, verify: 160,
   });
   const [innerTab, setInnerTab] = useState<InnerTab>('stack');
   const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
+  const [pendingVerifyFlags, setPendingVerifyFlags] = useState<Map<string, boolean>>(new Map());
+  const verifyMut = useVerifyIssue();
 
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
@@ -408,6 +421,21 @@ export function CategoryConfigTab() {
     );
   }, [qc, treeQueryKey, setIncludeMut, notification, issueTree]);
 
+  const handleVerify = useCallback((
+    issueId: string,
+    cascade: boolean,
+  ) => {
+    const requireChildVerification = pendingVerifyFlags.get(issueId) ?? false;
+    verifyMut.mutate(
+      { issueId, cascade, requireChildVerification },
+      {
+        onError: (err) => {
+          notification.error({ message: 'Ошибка верификации', description: (err as Error).message });
+        },
+      },
+    );
+  }, [pendingVerifyFlags, verifyMut, notification]);
+
   const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
       setWidths(w => ({ ...w, [colKey]: size.width }));
@@ -510,7 +538,7 @@ export function CategoryConfigTab() {
   // Memoised columns — stable across selectedIds changes, rebuilds only
   // when the inputs actually affecting cell output change. This is the
   // main fix for checkbox-click latency on large trees.
-  const columns = useMemo(() => {
+  const baseColumns = useMemo(() => {
     const base = [
       {
         title: 'Ключ',
@@ -651,6 +679,70 @@ export function CategoryConfigTab() {
     pendingCats, categoryOptions, categoryLabels, descendantCounts,
     setPendingCategory, toggleInclude, handleResize,
   ]);
+
+  const stackExtraColumns = useMemo(() => [
+    {
+      title: 'Верифиц. детей',
+      key: 'requireChildVerification',
+      width: widths.requireChildVerification,
+      onHeaderCell: () => ({ width: widths.requireChildVerification, onResize: handleResize('requireChildVerification') }),
+      render: (_: unknown, record: TreeNodeWithChildren) => {
+        if (record.issue_type === 'group' || record.is_context) return null;
+        const hasChildren = (record.children?.length ?? 0) > 0;
+        if (!hasChildren) return <span style={{ color: '#595959' }}>—</span>;
+        const checked = pendingVerifyFlags.get(record.id) ?? record.require_child_verification ?? false;
+        return (
+          <Switch
+            size="small"
+            checked={checked}
+            onChange={(val) => {
+              setPendingVerifyFlags(prev => {
+                const next = new Map(prev);
+                next.set(record.id, val);
+                return next;
+              });
+            }}
+          />
+        );
+      },
+    },
+    {
+      title: 'Действие',
+      key: 'verify',
+      width: widths.verify,
+      onHeaderCell: () => ({ width: widths.verify, onResize: handleResize('verify') }),
+      render: (_: unknown, record: TreeNodeWithChildren) => {
+        if (record.issue_type === 'group' || record.is_context) return null;
+        const hasChildren = (record.children?.length ?? 0) > 0;
+        const unverifiedBelow = hasChildren ? countUnverifiedBelow(record) : 0;
+        if (hasChildren) {
+          return (
+            <Button
+              type="primary"
+              size="small"
+              loading={verifyMut.isPending}
+              onClick={() => handleVerify(record.id, true)}
+            >
+              Подтвердить{unverifiedBelow > 0 ? ` +${unverifiedBelow}` : ''}
+            </Button>
+          );
+        }
+        return (
+          <Button
+            size="small"
+            loading={verifyMut.isPending}
+            onClick={() => handleVerify(record.id, false)}
+          >
+            Подтвердить
+          </Button>
+        );
+      },
+    },
+  ], [widths.requireChildVerification, widths.verify, pendingVerifyFlags, verifyMut.isPending, handleVerify, handleResize]);
+
+  const columns = innerTab === 'stack'
+    ? [...baseColumns, ...stackExtraColumns]
+    : baseColumns;
 
   // rowSelection is stable across everything but selectedIds changes, so
   // AntD updates only the checkbox column internally.
