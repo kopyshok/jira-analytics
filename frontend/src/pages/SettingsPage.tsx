@@ -33,9 +33,6 @@ import { AITab } from '../components/settings/AITab';
 import PageHeader from '../components/shared/PageHeader';
 import { useAuth } from '../hooks/useAuth';
 import UsersTab from './settings/UsersTab';
-import { useAppTheme } from '../contexts/ThemeContext';
-import { useSaveTheme } from '../hooks/useTheme';
-import { APP_THEMES, type AppTheme } from '../utils/constants';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -44,7 +41,7 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'appearance', 'users'] as const;
+const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'users'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function readHashKey(): TabKey {
@@ -87,7 +84,6 @@ export default function SettingsPage() {
           { key: 'worktypes', label: 'Виды работ', children: <WorkTypesTab /> },
           { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
           { key: 'ai', label: 'AI', children: <AITab /> },
-          { key: 'appearance', label: 'Внешний вид', children: <AppearanceTab /> },
           ...(user?.role === 'admin' ? [{ key: 'users', label: 'Пользователи', children: <UsersTab /> }] : []),
         ]}
       />
@@ -113,82 +109,6 @@ function kindLabel(kind: string): string {
 
 function kindColor(kind: string): string {
   return KIND_META[kind]?.color ?? 'default';
-}
-
-function AppearanceTab() {
-  const { theme: current } = useAppTheme();
-  const saveTheme = useSaveTheme();
-  const { notification } = App.useApp();
-
-  const handleSelect = async (key: AppTheme) => {
-    try {
-      await saveTheme(key);
-    } catch {
-      notification.error({ title: 'Ошибка', description: 'Не удалось сохранить тему' });
-    }
-  };
-
-  return (
-    <div style={{ maxWidth: 640, paddingTop: 8 }}>
-      <p style={{ marginBottom: 20, color: 'var(--ant-color-text-secondary)' }}>
-        Выберите цветовую схему интерфейса. Настройка сохраняется для вашей учётной записи.
-      </p>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        {(Object.entries(APP_THEMES) as [AppTheme, typeof APP_THEMES[AppTheme]][]).map(([key, def]) => {
-          const t = def.tokens;
-          const active = key === current;
-          return (
-            <div
-              key={key}
-              onClick={() => handleSelect(key)}
-              style={{
-                width: 180,
-                borderRadius: 10,
-                overflow: 'hidden',
-                cursor: 'pointer',
-                border: active ? `2px solid ${t.primary}` : '2px solid transparent',
-                boxShadow: active ? `0 0 0 1px ${t.primary}` : '0 0 0 1px #2a2a2a',
-                transition: 'all 0.2s',
-              }}
-            >
-              {/* Mini-preview */}
-              <div style={{ background: t.pageBg, padding: 10 }}>
-                <div style={{
-                  background: t.sidebarBg, width: 40, height: 60,
-                  borderRadius: 4, display: 'inline-block', verticalAlign: 'top',
-                  marginRight: 6,
-                }} />
-                <div style={{ display: 'inline-block', verticalAlign: 'top', width: 'calc(100% - 52px)' }}>
-                  <div style={{ background: t.cardBg, borderRadius: 4, padding: 6, marginBottom: 6 }}>
-                    <div style={{ background: t.primary, height: 6, borderRadius: 3, width: '60%' }} />
-                    <div style={{ background: t.border, height: 4, borderRadius: 2, width: '80%', marginTop: 4 }} />
-                  </div>
-                  <div style={{ background: t.cardBg, borderRadius: 4, padding: 6 }}>
-                    <div style={{ background: t.darkAccent, height: 4, borderRadius: 2, width: '50%' }} />
-                  </div>
-                </div>
-              </div>
-              {/* Label */}
-              <div style={{
-                background: t.cardBg, padding: '8px 12px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}>
-                <span style={{ color: t.textPrimary, fontSize: 13, fontWeight: 500 }}>{def.label}</span>
-                {active && (
-                  <span style={{
-                    background: t.primary, color: '#fff',
-                    borderRadius: 4, fontSize: 10, padding: '2px 6px',
-                  }}>
-                    Активна
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 function ProductionCalendarTab() {

@@ -1,8 +1,9 @@
 import React from 'react';
-import { Tag, Button, Dropdown } from 'antd';
+import { Tag, Button, Dropdown, message } from 'antd';
+import html2canvas from 'html2canvas';
 import {
   ReloadOutlined,
-  FilePdfOutlined,
+  FileImageOutlined,
   MoreOutlined,
 } from '@ant-design/icons';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
@@ -44,15 +45,47 @@ function formatDateTime(iso: string): string {
 
 export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewChange }) => {
   const regen = useRegenerateSummary();
+  const [exporting, setExporting] = React.useState(false);
 
   const handleRegen = () => {
     if (!detail) return;
     regen.mutate(detail.key);
   };
 
-  const handlePdf = () => {
+  const handlePng = async () => {
+    if (!detail) return;
     onViewChange('presentation');
-    setTimeout(() => window.print(), 300);
+    setExporting(true);
+    try {
+      // wait for presentation view + Recharts animations
+      await new Promise((r) => setTimeout(r, 800));
+      const target = document.querySelector<HTMLElement>('.presentation-view');
+      if (!target) {
+        message.error('Контейнер для экспорта не найден');
+        return;
+      }
+      const canvas = await html2canvas(target, {
+        backgroundColor: '#0d1c33',
+        scale: 2,
+        useCORS: true,
+        height: target.scrollHeight,
+        windowHeight: target.scrollHeight,
+      });
+      const dataUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      const today = new Date();
+      const stamp = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+      a.href = dataUrl;
+      a.download = `${detail.key}_${stamp}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      message.error('Не удалось сохранить картинку');
+      console.error(e);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const statusCategory = detail?.status_category ?? 'new';
@@ -168,11 +201,13 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
 
         <Button
           size="small"
-          icon={<FilePdfOutlined />}
-          onClick={handlePdf}
+          icon={<FileImageOutlined />}
+          onClick={handlePng}
+          loading={exporting}
+          disabled={!detail}
           style={{ color: '#7e94b8' }}
         >
-          PDF
+          PNG
         </Button>
 
         <Dropdown menu={{ items: moreItems }} trigger={['click']}>

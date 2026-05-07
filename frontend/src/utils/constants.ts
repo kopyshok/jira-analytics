@@ -54,7 +54,7 @@ export const DARK_THEME = {
   textDim: '#4a6a8a',
 } as const;
 
-export type AppTheme = 'dark-blue' | 'dark-slate' | 'dark-charcoal';
+export type AppTheme = 'dark' | 'dark-blue' | 'dark-slate' | 'dark-charcoal';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -72,6 +72,23 @@ export interface ThemeTokens {
 }
 
 export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
+  'dark': {
+    label: 'Тёмный',
+    tokens: {
+      pageBg: '#141414',
+      sidebarBg: '#0a0a0a',
+      cardBg: '#1f1f1f',
+      darkAccent: '#262626',
+      border: '#303030',
+      darkRows: '#242424',
+      primary: '#177ddc',
+      primarySecondary: '#4096ff',
+      textPrimary: '#e8e8e8',
+      textSecondary: '#bfbfbf',
+      textMuted: '#8c8c8c',
+      textHint: '#595959',
+    },
+  },
   'dark-blue': {
     label: 'Тёмно-синий',
     tokens: {

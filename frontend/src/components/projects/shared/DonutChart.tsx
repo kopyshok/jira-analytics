@@ -33,6 +33,7 @@ export const DonutChart: React.FC<Props> = ({
           outerRadius={size * 0.48}
           paddingAngle={1}
           stroke="none"
+          isAnimationActive={false}
         >
           {slices.map((s, i) => (
             <Cell

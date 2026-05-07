@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router';
-import { Layout, Button } from 'antd';
+import { Layout, Button, Select } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
 import SideMenu from './SideMenu';
 import LogoMark from './LogoMark';
@@ -8,17 +8,37 @@ import SyncIndicator from './SyncIndicator';
 import GlobalTeamFilterButton from './GlobalTeamFilterButton';
 import GlobalPeriodPicker from '../shared/GlobalPeriodPicker';
 import BugReportButton from '../BugReportButton';
-import { DARK_THEME } from '../../utils/constants';
+import { DARK_THEME, APP_THEMES, type AppTheme } from '../../utils/constants';
 import { useEventStream } from '../../hooks/useEventStream';
 import { useAuth } from '../../hooks/useAuth';
+import { useThemeSync, useSaveTheme } from '../../hooks/useTheme';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 const { Header, Sider, Content } = Layout;
+
+const THEME_OPTIONS = (Object.entries(APP_THEMES) as [AppTheme, typeof APP_THEMES[AppTheme]][]).map(
+  ([key, def]) => ({
+    value: key,
+    label: (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{
+          width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+          background: def.tokens.primary, display: 'inline-block',
+        }} />
+        {def.label}
+      </span>
+    ),
+  }),
+);
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { theme: currentTheme } = useAppTheme();
+  const saveTheme = useSaveTheme();
   useEventStream();
+  useThemeSync();
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -69,6 +89,15 @@ export default function AppLayout() {
               <>
                 <GlobalTeamFilterButton />
                 <GlobalPeriodPicker />
+                <Select
+                  value={currentTheme}
+                  options={THEME_OPTIONS}
+                  onChange={(v) => saveTheme(v as AppTheme)}
+                  size="small"
+                  variant="borderless"
+                  style={{ width: 130, color: 'rgba(255,255,255,0.55)' }}
+                  popupMatchSelectWidth={false}
+                />
                 <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
                   {user.display_name}
                 </span>

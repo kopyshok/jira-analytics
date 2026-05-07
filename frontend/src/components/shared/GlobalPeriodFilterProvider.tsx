@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { GlobalPeriodContext, type GlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { api } from '../../api/client';
+import { useAuth } from '../../hooks/useAuth';
 
 const CURRENT = (() => {
   const d = new Date();
@@ -12,14 +13,16 @@ const CURRENT = (() => {
 })();
 
 export function GlobalPeriodFilterProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [period, setPeriodState] = useState<GlobalPeriod>(CURRENT);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     api.get<GlobalPeriod>('/users/me/period').then((p) => {
       if (p && p.year && p.quarter) setPeriodState({ year: p.year, quarter: p.quarter, month: p.month });
     }).catch(() => { /* ignore */ });
-  }, []);
+  }, [user]);
 
   const setPeriod = useCallback(async (p: GlobalPeriod) => {
     setPeriodState(p);
