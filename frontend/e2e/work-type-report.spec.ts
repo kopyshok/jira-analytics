@@ -77,10 +77,12 @@ test('work-type report: report loads → KPI visible → dictionary drawer → P
 
   // ── 5. Verify KPI row labels are visible ──────────────────────────────────
   //   KpiRow renders "Часов", "Задач", "Сотрудников" as card labels.
-  //   Use first() to avoid strict mode collision with sidebar menu items
-  //   containing "задач" (e.g. "Целевые задачи").
+  //   "Задач" is scoped to .ant-card to avoid collision with sidebar items
+  //   "Целевые задачи" / "Категории задач" that also contain "задач".
   await expect(page.locator('text=Часов').first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator('text=Задач').first()).toBeVisible();
+  await expect(
+    page.locator('.ant-card').filter({ hasText: 'Задач' }).first(),
+  ).toBeVisible();
   await expect(page.locator('text=Сотрудников').first()).toBeVisible();
 
   // ── 6. Open "Словарь тем" drawer ─────────────────────────────────────────
