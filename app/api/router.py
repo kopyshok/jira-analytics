@@ -14,6 +14,7 @@ from app.api.endpoints import (
     categories,
     employees,
     events as events_endpoints,
+    executive as executive_endpoints,
     exports,
     hierarchy_rules as hierarchy_rules_endpoints,
     issue_config,
@@ -170,6 +171,9 @@ api_router.include_router(
 )
 api_router.include_router(
     wtr_endpoints.router, prefix="/work-type-report", tags=["work-type-report"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    executive_endpoints.router, prefix="/executive", tags=["executive"], dependencies=_auth_dep,
 )
 
 # Admin-only routers
