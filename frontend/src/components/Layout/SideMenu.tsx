@@ -5,6 +5,7 @@ import {
   BarChartOutlined,
   BulbOutlined,
   ProjectOutlined,
+  RocketOutlined,
   SyncOutlined,
   TeamOutlined,
   UnorderedListOutlined,
@@ -31,6 +32,7 @@ export default function SideMenu() {
         { key: '/projects', icon: <ProjectOutlined />, label: 'Проекты' },
         { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
         { key: '/analytics/work-type-report', icon: <BulbOutlined />, label: 'Тематический отчёт' },
+        { key: '/executive', icon: <RocketOutlined />, label: 'Сводка для руководителя' },
       ],
     },
     {

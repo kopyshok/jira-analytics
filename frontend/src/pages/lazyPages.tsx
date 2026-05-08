@@ -16,3 +16,4 @@ export const ResourcePlanningV3Page = lazy(() => import('./ResourcePlanningV3Pag
 export const ScenarioComparatorPage = lazy(() => import('./ScenarioComparatorPage'));
 export const WorkTypeReportPage = lazy(() => import('./WorkTypeReportPage'));
 export const WorkTypeReportPrintPage = lazy(() => import('./WorkTypeReportPrintPage'));
+export const ExecutiveDashboardPage = lazy(() => import('./ExecutiveDashboardPage'));
