@@ -197,6 +197,45 @@ class OpenRouterProvider:
             raise last_exc
         raise LLMResponseError("classify_issue: пустая цепочка моделей")
 
+    async def cluster_candidates(self, prompt: str) -> tuple[dict, dict]:
+        """Cluster-фаза тематического отчёта. Использует fallback-цепочку."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "maxLength": 100},
+                            "candidate_names": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["name", "candidate_names"],
+                    },
+                }
+            },
+            "required": ["clusters"],
+        }
+        chain = [self.model] + [m for m in self.fallback_models if m and m != self.model]
+        last_exc: Exception | None = None
+        for model_id in chain:
+            try:
+                return await self._call_json(model_id, prompt, schema)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in _RETRY_STATUSES:
+                    last_exc = e
+                    continue
+                raise
+            except (LLMResponseError, httpx.TimeoutException) as e:
+                last_exc = e
+                continue
+        if last_exc is not None:
+            raise last_exc
+        raise LLMResponseError("cluster_candidates: пустая цепочка моделей")
+
     async def synthesize_work_type_report(self, prompt: str) -> tuple[dict, dict]:
         """Reduce-фаза. Возвращает сырой JSON-ответ + meta. Validation делает caller."""
         schema: dict[str, Any] = {

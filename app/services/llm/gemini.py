@@ -135,6 +135,47 @@ class GeminiProvider:
             nature_tag=None,
         ), meta
 
+    async def cluster_candidates(self, prompt: str) -> tuple[dict, dict]:
+        """Cluster-фаза тематического отчёта. Gemini single call, без fallback-цепочки."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "candidate_names": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["name", "candidate_names"],
+                    },
+                }
+            },
+            "required": ["clusters"],
+        }
+        body: dict[str, Any] = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+            },
+        }
+        url = f"{self._base}/{self.model}:generateContent?key={self.api_key}"
+        resp = await self._post(url, body)
+        text = resp["candidates"][0]["content"]["parts"][0]["text"]
+        data = json.loads(text)
+        meta = {
+            "input_tokens": resp.get("usageMetadata", {}).get("promptTokenCount"),
+            "output_tokens": resp.get("usageMetadata", {}).get("candidatesTokenCount"),
+            "model": self.model,
+        }
+        return data, meta
+
     async def synthesize_work_type_report(self, prompt: str) -> tuple[dict, dict]:
         """Reduce-фаза. Возвращает сырой JSON + meta. Validation делает caller."""
         schema = {

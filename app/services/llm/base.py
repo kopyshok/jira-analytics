@@ -22,6 +22,10 @@ class LLMProvider(Protocol):
         """Возвращает (parsed, meta) где meta содержит input_tokens / output_tokens / model."""
         ...
 
+    async def cluster_candidates(self, prompt: str) -> tuple[dict, dict]:
+        """Cluster-фаза тематического отчёта. Возвращает (data_dict, meta)."""
+        ...
+
     async def healthcheck(self) -> bool:
         """Проверка соединения и ключа."""
         ...

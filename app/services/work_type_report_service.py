@@ -24,6 +24,7 @@ from app.services.llm.work_type_classifier import (
     WorkTypeClassifier,
     ClassifierProvider,
 )
+from app.services.llm.work_type_clusterer import WorkTypeClusterer
 from app.services.llm.work_type_synthesizer import (
     WorkTypeSynthesizer,
     SynthesizerProvider,
@@ -152,6 +153,45 @@ class WorkTypeReportService:
                     period_end=end_d,
                 )
                 classifications[issue.id] = cls
+
+        # 2b. Cluster phase — group raw candidate_name into broader themes
+        if self.classifier_provider and classifications:
+            unclassified = [
+                c for c in classifications.values()
+                if c.theme_id is None and not c.failed and c.candidate_name
+            ]
+            if len(unclassified) >= 2:
+                # Build lookup maps for hours and keys from the issue objects
+                hours_by_issue: dict[str, float] = {}
+                key_by_issue: dict[str, str] = {}
+                end_dt = datetime.combine(end_d, time(23, 59, 59))
+                from sqlalchemy import func as _func
+                hours_rows = self.db.execute(
+                    select(Worklog.issue_id, _func.sum(Worklog.hours))
+                    .where(
+                        Worklog.issue_id.in_([c.issue_id for c in unclassified]),
+                        Worklog.started_at >= datetime.combine(start_d, time.min),
+                        Worklog.started_at <= end_dt,
+                    )
+                    .group_by(Worklog.issue_id)
+                ).all()
+                for issue_id, hrs in hours_rows:
+                    hours_by_issue[issue_id] = float(hrs or 0.0)
+                for issue in issues:
+                    key_by_issue[issue.id] = issue.key
+
+                clusterer = WorkTypeClusterer(provider=self.classifier_provider)
+                mapping = await clusterer.cluster(
+                    unclassified,
+                    hours_by_issue=hours_by_issue,
+                    key_by_issue=key_by_issue,
+                )
+                for c in unclassified:
+                    new_name = mapping.get(c.candidate_name)
+                    if new_name and new_name != c.candidate_name:
+                        c.candidate_name = new_name
+                if mapping:
+                    self.db.commit()
 
         # 3. Aggregate findings deterministically
         findings, manual_review, employee_names = self._aggregate_findings(

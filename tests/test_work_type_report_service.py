@@ -263,6 +263,67 @@ async def test_force_refresh_rebuilds(setup_data, db_session):
 
 
 @pytest.mark.asyncio
+async def test_cluster_phase_groups_raw_candidates(setup_data, db_session):
+    """Cluster step rewrites per-task candidate_name to a shared cluster name.
+
+    Map produces unique names per issue; cluster_candidates groups them into one cluster.
+    Snapshot's candidates list should have 1 entry with the cluster name.
+    """
+    wt = setup_data["wt"]
+
+    fake_classifier = AsyncMock()
+    fake_classifier.model = "test-classifier"
+    # Each issue gets a unique per-task candidate_name (no theme)
+    fake_classifier.classify_issue = AsyncMock(side_effect=[
+        (ClassificationResult(theme_id=None, candidate_name="Ошибка обмена УПП-ЕРП",
+                              contribution_text="детали", confidence=0.7), {"model": "tc"}),
+        (ClassificationResult(theme_id=None, candidate_name="Сбой интеграции ЕРП",
+                              contribution_text="детали", confidence=0.6), {"model": "tc"}),
+    ])
+    # cluster_candidates returns single cluster for both
+    fake_classifier.cluster_candidates = AsyncMock(return_value=(
+        {
+            "clusters": [
+                {
+                    "name": "Ошибки интеграции",
+                    "candidate_names": ["Ошибка обмена УПП-ЕРП", "Сбой интеграции ЕРП"],
+                },
+            ]
+        },
+        {"model": "tc"},
+    ))
+
+    fake_synth = AsyncMock()
+    fake_synth.model = "test-synth"
+    fake_synth.synthesize_work_type_report = AsyncMock(return_value=(
+        {
+            "headline": "h",
+            "themes_narratives": [],
+            "outliers_explanations": [],
+            "recommendation": {"text": "r", "expected_impact": ""},
+        },
+        {"model": "test-synth"},
+    ))
+
+    svc = WorkTypeReportService(
+        db_session,
+        classifier_provider=fake_classifier,
+        synthesizer_provider=fake_synth,
+    )
+    snap = await svc.get_or_build(
+        work_type_id=wt.id, year=2026, quarter=2, month=4, teams=[],
+        force_refresh=False, user_id=None,
+    )
+    data = json.loads(snap.snapshot_data)
+    candidates = data.get("candidates", [])
+
+    # After clustering, both raw per-task names should be merged into one cluster
+    assert len(candidates) == 1, f"Expected 1 cluster, got {len(candidates)}: {candidates}"
+    assert candidates[0]["proposed_name"] == "Ошибки интеграции"
+    fake_classifier.cluster_candidates.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_failed_classifications_appear_in_manual_review(setup_data, db_session):
     """Issues that fail classification get listed in manual_review_required."""
     wt = setup_data["wt"]
