@@ -21,7 +21,7 @@ from app.services.executive_dashboard_service import (
     ExecutiveDashboardService,
     team_set_hash,
 )
-from app.services.llm.base import get_llm_provider
+from app.services.llm.base import ConfigurationError, get_llm_provider
 from app.services.llm.executive_synthesizer import (
     PROMPT_VERSION as EXEC_PROMPT_VERSION,
     ExecutiveSynthesizer,
@@ -105,8 +105,8 @@ async def build_dashboard(
 
     try:
         provider = get_llm_provider(db)
-    except Exception as e:
-        logger.warning("LLM provider unavailable: %s", e)
+    except ConfigurationError as e:
+        logger.warning("LLM provider not configured: %s", e)
         provider = None
 
     model_id: Optional[str] = None
