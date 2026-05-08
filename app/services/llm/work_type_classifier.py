@@ -1,6 +1,12 @@
 """Map-фаза тематического отчёта: per-issue классификация по словарю.
 
 Кэш per-issue: input_hash + dictionary_version. При совпадении — LLM не дёргается.
+
+Фаза разделена на три синхронных DB-шага (`prepare`, `persist_success`,
+`persist_failure`) и один асинхронный LLM-вызов. Это позволяет оркестратору
+гонять LLM concurrent (под семафором), а DB-операции сериализовать в одной
+SQLAlchemy сессии (потокобезопасность не требуется — асинхронный однопоточный
+event loop, важен лишь порядок коммитов).
 """
 import hashlib
 from dataclasses import dataclass, field
@@ -30,6 +36,18 @@ class ClassificationResult:
     markers: list[str] = field(default_factory=list)
     area: Optional[str] = None
     nature: Optional[str] = None
+
+
+@dataclass
+class ClassificationPrep:
+    """Результат `prepare` для cache-miss: всё нужное чтобы вызвать LLM и upsert."""
+    issue: Issue
+    work_type_id: str
+    themes_payload: list[dict]
+    prompt: str
+    input_hash: str
+    dictionary_version: int
+    existing: Optional[IssueClassification]
 
 
 class ClassifierProvider(Protocol):
@@ -135,7 +153,7 @@ class WorkTypeClassifier:
         self.db = db
         self.provider = provider
 
-    async def classify_issue(
+    def prepare(
         self,
         *,
         issue: Issue,
@@ -143,7 +161,8 @@ class WorkTypeClassifier:
         themes: list[Theme],
         period_start: Optional[date] = None,
         period_end: Optional[date] = None,
-    ) -> IssueClassification:
+    ) -> "ClassificationPrep | IssueClassification":
+        """Sync prep: возвращает существующий кэш-хит ИЛИ ClassificationPrep на LLM."""
         wt = self.db.get(MandatoryWorkType, work_type_id)
         if not wt:
             raise ValueError(f"Work type {work_type_id} not found")
@@ -170,26 +189,26 @@ class WorkTypeClassifier:
         themes_payload = [
             {"id": t.id, "name": t.name, "description": t.description} for t in themes
         ]
-        try:
-            res, meta = await self.provider.classify_issue(prompt, themes_payload)
-        except Exception as e:
-            return self._upsert(
-                existing,
-                issue,
-                work_type_id,
-                h,
-                wt.theme_dict_version,
-                failed=True,
-                failure_reason=str(e)[:500],
-                model_id=getattr(self.provider, "model", None),
-            )
+        return ClassificationPrep(
+            issue=issue,
+            work_type_id=work_type_id,
+            themes_payload=themes_payload,
+            prompt=prompt,
+            input_hash=h,
+            dictionary_version=wt.theme_dict_version,
+            existing=existing,
+        )
 
+    def persist_success(
+        self, prep: ClassificationPrep, res: ClassificationResult, meta: dict,
+    ) -> IssueClassification:
+        """Sync upsert успешного результата."""
         return self._upsert(
-            existing,
-            issue,
-            work_type_id,
-            h,
-            wt.theme_dict_version,
+            prep.existing,
+            prep.issue,
+            prep.work_type_id,
+            prep.input_hash,
+            prep.dictionary_version,
             theme_id=res.theme_id,
             candidate_name=res.candidate_name,
             contribution_text=res.contribution_text,
@@ -202,6 +221,43 @@ class WorkTypeClassifier:
             failure_reason=None,
             _markers=res.markers,
         )
+
+    def persist_failure(
+        self, prep: ClassificationPrep, exc: BaseException,
+    ) -> IssueClassification:
+        """Sync upsert провала LLM."""
+        return self._upsert(
+            prep.existing,
+            prep.issue,
+            prep.work_type_id,
+            prep.input_hash,
+            prep.dictionary_version,
+            failed=True,
+            failure_reason=str(exc)[:500],
+            model_id=getattr(self.provider, "model", None),
+        )
+
+    async def classify_issue(
+        self,
+        *,
+        issue: Issue,
+        work_type_id: str,
+        themes: list[Theme],
+        period_start: Optional[date] = None,
+        period_end: Optional[date] = None,
+    ) -> IssueClassification:
+        """Backward-compat wrapper: prepare → LLM → persist в одной корутине."""
+        out = self.prepare(
+            issue=issue, work_type_id=work_type_id, themes=themes,
+            period_start=period_start, period_end=period_end,
+        )
+        if isinstance(out, IssueClassification):
+            return out
+        try:
+            res, meta = await self.provider.classify_issue(out.prompt, out.themes_payload)
+        except Exception as e:
+            return self.persist_failure(out, e)
+        return self.persist_success(out, res, meta)
 
     def _upsert(
         self,

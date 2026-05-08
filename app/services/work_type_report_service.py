@@ -25,6 +25,7 @@ from app.services.work_type_outlier_detector import detect_outliers_for_theme
 from app.services.llm.work_type_classifier import (
     WorkTypeClassifier,
     ClassifierProvider,
+    ClassificationPrep,
 )
 from app.services.llm.work_type_clusterer import WorkTypeClusterer
 from app.services.llm.work_type_synthesizer import (
@@ -35,6 +36,9 @@ from app.services.llm.work_type_synthesizer import (
 )
 
 logger = logging.getLogger("jira_analytics.thematic")
+
+
+MAP_PARALLELISM = 8  # одновременных LLM-вызовов в Map-фазе
 
 
 _ENTITY_TOKEN = re.compile(r"[А-ЯЁA-Z0-9]{2,12}", re.UNICODE)
@@ -184,24 +188,69 @@ class WorkTypeReportService:
         themes = ThemeDictionaryService(self.db).list_active(work_type_id)
         await _emit({"type": "phase_done", "phase": "scope", "count": len(issues)})
 
-        # 2. Map phase — classify each issue
+        # 2. Map phase — classify each issue (concurrent под семафором)
         classifications: dict[str, IssueClassification] = {}
         if self.classifier_provider:
             n = len(issues)
             await _emit({"type": "phase_start", "phase": "map", "total": n})
             clf = WorkTypeClassifier(self.db, self.classifier_provider)
-            for i, issue in enumerate(issues):
+
+            # 2a. Sync prep — собираем cache-hits и список cache-miss-prep'ов.
+            # Эта часть гоняет DB read-only / read-existing-classification, серийно.
+            preps: list[ClassificationPrep] = []
+            done = 0
+            for issue in issues:
                 if cancel_check and await cancel_check():
                     raise asyncio.CancelledError("client disconnected")
-                cls = await clf.classify_issue(
-                    issue=issue,
-                    work_type_id=work_type_id,
-                    themes=themes,
-                    period_start=start_d,
-                    period_end=end_d,
+                out = clf.prepare(
+                    issue=issue, work_type_id=work_type_id, themes=themes,
+                    period_start=start_d, period_end=end_d,
                 )
-                classifications[issue.id] = cls
-                await _emit({"type": "progress", "phase": "map", "current": i + 1, "total": n, "item_key": issue.key})
+                if isinstance(out, IssueClassification):
+                    classifications[issue.id] = out
+                    done += 1
+                    if done % 25 == 0 or done == n:
+                        await _emit({"type": "progress", "phase": "map", "current": done, "total": n, "item_key": issue.key})
+                else:
+                    preps.append(out)
+
+            # 2b. Concurrent LLM calls под семафором, persist строго в основной корутине
+            # (порядок коммитов сохраняется, SQLAlchemy Session не делится).
+            if preps:
+                sem = asyncio.Semaphore(MAP_PARALLELISM)
+
+                async def _call_llm(p: ClassificationPrep):
+                    async with sem:
+                        try:
+                            res, meta = await self.classifier_provider.classify_issue(
+                                p.prompt, p.themes_payload,
+                            )
+                            return p, res, meta, None
+                        except Exception as e:  # network / provider / parse failure
+                            return p, None, None, e
+
+                tasks = [asyncio.create_task(_call_llm(p)) for p in preps]
+                try:
+                    for fut in asyncio.as_completed(tasks):
+                        if cancel_check and await cancel_check():
+                            for t in tasks:
+                                if not t.done():
+                                    t.cancel()
+                            raise asyncio.CancelledError("client disconnected")
+                        p, res, meta, err = await fut
+                        if err is not None:
+                            cls = clf.persist_failure(p, err)
+                        else:
+                            cls = clf.persist_success(p, res, meta)
+                        classifications[p.issue.id] = cls
+                        done += 1
+                        if done % 5 == 0 or done == n:
+                            await _emit({"type": "progress", "phase": "map", "current": done, "total": n, "item_key": p.issue.key})
+                except BaseException:
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                    raise
             await _emit({"type": "phase_done", "phase": "map", "count": n})
 
         # 2b. Cluster phase — group raw candidate_name into broader themes

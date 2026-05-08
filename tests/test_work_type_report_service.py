@@ -167,6 +167,46 @@ def test_extract_entities_filters_pure_digits_and_blanks():
 
 
 @pytest.mark.asyncio
+async def test_map_phase_runs_llm_concurrent(setup_data, db_session):
+    """Map phase запускает LLM параллельно — наблюдаем пиковое количество одновременных вызовов >1."""
+    import asyncio as _asyncio
+    wt = setup_data["wt"]
+
+    in_flight = 0
+    peak = 0
+
+    async def slow_classify(prompt: str, themes_payload: list[dict]):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        try:
+            await _asyncio.sleep(0.05)
+            return (
+                ClassificationResult(
+                    theme_id=None, candidate_name="X",
+                    contribution_text=None, confidence=0.5,
+                ),
+                {"model": "test"},
+            )
+        finally:
+            in_flight -= 1
+
+    fake_classifier = AsyncMock()
+    fake_classifier.model = "test"
+    fake_classifier.classify_issue = AsyncMock(side_effect=slow_classify)
+
+    svc = WorkTypeReportService(
+        db_session, classifier_provider=fake_classifier, synthesizer_provider=None,
+    )
+    await svc.get_or_build(
+        work_type_id=wt.id, year=2026, quarter=2, month=4, teams=[],
+        force_refresh=False, user_id=None,
+    )
+    # 2 задачи — должны запуститься одновременно (peak >= 2)
+    assert peak >= 2, f"expected concurrent execution, peak={peak}"
+
+
+@pytest.mark.asyncio
 async def test_build_with_empty_dictionary_creates_candidates(setup_data, db_session):
     """All AI classifications go to 'Other' (theme_id=null) → candidates appear in snapshot."""
     wt = setup_data["wt"]
