@@ -345,6 +345,7 @@ class ExecutiveDashboardService:
         ).scalars().first()
 
         plan: dict[str, float] = defaultdict(float)
+        scenario_issue_ids: list[str] = []
         if scen:
             rows = self.db.execute(
                 select(ScenarioAllocation, BacklogItem)
@@ -363,32 +364,39 @@ class ExecutiveDashboardService:
                 plan["dev"] += float(bi.estimate_dev_hours or 0) * coef
                 plan["qa"] += float(bi.estimate_qa_hours or 0) * coef
                 plan["ope"] += float(bi.estimate_opo_hours or 0) * coef
+                if bi.issue_id:
+                    scenario_issue_ids.append(bi.issue_id)
 
-        # Факт — worklog × employee.role в квартале
+        # Факт — worklog × employee.role ТОЛЬКО по задачам сценария.
+        # Сравнение plan vs fact должно идти по одному и тому же набору задач,
+        # иначе fact раздувается на весь квартал и pct ≈ 100%.
         q_start = (quarter - 1) * 3 + 1
         em = q_start + 2
         sdt = datetime.combine(date(year, q_start, 1), time.min)
         edt = datetime.combine(date(year, em, monthrange(year, em)[1]), time.max)
 
         fact: dict[str, float] = defaultdict(float)
-        q = (
-            select(Employee.role, func.sum(Worklog.hours))
-            .join(Worklog, Worklog.employee_id == Employee.id)
-            .where(Worklog.started_at >= sdt, Worklog.started_at <= edt)
-            .group_by(Employee.role)
-        )
-        if teams:
-            q = q.join(Issue, Issue.id == Worklog.issue_id).where(Issue.team.in_(teams))
-        for role, hrs in self.db.execute(q).all():
-            r = (role or "").lower()
-            if r == "analyst":
-                fact["analyst"] += float(hrs or 0)
-            elif r in ("dev", "developer"):
-                fact["dev"] += float(hrs or 0)
-            elif r == "qa":
-                fact["qa"] += float(hrs or 0)
-            else:
-                fact["ope"] += float(hrs or 0)
+        if scenario_issue_ids:
+            q = (
+                select(Employee.role, func.sum(Worklog.hours))
+                .join(Worklog, Worklog.employee_id == Employee.id)
+                .where(
+                    Worklog.started_at >= sdt,
+                    Worklog.started_at <= edt,
+                    Worklog.issue_id.in_(scenario_issue_ids),
+                )
+                .group_by(Employee.role)
+            )
+            for role, hrs in self.db.execute(q).all():
+                r = (role or "").lower()
+                if r == "analyst":
+                    fact["analyst"] += float(hrs or 0)
+                elif r in ("dev", "developer"):
+                    fact["dev"] += float(hrs or 0)
+                elif r == "qa":
+                    fact["qa"] += float(hrs or 0)
+                else:
+                    fact["ope"] += float(hrs or 0)
 
         labels = {"analyst": "Аналитики", "dev": "Разработка", "qa": "QA", "ope": "ОПЭ"}
         return [

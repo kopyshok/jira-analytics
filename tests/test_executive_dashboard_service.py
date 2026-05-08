@@ -142,7 +142,7 @@ def test_plan_fact_by_role_uses_scenario_estimates(db_session):
                 started_at=datetime(2026, 4, 15))
 
     bi = BacklogItem(
-        id="bi1", title="Item",
+        id="bi1", title="Item", issue_id="i1",
         estimate_analyst_hours=20.0,
         estimate_dev_hours=30.0,
         estimate_qa_hours=0.0,
@@ -168,6 +168,45 @@ def test_plan_fact_by_role_uses_scenario_estimates(db_session):
     assert plan_fact["Разработка"]["plan"] == 30.0
     assert plan_fact["Разработка"]["fact"] == 5.0
     assert plan_fact["QA"]["plan"] == 0.0
+
+
+def test_scenario_plan_fact_only_counts_scenario_issues(db_session):
+    """Fact считается только по задачам сценария, не по всему кварталу."""
+    _mk_project(db_session)
+    _mk_employee(db_session, "e1", role="analyst")
+    # Issue в сценарии:
+    _mk_issue(db_session, "i_in_scen", "P-1", status="In Progress")
+    # Issue вне сценария (тот же квартал, та же команда):
+    _mk_issue(db_session, "i_out", "P-2", status="In Progress")
+    _mk_worklog(db_session, "w1", "i_in_scen", "e1", hours=10.0,
+                started_at=datetime(2026, 4, 15))
+    _mk_worklog(db_session, "w2", "i_out", "e1", hours=40.0,
+                started_at=datetime(2026, 4, 15))
+
+    bi = BacklogItem(
+        id="bi1", title="Item", issue_id="i_in_scen",
+        estimate_analyst_hours=20.0,
+        estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=0.0,
+    )
+    db_session.add(bi)
+    scen = PlanningScenario(
+        id="s1", name="Q2 plan", year=2026, quarter="Q2", status="approved",
+    )
+    db_session.add(scen)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        id="a1", scenario_id="s1", backlog_item_id="bi1",
+        included_flag=True,
+    ))
+    db_session.commit()
+
+    svc = ExecutiveDashboardService(db_session)
+    f = svc.aggregate(year=2026, quarter=2, teams=["T1"])
+    plan_fact = {row["role"]: row for row in f.plan_fact_by_role}
+    # 10 часов на сценарной задаче, не 50 (вне сценария 40ч игнорируются).
+    assert plan_fact["Аналитики"]["fact"] == 10.0
 
 
 def test_capacity_by_role_employee_in_two_teams_no_double_counting(db_session):
