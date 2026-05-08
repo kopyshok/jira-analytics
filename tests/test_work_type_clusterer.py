@@ -1,6 +1,7 @@
-"""WorkTypeClusterer — Cluster-фаза: группировка candidate_name в темы."""
+"""WorkTypeClusterer — группировка по markers."""
 import pytest
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 from typing import Optional
 from unittest.mock import AsyncMock
 
@@ -11,15 +12,16 @@ from app.services.llm.work_type_clusterer import (
 
 @dataclass
 class _FakeCls:
-    """Minimal stub — mirrors the fields WorkTypeClusterer reads from IssueClassification."""
     issue_id: str
     candidate_name: Optional[str]
+    markers: list[str] = field(default_factory=list)
+    area: Optional[str] = None
     theme_id: Optional[str] = None
     failed: bool = False
 
 
-def _make_cls(issue_id: str, candidate_name: str) -> _FakeCls:
-    return _FakeCls(issue_id=issue_id, candidate_name=candidate_name)
+def _make_cls(issue_id: str, candidate_name: str, markers: list[str], area: str = "обмен_данных") -> _FakeCls:
+    return _FakeCls(issue_id=issue_id, candidate_name=candidate_name, markers=markers, area=area)
 
 
 @pytest.mark.asyncio
@@ -35,131 +37,105 @@ async def test_cluster_empty_returns_empty():
 async def test_cluster_single_candidate_returns_empty():
     provider = AsyncMock()
     clusterer = WorkTypeClusterer(provider=provider)
-    result = await clusterer.cluster([_make_cls("i1", "Ошибки обмена")])
+    result = await clusterer.cluster([_make_cls("i1", "Ошибки обмена", ["obmen_dannyh"])])
     assert result == {}
     provider.cluster_candidates.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_cluster_five_candidates_two_clusters():
-    """5 кандидатов → 2 кластера из fake LLM → корректный маппинг."""
-    names = ["Ошибки обмена", "Сбои интеграции", "Доработка отчётов", "Проводки", "Ошибки НСИ"]
-    classifications = [_make_cls(f"i{i}", n) for i, n in enumerate(names)]
+async def test_cluster_groups_by_marker_overlap():
+    """5 кандидатов с разными candidate_name, но общими markers → 2 кластера."""
+    cands = [
+        _make_cls("i0", "Обмен Розница–ЕРП", ["obmen_dannyh", "integraciya_erp"]),
+        _make_cls("i1", "Выгрузка правил УПП", ["obmen_dannyh", "regdannye_nsi"]),
+        _make_cls("i2", "Ошибки регистров себестоимости", ["raschet_sebestoimosti", "dvizheniya_registra"]),
+        _make_cls("i3", "Корректировка себестоимости металлов", ["raschet_sebestoimosti", "korrekcia_dannyh"]),
+        _make_cls("i4", "Обмены передачи товаров", ["obmen_dannyh"]),
+    ]
 
     fake_provider = AsyncMock()
     fake_provider.cluster_candidates = AsyncMock(return_value=(
         {
             "clusters": [
-                {"name": "Ошибки и сбои", "candidate_names": ["Ошибки обмена", "Сбои интеграции", "Ошибки НСИ"]},
-                {"name": "Учёт и отчётность", "candidate_names": ["Доработка отчётов", "Проводки"]},
+                {"name": "Обмены данными", "markers": ["obmen_dannyh", "integraciya_erp", "regdannye_nsi"]},
+                {"name": "Себестоимость", "markers": ["raschet_sebestoimosti", "dvizheniya_registra", "korrekcia_dannyh"]},
             ]
         },
         {"model": "test-model"},
     ))
 
     clusterer = WorkTypeClusterer(provider=fake_provider)
-    mapping = await clusterer.cluster(classifications)
+    mapping = await clusterer.cluster(cands)
 
-    assert mapping["Ошибки обмена"] == "Ошибки и сбои"
-    assert mapping["Сбои интеграции"] == "Ошибки и сбои"
-    assert mapping["Ошибки НСИ"] == "Ошибки и сбои"
-    assert mapping["Доработка отчётов"] == "Учёт и отчётность"
-    assert mapping["Проводки"] == "Учёт и отчётность"
-    fake_provider.cluster_candidates.assert_called_once()
+    assert mapping["Обмен Розница–ЕРП"] == "Обмены данными"
+    assert mapping["Выгрузка правил УПП"] == "Обмены данными"
+    assert mapping["Обмены передачи товаров"] == "Обмены данными"
+    assert mapping["Ошибки регистров себестоимости"] == "Себестоимость"
+    assert mapping["Корректировка себестоимости металлов"] == "Себестоимость"
 
 
 @pytest.mark.asyncio
 async def test_cluster_provider_exception_returns_identity():
-    """При ошибке LLM возвращает identity-mapping (каждый кандидат = сам себе кластер)."""
-    names = ["Ошибки обмена", "Сбои интеграции", "Доработка отчётов"]
-    classifications = [_make_cls(f"i{i}", n) for i, n in enumerate(names)]
-
+    """LLM падает → identity mapping."""
+    cands = [
+        _make_cls("i0", "А", ["m1"]),
+        _make_cls("i1", "Б", ["m2"]),
+    ]
     fake_provider = AsyncMock()
-    fake_provider.cluster_candidates = AsyncMock(side_effect=RuntimeError("LLM timeout"))
-
+    fake_provider.cluster_candidates = AsyncMock(side_effect=RuntimeError("boom"))
     clusterer = WorkTypeClusterer(provider=fake_provider)
-    mapping = await clusterer.cluster(classifications)
-
-    # Identity mapping: each candidate maps to itself
-    for name in names:
-        assert mapping[name] == name
+    mapping = await clusterer.cluster(cands)
+    assert mapping["А"] == "А"
+    assert mapping["Б"] == "Б"
 
 
 @pytest.mark.asyncio
-async def test_cluster_prompt_contains_all_candidates_and_counts():
-    """Промпт включает все candidate_name, часы и кол-во задач."""
-    names = ["Ошибки обмена", "Доработка отчётов"]
-    classifications = [_make_cls(f"i{i}", n) for i, n in enumerate(names)]
-
-    captured_prompt: list[str] = []
-
-    async def mock_cluster(prompt: str) -> tuple[dict, dict]:
-        captured_prompt.append(prompt)
-        return (
-            {
-                "clusters": [
-                    {"name": "Всё", "candidate_names": names},
-                ]
-            },
-            {"model": "test"},
-        )
-
+async def test_cluster_no_markers_returns_identity():
+    """Если у всех записей markers пустые → identity mapping (не звать LLM)."""
+    cands = [
+        _make_cls("i0", "А", []),
+        _make_cls("i1", "Б", []),
+    ]
     fake_provider = AsyncMock()
-    fake_provider.cluster_candidates = mock_cluster
-
-    hours_by_issue = {"i0": 10.5, "i1": 5.0}
-    key_by_issue = {"i0": "PROJ-1", "i1": "PROJ-2"}
-
     clusterer = WorkTypeClusterer(provider=fake_provider)
-    await clusterer.cluster(classifications, hours_by_issue=hours_by_issue, key_by_issue=key_by_issue)
-
-    assert len(captured_prompt) == 1
-    prompt = captured_prompt[0]
-    assert "Ошибки обмена" in prompt
-    assert "Доработка отчётов" in prompt
-    assert "10.5" in prompt
-    assert "5.0" in prompt
-    assert "1 задач" in prompt  # count = 1 each
-    assert "PROJ-1" in prompt
-    assert "PROJ-2" in prompt
+    mapping = await clusterer.cluster(cands)
+    assert mapping["А"] == "А"
+    assert mapping["Б"] == "Б"
+    fake_provider.cluster_candidates.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_cluster_uncovered_candidate_keeps_own_name():
-    """Если LLM не включил candidate_name в ни один кластер — он остаётся сам собой."""
-    names = ["А", "Б", "В"]
-    classifications = [_make_cls(f"i{i}", n) for i, n in enumerate(names)]
-
+async def test_cluster_uncovered_marker_keeps_identity_for_that_candidate():
+    """Если LLM не покрыл marker задачи — она остаётся под своим candidate_name."""
+    cands = [
+        _make_cls("i0", "А", ["m1"]),
+        _make_cls("i1", "Б", ["m2"]),
+        _make_cls("i2", "В", ["m_unknown"]),
+    ]
     fake_provider = AsyncMock()
     fake_provider.cluster_candidates = AsyncMock(return_value=(
-        {
-            "clusters": [
-                # "В" не попал ни в один кластер
-                {"name": "АБ", "candidate_names": ["А", "Б"]},
-            ]
-        },
+        {"clusters": [{"name": "АБ", "markers": ["m1", "m2"]}]},
         {"model": "test"},
     ))
-
     clusterer = WorkTypeClusterer(provider=fake_provider)
-    mapping = await clusterer.cluster(classifications)
-
+    mapping = await clusterer.cluster(cands)
     assert mapping["А"] == "АБ"
     assert mapping["Б"] == "АБ"
-    assert mapping["В"] == "В"  # identity fallback
+    assert mapping["В"] == "В"
 
 
 def test_build_cluster_prompt_structure():
-    """Промпт содержит ключевые инструкции."""
-    candidates = [
-        {"candidate_name": "Ошибки", "hours": 10.0, "count": 3, "sample_keys": ["P-1"]},
-        {"candidate_name": "Отчёты", "hours": 5.0, "count": 2, "sample_keys": []},
-    ]
-    prompt = build_cluster_prompt(candidates)
-    assert "РОВНО В ОДИН кластер" in prompt
-    assert "Ошибки" in prompt
-    assert "Отчёты" in prompt
-    assert "10.0" in prompt
-    assert "5.0" in prompt
-    assert "P-1" in prompt
-    assert "clusters" in prompt  # JSON schema hint
+    """Промпт содержит markers с частотностью и примерами."""
+    prompt = build_cluster_prompt(
+        marker_to_examples={
+            "m1": ["Тема 1", "Тема 2"],
+            "m2": ["Тема 3"],
+        },
+        marker_freq=Counter({"m1": 5, "m2": 2}),
+        target_clusters=3,
+    )
+    assert "m1 (5 задач)" in prompt
+    assert "m2 (2 задач)" in prompt
+    assert "Тема 1" in prompt
+    assert 'РОВНО В ОДИН кластер' in prompt
+    assert "clusters" in prompt
