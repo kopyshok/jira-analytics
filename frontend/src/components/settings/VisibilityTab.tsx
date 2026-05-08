@@ -20,8 +20,6 @@ const SECTIONS: SectionDef[] = [
   { group: 'ПЛАНИРОВАНИЕ', key: '/backlog', label: 'Целевые задачи' },
   { group: 'ПЛАНИРОВАНИЕ', key: '/planning', label: 'Сценарии' },
   { group: 'ПЛАНИРОВАНИЕ', key: '/resource-planning', label: 'Ресурс. планир.' },
-  { group: 'ПЛАНИРОВАНИЕ', key: '/resource-planning-v2', label: 'Планирование β' },
-  { group: 'ПЛАНИРОВАНИЕ', key: '/resource-planning-v3', label: 'Планирование γ' },
   { group: 'ДАННЫЕ', key: '/sync', label: 'Синхронизация' },
   { group: 'ДАННЫЕ', key: '/categories', label: 'Категории задач' },
 ];

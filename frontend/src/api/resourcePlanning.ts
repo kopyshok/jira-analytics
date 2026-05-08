@@ -103,11 +103,22 @@ export interface InitiativePertOut {
   on_critical_path_only: boolean;
 }
 
+export interface DependencyOut {
+  id: string;
+  plan_id: string;
+  from_item_id: string;
+  to_item_id: string;
+  dep_type: 'FS' | 'SS' | 'FF' | 'SF';
+  lag_days: number;
+  source: 'manual' | 'inferred';
+}
+
 export interface GanttProjection {
   plan: ResourcePlan;
   assignments: AssignmentOut[];
   conflicts: ConflictOut[];
   pert_projection: InitiativePertOut[];
+  dependencies: DependencyOut[];
 }
 
 export interface AssignmentPatch {
@@ -166,3 +177,30 @@ export async function patchAssignment(
     data,
   );
 }
+
+export interface QualityMetric {
+  plan_id: string;
+  overload_days_pct: number;
+  late_count: number;
+  mean_utilization_pct: number;
+  computed_at: string;
+}
+
+export const getPlanQuality = (planId: string, signal?: AbortSignal) =>
+  api.get<QualityMetric>(`/resource-planning/resource-plans/${planId}/quality`, undefined, signal);
+
+export const createDependency = (
+  planId: string,
+  data: { from_item_id: string; to_item_id: string; dep_type?: DependencyOut['dep_type']; lag_days?: number },
+) =>
+  api.post<DependencyOut>(`/resource-planning/resource-plans/${planId}/dependencies`, data);
+
+export const patchDependency = (
+  planId: string,
+  depId: string,
+  data: { dep_type?: DependencyOut['dep_type']; lag_days?: number },
+) =>
+  api.patch<DependencyOut>(`/resource-planning/resource-plans/${planId}/dependencies/${depId}`, data);
+
+export const deleteDependency = (planId: string, depId: string) =>
+  api.del(`/resource-planning/resource-plans/${planId}/dependencies/${depId}`);

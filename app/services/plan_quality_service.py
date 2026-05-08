@@ -68,8 +68,7 @@ class PlanQualityService:
             for d in days:
                 load[(d, a.employee_id)] += per_day
 
-        # Капасити = hours_per_day сотрудника (грубое приближение, без отсутствий
-        # для метрики достаточно; PyJobShop сам считает точнее)
+        # Капасити = hours_per_day сотрудника (грубое приближение, без отсутствий)
         emp_caps: dict[str, float] = {}
         for emp_id in {a.employee_id for a in assignments if a.employee_id}:
             # Employee не хранит hours_per_day; используем стандарт 8ч/день

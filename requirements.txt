@@ -25,9 +25,6 @@ python-jose[cryptography]>=3.4.0,<4.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 
-# Resource Planning v2 — constraint solver (PyJobShop поверх OR-Tools CP-SAT)
-pyjobshop>=0.0.8
-
 # Testing
 pytest>=7.4.0
 pytest-asyncio>=0.23.0

@@ -6,6 +6,9 @@ import {
   patchAssignment, type AssignmentPatch,
   patchConflict, type ConflictOut,
   forkPlan, getPlanDiff,
+  getPlanQuality,
+  createDependency, patchDependency, deleteDependency,
+  type DependencyOut,
 } from '../api/resourcePlanning';
 
 export const useScheduledBlocks = (team?: string) =>
@@ -127,5 +130,64 @@ export function usePlanDiff(scenarioId: string | null, baselineId: string | null
     queryFn: () => getPlanDiff(scenarioId!, baselineId!),
     enabled: !!scenarioId && !!baselineId,
     staleTime: 30_000,
+  });
+}
+
+export function usePlanQuality(planId: string | null) {
+  return useQuery({
+    queryKey: ['plan-quality', planId],
+    queryFn: ({ signal }) => getPlanQuality(planId!, signal),
+    enabled: !!planId,
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateDependency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      planId, fromItemId, toItemId, depType, lagDays,
+    }: {
+      planId: string;
+      fromItemId: string;
+      toItemId: string;
+      depType?: DependencyOut['dep_type'];
+      lagDays?: number;
+    }) => createDependency(planId, {
+      from_item_id: fromItemId,
+      to_item_id: toItemId,
+      dep_type: depType,
+      lag_days: lagDays,
+    }),
+    onSuccess: (_, { planId }) => {
+      qc.invalidateQueries({ queryKey: ['gantt', planId] });
+    },
+  });
+}
+
+export function usePatchDependency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      planId, depId, data,
+    }: {
+      planId: string;
+      depId: string;
+      data: { dep_type?: DependencyOut['dep_type']; lag_days?: number };
+    }) => patchDependency(planId, depId, data),
+    onSuccess: (_, { planId }) => {
+      qc.invalidateQueries({ queryKey: ['gantt', planId] });
+    },
+  });
+}
+
+export function useDeleteDependency() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, depId }: { planId: string; depId: string }) =>
+      deleteDependency(planId, depId),
+    onSuccess: (_, { planId }) => {
+      qc.invalidateQueries({ queryKey: ['gantt', planId] });
+    },
   });
 }

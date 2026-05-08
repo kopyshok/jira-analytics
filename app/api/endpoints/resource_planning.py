@@ -1,6 +1,6 @@
 """Resource Planning API — ScheduledBlocks + ResourcePlan + Gantt projection."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +17,7 @@ from app.models import (
     ScheduledBlock,
 )
 from app.models.user import User
+from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import ResourcePlanningService
 
 router = APIRouter()
@@ -129,11 +130,24 @@ class InitiativePertOut(BaseModel):
     on_critical_path_only: bool
 
 
+class DependencyOut(BaseModel):
+    id: str
+    plan_id: str
+    from_item_id: str
+    to_item_id: str
+    dep_type: str
+    lag_days: int
+    source: str
+
+    model_config = {"from_attributes": True}
+
+
 class GanttProjection(BaseModel):
     plan: ResourcePlanOut
     assignments: List[AssignmentOut]
     conflicts: List[ConflictOut]
     pert_projection: List[InitiativePertOut]
+    dependencies: List[DependencyOut] = []
 
 
 class AssignmentPatch(BaseModel):
@@ -141,6 +155,18 @@ class AssignmentPatch(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     hours_allocated: Optional[float] = None
+
+
+class DependencyCreate(BaseModel):
+    from_item_id: str
+    to_item_id: str
+    dep_type: str = "FS"
+    lag_days: int = 0
+
+
+class DependencyPatch(BaseModel):
+    dep_type: Optional[str] = None
+    lag_days: Optional[int] = None
 
 
 # ── ScheduledBlocks ────────────────────────────────────────────────────────
@@ -412,11 +438,34 @@ def get_gantt(
     conflicts = _detect_conflicts(plan, assignments_raw, db)
     pert_projection = _compute_pert_projection(plan, assignments_raw, db)
 
+    from app.models import PlanItemDependency
+
+    deps_raw = (
+        db.execute(
+            select(PlanItemDependency).where(PlanItemDependency.plan_id == plan_id)
+        )
+        .scalars()
+        .all()
+    )
+    deps = [
+        DependencyOut(
+            id=d.id,
+            plan_id=d.plan_id,
+            from_item_id=d.from_item_id,
+            to_item_id=d.to_item_id,
+            dep_type=d.dep_type,
+            lag_days=d.lag_days,
+            source=d.source,
+        )
+        for d in deps_raw
+    ]
+
     return GanttProjection(
         plan=plan,
         assignments=assignments,
         conflicts=conflicts,
         pert_projection=pert_projection,
+        dependencies=deps,
     )
 
 
@@ -729,3 +778,178 @@ def fork_plan(
     }
     db.commit()
     return ResourcePlanOut(**snap)
+
+
+@router.get(
+    "/resource-plans/{plan_id}/dependencies",
+    response_model=List[DependencyOut],
+)
+def list_dependencies(
+    plan_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models import PlanItemDependency
+
+    if not db.get(ResourcePlan, plan_id):
+        raise HTTPException(404, "ResourcePlan not found")
+    rows = db.execute(
+        select(PlanItemDependency).where(PlanItemDependency.plan_id == plan_id)
+    ).scalars().all()
+    return [
+        DependencyOut(
+            id=d.id,
+            plan_id=d.plan_id,
+            from_item_id=d.from_item_id,
+            to_item_id=d.to_item_id,
+            dep_type=d.dep_type,
+            lag_days=d.lag_days,
+            source=d.source,
+        )
+        for d in rows
+    ]
+
+
+@router.post(
+    "/resource-plans/{plan_id}/dependencies",
+    response_model=DependencyOut,
+    status_code=201,
+)
+def create_dependency(
+    plan_id: str,
+    data: DependencyCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models import PlanItemDependency
+
+    if not db.get(ResourcePlan, plan_id):
+        raise HTTPException(404, "ResourcePlan not found")
+    if data.from_item_id == data.to_item_id:
+        raise HTTPException(422, "Cannot create self-dependency")
+    if data.dep_type not in ("FS", "SS", "FF", "SF"):
+        raise HTTPException(422, "dep_type must be one of FS|SS|FF|SF")
+    dep = PlanItemDependency(
+        plan_id=plan_id,
+        from_item_id=data.from_item_id,
+        to_item_id=data.to_item_id,
+        dep_type=data.dep_type,
+        lag_days=data.lag_days,
+        source="manual",
+    )
+    db.add(dep)
+    plan = db.get(ResourcePlan, plan_id)
+    if plan:
+        plan.status = "stale"
+    snap = DependencyOut(
+        id=dep.id,
+        plan_id=plan_id,
+        from_item_id=dep.from_item_id,
+        to_item_id=dep.to_item_id,
+        dep_type=dep.dep_type,
+        lag_days=dep.lag_days,
+        source=dep.source,
+    )
+    db.commit()
+    return snap
+
+
+@router.patch(
+    "/resource-plans/{plan_id}/dependencies/{dep_id}",
+    response_model=DependencyOut,
+)
+def patch_dependency(
+    plan_id: str,
+    dep_id: str,
+    data: DependencyPatch,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models import PlanItemDependency
+
+    dep = db.execute(
+        select(PlanItemDependency).where(
+            PlanItemDependency.id == dep_id,
+            PlanItemDependency.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not dep:
+        raise HTTPException(404, "Dependency not found")
+    patch = data.model_dump(exclude_unset=True)
+    if "dep_type" in patch and patch["dep_type"] not in ("FS", "SS", "FF", "SF"):
+        raise HTTPException(422, "dep_type must be one of FS|SS|FF|SF")
+    for k, v in patch.items():
+        setattr(dep, k, v)
+    plan = db.get(ResourcePlan, plan_id)
+    if plan:
+        plan.status = "stale"
+    snap = DependencyOut(
+        id=dep.id,
+        plan_id=plan_id,
+        from_item_id=dep.from_item_id,
+        to_item_id=dep.to_item_id,
+        dep_type=dep.dep_type,
+        lag_days=dep.lag_days,
+        source=dep.source,
+    )
+    db.commit()
+    return snap
+
+
+@router.delete(
+    "/resource-plans/{plan_id}/dependencies/{dep_id}",
+    status_code=204,
+)
+def delete_dependency(
+    plan_id: str,
+    dep_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models import PlanItemDependency
+
+    dep = db.execute(
+        select(PlanItemDependency).where(
+            PlanItemDependency.id == dep_id,
+            PlanItemDependency.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not dep:
+        raise HTTPException(404, "Dependency not found")
+    db.delete(dep)
+    plan = db.get(ResourcePlan, plan_id)
+    if plan:
+        plan.status = "stale"
+    db.commit()
+    return None
+
+
+class QualityMetricSchema(BaseModel):
+    plan_id: str
+    overload_days_pct: float
+    late_count: int
+    mean_utilization_pct: float
+    computed_at: datetime
+
+
+@router.get(
+    "/resource-plans/{plan_id}/quality",
+    response_model=QualityMetricSchema,
+)
+def get_plan_quality(
+    plan_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> QualityMetricSchema:
+    """Метрика качества плана: % перегрузок, просрочки, использование ёмкости."""
+    try:
+        metric = PlanQualityService(db).compute(plan_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return QualityMetricSchema(
+        plan_id=metric["plan_id"],
+        overload_days_pct=metric["overload_days_pct"],
+        late_count=metric["late_count"],
+        mean_utilization_pct=metric["mean_utilization_pct"],
+        computed_at=datetime.now(timezone.utc),
+    )

@@ -22,7 +22,6 @@
     "@types/react-resizable": "^3.0.8",
     "antd": "^6.3.5",
     "dayjs": "^1.11.20",
-    "dhtmlx-gantt": "^9.1.4",
     "html2canvas": "^1.4.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

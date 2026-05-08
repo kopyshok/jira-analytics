@@ -1,5 +1,5 @@
 import { Tag, Tooltip, Skeleton } from 'antd';
-import { usePlanQuality } from '../../hooks/useResourcePlanningV2';
+import { usePlanQuality } from '../../hooks/useResourcePlanning';
 
 interface Props {
   planId: string | null;
