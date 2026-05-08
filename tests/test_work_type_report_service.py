@@ -38,12 +38,14 @@ def setup_data(db_session):
     issue1 = Issue(
         jira_issue_id="i1", key="PROJ-1", summary="Ошибка обмена",
         issue_type="Task", status="Done", project_id=proj.id,
-        assigned_category="support_consultation", team="Платформа",
+        assigned_category="support_consultation", category="support_consultation",
+        team="Платформа",
     )
     issue2 = Issue(
         jira_issue_id="i2", key="PROJ-2", summary="Проводка",
         issue_type="Task", status="Done", project_id=proj.id,
-        assigned_category="support_consultation", team="Платформа",
+        assigned_category="support_consultation", category="support_consultation",
+        team="Платформа",
     )
     db_session.add_all([issue1, issue2])
     db_session.commit()
@@ -89,18 +91,21 @@ async def test_two_dim_team_filter(db_session):
     # Issue A: issue.team = 'X' (issue-side primary)
     issue_a = Issue(
         jira_issue_id="2d-a", key="P2-A", summary="A", issue_type="Task",
-        status="Done", project_id=proj.id, assigned_category="sc_2dim_cat", team="X",
+        status="Done", project_id=proj.id,
+        assigned_category="sc_2dim_cat", category="sc_2dim_cat", team="X",
     )
     # Issue B: issue.team = 'Y', participating_teams contains 'X' (issue-side secondary)
     issue_b = Issue(
         jira_issue_id="2d-b", key="P2-B", summary="B", issue_type="Task",
-        status="Done", project_id=proj.id, assigned_category="sc_2dim_cat", team="Y",
+        status="Done", project_id=proj.id,
+        assigned_category="sc_2dim_cat", category="sc_2dim_cat", team="Y",
         participating_teams='["X"]',
     )
     # Issue C: issue.team = 'Z', worklog by employee in team X (employee-side)
     issue_c = Issue(
         jira_issue_id="2d-c", key="P2-C", summary="C", issue_type="Task",
-        status="Done", project_id=proj.id, assigned_category="sc_2dim_cat", team="Z",
+        status="Done", project_id=proj.id,
+        assigned_category="sc_2dim_cat", category="sc_2dim_cat", team="Z",
     )
     db_session.add_all([issue_a, issue_b, issue_c])
     db_session.commit()

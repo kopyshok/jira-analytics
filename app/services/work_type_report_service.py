@@ -216,7 +216,11 @@ class WorkTypeReportService:
         end_d: date,
         teams: list[str],
     ) -> list[Issue]:
-        """Issues with at least one worklog in period AND assigned_category in this work_type's categories.
+        """Issues with at least one worklog in period AND resolved category in this work_type's categories.
+
+        Uses Issue.category (denormalized resolved value populated by MappingService —
+        overrides → scope_roots walk-up → quality_rules), not Issue.assigned_category
+        (sparse manual override). Matches dashboard analytics scope.
 
         Team filter uses the same two-dimensional OR-logic as the rest of the app:
         issue.team IN teams  OR  participating_teams contains any team  OR
@@ -237,7 +241,7 @@ class WorkTypeReportService:
             .where(
                 Worklog.started_at >= datetime.combine(start_d, time.min),
                 Worklog.started_at <= end_dt,
-                Issue.assigned_category.in_(cat_codes),
+                Issue.category.in_(cat_codes),
             )
         )
         if teams:
