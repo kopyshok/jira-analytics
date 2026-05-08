@@ -95,6 +95,10 @@ class GeminiProvider:
         """Map-фаза тематического отчёта. Gemini без fallback-цепочки — single call."""
         from app.services.llm.work_type_classifier import ClassificationResult
 
+        nature_enum = [
+            "bug", "enhancement", "consultation", "regulatory",
+            "data_fix", "integration", "access_request", "other",
+        ]
         schema = {
             "type": "object",
             "properties": {
@@ -102,6 +106,13 @@ class GeminiProvider:
                 "candidate_name": {"type": "string", "nullable": True},
                 "contribution_text": {"type": "string", "nullable": True},
                 "confidence": {"type": "number"},
+                "markers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 8,
+                },
+                "area": {"type": "string", "nullable": True},
+                "nature": {"type": "string", "enum": nature_enum, "nullable": True},
             },
             "required": ["theme_id", "confidence"],
         }
@@ -127,12 +138,27 @@ class GeminiProvider:
         tid = obj.get("theme_id")
         if tid and tid not in valid_ids:
             tid = None
+
+        raw_markers = obj.get("markers") or []
+        markers = [
+            m.strip().lower().replace(" ", "_")[:60]
+            for m in raw_markers
+            if isinstance(m, str) and m.strip()
+        ][:8]
+
+        nature = obj.get("nature")
+        if nature not in nature_enum:
+            nature = None
+
         return ClassificationResult(
             theme_id=tid,
             candidate_name=(obj.get("candidate_name") or "").strip()[:255] or None,
             contribution_text=(obj.get("contribution_text") or "").strip()[:200] or None,
             confidence=float(obj.get("confidence") or 0.0),
             nature_tag=None,
+            markers=markers,
+            area=(obj.get("area") or "").strip()[:120] or None,
+            nature=nature,
         ), meta
 
     async def cluster_candidates(self, prompt: str) -> tuple[dict, dict]:
@@ -146,12 +172,12 @@ class GeminiProvider:
                         "type": "object",
                         "properties": {
                             "name": {"type": "string"},
-                            "candidate_names": {
+                            "markers": {
                                 "type": "array",
                                 "items": {"type": "string"},
                             },
                         },
-                        "required": ["name", "candidate_names"],
+                        "required": ["name", "markers"],
                     },
                 }
             },
