@@ -32,9 +32,11 @@ def client(db_session, monkeypatch):
         yield db_session
     app.dependency_overrides[get_db] = _get_db
 
-    # No LLM provider — tests should hit fallback path.
+    # No LLM provider — tests should hit fallback path via ConfigurationError.
+    from app.services.llm.base import ConfigurationError
+
     def _no_provider(_db):
-        raise RuntimeError("no LLM in tests")
+        raise ConfigurationError("no LLM in tests")
     monkeypatch.setattr(
         "app.api.endpoints.executive.get_llm_provider", _no_provider,
     )
