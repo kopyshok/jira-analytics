@@ -8,7 +8,7 @@ from app.models.issue import Issue
 from app.models.project import Project
 from app.models.issue_classification import IssueClassification
 from app.services.llm.work_type_classifier import (
-    WorkTypeClassifier, ClassificationResult, build_input_hash,
+    WorkTypeClassifier, ClassificationResult, build_input_hash, PROMPT_VERSION,
 )
 
 
@@ -76,12 +76,41 @@ async def test_classify_cached_skips_llm(fixture_setup, db_session):
     db_session.add(IssueClassification(
         issue_id=issue.id, work_type_id=wt.id, theme_id=theme.id,
         contribution_text="cached", input_hash=h, dictionary_version=wt.theme_dict_version,
+        prompt_version=PROMPT_VERSION,
     ))
     db_session.commit()
 
     cls = await clf.classify_issue(issue=issue, work_type_id=wt.id, themes=[theme])
     assert cls.contribution_text == "cached"
     fake_provider.classify_issue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_prompt_version_change_invalidates_cache(fixture_setup, db_session):
+    """Смена PROMPT_VERSION перевызывает классификацию даже при совпадении hash+dict_version."""
+    wt, issue = fixture_setup["wt"], fixture_setup["issue"]
+    theme = Theme(work_type_id=wt.id, name="X")
+    db_session.add(theme); db_session.commit()
+
+    h = build_input_hash(issue, worklog_comments=[])
+    db_session.add(IssueClassification(
+        issue_id=issue.id, work_type_id=wt.id, theme_id=theme.id,
+        contribution_text="stale", input_hash=h,
+        dictionary_version=wt.theme_dict_version,
+        prompt_version="wt-classify-v1",  # старая версия промпта
+    ))
+    db_session.commit()
+
+    fake_provider = AsyncMock(); fake_provider.model = "m"
+    fake_provider.classify_issue = AsyncMock(return_value=(
+        ClassificationResult(theme_id=theme.id, candidate_name=None,
+                             contribution_text="fresh", confidence=0.8, nature_tag=None),
+        {"model": "m"},
+    ))
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
+    cls = await clf.classify_issue(issue=issue, work_type_id=wt.id, themes=[theme])
+    assert cls.contribution_text == "fresh"
+    assert cls.prompt_version == PROMPT_VERSION
 
 
 @pytest.mark.asyncio
