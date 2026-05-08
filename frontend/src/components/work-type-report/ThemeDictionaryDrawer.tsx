@@ -54,7 +54,7 @@ interface ThemeEditModalContentProps {
 function ThemeEditModalContent({ initial, workTypeId, isCreate, onClose }: ThemeEditModalContentProps) {
   const [name, setName] = useState(initial.name ?? '');
   const [description, setDescription] = useState(initial.description ?? '');
-  const [color, setColor] = useState(initial.color ?? DARK_THEME.cyanPrimary);
+  const [color, setColor] = useState<string>(initial.color ?? DARK_THEME.cyanPrimary);
   const [sortOrder, setSortOrder] = useState<number>(initial.sort_order ?? 0);
 
   const createMutation = useCreateTheme();
@@ -140,7 +140,7 @@ interface AcceptModalContentProps {
 
 function AcceptModalContent({ candidate, snapshotId, onClose }: AcceptModalContentProps) {
   const [name, setName] = useState(candidate.proposed_name);
-  const [color, setColor] = useState(DARK_THEME.cyanPrimary);
+  const [color, setColor] = useState<string>(DARK_THEME.cyanPrimary);
   const mutation = useAcceptCandidate();
 
   const handleOk = () => {
