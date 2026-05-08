@@ -17,7 +17,7 @@ from app.models.mandatory_work_type import MandatoryWorkType
 from app.models.worklog import Worklog
 
 
-PROMPT_VERSION = "wt-classify-v2-markers"
+PROMPT_VERSION = "wt-classify-v3-generic"
 
 
 @dataclass
@@ -80,14 +80,21 @@ def build_classify_prompt(issue: Issue, worklog_comments: list[str], themes: lis
         "Если задача попадает в одну из тем словаря — укажи theme_id. Иначе — оставь theme_id=null и предложи короткое имя кандидата.",
         "",
         "ОБЯЗАТЕЛЬНЫЕ поля для группировки (это самое важное):",
-        "- markers: 2-5 коротких snake_case-меток повторяющихся симптомов/паттернов задачи. ИМЕННО ПО НИМ задачи будут группироваться, поэтому пиши обобщённо, не пересказывай заголовок.",
+        "- markers: 2-5 коротких snake_case-меток повторяющихся СИМПТОМОВ/ПАТТЕРНОВ задачи. ИМЕННО ПО НИМ задачи группируются — пиши обобщённо.",
         "  Примеры markers: obmen_dannyh, oshibka_provedeniya, zakrytie_perioda, prava_dostupa, dorabotka_otcheta,",
-        "  raschet_sebestoimosti, integraciya_erp, korrekcia_dannyh, konsultaciya_polzovatelya, reglament_obnovlenia,",
-        "  pechatnaya_forma, otchetnost_fns, integraciya_bankclient, regdannye_nsi, dvizheniya_registra.",
-        "- area: одно слово/фраза — нормализованная область (например «обмен_данных», «учёт_себестоимости», «закрытие_периода», «права», «отчётность», «нси», «интеграция»). НЕ пиши сюда название задачи.",
+        "  raschet_sebestoimosti, korrekcia_dannyh, konsultaciya_polzovatelya, reglament_obnovlenia,",
+        "  pechatnaya_forma, otchetnost_fns, regdannye_nsi, dvizheniya_registra.",
+        "- area: одно слово/фраза — обобщённая ОБЛАСТЬ («обмен_данных», «учёт_себестоимости», «закрытие_периода», «права», «отчётность», «нси», «интеграция»).",
         "- nature: ровно ОДНО из enum: bug, enhancement, consultation, regulatory, data_fix, integration, access_request, other.",
         "",
-        "candidate_name (только если theme_id=null): 2-4 слова, обобщённая ТЕМА (НЕ описание задачи). Например «Обмены данными» а не «Обмен Розница–ЕРП: Консолидированная передача».",
+        "ЖЁСТКИЙ ЗАПРЕТ для markers и area:",
+        "  Не вставляй конкретные имена систем, продуктов, модулей, контрагентов, проектов, брендов, аббревиатуры систем (любых имён собственных).",
+        "  Если пишешь «обмен» — пиши `obmen_dannyh`, а НЕ `obmen_X_Y` где X/Y — имена систем.",
+        "  Если пишешь «интеграция» — пиши `integraciya`, а НЕ `integraciya_X`.",
+        "  Конкретные сущности (имена систем, модулей, контрагентов и пр.) — место только в `contribution_text` или `candidate_name`.",
+        "",
+        "candidate_name (только если theme_id=null): 2-4 слова, обобщённая ТЕМА (НЕ описание конкретной задачи). Здесь имена систем уместны, но коротко.",
+        "Например «Обмены данными», «Закрытие периода», а не «Обмен Розница–ЕРП: Консолидированная передача регистров».",
         "",
         f"Задача [{issue.key}] [{issue.issue_type}]: {issue.summary}",
     ]

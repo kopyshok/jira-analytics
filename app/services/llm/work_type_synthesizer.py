@@ -13,7 +13,7 @@ from app.services.llm.faithfulness_validator import validate_synthesis
 
 
 logger = logging.getLogger("jira_analytics.thematic")
-PROMPT_VERSION = "wt-synthesize-v1"
+PROMPT_VERSION = "wt-synthesize-v2-entities"
 
 
 @dataclass
@@ -31,12 +31,20 @@ class SynthesizerProvider(Protocol):
 
 
 def build_synthesis_prompt(findings: dict) -> str:
-    """findings = {totals, themes:[{id,name,hours,pct,top_tasks,...}], outliers:[...]}."""
+    """findings = {totals, themes:[{id,name,hours,pct,top_tasks,entity_breakdown,...}], outliers:[...]}."""
     return "\n".join([
         "Ты — старший аналитик. Пишешь executive-сводку для PM.",
         "Используй ТОЛЬКО числа и ключи задач из FINDINGS. Не выдумывай.",
         "Никаких сравнений конкретных людей. Никаких ФИО.",
         "Стиль: короткий, фактический. Без воды.",
+        "",
+        "ВАЖНО про темы и их сущности:",
+        "  У каждой темы есть `entity_breakdown` — топ имён собственных (систем, модулей,",
+        "  контрагентов и т.п.), извлечённых из задач темы, с долей `share_pct` от часов темы.",
+        "  Если в теме есть сущность с `share_pct ≥ 40` — ОБЯЗАТЕЛЬНО подсвети её в narrative",
+        "  этой темы (например: «большая часть нагрузки по теме приходится на <name>, <share_pct>%»).",
+        "  Если доминирующей сущности нет — не упоминай entity_breakdown вовсе.",
+        "  Имена сущностей бери ДОСЛОВНО из entity_breakdown.name, числа — из share_pct.",
         "",
         "FINDINGS:",
         json.dumps(findings, ensure_ascii=False, indent=2),
