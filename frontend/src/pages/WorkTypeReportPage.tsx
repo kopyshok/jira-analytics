@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Card, Col, Row, Spin, Typography } from 'antd';
-import PageHeader from '../components/shared/PageHeader';
 import Toolbar from '../components/work-type-report/Toolbar';
+import { FONTS } from '../utils/constants';
 import AiHeadline from '../components/work-type-report/AiHeadline';
 import KpiRow from '../components/work-type-report/KpiRow';
 import EmptyState from '../components/work-type-report/EmptyState';
@@ -165,7 +165,38 @@ export default function WorkTypeReportPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="АНАЛИТИКА" title="Тематический отчёт" />
+      {/* Compact page header — eyebrow + title in ~40px; no PageHeader block */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 12,
+          marginBottom: 12,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: DARK_THEME.cyanPrimary,
+            fontWeight: 600,
+          }}
+        >
+          АНАЛИТИКА
+        </span>
+        <span
+          style={{
+            fontSize: 22,
+            fontFamily: FONTS.display,
+            fontWeight: 600,
+            color: DARK_THEME.textPrimary,
+            lineHeight: 1.2,
+          }}
+        >
+          Тематический отчёт
+        </span>
+      </div>
 
       {isLoading ? (
         <div style={{ display: 'grid', placeItems: 'center', minHeight: 300 }}>

@@ -1,5 +1,6 @@
-import { Button, Radio, Tag, Tooltip } from 'antd';
-import { ReloadOutlined, DownloadOutlined, PrinterOutlined, TagsOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Button, Select, Tag, Tooltip } from 'antd';
+import { ReloadOutlined, DownloadOutlined, PrinterOutlined, TagsOutlined, CheckOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import { DARK_THEME } from '../../utils/constants';
@@ -41,7 +42,19 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDi
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
 
+  // Local draft for cancellable picker — Apply only fires when changed
+  const [draft, setDraft] = useState<string | null>(null);
+  const activeId = draft ?? workTypeId;
+  const isDirty = draft !== null && draft !== workTypeId;
+
   const activeTypes = workTypes ?? [];
+
+  const handleApply = () => {
+    if (isDirty && draft) {
+      onWorkTypeChange(draft);
+    }
+    setDraft(null);
+  };
 
   const handleRebuild = () => {
     buildMutation.mutate({
@@ -65,28 +78,33 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDi
       style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: 12,
+        gap: 8,
         alignItems: 'center',
         marginBottom: 16,
-        padding: '10px 0',
+        padding: '8px 0',
         borderBottom: `1px solid ${DARK_THEME.border}`,
       }}
     >
-      {/* Work-type selector */}
-      <Radio.Group
-        optionType="button"
-        buttonStyle="solid"
-        value={workTypeId}
-        onChange={(e) => onWorkTypeChange(e.target.value as string)}
+      {/* Work-type selector: dropdown + Apply */}
+      <Select
+        value={activeId || undefined}
+        onChange={(v) => setDraft(v)}
+        loading={wtLoading}
         disabled={wtLoading || activeTypes.length === 0}
         size="small"
+        style={{ minWidth: 200 }}
+        options={activeTypes.map((wt) => ({ value: wt.id, label: wt.label }))}
+        placeholder="Вид работы"
+      />
+      <Button
+        icon={<CheckOutlined />}
+        size="small"
+        type="primary"
+        disabled={!isDirty}
+        onClick={handleApply}
       >
-        {activeTypes.map((wt) => (
-          <Radio.Button key={wt.id} value={wt.id}>
-            {wt.label}
-          </Radio.Button>
-        ))}
-      </Radio.Group>
+        Применить
+      </Button>
 
       {/* Freshness pill */}
       <FreshnessPill report={report} />

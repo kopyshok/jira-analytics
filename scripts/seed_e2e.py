@@ -48,6 +48,14 @@ E2E_WORKLOG_DATES = [
 
 
 def seed() -> None:
+    from app.database import engine as _engine
+    db_file = str(_engine.url.database or "")
+    if not db_file.endswith("e2e.db"):
+        raise RuntimeError(
+            f"seed_e2e.py refuses to run on non-e2e DB (got: {db_file!r}). "
+            "Set DATABASE_URL to point at data/e2e.db."
+        )
+
     db = SessionLocal()
     try:
         employee = db.get(Employee, E2E_EMPLOYEE_ID)

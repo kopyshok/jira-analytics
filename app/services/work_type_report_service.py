@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import date, datetime, time
 from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.mandatory_work_type import MandatoryWorkType
@@ -16,6 +16,7 @@ from app.models.issue_classification import IssueClassification
 from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
 from app.models.worklog import Worklog
 from app.models.employee import Employee
+from app.models.employee_team import EmployeeTeam
 from app.models.category import Category
 from app.services.theme_dictionary_service import ThemeDictionaryService
 from app.services.work_type_outlier_detector import detect_outliers_for_theme
@@ -215,7 +216,12 @@ class WorkTypeReportService:
         end_d: date,
         teams: list[str],
     ) -> list[Issue]:
-        """Issues with at least one worklog in period AND assigned_category in this work_type's categories."""
+        """Issues with at least one worklog in period AND assigned_category in this work_type's categories.
+
+        Team filter uses the same two-dimensional OR-logic as the rest of the app:
+        issue.team IN teams  OR  participating_teams contains any team  OR
+        worklog.employee_id IN (employees in those teams).
+        """
         cat_codes = list(
             self.db.execute(
                 select(Category.code).where(Category.work_type_id == work_type_id)
@@ -235,7 +241,28 @@ class WorkTypeReportService:
             )
         )
         if teams:
-            q = q.where(Issue.team.in_(teams))
+            import json as _json
+            # issue-side primary
+            issue_clauses = [Issue.team.in_(teams)]
+            # issue-side secondary: participating_teams JSON array contains any team
+            for t in teams:
+                t_json = _json.dumps(t, ensure_ascii=False)
+                escaped = t_json.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                issue_clauses.append(
+                    Issue.participating_teams.like(f"%{escaped}%", escape="\\")
+                )
+            # employee-side: worklog authored by an employee in those teams
+            emp_subq = (
+                select(EmployeeTeam.employee_id)
+                .where(EmployeeTeam.team.in_(teams))
+                .scalar_subquery()
+            )
+            q = q.where(
+                or_(
+                    or_(*issue_clauses),
+                    Worklog.employee_id.in_(emp_subq),
+                )
+            )
         return list(self.db.execute(q).scalars().all())
 
     def _aggregate_findings(

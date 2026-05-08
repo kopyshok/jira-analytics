@@ -1,22 +1,20 @@
 """WorkTypeReportService — orchestrator end-to-end tests with fake providers."""
 import json
 import pytest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from unittest.mock import AsyncMock
 
 from app.models.mandatory_work_type import MandatoryWorkType
-from app.models.theme import Theme
 from app.models.category import Category
 from app.models.issue import Issue
 from app.models.project import Project
 from app.models.employee import Employee
+from app.models.employee_team import EmployeeTeam
 from app.models.worklog import Worklog
-from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
 from app.services.work_type_report_service import (
     WorkTypeReportService, _team_set_hash, _resolve_period,
 )
 from app.services.llm.work_type_classifier import ClassificationResult
-from app.services.llm.work_type_synthesizer import SynthesisOutput
 
 
 @pytest.fixture
@@ -64,6 +62,68 @@ def setup_data(db_session):
     ])
     db_session.commit()
     return {"wt": wt, "issue1": issue1, "issue2": issue2, "emp": emp}
+
+
+@pytest.mark.asyncio
+async def test_two_dim_team_filter(db_session):
+    """_select_scope_issues uses OR logic: issue.team, participating_teams, employee team."""
+    wt = MandatoryWorkType(code="sc_2dim", label="2dim", sort_order=1)
+    db_session.add(wt)
+    db_session.commit()
+
+    cat = Category(code="sc_2dim_cat", label="2dim cat", work_type_id=wt.id)
+    db_session.add(cat)
+    db_session.commit()
+
+    proj = Project(jira_project_id="P2", key="P2", name="P2")
+    db_session.add(proj)
+    db_session.commit()
+
+    # Employee in team X (via EmployeeTeam)
+    emp_x = Employee(jira_account_id="u_x", display_name="User X", team="Y", role="analyst")
+    db_session.add(emp_x)
+    db_session.commit()
+    db_session.add(EmployeeTeam(employee_id=emp_x.id, team="X", is_primary=True))
+    db_session.commit()
+
+    # Issue A: issue.team = 'X' (issue-side primary)
+    issue_a = Issue(
+        jira_issue_id="2d-a", key="P2-A", summary="A", issue_type="Task",
+        status="Done", project_id=proj.id, assigned_category="sc_2dim_cat", team="X",
+    )
+    # Issue B: issue.team = 'Y', participating_teams contains 'X' (issue-side secondary)
+    issue_b = Issue(
+        jira_issue_id="2d-b", key="P2-B", summary="B", issue_type="Task",
+        status="Done", project_id=proj.id, assigned_category="sc_2dim_cat", team="Y",
+        participating_teams='["X"]',
+    )
+    # Issue C: issue.team = 'Z', worklog by employee in team X (employee-side)
+    issue_c = Issue(
+        jira_issue_id="2d-c", key="P2-C", summary="C", issue_type="Task",
+        status="Done", project_id=proj.id, assigned_category="sc_2dim_cat", team="Z",
+    )
+    db_session.add_all([issue_a, issue_b, issue_c])
+    db_session.commit()
+
+    wl_date = datetime(2026, 4, 5)
+    db_session.add_all([
+        Worklog(jira_worklog_id="2d-w1", issue_id=issue_a.id, employee_id=emp_x.id,
+                hours=1.0, time_spent_seconds=3600, started_at=wl_date),
+        Worklog(jira_worklog_id="2d-w2", issue_id=issue_b.id, employee_id=emp_x.id,
+                hours=1.0, time_spent_seconds=3600, started_at=wl_date),
+        Worklog(jira_worklog_id="2d-w3", issue_id=issue_c.id, employee_id=emp_x.id,
+                hours=1.0, time_spent_seconds=3600, started_at=wl_date),
+    ])
+    db_session.commit()
+
+    svc = WorkTypeReportService(db_session)
+    result = svc._select_scope_issues(
+        wt.id, date(2026, 4, 1), date(2026, 4, 30), ["X"]
+    )
+    result_ids = {i.id for i in result}
+    assert issue_a.id in result_ids, "issue.team='X' must be in scope"
+    assert issue_b.id in result_ids, "participating_teams=['X'] must be in scope"
+    assert issue_c.id in result_ids, "worklog by employee in team X must be in scope"
 
 
 def test_team_set_hash_stable():
