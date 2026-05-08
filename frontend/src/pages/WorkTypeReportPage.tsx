@@ -79,21 +79,37 @@ export default function WorkTypeReportPage() {
 
   const activeTypes = useMemo(() => workTypes ?? [], [workTypes]);
 
-  // Sync workTypeId to URL; default to first active type
+  // Sync workTypeId to URL; default to last-used (localStorage) → first active type
   const urlWorkTypeId = searchParams.get('work_type_id');
-  const workTypeId = urlWorkTypeId ?? (activeTypes[0]?.id ?? null);
+  const storedWorkTypeId = typeof window !== 'undefined'
+    ? window.localStorage.getItem('workTypeReport.work_type_id')
+    : null;
+  const fallbackId = (() => {
+    if (storedWorkTypeId && activeTypes.some((t) => t.id === storedWorkTypeId)) {
+      return storedWorkTypeId;
+    }
+    return activeTypes[0]?.id ?? null;
+  })();
+  const workTypeId = urlWorkTypeId ?? fallbackId;
 
   useEffect(() => {
-    if (!urlWorkTypeId && activeTypes.length > 0) {
+    if (!urlWorkTypeId && fallbackId) {
       setSearchParams(
         (prev) => {
-          prev.set('work_type_id', activeTypes[0].id);
+          prev.set('work_type_id', fallbackId);
           return prev;
         },
         { replace: true },
       );
     }
-  }, [urlWorkTypeId, activeTypes, setSearchParams]);
+  }, [urlWorkTypeId, fallbackId, setSearchParams]);
+
+  // Persist active selection so navigating away and back keeps it
+  useEffect(() => {
+    if (workTypeId) {
+      window.localStorage.setItem('workTypeReport.work_type_id', workTypeId);
+    }
+  }, [workTypeId]);
 
   const handleWorkTypeChange = (id: string) => {
     setSearchParams((prev) => {
