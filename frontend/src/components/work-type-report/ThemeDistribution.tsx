@@ -49,7 +49,36 @@ function buildSlices(themes: Theme[], totalHours: number): Slice[] {
 }
 
 export default function ThemeDistribution({ themes, totalHours, onThemeClick }: Props) {
-  if (themes.length === 0) return null;
+  if (themes.length === 0) {
+    return (
+      <div
+        style={{
+          background: DARK_THEME.cardBg,
+          border: `1px solid ${DARK_THEME.border}`,
+          borderRadius: 8,
+          padding: 24,
+          minHeight: 280,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          color: DARK_THEME.textMuted,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>★</div>
+          <div style={{ fontSize: 14, marginBottom: 6, color: DARK_THEME.textSecondary }}>
+            Темы ещё не приняты
+          </div>
+          <div style={{ fontSize: 12 }}>
+            Откройте «Словарь тем» → вкладка «Кандидаты»,
+            <br />
+            примите подходящие — диаграмма появится здесь
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const slices = buildSlices(themes, totalHours);
   const centerLabel = `${Math.round(totalHours)} ч`;
