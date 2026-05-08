@@ -156,6 +156,10 @@ class OpenRouterProvider:
         """
         from app.services.llm.work_type_classifier import ClassificationResult
 
+        nature_enum = [
+            "bug", "enhancement", "consultation", "regulatory",
+            "data_fix", "integration", "access_request", "other",
+        ]
         schema: dict[str, Any] = {
             "type": "object",
             "properties": {
@@ -163,6 +167,13 @@ class OpenRouterProvider:
                 "candidate_name": {"type": ["string", "null"]},
                 "contribution_text": {"type": ["string", "null"], "maxLength": 200},
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "markers": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 60},
+                    "maxItems": 8,
+                },
+                "area": {"type": ["string", "null"], "maxLength": 120},
+                "nature": {"type": ["string", "null"], "enum": [*nature_enum, None]},
             },
             "required": ["theme_id", "confidence"],
         }
@@ -185,13 +196,28 @@ class OpenRouterProvider:
 
             tid = obj.get("theme_id")
             if tid and tid not in valid_ids:
-                tid = None  # AI hallucinated id — treat as candidate
+                tid = None
+
+            raw_markers = obj.get("markers") or []
+            markers = [
+                m.strip().lower().replace(" ", "_")[:60]
+                for m in raw_markers
+                if isinstance(m, str) and m.strip()
+            ][:8]
+
+            nature = obj.get("nature")
+            if nature not in nature_enum:
+                nature = None
+
             return ClassificationResult(
                 theme_id=tid,
                 candidate_name=(obj.get("candidate_name") or "").strip()[:255] or None,
                 contribution_text=(obj.get("contribution_text") or "").strip()[:200] or None,
                 confidence=float(obj.get("confidence") or 0.0),
                 nature_tag=None,
+                markers=markers,
+                area=(obj.get("area") or "").strip()[:120] or None,
+                nature=nature,
             ), meta
         if last_exc is not None:
             raise last_exc
