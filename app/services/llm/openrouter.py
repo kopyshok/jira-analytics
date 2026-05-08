@@ -234,12 +234,12 @@ class OpenRouterProvider:
                         "type": "object",
                         "properties": {
                             "name": {"type": "string", "maxLength": 80},
-                            "candidate_names": {
+                            "markers": {
                                 "type": "array",
                                 "items": {"type": "string"},
                             },
                         },
-                        "required": ["name", "candidate_names"],
+                        "required": ["name", "markers"],
                     },
                 }
             },
