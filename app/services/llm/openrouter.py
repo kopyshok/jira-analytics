@@ -207,7 +207,7 @@ class OpenRouterProvider:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "name": {"type": "string", "maxLength": 100},
+                            "name": {"type": "string", "maxLength": 80},
                             "candidate_names": {
                                 "type": "array",
                                 "items": {"type": "string"},
