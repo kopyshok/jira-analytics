@@ -1,6 +1,7 @@
+import { useCallback, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { message } from 'antd';
-import { workTypeReportApi, type GetReportParams } from '../api/workTypeReport';
+import { workTypeReportApi, type GetReportParams, type BuildEvent } from '../api/workTypeReport';
 import type {
   CandidateAcceptRequest,
   CandidateMergeRequest,
@@ -51,6 +52,94 @@ export function useBuildWorkTypeReport() {
       message.error(`Не удалось построить отчёт: ${err?.message ?? 'Ошибка'}`);
     },
   });
+}
+
+export interface BuildStreamState {
+  phase: 'scope' | 'map' | 'cluster' | 'reduce' | 'save' | null;
+  current: number;
+  total: number;
+  item_key: string | null;
+  isRunning: boolean;
+  error: string | null;
+}
+
+const INITIAL_STATE: BuildStreamState = {
+  phase: null,
+  current: 0,
+  total: 0,
+  item_key: null,
+  isRunning: false,
+  error: null,
+};
+
+/** SSE-streamed build. Returns start/cancel and live progress state. */
+export function useBuildWorkTypeReportStream() {
+  const qc = useQueryClient();
+  const [state, setState] = useState<BuildStreamState>(INITIAL_STATE);
+  const ctrlRef = useRef<AbortController | null>(null);
+
+  const cancel = useCallback(() => {
+    ctrlRef.current?.abort();
+    setState((s) => ({ ...s, isRunning: false }));
+  }, []);
+
+  const start = useCallback(
+    async (
+      body: Parameters<typeof workTypeReportApi.buildStream>[0],
+      onDone?: () => void,
+    ) => {
+      ctrlRef.current?.abort();
+      const ctrl = new AbortController();
+      ctrlRef.current = ctrl;
+      setState({ ...INITIAL_STATE, isRunning: true });
+
+      const handleEvent = (e: BuildEvent) => {
+        if (e.type === 'phase_start') {
+          setState((s) => ({
+            ...s,
+            phase: e.phase,
+            current: 0,
+            total: e.total ?? 0,
+            item_key: null,
+          }));
+        } else if (e.type === 'progress') {
+          setState((s) => ({
+            ...s,
+            current: e.current,
+            total: e.total,
+            item_key: e.item_key ?? null,
+          }));
+        } else if (e.type === 'phase_done') {
+          // phase stays until next phase_start
+        } else if (e.type === 'done') {
+          setState({ ...INITIAL_STATE, isRunning: false });
+          qc.invalidateQueries({ queryKey: ['work-type-report', e.work_type_id] });
+          onDone?.();
+        } else if (e.type === 'cancelled') {
+          setState((s) => ({ ...s, isRunning: false }));
+        } else if (e.type === 'error') {
+          setState((s) => ({ ...s, isRunning: false, error: e.detail }));
+        }
+      };
+
+      try {
+        await workTypeReportApi.buildStream(body, handleEvent, ctrl.signal);
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          setState((s) => ({
+            ...s,
+            isRunning: false,
+            error: (e as Error).message ?? 'Ошибка',
+          }));
+        } else {
+          setState((s) => ({ ...s, isRunning: false }));
+        }
+      }
+    },
+    [qc],
+  );
+
+  return { start, cancel, state };
 }
 
 function invalidateAfterCandidate(

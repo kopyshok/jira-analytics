@@ -1,10 +1,11 @@
 """WorkTypeReportService — оркестратор: Map → aggregate → Reduce → snapshot."""
+import asyncio
 import hashlib
 import json
 import logging
 from collections import defaultdict
 from datetime import date, datetime, time
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
@@ -73,6 +74,8 @@ class WorkTypeReportService:
         teams: list[str],
         force_refresh: bool,
         user_id: Optional[str],
+        on_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
+        cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
     ) -> WorkTypeReportSnapshot:
         wt = self.db.get(MandatoryWorkType, work_type_id)
         if not wt:
@@ -91,6 +94,8 @@ class WorkTypeReportService:
             team_hash=team_hash,
             user_id=user_id,
             existing=existing,
+            on_progress=on_progress,
+            cancel_check=cancel_check,
         )
 
     def _find_existing(
@@ -133,18 +138,30 @@ class WorkTypeReportService:
         team_hash: str,
         user_id: Optional[str],
         existing: Optional[WorkTypeReportSnapshot],
+        on_progress: Optional[Callable[[dict], Awaitable[None]]] = None,
+        cancel_check: Optional[Callable[[], Awaitable[bool]]] = None,
     ) -> WorkTypeReportSnapshot:
+        async def _emit(event: dict) -> None:
+            if on_progress:
+                await on_progress(event)
+
         start_d, end_d = _resolve_period(year, quarter, month)
 
         # 1. Scope
+        await _emit({"type": "phase_start", "phase": "scope"})
         issues = self._select_scope_issues(work_type_id, start_d, end_d, teams)
         themes = ThemeDictionaryService(self.db).list_active(work_type_id)
+        await _emit({"type": "phase_done", "phase": "scope", "count": len(issues)})
 
         # 2. Map phase — classify each issue
         classifications: dict[str, IssueClassification] = {}
         if self.classifier_provider:
+            n = len(issues)
+            await _emit({"type": "phase_start", "phase": "map", "total": n})
             clf = WorkTypeClassifier(self.db, self.classifier_provider)
-            for issue in issues:
+            for i, issue in enumerate(issues):
+                if cancel_check and await cancel_check():
+                    raise asyncio.CancelledError("client disconnected")
                 cls = await clf.classify_issue(
                     issue=issue,
                     work_type_id=work_type_id,
@@ -153,6 +170,8 @@ class WorkTypeReportService:
                     period_end=end_d,
                 )
                 classifications[issue.id] = cls
+                await _emit({"type": "progress", "phase": "map", "current": i + 1, "total": n, "item_key": issue.key})
+            await _emit({"type": "phase_done", "phase": "map", "count": n})
 
         # 2b. Cluster phase — group raw candidate_name into broader themes
         if self.classifier_provider and classifications:
@@ -161,6 +180,7 @@ class WorkTypeReportService:
                 if c.theme_id is None and not c.failed and c.candidate_name
             ]
             if len(unclassified) >= 2:
+                await _emit({"type": "phase_start", "phase": "cluster", "total": 1})
                 # Build lookup maps for hours and keys from the issue objects
                 hours_by_issue: dict[str, float] = {}
                 key_by_issue: dict[str, str] = {}
@@ -192,6 +212,7 @@ class WorkTypeReportService:
                         c.candidate_name = new_name
                 if mapping:
                     self.db.commit()
+                await _emit({"type": "phase_done", "phase": "cluster"})
 
         # 3. Aggregate findings deterministically
         findings, manual_review, employee_names = self._aggregate_findings(
@@ -204,6 +225,7 @@ class WorkTypeReportService:
         )
 
         # 4. Reduce phase
+        await _emit({"type": "phase_start", "phase": "reduce", "total": 1})
         synth_meta: dict = {}
         if self.synthesizer_provider and findings["totals"]["tasks"] > 0:
             synth = WorkTypeSynthesizer(self.synthesizer_provider)
@@ -218,11 +240,13 @@ class WorkTypeReportService:
                 ),
                 is_fallback=True,
             )
+        await _emit({"type": "phase_done", "phase": "reduce"})
 
         # 5. Build snapshot data
         data = self._build_snapshot_data(findings, synthesis, manual_review)
 
         # 6. Persist
+        await _emit({"type": "phase_start", "phase": "save"})
         snap = existing or WorkTypeReportSnapshot(
             work_type_id=work_type_id,
             year=year,
@@ -247,6 +271,7 @@ class WorkTypeReportService:
             self.db.add(snap)
         self.db.commit()
         self.db.refresh(snap)
+        await _emit({"type": "phase_done", "phase": "save"})
         return snap
 
     def _select_scope_issues(

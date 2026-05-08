@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, BASE_URL } from './client';
 import type {
   WorkTypeReportResponse,
   CandidateAcceptRequest,
@@ -8,6 +8,14 @@ import type {
   LayoutOut,
   LayoutCreateRequest,
 } from '../types/workTypeReport';
+
+export type BuildEvent =
+  | { type: 'phase_start'; phase: 'scope' | 'map' | 'cluster' | 'reduce' | 'save'; total?: number }
+  | { type: 'progress'; phase: string; current: number; total: number; item_key?: string }
+  | { type: 'phase_done'; phase: string; count?: number }
+  | { type: 'done'; snapshot_id: string; work_type_id: string; year: number; quarter: number; month: number | null; totals: Record<string, unknown> }
+  | { type: 'error'; detail: string }
+  | { type: 'cancelled'; reason?: string };
 
 export interface GetReportParams {
   work_type_id: string;
@@ -45,6 +53,53 @@ export const workTypeReportApi = {
     teams?: string[];
     force_refresh?: boolean;
   }) => api.post<WorkTypeReportResponse>('/work-type-report', body),
+
+  /**
+   * POST /work-type-report/build/stream — SSE-streamed build.
+   * Calls onEvent for each SSE frame. Resolves on `done`, rejects on `error`.
+   */
+  buildStream: async (
+    body: {
+      work_type_id: string;
+      year: number;
+      quarter: number;
+      month?: number | null;
+      teams?: string[];
+      force_refresh?: boolean;
+    },
+    onEvent: (e: BuildEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const url = `${BASE_URL}/work-type-report/build/stream`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.statusText);
+    }
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const event = JSON.parse(line.slice(6)) as BuildEvent;
+        onEvent(event);
+        if (event.type === 'error') throw new Error(event.detail);
+        if (event.type === 'done' || event.type === 'cancelled') return;
+      }
+    }
+  },
 
   // ---- Candidate actions ----
 

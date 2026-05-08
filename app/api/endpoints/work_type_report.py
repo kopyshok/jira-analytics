@@ -1,10 +1,12 @@
 """Work-type thematic report API."""
+import asyncio
 import json
+from contextlib import suppress
 from typing import Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -75,6 +77,85 @@ async def build_report(
         user_id=current_user.id,
     )
     return _to_response(snap, wt)
+
+
+def _disconnect_checker(request: Request):
+    """Возвращает async-коллбек, который возвращает True если клиент отключился."""
+    async def _check() -> bool:
+        return await request.is_disconnected()
+    return _check
+
+
+@router.post("/build/stream")
+async def build_report_stream(
+    payload: WorkTypeReportRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """SSE-стрим прогресса построения тематического отчёта.
+
+    Возвращает ``text/event-stream`` с событиями:
+    - ``phase_start`` — вход в фазу (scope/map/cluster/reduce/save)
+    - ``progress`` — прогресс внутри Map-фазы (per-issue)
+    - ``phase_done`` — фаза завершена
+    - ``done`` — snapshot сохранён, полные данные
+    - ``error`` — ошибка бэкенда
+    - ``cancelled`` — клиент отключился
+    """
+    wt = db.get(MandatoryWorkType, payload.work_type_id)
+    if not wt:
+        raise HTTPException(404, "Work type not found")
+
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(event: dict) -> None:
+            await queue.put(event)
+
+        async def run() -> None:
+            try:
+                svc = _make_service(db)
+                snap = await svc.get_or_build(
+                    work_type_id=payload.work_type_id,
+                    year=payload.year,
+                    quarter=payload.quarter,
+                    month=payload.month,
+                    teams=payload.teams,
+                    force_refresh=payload.force_refresh,
+                    user_id=current_user.id,
+                    on_progress=on_progress,
+                    cancel_check=_disconnect_checker(http_request),
+                )
+                await queue.put({
+                    "type": "done",
+                    "snapshot_id": snap.id,
+                    "work_type_id": snap.work_type_id,
+                    "year": snap.year,
+                    "quarter": snap.quarter,
+                    "month": snap.month,
+                    "totals": json.loads(snap.snapshot_data).get("totals", {}),
+                })
+            except asyncio.CancelledError:
+                await queue.put({"type": "cancelled", "reason": "client disconnected"})
+                raise
+            except Exception as e:
+                await queue.put({"type": "error", "detail": str(e)})
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                if event["type"] in ("done", "error", "cancelled"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await task
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @router.get("", response_model=WorkTypeReportResponse)

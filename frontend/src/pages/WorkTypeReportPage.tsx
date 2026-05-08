@@ -16,13 +16,14 @@ import ManualReviewBlock from '../components/work-type-report/ManualReviewBlock'
 import CandidatesPanel from '../components/work-type-report/CandidatesPanel';
 import ThemeDictionaryDrawer from '../components/work-type-report/ThemeDictionaryDrawer';
 import { useThemeList } from '../hooks/useThemeDictionary';
-import { useWorkTypeReport } from '../hooks/useWorkTypeReport';
+import { useWorkTypeReport, useBuildWorkTypeReportStream } from '../hooks/useWorkTypeReport';
 import { useLayoutList } from '../hooks/useWorkTypeReportLayouts';
 import { useMandatoryWorkTypes } from '../hooks/useMandatoryWorkTypes';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { DARK_THEME } from '../utils/constants';
 import type { GroupingDim, Theme } from '../types/workTypeReport';
+import BuildProgressModal from '../components/work-type-report/BuildProgressModal';
 
 /** Returns ISO date bounds for a quarter (or a specific month). */
 function periodBounds(year: number, quarter: number, month?: number): { start: string; end: string } {
@@ -76,6 +77,9 @@ export default function WorkTypeReportPage() {
   const [highlightThemeId, setHighlightThemeId] = useState<string | null>(null);
   const [drillIssue, setDrillIssue] = useState<{ id: string; key: string } | null>(null);
   const [dictionaryDrawer, setDictionaryDrawer] = useState<{ open: boolean; tab: 'active' | 'archived' | 'candidates' }>({ open: false, tab: 'active' });
+  const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [buildDone, setBuildDone] = useState(false);
+  const buildStream = useBuildWorkTypeReportStream();
 
   const activeTypes = useMemo(() => workTypes ?? [], [workTypes]);
 
@@ -179,6 +183,26 @@ export default function WorkTypeReportPage() {
     setDrillIssue({ id: issueId, key: issueKey });
   };
 
+  const _startBuild = (forceRefresh: boolean) => {
+    if (!workTypeId) return;
+    setBuildDone(false);
+    setProgressModalOpen(true);
+    void buildStream.start(
+      {
+        work_type_id: workTypeId,
+        year: period.year,
+        quarter: period.quarter,
+        month: period.month ?? null,
+        teams: selectedTeams.length > 0 ? selectedTeams : undefined,
+        force_refresh: forceRefresh,
+      },
+      () => setBuildDone(true),
+    );
+  };
+
+  const handleRebuild = () => _startBuild(true);
+  const handleBuild = () => _startBuild(false);
+
   return (
     <div>
       {/* Compact page header — eyebrow + title in ~40px; no PageHeader block */}
@@ -219,7 +243,7 @@ export default function WorkTypeReportPage() {
           <Spin size="large" />
         </div>
       ) : isEmpty ? (
-        <EmptyState workTypeId={workTypeId} />
+        <EmptyState workTypeId={workTypeId} onBuild={handleBuild} isBuilding={buildStream.state.isRunning} />
       ) : (
         <>
           <Toolbar
@@ -227,6 +251,8 @@ export default function WorkTypeReportPage() {
             onWorkTypeChange={handleWorkTypeChange}
             report={report}
             onOpenDictionary={() => setDictionaryDrawer({ open: true, tab: 'active' })}
+            onRebuild={handleRebuild}
+            isRebuilding={buildStream.state.isRunning}
           />
           {report && (
             <>
@@ -346,6 +372,18 @@ export default function WorkTypeReportPage() {
         candidates={report?.data.candidates ?? []}
         snapshotId={report?.snapshot_id ?? null}
         onClose={() => setDictionaryDrawer((s) => ({ ...s, open: false }))}
+      />
+
+      {/* SSE build progress modal */}
+      <BuildProgressModal
+        open={progressModalOpen}
+        state={buildStream.state}
+        showDone={buildDone}
+        onCancel={() => {
+          buildStream.cancel();
+          setProgressModalOpen(false);
+        }}
+        onClose={() => setProgressModalOpen(false)}
       />
     </div>
   );

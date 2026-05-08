@@ -192,3 +192,33 @@ def test_export_xlsx_returns_blob(client, setup):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument")
     assert len(r.content) > 200  # non-empty xlsx
+
+
+def _parse_sse(raw: bytes) -> list[dict]:
+    """Parse SSE stream body into list of data-payload dicts."""
+    import json as _json
+    events = []
+    for line in raw.decode("utf-8").splitlines():
+        if line.startswith("data: "):
+            events.append(_json.loads(line[6:]))
+    return events
+
+
+def test_build_stream_yields_phase_events(client, setup):
+    """POST /build/stream returns SSE with at least phase_start scope and done."""
+    r = client.post("/api/v1/work-type-report/build/stream", json={
+        "work_type_id": setup["wt"].id, "year": 2026, "quarter": 2, "month": 4,
+        "teams": [], "force_refresh": True,
+    })
+    assert r.status_code == 200, r.text
+    assert "text/event-stream" in r.headers.get("content-type", "")
+    events = _parse_sse(r.content)
+    types = [e["type"] for e in events]
+    # Must have scope start + done events
+    assert "phase_start" in types
+    assert "done" in types
+    # Verify done payload has expected fields
+    done = next(e for e in events if e["type"] == "done")
+    assert done["work_type_id"] == setup["wt"].id
+    assert done["year"] == 2026
+    assert "snapshot_id" in done

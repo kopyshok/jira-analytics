@@ -5,7 +5,6 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import { DARK_THEME } from '../../utils/constants';
 import { useMandatoryWorkTypes } from '../../hooks/useMandatoryWorkTypes';
-import { useBuildWorkTypeReport } from '../../hooks/useWorkTypeReport';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import { workTypeReportApi } from '../../api/workTypeReport';
@@ -16,6 +15,8 @@ interface Props {
   onWorkTypeChange: (id: string) => void;
   report: WorkTypeReportResponse | undefined;
   onOpenDictionary: () => void;
+  onRebuild: () => void;
+  isRebuilding: boolean;
 }
 
 function FreshnessPill({ report }: { report: WorkTypeReportResponse | undefined }) {
@@ -36,9 +37,8 @@ function FreshnessPill({ report }: { report: WorkTypeReportResponse | undefined 
   );
 }
 
-export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDictionary }: Props) {
+export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDictionary, onRebuild, isRebuilding }: Props) {
   const { data: workTypes, isLoading: wtLoading } = useMandatoryWorkTypes();
-  const buildMutation = useBuildWorkTypeReport();
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
 
@@ -54,17 +54,6 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDi
       onWorkTypeChange(draft);
     }
     setDraft(null);
-  };
-
-  const handleRebuild = () => {
-    buildMutation.mutate({
-      work_type_id: workTypeId,
-      year: period.year,
-      quarter: period.quarter,
-      month: period.month ?? null,
-      teams: selectedTeams.length > 0 ? selectedTeams : undefined,
-      force_refresh: true,
-    });
   };
 
   const handleXlsx = () => {
@@ -123,9 +112,9 @@ export default function Toolbar({ workTypeId, onWorkTypeChange, report, onOpenDi
         <Button
           icon={<ReloadOutlined />}
           size="small"
-          loading={buildMutation.isPending}
-          onClick={handleRebuild}
-          disabled={!workTypeId}
+          loading={isRebuilding}
+          onClick={onRebuild}
+          disabled={!workTypeId || isRebuilding}
         >
           Пересчитать
         </Button>

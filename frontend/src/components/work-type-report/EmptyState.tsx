@@ -1,31 +1,14 @@
 import { Button, Result } from 'antd';
 import { LoadingOutlined, ExperimentOutlined } from '@ant-design/icons';
-import { useBuildWorkTypeReport } from '../../hooks/useWorkTypeReport';
-import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
-import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import { DARK_THEME } from '../../utils/constants';
 
 interface Props {
   workTypeId: string | null;
+  onBuild: () => void;
+  isBuilding: boolean;
 }
 
-export default function EmptyState({ workTypeId }: Props) {
-  const buildMutation = useBuildWorkTypeReport();
-  const { period } = useGlobalPeriod();
-  const { selectedTeams } = useGlobalTeamFilter();
-
-  const handleBuild = () => {
-    if (!workTypeId) return;
-    buildMutation.mutate({
-      work_type_id: workTypeId,
-      year: period.year,
-      quarter: period.quarter,
-      month: period.month ?? null,
-      teams: selectedTeams.length > 0 ? selectedTeams : undefined,
-      force_refresh: false,
-    });
-  };
-
+export default function EmptyState({ workTypeId, onBuild, isBuilding }: Props) {
   return (
     <div
       style={{
@@ -52,9 +35,9 @@ export default function EmptyState({ workTypeId }: Props) {
           <Button
             type="primary"
             size="large"
-            disabled={!workTypeId || buildMutation.isPending}
-            icon={buildMutation.isPending ? <LoadingOutlined /> : undefined}
-            onClick={handleBuild}
+            disabled={!workTypeId || isBuilding}
+            icon={isBuilding ? <LoadingOutlined /> : undefined}
+            onClick={onBuild}
           >
             Построить первый отчёт
           </Button>
