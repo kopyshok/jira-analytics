@@ -26,6 +26,10 @@ class LLMProvider(Protocol):
         """Cluster-фаза тематического отчёта. Возвращает (data_dict, meta)."""
         ...
 
+    async def synthesize_executive_summary(self, prompt: str) -> tuple[dict, dict]:
+        """Executive dashboard reduce-phase. Возвращает (data_dict, meta)."""
+        ...
+
     async def healthcheck(self) -> bool:
         """Проверка соединения и ключа."""
         ...

@@ -319,6 +319,34 @@ class OpenRouterProvider:
             raise last_exc
         raise LLMResponseError("synthesize_work_type_report: пустая цепочка моделей")
 
+    async def synthesize_executive_summary(self, prompt: str) -> tuple[dict, dict]:
+        """Executive dashboard. JSON со схемой improved/risk/action."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "improved": {"type": "string", "maxLength": 600},
+                "risk": {"type": "string", "maxLength": 600},
+                "action": {"type": "string", "maxLength": 600},
+            },
+            "required": ["improved", "risk", "action"],
+        }
+        chain = [self.model] + [m for m in self.fallback_models if m and m != self.model]
+        last_exc: Exception | None = None
+        for model_id in chain:
+            try:
+                return await self._call_json(model_id, prompt, schema)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in _RETRY_STATUSES:
+                    last_exc = e
+                    continue
+                raise
+            except (LLMResponseError, httpx.TimeoutException) as e:
+                last_exc = e
+                continue
+        if last_exc is not None:
+            raise last_exc
+        raise LLMResponseError("synthesize_executive_summary: пустая цепочка моделей")
+
     async def healthcheck(self) -> bool:
         """Проверяет валидность ключа через `/auth/key` — не тратит квоту модели.
 
