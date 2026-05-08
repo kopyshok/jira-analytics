@@ -366,7 +366,6 @@ export default function IssueDrillDownDrawer({
         <div style={{ overflowY: 'auto', height: '100%', background: DARK_THEME.cardBg }}>
           <DrawerContent
             key={issueId}
-            open={open}
             issueId={issueId}
             issueKey={issueKey}
             workTypeId={workTypeId}
