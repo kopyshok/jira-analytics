@@ -103,6 +103,33 @@ class ExecutiveDashboardService:
 
     # --- selectors ---
 
+    def _apply_team_filter(self, q, teams: list[str]):
+        """OR-логика фильтра команд: Issue.team / participating_teams /
+        Worklog.employee_id ∈ EmployeeTeam(team).
+
+        Должна вызываться на запросе, который уже джойнит Worklog —
+        иначе ветка по employee_id отвалится.
+        """
+        if not teams:
+            return q
+        issue_clauses = [Issue.team.in_(teams)]
+        for t in teams:
+            t_json = json.dumps(t, ensure_ascii=False)
+            escaped = (
+                t_json.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            issue_clauses.append(
+                Issue.participating_teams.like(f"%{escaped}%", escape="\\"),
+            )
+        emp_subq = (
+            select(EmployeeTeam.employee_id)
+            .where(EmployeeTeam.team.in_(teams))
+            .scalar_subquery()
+        )
+        return q.where(or_(or_(*issue_clauses), Worklog.employee_id.in_(emp_subq)))
+
     def _select_issues(
         self, start_dt: datetime, end_dt: datetime, teams: list[str],
     ) -> list[Issue]:
@@ -111,24 +138,7 @@ class ExecutiveDashboardService:
             .join(Worklog, Worklog.issue_id == Issue.id)
             .where(Worklog.started_at >= start_dt, Worklog.started_at <= end_dt)
         )
-        if teams:
-            issue_clauses = [Issue.team.in_(teams)]
-            for t in teams:
-                t_json = json.dumps(t, ensure_ascii=False)
-                escaped = (
-                    t_json.replace("\\", "\\\\")
-                    .replace("%", "\\%")
-                    .replace("_", "\\_")
-                )
-                issue_clauses.append(
-                    Issue.participating_teams.like(f"%{escaped}%", escape="\\"),
-                )
-            emp_subq = (
-                select(EmployeeTeam.employee_id)
-                .where(EmployeeTeam.team.in_(teams))
-                .scalar_subquery()
-            )
-            q = q.where(or_(or_(*issue_clauses), Worklog.employee_id.in_(emp_subq)))
+        q = self._apply_team_filter(q, teams)
         return list(self.db.execute(q).scalars().all())
 
     def _select_worklogs(
@@ -212,8 +222,7 @@ class ExecutiveDashboardService:
                 .join(Worklog, Worklog.issue_id == Issue.id)
                 .where(Worklog.started_at >= start_dt, Worklog.started_at <= end_dt)
             )
-            if teams:
-                q = q.where(Issue.team.in_(teams))
+            q = self._apply_team_filter(q, teams)
             iss = list(self.db.execute(q).scalars().all())
             total = len(iss) or 1
             crit = sum(
