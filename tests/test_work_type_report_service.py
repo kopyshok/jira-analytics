@@ -273,20 +273,26 @@ async def test_cluster_phase_groups_raw_candidates(setup_data, db_session):
 
     fake_classifier = AsyncMock()
     fake_classifier.model = "test-classifier"
-    # Each issue gets a unique per-task candidate_name (no theme)
+    # Each issue gets a unique per-task candidate_name (no theme), with shared markers
     fake_classifier.classify_issue = AsyncMock(side_effect=[
-        (ClassificationResult(theme_id=None, candidate_name="Ошибка обмена УПП-ЕРП",
-                              contribution_text="детали", confidence=0.7), {"model": "tc"}),
-        (ClassificationResult(theme_id=None, candidate_name="Сбой интеграции ЕРП",
-                              contribution_text="детали", confidence=0.6), {"model": "tc"}),
+        (ClassificationResult(
+            theme_id=None, candidate_name="Ошибка обмена УПП-ЕРП",
+            contribution_text="детали", confidence=0.7,
+            markers=["obmen_dannyh", "integraciya_erp"], area="обмен_данных", nature="bug",
+        ), {"model": "tc"}),
+        (ClassificationResult(
+            theme_id=None, candidate_name="Сбой интеграции ЕРП",
+            contribution_text="детали", confidence=0.6,
+            markers=["integraciya_erp", "obmen_dannyh"], area="обмен_данных", nature="bug",
+        ), {"model": "tc"}),
     ])
-    # cluster_candidates returns single cluster for both
+    # cluster_candidates returns single cluster grouping by markers
     fake_classifier.cluster_candidates = AsyncMock(return_value=(
         {
             "clusters": [
                 {
                     "name": "Ошибки интеграции",
-                    "candidate_names": ["Ошибка обмена УПП-ЕРП", "Сбой интеграции ЕРП"],
+                    "markers": ["obmen_dannyh", "integraciya_erp"],
                 },
             ]
         },
