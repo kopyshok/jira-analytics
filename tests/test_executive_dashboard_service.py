@@ -170,6 +170,37 @@ def test_plan_fact_by_role_uses_scenario_estimates(db_session):
     assert plan_fact["QA"]["plan"] == 0.0
 
 
+def test_consultant_hours_not_in_ope(db_session):
+    """Консультант идёт в свою строку 'Консультанты', а не в 'ОПЭ'."""
+    _mk_project(db_session)
+    _mk_employee(db_session, "e_cons", role="consultant")
+    _mk_issue(db_session, "i1", "P-1", status="In Progress")
+    _mk_worklog(db_session, "w1", "i1", "e_cons", hours=15.0,
+                started_at=datetime(2026, 4, 15))
+
+    bi = BacklogItem(
+        id="bi1", title="Item", issue_id="i1",
+        estimate_analyst_hours=0.0, estimate_dev_hours=0.0,
+        estimate_qa_hours=0.0, estimate_opo_hours=0.0,
+    )
+    db_session.add(bi)
+    scen = PlanningScenario(
+        id="s1", name="Q2", year=2026, quarter="Q2", status="approved",
+    )
+    db_session.add(scen)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        id="a1", scenario_id="s1", backlog_item_id="bi1", included_flag=True,
+    ))
+    db_session.commit()
+
+    svc = ExecutiveDashboardService(db_session)
+    f = svc.aggregate(year=2026, quarter=2, teams=["T1"])
+    rows = {row["role"]: row for row in f.plan_fact_by_role}
+    assert rows["Консультанты"]["fact"] == 15.0
+    assert rows["ОПЭ (фаза)"]["fact"] == 0.0
+
+
 def test_scenario_plan_fact_only_counts_scenario_issues(db_session):
     """Fact считается только по задачам сценария, не по всему кварталу."""
     _mk_project(db_session)
@@ -227,4 +258,4 @@ def test_capacity_by_role_employee_in_two_teams_no_double_counting(db_session):
     cap = {row["role"]: row for row in f.capacity_by_role}
     # Без фикса часы удвоились бы (200 → 38%); с фиксом ровно 100 → 19%.
     expected_pct = min(100, round(100.0 / 520 * 100))
-    assert cap["Консультанты 1С"]["utilization_pct"] == expected_pct
+    assert cap["Аналитики"]["utilization_pct"] == expected_pct
