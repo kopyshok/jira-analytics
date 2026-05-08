@@ -24,6 +24,28 @@ function markDeleted(baseUrl: string): void {
   }
 }
 
+/** FastAPI 422 detail — массив `{loc, msg, type}`; HTTPException — строка. Делаем читаемо. */
+function formatDetail(detail: unknown): string {
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d) => {
+      if (typeof d === 'string') return d;
+      if (d && typeof d === 'object') {
+        const o = d as { loc?: unknown[]; msg?: string };
+        const loc = Array.isArray(o.loc) ? o.loc.slice(1).join('.') : '';
+        return loc ? `${loc}: ${o.msg ?? ''}`.trim() : (o.msg ?? JSON.stringify(d));
+      }
+      return String(d);
+    }).join('; ');
+  }
+  if (detail && typeof detail === 'object') {
+    const o = detail as { msg?: string; message?: string };
+    return o.msg ?? o.message ?? JSON.stringify(detail);
+  }
+  return '';
+}
+
+
 function isSuppressed404(method: string, status: number | null, url: string): boolean {
   if (method !== 'GET' || status !== 404) return false;
   const now = Date.now();
@@ -75,7 +97,7 @@ async function request<T>(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    const detail = err.detail || res.statusText;
+    const detail = formatDetail(err.detail) || res.statusText;
     // 401 = истёк/невалидный cookie. Сообщаем AuthProvider — он сбросит user
     // и ProtectedRoute перенаправит на /login. В errorStore не льём.
     if (res.status === 401) {

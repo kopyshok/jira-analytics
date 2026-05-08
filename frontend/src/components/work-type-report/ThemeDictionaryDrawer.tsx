@@ -111,7 +111,7 @@ function ThemeEditModalContent({ initial, workTypeId, isCreate, onClose }: Theme
             <Typography.Text style={{ fontSize: 12, color: DARK_THEME.textMuted, display: 'block' }}>Цвет</Typography.Text>
             <ColorPicker
               value={color}
-              onChange={(_, hex) => setColor(hex)}
+              onChange={(value) => setColor(value.toHexString())}
               style={{ marginTop: 4 }}
             />
           </div>
@@ -174,7 +174,7 @@ function AcceptModalContent({ candidate, snapshotId, onClose }: AcceptModalConte
           <Typography.Text style={{ fontSize: 12, color: DARK_THEME.textMuted, display: 'block' }}>Цвет</Typography.Text>
           <ColorPicker
             value={color}
-            onChange={(_, hex) => setColor(hex)}
+            onChange={(value) => setColor(value.toHexString())}
             style={{ marginTop: 4 }}
           />
         </div>
