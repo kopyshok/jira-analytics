@@ -262,6 +262,36 @@ class GeminiProvider:
         }
         return data, meta
 
+    async def synthesize_executive_summary(self, prompt: str) -> tuple[dict, dict]:
+        """Executive dashboard. JSON со схемой improved/risk/action."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "improved": {"type": "string"},
+                "risk": {"type": "string"},
+                "action": {"type": "string"},
+            },
+            "required": ["improved", "risk", "action"],
+        }
+        body: dict[str, Any] = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+            },
+        }
+        url = f"{self._base}/{self.model}:generateContent?key={self.api_key}"
+        resp = await self._post(url, body)
+        text = resp["candidates"][0]["content"]["parts"][0]["text"]
+        data = json.loads(text)
+        meta = {
+            "input_tokens": resp.get("usageMetadata", {}).get("promptTokenCount"),
+            "output_tokens": resp.get("usageMetadata", {}).get("candidatesTokenCount"),
+            "model": self.model,
+        }
+        return data, meta
+
     async def healthcheck(self) -> bool:
         """Минимальный prompt 'ping' — проверка ключа и соединения."""
         self.last_error = None
