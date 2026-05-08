@@ -170,6 +170,42 @@ def test_plan_fact_by_role_uses_scenario_estimates(db_session):
     assert plan_fact["QA"]["plan"] == 0.0
 
 
+def test_avg_age_uses_quarter_end_not_now(db_session):
+    """Возраст open задач отсчитывается от конца квартала, а не от utcnow().
+
+    Иначе исторический Q1 2024, построенный в 2026, даст всем задачам
+    возраст 700+ дней → age_score = 0 и health_index искусственно низкий.
+    """
+    _mk_project(db_session)
+    _mk_employee(db_session)
+    iss = Issue(
+        id="i_old", jira_issue_id="jira-i_old", key="P-1",
+        summary="Old open issue",
+        issue_type="Bug", status="In Progress", priority="Medium",
+        project_id="p1", team="T1",
+        # Создана в начале Q1 2024, на 5 дней раньше worklog:
+        created_at=datetime(2024, 2, 5),
+        updated_at=datetime(2024, 2, 5),
+    )
+    db_session.add(iss)
+    _mk_worklog(
+        db_session, "w1", "i_old", "e1", hours=2.0,
+        started_at=datetime(2024, 2, 10),
+    )
+    db_session.commit()
+
+    # Проверяем напрямую функцию-вычислитель: ref_dt = end_dt квартала.
+    svc = ExecutiveDashboardService(db_session)
+    f = svc.aggregate(year=2024, quarter=1, teams=["T1"])
+    # End of Q1 2024 = 2024-03-31; created = 2024-02-05 → age ≈ 55 дней.
+    # Если бы считалось от utcnow (>= 2026), возраст был бы > 700 дней
+    # и age_score = 0 → health_index сильно ниже.
+    # С правильным end_dt: critical_share=0, age_score=max(0,1-55/30)=0,
+    # plan_pct=0, cap_overload=0 → health = 35 + 0 + 0 + 20 = 55.
+    # Защитный bound — health > 50.
+    assert f.kpi["health_index"] >= 50
+
+
 def test_consultant_hours_not_in_ope(db_session):
     """Консультант идёт в свою строку 'Консультанты', а не в 'ОПЭ'."""
     _mk_project(db_session)

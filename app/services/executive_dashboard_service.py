@@ -164,7 +164,11 @@ class ExecutiveDashboardService:
         total = len(issues) or 1
         critical_share = critical_open / total
 
-        ref_dt = datetime.utcnow()
+        # Часы возраста считаем относительно конца квартала, а не "сейчас":
+        # для исторических квартальных снапшотов utcnow() даёт
+        # завышенный возраст (например, Q1 строится в Q3 — все
+        # задачи будут "старше 30 дней" → age_score обрушен).
+        ref_dt = end_dt
         ages_days = []
         for i in issues:
             if (i.status or "").lower() != "done" and i.created_at:
