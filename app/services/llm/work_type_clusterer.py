@@ -17,7 +17,7 @@ from app.models.issue_classification import IssueClassification
 
 
 logger = logging.getLogger("jira_analytics.thematic")
-PROMPT_VERSION = "wt-cluster-v2-markers"
+PROMPT_VERSION = "wt-cluster-v3-area-premerge"
 
 
 class ClustererProvider(Protocol):
@@ -50,14 +50,15 @@ def build_cluster_prompt(
     lines = [
         "Ты — старший аналитик. Тебе дан список markers (контролируемых меток) с примерами тем задач при них.",
         "",
-        f"Цель: сгруппировать markers в {target_clusters} широких кластеров и дать каждому короткое русское имя (2-4 слова).",
+        f"Цель: сгруппировать markers в ~{target_clusters} ШИРОКИХ кластеров и дать каждому короткое русское имя (2-4 слова).",
         "",
         "СТРОГИЕ ПРАВИЛА:",
-        "1. Имя кластера: 2-4 слова, на русском, БЕЗ упоминания конкретных систем (УПП, ЕРП, Розница) — обобщай.",
-        "2. Имя кластера — это широкая ТЕМА. Например «Обмены данными», «Закрытие периода», «Учёт себестоимости».",
+        "1. Имя кластера: 2-4 слова, на русском, БЕЗ имён конкретных систем, продуктов, модулей, контрагентов, проектов, брендов или их аббревиатур. Только обобщённая ТЕМА.",
+        "2. Имя кластера — ШИРОКАЯ тема. Например «Обмены данными», «Закрытие периода», «Учёт себестоимости», «Поддержка пользователей».",
         "3. Каждый marker должен войти РОВНО В ОДИН кластер.",
         "4. Не выдумывай новых markers, не пропускай ни один из списка.",
         "5. Группируй по смыслу markers, ИГНОРИРУЯ фразы из примеров (примеры — для контекста, не для имени).",
+        "6. Стремись к МЕНЬШЕМУ числу более широких кластеров. Лучше 4 широких, чем 8 узких.",
         "",
         "Markers (количество задач | примеры тем):",
     ]
@@ -114,6 +115,33 @@ class WorkTypeClusterer:
         if len(cands) < 2:
             return {}
 
+        original_names = [c.candidate_name for c in cands]
+
+        # Pre-merge по area: если ≥3 задач делят одну area и при этом имеют ≥2 разных
+        # candidate_name — склеиваем их под самым популярным именем. Срезает узкие
+        # клоны вида «Обмен X» / «Обмен Y» / «Обмен Z» до того как клич уйдёт в LLM.
+        pre_remap: dict[str, str] = {}
+        by_area: dict[str, list[int]] = {}
+        for i, cand in enumerate(cands):
+            if cand.area:
+                by_area.setdefault(cand.area, []).append(i)
+        for area, idxs in by_area.items():
+            if len(idxs) < 3:
+                continue
+            name_freq = Counter(cands[i].candidate_name for i in idxs)
+            if len(name_freq) < 2:
+                continue
+            canonical, _ = name_freq.most_common(1)[0]
+            for i in idxs:
+                if cands[i].candidate_name != canonical:
+                    pre_remap[cands[i].candidate_name] = canonical
+                cands[i].candidate_name = canonical
+        if pre_remap:
+            logger.info(
+                "WorkTypeClusterer: pre-merged %d candidate names by shared area",
+                len(pre_remap),
+            )
+
         unique_names = {c.candidate_name for c in cands}
         identity = {n: n for n in unique_names}
 
@@ -129,9 +157,9 @@ class WorkTypeClusterer:
 
         if not marker_freq:
             logger.info("WorkTypeClusterer: no markers, returning identity mapping")
-            return identity
+            return self._compose_remap(original_names, pre_remap, identity)
 
-        target_clusters = max(4, min(12, len(marker_freq) // 3))
+        target_clusters = max(3, min(8, (len(marker_freq) + 3) // 4))
         prompt = build_cluster_prompt(
             marker_to_examples=marker_to_examples,
             marker_freq=marker_freq,
@@ -142,12 +170,12 @@ class WorkTypeClusterer:
             obj, meta = await self.provider.cluster_candidates(prompt)
         except Exception as e:
             logger.warning("WorkTypeClusterer: LLM call failed, identity mapping: %s", e)
-            return identity
+            return self._compose_remap(original_names, pre_remap, identity)
 
         raw_clusters = obj.get("clusters") or []
         if not isinstance(raw_clusters, list) or not raw_clusters:
             logger.warning("WorkTypeClusterer: empty clusters, identity mapping")
-            return identity
+            return self._compose_remap(original_names, pre_remap, identity)
 
         # Построим marker → cluster_name маппинг
         marker_to_cluster: dict[str, str] = {}
@@ -190,4 +218,18 @@ class WorkTypeClusterer:
                 "WorkTypeClusterer: %d clusters from %d candidates (>=70%%) — markers may be too task-specific.",
                 n_clusters, len(cand_markers),
             )
-        return mapping
+        return self._compose_remap(original_names, pre_remap, mapping)
+
+    @staticmethod
+    def _compose_remap(
+        original_names: list[str],
+        pre_remap: dict[str, str],
+        cluster_mapping: dict[str, str],
+    ) -> dict[str, str]:
+        """Сшить pre-merge (area) и cluster mapping в один {original → final}."""
+        out: dict[str, str] = {}
+        for orig in set(original_names):
+            canonical = pre_remap.get(orig, orig)
+            final = cluster_mapping.get(canonical, canonical)
+            out[orig] = final
+        return out

@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 from collections import defaultdict
 from datetime import date, datetime, time
 from typing import Awaitable, Callable, Optional
@@ -34,6 +35,36 @@ from app.services.llm.work_type_synthesizer import (
 )
 
 logger = logging.getLogger("jira_analytics.thematic")
+
+
+_ENTITY_TOKEN = re.compile(r"[А-ЯЁA-Z0-9]{2,12}", re.UNICODE)
+_ENTITY_STOPWORDS: frozenset[str] = frozenset({
+    # generic noise: rolings/abbreviations of methodology/tooling, not domain entities
+    "ИИ", "ОПЭ", "БД", "QA", "PM", "RFA", "API", "URL", "PR", "ID", "ITSM", "СУП",
+    "AI", "ML", "OS", "UI", "UX", "TZ", "TODO", "ETA", "SLA", "KPI",
+    "ВКЛ", "ВЫКЛ", "ОК", "OK",
+})
+
+
+def _extract_entities(text: str | None) -> set[str]:
+    """Имена собственные/аббревиатуры из произвольного текста.
+
+    Используется для агрегата `entity_breakdown` темы — чтобы саммари могла
+    подсветить доминирующую конкретику (систему, контрагента, модуль), не
+    хардкодя названия в промпт.
+    """
+    if not text:
+        return set()
+    out: set[str] = set()
+    for tok in _ENTITY_TOKEN.findall(text):
+        if tok.isdigit():
+            continue
+        if tok in _ENTITY_STOPWORDS:
+            continue
+        # отрезаем хвосты типа AD-1234 — они улавливаются раньше как часть key,
+        # но если попали как «AD» отдельно — фильтр по длине ≤2 их сбросит редко.
+        out.add(tok)
+    return out
 
 
 def _team_set_hash(teams: list[str]) -> str:
@@ -523,6 +554,34 @@ class WorkTypeReportService:
             ]
             evidence_keys = [tt["key"] for tt in top_tasks_payload]
 
+            # Entity breakdown — доминирующие имена собственные внутри темы.
+            # Каждая задача голосует своими часами максимум один раз за каждую сущность.
+            entity_hours: dict[str, float] = {}
+            entity_tasks: dict[str, int] = {}
+            for x in t["issues"]:
+                entry = x["entry"]
+                cls = x["cls"]
+                ents = _extract_entities(entry.get("summary"))
+                if cls and getattr(cls, "contribution_text", None):
+                    ents = ents | _extract_entities(cls.contribution_text)
+                hrs = entry["hours"]
+                for e in ents:
+                    entity_hours[e] = entity_hours.get(e, 0.0) + hrs
+                    entity_tasks[e] = entity_tasks.get(e, 0) + 1
+            entity_breakdown: list[dict] = []
+            if t_hours > 0 and entity_hours:
+                ranked = sorted(entity_hours.items(), key=lambda kv: -kv[1])
+                for name, hrs in ranked[:5]:
+                    share = round(100 * hrs / t_hours, 1)
+                    if share < 15.0:
+                        continue
+                    entity_breakdown.append({
+                        "name": name,
+                        "share_pct": share,
+                        "hours": round(hrs, 2),
+                        "tasks": entity_tasks[name],
+                    })
+
             theme_payload = {
                 "theme_id": t["theme_id"],
                 "name": t["name"],
@@ -547,6 +606,7 @@ class WorkTypeReportService:
                 "top_tasks": top_tasks_payload,
                 "issues": issues_payload,
                 "evidence_keys": evidence_keys,
+                "entity_breakdown": entity_breakdown,
             }
             themes_out.append(theme_payload)
 

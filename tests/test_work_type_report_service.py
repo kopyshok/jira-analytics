@@ -12,7 +12,7 @@ from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.worklog import Worklog
 from app.services.work_type_report_service import (
-    WorkTypeReportService, _team_set_hash, _resolve_period,
+    WorkTypeReportService, _team_set_hash, _resolve_period, _extract_entities,
 )
 from app.services.llm.work_type_classifier import ClassificationResult
 
@@ -149,6 +149,21 @@ def test_resolve_period_quarter():
     s, e = _resolve_period(2026, 2, None)
     assert s == date(2026, 4, 1)
     assert e == date(2026, 6, 30)
+
+
+def test_extract_entities_keeps_proper_nouns_drops_noise():
+    ents = _extract_entities("Обмен между УПП и ЕРП через 1С API")
+    # proper-noun abbreviations preserved
+    assert "УПП" in ents
+    assert "ЕРП" in ents
+    # generic abbreviations filtered
+    assert "API" not in ents
+
+
+def test_extract_entities_filters_pure_digits_and_blanks():
+    assert _extract_entities("") == set()
+    assert _extract_entities(None) == set()
+    assert _extract_entities("12345 678") == set()
 
 
 @pytest.mark.asyncio
