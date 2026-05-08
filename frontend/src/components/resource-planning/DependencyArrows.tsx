@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
-import type { AssignmentOut } from '../../api/resourcePlanning';
+import type { AssignmentOut, DependencyOut } from '../../api/resourcePlanning';
 
 interface Props {
   assignments: AssignmentOut[];
   rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
   containerRef: React.RefObject<HTMLDivElement>;
   showRelayArrows?: boolean;
+  manualDependencies?: DependencyOut[];
+  onDeleteDependency?: (depId: string) => void;
 }
 
 export default function DependencyArrows({
@@ -13,6 +15,8 @@ export default function DependencyArrows({
   rowRefs,
   containerRef,
   showRelayArrows = true,
+  manualDependencies = [],
+  onDeleteDependency,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -52,6 +56,19 @@ export default function DependencyArrows({
     relayMarker.appendChild(relayPoly);
     defs.appendChild(relayMarker);
 
+    const manualMarker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    manualMarker.setAttribute('id', 'rp-manual-arrowhead');
+    manualMarker.setAttribute('markerWidth', '7');
+    manualMarker.setAttribute('markerHeight', '5');
+    manualMarker.setAttribute('refX', '7');
+    manualMarker.setAttribute('refY', '2.5');
+    manualMarker.setAttribute('orient', 'auto');
+    const manualPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    manualPoly.setAttribute('points', '0 0, 7 2.5, 0 5');
+    manualPoly.setAttribute('fill', '#ff7a45');
+    manualMarker.appendChild(manualPoly);
+    defs.appendChild(manualMarker);
+
     svg.appendChild(defs);
 
     const cRect = container.getBoundingClientRect();
@@ -59,6 +76,7 @@ export default function DependencyArrows({
     function drawArrow(
       x1: number, y1: number, x2: number, y2: number,
       color: string, width: string, dashArray: string, markerId: string,
+      onClick?: () => void,
     ) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       const cx = (x1 + x2) / 2;
@@ -68,6 +86,10 @@ export default function DependencyArrows({
       path.setAttribute('fill', 'none');
       if (dashArray) path.setAttribute('stroke-dasharray', dashArray);
       path.setAttribute('marker-end', `url(#${markerId})`);
+      if (onClick) {
+        path.setAttribute('style', 'pointer-events: stroke; cursor: pointer;');
+        path.addEventListener('click', onClick);
+      }
       (svg as SVGSVGElement).appendChild(path);
     }
 
@@ -144,6 +166,36 @@ export default function DependencyArrows({
             'rgba(0,201,200,0.55)', '1.5', '5 3', 'rp-relay-arrowhead',
           );
         }
+      }
+    }
+
+    // Manual user-drawn dependencies between initiatives
+    if (manualDependencies.length > 0) {
+      for (const dep of manualDependencies) {
+        const fromEl = rowRefs.current.get(dep.from_item_id);
+        const toEl = rowRefs.current.get(dep.to_item_id);
+        if (!fromEl || !toEl) continue;
+        const fRect = fromEl.getBoundingClientRect();
+        const tRect = toEl.getBoundingClientRect();
+        const startSide = (dep.dep_type === 'SS' || dep.dep_type === 'SF')
+          ? fRect.left - cRect.left
+          : fRect.right - cRect.left;
+        const endSide = (dep.dep_type === 'SS' || dep.dep_type === 'FS')
+          ? tRect.left - cRect.left
+          : tRect.right - cRect.left;
+        drawArrow(
+          startSide,
+          fRect.top + fRect.height / 2 - cRect.top,
+          endSide,
+          tRect.top + tRect.height / 2 - cRect.top,
+          '#ff7a45', '2', '', 'rp-manual-arrowhead',
+          onDeleteDependency ? () => {
+            // Confirm via window.confirm — simple, no extra deps
+            if (window.confirm(`Удалить связь ${dep.dep_type}?`)) {
+              onDeleteDependency(dep.id);
+            }
+          } : undefined,
+        );
       }
     }
   });

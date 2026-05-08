@@ -13,12 +13,13 @@ import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 import GanttChart from '../components/resource-planning/GanttChart';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
-import OptimizeButton from '../components/resource-planning-v2/OptimizeButton';
 import type { ViewMode } from '../components/resource-planning/GanttRows';
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
   useScheduledBlocks, useCreateResourcePlan, useForkPlan,
+  useCreateDependency, useDeleteDependency,
 } from '../hooks/useResourcePlanning';
+import type { TimelineScale } from '../utils/gantt';
 import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
@@ -33,11 +34,15 @@ export default function ResourcePlanningPage() {
   const navigate = useNavigate();
   const [planId, setPlanId] = usePersistedSearchParam('plan_id', 'resource_planning_plan_id');
   const [viewMode, setViewMode] = useState<ViewMode>('two-level');
+  const [scale, setScale] = useState<TimelineScale>('week');
+  const [depDrawMode, setDepDrawMode] = useState(false);
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [showRelayArrows, setShowRelayArrows] = useState(true);
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkLabel, setForkLabel] = useState('');
   const forkMutation = useForkPlan();
+  const createDep = useCreateDependency();
+  const deleteDep = useDeleteDependency();
 
   const scenarioId = searchParams.get('scenario_id');
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
@@ -122,14 +127,8 @@ export default function ResourcePlanningPage() {
             loading={compute.isPending || gantt?.plan.status === 'computing'}
             onClick={handleCompute}
           >
-            Распределить (legacy)
+            Распределить
           </Button>
-        )}
-        {planId && (
-          <OptimizeButton
-            planId={planId}
-            onSwitchPlan={id => setPlanId(id)}
-          />
         )}
         {gantt && (() => {
           const s = gantt.plan.status;
@@ -161,6 +160,28 @@ export default function ResourcePlanningPage() {
         )}
 
         <Space size={4} style={{ marginLeft: 'auto' }}>
+          {viewMode === 'two-level' && (
+            <Segmented
+              size="small"
+              value={scale}
+              onChange={v => setScale(v as TimelineScale)}
+              options={[
+                { label: 'День', value: 'day' },
+                { label: 'Неделя', value: 'week' },
+                { label: 'Месяц', value: 'month' },
+              ]}
+            />
+          )}
+          {viewMode === 'two-level' && (
+            <Button
+              size="small"
+              type={depDrawMode ? 'primary' : 'default'}
+              danger={depDrawMode}
+              onClick={() => setDepDrawMode(v => !v)}
+            >
+              {depDrawMode ? 'Связи: ✓' : 'Связи'}
+            </Button>
+          )}
           {viewMode !== 'resource-track' && (
             <Space size={4}>
               <Switch
@@ -168,7 +189,7 @@ export default function ResourcePlanningPage() {
                 onChange={setShowRelayArrows}
                 size="small"
               />
-              <span style={{ fontSize: 12, color: '#8ab0d8' }}>Связи</span>
+              <span style={{ fontSize: 12, color: '#8ab0d8' }}>Эстафета</span>
             </Space>
           )}
           <Segmented
@@ -199,6 +220,27 @@ export default function ResourcePlanningPage() {
           showRelayArrows={showRelayArrows}
           planId={planId}
           employees={employees}
+          scale={scale}
+          dependencies={gantt.dependencies ?? []}
+          depDrawMode={depDrawMode}
+          onCreateDependency={(from, to) => {
+            createDep.mutate(
+              { planId, fromItemId: from, toItemId: to, depType: 'FS', lagDays: 0 },
+              {
+                onSuccess: () => message.success('Связь создана'),
+                onError: e => message.error((e as Error).message),
+              },
+            );
+          }}
+          onDeleteDependency={depId => {
+            deleteDep.mutate(
+              { planId, depId },
+              {
+                onSuccess: () => message.success('Связь удалена'),
+                onError: e => message.error((e as Error).message),
+              },
+            );
+          }}
         />
       )}
 
