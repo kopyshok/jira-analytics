@@ -793,16 +793,12 @@ export default function PlanningPage() {
                             onChange={() => toggleAllocation(a)}
                           />
                         </div>
-                        <span
+                        <div
                           onClick={(e) => e.stopPropagation()}
                           style={{
-                            width: 32,
-                            height: 24,
-                            borderRadius: 4,
-                            display: 'inline-flex',
+                            display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            background: priorityCyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
                           }}
                         >
                           <InputNumber
@@ -814,13 +810,18 @@ export default function PlanningPage() {
                             size="small"
                             controls={false}
                             style={{
-                              width: 32,
+                              width: 36,
+                              height: 24,
+                              borderRadius: 4,
                               fontSize: 11,
                               fontWeight: 700,
                               fontFamily: FONTS.mono,
                               color: priorityCyan ? '#003a3a' : DARK_THEME.textMuted,
+                              background: priorityCyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
                               padding: 0,
+                              textAlign: 'center',
                             }}
+                            className="backlog-priority-input"
                             placeholder="—"
                             onKeyDown={(e) => {
                               if (e.key === 'Escape') {
@@ -836,7 +837,7 @@ export default function PlanningPage() {
                               }
                             }}
                           />
-                        </span>
+                        </div>
                         <div>
                           <div style={{ color: DARK_THEME.textPrimary, fontSize: 14, marginBottom: 3 }}>
                             {a.title}

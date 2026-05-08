@@ -283,3 +283,13 @@ kbd,
 .backlog-row.row-state-no-estimates:hover { border-left-color: #fa8c16; }
 .backlog-row.row-state-deficit:hover      { border-left-color: #f5222d; }
 .backlog-row.row-state-in-work:hover      { border-left-color: #1d9e75; }
+
+/* Priority cell — center the AntD InputNumber inner input within its pill */
+.backlog-priority-input .ant-input-number-input {
+  text-align: center !important;
+  padding: 0 !important;
+  height: 24px !important;
+  line-height: 24px !important;
+  color: inherit !important;
+}
+.backlog-priority-input .ant-input-number-handler-wrap { display: none !important; }
