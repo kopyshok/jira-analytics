@@ -3,7 +3,7 @@
 Кэш per-issue: input_hash + dictionary_version. При совпадении — LLM не дёргается.
 """
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Protocol
 from datetime import date, datetime
 
@@ -17,7 +17,7 @@ from app.models.mandatory_work_type import MandatoryWorkType
 from app.models.worklog import Worklog
 
 
-PROMPT_VERSION = "wt-classify-v1"
+PROMPT_VERSION = "wt-classify-v2-markers"
 
 
 @dataclass
@@ -27,6 +27,9 @@ class ClassificationResult:
     contribution_text: Optional[str]
     confidence: float
     nature_tag: Optional[str] = None
+    markers: list[str] = field(default_factory=list)
+    area: Optional[str] = None
+    nature: Optional[str] = None
 
 
 class ClassifierProvider(Protocol):
@@ -67,14 +70,24 @@ def collect_worklog_comments(
 
 
 def build_classify_prompt(issue: Issue, worklog_comments: list[str], themes: list[Theme]) -> str:
-    """Промпт Map-фазы. Вход: задача + поля + комменты + словарь. Выход: JSON."""
+    """Map-промпт. Возвращает структуру с markers/area/nature/candidate_name."""
     themes_list = "\n".join(
         f"- {t.id}: «{t.name}»" + (f" — {t.description}" if t.description else "")
         for t in themes
     ) or "(словарь пуст)"
     parts = [
-        "Ты — аналитик. Классифицируй задачу-сопровождение по теме из словаря.",
-        "Если ни одна тема не подходит — верни theme_id=null и предложи название новой темы в candidate_name.",
+        "Ты — аналитик службы сопровождения. Анализируй задачу и возвращай СТРУКТУРИРОВАННЫЕ метаданные для группировки.",
+        "Если задача попадает в одну из тем словаря — укажи theme_id. Иначе — оставь theme_id=null и предложи короткое имя кандидата.",
+        "",
+        "ОБЯЗАТЕЛЬНЫЕ поля для группировки (это самое важное):",
+        "- markers: 2-5 коротких snake_case-меток повторяющихся симптомов/паттернов задачи. ИМЕННО ПО НИМ задачи будут группироваться, поэтому пиши обобщённо, не пересказывай заголовок.",
+        "  Примеры markers: obmen_dannyh, oshibka_provedeniya, zakrytie_perioda, prava_dostupa, dorabotka_otcheta,",
+        "  raschet_sebestoimosti, integraciya_erp, korrekcia_dannyh, konsultaciya_polzovatelya, reglament_obnovlenia,",
+        "  pechatnaya_forma, otchetnost_fns, integraciya_bankclient, regdannye_nsi, dvizheniya_registra.",
+        "- area: одно слово/фраза — нормализованная область (например «обмен_данных», «учёт_себестоимости», «закрытие_периода», «права», «отчётность», «нси», «интеграция»). НЕ пиши сюда название задачи.",
+        "- nature: ровно ОДНО из enum: bug, enhancement, consultation, regulatory, data_fix, integration, access_request, other.",
+        "",
+        "candidate_name (только если theme_id=null): 2-4 слова, обобщённая ТЕМА (НЕ описание задачи). Например «Обмены данными» а не «Обмен Розница–ЕРП: Консолидированная передача».",
         "",
         f"Задача [{issue.key}] [{issue.issue_type}]: {issue.summary}",
     ]
@@ -93,8 +106,17 @@ def build_classify_prompt(issue: Issue, worklog_comments: list[str], themes: lis
         "Словарь тем:",
         themes_list,
         "",
-        "Верни JSON: {theme_id, candidate_name, contribution_text (≤200 chars), confidence (0..1)}.",
-        "Не упоминай ФИО.",
+        "Верни строго JSON следующей формы:",
+        "{",
+        '  "theme_id": <id из словаря или null>,',
+        '  "candidate_name": <строка ≤80 символов или null>,',
+        '  "contribution_text": <строка ≤200 символов или null>,',
+        '  "confidence": <число 0..1>,',
+        '  "markers": [<2-5 snake_case строк>],',
+        '  "area": <строка>,',
+        '  "nature": <"bug"|"enhancement"|"consultation"|"regulatory"|"data_fix"|"integration"|"access_request"|"other">',
+        "}",
+        "ОБЯЗАТЕЛЬНО: markers и area никогда не пустые. Не упоминай ФИО.",
     ])
     return "\n".join(parts)
 
@@ -165,9 +187,12 @@ class WorkTypeClassifier:
             contribution_text=res.contribution_text,
             confidence=res.confidence,
             nature_tag=res.nature_tag,
+            area=res.area,
+            nature=res.nature,
             model_id=meta.get("model"),
             failed=False,
             failure_reason=None,
+            _markers=res.markers,
         )
 
     def _upsert(
@@ -180,6 +205,7 @@ class WorkTypeClassifier:
         **kwargs: object,
     ) -> IssueClassification:
         confidence = kwargs.pop("confidence", None)
+        markers = kwargs.pop("_markers", None)
 
         if existing:
             existing.input_hash = input_hash
@@ -190,6 +216,8 @@ class WorkTypeClassifier:
                 existing.llm_confidence = confidence
             for k, v in kwargs.items():
                 setattr(existing, k, v)
+            if markers is not None:
+                existing.markers = markers
             self.db.commit()
             self.db.refresh(existing)
             return existing
@@ -203,6 +231,8 @@ class WorkTypeClassifier:
             llm_confidence=confidence,
             **kwargs,
         )
+        if markers is not None:
+            cls.markers = markers
         self.db.add(cls)
         self.db.commit()
         self.db.refresh(cls)
