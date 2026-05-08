@@ -116,3 +116,34 @@ async def test_classify_failure_marks_failed_not_raise(fixture_setup, db_session
     clf = WorkTypeClassifier(db_session, provider=fake)
     cls = await clf.classify_issue(issue=issue, work_type_id=wt.id, themes=[])
     assert cls.failed is True and cls.failure_reason
+
+
+@pytest.mark.asyncio
+async def test_classifier_persists_markers_and_area(fixture_setup, db_session):
+    """Маркеры и area сохраняются и читаются обратно."""
+    wt, issue = fixture_setup["wt"], fixture_setup["issue"]
+
+    fake_provider = AsyncMock()
+    fake_provider.model = "test-model"
+    fake_provider.classify_issue = AsyncMock(return_value=(
+        ClassificationResult(
+            theme_id=None,
+            candidate_name="Обмены",
+            contribution_text=None,
+            confidence=0.8,
+            markers=["obmen_dannyh", "integraciya_erp"],
+            area="обмен_данных",
+            nature="integration",
+        ),
+        {"model": "test-model"},
+    ))
+
+    clf = WorkTypeClassifier(db_session, provider=fake_provider)
+    res = await clf.classify_issue(
+        issue=issue,
+        work_type_id=wt.id,
+        themes=[],
+    )
+    assert res.markers == ["obmen_dannyh", "integraciya_erp"]
+    assert res.area == "обмен_данных"
+    assert res.nature == "integration"
