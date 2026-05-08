@@ -66,7 +66,8 @@ def setup(db_session):
     db_session.add(emp); db_session.commit()
     issue = Issue(jira_issue_id="i1", key="PROJ-1", summary="x",
                   issue_type="Task", status="Done", project_id=proj.id,
-                  assigned_category="support_consultation", team="Платформа")
+                  assigned_category="support_consultation",
+                  category="support_consultation", team="Платформа")
     db_session.add(issue); db_session.commit()
     db_session.add(Worklog(jira_worklog_id="w1", issue_id=issue.id, employee_id=emp.id,
                            hours=4.0, time_spent_seconds=14400, started_at=datetime(2026, 4, 5)))
