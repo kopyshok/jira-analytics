@@ -391,17 +391,26 @@ class ExecutiveDashboardService:
                 r = (role or "").lower()
                 if r == "analyst":
                     fact["analyst"] += float(hrs or 0)
+                elif r == "consultant":
+                    fact["consultant"] += float(hrs or 0)
                 elif r in ("dev", "developer"):
                     fact["dev"] += float(hrs or 0)
                 elif r == "qa":
                     fact["qa"] += float(hrs or 0)
-                else:
-                    fact["ope"] += float(hrs or 0)
+                elif r == "lead":
+                    fact["lead"] += float(hrs or 0)
+                # Прочие роли в fact не попадают: ope — это фаза, не роль.
 
-        labels = {"analyst": "Аналитики", "dev": "Разработка", "qa": "QA", "ope": "ОПЭ"}
+        # 6 строк: 5 реальных ролей + ОПЭ как фаза (только на стороне плана).
+        # На фактической стороне ОПЭ всегда 0 — часы по фазе ОПЭ
+        # уже распределены по ролям (analyst/dev), у самой "ОПЭ" роли нет.
         return [
-            {"role": labels[k], "plan": round(plan[k], 1), "fact": round(fact[k], 1)}
-            for k in ("analyst", "dev", "qa", "ope")
+            {"role": "Аналитики", "plan": round(plan["analyst"], 1), "fact": round(fact["analyst"], 1)},
+            {"role": "Консультанты", "plan": 0.0, "fact": round(fact["consultant"], 1)},
+            {"role": "Разработка", "plan": round(plan["dev"], 1), "fact": round(fact["dev"], 1)},
+            {"role": "QA", "plan": round(plan["qa"], 1), "fact": round(fact["qa"], 1)},
+            {"role": "Архитектор/тимлид", "plan": 0.0, "fact": round(fact["lead"], 1)},
+            {"role": "ОПЭ (фаза)", "plan": round(plan["ope"], 1), "fact": 0.0},
         ]
 
     def _top_risks(self, issues, worklog_rows) -> list[dict]:
@@ -469,14 +478,15 @@ class ExecutiveDashboardService:
         return risks[:5]
 
     def _capacity_by_role(self, year: int, quarter: int, teams: list[str]) -> list[dict]:
-        """Средняя загрузка по ролям за квартал.
+        """Средняя загрузка по 5 ролям за квартал.
 
+        ОПЭ — фаза, не роль, поэтому в этом отчёте не появляется.
         Упрощение MVP: считаем из worklog.hours / 520 (квартал ~520 раб.часов на FTE).
         """
-        roles = ["analyst", "dev", "qa", "lead"]
+        roles = ["analyst", "consultant", "dev", "qa", "lead"]
         labels = {
-            "analyst": "Консультанты 1С", "dev": "Разработчики 1С",
-            "qa": "QA", "lead": "Архитектор / тимлид",
+            "analyst": "Аналитики", "consultant": "Консультанты",
+            "dev": "Разработка", "qa": "QA", "lead": "Архитектор/тимлид",
         }
         out: list[dict] = []
         q_start = (quarter - 1) * 3 + 1
