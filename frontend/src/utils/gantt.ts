@@ -55,6 +55,44 @@ export function getWeekLabels(tl: GanttTimeline): Array<{ label: string; leftPct
   return weeks;
 }
 
+const RU_MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+
+export type TimelineScale = 'day' | 'week' | 'month';
+
+export function getDayLabels(tl: GanttTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
+  const days: Array<{ label: string; leftPct: number; widthPct: number }> = [];
+  const d = new Date(tl.startDate);
+  while (d <= tl.endDate) {
+    const dayEnd = new Date(d);
+    const iso = d.toISOString().slice(0, 10);
+    const isoEnd = dayEnd.toISOString().slice(0, 10);
+    const left = dateToLeft(iso, tl);
+    const width = datesToWidth(iso, isoEnd, tl);
+    days.push({ label: String(d.getDate()), leftPct: left, widthPct: width });
+    d.setDate(d.getDate() + 1);
+  }
+  return days;
+}
+
+export function getMonthLabels(tl: GanttTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
+  const months: Array<{ label: string; leftPct: number; widthPct: number }> = [];
+  let cursor = new Date(tl.startDate.getFullYear(), tl.startDate.getMonth(), 1);
+  while (cursor <= tl.endDate) {
+    const monthStart = cursor < tl.startDate ? tl.startDate : cursor;
+    const next = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    const monthEndExclusive = next > tl.endDate ? tl.endDate : new Date(next.getTime() - 86_400_000);
+    const left = dateToLeft(monthStart.toISOString().slice(0, 10), tl);
+    const width = datesToWidth(
+      monthStart.toISOString().slice(0, 10),
+      monthEndExclusive.toISOString().slice(0, 10),
+      tl,
+    );
+    months.push({ label: RU_MONTHS[cursor.getMonth()], leftPct: left, widthPct: width });
+    cursor = next;
+  }
+  return months;
+}
+
 export const PHASE_COLORS: Record<string, string> = {
   analyst: '#00c9c8',
   dev: '#2a7fbf',
