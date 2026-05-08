@@ -155,6 +155,7 @@ class WorkTypeClassifier:
             existing
             and existing.input_hash == h
             and existing.dictionary_version == wt.theme_dict_version
+            and existing.prompt_version == PROMPT_VERSION
         ):
             return existing
 
