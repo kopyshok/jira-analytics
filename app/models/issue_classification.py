@@ -1,6 +1,7 @@
 """IssueClassification — Map-phase cache (per issue × work type)."""
+import json
 from typing import Optional
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -25,6 +26,29 @@ class IssueClassification(Base, TimestampMixin):
     dictionary_version: Mapped[int] = mapped_column(Integer, nullable=False)
     failed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     failure_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    markers_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    area: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    nature: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+    @property
+    def markers(self) -> list[str]:
+        """Десериализация markers_json. Пустой список при отсутствии/ошибке."""
+        if not self.markers_json:
+            return []
+        try:
+            v = json.loads(self.markers_json)
+            return [str(x) for x in v if isinstance(x, str)]
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    @markers.setter
+    def markers(self, value: Optional[list[str]]) -> None:
+        if not value:
+            self.markers_json = None
+            return
+        cleaned = [s for s in value if isinstance(s, str) and s.strip()]
+        self.markers_json = json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
     def __repr__(self) -> str:
         return f"<IssueClassification issue={self.issue_id} wt={self.work_type_id} theme={self.theme_id}>"
