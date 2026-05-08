@@ -75,14 +75,16 @@ class ExecutiveDashboardService:
         issue_ids = [i.id for i in issues]
         worklog_rows = self._select_worklogs(issue_ids, start_dt, end_dt)
 
-        kpi = self._kpi(issues, year, quarter, teams)
+        # Считаем тяжёлые отчёты ровно один раз и переиспользуем в _kpi.
+        plan_fact = self._plan_fact_by_role(year, quarter, teams)
+        cap = self._capacity_by_role(year, quarter, teams)
+
+        kpi = self._kpi(issues, end_dt, plan_fact=plan_fact, capacity=cap)
         health_trend = self._health_trend_8w(end_d, teams)
         modules = self._modules(issues, worklog_rows)
         queue = self._queue(issues)
         hours_trend = self._hours_by_type_trend(end_dt, teams)
-        plan_fact = self._plan_fact_by_role(year, quarter, teams)
         risks = self._top_risks(issues, worklog_rows)
-        cap = self._capacity_by_role(year, quarter, teams)
 
         return ExecutiveFindings(
             period={
@@ -150,7 +152,10 @@ class ExecutiveDashboardService:
 
     # --- aggregators ---
 
-    def _kpi(self, issues, year: int, quarter: int, teams: list[str]) -> dict:
+    def _kpi(
+        self, issues, end_dt: datetime, *,
+        plan_fact: list[dict], capacity: list[dict],
+    ) -> dict:
         critical_open = sum(
             1 for i in issues
             if (i.priority or "").lower() in ("critical", "highest", "blocker")
@@ -159,16 +164,16 @@ class ExecutiveDashboardService:
         total = len(issues) or 1
         critical_share = critical_open / total
 
-        now_dt = datetime.utcnow()
+        ref_dt = datetime.utcnow()
         ages_days = []
         for i in issues:
             if (i.status or "").lower() != "done" and i.created_at:
-                ages_days.append((now_dt - i.created_at).days)
+                ages_days.append((ref_dt - i.created_at).days)
         avg_age = sum(ages_days) / len(ages_days) if ages_days else 0
         age_score = max(0.0, 1.0 - avg_age / 30.0)
 
-        plan_pct = self._scenario_pct(year, quarter, teams)
-        cap_overload = self._capacity_overload(year, quarter, teams)
+        plan_pct = self._scenario_pct_from(plan_fact)
+        cap_overload = self._capacity_overload_from(capacity)
 
         health = (
             35 * (1 - critical_share)
@@ -178,7 +183,7 @@ class ExecutiveDashboardService:
         )
         health = max(0, min(100, round(health)))
 
-        utilization = self._utilization_pct(year, quarter, teams)
+        utilization = self._utilization_pct_from(capacity)
 
         return {
             "health_index": health,
@@ -525,23 +530,20 @@ class ExecutiveDashboardService:
             out.append({"role": labels[role], "utilization_pct": pct})
         return out
 
-    # --- helpers ---
+    # --- helpers (operate on precomputed plan_fact/capacity to avoid recomputation) ---
 
-    def _scenario_pct(self, year: int, quarter: int, teams: list[str]) -> float:
-        rows = self._plan_fact_by_role(year, quarter, teams)
-        plan_total = sum(r["plan"] for r in rows)
-        fact_total = sum(r["fact"] for r in rows)
+    def _scenario_pct_from(self, plan_fact: list[dict]) -> float:
+        plan_total = sum(r["plan"] for r in plan_fact)
+        fact_total = sum(r["fact"] for r in plan_fact)
         if plan_total == 0:
             return 0.0
         return min(100.0, fact_total / plan_total * 100)
 
-    def _capacity_overload(self, year: int, quarter: int, teams: list[str]) -> float:
-        cap = self._capacity_by_role(year, quarter, teams)
-        over = [c for c in cap if c["utilization_pct"] > 100]
-        return min(1.0, len(over) / max(len(cap), 1))
+    def _capacity_overload_from(self, capacity: list[dict]) -> float:
+        over = [c for c in capacity if c["utilization_pct"] > 100]
+        return min(1.0, len(over) / max(len(capacity), 1))
 
-    def _utilization_pct(self, year: int, quarter: int, teams: list[str]) -> float:
-        cap = self._capacity_by_role(year, quarter, teams)
-        if not cap:
+    def _utilization_pct_from(self, capacity: list[dict]) -> float:
+        if not capacity:
             return 0.0
-        return sum(c["utilization_pct"] for c in cap) / len(cap)
+        return sum(c["utilization_pct"] for c in capacity) / len(capacity)
