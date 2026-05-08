@@ -121,6 +121,63 @@ def test_accept_candidate_creates_theme(client, setup, db_session):
     assert cls.candidate_name is None
 
 
+def test_accept_candidate_soft_rebuilds_snapshot(client, setup, db_session):
+    """После accept-кандидата snapshot обновляется in-place: dictionary_version
+    подтянут к wt, themes_count учитывает новую тему — следующий GET мгновенный.
+    """
+    r = client.post("/api/v1/work-type-report", json={
+        "work_type_id": setup["wt"].id, "year": 2026, "quarter": 2, "month": 4,
+        "teams": [], "force_refresh": False,
+    })
+    snap_id = r.json()["snapshot_id"]
+
+    cls = IssueClassification(
+        issue_id=setup["issue"].id, work_type_id=setup["wt"].id,
+        theme_id=None, candidate_name="Кандидат A",
+        input_hash="h", dictionary_version=setup["wt"].theme_dict_version,
+    )
+    db_session.add(cls); db_session.commit()
+
+    r = client.post("/api/v1/work-type-report/candidates/accept", json={
+        "snapshot_id": snap_id, "proposed_name": "Кандидат A",
+        "color": "#00c9c8",
+    })
+    assert r.status_code == 200, r.text
+
+    # Снимок не stale: версия словаря совпадает с wt после rebuild
+    r2 = client.get(
+        f"/api/v1/work-type-report?work_type_id={setup['wt'].id}&year=2026&quarter=2&month=4",
+    )
+    body = r2.json()
+    assert body["is_stale"] is False
+    # И в данных уже видно новую тему
+    theme_names = [t["name"] for t in body["data"]["themes"]]
+    assert "Кандидат A" in theme_names
+
+
+def test_ignore_candidate_clears_candidate_name(client, setup, db_session):
+    """Ignore: candidate_name → None, кандидат пропадает, snapshot fresh."""
+    r = client.post("/api/v1/work-type-report", json={
+        "work_type_id": setup["wt"].id, "year": 2026, "quarter": 2, "month": 4,
+        "teams": [], "force_refresh": False,
+    })
+    snap_id = r.json()["snapshot_id"]
+
+    cls = IssueClassification(
+        issue_id=setup["issue"].id, work_type_id=setup["wt"].id,
+        theme_id=None, candidate_name="Шум",
+        input_hash="h", dictionary_version=setup["wt"].theme_dict_version,
+    )
+    db_session.add(cls); db_session.commit()
+
+    r = client.post("/api/v1/work-type-report/candidates/ignore", json={
+        "snapshot_id": snap_id, "proposed_name": "Шум",
+    })
+    assert r.status_code == 200, r.text
+    db_session.refresh(cls)
+    assert cls.candidate_name is None
+
+
 def test_manual_classify_updates(client, setup, db_session):
     theme = Theme(work_type_id=setup["wt"].id, name="Manual Theme")
     db_session.add(theme); db_session.commit()

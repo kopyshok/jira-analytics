@@ -186,7 +186,10 @@ def accept_candidate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Accept a candidate from a snapshot — creates Theme + reassigns matching classifications."""
+    """Accept a candidate from a snapshot — creates Theme + reassigns matching classifications.
+
+    Soft re-aggregate: snapshot пересобирается без LLM, поэтому возврат на страницу мгновенный.
+    """
     snap = db.get(WorkTypeReportSnapshot, payload.snapshot_id)
     if not snap:
         raise HTTPException(404, "Snapshot not found")
@@ -199,7 +202,6 @@ def accept_candidate(
         )
     except ValueError as e:
         raise HTTPException(409, str(e))
-    # Re-point all classifications with this candidate_name to the new theme
     db.execute(
         update(IssueClassification)
         .where(
@@ -210,6 +212,7 @@ def accept_candidate(
         .values(theme_id=theme.id, candidate_name=None)
     )
     db.commit()
+    _make_service(db).rebuild_aggregates(snap)
     return {"ok": True, "theme_id": theme.id}
 
 
@@ -219,7 +222,11 @@ def merge_candidate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Merge a candidate into an existing theme."""
+    """Merge a candidate into an existing theme.
+
+    Soft re-aggregate без bump словаря: классификации перепривязаны к существующей теме,
+    Map-кэш остаётся валидным, snapshot обновляется in-place.
+    """
     snap = db.get(WorkTypeReportSnapshot, payload.snapshot_id)
     if not snap:
         raise HTTPException(404, "Snapshot not found")
@@ -232,11 +239,8 @@ def merge_candidate(
         )
         .values(theme_id=payload.target_theme_id, candidate_name=None)
     )
-    # Bump dictionary version so future builds re-evaluate
-    wt = db.get(MandatoryWorkType, snap.work_type_id)
-    if wt:
-        wt.theme_dict_version = (wt.theme_dict_version or 0) + 1
     db.commit()
+    _make_service(db).rebuild_aggregates(snap)
     return {"ok": True}
 
 
@@ -246,11 +250,26 @@ def ignore_candidate(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Mark candidate as ignored — no-op for classifications, but bumps dict version
-    so the next build skips re-prompting LLM about these issues."""
+    """Скрыть кандидата: классификациям обнуляется candidate_name → попадают в «Другое».
+
+    Soft re-aggregate без LLM. Если LLM при следующем full-rebuild снова сгенерирует
+    то же имя — кандидат вернётся; для постоянного скрытия используйте «Слить с» с
+    подходящей темой.
+    """
     snap = db.get(WorkTypeReportSnapshot, payload.snapshot_id)
     if not snap:
         raise HTTPException(404, "Snapshot not found")
+    db.execute(
+        update(IssueClassification)
+        .where(
+            IssueClassification.work_type_id == snap.work_type_id,
+            IssueClassification.candidate_name == payload.proposed_name,
+            IssueClassification.theme_id.is_(None),
+        )
+        .values(candidate_name=None)
+    )
+    db.commit()
+    _make_service(db).rebuild_aggregates(snap)
     return {"ok": True}
 
 

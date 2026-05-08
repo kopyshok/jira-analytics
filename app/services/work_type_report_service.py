@@ -305,6 +305,91 @@ class WorkTypeReportService:
         await _emit({"type": "phase_done", "phase": "save"})
         return snap
 
+    def rebuild_aggregates(self, snap: WorkTypeReportSnapshot) -> WorkTypeReportSnapshot:
+        """Soft re-aggregate без LLM: пересчитать findings по существующим IssueClassification.
+
+        Используется после accept/merge/ignore кандидата, когда правка касается только
+        проставленных тем — не нужно гонять Map/Cluster/Reduce заново. Narrative из
+        предыдущего snapshot_data сохраняется по theme_id; для новых тем — пусто.
+        Обновляет snapshot.dictionary_version до текущего theme_dict_version и
+        generated_at = now, поэтому следующая загрузка страницы возвращает кэш мгновенно.
+        """
+        wt = self.db.get(MandatoryWorkType, snap.work_type_id)
+        if not wt:
+            raise ValueError(f"Work type {snap.work_type_id} not found")
+
+        try:
+            teams = json.loads(snap.team_set_json or "[]") or []
+        except json.JSONDecodeError:
+            teams = []
+
+        start_d, end_d = _resolve_period(snap.year, snap.quarter, snap.month)
+
+        issues = self._select_scope_issues(snap.work_type_id, start_d, end_d, teams)
+        themes = ThemeDictionaryService(self.db).list_active(snap.work_type_id)
+
+        issue_ids = [i.id for i in issues]
+        classifications: dict[str, IssueClassification] = {}
+        if issue_ids:
+            rows = self.db.execute(
+                select(IssueClassification).where(
+                    IssueClassification.work_type_id == snap.work_type_id,
+                    IssueClassification.issue_id.in_(issue_ids),
+                )
+            ).scalars().all()
+            classifications = {c.issue_id: c for c in rows}
+
+        findings, manual_review, _employee_names = self._aggregate_findings(
+            issues=issues,
+            classifications=classifications,
+            themes=themes,
+            start_d=start_d,
+            end_d=end_d,
+            teams=teams,
+        )
+
+        # Сохранить старые narratives по theme_id, чтобы UI не терял текст
+        prev_data = {}
+        try:
+            prev_data = json.loads(snap.snapshot_data or "{}") or {}
+        except json.JSONDecodeError:
+            pass
+        prev_narratives = {
+            (t.get("theme_id")): t.get("narrative", "")
+            for t in (prev_data.get("themes") or [])
+            if t.get("theme_id")
+        }
+        prev_outliers = {
+            o.get("key"): o.get("explanation", "")
+            for o in (prev_data.get("outliers") or [])
+            if o.get("key")
+        }
+
+        synthesis = SynthesisOutput(
+            headline=prev_data.get("headline") or (
+                f"Всего {findings['totals']['hours']} ч / "
+                f"{findings['totals']['tasks']} задач."
+            ),
+            themes_narratives=[
+                {"theme_id": tid, "narrative": txt, "evidence_keys": []}
+                for tid, txt in prev_narratives.items() if txt
+            ],
+            outliers_explanations=[
+                {"key": k, "explanation": v}
+                for k, v in prev_outliers.items() if v
+            ],
+            recommendation=prev_data.get("recommendation") or {"text": "", "expected_impact": ""},
+            is_fallback=bool(prev_data.get("is_fallback_narrative", False)),
+        )
+
+        data = self._build_snapshot_data(findings, synthesis, manual_review)
+        snap.snapshot_data = json.dumps(data, ensure_ascii=False)
+        snap.dictionary_version = wt.theme_dict_version
+        snap.generated_at = datetime.utcnow()
+        self.db.commit()
+        self.db.refresh(snap)
+        return snap
+
     def _select_scope_issues(
         self,
         work_type_id: str,
