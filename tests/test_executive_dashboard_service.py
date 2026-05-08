@@ -3,6 +3,7 @@ from datetime import datetime
 
 from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
+from app.models.employee_team import EmployeeTeam
 from app.models.issue import Issue
 from app.models.planning_scenario import PlanningScenario
 from app.models.project import Project
@@ -55,6 +56,15 @@ def _mk_issue(
     )
     db.add(iss)
     return iss
+
+
+def _mk_employee_team(db, emp_id, team, *, is_primary=False, et_id=None):
+    et = EmployeeTeam(
+        id=et_id or f"et-{emp_id}-{team}",
+        employee_id=emp_id, team=team, is_primary=is_primary,
+    )
+    db.add(et)
+    return et
 
 
 def _mk_worklog(db, wl_id, issue_id, employee_id, hours=2.0,
@@ -158,3 +168,24 @@ def test_plan_fact_by_role_uses_scenario_estimates(db_session):
     assert plan_fact["Разработка"]["plan"] == 30.0
     assert plan_fact["Разработка"]["fact"] == 5.0
     assert plan_fact["QA"]["plan"] == 0.0
+
+
+def test_capacity_by_role_employee_in_two_teams_no_double_counting(db_session):
+    """Сотрудник в двух командах не должен удваивать часы при фильтре по обеим."""
+    _mk_project(db_session)
+    _mk_employee(db_session, "e1", role="analyst", team="T1")
+    _mk_employee_team(db_session, "e1", "T1", is_primary=True)
+    _mk_employee_team(db_session, "e1", "T2")
+    _mk_issue(db_session, "i1", "P-1", status="In Progress")
+    _mk_worklog(
+        db_session, "w1", "i1", "e1", hours=100.0,
+        started_at=datetime(2026, 4, 10),
+    )
+    db_session.commit()
+
+    svc = ExecutiveDashboardService(db_session)
+    f = svc.aggregate(year=2026, quarter=2, teams=["T1", "T2"])
+    cap = {row["role"]: row for row in f.capacity_by_role}
+    # Без фикса часы удвоились бы (200 → 38%); с фиксом ровно 100 → 19%.
+    expected_pct = min(100, round(100.0 / 520 * 100))
+    assert cap["Консультанты 1С"]["utilization_pct"] == expected_pct

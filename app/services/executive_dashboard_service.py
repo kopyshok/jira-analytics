@@ -492,9 +492,12 @@ class ExecutiveDashboardService:
                 .group_by(Employee.id)
             )
             if teams:
-                q = q.join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id).where(
-                    EmployeeTeam.team.in_(teams),
+                emp_subq = (
+                    select(EmployeeTeam.employee_id)
+                    .where(EmployeeTeam.team.in_(teams))
+                    .scalar_subquery()
                 )
+                q = q.where(Employee.id.in_(emp_subq))
             rows = list(self.db.execute(q).all())
             if not rows:
                 out.append({"role": labels[role], "utilization_pct": 0})
