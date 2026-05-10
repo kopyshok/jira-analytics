@@ -37,13 +37,39 @@ export function sortAssignmentsByScenarioAssignee(
     earliest: string;
   };
 
-  const buckets: Bucket[] = [...items.entries()].map(([itemId, rows]) => ({
-    itemId,
-    rows,
-    assigneeName: rows[0]?.scenario_assignee_name ?? null,
-    assigneeId: rows[0]?.scenario_assignee_employee_id ?? null,
-    earliest: earliestStartByItem.get(itemId) ?? '￿',
-  }));
+  const buckets: Bucket[] = [...items.entries()].map(([itemId, rows]) => {
+    // Главный исполнитель инициативы:
+    // 1) scenario_assignee из утверждённого сценария (ручной выбор PM)
+    // 2) аналитик фазы analyst (фактический владелец задачи)
+    // 3) исполнитель первой фазы по дате старта
+    const scenarioName = rows[0]?.scenario_assignee_name ?? null;
+    const scenarioId = rows[0]?.scenario_assignee_employee_id ?? null;
+    let assigneeName: string | null = scenarioName;
+    let assigneeId: string | null = scenarioId;
+    if (!assigneeName) {
+      const analyst = rows.find(r => r.phase === 'analyst' && r.employee_name);
+      if (analyst) {
+        assigneeName = analyst.employee_name;
+        assigneeId = analyst.employee_id;
+      }
+    }
+    if (!assigneeName) {
+      const earliestRow = rows
+        .filter(r => r.start_date && r.employee_name)
+        .sort((x, y) => x.start_date!.localeCompare(y.start_date!))[0];
+      if (earliestRow) {
+        assigneeName = earliestRow.employee_name;
+        assigneeId = earliestRow.employee_id;
+      }
+    }
+    return {
+      itemId,
+      rows,
+      assigneeName,
+      assigneeId,
+      earliest: earliestStartByItem.get(itemId) ?? '￿',
+    };
+  });
 
   buckets.sort((a, b) => {
     // Без assignee — в конец
