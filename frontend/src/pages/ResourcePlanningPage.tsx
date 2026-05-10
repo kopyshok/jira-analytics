@@ -13,12 +13,15 @@ import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 import GanttChart from '../components/resource-planning/GanttChart';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
+import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
+import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
 import type { ViewMode } from '../components/resource-planning/GanttRows';
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
   useScheduledBlocks, useCreateResourcePlan, useForkPlan,
   useCreateDependency, useDeleteDependency,
 } from '../hooks/useResourcePlanning';
+import { useRpPreferences } from '../hooks/useRpPreferences';
 import type { TimelineScale } from '../utils/gantt';
 import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -40,9 +43,11 @@ export default function ResourcePlanningPage() {
   const [showRelayArrows, setShowRelayArrows] = useState(true);
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkLabel, setForkLabel] = useState('');
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const forkMutation = useForkPlan();
   const createDep = useCreateDependency();
   const deleteDep = useDeleteDependency();
+  const { prefs, patch: patchPrefs } = useRpPreferences();
 
   const scenarioId = searchParams.get('scenario_id');
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
@@ -86,6 +91,24 @@ export default function ResourcePlanningPage() {
     () => (gantt ? sortAssignmentsByScenarioAssignee(gantt.assignments) : []),
     [gantt],
   );
+
+  const conflictAssignmentIds = useMemo(
+    () => (gantt ? gantt.conflicts.flatMap(c => (c.assignment_id ? [c.assignment_id] : [])) : []),
+    [gantt],
+  );
+
+  const selectedAssignment = useMemo(
+    () => sortedAssignments.find(a => a.id === selectedAssignmentId) ?? null,
+    [sortedAssignments, selectedAssignmentId],
+  );
+
+  const handleToggleCollapse = (itemId: string, willCollapse: boolean) => {
+    const cur = prefs.collapsed_initiative_ids ?? [];
+    const next = willCollapse
+      ? Array.from(new Set([...cur, itemId]))
+      : cur.filter(x => x !== itemId);
+    patchPrefs({ collapsed_initiative_ids: next });
+  };
 
   const planOptions = plans.map(p => {
     const isCopy = !!p.parent_plan_id;
@@ -192,6 +215,16 @@ export default function ResourcePlanningPage() {
               <span style={{ fontSize: 12, color: '#8ab0d8' }}>Эстафета</span>
             </Space>
           )}
+          {viewMode === 'two-level' && (
+            <Space size={4}>
+              <Switch
+                checked={prefs.hide_weekends}
+                onChange={(v) => patchPrefs({ hide_weekends: v })}
+                size="small"
+              />
+              <span style={{ fontSize: 12, color: '#8ab0d8' }}>Только рабочие</span>
+            </Space>
+          )}
           <Segmented
             value={viewMode}
             onChange={v => setViewMode(v as ViewMode)}
@@ -204,7 +237,17 @@ export default function ResourcePlanningPage() {
         </Space>
       </div>
 
-      {gantt && <ConflictPanel conflicts={gantt.conflicts} planId={planId} />}
+      {gantt && (
+        <ConflictPanel
+          conflicts={gantt.conflicts}
+          planId={planId}
+          onSelectAssignment={(id) => setSelectedAssignmentId(id)}
+        />
+      )}
+
+      {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
+        <EmployeeLoadHeatmap rows={gantt.employee_load} />
+      )}
 
       {ganttLoading && <Spin style={{ display: 'block', margin: '80px auto' }} />}
       {!planId && !ganttLoading && (
@@ -223,6 +266,11 @@ export default function ResourcePlanningPage() {
           scale={scale}
           dependencies={gantt.dependencies ?? []}
           depDrawMode={depDrawMode}
+          collapsedItemIds={prefs.collapsed_initiative_ids}
+          onToggleCollapse={handleToggleCollapse}
+          conflictAssignmentIds={conflictAssignmentIds}
+          onAssignmentClick={(id) => setSelectedAssignmentId(id)}
+          hideWeekends={prefs.hide_weekends}
           onCreateDependency={(from, to) => {
             createDep.mutate(
               { planId, fromItemId: from, toItemId: to, depType: 'FS', lagDays: 0 },
@@ -243,6 +291,15 @@ export default function ResourcePlanningPage() {
           }}
         />
       )}
+
+      <AssignmentSidebar
+        open={!!selectedAssignment}
+        onClose={() => setSelectedAssignmentId(null)}
+        planId={planId ?? ''}
+        assignment={selectedAssignment}
+        allAssignments={sortedAssignments}
+        employees={employees}
+      />
 
       <ScheduledBlocksModal open={blocksOpen} onClose={() => setBlocksOpen(false)} team={team || undefined} />
 

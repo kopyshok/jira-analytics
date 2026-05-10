@@ -26,6 +26,11 @@ interface Props {
   depDrawMode?: boolean;
   onCreateDependency?: (fromItemId: string, toItemId: string) => void;
   onDeleteDependency?: (depId: string) => void;
+  collapsedItemIds?: string[];
+  onToggleCollapse?: (itemId: string, collapsed: boolean) => void;
+  conflictAssignmentIds?: string[];
+  onAssignmentClick?: (assignmentId: string) => void;
+  hideWeekends?: boolean;
 }
 
 export default function GanttChart({
@@ -42,6 +47,10 @@ export default function GanttChart({
   depDrawMode = false,
   onCreateDependency,
   onDeleteDependency,
+  collapsedItemIds,
+  onToggleCollapse,
+  conflictAssignmentIds,
+  onAssignmentClick,
 }: Props) {
   const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
@@ -136,6 +145,10 @@ export default function GanttChart({
           depDrawMode={depDrawMode}
           pendingFromItem={pendingFromItem}
           onItemClick={handleItemClick}
+          collapsedItemIds={collapsedItemIds}
+          onToggleCollapse={onToggleCollapse}
+          conflictAssignmentIds={conflictAssignmentIds}
+          onAssignmentClick={onAssignmentClick}
         />
       </div>
     </div>

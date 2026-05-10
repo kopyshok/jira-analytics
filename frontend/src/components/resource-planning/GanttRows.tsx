@@ -20,6 +20,10 @@ interface Props {
   depDrawMode?: boolean;
   pendingFromItem?: string | null;
   onItemClick?: (itemId: string) => void;
+  collapsedItemIds?: string[];
+  onToggleCollapse?: (itemId: string, collapsed: boolean) => void;
+  conflictAssignmentIds?: string[];
+  onAssignmentClick?: (assignmentId: string) => void;
 }
 
 type SubProps = Omit<Props, 'viewMode'>;
@@ -176,9 +180,12 @@ interface PhaseBarProps {
   color: string;
   showResize: boolean;
   employees: EmployeeResponse[];
+  hasConflict?: boolean;
+  onClick?: () => void;
+  unavailableDays?: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showResize, employees }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showResize, employees, hasConflict, onClick, unavailableDays }: PhaseBarProps) {
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     mode: 'move' | 'resize-start' | 'resize-end';
@@ -268,6 +275,13 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
         else rowRefs.current.delete(refKey);
       }}
       onMouseDown={(e) => beginDrag(e, 'move')}
+      onClick={(e) => {
+        if (drag) return;
+        if (onClick) {
+          e.stopPropagation();
+          onClick();
+        }
+      }}
       title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч`}
       style={{
         position: 'absolute',
@@ -280,15 +294,28 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
         opacity: assignment.is_on_critical_path ? 1 : 0.75,
         borderRadius: 3,
         border: assignment.is_on_critical_path ? '1px solid #e85d4a' : 'none',
-        boxShadow: assignment.is_on_critical_path ? '0 0 6px rgba(232,93,74,0.5)' : 'none',
+        boxShadow: hasConflict
+          ? 'inset 0 0 0 2px #ef4444'
+          : assignment.is_on_critical_path
+            ? '0 0 6px rgba(232,93,74,0.5)'
+            : 'none',
         outline: assignment.is_pinned ? '1px solid #00c9c8' : 'none',
         zIndex: 2,
         cursor: assignment.phase === 'qa' ? 'default' : 'grab',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
       }}
-    />
+    >
+      {unavailableDays && unavailableDays.length > 0 && (
+        <UnavailabilityOverlay
+          start={assignment.start_date}
+          end={assignment.end_date}
+          days={unavailableDays}
+        />
+      )}
+    </div>
   );
 
   return (
@@ -357,6 +384,46 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
   );
 }
 
+interface UnavailabilityOverlayProps {
+  start: string | null;
+  end: string | null;
+  days: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
+}
+
+function UnavailabilityOverlay({ start, end, days }: UnavailabilityOverlayProps) {
+  if (!start || !end || days.length === 0) return null;
+  const startTs = new Date(start + 'T00:00:00').getTime();
+  const endTs = new Date(end + 'T00:00:00').getTime();
+  const totalDays = Math.max(1, Math.round((endTs - startTs) / 86_400_000) + 1);
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', display: 'flex' }}>
+      {days.map(d => {
+        const ts = new Date(d.date + 'T00:00:00').getTime();
+        const offset = Math.max(0, Math.round((ts - startTs) / 86_400_000));
+        const left = (offset / totalDays) * 100;
+        const width = (1 / totalDays) * 100;
+        const bg =
+          d.type === 'absence' || d.type === 'block'
+            ? 'repeating-linear-gradient(45deg, rgba(245,158,11,0.55) 0 4px, rgba(245,158,11,0.25) 4px 8px)'
+            : 'repeating-linear-gradient(45deg, rgba(255,255,255,0.10) 0 4px, rgba(255,255,255,0.04) 4px 8px)';
+        return (
+          <div
+            key={d.date + d.type}
+            style={{
+              position: 'absolute',
+              left: `${left}%`,
+              width: `${width}%`,
+              top: 0,
+              bottom: 0,
+              background: bg,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function useMemoizedDragListeners(
   drag: unknown,
   onMove: (e: MouseEvent) => void,
@@ -376,7 +443,10 @@ function useMemoizedDragListeners(
 function TwoLevelRows({
   assignments, timeline, leftColWidth, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
+  collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
 }: SubProps) {
+  const collapsedSet = useMemo(() => new Set(collapsedItemIds ?? []), [collapsedItemIds]);
+  const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; key: string | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
@@ -398,6 +468,7 @@ function TwoLevelRows({
         const phases = ['analyst', 'dev', 'qa', 'opo'] as const;
         const itemBg = itemIdx % 2 === 0 ? ZEBRA_BG_EVEN : ZEBRA_BG_ODD;
         const isPendingFrom = pendingFromItem === itemId;
+        const isCollapsed = collapsedSet.has(itemId);
 
         const totalHours = ia.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
         const assigneeNames = Array.from(new Set(ia.map(a => a.employee_name).filter(Boolean))).join(', ');
@@ -419,10 +490,30 @@ function TwoLevelRows({
                 outline: isPendingFrom ? '2px solid #ff7a45' : 'none',
               }}
             >
+              <button
+                type="button"
+                aria-label={`${isCollapsed ? 'Развернуть' : 'Свернуть'} ${key ?? title}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleCollapse?.(itemId, !isCollapsed);
+                }}
+                style={{
+                  flexShrink: 0,
+                  width: 24,
+                  background: 'none',
+                  border: 0,
+                  color: '#7a9ab8',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  padding: 0,
+                }}
+              >
+                {isCollapsed ? '▶' : '▼'}
+              </button>
               <ItemTitleCell
                 title={title}
                 jiraKey={key}
-                leftColWidth={leftColWidth}
+                leftColWidth={leftColWidth - 24}
                 fontWeight={700}
                 assignee={assigneeNames || '—'}
                 hours={totalHours > 0 ? `${Math.round(totalHours)} ч` : ''}
@@ -451,7 +542,7 @@ function TwoLevelRows({
                 })()}
               </div>
             </div>
-            {phases.map(phase => {
+            {!isCollapsed && phases.map(phase => {
               const phaseAssignments = ia.filter(a => a.phase === phase);
               if (phaseAssignments.length === 0) return null;
               const color = PHASE_COLORS[phase];
@@ -499,6 +590,16 @@ function TwoLevelRows({
                           color={color}
                           showResize={a.phase !== 'qa'}
                           employees={employees}
+                          hasConflict={conflictSet.has(a.id)}
+                          onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
+                          unavailableDays={
+                            (a as AssignmentOut & {
+                              unavailable_days?: Array<{
+                                date: string;
+                                type: 'weekend' | 'holiday' | 'absence' | 'block';
+                              }>;
+                            }).unavailable_days
+                          }
                         />
                       );
                     })}

@@ -96,6 +96,11 @@ class ResourcePlanOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UnavailableDay(BaseModel):
+    date: date
+    type: str  # weekend | holiday | absence | block
+
+
 class AssignmentOut(BaseModel):
     id: str
     backlog_item_id: str
@@ -112,6 +117,12 @@ class AssignmentOut(BaseModel):
     is_on_critical_path: bool
     slack_days: Optional[float]
     is_pinned: bool = False
+    pinned_employee: bool = False
+    pinned_start: bool = False
+    pinned_split: bool = False
+    manual_edit_at: Optional[datetime] = None
+    predecessor_ids: List[str] = []
+    unavailable_days: List[UnavailableDay] = []
     # Главный исполнитель инициативы из утверждённого сценария
     # (BacklogItem.assignee_employee_id). Используется фронтом для
     # группировки/сортировки задач на Gantt.
@@ -168,12 +179,25 @@ class DependencyOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EmployeeLoadDay(BaseModel):
+    date: date
+    pct: float
+
+
+class EmployeeLoadOut(BaseModel):
+    employee_id: str
+    employee_name: Optional[str]
+    employee_role: Optional[str] = None
+    days: List[EmployeeLoadDay]
+
+
 class GanttProjection(BaseModel):
     plan: ResourcePlanOut
     assignments: List[AssignmentOut]
     conflicts: List[ConflictOut]
     pert_projection: List[InitiativePertOut]
     dependencies: List[DependencyOut] = []
+    employee_load: List[EmployeeLoadOut] = []
 
 
 class AssignmentPatch(BaseModel):
@@ -494,9 +518,75 @@ def get_gantt(
 
     # Вычисляем chunks_total per (backlog_item_id, phase): если строк > 1 — это сплит.
     from collections import Counter as _Counter
+    from datetime import timedelta as _td
+
+    from app.models import Absence, ProductionCalendarDay
+    from app.models.phase_predecessor import PhasePredecessor
+    from app.models.employee_team import EmployeeTeam
+
     phase_counts: dict[tuple, int] = _Counter(
         (a.backlog_item_id, a.phase) for a in assignments_raw
     )
+
+    # Предшественники по плану.
+    pred_rows = (
+        db.execute(
+            select(PhasePredecessor)
+            .join(
+                ResourcePlanAssignment,
+                PhasePredecessor.successor_assignment_id == ResourcePlanAssignment.id,
+            )
+            .where(ResourcePlanAssignment.plan_id == plan_id)
+        )
+        .scalars()
+        .all()
+    )
+    preds_by_succ: dict[str, list[str]] = {}
+    for p in pred_rows:
+        preds_by_succ.setdefault(p.successor_assignment_id, []).append(
+            p.predecessor_assignment_id
+        )
+
+    # Календарь и отсутствия для unavailable_days в каждом баре.
+    cal_rows = (
+        db.execute(select(ProductionCalendarDay)).scalars().all()
+    )
+    cal_map = {row.date: row.hours for row in cal_rows}
+
+    emp_ids_in_plan = {a.employee_id for a in assignments_raw if a.employee_id}
+    absences_by_emp: dict[str, list[Absence]] = {}
+    if emp_ids_in_plan:
+        absences = (
+            db.execute(select(Absence).where(Absence.employee_id.in_(emp_ids_in_plan)))
+            .scalars()
+            .all()
+        )
+        for ab in absences:
+            absences_by_emp.setdefault(ab.employee_id, []).append(ab)
+
+    def _unavailable_days(a: ResourcePlanAssignment) -> list[UnavailableDay]:
+        if not a.start_date or not a.end_date:
+            return []
+        out: list[UnavailableDay] = []
+        d = a.start_date
+        emp_absences = absences_by_emp.get(a.employee_id, [])
+        while d <= a.end_date:
+            cal_h = cal_map.get(d, None)
+            kind: Optional[str] = None
+            if cal_h is None:
+                if d.weekday() >= 5:
+                    kind = "weekend"
+            else:
+                if cal_h == 0:
+                    kind = "weekend" if d.weekday() >= 5 else "holiday"
+            if a.employee_id and any(
+                ab.start_date <= d <= ab.end_date for ab in emp_absences
+            ):
+                kind = "absence"
+            if kind:
+                out.append(UnavailableDay(date=d, type=kind))
+            d += _td(days=1)
+        return out
 
     assignments = [
         AssignmentOut(
@@ -515,6 +605,12 @@ def get_gantt(
             is_on_critical_path=a.is_on_critical_path,
             slack_days=a.slack_days,
             is_pinned=a.is_pinned,
+            pinned_employee=a.pinned_employee,
+            pinned_start=a.pinned_start,
+            pinned_split=a.pinned_split,
+            manual_edit_at=a.manual_edit_at,
+            predecessor_ids=preds_by_succ.get(a.id, []),
+            unavailable_days=_unavailable_days(a),
             scenario_assignee_employee_id=(
                 a.backlog_item.assignee_employee_id if a.backlog_item else None
             ),
@@ -529,6 +625,59 @@ def get_gantt(
         )
         for a in assignments_raw
     ]
+
+    # Posuточная нагрузка сотрудников команды плана для тепловой карты.
+    employee_load: list[EmployeeLoadOut] = []
+    if plan.team:
+        from app.models import Employee
+        from app.services.resource_planning_service import ResourcePlanningService
+
+        plan_employees = (
+            db.execute(
+                select(Employee)
+                .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+                .where(
+                    EmployeeTeam.team == plan.team,
+                    Employee.is_active == True,  # noqa: E712
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if plan_employees:
+            svc = ResourcePlanningService(db)
+            q_start, q_end = svc._quarter_bounds(plan)
+            avail = svc.build_availability(plan_employees, q_start, q_end, [])
+            # Часы по дням на сотрудника по фазам (равномерно по диапазону фазы).
+            used: dict[str, dict] = {e.id: {} for e in plan_employees}
+            for a in assignments_raw:
+                if not a.employee_id or not a.start_date or not a.end_date:
+                    continue
+                if a.employee_id not in used:
+                    continue
+                total_days = max(1, (a.end_date - a.start_date).days + 1)
+                per_day = (a.hours_allocated or 0.0) / total_days
+                d = a.start_date
+                while d <= a.end_date:
+                    used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + per_day
+                    d += _td(days=1)
+            for e in plan_employees:
+                days_out: list[EmployeeLoadDay] = []
+                d = q_start
+                while d <= q_end:
+                    av = avail.get(e.id, {}).get(d, 0.0)
+                    u = used.get(e.id, {}).get(d, 0.0)
+                    pct = (u / av * 100.0) if av > 0 else 0.0
+                    days_out.append(EmployeeLoadDay(date=d, pct=round(pct, 1)))
+                    d += _td(days=1)
+                employee_load.append(
+                    EmployeeLoadOut(
+                        employee_id=e.id,
+                        employee_name=e.display_name,
+                        employee_role=e.role,
+                        days=days_out,
+                    )
+                )
 
     conflicts = _detect_conflicts(plan, assignments_raw, db)
     pert_projection = _compute_pert_projection(plan, assignments_raw, db)
@@ -561,6 +710,7 @@ def get_gantt(
         conflicts=conflicts,
         pert_projection=pert_projection,
         dependencies=deps,
+        employee_load=employee_load,
     )
 
 

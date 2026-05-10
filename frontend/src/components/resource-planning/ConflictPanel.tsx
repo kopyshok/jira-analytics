@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Alert, App, Button, Collapse, Dropdown, Space, Tag } from 'antd';
+import { useMemo, useState } from 'react';
+import { Alert, App, Button, Collapse, Dropdown, Segmented, Space, Tag } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import type { ConflictOut } from '../../api/resourcePlanning';
 import { usePatchConflict } from '../../hooks/useResourcePlanning';
@@ -7,7 +7,23 @@ import { usePatchConflict } from '../../hooks/useResourcePlanning';
 interface Props {
   conflicts: ConflictOut[];
   planId: string | null;
+  onSelectAssignment?: (assignmentId: string) => void;
 }
+
+type GroupBy = 'item' | 'employee' | 'type';
+
+const TYPE_LABELS: Record<string, string> = {
+  OVERLOAD_HIGH: 'Сильная перегрузка',
+  OVERLOAD_MED: 'Средняя перегрузка',
+  OVERLOAD_LIGHT: 'Лёгкая перегрузка',
+  QUARTER_OVERFLOW: 'Не вмещается в квартал',
+  SPLIT_REQUIRED: 'Требуется разбивка',
+  NO_ANALYST: 'Нет аналитика',
+  NO_DEV: 'Нет разработчика',
+  LATE_START: 'Поздний старт',
+  LEVELING_DELAY: 'Сдвиг при выравнивании',
+  LEVELING_REASSIGN: 'Переназначение',
+};
 
 const SEVERITY_TYPE: Record<string, 'error' | 'warning' | 'info'> = {
   critical: 'error',
@@ -29,14 +45,41 @@ const STATUS_LABEL: Record<ConflictOut['status'], string> = {
   resolved: 'Решён',
 };
 
-export default function ConflictPanel({ conflicts, planId }: Props) {
+export default function ConflictPanel({ conflicts, planId, onSelectAssignment }: Props) {
   const { message } = App.useApp();
   const patchMutation = usePatchConflict(planId);
   const [showHidden, setShowHidden] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupBy>('item');
 
   const active = conflicts.filter(c => c.status !== 'muted' && c.status !== 'resolved');
   const hidden = conflicts.filter(c => c.status === 'muted' || c.status === 'resolved');
   const visible = showHidden ? conflicts : active;
+
+  const groups = useMemo(() => {
+    const map = new Map<string, { label: string; items: ConflictOut[] }>();
+    for (const c of visible) {
+      let key = 'misc';
+      let label = '—';
+      if (groupBy === 'item') {
+        key = c.backlog_item_id ?? 'misc';
+        label = c.backlog_item_title ?? 'Без инициативы';
+      } else if (groupBy === 'employee') {
+        key = c.employee_id ?? 'misc';
+        label = c.employee_id
+          ? (c as ConflictOut & { employee_name?: string }).employee_name ?? c.employee_id
+          : 'Без сотрудника';
+      } else {
+        key = c.type;
+        label = TYPE_LABELS[c.type] ?? c.type;
+      }
+      if (!map.has(key)) map.set(key, { label, items: [] });
+      map.get(key)!.items.push(c);
+    }
+    return [...map.entries()]
+      .map(([key, v]) => ({ key, label: v.label, items: v.items }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  }, [visible, groupBy]);
+
   if (active.length === 0 && hidden.length === 0) return null;
 
   const criticals = active.filter(c => c.severity === 'critical');
@@ -74,47 +117,74 @@ export default function ConflictPanel({ conflicts, planId }: Props) {
           </span>
         ),
         children: (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {hidden.length > 0 && (
-              <Button
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Space style={{ justifyContent: 'space-between' }}>
+              <Segmented
                 size="small"
-                type="link"
-                style={{ alignSelf: 'flex-start', padding: 0, fontSize: 12 }}
-                onClick={() => setShowHidden(!showHidden)}
-              >
-                {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} погашенных`}
-              </Button>
-            )}
-            {visible.map(c => (
-              <Alert
-                key={c.id}
-                type={SEVERITY_TYPE[c.severity] ?? 'info'}
-                showIcon
-                message={
-                  <Space size={8} align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-                    <span>
-                      {c.backlog_item_title ? `${c.backlog_item_title}: ${c.message}` : c.message}
-                    </span>
-                    <Space size={4}>
-                      <Tag color={STATUS_COLOR[c.status]}>{STATUS_LABEL[c.status]}</Tag>
-                      <Dropdown
-                        menu={{
-                          items: (['acknowledged', 'muted', 'resolved', 'open'] as const)
-                            .filter(s => s !== c.status)
-                            .map(s => ({
-                              key: s,
-                              label: STATUS_LABEL[s],
-                              onClick: () => handleStatusChange(c.id, s),
-                            })),
-                        }}
-                        trigger={['click']}
-                      >
-                        <a><MoreOutlined /></a>
-                      </Dropdown>
-                    </Space>
-                  </Space>
-                }
+                value={groupBy}
+                onChange={(v) => setGroupBy(v as GroupBy)}
+                options={[
+                  { label: 'По задачам', value: 'item' },
+                  { label: 'По сотрудникам', value: 'employee' },
+                  { label: 'По типу', value: 'type' },
+                ]}
               />
+              {hidden.length > 0 && (
+                <Button
+                  size="small"
+                  type="link"
+                  style={{ padding: 0, fontSize: 12 }}
+                  onClick={() => setShowHidden(!showHidden)}
+                >
+                  {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} погашенных`}
+                </Button>
+              )}
+            </Space>
+            {groups.map(g => (
+              <div key={g.key} style={{ borderTop: '1px solid #1e3a5f', paddingTop: 6 }}>
+                <div style={{ fontSize: 12, color: '#8ab0d8', fontWeight: 600, marginBottom: 4 }}>
+                  {g.label}{' '}
+                  <Tag>{g.items.length}</Tag>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {g.items.map(c => (
+                    <Alert
+                      key={c.id}
+                      type={SEVERITY_TYPE[c.severity] ?? 'info'}
+                      showIcon
+                      message={
+                        <Space size={8} align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+                          <span
+                            style={{ cursor: c.assignment_id && onSelectAssignment ? 'pointer' : 'default' }}
+                            onClick={() =>
+                              c.assignment_id && onSelectAssignment?.(c.assignment_id)
+                            }
+                          >
+                            {c.message}
+                          </span>
+                          <Space size={4}>
+                            <Tag color={STATUS_COLOR[c.status]}>{STATUS_LABEL[c.status]}</Tag>
+                            <Dropdown
+                              menu={{
+                                items: (['acknowledged', 'muted', 'resolved', 'open'] as const)
+                                  .filter(s => s !== c.status)
+                                  .map(s => ({
+                                    key: s,
+                                    label: STATUS_LABEL[s],
+                                    onClick: () => handleStatusChange(c.id, s),
+                                  })),
+                              }}
+                              trigger={['click']}
+                            >
+                              <a><MoreOutlined /></a>
+                            </Dropdown>
+                          </Space>
+                        </Space>
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         ),

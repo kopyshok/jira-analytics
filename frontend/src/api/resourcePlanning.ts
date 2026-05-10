@@ -68,6 +68,12 @@ export interface AssignmentOut {
   is_on_critical_path: boolean;
   slack_days: number | null;
   is_pinned: boolean;
+  pinned_employee?: boolean;
+  pinned_start?: boolean;
+  pinned_split?: boolean;
+  manual_edit_at?: string | null;
+  predecessor_ids?: string[];
+  unavailable_days?: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
   scenario_assignee_employee_id?: string | null;
   scenario_assignee_name?: string | null;
   /** Приоритет инициативы. Чем выше число — тем выше приоритет. */
@@ -114,12 +120,30 @@ export interface DependencyOut {
   source: 'manual' | 'inferred';
 }
 
+export interface UnavailableDay {
+  date: string;
+  type: 'weekend' | 'holiday' | 'absence' | 'block';
+}
+
+export interface EmployeeLoadDay {
+  date: string;
+  pct: number;
+}
+
+export interface EmployeeLoadOut {
+  employee_id: string;
+  employee_name: string | null;
+  employee_role: string | null;
+  days: EmployeeLoadDay[];
+}
+
 export interface GanttProjection {
   plan: ResourcePlan;
   assignments: AssignmentOut[];
   conflicts: ConflictOut[];
   pert_projection: InitiativePertOut[];
   dependencies: DependencyOut[];
+  employee_load?: EmployeeLoadOut[];
 }
 
 export interface AssignmentPatch {
