@@ -1,4 +1,8 @@
-"""BacklogService: child issues (parent_id != NULL) must NOT be added to draft scenarios."""
+"""BacklogService: child issues with tracked category MUST be added to draft scenarios.
+
+Initiatives often live under container Epics (e.g. AD-4400) — parent_id is set
+but the issue is still a legitimate initiative. Категория решает.
+"""
 
 import pytest
 
@@ -39,7 +43,8 @@ def _make_issue(db, proj, key, parent_id=None, category="initiatives_rfa"):
     return i
 
 
-def test_child_issue_not_added_to_draft_scenario(db_session, proj, draft_scenario):
+def test_child_issue_with_tracked_category_added_to_draft_scenario(db_session, proj, draft_scenario):
+    """Initiative under an Epic parent must still get a ScenarioAllocation."""
     parent = _make_issue(db_session, proj, "BCS-1")
     child = _make_issue(db_session, proj, "BCS-2", parent_id=parent.id)
 
@@ -49,7 +54,8 @@ def test_child_issue_not_added_to_draft_scenario(db_session, proj, draft_scenari
 
     assert result is not None  # BacklogItem created
     allocs = db_session.query(ScenarioAllocation).filter_by(backlog_item_id=result.id).all()
-    assert allocs == [], "child issue must not be allocated to any draft scenario"
+    assert len(allocs) == 1
+    assert allocs[0].scenario_id == draft_scenario.id
 
 
 def test_root_issue_added_to_draft_scenario(db_session, proj, draft_scenario):
