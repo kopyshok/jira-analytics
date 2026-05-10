@@ -121,6 +121,36 @@ class ResourcePlanningService:
         self.db = db
         self._last_leveling_events: List = []
 
+    @staticmethod
+    def _daily_role_capacity(
+        avail_hours: float,
+        involvement: Optional[float],
+        parallel_count: int,
+    ) -> float:
+        """Дневная ёмкость роли в фазе.
+
+        avail_hours — доступно_по_календарю_сотрудника (производственный
+        календарь минус отсутствия и блокировки).
+        involvement — коэф вовлечённости (0..1). None → 1.0 (legacy для
+        задач без Jira-данных, ёмкость не урезается).
+        parallel_count — число параллельных исполнителей этой роли (>=1).
+        """
+        inv = 1.0 if involvement is None else max(0.0, min(1.0, involvement))
+        return avail_hours * inv * max(1, parallel_count)
+
+    @staticmethod
+    def _involvement_for_phase(item: BacklogItem, phase: str) -> Optional[float]:
+        """Коэф вовлечённости из BacklogItem для указанной фазы (None если не задан)."""
+        field = {
+            "analyst": "involvement_analyst",
+            "dev": "involvement_dev",
+            "qa": "involvement_qa",
+            "opo": "involvement_launch",
+        }.get(phase)
+        if not field:
+            return None
+        return getattr(item, field, None)
+
     def build_availability(
         self,
         employees: List[Employee],
@@ -445,11 +475,18 @@ class ResourcePlanningService:
                             )
                     parts = self._opo_split(item, analyst_id, dev_id)
                     last_end: Optional[date] = None
+                    opo_involvement = self._involvement_for_phase(item, "opo")
+                    opo_daily_cap = self._daily_role_capacity(
+                        avail_hours=8.0,
+                        involvement=opo_involvement,
+                        parallel_count=1,
+                    )
                     for emp_id, p_hours in parts:
                         if not emp_id or p_hours <= 0:
                             continue
                         segments = self._allocate_hours(
-                            emp_id, p_hours, earliest_start, q_end, remaining
+                            emp_id, p_hours, earliest_start, q_end, remaining,
+                            daily_capacity=opo_daily_cap,
                         )
                         for seg_start, seg_end, seg_hours, part_num in segments:
                             a = ResourcePlanAssignment(
@@ -484,6 +521,14 @@ class ResourcePlanningService:
                     jira_cal_set = True
                 cal_days = max(1.0, cal_days / max(1, parallel_n))
 
+                # Дневная ёмкость фазы для сотрудника (involvement × parallel).
+                phase_involvement = self._involvement_for_phase(item, phase)
+                phase_daily_cap = self._daily_role_capacity(
+                    avail_hours=8.0,
+                    involvement=phase_involvement,
+                    parallel_count=parallel_n,
+                )
+
                 # Авто-сплит аналитической фазы (Phase 5): если для этого item
                 # решение о сплите уже принято — используем его.
                 analyst_split_chunks = _analyst_split_map.get((item.id, phase), 1)
@@ -498,7 +543,8 @@ class ResourcePlanningService:
                             (last_chunk_end + timedelta(days=1)) if last_chunk_end else earliest_start
                         )
                         chunk_segs = self._allocate_hours(
-                            employee_id, chunk_hours, chunk_start, q_end, remaining
+                            employee_id, chunk_hours, chunk_start, q_end, remaining,
+                            daily_capacity=phase_daily_cap,
                         )
                         for seg_start, seg_end, seg_hours, seg_part in chunk_segs:
                             a = ResourcePlanAssignment(
@@ -539,7 +585,8 @@ class ResourcePlanningService:
                 alloc_deadline = cal_end if jira_cal_set else q_end
 
                 segments = self._allocate_hours(
-                    employee_id, hours, earliest_start, alloc_deadline, remaining
+                    employee_id, hours, earliest_start, alloc_deadline, remaining,
+                    daily_capacity=phase_daily_cap,
                 )
 
                 # Если жёсткое окно из Jira (duration/involvement) не вмещает
@@ -547,7 +594,8 @@ class ResourcePlanningService:
                 # пропала из расписания. Перегрузку зафиксирует RCPSP-leveler.
                 if jira_cal_set and not segments and hours > 0:
                     segments = self._allocate_hours(
-                        employee_id, hours, earliest_start, q_end, remaining
+                        employee_id, hours, earliest_start, q_end, remaining,
+                        daily_capacity=phase_daily_cap,
                     )
 
                 if jira_cal_set:
@@ -610,6 +658,7 @@ class ResourcePlanningService:
         earliest_start: date,
         deadline: date,
         remaining: Dict[str, Dict[date, float]],
+        daily_capacity: Optional[float] = None,
     ) -> List[Tuple[date, date, float, int]]:
         """Распределить total_hours по рабочим дням начиная с earliest_start.
 
@@ -618,6 +667,11 @@ class ResourcePlanningService:
         ненулевой доступностью (выходные/отсутствия пропускаются), но конечный
         бар покрывает диапазон от первого до последнего использованного дня
         одной непрерывной полосой.
+
+        Если задан ``daily_capacity`` — за один день фаза не возьмёт больше
+        этой величины, даже если у сотрудника свободно больше. Это удерживает
+        длительность фазы в соответствии с коэф вовлечённости и предотвращает
+        перегрузки от параллельных назначений.
         """
         emp_days = remaining.get(employee_id, {})
         remaining_h = total_hours
@@ -628,10 +682,11 @@ class ResourcePlanningService:
         d = earliest_start
         while remaining_h > 0.01 and d <= deadline:
             avail_h = emp_days.get(d, 0.0)
-            if avail_h > 0:
+            cap = avail_h if daily_capacity is None else min(avail_h, daily_capacity)
+            if cap > 0:
                 if seg_start is None:
                     seg_start = d
-                used = min(avail_h, remaining_h)
+                used = min(cap, remaining_h)
                 emp_days[d] -= used
                 remaining_h -= used
                 used_total += used
