@@ -25,6 +25,7 @@ from app.services.backlog_service import (
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
+from app.services.hierarchy_rules import EvaluationInput, load_rules
 from app.services.sync_service import SyncService
 
 
@@ -387,6 +388,33 @@ async def list_backlog_items(
         )
 
     items = query.all()
+
+    # Скрываем явные leaf-типы (HierarchyRule с is_container=False).
+    # Default — показываем (чтобы новые типы без правил не пропадали).
+    rules = load_rules(db)
+    leaf_rules = [r for r in rules if not r.is_container]
+    if leaf_rules:
+        def _is_explicit_leaf(it: BacklogItem) -> bool:
+            if it.issue_id is None or it.issue is None:
+                return False
+            issue = it.issue
+            project_key = issue.project.key if issue.project else ""
+            inp = EvaluationInput(
+                project_key=project_key or "",
+                issue_type=issue.issue_type or "",
+                has_parent=issue.parent_id is not None,
+            )
+            for rule in leaf_rules:
+                if rule.project_key and rule.project_key != inp.project_key:
+                    continue
+                if rule.issue_type and rule.issue_type != inp.issue_type:
+                    continue
+                if rule.require_no_parent and inp.has_parent:
+                    continue
+                return True
+            return False
+
+        items = [it for it in items if not _is_explicit_leaf(it)]
 
     items.sort(
         key=lambda i: (
