@@ -283,6 +283,14 @@ async def list_backlog_items(
     if teams_list:
         query = query.filter(Issue.team.in_(teams_list))
 
+    # Cancel-like статусы (Отменено / Cancelled / Rejected) считаем «закрыты»
+    # — Jira держит их в statusCategory != 'done', но для backlog'а они мусор.
+    cancel_like = or_(
+        func.lower(func.coalesce(Issue.status, "")).like("%отмен%"),
+        func.lower(func.coalesce(Issue.status, "")).like("%cancel%"),
+        func.lower(func.coalesce(Issue.status, "")).like("%reject%"),
+    )
+
     if view == "active":
         quarterly_filter = or_(
             func.coalesce(Issue.assigned_category, "") == QUARTERLY_TASKS_CATEGORY,
@@ -311,6 +319,11 @@ async def list_backlog_items(
                 BacklogItem.issue_id.is_(None),
                 Issue.parent_id.is_(None),
             ),
+            # Cancel-like статусы — в архив, не сюда
+            or_(
+                BacklogItem.issue_id.is_(None),
+                ~cancel_like,
+            ),
         )
     elif view == "archived":
         # Только корневые задачи — дочерние (OS/PMD) не показываем,
@@ -319,6 +332,7 @@ async def list_backlog_items(
             or_(
                 BacklogItem.archived_at.isnot(None),
                 Issue.status_category == "done",
+                cancel_like,
             ),
             or_(
                 BacklogItem.issue_id.is_(None),
@@ -346,6 +360,11 @@ async def list_backlog_items(
             or_(
                 BacklogItem.issue_id.is_(None),
                 Issue.parent_id.is_(None),
+            ),
+            # Cancel-like статусы — в архив, не в «В работе»
+            or_(
+                BacklogItem.issue_id.is_(None),
+                ~cancel_like,
             ),
         )
     elif view == "quarterly":
