@@ -19,6 +19,7 @@ from app.models import (
     ScheduledBlockRole,
 )
 from app.models.user import User
+from app.models.user_rp_preferences import UserRpPreferences
 from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import ResourcePlanningService
 
@@ -193,6 +194,57 @@ class DependencyCreate(BaseModel):
 class DependencyPatch(BaseModel):
     dep_type: Optional[str] = None
     lag_days: Optional[int] = None
+
+
+# ── User RP preferences ─────────────────────────────────────────────────────
+
+
+class UserRpPrefsSchema(BaseModel):
+    hide_weekends: bool = False
+    collapsed_initiative_ids: List[str] = []
+    view_mode: Optional[str] = None
+    show_relay: bool = True
+
+
+@router.get("/preferences", response_model=UserRpPrefsSchema)
+def get_user_rp_preferences(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Per-user настройки страницы /resource-planning."""
+    p = db.get(UserRpPreferences, current_user.id)
+    if not p:
+        return UserRpPrefsSchema()
+    return UserRpPrefsSchema(
+        hide_weekends=p.hide_weekends,
+        collapsed_initiative_ids=p.collapsed_initiative_ids or [],
+        view_mode=p.view_mode,
+        show_relay=p.show_relay,
+    )
+
+
+@router.patch("/preferences", response_model=UserRpPrefsSchema)
+def patch_user_rp_preferences(
+    payload: UserRpPrefsSchema,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    p = db.get(UserRpPreferences, current_user.id)
+    if not p:
+        p = UserRpPreferences(user_id=current_user.id)
+        db.add(p)
+    p.hide_weekends = payload.hide_weekends
+    p.collapsed_initiative_ids = list(payload.collapsed_initiative_ids or [])
+    p.view_mode = payload.view_mode
+    p.show_relay = payload.show_relay
+    db.commit()
+    db.refresh(p)
+    return UserRpPrefsSchema(
+        hide_weekends=p.hide_weekends,
+        collapsed_initiative_ids=p.collapsed_initiative_ids or [],
+        view_mode=p.view_mode,
+        show_relay=p.show_relay,
+    )
 
 
 # ── ScheduledBlocks ────────────────────────────────────────────────────────
