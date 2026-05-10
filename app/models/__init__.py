@@ -47,6 +47,7 @@ from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.plan_item_dependency import PlanItemDependency
 from app.models.plan_conflict import PlanConflict
+from app.models.phase_predecessor import PhasePredecessor
 from app.models.confluence_page_cache import ConfluencePageCache
 from app.models.theme import Theme
 from app.models.issue_classification import IssueClassification
@@ -105,6 +106,7 @@ __all__ = [
     "ResourcePlanAssignment",
     "PlanItemDependency",
     "PlanConflict",
+    "PhasePredecessor",
     "ConfluencePageCache",
     "Theme",
     "IssueClassification",
