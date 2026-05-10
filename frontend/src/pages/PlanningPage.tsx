@@ -805,7 +805,6 @@ export default function PlanningPage() {
                             min={1}
                             max={10}
                             value={a.priority}
-                            disabled={!isDraft}
                             variant="borderless"
                             size="small"
                             controls={false}
