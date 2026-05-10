@@ -56,6 +56,7 @@ from app.models.issue_classification import IssueClassification
 from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
 from app.models.work_type_report_layout import WorkTypeReportLayout
 from app.models.executive_snapshot import ExecutiveSnapshot
+from app.models.user_rp_preferences import UserRpPreferences
 
 __all__ = [
     "TimestampMixin",
@@ -117,4 +118,5 @@ __all__ = [
     "WorkTypeReportSnapshot",
     "WorkTypeReportLayout",
     "ExecutiveSnapshot",
+    "UserRpPreferences",
 ]
