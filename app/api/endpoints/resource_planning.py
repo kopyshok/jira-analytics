@@ -180,6 +180,7 @@ class AssignmentPatch(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     hours_allocated: Optional[float] = None
+    predecessor_ids: Optional[List[str]] = None
 
 
 class DependencyCreate(BaseModel):
@@ -537,17 +538,65 @@ def patch_assignment(
         raise HTTPException(404, "Assignment not found")
 
     patch = data.model_dump(exclude_unset=True)
+
+    # predecessor_ids — отдельная ветка с проверкой цикла, не пишется в Assignment
+    new_predecessor_ids = patch.pop("predecessor_ids", None)
+
     new_start = patch.get("start_date", a.start_date)
     new_end = patch.get("end_date", a.end_date)
+
+    # Если пользователь сдвигает start_date без явного end_date — двигаем end на ту
+    # же дельту, чтобы сохранить длительность фазы.
+    if (
+        "start_date" in patch
+        and "end_date" not in patch
+        and a.start_date
+        and a.end_date
+        and patch["start_date"]
+    ):
+        delta_days = (patch["start_date"] - a.start_date).days
+        if delta_days != 0:
+            from datetime import timedelta as _td
+
+            new_end = a.end_date + _td(days=delta_days)
+            patch["end_date"] = new_end
+
     if new_start and new_end and new_end < new_start:
         raise HTTPException(422, "end_date must be >= start_date")
 
     # Явный выбор сотрудника — закрепить назначение
     if "employee_id" in patch:
         a.pinned_employee = True
+        a.manual_edit_at = datetime.utcnow()
+
+    if "start_date" in patch:
+        a.pinned_start = True
+        a.manual_edit_at = datetime.utcnow()
 
     for k, v in patch.items():
         setattr(a, k, v)
+
+    if new_predecessor_ids is not None:
+        from app.models.phase_predecessor import PhasePredecessor
+
+        # Удалить существующие рёбра у этого назначения и вставить новые с
+        # проверкой цикла. Цикл — 400.
+        db.execute(
+            PhasePredecessor.__table__.delete().where(
+                PhasePredecessor.successor_assignment_id == a.id
+            )
+        )
+        db.flush()
+        svc_for_cycle = ResourcePlanningService(db)
+        try:
+            for pid in new_predecessor_ids:
+                if pid == a.id:
+                    raise HTTPException(400, "cycle: self-reference")
+                svc_for_cycle.add_predecessor(successor_id=a.id, predecessor_id=pid)
+        except ValueError as e:
+            db.rollback()
+            raise HTTPException(400, f"cycle: {e}")
+        a.manual_edit_at = datetime.utcnow()
 
     plan = db.get(ResourcePlan, plan_id)
     if plan:
