@@ -127,7 +127,64 @@ export interface AssignmentPatch {
   start_date?: string;
   end_date?: string;
   hours_allocated?: number;
+  predecessor_ids?: string[];
 }
+
+export interface RpPreferences {
+  hide_weekends: boolean;
+  collapsed_initiative_ids: string[];
+  view_mode: string | null;
+  show_relay: boolean;
+}
+
+export const getRpPreferences = () =>
+  api.get<RpPreferences>('/resource-planning/preferences');
+
+export const patchRpPreferences = (data: Partial<RpPreferences>) =>
+  api.patch<RpPreferences>('/resource-planning/preferences', data);
+
+export interface SplitRequest {
+  parts: number[];
+  cascade?: boolean;
+}
+
+export interface AssignmentDto {
+  id: string;
+  plan_id: string;
+  backlog_item_id: string;
+  phase: string;
+  employee_id: string | null;
+  part_number: number;
+  hours_allocated: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  pinned_employee: boolean;
+  pinned_start: boolean;
+  pinned_split: boolean;
+  is_pinned: boolean;
+  manual_edit_at: string | null;
+}
+
+export const splitAssignment = (
+  planId: string,
+  assignmentId: string,
+  data: SplitRequest,
+) =>
+  api.post<{ parts: AssignmentDto[]; cascaded: AssignmentDto[] }>(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/split`,
+    data,
+  );
+
+export const mergeAssignment = (planId: string, assignmentId: string) =>
+  api.post<{ assignment: AssignmentDto }>(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/merge`,
+    {},
+  );
+
+export const clearAssignmentManualEdit = (planId: string, assignmentId: string) =>
+  api.del(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/manual-edit`,
+  );
 
 export const getScheduledBlocks = (team?: string) =>
   api.get<ScheduledBlock[]>('/resource-planning/scheduled-blocks', team ? { team } : undefined);
