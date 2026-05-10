@@ -697,6 +697,8 @@ class ResourcePlanningService:
         if not dev_ids:
             dev_ids = [e.id for e in employees]
 
+        analyst_ids = [e.id for e in employees if (e.role or "").lower() in ANALYST_ROLES]
+
         load: Dict[str, float] = defaultdict(float)
         result: Dict[str, Dict[str, Optional[str]]] = {p: {} for p in PHASE_ORDER}
 
@@ -713,6 +715,11 @@ class ResourcePlanningService:
                 issue = item.issue
                 if issue and issue.assignee_display_name:
                     analyst_id = by_name.get(issue.assignee_display_name.strip().lower())
+            # Если исполнитель не из команды плана (или вообще не задан) —
+            # берём наименее загруженного из пула аналитиков команды, чтобы
+            # фаза «Анализ» всё равно появилась в расписании.
+            if not analyst_id and analyst_ids:
+                analyst_id = min(analyst_ids, key=lambda eid: load[eid])
             if analyst_id:
                 load[analyst_id] += item.estimate_analyst_hours or 0.0
             result["analyst"][item.id] = analyst_id
