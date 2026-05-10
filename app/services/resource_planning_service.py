@@ -173,12 +173,15 @@ class ResourcePlanningService:
                 absent_days[a.employee_id].add(d)
                 d += timedelta(days=1)
 
-        # Build role_code → role_id map for block resolution
-        # ScheduledBlock.role_id is a UUID FK → roles.id; Employee.role is a role code.
-        # We need to match them, so load the mapping once.
+        # Build role_code → role_id map for block resolution.
+        # ScheduledBlock.roles[].role_id is a UUID FK → roles.id;
+        # Employee.role is a role code. We load the mapping once.
         role_code_to_id: Dict[str, str] = {}
         role_id_to_code: Dict[str, str] = {}
-        role_ids_needed = {b.role_id for b in scheduled_blocks if b.role_id}
+        role_ids_needed: set[str] = set()
+        for b in scheduled_blocks:
+            for r in b.roles:
+                role_ids_needed.add(r.role_id)
         if role_ids_needed:
             role_rows = (
                 self.db.execute(select(Role).where(Role.id.in_(role_ids_needed)))
@@ -223,16 +226,27 @@ class ResourcePlanningService:
         employees: List[Employee],
         role_id_to_code: Dict[str, str],
     ) -> List[str]:
-        """Resolve which employee IDs are affected by a ScheduledBlock."""
-        if block.employee_id:
-            return [block.employee_id]
-        if block.role_id:
-            role_code = role_id_to_code.get(block.role_id, "")
-            return [e.id for e in employees if e.role == role_code]
-        if block.team:
-            return [e.id for e in employees if e.team == block.team]
-        # No filter → all employees
-        return [e.id for e in employees]
+        """Resolve which employee IDs are affected by a ScheduledBlock.
+
+        Block applies to:
+          - all employees with one of `block.roles` codes, AND
+          - any explicitly listed employee in `block.employees`.
+        Если оба списка пусты — блок действует на всю команду
+        (или на всех сотрудников, если `block.team` is None).
+        """
+        if not block.roles and not block.employees:
+            if block.team:
+                return [e.id for e in employees if e.team == block.team]
+            return [e.id for e in employees]
+        targets: set[str] = set()
+        role_ids = {r.role_id for r in block.roles}
+        for r_id in role_ids:
+            code = role_id_to_code.get(r_id, "")
+            targets.update(
+                e.id for e in employees if (e.role or "").lower() == code.lower()
+            )
+        targets.update(e.employee_id for e in block.employees)
+        return list(targets)
 
     # ------------------------------------------------------------------
     # Schedule computation

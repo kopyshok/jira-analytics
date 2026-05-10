@@ -43,6 +43,8 @@ from app.models.sync_schedule import SyncSchedule
 from app.models.sync_run import SyncRun
 from app.models.user import User, UserRole  # noqa: F401
 from app.models.scheduled_block import ScheduledBlock
+from app.models.scheduled_block_role import ScheduledBlockRole
+from app.models.scheduled_block_employee import ScheduledBlockEmployee
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.plan_item_dependency import PlanItemDependency
@@ -102,6 +104,8 @@ __all__ = [
     "User",
     "UserRole",
     "ScheduledBlock",
+    "ScheduledBlockRole",
+    "ScheduledBlockEmployee",
     "ResourcePlan",
     "ResourcePlanAssignment",
     "PlanItemDependency",
