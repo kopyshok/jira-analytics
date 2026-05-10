@@ -860,11 +860,66 @@ async def revert_scenario(
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    """Вернуть утверждённый сценарий в черновик для редактирования."""
+    """Вернуть утверждённый сценарий в черновик для редактирования.
+
+    Полная обратимость approve:
+    - status → draft
+    - included allocations этого сценария НЕ трогаем (галочки сохранены)
+    - issues, переведённые approve в quarterly_tasks, откатываем обратно в
+      initiatives_rfa (если они не удерживаются другим approved сценарием).
+      Задача возвращается в бэклог; в других draft сценариях для неё
+      пересоздаются allocations через sync_from_issue.
+    - ScenarioRevision (история) сохраняется
+    - ResourcePlan не трогаем (был stale — останется stale)
+    """
     scenario = db.get(PlanningScenario, scenario_id)
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
+
     scenario.status = "draft"
+    db.flush()  # status=draft должен быть виден до sync_from_issue/_ensure_draft_allocations
+
+    included_rows = (
+        db.query(ScenarioAllocation, BacklogItem)
+        .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+        .filter(
+            ScenarioAllocation.scenario_id == scenario_id,
+            ScenarioAllocation.included_flag == True,  # noqa: E712
+        )
+        .all()
+    )
+
+    resolver = CategoryResolver(db)
+    backlog_svc = BacklogService(db)
+    for _, item in included_rows:
+        if item.issue_id is None:
+            continue
+        issue = db.get(Issue, item.issue_id)
+        if issue is None:
+            continue
+        if issue.category != "quarterly_tasks":
+            continue
+
+        # Не откатывать, если другой approved сценарий держит эту задачу included
+        held_by_other_approved = (
+            db.query(ScenarioAllocation.id)
+            .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+            .filter(
+                ScenarioAllocation.backlog_item_id == item.id,
+                ScenarioAllocation.included_flag == True,  # noqa: E712
+                PlanningScenario.status == "approved",
+                PlanningScenario.id != scenario_id,
+            )
+            .first()
+            is not None
+        )
+        if held_by_other_approved:
+            continue
+
+        issue.assigned_category = "initiatives_rfa"
+        issue.category = resolver.resolve_for_issue(issue).category_code
+        backlog_svc.sync_from_issue(issue)
+
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["planning", "backlog"]})
     db.refresh(scenario)
