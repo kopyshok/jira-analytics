@@ -304,10 +304,16 @@ async def list_backlog_items(
             BacklogItem.id.notin_(in_work_ids),
         )
     elif view == "archived":
+        # Только корневые задачи — дочерние (OS/PMD) не показываем,
+        # архив должен содержать только родительские квартальные.
         query = query.filter(
             or_(
                 BacklogItem.archived_at.isnot(None),
                 Issue.status_category == "done",
+            ),
+            or_(
+                BacklogItem.issue_id.is_(None),
+                Issue.parent_id.is_(None),
             ),
         )
     elif view == "in_work":

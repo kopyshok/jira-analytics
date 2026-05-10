@@ -1024,10 +1024,24 @@ async def list_scenario_allocations(
     )
 
     if scenario.status == "draft":
+        # Допустимые категории задач:
+        # - всегда initiatives_rfa (новые из бэклога)
+        # - quarterly_tasks ТОЛЬКО если сценарий уже был approved
+        #   (имеет ревизии): после approve+revert allocations сохранились,
+        #   а issue реклассифицирована в quarterly_tasks — их нужно видеть.
+        was_approved = (
+            db.query(ScenarioRevision.id)
+            .filter(ScenarioRevision.scenario_id == scenario_id)
+            .first()
+            is not None
+        )
+        allowed_categories = [BACKLOG_CATEGORY]
+        if was_approved:
+            allowed_categories.append("quarterly_tasks")
         allowed_issue_ids = (
             db.query(Issue.id)
             .filter(
-                Issue.category == BACKLOG_CATEGORY,
+                Issue.category.in_(allowed_categories),
                 Issue.parent_id.is_(None),
             )
             .scalar_subquery()
