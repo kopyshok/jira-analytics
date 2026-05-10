@@ -24,10 +24,11 @@ export default function ScheduledBlocksModal({ open, onClose, team }: Props) {
   const onFinish = async (values: Record<string, unknown>) => {
     try {
       const dates = values.dates as [dayjs.Dayjs, dayjs.Dayjs];
+      const roleId = (values.role_id as string | undefined) ?? null;
       await createBlock.mutateAsync({
         team: team ?? null,
-        role_id: (values.role_id as string) ?? null,
-        employee_id: null,
+        role_ids: roleId ? [roleId] : [],
+        employee_ids: [],
         start_date: dates[0].format('YYYY-MM-DD'),
         end_date: dates[1].format('YYYY-MM-DD'),
         reason: values.reason as string,

@@ -15,6 +15,8 @@ from app.models import (
     ResourcePlan,
     ResourcePlanAssignment,
     ScheduledBlock,
+    ScheduledBlockEmployee,
+    ScheduledBlockRole,
 )
 from app.models.user import User
 from app.services.plan_quality_service import PlanQualityService
@@ -28,24 +30,46 @@ router = APIRouter()
 
 class ScheduledBlockCreate(BaseModel):
     team: Optional[str] = None
-    role_id: Optional[str] = None
-    employee_id: Optional[str] = None
+    role_ids: List[str] = []
+    employee_ids: List[str] = []
     start_date: date
     end_date: date
     reason: str
 
 
+class ScheduledBlockUpdate(BaseModel):
+    team: Optional[str] = None
+    role_ids: Optional[List[str]] = None
+    employee_ids: Optional[List[str]] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    reason: Optional[str] = None
+
+
 class ScheduledBlockOut(BaseModel):
     id: str
     team: Optional[str]
-    role_id: Optional[str]
-    employee_id: Optional[str]
+    role_ids: List[str]
+    employee_ids: List[str]
     start_date: date
     end_date: date
     reason: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+def _block_to_out(block: ScheduledBlock) -> "ScheduledBlockOut":
+    return ScheduledBlockOut(
+        id=block.id,
+        team=block.team,
+        role_ids=[r.role_id for r in block.roles],
+        employee_ids=[e.employee_id for e in block.employees],
+        start_date=block.start_date,
+        end_date=block.end_date,
+        reason=block.reason,
+        created_at=block.created_at,
+    )
 
 
 class ResourcePlanCreate(BaseModel):
@@ -182,7 +206,7 @@ def list_scheduled_blocks(
     q = select(ScheduledBlock).order_by(ScheduledBlock.start_date)
     if team:
         q = q.where(ScheduledBlock.team == team)
-    return db.execute(q).scalars().all()
+    return [_block_to_out(b) for b in db.execute(q).scalars().all()]
 
 
 @router.post("/scheduled-blocks", response_model=ScheduledBlockOut, status_code=201)
@@ -193,28 +217,44 @@ def create_scheduled_block(
 ):
     if data.end_date < data.start_date:
         raise HTTPException(422, "end_date must be >= start_date")
-    block = ScheduledBlock(**data.model_dump())
+    block = ScheduledBlock(
+        team=data.team,
+        start_date=data.start_date,
+        end_date=data.end_date,
+        reason=data.reason,
+    )
+    block.roles = [ScheduledBlockRole(role_id=r) for r in data.role_ids]
+    block.employees = [ScheduledBlockEmployee(employee_id=e) for e in data.employee_ids]
     db.add(block)
     db.commit()
     db.refresh(block)
-    return block
+    return _block_to_out(block)
 
 
 @router.patch("/scheduled-blocks/{block_id}", response_model=ScheduledBlockOut)
 def update_scheduled_block(
     block_id: str,
-    data: ScheduledBlockCreate,
+    data: ScheduledBlockUpdate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     block = db.get(ScheduledBlock, block_id)
     if not block:
         raise HTTPException(404, "ScheduledBlock not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
+    patch = data.model_dump(exclude_unset=True)
+    role_ids = patch.pop("role_ids", None)
+    employee_ids = patch.pop("employee_ids", None)
+    for k, v in patch.items():
         setattr(block, k, v)
+    if block.end_date < block.start_date:
+        raise HTTPException(422, "end_date must be >= start_date")
+    if role_ids is not None:
+        block.roles = [ScheduledBlockRole(role_id=r) for r in role_ids]
+    if employee_ids is not None:
+        block.employees = [ScheduledBlockEmployee(employee_id=e) for e in employee_ids]
     db.commit()
     db.refresh(block)
-    return block
+    return _block_to_out(block)
 
 
 @router.delete("/scheduled-blocks/{block_id}", status_code=204)
