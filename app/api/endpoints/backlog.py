@@ -25,7 +25,6 @@ from app.services.backlog_service import (
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
-from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 from app.services.sync_service import SyncService
 
 
@@ -285,11 +284,12 @@ async def list_backlog_items(
 
     # Cancel-like статусы (Отменено / Cancelled / Rejected) считаем «закрыты»
     # — Jira держит их в statusCategory != 'done', но для backlog'а они мусор.
-    cancel_like = or_(
-        func.lower(func.coalesce(Issue.status, "")).like("%отмен%"),
-        func.lower(func.coalesce(Issue.status, "")).like("%cancel%"),
-        func.lower(func.coalesce(Issue.status, "")).like("%reject%"),
-    )
+    # Список явный, потому что SQLite lower()/LIKE не работает на кириллице.
+    CANCEL_STATUSES = [
+        "Отменено", "Отменена", "Отменён", "Отклонено", "Отклонена",
+        "Cancelled", "Canceled", "Rejected", "Won't Do", "Won't Fix",
+    ]
+    cancel_like = Issue.status.in_(CANCEL_STATUSES)
 
     if view == "active":
         quarterly_filter = or_(
@@ -387,27 +387,6 @@ async def list_backlog_items(
         )
 
     items = query.all()
-
-    # Пост-фильтр по HierarchyRule: оставляем только контейнерные типы
-    # (RFA/ITL/PRJ — родительские квартальные). OS/PMD/Task — не показываем.
-    # Manual items без issue_id — оставляем как есть (PM добавил вручную).
-    rules = load_rules(db)
-    if rules:
-        def _is_root_container(it: BacklogItem) -> bool:
-            if it.issue_id is None or it.issue is None:
-                return True
-            issue = it.issue
-            project_key = issue.project.key if issue.project else ""
-            return classify(
-                rules,
-                EvaluationInput(
-                    project_key=project_key or "",
-                    issue_type=issue.issue_type or "",
-                    has_parent=issue.parent_id is not None,
-                ),
-            )
-
-        items = [it for it in items if _is_root_container(it)]
 
     items.sort(
         key=lambda i: (
