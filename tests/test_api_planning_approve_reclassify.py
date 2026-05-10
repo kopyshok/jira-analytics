@@ -47,8 +47,9 @@ def seeded(testclient_db_session):
     db.commit()
 
 
-def test_draft_scenario_filters_non_rfa_and_children(client, seeded):
-    """Draft scenario allocations must only include root initiatives_rfa items."""
+def test_draft_scenario_filters_by_category_only(client, seeded):
+    """Draft scenario allocations include всё initiatives_rfa, в т.ч. под Эпиками.
+    quarterly_tasks отсекаются (до approve)."""
     r = client.post("/api/v1/planning/scenarios", json={"name": "Q3", "year": 2026, "quarter": 3})
     assert r.status_code == 201, r.text
     sid = r.json()["id"]
@@ -60,7 +61,10 @@ def test_draft_scenario_filters_non_rfa_and_children(client, seeded):
     item_ids = [a["backlog_item_id"] for a in allocs]
     assert "b-rfa" in item_ids, "root initiatives_rfa must be shown"
     assert "b-qrt" not in item_ids, "already-quarterly must be excluded"
-    assert "b-child" not in item_ids, "child issue must be excluded"
+    assert "b-child" in item_ids, (
+        "initiatives_rfa with a parent (e.g. под Эпиком) must be shown — "
+        "категория решает, а не наличие parent_id"
+    )
 
 
 def test_approved_scenario_shows_all_items(client, seeded, testclient_db_session):

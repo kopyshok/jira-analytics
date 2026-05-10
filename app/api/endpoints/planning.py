@@ -1071,6 +1071,44 @@ async def list_scenario_allocations(
     if not scenario:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
+    # Self-heal: для draft-сценария добиваем allocations всеми текущими
+    # неархивными BacklogItem, которых ещё нет. Идемпотентно. Закрывает
+    # пробел для исторических scenario'в, созданных до того, как авто-синк
+    # стал работать с задачами под Эпиками.
+    if scenario.status == "draft":
+        existing_ids = {
+            bid
+            for (bid,) in db.query(ScenarioAllocation.backlog_item_id)
+            .filter(ScenarioAllocation.scenario_id == scenario_id)
+            .all()
+        }
+        current_ids = {
+            iid
+            for (iid,) in db.query(BacklogItem.id)
+            .filter(BacklogItem.archived_at.is_(None))
+            .all()
+        }
+        missing = current_ids - existing_ids
+        if missing:
+            next_order = (
+                db.query(func.max(ScenarioAllocation.sort_order))
+                .filter(ScenarioAllocation.scenario_id == scenario_id)
+                .scalar()
+                or 0.0
+            ) + 1.0
+            for item_id in missing:
+                db.add(
+                    ScenarioAllocation(
+                        scenario_id=scenario_id,
+                        backlog_item_id=item_id,
+                        included_flag=False,
+                        planned_hours=0,
+                        sort_order=next_order,
+                    )
+                )
+                next_order += 1.0
+            db.commit()
+
     query = (
         db.query(ScenarioAllocation, BacklogItem)
         .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
@@ -1095,10 +1133,7 @@ async def list_scenario_allocations(
             allowed_categories.append("quarterly_tasks")
         allowed_issue_ids = (
             db.query(Issue.id)
-            .filter(
-                Issue.category.in_(allowed_categories),
-                Issue.parent_id.is_(None),
-            )
+            .filter(Issue.category.in_(allowed_categories))
             .scalar_subquery()
         )
         query = query.filter(
