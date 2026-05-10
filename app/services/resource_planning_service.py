@@ -1100,9 +1100,16 @@ class ResourcePlanningService:
     ) -> None:
         """Сдвинуть start/end по графу preds, сохраняя длительность фазы.
 
-        Walks in topological order. Для каждого назначения ставит
-        start_date = max(end_dates предшественников) + 1, end_date — со сдвигом
-        на ту же дельту. Pinned-start/Pinned-split не сдвигаются.
+        Walks in topological order. Сдвиг применяется ТОЛЬКО для назначений
+        с явными предшественниками — если у фазы preds=[], раскладку оставляет
+        allocator (учитывает доступность сотрудника + порядок приоритета). Это
+        важно: иначе topo-сдвиг втащил бы все analyst-фазы к q_start, наплодив
+        перегрузок и сломав порядок приоритетов между инициативами.
+
+        Двигает только тогда, когда start_date РАНЬШЕ требуемого preds (вперёд)
+        или ПОЗЖЕ (назад) — для случая, когда пользователь rewires цепочку,
+        делая фазу параллельной (qa→analyst вместо qa→dev). Pinned-start/
+        Pinned-split не сдвигаются.
         """
         order = self._topological_order(assignments, preds)
         by_id = {a.id: a for a in assignments if a.id}
@@ -1112,15 +1119,18 @@ class ResourcePlanningService:
             if a.start_date is None or a.end_date is None:
                 continue
             pred_ids = preds.get(a.id, [])
+            if not pred_ids:
+                # Без предшественников — оставляем allocator-выбор. Не двигаем
+                # к q_start, чтобы не ломать порядок приоритетов.
+                continue
             ends = [
                 by_id[pid].end_date
                 for pid in pred_ids
                 if pid in by_id and by_id[pid].end_date
             ]
             if not ends:
-                new_start = q_start
-            else:
-                new_start = max(ends) + timedelta(days=1)
+                continue
+            new_start = max(ends) + timedelta(days=1)
             if new_start == a.start_date:
                 continue
             duration = (a.end_date - a.start_date).days

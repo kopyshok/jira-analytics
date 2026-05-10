@@ -34,9 +34,10 @@ const ZEBRA_BG_EVEN = 'rgba(0,201,200,0.04)';
 const ZEBRA_BG_ODD = 'rgba(0,0,0,0.18)';
 
 function ItemTitleCell({
-  title, jiraKey, leftColWidth, fontWeight = 600, role, assignee, hours,
+  title, jiraKey, priority, leftColWidth, fontWeight = 600, role, assignee, hours,
 }: {
-  title: string; jiraKey: string | null; leftColWidth: number; fontWeight?: number;
+  title: string; jiraKey: string | null; priority?: number | null;
+  leftColWidth: number; fontWeight?: number;
   role?: React.ReactNode; assignee?: React.ReactNode; hours?: React.ReactNode;
 }) {
   return (
@@ -56,15 +57,35 @@ function ItemTitleCell({
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
         {jiraKey && (
-          <a
-            href={`${JIRA_BASE}/browse/${jiraKey}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={e => e.stopPropagation()}
-            style={{ fontSize: 10, color: '#7a9ab8', textDecoration: 'none', letterSpacing: 0.3 }}
-          >
-            {jiraKey}
-          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {priority != null && (
+              <span
+                title={`Приоритет: ${priority}`}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: '#0d1c33',
+                  background: '#00c9c8',
+                  borderRadius: 3,
+                  padding: '0 5px',
+                  minWidth: 16,
+                  textAlign: 'center',
+                  lineHeight: '14px',
+                }}
+              >
+                {priority}
+              </span>
+            )}
+            <a
+              href={`${JIRA_BASE}/browse/${jiraKey}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={e => e.stopPropagation()}
+              style={{ fontSize: 10, color: '#7a9ab8', textDecoration: 'none', letterSpacing: 0.3 }}
+            >
+              {jiraKey}
+            </a>
+          </div>
         )}
         <div style={{ fontSize: 13, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
           {title}
@@ -81,12 +102,13 @@ function ItemTitleCell({
 
 function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, employees }: SubProps) {
   const byItem = useMemo(() => {
-    const map = new Map<string, { title: string; key: string | null; assignments: AssignmentOut[] }>();
+    const map = new Map<string, { title: string; key: string | null; priority: number | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
       if (!map.has(a.backlog_item_id)) {
         map.set(a.backlog_item_id, {
           title: a.backlog_item_title,
           key: a.backlog_item_key,
+          priority: a.priority ?? null,
           assignments: [],
         });
       }
@@ -97,7 +119,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
 
   return (
     <>
-      {byItem.map(([itemId, { title, key, assignments: itemAssignments }], idx) => (
+      {byItem.map(([itemId, { title, key, priority, assignments: itemAssignments }], idx) => (
         <div
           key={itemId}
           ref={el => {
@@ -111,7 +133,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
             background: idx % 2 === 0 ? ZEBRA_BG_EVEN : ZEBRA_BG_ODD,
           }}
         >
-          <ItemTitleCell title={title} jiraKey={key} leftColWidth={leftColWidth} />
+          <ItemTitleCell title={title} jiraKey={key} priority={priority} leftColWidth={leftColWidth} />
           <div style={{ flex: 1, position: 'relative' }}>
             {itemAssignments.filter(a => a.start_date && a.end_date).map(a => {
               const left = dateToLeft(a.start_date!, timeline);
@@ -448,12 +470,13 @@ function TwoLevelRows({
   const collapsedSet = useMemo(() => new Set(collapsedItemIds ?? []), [collapsedItemIds]);
   const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
   const byItem = useMemo(() => {
-    const map = new Map<string, { title: string; key: string | null; assignments: AssignmentOut[] }>();
+    const map = new Map<string, { title: string; key: string | null; priority: number | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
       if (!map.has(a.backlog_item_id)) {
         map.set(a.backlog_item_id, {
           title: a.backlog_item_title,
           key: a.backlog_item_key,
+          priority: a.priority ?? null,
           assignments: [],
         });
       }
@@ -464,7 +487,7 @@ function TwoLevelRows({
 
   return (
     <>
-      {byItem.map(([itemId, { title, key, assignments: ia }], itemIdx) => {
+      {byItem.map(([itemId, { title, key, priority, assignments: ia }], itemIdx) => {
         const phases = ['analyst', 'dev', 'qa', 'opo'] as const;
         const itemBg = itemIdx % 2 === 0 ? ZEBRA_BG_EVEN : ZEBRA_BG_ODD;
         const isPendingFrom = pendingFromItem === itemId;
@@ -513,6 +536,7 @@ function TwoLevelRows({
               <ItemTitleCell
                 title={title}
                 jiraKey={key}
+                priority={priority}
                 leftColWidth={leftColWidth - 24}
                 fontWeight={700}
                 assignee={assigneeNames || '—'}
