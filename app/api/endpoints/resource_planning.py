@@ -644,6 +644,102 @@ def patch_assignment(
     )
 
 
+class SplitRequest(BaseModel):
+    parts: List[float]
+    cascade: bool = True
+
+
+def _assignment_to_dict(a: ResourcePlanAssignment) -> dict:
+    return {
+        "id": a.id,
+        "plan_id": a.plan_id,
+        "backlog_item_id": a.backlog_item_id,
+        "phase": a.phase,
+        "employee_id": a.employee_id,
+        "part_number": a.part_number,
+        "hours_allocated": a.hours_allocated,
+        "start_date": a.start_date.isoformat() if a.start_date else None,
+        "end_date": a.end_date.isoformat() if a.end_date else None,
+        "pinned_employee": a.pinned_employee,
+        "pinned_start": a.pinned_start,
+        "pinned_split": a.pinned_split,
+        "is_pinned": a.is_pinned,
+        "manual_edit_at": (
+            a.manual_edit_at.isoformat() if a.manual_edit_at else None
+        ),
+    }
+
+
+@router.post(
+    "/resource-plans/{plan_id}/assignments/{assignment_id}/split",
+)
+def split_assignment(
+    plan_id: str,
+    assignment_id: str,
+    payload: SplitRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    a = db.get(ResourcePlanAssignment, assignment_id)
+    if not a or a.plan_id != plan_id:
+        raise HTTPException(404, "Assignment not found")
+    svc = ResourcePlanningService(db)
+    try:
+        parts, cascaded = svc.split_assignment(
+            assignment_id, payload.parts, payload.cascade
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {
+        "parts": [_assignment_to_dict(p) for p in parts],
+        "cascaded": [_assignment_to_dict(c) for c in cascaded],
+    }
+
+
+@router.post(
+    "/resource-plans/{plan_id}/assignments/{assignment_id}/merge",
+)
+def merge_assignment(
+    plan_id: str,
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    a = db.get(ResourcePlanAssignment, assignment_id)
+    if not a or a.plan_id != plan_id:
+        raise HTTPException(404, "Assignment not found")
+    svc = ResourcePlanningService(db)
+    try:
+        merged = svc.merge_assignment(assignment_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"assignment": _assignment_to_dict(merged)}
+
+
+@router.delete(
+    "/resource-plans/{plan_id}/assignments/{assignment_id}/manual-edit",
+)
+def clear_manual_edits(
+    plan_id: str,
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    a = db.get(ResourcePlanAssignment, assignment_id)
+    if not a or a.plan_id != plan_id:
+        raise HTTPException(404, "Assignment not found")
+    a.pinned_start = False
+    a.pinned_employee = False
+    a.pinned_split = False
+    a.manual_edit_at = None
+    plan = db.get(ResourcePlan, plan_id)
+    if plan:
+        plan.status = "stale"
+    db.commit()
+    db.refresh(a)
+    return {"assignment": _assignment_to_dict(a)}
+
+
 def _detect_conflicts(plan, assignments, db):
     """Read persistent conflicts from DB. Detection runs in compute_schedule."""
     from app.models import PlanConflict, BacklogItem

@@ -1128,6 +1128,256 @@ class ResourcePlanningService:
                 new_end = q_end
             a.end_date = new_end
 
+    def split_assignment(
+        self,
+        assignment_id: str,
+        parts_hours: List[float],
+        cascade: bool,
+    ) -> Tuple[List[ResourcePlanAssignment], List[ResourcePlanAssignment]]:
+        """Разбить single-part фазу на N частей. Возвращает (parts, cascaded).
+
+        - parts_hours: список часов на каждую часть (2..10).
+        - cascade=True: пропорционально дробит downstream-фазы того же item.
+        - Сумма parts_hours должна совпадать с hours_allocated исходной фазы.
+        - Каждый кусок наследует employee_id, помечается pinned_split=True.
+        - Между частями ставятся PhasePredecessor part[i] ← part[i-1].
+        """
+        from app.models.phase_predecessor import PhasePredecessor
+
+        a = self.db.get(ResourcePlanAssignment, assignment_id)
+        if not a:
+            raise ValueError("assignment not found")
+        if a.part_number != 1:
+            raise ValueError("can split only single-part phase")
+        siblings_count = (
+            self.db.execute(
+                select(ResourcePlanAssignment).where(
+                    ResourcePlanAssignment.plan_id == a.plan_id,
+                    ResourcePlanAssignment.backlog_item_id == a.backlog_item_id,
+                    ResourcePlanAssignment.phase == a.phase,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if len(siblings_count) > 1:
+            raise ValueError("phase already split")
+        if len(parts_hours) < 2 or len(parts_hours) > 10:
+            raise ValueError("parts must be 2..10")
+        total = float(a.hours_allocated or 0.0)
+        if abs(sum(parts_hours) - total) > 0.01:
+            raise ValueError(
+                f"parts sum {sum(parts_hours)} != phase hours {total}"
+            )
+
+        plan_id = a.plan_id
+        item_id = a.backlog_item_id
+        phase = a.phase
+        employee_id = a.employee_id
+        start = a.start_date
+        end = a.end_date
+
+        self.db.delete(a)
+        self.db.flush()
+
+        parts: List[ResourcePlanAssignment] = []
+        prev_id: Optional[str] = None
+        # Поделить даты пропорционально часам, чтобы куски шли подряд.
+        if start and end:
+            total_days = max(1, (end - start).days + 1)
+        else:
+            total_days = 0
+        cursor = start
+        consumed_days = 0
+        for idx, h in enumerate(parts_hours, start=1):
+            ratio = h / total if total > 0 else 1.0 / len(parts_hours)
+            seg_days = max(1, int(round(total_days * ratio)))
+            if idx == len(parts_hours) and start and end:
+                seg_end = end
+            elif cursor and total_days > 0:
+                seg_end = cursor + timedelta(days=seg_days - 1)
+            else:
+                seg_end = None
+            p = ResourcePlanAssignment(
+                plan_id=plan_id,
+                backlog_item_id=item_id,
+                phase=phase,
+                employee_id=employee_id,
+                part_number=idx,
+                hours_allocated=float(h),
+                start_date=cursor,
+                end_date=seg_end,
+                pinned_split=True,
+                manual_edit_at=datetime.utcnow(),
+            )
+            self.db.add(p)
+            self.db.flush()
+            parts.append(p)
+            if prev_id:
+                self.db.add(
+                    PhasePredecessor(
+                        successor_assignment_id=p.id,
+                        predecessor_assignment_id=prev_id,
+                    )
+                )
+            prev_id = p.id
+            consumed_days += seg_days
+            if seg_end:
+                cursor = seg_end + timedelta(days=1)
+
+        cascaded: List[ResourcePlanAssignment] = []
+        if cascade:
+            cascaded = self._cascade_split(item_id, phase, parts_hours, parts)
+
+        # Пометить план stale, чтобы фронт показал необходимость пересчёта.
+        plan = self.db.get(ResourcePlan, plan_id)
+        if plan:
+            plan.status = "stale"
+        self.db.commit()
+        return parts, cascaded
+
+    def _cascade_split(
+        self,
+        item_id: str,
+        source_phase: str,
+        proportions: List[float],
+        source_parts: List[ResourcePlanAssignment],
+    ) -> List[ResourcePlanAssignment]:
+        """Пропорционально разбить downstream-фазы того же item.
+
+        Каждая часть K новой downstream-фазы зависит от части K source-фазы
+        (PhasePredecessor) и от части K-1 той же фазы (последовательность).
+        """
+        from app.models.phase_predecessor import PhasePredecessor
+
+        total_src = sum(proportions)
+        if total_src <= 0:
+            return []
+        ratios = [p / total_src for p in proportions]
+        try:
+            src_idx = PHASE_ORDER.index(source_phase)
+        except ValueError:
+            return []
+        downstream = PHASE_ORDER[src_idx + 1 :]
+        cascaded: List[ResourcePlanAssignment] = []
+        for phase in downstream:
+            existing = (
+                self.db.execute(
+                    select(ResourcePlanAssignment).where(
+                        ResourcePlanAssignment.backlog_item_id == item_id,
+                        ResourcePlanAssignment.phase == phase,
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if len(existing) != 1:
+                continue
+            orig = existing[0]
+            total_h = float(orig.hours_allocated or 0.0)
+            if total_h <= 0:
+                continue
+            plan_id = orig.plan_id
+            emp_id = orig.employee_id
+            start = orig.start_date
+            end = orig.end_date
+
+            hours_parts: List[float] = []
+            for r in ratios[:-1]:
+                hours_parts.append(round(total_h * r, 2))
+            hours_parts.append(round(total_h - sum(hours_parts), 2))
+
+            self.db.delete(orig)
+            self.db.flush()
+
+            if start and end:
+                total_days = max(1, (end - start).days + 1)
+            else:
+                total_days = 0
+            cursor = start
+            prev_id: Optional[str] = None
+            for idx, (h, src) in enumerate(
+                zip(hours_parts, source_parts), start=1
+            ):
+                ratio = h / total_h if total_h > 0 else 1.0 / len(hours_parts)
+                seg_days = max(1, int(round(total_days * ratio)))
+                if idx == len(hours_parts) and start and end:
+                    seg_end = end
+                elif cursor and total_days > 0:
+                    seg_end = cursor + timedelta(days=seg_days - 1)
+                else:
+                    seg_end = None
+                p = ResourcePlanAssignment(
+                    plan_id=plan_id,
+                    backlog_item_id=item_id,
+                    phase=phase,
+                    employee_id=emp_id,
+                    part_number=idx,
+                    hours_allocated=float(h),
+                    start_date=cursor,
+                    end_date=seg_end,
+                    pinned_split=True,
+                    manual_edit_at=datetime.utcnow(),
+                )
+                self.db.add(p)
+                self.db.flush()
+                cascaded.append(p)
+                # ребро на одноимённый кусок source-фазы
+                self.db.add(
+                    PhasePredecessor(
+                        successor_assignment_id=p.id,
+                        predecessor_assignment_id=src.id,
+                    )
+                )
+                if prev_id:
+                    self.db.add(
+                        PhasePredecessor(
+                            successor_assignment_id=p.id,
+                            predecessor_assignment_id=prev_id,
+                        )
+                    )
+                prev_id = p.id
+                if seg_end:
+                    cursor = seg_end + timedelta(days=1)
+        return cascaded
+
+    def merge_assignment(self, assignment_id: str) -> ResourcePlanAssignment:
+        """Слить все части одной (item, phase) обратно в одну строку."""
+        a = self.db.get(ResourcePlanAssignment, assignment_id)
+        if not a:
+            raise ValueError("assignment not found")
+        siblings = (
+            self.db.execute(
+                select(ResourcePlanAssignment)
+                .where(
+                    ResourcePlanAssignment.plan_id == a.plan_id,
+                    ResourcePlanAssignment.backlog_item_id == a.backlog_item_id,
+                    ResourcePlanAssignment.phase == a.phase,
+                )
+                .order_by(ResourcePlanAssignment.part_number)
+            )
+            .scalars()
+            .all()
+        )
+        if len(siblings) <= 1:
+            return a
+        total_h = sum((s.hours_allocated or 0.0) for s in siblings)
+        first = siblings[0]
+        last = siblings[-1]
+        first.part_number = 1
+        first.hours_allocated = total_h
+        first.pinned_split = False
+        first.manual_edit_at = datetime.utcnow()
+        if last.end_date and (first.end_date is None or last.end_date > first.end_date):
+            first.end_date = last.end_date
+        for s in siblings[1:]:
+            self.db.delete(s)
+        plan = self.db.get(ResourcePlan, a.plan_id)
+        if plan:
+            plan.status = "stale"
+        self.db.commit()
+        return first
+
     def add_predecessor(self, successor_id: str, predecessor_id: str) -> None:
         """Добавить ребро с проверкой на цикл. ValueError если цикл."""
         from app.models import PhasePredecessor
