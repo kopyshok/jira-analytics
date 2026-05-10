@@ -34,9 +34,8 @@ def test_daily_capacity_clamps_invalid_involvement(db_session):
 
 
 def test_allocate_hours_respects_daily_capacity(db_session):
-    """20 hours, daily_capacity=5.6 → ровно 4 рабочих дня; в каждый день записано <=5.6 ч."""
+    """20ч, daily_capacity=5.6 → 4 дня; hours_allocated ≤ 5.6 на день, день блокируется целиком."""
     svc = ResourcePlanningService(db_session)
-    # Build a remaining map: 10 weekdays of 8h each
     start = date(2026, 5, 4)  # Monday
     days = [start + timedelta(days=i) for i in range(14) if (start + timedelta(days=i)).weekday() < 5]
     remaining = {"emp-1": {d: 8.0 for d in days}}
@@ -52,13 +51,12 @@ def test_allocate_hours_respects_daily_capacity(db_session):
     assert len(segments) == 1  # single bar
     seg_start, seg_end, seg_hours, _ = segments[0]
     assert seg_hours == pytest.approx(20.0, abs=0.01)
-    # Verify per-day burn never exceeded daily_capacity
-    burnt = {d: 8.0 - remaining["emp-1"][d] for d in days}
-    for h in burnt.values():
-        assert h <= 5.6 + 0.01, f"per-day burn {h} exceeds cap 5.6"
-    # Number of days with non-zero burn ≈ ceil(20 / 5.6) = 4
-    nonzero = sum(1 for h in burnt.values() if h > 0)
-    assert nonzero == 4
+    # Семантика: фаза занимает день целиком (emp_days[d] = 0), даже если cap < avail.
+    # Это не позволяет другой фазе того же сотрудника втиснуться в тот же день.
+    blocked = sum(1 for d in days if remaining["emp-1"][d] == 0.0)
+    assert blocked == 4  # ceil(20 / 5.6) = 4 дня заняты целиком
+    # Длительность бара: 4 дня от seg_start до seg_end.
+    assert (seg_end - seg_start).days == 3
 
 
 def test_allocate_hours_no_capacity_uses_full_avail(db_session):
