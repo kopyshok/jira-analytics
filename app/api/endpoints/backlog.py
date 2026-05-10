@@ -302,6 +302,11 @@ async def list_backlog_items(
                 ~quarterly_filter,
             ),
             BacklogItem.id.notin_(in_work_ids),
+            # Только корневые задачи — детей (OS/PMD) не показываем
+            or_(
+                BacklogItem.issue_id.is_(None),
+                Issue.parent_id.is_(None),
+            ),
         )
     elif view == "archived":
         # Только корневые задачи — дочерние (OS/PMD) не показываем,
@@ -332,6 +337,11 @@ async def list_backlog_items(
             or_(
                 BacklogItem.id.in_(in_work_ids),
                 Issue.status_category == "indeterminate",
+            ),
+            # Только корневые задачи — детей (OS/PMD) не показываем
+            or_(
+                BacklogItem.issue_id.is_(None),
+                Issue.parent_id.is_(None),
             ),
         )
     elif view == "quarterly":
