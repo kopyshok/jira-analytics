@@ -179,18 +179,18 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
   );
 }
 
-interface PhaseBarDragProps {
+interface PhaseBarProps {
   assignment: AssignmentOut;
   planId: string;
   timeline: GanttTimeline;
-  children: React.ReactNode;
   refKey: string;
   rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
   color: string;
   showResize: boolean;
+  employees: EmployeeResponse[];
 }
 
-function PhaseBarDraggable({ assignment, planId, timeline, children, refKey, rowRefs, color, showResize }: PhaseBarDragProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showResize, employees }: PhaseBarProps) {
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     mode: 'move' | 'resize-start' | 'resize-end';
@@ -219,26 +219,31 @@ function PhaseBarDraggable({ assignment, planId, timeline, children, refKey, row
     });
   };
 
-  const onMouseMove = (e: MouseEvent) => {
-    if (!drag) return;
-    const dxPx = e.clientX - drag.startClientX;
-    const pxPerDay = drag.rowWidthPx / timeline.totalDays;
-    const dxDays = Math.round(dxPx / pxPerDay);
-    if (dxDays === 0) return;
-    const sd = new Date(drag.origStart + 'T00:00:00');
-    const ed = new Date(drag.origEnd + 'T00:00:00');
-    if (drag.mode === 'move') {
+  const computeNewDates = (dxDays: number) => {
+    const sd = new Date(drag!.origStart + 'T00:00:00');
+    const ed = new Date(drag!.origEnd + 'T00:00:00');
+    if (drag!.mode === 'move') {
       sd.setDate(sd.getDate() + dxDays);
       ed.setDate(ed.getDate() + dxDays);
-    } else if (drag.mode === 'resize-start') {
+    } else if (drag!.mode === 'resize-start') {
       sd.setDate(sd.getDate() + dxDays);
       if (sd >= ed) sd.setTime(ed.getTime() - 86_400_000);
     } else {
       ed.setDate(ed.getDate() + dxDays);
       if (ed <= sd) ed.setTime(sd.getTime() + 86_400_000);
     }
-    const newStart = sd.toISOString().slice(0, 10);
-    const newEnd = ed.toISOString().slice(0, 10);
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { newStart: fmt(sd), newEnd: fmt(ed) };
+  };
+
+  const onMouseMove = (e: MouseEvent) => {
+    if (!drag) return;
+    const dxPx = e.clientX - drag.startClientX;
+    const pxPerDay = drag.rowWidthPx / timeline.totalDays;
+    const dxDays = Math.round(dxPx / pxPerDay);
+    if (dxDays === 0) return;
+    const { newStart, newEnd } = computeNewDates(dxDays);
     setPreviewLeft(dateToLeft(newStart, timeline));
     setPreviewWidth(datesToWidth(newStart, newEnd, timeline));
   };
@@ -249,20 +254,7 @@ function PhaseBarDraggable({ assignment, planId, timeline, children, refKey, row
     const pxPerDay = drag.rowWidthPx / timeline.totalDays;
     const dxDays = Math.round(dxPx / pxPerDay);
     if (dxDays !== 0) {
-      const sd = new Date(drag.origStart + 'T00:00:00');
-      const ed = new Date(drag.origEnd + 'T00:00:00');
-      if (drag.mode === 'move') {
-        sd.setDate(sd.getDate() + dxDays);
-        ed.setDate(ed.getDate() + dxDays);
-      } else if (drag.mode === 'resize-start') {
-        sd.setDate(sd.getDate() + dxDays);
-        if (sd >= ed) sd.setTime(ed.getTime() - 86_400_000);
-      } else {
-        ed.setDate(ed.getDate() + dxDays);
-        if (ed <= sd) ed.setTime(sd.getTime() + 86_400_000);
-      }
-      const newStart = sd.toISOString().slice(0, 10);
-      const newEnd = ed.toISOString().slice(0, 10);
+      const { newStart, newEnd } = computeNewDates(dxDays);
       patch.mutate({
         planId,
         assignmentId: assignment.id,
@@ -274,22 +266,71 @@ function PhaseBarDraggable({ assignment, planId, timeline, children, refKey, row
     setPreviewWidth(null);
   };
 
-  // attach window listeners while dragging
   useMemoizedDragListeners(drag, onMouseMove, onMouseUp);
 
-  return (
+  if (!assignment.start_date || !assignment.end_date) return null;
+
+  const left = dateToLeft(assignment.start_date, timeline);
+  const width = datesToWidth(assignment.start_date, assignment.end_date, timeline);
+  const isChunkedRow = assignment.chunks_total != null && assignment.chunks_total > 1;
+
+  const bar = (
     <div
       ref={el => {
         if (el) rowRefs.current.set(refKey, el);
         else rowRefs.current.delete(refKey);
       }}
       onMouseDown={(e) => beginDrag(e, 'move')}
-      style={{ position: 'absolute', left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+      title={`${PHASE_LABELS[assignment.phase]}${isChunkedRow ? ` (${(assignment.chunk_index ?? 0) + 1}/${assignment.chunks_total})` : `, ч. ${assignment.part_number}`} — ${assignment.hours_allocated?.toFixed(0)}ч`}
+      style={{
+        position: 'absolute',
+        left: `${left}%`,
+        width: `${Math.max(width, 0.8)}%`,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        height: 18,
+        background: color,
+        opacity: assignment.is_on_critical_path ? 1 : 0.75,
+        borderRadius: 3,
+        border: assignment.is_on_critical_path ? '1px solid #e85d4a' : 'none',
+        boxShadow: assignment.is_on_critical_path ? '0 0 6px rgba(232,93,74,0.5)' : 'none',
+        outline: assignment.is_pinned ? '1px solid #00c9c8' : 'none',
+        zIndex: 2,
+        cursor: assignment.phase === 'qa' ? 'default' : 'grab',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
     >
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'auto' }}>
-        {children}
-      </div>
-      {showResize && assignment.start_date && assignment.end_date && (
+      {isChunkedRow && (
+        <span style={{
+          fontSize: 8,
+          color: '#0d1c33',
+          fontWeight: 700,
+          background: 'rgba(0,0,0,0.2)',
+          borderRadius: 2,
+          padding: '0 2px',
+          pointerEvents: 'none',
+        }}>
+          {(assignment.chunk_index ?? 0) + 1}/{assignment.chunks_total}
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <AssignEmployeePopover
+        assignmentId={assignment.id}
+        planId={planId}
+        phase={assignment.phase}
+        currentEmployeeId={assignment.employee_id}
+        employees={employees}
+        isPinned={assignment.is_pinned}
+      >
+        {bar}
+      </AssignEmployeePopover>
+      {showResize && (
         <>
           <div
             onMouseDown={(e) => beginDrag(e, 'resize-start')}
@@ -297,13 +338,12 @@ function PhaseBarDraggable({ assignment, planId, timeline, children, refKey, row
               position: 'absolute',
               top: '50%',
               transform: 'translateY(-50%)',
-              left: `calc(${dateToLeft(assignment.start_date, timeline)}% - 3px)`,
+              left: `calc(${left}% - 3px)`,
               width: 6,
               height: 22,
               cursor: 'ew-resize',
-              background: 'rgba(255,255,255,0.0)',
+              background: 'transparent',
               zIndex: 4,
-              pointerEvents: 'auto',
             }}
           />
           <div
@@ -312,13 +352,12 @@ function PhaseBarDraggable({ assignment, planId, timeline, children, refKey, row
               position: 'absolute',
               top: '50%',
               transform: 'translateY(-50%)',
-              left: `calc(${dateToLeft(assignment.start_date, timeline) + datesToWidth(assignment.start_date, assignment.end_date, timeline)}% - 3px)`,
+              left: `calc(${left + width}% - 3px)`,
               width: 6,
               height: 22,
               cursor: 'ew-resize',
-              background: 'rgba(255,255,255,0.0)',
+              background: 'transparent',
               zIndex: 4,
-              pointerEvents: 'auto',
             }}
           />
         </>
@@ -341,7 +380,7 @@ function PhaseBarDraggable({ assignment, planId, timeline, children, refKey, row
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -478,50 +517,9 @@ function TwoLevelRows({
                   />
                   <div data-gantt-track="true" style={{ flex: 1, position: 'relative' }}>
                     {phaseAssignments.filter(a => a.start_date && a.end_date).map(a => {
-                      const left = dateToLeft(a.start_date!, timeline);
-                      const width = datesToWidth(a.start_date!, a.end_date!, timeline);
                       const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
-                      const isChunkedRow = a.chunks_total != null && a.chunks_total > 1;
-                      const bar = (
-                        <div
-                          title={`${PHASE_LABELS[a.phase]}${isChunkedRow ? ` (${(a.chunk_index ?? 0) + 1}/${a.chunks_total})` : `, ч. ${a.part_number}`} — ${a.hours_allocated?.toFixed(0)}ч`}
-                          style={{
-                            position: 'absolute',
-                            left: `${left}%`,
-                            width: `${Math.max(width, 0.8)}%`,
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            height: 18,
-                            background: color,
-                            opacity: a.is_on_critical_path ? 1 : 0.75,
-                            borderRadius: 3,
-                            border: a.is_on_critical_path ? '1px solid #e85d4a' : 'none',
-                            boxShadow: a.is_on_critical_path ? '0 0 6px rgba(232,93,74,0.5)' : 'none',
-                            outline: a.is_pinned ? '1px solid #00c9c8' : 'none',
-                            zIndex: 2,
-                            cursor: a.phase === 'qa' ? 'default' : 'grab',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          {isChunkedRow && (
-                            <span style={{
-                              fontSize: 8,
-                              color: '#0d1c33',
-                              fontWeight: 700,
-                              background: 'rgba(0,0,0,0.2)',
-                              borderRadius: 2,
-                              padding: '0 2px',
-                              pointerEvents: 'none',
-                            }}>
-                              {(a.chunk_index ?? 0) + 1}/{a.chunks_total}
-                            </span>
-                          )}
-                        </div>
-                      );
                       return (
-                        <PhaseBarDraggable
+                        <PhaseBar
                           key={a.id}
                           assignment={a}
                           planId={planId}
@@ -530,18 +528,8 @@ function TwoLevelRows({
                           rowRefs={rowRefs}
                           color={color}
                           showResize={a.phase !== 'qa'}
-                        >
-                          <AssignEmployeePopover
-                            assignmentId={a.id}
-                            planId={planId}
-                            phase={a.phase}
-                            currentEmployeeId={a.employee_id}
-                            employees={employees}
-                            isPinned={a.is_pinned}
-                          >
-                            {bar}
-                          </AssignEmployeePopover>
-                        </PhaseBarDraggable>
+                          employees={employees}
+                        />
                       );
                     })}
                   </div>
