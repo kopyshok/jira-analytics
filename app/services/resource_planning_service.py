@@ -521,8 +521,19 @@ class ResourcePlanningService:
                     employee_id, hours, earliest_start, alloc_deadline, remaining
                 )
 
+                # Если жёсткое окно из Jira (duration/involvement) не вмещает
+                # часы — расширяем deadline до конца квартала, чтобы фаза не
+                # пропала из расписания. Перегрузку зафиксирует RCPSP-leveler.
+                if jira_cal_set and not segments and hours > 0:
+                    segments = self._allocate_hours(
+                        employee_id, hours, earliest_start, q_end, remaining
+                    )
+
                 if jira_cal_set:
-                    effective_end = cal_end
+                    if segments and segments[-1][1] > cal_end:
+                        effective_end = segments[-1][1]
+                    else:
+                        effective_end = cal_end
                 elif segments:
                     effective_end = segments[-1][1]
                 else:
