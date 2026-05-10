@@ -254,7 +254,7 @@ class ResourcePlanningService:
             self.db.execute(
                 select(ResourcePlanAssignment).where(
                     ResourcePlanAssignment.plan_id == plan_id,
-                    ResourcePlanAssignment.is_pinned == True,  # noqa: E712
+                    ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
                 )
             ).scalars()
         )
@@ -267,7 +267,7 @@ class ResourcePlanningService:
         self.db.execute(
             ResourcePlanAssignment.__table__.delete().where(
                 ResourcePlanAssignment.plan_id == plan_id,
-                ResourcePlanAssignment.is_pinned == False,  # noqa: E712
+                ResourcePlanAssignment.pinned_employee == False,  # noqa: E712
             )
         )
 

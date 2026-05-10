@@ -1,9 +1,9 @@
 """ResourcePlanAssignment — назначение фазы инициативы на сотрудника с датами."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -41,10 +41,22 @@ class ResourcePlanAssignment(Base, TimestampMixin):
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     is_on_critical_path: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     slack_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    is_pinned: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0", index=True
+    pinned_employee: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0", index=True,
     )
+    pinned_start: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0",
+    )
+    pinned_split: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0",
+    )
+    manual_edit_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     plan: Mapped["ResourcePlan"] = relationship(back_populates="assignments")
     backlog_item: Mapped["BacklogItem"] = relationship("BacklogItem")
     employee: Mapped[Optional["Employee"]] = relationship("Employee")
+
+    @property
+    def is_pinned(self) -> bool:
+        """Back-compat: True если хотя бы один pin-флаг включён."""
+        return self.pinned_employee or self.pinned_start or self.pinned_split

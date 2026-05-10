@@ -504,7 +504,7 @@ def patch_assignment(
 
     # Явный выбор сотрудника — закрепить назначение
     if "employee_id" in patch:
-        a.is_pinned = True
+        a.pinned_employee = True
 
     for k, v in patch.items():
         setattr(a, k, v)
