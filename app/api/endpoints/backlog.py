@@ -25,6 +25,7 @@ from app.services.backlog_service import (
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
+from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 from app.services.sync_service import SyncService
 
 
@@ -270,7 +271,10 @@ async def list_backlog_items(
         db.query(BacklogItem)
         .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
         .outerjoin(ParentIssue, Issue.parent_id == ParentIssue.id)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue).joinedload(Issue.project),
+            joinedload(BacklogItem.assignee),
+        )
     )
     if project_id is not None:
         query = query.filter(BacklogItem.project_id == project_id)
@@ -364,6 +368,28 @@ async def list_backlog_items(
         )
 
     items = query.all()
+
+    # Пост-фильтр по HierarchyRule: оставляем только контейнерные типы
+    # (RFA/ITL/PRJ — родительские квартальные). OS/PMD/Task — не показываем.
+    # Manual items без issue_id — оставляем как есть (PM добавил вручную).
+    rules = load_rules(db)
+    if rules:
+        def _is_root_container(it: BacklogItem) -> bool:
+            if it.issue_id is None or it.issue is None:
+                return True
+            issue = it.issue
+            project_key = issue.project.key if issue.project else ""
+            return classify(
+                rules,
+                EvaluationInput(
+                    project_key=project_key or "",
+                    issue_type=issue.issue_type or "",
+                    has_parent=issue.parent_id is not None,
+                ),
+            )
+
+        items = [it for it in items if _is_root_container(it)]
+
     items.sort(
         key=lambda i: (
             i.priority is None,
