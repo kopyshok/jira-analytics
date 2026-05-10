@@ -50,10 +50,6 @@ PHASE_DURATION_FIELDS: Dict[str, Tuple[str, str]] = {
     "opo":     ("duration_launch_days",  "involvement_launch"),
 }
 
-# Phase 5: минимальный размер куска при авто-сплите аналитической фазы (рабочие дни).
-MIN_CHUNK_DAYS = 1
-
-
 def _resolve_phase_calendar_days(
     item: "BacklogItem", phase: str, hours: float
 ) -> Tuple[float, bool]:
@@ -585,17 +581,17 @@ class ResourcePlanningService:
     ) -> List[Tuple[date, date, float, int]]:
         """Распределить total_hours по рабочим дням начиная с earliest_start.
 
-        Возвращает список (start_date, end_date, hours, part_number).
-        Создаёт split-сегменты при разрывах нулевой доступности.
+        Возвращает один сегмент (start, end, hours, 1) — единый бар фазы без
+        разбиения на части. Часы по-прежнему распределяются только по дням с
+        ненулевой доступностью (выходные/отсутствия пропускаются), но конечный
+        бар покрывает диапазон от первого до последнего использованного дня
+        одной непрерывной полосой.
         """
         emp_days = remaining.get(employee_id, {})
         remaining_h = total_hours
-        segments: List[Tuple[date, date, float, int]] = []
-        part_num = 1
+        used_total = 0.0
         seg_start: Optional[date] = None
-        seg_hours = 0.0
         seg_end: Optional[date] = None
-        in_gap = False
 
         d = earliest_start
         while remaining_h > 0.01 and d <= deadline:
@@ -603,30 +599,16 @@ class ResourcePlanningService:
             if avail_h > 0:
                 if seg_start is None:
                     seg_start = d
-                    in_gap = False
-                elif in_gap:
-                    # Close previous segment, start new one
-                    if seg_start is not None and seg_hours > 0 and seg_end is not None:
-                        segments.append((seg_start, seg_end, seg_hours, part_num))
-                    part_num += 1
-                    seg_start = d
-                    seg_hours = 0.0
-                    in_gap = False
                 used = min(avail_h, remaining_h)
                 emp_days[d] -= used
                 remaining_h -= used
-                seg_hours += used
+                used_total += used
                 seg_end = d
-            else:
-                if seg_start is not None and seg_hours > 0:
-                    in_gap = True
             d += timedelta(days=1)
 
-        # Close last open segment
-        if seg_start is not None and seg_hours > 0 and seg_end is not None:
-            segments.append((seg_start, seg_end, seg_hours, part_num))
-
-        return segments
+        if seg_start is not None and seg_end is not None and used_total > 0:
+            return [(seg_start, seg_end, used_total, 1)]
+        return []
 
     def _load_items(self, plan: ResourcePlan) -> List[BacklogItem]:
         """Загрузить включённые инициативы сценария, отсортированные по приоритету."""
@@ -644,7 +626,7 @@ class ResourcePlanningService:
                         ScenarioAllocation.scenario_id == plan.scenario_id,
                         ScenarioAllocation.included_flag == True,  # noqa: E712
                     )
-                    .order_by(BacklogItem.priority.nullslast())
+                    .order_by(BacklogItem.priority.desc().nullslast())
                 )
                 .scalars()
                 .all()
@@ -777,96 +759,8 @@ class ResourcePlanningService:
         q_start: date,
         q_end: date,
     ) -> Dict[Tuple[str, str], int]:
-        """Phase 5: эвристика авто-сплита аналитических фаз для legacy-планировщика.
-
-        Алгоритм:
-        1. Суммируем demand (в рабочих днях) по всем фазам всех инициатив.
-        2. Суммируем capacity (рабочих дней × 1 ресурс) по всем сотрудникам.
-        3. Если demand ≤ capacity — возвращаем пустой dict.
-        4. Среди аналитических фаз итеративно делим самую длинную пополам,
-           пока план не вместится или chunk_days не достигнет MIN_CHUNK_DAYS.
-
-        Возвращает {(item_id, "analyst"): N} только для фаз, требующих сплита.
-        """
-        horizon_days = (q_end - q_start).days + 1
-
-        # Capacity: число рабочих дней квартала × кол-во сотрудников
-        total_capacity_days = 0.0
-        for _ in employees:
-            d = q_start
-            while d <= q_end:
-                if d.weekday() < 5:
-                    total_capacity_days += 1.0
-                d += timedelta(days=1)
-
-        if total_capacity_days <= 0:
-            return {}
-
-        # Demand: длина каждой фазы каждой инициативы в рабочих днях.
-        # Используем ту же fallback-цепочку что и в основном цикле.
-        demand_by_item_phase: Dict[Tuple[str, str], float] = {}
-        for item in items:
-            for phase in PHASE_ORDER:
-                hours_field = PHASE_HOURS_FIELD[phase]
-                hours = float(getattr(item, hours_field) or 0.0)
-                if hours <= 0:
-                    continue
-                cal_days, _ = _resolve_phase_calendar_days(item, phase, hours)
-                parallel_n = _resolve_parallel_count_legacy(item, phase)
-                cal_days = max(1.0, cal_days / max(1, parallel_n))
-                demand_by_item_phase[(item.id, phase)] = cal_days
-
-        total_demand = sum(demand_by_item_phase.values())
-        if total_demand <= total_capacity_days:
-            return {}
-
-        # Собираем аналитические фазы для сплита
-        analyst_keys = [
-            (item.id, "analyst")
-            for item in items
-            if (item.id, "analyst") in demand_by_item_phase
-        ]
-        if not analyst_keys:
-            return {}
-
-        split_map: Dict[Tuple[str, str], int] = {}
-
-        for _ in range(20):
-            current_demand = sum(
-                demand_by_item_phase[k] / max(1, split_map.get(k, 1))
-                * split_map.get(k, 1)
-                for k in demand_by_item_phase
-            )
-            # demand не уменьшается от сплита сам по себе — сплит лишь даёт
-            # возможность «вписать» длинные фазы в горизонт; прерываем итерацию.
-            break
-
-        # Простая однопроходная версия: делим самую длинную аналитическую фазу
-        # пополам, пока total_demand (без учёта параллелизма — эвристика) > capacity.
-        working_demand = dict(demand_by_item_phase)
-        for _ in range(20):
-            if sum(working_demand.values()) <= total_capacity_days:
-                break
-            candidates = [
-                (working_demand[(iid, "analyst")], (iid, "analyst"))
-                for iid in [item.id for item in items]
-                if (iid, "analyst") in working_demand
-                and working_demand[(iid, "analyst")] / max(1, split_map.get((iid, "analyst"), 1)) > MIN_CHUNK_DAYS
-            ]
-            if not candidates:
-                break
-            candidates.sort(reverse=True)
-            _, target_key = candidates[0]
-            current_chunks = split_map.get(target_key, 1)
-            split_map[target_key] = current_chunks * 2
-            # Сплит уменьшает видимую «нагрузку» за счёт параллелизации кусков
-            # (все куски всё равно выполняются, но могут идти параллельно с dev).
-            # Для целей вычисления overflow считаем: каждый кусок = chunk_days.
-            chunk_days = demand_by_item_phase[target_key] / split_map[target_key]
-            if chunk_days <= MIN_CHUNK_DAYS:
-                break
-
-        return split_map
+        """Авто-сплит фаз отключён: декомпозиция задаётся пользователем вручную."""
+        return {}
 
     def _build_role_pools(self, employees: List[Employee]) -> Dict[str, List[str]]:
         """{employee_id: [peer_ids same role]} для reassign-стратегии."""

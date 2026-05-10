@@ -3,7 +3,8 @@ import type { AssignmentOut } from '../api/resourcePlanning';
 /**
  * Сортирует строки Gantt по главному исполнителю инициативы из утверждённого
  * сценария (`scenario_assignee_employee_id`). Внутри одного исполнителя —
- * по самой ранней дате начала задачи. Задачи без assignee — в конец списка.
+ * по приоритету (чем выше число, тем выше задача), затем по самой ранней
+ * дате начала. Задачи без assignee — в конец списка.
  *
  * Сортировка стабильная: сохраняет порядок строк одной phase внутри одной
  * инициативы (что важно для двух- и трёхфазных задач).
@@ -11,7 +12,7 @@ import type { AssignmentOut } from '../api/resourcePlanning';
 export function sortAssignmentsByScenarioAssignee(
   assignments: AssignmentOut[],
 ): AssignmentOut[] {
-  // Минимальная start_date на инициативу — для вторичной сортировки
+  // Минимальная start_date на инициативу — для тертичной сортировки
   const earliestStartByItem = new Map<string, string>();
   for (const a of assignments) {
     if (!a.start_date) continue;
@@ -34,14 +35,11 @@ export function sortAssignmentsByScenarioAssignee(
     rows: AssignmentOut[];
     assigneeName: string | null;
     assigneeId: string | null;
+    priority: number | null;
     earliest: string;
   };
 
   const buckets: Bucket[] = [...items.entries()].map(([itemId, rows]) => {
-    // Главный исполнитель инициативы:
-    // 1) scenario_assignee из утверждённого сценария (ручной выбор PM)
-    // 2) аналитик фазы analyst (фактический владелец задачи)
-    // 3) исполнитель первой фазы по дате старта
     const scenarioName = rows[0]?.scenario_assignee_name ?? null;
     const scenarioId = rows[0]?.scenario_assignee_employee_id ?? null;
     let assigneeName: string | null = scenarioName;
@@ -62,11 +60,13 @@ export function sortAssignmentsByScenarioAssignee(
         assigneeId = earliestRow.employee_id;
       }
     }
+    const priority = rows[0]?.priority ?? null;
     return {
       itemId,
       rows,
       assigneeName,
       assigneeId,
+      priority,
       earliest: earliestStartByItem.get(itemId) ?? '￿',
     };
   });
@@ -79,6 +79,12 @@ export function sortAssignmentsByScenarioAssignee(
       const cmp = a.assigneeName.localeCompare(b.assigneeName, 'ru');
       if (cmp !== 0) return cmp;
     }
+    // Приоритет: больше число = выше; null в конец
+    const ap = a.priority;
+    const bp = b.priority;
+    if (ap == null && bp != null) return 1;
+    if (ap != null && bp == null) return -1;
+    if (ap != null && bp != null && ap !== bp) return bp - ap;
     return a.earliest.localeCompare(b.earliest);
   });
 

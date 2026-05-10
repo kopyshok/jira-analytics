@@ -92,9 +92,10 @@ class AssignmentOut(BaseModel):
     # группировки/сортировки задач на Gantt.
     scenario_assignee_employee_id: Optional[str] = None
     scenario_assignee_name: Optional[str] = None
-    # Авто-сплит: chunk_index/chunks_total заполняются Gantt-эндпоинтом
-    # если для (backlog_item_id, phase) существует несколько строк (кусков).
-    # chunk_index = part_number - 1 (0-based); chunks_total = кол-во кусков.
+    # Приоритет инициативы (BacklogItem.priority). Чем выше число — тем выше
+    # приоритет, фронт сортирует задачи по этому полю внутри одного исполнителя.
+    priority: Optional[int] = None
+    # Авто-сплит отключён, поля сохранены для обратной совместимости с фронтом.
     chunk_index: Optional[int] = None
     chunks_total: Optional[int] = None
 
@@ -429,6 +430,7 @@ def get_gantt(
                 if a.backlog_item and a.backlog_item.assignee
                 else None
             ),
+            priority=(a.backlog_item.priority if a.backlog_item else None),
             chunk_index=(a.part_number - 1) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
         )
@@ -526,6 +528,7 @@ def patch_assignment(
     a_employee_id = a.employee_id
     a_employee_role = a.employee.role if a.employee else None
     a_is_pinned = a.is_pinned
+    a_priority = a.backlog_item.priority if a.backlog_item else None
 
     db.commit()
     db.refresh(a)
@@ -548,6 +551,7 @@ def patch_assignment(
         is_on_critical_path=a_is_on_critical_path,
         slack_days=a_slack_days,
         is_pinned=a_is_pinned,
+        priority=a_priority,
     )
 
 

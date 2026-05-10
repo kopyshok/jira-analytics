@@ -113,10 +113,9 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
               const left = dateToLeft(a.start_date!, timeline);
               const width = datesToWidth(a.start_date!, a.end_date!, timeline);
               const color = PHASE_COLORS[a.phase] ?? '#888';
-              const isChunked = a.chunks_total != null && a.chunks_total > 1;
               const bar = (
                 <div
-                  title={`${PHASE_LABELS[a.phase]}${isChunked ? ` (${(a.chunk_index ?? 0) + 1}/${a.chunks_total})` : ''} — ${a.employee_name ?? '—'} (${a.hours_allocated?.toFixed(0)}ч)`}
+                  title={`${PHASE_LABELS[a.phase]} — ${a.employee_name ?? '—'} (${a.hours_allocated?.toFixed(0)}ч)`}
                   style={{
                     position: 'absolute',
                     left: `${left}%`,
@@ -145,17 +144,6 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
                     <EmployeeAvatar name={a.employee_name} role={a.employee_role} size={16} />
                   )}
                   <span style={{ fontSize: 9 }}>{PHASE_LABELS[a.phase]}</span>
-                  {isChunked && (
-                    <span style={{
-                      fontSize: 8,
-                      background: 'rgba(0,0,0,0.25)',
-                      borderRadius: 2,
-                      padding: '0 2px',
-                      flexShrink: 0,
-                    }}>
-                      {(a.chunk_index ?? 0) + 1}/{a.chunks_total}
-                    </span>
-                  )}
                 </div>
               );
               return (
@@ -272,7 +260,6 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
 
   const left = dateToLeft(assignment.start_date, timeline);
   const width = datesToWidth(assignment.start_date, assignment.end_date, timeline);
-  const isChunkedRow = assignment.chunks_total != null && assignment.chunks_total > 1;
 
   const bar = (
     <div
@@ -281,7 +268,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
         else rowRefs.current.delete(refKey);
       }}
       onMouseDown={(e) => beginDrag(e, 'move')}
-      title={`${PHASE_LABELS[assignment.phase]}${isChunkedRow ? ` (${(assignment.chunk_index ?? 0) + 1}/${assignment.chunks_total})` : `, ч. ${assignment.part_number}`} — ${assignment.hours_allocated?.toFixed(0)}ч`}
+      title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч`}
       style={{
         position: 'absolute',
         left: `${left}%`,
@@ -301,21 +288,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
         alignItems: 'center',
         justifyContent: 'center',
       }}
-    >
-      {isChunkedRow && (
-        <span style={{
-          fontSize: 8,
-          color: '#0d1c33',
-          fontWeight: 700,
-          background: 'rgba(0,0,0,0.2)',
-          borderRadius: 2,
-          padding: '0 2px',
-          pointerEvents: 'none',
-        }}>
-          {(assignment.chunk_index ?? 0) + 1}/{assignment.chunks_total}
-        </span>
-      )}
-    </div>
+    />
   );
 
   return (
@@ -496,14 +469,11 @@ function TwoLevelRows({
                   }}
                 >
                   <ItemTitleCell
-                    title=""
+                    title={PHASE_LABELS[phase]}
                     jiraKey={null}
                     leftColWidth={leftColWidth}
                     role={
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                        {PHASE_LABELS[phase]}
-                      </span>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0, display: 'inline-block' }} />
                     }
                     assignee={
                       phase === 'qa' ? <span style={{ color: '#4a6a90' }}>—</span> : (

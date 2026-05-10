@@ -104,8 +104,9 @@ def test_allocate_hours_simple():
     assert remaining[emp_id][date(2026, 4, 2)] == 0.0
 
 
-def test_allocate_hours_split_on_gap():
-    """Creates two segments when there's a 0-availability gap mid-work."""
+def test_allocate_hours_single_segment_across_gap():
+    """Авто-сплит выключен: даже при 0-availability gap получается один сегмент,
+    покрывающий диапазон от первого до последнего использованного дня."""
     db = MagicMock()
     svc = ResourcePlanningService(db)
 
@@ -126,13 +127,11 @@ def test_allocate_hours_split_on_gap():
         emp_id, 18.0, date(2026, 4, 1), date(2026, 4, 30), remaining
     )
 
-    # Should produce 2 segments: [Apr1-2] and [Apr7]
-    assert len(segments) == 2
+    assert len(segments) == 1
     assert segments[0][0] == date(2026, 4, 1)
-    assert segments[0][1] == date(2026, 4, 2)
-    assert segments[0][3] == 1  # part_number
-    assert segments[1][0] == date(2026, 4, 7)
-    assert segments[1][3] == 2  # part_number
+    assert segments[0][1] == date(2026, 4, 7)
+    assert abs(segments[0][2] - 18.0) < 0.01
+    assert segments[0][3] == 1
 
 
 # ── CPM tests ──────────────────────────────────────────────────────────────
@@ -1042,9 +1041,8 @@ def test_legacy_split_skipped_when_fits(db_session: Session) -> None:
     )
 
 
-def test_legacy_split_triggers_when_overflow(db_session: Session) -> None:
-    """Overloaded plan → analyst split produces multiple rows; dev starts before analyst ends."""
-    from datetime import timedelta
+def test_no_auto_split_on_overflow(db_session: Session) -> None:
+    """Авто-сплит выключен: даже при overflow аналитическая фаза = одна строка."""
     from sqlalchemy import select
 
     from app.models.backlog_item import BacklogItem
@@ -1055,11 +1053,11 @@ def test_legacy_split_triggers_when_overflow(db_session: Session) -> None:
     from app.models.resource_plan_assignment import ResourcePlanAssignment
     from app.models.scenario_allocation import ScenarioAllocation
 
-    team = "SPLITOVF1"
+    team = "NOSPLITOVF1"
 
     analyst_emp = Employee(
         jira_account_id=uuid.uuid4().hex[:16],
-        display_name="SplitOvfAnalyst",
+        display_name="NoSplitOvfAnalyst",
         team=team,
         is_active=True,
         role="analyst",
@@ -1070,7 +1068,7 @@ def test_legacy_split_triggers_when_overflow(db_session: Session) -> None:
 
     dev_emp = Employee(
         jira_account_id=uuid.uuid4().hex[:16],
-        display_name="SplitOvfDev",
+        display_name="NoSplitOvfDev",
         team=team,
         is_active=True,
         role="developer",
@@ -1079,7 +1077,6 @@ def test_legacy_split_triggers_when_overflow(db_session: Session) -> None:
     db_session.flush()
     db_session.add(EmployeeTeam(employee_id=dev_emp.id, team=team, is_primary=True))
 
-    # Large analyst item — 400h → 50 working days (well beyond a quarter)
     big_item = BacklogItem(
         title="Big analyst item",
         priority=1,
@@ -1090,32 +1087,14 @@ def test_legacy_split_triggers_when_overflow(db_session: Session) -> None:
     db_session.add(big_item)
     db_session.flush()
 
-    # Extra dummy items to push total demand well over capacity
-    dummy_items = []
-    for i in range(5):
-        d_item = BacklogItem(
-            title=f"Dummy {i}",
-            priority=i + 2,
-            estimate_analyst_hours=100.0,
-            assignee_employee_id=analyst_emp.id,
-        )
-        db_session.add(d_item)
-        dummy_items.append(d_item)
-    db_session.flush()
-
     scenario = PlanningScenario(
-        name="split-ovf-1", quarter="Q2", year=2026, status="draft", team=team
+        name="no-split-ovf-1", quarter="Q2", year=2026, status="draft", team=team
     )
     db_session.add(scenario)
     db_session.flush()
-
     db_session.add(ScenarioAllocation(
         scenario_id=scenario.id, backlog_item_id=big_item.id, included_flag=True
     ))
-    for d_item in dummy_items:
-        db_session.add(ScenarioAllocation(
-            scenario_id=scenario.id, backlog_item_id=d_item.id, included_flag=True
-        ))
 
     plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
     db_session.add(plan)
@@ -1132,25 +1111,5 @@ def test_legacy_split_triggers_when_overflow(db_session: Session) -> None:
         )
     ).all()
 
-    dev_rows = db_session.scalars(
-        select(ResourcePlanAssignment).where(
-            ResourcePlanAssignment.plan_id == plan.id,
-            ResourcePlanAssignment.phase == "dev",
-            ResourcePlanAssignment.backlog_item_id == big_item.id,
-        )
-    ).all()
-
-    # Should have split — multiple analyst rows
-    assert len(analyst_rows) >= 2, (
-        f"Overflow → ожидалось ≥ 2 analyst rows (split), получено {len(analyst_rows)}"
-    )
-
-    # Dev should start before analyst phase would have ended (earlier-start effect)
-    if dev_rows:
-        analyst_end = max(r.end_date for r in analyst_rows)
-        dev_start = min(r.start_date for r in dev_rows)
-        # Dev start must be strictly before the last analyst chunk ends
-        assert dev_start < analyst_end, (
-            f"Dev стартует раньше окончания всей analyst фазы: "
-            f"dev_start={dev_start}, analyst_end={analyst_end}"
-        )
+    assert len(analyst_rows) == 1
+    assert analyst_rows[0].part_number == 1
