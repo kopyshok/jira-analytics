@@ -1,15 +1,10 @@
 """PhasePredecessor — связь предшественника фазы внутри инициативы."""
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import ForeignKey, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, generate_uuid
-
-if TYPE_CHECKING:
-    from app.models.resource_plan_assignment import ResourcePlanAssignment
 
 
 class PhasePredecessor(Base, TimestampMixin):
