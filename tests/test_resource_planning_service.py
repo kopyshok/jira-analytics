@@ -28,14 +28,16 @@ def test_phase_hours_fields_mapped():
 
 
 def test_block_targets_employee_specific():
-    """Block with employee_id only targets that employee."""
+    """Block with one employee in `employees` list — only that employee affected."""
     db = MagicMock()
     svc = ResourcePlanningService(db)
 
     block = MagicMock()
-    block.employee_id = "emp-1"
-    block.role_id = None
     block.team = None
+    block.roles = []
+    emp_link = MagicMock()
+    emp_link.employee_id = "emp-1"
+    block.employees = [emp_link]
 
     emp1 = MagicMock()
     emp1.id = "emp-1"
@@ -51,28 +53,32 @@ def test_block_targets_employee_specific():
 
 
 def test_block_targets_role():
-    """Block with role_id targets all employees of that role."""
+    """Block with one role in `roles` list — all employees of that role affected."""
     db = MagicMock()
     svc = ResourcePlanningService(db)
 
     block = MagicMock()
-    block.employee_id = None
-    block.role_id = "role-uuid-analyst"
     block.team = None
+    role_link = MagicMock()
+    role_link.role_id = "role-uuid-analyst"
+    block.roles = [role_link]
+    block.employees = []
 
     emp1 = MagicMock()
     emp1.id = "emp-1"
     emp1.role = "analyst"
     emp2 = MagicMock()
     emp2.id = "emp-2"
-    emp2.role = "dev"
+    emp2.role = "analyst"
+    emp3 = MagicMock()
+    emp3.id = "emp-3"
+    emp3.role = "dev"
 
     # role_id → role_code mapping
     role_id_to_code = {"role-uuid-analyst": "analyst"}
 
-    result = svc._block_targets(block, [emp1, emp2], role_id_to_code)
-    assert "emp-1" in result
-    assert "emp-2" not in result
+    result = svc._block_targets(block, [emp1, emp2, emp3], role_id_to_code)
+    assert sorted(result) == ["emp-1", "emp-2"]
 
 
 def test_allocate_hours_simple():

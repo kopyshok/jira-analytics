@@ -3,8 +3,8 @@ import { api } from './client';
 export interface ScheduledBlock {
   id: string;
   team: string | null;
-  role_id: string | null;
-  employee_id: string | null;
+  role_ids: string[];
+  employee_ids: string[];
   start_date: string;
   end_date: string;
   reason: string;
