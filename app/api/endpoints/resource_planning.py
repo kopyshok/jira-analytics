@@ -783,6 +783,94 @@ def _detect_conflicts(plan, assignments, db):
     ]
 
 
+@router.get("/resource-plans/{plan_id}/conflicts")
+def list_conflicts(
+    plan_id: str,
+    group_by: str = Query("item", pattern="^(item|employee|type)$"),
+    severity: Optional[str] = None,
+    status: str = "active",
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Сгруппированные конфликты плана для конфликт-панели.
+
+    `status='active'` — open + acknowledged; `'all'` — включая muted/resolved;
+    либо явный статус (`open`, `muted`, ...).
+    `group_by='item'` — по инициативам; `'employee'` — по сотрудникам;
+    `'type'` — по типу конфликта.
+    """
+    from app.models import BacklogItem, Employee, PlanConflict
+
+    plan = db.get(ResourcePlan, plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+
+    q = select(PlanConflict).where(PlanConflict.plan_id == plan_id)
+    if severity:
+        q = q.where(PlanConflict.severity == severity)
+    if status == "active":
+        q = q.where(PlanConflict.status.in_(["open", "acknowledged"]))
+    elif status != "all":
+        q = q.where(PlanConflict.status == status)
+    rows = db.execute(q).scalars().all()
+
+    if not rows:
+        return {"groups": []}
+
+    item_titles: dict[str, str] = {}
+    item_ids = {r.backlog_item_id for r in rows if r.backlog_item_id}
+    if item_ids:
+        for b in db.execute(
+            select(BacklogItem).where(BacklogItem.id.in_(item_ids))
+        ).scalars():
+            item_titles[b.id] = b.title
+
+    employee_names: dict[str, str] = {}
+    emp_ids = {r.employee_id for r in rows if r.employee_id}
+    if emp_ids:
+        for e in db.execute(
+            select(Employee).where(Employee.id.in_(emp_ids))
+        ).scalars():
+            employee_names[e.id] = e.display_name or e.id
+
+    def _to_payload(r) -> dict:
+        return {
+            "id": r.id,
+            "type": r.type,
+            "severity": r.severity,
+            "status": r.status,
+            "backlog_item_id": r.backlog_item_id,
+            "backlog_item_title": item_titles.get(r.backlog_item_id)
+            if r.backlog_item_id
+            else None,
+            "employee_id": r.employee_id,
+            "employee_name": employee_names.get(r.employee_id)
+            if r.employee_id
+            else None,
+            "assignment_id": r.assignment_id,
+            "window_start": r.window_start.isoformat() if r.window_start else None,
+            "window_end": r.window_end.isoformat() if r.window_end else None,
+            "metric_value": r.metric_value,
+            "message": r.message,
+        }
+
+    grouped: dict[tuple, list[dict]] = {}
+    for r in rows:
+        if group_by == "item":
+            key = (r.backlog_item_id, item_titles.get(r.backlog_item_id) or "—")
+        elif group_by == "employee":
+            key = (r.employee_id, employee_names.get(r.employee_id) or "—")
+        else:
+            key = (r.type, r.type)
+        grouped.setdefault(key, []).append(_to_payload(r))
+
+    groups = [
+        {"key": k[0], "label": k[1], "conflicts": v}
+        for k, v in sorted(grouped.items(), key=lambda kv: kv[0][1] or "")
+    ]
+    return {"group_by": group_by, "groups": groups}
+
+
 class ConflictPatch(BaseModel):
     status: str  # acknowledged | muted | open | resolved
 

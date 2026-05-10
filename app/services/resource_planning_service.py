@@ -659,8 +659,12 @@ class ResourcePlanningService:
         # Cache events for Stage B persist_conflicts
         self._last_leveling_events = leveling_events
 
-        # Persist conflicts (Stage B)
+        # Persist conflicts (Stage B): сначала агрегатор склеивает daily
+        # OVERLOAD-события в диапазоны и проштамповывает шаблонные сообщения.
+        from app.services.conflict_aggregator import aggregate_conflicts
+
         detected = self._build_conflict_dicts(plan, new_assignments, employees, q_end)
+        detected = aggregate_conflicts(detected, db_session=self.db)
         self._persist_conflicts(plan_id, detected)
 
         plan.status = "ready"
