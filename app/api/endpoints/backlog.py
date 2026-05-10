@@ -322,17 +322,20 @@ async def list_backlog_items(
             ),
         )
     elif view == "archived":
-        # Только корневые задачи — дочерние (OS/PMD) не показываем,
-        # архив должен содержать только родительские квартальные.
+        # Архив:
+        # - явно отправленные в архив (archived_at)
+        # - cancel-like ("Отменено") — выкинуты из плана
+        # - done initiatives_rfa (выполненные инициативы из бэклога)
+        # Done quarterly_tasks остаются в Активных как часть плана.
         query = query.filter(
             or_(
                 BacklogItem.archived_at.isnot(None),
-                Issue.status_category == "done",
                 cancel_like,
-            ),
-            or_(
-                BacklogItem.issue_id.is_(None),
-                Issue.parent_id.is_(None),
+                and_(
+                    Issue.status_category == "done",
+                    func.coalesce(Issue.category, "") != QUARTERLY_TASKS_CATEGORY,
+                    func.coalesce(Issue.assigned_category, "") != QUARTERLY_TASKS_CATEGORY,
+                ),
             ),
         )
     elif view == "in_work":
@@ -375,13 +378,12 @@ async def list_backlog_items(
                 Issue.category == QUARTERLY_TASKS_CATEGORY,
             ),
             not_quarterly_parent,
-            # Cancel-like + done — в архив, не в Активные
+            # Только cancel-like прячем (Отменено = выкинуто из плана).
+            # status_category='done' (Закрыт/Done) остаётся видимым —
+            # это выполненная по плану задача, утверждённая в сценарии.
             or_(
                 BacklogItem.issue_id.is_(None),
-                and_(
-                    func.coalesce(Issue.status_category, "") != "done",
-                    ~cancel_like,
-                ),
+                ~cancel_like,
             ),
         )
 

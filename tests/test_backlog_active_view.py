@@ -143,6 +143,44 @@ def test_quarterly_view_excludes_cancelled_status(testclient_db_session):
         _teardown()
 
 
+def test_quarterly_view_keeps_done_quarterly_task(testclient_db_session):
+    """Done (Закрыт) quarterly task must remain visible in Активные —
+    выполненная по плану задача, не cancel."""
+    from app.models import BacklogItem, Issue, Project
+
+    db = testclient_db_session
+    proj = Project(
+        id="p-dq", jira_project_id="p-dq-jira", key="DQ", name="DQ", is_active=True
+    )
+    issue = Issue(
+        id="i-dq-done",
+        jira_issue_id="i-dq-done-jira",
+        key="DQ-1",
+        summary="Completed quarterly",
+        issue_type="Цель",
+        status="Закрыт",
+        status_category="done",
+        project_id=proj.id,
+        category="quarterly_tasks",
+    )
+    item = BacklogItem(
+        id="bi-dq-done", title="Completed quarterly", issue_id=issue.id, archived_at=None
+    )
+    db.add_all([proj, issue, item])
+    db.commit()
+
+    client = _make_client(db)
+    try:
+        resp = client.get("/api/v1/backlog?view=quarterly")
+        assert resp.status_code == 200, resp.text
+        ids = [i["id"] for i in resp.json()]
+        assert "bi-dq-done" in ids, (
+            "Done quarterly task must stay in Активные as part of the plan"
+        )
+    finally:
+        _teardown()
+
+
 def test_active_view_includes_initiative_with_epic_parent(testclient_db_session):
     """Initiative under an Epic parent must show up in Бэклог tab.
     Regression: parent_id IS NULL filter previously hid all child tasks
@@ -188,6 +226,44 @@ def test_active_view_includes_initiative_with_epic_parent(testclient_db_session)
         ids = [i["id"] for i in resp.json()]
         assert "bi-init-300" in ids, (
             "Initiative with Epic parent must appear in Бэклог tab"
+        )
+    finally:
+        _teardown()
+
+
+def test_archived_view_excludes_done_quarterly(testclient_db_session):
+    """Done quarterly task в approved scenario НЕ должна попадать в Архив —
+    остаётся в Активных как выполненная по плану."""
+    from app.models import BacklogItem, Issue, Project
+
+    db = testclient_db_session
+    proj = Project(
+        id="p-aq", jira_project_id="p-aq-jira", key="AQ", name="AQ", is_active=True
+    )
+    issue = Issue(
+        id="i-aq-done",
+        jira_issue_id="i-aq-done-jira",
+        key="AQ-1",
+        summary="Done quarterly",
+        issue_type="Цель",
+        status="Закрыт",
+        status_category="done",
+        project_id=proj.id,
+        category="quarterly_tasks",
+    )
+    item = BacklogItem(
+        id="bi-aq-done", title="Done quarterly", issue_id=issue.id, archived_at=None
+    )
+    db.add_all([proj, issue, item])
+    db.commit()
+
+    client = _make_client(db)
+    try:
+        resp = client.get("/api/v1/backlog?view=archived")
+        assert resp.status_code == 200, resp.text
+        ids = [i["id"] for i in resp.json()]
+        assert "bi-aq-done" not in ids, (
+            "Done quarterly task must not auto-archive — это часть утверждённого плана"
         )
     finally:
         _teardown()
