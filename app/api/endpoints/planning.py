@@ -55,6 +55,7 @@ from app.services.snapshot_writer import SnapshotWriter
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.backlog_service import BacklogService, BACKLOG_CATEGORY
 from app.services.category_resolver import CategoryResolver
+from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 
 
 router = APIRouter()
@@ -67,6 +68,48 @@ def _resolve_absence_hours(absence: Absence, capacity_svc: CapacityService) -> f
     if absence.hours_total is not None:
         return float(absence.hours_total)
     return capacity_svc._norm_hours_in_range(absence.start_date, absence.end_date)
+
+
+def _backlog_item_is_leaf(item: BacklogItem, rules) -> bool:
+    """True если связанный Issue — leaf-тип (HierarchyRule is_container=False).
+
+    Leaf-задачи (OS/PMD-доработки) не попадают в сценарии — это
+    операционная работа, в планирование пускаются только инициативы
+    (RFA / ITL / Цель и т.п.).
+    """
+    if item.issue_id is None or item.issue is None:
+        return False
+    issue = item.issue
+    project_key = issue.project.key if issue.project else ""
+    return is_explicit_leaf(
+        rules,
+        project_key=project_key,
+        issue_type=issue.issue_type or "",
+        has_parent=issue.parent_id is not None,
+    )
+
+
+def _filter_leaf_backlog_ids(db: Session, item_ids) -> set:
+    """Subset of item_ids whose Issue is an explicit leaf — chunked для
+    избежания SQLite parameter limit и больших WHERE IN."""
+    rules = load_rules(db)
+    if not item_ids:
+        return set()
+    leaves: set = set()
+    ids = list(item_ids)
+    chunk = 500
+    for start in range(0, len(ids), chunk):
+        batch = ids[start : start + chunk]
+        rows = (
+            db.query(BacklogItem)
+            .options(joinedload(BacklogItem.issue).joinedload(Issue.project))
+            .filter(BacklogItem.id.in_(batch))
+            .all()
+        )
+        for it in rows:
+            if _backlog_item_is_leaf(it, rules):
+                leaves.add(it.id)
+    return leaves
 
 
 # === Schemas ===
@@ -432,6 +475,7 @@ async def create_scenario(
 
     items = (
         db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue).joinedload(Issue.project))
         .filter(BacklogItem.archived_at.is_(None))
         .order_by(
             BacklogItem.priority.is_(None),
@@ -440,6 +484,8 @@ async def create_scenario(
         )
         .all()
     )
+    rules = load_rules(db)
+    items = [it for it in items if not _backlog_item_is_leaf(it, rules)]
     for idx, item in enumerate(items, start=1):
         db.add(
             ScenarioAllocation(
@@ -1020,10 +1066,11 @@ async def sync_backlog(
         .all()
     }
     current_ids = {
-        i.id for i in db.query(BacklogItem.id)
+        iid for (iid,) in db.query(BacklogItem.id)
         .filter(BacklogItem.archived_at.is_(None))
         .all()
     }
+    leaf_ids = _filter_leaf_backlog_ids(db, current_ids | existing_ids)
 
     # Новые allocations добавляем в конец списка — PM сам перетащит куда нужно.
     next_order = (
@@ -1032,7 +1079,7 @@ async def sync_backlog(
         .scalar()
         or 0.0
     ) + 1.0
-    for item_id in current_ids - existing_ids:
+    for item_id in (current_ids - existing_ids) - leaf_ids:
         db.add(
             ScenarioAllocation(
                 scenario_id=scenario_id,
@@ -1043,11 +1090,12 @@ async def sync_backlog(
             )
         )
         next_order += 1.0
-    # Убрать allocations для удалённых из бэклога записей.
-    if existing_ids - current_ids:
+    # Убрать allocations: исчезли из бэклога ИЛИ оказались leaf-типами.
+    to_remove = (existing_ids - current_ids) | (existing_ids & leaf_ids)
+    if to_remove:
         db.query(ScenarioAllocation).filter(
             ScenarioAllocation.scenario_id == scenario_id,
-            ScenarioAllocation.backlog_item_id.in_(existing_ids - current_ids),
+            ScenarioAllocation.backlog_item_id.in_(to_remove),
         ).delete(synchronize_session=False)
 
     db.commit()
@@ -1072,9 +1120,9 @@ async def list_scenario_allocations(
         raise HTTPException(status_code=404, detail="Scenario not found")
 
     # Self-heal: для draft-сценария добиваем allocations всеми текущими
-    # неархивными BacklogItem, которых ещё нет. Идемпотентно. Закрывает
-    # пробел для исторических scenario'в, созданных до того, как авто-синк
-    # стал работать с задачами под Эпиками.
+    # неархивными BacklogItem, которых ещё нет, И чистим уже добавленные
+    # leaf-allocations (OS/PMD). Идемпотентно. Закрывает пробел для
+    # исторических scenario'в.
     if scenario.status == "draft":
         existing_ids = {
             bid
@@ -1088,7 +1136,10 @@ async def list_scenario_allocations(
             .filter(BacklogItem.archived_at.is_(None))
             .all()
         }
-        missing = current_ids - existing_ids
+        leaf_ids = _filter_leaf_backlog_ids(db, current_ids | existing_ids)
+        missing = (current_ids - existing_ids) - leaf_ids
+        stale_leaves = existing_ids & leaf_ids
+        changed = False
         if missing:
             next_order = (
                 db.query(func.max(ScenarioAllocation.sort_order))
@@ -1107,6 +1158,14 @@ async def list_scenario_allocations(
                     )
                 )
                 next_order += 1.0
+            changed = True
+        if stale_leaves:
+            db.query(ScenarioAllocation).filter(
+                ScenarioAllocation.scenario_id == scenario_id,
+                ScenarioAllocation.backlog_item_id.in_(stale_leaves),
+            ).delete(synchronize_session=False)
+            changed = True
+        if changed:
             db.commit()
 
     query = (

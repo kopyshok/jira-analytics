@@ -23,6 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
+from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 
 
 BACKLOG_CATEGORY = "initiatives_rfa"
@@ -119,7 +120,17 @@ class BacklogService:
             existing.archived_at = None
             self.db.flush()
             if is_new or was_archived:
-                self._ensure_draft_allocations(existing.id)
+                # Leaf-типы (OS/PMD) не пускаем в сценарии.
+                rules = load_rules(self.db)
+                project_key = issue.project.key if issue.project else ""
+                is_leaf = is_explicit_leaf(
+                    rules,
+                    project_key=project_key,
+                    issue_type=issue.issue_type or "",
+                    has_parent=issue.parent_id is not None,
+                )
+                if not is_leaf:
+                    self._ensure_draft_allocations(existing.id)
             return existing
 
         # Category left backlog.

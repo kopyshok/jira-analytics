@@ -6,7 +6,7 @@ but the issue is still a legitimate initiative. Категория решает.
 
 import pytest
 
-from app.models import BacklogItem, Issue, PlanningScenario, Project, ScenarioAllocation
+from app.models import BacklogItem, HierarchyRule, Issue, PlanningScenario, Project, ScenarioAllocation
 from app.services.backlog_service import BacklogService
 
 
@@ -56,6 +56,33 @@ def test_child_issue_with_tracked_category_added_to_draft_scenario(db_session, p
     allocs = db_session.query(ScenarioAllocation).filter_by(backlog_item_id=result.id).all()
     assert len(allocs) == 1
     assert allocs[0].scenario_id == draft_scenario.id
+
+
+def test_leaf_issue_skipped_for_draft_scenario(db_session, proj, draft_scenario):
+    """Leaf-тип (OS/PMD по HierarchyRule is_container=False) НЕ должен
+    попадать в сценарии — это операционная работа, не инициатива."""
+    db_session.add(
+        HierarchyRule(
+            id="hr-bcs-leaf",
+            priority=100,
+            project_key="BCS",
+            issue_type=None,
+            require_no_parent=False,
+            is_container=False,
+            is_enabled=True,
+        )
+    )
+    db_session.commit()
+
+    leaf = _make_issue(db_session, proj, "BCS-LEAF")
+
+    svc = BacklogService(db_session)
+    result = svc.sync_from_issue(leaf)
+    db_session.commit()
+
+    assert result is not None  # BacklogItem still created — но allocations нет
+    allocs = db_session.query(ScenarioAllocation).filter_by(backlog_item_id=result.id).all()
+    assert allocs == [], "leaf issue не должен иметь ScenarioAllocation"
 
 
 def test_root_issue_added_to_draft_scenario(db_session, proj, draft_scenario):

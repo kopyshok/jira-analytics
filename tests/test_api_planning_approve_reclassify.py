@@ -67,6 +67,82 @@ def test_draft_scenario_filters_by_category_only(client, seeded):
     )
 
 
+def test_draft_scenario_excludes_leaf_types(client, testclient_db_session):
+    """OS/PMD leaf-типы по HierarchyRule не попадают в сценарии,
+    даже если у них категория initiatives_rfa."""
+    from app.models import BacklogItem, HierarchyRule, Issue, Project
+    db = testclient_db_session
+
+    db.add(Project(id="p-os", jira_project_id="j-os", key="OS", name="OS", is_active=True))
+    db.add(
+        HierarchyRule(
+            id="hr-os-leaf", priority=100, project_key="OS", issue_type=None,
+            require_no_parent=False, is_container=False, is_enabled=True,
+        )
+    )
+    db.add(
+        Issue(
+            id="i-os-1", jira_issue_id="j-os-1", key="OS-80158",
+            summary="OS subtask", issue_type="Подзадача", status="Open",
+            project_id="p-os", category="initiatives_rfa",
+        )
+    )
+    db.add(BacklogItem(id="b-os-1", title="OS subtask", issue_id="i-os-1"))
+    db.commit()
+
+    r = client.post("/api/v1/planning/scenarios", json={"name": "Q3", "year": 2026, "quarter": 3})
+    assert r.status_code == 201, r.text
+    sid = r.json()["id"]
+
+    r = client.get(f"/api/v1/planning/scenarios/{sid}/allocations")
+    assert r.status_code == 200, r.text
+    item_ids = [a["backlog_item_id"] for a in r.json()]
+    assert "b-os-1" not in item_ids, "OS leaf не должен попадать в сценарий"
+
+
+def test_self_heal_removes_stale_leaf_allocations(client, testclient_db_session):
+    """Self-heal удаляет уже существующие ScenarioAllocation для leaf-типов
+    (исторические данные до фикса)."""
+    from app.models import (
+        BacklogItem, HierarchyRule, Issue, PlanningScenario,
+        Project, ScenarioAllocation,
+    )
+    db = testclient_db_session
+
+    db.add(Project(id="p-pmd", jira_project_id="j-pmd", key="PMD", name="PMD", is_active=True))
+    db.add(
+        HierarchyRule(
+            id="hr-pmd-leaf", priority=100, project_key="PMD", issue_type=None,
+            require_no_parent=False, is_container=False, is_enabled=True,
+        )
+    )
+    db.add(
+        Issue(
+            id="i-pmd-1", jira_issue_id="j-pmd-1", key="PMD-30919",
+            summary="PMD doc", issue_type="Доработка", status="Open",
+            project_id="p-pmd", category="initiatives_rfa",
+        )
+    )
+    db.add(BacklogItem(id="b-pmd-1", title="PMD doc", issue_id="i-pmd-1"))
+    sc = PlanningScenario(id="sc-stale", name="Q2 Stale", year=2026, quarter=2, status="draft")
+    db.add(sc)
+    db.add(
+        ScenarioAllocation(
+            id="sa-stale", scenario_id="sc-stale", backlog_item_id="b-pmd-1",
+            included_flag=False, planned_hours=0, sort_order=1.0,
+        )
+    )
+    db.commit()
+
+    r = client.get("/api/v1/planning/scenarios/sc-stale/allocations")
+    assert r.status_code == 200, r.text
+    item_ids = [a["backlog_item_id"] for a in r.json()]
+    assert "b-pmd-1" not in item_ids
+    db.expire_all()
+    remaining = db.query(ScenarioAllocation).filter_by(scenario_id="sc-stale").count()
+    assert remaining == 0, "stale leaf allocation должна быть подчищена"
+
+
 def test_approved_scenario_shows_all_items(client, seeded, testclient_db_session):
     """Approved scenario must return all allocations — no filter applied."""
     from app.models import PlanningScenario, ScenarioAllocation
