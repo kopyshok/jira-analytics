@@ -294,6 +294,11 @@ class ResourcePlanningService:
         if not plan:
             raise ValueError(f"ResourcePlan {plan_id} not found")
 
+        # Снимок логических ключей рёбер до удаления назначений (CASCADE
+        # предшественников). После пересоздания назначений рёбра восстанавливаются
+        # по (item_id, phase, part_number, employee_id).
+        pred_snapshot = self._snapshot_predecessors(plan_id)
+
         # Сохранить pinned до удаления, удалить только non-pinned
         pinned_existing = list(
             self.db.execute(
@@ -631,6 +636,17 @@ class ResourcePlanningService:
             if a not in pinned_existing:
                 self.db.add(a)
 
+        # Получить ID новых назначений и восстановить рёбра предшественников
+        # по логическим ключам, затем посеять дефолтную цепочку для первого
+        # compute (когда снапшот пуст). Сдвиг по графу выполняем после.
+        self.db.flush()
+        self._restore_predecessors(new_assignments, pred_snapshot)
+        self.db.flush()
+        self._ensure_default_predecessors(plan_id, new_assignments)
+        self.db.flush()
+        preds = self._load_predecessors(plan_id)
+        self._shift_to_obey_predecessors(new_assignments, preds, q_start, q_end)
+
         # CPM на первичных датах
         self._compute_cpm(new_assignments, q_end)
 
@@ -893,6 +909,268 @@ class ResourcePlanningService:
             for a in item_assignments:
                 a.slack_days = float(slack)
                 a.is_on_critical_path = slack <= 0
+
+    # ------------------------------------------------------------------
+    # Phase predecessor graph (свободный граф зависимостей)
+    # ------------------------------------------------------------------
+
+    def _snapshot_predecessors(
+        self, plan_id: str
+    ) -> List[Tuple[Tuple[str, str, int, Optional[str]], Tuple[str, str, int, Optional[str]]]]:
+        """Снимок рёбер графа предшественников плана как пары логических ключей.
+
+        Ключ: (backlog_item_id, phase, part_number, employee_id). После удаления
+        и пересоздания назначений рёбра восстанавливаются по этим ключам.
+        """
+        from app.models import PhasePredecessor
+
+        rows = (
+            self.db.execute(
+                select(PhasePredecessor)
+                .join(
+                    ResourcePlanAssignment,
+                    PhasePredecessor.successor_assignment_id == ResourcePlanAssignment.id,
+                )
+                .where(ResourcePlanAssignment.plan_id == plan_id)
+            )
+            .scalars()
+            .all()
+        )
+        if not rows:
+            return []
+        plan_assignments = (
+            self.db.execute(
+                select(ResourcePlanAssignment).where(
+                    ResourcePlanAssignment.plan_id == plan_id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_id = {a.id: a for a in plan_assignments}
+        snap: List[Tuple[Tuple[str, str, int, Optional[str]], Tuple[str, str, int, Optional[str]]]] = []
+        for r in rows:
+            s = by_id.get(r.successor_assignment_id)
+            p = by_id.get(r.predecessor_assignment_id)
+            if not s or not p:
+                continue
+            snap.append(
+                (
+                    (s.backlog_item_id, s.phase, s.part_number, s.employee_id),
+                    (p.backlog_item_id, p.phase, p.part_number, p.employee_id),
+                )
+            )
+        return snap
+
+    def _restore_predecessors(
+        self,
+        assignments: List[ResourcePlanAssignment],
+        snapshot: List[
+            Tuple[Tuple[str, str, int, Optional[str]], Tuple[str, str, int, Optional[str]]]
+        ],
+    ) -> None:
+        """Воссоздать рёбра PhasePredecessor по снимку логических ключей."""
+        if not snapshot:
+            return
+        from app.models import PhasePredecessor
+
+        by_key: Dict[Tuple[str, str, int, Optional[str]], ResourcePlanAssignment] = {}
+        for a in assignments:
+            key = (a.backlog_item_id, a.phase, a.part_number, a.employee_id)
+            by_key[key] = a
+        seen: set[Tuple[str, str]] = set()
+        for succ_key, pred_key in snapshot:
+            s = by_key.get(succ_key)
+            p = by_key.get(pred_key)
+            if not s or not p or not s.id or not p.id or s.id == p.id:
+                continue
+            pair = (s.id, p.id)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            self.db.add(
+                PhasePredecessor(
+                    successor_assignment_id=s.id,
+                    predecessor_assignment_id=p.id,
+                )
+            )
+
+    def _ensure_default_predecessors(
+        self,
+        plan_id: str,
+        assignments: List[ResourcePlanAssignment],
+    ) -> None:
+        """Посеять дефолтную цепочку analyst→dev→qa→opo если рёбер ещё нет."""
+        from app.models import PhasePredecessor
+
+        existing = (
+            self.db.execute(
+                select(PhasePredecessor)
+                .join(
+                    ResourcePlanAssignment,
+                    PhasePredecessor.successor_assignment_id == ResourcePlanAssignment.id,
+                )
+                .where(ResourcePlanAssignment.plan_id == plan_id)
+                .limit(1)
+            )
+            .scalars()
+            .first()
+        )
+        if existing:
+            return
+        by_item: Dict[str, Dict[str, ResourcePlanAssignment]] = defaultdict(dict)
+        for a in assignments:
+            # Несколько строк opo (analyst-кусок + dev-кусок) — берём последнюю,
+            # дефолтная цепочка ссылается на одну строку фазы.
+            by_item[a.backlog_item_id][a.phase] = a
+        for phases in by_item.values():
+            chain = [phases.get(p) for p in PHASE_ORDER if phases.get(p) is not None]
+            for i in range(1, len(chain)):
+                succ = chain[i]
+                pred = chain[i - 1]
+                if not succ or not pred or not succ.id or not pred.id:
+                    continue
+                self.db.add(
+                    PhasePredecessor(
+                        successor_assignment_id=succ.id,
+                        predecessor_assignment_id=pred.id,
+                    )
+                )
+
+    def _load_predecessors(self, plan_id: str) -> Dict[str, List[str]]:
+        """Загрузить рёбра предшественников плана: {succ_id: [pred_id, ...]}."""
+        from app.models import PhasePredecessor
+
+        rows = (
+            self.db.execute(
+                select(PhasePredecessor)
+                .join(
+                    ResourcePlanAssignment,
+                    PhasePredecessor.successor_assignment_id == ResourcePlanAssignment.id,
+                )
+                .where(ResourcePlanAssignment.plan_id == plan_id)
+            )
+            .scalars()
+            .all()
+        )
+        out: Dict[str, List[str]] = defaultdict(list)
+        for r in rows:
+            out[r.successor_assignment_id].append(r.predecessor_assignment_id)
+        return out
+
+    def _topological_order(
+        self,
+        assignments: List[ResourcePlanAssignment],
+        preds: Dict[str, List[str]],
+    ) -> List[ResourcePlanAssignment]:
+        """Kahn — топологическая сортировка по графу preds. Cycle → ValueError."""
+        by_id: Dict[str, ResourcePlanAssignment] = {a.id: a for a in assignments if a.id}
+        indeg: Dict[str, int] = {aid: 0 for aid in by_id}
+        for succ_id, p_list in preds.items():
+            if succ_id not in by_id:
+                continue
+            for p_id in p_list:
+                if p_id in by_id:
+                    indeg[succ_id] += 1
+        queue = [aid for aid, d in indeg.items() if d == 0]
+        result: List[ResourcePlanAssignment] = []
+        while queue:
+            aid = queue.pop(0)
+            result.append(by_id[aid])
+            for succ_id, p_list in preds.items():
+                if succ_id not in by_id or aid not in p_list:
+                    continue
+                indeg[succ_id] -= 1
+                if indeg[succ_id] == 0:
+                    queue.append(succ_id)
+        if len(result) != len(by_id):
+            raise ValueError("phase predecessor cycle detected")
+        return result
+
+    def _shift_to_obey_predecessors(
+        self,
+        assignments: List[ResourcePlanAssignment],
+        preds: Dict[str, List[str]],
+        q_start: date,
+        q_end: date,
+    ) -> None:
+        """Сдвинуть start/end по графу preds, сохраняя длительность фазы.
+
+        Walks in topological order. Для каждого назначения ставит
+        start_date = max(end_dates предшественников) + 1, end_date — со сдвигом
+        на ту же дельту. Pinned-start/Pinned-split не сдвигаются.
+        """
+        order = self._topological_order(assignments, preds)
+        by_id = {a.id: a for a in assignments if a.id}
+        for a in order:
+            if a.pinned_start or a.pinned_split:
+                continue
+            if a.start_date is None or a.end_date is None:
+                continue
+            pred_ids = preds.get(a.id, [])
+            ends = [
+                by_id[pid].end_date
+                for pid in pred_ids
+                if pid in by_id and by_id[pid].end_date
+            ]
+            if not ends:
+                new_start = q_start
+            else:
+                new_start = max(ends) + timedelta(days=1)
+            if new_start == a.start_date:
+                continue
+            duration = (a.end_date - a.start_date).days
+            if new_start > q_end:
+                new_start = q_end
+            a.start_date = new_start
+            new_end = new_start + timedelta(days=duration)
+            if new_end > q_end:
+                new_end = q_end
+            a.end_date = new_end
+
+    def add_predecessor(self, successor_id: str, predecessor_id: str) -> None:
+        """Добавить ребро с проверкой на цикл. ValueError если цикл."""
+        from app.models import PhasePredecessor
+
+        existing = (
+            self.db.execute(select(PhasePredecessor)).scalars().all()
+        )
+        edges: Dict[str, List[str]] = defaultdict(list)
+        for e in existing:
+            edges[e.successor_assignment_id].append(e.predecessor_assignment_id)
+        edges[successor_id].append(predecessor_id)
+        if self._has_cycle(edges):
+            raise ValueError("cycle")
+        self.db.add(
+            PhasePredecessor(
+                successor_assignment_id=successor_id,
+                predecessor_assignment_id=predecessor_id,
+            )
+        )
+        self.db.commit()
+
+    def _has_cycle(self, edges: Dict[str, List[str]]) -> bool:
+        """DFS-обход с тремя цветами; True если граф содержит цикл."""
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color: Dict[str, int] = defaultdict(lambda: WHITE)
+
+        def dfs(node: str) -> bool:
+            color[node] = GRAY
+            for nxt in edges.get(node, []):
+                if color[nxt] == GRAY:
+                    return True
+                if color[nxt] == WHITE and dfs(nxt):
+                    return True
+            color[node] = BLACK
+            return False
+
+        nodes: set[str] = set(edges.keys())
+        for vs in edges.values():
+            nodes.update(vs)
+        for n in nodes:
+            if color[n] == WHITE and dfs(n):
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # Stage B — conflict detection & persistence
