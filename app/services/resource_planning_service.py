@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -241,9 +241,10 @@ class ResourcePlanningService:
     def compute_schedule(self, plan_id: str) -> None:
         """Рассчитать расписание фаз для всех инициатив плана.
 
-        Pinned-назначения (``is_pinned=True``) не пересчитываются и не удаляются:
-        используются как фиксированный сотрудник в `_assign_employees`, а старые
-        строки сохраняются в БД и сливаются с новыми non-pinned результатами.
+        Назначения с любым из флагов `pinned_employee`/`pinned_start`/`pinned_split`=True
+        не пересчитываются и не удаляются: используются как фиксированный
+        сотрудник/дата/разбивка в `_assign_employees`, а старые строки сохраняются
+        в БД и сливаются с новыми non-pinned результатами.
         """
         plan = self.db.get(ResourcePlan, plan_id)
         if not plan:
@@ -254,7 +255,11 @@ class ResourcePlanningService:
             self.db.execute(
                 select(ResourcePlanAssignment).where(
                     ResourcePlanAssignment.plan_id == plan_id,
-                    ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
+                    or_(
+                        ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
+                        ResourcePlanAssignment.pinned_start == True,  # noqa: E712
+                        ResourcePlanAssignment.pinned_split == True,  # noqa: E712
+                    ),
                 )
             ).scalars()
         )
@@ -268,6 +273,8 @@ class ResourcePlanningService:
             ResourcePlanAssignment.__table__.delete().where(
                 ResourcePlanAssignment.plan_id == plan_id,
                 ResourcePlanAssignment.pinned_employee == False,  # noqa: E712
+                ResourcePlanAssignment.pinned_start == False,  # noqa: E712
+                ResourcePlanAssignment.pinned_split == False,  # noqa: E712
             )
         )
 
