@@ -105,6 +105,94 @@ def test_active_view_excludes_done_jira_status(testclient_db_session):
         _teardown()
 
 
+def test_quarterly_view_excludes_cancelled_status(testclient_db_session):
+    """Quarterly tab must hide tasks with cancel-like status (Отменено)
+    even if status_category is not yet 'done'."""
+    from app.models import BacklogItem, Issue, Project
+
+    db = testclient_db_session
+    proj = Project(
+        id="p-cx", jira_project_id="p-cx-jira", key="CX", name="CX", is_active=True
+    )
+    issue = Issue(
+        id="i-cx-cancel",
+        jira_issue_id="i-cx-cancel-jira",
+        key="CX-1",
+        summary="Cancelled quarterly",
+        issue_type="Цель",
+        status="Отменено",
+        status_category="done",
+        project_id=proj.id,
+        category="quarterly_tasks",
+    )
+    item = BacklogItem(
+        id="bi-cx-cancel", title="Cancelled quarterly", issue_id=issue.id, archived_at=None
+    )
+    db.add_all([proj, issue, item])
+    db.commit()
+
+    client = _make_client(db)
+    try:
+        resp = client.get("/api/v1/backlog?view=quarterly")
+        assert resp.status_code == 200, resp.text
+        ids = [i["id"] for i in resp.json()]
+        assert "bi-cx-cancel" not in ids, (
+            "Cancelled quarterly task must not appear in Активные tab"
+        )
+    finally:
+        _teardown()
+
+
+def test_active_view_includes_initiative_with_epic_parent(testclient_db_session):
+    """Initiative under an Epic parent must show up in Бэклог tab.
+    Regression: parent_id IS NULL filter previously hid all child tasks
+    including legitimate initiatives nested under container Epics."""
+    from app.models import BacklogItem, Issue, Project
+
+    db = testclient_db_session
+    proj = Project(
+        id="p-init", jira_project_id="p-init-jira", key="ITL", name="ITL", is_active=True
+    )
+    epic = Issue(
+        id="i-epic",
+        jira_issue_id="i-epic-jira",
+        key="ITL-EPIC",
+        summary="Epic",
+        issue_type="Epic",
+        status="In progress",
+        status_category="indeterminate",
+        project_id=proj.id,
+    )
+    init = Issue(
+        id="i-init",
+        jira_issue_id="i-init-jira",
+        key="ITL-300",
+        summary="Initiative under epic",
+        issue_type="ИТ-задача",
+        status="В работе",
+        status_category="indeterminate",
+        project_id=proj.id,
+        parent_id=epic.id,
+        category="initiatives_rfa",
+    )
+    item = BacklogItem(
+        id="bi-init-300", title="Initiative under epic", issue_id=init.id, archived_at=None
+    )
+    db.add_all([proj, epic, init, item])
+    db.commit()
+
+    client = _make_client(db)
+    try:
+        resp = client.get("/api/v1/backlog?view=active")
+        assert resp.status_code == 200, resp.text
+        ids = [i["id"] for i in resp.json()]
+        assert "bi-init-300" in ids, (
+            "Initiative with Epic parent must appear in Бэклог tab"
+        )
+    finally:
+        _teardown()
+
+
 def test_archived_item_has_quarter_label(testclient_db_session):
     """Archived backlog item allocated to approved scenario has quarter_label."""
     from datetime import datetime

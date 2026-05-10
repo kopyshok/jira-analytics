@@ -315,11 +315,6 @@ async def list_backlog_items(
                 ~quarterly_filter,
             ),
             BacklogItem.id.notin_(in_work_ids),
-            # Только корневые задачи — детей (OS/PMD) не показываем
-            or_(
-                BacklogItem.issue_id.is_(None),
-                Issue.parent_id.is_(None),
-            ),
             # Cancel-like статусы — в архив, не сюда
             or_(
                 BacklogItem.issue_id.is_(None),
@@ -357,11 +352,6 @@ async def list_backlog_items(
                 BacklogItem.id.in_(in_work_ids),
                 Issue.status_category == "indeterminate",
             ),
-            # Только корневые задачи — детей (OS/PMD) не показываем
-            or_(
-                BacklogItem.issue_id.is_(None),
-                Issue.parent_id.is_(None),
-            ),
             # Cancel-like статусы — в архив, не в «В работе»
             or_(
                 BacklogItem.issue_id.is_(None),
@@ -385,6 +375,14 @@ async def list_backlog_items(
                 Issue.category == QUARTERLY_TASKS_CATEGORY,
             ),
             not_quarterly_parent,
+            # Cancel-like + done — в архив, не в Активные
+            or_(
+                BacklogItem.issue_id.is_(None),
+                and_(
+                    func.coalesce(Issue.status_category, "") != "done",
+                    ~cancel_like,
+                ),
+            ),
         )
 
     items = query.all()
