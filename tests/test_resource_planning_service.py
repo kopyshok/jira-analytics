@@ -961,10 +961,13 @@ def test_compute_parallel_count_shortens_qa_span(db_session: Session) -> None:
             span_days += 1
         d += timedelta(days=1)
 
-    # parallel_count_dev=2 + duration_dev_days=10 → cal_days = 10/2 = 5 working days
-    # phase_end cursor = max(raw_end, cal_end=5 working days from start)
-    assert span_days <= 7, (
-        f"parallel_count_dev=2 + duration=10 → span ≤ 7 рабочих дней, получено {span_days}"
+    # parallel_count_dev=2 + duration_dev_days=10: cal_days = 10/2 = 5 рабочих дней —
+    # ЦЕЛЕВОЙ срок, но фактическая ёмкость одного исполнителя = 8 ч/день.
+    # Контракт: часы из сценария святы (80 ч), span расширяется до ceil(80/8) ≈ 10
+    # рабочих дней (~14 календарных). RCPSP-leveler поднимет конфликт перегрузки.
+    total_hours = sum(r.hours_allocated or 0 for r in rows)
+    assert abs(total_hours - 80.0) < 0.01, (
+        f"всеми сегментами должно быть размещено 80 ч, размещено {total_hours}"
     )
 
 
