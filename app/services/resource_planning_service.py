@@ -22,6 +22,7 @@ from app.models import (
     ScenarioAllocation,
 )
 from app.models.employee_team import EmployeeTeam
+from app.services.allocation_estimates import effective_estimate_hours
 from app.services.rcpsp_leveler import RcpspLeveler
 
 PHASE_ORDER = ["analyst", "dev", "qa", "opo"]
@@ -340,6 +341,10 @@ class ResourcePlanningService:
             self.db.commit()
             return
 
+        # {item_id: allocation} — чтобы пер-роль часы читались через
+        # effective_estimate_hours (override приоритетнее BacklogItem).
+        alloc_by_item = self._load_alloc_by_item(plan)
+
         q_start, q_end = self._quarter_bounds(plan)
         employees = self._load_employees(plan)
         if not employees:
@@ -371,7 +376,7 @@ class ResourcePlanningService:
         preempt_locked: Dict[str, set] = {eid: set() for eid in avail.keys()}
 
         assignments_by_role = self._assign_employees(
-            items, employees, pinned=pinned_map
+            items, employees, pinned=pinned_map, alloc_by_item=alloc_by_item
         )
 
         # Mutable remaining hours copy
@@ -426,8 +431,7 @@ class ResourcePlanningService:
         for item in items:
             phase_end: Optional[date] = None
             for phase in PHASE_ORDER:
-                hours_field = PHASE_HOURS_FIELD[phase]
-                hours = float(getattr(item, hours_field) or 0.0)
+                hours = self._phase_hours(item, phase, alloc_by_item)
                 if hours <= 0:
                     continue
 
@@ -519,7 +523,7 @@ class ResourcePlanningService:
                             key=lambda eid: -sum(remaining.get(eid, {}).values()),
                         )
 
-                    parts = self._opo_split(item, analyst_id, dev_id)
+                    parts = self._opo_split(item, analyst_id, dev_id, alloc_by_item)
                     last_end: Optional[date] = None
                     opo_involvement = self._involvement_for_phase(item, "opo")
                     opo_daily_cap = self._daily_role_capacity(
@@ -822,6 +826,39 @@ class ResourcePlanningService:
             return list(rows)
         return []
 
+    def _load_alloc_by_item(self, plan: ResourcePlan) -> Dict[str, ScenarioAllocation]:
+        """{backlog_item_id: ScenarioAllocation} для included allocations плана.
+
+        Нужно чтобы консьюмеры пер-роль часов читали override через
+        effective_estimate_hours, а не сырые BacklogItem.estimate_*.
+        """
+        if not plan.scenario_id:
+            return {}
+        rows = (
+            self.db.execute(
+                select(ScenarioAllocation).where(
+                    ScenarioAllocation.scenario_id == plan.scenario_id,
+                    ScenarioAllocation.included_flag == True,  # noqa: E712
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return {a.backlog_item_id: a for a in rows}
+
+    @staticmethod
+    def _phase_hours(
+        item: BacklogItem,
+        phase: str,
+        alloc_by_item: Dict[str, ScenarioAllocation],
+    ) -> float:
+        """Часы фазы: через effective если есть allocation, иначе из BacklogItem."""
+        alloc = alloc_by_item.get(item.id)
+        if alloc is not None:
+            eff = effective_estimate_hours(alloc)
+            return float(eff.get(phase, 0.0) or 0.0)
+        return float(getattr(item, PHASE_HOURS_FIELD[phase], 0) or 0.0)
+
     def _load_employees(self, plan: ResourcePlan) -> List[Employee]:
         """Загрузить активных сотрудников команды плана."""
         rows = (
@@ -856,6 +893,7 @@ class ResourcePlanningService:
         items: List[BacklogItem],
         employees: List[Employee],
         pinned: Optional[Dict[Tuple[str, str, int], str]] = None,
+        alloc_by_item: Optional[Dict[str, ScenarioAllocation]] = None,
     ) -> Dict[str, Dict[str, Optional[str]]]:
         """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
@@ -870,6 +908,7 @@ class ResourcePlanningService:
         для (item, phase, 1) есть pin — используется он, обычная логика игнорится.
         """
         pinned = pinned or {}
+        alloc_by_item = alloc_by_item or {}
 
         by_id: Dict[str, Employee] = {e.id: e for e in employees}
         # Резолв по display_name для fallback (если bk.assignee_employee_id NULL,
@@ -909,7 +948,7 @@ class ResourcePlanningService:
             if not analyst_id and analyst_ids:
                 analyst_id = min(analyst_ids, key=lambda eid: load[eid])
             if analyst_id:
-                load[analyst_id] += item.estimate_analyst_hours or 0.0
+                load[analyst_id] += self._phase_hours(item, "analyst", alloc_by_item)
             result["analyst"][item.id] = analyst_id
 
             # ── dev ────────────────────────────────────────────────────
@@ -917,7 +956,7 @@ class ResourcePlanningService:
             if not dev_id and dev_ids:
                 dev_id = min(dev_ids, key=lambda eid: load[eid])
             if dev_id:
-                load[dev_id] += item.estimate_dev_hours or 0.0
+                load[dev_id] += self._phase_hours(item, "dev", alloc_by_item)
             result["dev"][item.id] = dev_id
 
             # ── qa: без сотрудника ─────────────────────────────────────
@@ -933,13 +972,14 @@ class ResourcePlanningService:
         item: BacklogItem,
         analyst_id: Optional[str],
         dev_id: Optional[str],
+        alloc_by_item: Optional[Dict[str, ScenarioAllocation]] = None,
     ) -> List[Tuple[Optional[str], float]]:
         """ОПЭ → 2 куска: [(analyst_id, an_hours), (dev_id, dev_hours)].
 
         Доля аналитика = ``item.opo_analyst_ratio`` (default 0.5).
         Часы округляются до 2 знаков; сумма равна total (последний кусок добирает остаток).
         """
-        total = float(item.estimate_opo_hours or 0.0)
+        total = self._phase_hours(item, "opo", alloc_by_item or {})
         ratio = (
             item.opo_analyst_ratio if item.opo_analyst_ratio is not None else 0.5
         )
