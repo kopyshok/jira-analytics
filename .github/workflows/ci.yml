@@ -86,6 +86,8 @@ jobs:
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
+      - run: npm run lint:design
+        working-directory: frontend
       - run: npm run build
         working-directory: frontend
 
