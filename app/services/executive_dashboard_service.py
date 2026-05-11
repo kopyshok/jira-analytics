@@ -30,6 +30,7 @@ from app.models.issue import Issue
 from app.models.planning_scenario import PlanningScenario
 from app.models.scenario_allocation import ScenarioAllocation
 from app.models.worklog import Worklog
+from app.services.allocation_estimates import effective_estimate_hours
 from app.services.work_type_outlier_detector import detect_outliers_for_theme
 
 logger = logging.getLogger("jira_analytics.executive")
@@ -378,10 +379,11 @@ class ExecutiveDashboardService:
                     float(alloc.involvement_coefficient)
                     if alloc.involvement_coefficient is not None else 1.0
                 )
-                plan["analyst"] += float(bi.estimate_analyst_hours or 0) * coef
-                plan["dev"] += float(bi.estimate_dev_hours or 0) * coef
-                plan["qa"] += float(bi.estimate_qa_hours or 0) * coef
-                plan["ope"] += float(bi.estimate_opo_hours or 0) * coef
+                eff = effective_estimate_hours(alloc)
+                plan["analyst"] += eff["analyst"] * coef
+                plan["dev"] += eff["dev"] * coef
+                plan["qa"] += eff["qa"] * coef
+                plan["ope"] += eff["opo"] * coef
                 if bi.issue_id:
                     scenario_issue_ids.append(bi.issue_id)
 
