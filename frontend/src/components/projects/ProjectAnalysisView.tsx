@@ -17,25 +17,29 @@ export const ProjectAnalysisView: React.FC<Props> = ({ detail, summary }) => {
   if (!detail) return null;
 
   return (
-    <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <ProjectGoalsCard summary={summary} description={detail.description} />
-        <ProjectCategoriesCard
-          categories={detail.categories}
-          totalHours={detail.total_hours}
-          weeks={detail.weeks}
-          projectKey={detail.key}
-          summary={summary}
-          issueHoursByKey={detail.issue_hours_by_key}
-        />
-        <ProjectEmployeesCard employees={detail.employees} projectKey={detail.key} />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <ProjectResultCard summary={summary} />
-        <ProjectStatusCard summary={summary} detail={detail} />
-<ProjectRatingsCard detail={detail} summary={summary} />
-        <ProjectTopIssuesCard topIssues={detail.top_issues} projectKey={detail.key} />
-      </div>
+    <div
+      style={{
+        padding: 16,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gap: 16,
+        alignItems: 'start',
+      }}
+    >
+      <ProjectGoalsCard summary={summary} description={detail.description} />
+      <ProjectResultCard summary={summary} />
+      <ProjectCategoriesCard
+        categories={detail.categories}
+        totalHours={detail.total_hours}
+        weeks={detail.weeks}
+        projectKey={detail.key}
+        summary={summary}
+        issueHoursByKey={detail.issue_hours_by_key}
+      />
+      <ProjectStatusCard summary={summary} detail={detail} />
+      <ProjectEmployeesCard employees={detail.employees} projectKey={detail.key} />
+      <ProjectRatingsCard detail={detail} summary={summary} />
+      <ProjectTopIssuesCard topIssues={detail.top_issues} projectKey={detail.key} />
     </div>
   );
 };
