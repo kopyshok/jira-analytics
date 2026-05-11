@@ -637,8 +637,11 @@ class ResourcePlanningService:
                 # - Extend last segment's end_date to cal_end when hours exhaust early
                 #   (involvement/duration makes phase longer than hours alone).
                 # Without Jira fields — legacy behavior: deadline = q_end.
+                # ceil вместо int: cal_days=2.5 должно дать 3 рабочих дня,
+                # иначе alloc_deadline урежет часы (20ч/8 = 2.5 → 2 дня → 16ч).
+                import math as _math
                 cal_end = min(
-                    _advance_working_days(earliest_start, int(cal_days)),
+                    _advance_working_days(earliest_start, int(_math.ceil(cal_days))),
                     q_end,
                 )
                 alloc_deadline = cal_end if jira_cal_set else q_end
@@ -651,15 +654,31 @@ class ResourcePlanningService:
                 )
 
                 # Если жёсткое окно из Jira (duration/involvement) не вмещает
-                # часы — расширяем deadline до конца квартала, чтобы фаза не
-                # пропала из расписания. Перегрузку зафиксирует RCPSP-leveler.
-                if jira_cal_set and not segments and hours > 0:
-                    segments = self._allocate_hours(
-                        employee_id, hours, earliest_start, q_end, remaining,
+                # ВСЕ часы — добираем остаток до конца квартала. Раньше retry
+                # запускался только при пустом сегменте; частичное размещение
+                # (14ч из 20) проходило тихо, остаток терялся. Перегрузку
+                # зафиксирует RCPSP-leveler.
+                allocated_h = sum(s[2] for s in segments)
+                if jira_cal_set and allocated_h + 0.01 < hours:
+                    deficit = hours - allocated_h
+                    extra_start = (
+                        (segments[-1][1] + timedelta(days=1))
+                        if segments
+                        else earliest_start
+                    )
+                    extra_segs = self._allocate_hours(
+                        employee_id, deficit, extra_start, q_end, remaining,
                         daily_capacity=phase_daily_cap,
                         preempt_locked=preempt_locked,
                         original_capacity=original_avail,
                     )
+                    if extra_segs:
+                        # Сливаем в один сегмент start..extra_end с суммарными часами,
+                        # чтобы остался единый бар; штриховка покажет пропуски внутри.
+                        merged_start = segments[0][0] if segments else extra_segs[0][0]
+                        merged_end = extra_segs[-1][1]
+                        merged_h = allocated_h + sum(s[2] for s in extra_segs)
+                        segments = [(merged_start, merged_end, merged_h, 1)]
 
                 if jira_cal_set:
                     if segments and segments[-1][1] > cal_end:
