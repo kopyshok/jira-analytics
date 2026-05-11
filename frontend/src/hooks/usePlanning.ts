@@ -21,6 +21,8 @@ import {
   acknowledgeDrift,
   fetchScenarioRevisions,
   fetchRevisionDiff,
+  patchAllocationOverride,
+  type AllocationOverridePayload,
 } from '../api/planning';
 import { updateBacklogItem } from '../api/backlog';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
@@ -333,6 +335,23 @@ export function useRevisionDiff(scenarioId: string | undefined, r1: number | nul
     queryKey: ['planning', 'scenario', scenarioId, 'revisions', 'diff', r1, r2],
     queryFn: () => fetchRevisionDiff(scenarioId!, r1!, r2!),
     enabled: !!scenarioId && r1 != null && r2 != null && r1 !== r2,
+  });
+}
+
+export function useAllocationOverrideMutation(scenarioId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      allocationId,
+      payload,
+    }: {
+      allocationId: string;
+      payload: AllocationOverridePayload;
+    }) => patchAllocationOverride(scenarioId, allocationId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['planning', 'allocations', scenarioId] });
+      qc.invalidateQueries({ queryKey: ['planning-continuation', scenarioId] });
+    },
   });
 }
 
