@@ -742,36 +742,24 @@ class ResourcePlanningService:
     ) -> List[Tuple[date, date, float, int]]:
         """Распределить total_hours по рабочим дням начиная с earliest_start.
 
-        Возвращает список сегментов (start, end, hours, part_num). Обычно один
-        сегмент, но если день внутри диапазона был занят preempting-фазой
-        (PREEMPTING_PHASES старшей по приоритету задачи) — сегмент разрывается:
-        часть до preempting-окна → дыра → часть после.
-
-        Через выходные/праздники/отсутствия (original=0) сегмент НЕ разрывается:
-        естественные паузы покрываются одним баром. Через дни занятые иными
-        обычными фазами того же сотрудника — тоже один бар (бар покрывает gap,
-        но часов в эти дни не списано). Сплит ТОЛЬКО при пересечении с
-        preempting-фазой.
+        Возвращает один сегмент (start, end, hours, 1) — единая полоса фазы.
+        Часы по-прежнему расходуются ТОЛЬКО на дни где cap>0 (preempting-locked
+        дни пропускаются, день остаётся в `remaining` нетронутым = preempt-фаза
+        получит его). Сам диапазон бара покрывает всё start..last_used включая
+        пропущенные дни — пропуски рисуются штриховкой через `unavailable_days`.
 
         Если задан ``daily_capacity`` — за один день фаза не возьмёт больше
-        этой величины, даже если у сотрудника свободно больше.
+        этой величины.
         """
+        # preempt_locked / original_capacity больше не нужны для split-логики
+        # (бар всегда один). Параметры остаются в сигнатуре для совместимости —
+        # вдруг понадобится в будущем расширении.
+        _ = preempt_locked, original_capacity
         emp_days = remaining.get(employee_id, {})
-        orig_days = (original_capacity or {}).get(employee_id, {})
-        locked_days = (preempt_locked or {}).get(employee_id, set())
         remaining_h = total_hours
-        segments: List[Tuple[date, date, float, int]] = []
+        used_total = 0.0
         seg_start: Optional[date] = None
         seg_end: Optional[date] = None
-        seg_used = 0.0
-
-        def _flush() -> None:
-            nonlocal seg_start, seg_end, seg_used
-            if seg_start is not None and seg_end is not None and seg_used > 0:
-                segments.append((seg_start, seg_end, seg_used, len(segments) + 1))
-            seg_start = None
-            seg_end = None
-            seg_used = 0.0
 
         d = earliest_start
         while remaining_h > 0.01 and d <= deadline:
@@ -783,21 +771,13 @@ class ResourcePlanningService:
                 used = min(cap, remaining_h)
                 emp_days[d] = 0.0
                 remaining_h -= used
-                seg_used += used
+                used_total += used
                 seg_end = d
-            else:
-                # День недоступен. Решаем — это разрыв из-за preempting-фазы
-                # или естественная пауза (выходной/чужая обычная фаза)?
-                if (
-                    seg_start is not None
-                    and orig_days.get(d, 0.0) > 0
-                    and d in locked_days
-                ):
-                    _flush()
             d += timedelta(days=1)
 
-        _flush()
-        return segments
+        if seg_start is not None and seg_end is not None and used_total > 0:
+            return [(seg_start, seg_end, used_total, 1)]
+        return []
 
     def _load_items(self, plan: ResourcePlan) -> List[BacklogItem]:
         """Загрузить включённые инициативы сценария, отсортированные по приоритету."""

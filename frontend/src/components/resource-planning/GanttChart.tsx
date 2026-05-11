@@ -31,6 +31,8 @@ interface Props {
   conflictAssignmentIds?: string[];
   onAssignmentClick?: (assignmentId: string) => void;
   hideWeekends?: boolean;
+  highlightedEmployeeId?: string | null;
+  onEmployeeRowClick?: (employeeId: string | null) => void;
 }
 
 export default function GanttChart({
@@ -51,6 +53,8 @@ export default function GanttChart({
   onToggleCollapse,
   conflictAssignmentIds,
   onAssignmentClick,
+  highlightedEmployeeId,
+  onEmployeeRowClick,
 }: Props) {
   const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
@@ -163,6 +167,7 @@ export default function GanttChart({
             showRelayArrows={showRelayArrows}
             manualDependencies={dependencies}
             onDeleteDependency={onDeleteDependency}
+            highlightedEmployeeId={highlightedEmployeeId}
           />
 
           <GanttRows
@@ -181,6 +186,8 @@ export default function GanttChart({
             onToggleCollapse={onToggleCollapse}
             conflictAssignmentIds={conflictAssignmentIds}
             onAssignmentClick={onAssignmentClick}
+            highlightedEmployeeId={highlightedEmployeeId}
+            onEmployeeRowClick={onEmployeeRowClick}
           />
         </div>
       </div>

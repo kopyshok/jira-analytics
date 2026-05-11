@@ -565,12 +565,32 @@ def get_gantt(
         for ab in absences:
             absences_by_emp.setdefault(ab.employee_id, []).append(ab)
 
+    # preempt windows per employee: дни занятые preempting-фазами (ОПЭ).
+    # Бар обычной фазы того же сотрудника, попадающий в эти дни, получает
+    # штриховку "block" — визуальный разрыв при сохранении одной полосы.
+    from app.services.resource_planning_service import PREEMPTING_PHASES
+    preempt_windows_by_emp: dict[str, list[tuple] ] = {}
+    for x in assignments_raw:
+        if (
+            x.phase in PREEMPTING_PHASES
+            and x.employee_id
+            and x.start_date
+            and x.end_date
+        ):
+            preempt_windows_by_emp.setdefault(x.employee_id, []).append(
+                (x.id, x.start_date, x.end_date)
+            )
+
     def _unavailable_days(a: ResourcePlanAssignment) -> list[UnavailableDay]:
         if not a.start_date or not a.end_date:
             return []
         out: list[UnavailableDay] = []
         d = a.start_date
         emp_absences = absences_by_emp.get(a.employee_id, [])
+        emp_preempts = [
+            (sid, ss, se) for sid, ss, se in preempt_windows_by_emp.get(a.employee_id, [])
+            if sid != a.id and not (se < a.start_date or ss > a.end_date)
+        ]
         while d <= a.end_date:
             cal_h = cal_map.get(d, None)
             kind: Optional[str] = None
@@ -584,6 +604,12 @@ def get_gantt(
                 ab.start_date <= d <= ab.end_date for ab in emp_absences
             ):
                 kind = "absence"
+            # Preempt-overlap: обычная фаза идёт через ОПЭ-день того же сотрудника.
+            # ОПЭ-фаза не помечает свои собственные дни как block (sid != a.id выше).
+            if a.phase not in PREEMPTING_PHASES and any(
+                ss <= d <= se for _sid, ss, se in emp_preempts
+            ):
+                kind = "block"
             if kind:
                 out.append(UnavailableDay(date=d, type=kind))
             d += _td(days=1)

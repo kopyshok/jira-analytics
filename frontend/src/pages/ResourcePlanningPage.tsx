@@ -44,6 +44,7 @@ export default function ResourcePlanningPage() {
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkLabel, setForkLabel] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
+  const [highlightedEmployeeId, setHighlightedEmployeeId] = useState<string | null>(null);
   const forkMutation = useForkPlan();
   const createDep = useCreateDependency();
   const deleteDep = useDeleteDependency();
@@ -267,6 +268,8 @@ export default function ResourcePlanningPage() {
           conflictAssignmentIds={conflictAssignmentIds}
           onAssignmentClick={(id) => setSelectedAssignmentId(id)}
           hideWeekends={prefs.hide_weekends}
+          highlightedEmployeeId={highlightedEmployeeId}
+          onEmployeeRowClick={setHighlightedEmployeeId}
           onCreateDependency={(from, to) => {
             createDep.mutate(
               { planId, fromItemId: from, toItemId: to, depType: 'FS', lagDays: 0 },

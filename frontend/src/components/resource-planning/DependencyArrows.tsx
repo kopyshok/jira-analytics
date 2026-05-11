@@ -8,7 +8,13 @@ interface Props {
   showRelayArrows?: boolean;
   manualDependencies?: DependencyOut[];
   onDeleteDependency?: (depId: string) => void;
+  highlightedEmployeeId?: string | null;
 }
+
+const ANALYST_ROLE_CODES_ARROW = new Set([
+  'аналитик', 'analyst', 'an', 'рп', 'rp', 'консультант', 'consultant',
+]);
+const DEV_ROLE_CODES_ARROW = new Set(['разработчик', 'developer', 'dev', 'программист']);
 
 export default function DependencyArrows({
   assignments,
@@ -17,6 +23,7 @@ export default function DependencyArrows({
   showRelayArrows = true,
   manualDependencies = [],
   onDeleteDependency,
+  highlightedEmployeeId,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -173,6 +180,53 @@ export default function DependencyArrows({
       }
     }
 
+    // Resource-flow arrows внутри инициативы: analyst-last → opo-an-1, dev-last → opo-dev-1.
+    // Показывают как ресурс «перетекает» с обычной фазы на свой кусок ОПЭ.
+    for (const [, itemAssignments] of byItem) {
+      const analystLast = itemAssignments
+        .filter(a => a.phase === 'analyst')
+        .sort((a, b) => b.part_number - a.part_number)[0];
+      const devLast = itemAssignments
+        .filter(a => a.phase === 'dev')
+        .sort((a, b) => b.part_number - a.part_number)[0];
+      const opoAnalyst = itemAssignments.find(a =>
+        a.phase === 'opo' && a.part_number === 1
+        && ANALYST_ROLE_CODES_ARROW.has((a.employee_role ?? '').toLowerCase())
+      );
+      const opoDev = itemAssignments.find(a =>
+        a.phase === 'opo' && a.part_number === 1
+        && DEV_ROLE_CODES_ARROW.has((a.employee_role ?? '').toLowerCase())
+      );
+
+      const drawResource = (
+        from: AssignmentOut | undefined,
+        to: AssignmentOut | undefined,
+        roleSuffix: 'an' | 'dev',
+      ) => {
+        if (!from || !to) return;
+        const fromEl = rowRefs.current.get(`${from.backlog_item_id}-${from.phase}-${from.part_number}`);
+        const toEl = rowRefs.current.get(`${to.backlog_item_id}-opo-${roleSuffix}-1`);
+        if (!fromEl || !toEl) return;
+        const fRect = fromEl.getBoundingClientRect();
+        const tRect = toEl.getBoundingClientRect();
+        const isFaded =
+          !!highlightedEmployeeId && from.employee_id !== highlightedEmployeeId;
+        const color = isFaded
+          ? 'rgba(0,201,200,0.15)'
+          : 'rgba(0,201,200,0.85)';
+        drawArrow(
+          fRect.right - cRect.left,
+          fRect.top + fRect.height / 2 - cRect.top,
+          tRect.left - cRect.left,
+          tRect.top + tRect.height / 2 - cRect.top,
+          color, '1.5', '4 3', 'rp-relay-arrowhead',
+        );
+      };
+
+      drawResource(analystLast, opoAnalyst, 'an');
+      drawResource(devLast, opoDev, 'dev');
+    }
+
     // Inter-initiative relay arrows (analyst pipeline)
     if (showRelayArrows) {
       const byEmp = new Map<string, AssignmentOut[]>();
@@ -250,7 +304,7 @@ export default function DependencyArrows({
       cancelled = true;
       cancelAnimationFrame(raf1);
     };
-  }, [assignments, manualDependencies, showRelayArrows, onDeleteDependency, containerRef, rowRefs]);
+  }, [assignments, manualDependencies, showRelayArrows, onDeleteDependency, containerRef, rowRefs, highlightedEmployeeId]);
 
   return (
     <svg

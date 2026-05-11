@@ -25,6 +25,8 @@ interface Props {
   onToggleCollapse?: (itemId: string, collapsed: boolean) => void;
   conflictAssignmentIds?: string[];
   onAssignmentClick?: (assignmentId: string) => void;
+  highlightedEmployeeId?: string | null;
+  onEmployeeRowClick?: (employeeId: string | null) => void;
 }
 
 type SubProps = Omit<Props, 'viewMode'>;
@@ -245,16 +247,18 @@ interface PhaseBarProps {
   planId: string;
   timeline: GanttTimeline;
   refKey: string;
+  extraRefKeys?: string[];
   rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
   color: string;
   showResize: boolean;
   employees: EmployeeResponse[];
   hasConflict?: boolean;
+  dimmed?: boolean;
   onClick?: () => void;
   unavailableDays?: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showResize, employees, hasConflict, onClick, unavailableDays }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, employees, hasConflict, dimmed, onClick, unavailableDays }: PhaseBarProps) {
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     mode: 'move' | 'resize-start' | 'resize-end';
@@ -340,8 +344,13 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
   const bar = (
     <div
       ref={el => {
-        if (el) rowRefs.current.set(refKey, el);
-        else rowRefs.current.delete(refKey);
+        if (el) {
+          rowRefs.current.set(refKey, el);
+          extraRefKeys?.forEach(k => rowRefs.current.set(k, el));
+        } else {
+          rowRefs.current.delete(refKey);
+          extraRefKeys?.forEach(k => rowRefs.current.delete(k));
+        }
       }}
       onMouseDown={(e) => beginDrag(e, 'move')}
       onClick={(e) => {
@@ -360,7 +369,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, rowRefs, color, showRe
         transform: 'translateY(-50%)',
         height: 18,
         background: color,
-        opacity: assignment.is_on_critical_path ? 1 : 0.75,
+        opacity: dimmed ? 0.25 : (assignment.is_on_critical_path ? 1 : 0.75),
         borderRadius: 3,
         border: assignment.is_on_critical_path ? '1px solid #e85d4a' : 'none',
         boxShadow: hasConflict
@@ -513,6 +522,7 @@ function TwoLevelRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
+  highlightedEmployeeId, onEmployeeRowClick,
 }: SubProps) {
   const collapsedSet = useMemo(() => new Set(collapsedItemIds ?? []), [collapsedItemIds]);
   const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
@@ -651,10 +661,37 @@ function TwoLevelRows({
               return subgroups.map(sg => {
                 const empName = sg.assignments[0].employee_name;
                 const empRole = sg.assignments[0].employee_role;
+                const empId = sg.assignments[0].employee_id;
                 const sgHours = sg.assignments.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
                 const title = sg.roleLabel
                   ? `${PHASE_LABELS[phase]} · ${sg.roleLabel}`
                   : PHASE_LABELS[phase];
+                const isHighlighted = !!highlightedEmployeeId && empId === highlightedEmployeeId;
+                const isDimmed = !!highlightedEmployeeId && !isHighlighted && phase !== 'qa';
+                const assigneeNode = phase === 'qa' ? (
+                  <span style={{ color: '#4a6a90' }}>—</span>
+                ) : (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onEmployeeRowClick && empId) {
+                        onEmployeeRowClick(isHighlighted ? null : empId);
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: empId ? 'pointer' : 'default',
+                      padding: '2px 4px',
+                      borderRadius: 3,
+                      background: isHighlighted ? 'rgba(0,201,200,0.18)' : 'transparent',
+                    }}
+                  >
+                    <EmployeeAvatar name={empName} role={empRole} size={16} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{empName ?? '—'}</span>
+                  </span>
+                );
                 return (
                   <div
                     key={sg.key}
@@ -663,6 +700,7 @@ function TwoLevelRows({
                       display: 'flex',
                       height: ROW_HEIGHT - 4,
                       borderBottom: '1px solid #0e2540',
+                      background: isHighlighted ? 'rgba(0,201,200,0.06)' : 'transparent',
                     }}
                   >
                     <ItemTitleCell
@@ -670,22 +708,20 @@ function TwoLevelRows({
                       jiraKey={null}
                       leftColWidth={leftColWidth}
                       dotColor={color}
-                      assignee={
-                        phase === 'qa' ? <span style={{ color: '#4a6a90' }}>—</span> : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <EmployeeAvatar name={empName} role={empRole} size={16} />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{empName ?? '—'}</span>
-                          </span>
-                        )
-                      }
+                      assignee={assigneeNode}
                       hours={sgHours > 0 ? `${Math.round(sgHours)} ч` : ''}
                     />
                     <div data-gantt-track="true" style={{ ...trackStyle(trackWidthPx) }}>
                       {sg.assignments.filter(a => a.start_date && a.end_date).map(a => {
-                        // Канонический ключ для стрелок (без employee_id).
-                        // Внутри ОПЭ analyst-bar и dev-bar имеют одинаковый ключ — Map
-                        // оставляет последний; стрелке достаточно любого валидного эл-та.
+                        // Канонический ключ для chain-стрелок (QA→opo и т.д.).
                         const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
+                        // Доп. role-ключ для ресурс-стрелок analyst→opo-an, dev→opo-dev.
+                        const extras: string[] = [];
+                        if (a.phase === 'opo' && sg.key === 'opo-an') {
+                          extras.push(`${a.backlog_item_id}-opo-an-${a.part_number}`);
+                        } else if (a.phase === 'opo' && sg.key === 'opo-dev') {
+                          extras.push(`${a.backlog_item_id}-opo-dev-${a.part_number}`);
+                        }
                         return (
                           <PhaseBar
                             key={a.id}
@@ -693,11 +729,13 @@ function TwoLevelRows({
                             planId={planId}
                             timeline={timeline}
                             refKey={refKey}
+                            extraRefKeys={extras}
                             rowRefs={rowRefs}
                             color={color}
                             showResize={a.phase !== 'qa'}
                             employees={employees}
                             hasConflict={conflictSet.has(a.id)}
+                            dimmed={isDimmed}
                             onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
                             unavailableDays={
                               (a as AssignmentOut & {
