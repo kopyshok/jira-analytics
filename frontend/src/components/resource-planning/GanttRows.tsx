@@ -36,8 +36,10 @@ const trackStyle = (trackWidthPx?: number): React.CSSProperties =>
 
 const ROW_HEIGHT = 36;
 const JIRA_BASE = 'https://itgri.atlassian.net';
-const ZEBRA_BG_EVEN = 'rgba(0,201,200,0.04)';
-const ZEBRA_BG_ODD = 'rgba(0,0,0,0.18)';
+const ZEBRA_BG_EVEN = 'rgba(255,255,255,0.025)';
+const ZEBRA_BG_ODD = 'rgba(0,0,0,0.28)';
+const INIT_HEADER_BG = 'rgba(0,201,200,0.10)';
+const INIT_DIVIDER = '2px solid rgba(0,201,200,0.45)';
 
 function ItemTitleCell({
   title, jiraKey, priority, leftColWidth, fontWeight = 600,
@@ -532,10 +534,12 @@ function TwoLevelRows({
         const isCollapsed = collapsedSet.has(itemId);
 
         const totalHours = ia.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
-        const assigneeNames = Array.from(new Set(ia.map(a => a.employee_name).filter(Boolean))).join(', ');
+        const initAssigneeName = ia[0]?.scenario_assignee_name
+          ?? ia.find(a => a.phase === 'analyst')?.employee_name
+          ?? '—';
 
         return (
-          <div key={itemId} style={{ background: itemBg }}>
+          <div key={itemId} style={{ background: itemBg, borderTop: itemIdx > 0 ? INIT_DIVIDER : 'none' }}>
             <div
               ref={el => {
                 if (el) rowRefs.current.set(itemId, el);
@@ -546,7 +550,7 @@ function TwoLevelRows({
                 display: 'flex',
                 minHeight: ROW_HEIGHT,
                 borderBottom: '1px solid #1e3a5f',
-                background: isPendingFrom ? 'rgba(255,122,69,0.18)' : 'rgba(0,201,200,0.05)',
+                background: isPendingFrom ? 'rgba(255,122,69,0.18)' : INIT_HEADER_BG,
                 cursor: depDrawMode ? 'crosshair' : 'default',
                 outline: isPendingFrom ? '2px solid #ff7a45' : 'none',
               }}
@@ -577,7 +581,7 @@ function TwoLevelRows({
                 priority={priority}
                 leftColWidth={leftColWidth - 24}
                 fontWeight={700}
-                assignee={assigneeNames || '—'}
+                assignee={initAssigneeName}
                 hours={totalHours > 0 ? `${Math.round(totalHours)} ч` : ''}
               />
               <div style={trackStyle(trackWidthPx)}>
