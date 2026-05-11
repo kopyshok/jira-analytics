@@ -245,10 +245,6 @@ export default function ResourcePlanningPage() {
         />
       )}
 
-      {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
-        <EmployeeLoadHeatmap rows={gantt.employee_load} />
-      )}
-
       {ganttLoading && <Spin style={{ display: 'block', margin: '80px auto' }} />}
       {!planId && !ganttLoading && (
         <Empty description="Выберите план или создайте его из утверждённого сценария" />
@@ -290,6 +286,10 @@ export default function ResourcePlanningPage() {
             );
           }}
         />
+      )}
+
+      {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
+        <EmployeeLoadHeatmap rows={gantt.employee_load} />
       )}
 
       <AssignmentSidebar
