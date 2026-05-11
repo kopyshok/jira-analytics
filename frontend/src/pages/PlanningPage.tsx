@@ -54,6 +54,7 @@ import { useJiraSettings } from '../hooks/useSettings';
 import { getRoleColor } from '../utils/roles';
 import { OPO_COLOR } from '../utils/opo';
 import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../utils/planning';
+import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
 
 const GRID = '24px 36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
@@ -105,10 +106,11 @@ function rolesAffectedByAllocation(
   a: AllocationResponse,
   employees: { employee_id: string; role: string | null }[] | undefined,
 ): string[] {
-  const ea = a.estimate_analyst_hours ?? 0;
-  const ed = a.estimate_dev_hours ?? 0;
-  const eq = a.estimate_qa_hours ?? 0;
-  const eo = a.estimate_opo_hours ?? 0;
+  const eff = effectiveEstimate(a);
+  const ea = eff.analyst;
+  const ed = eff.dev;
+  const eq = eff.qa;
+  const eo = eff.opo;
   const r = a.opo_analyst_ratio ?? 0.5;
   const emp = employees?.find((e) => e.employee_id === a.assignee_employee_id);
   const role = emp?.role ?? a.assignee_role ?? null;
@@ -371,11 +373,8 @@ export default function PlanningPage() {
   const hasAnyDeficit = Object.keys(deficit).length > 0;
 
   const rowStateClass = (a: AllocationResponse): string => {
-    const total =
-      (a.estimate_analyst_hours ?? 0) +
-      (a.estimate_dev_hours ?? 0) +
-      (a.estimate_qa_hours ?? 0) +
-      (a.estimate_opo_hours ?? 0);
+    const eff = effectiveEstimate(a);
+    const total = eff.analyst + eff.dev + eff.qa + eff.opo;
     if (total <= 0) return 'row-state-no-estimates';
     if (a.included && hasAnyDeficit) return 'row-state-deficit';
     if (a.source_category === 'quarterly_tasks') return 'row-state-in-work';
@@ -737,11 +736,12 @@ export default function PlanningPage() {
                   >
                     <div style={{ overflowY: 'auto', flex: 1 }} ref={listRef}>
                   {orderedAllocations.map((a) => {
-                    const an = a.estimate_analyst_hours ?? 0;
-                    const de = a.estimate_dev_hours ?? 0;
-                    const qa = a.estimate_qa_hours ?? 0;
-                    const op = a.estimate_opo_hours ?? 0;
-                    const total = a.estimate_hours ?? an + de + qa + op;
+                    const eff = effectiveEstimate(a);
+                    const an = eff.analyst;
+                    const de = eff.dev;
+                    const qa = eff.qa;
+                    const op = eff.opo;
+                    const total = an + de + qa + op;
                     const priorityCyan = a.priority != null && a.priority <= 3;
                     const contInfo = continuation?.info_by_allocation_id?.[a.id];
                     const hasOverride =
