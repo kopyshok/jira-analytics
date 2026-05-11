@@ -184,7 +184,7 @@ function ItemColumn({ title, color, items }: { title: string; color: string; ite
             style={{
               padding: '6px 10px', marginBottom: 4,
               background: color === '#1d9e75' ? 'rgba(29,158,117,0.10)' : 'rgba(245,34,45,0.10)',
-              borderLeft: `3px solid ${color}`,
+              boxShadow: `inset 2px 0 0 ${color}`,
               borderRadius: 4,
               fontSize: 12,
               color: DARK_THEME.textPrimary,

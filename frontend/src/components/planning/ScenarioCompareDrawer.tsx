@@ -128,7 +128,7 @@ function CompareRow({ alloc, state }: { alloc: AllocationResponse; state: 'commo
         padding: '8px 10px',
         marginBottom: 4,
         background: bg,
-        borderLeft: `3px solid ${border}`,
+        boxShadow: `inset 2px 0 0 ${border}`,
         borderRadius: 4,
         fontSize: 13,
       }}

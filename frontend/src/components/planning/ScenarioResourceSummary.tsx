@@ -102,13 +102,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
         boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
       }}
     >
-      <div
-        style={{
-          maxHeight: collapsed ? 44 : 800,
-          overflow: 'hidden',
-          transition: 'max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
-      >
+      <div style={{ overflow: 'hidden' }}>
         {children}
       </div>
     </div>
@@ -399,7 +393,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                 color: DARK_THEME.cyanPrimary,
                 fontWeight: 700,
                 fontSize: 16,
-                borderLeft: `3px solid ${DARK_THEME.cyanPrimary}`,
+                boxShadow: `inset 2px 0 0 ${DARK_THEME.cyanPrimary}`,
                 whiteSpace: 'nowrap' as const,
               }}
             >
@@ -464,10 +458,12 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
                     >
                       <div
                         style={{
-                          height: '100%',
-                          width: `${Math.min(100, utilPct)}%`,
+                          position: 'absolute',
+                          inset: 0,
+                          transform: `scaleX(${Math.min(100, utilPct) / 100})`,
+                          transformOrigin: 'left',
                           background: barColor,
-                          transition: 'width 0.3s ease, background-color 0.3s ease',
+                          transition: 'transform 0.3s ease, background-color 0.3s ease',
                         }}
                       />
                     </div>

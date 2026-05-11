@@ -21,7 +21,7 @@ function Section({ cfg }: { cfg: SectionConfig }) {
       style={{
         background: cfg.bg,
         border: `1px solid ${cfg.accent}`,
-        borderLeft: `3px solid ${cfg.accent}`,
+        boxShadow: `inset 2px 0 0 ${cfg.accent}`,
         borderRadius: 8,
         height: '100%',
       }}

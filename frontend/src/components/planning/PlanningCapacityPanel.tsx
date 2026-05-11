@@ -209,10 +209,11 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
         <div style={{ position: 'relative', height: 14, background: DARK_THEME.darkAccent, borderRadius: 7, overflow: 'hidden' }}>
           <div
             style={{
-              position: 'absolute', left: 0, top: 0, bottom: 0,
-              width: `${plannedPct}%`,
+              position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+              transform: `scaleX(${plannedPct / 100})`,
+              transformOrigin: 'left',
               background: overallOver ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
-              transition: 'width .2s',
+              transition: 'transform .2s',
             }}
           />
         </div>
@@ -313,8 +314,8 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
                   const over = empDemand > empCapacity && empCapacity > 0;
                   return (
                     <>
-                      <div style={{ display: 'flex', height: 5, background: DARK_THEME.darkAccent, borderRadius: 2, overflow: 'hidden', marginTop: 4 }}>
-                        <div style={{ width: `${pct}%`, background: over ? DARK_THEME.amber : roleColor, transition: 'width 0.2s' }} />
+                      <div style={{ position: 'relative', height: 5, background: DARK_THEME.darkAccent, borderRadius: 2, overflow: 'hidden', marginTop: 4 }}>
+                        <div style={{ position: 'absolute', inset: 0, transform: `scaleX(${pct / 100})`, transformOrigin: 'left', background: over ? DARK_THEME.amber : roleColor, transition: 'transform 0.2s' }} />
                       </div>
                       {empDemand > 0 && (
                         <div style={{ fontSize: 12, color: over ? DARK_THEME.amber : DARK_THEME.textDim, marginTop: 1, textAlign: 'right', fontFamily: FONTS.mono }}>

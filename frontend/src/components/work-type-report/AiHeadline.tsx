@@ -16,8 +16,8 @@ export default function AiHeadline({ report }: Props) {
     <Card
       size="small"
       style={{
-        borderLeft: `4px solid ${DARK_THEME.cyanPrimary}`,
         border: `1px solid ${DARK_THEME.border}`,
+        boxShadow: `inset 2px 0 0 ${DARK_THEME.cyanPrimary}`,
         background: `linear-gradient(135deg, ${DARK_THEME.cardBg} 0%, ${DARK_THEME.darkAccent} 100%)`,
         marginBottom: 16,
       }}

@@ -445,7 +445,7 @@ export default function HierarchyTable({
           background: ${DARK_THEME.darkAccent} !important;
         }
         .wtr-highlight-row td {
-          border-left: 3px solid ${DARK_THEME.cyanPrimary} !important;
+          box-shadow: inset 2px 0 0 ${DARK_THEME.cyanPrimary} !important;
           background: rgba(0,201,200,0.08) !important;
           transition: background 0.3s;
         }

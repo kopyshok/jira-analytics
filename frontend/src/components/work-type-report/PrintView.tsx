@@ -220,11 +220,11 @@ export default function PrintView() {
       <div
         className="work-type-print-section"
         style={{
-          borderLeft: '4px solid #00c9c8',
+          boxShadow: 'inset 2px 0 0 #00c9c8',
           background: '#f0fdfc',
           padding: '14px 18px',
           marginBottom: 24,
-          borderRadius: '0 6px 6px 0',
+          borderRadius: 6,
         }}
       >
         <div
@@ -381,11 +381,11 @@ export default function PrintView() {
         <div
           className="work-type-print-section"
           style={{
-            borderLeft: '4px solid #f5c842',
+            boxShadow: 'inset 2px 0 0 #f5c842',
             background: '#fffbeb',
             padding: '14px 18px',
             marginBottom: 24,
-            borderRadius: '0 6px 6px 0',
+            borderRadius: 6,
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>

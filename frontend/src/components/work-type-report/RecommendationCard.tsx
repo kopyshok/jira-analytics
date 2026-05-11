@@ -12,11 +12,9 @@ export default function RecommendationCard({ recommendation }: Props) {
   return (
     <div
       style={{
-        borderLeft: `4px solid ${DARK_THEME.yellow}`,
-        borderTop: `1px solid ${DARK_THEME.border}`,
-        borderRight: `1px solid ${DARK_THEME.border}`,
-        borderBottom: `1px solid ${DARK_THEME.border}`,
-        borderRadius: '0 6px 6px 0',
+        border: `1px solid ${DARK_THEME.border}`,
+        boxShadow: `inset 2px 0 0 ${DARK_THEME.yellow}`,
+        borderRadius: 6,
         background: DARK_THEME.darkAccent,
         padding: '12px 14px',
         marginBottom: 8,

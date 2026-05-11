@@ -66,6 +66,7 @@ Thumbs.db
 
 # Local agent / tool artefacts
 .claude/
+.agents/
 .dev-logs/
 .playwright-mcp/
 design-reference/

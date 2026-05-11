@@ -69,13 +69,12 @@ export default function RoleCapacityBar({ role, demand, capacity, employeeCount 
         <div
           style={{
             position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: `${fillPct}%`,
+            inset: 0,
+            transform: `scaleX(${fillPct / 100})`,
+            transformOrigin: 'left',
             background: over ? DARK_THEME.amber : roleColor,
             borderRadius: 5,
-            transition: 'width .2s',
+            transition: 'transform .2s',
           }}
         />
         {/* 100% marker — stays at right inner edge */}

@@ -499,6 +499,7 @@ export default function ExecutiveDashboardPage() {
                           </div>
                           <div
                             style={{
+                              position: 'relative',
                               height: 8,
                               background: DARK_THEME.darkRows,
                               borderRadius: 4,
@@ -507,10 +508,12 @@ export default function ExecutiveDashboardPage() {
                           >
                             <div
                               style={{
-                                width: `${colorPct}%`,
-                                height: '100%',
+                                position: 'absolute',
+                                inset: 0,
+                                transform: `scaleX(${colorPct / 100})`,
+                                transformOrigin: 'left',
                                 background: fill,
-                                transition: 'width 200ms ease',
+                                transition: 'transform 200ms ease',
                               }}
                             />
                           </div>
