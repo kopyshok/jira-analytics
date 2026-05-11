@@ -16,7 +16,7 @@ export interface KpiCardProps {
 const STATUS_COLORS: Record<KpiStatus, { accent: string; bg: string }> = {
   good: { accent: DARK_THEME.success, bg: 'rgba(29,158,117,0.12)' },
   warn: { accent: DARK_THEME.yellow, bg: 'rgba(245,200,66,0.12)' },
-  bad: { accent: '#E24B4A', bg: 'rgba(226,75,74,0.12)' },
+  bad: { accent: DARK_THEME.danger, bg: 'rgba(226,75,74,0.12)' },
 };
 
 export default function KpiCard(props: KpiCardProps) {

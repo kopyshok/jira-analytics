@@ -9,7 +9,7 @@ export interface ModuleHealthProps {
 const HEALTH_COLOR: Record<ExecutiveModule['health'], string> = {
   green: DARK_THEME.success,
   yellow: DARK_THEME.yellow,
-  red: '#E24B4A',
+  red: DARK_THEME.danger,
 };
 
 function parsePct(load: string): number {

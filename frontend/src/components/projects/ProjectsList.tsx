@@ -3,6 +3,7 @@ import { Skeleton, Empty, Select, Tag } from 'antd';
 import { useProjectsList } from '../../hooks/useProjects';
 import { ProjectListCard } from './ProjectListCard';
 import { ProjectListFilters } from './ProjectListFilters';
+import { DARK_THEME } from '../../utils/constants';
 
 interface Props {
   selectedKey: string | null;
@@ -39,21 +40,21 @@ export const ProjectsList: React.FC<Props> = ({ selectedKey, onSelect }) => {
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        borderRight: '1px solid #1e3356',
-        background: '#0f2340',
+        borderRight: `1px solid ${DARK_THEME.border}`,
+        background: DARK_THEME.cardBg,
         height: '100%',
       }}
     >
       <div
         style={{
           padding: '12px 12px 8px',
-          borderBottom: '1px solid #1e3356',
+          borderBottom: `1px solid ${DARK_THEME.border}`,
         }}
       >
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#e8f0fa', marginBottom: 8 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: DARK_THEME.textPrimary, marginBottom: 8 }}>
           Проекты
           {projects && (
-            <span style={{ fontSize: 12, fontWeight: 400, color: '#7e94b8', marginLeft: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 400, color: DARK_THEME.textMuted, marginLeft: 8 }}>
               {projects.length}
             </span>
           )}
@@ -99,7 +100,7 @@ export const ProjectsList: React.FC<Props> = ({ selectedKey, onSelect }) => {
         {!isLoading && (!projects || projects.length === 0) && (
           <Empty
             description="Нет проектов"
-            style={{ marginTop: 48, color: '#7e94b8' }}
+            style={{ marginTop: 48, color: DARK_THEME.textMuted }}
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         )}

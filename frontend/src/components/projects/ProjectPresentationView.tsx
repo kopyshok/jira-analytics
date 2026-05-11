@@ -4,6 +4,7 @@ import { ProjectStorySection } from './presentation/ProjectStorySection';
 import { DonutChart } from './shared/DonutChart';
 import { StarRating } from './shared/StarRating';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
+import { DARK_THEME } from '../../utils/constants';
 
 interface Props {
   detail: ProjectDetail | undefined;
@@ -25,9 +26,9 @@ function initials(name: string): string {
 
 const AI_PLACEHOLDER_STYLE: React.CSSProperties = {
   padding: 24,
-  background: '#091527',
+  background: DARK_THEME.sidebarBg,
   borderRadius: 8,
-  color: '#7e94b8',
+  color: DARK_THEME.textMuted,
   textAlign: 'center',
   fontStyle: 'italic',
 };
@@ -51,7 +52,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
           <ol style={{ paddingLeft: 0, listStyle: 'none', margin: 0 }}>
             {summary.goals.map((g, i) => (
               <li key={i} style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 16, color: '#cfd8e5' }}>
-                <span style={{ flexShrink: 0, fontSize: 28, fontWeight: 700, color: '#00c9c8', lineHeight: 1, width: 32 }}>{i + 1}</span>
+                <span style={{ flexShrink: 0, fontSize: 28, fontWeight: 700, color: DARK_THEME.cyanPrimary, lineHeight: 1, width: 32 }}>{i + 1}</span>
                 <span>{g}</span>
               </li>
             ))}
@@ -60,7 +61,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
           <div style={AI_PLACEHOLDER_STYLE}>AI-цели генерируются...</div>
         )}
         {detail.description && (
-          <p style={{ marginTop: 16, color: '#7e94b8', whiteSpace: 'pre-wrap', fontSize: 14 }}>
+          <p style={{ marginTop: 16, color: DARK_THEME.textMuted, whiteSpace: 'pre-wrap', fontSize: 14 }}>
             {detail.description.slice(0, 800)}
           </p>
         )}
@@ -84,7 +85,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                     >
                       {c.done ? '✓' : '○'}
                     </span>
-                    <span style={{ color: c.done ? '#fff' : '#7e94b8' }}>{c.label}</span>
+                    <span style={{ color: c.done ? DARK_THEME.textPrimary : DARK_THEME.textMuted }}>{c.label}</span>
                   </div>
                 ))}
               </div>
@@ -109,19 +110,19 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
               <div key={e.employee_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%', background: color,
-                  color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: DARK_THEME.textPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 12, fontWeight: 700, flexShrink: 0,
                 }}>
                   {initials(e.name)}
                 </div>
-                <div style={{ flex: 1, fontSize: 14, color: i < 2 ? '#fff' : '#cfd8e5', fontWeight: i < 2 ? 600 : 400 }}>
+                <div style={{ flex: 1, fontSize: 14, color: i < 2 ? DARK_THEME.textPrimary : '#cfd8e5', fontWeight: i < 2 ? 600 : 400 }}>
                   {e.name}
                 </div>
                 <div style={{ flex: 2, height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4 }}>
                   <div style={{ width: `${(e.hours / empMax) * 100}%`, height: '100%', background: color, borderRadius: 4 }} />
                 </div>
                 <div style={{ width: 110, textAlign: 'right', fontSize: 14, color: '#cfd8e5' }}>
-                  <b style={{ color: '#fff' }}>{e.hours}</b> ч ({e.pct}%)
+                  <b style={{ color: DARK_THEME.textPrimary }}>{e.hours}</b> ч ({e.pct}%)
                 </div>
               </div>
             );
@@ -148,7 +149,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                 const total = raw.reduce((acc, s) => acc + s.hours, 0);
                 return raw.map((s) => ({ ...s, pct: total ? Math.round((s.hours / total) * 100) : 0 }));
               })()
-            : detail.categories.map((c) => ({ code: c.code, label: c.label, hours: c.hours, color: c.color || '#7e94b8', pct: c.pct }));
+            : detail.categories.map((c) => ({ code: c.code, label: c.label, hours: c.hours, color: c.color || DARK_THEME.textMuted, pct: c.pct }));
 
           return timeSlices.length > 0 ? (
             <div style={{ display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -163,7 +164,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                   <div key={s.code} style={{ marginBottom: 12 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
                       <span style={{ color: '#cfd8e5' }}>{s.label}</span>
-                      <span style={{ color: '#fff' }}>
+                      <span style={{ color: DARK_THEME.textPrimary }}>
                         <b>{s.hours}</b> ч ({s.pct}%)
                       </span>
                     </div>
@@ -181,15 +182,15 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
 
         {detail.top_issues.length > 0 && (
           <>
-            <h3 style={{ marginTop: 32, fontSize: 18, color: '#fff', fontWeight: 600 }}>Топ-3 задачи</h3>
+            <h3 style={{ marginTop: 32, fontSize: 18, color: DARK_THEME.textPrimary, fontWeight: 600 }}>Топ-3 задачи</h3>
             {detail.top_issues.slice(0, 3).map((t, i) => (
               <div key={t.key} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 14 }}>
                 <span style={{ color: '#cfd8e5' }}>
-                  <span style={{ color: '#7e94b8', marginRight: 8 }}>{i + 1}.</span>
-                  <span style={{ color: '#00c9c8', marginRight: 8 }}>{t.key}</span>
+                  <span style={{ color: DARK_THEME.textMuted, marginRight: 8 }}>{i + 1}.</span>
+                  <span style={{ color: DARK_THEME.cyanPrimary, marginRight: 8 }}>{t.key}</span>
                   {t.summary}
                 </span>
-                <span style={{ color: '#fff' }}><b>{t.hours}</b> ч</span>
+                <span style={{ color: DARK_THEME.textPrimary }}><b>{t.hours}</b> ч</span>
               </div>
             ))}
           </>
@@ -205,10 +206,10 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
               { label: 'Скорость', value: detail.rating_speed },
               { label: 'Результат', value: detail.rating_result },
             ].map((r, i) => (
-              <div key={i} style={{ background: '#0f2340', borderRadius: 8, padding: 24, textAlign: 'center' }}>
-                <div style={{ fontSize: 14, color: '#7e94b8', marginBottom: 12 }}>{r.label}</div>
+              <div key={i} style={{ background: DARK_THEME.cardBg, borderRadius: 8, padding: 24, textAlign: 'center' }}>
+                <div style={{ fontSize: 14, color: DARK_THEME.textMuted, marginBottom: 12 }}>{r.label}</div>
                 <StarRating value={r.value ?? 0} size={32} />
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', marginTop: 8 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: DARK_THEME.textPrimary, marginTop: 8 }}>
                   {r.value ?? '—'} / 5
                 </div>
               </div>

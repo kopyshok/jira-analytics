@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
   Alert,
+  App,
   Button,
   Card,
   Col,
@@ -8,7 +9,6 @@ import {
   Row,
   Spin,
   Typography,
-  message,
 } from 'antd';
 import {
   AlertOutlined,
@@ -141,6 +141,7 @@ const TOOLTIP_STYLE = {
 };
 
 export default function ExecutiveDashboardPage() {
+  const { message } = App.useApp();
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
   const qc = useQueryClient();
@@ -213,8 +214,10 @@ export default function ExecutiveDashboardPage() {
           >
             ОБЗОР
           </span>
-          <span
+          <Typography.Title
+            level={1}
             style={{
+              margin: 0,
               fontSize: 22,
               fontFamily: FONTS.display,
               fontWeight: 600,
@@ -223,7 +226,7 @@ export default function ExecutiveDashboardPage() {
             }}
           >
             {PAGE_TITLE}
-          </span>
+          </Typography.Title>
         </div>
         {headerRight}
       </div>
@@ -479,7 +482,7 @@ export default function ExecutiveDashboardPage() {
                       const overload = pct > 100;
                       const colorPct = Math.min(100, Math.max(0, pct));
                       const fill = overload
-                        ? '#E24B4A'
+                        ? DARK_THEME.danger
                         : pct >= 90
                           ? DARK_THEME.yellow
                           : DARK_THEME.cyanPrimary;

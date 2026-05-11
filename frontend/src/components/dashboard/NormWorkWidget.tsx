@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form, Button } from 'antd';
 import { SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
+import { DARK_THEME } from '../../utils/constants';
 import type {
   DashboardNormWorkResponse,
   NormWorkRoleGroup,
@@ -27,7 +28,7 @@ function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: s
   const fillW = plan > 0 ? Math.min(targetPct, (fact / plan) * targetPct) : 0;
   const overrunW = plan > 0 && fact > plan ? Math.min(100 - targetPct, ((fact - plan) / plan) * targetPct) : 0;
   return (
-    <div style={{ position: 'relative', height: 14, background: '#1c3358', borderRadius: 7 }}>
+    <div style={{ position: 'relative', height: 14, background: DARK_THEME.darkRows, borderRadius: 7 }}>
       <div style={{
         position: 'absolute', top: 0, left: 0, height: '100%',
         width: `${fillW}%`, background: color, borderRadius: 7,
@@ -41,7 +42,7 @@ function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: s
       )}
       <div style={{
         position: 'absolute', top: -3, bottom: -3, left: `${targetPct}%`,
-        width: 2, background: '#fff',
+        width: 2, background: DARK_THEME.textPrimary,
       }} />
     </div>
   );
@@ -61,8 +62,18 @@ function WorkTypeRow({
   const fillW = wt.plan_hours > 0
     ? Math.min(100, (wt.fact_hours / wt.plan_hours) * 100)
     : (overflowZeroPlan ? 100 : 0);
+  const interactiveProps = onOpen
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick: onOpen,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
+        },
+      }
+    : {};
   return (
-    <div onClick={onOpen} style={{
+    <div {...interactiveProps} style={{
       display: 'grid', gridTemplateColumns: '1fr auto 60px auto',
       gap: 8, alignItems: 'center', padding: '3px 0',
       cursor: onOpen ? 'pointer' : 'default',
@@ -75,12 +86,12 @@ function WorkTypeRow({
       }}>
         {wt.label}
       </span>
-      <div style={{ width: 50, height: 5, background: '#1c3358', borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ width: 50, height: 5, background: DARK_THEME.darkRows, borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${fillW}%`, background: color }} />
       </div>
       <span style={{
         fontSize: 11,
-        color: overflowZeroPlan ? '#ff4d4f' : '#7e94b8',
+        color: overflowZeroPlan ? '#ff4d4f' : DARK_THEME.textMuted,
         fontWeight: overflowZeroPlan ? 600 : 400,
         textAlign: 'right',
       }}>
@@ -92,7 +103,7 @@ function WorkTypeRow({
             type="link"
             size="small"
             icon={<BarChartOutlined />}
-            style={{ padding: 0, height: 'auto', color: '#00c9c8' }}
+            style={{ padding: 0, height: 'auto', color: DARK_THEME.cyanPrimary }}
             onClick={(e) => { e.stopPropagation(); onOpenThematic(); }}
           />
         </Tooltip>
@@ -122,16 +133,22 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
     });
     navigate(`/analytics/work-type-report?${params.toString()}`);
   };
+  const handleOpenAnalytics = () => openAnalytics();
   return (
     <div style={{ paddingBottom: 12, borderBottom: '1px solid rgba(28,51,88,.5)', marginBottom: 12 }}>
-      <div onClick={() => openAnalytics()} style={{
-        display: 'grid', gridTemplateColumns: '28px 1fr auto',
-        gap: 8, alignItems: 'center', marginBottom: 8,
-        cursor: 'pointer',
-      }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleOpenAnalytics}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenAnalytics(); } }}
+        style={{
+          display: 'grid', gridTemplateColumns: '28px 1fr auto',
+          gap: 8, alignItems: 'center', marginBottom: 8,
+          cursor: 'pointer',
+        }}>
         <div style={{
           width: 24, height: 24, borderRadius: '50%', background: role.role_color,
-          color: '#fff', fontSize: 11, fontWeight: 700,
+          color: DARK_THEME.textPrimary, fontSize: 11, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>{emp.initials}</div>
         <div style={{ fontSize: 14, color: '#e6edf7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -142,7 +159,7 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
         </div>
       </div>
       <BulletBar plan={emp.plan_hours} fact={emp.fact_hours} color={color} />
-      <div style={{ fontSize: 12, color: '#7e94b8', marginTop: 4 }}>
+      <div style={{ fontSize: 12, color: DARK_THEME.textMuted, marginTop: 4 }}>
         факт {Math.round(emp.fact_hours)} ч · план {Math.round(emp.plan_hours)} ч
       </div>
       <div style={{ marginTop: 8, marginLeft: 12 }}>
@@ -167,11 +184,11 @@ function RoleColumn({ role, t }: { role: NormWorkRoleGroup; t: Thresholds }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 10, height: 10, borderRadius: '50%', background: role.role_color }} />
           <span style={{ fontSize: 16, fontWeight: 600, color: '#e6edf7' }}>{role.role_label}</span>
-          <span style={{ fontSize: 13, color: '#7e94b8' }}>{role.employees_count} чел.</span>
+          <span style={{ fontSize: 13, color: DARK_THEME.textMuted }}>{role.employees_count} чел.</span>
         </div>
-        <div style={{ fontSize: 13, color: '#7e94b8', marginTop: 4 }}>
-          Σ план <b style={{ color: '#fff' }}>{Math.round(role.total_plan)} ч</b>
-          {' · '}Σ факт <b style={{ color: '#fff' }}>{Math.round(role.total_fact)} ч</b>
+        <div style={{ fontSize: 13, color: DARK_THEME.textMuted, marginTop: 4 }}>
+          Σ план <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(role.total_plan)} ч</b>
+          {' · '}Σ факт <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(role.total_fact)} ч</b>
           {' · '}средн. <b style={{ color: statusColor(role.total_pct, t) }}>{Math.round(role.total_pct)}%</b>
         </div>
       </div>
@@ -180,7 +197,7 @@ function RoleColumn({ role, t }: { role: NormWorkRoleGroup; t: Thresholds }) {
           <EmployeeBlock key={emp.employee_id} emp={emp} role={role} t={t} />
         ))}
         {role.employees.length === 0 && (
-          <div style={{ color: '#7e94b8', fontSize: 13 }}>Нет сотрудников</div>
+          <div style={{ color: DARK_THEME.textMuted, fontSize: 13 }}>Нет сотрудников</div>
         )}
       </div>
     </div>
@@ -200,7 +217,7 @@ export default function NormWorkWidget({ data, loading }: Props) {
   const gear = (
     <Tooltip title="Настройка порогов">
       <SettingOutlined
-        style={{ cursor: 'pointer', color: '#7e94b8', fontSize: 16 }}
+        style={{ cursor: 'pointer', color: DARK_THEME.textMuted, fontSize: 16 }}
         onClick={() => { form.setFieldsValue(t); setModalOpen(true); }}
       />
     </Tooltip>
@@ -210,9 +227,9 @@ export default function NormWorkWidget({ data, loading }: Props) {
     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 16 }}>
       <span style={{ fontSize: 15, fontWeight: 600, color: '#e6edf7' }}>Нормированные работы</span>
       {data && !loading && (
-        <span style={{ fontSize: 14, color: '#7e94b8' }}>
-          Σ план <b style={{ color: '#fff' }}>{Math.round(data.total_plan)} ч</b>
-          {' · '}Σ факт <b style={{ color: '#fff' }}>{Math.round(data.total_fact)} ч</b>
+        <span style={{ fontSize: 14, color: DARK_THEME.textMuted }}>
+          Σ план <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_plan)} ч</b>
+          {' · '}Σ факт <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_fact)} ч</b>
           {' · '}загрузка <b style={{ color: statusColor(data.total_pct, t) }}>{Math.round(data.total_pct)}%</b>
         </span>
       )}

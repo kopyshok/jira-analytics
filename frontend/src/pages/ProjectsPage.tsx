@@ -2,6 +2,7 @@ import { useNavigate, useParams } from 'react-router';
 import { Empty } from 'antd';
 import { ProjectsList } from '../components/projects/ProjectsList';
 import { ProjectDetailPanel } from '../components/projects/ProjectDetailPanel';
+import { DARK_THEME } from '../utils/constants';
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
@@ -17,13 +18,11 @@ export default function ProjectsPage() {
       style={{
         display: 'flex',
         height: 'calc(100vh - 64px)',
-        background: '#0d1c33',
+        background: DARK_THEME.pageBg,
         overflow: 'hidden',
       }}
     >
-      <div className="projects-list-pane" style={{ display: 'contents' }}>
-        <ProjectsList selectedKey={key ?? null} onSelect={handleSelect} />
-      </div>
+      <ProjectsList selectedKey={key ?? null} onSelect={handleSelect} />
 
       {key ? (
         <ProjectDetailPanel projectKey={key} />
@@ -38,7 +37,7 @@ export default function ProjectsPage() {
         >
           <Empty
             description={
-              <span style={{ color: '#7e94b8' }}>Выберите проект из списка слева</span>
+              <span style={{ color: DARK_THEME.textMuted }}>Выберите проект из списка слева</span>
             }
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />

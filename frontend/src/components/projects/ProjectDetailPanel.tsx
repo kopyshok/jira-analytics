@@ -6,6 +6,7 @@ import { useProjectSummary } from '../../hooks/useProjectSummary';
 import { ProjectHeader } from './ProjectHeader';
 import { ProjectAnalysisView } from './ProjectAnalysisView';
 import { ProjectPresentationView } from './ProjectPresentationView';
+import { DARK_THEME } from '../../utils/constants';
 
 type ViewMode = 'analysis' | 'presentation';
 
@@ -38,7 +39,7 @@ export const ProjectDetailPanel: React.FC<Props> = ({ projectKey }) => {
 
   if (detailError || !detail) {
     return (
-      <div style={{ flex: 1, padding: 32, color: '#7e94b8' }}>
+      <div style={{ flex: 1, padding: 32, color: DARK_THEME.textMuted }}>
         Проект не найден или не помечен категорией «Квартальные задачи» / «Архив квартальных задач».
       </div>
     );

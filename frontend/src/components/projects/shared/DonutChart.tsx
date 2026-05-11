@@ -1,5 +1,6 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { DARK_THEME } from '../../../utils/constants';
 
 interface Slice {
   code: string;
@@ -58,8 +59,8 @@ export const DonutChart: React.FC<Props> = ({
           pointerEvents: 'none',
         }}
       >
-        <div style={{ fontSize: size * 0.18, fontWeight: 700, color: '#fff' }}>{centerValue}</div>
-        {centerLabel && <div style={{ fontSize: 11, color: '#7e94b8' }}>{centerLabel}</div>}
+        <div style={{ fontSize: size * 0.18, fontWeight: 700, color: DARK_THEME.textPrimary }}>{centerValue}</div>
+        {centerLabel && <div style={{ fontSize: 11, color: DARK_THEME.textMuted }}>{centerLabel}</div>}
       </div>
     )}
   </div>

@@ -1,11 +1,12 @@
 import React from 'react';
 import type { ProjectListItem } from '../../types/projects';
 import { StarRating } from './shared/StarRating';
+import { DARK_THEME } from '../../utils/constants';
 
 const STATUS_CATEGORY_COLOR: Record<string, string> = {
   done: '#67d68d',
-  indeterminate: '#00c9c8',
-  new: '#7e94b8',
+  indeterminate: DARK_THEME.cyanPrimary,
+  new: DARK_THEME.textMuted,
 };
 
 const STATUS_CATEGORY_LABEL: Record<string, string> = {
@@ -33,8 +34,8 @@ interface Props {
 
 export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) => {
   const statusColor = item.status_category
-    ? (STATUS_CATEGORY_COLOR[item.status_category] ?? '#7e94b8')
-    : '#7e94b8';
+    ? (STATUS_CATEGORY_COLOR[item.status_category] ?? DARK_THEME.textMuted)
+    : DARK_THEME.textMuted;
 
   const avgRating =
     item.rating_quality != null || item.rating_speed != null || item.rating_result != null
@@ -45,15 +46,25 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
         )
       : null;
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <div
       data-testid="project-card"
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       style={{
         display: 'flex',
         alignItems: 'stretch',
-        background: selected ? '#0a2a44' : '#0f2340',
-        border: `1px solid ${selected ? '#00c9c8' : '#1e3356'}`,
+        background: selected ? DARK_THEME.darkAccent : DARK_THEME.cardBg,
+        border: `1px solid ${selected ? DARK_THEME.cyanPrimary : DARK_THEME.border}`,
         borderRadius: 8,
         cursor: 'pointer',
         marginBottom: 6,
@@ -69,12 +80,12 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
       <div style={{ flex: 1, padding: '10px 12px', minWidth: 0 }}>
         {/* Строка 1: ключ + название */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
-          <span style={{ fontSize: 11, color: '#7e94b8', flexShrink: 0 }}>{item.key}</span>
+          <span style={{ fontSize: 11, color: DARK_THEME.textMuted, flexShrink: 0 }}>{item.key}</span>
           <span
             style={{
               fontSize: 13,
               fontWeight: 600,
-              color: '#e8f0fa',
+              color: DARK_THEME.textPrimary,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -122,7 +133,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
                 padding: '1px 8px',
                 borderRadius: 10,
                 background: 'rgba(126,148,184,0.12)',
-                color: '#7e94b8',
+                color: DARK_THEME.textMuted,
               }}
             >
               {CATEGORY_LABEL[item.category] ?? item.category}
@@ -136,7 +147,7 @@ export const ProjectListCard: React.FC<Props> = ({ item, selected, onClick }) =>
 };
 
 const MetaTag: React.FC<{ icon: string; children: React.ReactNode }> = ({ icon, children }) => (
-  <span style={{ fontSize: 11, color: '#8faec8', display: 'flex', alignItems: 'center', gap: 3 }}>
+  <span style={{ fontSize: 11, color: DARK_THEME.textMuted, display: 'flex', alignItems: 'center', gap: 3 }}>
     <span style={{ fontSize: 10 }}>{icon}</span>
     {children}
   </span>

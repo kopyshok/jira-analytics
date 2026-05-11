@@ -1,13 +1,14 @@
 import React from 'react';
 import { Tag } from 'antd';
 import type { ProjectDetail } from '../../../types/projects';
+import { DARK_THEME } from '../../../utils/constants';
 
 export const ProjectHero: React.FC<{ detail: ProjectDetail }> = ({ detail }) => (
   <div style={{ padding: '32px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-    <div style={{ fontSize: 11, color: '#7e94b8', letterSpacing: 1, textTransform: 'uppercase' }}>
+    <div style={{ fontSize: 11, color: DARK_THEME.textMuted, letterSpacing: 1, textTransform: 'uppercase' }}>
       Проект {detail.key}
     </div>
-    <h1 style={{ margin: '8px 0 16px', fontSize: 36, fontWeight: 700, color: '#fff' }}>
+    <h1 style={{ margin: '8px 0 16px', fontSize: 36, fontWeight: 700, color: DARK_THEME.textPrimary }}>
       {detail.summary}
     </h1>
     <div style={{ fontSize: 13, color: '#cfd8e5', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -23,10 +24,10 @@ export const ProjectHero: React.FC<{ detail: ProjectDetail }> = ({ detail }) => 
 );
 
 const BigTile: React.FC<{ value: number | string; label: string; sub?: string }> = ({ value, label, sub }) => (
-  <div style={{ background: '#0f2340', borderRadius: 8, padding: '20px 24px', textAlign: 'center' }}>
-    <div style={{ fontSize: 36, fontWeight: 700, color: '#fff' }}>{value}</div>
-    <div style={{ fontSize: 12, color: '#7e94b8', textTransform: 'uppercase', marginTop: 4 }}>{label}</div>
-    {sub && <div style={{ fontSize: 11, color: '#7e94b8', marginTop: 2 }}>{sub}</div>}
+  <div style={{ background: DARK_THEME.cardBg, borderRadius: 8, padding: '20px 24px', textAlign: 'center' }}>
+    <div style={{ fontSize: 36, fontWeight: 700, color: DARK_THEME.textPrimary }}>{value}</div>
+    <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', marginTop: 4 }}>{label}</div>
+    {sub && <div style={{ fontSize: 11, color: DARK_THEME.textMuted, marginTop: 2 }}>{sub}</div>}
   </div>
 );
 

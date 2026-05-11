@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Input, Radio } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
+import { DARK_THEME } from '../../utils/constants';
 
 interface Props {
   search: string;
@@ -35,13 +36,13 @@ export const ProjectListFilters: React.FC<Props> = ({
   return (
     <div style={{ padding: '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <Input
-        prefix={<SearchOutlined style={{ color: '#7e94b8' }} />}
+        prefix={<SearchOutlined style={{ color: DARK_THEME.textMuted }} />}
         placeholder="Поиск по названию или ключу"
         value={localSearch}
         onChange={(e) => setLocalSearch(e.target.value)}
         allowClear
         size="small"
-        style={{ background: '#0d1c33', borderColor: '#1e3356' }}
+        style={{ background: DARK_THEME.pageBg, borderColor: DARK_THEME.border }}
       />
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Radio.Group

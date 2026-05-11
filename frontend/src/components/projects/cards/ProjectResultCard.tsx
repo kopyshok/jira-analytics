@@ -3,6 +3,7 @@ import { Card, Empty, Skeleton } from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
 import { useIsFetching } from '@tanstack/react-query';
 import type { ProjectSummary } from '../../../types/projects';
+import { DARK_THEME } from '../../../utils/constants';
 
 interface Props {
   summary: ProjectSummary | null | undefined;
@@ -15,7 +16,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
     <Card
       size="small"
       title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Основной результат</span>}
-      style={{ background: '#0f2340', border: '1px solid rgba(255,255,255,0.06)' }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
       {!summary && isFetchingSummary ? (
@@ -36,7 +37,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
                       flexShrink: 0,
                     }}
                   />
-                  <span style={{ color: item.done ? '#cfd8e5' : '#7e94b8', fontSize: 13 }}>{item.label}</span>
+                  <span style={{ color: item.done ? '#cfd8e5' : DARK_THEME.textMuted, fontSize: 13 }}>{item.label}</span>
                 </div>
               ))}
             </div>

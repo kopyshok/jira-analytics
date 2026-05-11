@@ -45,6 +45,8 @@ export const DARK_THEME = {
   /** Warm accent — reserved for critical signals (errors, overrun, stale sync) */
   amber: '#f5a524',
   amberDim: '#b87b18',
+  /** Critical / error signal */
+  danger: '#E24B4A',
   /** Positive delta (growth, completion) */
   success: '#1D9E75',
   textPrimary: '#e8f0fa',

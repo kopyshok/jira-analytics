@@ -4,11 +4,12 @@ import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import type { DashboardProjectsResponse, ProjectItem } from '../../types/api';
 import { statusTagColor } from '../../utils/status';
+import { DARK_THEME, CHART_COLORS } from '../../utils/constants';
 
 const STATUS_COLORS = {
   done: '#67d68d',
-  indeterminate: '#00c9c8',
-  new: '#7e94b8',
+  indeterminate: CHART_COLORS.cyan,
+  new: DARK_THEME.textMuted,
   overdue: '#ff4d4f',
 };
 
@@ -77,7 +78,7 @@ function loadColor(pct: number): string {
 }
 
 function dueColor(days: number | null): string {
-  if (days == null) return '#7e94b8';
+  if (days == null) return DARK_THEME.textMuted;
   if (days < 0) return '#ff4d4f';
   if (days <= DUE_SOON_THRESHOLD) return '#faad14';
   return '#67d68d';
@@ -86,7 +87,7 @@ function dueColor(days: number | null): string {
 function trendArrow(dir: 'up' | 'down' | 'flat'): { glyph: string; color: string } {
   if (dir === 'up') return { glyph: '↑', color: '#67d68d' };
   if (dir === 'down') return { glyph: '↓', color: '#faad14' };
-  return { glyph: '·', color: '#7e94b8' };
+  return { glyph: '·', color: DARK_THEME.textMuted };
 }
 
 function Donut({ data }: { data: DashboardProjectsResponse }) {
@@ -127,16 +128,16 @@ function Donut({ data }: { data: DashboardProjectsResponse }) {
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none',
         }}>
-          <div style={{ fontSize: 32, fontWeight: 700, color: '#fff', lineHeight: 1 }}>{total}</div>
-          <div style={{ fontSize: 12, color: '#7e94b8' }}>проектов</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: DARK_THEME.textPrimary, lineHeight: 1 }}>{total}</div>
+          <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>проектов</div>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
         {segments.map((s) => (
           <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-            <span style={{ color: '#fff', fontWeight: 600, width: 28 }}>{s.value}</span>
-            <span style={{ color: '#7e94b8' }}>{s.name}</span>
+            <span style={{ color: DARK_THEME.textPrimary, fontWeight: 600, width: 28 }}>{s.value}</span>
+            <span style={{ color: DARK_THEME.textMuted }}>{s.name}</span>
           </div>
         ))}
       </div>
@@ -154,8 +155,8 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
           title={a.initials}
           style={{
             width: 24, height: 24, borderRadius: '50%',
-            border: '2px solid #0f2340', background: a.color,
-            color: '#fff', fontSize: 10, fontWeight: 700,
+            border: `2px solid ${DARK_THEME.cardBg}`, background: a.color,
+            color: DARK_THEME.textPrimary, fontSize: 10, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             marginLeft: i === 0 ? 0 : -8,
           }}
@@ -166,7 +167,7 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
       {extra > 0 && (
         <div style={{
           width: 24, height: 24, borderRadius: '50%',
-          border: '2px solid #0f2340', background: '#1c3358',
+          border: `2px solid ${DARK_THEME.cardBg}`, background: DARK_THEME.darkRows,
           color: '#a4b8d8', fontSize: 10, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           marginLeft: -8,
@@ -183,13 +184,13 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
       const cat = project.status_category === 'overdue' ? 'indeterminate' : project.status_category;
       return project.status
         ? <Tag color={statusTagColor(project.status, cat)} style={{ marginInlineEnd: 0 }}>{project.status}</Tag>
-        : <span style={{ color: '#7e94b8', fontSize: 13 }}>—</span>;
+        : <span style={{ color: DARK_THEME.textMuted, fontSize: 13 }}>—</span>;
     }
     case 'subtasks':
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
           <span style={{ color: '#a4b8d8' }}>{project.subtasks_done}/{project.subtasks_total}</span>
-          <div style={{ height: 5, background: '#1c3358', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ height: 5, background: DARK_THEME.darkRows, borderRadius: 2, overflow: 'hidden' }}>
             <div style={{
               height: '100%',
               width: `${project.subtasks_total > 0 ? (project.subtasks_done / project.subtasks_total) * 100 : 0}%`,
@@ -216,14 +217,14 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
     }
     case 'forecast':
       return (
-        <div style={{ fontSize: 13, color: project.forecast_close_date ? (project.forecast_in_quarter ? '#67d68d' : '#ff4d4f') : '#7e94b8' }}>
+        <div style={{ fontSize: 13, color: project.forecast_close_date ? (project.forecast_in_quarter ? '#67d68d' : '#ff4d4f') : DARK_THEME.textMuted }}>
           {ctx.isDone ? 'завершён' : project.forecast_close_date ? `к ${fmtDate(project.forecast_close_date)}${project.forecast_in_quarter ? '' : ' ⚠'}` : '—'}
         </div>
       );
     case 'progress': {
       const fillWidth = Math.min(100, ctx.pct);
       return (
-        <div style={{ height: 12, background: '#1c3358', borderRadius: 6, overflow: 'visible', position: 'relative' }}>
+        <div style={{ height: 12, background: DARK_THEME.darkRows, borderRadius: 6, overflow: 'visible', position: 'relative' }}>
           <div style={{
             position: 'absolute', top: 0, left: 0, height: '100%',
             width: `${fillWidth}%`,
@@ -262,11 +263,14 @@ function ProjectRow({
   const isDone = project.status_category === 'done';
   const overrun = project.fact_hours > project.plan_hours && project.plan_hours > 0;
   const pct = project.plan_hours > 0 ? (project.fact_hours / project.plan_hours) * 100 : 0;
-  const barColor = STATUS_COLORS[project.status_category] || '#7e94b8';
+  const barColor = STATUS_COLORS[project.status_category] || DARK_THEME.textMuted;
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       style={{
         display: 'grid',
         gridTemplateColumns: gridTemplate,
@@ -280,7 +284,7 @@ function ProjectRow({
     >
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: barColor }} />
       <div style={{
-        color: isDone ? '#7e94b8' : '#fff',
+        color: isDone ? DARK_THEME.textMuted : DARK_THEME.textPrimary,
         textDecoration: isDone ? 'line-through' : 'none',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         fontSize: 14,
@@ -311,7 +315,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
       label: 'ВСЕГО ФАКТОМ',
       value: `${Math.round(data.total_fact_hours)} ч`,
       sub: `из ${Math.round(data.total_plan_hours)} план`,
-      color: '#fff',
+      color: DARK_THEME.textPrimary,
     },
     {
       label: 'СРЕДНЯЯ ЗАГРУЗКА',
@@ -323,7 +327,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
       label: 'МОЛЧАТ > 14 ДНЕЙ',
       value: `${data.silent_count}`,
       sub: 'проекта без активности',
-      color: data.silent_count > 0 ? '#faad14' : '#7e94b8',
+      color: data.silent_count > 0 ? '#faad14' : DARK_THEME.textMuted,
     },
     {
       label: 'ЗАКРОЮТСЯ В СРОК',
@@ -336,12 +340,12 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
       {tiles.map((t) => (
         <div key={t.label} style={{
-          background: '#0a1d3a', border: '1px solid #1c3358', borderRadius: 8,
+          background: '#0a1d3a', border: `1px solid ${DARK_THEME.darkRows}`, borderRadius: 8,
           padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
         }}>
-          <div style={{ fontSize: 12, color: '#7e94b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t.label}</div>
+          <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t.label}</div>
           <div style={{ fontSize: 32, fontWeight: 700, color: t.color, lineHeight: 1 }}>{t.value}</div>
-          <div style={{ fontSize: 13, color: '#7e94b8' }}>{t.sub}</div>
+          <div style={{ fontSize: 13, color: DARK_THEME.textMuted }}>{t.sub}</div>
         </div>
       ))}
     </div>
@@ -351,9 +355,9 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
 function Sparklines({ projects }: { projects: ProjectItem[] }) {
   const visible = [...projects].sort((a, b) => b.fact_hours - a.fact_hours).slice(0, 6);
   return (
-    <div style={{ background: '#0a1d3a', border: '1px solid #1c3358', borderRadius: 8, padding: 14 }}>
+    <div style={{ background: '#0a1d3a', border: `1px solid ${DARK_THEME.darkRows}`, borderRadius: 8, padding: 14 }}>
       <div style={{
-        fontSize: 12, color: '#7e94b8', textTransform: 'uppercase',
+        fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase',
         letterSpacing: '0.06em', marginBottom: 10,
       }}>
         Активность по неделям
@@ -365,12 +369,12 @@ function Sparklines({ projects }: { projects: ProjectItem[] }) {
           .join(' ');
         const isActive = p.silent_days <= SILENCE_THRESHOLD;
         const stroke = isActive
-          ? (p.status_category === 'overdue' || p.fact_hours > p.plan_hours ? '#ff4d4f' : (p.status_category === 'done' ? '#67d68d' : '#00c9c8'))
+          ? (p.status_category === 'overdue' || p.fact_hours > p.plan_hours ? '#ff4d4f' : (p.status_category === 'done' ? '#67d68d' : CHART_COLORS.cyan))
           : '#2a4060';
         return (
           <div key={p.issue_key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
             <div style={{
-              width: 110, fontSize: 14, color: isActive ? '#e6edf7' : '#7e94b8',
+              width: 110, fontSize: 14, color: isActive ? '#e6edf7' : DARK_THEME.textMuted,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {p.title.split(' ').slice(0, 2).join(' ')}
@@ -399,7 +403,7 @@ function SettingsPopover({ prefs, setPrefs }: { prefs: Prefs; setPrefs: (p: Pref
   const content = (
     <Space direction="vertical" size={12} style={{ minWidth: 220 }}>
       <div>
-        <div style={{ fontSize: 12, color: '#7e94b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
           Колонки
         </div>
         <Space direction="vertical" size={4}>
@@ -415,7 +419,7 @@ function SettingsPopover({ prefs, setPrefs }: { prefs: Prefs; setPrefs: (p: Pref
         </Space>
       </div>
       <div>
-        <div style={{ fontSize: 12, color: '#7e94b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
           Блоки
         </div>
         <Space direction="vertical" size={4}>
@@ -483,11 +487,11 @@ export default function ProjectsWidget({ data, loading }: Props) {
             gridTemplateColumns: tableGrid,
             gap: 10,
             fontSize: 12,
-            color: '#7e94b8',
+            color: DARK_THEME.textMuted,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
             paddingBottom: 8,
-            borderBottom: '1px solid #1c3358',
+            borderBottom: `1px solid ${DARK_THEME.darkRows}`,
           }}>
             <span />
             <span>Проект</span>
@@ -507,7 +511,7 @@ export default function ProjectsWidget({ data, loading }: Props) {
             />
           ))}
           {data.projects.length === 0 && (
-            <div style={{ padding: 16, color: '#7e94b8', fontSize: 13 }}>Нет проектов в утверждённом сценарии квартала</div>
+            <div style={{ padding: 16, color: DARK_THEME.textMuted, fontSize: 13 }}>Нет проектов в утверждённом сценарии квартала</div>
           )}
         </div>
 

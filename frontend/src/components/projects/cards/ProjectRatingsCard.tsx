@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from 'antd';
 import type { ProjectDetail, ProjectSummary } from '../../../types/projects';
 import { StarRating } from '../shared/StarRating';
+import { DARK_THEME } from '../../../utils/constants';
 
 interface Props {
   detail: ProjectDetail;
@@ -20,7 +21,7 @@ const RatingRow: React.FC<RatingRowProps> = ({ label, value }) => {
       <span style={{ color: '#cfd8e5', fontSize: 13 }}>{label}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <StarRating value={value} size={18} />
-        <span style={{ color: '#7e94b8', fontSize: 12, minWidth: 28 }}>{value}/5</span>
+        <span style={{ color: DARK_THEME.textMuted, fontSize: 12, minWidth: 28 }}>{value}/5</span>
       </div>
     </div>
   );
@@ -34,7 +35,7 @@ export const ProjectRatingsCard: React.FC<Props> = ({ detail, summary }) => {
     <Card
       size="small"
       title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Оценка заказчика</span>}
-      style={{ background: '#0f2340', border: '1px solid rgba(255,255,255,0.06)' }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
       {hasAnyRating ? (
@@ -45,10 +46,10 @@ export const ProjectRatingsCard: React.FC<Props> = ({ detail, summary }) => {
           {summary?.workload_summary && (
             <div
               style={{
-                background: '#091527',
+                background: DARK_THEME.sidebarBg,
                 borderRadius: 6,
                 padding: '8px 10px',
-                color: '#7e94b8',
+                color: DARK_THEME.textMuted,
                 fontSize: 12,
                 lineHeight: 1.5,
                 marginTop: 4,
@@ -59,7 +60,7 @@ export const ProjectRatingsCard: React.FC<Props> = ({ detail, summary }) => {
           )}
         </div>
       ) : (
-        <div style={{ padding: 16, textAlign: 'center', color: '#7e94b8', fontStyle: 'italic', fontSize: 13 }}>
+        <div style={{ padding: 16, textAlign: 'center', color: DARK_THEME.textMuted, fontStyle: 'italic', fontSize: 13 }}>
           Оценка заказчика появится после заполнения полей в Jira
         </div>
       )}

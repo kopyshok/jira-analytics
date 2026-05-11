@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card, Spin, Empty, Popover, Button, InputNumber, Space } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
+import { DARK_THEME } from '../../utils/constants';
 import type { DashboardCategoriesResponse, CategoryMetaItem, EmployeeWorklogActivity } from '../../types/api';
 
 const STORAGE_KEY = 'dashboard.categories.activityThresholds';
@@ -48,7 +49,7 @@ function formatAgo(days: number | null): string {
 }
 
 function activityColor(days: number | null, t: Thresholds): string {
-  if (days == null) return '#7e94b8';
+  if (days == null) return DARK_THEME.textMuted;
   if (days <= t.greenMax) return '#67d68d';
   if (days <= t.yellowMax) return '#faad14';
   return '#ff4d4f';
@@ -67,7 +68,7 @@ function ThresholdsPopover({ value, onChange }: { value: Thresholds; onChange: (
 
   const content = (
     <Space direction="vertical" size={12} style={{ minWidth: 240 }}>
-      <div style={{ fontSize: 12, color: '#7e94b8' }}>
+      <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
         До скольки дней без ворклога считать «нормой» (зелёный) и «предупреждением» (жёлтый). Всё что выше — красный.
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -82,7 +83,7 @@ function ThresholdsPopover({ value, onChange }: { value: Thresholds; onChange: (
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ff4d4f' }} />
-        <span style={{ flex: 1, fontSize: 13, color: '#7e94b8' }}>Красный — больше {value.yellowMax} д</span>
+        <span style={{ flex: 1, fontSize: 13, color: DARK_THEME.textMuted }}>Красный — больше {value.yellowMax} д</span>
       </div>
       <Button size="small" onClick={() => onChange(DEFAULT_THRESHOLDS)}>Сбросить</Button>
     </Space>
@@ -102,7 +103,7 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
     <div style={{ marginTop: 16 }}>
       <div style={{
         fontSize: 12,
-        color: '#7e94b8',
+        color: DARK_THEME.textMuted,
         textTransform: 'uppercase',
         letterSpacing: '0.06em',
         marginBottom: 10,
@@ -115,24 +116,28 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
         gap: 8,
       }}>
         {items.map((emp) => {
-          const color = emp.is_absent ? '#7e94b8' : activityColor(emp.days_since_last, thresholds);
+          const color = emp.is_absent ? DARK_THEME.textMuted : activityColor(emp.days_since_last, thresholds);
           const tooltip = [
             emp.is_absent && emp.absence_label ? `Сейчас: ${emp.absence_label}` : null,
             emp.last_worklog_at
               ? `Последний ворклог: ${new Date(emp.last_worklog_at).toLocaleString('ru-RU')}`
               : 'Нет ворклогов',
           ].filter(Boolean).join('\n');
+          const openEmp = () => navigate(`/analytics?employee=${emp.employee_id}`);
           return (
             <div
               key={emp.employee_id}
+              role="button"
+              tabIndex={0}
               title={tooltip}
-              onClick={() => navigate(`/analytics?employee=${emp.employee_id}`)}
+              onClick={openEmp}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEmp(); } }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
                 background: emp.is_absent ? '#0a1d3a88' : '#0a1d3a',
-                border: '1px solid #1c3358',
+                border: `1px solid ${DARK_THEME.darkRows}`,
                 borderRadius: 8,
                 padding: '8px 12px',
                 opacity: emp.is_absent ? 0.75 : 1,
@@ -141,7 +146,7 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
             >
               <div style={{
                 width: 28, height: 28, borderRadius: '50%',
-                background: '#1c3358', color: '#a4b8d8',
+                background: DARK_THEME.darkRows, color: '#a4b8d8',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 700, flexShrink: 0,
               }}>{emp.initials}</div>
@@ -224,16 +229,20 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
               }}
             >
               <div style={{ fontSize: 12, color: '#a4b8d8' }}>+ ещё {c.count}</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>{Math.round(c.hours)} ч</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: DARK_THEME.textPrimary }}>{Math.round(c.hours)} ч</div>
             </div>
           );
         }
         const item = c;
+        const openCategory = () => navigate(`/analytics?category=${encodeURIComponent(item.key)}`);
         return (
           <div
             key={item.key}
+            role="button"
+            tabIndex={0}
             title={`${item.label}: ${Math.round(item.hours)} ч (${item.pct.toFixed(1)}%)`}
-            onClick={() => navigate(`/analytics?category=${encodeURIComponent(item.key)}`)}
+            onClick={openCategory}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCategory(); } }}
             style={{
               background: `${item.color}33`,
               border: `1px solid ${item.color}66`,
@@ -262,7 +271,7 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
                 fontSize: 10,
                 fontWeight: 700,
                 background: item.color,
-                color: '#fff',
+                color: DARK_THEME.textPrimary,
                 padding: '2px 6px',
                 borderRadius: 6,
                 flexShrink: 0,
@@ -270,8 +279,8 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
                 {item.pct.toFixed(0)}%
               </span>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#fff' }}>{Math.round(item.hours)} ч</div>
-            <div style={{ fontSize: 10, color: '#7e94b8' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: DARK_THEME.textPrimary }}>{Math.round(item.hours)} ч</div>
+            <div style={{ fontSize: 10, color: DARK_THEME.textMuted }}>
               {item.worklog_count} wl · {item.issue_count} зад · {item.employee_count} чел
             </div>
             <div style={{
@@ -303,13 +312,13 @@ function SummaryStrip({ items }: { items: CategoryMetaItem[] }) {
       gap: 16,
       marginTop: 12,
       fontSize: 12,
-      color: '#7e94b8',
+      color: DARK_THEME.textMuted,
     }}>
-      <span>Σ часов: <b style={{ color: '#fff' }}>{Math.round(totalHours)}</b></span>
-      <span>Σ ворклогов: <b style={{ color: '#fff' }}>{totalWl}</b></span>
-      <span>Σ задач: <b style={{ color: '#fff' }}>{totalIssues}</b></span>
+      <span>Σ часов: <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(totalHours)}</b></span>
+      <span>Σ ворклогов: <b style={{ color: DARK_THEME.textPrimary }}>{totalWl}</b></span>
+      <span>Σ задач: <b style={{ color: DARK_THEME.textPrimary }}>{totalIssues}</b></span>
       <span>{items.length} категорий</span>
-      <span>средн. <b style={{ color: '#fff' }}>{avgMin.toFixed(0)}</b> мин/wl</span>
+      <span>средн. <b style={{ color: DARK_THEME.textPrimary }}>{avgMin.toFixed(0)}</b> мин/wl</span>
     </div>
   );
 }
@@ -323,9 +332,9 @@ function MetaTable({ items }: { items: CategoryMetaItem[] }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
-          <tr style={{ color: '#7e94b8', fontSize: 10, textTransform: 'uppercase' }}>
+          <tr style={{ color: DARK_THEME.textMuted, fontSize: 10, textTransform: 'uppercase' }}>
             {['Категория', 'Часы', 'Вркл.', 'Задач', 'Сотр.', 'Ср.мин', '%'].map((h) => (
-              <th key={h} style={{ textAlign: h === 'Категория' ? 'left' : 'right', padding: '4px 8px', borderBottom: '1px solid #1c3358' }}>
+              <th key={h} style={{ textAlign: h === 'Категория' ? 'left' : 'right', padding: '4px 8px', borderBottom: `1px solid ${DARK_THEME.darkRows}` }}>
                 {h}
               </th>
             ))}
@@ -340,15 +349,15 @@ function MetaTable({ items }: { items: CategoryMetaItem[] }) {
                   <span style={{ color: '#e6edf7' }}>{item.label}</span>
                 </span>
               </td>
-              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#fff', fontWeight: 600 }}>{Math.round(item.hours)}</td>
+              <td style={{ textAlign: 'right', padding: '5px 8px', color: DARK_THEME.textPrimary, fontWeight: 600 }}>{Math.round(item.hours)}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.worklog_count}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.issue_count}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.employee_count}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.avg_worklog_minutes.toFixed(0)}</td>
-              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#7e94b8' }}>{item.pct.toFixed(1)}%</td>
+              <td style={{ textAlign: 'right', padding: '5px 8px', color: DARK_THEME.textMuted }}>{item.pct.toFixed(1)}%</td>
             </tr>
           ))}
-          <tr style={{ borderTop: '2px solid #1c3358', fontWeight: 600, color: '#fff', fontSize: 11 }}>
+          <tr style={{ borderTop: `2px solid ${DARK_THEME.darkRows}`, fontWeight: 600, color: DARK_THEME.textPrimary, fontSize: 11 }}>
             <td style={{ padding: '5px 8px' }}>Итого</td>
             <td style={{ textAlign: 'right', padding: '5px 8px' }}>{Math.round(totalHours)}</td>
             <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{totalWl}</td>

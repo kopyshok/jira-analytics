@@ -7,7 +7,7 @@ export interface RiskListProps {
 }
 
 const LEVEL_COLOR: Record<ExecutiveRisk['level'], string> = {
-  red: '#E24B4A',
+  red: DARK_THEME.danger,
   yellow: DARK_THEME.yellow,
   green: DARK_THEME.success,
 };

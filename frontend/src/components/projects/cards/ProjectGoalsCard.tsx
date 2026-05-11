@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Empty, Skeleton } from 'antd';
 import { useIsFetching } from '@tanstack/react-query';
 import type { ProjectSummary } from '../../../types/projects';
+import { DARK_THEME } from '../../../utils/constants';
 
 interface Props {
   summary: ProjectSummary | null | undefined;
@@ -34,7 +35,7 @@ export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
                   justifyContent: 'center',
                   fontSize: 12,
                   fontWeight: 700,
-                  color: '#fff',
+                  color: DARK_THEME.textPrimary,
                   flexShrink: 0,
                   marginTop: 1,
                 }}
@@ -49,7 +50,7 @@ export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
     }
     if (description) {
       return (
-        <p style={{ margin: 0, color: '#7e94b8', fontSize: 13, lineHeight: 1.6 }}>
+        <p style={{ margin: 0, color: DARK_THEME.textMuted, fontSize: 13, lineHeight: 1.6 }}>
           {description.slice(0, 600)}
         </p>
       );
@@ -61,7 +62,7 @@ export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
     <Card
       size="small"
       title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Цели проекта</span>}
-      style={{ background: '#0f2340', border: '1px solid rgba(255,255,255,0.06)' }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
       {renderContent()}

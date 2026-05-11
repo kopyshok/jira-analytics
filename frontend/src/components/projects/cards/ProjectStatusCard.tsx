@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card } from 'antd';
 import type { ProjectDetail, ProjectSummary } from '../../../types/projects';
+import { DARK_THEME } from '../../../utils/constants';
 
 interface Props {
   summary: ProjectSummary | null | undefined;
@@ -16,7 +17,7 @@ interface TileProps {
 const KpiTile: React.FC<TileProps> = ({ value, label, color }) => (
   <div
     style={{
-      background: '#091527',
+      background: DARK_THEME.sidebarBg,
       borderRadius: 8,
       padding: '10px 12px',
       display: 'flex',
@@ -24,8 +25,8 @@ const KpiTile: React.FC<TileProps> = ({ value, label, color }) => (
       gap: 4,
     }}
   >
-    <div style={{ fontSize: 22, fontWeight: 700, color: color ?? '#fff', lineHeight: 1 }}>{value}</div>
-    <div style={{ fontSize: 11, color: '#7e94b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+    <div style={{ fontSize: 22, fontWeight: 700, color: color ?? DARK_THEME.textPrimary, lineHeight: 1 }}>{value}</div>
+    <div style={{ fontSize: 11, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
       {label}
     </div>
   </div>
@@ -36,7 +37,7 @@ export const ProjectStatusCard: React.FC<Props> = ({ summary, detail }) => {
     <Card
       size="small"
       title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Статус проекта</span>}
-      style={{ background: '#0f2340', border: '1px solid rgba(255,255,255,0.06)' }}
+      style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
