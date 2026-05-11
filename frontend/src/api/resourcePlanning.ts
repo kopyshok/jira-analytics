@@ -91,6 +91,7 @@ export interface ConflictOut {
   backlog_item_id: string | null;
   backlog_item_title: string | null;
   employee_id: string | null;
+  employee_name?: string | null;
   assignment_id: string | null;
   window_start: string | null;
   window_end: string | null;

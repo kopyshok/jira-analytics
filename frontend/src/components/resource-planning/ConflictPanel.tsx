@@ -66,7 +66,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
       } else if (groupBy === 'employee') {
         key = c.employee_id ?? 'misc';
         label = c.employee_id
-          ? (c as ConflictOut & { employee_name?: string }).employee_name ?? c.employee_id
+          ? c.employee_name ?? c.employee_id
           : 'Без сотрудника';
       } else {
         key = c.type;

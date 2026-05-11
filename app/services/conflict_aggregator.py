@@ -135,17 +135,10 @@ def _build_message(c: Dict[str, Any], db: Optional[Session]) -> str:
             c.get("message") or t
         )
     if t == "LEVELING_DELAY":
-        return (
-            f"{item_label} перенесена — выравнивание загрузки".strip()
-            if item_label
-            else (c.get("message") or t)
-        )
+        # Бэкенд формирует сообщение с именами сотрудников и названием задачи.
+        return c.get("message") or t
     if t == "LEVELING_REASSIGN":
-        return (
-            f"{item_label} переназначена — выравнивание".strip()
-            if item_label
-            else (c.get("message") or t)
-        )
+        return c.get("message") or t
     if t == "SPLIT_REQUIRED":
         return (
             f"{item_label} разбита на части — заблокированный период".strip()

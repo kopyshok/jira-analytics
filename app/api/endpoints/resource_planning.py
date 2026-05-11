@@ -146,6 +146,7 @@ class ConflictOut(BaseModel):
     backlog_item_id: Optional[str]
     backlog_item_title: Optional[str]
     employee_id: Optional[str]
+    employee_name: Optional[str] = None
     assignment_id: Optional[str]
     window_start: Optional[datetime]
     window_end: Optional[datetime]
@@ -944,7 +945,7 @@ def clear_manual_edits(
 
 def _detect_conflicts(plan, assignments, db):
     """Read persistent conflicts from DB. Detection runs in compute_schedule."""
-    from app.models import PlanConflict, BacklogItem
+    from app.models import BacklogItem, Employee, PlanConflict
 
     rows = (
         db.execute(select(PlanConflict).where(PlanConflict.plan_id == plan.id))
@@ -962,6 +963,16 @@ def _detect_conflicts(plan, assignments, db):
         )
         titles = {b.id: b.title for b in bi_rows}
 
+    emp_ids = {r.employee_id for r in rows if r.employee_id}
+    emp_names: dict = {}
+    if emp_ids:
+        emp_rows = (
+            db.execute(select(Employee).where(Employee.id.in_(emp_ids)))
+            .scalars()
+            .all()
+        )
+        emp_names = {e.id: e.display_name or e.id for e in emp_rows}
+
     return [
         ConflictOut(
             id=r.id,
@@ -973,6 +984,7 @@ def _detect_conflicts(plan, assignments, db):
             if r.backlog_item_id
             else None,
             employee_id=r.employee_id,
+            employee_name=emp_names.get(r.employee_id) if r.employee_id else None,
             assignment_id=r.assignment_id,
             window_start=r.window_start,
             window_end=r.window_end,

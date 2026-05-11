@@ -1607,8 +1607,24 @@ class ResourcePlanningService:
                     }
                 )
 
+        # Карты для resolve assignment → backlog_item / employee_id.
+        assignment_by_id: Dict[str, ResourcePlanAssignment] = {
+            a.id: a for a in assignments
+        }
+        emp_name_by_id: Dict[str, str] = {
+            e.id: e.display_name or e.id for e in employees
+        }
+
+        def _emp_name(eid: Optional[str]) -> str:
+            if not eid:
+                return "сотрудник"
+            return emp_name_by_id.get(eid, eid)
+
         # OVERLOAD_* + LEVELING_* from leveling events
         for ev in self._last_leveling_events:
+            assignment = assignment_by_id.get(ev.assignment_id)
+            bi_id = assignment.backlog_item_id if assignment else None
+            assigned_emp = assignment.employee_id if assignment else None
             if ev.action == "escalate":
                 pct = ev.overload_pct
                 if pct > 120:
@@ -1618,14 +1634,19 @@ class ResourcePlanningService:
                 else:
                     sev, type_ = "warning", "OVERLOAD_LIGHT"
                 day = ev.affected_dates[0] if ev.affected_dates else None
+                # employee_id берём с фактического исполнителя assignment.
+                emp_id = assigned_emp
+                emp_label = _emp_name(emp_id)
                 result.append(
                     {
                         "type": type_,
                         "severity": sev,
                         "detection_key": f"{type_}:{ev.assignment_id}:{day}",
-                        "message": f"Перегрузка {pct:.0f}% на {day}: {ev.reason}",
+                        "message": f"{emp_label} перегружен {pct:.0f}% на {day}",
                         "metric_value": pct,
                         "assignment_id": ev.assignment_id,
+                        "backlog_item_id": bi_id,
+                        "employee_id": emp_id,
                         "window_start": _dt.combine(day, _dt.min.time())
                         if day
                         else None,
@@ -1634,24 +1655,43 @@ class ResourcePlanningService:
                 )
             elif ev.action == "delay":
                 day = ev.affected_dates[0] if ev.affected_dates else None
+                emp_label = _emp_name(assigned_emp)
+                item_label = item_titles.get(bi_id, "") if bi_id else ""
+                msg = (
+                    f"«{item_label}» сдвинута на {ev.delta_days} д. для разрешения "
+                    f"перегрузки {emp_label}"
+                    if item_label
+                    else f"Сдвиг на {ev.delta_days} д. для разрешения перегрузки {emp_label}"
+                )
                 result.append(
                     {
                         "type": "LEVELING_DELAY",
                         "severity": "info",
                         "detection_key": f"LEVELING_DELAY:{ev.assignment_id}:{day}",
-                        "message": ev.reason,
+                        "message": msg,
                         "metric_value": float(ev.delta_days),
                         "assignment_id": ev.assignment_id,
+                        "backlog_item_id": bi_id,
+                        "employee_id": assigned_emp,
                     }
                 )
             elif ev.action == "reassign":
+                from_label = _emp_name(ev.from_employee_id)
+                to_label = _emp_name(ev.to_employee_id)
+                item_label = item_titles.get(bi_id, "") if bi_id else ""
+                msg = (
+                    f"«{item_label}»: переназначено с {from_label} на {to_label}"
+                    if item_label
+                    else f"Переназначено с {from_label} на {to_label}"
+                )
                 result.append(
                     {
                         "type": "LEVELING_REASSIGN",
                         "severity": "info",
                         "detection_key": f"LEVELING_REASSIGN:{ev.assignment_id}",
-                        "message": ev.reason,
+                        "message": msg,
                         "assignment_id": ev.assignment_id,
+                        "backlog_item_id": bi_id,
                         "employee_id": ev.to_employee_id,
                     }
                 )
