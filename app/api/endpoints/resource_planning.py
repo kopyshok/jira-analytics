@@ -1311,6 +1311,179 @@ def explain_conflict(
     return base
 
 
+@router.get("/resource-plans/{plan_id}/assignments/{assignment_id}/explain")
+def explain_assignment(
+    plan_id: str,
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Расчёт всех конфликтов, связанных с конкретным назначением.
+
+    Используется боковой панелью при клике на фазе: показать почему бар «красный».
+    Для каждого PlanConflict, у которого `assignment_id == aid` или
+    `employee_id == assignment.employee_id` и окно пересекает [start, end],
+    возвращается breakdown (как в /conflicts/{cid}/explain).
+    """
+    from datetime import timedelta as _td
+    from app.models import Employee, PlanConflict
+
+    a = db.get(ResourcePlanAssignment, assignment_id)
+    if not a or a.plan_id != plan_id:
+        raise HTTPException(404, "Assignment not found")
+    plan = db.get(ResourcePlan, plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+
+    emp_name: Optional[str] = None
+    if a.employee_id:
+        e = db.get(Employee, a.employee_id)
+        emp_name = e.display_name if e else None
+
+    summary = {
+        "assignment_id": a.id,
+        "phase": a.phase,
+        "employee_id": a.employee_id,
+        "employee_name": emp_name,
+        "start_date": a.start_date.isoformat() if a.start_date else None,
+        "end_date": a.end_date.isoformat() if a.end_date else None,
+        "hours_allocated": float(a.hours_allocated) if a.hours_allocated is not None else None,
+        "is_on_critical_path": bool(a.is_on_critical_path),
+        "slack_days": float(a.slack_days) if a.slack_days is not None else None,
+    }
+
+    # Конфликты, привязанные к этому назначению.
+    rows = (
+        db.execute(
+            select(PlanConflict).where(
+                PlanConflict.plan_id == plan_id,
+                PlanConflict.assignment_id == assignment_id,
+                PlanConflict.status.in_(["open", "acknowledged"]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    team = plan.team
+    employees = (
+        db.execute(
+            select(Employee).where(Employee.team == team)
+            if team
+            else select(Employee)
+        )
+        .scalars()
+        .all()
+    )
+    if a.employee_id and a.employee_id not in {e.id for e in employees}:
+        owner = db.get(Employee, a.employee_id)
+        if owner:
+            employees.append(owner)
+
+    blocks = (
+        db.execute(
+            select(ScheduledBlock).where(
+                (ScheduledBlock.team == team) | (ScheduledBlock.team.is_(None))
+            )
+            if team
+            else select(ScheduledBlock)
+        )
+        .scalars()
+        .all()
+    )
+
+    svc = ResourcePlanningService(db)
+    phase_label = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
+
+    # Кэш availability сотрудника на горизонте плана.
+    all_emp_assignments = (
+        db.execute(
+            select(ResourcePlanAssignment)
+            .options(joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue))
+            .where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.employee_id == a.employee_id,
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+        if a.employee_id
+        else []
+    )
+    horizon_start = min((x.start_date for x in all_emp_assignments if x.start_date), default=a.start_date)
+    horizon_end = max((x.end_date for x in all_emp_assignments if x.end_date), default=a.end_date)
+    full_avail: dict = {}
+    if a.employee_id and horizon_start and horizon_end:
+        full_avail = svc.build_availability(
+            [e for e in employees if e.id == a.employee_id],
+            horizon_start,
+            horizon_end,
+            list(blocks),
+        ).get(a.employee_id, {})
+
+    conflicts_out: List[dict] = []
+    for c in rows:
+        target_date = c.window_start.date() if c.window_start else None
+        item: dict = {
+            "id": c.id,
+            "type": c.type,
+            "severity": c.severity,
+            "message": c.message,
+            "date": target_date.isoformat() if target_date else None,
+            "available_hours": None,
+            "demand_hours": None,
+            "overload_pct": None,
+            "contributors": [],
+        }
+        is_overload = c.type.startswith("OVERLOAD_")
+        if is_overload and target_date and c.employee_id:
+            avail = float(full_avail.get(target_date, 0.0))
+            demand_total = 0.0
+            contribs: List[dict] = []
+            for x in all_emp_assignments:
+                if not x.start_date or not x.end_date or x.hours_allocated is None:
+                    continue
+                if not (x.start_date <= target_date <= x.end_date):
+                    continue
+                wd = 0
+                d = x.start_date
+                while d <= x.end_date:
+                    if full_avail.get(d, 0.0) > 0.0:
+                        wd += 1
+                    d += _td(days=1)
+                if wd <= 0:
+                    continue
+                per_day = float(x.hours_allocated) / wd
+                demand_total += per_day
+                bi = x.backlog_item
+                issue = bi.issue if bi else None
+                contribs.append({
+                    "assignment_id": x.id,
+                    "backlog_item_id": x.backlog_item_id,
+                    "item_key": issue.key if issue else None,
+                    "item_title": bi.title if bi else "",
+                    "phase": x.phase,
+                    "phase_label": phase_label.get(x.phase, x.phase),
+                    "hours_per_day": round(per_day, 2),
+                    "hours_total": float(x.hours_allocated),
+                    "start_date": x.start_date.isoformat(),
+                    "end_date": x.end_date.isoformat(),
+                    "working_days": wd,
+                })
+            contribs.sort(key=lambda r: -r["hours_per_day"])
+            pct = (demand_total / avail * 100.0) if avail > 0 else None
+            item.update({
+                "available_hours": round(avail, 2),
+                "demand_hours": round(demand_total, 2),
+                "overload_pct": round(pct, 0) if pct is not None else None,
+                "contributors": contribs,
+            })
+        conflicts_out.append(item)
+
+    return {"assignment": summary, "conflicts": conflicts_out}
+
+
 # ── Diff ───────────────────────────────────────────────────────────────────
 
 

@@ -277,6 +277,38 @@ export const explainConflict = (planId: string, conflictId: string) =>
     `/resource-planning/resource-plans/${planId}/conflicts/${conflictId}/explain`,
   );
 
+export interface AssignmentExplainConflict {
+  id: string;
+  type: string;
+  severity: ConflictOut['severity'];
+  message: string;
+  date: string | null;
+  available_hours: number | null;
+  demand_hours: number | null;
+  overload_pct: number | null;
+  contributors: ConflictExplainContributor[];
+}
+
+export interface AssignmentExplainOut {
+  assignment: {
+    assignment_id: string;
+    phase: 'analyst' | 'dev' | 'qa' | 'opo';
+    employee_id: string | null;
+    employee_name: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    hours_allocated: number | null;
+    is_on_critical_path: boolean;
+    slack_days: number | null;
+  };
+  conflicts: AssignmentExplainConflict[];
+}
+
+export const explainAssignment = (planId: string, assignmentId: string) =>
+  api.get<AssignmentExplainOut>(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/explain`,
+  );
+
 export const forkPlan = (planId: string, label?: string) =>
   api.post<ResourcePlan>(`/resource-planning/resource-plans/${planId}/fork`, { label });
 

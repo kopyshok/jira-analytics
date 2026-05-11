@@ -36,8 +36,7 @@ const trackStyle = (trackWidthPx?: number): React.CSSProperties =>
 
 const ROW_HEIGHT = 36;
 const JIRA_BASE = 'https://example.atlassian.net';
-const ZEBRA_BG_EVEN = 'rgba(255,255,255,0.025)';
-const ZEBRA_BG_ODD = 'rgba(0,0,0,0.28)';
+const ROW_BG = 'transparent';
 const INIT_HEADER_BG = 'rgba(0,201,200,0.10)';
 const INIT_DIVIDER = '2px solid rgba(0,201,200,0.45)';
 
@@ -170,7 +169,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowR
             display: 'flex',
             minHeight: ROW_HEIGHT,
             borderBottom: '1px solid #0e2540',
-            background: idx % 2 === 0 ? ZEBRA_BG_EVEN : ZEBRA_BG_ODD,
+            background: ROW_BG,
           }}
         >
           <ItemTitleCell title={title} jiraKey={key} priority={priority} leftColWidth={leftColWidth} />
@@ -529,7 +528,7 @@ function TwoLevelRows({
     <>
       {byItem.map(([itemId, { title, key, priority, assignments: ia }], itemIdx) => {
         const phases = ['analyst', 'dev', 'qa', 'opo'] as const;
-        const itemBg = itemIdx % 2 === 0 ? ZEBRA_BG_EVEN : ZEBRA_BG_ODD;
+        const itemBg = ROW_BG;
         const isPendingFrom = pendingFromItem === itemId;
         const isCollapsed = collapsedSet.has(itemId);
 
@@ -706,7 +705,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
             display: 'flex',
             height: ROW_HEIGHT + 4,
             borderBottom: '1px solid #1e3a5f',
-            background: idx % 2 === 0 ? ZEBRA_BG_EVEN : ZEBRA_BG_ODD,
+            background: ROW_BG,
           }}
         >
           <div style={{

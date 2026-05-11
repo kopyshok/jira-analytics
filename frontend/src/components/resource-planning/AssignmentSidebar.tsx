@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
-import { App, Button, DatePicker, Descriptions, Divider, Drawer, Select, Space, Tag, Typography } from 'antd';
+import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, Select, Space, Spin, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 
-import type { AssignmentOut } from '../../api/resourcePlanning';
+import type { AssignmentExplainConflict, AssignmentOut } from '../../api/resourcePlanning';
 import {
   clearAssignmentManualEdit,
   mergeAssignment,
   patchAssignment,
 } from '../../api/resourcePlanning';
+import { useExplainAssignment } from '../../hooks/useResourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import { PHASE_LABELS } from '../../utils/gantt';
 import EmployeeAvatar from './EmployeeAvatar';
@@ -54,7 +55,7 @@ export default function AssignmentSidebar({
   );
 
   if (!assignment) {
-    return <Drawer open={open} onClose={onClose} width={420} title="Назначение" />;
+    return <Drawer open={open} onClose={onClose} width={460} title="Назначение" />;
   }
 
   const updateField = async (data: Parameters<typeof patchAssignment>[2]) => {
@@ -100,11 +101,12 @@ export default function AssignmentSidebar({
     <Drawer
       open={open}
       onClose={onClose}
-      width={420}
+      width={460}
       title={
         <Space>
           <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
           {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
+          {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
         </Space>
       }
     >
@@ -179,6 +181,8 @@ export default function AssignmentSidebar({
         </Descriptions.Item>
       </Descriptions>
 
+      <AssignmentExplainSection planId={planId} assignmentId={assignment.id} />
+
       <Divider>Действия</Divider>
       <Space direction="vertical" style={{ width: '100%' }}>
         {!hasSiblings && assignment.phase !== 'qa' && (
@@ -206,5 +210,113 @@ export default function AssignmentSidebar({
         onSplit={onChanged}
       />
     </Drawer>
+  );
+}
+
+function AssignmentExplainSection({ planId, assignmentId }: { planId: string; assignmentId: string }) {
+  const { data, isLoading, isError } = useExplainAssignment(planId, assignmentId, true);
+  if (isLoading) {
+    return (
+      <>
+        <Divider>Расчёт проблем</Divider>
+        <Spin size="small" />
+      </>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <>
+        <Divider>Расчёт проблем</Divider>
+        <span style={{ color: '#ef4444', fontSize: 12 }}>Ошибка загрузки расчёта</span>
+      </>
+    );
+  }
+  const conflicts = data.conflicts ?? [];
+  const onCp = data.assignment.is_on_critical_path;
+  const slack = data.assignment.slack_days ?? 0;
+  if (conflicts.length === 0 && !onCp) {
+    return (
+      <>
+        <Divider>Расчёт проблем</Divider>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Конфликтов нет. Резерв: {slack.toFixed(0)} д.
+        </Typography.Text>
+      </>
+    );
+  }
+  return (
+    <>
+      <Divider>Расчёт проблем</Divider>
+      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        {onCp && (
+          <Alert
+            type="error"
+            showIcon
+            message={<span>Фаза на критическом пути. Резерв: <b>{slack.toFixed(0)} д.</b> Сдвиг сорвёт срок проекта.</span>}
+          />
+        )}
+        {conflicts.map(c => (
+          <ConflictBlock key={c.id} c={c} />
+        ))}
+      </Space>
+    </>
+  );
+}
+
+function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
+  const isOverload = c.type.startsWith('OVERLOAD_');
+  const sev = c.severity === 'critical' ? 'error' : c.severity === 'warning' ? 'warning' : 'info';
+  return (
+    <Alert
+      type={sev}
+      showIcon
+      message={
+        <div style={{ width: '100%', fontSize: 12 }}>
+          <div style={{ marginBottom: 6 }}>{c.message}</div>
+          {isOverload && (
+            <>
+              <div style={{ marginBottom: 6, color: '#cfe1f5' }}>
+                День <b>{c.date}</b> · Доступно <b>{(c.available_hours ?? 0).toFixed(1)} ч</b> ·
+                Назначено <b>{(c.demand_hours ?? 0).toFixed(1)} ч</b> ·
+                <span style={{ color: (c.overload_pct ?? 0) > 110 ? '#ef4444' : '#ffb432', fontWeight: 700, marginLeft: 4 }}>
+                  {(c.overload_pct ?? 0).toFixed(0)}%
+                </span>
+              </div>
+              {c.contributors.length > 0 && (
+                <>
+                  <div style={{ color: '#8ab0d8', fontSize: 11, marginBottom: 4 }}>
+                    Перекрывают день ({c.contributors.length}):
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {c.contributors.map(co => (
+                      <div
+                        key={co.assignment_id}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '70px 90px 1fr 80px',
+                          gap: 8,
+                          fontSize: 11,
+                          padding: '2px 0',
+                          borderBottom: '1px dashed rgba(120,150,180,0.15)',
+                        }}
+                      >
+                        <span style={{ color: '#7a9ab8' }}>{co.item_key ?? '—'}</span>
+                        <span style={{ color: '#8ab0d8' }}>{co.phase_label}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {co.item_title}
+                        </span>
+                        <span style={{ textAlign: 'right', color: '#cfe1f5' }}>
+                          {co.hours_per_day.toFixed(2)} ч/день
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      }
+    />
   );
 }

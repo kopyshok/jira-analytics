@@ -6,6 +6,7 @@ import {
   patchAssignment, type AssignmentPatch,
   patchConflict, type ConflictOut,
   explainConflict, type ConflictExplainOut,
+  explainAssignment, type AssignmentExplainOut,
   forkPlan, getPlanDiff,
   getPlanQuality,
   createDependency, patchDependency, deleteDependency,
@@ -102,6 +103,15 @@ export function useExplainConflict(planId: string | null, conflictId: string | n
     queryKey: ['conflict-explain', planId, conflictId],
     queryFn: () => explainConflict(planId!, conflictId!),
     enabled: !!planId && !!conflictId && enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useExplainAssignment(planId: string | null, assignmentId: string | null, enabled: boolean) {
+  return useQuery<AssignmentExplainOut>({
+    queryKey: ['assignment-explain', planId, assignmentId],
+    queryFn: () => explainAssignment(planId!, assignmentId!),
+    enabled: !!planId && !!assignmentId && enabled,
     staleTime: 30_000,
   });
 }
