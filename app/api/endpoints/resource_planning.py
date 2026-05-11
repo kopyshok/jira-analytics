@@ -1142,6 +1142,175 @@ def patch_conflict(
     return ConflictOut(**snap)
 
 
+@router.get("/resource-plans/{plan_id}/conflicts/{conflict_id}/explain")
+def explain_conflict(
+    plan_id: str,
+    conflict_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Расчёт конфликта в деталях: доступность сотрудника на проблемный день,
+    список перекрывающих назначений с долей часов в день, итог demand vs available.
+
+    Возвращает:
+        type, severity, message, date (YYYY-MM-DD), employee_id, employee_name,
+        available_hours, demand_hours, overload_pct, contributors[].
+
+    Для не-OVERLOAD_* возвращает базовые поля без contributors.
+    """
+    from datetime import timedelta as _td
+    from app.models import Employee, PlanConflict
+
+    c = db.execute(
+        select(PlanConflict).where(
+            PlanConflict.id == conflict_id,
+            PlanConflict.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not c:
+        raise HTTPException(404, "Conflict not found")
+
+    plan = db.get(ResourcePlan, plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+
+    target_date = c.window_start.date() if c.window_start else None
+    emp_name: Optional[str] = None
+    if c.employee_id:
+        e = db.get(Employee, c.employee_id)
+        emp_name = e.display_name if e else None
+
+    base = {
+        "id": c.id,
+        "type": c.type,
+        "severity": c.severity,
+        "message": c.message,
+        "date": target_date.isoformat() if target_date else None,
+        "employee_id": c.employee_id,
+        "employee_name": emp_name,
+        "available_hours": None,
+        "demand_hours": None,
+        "overload_pct": None,
+        "contributors": [],
+    }
+
+    is_overload = c.type.startswith("OVERLOAD_")
+    if not is_overload or not target_date or not c.employee_id:
+        return base
+
+    # Команда плана — нужна для build_availability (blocks/employees).
+    team = plan.team
+    employees = (
+        db.execute(
+            select(Employee).where(
+                (Employee.team == team) if team else Employee.id == c.employee_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # На всякий случай гарантируем, что виновник попал в выборку.
+    if c.employee_id not in {e.id for e in employees}:
+        owner = db.get(Employee, c.employee_id)
+        if owner:
+            employees.append(owner)
+
+    blocks = (
+        db.execute(
+            select(ScheduledBlock).where(
+                (ScheduledBlock.team == team) | (ScheduledBlock.team.is_(None))
+            )
+            if team
+            else select(ScheduledBlock)
+        )
+        .scalars()
+        .all()
+    )
+
+    svc = ResourcePlanningService(db)
+    availability = svc.build_availability(employees, target_date, target_date, list(blocks))
+    avail_map = availability.get(c.employee_id, {})
+    available_h = float(avail_map.get(target_date, 0.0))
+
+    assignments = (
+        db.execute(
+            select(ResourcePlanAssignment)
+            .options(joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue))
+            .where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.employee_id == c.employee_id,
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+
+    phase_label = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
+
+    # Для распределения часов сегмента по рабочим дням нужна availability
+    # сотрудника на весь его горизонт. Считаем по диапазону всех его назначений.
+    emp_horizon_start = min(
+        (a.start_date for a in assignments if a.start_date), default=target_date
+    )
+    emp_horizon_end = max(
+        (a.end_date for a in assignments if a.end_date), default=target_date
+    )
+    full_avail = svc.build_availability(
+        [e for e in employees if e.id == c.employee_id],
+        emp_horizon_start,
+        emp_horizon_end,
+        list(blocks),
+    ).get(c.employee_id, {})
+
+    demand_total = 0.0
+    contributors: List[dict] = []
+    for a in assignments:
+        if not a.start_date or not a.end_date or a.hours_allocated is None:
+            continue
+        if not (a.start_date <= target_date <= a.end_date):
+            continue
+        # Часы делятся равномерно по рабочим дням сегмента — тот же подход
+        # что и в leveler._detect_overload.
+        working_days = 0
+        d = a.start_date
+        while d <= a.end_date:
+            if full_avail.get(d, 0.0) > 0.0:
+                working_days += 1
+            d += _td(days=1)
+        if working_days <= 0:
+            continue
+        per_day = float(a.hours_allocated) / working_days
+        demand_total += per_day
+        bi = a.backlog_item
+        issue = bi.issue if bi else None
+        contributors.append({
+            "assignment_id": a.id,
+            "backlog_item_id": a.backlog_item_id,
+            "item_key": issue.key if issue else None,
+            "item_title": bi.title if bi else "",
+            "phase": a.phase,
+            "phase_label": phase_label.get(a.phase, a.phase),
+            "hours_per_day": round(per_day, 2),
+            "hours_total": float(a.hours_allocated),
+            "start_date": a.start_date.isoformat(),
+            "end_date": a.end_date.isoformat(),
+            "working_days": working_days,
+        })
+
+    contributors.sort(key=lambda x: -x["hours_per_day"])
+
+    overload_pct = (demand_total / available_h * 100.0) if available_h > 0 else None
+
+    base.update({
+        "available_hours": round(available_h, 2),
+        "demand_hours": round(demand_total, 2),
+        "overload_pct": round(overload_pct, 0) if overload_pct is not None else None,
+        "contributors": contributors,
+    })
+    return base
+
+
 # ── Diff ───────────────────────────────────────────────────────────────────
 
 

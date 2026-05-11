@@ -93,6 +93,12 @@ export function getMonthLabels(tl: GanttTimeline): Array<{ label: string; leftPc
   return months;
 }
 
+export const PX_PER_DAY: Record<TimelineScale, number> = {
+  day: 36,
+  week: 14,
+  month: 5,
+};
+
 export const PHASE_COLORS: Record<string, string> = {
   analyst: '#00c9c8',
   dev: '#2a7fbf',

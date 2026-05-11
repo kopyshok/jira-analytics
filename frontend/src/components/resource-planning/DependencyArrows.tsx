@@ -53,7 +53,7 @@ export default function DependencyArrows({
     marker.setAttribute('orient', 'auto');
     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     poly.setAttribute('points', '0 0, 6 2, 0 4');
-    poly.setAttribute('fill', 'rgba(180,200,240,0.5)');
+    poly.setAttribute('fill', 'rgba(200,215,245,0.85)');
     marker.appendChild(poly);
     defs.appendChild(marker);
 
@@ -168,7 +168,7 @@ export default function DependencyArrows({
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
-          'rgba(140,170,210,0.25)', '1', '', 'rp-arrowhead',
+          'rgba(200,215,245,0.75)', '1.5', '', 'rp-arrowhead',
         );
       }
     }
@@ -209,7 +209,7 @@ export default function DependencyArrows({
             fRect.top + fRect.height / 2 - cRect.top,
             tRect.left - cRect.left,
             tRect.top + tRect.height / 2 - cRect.top,
-            'rgba(0,201,200,0.40)', '1', '4 3', 'rp-relay-arrowhead',
+            'rgba(0,201,200,0.75)', '1.5', '4 3', 'rp-relay-arrowhead',
           );
         }
       }

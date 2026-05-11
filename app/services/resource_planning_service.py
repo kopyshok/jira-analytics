@@ -463,21 +463,37 @@ class ResourcePlanningService:
                     continue
 
                 if phase == "opo":
+                    # ОПЭ = 2 параллельные части: аналитик + разработчик.
+                    # Гарантируем, что эти части идут на сотрудников из разных пулов
+                    # и не совпадают по идентификатору; иначе обе строки бьются
+                    # в один и тот же `remaining[emp]` и выглядят как один отрезок.
+                    opo_analyst_pool = [
+                        e.id for e in employees
+                        if (e.role or "").lower() in ANALYST_ROLES
+                    ]
+                    opo_dev_pool = [
+                        e.id for e in employees
+                        if (e.role or "").lower() in DEV_ROLES
+                    ]
                     analyst_id = assignments_by_role["analyst"].get(item.id)
                     dev_id = assignments_by_role["dev"].get(item.id)
-                    # Если у инициативы нет исполнителя-аналитика — взять любого из
-                    # пула аналитических ролей (независимо от assignee).
-                    if not analyst_id:
-                        opo_analyst_pool = [
-                            e.id for e in employees
-                            if (e.role or "").lower() in ANALYST_ROLES
-                        ]
-                        if opo_analyst_pool:
-                            # min-load: выбрать наименее загруженного по remaining
-                            analyst_id = min(
-                                opo_analyst_pool,
-                                key=lambda eid: -sum(remaining.get(eid, {}).values()),
-                            )
+
+                    # Аналитика для ОПЭ — только из аналитического пула.
+                    if (not analyst_id or analyst_id not in opo_analyst_pool) and opo_analyst_pool:
+                        analyst_id = min(
+                            opo_analyst_pool,
+                            key=lambda eid: -sum(remaining.get(eid, {}).values()),
+                        )
+
+                    # Разработчика для ОПЭ — только из dev пула и обязательно
+                    # отличного от аналитика.
+                    dev_candidates = [x for x in opo_dev_pool if x != analyst_id]
+                    if (not dev_id or dev_id not in opo_dev_pool or dev_id == analyst_id) and dev_candidates:
+                        dev_id = min(
+                            dev_candidates,
+                            key=lambda eid: -sum(remaining.get(eid, {}).values()),
+                        )
+
                     parts = self._opo_split(item, analyst_id, dev_id)
                     last_end: Optional[date] = None
                     opo_involvement = self._involvement_for_phase(item, "opo")

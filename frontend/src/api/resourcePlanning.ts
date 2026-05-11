@@ -244,6 +244,39 @@ export const patchConflict = (planId: string, conflictId: string, status: Confli
     { status },
   );
 
+export interface ConflictExplainContributor {
+  assignment_id: string;
+  backlog_item_id: string;
+  item_key: string | null;
+  item_title: string;
+  phase: 'analyst' | 'dev' | 'qa' | 'opo';
+  phase_label: string;
+  hours_per_day: number;
+  hours_total: number;
+  start_date: string;
+  end_date: string;
+  working_days: number;
+}
+
+export interface ConflictExplainOut {
+  id: string;
+  type: string;
+  severity: ConflictOut['severity'];
+  message: string;
+  date: string | null;
+  employee_id: string | null;
+  employee_name: string | null;
+  available_hours: number | null;
+  demand_hours: number | null;
+  overload_pct: number | null;
+  contributors: ConflictExplainContributor[];
+}
+
+export const explainConflict = (planId: string, conflictId: string) =>
+  api.get<ConflictExplainOut>(
+    `/resource-planning/resource-plans/${planId}/conflicts/${conflictId}/explain`,
+  );
+
 export const forkPlan = (planId: string, label?: string) =>
   api.post<ResourcePlan>(`/resource-planning/resource-plans/${planId}/fork`, { label });
 

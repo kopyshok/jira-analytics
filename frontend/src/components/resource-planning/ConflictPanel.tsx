@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Alert, App, Button, Collapse, Dropdown, Segmented, Space, Tag } from 'antd';
+import { Alert, App, Button, Collapse, Dropdown, Segmented, Space, Spin, Tag } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import type { ConflictOut } from '../../api/resourcePlanning';
-import { usePatchConflict } from '../../hooks/useResourcePlanning';
+import { usePatchConflict, useExplainConflict } from '../../hooks/useResourcePlanning';
 
 interface Props {
   conflicts: ConflictOut[];
@@ -44,6 +44,142 @@ const STATUS_LABEL: Record<ConflictOut['status'], string> = {
   muted: 'Замучен',
   resolved: 'Решён',
 };
+
+function ConflictAlert({
+  conflict: c,
+  planId,
+  onSelectAssignment,
+  onStatusChange,
+}: {
+  conflict: ConflictOut;
+  planId: string | null;
+  onSelectAssignment?: (assignmentId: string) => void;
+  onStatusChange: (conflictId: string, status: ConflictOut['status']) => void;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+  const isOverload = c.type.startsWith('OVERLOAD_');
+  const explain = useExplainConflict(planId, c.id, showDetails && isOverload);
+
+  return (
+    <Alert
+      type={SEVERITY_TYPE[c.severity] ?? 'info'}
+      showIcon
+      message={
+        <div style={{ width: '100%' }}>
+          <Space size={8} align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <span
+              style={{ cursor: c.assignment_id && onSelectAssignment ? 'pointer' : 'default' }}
+              onClick={() =>
+                c.assignment_id && onSelectAssignment?.(c.assignment_id)
+              }
+            >
+              {c.message}
+            </span>
+            <Space size={4}>
+              {isOverload && (
+                <Button
+                  size="small"
+                  type="link"
+                  style={{ padding: 0, fontSize: 12 }}
+                  onClick={() => setShowDetails(v => !v)}
+                >
+                  {showDetails ? 'Скрыть' : 'Подробности'}
+                </Button>
+              )}
+              <Tag color={STATUS_COLOR[c.status]}>{STATUS_LABEL[c.status]}</Tag>
+              <Dropdown
+                menu={{
+                  items: (['acknowledged', 'muted', 'resolved', 'open'] as const)
+                    .filter(s => s !== c.status)
+                    .map(s => ({
+                      key: s,
+                      label: STATUS_LABEL[s],
+                      onClick: () => onStatusChange(c.id, s),
+                    })),
+                }}
+                trigger={['click']}
+              >
+                <a><MoreOutlined /></a>
+              </Dropdown>
+            </Space>
+          </Space>
+          {showDetails && isOverload && (
+            <div style={{ marginTop: 8, padding: 8, background: 'rgba(0,0,0,0.18)', borderRadius: 4 }}>
+              {explain.isLoading && <Spin size="small" />}
+              {explain.data && (
+                <ExplainBreakdown data={explain.data} onSelectAssignment={onSelectAssignment} />
+              )}
+              {explain.isError && (
+                <span style={{ color: '#ef4444', fontSize: 12 }}>Ошибка загрузки расчёта</span>
+              )}
+            </div>
+          )}
+        </div>
+      }
+    />
+  );
+}
+
+function ExplainBreakdown({
+  data,
+  onSelectAssignment,
+}: {
+  data: import('../../api/resourcePlanning').ConflictExplainOut;
+  onSelectAssignment?: (assignmentId: string) => void;
+}) {
+  const avail = data.available_hours ?? 0;
+  const demand = data.demand_hours ?? 0;
+  const pct = data.overload_pct ?? 0;
+  return (
+    <div style={{ fontSize: 12, color: '#cfe1f5' }}>
+      <div style={{ marginBottom: 6 }}>
+        <b>{data.employee_name ?? 'Сотрудник'}</b>
+        {data.date && <> · день <b>{data.date}</b></>}
+      </div>
+      <div style={{ marginBottom: 6 }}>
+        Доступно: <b>{avail.toFixed(1)} ч</b> · Назначено: <b>{demand.toFixed(1)} ч</b> ·
+        <span style={{ color: pct > 110 ? '#ef4444' : '#ffb432', fontWeight: 700, marginLeft: 4 }}>
+          {pct.toFixed(0)}%
+        </span>
+      </div>
+      {data.contributors.length === 0 ? (
+        <div style={{ color: '#7a9ab8' }}>Нет перекрывающих назначений</div>
+      ) : (
+        <>
+          <div style={{ color: '#8ab0d8', fontSize: 11, marginBottom: 4 }}>
+            Перекрывают день ({data.contributors.length}):
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {data.contributors.map(co => (
+              <div
+                key={co.assignment_id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '70px 80px 1fr 70px',
+                  gap: 8,
+                  fontSize: 11,
+                  padding: '2px 0',
+                  cursor: onSelectAssignment ? 'pointer' : 'default',
+                  borderBottom: '1px dashed rgba(120,150,180,0.15)',
+                }}
+                onClick={() => onSelectAssignment?.(co.assignment_id)}
+              >
+                <span style={{ color: '#7a9ab8' }}>{co.item_key ?? '—'}</span>
+                <span style={{ color: '#8ab0d8' }}>{co.phase_label}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {co.item_title}
+                </span>
+                <span style={{ textAlign: 'right', color: '#cfe1f5' }}>
+                  {co.hours_per_day.toFixed(2)} ч/день
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function ConflictPanel({ conflicts, planId, onSelectAssignment }: Props) {
   const { message } = App.useApp();
@@ -148,39 +284,12 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {g.items.map(c => (
-                    <Alert
+                    <ConflictAlert
                       key={c.id}
-                      type={SEVERITY_TYPE[c.severity] ?? 'info'}
-                      showIcon
-                      message={
-                        <Space size={8} align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-                          <span
-                            style={{ cursor: c.assignment_id && onSelectAssignment ? 'pointer' : 'default' }}
-                            onClick={() =>
-                              c.assignment_id && onSelectAssignment?.(c.assignment_id)
-                            }
-                          >
-                            {c.message}
-                          </span>
-                          <Space size={4}>
-                            <Tag color={STATUS_COLOR[c.status]}>{STATUS_LABEL[c.status]}</Tag>
-                            <Dropdown
-                              menu={{
-                                items: (['acknowledged', 'muted', 'resolved', 'open'] as const)
-                                  .filter(s => s !== c.status)
-                                  .map(s => ({
-                                    key: s,
-                                    label: STATUS_LABEL[s],
-                                    onClick: () => handleStatusChange(c.id, s),
-                                  })),
-                              }}
-                              trigger={['click']}
-                            >
-                              <a><MoreOutlined /></a>
-                            </Dropdown>
-                          </Space>
-                        </Space>
-                      }
+                      conflict={c}
+                      planId={planId}
+                      onSelectAssignment={onSelectAssignment}
+                      onStatusChange={handleStatusChange}
                     />
                   ))}
                 </div>
