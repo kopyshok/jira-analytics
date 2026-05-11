@@ -34,19 +34,41 @@ const ZEBRA_BG_EVEN = 'rgba(0,201,200,0.04)';
 const ZEBRA_BG_ODD = 'rgba(0,0,0,0.18)';
 
 function ItemTitleCell({
-  title, jiraKey, priority, leftColWidth, fontWeight = 600, role, assignee, hours,
+  title, jiraKey, priority, leftColWidth, fontWeight = 600,
+  dotColor, assignee, hours,
 }: {
   title: string; jiraKey: string | null; priority?: number | null;
   leftColWidth: number; fontWeight?: number;
-  role?: React.ReactNode; assignee?: React.ReactNode; hours?: React.ReactNode;
+  dotColor?: string;
+  assignee?: React.ReactNode; hours?: React.ReactNode;
 }) {
+  const titleNode = (
+    <span
+      style={{
+        fontSize: 13,
+        lineHeight: 1.3,
+        wordBreak: 'break-word',
+        overflow: 'hidden',
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+      } as React.CSSProperties}
+    >
+      {title}
+      {hours && (
+        <span style={{ color: '#8ab0d8', fontWeight: 400, marginLeft: 6, fontSize: 11 }}>
+          · {hours}
+        </span>
+      )}
+    </span>
+  );
   return (
     <div style={{
       width: leftColWidth,
       flexShrink: 0,
       borderRight: '1px solid #1e3a5f',
       display: 'grid',
-      gridTemplateColumns: 'minmax(0, 1fr) 96px 140px 60px',
+      gridTemplateColumns: 'minmax(0, 1fr) 160px',
       columnGap: 8,
       alignItems: 'center',
       padding: '6px 12px',
@@ -87,15 +109,25 @@ function ItemTitleCell({
             </a>
           </div>
         )}
-        <div style={{ fontSize: 13, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-          {title}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, overflow: 'hidden' }}>
+          {dotColor && (
+            <span
+              style={{
+                width: 8, height: 8,
+                borderRadius: 2,
+                background: dotColor,
+                flexShrink: 0,
+                marginTop: 5,
+                display: 'inline-block',
+              }}
+            />
+          )}
+          {titleNode}
         </div>
       </div>
-      <div style={{ fontSize: 11, color: '#8ab0d8' }}>{role ?? ''}</div>
       <div style={{ fontSize: 11, color: '#8ab0d8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {assignee ?? ''}
       </div>
-      <div style={{ fontSize: 11, color: '#8ab0d8', textAlign: 'right' }}>{hours ?? ''}</div>
     </div>
   );
 }
@@ -556,10 +588,11 @@ function TwoLevelRows({
                       width: `${width}%`,
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      height: 24,
-                      background: 'rgba(0,201,200,0.15)',
-                      border: '1px solid rgba(0,201,200,0.4)',
-                      borderRadius: 4,
+                      height: 28,
+                      background: 'linear-gradient(180deg, rgba(0,201,200,0.55), rgba(0,201,200,0.30))',
+                      border: '1.5px solid rgba(0,201,200,0.9)',
+                      borderRadius: 5,
+                      boxShadow: '0 0 8px rgba(0,201,200,0.25)',
                       zIndex: 2,
                     }} />
                   );
@@ -587,9 +620,7 @@ function TwoLevelRows({
                     title={PHASE_LABELS[phase]}
                     jiraKey={null}
                     leftColWidth={leftColWidth}
-                    role={
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0, display: 'inline-block' }} />
-                    }
+                    dotColor={color}
                     assignee={
                       phase === 'qa' ? <span style={{ color: '#4a6a90' }}>—</span> : (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
