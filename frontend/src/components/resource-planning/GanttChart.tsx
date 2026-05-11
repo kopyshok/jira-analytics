@@ -2,7 +2,7 @@ import { useRef, useMemo, useState } from 'react';
 import type { AssignmentOut, DependencyOut, ScheduledBlock } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
-import { buildTimeline, dateToLeft, quarterBounds } from '../../utils/gantt';
+import { buildTimeline, dateToLeft, quarterBounds, PX_PER_DAY } from '../../utils/gantt';
 import type { ViewMode } from './GanttRows';
 import TimelineHeader from './TimelineHeader';
 import GanttRows from './GanttRows';
@@ -55,12 +55,16 @@ export default function GanttChart({
   const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   const timeline = useMemo(() => {
     const { start, end } = quarterBounds(quarter, year);
     return buildTimeline(start, end);
   }, [quarter, year]);
+
+  const pxPerDay = PX_PER_DAY[scale];
+  const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
 
   const todayLeft = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -102,54 +106,83 @@ export default function GanttChart({
             : 'Режим связей: кликните по инициативе-источнику'}
         </div>
       )}
-      <TimelineHeader timeline={timeline} leftColWidth={LEFT_COL} scale={scale} />
 
       <div
         ref={containerRef}
-        style={{ position: 'relative', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}
+        style={{
+          position: 'relative',
+          overflowX: 'auto',
+          overflowY: 'auto',
+          maxHeight: 'calc(100vh - 280px)',
+        }}
       >
-        {/* Today marker */}
-        <div style={{
-          position: 'absolute',
-          left: `calc(${LEFT_COL}px + ${todayLeft / 100} * (100% - ${LEFT_COL}px))`,
-          top: 0, bottom: 0,
-          width: 2,
-          background: 'rgba(0,201,200,0.6)',
-          zIndex: 20,
-          pointerEvents: 'none',
-        }} />
+        <div
+          ref={innerRef}
+          style={{
+            position: 'relative',
+            width: LEFT_COL + trackWidthPx,
+            minWidth: '100%',
+          }}
+        >
+          <div style={{ position: 'sticky', top: 0, zIndex: 30, background: '#0a1628' }}>
+            <TimelineHeader
+              timeline={timeline}
+              leftColWidth={LEFT_COL}
+              scale={scale}
+              trackWidthPx={trackWidthPx}
+            />
+          </div>
 
-        {/* Blocked zones */}
-        <div style={{ position: 'absolute', left: LEFT_COL, right: 0, top: 0, bottom: 0, pointerEvents: 'none' }}>
-          <BlockedZones blocks={blocks} timeline={timeline} />
+          {/* Today marker */}
+          <div style={{
+            position: 'absolute',
+            left: LEFT_COL + (todayLeft / 100) * trackWidthPx,
+            top: 0, bottom: 0,
+            width: 2,
+            background: 'rgba(0,201,200,0.6)',
+            zIndex: 20,
+            pointerEvents: 'none',
+          }} />
+
+          {/* Blocked zones */}
+          <div style={{
+            position: 'absolute',
+            left: LEFT_COL,
+            width: trackWidthPx,
+            top: 0, bottom: 0,
+            pointerEvents: 'none',
+          }}>
+            <BlockedZones blocks={blocks} timeline={timeline} />
+          </div>
+
+          {/* SVG arrows */}
+          <DependencyArrows
+            assignments={assignments}
+            rowRefs={rowRefs}
+            containerRef={innerRef as React.RefObject<HTMLDivElement>}
+            showRelayArrows={showRelayArrows}
+            manualDependencies={dependencies}
+            onDeleteDependency={onDeleteDependency}
+          />
+
+          <GanttRows
+            assignments={assignments}
+            timeline={timeline}
+            viewMode={viewMode}
+            leftColWidth={LEFT_COL}
+            trackWidthPx={trackWidthPx}
+            rowRefs={rowRefs}
+            planId={planId}
+            employees={employees}
+            depDrawMode={depDrawMode}
+            pendingFromItem={pendingFromItem}
+            onItemClick={handleItemClick}
+            collapsedItemIds={collapsedItemIds}
+            onToggleCollapse={onToggleCollapse}
+            conflictAssignmentIds={conflictAssignmentIds}
+            onAssignmentClick={onAssignmentClick}
+          />
         </div>
-
-        {/* SVG arrows */}
-        <DependencyArrows
-          assignments={assignments}
-          rowRefs={rowRefs}
-          containerRef={containerRef as React.RefObject<HTMLDivElement>}
-          showRelayArrows={showRelayArrows}
-          manualDependencies={dependencies}
-          onDeleteDependency={onDeleteDependency}
-        />
-
-        <GanttRows
-          assignments={assignments}
-          timeline={timeline}
-          viewMode={viewMode}
-          leftColWidth={LEFT_COL}
-          rowRefs={rowRefs}
-          planId={planId}
-          employees={employees}
-          depDrawMode={depDrawMode}
-          pendingFromItem={pendingFromItem}
-          onItemClick={handleItemClick}
-          collapsedItemIds={collapsedItemIds}
-          onToggleCollapse={onToggleCollapse}
-          conflictAssignmentIds={conflictAssignmentIds}
-          onAssignmentClick={onAssignmentClick}
-        />
       </div>
     </div>
   );

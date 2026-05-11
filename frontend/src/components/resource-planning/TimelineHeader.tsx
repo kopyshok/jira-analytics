@@ -6,11 +6,12 @@ interface Props {
   timeline: GanttTimeline;
   leftColWidth: number;
   scale?: TimelineScale;
+  trackWidthPx?: number;
 }
 
 const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
-export default function TimelineHeader({ timeline, leftColWidth, scale = 'week' }: Props) {
+export default function TimelineHeader({ timeline, leftColWidth, scale = 'week', trackWidthPx }: Props) {
   const lower = useMemo(() => {
     if (scale === 'day') return getDayLabels(timeline);
     if (scale === 'month') return getMonthLabels(timeline);
@@ -51,7 +52,7 @@ export default function TimelineHeader({ timeline, leftColWidth, scale = 'week' 
     <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid #1e3a5f' }}>
       <div style={{ display: 'flex', height: 28, background: '#091829' }}>
         <div style={{ width: leftColWidth, flexShrink: 0, borderRight: '1px solid #1e3a5f' }} />
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {upperRow.map((m, i) => (
             <div
               key={`${m.label}-${i}`}
@@ -78,7 +79,7 @@ export default function TimelineHeader({ timeline, leftColWidth, scale = 'week' 
       </div>
       <div style={{ display: 'flex', height: 24, background: '#0a1e35' }}>
         <div style={{ width: leftColWidth, flexShrink: 0, borderRight: '1px solid #1e3a5f' }} />
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ width: trackWidthPx ?? undefined, flex: trackWidthPx ? '0 0 auto' : 1, position: 'relative' }}>
           {lower.map((w, i) => (
             <div
               key={`${w.label}-${i}-${w.leftPct}`}

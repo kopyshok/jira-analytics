@@ -14,6 +14,7 @@ interface Props {
   timeline: GanttTimeline;
   viewMode: ViewMode;
   leftColWidth: number;
+  trackWidthPx?: number;
   rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
   planId: string;
   employees: EmployeeResponse[];
@@ -27,6 +28,11 @@ interface Props {
 }
 
 type SubProps = Omit<Props, 'viewMode'>;
+
+const trackStyle = (trackWidthPx?: number): React.CSSProperties =>
+  trackWidthPx
+    ? { width: trackWidthPx, flex: '0 0 auto', position: 'relative' }
+    : { flex: 1, position: 'relative' };
 
 const ROW_HEIGHT = 36;
 const JIRA_BASE = 'https://itgri.atlassian.net';
@@ -132,7 +138,7 @@ function ItemTitleCell({
   );
 }
 
-function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, employees }: SubProps) {
+function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees }: SubProps) {
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; key: string | null; priority: number | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
@@ -166,7 +172,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, rowRefs, planId, e
           }}
         >
           <ItemTitleCell title={title} jiraKey={key} priority={priority} leftColWidth={leftColWidth} />
-          <div style={{ flex: 1, position: 'relative' }}>
+          <div style={trackStyle(trackWidthPx)}>
             {itemAssignments.filter(a => a.start_date && a.end_date).map(a => {
               const left = dateToLeft(a.start_date!, timeline);
               const width = datesToWidth(a.start_date!, a.end_date!, timeline);
@@ -495,7 +501,7 @@ function useMemoizedDragListeners(
 }
 
 function TwoLevelRows({
-  assignments, timeline, leftColWidth, rowRefs, planId, employees,
+  assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
 }: SubProps) {
@@ -574,7 +580,7 @@ function TwoLevelRows({
                 assignee={assigneeNames || '—'}
                 hours={totalHours > 0 ? `${Math.round(totalHours)} ч` : ''}
               />
-              <div style={{ flex: 1, position: 'relative' }}>
+              <div style={trackStyle(trackWidthPx)}>
                 {(() => {
                   const starts = ia.filter(a => a.start_date).map(a => a.start_date!).sort();
                   const ends = ia.filter(a => a.end_date).map(a => a.end_date!).sort();
@@ -631,7 +637,7 @@ function TwoLevelRows({
                     }
                     hours={phaseHours > 0 ? `${Math.round(phaseHours)} ч` : ''}
                   />
-                  <div data-gantt-track="true" style={{ flex: 1, position: 'relative' }}>
+                  <div data-gantt-track="true" style={{ ...trackStyle(trackWidthPx) }}>
                     {phaseAssignments.filter(a => a.start_date && a.end_date).map(a => {
                       const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
                       return (
@@ -669,7 +675,7 @@ function TwoLevelRows({
   );
 }
 
-function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs, planId, employees }: SubProps) {
+function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees }: SubProps) {
   const itemOrder = useMemo(
     () => [...new Set(assignments.map(a => a.backlog_item_id))],
     [assignments],
@@ -717,7 +723,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, rowRefs, planI
             <EmployeeAvatar name={empAssignments[0]?.employee_name ?? null} role={empAssignments[0]?.employee_role} size={20} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
           </div>
-          <div style={{ flex: 1, position: 'relative' }}>
+          <div style={trackStyle(trackWidthPx)}>
             {empAssignments.filter(a => a.start_date && a.end_date).map(a => {
               const idx2 = itemOrder.indexOf(a.backlog_item_id);
               const color = getItemColor(idx2);

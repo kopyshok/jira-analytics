@@ -5,6 +5,7 @@ import {
   getResourcePlans, getScheduledBlocks, updateScheduledBlock,
   patchAssignment, type AssignmentPatch,
   patchConflict, type ConflictOut,
+  explainConflict, type ConflictExplainOut,
   forkPlan, getPlanDiff,
   getPlanQuality,
   createDependency, patchDependency, deleteDependency,
@@ -93,6 +94,15 @@ export function usePatchConflict(planId: string | null) {
     onSuccess: () => {
       if (planId) qc.invalidateQueries({ queryKey: ['gantt', planId] });
     },
+  });
+}
+
+export function useExplainConflict(planId: string | null, conflictId: string | null, enabled: boolean) {
+  return useQuery<ConflictExplainOut>({
+    queryKey: ['conflict-explain', planId, conflictId],
+    queryFn: () => explainConflict(planId!, conflictId!),
+    enabled: !!planId && !!conflictId && enabled,
+    staleTime: 30_000,
   });
 }
 
