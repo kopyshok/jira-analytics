@@ -25,6 +25,8 @@ import ScenarioDeficitBadge from '../components/planning/ScenarioDeficitBadge';
 import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
 import ScenarioCompareDrawer from '../components/planning/ScenarioCompareDrawer';
 import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisionHistoryDrawer';
+import { AllocationOverridePopover } from '../components/planning/AllocationOverridePopover';
+import { useScenarioContinuationInfo } from '../hooks/useScenarioContinuationInfo';
 import {
   useScenarios,
   useScenario,
@@ -281,6 +283,7 @@ export default function PlanningPage() {
   const { data: scenario } = useScenario(scenarioId);
   const { data: allocations, isLoading: allocLoading } =
     useScenarioAllocations(scenarioId);
+  const { data: continuation } = useScenarioContinuationInfo(scenarioId ?? undefined);
 
   const patchAlloc = usePatchAllocation();
   const patchAssignee = usePatchAllocationAssignee();
@@ -740,6 +743,14 @@ export default function PlanningPage() {
                     const op = a.estimate_opo_hours ?? 0;
                     const total = a.estimate_hours ?? an + de + qa + op;
                     const priorityCyan = a.priority != null && a.priority <= 3;
+                    const contInfo = continuation?.info_by_allocation_id?.[a.id];
+                    const hasOverride =
+                      a.override_estimate_analyst_hours !== null ||
+                      a.override_estimate_dev_hours !== null ||
+                      a.override_estimate_qa_hours !== null ||
+                      a.override_estimate_opo_hours !== null;
+                    const isPendingContinuation =
+                      !!contInfo?.is_continuation && !hasOverride;
                     return (
                       <SortableAllocRow
                         key={a.id}
@@ -838,8 +849,41 @@ export default function PlanningPage() {
                           />
                         </div>
                         <div>
-                          <div style={{ color: DARK_THEME.textPrimary, fontSize: 14, marginBottom: 3 }}>
-                            {a.title}
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              color: DARK_THEME.textPrimary,
+                              fontSize: 14,
+                              marginBottom: 3,
+                            }}
+                          >
+                            <span style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
+                            {hasOverride && (
+                              <Tag color="gold" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
+                                переоценка
+                              </Tag>
+                            )}
+                            {isPendingContinuation && (
+                              <Tag color="red" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
+                                ⚠ продолжение
+                              </Tag>
+                            )}
+                            {scenarioId && scenario && (
+                              <AllocationOverridePopover
+                                scenarioId={scenarioId}
+                                allocationId={a.id}
+                                scenarioStatus={scenario.status as 'draft' | 'approved'}
+                                currentOverride={{
+                                  analyst: a.override_estimate_analyst_hours,
+                                  dev: a.override_estimate_dev_hours,
+                                  qa: a.override_estimate_qa_hours,
+                                  opo: a.override_estimate_opo_hours,
+                                }}
+                                continuation={contInfo}
+                              />
+                            )}
                           </div>
                           {a.source_category === 'quarterly_tasks' && (
                             <span
