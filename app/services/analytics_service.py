@@ -13,7 +13,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional
 
 from sqlalchemy import func, and_, or_, select, exists
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Worklog, Issue, Employee, EmployeeTeam
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
@@ -213,25 +213,35 @@ class AnalyticsService:
         if not scenario_ids:
             return empty_response
 
-        alloc_rows = (
-            self.db.query(BacklogItem.issue_id, BacklogItem.estimate_hours)
-            .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+        from app.services.allocation_estimates import effective_estimate_hours
+
+        alloc_objs = (
+            self.db.query(ScenarioAllocation)
+            .options(joinedload(ScenarioAllocation.backlog_item))
             .filter(
                 ScenarioAllocation.scenario_id.in_(scenario_ids),
                 ScenarioAllocation.included_flag.is_(True),
-                BacklogItem.issue_id.isnot(None),
             )
-            .distinct()
             .all()
         )
-        if not alloc_rows:
+        # Несколько allocations на один issue (разные approved сценарии) —
+        # берём максимум как «целевой план» по этой инициативе. Override на
+        # allocation приоритетнее BacklogItem.estimate_*.
+        plan_by_issue: dict[str, float] = {}
+        for a in alloc_objs:
+            bi = a.backlog_item
+            if bi is None or bi.issue_id is None:
+                continue
+            eff = effective_estimate_hours(a)
+            total = eff["analyst"] + eff["dev"] + eff["qa"] + eff["opo"]
+            prev = plan_by_issue.get(bi.issue_id, 0.0)
+            if total > prev:
+                plan_by_issue[bi.issue_id] = total
+
+        if not plan_by_issue:
             return empty_response
 
-        issue_ids = list({row[0] for row in alloc_rows})
-        plan_by_issue: dict[str, float] = {}
-        for issue_id, est in alloc_rows:
-            if issue_id and est is not None:
-                plan_by_issue[issue_id] = est
+        issue_ids = list(plan_by_issue.keys())
 
         issues: list[Issue] = self.db.query(Issue).filter(Issue.id.in_(issue_ids)).all()
         total = len(issues)
