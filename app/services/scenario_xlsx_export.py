@@ -19,6 +19,9 @@ from app.models import (
     MandatoryWorkType, PlanningScenario, ProductionCalendarDay, Role,
     ScenarioAllocation, ScenarioRule,
 )
+from app.services.allocation_estimates import effective_estimate_hours
+from app.services.continuation_service import ContinuationService
+from app.services.planning_service import should_skip_in_plan
 from app.services.resource_base_service import (
     ResourceBaseService, ResourceBase, ResourceSummary,
 )
@@ -115,6 +118,9 @@ class ScenarioExportContext:
     # резолвинга роли исполнителя задачи, когда assignee_employee_id не
     # заполнен вручную и приходится сопоставлять по имени из Jira.
     role_by_display_name: dict[str, str]
+    # {allocation_id: {is_continuation, spent_total, ...}} — для skip-логики
+    # «continuation без override» в total-расчётах.
+    continuation_info: dict[str, dict]
 
 
 INCLUDED_HEADERS = [
@@ -132,14 +138,20 @@ EXCLUDED_HEADERS = [
 EXCLUDED_WIDTHS = [14, 50, 8, 18, 11, 11, 11, 11, 12, 28]
 
 
-def _demand_by_role(item: BacklogItem) -> tuple[float, float, float]:
-    """Hours by (analyst, dev, qa) accounting for ОПЭ split."""
-    ea = item.estimate_analyst_hours or 0.0
-    ed = item.estimate_dev_hours or 0.0
-    eq = item.estimate_qa_hours or 0.0
-    eo = item.estimate_opo_hours or 0.0
-    r = item.opo_analyst_ratio if item.opo_analyst_ratio is not None else 0.5
-    return ea + eo * r, ed + eo * (1.0 - r), eq
+def _demand_by_role(alloc: ScenarioAllocation) -> tuple[float, float, float, float]:
+    """Hours by (analyst, dev, qa, opo) через effective_estimate_hours.
+
+    Override на allocation приоритетнее BacklogItem.estimate_*. ОПЭ split
+    использует opo_analyst_ratio из BacklogItem (не overridable).
+    """
+    item = alloc.backlog_item
+    eff = effective_estimate_hours(alloc)
+    ea = eff["analyst"]
+    ed = eff["dev"]
+    eq = eff["qa"]
+    eo = eff["opo"]
+    r = item.opo_analyst_ratio if item is not None and item.opo_analyst_ratio is not None else 0.5
+    return ea + eo * r, ed + eo * (1.0 - r), eq, eo
 
 
 def _initiative_row_mid(alloc: ScenarioAllocation, *, included: bool) -> list:
@@ -147,8 +159,7 @@ def _initiative_row_mid(alloc: ScenarioAllocation, *, included: bool) -> list:
     item = alloc.backlog_item
     issue = getattr(item, "issue", None)
     key = issue.key if issue else ""
-    analyst, dev, qa = _demand_by_role(item)
-    opo = item.estimate_opo_hours or 0.0
+    analyst, dev, qa, opo = _demand_by_role(alloc)
     total = round(analyst + dev + qa + opo, 1)
     goals = (issue.goals or "") if issue else ""
     base = [
@@ -265,7 +276,10 @@ def _planned_hours_by_role(ctx: ScenarioExportContext) -> dict[str, float]:
     for a in ctx.allocations:
         if not a.included_flag:
             continue
-        analyst, dev, qa = _demand_by_role(a.backlog_item)
+        # Continuation без override — не учитываем в плановой норме.
+        if should_skip_in_plan(a, ctx.continuation_info.get(a.id)):
+            continue
+        analyst, dev, qa, _opo = _demand_by_role(a)
         total_est = analyst + dev + qa
         if total_est <= 0:
             continue
@@ -453,6 +467,12 @@ class ScenarioXlsxExporter:
             if e.display_name and e.role
         }
 
+        # Continuation info: для пропуска «continuation без override» в плановых
+        # тоталах. Считается один раз и кэшируется в ctx.
+        continuation_info = ContinuationService(self.db).compute_for_scenario(
+            self.scenario_id
+        )
+
         return ScenarioExportContext(
             scenario=scenario,
             allocations=allocations,
@@ -469,6 +489,7 @@ class ScenarioXlsxExporter:
             period_start=period_start,
             period_end=period_end,
             role_by_display_name=role_by_display_name,
+            continuation_info=continuation_info,
         )
 
     # === Sheets ===
