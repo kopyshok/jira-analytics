@@ -525,6 +525,10 @@ export interface AllocationResponse {
   estimate_dev_hours: number | null;
   estimate_qa_hours: number | null;
   estimate_opo_hours: number | null;
+  override_estimate_analyst_hours: number | null;
+  override_estimate_dev_hours: number | null;
+  override_estimate_qa_hours: number | null;
+  override_estimate_opo_hours: number | null;
   opo_analyst_ratio: number | null;
   impact: BacklogImpactRisk | null;
   risk: BacklogImpactRisk | null;

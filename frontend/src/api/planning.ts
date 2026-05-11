@@ -91,3 +91,48 @@ export const fetchScenarioRevisions = (id: string) =>
 
 export const fetchRevisionDiff = (id: string, r1: number, r2: number) =>
   api.get<RevisionDiffResponse>(`/planning/scenarios/${id}/revisions/diff`, { r1: String(r1), r2: String(r2) });
+
+// === Override + continuation-info ===
+
+export interface AllocationOverridePayload {
+  analyst: number | null;
+  dev: number | null;
+  qa: number | null;
+  opo: number | null;
+}
+
+export interface AllocationOverrideResponse {
+  id: string;
+  scenario_id: string;
+  backlog_item_id: string;
+  override_estimate_analyst_hours: number | null;
+  override_estimate_dev_hours: number | null;
+  override_estimate_qa_hours: number | null;
+  override_estimate_opo_hours: number | null;
+}
+
+export interface ContinuationInfoRow {
+  spent: { analyst: number; dev: number; qa: number; opo: number };
+  spent_total: number;
+  is_continuation: boolean;
+  jira_estimate: { analyst: number; dev: number; qa: number; opo: number };
+}
+
+export interface ContinuationInfoResponse {
+  info_by_allocation_id: Record<string, ContinuationInfoRow>;
+}
+
+export const patchAllocationOverride = (
+  scenarioId: string,
+  allocationId: string,
+  payload: AllocationOverridePayload,
+): Promise<AllocationOverrideResponse> =>
+  api.patch<AllocationOverrideResponse>(
+    `/planning/scenarios/${scenarioId}/allocations/${allocationId}/override`,
+    payload,
+  );
+
+export const getContinuationInfo = (scenarioId: string): Promise<ContinuationInfoResponse> =>
+  api.get<ContinuationInfoResponse>(
+    `/planning/scenarios/${scenarioId}/continuation-info`,
+  );
