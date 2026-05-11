@@ -4,11 +4,21 @@
 Ранее сервис содержал жадный алгоритм автораскладки `generate_scenario` —
 удалён: сценарии теперь формируются вручную отметками в UI.
 """
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy.orm import Session
 
 from app.models import BacklogItem
+from app.services.allocation_estimates import (
+    effective_estimate_hours,
+    has_override,
+)
 from app.services.capacity_service import CapacityService
+
+if TYPE_CHECKING:
+    from app.models import ScenarioAllocation
 
 
 class PlanningService:
@@ -46,3 +56,39 @@ class PlanningService:
             "dev": ed + eo * (1.0 - r),
             "qa": eq,
         }
+
+    @staticmethod
+    def demand_by_role_from_allocation(
+        allocation: "ScenarioAllocation",
+    ) -> dict[str, float]:
+        """Per-role demand: effective оценка + ОПЭ-сплит.
+
+        Старый ``_demand_by_role(BacklogItem)`` оставлен для consumers где
+        override на allocation не применим (preview backlog без сценария).
+        """
+        eff = effective_estimate_hours(allocation)
+        bi = allocation.backlog_item
+        r = (
+            bi.opo_analyst_ratio
+            if bi is not None and bi.opo_analyst_ratio is not None
+            else 0.5
+        )
+        return {
+            "analyst": eff["analyst"] + eff["opo"] * r,
+            "dev": eff["dev"] + eff["opo"] * (1.0 - r),
+            "qa": eff["qa"],
+        }
+
+
+def should_skip_in_plan(
+    allocation: Any, continuation_info_row: Optional[dict]
+) -> bool:
+    """Allocation не учитывается в норме если она continuation без override.
+
+    Используется потребителями, которые суммируют allocations в норму.
+    """
+    if continuation_info_row is None:
+        return False
+    if not continuation_info_row.get("is_continuation"):
+        return False
+    return not has_override(allocation)
