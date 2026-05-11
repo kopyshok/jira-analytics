@@ -36,13 +36,11 @@ export const ProjectsList: React.FC<Props> = ({ selectedKey, onSelect }) => {
   return (
     <div
       style={{
-        width: 360,
-        flexShrink: 0,
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
-        borderRight: `1px solid ${DARK_THEME.border}`,
         background: DARK_THEME.cardBg,
-        height: '100%',
+        minHeight: '100%',
       }}
     >
       <div
