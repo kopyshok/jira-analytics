@@ -215,16 +215,29 @@ class RcpspLeveler:
         availability: Dict[str, Dict[date, float]],
         all_assignments: List[ResourcePlanAssignment],
     ) -> bool:
-        """Переназначить на peer если у него хватает доступности в окне assignment."""
+        """Переназначить на peer если у него хватает доступности в окне assignment.
+
+        Часы распределяются только по рабочим дням (где availability > 0) —
+        как в _detect_overload.
+        """
         if (
             not assignment.start_date
             or not assignment.end_date
             or assignment.hours_allocated is None
         ):
             return False
-        days = (assignment.end_date - assignment.start_date).days + 1
-        per_day = assignment.hours_allocated / days
-        # Проверить peer доступность с учётом его текущих назначений
+        peer_avail = availability.get(peer_id, {})
+        peer_working = []
+        d = assignment.start_date
+        while d <= assignment.end_date:
+            if peer_avail.get(d, 0.0) > 0.0:
+                peer_working.append(d)
+            d += timedelta(days=1)
+        if not peer_working:
+            return False
+        per_day = assignment.hours_allocated / len(peer_working)
+
+        # Текущая нагрузка peer от остальных назначений.
         peer_demand: Dict[date, float] = defaultdict(float)
         for a in all_assignments:
             if (
@@ -234,18 +247,22 @@ class RcpspLeveler:
                 or a.hours_allocated is None
             ):
                 continue
-            a_days = (a.end_date - a.start_date).days + 1
-            a_per_day = a.hours_allocated / a_days
-            d = a.start_date
-            while d <= a.end_date:
-                peer_demand[d] += a_per_day
-                d += timedelta(days=1)
-        d = assignment.start_date
-        while d <= assignment.end_date:
-            free = availability.get(peer_id, {}).get(d, 0.0) - peer_demand.get(d, 0.0)
+            a_working = []
+            dd = a.start_date
+            while dd <= a.end_date:
+                if peer_avail.get(dd, 0.0) > 0.0:
+                    a_working.append(dd)
+                dd += timedelta(days=1)
+            if not a_working:
+                continue
+            a_per_day = a.hours_allocated / len(a_working)
+            for dd in a_working:
+                peer_demand[dd] += a_per_day
+
+        for d in peer_working:
+            free = peer_avail.get(d, 0.0) - peer_demand.get(d, 0.0)
             if free < per_day - 0.01:
                 return False
-            d += timedelta(days=1)
         assignment.employee_id = peer_id
         return True
 
@@ -289,7 +306,9 @@ class RcpspLeveler:
     ) -> Dict[Tuple[date, str], float]:
         """Возвращает {(date, employee_id): demand_hours} там где demand > available.
 
-        Demand на день = hours_allocated, распределённые равномерно по дням сегмента.
+        Demand распределяется равномерно ТОЛЬКО по рабочим дням сегмента
+        (где availability[emp][d] > 0). Выходные/праздники/отсутствия не
+        получают часов — иначе ловится фантомный 57143%-overload на субботе.
         """
         demand: Dict[Tuple[date, str], float] = defaultdict(float)
         for a in assignments:
@@ -300,14 +319,18 @@ class RcpspLeveler:
                 or a.hours_allocated is None
             ):
                 continue
-            days = (a.end_date - a.start_date).days + 1
-            if days <= 0:
-                continue
-            per_day = a.hours_allocated / days
+            avail_map = availability.get(a.employee_id, {})
+            working = []
             d = a.start_date
             while d <= a.end_date:
-                demand[(d, a.employee_id)] += per_day
+                if avail_map.get(d, 0.0) > 0.0:
+                    working.append(d)
                 d += timedelta(days=1)
+            if not working:
+                continue
+            per_day = a.hours_allocated / len(working)
+            for d in working:
+                demand[(d, a.employee_id)] += per_day
 
         overloads: Dict[Tuple[date, str], float] = {}
         for key, dem in demand.items():
