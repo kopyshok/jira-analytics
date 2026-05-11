@@ -93,11 +93,43 @@ export default function DependencyArrows({
       onClick?: () => void,
     ) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      const cx = (x1 + x2) / 2;
-      path.setAttribute('d', `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`);
+      // Orthogonal L-shape с маленькими радиусами на сгибах — не пересекает
+      // соседние bar-ы, выглядит чище чем S-curve.
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const stub = Math.min(14, Math.max(6, Math.abs(dx) / 4));
+      const r = 4; // радиус скругления угла
+      let d: string;
+      if (Math.abs(dy) < 1) {
+        d = `M${x1},${y1} L${x2},${y2}`;
+      } else if (dx >= stub * 2) {
+        // право → вниз → право
+        const midX = x1 + stub;
+        const sweep = dy > 0 ? 1 : 0;
+        d =
+          `M${x1},${y1}` +
+          ` L${midX - r},${y1}` +
+          ` Q${midX},${y1} ${midX},${y1 + (dy > 0 ? r : -r)}` +
+          ` L${midX},${y2 - (dy > 0 ? r : -r)}` +
+          ` Q${midX},${y2} ${midX + r},${y2}` +
+          ` L${x2},${y2}`;
+        void sweep;
+      } else {
+        // bar справа от source конец, идём вниз/вверх с минимальным stub
+        const midX = x1 + stub;
+        d =
+          `M${x1},${y1}` +
+          ` L${midX - r},${y1}` +
+          ` Q${midX},${y1} ${midX},${y1 + (dy > 0 ? r : -r)}` +
+          ` L${midX},${y2 - (dy > 0 ? r : -r)}` +
+          ` Q${midX},${y2} ${midX + r},${y2}` +
+          ` L${x2},${y2}`;
+      }
+      path.setAttribute('d', d);
       path.setAttribute('stroke', color);
       path.setAttribute('stroke-width', width);
       path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-linejoin', 'round');
       if (dashArray) path.setAttribute('stroke-dasharray', dashArray);
       path.setAttribute('marker-end', `url(#${markerId})`);
       if (onClick) {
@@ -136,7 +168,7 @@ export default function DependencyArrows({
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
-          'rgba(180,200,240,0.35)', '1.5', '', 'rp-arrowhead',
+          'rgba(140,170,210,0.25)', '1', '', 'rp-arrowhead',
         );
       }
     }
@@ -177,7 +209,7 @@ export default function DependencyArrows({
             fRect.top + fRect.height / 2 - cRect.top,
             tRect.left - cRect.left,
             tRect.top + tRect.height / 2 - cRect.top,
-            'rgba(0,201,200,0.55)', '1.5', '5 3', 'rp-relay-arrowhead',
+            'rgba(0,201,200,0.40)', '1', '4 3', 'rp-relay-arrowhead',
           );
         }
       }
