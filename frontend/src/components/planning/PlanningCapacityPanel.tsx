@@ -8,6 +8,7 @@ import type { AllocationResponse, ResourceBase, ResourceSummaryOut } from '../..
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
 import { demandByAssigneeRole } from '../../utils/planning';
+import { effectiveEstimate } from '../../utils/allocationEstimates';
 
 const CORE_ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
 type CoreRoleKey = (typeof CORE_ROLE_KEYS)[number];
@@ -84,10 +85,7 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
         }
       }
       if (!emp?.role) continue;
-      const ea = alloc.estimate_analyst_hours ?? 0;
-      const ed = alloc.estimate_dev_hours ?? 0;
-      const eq = alloc.estimate_qa_hours ?? 0;
-      const eo = alloc.estimate_opo_hours ?? 0;
+      const eff = effectiveEstimate(alloc);
       const r = alloc.opo_analyst_ratio ?? 0.5;
       const role = emp.role;
       const personalLoad =
@@ -95,11 +93,11 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
         role === 'RP' ||
         role === 'project_manager' ||
         role === 'consultant'
-          ? ea + eo * r
+          ? eff.analyst + eff.opo * r
           : role === 'dev'
-            ? ed + eo * (1 - r)
+            ? eff.dev + eff.opo * (1 - r)
             : role === 'qa'
-              ? eq
+              ? eff.qa
               : 0;
       result[emp.employee_id] = (result[emp.employee_id] ?? 0) + personalLoad;
     }

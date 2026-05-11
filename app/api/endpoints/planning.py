@@ -51,6 +51,7 @@ from app.schemas.capacity_diff import (
 )
 from app.schemas.scenario_override import AllocationOverrideRequest
 from app.services.capacity_service import CapacityService
+from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
 from app.services.resource_base_service import ResourceBaseService
 from app.services.snapshot_writer import SnapshotWriter
@@ -1327,7 +1328,8 @@ async def patch_allocation(
         alloc.included_flag = bool(patch["included"])
         if alloc.included_flag:
             if "planned_hours" not in patch and (alloc.planned_hours or 0) <= 0:
-                alloc.planned_hours = item.estimate_hours or 0
+                eff = effective_estimate_hours(alloc)
+                alloc.planned_hours = eff["analyst"] + eff["dev"] + eff["qa"] + eff["opo"]
             # Поднимаем строку в самый верх только при переходе False → True.
             # Снятие галочки оставляет sort_order на месте — строка не прыгает.
             if not was_included:
@@ -1859,12 +1861,19 @@ async def patch_allocation_override(
     alloc.override_estimate_dev_hours = body.dev
     alloc.override_estimate_qa_hours = body.qa
     alloc.override_estimate_opo_hours = body.opo
-    # Снимок до commit (ORM caveat: после commit атрибуты expire,
-    # обращение триггерит reload на возможно ротированном соединении).
+
+    # planned_hours = сумма effective оценок. Только если allocation включена —
+    # иначе оставляем 0 (логика toggle единая).
+    if alloc.included_flag:
+        eff = effective_estimate_hours(alloc)
+        alloc.planned_hours = eff["analyst"] + eff["dev"] + eff["qa"] + eff["opo"]
+
+    # Снимок до commit (ORM caveat).
     snapshot = {
         "id": alloc.id,
         "scenario_id": alloc.scenario_id,
         "backlog_item_id": alloc.backlog_item_id,
+        "planned_hours": alloc.planned_hours,
         "override_estimate_analyst_hours": alloc.override_estimate_analyst_hours,
         "override_estimate_dev_hours": alloc.override_estimate_dev_hours,
         "override_estimate_qa_hours": alloc.override_estimate_qa_hours,
