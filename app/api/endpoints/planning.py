@@ -50,6 +50,7 @@ from app.schemas.capacity_diff import (
     MonthDiff,
 )
 from app.services.capacity_service import CapacityService
+from app.services.continuation_service import ContinuationService
 from app.services.resource_base_service import ResourceBaseService
 from app.services.snapshot_writer import SnapshotWriter
 from app.services.event_bus import EventBroadcaster, get_event_bus
@@ -61,6 +62,17 @@ from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 router = APIRouter()
 
 QUARTER_MONTHS = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
+
+
+class ContinuationInfoRow(BaseModel):
+    spent: Dict[str, float]
+    spent_total: float
+    is_continuation: bool
+    jira_estimate: Dict[str, float]
+
+
+class ContinuationInfoResponse(BaseModel):
+    info_by_allocation_id: Dict[str, ContinuationInfoRow]
 
 
 def _resolve_absence_hours(absence: Absence, capacity_svc: CapacityService) -> float:
@@ -1801,6 +1813,18 @@ async def get_revision_breakdown(
             for r in rows
         ],
     }
+
+
+@router.get(
+    "/scenarios/{scenario_id}/continuation-info",
+    response_model=ContinuationInfoResponse,
+)
+def get_continuation_info(
+    scenario_id: str, db: Session = Depends(get_db)
+) -> ContinuationInfoResponse:
+    """Батч-расчёт для всех allocations: списано до начала квартала + флаг продолжения."""
+    raw = ContinuationService(db).compute_for_scenario(scenario_id)
+    return ContinuationInfoResponse(info_by_allocation_id=raw)
 
 
 # === Generic scenario CRUD routes (must come last) ===
