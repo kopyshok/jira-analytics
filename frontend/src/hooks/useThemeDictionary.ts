@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { message } from 'antd';
+import { App } from 'antd';
 import { themesApi } from '../api/themes';
 import type {
   ThemeCreateRequest,
@@ -34,6 +34,7 @@ export function useThemeList(workTypeId: string | null, includeArchived = false)
 
 export function useCreateTheme() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (body: ThemeCreateRequest) => themesApi.create(body),
     onSuccess: (_data, vars) => {
@@ -49,6 +50,7 @@ export function useCreateTheme() {
 
 export function useUpdateTheme() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: ({ themeId, body }: { themeId: string; body: ThemeUpdateRequest }) =>
       themesApi.update(themeId, body),
@@ -65,6 +67,7 @@ export function useUpdateTheme() {
 
 export function useArchiveTheme() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (themeId: string) => themesApi.archive(themeId),
     onSuccess: (data) => {
@@ -80,6 +83,7 @@ export function useArchiveTheme() {
 
 export function useRestoreTheme() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (themeId: string) => themesApi.restore(themeId),
     onSuccess: (data) => {
@@ -95,6 +99,7 @@ export function useRestoreTheme() {
 
 export function useMergeThemes() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: ({ themeId, body }: { themeId: string; body: ThemeMergeRequest }) =>
       themesApi.merge(themeId, body),

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { message } from 'antd';
+import { App } from 'antd';
 import { projectsApi } from '../api/projects';
 
 export function useProjectSummary(key: string | null) {
@@ -13,6 +13,7 @@ export function useProjectSummary(key: string | null) {
 
 export function useRegenerateSummary() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (key: string) => projectsApi.regenerateSummary(key),
     onSuccess: (_data, key) => {

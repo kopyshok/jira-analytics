@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { message } from 'antd';
+import { App } from 'antd';
 import { workTypeReportApi } from '../api/workTypeReport';
 import type { LayoutCreateRequest } from '../types/workTypeReport';
 
@@ -18,6 +18,7 @@ export function useLayoutList(workTypeId: string | null) {
 
 export function useCreateLayout() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (body: LayoutCreateRequest) => workTypeReportApi.createLayout(body),
     onSuccess: (data) => {
@@ -33,6 +34,7 @@ export function useCreateLayout() {
 
 export function useDeleteLayout() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: ({ layoutId }: { layoutId: string; workTypeId: string }) =>
       workTypeReportApi.deleteLayout(layoutId),
