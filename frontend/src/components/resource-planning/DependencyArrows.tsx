@@ -25,7 +25,21 @@ export default function DependencyArrows({
     const container = containerRef.current;
     if (!svg || !container) return;
 
-    svg.innerHTML = '';
+    // Дать DOM settle после прихода новых assignments — rowRefs обновляются
+    // в ref-callbacks PhaseBar, иногда useEffect выстреливает до апдейта.
+    let cancelled = false;
+    const raf1 = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const raf2 = requestAnimationFrame(() => {
+        if (cancelled) return;
+        draw();
+      });
+      (raf1 as unknown as { _inner?: number })._inner = raf2;
+    });
+
+    function draw() {
+      if (!svg || !container) return;
+      svg.innerHTML = '';
 
     // Re-inject defs after clearing innerHTML
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -198,7 +212,13 @@ export default function DependencyArrows({
         );
       }
     }
-  });
+    }
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+    };
+  }, [assignments, manualDependencies, showRelayArrows, onDeleteDependency, containerRef, rowRefs]);
 
   return (
     <svg
