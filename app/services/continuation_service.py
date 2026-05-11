@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
     BacklogItem,
+    Issue,
     PlanningScenario,
     ScenarioAllocation,
     Worklog,
@@ -86,31 +87,62 @@ class ContinuationService:
             .all()
         )
 
-        issue_ids = [
+        root_issue_ids = [
             a.backlog_item.issue_id
             for a in allocations
             if a.backlog_item is not None and a.backlog_item.issue_id is not None
         ]
 
-        spent_by_issue: dict[str, dict[str, float]] = {}
-        if issue_ids:
-            worklogs = (
-                self.db.query(Worklog)
-                .options(joinedload(Worklog.issue))
-                .filter(
-                    Worklog.issue_id.in_(issue_ids),
-                    Worklog.started_at < q_start_dt,
+        # Разворачиваем поддерево каждого корня вниз по Issue.parent_id.
+        # Ворклоги, как правило, лежат на детях Initiative — не на самом
+        # Initiative-issue. root_by_descendant: id потомка → id корня, чтобы
+        # атрибутировать spent правильной allocation.
+        root_by_descendant: dict[str, str] = {rid: rid for rid in root_issue_ids}
+        if root_issue_ids:
+            CHUNK = 500  # SQLite IN-limit guard, как в analytics_service
+            frontier = list(set(root_issue_ids))
+            while frontier:
+                new_pairs: list[tuple[str, str]] = []
+                for i in range(0, len(frontier), CHUNK):
+                    chunk = frontier[i : i + CHUNK]
+                    children = (
+                        self.db.query(Issue.id, Issue.parent_id)
+                        .filter(Issue.parent_id.in_(chunk))
+                        .all()
+                    )
+                    for child_id, parent_id in children:
+                        if child_id in root_by_descendant:
+                            continue
+                        root_by_descendant[child_id] = root_by_descendant[parent_id]
+                        new_pairs.append((child_id, parent_id))
+                frontier = [cid for cid, _ in new_pairs]
+
+        spent_by_root: dict[str, dict[str, float]] = {}
+        if root_by_descendant:
+            descendant_ids = list(root_by_descendant.keys())
+            worklogs: list[Worklog] = []
+            for i in range(0, len(descendant_ids), 500):
+                chunk = descendant_ids[i : i + 500]
+                worklogs.extend(
+                    self.db.query(Worklog)
+                    .options(joinedload(Worklog.issue))
+                    .filter(
+                        Worklog.issue_id.in_(chunk),
+                        Worklog.started_at < q_start_dt,
+                    )
+                    .all()
                 )
-                .all()
-            )
             for w in worklogs:
-                bucket = spent_by_issue.setdefault(w.issue_id, _empty_spent())
+                root_id = root_by_descendant.get(w.issue_id)
+                if root_id is None:
+                    continue
                 cat_code: Optional[str] = None
                 if w.issue is not None:
                     cat_code = w.issue.assigned_category or w.issue.category
                 role = CATEGORY_TO_ROLE.get(cat_code or "")
                 if role is None:
                     continue
+                bucket = spent_by_root.setdefault(root_id, _empty_spent())
                 bucket[role] += float(w.hours or 0.0)
 
         result: Dict[str, dict] = {}
@@ -119,7 +151,7 @@ class ContinuationService:
             if bi is None or bi.issue_id is None:
                 spent = _empty_spent()
             else:
-                spent = spent_by_issue.get(bi.issue_id, _empty_spent())
+                spent = spent_by_root.get(bi.issue_id, _empty_spent())
             spent_total = sum(spent.values())
             jira_est = {
                 "analyst": float(bi.estimate_analyst_hours or 0.0) if bi else 0.0,

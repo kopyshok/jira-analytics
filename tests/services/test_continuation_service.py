@@ -33,7 +33,7 @@ def _make_project(db, key="ITL", jira_id="10000"):
     return proj
 
 
-def _make_issue(db, project, key="ITL-299", jira_id="20000", category=None):
+def _make_issue(db, project, key="ITL-299", jira_id="20000", category=None, parent=None):
     issue = Issue(
         jira_issue_id=jira_id,
         key=key,
@@ -42,6 +42,7 @@ def _make_issue(db, project, key="ITL-299", jira_id="20000", category=None):
         issue_type="Initiative",
         status="To Do",
         assigned_category=category,
+        parent_id=parent.id if parent is not None else None,
     )
     db.add(issue)
     db.flush()
@@ -100,25 +101,31 @@ def test_no_worklogs_returns_zero_spent(db_session):
 
 
 def test_worklogs_before_quarter_aggregate_by_role(db_session):
-    """Два issue, разные категории → spent распределяется по двум ролям."""
+    """Два инициативы, у каждой ребёнок с категорией — spent атрибутируется корню."""
     db = db_session
     sc = _make_scenario(db, year=2026, quarter="Q2")  # quarter_start = 2026-04-01
     proj = _make_project(db)
     emp = _make_employee(db)
 
-    # Issue 1 — analysis bucket
-    issue_a = _make_issue(db, proj, key="ITL-300", jira_id="20001", category="analysis")
-    _make_worklog(db, issue_a, emp, datetime(2026, 2, 15), 20.0, "wl-a")
-    bi_a = BacklogItem(title="ITL-300", issue_id=issue_a.id)
+    # Initiative 1 + analyst child
+    init_a = _make_issue(db, proj, key="ITL-300", jira_id="20001")
+    child_a = _make_issue(
+        db, proj, key="ITL-300-1", jira_id="20011", category="analysis", parent=init_a
+    )
+    _make_worklog(db, child_a, emp, datetime(2026, 2, 15), 20.0, "wl-a")
+    bi_a = BacklogItem(title="ITL-300", issue_id=init_a.id)
     db.add(bi_a)
     db.flush()
     alloc_a = ScenarioAllocation(scenario_id=sc.id, backlog_item_id=bi_a.id, included_flag=True)
     db.add(alloc_a)
 
-    # Issue 2 — development bucket
-    issue_d = _make_issue(db, proj, key="ITL-301", jira_id="20002", category="development")
-    _make_worklog(db, issue_d, emp, datetime(2026, 2, 20), 60.0, "wl-d")
-    bi_d = BacklogItem(title="ITL-301", issue_id=issue_d.id)
+    # Initiative 2 + dev child
+    init_d = _make_issue(db, proj, key="ITL-301", jira_id="20002")
+    child_d = _make_issue(
+        db, proj, key="ITL-301-1", jira_id="20012", category="development", parent=init_d
+    )
+    _make_worklog(db, child_d, emp, datetime(2026, 2, 20), 60.0, "wl-d")
+    bi_d = BacklogItem(title="ITL-301", issue_id=init_d.id)
     db.add(bi_d)
     db.flush()
     alloc_d = ScenarioAllocation(scenario_id=sc.id, backlog_item_id=bi_d.id, included_flag=True)
@@ -138,6 +145,67 @@ def test_worklogs_before_quarter_aggregate_by_role(db_session):
     assert row_d["spent"]["analyst"] == 0.0
     assert row_d["spent_total"] == 60.0
     assert row_d["is_continuation"] is True
+
+
+def test_subtree_worklogs_aggregated_to_initiative_root(db_session):
+    """ITL-299-кейс: BacklogItem на Initiative, ворклоги на двух sub-tasks с разными
+    категориями — обе агрегируются в spent корня по своим ролям."""
+    db = db_session
+    sc = _make_scenario(db, year=2026, quarter="Q2")
+    proj = _make_project(db)
+    emp = _make_employee(db)
+
+    initiative = _make_issue(db, proj, key="ITL-299", jira_id="20100")
+    sub_analyst = _make_issue(
+        db, proj, key="ITL-299-1", jira_id="20101", category="analysis", parent=initiative
+    )
+    sub_dev = _make_issue(
+        db, proj, key="ITL-299-2", jira_id="20102", category="development", parent=initiative
+    )
+    _make_worklog(db, sub_analyst, emp, datetime(2026, 2, 10), 20.0, "wl-sub-a")
+    _make_worklog(db, sub_dev, emp, datetime(2026, 2, 12), 60.0, "wl-sub-d")
+
+    bi = BacklogItem(title="ITL-299", issue_id=initiative.id)
+    db.add(bi)
+    db.flush()
+    alloc = ScenarioAllocation(scenario_id=sc.id, backlog_item_id=bi.id, included_flag=True)
+    db.add(alloc)
+    db.commit()
+
+    info = ContinuationService(db).compute_for_scenario(sc.id)
+    row = info[alloc.id]
+    assert row["spent"]["analyst"] == 20.0
+    assert row["spent"]["dev"] == 60.0
+    assert row["spent_total"] == 80.0
+    assert row["is_continuation"] is True
+
+
+def test_deep_subtree_walked(db_session):
+    """3 уровня: Initiative → Story → Sub-task; ворклог на самом нижнем — атрибутируется корню."""
+    db = db_session
+    sc = _make_scenario(db, year=2026, quarter="Q2")
+    proj = _make_project(db)
+    emp = _make_employee(db)
+
+    initiative = _make_issue(db, proj, key="ITL-400", jira_id="20200")
+    story = _make_issue(db, proj, key="ITL-400-1", jira_id="20201", parent=initiative)
+    subtask = _make_issue(
+        db, proj, key="ITL-400-1-1", jira_id="20202", category="development", parent=story
+    )
+    _make_worklog(db, subtask, emp, datetime(2026, 1, 20), 15.0, "wl-deep")
+
+    bi = BacklogItem(title="ITL-400", issue_id=initiative.id)
+    db.add(bi)
+    db.flush()
+    alloc = ScenarioAllocation(scenario_id=sc.id, backlog_item_id=bi.id, included_flag=True)
+    db.add(alloc)
+    db.commit()
+
+    info = ContinuationService(db).compute_for_scenario(sc.id)
+    row = info[alloc.id]
+    assert row["spent"]["dev"] == 15.0
+    assert row["spent_total"] == 15.0
+    assert row["is_continuation"] is True
 
 
 def test_worklogs_in_or_after_quarter_excluded(db_session):
