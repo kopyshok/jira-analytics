@@ -40,6 +40,14 @@ const ROW_BG = 'transparent';
 const INIT_HEADER_BG = 'rgba(0,201,200,0.10)';
 const INIT_DIVIDER = '2px solid rgba(0,201,200,0.45)';
 
+// Зеркало backend ANALYST_ROLES / DEV_ROLES — нужно для разделения ОПЭ на 2 строки.
+const ANALYST_ROLE_CODES = new Set([
+  'аналитик', 'analyst', 'an',
+  'рп', 'rp',
+  'консультант', 'consultant',
+]);
+const DEV_ROLE_CODES = new Set(['разработчик', 'developer', 'dev', 'программист']);
+
 function ItemTitleCell({
   title, jiraKey, priority, leftColWidth, fontWeight = 600,
   dotColor, assignee, hours,
@@ -608,68 +616,104 @@ function TwoLevelRows({
                 })()}
               </div>
             </div>
-            {!isCollapsed && phases.map(phase => {
+            {!isCollapsed && phases.flatMap(phase => {
               const phaseAssignments = ia.filter(a => a.phase === phase);
-              if (phaseAssignments.length === 0) return null;
+              if (phaseAssignments.length === 0) return [];
               const color = PHASE_COLORS[phase];
-              const empName = phaseAssignments[0].employee_name;
-              const empRole = phaseAssignments[0].employee_role;
-              const phaseHours = phaseAssignments.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
-              return (
-                <div
-                  key={phase}
-                  data-gantt-row="true"
-                  style={{
-                    display: 'flex',
-                    height: ROW_HEIGHT - 4,
-                    borderBottom: '1px solid #0e2540',
-                  }}
-                >
-                  <ItemTitleCell
-                    title={PHASE_LABELS[phase]}
-                    jiraKey={null}
-                    leftColWidth={leftColWidth}
-                    dotColor={color}
-                    assignee={
-                      phase === 'qa' ? <span style={{ color: '#4a6a90' }}>—</span> : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <EmployeeAvatar name={empName} role={empRole} size={16} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{empName ?? '—'}</span>
-                        </span>
-                      )
-                    }
-                    hours={phaseHours > 0 ? `${Math.round(phaseHours)} ч` : ''}
-                  />
-                  <div data-gantt-track="true" style={{ ...trackStyle(trackWidthPx) }}>
-                    {phaseAssignments.filter(a => a.start_date && a.end_date).map(a => {
-                      const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
-                      return (
-                        <PhaseBar
-                          key={a.id}
-                          assignment={a}
-                          planId={planId}
-                          timeline={timeline}
-                          refKey={refKey}
-                          rowRefs={rowRefs}
-                          color={color}
-                          showResize={a.phase !== 'qa'}
-                          employees={employees}
-                          hasConflict={conflictSet.has(a.id)}
-                          onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
-                          unavailableDays={
-                            (a as AssignmentOut & {
-                              unavailable_days?: Array<{
-                                date: string;
-                                type: 'weekend' | 'holiday' | 'absence' | 'block';
-                              }>;
-                            }).unavailable_days
-                          }
-                        />
-                      );
-                    })}
+
+              // ОПЭ — 2 строки: Аналитик и Программист. Группируем по employee_role.
+              // Для остальных фаз — одна строка (как раньше).
+              const subgroups: Array<{
+                key: string;
+                roleLabel: string | null;
+                assignments: AssignmentOut[];
+              }> = [];
+              if (phase === 'opo') {
+                const analystA = phaseAssignments.filter(a =>
+                  ANALYST_ROLE_CODES.has((a.employee_role ?? '').toLowerCase()),
+                );
+                const devA = phaseAssignments.filter(a =>
+                  DEV_ROLE_CODES.has((a.employee_role ?? '').toLowerCase()),
+                );
+                const otherA = phaseAssignments.filter(
+                  a => !analystA.includes(a) && !devA.includes(a),
+                );
+                if (analystA.length > 0) subgroups.push({ key: 'opo-an', roleLabel: 'Аналитик', assignments: analystA });
+                if (devA.length > 0) subgroups.push({ key: 'opo-dev', roleLabel: 'Программист', assignments: devA });
+                if (otherA.length > 0) subgroups.push({ key: 'opo-other', roleLabel: 'Иное', assignments: otherA });
+                if (subgroups.length === 0) {
+                  subgroups.push({ key: 'opo', roleLabel: null, assignments: phaseAssignments });
+                }
+              } else {
+                subgroups.push({ key: phase, roleLabel: null, assignments: phaseAssignments });
+              }
+
+              return subgroups.map(sg => {
+                const empName = sg.assignments[0].employee_name;
+                const empRole = sg.assignments[0].employee_role;
+                const sgHours = sg.assignments.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
+                const title = sg.roleLabel
+                  ? `${PHASE_LABELS[phase]} · ${sg.roleLabel}`
+                  : PHASE_LABELS[phase];
+                return (
+                  <div
+                    key={sg.key}
+                    data-gantt-row="true"
+                    style={{
+                      display: 'flex',
+                      height: ROW_HEIGHT - 4,
+                      borderBottom: '1px solid #0e2540',
+                    }}
+                  >
+                    <ItemTitleCell
+                      title={title}
+                      jiraKey={null}
+                      leftColWidth={leftColWidth}
+                      dotColor={color}
+                      assignee={
+                        phase === 'qa' ? <span style={{ color: '#4a6a90' }}>—</span> : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <EmployeeAvatar name={empName} role={empRole} size={16} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{empName ?? '—'}</span>
+                          </span>
+                        )
+                      }
+                      hours={sgHours > 0 ? `${Math.round(sgHours)} ч` : ''}
+                    />
+                    <div data-gantt-track="true" style={{ ...trackStyle(trackWidthPx) }}>
+                      {sg.assignments.filter(a => a.start_date && a.end_date).map(a => {
+                        // Канонический ключ для стрелок (без employee_id).
+                        // Внутри ОПЭ analyst-bar и dev-bar имеют одинаковый ключ — Map
+                        // оставляет последний; стрелке достаточно любого валидного эл-та.
+                        const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
+                        return (
+                          <PhaseBar
+                            key={a.id}
+                            assignment={a}
+                            planId={planId}
+                            timeline={timeline}
+                            refKey={refKey}
+                            rowRefs={rowRefs}
+                            color={color}
+                            showResize={a.phase !== 'qa'}
+                            employees={employees}
+                            hasConflict={conflictSet.has(a.id)}
+                            onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
+                            unavailableDays={
+                              (a as AssignmentOut & {
+                                unavailable_days?: Array<{
+                                  date: string;
+                                  type: 'weekend' | 'holiday' | 'absence' | 'block';
+                                }>;
+                              }).unavailable_days
+                            }
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
+                );
+              });
             })}
           </div>
         );

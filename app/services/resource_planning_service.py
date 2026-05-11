@@ -33,6 +33,12 @@ PHASE_HOURS_FIELD = {
 }
 DEFAULT_HOURS_PER_DAY = 6.0
 
+# Preempting phases: разрывают чужие фазы того же сотрудника. На фронте/UX это
+# означает, что Анализ/Разработка младших по приоритету задач показывают зазор
+# = окно preempting-фазы старшей задачи. Конфиг-флаг — расширяется в будущем
+# (например, "Приоритет"/"Важный" на любой фазе).
+PREEMPTING_PHASES: set = {"opo"}
+
 # Допустимые роли исполнителя для аналитической фазы.
 ANALYST_ROLES = {
     "аналитик", "analyst", "an",
@@ -352,6 +358,18 @@ class ResourcePlanningService:
 
         avail = self.build_availability(employees, q_start, q_end, list(blocks))
 
+        # Снимок изначальной доступности (до любого расхода) — нужен для
+        # split-логики `_allocate_hours`: отличаем «день занят preempting-фазой»
+        # от «день недоступен по календарю». Глубокая копия по дням.
+        original_avail: Dict[str, Dict[date, float]] = {
+            eid: dict(days) for eid, days in avail.items()
+        }
+
+        # Дни, занятые preempting-фазами (см. PREEMPTING_PHASES) — заполняются
+        # по ходу планирования. Если такой день попадает внутрь обычной фазы
+        # младшей задачи — фаза разрывается на видимые куски.
+        preempt_locked: Dict[str, set] = {eid: set() for eid in avail.keys()}
+
         assignments_by_role = self._assign_employees(
             items, employees, pinned=pinned_map
         )
@@ -383,6 +401,13 @@ class ResourcePlanningService:
                         remaining[a.employee_id][d] = max(
                             0.0, remaining[a.employee_id][d] - per_day
                         )
+                # Pinned preempting-фазы тоже разрывают чужие фазы.
+                if a.phase in PREEMPTING_PHASES:
+                    locked_set = preempt_locked.setdefault(a.employee_id, set())
+                    d_lock = a.start_date
+                    while d_lock <= a.end_date:
+                        locked_set.add(d_lock)
+                        d_lock += timedelta(days=1)
 
         new_assignments: List[ResourcePlanAssignment] = list(pinned_existing)
 
@@ -508,7 +533,18 @@ class ResourcePlanningService:
                         segments = self._allocate_hours(
                             emp_id, p_hours, earliest_start, q_end, remaining,
                             daily_capacity=opo_daily_cap,
+                            preempt_locked=preempt_locked,
+                            original_capacity=original_avail,
                         )
+                        # ОПЭ — preempting-фаза: помечаем её дни в locked,
+                        # чтобы фазы младших задач этого сотрудника разрывались.
+                        if "opo" in PREEMPTING_PHASES:
+                            locked_set = preempt_locked.setdefault(emp_id, set())
+                            for seg_start, seg_end, _h, _p in segments:
+                                d_lock = seg_start
+                                while d_lock <= seg_end:
+                                    locked_set.add(d_lock)
+                                    d_lock += timedelta(days=1)
                         for seg_start, seg_end, seg_hours, part_num in segments:
                             a = ResourcePlanAssignment(
                                 plan_id=plan_id,
@@ -566,6 +602,8 @@ class ResourcePlanningService:
                         chunk_segs = self._allocate_hours(
                             employee_id, chunk_hours, chunk_start, q_end, remaining,
                             daily_capacity=phase_daily_cap,
+                            preempt_locked=preempt_locked,
+                            original_capacity=original_avail,
                         )
                         for seg_start, seg_end, seg_hours, seg_part in chunk_segs:
                             a = ResourcePlanAssignment(
@@ -608,6 +646,8 @@ class ResourcePlanningService:
                 segments = self._allocate_hours(
                     employee_id, hours, earliest_start, alloc_deadline, remaining,
                     daily_capacity=phase_daily_cap,
+                    preempt_locked=preempt_locked,
+                    original_capacity=original_avail,
                 )
 
                 # Если жёсткое окно из Jira (duration/involvement) не вмещает
@@ -617,6 +657,8 @@ class ResourcePlanningService:
                     segments = self._allocate_hours(
                         employee_id, hours, earliest_start, q_end, remaining,
                         daily_capacity=phase_daily_cap,
+                        preempt_locked=preempt_locked,
+                        original_capacity=original_avail,
                     )
 
                 if jira_cal_set:
@@ -695,33 +737,41 @@ class ResourcePlanningService:
         deadline: date,
         remaining: Dict[str, Dict[date, float]],
         daily_capacity: Optional[float] = None,
+        preempt_locked: Optional[Dict[str, set]] = None,
+        original_capacity: Optional[Dict[str, Dict[date, float]]] = None,
     ) -> List[Tuple[date, date, float, int]]:
         """Распределить total_hours по рабочим дням начиная с earliest_start.
 
-        Возвращает один сегмент (start, end, hours, 1) — единый бар фазы без
-        разбиения на части. Часы по-прежнему распределяются только по дням с
-        ненулевой доступностью (выходные/отсутствия пропускаются), но конечный
-        бар покрывает диапазон от первого до последнего использованного дня
-        одной непрерывной полосой.
+        Возвращает список сегментов (start, end, hours, part_num). Обычно один
+        сегмент, но если день внутри диапазона был занят preempting-фазой
+        (PREEMPTING_PHASES старшей по приоритету задачи) — сегмент разрывается:
+        часть до preempting-окна → дыра → часть после.
+
+        Через выходные/праздники/отсутствия (original=0) сегмент НЕ разрывается:
+        естественные паузы покрываются одним баром. Через дни занятые иными
+        обычными фазами того же сотрудника — тоже один бар (бар покрывает gap,
+        но часов в эти дни не списано). Сплит ТОЛЬКО при пересечении с
+        preempting-фазой.
 
         Если задан ``daily_capacity`` — за один день фаза не возьмёт больше
-        этой величины, даже если у сотрудника свободно больше. Это удерживает
-        длительность фазы в соответствии с коэф вовлечённости и предотвращает
-        перегрузки от параллельных назначений.
-
-        День занимается фазой целиком: следующая фаза того же сотрудника
-        начинается со следующего дня, даже если involvement < 1 оставляет
-        часть рабочего времени неиспользованной. Это сохраняет порядок
-        приоритетов между инициативами одного исполнителя.
-
-        involvement < 1 (через daily_capacity) растягивает фазу по календарю,
-        но не позволяет другим фазам делить тот же день.
+        этой величины, даже если у сотрудника свободно больше.
         """
         emp_days = remaining.get(employee_id, {})
+        orig_days = (original_capacity or {}).get(employee_id, {})
+        locked_days = (preempt_locked or {}).get(employee_id, set())
         remaining_h = total_hours
-        used_total = 0.0
+        segments: List[Tuple[date, date, float, int]] = []
         seg_start: Optional[date] = None
         seg_end: Optional[date] = None
+        seg_used = 0.0
+
+        def _flush() -> None:
+            nonlocal seg_start, seg_end, seg_used
+            if seg_start is not None and seg_end is not None and seg_used > 0:
+                segments.append((seg_start, seg_end, seg_used, len(segments) + 1))
+            seg_start = None
+            seg_end = None
+            seg_used = 0.0
 
         d = earliest_start
         while remaining_h > 0.01 and d <= deadline:
@@ -731,19 +781,23 @@ class ResourcePlanningService:
                 if seg_start is None:
                     seg_start = d
                 used = min(cap, remaining_h)
-                # Блокируем весь рабочий день сотрудника. used (≤ cap)
-                # идёт в hours_allocated как фактически списанные часы;
-                # неиспользованная часть дня (avail_h − used) не достанется
-                # следующей фазе того же исполнителя.
                 emp_days[d] = 0.0
                 remaining_h -= used
-                used_total += used
+                seg_used += used
                 seg_end = d
+            else:
+                # День недоступен. Решаем — это разрыв из-за preempting-фазы
+                # или естественная пауза (выходной/чужая обычная фаза)?
+                if (
+                    seg_start is not None
+                    and orig_days.get(d, 0.0) > 0
+                    and d in locked_days
+                ):
+                    _flush()
             d += timedelta(days=1)
 
-        if seg_start is not None and seg_end is not None and used_total > 0:
-            return [(seg_start, seg_end, used_total, 1)]
-        return []
+        _flush()
+        return segments
 
     def _load_items(self, plan: ResourcePlan) -> List[BacklogItem]:
         """Загрузить включённые инициативы сценария, отсортированные по приоритету."""
