@@ -30,6 +30,7 @@ from app.models import (
     ScenarioRulesSnapshot,
     ScenarioTeamSnapshot,
 )
+from app.services.allocation_estimates import effective_estimate_hours
 from app.services.capacity_service import QUARTER_MONTHS
 
 
@@ -519,6 +520,10 @@ class SnapshotWriter:
                     estimate_dev_hours=bi.estimate_dev_hours,
                     estimate_qa_hours=bi.estimate_qa_hours,
                     estimate_opo_hours=bi.estimate_opo_hours,
+                    override_estimate_analyst_hours=alloc.override_estimate_analyst_hours,
+                    override_estimate_dev_hours=alloc.override_estimate_dev_hours,
+                    override_estimate_qa_hours=alloc.override_estimate_qa_hours,
+                    override_estimate_opo_hours=alloc.override_estimate_opo_hours,
                     opo_analyst_ratio=bi.opo_analyst_ratio,
                     assignee_employee_id=bi.assignee_employee_id,
                     assignee_role_at_approval=role_by_employee_id.get(
@@ -609,15 +614,16 @@ class SnapshotWriter:
         )
 
         for alloc, bi in allocs:
-            # 1. Квартальные часы по ролям
-            opo = float(bi.estimate_opo_hours or 0)
+            # 1. Квартальные часы по ролям — через effective (override приоритетнее BI)
+            eff = effective_estimate_hours(alloc)
+            opo = eff["opo"]
             opo_an_ratio = float(
                 bi.opo_analyst_ratio if bi.opo_analyst_ratio is not None else 0.5
             )
-            an_total = float(bi.estimate_analyst_hours or 0) + opo * opo_an_ratio
+            an_total = eff["analyst"] + opo * opo_an_ratio
             rp_total = opo * (1 - opo_an_ratio)
-            dev_total = float(bi.estimate_dev_hours or 0)
-            qa_total = float(bi.estimate_qa_hours or 0)
+            dev_total = eff["dev"]
+            qa_total = eff["qa"]
 
             # 2. Роль/сотрудник для аналитика
             assignee_role = (

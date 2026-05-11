@@ -549,6 +549,59 @@ def test_write_allocation_snapshot_copies_included_items(
     assert row.sort_order == 1.0
     assert row.included_flag is True
     assert row.involvement_coefficient == 0.8
+    # Override fields default to NULL when allocation has no override set
+    assert row.override_estimate_analyst_hours is None
+    assert row.override_estimate_dev_hours is None
+    assert row.override_estimate_qa_hours is None
+    assert row.override_estimate_opo_hours is None
+
+
+def test_write_allocation_snapshot_saves_override(db_session: Session, team_setup):
+    """Override-поля allocation попадают в snapshot, и breakdown считает по effective."""
+    bi = BacklogItem(
+        id="bi-ov",
+        title="С overrideом",
+        estimate_analyst_hours=40.0,
+        estimate_dev_hours=80.0,
+        estimate_qa_hours=20.0,
+        estimate_opo_hours=10.0,
+        opo_analyst_ratio=0.5,
+        assignee_employee_id="e-1",
+    )
+    db_session.add(bi)
+    al = ScenarioAllocation(
+        id="al-ov",
+        scenario_id="s-1",
+        backlog_item_id="bi-ov",
+        included_flag=True,
+        sort_order=1.0,
+        override_estimate_analyst_hours=15.0,
+        override_estimate_dev_hours=25.0,
+        override_estimate_qa_hours=5.0,
+        override_estimate_opo_hours=0.0,
+    )
+    db_session.add(al)
+    db_session.commit()
+
+    writer = SnapshotWriter(db_session)
+    writer.write_allocation_snapshot(
+        revision=team_setup["revision"], scenario=team_setup["scenario"]
+    )
+    db_session.commit()
+
+    rows = db_session.query(ScenarioAllocationSnapshot).filter_by(
+        revision_id="r-1", allocation_id="al-ov"
+    ).all()
+    assert len(rows) == 1
+    row = rows[0]
+    # Override saved verbatim (including 0.0)
+    assert row.override_estimate_analyst_hours == 15.0
+    assert row.override_estimate_dev_hours == 25.0
+    assert row.override_estimate_qa_hours == 5.0
+    assert row.override_estimate_opo_hours == 0.0
+    # BacklogItem estimates also saved for transparency
+    assert row.estimate_analyst_hours == 40.0
+    assert row.estimate_dev_hours == 80.0
 
 
 # ---------------------------------------------------------------------------
