@@ -58,15 +58,41 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
     onViewChange('presentation');
     setExporting(true);
     try {
-      // wait for presentation view + Recharts animations
-      await new Promise((r) => setTimeout(r, 800));
+      // Wait for view switch to flush
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => requestAnimationFrame(r));
+
       const target = document.querySelector<HTMLElement>('.presentation-view');
       if (!target) {
         message.error('Контейнер для экспорта не найден');
         return;
       }
+
+      // Wait for fonts (Fraunces, Manrope, JetBrains Mono)
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+
+      // Wait for images inside target
+      const images = Array.from(target.querySelectorAll<HTMLImageElement>('img'));
+      await Promise.all(
+        images
+          .filter((img) => !img.complete)
+          .map(
+            (img) =>
+              new Promise<void>((res) => {
+                const done = () => res();
+                img.addEventListener('load', done, { once: true });
+                img.addEventListener('error', done, { once: true });
+              }),
+          ),
+      );
+
+      // Final layout flush
+      await new Promise((r) => requestAnimationFrame(r));
+
       const canvas = await html2canvas(target, {
-        backgroundColor: '#0d1c33',
+        backgroundColor: '#0d1c33', // page bg, hard-coded (acceptable: snapshot context)
         scale: 2,
         useCORS: true,
         height: target.scrollHeight,
