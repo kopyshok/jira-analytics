@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { message } from 'antd';
+import { App } from 'antd';
 import { workTypeReportApi, type GetReportParams, type BuildEvent } from '../api/workTypeReport';
 import type {
   CandidateAcceptRequest,
@@ -40,6 +40,7 @@ export function useWorkTypeReport(
 /** POST force-refresh — always builds a new snapshot. */
 export function useBuildWorkTypeReport() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (body: Parameters<typeof workTypeReportApi.build>[0]) =>
       workTypeReportApi.build(body),
@@ -151,6 +152,7 @@ function invalidateAfterCandidate(
 
 export function useAcceptCandidate() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (body: CandidateAcceptRequest) =>
       workTypeReportApi.acceptCandidate(body),
@@ -167,6 +169,7 @@ export function useAcceptCandidate() {
 
 export function useMergeCandidate() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (body: CandidateMergeRequest) =>
       workTypeReportApi.mergeCandidate(body),
@@ -183,6 +186,7 @@ export function useMergeCandidate() {
 
 export function useIgnoreCandidate() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (body: CandidateIgnoreRequest) =>
       workTypeReportApi.ignoreCandidate(body),
@@ -199,6 +203,7 @@ export function useIgnoreCandidate() {
 
 export function useManualClassify() {
   const qc = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
     mutationFn: (body: ManualClassifyRequest) =>
       workTypeReportApi.manualClassify(body),

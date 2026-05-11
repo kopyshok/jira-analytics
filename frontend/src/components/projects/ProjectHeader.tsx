@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, Button, Dropdown, message } from 'antd';
+import { Tag, Button, Dropdown, App } from 'antd';
 import html2canvas from 'html2canvas';
 import {
   ReloadOutlined,
@@ -45,6 +45,7 @@ function formatDateTime(iso: string): string {
 
 export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewChange }) => {
   const regen = useRegenerateSummary();
+  const { message } = App.useApp();
   const [exporting, setExporting] = React.useState(false);
 
   const handleRegen = () => {
