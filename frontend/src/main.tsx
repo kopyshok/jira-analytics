@@ -18,7 +18,7 @@ import { router } from './routes';
 dayjs.extend(weekday);
 dayjs.extend(localeData);
 dayjs.locale('ru');
-import { APP_THEMES, FONTS } from './utils/constants';
+import { APP_THEMES, FONTS, THEME_TOKENS_V2 } from './utils/constants';
 import { ThemeProvider, useAppTheme } from './contexts/ThemeContext';
 import './index.css';
 import './styles/print.css';
@@ -32,6 +32,7 @@ const queryClient = new QueryClient({
 function ThemedApp() {
   const { theme: themeName } = useAppTheme();
   const t = APP_THEMES[themeName].tokens;
+  const v2 = THEME_TOKENS_V2[themeName];
   return (
     <ConfigProvider
       locale={ruRU}
@@ -95,6 +96,54 @@ function ThemedApp() {
           Collapse: {
             headerBg: t.darkAccent,
             contentBg: t.cardBg,
+          },
+          Tag: {
+            defaultBg: v2.surface.accent,
+            defaultColor: v2.text.primary,
+          },
+          Tooltip: {
+            colorBgSpotlight: v2.surface.accent,
+            colorTextLightSolid: v2.text.primary,
+          },
+          Button: {
+            defaultBg: v2.surface.card,
+            defaultBorderColor: v2.border.default,
+            defaultColor: v2.text.primary,
+          },
+          Input: {
+            activeBorderColor: v2.accent.primary,
+            hoverBorderColor: v2.accent.secondary,
+          },
+          Select: {
+            optionSelectedBg: v2.surface.accent,
+          },
+          DatePicker: {
+            activeBorderColor: v2.accent.primary,
+          },
+          Form: {
+            labelColor: v2.text.secondary,
+          },
+          Alert: {
+            colorInfoBg: v2.surface.accent,
+            colorInfoBorder: v2.border.default,
+          },
+          Notification: {
+            colorBgElevated: v2.surface.card,
+          },
+          Dropdown: {
+            colorBgElevated: v2.surface.card,
+          },
+          Popover: {
+            colorBgElevated: v2.surface.card,
+          },
+          Drawer: {
+            colorBgElevated: v2.surface.card,
+          },
+          Spin: {
+            colorPrimary: v2.accent.primary,
+          },
+          Empty: {
+            colorTextDisabled: v2.text.muted,
           },
         },
       }}
