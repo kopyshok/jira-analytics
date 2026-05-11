@@ -275,6 +275,10 @@ class AllocationResponse(BaseModel):
     estimate_dev_hours: Optional[float] = None
     estimate_qa_hours: Optional[float] = None
     estimate_opo_hours: Optional[float] = None
+    override_estimate_analyst_hours: Optional[float] = None
+    override_estimate_dev_hours: Optional[float] = None
+    override_estimate_qa_hours: Optional[float] = None
+    override_estimate_opo_hours: Optional[float] = None
     opo_analyst_ratio: Optional[float] = None
     impact: Optional[str] = None
     risk: Optional[str] = None
@@ -387,6 +391,10 @@ def _to_allocation_resp(
         estimate_dev_hours=item.estimate_dev_hours,
         estimate_qa_hours=item.estimate_qa_hours,
         estimate_opo_hours=item.estimate_opo_hours,
+        override_estimate_analyst_hours=alloc.override_estimate_analyst_hours,
+        override_estimate_dev_hours=alloc.override_estimate_dev_hours,
+        override_estimate_qa_hours=alloc.override_estimate_qa_hours,
+        override_estimate_opo_hours=alloc.override_estimate_opo_hours,
         opo_analyst_ratio=item.opo_analyst_ratio,
         impact=item.impact,
         risk=item.risk,
