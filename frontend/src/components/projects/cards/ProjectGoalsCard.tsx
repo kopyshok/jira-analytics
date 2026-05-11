@@ -3,16 +3,17 @@ import { Card, Empty, Skeleton } from 'antd';
 import { useIsFetching } from '@tanstack/react-query';
 import type { ProjectSummary } from '../../../types/projects';
 import { DARK_THEME } from '../../../utils/constants';
+import { useThemeTokens } from '../../../hooks/useThemeTokens';
 
 interface Props {
   summary: ProjectSummary | null | undefined;
   description: string | null;
 }
 
-const GOAL_COLORS = ['#378ADD', '#1D9E75', '#EF9F27'];
-
 export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
   const isFetchingSummary = useIsFetching({ queryKey: ['project-summary'] }) > 0;
+  const t = useThemeTokens();
+  const palette = t.chart.series;
   const goals = summary?.goals;
 
   const renderContent = () => {
@@ -29,7 +30,7 @@ export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
                   width: 22,
                   height: 22,
                   borderRadius: '50%',
-                  background: GOAL_COLORS[i % GOAL_COLORS.length],
+                  background: palette[i % palette.length],
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

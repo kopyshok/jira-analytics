@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Spin, Empty, Popover, Button, Checkbox, Space, Tag } from 'antd';
+import { Card, Spin, Empty, Popover, Button, Checkbox, Space, Tag, Tooltip } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import type { DashboardProjectsResponse, ProjectItem } from '../../types/api';
@@ -150,19 +150,19 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center' }}>
       {project.assignees.map((a, i) => (
-        <div
-          key={i}
-          title={a.initials}
-          style={{
-            width: 24, height: 24, borderRadius: '50%',
-            border: `2px solid ${DARK_THEME.cardBg}`, background: a.color,
-            color: DARK_THEME.textPrimary, fontSize: 10, fontWeight: 700,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginLeft: i === 0 ? 0 : -8,
-          }}
-        >
-          {a.initials}
-        </div>
+        <Tooltip key={i} title={a.initials}>
+          <div
+            style={{
+              width: 24, height: 24, borderRadius: '50%',
+              border: `2px solid ${DARK_THEME.cardBg}`, background: a.color,
+              color: DARK_THEME.textPrimary, fontSize: 10, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginLeft: i === 0 ? 0 : -8,
+            }}
+          >
+            {a.initials}
+          </div>
+        </Tooltip>
       ))}
       {extra > 0 && (
         <div style={{

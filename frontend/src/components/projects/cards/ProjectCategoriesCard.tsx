@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import type { CategoryBreakdown, ProjectSummary, IssueHours } from '../../../types/projects';
 import { DonutChart } from '../shared/DonutChart';
 import { DARK_THEME } from '../../../utils/constants';
+import { useThemeTokens } from '../../../hooks/useThemeTokens';
 
 interface Props {
   categories: CategoryBreakdown[];
@@ -15,7 +16,6 @@ interface Props {
 }
 
 const DEFAULT_COLOR = DARK_THEME.textMuted;
-const AI_PALETTE = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#ff4d4f', '#67d68d'];
 
 export const ProjectCategoriesCard: React.FC<Props> = ({
   categories,
@@ -26,6 +26,8 @@ export const ProjectCategoriesCard: React.FC<Props> = ({
   issueHoursByKey,
 }) => {
   const navigate = useNavigate();
+  const t = useThemeTokens();
+  const palette = t.chart.series;
 
   const groups = summary?.work_breakdown ?? [];
   const useAI = groups.length > 0 && issueHoursByKey && issueHoursByKey.length > 0;
@@ -39,7 +41,7 @@ export const ProjectCategoriesCard: React.FC<Props> = ({
             code: g.label,
             label: g.label,
             hours: Math.round(hours),
-            color: AI_PALETTE[i % AI_PALETTE.length],
+            color: palette[i % palette.length],
             pct: 0,
           };
         });
