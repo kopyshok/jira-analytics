@@ -49,6 +49,7 @@ from app.schemas.capacity_diff import (
     EmployeeDiff,
     MonthDiff,
 )
+from app.schemas.scenario_override import AllocationOverrideRequest
 from app.services.capacity_service import CapacityService
 from app.services.continuation_service import ContinuationService
 from app.services.resource_base_service import ResourceBaseService
@@ -1825,6 +1826,46 @@ def get_continuation_info(
     """Батч-расчёт для всех allocations: списано до начала квартала + флаг продолжения."""
     raw = ContinuationService(db).compute_for_scenario(scenario_id)
     return ContinuationInfoResponse(info_by_allocation_id=raw)
+
+
+@router.patch("/scenarios/{scenario_id}/allocations/{allocation_id}/override")
+async def patch_allocation_override(
+    scenario_id: str,
+    allocation_id: str,
+    body: AllocationOverrideRequest,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Перезаписать оценки allocation per-role. Запрещено для approved (409)."""
+    scenario = db.get(PlanningScenario, scenario_id)
+    if scenario is None:
+        raise HTTPException(status_code=404, detail="scenario not found")
+    if scenario.status == "approved":
+        raise HTTPException(status_code=409, detail="approved scenarios are read-only")
+
+    alloc = db.get(ScenarioAllocation, allocation_id)
+    if alloc is None or alloc.scenario_id != scenario_id:
+        raise HTTPException(status_code=404, detail="allocation not found in scenario")
+
+    alloc.override_estimate_analyst_hours = body.analyst
+    alloc.override_estimate_dev_hours = body.dev
+    alloc.override_estimate_qa_hours = body.qa
+    alloc.override_estimate_opo_hours = body.opo
+    # Снимок до commit (ORM caveat: после commit атрибуты expire,
+    # обращение триггерит reload на возможно ротированном соединении).
+    snapshot = {
+        "id": alloc.id,
+        "scenario_id": alloc.scenario_id,
+        "backlog_item_id": alloc.backlog_item_id,
+        "override_estimate_analyst_hours": alloc.override_estimate_analyst_hours,
+        "override_estimate_dev_hours": alloc.override_estimate_dev_hours,
+        "override_estimate_qa_hours": alloc.override_estimate_qa_hours,
+        "override_estimate_opo_hours": alloc.override_estimate_opo_hours,
+    }
+    db.commit()
+
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    return snapshot
 
 
 # === Generic scenario CRUD routes (must come last) ===
