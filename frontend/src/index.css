@@ -284,6 +284,10 @@ kbd,
 .backlog-row.row-state-deficit:hover      { border-left-color: #f5222d; }
 .backlog-row.row-state-in-work:hover      { border-left-color: #1d9e75; }
 
+/* Resource-planning relay flow (animated dashed arrow) */
+@keyframes rp-flow { to { stroke-dashoffset: -24; } }
+.rp-flow { animation: rp-flow 1.2s linear infinite; }
+
 /* Priority cell — center the AntD InputNumber inner input within its pill */
 .backlog-priority-input .ant-input-number-input {
   text-align: center !important;

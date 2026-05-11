@@ -53,27 +53,27 @@ export default function DependencyArrows({
 
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
     marker.setAttribute('id', 'rp-arrowhead');
-    marker.setAttribute('markerWidth', '6');
-    marker.setAttribute('markerHeight', '4');
-    marker.setAttribute('refX', '6');
-    marker.setAttribute('refY', '2');
+    marker.setAttribute('markerWidth', '9');
+    marker.setAttribute('markerHeight', '6');
+    marker.setAttribute('refX', '8');
+    marker.setAttribute('refY', '3');
     marker.setAttribute('orient', 'auto');
     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    poly.setAttribute('points', '0 0, 6 2, 0 4');
-    poly.setAttribute('fill', 'rgba(200,215,245,0.85)');
+    poly.setAttribute('points', '0 0, 9 3, 0 6');
+    poly.setAttribute('fill', '#7aa7ff');
     marker.appendChild(poly);
     defs.appendChild(marker);
 
     const relayMarker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
     relayMarker.setAttribute('id', 'rp-relay-arrowhead');
-    relayMarker.setAttribute('markerWidth', '6');
-    relayMarker.setAttribute('markerHeight', '4');
-    relayMarker.setAttribute('refX', '6');
-    relayMarker.setAttribute('refY', '2');
+    relayMarker.setAttribute('markerWidth', '9');
+    relayMarker.setAttribute('markerHeight', '6');
+    relayMarker.setAttribute('refX', '8');
+    relayMarker.setAttribute('refY', '3');
     relayMarker.setAttribute('orient', 'auto');
     const relayPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    relayPoly.setAttribute('points', '0 0, 6 2, 0 4');
-    relayPoly.setAttribute('fill', 'rgba(0,201,200,0.7)');
+    relayPoly.setAttribute('points', '0 0, 9 3, 0 6');
+    relayPoly.setAttribute('fill', '#00e6c0');
     relayMarker.appendChild(relayPoly);
     defs.appendChild(relayMarker);
 
@@ -98,47 +98,65 @@ export default function DependencyArrows({
       x1: number, y1: number, x2: number, y2: number,
       color: string, width: string, dashArray: string, markerId: string,
       onClick?: () => void,
+      className?: string,
     ) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      // Orthogonal L-shape с маленькими радиусами на сгибах — не пересекает
-      // соседние bar-ы, выглядит чище чем S-curve.
-      const dx = x2 - x1;
+      // Orthogonal routing: всегда выходим из правого края source и заходим
+      // в левый край target. Последний сегмент пути идёт ВПРАВО, поэтому
+      // marker-end направлен вправо и указывает в бар.
       const dy = y2 - y1;
-      const stub = Math.min(14, Math.max(6, Math.abs(dx) / 4));
-      const r = 4; // радиус скругления угла
+      const STUB_OUT = 12;     // отступ вправо от source
+      const STUB_IN = 14;      // точка разворота слева от target
+      const r = 4;             // радиус скругления угла
+      const sign = dy >= 0 ? 1 : -1;
       let d: string;
       if (Math.abs(dy) < 1) {
+        // одна строка — прямая
         d = `M${x1},${y1} L${x2},${y2}`;
-      } else if (dx >= stub * 2) {
-        // право → вниз → право
-        const midX = x1 + stub;
-        const sweep = dy > 0 ? 1 : 0;
+      } else if (x2 > x1 + STUB_OUT + r * 2) {
+        // case A: target правее → классический Z-обход (right → down/up → right)
+        const midX = x1 + STUB_OUT;
+        const rr = Math.min(r, Math.abs(dy) / 2);
         d =
           `M${x1},${y1}` +
-          ` L${midX - r},${y1}` +
-          ` Q${midX},${y1} ${midX},${y1 + (dy > 0 ? r : -r)}` +
-          ` L${midX},${y2 - (dy > 0 ? r : -r)}` +
-          ` Q${midX},${y2} ${midX + r},${y2}` +
+          ` L${midX - rr},${y1}` +
+          ` Q${midX},${y1} ${midX},${y1 + sign * rr}` +
+          ` L${midX},${y2 - sign * rr}` +
+          ` Q${midX},${y2} ${midX + rr},${y2}` +
           ` L${x2},${y2}`;
-        void sweep;
       } else {
-        // bar справа от source конец, идём вниз/вверх с минимальным stub
-        const midX = x1 + stub;
+        // case B: target слева/прямо под source → 5-сегментный обход
+        // right out → down/up до mid-Y → LEFT за target → down/up к target.y → RIGHT
+        const exitX = x1 + STUB_OUT;
+        const turnX = x2 - STUB_IN;
+        const midY = y1 + sign * Math.max(Math.abs(dy) / 2, 14);
+        const rr = Math.min(
+          r,
+          Math.abs(midY - y1) / 2,
+          Math.abs(y2 - midY) / 2,
+          Math.abs(exitX - turnX) / 2,
+        );
         d =
           `M${x1},${y1}` +
-          ` L${midX - r},${y1}` +
-          ` Q${midX},${y1} ${midX},${y1 + (dy > 0 ? r : -r)}` +
-          ` L${midX},${y2 - (dy > 0 ? r : -r)}` +
-          ` Q${midX},${y2} ${midX + r},${y2}` +
+          ` L${exitX - rr},${y1}` +
+          ` Q${exitX},${y1} ${exitX},${y1 + sign * rr}` +
+          ` L${exitX},${midY - sign * rr}` +
+          ` Q${exitX},${midY} ${exitX - rr},${midY}` +
+          ` L${turnX + rr},${midY}` +
+          ` Q${turnX},${midY} ${turnX},${midY + sign * rr}` +
+          ` L${turnX},${y2 - sign * rr}` +
+          ` Q${turnX},${y2} ${turnX + rr},${y2}` +
           ` L${x2},${y2}`;
       }
       path.setAttribute('d', d);
       path.setAttribute('stroke', color);
       path.setAttribute('stroke-width', width);
       path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-linecap', 'round');
       path.setAttribute('stroke-linejoin', 'round');
       if (dashArray) path.setAttribute('stroke-dasharray', dashArray);
       path.setAttribute('marker-end', `url(#${markerId})`);
+      if (className) path.setAttribute('class', className);
       if (onClick) {
         path.setAttribute('style', 'pointer-events: stroke; cursor: pointer;');
         path.addEventListener('click', onClick);
@@ -175,7 +193,7 @@ export default function DependencyArrows({
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
-          'rgba(200,215,245,0.75)', '1.5', '', 'rp-arrowhead',
+          '#7aa7ff', '2', '', 'rp-arrowhead',
         );
       }
     }
@@ -211,15 +229,15 @@ export default function DependencyArrows({
         const tRect = toEl.getBoundingClientRect();
         const isFaded =
           !!highlightedEmployeeId && from.employee_id !== highlightedEmployeeId;
-        const color = isFaded
-          ? 'rgba(0,201,200,0.15)'
-          : 'rgba(0,201,200,0.85)';
+        const color = isFaded ? 'rgba(0,230,192,0.18)' : '#00e6c0';
         drawArrow(
           fRect.right - cRect.left,
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
-          color, '1.5', '4 3', 'rp-relay-arrowhead',
+          color, '2', '8 4', 'rp-relay-arrowhead',
+          undefined,
+          isFaded ? undefined : 'rp-flow',
         );
       };
 
@@ -263,7 +281,9 @@ export default function DependencyArrows({
             fRect.top + fRect.height / 2 - cRect.top,
             tRect.left - cRect.left,
             tRect.top + tRect.height / 2 - cRect.top,
-            'rgba(0,201,200,0.75)', '1.5', '4 3', 'rp-relay-arrowhead',
+            '#00e6c0', '2', '8 4', 'rp-relay-arrowhead',
+            undefined,
+            'rp-flow',
           );
         }
       }
