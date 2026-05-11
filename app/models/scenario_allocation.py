@@ -34,6 +34,13 @@ class ScenarioAllocation(Base, TimestampMixin):
     planned_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     included_flag: Mapped[bool] = mapped_column(Boolean, default=True)
     involvement_coefficient: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Per-scenario override per-role estimates. NULL = inherit from BacklogItem.
+    # Если ВСЕ 4 NULL → берём BacklogItem.estimate_*.
+    # Если хотя бы один не-NULL → берём 4 цифры из override (NULL = 0.0).
+    override_estimate_analyst_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    override_estimate_dev_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    override_estimate_qa_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    override_estimate_opo_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # Per-scenario manual ordering: чек поднимает строку наверх (min-1.0),
     # снятие галочки — НЕ меняет позицию. Drag&drop переписывает в 1, 2, 3, ...
     sort_order: Mapped[Optional[float]] = mapped_column(Float, nullable=True, index=False)
