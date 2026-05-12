@@ -87,6 +87,10 @@ class BacklogService:
                 existing = BacklogItem(issue_id=issue.id)
                 self.db.add(existing)
                 existing.opo_analyst_ratio = 0.5
+                # Авто-маппинг приоритета из Jira только при создании.
+                # Дальше PM управляет приоритетом вручную при планировании;
+                # ресинки (approve / revert-to-draft / refresh) его не трогают.
+                existing.priority = _jira_priority_to_int(issue.priority)
             existing.title = issue.summary
             existing.project_id = issue.project_id
             existing.estimate_analyst_hours = issue.planned_analyst_hours
@@ -104,9 +108,6 @@ class BacklogService:
             existing.duration_dev_days = issue.duration_dev_days
             existing.duration_qa_days = issue.duration_qa_days
             existing.duration_launch_days = issue.duration_launch_days
-            # PM выбрал «Jira — источник истины»: затираем ручной приоритет
-            # значением из Jira (None, если в Jira пусто или неизвестное значение).
-            existing.priority = _jira_priority_to_int(issue.priority)
             total = sum(
                 v or 0
                 for v in (
