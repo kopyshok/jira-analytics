@@ -5,6 +5,7 @@ import {
   BarChartOutlined,
   BgColorsOutlined,
   CalculatorOutlined,
+  ExperimentOutlined,
   ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
@@ -12,6 +13,7 @@ import {
 import PageHeader from '../components/shared/PageHeader';
 import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 import GanttChart from '../components/resource-planning/GanttChart';
+import PlaneGantt from '../components/resource-planning/PlaneGantt';
 import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
@@ -39,7 +41,11 @@ function ResourcePlanningPageInner() {
 
   const navigate = useNavigate();
   const [planId, setPlanId] = usePersistedSearchParam('plan_id', 'resource_planning_plan_id');
-  const [viewMode, setViewMode] = useState<ViewMode>('two-level');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('rp_view_mode');
+    const allowed: ViewMode[] = ['portfolio', 'two-level', 'resource-track', 'plane'];
+    return (allowed.includes(saved as ViewMode) ? saved as ViewMode : 'two-level');
+  });
   const [scale, setScale] = useState<TimelineScale>('week');
   const [depDrawMode, setDepDrawMode] = useState(false);
   const [blocksOpen, setBlocksOpen] = useState(false);
@@ -63,6 +69,10 @@ function ResourcePlanningPageInner() {
   const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
+
+  useEffect(() => {
+    localStorage.setItem('rp_view_mode', viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     if (scenarioId && !planId && !plansLoading && !createPlan.isPending) {
@@ -245,12 +255,13 @@ function ResourcePlanningPageInner() {
               { label: 'Портфель', value: 'portfolio', icon: <BarChartOutlined /> },
               { label: 'Фазы', value: 'two-level', icon: <ScheduleOutlined /> },
               { label: 'Ресурсы', value: 'resource-track', icon: <TeamOutlined /> },
+              { label: 'Plane', value: 'plane', icon: <ExperimentOutlined /> },
             ]}
           />
         </Space>
       </div>
 
-      {gantt && (
+      {gantt && viewMode !== 'plane' && (
         <ConflictPanel
           conflicts={gantt.conflicts}
           planId={planId}
@@ -262,7 +273,19 @@ function ResourcePlanningPageInner() {
       {!planId && !ganttLoading && (
         <Empty description="Выберите план или создайте его из утверждённого сценария" />
       )}
-      {gantt && !ganttLoading && planId && (
+      {gantt && !ganttLoading && planId && viewMode === 'plane' && (
+        <PlaneGantt
+          assignments={sortedAssignments}
+          blocks={blocks}
+          employees={employees}
+          employeeLoad={gantt.employee_load}
+          quarter={gantt.plan.quarter ?? 'Q1'}
+          year={gantt.plan.year ?? new Date().getFullYear()}
+          planLabel={gantt.plan.label ?? null}
+          onAssignmentClick={(id) => setSelectedAssignmentId(id)}
+        />
+      )}
+      {gantt && !ganttLoading && planId && viewMode !== 'plane' && (
         <GanttChart
           assignments={sortedAssignments}
           blocks={blocks}
