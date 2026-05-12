@@ -608,6 +608,8 @@ function TwoLevelRows({
                   if (!starts[0] || !ends.at(-1)) return null;
                   const left = dateToLeft(starts[0], timeline);
                   const width = datesToWidth(starts[0], ends.at(-1)!, timeline);
+                  const BRACKET_COLOR = '#b8c9e0';
+                  const BAR_H = 22;
                   return (
                     <div style={{
                       position: 'absolute',
@@ -615,13 +617,36 @@ function TwoLevelRows({
                       width: `${width}%`,
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      height: 28,
-                      background: 'linear-gradient(180deg, rgba(0,201,200,0.55), rgba(0,201,200,0.30))',
-                      border: '1.5px solid rgba(0,201,200,0.9)',
-                      borderRadius: 5,
-                      boxShadow: '0 0 8px rgba(0,201,200,0.25)',
+                      height: BAR_H,
                       zIndex: 2,
-                    }} />
+                      pointerEvents: 'none',
+                    }}>
+                      <svg
+                        width="100%"
+                        height={BAR_H}
+                        preserveAspectRatio="none"
+                        style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible' }}
+                      >
+                        <line x1="0" y1="1" x2="100%" y2="1"
+                          stroke={BRACKET_COLOR} strokeWidth="1.5" strokeDasharray="6 4"
+                          className="rp-init-ants" />
+                        <line x1="0" y1={BAR_H - 1} x2="100%" y2={BAR_H - 1}
+                          stroke={BRACKET_COLOR} strokeWidth="1.5" strokeDasharray="6 4"
+                          className="rp-init-ants-rev" />
+                      </svg>
+                      <div style={{
+                        position: 'absolute', left: 0, top: 0, width: 8, height: BAR_H,
+                        borderLeft: `2px solid ${BRACKET_COLOR}`,
+                        borderTop: `2px solid ${BRACKET_COLOR}`,
+                        borderBottom: `2px solid ${BRACKET_COLOR}`,
+                      }} />
+                      <div style={{
+                        position: 'absolute', right: 0, top: 0, width: 8, height: BAR_H,
+                        borderRight: `2px solid ${BRACKET_COLOR}`,
+                        borderTop: `2px solid ${BRACKET_COLOR}`,
+                        borderBottom: `2px solid ${BRACKET_COLOR}`,
+                      }} />
+                    </div>
                   );
                 })()}
               </div>
