@@ -43,6 +43,13 @@ const PHASE_ROLE_MAP: Record<string, string> = {
   opo: 'opo',
 };
 
+const PHASE_META: Record<string, { letter: string; label: string }> = {
+  analyst: { letter: 'А', label: 'Аналитик' },
+  dev: { letter: 'Р', label: 'Разработчик' },
+  qa: { letter: 'Т', label: 'Тестировщик' },
+  opo: { letter: 'О', label: 'ОПЭ' },
+};
+
 const RU_MONTHS_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
 type WeekEntry = {
@@ -137,6 +144,17 @@ export default function PlaneGantt({
     roles: [],
     status: [],
   });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('rp_plane_sidebar_collapsed') === '1';
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('rp_plane_sidebar_collapsed', next ? '1' : '0');
+      return next;
+    });
+  };
 
   const { start: qStart, end: qEnd } = useMemo(() => quarterBounds(quarter, year), [quarter, year]);
   const totalMs = qEnd.getTime() - qStart.getTime() + 86_400_000;
@@ -231,7 +249,7 @@ export default function PlaneGantt({
       </div>
 
       {/* Body */}
-      <div className={css.body}>
+      <div className={`${css.body}${sidebarCollapsed ? ` ${css.sidebarCollapsed}` : ''}`}>
         <PlaneSidebar
           employees={employees.filter(e => activeEmployeeIds.has(e.id))}
           projects={projects}
@@ -246,6 +264,15 @@ export default function PlaneGantt({
           <div className={css.toolbar}>
             <button
               type="button"
+              className={css.collapseBtn}
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? 'Показать фильтры' : 'Скрыть фильтры'}
+              aria-label={sidebarCollapsed ? 'Показать фильтры' : 'Скрыть фильтры'}
+            >
+              {sidebarCollapsed ? '☰' : '✕'}
+            </button>
+            <button
+              type="button"
               className={css.todayBtn}
               onClick={() => {
                 const el = document.getElementById('plane-today-line');
@@ -254,6 +281,17 @@ export default function PlaneGantt({
             >
               Сегодня
             </button>
+
+            {/* Phase legend */}
+            <div className={css.phaseLegend}>
+              {(['analyst', 'dev', 'qa', 'opo'] as const).map(p => (
+                <span key={p} className={`${css.legendChip} ${css[`legend_${p}`]}`} title={PHASE_META[p].label}>
+                  <span className={css.legendDot} />
+                  {PHASE_META[p].letter} · {PHASE_META[p].label}
+                </span>
+              ))}
+            </div>
+
             <span className={css.toolbarSpacer} />
             <button type="button" className={css.zoomBtn} title="Увеличить масштаб">+</button>
             <button type="button" className={css.zoomBtn} title="Уменьшить масштаб">−</button>
@@ -345,17 +383,23 @@ export default function PlaneGantt({
                         const endPct = dateToBarPct(a.end_date, qStart, totalMs);
                         const widthPct = Math.max(endPct - leftPct, 0.5);
                         const roleClass = css[a.phase as keyof typeof css] ?? css.analyst;
-                        const label = a.backlog_item_title;
+                        const label = a.backlog_item_title ?? '—';
+                        const projectKey = a.backlog_item_key?.split('-')[0] ?? '';
+                        const phaseMeta = PHASE_META[a.phase] ?? { letter: '?', label: a.phase };
+                        const hours = a.hours_allocated?.toFixed(0) ?? '?';
 
                         return (
                           <div
                             key={a.id}
                             className={`${css.bar} ${roleClass}`}
                             style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            title={`${label} — ${a.hours_allocated?.toFixed(0) ?? '?'} ч`}
+                            title={`${phaseMeta.label} · ${projectKey ? projectKey + ' · ' : ''}${label} — ${hours} ч`}
                             onClick={() => onAssignmentClick(a.id)}
                           >
-                            {label}
+                            <span className={css.barPhaseChip}>{phaseMeta.letter}</span>
+                            {projectKey && <span className={css.barProjectKey}>{projectKey}</span>}
+                            <span className={css.barTitle}>{label}</span>
+                            <span className={css.barHours}>{hours}ч</span>
                           </div>
                         );
                       })}

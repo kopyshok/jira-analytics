@@ -86,6 +86,16 @@
   grid-template-columns: 280px 1fr;
   flex: 1;
   overflow: hidden;
+  transition: grid-template-columns 0.18s ease;
+}
+
+.body.sidebarCollapsed {
+  grid-template-columns: 0 1fr;
+}
+
+.body.sidebarCollapsed .sidebar {
+  visibility: hidden;
+  border-right: none;
 }
 
 /* ── Sidebar ── */
@@ -265,6 +275,79 @@
   flex-shrink: 0;
 }
 
+.collapseBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--pl-surface-2);
+  border: 1px solid var(--pl-border-strong);
+  border-radius: var(--pl-radius-sm);
+  font-size: 14px;
+  color: var(--pl-text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+}
+
+.collapseBtn:hover {
+  background: var(--pl-border-strong);
+  color: var(--pl-text);
+}
+
+.phaseLegend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.legendChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--pl-radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.legendDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.legend_analyst {
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.25);
+}
+.legend_analyst .legendDot { background: var(--pl-role-analyst); }
+
+.legend_dev {
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.legend_dev .legendDot { background: var(--pl-role-dev); }
+
+.legend_qa {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.legend_qa .legendDot { background: var(--pl-role-qa); }
+
+.legend_opo {
+  background: rgba(139, 92, 246, 0.12);
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.25);
+}
+.legend_opo .legendDot { background: var(--pl-role-opo); }
+
 .todayBtn {
   display: inline-flex;
   align-items: center;
@@ -395,7 +478,7 @@
 .row {
   display: flex;
   align-items: center;
-  min-height: 48px;
+  min-height: 56px;
   border-bottom: 1px solid var(--pl-border);
   transition: background 0.1s;
 }
@@ -465,7 +548,7 @@
 .barTrack {
   flex: 1;
   position: relative;
-  height: 48px;
+  height: 56px;
   display: flex;
   align-items: center;
 }
@@ -473,35 +556,81 @@
 /* ── Bars ── */
 .bar {
   position: absolute;
-  height: 22px;
+  height: 30px;
   border-radius: 6px;
   top: 50%;
   transform: translateY(-50%);
   cursor: pointer;
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  font-size: 10px;
-  font-weight: 600;
+  gap: 5px;
+  padding: 0 6px 0 4px;
+  font-size: 11px;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  transition: opacity 0.12s, filter 0.12s;
+  transition: filter 0.12s, transform 0.12s, box-shadow 0.12s;
   box-shadow: var(--pl-shadow);
+  min-width: 24px;
 }
 
 .bar:hover {
-  filter: brightness(1.15);
+  filter: brightness(1.12);
+  transform: translateY(-50%) scale(1.01);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+.barPhaseChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.barProjectKey {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.85;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.barTitle {
+  font-size: 11px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.barHours {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.75;
+  flex-shrink: 0;
+  padding-left: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  margin-left: 2px;
 }
 
 .bar.analyst {
   background: var(--pl-role-analyst);
-  color: #e0e7ff;
+  color: #f5f3ff;
 }
 
 .bar.dev {
   background: var(--pl-role-dev);
-  color: #d1fae5;
+  color: #ecfdf5;
 }
 
 .bar.qa {
@@ -509,9 +638,18 @@
   color: #1c1917;
 }
 
+.bar.qa .barPhaseChip {
+  background: rgba(0, 0, 0, 0.4);
+  color: #fef3c7;
+}
+
+.bar.qa .barHours {
+  border-left-color: rgba(0, 0, 0, 0.25);
+}
+
 .bar.opo {
   background: var(--pl-role-opo);
-  color: #ede9fe;
+  color: #f5f3ff;
 }
 
 /* ── Today line ── */
