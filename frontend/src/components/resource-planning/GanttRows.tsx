@@ -169,7 +169,7 @@ function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowR
 
   return (
     <>
-      {byItem.map(([itemId, { title, key, priority, assignments: itemAssignments }], idx) => (
+      {byItem.map(([itemId, { title, key, priority, assignments: itemAssignments }]) => (
         <div
           key={itemId}
           ref={el => {
@@ -481,10 +481,14 @@ function UnavailabilityOverlay({ start, end, days }: UnavailabilityOverlayProps)
         const offset = Math.max(0, Math.round((ts - startTs) / 86_400_000));
         const left = (offset / totalDays) * 100;
         const width = (1 / totalDays) * 100;
-        const bg =
-          d.type === 'absence' || d.type === 'block'
-            ? 'repeating-linear-gradient(45deg, rgba(245,158,11,0.55) 0 4px, rgba(245,158,11,0.25) 4px 8px)'
-            : 'repeating-linear-gradient(45deg, rgba(255,255,255,0.10) 0 4px, rgba(255,255,255,0.04) 4px 8px)';
+        let bg: string;
+        if (d.type === 'absence' || d.type === 'block') {
+          bg = 'repeating-linear-gradient(45deg, rgba(239,68,68,0.60) 0 4px, rgba(239,68,68,0.30) 4px 8px)';
+        } else if (d.type === 'holiday') {
+          bg = 'repeating-linear-gradient(45deg, rgba(245,158,11,0.55) 0 4px, rgba(245,158,11,0.22) 4px 8px)';
+        } else {
+          bg = 'repeating-linear-gradient(45deg, rgba(0,0,0,0.35) 0 4px, rgba(255,255,255,0.05) 4px 8px)';
+        }
         return (
           <div
             key={d.date + d.type}
@@ -836,7 +840,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
 
   return (
     <>
-      {byEmployee.map(([empId, { name, assignments: empAssignments }], idx) => (
+      {byEmployee.map(([empId, { name, assignments: empAssignments }]) => (
         <div
           key={empId}
           style={{

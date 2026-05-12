@@ -59,16 +59,30 @@ const RU_MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', '
 
 export type TimelineScale = 'day' | 'week' | 'month';
 
-export function getDayLabels(tl: GanttTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
-  const days: Array<{ label: string; leftPct: number; widthPct: number }> = [];
+export interface DayLabel {
+  label: string;
+  leftPct: number;
+  widthPct: number;
+  iso: string;
+  dow: number; // 0=Sun .. 6=Sat
+}
+
+export function getDayLabels(tl: GanttTimeline): DayLabel[] {
+  const days: DayLabel[] = [];
   const d = new Date(tl.startDate);
   while (d <= tl.endDate) {
     const dayEnd = new Date(d);
-    const iso = d.toISOString().slice(0, 10);
-    const isoEnd = dayEnd.toISOString().slice(0, 10);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const isoEnd = `${dayEnd.getFullYear()}-${String(dayEnd.getMonth() + 1).padStart(2, '0')}-${String(dayEnd.getDate()).padStart(2, '0')}`;
     const left = dateToLeft(iso, tl);
     const width = datesToWidth(iso, isoEnd, tl);
-    days.push({ label: String(d.getDate()), leftPct: left, widthPct: width });
+    days.push({
+      label: String(d.getDate()),
+      leftPct: left,
+      widthPct: width,
+      iso,
+      dow: d.getDay(),
+    });
     d.setDate(d.getDate() + 1);
   }
   return days;
