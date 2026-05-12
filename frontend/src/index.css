@@ -290,8 +290,8 @@ kbd,
 
 /* Resource-planning initiative summary bar — marching ants */
 @keyframes rp-init-ants { to { stroke-dashoffset: -20; } }
-.rp-init-ants     { animation: rp-init-ants 4s linear infinite; }
-.rp-init-ants-rev { animation: rp-init-ants 4s linear infinite reverse; }
+.rp-init-ants     { animation: rp-init-ants var(--rp-anim-speed, 4s) linear infinite; }
+.rp-init-ants-rev { animation: rp-init-ants var(--rp-anim-speed, 4s) linear infinite reverse; }
 
 /* Priority cell — center the AntD InputNumber inner input within its pill */
 .backlog-priority-input .ant-input-number-input {

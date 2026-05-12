@@ -49,6 +49,7 @@ def _bypass_auth_in_tests(request):
         selected_teams_raw="[]",
         selected_period_raw="{}",
         analytics_columns_raw="[]",
+        appearance_settings_raw="{}",
     )
     fastapi_app.dependency_overrides[get_current_user] = lambda: stub
     fastapi_app.dependency_overrides[require_admin] = lambda: stub

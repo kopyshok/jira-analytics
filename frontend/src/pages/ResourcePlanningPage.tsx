@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router';
 import { App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
 import {
   BarChartOutlined,
+  BgColorsOutlined,
   CalculatorOutlined,
   ScheduleOutlined,
   SettingOutlined,
@@ -15,6 +16,7 @@ import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
 import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
+import AppearanceModal from '../components/resource-planning/AppearanceModal';
 import type { ViewMode } from '../components/resource-planning/GanttRows';
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
@@ -27,8 +29,9 @@ import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
+import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
 
-export default function ResourcePlanningPage() {
+function ResourcePlanningPageInner() {
   const { message } = App.useApp();
   const [searchParams] = useSearchParams();
   const { selectedTeams } = useGlobalTeamFilter();
@@ -45,6 +48,8 @@ export default function ResourcePlanningPage() {
   const [forkLabel, setForkLabel] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [highlightedEmployeeId, setHighlightedEmployeeId] = useState<string | null>(null);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const appearanceSettings = useAppearanceSettings();
   const forkMutation = useForkPlan();
   const createDep = useCreateDependency();
   const deleteDep = useDeleteDependency();
@@ -122,7 +127,7 @@ export default function ResourcePlanningPage() {
   });
 
   return (
-    <div style={{ padding: '16px 24px' }}>
+    <div style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>
       <PageHeader
         title="Ресурсное планирование"
         actions={
@@ -226,6 +231,13 @@ export default function ResourcePlanningPage() {
               <span style={{ fontSize: 12, color: '#8ab0d8' }}>Только рабочие</span>
             </Space>
           )}
+          <Button
+            size="small"
+            icon={<BgColorsOutlined />}
+            onClick={() => setAppearanceOpen(true)}
+          >
+            Цвета
+          </Button>
           <Segmented
             value={viewMode}
             onChange={v => setViewMode(v as ViewMode)}
@@ -333,6 +345,20 @@ export default function ResourcePlanningPage() {
           autoFocus
         />
       </Modal>
+
+      <AppearanceModal
+        open={appearanceOpen}
+        current={appearanceSettings}
+        onClose={() => setAppearanceOpen(false)}
+      />
     </div>
+  );
+}
+
+export default function ResourcePlanningPage() {
+  return (
+    <AppearanceProvider>
+      <ResourcePlanningPageInner />
+    </AppearanceProvider>
   );
 }

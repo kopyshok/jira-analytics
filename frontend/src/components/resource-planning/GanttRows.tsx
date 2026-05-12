@@ -6,6 +6,7 @@ import { dateToLeft, datesToWidth, PHASE_COLORS, PHASE_LABELS, getItemColor } fr
 import EmployeeAvatar from './EmployeeAvatar';
 import AssignEmployeePopover from './AssignEmployeePopover';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
+import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track';
 
@@ -518,12 +519,29 @@ function useMemoizedDragListeners(
   }, [drag, onMove, onUp]);
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  if (clean.length === 3) {
+    return [
+      parseInt(clean[0] + clean[0], 16),
+      parseInt(clean[1] + clean[1], 16),
+      parseInt(clean[2] + clean[2], 16),
+    ];
+  }
+  return [
+    parseInt(clean.slice(0, 2), 16),
+    parseInt(clean.slice(2, 4), 16),
+    parseInt(clean.slice(4, 6), 16),
+  ];
+}
+
 function TwoLevelRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
   highlightedEmployeeId, onEmployeeRowClick,
 }: SubProps) {
+  const appearance = useAppearanceSettings();
   const collapsedSet = useMemo(() => new Set(collapsedItemIds ?? []), [collapsedItemIds]);
   const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
   const byItem = useMemo(() => {
@@ -608,7 +626,15 @@ function TwoLevelRows({
                   if (!starts[0] || !ends.at(-1)) return null;
                   const left = dateToLeft(starts[0], timeline);
                   const width = datesToWidth(starts[0], ends.at(-1)!, timeline);
-                  const BRACKET_COLOR = '#b8c9e0';
+                  const BRACKET_COLOR = appearance.initiative_bracket_color;
+                  const [br, bg, bb] = hexToRgb(BRACKET_COLOR);
+                  const fillIntensity = appearance.initiative_fill_intensity;
+                  const fillGradients: Record<string, string> = {
+                    soft: `linear-gradient(180deg, rgba(${br},${bg},${bb},0.10), rgba(${br},${bg},${bb},0.05))`,
+                    medium: `linear-gradient(180deg, rgba(${br},${bg},${bb},0.22), rgba(${br},${bg},${bb},0.12))`,
+                    dense: `linear-gradient(180deg, rgba(${br},${bg},${bb},0.35), rgba(${br},${bg},${bb},0.20))`,
+                  };
+                  const animSpeed = appearance.animation_speed_seconds;
                   const BAR_H = 22;
                   return (
                     <div style={{
@@ -620,7 +646,7 @@ function TwoLevelRows({
                       height: BAR_H,
                       zIndex: 2,
                       pointerEvents: 'none',
-                      background: 'linear-gradient(180deg, rgba(184,201,224,0.22), rgba(184,201,224,0.12))',
+                      background: fillGradients[fillIntensity],
                     }}>
                       <svg
                         width="100%"
@@ -630,10 +656,14 @@ function TwoLevelRows({
                       >
                         <line x1="0" y1="1" x2="100%" y2="1"
                           stroke={BRACKET_COLOR} strokeWidth="1.5" strokeDasharray="6 4"
-                          className="rp-init-ants" />
+                          className="rp-init-ants"
+                          style={{ animationDuration: `${animSpeed}s` }}
+                        />
                         <line x1="0" y1={BAR_H - 1} x2="100%" y2={BAR_H - 1}
                           stroke={BRACKET_COLOR} strokeWidth="1.5" strokeDasharray="6 4"
-                          className="rp-init-ants-rev" />
+                          className="rp-init-ants-rev"
+                          style={{ animationDuration: `${animSpeed}s` }}
+                        />
                       </svg>
                       <div style={{
                         position: 'absolute', left: 0, top: 0, width: 8, height: BAR_H,
@@ -655,7 +685,7 @@ function TwoLevelRows({
             {!isCollapsed && phases.flatMap(phase => {
               const phaseAssignments = ia.filter(a => a.phase === phase);
               if (phaseAssignments.length === 0) return [];
-              const color = PHASE_COLORS[phase];
+              const color = appearance.phase_colors[phase] ?? PHASE_COLORS[phase];
 
               // ОПЭ — 2 строки: Аналитик и Программист. Группируем по employee_role.
               // Для остальных фаз — одна строка (как раньше).

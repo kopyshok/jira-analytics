@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models.user import User
+from app.schemas.user import AppearanceSettings
 
 router = APIRouter()
 
@@ -75,3 +76,27 @@ def set_my_theme(
     current_user.selected_theme = payload.theme
     db.commit()
     return {"ok": True, "theme": payload.theme}
+
+
+_DEFAULT_APPEARANCE = AppearanceSettings()
+
+
+@router.get("/me/appearance", response_model=AppearanceSettings)
+def get_my_appearance(current_user: User = Depends(get_current_user)):
+    """Возвращает пользовательские настройки внешнего вида планировщика."""
+    stored = current_user.appearance_settings
+    if not stored:
+        return _DEFAULT_APPEARANCE
+    return AppearanceSettings(**{**_DEFAULT_APPEARANCE.model_dump(), **stored})
+
+
+@router.put("/me/appearance", response_model=AppearanceSettings)
+def set_my_appearance(
+    payload: AppearanceSettings,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Сохраняет настройки внешнего вида планировщика для текущего пользователя."""
+    current_user.appearance_settings = payload.model_dump()
+    db.commit()
+    return payload

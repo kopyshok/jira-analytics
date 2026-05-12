@@ -1,7 +1,41 @@
 from __future__ import annotations
+import re
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Literal
+from pydantic import BaseModel, Field, field_validator
 from app.models.user import UserRole
+
+_HEX_COLOR_RE = re.compile(r'^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$')
+
+
+def _validate_hex(v: str) -> str:
+    if not _HEX_COLOR_RE.match(v):
+        raise ValueError(f"Некорректный HEX-цвет: {v!r}. Ожидается #rgb или #rrggbb.")
+    return v
+
+
+class AppearanceSettings(BaseModel):
+    phase_colors: dict[str, str] = Field(default_factory=lambda: {
+        "analyst": "#00c9c8",
+        "dev": "#2a7fbf",
+        "qa": "#e8864a",
+        "opo": "#52d364",
+    })
+    initiative_bracket_color: str = "#b8c9e0"
+    initiative_fill_intensity: Literal["soft", "medium", "dense"] = "medium"
+    animation_speed_seconds: float = Field(default=4.0, ge=0.5, le=20.0)
+
+    @field_validator("phase_colors")
+    @classmethod
+    def validate_phase_colors(cls, v: dict[str, str]) -> dict[str, str]:
+        for key, color in v.items():
+            _validate_hex(color)
+        return v
+
+    @field_validator("initiative_bracket_color")
+    @classmethod
+    def validate_bracket_color(cls, v: str) -> str:
+        return _validate_hex(v)
 
 
 class LoginRequest(BaseModel):

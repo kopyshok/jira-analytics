@@ -40,6 +40,9 @@ class User(Base, TimestampMixin):
     selected_theme: Mapped[str] = mapped_column(
         String(20), nullable=False, default="dark-blue", server_default="dark-blue"
     )
+    appearance_settings_raw: Mapped[str] = mapped_column(
+        "appearance_settings", Text, nullable=False, default="{}", server_default="{}"
+    )
 
     @property
     def selected_teams(self) -> list[str]:
@@ -73,3 +76,14 @@ class User(Base, TimestampMixin):
     @analytics_columns.setter
     def analytics_columns(self, value: list[str]) -> None:
         self.analytics_columns_raw = json.dumps(list(value or []))
+
+    @property
+    def appearance_settings(self) -> dict:
+        try:
+            return json.loads(self.appearance_settings_raw or "{}")
+        except (TypeError, ValueError):
+            return {}
+
+    @appearance_settings.setter
+    def appearance_settings(self, value: dict) -> None:
+        self.appearance_settings_raw = json.dumps(value or {})

@@ -21,6 +21,14 @@ export default defineConfig([
     },
   },
   {
+    // Context files intentionally mix component (Provider) with hooks and context objects.
+    // react-refresh/only-export-components would false-positive on this common pattern.
+    files: ['**/contexts/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
     files: ['playwright.config.ts', 'e2e/**/*.ts'],
     languageOptions: {
       ecmaVersion: 2023,
