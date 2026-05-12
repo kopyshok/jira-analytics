@@ -7,7 +7,10 @@ import type { ViewMode } from './GanttRows';
 import TimelineHeader from './TimelineHeader';
 import GanttRows from './GanttRows';
 import BlockedZones from './BlockedZones';
+import NonWorkingZones from './NonWorkingZones';
+import TrackGridlines from './TrackGridlines';
 import DependencyArrows from './DependencyArrows';
+import { useProductionCalendarYear } from '../../hooks/useProductionCalendar';
 
 const LEFT_COL_DEFAULT = 280;
 const LEFT_COL_TWO_LEVEL = 540;
@@ -69,6 +72,9 @@ export default function GanttChart({
 
   const pxPerDay = PX_PER_DAY[scale];
   const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
+
+  const calendarQuery = useProductionCalendarYear(year);
+  const calendar = calendarQuery.data ?? [];
 
   const todayLeft = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -134,7 +140,32 @@ export default function GanttChart({
               leftColWidth={LEFT_COL}
               scale={scale}
               trackWidthPx={trackWidthPx}
+              calendar={calendar}
             />
+          </div>
+
+          {/* Non-working zones (weekends/holidays) — background layer */}
+          <div style={{
+            position: 'absolute',
+            left: LEFT_COL,
+            width: trackWidthPx,
+            top: 0, bottom: 0,
+            pointerEvents: 'none',
+            zIndex: 0,
+          }}>
+            <NonWorkingZones timeline={timeline} calendar={calendar} />
+          </div>
+
+          {/* Vertical gridlines */}
+          <div style={{
+            position: 'absolute',
+            left: LEFT_COL,
+            width: trackWidthPx,
+            top: 0, bottom: 0,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}>
+            <TrackGridlines timeline={timeline} scale={scale} />
           </div>
 
           {/* Today marker */}

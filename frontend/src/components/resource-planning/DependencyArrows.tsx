@@ -101,51 +101,51 @@ export default function DependencyArrows({
       className?: string,
     ) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      // Orthogonal routing: всегда выходим из правого края source и заходим
-      // в левый край target. Последний сегмент пути идёт ВПРАВО, поэтому
-      // marker-end направлен вправо и указывает в бар.
+      // Orthogonal routing через gutter между строками:
+      //  source.right → exit stub (6px вправо) → вертикаль в gutter ниже/выше
+      //  source row → горизонталь в gutter → вертикаль в столбце слева от
+      //  target → горизонтальный заход 14px к marker.
+      //  Гарантируется длинная горизонтальная «полка» перед стрелкой и
+      //  отсутствие пересечений с барами промежуточных строк (gutter живёт
+      //  на границе строк, а столбец target.left-14 обычно свободен).
       const dy = y2 - y1;
-      const STUB_OUT = 12;     // отступ вправо от source
-      const STUB_IN = 14;      // точка разворота слева от target
-      const r = 4;             // радиус скругления угла
-      const sign = dy >= 0 ? 1 : -1;
+      const EXIT_STUB = 6;        // отступ вправо от source перед спуском
+      const APPROACH = 14;        // длина горизонтальной «полки» перед target
+      const GUTTER_OFFSET = 18;   // полу-строка (ROW_HEIGHT ≈ 32–36)
+      const r = 4;
+      const vSign = dy >= 0 ? 1 : -1;
       let d: string;
       if (Math.abs(dy) < 1) {
-        // одна строка — прямая
         d = `M${x1},${y1} L${x2},${y2}`;
-      } else if (x2 > x1 + STUB_OUT + r * 2) {
-        // case A: target правее → классический Z-обход (right → down/up → right)
-        const midX = x1 + STUB_OUT;
-        const rr = Math.min(r, Math.abs(dy) / 2);
-        d =
-          `M${x1},${y1}` +
-          ` L${midX - rr},${y1}` +
-          ` Q${midX},${y1} ${midX},${y1 + sign * rr}` +
-          ` L${midX},${y2 - sign * rr}` +
-          ` Q${midX},${y2} ${midX + rr},${y2}` +
-          ` L${x2},${y2}`;
       } else {
-        // case B: target слева/прямо под source → 5-сегментный обход
-        // right out → down/up до mid-Y → LEFT за target → down/up к target.y → RIGHT
-        const exitX = x1 + STUB_OUT;
-        const turnX = x2 - STUB_IN;
-        const midY = y1 + sign * Math.max(Math.abs(dy) / 2, 14);
-        const rr = Math.min(
-          r,
-          Math.abs(midY - y1) / 2,
-          Math.abs(y2 - midY) / 2,
-          Math.abs(exitX - turnX) / 2,
+        // Универсальная 6-сегментная схема:
+        //   right(stub) → vert(gutter) → horiz(gutter) → vert(approach) → right(polkа)
+        // Корректно работает и когда target правее source (Z), и когда
+        // target ровно под source/левее (loop-around-left).
+        const exitX = x1 + EXIT_STUB;
+        const enterX = x2 - APPROACH;
+        const gutterY = y1 + vSign * GUTTER_OFFSET;
+        const hSign = enterX >= exitX ? 1 : -1; // направление горизонтали в gutter
+        const rr = Math.max(
+          1,
+          Math.min(
+            r,
+            Math.abs(gutterY - y1) / 2,
+            Math.abs(enterX - exitX) / 2 || r,
+            Math.abs(y2 - gutterY) / 2,
+            Math.abs(x2 - enterX) / 2,
+          ),
         );
         d =
           `M${x1},${y1}` +
           ` L${exitX - rr},${y1}` +
-          ` Q${exitX},${y1} ${exitX},${y1 + sign * rr}` +
-          ` L${exitX},${midY - sign * rr}` +
-          ` Q${exitX},${midY} ${exitX - rr},${midY}` +
-          ` L${turnX + rr},${midY}` +
-          ` Q${turnX},${midY} ${turnX},${midY + sign * rr}` +
-          ` L${turnX},${y2 - sign * rr}` +
-          ` Q${turnX},${y2} ${turnX + rr},${y2}` +
+          ` Q${exitX},${y1} ${exitX},${y1 + vSign * rr}` +
+          ` L${exitX},${gutterY - vSign * rr}` +
+          ` Q${exitX},${gutterY} ${exitX + hSign * rr},${gutterY}` +
+          ` L${enterX - hSign * rr},${gutterY}` +
+          ` Q${enterX},${gutterY} ${enterX},${gutterY + vSign * rr}` +
+          ` L${enterX},${y2 - vSign * rr}` +
+          ` Q${enterX},${y2} ${enterX + rr},${y2}` +
           ` L${x2},${y2}`;
       }
       path.setAttribute('d', d);
