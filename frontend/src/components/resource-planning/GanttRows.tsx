@@ -8,7 +8,7 @@ import AssignEmployeePopover from './AssignEmployeePopover';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 
-export type ViewMode = 'portfolio' | 'two-level' | 'resource-track';
+export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
 interface Props {
   assignments: AssignmentOut[];
