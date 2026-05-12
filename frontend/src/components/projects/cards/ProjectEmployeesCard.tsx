@@ -3,12 +3,13 @@ import { Card, Empty } from 'antd';
 import { useNavigate } from 'react-router';
 import type { EmployeeBreakdown } from '../../../types/projects';
 import { DARK_THEME } from '../../../utils/constants';
-import { useThemeTokens } from '../../../hooks/useThemeTokens';
 
 interface Props {
   employees: EmployeeBreakdown[];
   projectKey: string;
 }
+
+const AVATAR_COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#7e94b8', '#7e94b8', '#7e94b8'];
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -19,8 +20,6 @@ function initials(name: string): string {
 
 export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey }) => {
   const navigate = useNavigate();
-  const t = useThemeTokens();
-  const palette = t.chart.series;
 
   if (!employees || employees.length === 0) {
     return (
@@ -67,7 +66,7 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
                   width: 28,
                   height: 28,
                   borderRadius: '50%',
-                  background: palette[i % palette.length],
+                  background: AVATAR_COLORS[i % AVATAR_COLORS.length],
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -93,7 +92,7 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
                     style={{
                       height: '100%',
                       width: `${maxHours > 0 ? (emp.hours / maxHours) * 100 : 0}%`,
-                      background: palette[i % palette.length],
+                      background: AVATAR_COLORS[i % AVATAR_COLORS.length],
                       borderRadius: 2,
                     }}
                   />

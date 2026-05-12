@@ -5,12 +5,14 @@ import { DonutChart } from './shared/DonutChart';
 import { StarRating } from './shared/StarRating';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
 import { DARK_THEME } from '../../utils/constants';
-import { useThemeTokens } from '../../hooks/useThemeTokens';
 
 interface Props {
   detail: ProjectDetail | undefined;
   summary: ProjectSummary | null | undefined;
 }
+
+const COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#7e94b8', '#7e94b8', '#7e94b8'];
+const AI_PALETTE = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#ff4d4f', '#67d68d'];
 
 function initials(name: string): string {
   return name
@@ -32,9 +34,6 @@ const AI_PLACEHOLDER_STYLE: React.CSSProperties = {
 };
 
 export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) => {
-  const t = useThemeTokens();
-  const palette = t.chart.series;
-
   if (!detail) return null;
 
   const empMax = Math.max(1, detail.employees[0]?.hours ?? 1);
@@ -106,7 +105,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
       <ProjectStorySection title="Кто работал">
         {detail.employees.length > 0 ? (
           detail.employees.map((e, i) => {
-            const color = palette[i % palette.length];
+            const color = COLORS[i % COLORS.length];
             return (
               <div key={e.employee_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
                 <div style={{
@@ -145,7 +144,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
             ? (() => {
                 const raw = groups.map((g, i) => {
                   const hours = g.child_keys.reduce((acc, k) => acc + (hoursMap!.get(k) ?? 0), 0);
-                  return { code: g.label, label: g.label, hours: Math.round(hours), color: palette[i % palette.length], pct: 0 };
+                  return { code: g.label, label: g.label, hours: Math.round(hours), color: AI_PALETTE[i % AI_PALETTE.length], pct: 0 };
                 });
                 const total = raw.reduce((acc, s) => acc + s.hours, 0);
                 return raw.map((s) => ({ ...s, pct: total ? Math.round((s.hours / total) * 100) : 0 }));

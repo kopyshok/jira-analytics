@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Spin, Empty, Popover, Button, InputNumber, Space, Tooltip } from 'antd';
+import { Card, Spin, Empty, Popover, Button, InputNumber, Space } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { DARK_THEME } from '../../utils/constants';
@@ -117,23 +117,19 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
       }}>
         {items.map((emp) => {
           const color = emp.is_absent ? DARK_THEME.textMuted : activityColor(emp.days_since_last, thresholds);
-          const tooltipLines = [
+          const tooltip = [
             emp.is_absent && emp.absence_label ? `Сейчас: ${emp.absence_label}` : null,
             emp.last_worklog_at
               ? `Последний ворклог: ${new Date(emp.last_worklog_at).toLocaleString('ru-RU')}`
               : 'Нет ворклогов',
-          ].filter(Boolean) as string[];
-          const tooltip = (
-            <div>
-              {tooltipLines.map((line, i) => <div key={i}>{line}</div>)}
-            </div>
-          );
+          ].filter(Boolean).join('\n');
           const openEmp = () => navigate(`/analytics?employee=${emp.employee_id}`);
           return (
-            <Tooltip key={emp.employee_id} title={tooltip}>
             <div
+              key={emp.employee_id}
               role="button"
               tabIndex={0}
+              title={tooltip}
               onClick={openEmp}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEmp(); } }}
               style={{
@@ -184,7 +180,6 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
                 </div>
               </div>
             </div>
-            </Tooltip>
           );
         })}
       </div>
@@ -241,10 +236,11 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
         const item = c;
         const openCategory = () => navigate(`/analytics?category=${encodeURIComponent(item.key)}`);
         return (
-          <Tooltip key={item.key} title={`${item.label}: ${Math.round(item.hours)} ч (${item.pct.toFixed(1)}%)`}>
           <div
+            key={item.key}
             role="button"
             tabIndex={0}
+            title={`${item.label}: ${Math.round(item.hours)} ч (${item.pct.toFixed(1)}%)`}
             onClick={openCategory}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCategory(); } }}
             style={{
@@ -296,7 +292,6 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
               background: item.color,
             }} />
           </div>
-          </Tooltip>
         );
       })}
     </div>
