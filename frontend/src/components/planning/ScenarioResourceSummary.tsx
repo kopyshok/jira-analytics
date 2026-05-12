@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
@@ -81,6 +81,28 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
       : demandByRole(allocations);
   }, [allocations, employees]);
 
+  // Измеренные высоты двух вариантов — для плавной height-анимации.
+  // Оба варианта рендерятся одновременно (один невидимый), но крайне дёшево:
+  // ~40 DOM-узлов суммарно, замеряем через ResizeObserver чтобы реагировать
+  // на смену состава ролей/сотрудников.
+  const expandedRef = useRef<HTMLDivElement>(null);
+  const collapsedRef = useRef<HTMLDivElement>(null);
+  const [heights, setHeights] = useState<{ full: number; collapsed: number }>({ full: 0, collapsed: 0 });
+
+  useLayoutEffect(() => {
+    if (!expandedRef.current || !collapsedRef.current) return;
+    const measure = () => {
+      const full = expandedRef.current?.offsetHeight ?? 0;
+      const col = collapsedRef.current?.offsetHeight ?? 0;
+      setHeights((prev) => (prev.full === full && prev.collapsed === col ? prev : { full, collapsed: col }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(expandedRef.current);
+    ro.observe(collapsedRef.current);
+    return () => ro.disconnect();
+  }, [summary, allocations, employees, roles]);
+
   if (isLoading) {
     return (
       <Card styles={{ body: { padding: 14 } }}>
@@ -91,103 +113,9 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
 
   if (!summary || summary.roles.length === 0) return null;
 
-  const stickyWrap = (children: React.ReactNode) => (
-    <div
-      ref={setStickyEl}
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 20,
-        transition: 'box-shadow .2s ease',
-        boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
-      }}
-    >
-      <div style={{ overflow: 'hidden' }}>
-        {children}
-      </div>
-    </div>
-  );
-
-  if (collapsed) {
-    const collapsedTotalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
-    const collapsedTotalRemaining = Math.round(summary.available_for_backlog_total - collapsedTotalDemand);
-    const collapsedTotalDeficit = collapsedTotalRemaining < 0;
-    return stickyWrap(
-      <Card styles={{ body: { padding: 0, overflow: 'hidden' } }}>
-        <div style={{ display: 'flex', alignItems: 'center', height: 40 }}>
-          <div style={{
-            padding: '0 14px',
-            fontSize: 12,
-            color: DARK_THEME.textMuted,
-            borderRight: `1px solid ${DARK_THEME.border}`,
-            background: DARK_THEME.darkAccent,
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            whiteSpace: 'nowrap' as const,
-          }}>
-            На бэклог
-          </div>
-          {summary.roles.map((role) => {
-            const avail = summary.available_for_backlog_by_role[role] ?? 0;
-            const used = roleDemand[role as keyof typeof roleDemand] ?? 0;
-            const remaining = Math.round(avail - used);
-            const isDeficit = remaining < 0;
-            const hasUsed = used > 0;
-            return (
-              <div key={role} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '0 16px',
-                borderRight: `1px solid ${DARK_THEME.border}`,
-                height: '100%',
-              }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
-                  {getRoleLabel(roles, role)}
-                </span>
-                <span
-                  className={pulsedRoles?.has(role) ? 'role-pulse' : undefined}
-                  style={{ fontSize: 14, fontWeight: 700, fontFamily: FONTS.mono, color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}
-                >
-                  {hasUsed ? remaining : Math.round(avail)} ч
-                </span>
-              </div>
-            );
-          })}
-          <div style={{
-            padding: '0 16px',
-            borderRight: `1px solid ${DARK_THEME.border}`,
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-          }}>
-            <span style={{ fontSize: 15, fontWeight: 700, fontFamily: FONTS.mono, color: collapsedTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}>
-              {collapsedTotalDemand > 0 ? collapsedTotalRemaining : Math.round(summary.available_for_backlog_total)} ч
-            </span>
-          </div>
-          <button
-            onClick={toggleCollapsed}
-            disabled={isStuck && !userCollapsed}
-            title={isStuck ? 'Раскроется автоматически при прокрутке наверх' : undefined}
-            style={{
-              marginLeft: 'auto',
-              padding: '0 14px',
-              height: '100%',
-              background: 'none',
-              border: 'none',
-              cursor: isStuck && !userCollapsed ? 'not-allowed' : 'pointer',
-              fontSize: 11,
-              color: DARK_THEME.textMuted,
-              opacity: isStuck && !userCollapsed ? 0.4 : 1,
-            }}
-          >
-            ↓ Развернуть
-          </button>
-        </div>
-      </Card>,
-    );
-  }
+  const collapsedTotalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
+  const collapsedTotalRemaining = Math.round(summary.available_for_backlog_total - collapsedTotalDemand);
+  const collapsedTotalDeficit = collapsedTotalRemaining < 0;
 
   // Фиксированные ширины крайних колонок + minmax(0, 1fr) на ролевые: гарантирует,
   // что колонки выравниваются между независимыми сетками строк (max-content
@@ -232,7 +160,83 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
 
   const totalDemand = Object.values(roleDemand).reduce((s, v) => s + v, 0);
 
-  return stickyWrap(
+  const collapsedCard = (
+    <Card styles={{ body: { padding: 0, overflow: 'hidden' } }}>
+      <div style={{ display: 'flex', alignItems: 'center', height: 40 }}>
+        <div style={{
+          padding: '0 14px',
+          fontSize: 12,
+          color: DARK_THEME.textMuted,
+          borderRight: `1px solid ${DARK_THEME.border}`,
+          background: DARK_THEME.darkAccent,
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          whiteSpace: 'nowrap' as const,
+        }}>
+          На бэклог
+        </div>
+        {summary.roles.map((role) => {
+          const avail = summary.available_for_backlog_by_role[role] ?? 0;
+          const used = roleDemand[role as keyof typeof roleDemand] ?? 0;
+          const remaining = Math.round(avail - used);
+          const isDeficit = remaining < 0;
+          const hasUsed = used > 0;
+          return (
+            <div key={role} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '0 16px',
+              borderRight: `1px solid ${DARK_THEME.border}`,
+              height: '100%',
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: getRoleColor(roles, role) }}>
+                {getRoleLabel(roles, role)}
+              </span>
+              <span
+                className={pulsedRoles?.has(role) ? 'role-pulse' : undefined}
+                style={{ fontSize: 14, fontWeight: 700, fontFamily: FONTS.mono, color: isDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}
+              >
+                {hasUsed ? remaining : Math.round(avail)} ч
+              </span>
+            </div>
+          );
+        })}
+        <div style={{
+          padding: '0 16px',
+          borderRight: `1px solid ${DARK_THEME.border}`,
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 700, fontFamily: FONTS.mono, color: collapsedTotalDeficit ? DARK_THEME.amber : DARK_THEME.cyanPrimary }}>
+            {collapsedTotalDemand > 0 ? collapsedTotalRemaining : Math.round(summary.available_for_backlog_total)} ч
+          </span>
+        </div>
+        <button
+          onClick={toggleCollapsed}
+          disabled={isStuck && !userCollapsed}
+          title={isStuck ? 'Раскроется автоматически при прокрутке наверх' : undefined}
+          style={{
+            marginLeft: 'auto',
+            padding: '0 14px',
+            height: '100%',
+            background: 'none',
+            border: 'none',
+            cursor: isStuck && !userCollapsed ? 'not-allowed' : 'pointer',
+            fontSize: 11,
+            color: DARK_THEME.textMuted,
+            opacity: isStuck && !userCollapsed ? 0.4 : 1,
+          }}
+        >
+          ↓ Развернуть
+        </button>
+      </div>
+    </Card>
+  );
+
+  const expandedCard = (
     <Card styles={{ body: { padding: 0, overflow: 'hidden', borderRadius: 8 } }}>
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
         {/* Основная таблица */}
@@ -652,6 +656,77 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           );
         })()}
       </div>
-    </Card>,
+    </Card>
+  );
+
+  // Высота анимируется через explicit `height` на внешнем wrapper.
+  // Пока обе высоты ещё не измерены — fallback на auto, чтобы первый paint
+  // не был с нулевой высотой. После первого useLayoutEffect — измеренная.
+  const measured = heights.full > 0 && heights.collapsed > 0;
+  const targetHeight = !measured
+    ? undefined
+    : collapsed
+      ? heights.collapsed
+      : heights.full;
+
+  return (
+    <div
+      ref={setStickyEl}
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 20,
+        transition: 'box-shadow .2s ease',
+        boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          height: targetHeight,
+          // Сглаживает прыжок: высота меняется анимацией, а не скачком.
+          // Триггер sticky-collapse в этот момент не дёргает scroll-обработчик,
+          // так как сам sticky-блок остаётся прилипшим к top:0 — меняется
+          // только высота, а не его положение.
+          transition: 'height 0.28s cubic-bezier(.2,.8,.2,1)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          ref={expandedRef}
+          style={{
+            // До первого замера — обычный flow (intrinsic высота даёт измерение).
+            // После замера — absolute, обе варианта стэкаются.
+            position: measured ? 'absolute' : 'relative',
+            top: 0,
+            left: 0,
+            right: 0,
+            opacity: collapsed ? 0 : 1,
+            transition: 'opacity 0.18s ease',
+            pointerEvents: collapsed ? 'none' : 'auto',
+          }}
+          aria-hidden={collapsed}
+        >
+          {expandedCard}
+        </div>
+        <div
+          ref={collapsedRef}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            opacity: collapsed ? 1 : 0,
+            transition: 'opacity 0.18s ease',
+            pointerEvents: collapsed ? 'auto' : 'none',
+            // До первого замера прячем — иначе мерцает поверх expandedCard.
+            visibility: measured ? 'visible' : 'hidden',
+          }}
+          aria-hidden={!collapsed}
+        >
+          {collapsedCard}
+        </div>
+      </div>
+    </div>
   );
 }
