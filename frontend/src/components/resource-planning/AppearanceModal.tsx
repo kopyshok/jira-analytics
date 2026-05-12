@@ -132,8 +132,8 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
     }));
   };
 
-  const row = (label: string, picker: React.ReactNode) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+  const row = (rowKey: string, label: string, picker: React.ReactNode) => (
+    <div key={rowKey} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
       <Text style={{ color: '#8ab0d8', minWidth: 130 }}>{label}</Text>
       {picker}
     </div>
@@ -143,9 +143,9 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
     <div style={{ marginTop: 8 }}>
       {PHASE_LABELS.map(({ key, label }) =>
         row(
+          key,
           label,
           <ColorPicker
-            key={key}
             value={draft.phase_colors[key]}
             onChange={(c) => setPhaseColor(key, c)}
             showText
@@ -154,6 +154,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
         ),
       )}
       {row(
+        'init-bracket',
         'Полоса инициативы',
         <ColorPicker
           value={draft.initiative_bracket_color}
@@ -220,7 +221,7 @@ export default function AppearanceModal({ open, current, onClose }: Props) {
       onCancel={onClose}
       footer={null}
       width={400}
-      destroyOnClose
+      destroyOnHidden
     >
       {open && <AppearanceModalContent initial={current} onClose={onClose} />}
     </Modal>
