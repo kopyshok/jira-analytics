@@ -663,33 +663,29 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   // Пока обе высоты ещё не измерены — fallback на auto, чтобы первый paint
   // не был с нулевой высотой. После первого useLayoutEffect — измеренная.
   const measured = heights.full > 0 && heights.collapsed > 0;
-  const targetHeight = !measured
-    ? undefined
-    : collapsed
-      ? heights.collapsed
-      : heights.full;
+  // Высота самого sticky-элемента: меняется по `collapsed`.
+  const innerHeight = !measured ? undefined : (collapsed ? heights.collapsed : heights.full);
+  // Сосед-spacer ниже sticky компенсирует разницу высот, чтобы суммарный
+  // занимаемый в потоке размер (sticky.flow_slot + spacer) оставался
+  // постоянным при срабатывании sticky-trigger — иначе контент ниже скакал.
+  // Когда PM свернул вручную (userCollapsed), spacer=0: документ
+  // переразмечается интенциально, контент ниже поднимается.
+  const spacerHeight = !measured || userCollapsed
+    ? 0
+    : heights.full - (innerHeight ?? heights.full);
 
   return (
-    <div
-      ref={setStickyEl}
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 20,
-        transition: 'box-shadow .2s ease',
-        boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
-      }}
-    >
+    <>
       <div
+        ref={setStickyEl}
         style={{
-          position: 'relative',
-          height: targetHeight,
-          // Сглаживает прыжок: высота меняется анимацией, а не скачком.
-          // Триггер sticky-collapse в этот момент не дёргает scroll-обработчик,
-          // так как сам sticky-блок остаётся прилипшим к top:0 — меняется
-          // только высота, а не его положение.
-          transition: 'height 0.28s cubic-bezier(.2,.8,.2,1)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 20,
+          height: innerHeight,
           overflow: 'hidden',
+          transition: 'height 0.28s cubic-bezier(.2,.8,.2,1), box-shadow .2s ease',
+          boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
         }}
       >
         <div
@@ -727,6 +723,14 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           {collapsedCard}
         </div>
       </div>
-    </div>
+      <div
+        aria-hidden
+        style={{
+          height: spacerHeight,
+          transition: 'height 0.28s cubic-bezier(.2,.8,.2,1)',
+          pointerEvents: 'none',
+        }}
+      />
+    </>
   );
 }
