@@ -193,20 +193,6 @@ export default function PlaneGantt({
     return ids;
   }, [employeeLoad]);
 
-  // Filter employees
-  const displayEmployees = useMemo(() => {
-    let list = employees.filter(e => activeEmployeeIds.has(e.id));
-
-    // If employee filter is set, also show explicitly selected employees
-    if (filters.employees.length > 0) {
-      const selected = filters.employees;
-      list = employees.filter(e => activeEmployeeIds.has(e.id) || selected.includes(e.id));
-      list = list.filter(e => selected.includes(e.id));
-    }
-
-    return list;
-  }, [employees, activeEmployeeIds, filters.employees]);
-
   // Filter assignments
   const filteredAssignments = useMemo(() => {
     let list = assignments;
@@ -220,9 +206,122 @@ export default function PlaneGantt({
     if (filters.roles.length > 0) {
       list = list.filter(a => filters.roles.includes(PHASE_ROLE_MAP[a.phase] ?? a.phase));
     }
+    if (filters.employees.length > 0) {
+      list = list.filter(a => a.employee_id && filters.employees.includes(a.employee_id));
+    }
 
     return list;
-  }, [assignments, filters.projects, filters.roles]);
+  }, [assignments, filters.projects, filters.roles, filters.employees]);
+
+  // Build tree: Project → Initiative → Phase
+  type PhaseGroup = { phase: 'analyst' | 'dev' | 'qa' | 'opo'; assignments: AssignmentOut[]; totalHours: number };
+  type InitiativeNode = {
+    id: string;
+    key: string | null;
+    title: string;
+    projectKey: string;
+    priority: number | null;
+    phases: PhaseGroup[];
+    totalHours: number;
+    overload: boolean;
+  };
+  type ProjectNode = {
+    key: string;
+    initiatives: InitiativeNode[];
+    totalHours: number;
+  };
+
+  const tree = useMemo<ProjectNode[]>(() => {
+    const projMap = new Map<string, Map<string, { sample: AssignmentOut; phases: Map<string, AssignmentOut[]> }>>();
+    for (const a of filteredAssignments) {
+      if (!a.start_date || !a.end_date) continue;
+      const projKey = a.backlog_item_key?.split('-')[0] ?? 'N/A';
+      let proj = projMap.get(projKey);
+      if (!proj) { proj = new Map(); projMap.set(projKey, proj); }
+      let init = proj.get(a.backlog_item_id);
+      if (!init) {
+        init = { sample: a, phases: new Map() };
+        proj.set(a.backlog_item_id, init);
+      }
+      let bars = init.phases.get(a.phase);
+      if (!bars) { bars = []; init.phases.set(a.phase, bars); }
+      bars.push(a);
+    }
+    const phaseOrder: Array<'analyst' | 'dev' | 'qa' | 'opo'> = ['analyst', 'dev', 'qa', 'opo'];
+    const projects: ProjectNode[] = Array.from(projMap.entries()).map(([projKey, initMap]) => {
+      const initiatives: InitiativeNode[] = Array.from(initMap.entries()).map(([id, { sample, phases }]) => {
+        const phaseGroups: PhaseGroup[] = phaseOrder
+          .filter(p => phases.has(p))
+          .map(p => {
+            const bars = phases.get(p)!;
+            const hrs = bars.reduce((s, a) => s + (a.hours_allocated ?? 0), 0);
+            return { phase: p, assignments: bars, totalHours: hrs };
+          });
+        const totalHrs = phaseGroups.reduce((s, g) => s + g.totalHours, 0);
+        const hasOverload = phaseGroups.some(g => g.assignments.some(a => a.employee_id && overloadedIds.has(a.employee_id)));
+        return {
+          id,
+          key: sample.backlog_item_key,
+          title: sample.backlog_item_title,
+          projectKey: projKey,
+          priority: sample.priority ?? null,
+          phases: phaseGroups,
+          totalHours: totalHrs,
+          overload: hasOverload,
+        };
+      });
+      initiatives.sort((a, b) =>
+        (b.priority ?? 0) - (a.priority ?? 0) || a.title.localeCompare(b.title, 'ru')
+      );
+      const projTotal = initiatives.reduce((s, i) => s + i.totalHours, 0);
+      return { key: projKey, initiatives, totalHours: projTotal };
+    });
+    projects.sort((a, b) => b.totalHours - a.totalHours);
+    return projects;
+  }, [filteredAssignments, overloadedIds]);
+
+  // Collapse state
+  type CollapseState = { projects: Set<string>; initiatives: Set<string> };
+  const [collapsed, setCollapsed] = useState<CollapseState>(() => {
+    try {
+      const raw = localStorage.getItem('rp_plane_collapse');
+      if (raw) {
+        const obj = JSON.parse(raw);
+        return {
+          projects: new Set<string>(obj.projects ?? []),
+          initiatives: new Set<string>(obj.initiatives ?? []),
+        };
+      }
+    } catch { /* ignore */ }
+    return { projects: new Set(), initiatives: new Set() };
+  });
+
+  const persistCollapse = (next: CollapseState) => {
+    localStorage.setItem('rp_plane_collapse', JSON.stringify({
+      projects: Array.from(next.projects),
+      initiatives: Array.from(next.initiatives),
+    }));
+    setCollapsed(next);
+  };
+
+  const toggleProject = (key: string) => {
+    const projects = new Set(collapsed.projects);
+    if (projects.has(key)) projects.delete(key); else projects.add(key);
+    persistCollapse({ projects, initiatives: collapsed.initiatives });
+  };
+
+  const toggleInitiative = (id: string) => {
+    const initiatives = new Set(collapsed.initiatives);
+    if (initiatives.has(id)) initiatives.delete(id); else initiatives.add(id);
+    persistCollapse({ projects: collapsed.projects, initiatives });
+  };
+
+  const expandAll = () => persistCollapse({ projects: new Set(), initiatives: new Set() });
+  const collapseAll = () => {
+    const projects = new Set(tree.map(p => p.key));
+    const initiatives = new Set(tree.flatMap(p => p.initiatives.map(i => i.id)));
+    persistCollapse({ projects, initiatives });
+  };
 
   // Today line position
   const today = new Date();
@@ -301,7 +400,13 @@ export default function PlaneGantt({
           <div className={css.gridWrapper}>
             {/* Grid header */}
             <div className={css.gridHeader}>
-              <div className={css.leftColHeader}>Сотрудник</div>
+              <div className={css.leftColHeader}>
+                <span>Проект / Инициатива / Фаза</span>
+                <span className={css.headerActions}>
+                  <button type="button" className={css.miniLink} onClick={expandAll} title="Развернуть всё">▼</button>
+                  <button type="button" className={css.miniLink} onClick={collapseAll} title="Свернуть всё">▶</button>
+                </span>
+              </div>
               <div className={css.weekColumns}>
                 {monthGroups.map(mg => (
                   <div key={mg.label} className={css.monthGroup}>
@@ -333,7 +438,7 @@ export default function PlaneGantt({
                 </div>
               )}
 
-              {displayEmployees.length === 0 && (
+              {tree.length === 0 && (
                 <div className={css.emptyState}>
                   <span className={css.emptyIcon}>📋</span>
                   <span>Нет назначений для отображения</span>
@@ -349,61 +454,117 @@ export default function PlaneGantt({
                 </div>
               )}
 
-              {displayEmployees.map(emp => {
-                const empAssignments = filteredAssignments.filter(
-                  a => a.employee_id === emp.id && a.start_date && a.end_date,
-                );
-                const isOverloaded = overloadedIds.has(emp.id);
-
+              {tree.map(proj => {
+                const projCollapsed = collapsed.projects.has(proj.key);
                 return (
-                  <div
-                    key={emp.id}
-                    className={`${css.row}${isOverloaded ? ` ${css.overload}` : ''}`}
-                  >
-                    <div className={css.empCol}>
-                      <div
-                        className={css.avatar}
-                        style={{ background: avatarColor(emp.display_name) }}
-                        title={emp.display_name}
-                      >
-                        {initials(emp.display_name)}
+                  <div key={`proj-${proj.key}`}>
+                    {/* Project group header */}
+                    <div className={css.projectRow} onClick={() => toggleProject(proj.key)}>
+                      <div className={css.leftCol}>
+                        <span className={`${css.caret}${projCollapsed ? '' : ` ${css.open}`}`}>▶</span>
+                        <span
+                          className={css.projectChip}
+                          style={{ background: avatarColor(proj.key) }}
+                        >
+                          {proj.key}
+                        </span>
+                        <span className={css.projectMeta}>
+                          {proj.initiatives.length} инициатив
+                        </span>
+                        <span className={css.projectHours}>{proj.totalHours.toFixed(0)} ч</span>
                       </div>
-                      <div className={css.empInfo}>
-                        <span className={css.empName}>{emp.display_name}</span>
-                        {emp.role && <span className={css.empMeta}>{emp.role}</span>}
-                      </div>
-                      {isOverloaded && (
-                        <span className={css.overloadIcon} title="Перегрузка">▲</span>
-                      )}
+                      <div className={css.projectTrack} />
                     </div>
 
-                    <div className={css.barTrack}>
-                      {empAssignments.map(a => {
-                        const leftPct = dateToBarPct(a.start_date, qStart, totalMs);
-                        const endPct = dateToBarPct(a.end_date, qStart, totalMs);
-                        const widthPct = Math.max(endPct - leftPct, 0.5);
-                        const roleClass = css[a.phase as keyof typeof css] ?? css.analyst;
-                        const label = a.backlog_item_title ?? '—';
-                        const projectKey = a.backlog_item_key?.split('-')[0] ?? '';
-                        const phaseMeta = PHASE_META[a.phase] ?? { letter: '?', label: a.phase };
-                        const hours = a.hours_allocated?.toFixed(0) ?? '?';
-
-                        return (
+                    {/* Initiatives */}
+                    {!projCollapsed && proj.initiatives.map(init => {
+                      const initCollapsed = collapsed.initiatives.has(init.id);
+                      return (
+                        <div key={`init-${init.id}`}>
+                          {/* Initiative header */}
                           <div
-                            key={a.id}
-                            className={`${css.bar} ${roleClass}`}
-                            style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            title={`${phaseMeta.label} · ${projectKey ? projectKey + ' · ' : ''}${label} — ${hours} ч`}
-                            onClick={() => onAssignmentClick(a.id)}
+                            className={`${css.initiativeRow}${init.overload ? ` ${css.overload}` : ''}`}
+                            onClick={() => toggleInitiative(init.id)}
                           >
-                            <span className={css.barPhaseChip}>{phaseMeta.letter}</span>
-                            {projectKey && <span className={css.barProjectKey}>{projectKey}</span>}
-                            <span className={css.barTitle}>{label}</span>
-                            <span className={css.barHours}>{hours}ч</span>
+                            <div className={css.leftCol}>
+                              <span className={css.indent1} />
+                              <span className={`${css.caret}${initCollapsed ? '' : ` ${css.open}`}`}>▶</span>
+                              {init.key && <span className={css.itemKey}>{init.key}</span>}
+                              <span className={css.itemTitle} title={init.title}>{init.title}</span>
+                              {init.priority != null && (
+                                <span className={css.priorityChip}>P{init.priority}</span>
+                              )}
+                              {init.overload && (
+                                <span className={css.overloadIcon} title="Есть перегрузка">▲</span>
+                              )}
+                              <span className={css.itemHours}>{init.totalHours.toFixed(0)} ч</span>
+                            </div>
+                            <div className={css.summaryTrack}>
+                              {init.phases.map(g => {
+                                if (g.assignments.length === 0) return null;
+                                const startMin = Math.min(...g.assignments.map(a => new Date(a.start_date! + 'T00:00:00').getTime()));
+                                const endMax = Math.max(...g.assignments.map(a => new Date(a.end_date! + 'T00:00:00').getTime()));
+                                const leftPct = Math.max(0, ((startMin - qStart.getTime()) / totalMs) * 100);
+                                const widthPct = Math.max(0.4, ((endMax - startMin) / totalMs) * 100);
+                                return (
+                                  <div
+                                    key={g.phase}
+                                    className={`${css.summaryBar} ${css[g.phase]}`}
+                                    style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                  />
+                                );
+                              })}
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
+
+                          {/* Phase rows */}
+                          {!initCollapsed && init.phases.map(g => (
+                            <div
+                              key={`ph-${init.id}-${g.phase}`}
+                              className={css.phaseRow}
+                            >
+                              <div className={css.leftCol}>
+                                <span className={css.indent2} />
+                                <span className={`${css.phaseLetterChip} ${css[`phaseLetterChip_${g.phase}`]}`}>
+                                  {PHASE_META[g.phase].letter}
+                                </span>
+                                <span className={css.phaseName}>{PHASE_META[g.phase].label}</span>
+                                <span className={css.phaseHours}>{g.totalHours.toFixed(0)} ч</span>
+                              </div>
+                              <div className={css.barTrack}>
+                                {g.assignments.map(a => {
+                                  const leftPct = dateToBarPct(a.start_date, qStart, totalMs);
+                                  const endPct = dateToBarPct(a.end_date, qStart, totalMs);
+                                  const widthPct = Math.max(endPct - leftPct, 0.5);
+                                  const empName = a.employee_name ?? a.scenario_assignee_name ?? '—';
+                                  const empInitials = initials(empName);
+                                  const isOverEmp = a.employee_id ? overloadedIds.has(a.employee_id) : false;
+                                  const hrs = a.hours_allocated?.toFixed(0) ?? '?';
+                                  return (
+                                    <div
+                                      key={a.id}
+                                      className={`${css.bar} ${css[g.phase]}${isOverEmp ? ` ${css.barOverload}` : ''}`}
+                                      style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                      title={`${empName} — ${PHASE_META[g.phase].label} — ${hrs} ч${isOverEmp ? ' · перегрузка' : ''}`}
+                                      onClick={() => onAssignmentClick(a.id)}
+                                    >
+                                      <span
+                                        className={css.barInitials}
+                                        style={{ background: avatarColor(empName) }}
+                                      >
+                                        {empInitials}
+                                      </span>
+                                      <span className={css.barTitle}>{empName}</span>
+                                      <span className={css.barHours}>{hrs}ч</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
