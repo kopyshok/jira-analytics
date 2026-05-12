@@ -620,6 +620,7 @@ function TwoLevelRows({
                       height: BAR_H,
                       zIndex: 2,
                       pointerEvents: 'none',
+                      background: 'linear-gradient(180deg, rgba(184,201,224,0.22), rgba(184,201,224,0.12))',
                     }}>
                       <svg
                         width="100%"
