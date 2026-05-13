@@ -22,8 +22,14 @@ from app.schemas.work_type_report import (
     CandidateAcceptRequest, CandidateMergeRequest, CandidateIgnoreRequest,
     ManualClassifyRequest,
     LayoutCreateRequest, LayoutUpdateRequest, LayoutOut,
+    AliasAddRequest, ThemeAliasResponse,
+    ThresholdRequest, ThresholdResponse,
 )
-from app.services.work_type_report_service import WorkTypeReportService
+from app.services.work_type_report_service import (
+    WorkTypeReportService,
+    DEFAULT_EMBEDDING_THRESHOLD,
+    THRESHOLD_SETTING_KEY,
+)
 from app.services.theme_dictionary_service import ThemeDictionaryService
 from app.services.llm.base import get_llm_provider
 from app.services.work_type_report_xlsx import export_snapshot_to_xlsx
@@ -224,8 +230,10 @@ def merge_candidate(
 ):
     """Merge a candidate into an existing theme.
 
-    Soft re-aggregate без bump словаря: классификации перепривязаны к существующей теме,
-    Map-кэш остаётся валидным, snapshot обновляется in-place.
+    Помимо перепривязки классификаций, `proposed_name` записывается в
+    `Theme.aliases` целевой темы — это обучает embedding-матчер: следующие
+    задачи с похожей формулировкой попадут в эту тему автоматически.
+    Recompute centroid темы запускается в ThemeDictionaryService.add_alias.
     """
     snap = db.get(WorkTypeReportSnapshot, payload.snapshot_id)
     if not snap:
@@ -240,8 +248,71 @@ def merge_candidate(
         .values(theme_id=payload.target_theme_id, candidate_name=None)
     )
     db.commit()
+
+    svc = ThemeDictionaryService(db)
+    try:
+        svc.add_alias(payload.target_theme_id, payload.proposed_name)
+    except ValueError:
+        pass  # тему могли удалить между запросами — игнорим, классификации уже перепривязаны
+
     _make_service(db).rebuild_aggregates(snap)
     return {"ok": True}
+
+
+@router.post("/themes/{theme_id}/aliases", response_model=ThemeAliasResponse)
+def add_theme_alias(
+    theme_id: str,
+    payload: AliasAddRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    svc = ThemeDictionaryService(db)
+    try:
+        t = svc.add_alias(theme_id, payload.alias)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return ThemeAliasResponse(theme_id=t.id, aliases=t.aliases)
+
+
+@router.delete("/themes/{theme_id}/aliases", response_model=ThemeAliasResponse)
+def delete_theme_alias(
+    theme_id: str,
+    alias: str = Query(..., min_length=1, max_length=255),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    svc = ThemeDictionaryService(db)
+    try:
+        t = svc.remove_alias(theme_id, alias)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return ThemeAliasResponse(theme_id=t.id, aliases=t.aliases)
+
+
+@router.get("/settings/embedding-threshold", response_model=ThresholdResponse)
+def get_embedding_threshold_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.api.endpoints.settings import _get_setting
+    raw = _get_setting(db, THRESHOLD_SETTING_KEY)
+    try:
+        value = float(raw) if raw else DEFAULT_EMBEDDING_THRESHOLD
+    except (TypeError, ValueError):
+        value = DEFAULT_EMBEDDING_THRESHOLD
+    return ThresholdResponse(threshold=value)
+
+
+@router.put("/settings/embedding-threshold", response_model=ThresholdResponse)
+def set_embedding_threshold(
+    payload: ThresholdRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.api.endpoints.settings import _set_setting
+    _set_setting(db, THRESHOLD_SETTING_KEY, str(payload.threshold))
+    db.commit()
+    return ThresholdResponse(threshold=payload.threshold)
 
 
 @router.post("/candidates/ignore")

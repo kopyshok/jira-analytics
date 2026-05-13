@@ -38,8 +38,26 @@ class ThemeOut(BaseModel):
     color: str
     sort_order: int
     is_archived: bool
+    aliases: list[str] = []
     created_at: datetime
     updated_at: datetime
+
+
+class AliasAddRequest(BaseModel):
+    alias: str = Field(..., min_length=1, max_length=255)
+
+
+class ThemeAliasResponse(BaseModel):
+    theme_id: str
+    aliases: list[str]
+
+
+class ThresholdResponse(BaseModel):
+    threshold: float
+
+
+class ThresholdRequest(BaseModel):
+    threshold: float = Field(..., ge=0.0, le=1.0)
 
 
 class ThemeCandidate(BaseModel):
