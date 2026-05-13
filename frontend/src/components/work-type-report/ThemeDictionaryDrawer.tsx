@@ -32,6 +32,8 @@ import {
   useIgnoreCandidate,
 } from '../../hooks/useWorkTypeReport';
 import type { ThemeOut, Candidate } from '../../types/workTypeReport';
+import ThemeAliasesEditor from './ThemeAliasesEditor';
+import EmbeddingThresholdSlider from './EmbeddingThresholdSlider';
 
 interface Props {
   open: boolean;
@@ -125,6 +127,12 @@ function ThemeEditModalContent({ initial, workTypeId, isCreate, onClose }: Theme
             />
           </div>
         </div>
+        {!isCreate && initial.id && (
+          <ThemeAliasesEditor
+            themeId={initial.id}
+            aliases={initial.aliases ?? []}
+          />
+        )}
       </div>
     </Modal>
   );
@@ -351,6 +359,7 @@ function ActiveTab({ workTypeId }: ActiveTabProps) {
 
   return (
     <>
+      <EmbeddingThresholdSlider />
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         <Button
           icon={<PlusOutlined />}

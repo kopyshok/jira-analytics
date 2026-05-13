@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App } from 'antd';
 import { themesApi } from '../api/themes';
+import { workTypeReportApi } from '../api/workTypeReport';
 import type {
   ThemeCreateRequest,
   ThemeUpdateRequest,
@@ -110,6 +111,63 @@ export function useMergeThemes() {
     onError: (e: unknown) => {
       const err = e as { message?: string };
       message.error(`Не удалось объединить темы: ${err?.message ?? 'Ошибка'}`);
+    },
+  });
+}
+
+export function useAddThemeAlias() {
+  const qc = useQueryClient();
+  const { message } = App.useApp();
+  return useMutation({
+    mutationFn: ({ themeId, alias }: { themeId: string; alias: string }) =>
+      workTypeReportApi.addAlias(themeId, alias),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['theme-list'] });
+      qc.invalidateQueries({ queryKey: ['work-type-report'] });
+    },
+    onError: (e: unknown) => {
+      const err = e as { message?: string };
+      message.error(`Не удалось добавить алиас: ${err?.message ?? 'Ошибка'}`);
+    },
+  });
+}
+
+export function useRemoveThemeAlias() {
+  const qc = useQueryClient();
+  const { message } = App.useApp();
+  return useMutation({
+    mutationFn: ({ themeId, alias }: { themeId: string; alias: string }) =>
+      workTypeReportApi.removeAlias(themeId, alias),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['theme-list'] });
+      qc.invalidateQueries({ queryKey: ['work-type-report'] });
+    },
+    onError: (e: unknown) => {
+      const err = e as { message?: string };
+      message.error(`Не удалось удалить алиас: ${err?.message ?? 'Ошибка'}`);
+    },
+  });
+}
+
+export function useEmbeddingThreshold() {
+  return useQuery({
+    queryKey: ['embedding-threshold'],
+    queryFn: () => workTypeReportApi.getEmbeddingThreshold(),
+    staleTime: 60_000,
+  });
+}
+
+export function useSetEmbeddingThreshold() {
+  const qc = useQueryClient();
+  const { message } = App.useApp();
+  return useMutation({
+    mutationFn: (threshold: number) => workTypeReportApi.setEmbeddingThreshold(threshold),
+    onSuccess: (data) => {
+      qc.setQueryData(['embedding-threshold'], data);
+    },
+    onError: (e: unknown) => {
+      const err = e as { message?: string };
+      message.error(`Не удалось сохранить порог: ${err?.message ?? 'Ошибка'}`);
     },
   });
 }

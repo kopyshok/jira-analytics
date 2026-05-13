@@ -129,4 +129,28 @@ export const workTypeReportApi = {
   /** Download xlsx binary — used by toolbar (Task 12). Returns void; triggers browser download. */
   downloadXlsx: (snapshotId: string) =>
     api.download(`/work-type-report/export/${encodeURIComponent(snapshotId)}.xlsx`),
+
+  // ---- Theme aliases (embedding training) ----
+
+  addAlias: (themeId: string, alias: string) =>
+    api.post<{ theme_id: string; aliases: string[] }>(
+      `/work-type-report/themes/${encodeURIComponent(themeId)}/aliases`,
+      { alias },
+    ),
+
+  removeAlias: (themeId: string, alias: string) =>
+    api.del<{ theme_id: string; aliases: string[] }>(
+      `/work-type-report/themes/${encodeURIComponent(themeId)}/aliases?alias=${encodeURIComponent(alias)}`,
+    ),
+
+  // ---- Embedding threshold ----
+
+  getEmbeddingThreshold: () =>
+    api.get<{ threshold: number }>('/work-type-report/settings/embedding-threshold'),
+
+  setEmbeddingThreshold: (threshold: number) =>
+    api.put<{ threshold: number }>(
+      '/work-type-report/settings/embedding-threshold',
+      { threshold },
+    ),
 };
