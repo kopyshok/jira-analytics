@@ -49,6 +49,14 @@ async def lifespan(app: FastAPI):
     )
     app.state.scheduler = sched_svc
 
+    # --- Embedding model warmup ---
+    try:
+        from app.services.llm.embedding_service import EmbeddingService
+        EmbeddingService().warmup()
+        logger.info("Embedding service warmed up")
+    except Exception as e:
+        logger.warning("Embedding warmup failed (non-fatal): %s", e)
+
     yield
 
     # --- Shutdown ---
