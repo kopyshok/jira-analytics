@@ -75,3 +75,30 @@ def test_build_prompt_includes_totals_and_themes():
     assert "Ошибки обмена" in p
     assert "PROJ-321" in p
     assert "Не выдумывай" in p or "не выдумывай" in p.lower()
+
+
+def test_build_prompt_strips_employee_names():
+    """Имена сотрудников не должны попадать в промпт — LLM иначе их копирует.
+
+    Faithfulness validator получает имена отдельно через employee_names.
+    """
+    findings = {
+        "totals": {"hours": 100, "tasks": 5, "employees": 2},
+        "themes": [{
+            "theme_id": "T1", "name": "Тема",
+            "totals": {"hours": 100, "pct": 100, "tasks_count": 5, "employees_count": 2},
+            "by_employee": [
+                {"employee_id": "e1", "name": "Пряничников Иван", "role": "ANALYST", "team": "T", "hours": 60},
+                {"employee_id": "e2", "name": "Иванов Пётр", "role": "DEV", "team": "T", "hours": 40},
+            ],
+            "issues": [{
+                "issue_id": "i1", "key": "PROJ-1", "summary": "x", "hours": 100,
+                "employee_breakdown": [
+                    {"name": "Пряничников Иван", "role": "ANALYST", "team": "T", "hours": 60},
+                ],
+            }],
+        }],
+    }
+    p = build_synthesis_prompt(findings)
+    assert "Пряничников" not in p
+    assert "Иванов" not in p

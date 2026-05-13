@@ -44,6 +44,9 @@ _REFERER = "http://localhost"
 _TITLE = "JiraAnalysis"
 
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
+# 404 = модель удалена/переименована на OpenRouter, 400 = некорректный id.
+# Не транзиентно, но повод перейти к следующей в цепочке, а не валить весь вызов.
+_FALLBACK_STATUSES = {400, 404} | _RETRY_STATUSES
 
 
 class OpenRouterProvider:
@@ -71,7 +74,7 @@ class OpenRouterProvider:
             try:
                 return await self._call_model(attempt_model, prompt, expect_json=expect_json)
             except httpx.HTTPStatusError as e:
-                if e.response.status_code in _RETRY_STATUSES:
+                if e.response.status_code in _FALLBACK_STATUSES:
                     logger.warning(
                         "OpenRouter %s → HTTP %s, fallback к следующей модели",
                         attempt_model, e.response.status_code,
@@ -184,7 +187,7 @@ class OpenRouterProvider:
             try:
                 obj, meta = await self._call_json(model_id, prompt, schema)
             except httpx.HTTPStatusError as e:
-                if e.response.status_code in _RETRY_STATUSES:
+                if e.response.status_code in _FALLBACK_STATUSES:
                     logger.warning("OpenRouter %s → HTTP %s, fallback", model_id, e.response.status_code)
                     last_exc = e
                     continue
@@ -251,11 +254,16 @@ class OpenRouterProvider:
             try:
                 return await self._call_json(model_id, prompt, schema)
             except httpx.HTTPStatusError as e:
-                if e.response.status_code in _RETRY_STATUSES:
+                if e.response.status_code in _FALLBACK_STATUSES:
+                    logger.warning(
+                        "OpenRouter %s cluster_candidates → HTTP %s, fallback",
+                        model_id, e.response.status_code,
+                    )
                     last_exc = e
                     continue
                 raise
             except (LLMResponseError, httpx.TimeoutException) as e:
+                logger.warning("OpenRouter %s cluster_candidates → %s, fallback", model_id, e)
                 last_exc = e
                 continue
         if last_exc is not None:
@@ -308,11 +316,18 @@ class OpenRouterProvider:
             try:
                 return await self._call_json(model_id, prompt, schema)
             except httpx.HTTPStatusError as e:
-                if e.response.status_code in _RETRY_STATUSES:
+                if e.response.status_code in _FALLBACK_STATUSES:
+                    logger.warning(
+                        "OpenRouter %s synthesize_work_type_report → HTTP %s, fallback",
+                        model_id, e.response.status_code,
+                    )
                     last_exc = e
                     continue
                 raise
             except (LLMResponseError, httpx.TimeoutException) as e:
+                logger.warning(
+                    "OpenRouter %s synthesize_work_type_report → %s, fallback", model_id, e,
+                )
                 last_exc = e
                 continue
         if last_exc is not None:
@@ -336,11 +351,18 @@ class OpenRouterProvider:
             try:
                 return await self._call_json(model_id, prompt, schema)
             except httpx.HTTPStatusError as e:
-                if e.response.status_code in _RETRY_STATUSES:
+                if e.response.status_code in _FALLBACK_STATUSES:
+                    logger.warning(
+                        "OpenRouter %s synthesize_executive_summary → HTTP %s, fallback",
+                        model_id, e.response.status_code,
+                    )
                     last_exc = e
                     continue
                 raise
             except (LLMResponseError, httpx.TimeoutException) as e:
+                logger.warning(
+                    "OpenRouter %s synthesize_executive_summary → %s, fallback", model_id, e,
+                )
                 last_exc = e
                 continue
         if last_exc is not None:

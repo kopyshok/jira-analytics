@@ -30,8 +30,42 @@ class SynthesizerProvider(Protocol):
     async def synthesize_work_type_report(self, prompt: str) -> tuple[dict, dict]: ...
 
 
+def _strip_employee_names(findings: dict) -> dict:
+    """Удалить ФИО из findings перед отправкой в LLM.
+
+    Why: промпт запрещает упоминать сотрудников, но при сериализации всего findings
+    LLM видит имена в by_employee / issues.employee_breakdown и копирует их в
+    narrative → faithfulness validator отбивает фамилию. Имена нужны только
+    валидатору (передаются отдельно), для синтеза по темам/часам бесполезны.
+    """
+    out = dict(findings)
+    themes_out = []
+    for t in findings.get("themes", []) or []:
+        t2 = dict(t)
+        if "by_employee" in t2:
+            t2["by_employee"] = [
+                {k: v for k, v in e.items() if k != "name"}
+                for e in t2.get("by_employee", []) or []
+            ]
+        if "issues" in t2:
+            issues2 = []
+            for it in t2.get("issues", []) or []:
+                it2 = dict(it)
+                if "employee_breakdown" in it2:
+                    it2["employee_breakdown"] = [
+                        {k: v for k, v in e.items() if k != "name"}
+                        for e in it2.get("employee_breakdown", []) or []
+                    ]
+                issues2.append(it2)
+            t2["issues"] = issues2
+        themes_out.append(t2)
+    out["themes"] = themes_out
+    return out
+
+
 def build_synthesis_prompt(findings: dict) -> str:
     """findings = {totals, themes:[{id,name,hours,pct,top_tasks,entity_breakdown,...}], outliers:[...]}."""
+    sanitized = _strip_employee_names(findings)
     return "\n".join([
         "Ты — старший аналитик. Пишешь executive-сводку для PM.",
         "Используй ТОЛЬКО числа и ключи задач из FINDINGS. Не выдумывай.",
@@ -47,7 +81,7 @@ def build_synthesis_prompt(findings: dict) -> str:
         "  Имена сущностей бери ДОСЛОВНО из entity_breakdown.name, числа — из share_pct.",
         "",
         "FINDINGS:",
-        json.dumps(findings, ensure_ascii=False, indent=2),
+        json.dumps(sanitized, ensure_ascii=False, indent=2),
         "",
         "Верни JSON со схемой:",
         "{",
