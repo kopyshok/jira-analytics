@@ -12,6 +12,7 @@ export interface ThemeOut {
   color: string;
   sort_order: number;
   is_archived: boolean;
+  aliases: string[];
   created_at: string;
   updated_at: string;
 }
