@@ -1,7 +1,7 @@
 """IssueClassification — Map-phase cache (per issue × work type)."""
 import json
 from typing import Optional
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -30,6 +30,11 @@ class IssueClassification(Base, TimestampMixin):
     markers_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     area: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     nature: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+    input_embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    embedding_model_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    match_method: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    match_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     @property
     def markers(self) -> list[str]:
