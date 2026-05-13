@@ -39,6 +39,18 @@ logger = logging.getLogger("jira_analytics.thematic")
 
 
 MAP_PARALLELISM = 8  # одновременных LLM-вызовов в Map-фазе
+DEFAULT_EMBEDDING_THRESHOLD = 0.78
+THRESHOLD_SETTING_KEY = "theme_match_embedding_threshold"
+
+
+def get_embedding_threshold(db: Session) -> float:
+    """Прочитать порог embedding-матчинга из AppSetting; дефолт 0.78."""
+    from app.api.endpoints.settings import _get_setting
+    raw = _get_setting(db, THRESHOLD_SETTING_KEY)
+    try:
+        return float(raw) if raw else DEFAULT_EMBEDDING_THRESHOLD
+    except (TypeError, ValueError):
+        return DEFAULT_EMBEDDING_THRESHOLD
 
 
 _ENTITY_TOKEN = re.compile(r"[А-ЯЁA-Z0-9]{2,12}", re.UNICODE)
@@ -193,7 +205,10 @@ class WorkTypeReportService:
         if self.classifier_provider:
             n = len(issues)
             await _emit({"type": "phase_start", "phase": "map", "total": n})
-            clf = WorkTypeClassifier(self.db, self.classifier_provider)
+            threshold = get_embedding_threshold(self.db)
+            clf = WorkTypeClassifier(
+                self.db, self.classifier_provider, embedding_threshold=threshold,
+            )
 
             # 2a. Sync prep — собираем cache-hits и список cache-miss-prep'ов.
             # Эта часть гоняет DB read-only / read-existing-classification, серийно.
