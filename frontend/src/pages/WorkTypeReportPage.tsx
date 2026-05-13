@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Card, Col, Row, Spin, Typography } from 'antd';
+import { Card, Col, Row, Spin } from 'antd';
 import Toolbar from '../components/work-type-report/Toolbar';
 import { FONTS } from '../utils/constants';
 import AiHeadline from '../components/work-type-report/AiHeadline';
@@ -9,7 +9,6 @@ import EmptyState from '../components/work-type-report/EmptyState';
 import ThemeDistribution from '../components/work-type-report/ThemeDistribution';
 import GroupingControl from '../components/work-type-report/GroupingControl';
 import HierarchyTable from '../components/work-type-report/HierarchyTable';
-import OutliersPanel from '../components/work-type-report/OutliersPanel';
 import RecommendationCard from '../components/work-type-report/RecommendationCard';
 import IssueDrillDownDrawer from '../components/work-type-report/IssueDrillDownDrawer';
 import ManualReviewBlock from '../components/work-type-report/ManualReviewBlock';
@@ -39,17 +38,6 @@ function periodBounds(year: number, quarter: number, month?: number): { start: s
     start: `${year}-${String(qStartMonth).padStart(2, '0')}-01`,
     end: `${year}-${String(qEndMonth).padStart(2, '0')}-${lastDay}`,
   };
-}
-
-/** Build a map from issue_id → summary scanning all theme issues. */
-function buildSummaryById(themes: Theme[]): Map<string, string> {
-  const m = new Map<string, string>();
-  for (const t of themes) {
-    for (const i of t.issues) {
-      if (i.summary) m.set(i.issue_id, i.summary);
-    }
-  }
-  return m;
 }
 
 /** Find which theme (and contribution) an issue belongs to in the snapshot. */
@@ -156,12 +144,6 @@ export default function WorkTypeReportPage() {
       appliedDefaultRef.current = workTypeId;
     }
   }, [workTypeId, layoutListQuery.data]);
-
-  // Derived helpers
-  const summaryById = useMemo(
-    () => buildSummaryById(report?.data.themes ?? []),
-    [report?.data.themes],
-  );
 
   const { start: periodStart, end: periodEnd } = useMemo(
     () => periodBounds(period.year, period.quarter, period.month),
@@ -279,36 +261,11 @@ export default function WorkTypeReportPage() {
                   }}
                   styles={{ body: { padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 } }}
                 >
-                  {report.data.recommendation?.text && (
+                  {report.data.recommendation?.text ? (
                     <RecommendationCard recommendation={report.data.recommendation} />
-                  )}
-
-                  {report.data.outliers.length > 0 && (
-                    <div>
-                      <Typography.Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: '0.08em',
-                          textTransform: 'uppercase',
-                          color: DARK_THEME.textHint,
-                          display: 'block',
-                          marginBottom: 8,
-                        }}
-                      >
-                        Аномалии
-                      </Typography.Text>
-                      <OutliersPanel
-                        outliers={report.data.outliers}
-                        summaryById={summaryById}
-                        onOutlierClick={handleIssueClick}
-                      />
-                    </div>
-                  )}
-
-                  {!report.data.recommendation?.text && report.data.outliers.length === 0 && (
+                  ) : (
                     <div style={{ color: DARK_THEME.textMuted, fontSize: 13, textAlign: 'center', padding: '12px 0' }}>
-                      Аномалий и рекомендаций нет
+                      Рекомендаций нет
                     </div>
                   )}
                 </Card>
