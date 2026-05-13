@@ -5,8 +5,8 @@ import { PrinterOutlined } from '@ant-design/icons';
 import { PieChart, Pie, Cell } from 'recharts';
 import { useWorkTypeReport } from '../../hooks/useWorkTypeReport';
 import { FONTS, MONTH_NAMES } from '../../utils/constants';
-import type { Theme, Outlier } from '../../types/workTypeReport';
-import { buildSlices, REASON_LABELS } from './utils';
+import type { Theme } from '../../types/workTypeReport';
+import { buildSlices } from './utils';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 
@@ -79,39 +79,6 @@ function TopThemeBlock({ theme, rank }: { theme: Theme; rank: number }) {
   );
 }
 
-function OutlierRow({ outlier, summaryById }: { outlier: Outlier; summaryById: Map<string, string> }) {
-  const label = REASON_LABELS[outlier.reason] ?? outlier.reason;
-  const summary = summaryById.get(outlier.issue_id);
-  return (
-    <div style={{ display: 'flex', gap: 10, fontSize: 12, marginBottom: 6, alignItems: 'flex-start' }}>
-      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#007575', flexShrink: 0 }}>
-        {outlier.key}
-      </span>
-      <span
-        style={{
-          display: 'inline-block',
-          background: '#fee2e2',
-          color: '#991b1b',
-          borderRadius: 4,
-          padding: '1px 6px',
-          fontSize: 10,
-          fontWeight: 600,
-          flexShrink: 0,
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ color: '#374151', flex: 1 }}>
-        {summary && <>{summary} · </>}
-        <span style={{ color: '#6b8aaa' }}>
-          {outlier.value}
-          {outlier.explanation && ` · ${outlier.explanation}`}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 export default function PrintView() {
   const [sp] = useSearchParams();
   const workTypeId = sp.get('work_type_id') ?? '';
@@ -128,31 +95,14 @@ export default function PrintView() {
   );
 
   const themes = useMemo(() => report?.data.themes ?? [], [report]);
-  const outliers = useMemo(() => report?.data.outliers ?? [], [report]);
   const totalsHours = report?.data.totals.hours ?? 0;
 
-  // Donut slices
   const slices = useMemo(() => buildSlices(themes, totalsHours, OTHER_COLOR), [themes, totalsHours]);
 
-  // Top-3 themes (by hours)
   const top3 = useMemo(
     () => [...themes].sort((a, b) => b.totals.hours - a.totals.hours).slice(0, 3),
     [themes],
   );
-
-  // Top-5 outliers
-  const top5outliers = useMemo(() => outliers.slice(0, 5), [outliers]);
-
-  // Summary map for outliers
-  const summaryById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const t of themes) {
-      for (const i of t.issues) {
-        if (i.summary) map.set(i.issue_id, i.summary);
-      }
-    }
-    return map;
-  }, [themes]);
 
   // Add/remove body class to override dark background from projects print CSS
   useEffect(() => {
@@ -361,22 +311,7 @@ export default function PrintView() {
         </div>
       )}
 
-      {/* ── Section 6: Top-5 outliers ── */}
-      {top5outliers.length > 0 && (
-        <div
-          className="work-type-print-section"
-          style={{ marginBottom: 28, padding: '14px 16px', border: '1px solid #fee2e2', borderRadius: 8, background: '#fff5f5' }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#991b1b', marginBottom: 10 }}>
-            Аномалии
-          </div>
-          {top5outliers.map((o) => (
-            <OutlierRow key={`${o.issue_id}:${o.reason}`} outlier={o} summaryById={summaryById} />
-          ))}
-        </div>
-      )}
-
-      {/* ── Section 7: Recommendation ── */}
+      {/* ── Section 6: Recommendation ── */}
       {recommendation?.text && (
         <div
           className="work-type-print-section"
