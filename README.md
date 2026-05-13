@@ -345,6 +345,65 @@ Cloud ID:  604dc198-0f39-4cc9-bfbf-0a7cfdddd286
 Base URL:  https://itgri.atlassian.net
 ```
 
+## Embedding-модель (тематический отчёт)
+
+Сервис использует локальную модель `intfloat/multilingual-e5-base` (sentence-transformers) для матчинга задач к темам тематического отчёта. Слияние кандидата автоматически расширяет «зону притяжения» темы — система обучается без переписывания LLM-промптов.
+
+### Системные требования
+
+- Python 3.10+, CPU x86_64 (arm64 поддерживается с альтернативным wheel-индексом для torch).
+- RAM: ≥ 2 GB на процесс backend (модель занимает ~1.5 GB при загрузке).
+- Диск: ~280 MB веса модели + ~500 MB зависимости torch CPU.
+- GPU не нужен.
+
+### Установка зависимостей
+
+`requirements.txt` содержит `--extra-index-url https://download.pytorch.org/whl/cpu` — pip берёт CPU-only torch (~200 MB), без CUDA (~2 GB).
+
+```
+pip install -r requirements.txt
+```
+
+### Загрузка весов
+
+Веса автоматически скачиваются при первом старте backend (~280 MB, нужен outbound к `huggingface.co`). Дальше работают из локального кэша.
+
+Кэш модели — в директории `HF_HOME` (по умолчанию `~/.cache/huggingface`). На VPS лучше зафиксировать:
+
+```
+export HF_HOME=/var/cache/huggingface
+```
+
+### Offline-деплой (VPS без outbound)
+
+1. Локально:
+   ```
+   huggingface-cli download intfloat/multilingual-e5-base --local-dir ./models/e5-base
+   ```
+2. Скопировать папку `models/e5-base` на сервер.
+3. На сервере выставить `HF_HOME` в директорию которая содержит подкаталог `hub/models--intfloat--multilingual-e5-base/`, либо положить веса в этот путь напрямую.
+
+### Docker (pre-bake)
+
+В Dockerfile:
+
+```dockerfile
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+               SentenceTransformer('intfloat/multilingual-e5-base', \
+                                   revision='d128750597153bb5987e10b1c3493a34e5a4502a')"
+```
+
+Веса вшиваются в слой образа, container на VPS не нуждается в интернете к HF.
+
+### Production lens
+
+- На холодном старте backend модель загружается в RAM ~5-10 с (через FastAPI lifespan). Первый запрос после рестарта чуть дольше обычного.
+- Если RAM < 2 GB, замените `MODEL_NAME`/`MODEL_REVISION`/`EMBEDDING_DIM` в [app/services/llm/embedding_service.py](app/services/llm/embedding_service.py) на `intfloat/multilingual-e5-small` (118 MB / 384-dim, RAM ~700 MB). Embeddings придётся пересчитать — модуль автоматически инвалидирует устаревшие записи через `embedding_model_version`.
+
+### Threshold-настройка
+
+Порог матчинга (cosine ≥ X = «попало в тему») регулируется на странице тематического отчёта в разделе «Словарь тем» — слайдер 0.5–0.95. Дефолт 0.78. Значение хранится в `AppSetting` под ключом `theme_match_embedding_threshold`.
+
 ## Лицензия
 
 Внутренний продукт.
