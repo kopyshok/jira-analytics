@@ -2,12 +2,16 @@ import { useState, useMemo, useEffect, useRef, useCallback, memo, type HTMLAttri
 import {
   Button, Card, Space, Table, Tag, App,
   Tabs, Select, Typography, Modal, Checkbox, Popconfirm, DatePicker, Progress, Switch,
+  Empty, Input,
 } from 'antd';
 import {
   SyncOutlined, ReloadOutlined,
   CheckOutlined, CloseOutlined,
   SaveOutlined, ExclamationCircleOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
+import HelpDrawer from '../components/shared/HelpDrawer';
+import categoriesHelp from '../../../docs/help/categories.md?raw';
 import { useQueryClient } from '@tanstack/react-query';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
@@ -74,6 +78,14 @@ type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
 type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 const INITIATIVES_CODE = 'initiatives_rfa';
+const QUEUE_ORDER: InnerTab[] = ['stack', 'active', 'initiatives', 'archive_target', 'archive'];
+const QUEUE_META: Record<InnerTab, { title: string; hint: string; tone: string }> = {
+  stack: { title: 'К разбору', hint: 'без решения', tone: 'attention' },
+  active: { title: 'Активные', hint: 'попадают в анализ', tone: 'success' },
+  initiatives: { title: 'Инициативы', hint: 'на потом', tone: 'warning' },
+  archive_target: { title: 'Архив квартальных целей', hint: 'квартальные цели старых периодов', tone: 'archive' },
+  archive: { title: 'Архив неактуальных задач', hint: 'старые и не актуальные задачи', tone: 'muted' },
+};
 
 function countUnverifiedBelow(node: TreeNodeWithChildren): number {
   let count = 0;
@@ -189,7 +201,7 @@ const IncludeCell = memo(function IncludeCell({
 // Constant Table props — lifted out of render so every click doesn't
 // hand AntD a fresh object reference.
 const tableComponents = { header: { cell: ResizableTitle } };
-const tableScroll = { y: 'calc(100vh - 320px)' };
+const tableScroll = { x: 1360, y: 'calc(100vh - 420px)' };
 
 export function CategoryConfigTab() {
   const { notification, message } = App.useApp();
@@ -200,6 +212,8 @@ export function CategoryConfigTab() {
     [globalQueryParams.teams],
   );
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
+  const [searchQuery, setSearchQuery] = useState('');
+  const normalizedSearch = searchQuery.trim().toLowerCase();
 
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 130, summary: 380, status: 140, statusChanged: 150, goals: 110,
@@ -212,6 +226,7 @@ export function CategoryConfigTab() {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
   const [pendingVerifyFlags, setPendingVerifyFlags] = useState<Map<string, boolean>>(new Map());
+  const [helpOpen, setHelpOpen] = useState(false);
   const verifyMut = useVerifyIssue();
 
   const scopeProjects = useScopeProjects();
@@ -352,6 +367,27 @@ export function CategoryConfigTab() {
     : innerTab === 'archive_target' ? archiveTargetData
     : archiveData;
 
+  // Поиск по ключу/названию — фильтрует уже построенное дерево вкладки,
+  // не трогая счётчики карточек. Узел остаётся, если совпадает сам или
+  // содержит совпавшего потомка.
+  const displayData = useMemo(() => {
+    if (!normalizedSearch) return tabData;
+    const walk = (nodes: TreeNodeWithChildren[]): TreeNodeWithChildren[] => {
+      const out: TreeNodeWithChildren[] = [];
+      for (const n of nodes) {
+        const kids = walk(n.children ?? []);
+        const selfMatch =
+          (n.key ?? '').toLowerCase().includes(normalizedSearch)
+          || (n.summary ?? '').toLowerCase().includes(normalizedSearch);
+        if (selfMatch || kids.length > 0) {
+          out.push({ ...n, children: kids.length > 0 ? kids : undefined });
+        }
+      }
+      return out;
+    };
+    return walk(tabData);
+  }, [tabData, normalizedSearch]);
+
   // Контекстные строки (родители вне фильтра команды) при загрузке автоматически
   // раскрываем вместе со всей цепочкой предков — пользователю нужно сразу видеть
   // реальную задачу внутри фильтра. Пользователь может свернуть вручную; сброс
@@ -389,9 +425,22 @@ export function CategoryConfigTab() {
         if (n.children?.length) { ids.push(n.id); walk(n.children); }
       });
     };
-    walk(tabData);
+    walk(displayData);
     setExpandedRowKeys(ids);
-  }, [tabData]);
+  }, [displayData]);
+
+  // При активном поиске автоматически раскрываем все ветви с совпадениями.
+  useEffect(() => {
+    if (!normalizedSearch) return;
+    const ids: string[] = [];
+    const walk = (nodes: TreeNodeWithChildren[]) => {
+      nodes.forEach(n => {
+        if (n.children?.length) { ids.push(n.id); walk(n.children); }
+      });
+    };
+    walk(displayData);
+    setExpandedRowKeys(prev => Array.from(new Set([...prev, ...ids])));
+  }, [normalizedSearch, displayData]);
 
   const collapseAll = useCallback(() => setExpandedRowKeys([]), []);
 
@@ -415,13 +464,20 @@ export function CategoryConfigTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [archiveData]);
 
-  const tabItems = useMemo(() => [
-    { key: 'stack', label: `Стек задач к разбору (${stackCount})` },
-    { key: 'active', label: `Активный стек (${activeCount})` },
-    { key: 'initiatives', label: `Бэклог инициатив (${initiativesCount})` },
-    { key: 'archive_target', label: `Архив квартальных задач (${archiveTargetCount})` },
-    { key: 'archive', label: `Архив прочих задач (${archiveCount})` },
-  ], [stackCount, activeCount, initiativesCount, archiveTargetCount, archiveCount]);
+  const queueItems = useMemo(() => {
+    const counts: Record<InnerTab, number> = {
+      stack: stackCount,
+      active: activeCount,
+      initiatives: initiativesCount,
+      archive_target: archiveTargetCount,
+      archive: archiveCount,
+    };
+    return QUEUE_ORDER.map(key => ({
+      key,
+      count: counts[key],
+      ...QUEUE_META[key],
+    }));
+  }, [stackCount, activeCount, initiativesCount, archiveTargetCount, archiveCount]);
 
   // Optimistic toggle for include_in_analysis.
   // Takes (issueId, hasChildren) instead of full record so memoized cells
@@ -615,6 +671,27 @@ export function CategoryConfigTab() {
         },
       },
       {
+        title: 'Категория',
+        key: 'category',
+        width: widths.category,
+        className: 'category-column',
+        render: (_: unknown, record: TreeNodeWithChildren) => (
+          <CategoryCell
+            issueId={record.id}
+            isGroup={record.issue_type === 'group'}
+            isContext={!!record.is_context}
+            hasPending={pendingCats.has(record.id)}
+            pendingValue={pendingCats.get(record.id) ?? undefined}
+            assignedValue={record.assigned_category || undefined}
+            inheritedAssigned={record.__inheritedAssigned}
+            derivedCategory={record.category}
+            categoryOptions={categoryOptions}
+            categoryLabels={categoryLabels}
+            onChange={setPendingCategory}
+          />
+        ),
+      },
+      {
         title: 'Статус',
         dataIndex: 'status',
         key: 'status',
@@ -668,26 +745,6 @@ export function CategoryConfigTab() {
             </Space>
           );
         },
-      },
-      {
-        title: 'Категория',
-        key: 'category',
-        width: widths.category,
-        render: (_: unknown, record: TreeNodeWithChildren) => (
-          <CategoryCell
-            issueId={record.id}
-            isGroup={record.issue_type === 'group'}
-            isContext={!!record.is_context}
-            hasPending={pendingCats.has(record.id)}
-            pendingValue={pendingCats.get(record.id) ?? undefined}
-            assignedValue={record.assigned_category || undefined}
-            inheritedAssigned={record.__inheritedAssigned}
-            derivedCategory={record.category}
-            categoryOptions={categoryOptions}
-            categoryLabels={categoryLabels}
-            onChange={setPendingCategory}
-          />
-        ),
       },
       {
         title: 'В анализ',
@@ -801,76 +858,164 @@ export function CategoryConfigTab() {
   }, []);
 
   const hasPending = pendingCats.size > 0;
+  const emptyText = (
+    <Empty
+      image={Empty.PRESENTED_IMAGE_SIMPLE}
+      description={
+        <Space orientation="vertical" size={4}>
+          <Text strong>{innerTab === 'stack' ? 'Все задачи разобраны' : `В очереди «${QUEUE_META[innerTab].title}» пока пусто`}</Text>
+          <Text type="secondary">
+            {innerTab === 'stack'
+              ? 'В этой очереди нет задач без решения. Проверьте активные задачи или обновите данные.'
+              : 'Смените очередь или фильтр, чтобы продолжить разбор.'}
+          </Text>
+        </Space>
+      }
+    >
+      {innerTab === 'stack' ? (
+        <Button type="primary" onClick={() => setInnerTab('active')}>
+          Перейти к активным
+        </Button>
+      ) : (
+        <Button onClick={() => setInnerTab('stack')}>
+          Перейти к разбору
+        </Button>
+      )}
+    </Empty>
+  );
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
-      <Space wrap>
-        <Select
-          mode="multiple"
-          placeholder="Скрытые статусы"
-          value={hiddenStatuses}
-          onChange={setHiddenStatuses}
-          allowClear
-          style={{ minWidth: 280 }}
-          options={uniqueStatuses.map(s => ({ value: s, label: s }))}
-          maxTagCount="responsive"
-        />
-        <Button size="small" onClick={expandAll}>Развернуть всё</Button>
-        <Button size="small" onClick={collapseAll}>Свернуть всё</Button>
-        {issueTree.isFetching && (
+    <Space orientation="vertical" className="category-triage-shell">
+      <section className="category-triage-header">
+        <Space orientation="vertical" size={4}>
+          <Typography.Title level={2} style={{ margin: 0 }}>
+            Разбор задач
+          </Typography.Title>
+          <Text type="secondary">
+            Выберите задачи, назначьте категорию и сохраните черновик.
+          </Text>
+        </Space>
+        <Space size={8} align="center">
+          <Tag color={stackCount > 0 ? 'gold' : 'cyan'} className="category-triage-attention">
+            {stackCount} ждут разбора
+          </Tag>
           <Button
-            danger
-            icon={<CloseOutlined />}
-            onClick={() => qc.cancelQueries({ queryKey: treeQueryKey })}
+            type="text"
+            icon={<QuestionCircleOutlined />}
+            onClick={() => setHelpOpen(true)}
+            title="Справка по разделу"
           >
-            Отменить загрузку
+            Справка
           </Button>
-        )}
-        <Button
-          icon={<CheckOutlined />}
-          disabled={applicableSelectedIds.length === 0}
-          onClick={() => setBulkModalOpen(true)}
-        >
-          Установить категорию отмеченным ({applicableSelectedIds.length})
-        </Button>
-        {hasPending && (
-          <>
-            <Tag color="blue">Изменений: {pendingCats.size}</Tag>
+        </Space>
+      </section>
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Категоризация задач"
+        content={categoriesHelp}
+        imageBase="/help-assets/"
+      />
+
+      <div className="category-queue-summary" aria-label="Очереди разбора задач">
+        {queueItems.map(item => (
+          <button
+            key={item.key}
+            type="button"
+            className={`category-queue-card category-queue-${item.tone}${innerTab === item.key ? ' is-active' : ''}`}
+            onClick={() => setInnerTab(item.key)}
+          >
+            <span className="category-queue-count">{item.count}</span>
+            <span className="category-queue-title">{item.title}</span>
+            <span className="category-queue-hint">{item.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="category-toolbar">
+        <Space wrap>
+          <Select
+            mode="multiple"
+            placeholder="Скрытые статусы"
+            value={hiddenStatuses}
+            onChange={setHiddenStatuses}
+            allowClear
+            style={{ minWidth: 280 }}
+            options={uniqueStatuses.map(s => ({ value: s, label: s }))}
+            maxTagCount="responsive"
+          />
+          <Button size="small" onClick={expandAll}>Развернуть всё</Button>
+          <Button size="small" onClick={collapseAll}>Свернуть всё</Button>
+          <Input.Search
+            placeholder="Поиск по ключу или названию"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onSearch={(v) => setSearchQuery(v)}
+            allowClear
+            size="small"
+            style={{ width: 260 }}
+          />
+        </Space>
+        <Space wrap>
+          {issueTree.isFetching && (
+            <Button
+              danger
+              icon={<CloseOutlined />}
+              onClick={() => qc.cancelQueries({ queryKey: treeQueryKey })}
+            >
+              Отменить загрузку
+            </Button>
+          )}
+          <Button
+            icon={<CheckOutlined />}
+            disabled={applicableSelectedIds.length === 0}
+            onClick={() => setBulkModalOpen(true)}
+          >
+            Категория для отмеченных ({applicableSelectedIds.length})
+          </Button>
+        </Space>
+      </div>
+      <div className="category-table-wrap">
+        <Table<TreeNodeWithChildren>
+          className="category-issue-table"
+          dataSource={displayData}
+          columns={columns as never}
+          components={tableComponents}
+          rowKey="id"
+          rowSelection={rowSelection}
+          rowClassName={rowClassName}
+          loading={issueTree.isFetching}
+          pagination={false}
+          size="small"
+          expandable={tableExpandable}
+          scroll={tableScroll}
+          locale={{ emptyText }}
+        />
+      </div>
+      {hasPending && (
+        <div className="category-draft-bar" role="status">
+          <Space orientation="vertical" size={0}>
+            <Text strong>{pendingCats.size} изменений в черновике</Text>
+            <Text type="secondary">Можно продолжить разбор или сохранить изменения сейчас.</Text>
+          </Space>
+          <Space wrap>
+            <Button
+              icon={<CloseOutlined />}
+              onClick={() => setPendingCats(new Map())}
+            >
+              Отменить
+            </Button>
             <Button
               type="primary"
               icon={<SaveOutlined />}
               loading={batchCategoryMut.isPending}
               onClick={savePending}
             >
-              Сохранить
+              Сохранить изменения
             </Button>
-            <Button
-              icon={<CloseOutlined />}
-              onClick={() => setPendingCats(new Map())}
-            >
-              Отмена
-            </Button>
-          </>
-        )}
-      </Space>
-      <Tabs
-        activeKey={innerTab}
-        onChange={(k) => setInnerTab(k as InnerTab)}
-        items={tabItems}
-      />
-      <Table<TreeNodeWithChildren>
-        dataSource={tabData}
-        columns={columns as never}
-        components={tableComponents}
-        rowKey="id"
-        rowSelection={rowSelection}
-        rowClassName={rowClassName}
-        loading={issueTree.isFetching}
-        pagination={false}
-        size="small"
-        expandable={tableExpandable}
-        scroll={tableScroll}
-      />
+          </Space>
+        </div>
+      )}
       <Modal
         title={`Установить категорию для ${applicableSelectedIds.length} задач`}
         open={bulkModalOpen}
