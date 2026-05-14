@@ -8,7 +8,26 @@ React 19 + TypeScript 6 + Vite 8 + Ant Design 6 (`darkAlgorithm`, ru locale) + T
 
 ## Pages
 
-8 routable in `pages/`: Dashboard, Sync, Analytics, Capacity, Backlog, Planning, Settings. `/scope` redirects to `/sync`.
+Routable pages live in `pages/` and are lazy-loaded via [`lazyPages.tsx`](src/pages/lazyPages.tsx); routes wired in [`routes.tsx`](src/routes.tsx):
+
+| Path | Page | Notes |
+|---|---|---|
+| `/` | `DashboardPage` | KPI + per-employee + heatmap |
+| `/projects`, `/projects/:key` | `ProjectsPage` | Master-detail + AI summary |
+| `/analytics` | `AnalyticsPage` | Иерархический отчёт |
+| `/analytics/work-type-report` (+ `/print`) | `WorkTypeReportPage` / `…PrintPage` | |
+| `/executive` | `ExecutiveDashboardPage` | KPI/тренды/риски |
+| `/sync` | `SyncHubPage` | Запуск + расписание + ворклог-backfill |
+| `/categories` | `CategoriesEditorPage` | Разбор задач (бывший `CategoryConfigTab`) |
+| `/scope` | redirect → `/sync` | |
+| `/capacity` | `CapacityPage` | |
+| `/backlog` | `BacklogPage` | Активные / В работе / Архив |
+| `/planning` | `PlanningPage` | Сценарии |
+| `/resource-planning` (+ `/compare`) | `ResourcePlanningPage` / `ScenarioComparatorPage` | |
+| `/settings` | `SettingsPage` | admin-only |
+| `/login` | `LoginPage` | |
+
+Source-of-truth для текущих роутов — [`routes.tsx`](src/routes.tsx); если что-то расходится с таблицей выше — фикси таблицу.
 
 ## Architecture Principles
 
@@ -29,16 +48,16 @@ Tokens in `DARK_THEME` and `CHART_COLORS` (`utils/constants.ts`), configured in 
 
 `api.get(path, params, signal?)` threads AbortSignal into `fetch`. TanStack Query's queryFn context signal flows in via `useQuery({ queryFn: ({signal}) => ... })` (see `useIssueTree`).
 
-## SyncPage (Sync + Scope merged)
+## SyncHubPage
 
-Three tabs in `SyncPage.tsx`:
-- **`TaskSectionsTab`** — project browser with pending add/remove sets + batch save. Two load modes: «Загрузить из Jira» respects team filter, «Загрузить все ключи» bypasses it.
-- **`CategoryConfigTab`** — see below.
-- **`SyncControls`** — «Обновить» = incremental default, «Полная синхронизация» = `incremental:false`, secondary; worklogs separately.
+Три вкладки в [`SyncHubPage.tsx`](src/pages/SyncHubPage.tsx):
+- **«Синхронизация»** ([`PipelineRunner`](src/components/sync/PipelineRunner.tsx) + [`SyncHistory`](src/components/sync/SyncHistory.tsx)) — единая кнопка «Запустить» с режимами (быстрый / обычный / полный) + лента запусков (ручные + cron).
+- **«Расписание»** ([`SyncSchedule`](src/components/sync/SyncSchedule.tsx)) — APScheduler-задачи (быстрый авто-синк каждые 2 ч).
+- **«Дополнительно»** ([`SyncAdvanced`](src/components/sync/SyncAdvanced.tsx)) — ручной backfill ворклогов с даты + полная перезагрузка (единственный способ почистить worklog, удалённые в Jira).
 
-Team filter Select reads from `useJiraTeams` (populated from `/settings/generic/jira_team_field_id` + `jira_participating_teams_field_id`).
+Кнопки старого `SyncPage` (per-entity sync, scope-projects browser, jira-fields, recalc-mapping) удалены при M10 sync consolidation 2026-04-27. Категоризация задач переехала в `/categories` (`CategoriesEditorPage`). Пересчёт маппинга — **Настройки → Категории работ** (`CategoriesTab`).
 
-## CategoryConfigTab
+## CategoriesEditorPage (`/categories`)
 
 Multi-team Select (`teams=A,B,C` OR'd in SQL, persisted via `ui_teams_categories` AppSetting). «Скрытые статусы» (default hides `Отменено`). Cancellable «Получить перечень задач» (cancel via `queryClient.cancelQueries` → AbortSignal → `fetch`). «Обновить с Jira (N)» — targeted `/sync/issues/refresh` on all non-group keys in the loaded tree.
 
@@ -52,9 +71,22 @@ Multi-team Select (`teams=A,B,C` OR'd in SQL, persisted via `ui_teams_categories
 
 Row tint deepens per depth level (`.tree-row-depth-0..5`) and italicizes context rows (`.tree-row-context`). Key column is a Jira deep link (`${base_url}/browse/{key}`); status tag uses `statusTagColor` mapping Jira `statusCategory` + name-override for cancel-like statuses; «Статус изменён» sortable with date + «N д назад» age thresholds (≥180d yellow, ≥365d red); «Цели» sortable purple tag per comma-value. Columns resizable via `react-resizable`.
 
-## SettingsPage
+## SettingsPage (`/settings`, admin-only)
 
-5 tabs — `connection` (ConnectionCard: Jira credentials via `/settings/jira`), `scope` (ScopeAdmin: scope projects + roots), `fields` (JiraFieldsCard: custom field IDs), `hierarchy` (HierarchyRulesTab: parent→child type rules CRUD + reorder), `calendar` (ProductionCalendarDay CRUD + «Синхронизировать» pulls official RU calendar). Active tab persisted in URL.
+Вкладки (порядок и точные ключи — [`SettingsPage.tsx`](src/pages/SettingsPage.tsx)):
+- `connection` — `ConnectionCard` (Jira credentials)
+- `scope` — `ScopeAdmin` (проекты + roots)
+- `fields` — `JiraFieldsCard` (custom field IDs)
+- `hierarchy` — `HierarchyRulesTab`
+- `reasons` — `AbsenceReasonsTab`
+- `categories` — `CategoriesTab` — **тут живёт кнопка «Пересчитать маппинг по задачам»**
+- `worktypes` — `WorkTypesTab`
+- `calendar` — `ProductionCalendarTab` (+ кнопка «Синхронизировать» с RU календарём)
+- `ai` — `AITab`
+- `visibility` — `VisibilityTab`
+- `users` — `UsersTab` (только admin)
+
+Активная вкладка зашита в URL.
 
 ## CapacityPage v2
 

@@ -18,7 +18,6 @@ import {
   ScenarioComparatorPage,
   SettingsPage,
   SyncHubPage,
-  SyncPage,
   WorkTypeReportPage,
   WorkTypeReportPrintPage,
 } from './pages/lazyPages';
@@ -73,7 +72,6 @@ export const router = createBrowserRouter([
           { path: 'analytics/work-type-report', element: <ProtectedRoute>{page(<WorkTypeReportPage />)}</ProtectedRoute> },
           { path: 'executive', element: <ProtectedRoute>{page(<ExecutiveDashboardPage />)}</ProtectedRoute> },
           { path: 'sync', element: <ProtectedRoute>{page(<SyncHubPage />)}</ProtectedRoute> },
-          { path: 'sync-old', element: <ProtectedRoute>{page(<SyncPage />)}</ProtectedRoute> },
           { path: 'categories', element: <ProtectedRoute>{page(<CategoriesEditorPage />)}</ProtectedRoute> },
           { path: 'scope', element: <Navigate to="/sync" replace /> },
           { path: 'capacity', element: <ProtectedRoute>{page(<CapacityPage />)}</ProtectedRoute> },
