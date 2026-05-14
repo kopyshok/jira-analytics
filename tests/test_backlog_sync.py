@@ -410,3 +410,78 @@ def test_sync_archives_when_category_leaves_tracked_set(db_session, proj):
 
     db_session.refresh(item)
     assert item.archived_at is not None
+
+
+def test_sync_archives_item_on_cancel_like_status(db_session, proj):
+    """Категория отслеживаемая, но статус «Отменена» → архив + draft allocations удалены."""
+    from app.models import PlanningScenario, ScenarioAllocation
+    from app.services.backlog_service import BacklogService
+
+    db_session.add(
+        PlanningScenario(id="d-cx", name="Draft cancel", year=2026, quarter="Q2", status="draft")
+    )
+    db_session.commit()
+
+    issue = _make_issue(db_session, proj, "ITL-274", "quarterly_tasks")
+    svc = BacklogService(db_session)
+    item = svc.sync_from_issue(issue)
+    db_session.commit()
+    assert item.archived_at is None
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 1
+
+    # Jira отменила задачу, категория не менялась.
+    issue.status = "Отменена"
+    db_session.commit()
+    svc.sync_from_issue(issue)
+    db_session.commit()
+
+    db_session.refresh(item)
+    assert item.archived_at is not None
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 0
+
+
+def test_sync_unarchives_when_cancel_status_cleared(db_session, proj):
+    """Status вернулся с «Отменена» в активный → архив снят, allocations восстановлены."""
+    from app.models import PlanningScenario, ScenarioAllocation
+    from app.services.backlog_service import BacklogService
+
+    db_session.add(
+        PlanningScenario(id="d-cx2", name="Draft cancel back", year=2026, quarter="Q2", status="draft")
+    )
+    db_session.commit()
+
+    issue = _make_issue(db_session, proj, "ITL-275", "quarterly_tasks")
+    issue.status = "Отменена"
+    db_session.commit()
+
+    svc = BacklogService(db_session)
+    item = svc.sync_from_issue(issue)
+    db_session.commit()
+    # cancel-like при создании → BacklogItem не создаётся вовсе (та же ветка archive)
+    assert item is None
+    assert db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0
+
+    # Активная задача появляется → элемент бэклога создаётся.
+    issue.status = "Open"
+    db_session.commit()
+    item = svc.sync_from_issue(issue)
+    db_session.commit()
+    assert item is not None
+    assert item.archived_at is None
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 1
+
+
+def test_sync_does_not_create_for_cancel_like_status(db_session, proj):
+    """Категория tracked, но Jira уже отменила → BacklogItem не создаётся."""
+    from app.services.backlog_service import BacklogService
+
+    issue = _make_issue(db_session, proj, "ITL-CX", "initiatives_rfa")
+    issue.status = "Rejected"
+    db_session.commit()
+
+    svc = BacklogService(db_session)
+    result = svc.sync_from_issue(issue)
+    db_session.commit()
+
+    assert result is None
+    assert db_session.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0

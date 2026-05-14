@@ -22,6 +22,7 @@ from app.services.backlog_service import (
     QUARTERLY_TASKS_CATEGORY,
     TRACKED_CATEGORIES,
     BacklogService,
+    is_cancel_like,
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
@@ -928,6 +929,14 @@ async def restore_backlog_item(
                 detail=(
                     "В Jira у задачи архивная категория — сначала смените категорию "
                     "в Jira на вкладке «Категории задач»."
+                ),
+            )
+        if item.issue is not None and is_cancel_like(item.issue):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "В Jira задача в статусе отмены/отклонения — сначала "
+                    "переведите её в активный статус."
                 ),
             )
         item.archived_at = None
