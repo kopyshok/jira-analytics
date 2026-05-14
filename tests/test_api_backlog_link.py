@@ -866,6 +866,40 @@ def test_restore_linked_item_with_archive_category_returns_409(db_session):
     assert item.archived_at is not None
 
 
+def test_restore_linked_item_with_cancel_like_status_returns_409(db_session):
+    """Restore блокируется если Jira-статус cancel-like, даже при tracked-категории."""
+    from app.models import BacklogItem, Issue, Project
+    from datetime import datetime, timezone
+
+    proj = Project(
+        id="p-rst-cx", jira_project_id="p-rst-cx-jira", key="ITL", name="ITL", is_active=True,
+    )
+    issue = Issue(
+        id="i-rst-cx", jira_issue_id="i-rst-cx-jira", key="ITL-CX", summary="x",
+        issue_type="Task", status="Отменена", project_id=proj.id,
+        category="quarterly_tasks",
+    )
+    item = BacklogItem(
+        id="rst-cancelled", title="cancelled", issue_id=issue.id,
+        archived_at=datetime.now(timezone.utc),
+    )
+    db_session.add_all([proj, issue, item])
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/restore")
+        assert r.status_code == 409
+        detail = str(r.json()["detail"])
+        assert "отмен" in detail.lower() or "отклон" in detail.lower()
+    finally:
+        app.dependency_overrides.clear()
+
+    db_session.refresh(item)
+    assert item.archived_at is not None
+
+
 def test_restore_already_active_is_idempotent(db_session):
     from app.models import BacklogItem
 

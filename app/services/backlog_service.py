@@ -30,6 +30,19 @@ BACKLOG_CATEGORY = "initiatives_rfa"
 QUARTERLY_TASKS_CATEGORY = "quarterly_tasks"
 TRACKED_CATEGORIES = {BACKLOG_CATEGORY, QUARTERLY_TASKS_CATEGORY}
 
+# Статусы Jira, эквивалентные отмене/отклонению. Совпадает с фильтром
+# Архив-вкладки бэклога (app/api/endpoints/backlog.py) — единый источник
+# истины: задача в одном из этих статусов автоматически архивируется.
+CANCEL_STATUSES = frozenset({
+    "Отменено", "Отменена", "Отменён", "Отклонено", "Отклонена",
+    "Cancelled", "Canceled", "Rejected", "Won't Do", "Won't Fix",
+})
+
+
+def is_cancel_like(issue: "Issue") -> bool:
+    """True если статус задачи означает отмену/отклонение."""
+    return bool(issue.status) and issue.status in CANCEL_STATUSES
+
 # Стандартное поле Jira «Priority» → числовой приоритет бэклога.
 # Перетирает ручной приоритет: PM выбрал «Jira — источник истины».
 JIRA_PRIORITY_MAP: dict[str, int] = {
@@ -69,18 +82,23 @@ class BacklogService:
     def sync_from_issue(self, issue: Issue) -> Optional[BacklogItem]:
         """Идемпотентно выравнивает BacklogItem с Issue по текущей категории.
 
-        - ``category in TRACKED_CATEGORIES`` — create-or-update, перетягивает
-          Jira-поля и сбрасывает ``archived_at`` (auto-restore). При создании
-          или разархивации — допроставляет allocations в draft-сценариях.
+        - ``category in TRACKED_CATEGORIES`` И статус НЕ cancel-like —
+          create-or-update, перетягивает Jira-поля и сбрасывает
+          ``archived_at`` (auto-restore). При создании или разархивации —
+          допроставляет allocations в draft-сценариях.
         - Иначе: если BacklogItem существует — проставляем ``archived_at=now()``
           и удаляем allocations из draft-сценариев (утверждённые — не трогаем).
           Если BacklogItem нет — ничего не делаем.
+
+        Cancel-like статус («Отменено», «Rejected» и т.д.) считается архивом
+        независимо от категории: Jira отметила задачу отменённой, тянуть её
+        в планирование смысла нет.
         """
         existing = (
             self.db.query(BacklogItem).filter_by(issue_id=issue.id).one_or_none()
         )
 
-        if issue.category in TRACKED_CATEGORIES:
+        if issue.category in TRACKED_CATEGORIES and not is_cancel_like(issue):
             is_new = existing is None
             was_archived = existing is not None and existing.archived_at is not None
             if is_new:
