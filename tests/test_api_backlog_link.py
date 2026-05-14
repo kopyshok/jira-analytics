@@ -774,6 +774,29 @@ def test_archive_in_work_item_returns_422(db_session):
     assert item.archived_at is None
 
 
+def test_archive_active_item_removes_draft_allocations(db_session):
+    """Архивация активного элемента — удаляет allocations из draft-сценариев."""
+    from app.models import BacklogItem, ScenarioAllocation
+
+    item = BacklogItem(id="arch-draft", title="with draft alloc")
+    db_session.add(item)
+    _seed_scenario(db_session, "scn-arch-d", "Draft Plan", "draft", item.id)
+    db_session.commit()
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 1
+
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        r = client.post(f"/api/v1/backlog/{item.id}/archive")
+        assert r.status_code == 200, r.text
+    finally:
+        app.dependency_overrides.clear()
+
+    db_session.refresh(item)
+    assert item.archived_at is not None
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 0
+
+
 def test_archive_already_archived_is_idempotent(db_session):
     from app.models import BacklogItem
     from datetime import datetime, timezone

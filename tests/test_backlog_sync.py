@@ -1,6 +1,8 @@
 """Tests for BacklogService.sync_from_issue — auto-populate backlog from
 Issue with category='initiatives_rfa' («Инициативы и RFA»)."""
 
+from datetime import datetime
+
 import pytest
 
 from app.models import BacklogItem, Issue, Project
@@ -469,6 +471,39 @@ def test_sync_unarchives_when_cancel_status_cleared(db_session, proj):
     assert item is not None
     assert item.archived_at is None
     assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 1
+
+
+def test_sync_cleans_allocations_for_already_archived_item(db_session, proj):
+    """Регрессия: элемент уже архивирован, но draft-allocation остался —
+    повторный sync_from_issue должен подчистить (idempotent cleanup)."""
+    from app.models import PlanningScenario, ScenarioAllocation
+    from app.services.backlog_service import BacklogService
+
+    db_session.add(
+        PlanningScenario(id="d-leg", name="Legacy draft", year=2026, quarter="Q2", status="draft")
+    )
+    db_session.commit()
+
+    issue = _make_issue(db_session, proj, "ITL-LEG", "quarterly_tasks")
+    svc = BacklogService(db_session)
+    item = svc.sync_from_issue(issue)
+    db_session.commit()
+    assert item is not None
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 1
+
+    # Симуляция legacy состояния: item уже архивирован, но allocation осталась
+    # (например, пользователь ткнул «В архив» в UI старой версии).
+    item.archived_at = datetime.utcnow()
+    db_session.commit()
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 1
+
+    # Категория ушла из tracked — recalc прокидывает sync_from_issue.
+    issue.category = "development"
+    db_session.commit()
+    svc.sync_from_issue(issue)
+    db_session.commit()
+
+    assert db_session.query(ScenarioAllocation).filter_by(backlog_item_id=item.id).count() == 0
 
 
 def test_sync_does_not_create_for_cancel_like_status(db_session, proj):

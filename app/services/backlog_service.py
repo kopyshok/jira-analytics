@@ -152,13 +152,18 @@ class BacklogService:
                     self._ensure_draft_allocations(existing.id)
             return existing
 
-        # Category left backlog.
+        # Category left backlog OR cancel-like.
         if existing is None:
             return None
         if existing.archived_at is None:
             existing.archived_at = datetime.utcnow()
             self.db.flush()
-            self._remove_draft_allocations(existing.id)
+        # Чистим draft-allocations безусловно — идемпотентно. Иначе элементы,
+        # которые архивировали раньше (вручную кнопкой «В архив» или старой
+        # версией этого кода без cancel-like ветки), остаются в сценариях
+        # навсегда: на повторном sync_from_issue блок не входил, потому что
+        # archived_at уже не None.
+        self._remove_draft_allocations(existing.id)
         return None
 
     def _ensure_draft_allocations(self, item_id: str) -> None:

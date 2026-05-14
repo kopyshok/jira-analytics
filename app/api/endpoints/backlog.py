@@ -895,8 +895,22 @@ async def archive_backlog_item(
                 },
             )
         item.archived_at = datetime.utcnow()
+        # Убрать из черновиков сразу — иначе элемент остаётся доступным
+        # для включения в план до следующего пересчёта маппинга.
+        # Утверждённые сценарии уже отсеяны проверкой выше (HTTP 422).
+        draft_ids = [
+            sid
+            for (sid,) in db.query(PlanningScenario.id)
+            .filter(PlanningScenario.status == "draft")
+            .all()
+        ]
+        if draft_ids:
+            db.query(ScenarioAllocation).filter(
+                ScenarioAllocation.backlog_item_id == item_id,
+                ScenarioAllocation.scenario_id.in_(draft_ids),
+            ).delete(synchronize_session=False)
         db.commit()
-        await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
+        await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
         db.refresh(item)
     return _to_response(item, _approved_scenarios_for(db, item.id))
 
