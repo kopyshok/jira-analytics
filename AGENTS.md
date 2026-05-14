@@ -4,9 +4,10 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Context
 
-Local service for analyzing Jira Cloud data and quarterly planning.
+Service for analyzing Jira Cloud data and quarterly planning.
 MVP on SQLite, ORM-level PostgreSQL compatibility maintained.
-Single-user mode for a project manager.
+
+**Target mode: multi-user.** Service will be published for company team. Multiple employees work concurrently, each with own team (filter by `team`). Jira sync is shared, on a schedule. All architectural decisions assume this mode: server-side push instead of client-only invalidation, scalability, data isolation by team. Auth: email+password JWT via httpOnly cookie (Variant C shipped 2026-05-04).
 
 ## Tech Stack
 

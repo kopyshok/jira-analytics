@@ -60,6 +60,15 @@ frontend/test-results/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Editor backups
+*.bak
+*~
+
+# Frontend extras
+frontend/.vite/
+frontend/coverage/
 
 # Brainstorming visual companion
 .superpowers/
