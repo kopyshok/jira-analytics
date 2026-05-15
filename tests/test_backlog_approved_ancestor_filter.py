@@ -167,6 +167,41 @@ def test_descendant_set_excludes_self(db_session, proj, approved_scenario):
     assert bi_parent.id not in descendants
 
 
+def test_sync_skips_alloc_for_wrong_team(db_session, proj):
+    """BacklogService не доливает allocation в draft чужой команды."""
+    other = PlanningScenario(
+        id="aa-other", name="Другая команда", year=2026, quarter=3,
+        status="draft", team="Команда Б",
+    )
+    own = PlanningScenario(
+        id="aa-own", name="Своя команда", year=2026, quarter=3,
+        status="draft", team="Команда А",
+    )
+    db_session.add_all([other, own])
+    db_session.commit()
+
+    issue = Issue(
+        id="aa-team-i", jira_issue_id="aa-team-i-jira", key="AA-T1",
+        summary="Init", issue_type="RFA", status="Open",
+        project_id=proj.id, category="initiatives_rfa", team="Команда А",
+    )
+    db_session.add(issue)
+    db_session.commit()
+
+    bi = BacklogService(db_session).sync_from_issue(issue)
+    db_session.commit()
+
+    assert bi is not None
+    own_allocs = db_session.query(ScenarioAllocation).filter_by(
+        backlog_item_id=bi.id, scenario_id=own.id
+    ).all()
+    other_allocs = db_session.query(ScenarioAllocation).filter_by(
+        backlog_item_id=bi.id, scenario_id=other.id
+    ).all()
+    assert len(own_allocs) == 1
+    assert other_allocs == []
+
+
 def test_no_approved_no_descendants(db_session, proj):
     parent = _make_issue(db_session, proj, "AA-P5")
     child = _make_issue(db_session, proj, "AA-C5", parent_id=parent.id)

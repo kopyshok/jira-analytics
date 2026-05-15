@@ -19,7 +19,7 @@ BacklogItem allocations в draft-сценариях удаляются. Утве
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
@@ -260,12 +260,20 @@ class BacklogService:
             issue = self.db.get(Issue, item.issue_id)
             if issue is not None and has_included_ancestor(self.db, issue):
                 return
-        draft_scenario_ids = [
-            sid
-            for (sid,) in self.db.query(PlanningScenario.id)
-            .filter(PlanningScenario.status == "draft")
-            .all()
-        ]
+        # Берём только draft-сценарии той же команды, что у задачи (или
+        # сценарии без привязки к команде). Чужие команды — не наша забота.
+        item_team: Optional[str] = None
+        if item is not None and item.issue_id is not None:
+            issue_for_team = self.db.get(Issue, item.issue_id)
+            item_team = issue_for_team.team if issue_for_team is not None else None
+        draft_q = self.db.query(PlanningScenario.id).filter(
+            PlanningScenario.status == "draft"
+        )
+        if item_team is not None:
+            draft_q = draft_q.filter(
+                or_(PlanningScenario.team.is_(None), PlanningScenario.team == item_team)
+            )
+        draft_scenario_ids = [sid for (sid,) in draft_q.all()]
         if not draft_scenario_ids:
             return
         existing_scenario_ids = {

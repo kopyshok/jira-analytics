@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -499,11 +499,20 @@ async def create_scenario(
     db.add(scenario)
     db.flush()
 
-    items = (
+    items_q = (
         db.query(BacklogItem)
+        .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
         .options(joinedload(BacklogItem.issue).joinedload(Issue.project))
         .filter(BacklogItem.archived_at.is_(None))
-        .order_by(
+    )
+    if data.team:
+        # Сценарий привязан к команде — берём только задачи этой команды
+        # (или ручные элементы без issue). Чужие команды — не наша забота.
+        items_q = items_q.filter(
+            or_(BacklogItem.issue_id.is_(None), Issue.team == data.team)
+        )
+    items = (
+        items_q.order_by(
             BacklogItem.priority.is_(None),
             BacklogItem.priority,
             BacklogItem.title,
@@ -747,26 +756,50 @@ async def approve_scenario(
     for item_id in reclassified_item_ids:
         backlog_svc._remove_draft_allocations(item_id)
 
-    # Утверждение могло сделать существующих BacklogItem потомками
-    # утверждённой инициативы — выкинуть их из всех черновых сценариев и
-    # из текущего (только что утверждённого) сценария, чтобы PM не
-    # предлагали их как отдельных кандидатов. Включённые (included_flag=True)
-    # не трогаем — это явный выбор PM (двойной счёт с родителем).
+    # Cleanup при approve.
+    # 1) Descendants утверждённых инициатив — из всех черновых и текущего
+    #    сценария (only non-included).
+    # 2) Архивированные BacklogItem и задачи чужой команды — из текущего
+    #    сценария (only non-included).
     # Другие approved-сценарии не трогаем (политика «не редактируем чужой
     # утверждённый план»).
     descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
+    draft_scenario_ids = [
+        sid
+        for (sid,) in db.query(PlanningScenario.id)
+        .filter(PlanningScenario.status == "draft")
+        .all()
+    ]
     if descendant_ids:
-        draft_scenario_ids = [
-            sid
-            for (sid,) in db.query(PlanningScenario.id)
-            .filter(PlanningScenario.status == "draft")
-            .all()
-        ]
         target_scenario_ids = draft_scenario_ids + [scenario_id]
         db.query(ScenarioAllocation).filter(
             ScenarioAllocation.backlog_item_id.in_(descendant_ids),
             ScenarioAllocation.scenario_id.in_(target_scenario_ids),
             ScenarioAllocation.included_flag.is_(False),
+        ).delete(synchronize_session=False)
+
+    # Архивированные / задачи чужой команды в текущем сценарии.
+    bad_team_or_archived_q = (
+        db.query(ScenarioAllocation.id)
+        .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+        .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
+        .filter(
+            ScenarioAllocation.scenario_id == scenario_id,
+            ScenarioAllocation.included_flag.is_(False),
+        )
+    )
+    archived_or_wrong_team_filter = [BacklogItem.archived_at.isnot(None)]
+    if scenario.team:
+        archived_or_wrong_team_filter.append(
+            and_(BacklogItem.issue_id.isnot(None), Issue.team != scenario.team)
+        )
+    bad_alloc_ids = [
+        aid
+        for (aid,) in bad_team_or_archived_q.filter(or_(*archived_or_wrong_team_filter)).all()
+    ]
+    if bad_alloc_ids:
+        db.query(ScenarioAllocation).filter(
+            ScenarioAllocation.id.in_(bad_alloc_ids)
         ).delete(synchronize_session=False)
 
     db.commit()
@@ -1116,11 +1149,16 @@ async def sync_backlog(
         .filter(ScenarioAllocation.scenario_id == scenario_id)
         .all()
     }
-    current_ids = {
-        iid for (iid,) in db.query(BacklogItem.id)
+    current_q = (
+        db.query(BacklogItem.id)
+        .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
         .filter(BacklogItem.archived_at.is_(None))
-        .all()
-    }
+    )
+    if scenario.team:
+        current_q = current_q.filter(
+            or_(BacklogItem.issue_id.is_(None), Issue.team == scenario.team)
+        )
+    current_ids = {iid for (iid,) in current_q.all()}
     leaf_ids = _filter_leaf_backlog_ids(db, current_ids | existing_ids)
     descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
 
@@ -1142,17 +1180,22 @@ async def sync_backlog(
             )
         )
         next_order += 1.0
-    # Убрать allocations: исчезли из бэклога, оказались leaf-типами, или
-    # стали детьми уже утверждённой инициативы (родитель в approved).
-    to_remove = (
-        (existing_ids - current_ids)
-        | (existing_ids & leaf_ids)
-        | (existing_ids & descendant_ids)
-    )
-    if to_remove:
+    # Безусловный снос: leaf-типы и потомки утверждённых (даже если PM
+    # отметил — leaf и дублирующая родителя задача не должны быть в плане).
+    stale_unconditional = existing_ids & (leaf_ids | descendant_ids)
+    # Опциональный снос (только если PM не включил): архивированные,
+    # задачи чужой команды, физически удалённые из бэклога.
+    stale_if_unincluded = (existing_ids - current_ids) - stale_unconditional
+    if stale_unconditional:
         db.query(ScenarioAllocation).filter(
             ScenarioAllocation.scenario_id == scenario_id,
-            ScenarioAllocation.backlog_item_id.in_(to_remove),
+            ScenarioAllocation.backlog_item_id.in_(stale_unconditional),
+        ).delete(synchronize_session=False)
+    if stale_if_unincluded:
+        db.query(ScenarioAllocation).filter(
+            ScenarioAllocation.scenario_id == scenario_id,
+            ScenarioAllocation.backlog_item_id.in_(stale_if_unincluded),
+            ScenarioAllocation.included_flag.is_(False),
         ).delete(synchronize_session=False)
 
     db.commit()
@@ -1187,17 +1230,25 @@ async def list_scenario_allocations(
             .filter(ScenarioAllocation.scenario_id == scenario_id)
             .all()
         }
-        current_ids = {
-            iid
-            for (iid,) in db.query(BacklogItem.id)
+        current_q = (
+            db.query(BacklogItem.id)
+            .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
             .filter(BacklogItem.archived_at.is_(None))
-            .all()
-        }
+        )
+        if scenario.team:
+            current_q = current_q.filter(
+                or_(BacklogItem.issue_id.is_(None), Issue.team == scenario.team)
+            )
+        current_ids = {iid for (iid,) in current_q.all()}
         leaf_ids = _filter_leaf_backlog_ids(db, current_ids | existing_ids)
         # Дети утверждённых инициатив тоже выкидываем из черновых allocations.
         descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
         missing = ((current_ids - existing_ids) - leaf_ids) - descendant_ids
-        stale_leaves = existing_ids & (leaf_ids | descendant_ids)
+        # Безусловный stale: leaf-типы и потомки утверждённых инициатив.
+        stale_unconditional = existing_ids & (leaf_ids | descendant_ids)
+        # Опциональный stale (только если PM не включил вручную):
+        # архивированные BacklogItem и задачи чужой команды.
+        stale_if_unincluded = (existing_ids - current_ids) - stale_unconditional
         changed = False
         if missing:
             next_order = (
@@ -1218,10 +1269,17 @@ async def list_scenario_allocations(
                 )
                 next_order += 1.0
             changed = True
-        if stale_leaves:
+        if stale_unconditional:
             db.query(ScenarioAllocation).filter(
                 ScenarioAllocation.scenario_id == scenario_id,
-                ScenarioAllocation.backlog_item_id.in_(stale_leaves),
+                ScenarioAllocation.backlog_item_id.in_(stale_unconditional),
+            ).delete(synchronize_session=False)
+            changed = True
+        if stale_if_unincluded:
+            db.query(ScenarioAllocation).filter(
+                ScenarioAllocation.scenario_id == scenario_id,
+                ScenarioAllocation.backlog_item_id.in_(stale_if_unincluded),
+                ScenarioAllocation.included_flag.is_(False),
             ).delete(synchronize_session=False)
             changed = True
         if changed:
