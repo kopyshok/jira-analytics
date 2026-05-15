@@ -748,8 +748,12 @@ async def approve_scenario(
         backlog_svc._remove_draft_allocations(item_id)
 
     # Утверждение могло сделать существующих BacklogItem потомками
-    # утверждённой инициативы — выкинуть их из всех черновых сценариев,
-    # чтобы PM не предлагали их как отдельных кандидатов.
+    # утверждённой инициативы — выкинуть их из всех черновых сценариев и
+    # из текущего (только что утверждённого) сценария, чтобы PM не
+    # предлагали их как отдельных кандидатов. Включённые (included_flag=True)
+    # не трогаем — это явный выбор PM (двойной счёт с родителем).
+    # Другие approved-сценарии не трогаем (политика «не редактируем чужой
+    # утверждённый план»).
     descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
     if descendant_ids:
         draft_scenario_ids = [
@@ -758,11 +762,12 @@ async def approve_scenario(
             .filter(PlanningScenario.status == "draft")
             .all()
         ]
-        if draft_scenario_ids:
-            db.query(ScenarioAllocation).filter(
-                ScenarioAllocation.backlog_item_id.in_(descendant_ids),
-                ScenarioAllocation.scenario_id.in_(draft_scenario_ids),
-            ).delete(synchronize_session=False)
+        target_scenario_ids = draft_scenario_ids + [scenario_id]
+        db.query(ScenarioAllocation).filter(
+            ScenarioAllocation.backlog_item_id.in_(descendant_ids),
+            ScenarioAllocation.scenario_id.in_(target_scenario_ids),
+            ScenarioAllocation.included_flag.is_(False),
+        ).delete(synchronize_session=False)
 
     db.commit()
     entities = ["planning", "backlog"]
