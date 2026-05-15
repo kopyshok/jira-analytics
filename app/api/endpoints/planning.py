@@ -56,7 +56,11 @@ from app.services.continuation_service import ContinuationService
 from app.services.resource_base_service import ResourceBaseService
 from app.services.snapshot_writer import SnapshotWriter
 from app.services.event_bus import EventBroadcaster, get_event_bus
-from app.services.backlog_service import BacklogService, BACKLOG_CATEGORY
+from app.services.backlog_service import (
+    BACKLOG_CATEGORY,
+    BacklogService,
+    descendant_backlog_ids_of_included_ancestors,
+)
 from app.services.category_resolver import CategoryResolver
 from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 
@@ -508,6 +512,9 @@ async def create_scenario(
     )
     rules = load_rules(db)
     items = [it for it in items if not _backlog_item_is_leaf(it, rules)]
+    # Дети утверждённых инициатив не предлагаем как отдельных кандидатов.
+    descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
+    items = [it for it in items if it.id not in descendant_ids]
     for idx, item in enumerate(items, start=1):
         db.add(
             ScenarioAllocation(
@@ -739,6 +746,23 @@ async def approve_scenario(
 
     for item_id in reclassified_item_ids:
         backlog_svc._remove_draft_allocations(item_id)
+
+    # Утверждение могло сделать существующих BacklogItem потомками
+    # утверждённой инициативы — выкинуть их из всех черновых сценариев,
+    # чтобы PM не предлагали их как отдельных кандидатов.
+    descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
+    if descendant_ids:
+        draft_scenario_ids = [
+            sid
+            for (sid,) in db.query(PlanningScenario.id)
+            .filter(PlanningScenario.status == "draft")
+            .all()
+        ]
+        if draft_scenario_ids:
+            db.query(ScenarioAllocation).filter(
+                ScenarioAllocation.backlog_item_id.in_(descendant_ids),
+                ScenarioAllocation.scenario_id.in_(draft_scenario_ids),
+            ).delete(synchronize_session=False)
 
     db.commit()
     entities = ["planning", "backlog"]
@@ -1093,6 +1117,7 @@ async def sync_backlog(
         .all()
     }
     leaf_ids = _filter_leaf_backlog_ids(db, current_ids | existing_ids)
+    descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
 
     # Новые allocations добавляем в конец списка — PM сам перетащит куда нужно.
     next_order = (
@@ -1101,7 +1126,7 @@ async def sync_backlog(
         .scalar()
         or 0.0
     ) + 1.0
-    for item_id in (current_ids - existing_ids) - leaf_ids:
+    for item_id in ((current_ids - existing_ids) - leaf_ids) - descendant_ids:
         db.add(
             ScenarioAllocation(
                 scenario_id=scenario_id,
@@ -1112,8 +1137,13 @@ async def sync_backlog(
             )
         )
         next_order += 1.0
-    # Убрать allocations: исчезли из бэклога ИЛИ оказались leaf-типами.
-    to_remove = (existing_ids - current_ids) | (existing_ids & leaf_ids)
+    # Убрать allocations: исчезли из бэклога, оказались leaf-типами, или
+    # стали детьми уже утверждённой инициативы (родитель в approved).
+    to_remove = (
+        (existing_ids - current_ids)
+        | (existing_ids & leaf_ids)
+        | (existing_ids & descendant_ids)
+    )
     if to_remove:
         db.query(ScenarioAllocation).filter(
             ScenarioAllocation.scenario_id == scenario_id,
@@ -1159,8 +1189,10 @@ async def list_scenario_allocations(
             .all()
         }
         leaf_ids = _filter_leaf_backlog_ids(db, current_ids | existing_ids)
-        missing = (current_ids - existing_ids) - leaf_ids
-        stale_leaves = existing_ids & leaf_ids
+        # Дети утверждённых инициатив тоже выкидываем из черновых allocations.
+        descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
+        missing = ((current_ids - existing_ids) - leaf_ids) - descendant_ids
+        stale_leaves = existing_ids & (leaf_ids | descendant_ids)
         changed = False
         if missing:
             next_order = (

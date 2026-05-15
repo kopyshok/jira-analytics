@@ -69,6 +69,84 @@ def _jira_priority_to_int(raw: Optional[str]) -> Optional[int]:
     return JIRA_PRIORITY_MAP.get(raw.strip().lower())
 
 
+def descendant_backlog_ids_of_included_ancestors(db: Session) -> set[str]:
+    """BacklogItem.id, чьи задачи имеют предка (любой глубины), уже включённого
+    в утверждённый сценарий.
+
+    Используется чтобы не показывать детей утверждённой инициативы как
+    отдельных кандидатов в новых/черновых сценариях. Сам предок (тот, что
+    помечен included) исключён: он-то и есть утверждённая инициатива.
+    """
+    included_issue_ids = {
+        iid
+        for (iid,) in db.query(Issue.id)
+        .join(BacklogItem, BacklogItem.issue_id == Issue.id)
+        .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+        .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+        .filter(
+            PlanningScenario.status == "approved",
+            ScenarioAllocation.included_flag == True,  # noqa: E712
+        )
+        .distinct()
+        .all()
+    }
+    if not included_issue_ids:
+        return set()
+    parent_of: dict[str, str] = {
+        iid: pid
+        for iid, pid in db.query(Issue.id, Issue.parent_id)
+        .filter(Issue.parent_id.isnot(None))
+        .all()
+    }
+    descendants: set[str] = set()
+    for bid, iid in (
+        db.query(BacklogItem.id, BacklogItem.issue_id)
+        .filter(BacklogItem.issue_id.isnot(None))
+        .all()
+    ):
+        if iid in included_issue_ids:
+            continue  # сам утверждённый предок
+        cur = parent_of.get(iid)
+        seen: set[str] = set()
+        while cur and cur not in seen:
+            seen.add(cur)
+            if cur in included_issue_ids:
+                descendants.add(bid)
+                break
+            cur = parent_of.get(cur)
+    return descendants
+
+
+def has_included_ancestor(db: Session, issue: Issue) -> bool:
+    """True если у задачи есть предок (любой глубины), чей BacklogItem уже
+    включён в утверждённый сценарий. Сам issue не считается."""
+    if issue.parent_id is None:
+        return False
+    included_issue_ids = {
+        iid
+        for (iid,) in db.query(Issue.id)
+        .join(BacklogItem, BacklogItem.issue_id == Issue.id)
+        .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+        .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+        .filter(
+            PlanningScenario.status == "approved",
+            ScenarioAllocation.included_flag == True,  # noqa: E712
+        )
+        .distinct()
+        .all()
+    }
+    if not included_issue_ids:
+        return False
+    cur_id: Optional[str] = issue.parent_id
+    seen: set[str] = set()
+    while cur_id and cur_id not in seen:
+        seen.add(cur_id)
+        if cur_id in included_issue_ids:
+            return True
+        cur_id = db.query(Issue.parent_id).filter(Issue.id == cur_id).scalar()
+    return False
+
+
 class BacklogService:
     """Sync BacklogItem records to Issue.category.
 
@@ -171,7 +249,17 @@ class BacklogService:
 
         Идемпотентно: существующие allocation (например, с проставленными PM
         ``included_flag`` и ``planned_hours``) не трогаем.
+
+        Не доливает allocation, если у связанной задачи есть предок, уже
+        включённый в утверждённый сценарий: ребёнок утверждённой инициативы
+        не должен повторно предлагаться к выбору.
         """
+        # Skip descendants of approved-included ancestors.
+        item = self.db.query(BacklogItem).filter_by(id=item_id).one_or_none()
+        if item is not None and item.issue_id is not None:
+            issue = self.db.get(Issue, item.issue_id)
+            if issue is not None and has_included_ancestor(self.db, issue):
+                return
         draft_scenario_ids = [
             sid
             for (sid,) in self.db.query(PlanningScenario.id)
