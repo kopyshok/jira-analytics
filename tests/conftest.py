@@ -9,6 +9,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret-not-for-production")
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -23,6 +24,15 @@ from app.models.user import User, UserRole
 # Without these imports, models that are only imported via app.main (lazy)
 # may be missing from the in-memory schema when tests run in alphabetical order.
 import app.models  # noqa: F401
+
+
+def _resolve_test_database_url() -> str:
+    """Return DB URL for tests. CI sets TEST_DATABASE_URL to Postgres; local falls back to SQLite."""
+    return os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:")
+
+
+def _is_sqlite(url: str) -> bool:
+    return make_url(url).get_backend_name() == "sqlite"
 
 
 @pytest.fixture(autouse=True)
@@ -62,9 +72,9 @@ def _bypass_auth_in_tests(request):
 
 @pytest.fixture(scope="session")
 def test_settings():
-    """Test settings with in-memory SQLite."""
+    """Test settings; database URL comes from TEST_DATABASE_URL env var (falls back to SQLite)."""
     return Settings(
-        database_url="sqlite:///:memory:",
+        database_url=_resolve_test_database_url(),
         debug=True,
         log_level="DEBUG",
     )
@@ -72,11 +82,18 @@ def test_settings():
 
 @pytest.fixture(scope="session")
 def engine(test_settings):
-    """Create test database engine."""
-    engine = create_engine(
-        test_settings.database_url,
-        connect_args={"check_same_thread": False},
-    )
+    """Create test database engine.
+
+    SQLite: single in-memory connection via StaticPool so test threads share the same schema.
+    Postgres: default pool; drop_all + create_all ensures a clean schema even on reruns.
+    """
+    url = test_settings.database_url
+    kwargs: dict = {}
+    if _is_sqlite(url):
+        kwargs["connect_args"] = {"check_same_thread": False}
+        kwargs["poolclass"] = StaticPool
+    engine = create_engine(url, **kwargs)
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
@@ -108,16 +125,20 @@ def db_session(engine):
 
 @pytest.fixture
 def testclient_db_session():
-    """Session backed by StaticPool so TestClient threads share the same SQLite connection.
+    """Session for tests that drive the app via FastAPI TestClient.
 
-    Use this fixture (instead of db_session) in tests that drive the app via
-    FastAPI TestClient and need db.refresh() to work after db.commit().
+    SQLite: StaticPool so the test process and handler threads share the same in-memory DB.
+    Postgres: regular pool against the same persistent DB; explicit table cleanup after each test.
     """
-    tc_engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    url = _resolve_test_database_url()
+    if _is_sqlite(url):
+        tc_engine = create_engine(
+            url,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+    else:
+        tc_engine = create_engine(url)
     Base.metadata.create_all(bind=tc_engine)
     Session = sessionmaker(autocommit=False, autoflush=False, bind=tc_engine)
     session = Session()
@@ -125,4 +146,8 @@ def testclient_db_session():
         yield session
     finally:
         session.close()
+        if not _is_sqlite(url):
+            with tc_engine.begin() as conn:
+                for table in reversed(Base.metadata.sorted_tables):
+                    conn.execute(table.delete())
         tc_engine.dispose()
