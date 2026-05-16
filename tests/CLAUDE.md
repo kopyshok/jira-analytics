@@ -32,3 +32,33 @@ py -3.10 -m pytest tests/ -v
 # Один тест
 py -3.10 -m pytest tests/test_capacity_service.py::TestMonthlyCapacity::test_vacation_inside_month -v
 ```
+
+## Прогон против Postgres локально
+
+CI гоняет тесты дважды: SQLite (быстро) и Postgres 16 (проверка совместимости). Локально по умолчанию SQLite. Чтобы воспроизвести Postgres-фейл с CI:
+
+```powershell
+# Windows
+.\scripts\run_tests_postgres.ps1            # весь suite
+.\scripts\run_tests_postgres.ps1 -k capacity # только нужные
+```
+
+```bash
+# Linux / WSL
+./scripts/run_tests_postgres.sh
+./scripts/run_tests_postgres.sh -k capacity
+```
+
+Скрипт поднимает `postgres:16-alpine` через `docker-compose.test.yml` (порт `55432`, tmpfs), экспортирует `TEST_DATABASE_URL`, гоняет pytest, останавливает контейнер.
+
+Один тест вручную:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d
+$env:TEST_DATABASE_URL = "postgresql://test:test@localhost:55432/jira_analytics_test"
+py -3.10 -m pytest tests/test_capacity_service.py -v
+Remove-Item Env:TEST_DATABASE_URL
+docker compose -f docker-compose.test.yml down
+```
+
+**Conftest behaviour:** `_resolve_test_database_url()` читает env; `engine` fixture применяет `StaticPool` + `check_same_thread` только для SQLite, для Postgres использует дефолтный пул и `drop_all` перед `create_all` (чистый schema на каждом запуске).

@@ -7,6 +7,7 @@ pydantic-settings>=2.1.0
 # Database
 sqlalchemy>=2.0.25
 alembic>=1.13.0
+psycopg2-binary>=2.9,<3.0
 
 # HTTP client for Jira API
 httpx>=0.26.0
