@@ -33,7 +33,7 @@ These items block parts of the plan and must be resolved before deployment:
 5. **Outbound internet access from server** — required for: GHCR (image pull), Jira Cloud (sync), LLM APIs (Gemini, OpenRouter). HuggingFace not needed (model baked into image).
 6. **VM snapshot policy** — frequency, retention, has restore been tested?
 7. **Uptime monitoring** — internal tool available? Alert channel (Telegram/email)?
-8. **Operator access** — do I get sudo on the server? Or does sysadmin run docker as themselves?
+8. **Operator access** — ~~do I get sudo on the server?~~ **ANSWERED 2026-05-16: No operator SSH access. Sysadmin runs all docker commands.** Consequence: docker-compose files must be self-contained and correct; a sysadmin runbook (`deploy/SYSADMIN.md`) must cover every operation end-to-end.
 9. **Firewall** — outbound ports open? Inbound: only 443?
 10. **Corporate password manager** — somewhere to store a backup copy of `JWT_SECRET_KEY` and database password?
 
