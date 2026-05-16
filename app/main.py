@@ -1,10 +1,15 @@
 """FastAPI application entry point."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.config import get_settings
 from app.api.router import api_router
@@ -49,17 +54,23 @@ async def lifespan(app: FastAPI):
     )
     app.state.scheduler = sched_svc
 
-    # --- Embedding model warmup ---
-    try:
-        from app.services.llm.embedding_service import EmbeddingService
-        EmbeddingService().warmup()
-        logger.info("Embedding service warmed up")
-    except Exception as e:
-        logger.warning("Embedding warmup failed (non-fatal): %s", e)
+    # --- Embedding model warmup (background, non-blocking) ---
+    async def _warmup_embedding() -> None:
+        try:
+            from app.services.llm.embedding_service import EmbeddingService
+            await asyncio.to_thread(EmbeddingService().warmup)
+            logger.info("Embedding service warmed up")
+        except Exception as e:
+            logger.warning("Embedding warmup failed (non-fatal): %s", e)
+
+    warmup_task = asyncio.create_task(_warmup_embedding())
+    app.state.embedding_warmup_task = warmup_task
 
     yield
 
     # --- Shutdown ---
+    if not warmup_task.done():
+        warmup_task.cancel()
     sched_svc.shutdown()
     logger.info("Shutting down...")
 
@@ -86,9 +97,46 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Liveness probe — does NOT touch the database.
+
+    External uptime monitors should hit this. Always returns 200 while
+    the process is up, regardless of DB state.
+    """
     return {
         "status": "healthy",
         "app": settings.app_name,
         "version": settings.app_version,
     }
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness probe — verifies the database is reachable.
+
+    Used by the Docker healthcheck so the container is restarted if DB
+    connectivity is lost.
+    """
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception as exc:
+        logger.warning("health_ready: db check failed: %s", exc)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "db_unavailable"},
+        )
+    finally:
+        db.close()
+
+
+# --- Serve built frontend (SPA) ---
+# Vite builds to frontend/dist; Docker image copies it to app/static.
+# Mount LAST so explicit routes (above) take precedence. html=True makes
+# StaticFiles serve index.html for unknown paths inside the static dir,
+# which is required for client-side SPA routing.
+_STATIC_DIR = Path(__file__).parent / "static"
+if _STATIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="spa")
+else:
+    logger.info("Static SPA directory %s does not exist — running API-only", _STATIC_DIR)

@@ -1,0 +1,58 @@
+# --- VCS / IDE ---
+.git
+.github
+.vscode
+.idea
+
+# --- Local data and logs ---
+data/
+logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Frontend artefacts and node_modules (frontend build runs inside the image) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/playwright-report/
+frontend/test-results/
+
+# --- Docker / deploy assets (not needed inside the runtime image) ---
+deploy/
+docker-compose*.yml
+Dockerfile
+
+# --- Docs and design assets ---
+docs/
+TZ/
+*.md
+LICENSE
+
+# --- OS noise ---
+.DS_Store
+Thumbs.db
+
+# --- Tests are not needed in the runtime image ---
+tests/
+
+# --- Misc ---
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
