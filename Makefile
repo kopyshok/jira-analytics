@@ -1,4 +1,4 @@
-.PHONY: install dev run test lint migrate clean
+.PHONY: install dev run test lint migrate clean release
 
 # Install dependencies
 install:
@@ -52,6 +52,22 @@ clean:
 # Full reset (clean + migrate)
 reset: clean migrate
 
+# Cut a release: bump versions, commit, tag, push.
+# Usage:  make release VERSION=v1.2.3
+release:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=v1.2.3"; exit 1; fi
+	@echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "VERSION must match vMAJOR.MINOR.PATCH"; exit 1; }
+	@if ! git diff --quiet || ! git diff --cached --quiet; then echo "Working tree dirty — commit or stash first."; exit 1; fi
+	@PLAIN=$$(echo "$(VERSION)" | sed 's/^v//'); \
+	python -c "import re,pathlib; p=pathlib.Path('app/config.py'); s=p.read_text(); s=re.sub(r'app_version: str = \"[^\"]*\"', f'app_version: str = \"$$PLAIN\"', s); p.write_text(s)"; \
+	python -c "import json,pathlib; p=pathlib.Path('frontend/package.json'); d=json.loads(p.read_text()); d['version']='$$PLAIN'; p.write_text(json.dumps(d, indent=2)+'\n')"
+	git add app/config.py frontend/package.json
+	git commit -m "chore(release): $(VERSION)"
+	git tag -a $(VERSION) -m "Release $(VERSION)"
+	@echo ""
+	@echo "Local commit + tag ready. To trigger CI release pipeline, run:"
+	@echo "  git push origin main && git push origin $(VERSION)"
+
 # Help
 help:
 	@echo "Available commands:"
@@ -65,3 +81,4 @@ help:
 	@echo "  make migration msg='description' - Create new migration"
 	@echo "  make clean      - Clean up cache files"
 	@echo "  make reset      - Clean and migrate"
+	@echo "  make release VERSION=v1.2.3 - Bump versions, commit and tag"
