@@ -27,7 +27,7 @@ def upgrade() -> None:
                 "is_baseline",
                 sa.Boolean(),
                 nullable=False,
-                server_default="0",
+                server_default=sa.false(),
             )
         )
         batch.add_column(sa.Column("label", sa.String(255), nullable=True))

@@ -21,7 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     with op.batch_alter_table("resource_plan_assignments") as batch_op:
         batch_op.add_column(
-            sa.Column("is_pinned", sa.Boolean(), server_default="0", nullable=False)
+            sa.Column("is_pinned", sa.Boolean(), server_default=sa.false(), nullable=False)
         )
         batch_op.create_index(
             "ix_resource_plan_assignments_is_pinned",

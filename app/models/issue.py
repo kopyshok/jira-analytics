@@ -4,7 +4,7 @@ from typing import Optional, List, TYPE_CHECKING
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import SyncedMixin, generate_uuid
@@ -89,16 +89,16 @@ class Issue(Base, SyncedMixin):
 
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     category_verified: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default="1", nullable=False
+        Boolean, default=True, server_default=true(), nullable=False
     )
     require_child_verification: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="0", nullable=False
+        Boolean, default=False, server_default=false(), nullable=False
     )
-    include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=True)
+    include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=True)
     # Задача попала в БД только через worklog автора (Bucket B) — не входит в
     # основной scope проекта. Используется для фильтрации в аналитике.
     out_of_scope: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="0", nullable=False, index=True,
+        Boolean, default=False, server_default=false(), nullable=False, index=True,
     )
 
     # Jira assignee display name (denormalized from Jira, read-only).

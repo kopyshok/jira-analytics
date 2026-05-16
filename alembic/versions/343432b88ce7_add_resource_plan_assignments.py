@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column("hours_allocated", sa.Float, nullable=True),
         sa.Column("start_date", sa.Date, nullable=True),
         sa.Column("end_date", sa.Date, nullable=True),
-        sa.Column("is_on_critical_path", sa.Boolean, nullable=False, server_default="0"),
+        sa.Column("is_on_critical_path", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("slack_days", sa.Float, nullable=True),
         sa.Column("created_at", sa.DateTime, nullable=False),
         sa.Column("updated_at", sa.DateTime, nullable=False),

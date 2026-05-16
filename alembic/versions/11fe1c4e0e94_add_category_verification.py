@@ -20,13 +20,13 @@ def upgrade() -> None:
             'category_verified',
             sa.Boolean(),
             nullable=False,
-            server_default='1',
+            server_default=sa.true(),
         ))
         batch_op.add_column(sa.Column(
             'require_child_verification',
             sa.Boolean(),
             nullable=False,
-            server_default='0',
+            server_default=sa.false(),
         ))
 
 

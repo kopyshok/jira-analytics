@@ -21,7 +21,7 @@ def upgrade() -> None:
     with op.batch_alter_table('issues') as batch_op:
         batch_op.add_column(sa.Column('team', sa.String(200), nullable=True))
         batch_op.add_column(sa.Column('assigned_category', sa.String(100), nullable=True))
-        batch_op.add_column(sa.Column('include_in_analysis', sa.Boolean(), nullable=True, server_default='1'))
+        batch_op.add_column(sa.Column('include_in_analysis', sa.Boolean(), nullable=True, server_default=sa.true()))
 
 
 def downgrade() -> None:

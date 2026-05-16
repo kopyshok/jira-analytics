@@ -31,7 +31,7 @@ def upgrade() -> None:
             "hide_weekends",
             sa.Boolean(),
             nullable=False,
-            server_default="0",
+            server_default=sa.false(),
         ),
         sa.Column(
             "collapsed_initiative_ids",
@@ -44,7 +44,7 @@ def upgrade() -> None:
             "show_relay",
             sa.Boolean(),
             nullable=False,
-            server_default="1",
+            server_default=sa.true(),
         ),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),

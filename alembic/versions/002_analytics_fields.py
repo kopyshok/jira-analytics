@@ -31,7 +31,7 @@ def upgrade() -> None:
     
     # Add is_active to projects
     with op.batch_alter_table('projects') as batch_op:
-        batch_op.add_column(sa.Column('is_active', sa.Boolean(), server_default='1'))
+        batch_op.add_column(sa.Column('is_active', sa.Boolean(), server_default=sa.true()))
 
 
 def downgrade() -> None:

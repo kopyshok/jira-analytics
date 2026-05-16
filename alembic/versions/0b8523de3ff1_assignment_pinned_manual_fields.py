@@ -20,9 +20,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     with op.batch_alter_table("resource_plan_assignments") as batch:
-        batch.add_column(sa.Column("pinned_employee", sa.Boolean(), nullable=False, server_default="0"))
-        batch.add_column(sa.Column("pinned_start", sa.Boolean(), nullable=False, server_default="0"))
-        batch.add_column(sa.Column("pinned_split", sa.Boolean(), nullable=False, server_default="0"))
+        batch.add_column(sa.Column("pinned_employee", sa.Boolean(), nullable=False, server_default=sa.false()))
+        batch.add_column(sa.Column("pinned_start", sa.Boolean(), nullable=False, server_default=sa.false()))
+        batch.add_column(sa.Column("pinned_split", sa.Boolean(), nullable=False, server_default=sa.false()))
         batch.add_column(sa.Column("manual_edit_at", sa.DateTime(), nullable=True))
         batch.create_index("ix_resource_plan_assignments_pinned_employee", ["pinned_employee"])
     # Copy data: existing is_pinned → pinned_employee
@@ -34,7 +34,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     with op.batch_alter_table("resource_plan_assignments") as batch:
-        batch.add_column(sa.Column("is_pinned", sa.Boolean(), nullable=False, server_default="0"))
+        batch.add_column(sa.Column("is_pinned", sa.Boolean(), nullable=False, server_default=sa.false()))
         batch.create_index("ix_resource_plan_assignments_is_pinned", ["is_pinned"])
     op.execute("UPDATE resource_plan_assignments SET is_pinned = pinned_employee")
     with op.batch_alter_table("resource_plan_assignments") as batch:
