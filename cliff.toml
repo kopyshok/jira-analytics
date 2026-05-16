@@ -1,0 +1,45 @@
+# git-cliff configuration — Conventional Commits → markdown changelog.
+# Used by .github/workflows/release.yml to render the GitHub Release body
+# from commits since the previous SemVer tag.
+
+[changelog]
+header = """# Changelog\n\n"""
+body = """
+{% if version %}\
+## {{ version }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## Unreleased
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}\
+- {{ commit.message | upper_first }}{% if commit.breaking %} **(breaking)**{% endif %} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}\
+{% endfor %}\n
+"""
+trim = true
+postprocessors = []
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactor" },
+    { message = "^test", group = "Tests" },
+    { message = "^build", group = "Build" },
+    { message = "^ci", group = "CI" },
+    { message = "^docs", group = "Docs" },
+    { message = "^chore", group = "Chores", skip = true },
+    { message = "^style", group = "Style", skip = true },
+    { message = "^revert", group = "Revert" },
+    { message = "^migration", group = "Migrations" },
+]
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+topo_order = false
+sort_commits = "newest"
