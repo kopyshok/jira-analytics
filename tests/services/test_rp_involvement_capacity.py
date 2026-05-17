@@ -34,7 +34,7 @@ def test_daily_capacity_clamps_invalid_involvement(db_session):
 
 
 def test_allocate_hours_respects_daily_capacity(db_session):
-    """20ч, daily_capacity=5.6 → 4 дня; hours_allocated ≤ 5.6 на день, день блокируется целиком."""
+    """20ч, daily_capacity=5.6 → 4 дня; phase берёт не больше cap/день, остаток дня свободен."""
     svc = ResourcePlanningService(db_session)
     start = date(2026, 5, 4)  # Monday
     days = [start + timedelta(days=i) for i in range(14) if (start + timedelta(days=i)).weekday() < 5]
@@ -51,10 +51,14 @@ def test_allocate_hours_respects_daily_capacity(db_session):
     assert len(segments) == 1  # single bar
     seg_start, seg_end, seg_hours, _ = segments[0]
     assert seg_hours == pytest.approx(20.0, abs=0.01)
-    # Семантика: фаза занимает день целиком (emp_days[d] = 0), даже если cap < avail.
-    # Это не позволяет другой фазе того же сотрудника втиснуться в тот же день.
-    blocked = sum(1 for d in days if remaining["emp-1"][d] == 0.0)
-    assert blocked == 4  # ceil(20 / 5.6) = 4 дня заняты целиком
+    # Новая семантика (после Task 2 fix): _allocate_hours вычитает только used,
+    # а не зануляет день целиком. На каждом дне взято 5.6 ч → осталось 2.4 ч
+    # доступных для другой фазы того же сотрудника. На последнем дне взят остаток.
+    fully_consumed = sum(1 for d in days if remaining["emp-1"][d] < 0.01)
+    partially_consumed = sum(1 for d in days if 0.01 < remaining["emp-1"][d] < 7.99)
+    # На 4 днях день частично использован (по 5.6 ч × 3 + 3.2 ч в последний день).
+    assert partially_consumed == 4
+    assert fully_consumed == 0
     # Длительность бара: 4 дня от seg_start до seg_end.
     assert (seg_end - seg_start).days == 3
 
