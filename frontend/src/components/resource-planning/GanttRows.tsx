@@ -95,6 +95,10 @@ function ItemTitleCell({
       fontWeight,
       color: '#fff',
       overflow: 'hidden',
+      position: 'sticky',
+      left: 0,
+      zIndex: 4,
+      background: '#0a1628',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
         {jiraKey && (
@@ -251,9 +255,12 @@ interface PhaseBarProps {
   dimmed?: boolean;
   onClick?: () => void;
   unavailableDays?: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
+  highlightedEmployeeId?: string | null;
+  pulseEmp?: boolean;
+  pulseCp?: boolean;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, employees, hasConflict, dimmed, onClick, unavailableDays }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, employees, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp }: PhaseBarProps) {
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     mode: 'move' | 'resize-start' | 'resize-end';
@@ -336,6 +343,21 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   const left = dateToLeft(assignment.start_date, timeline);
   const width = datesToWidth(assignment.start_date, assignment.end_date, timeline);
 
+  const isMe = !!highlightedEmployeeId && assignment.employee_id === highlightedEmployeeId;
+  const isDimmedByHighlight = !!highlightedEmployeeId && !isMe && assignment.phase !== 'qa';
+  const effectiveDimmed = dimmed || isDimmedByHighlight;
+
+  const isOoQ = assignment.out_of_quarter;
+
+  const factPct = assignment.hours_allocated && assignment.worklog_hours_actual
+    ? Math.min(1, assignment.worklog_hours_actual / assignment.hours_allocated)
+    : 0;
+
+  const barClassName = [
+    isMe && pulseEmp ? 'rp-bar-emp-highlighted' : '',
+    assignment.is_on_critical_path && pulseCp ? 'rp-bar-critical' : '',
+  ].filter(Boolean).join(' ');
+
   const bar = (
     <div
       ref={el => {
@@ -356,6 +378,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         }
       }}
       title={`${PHASE_LABELS[assignment.phase]} — ${assignment.hours_allocated?.toFixed(0)}ч`}
+      className={barClassName || undefined}
       style={{
         position: 'absolute',
         left: `${left}%`,
@@ -363,16 +386,24 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         top: '50%',
         transform: 'translateY(-50%)',
         height: 18,
-        background: color,
-        opacity: dimmed ? 0.25 : (assignment.is_on_critical_path ? 1 : 0.75),
+        background: isOoQ
+          ? `repeating-linear-gradient(45deg, ${color} 0 6px, rgba(0,0,0,0.15) 6px 12px)`
+          : color,
+        opacity: effectiveDimmed ? 0.12 : (isOoQ ? 0.6 : 1),
         borderRadius: 3,
-        border: assignment.is_on_critical_path ? '1px solid #e85d4a' : 'none',
+        border: isOoQ
+          ? '1px solid #ffb432'
+          : assignment.is_on_critical_path
+            ? '1px solid #e85d4a'
+            : 'none',
         boxShadow: hasConflict
           ? 'inset 0 0 0 2px #ef4444'
-          : assignment.is_on_critical_path
-            ? '0 0 6px rgba(232,93,74,0.5)'
-            : 'none',
-        outline: assignment.is_pinned ? '1px solid #00c9c8' : 'none',
+          : isMe
+            ? '0 0 8px rgba(0,201,200,0.7)'
+            : (assignment.is_on_critical_path && !pulseCp)
+              ? '0 0 6px rgba(232,93,74,0.5)'
+              : 'none',
+        outline: isMe ? '2px solid #00c9c8' : (assignment.is_pinned ? '1px solid #00c9c8' : 'none'),
         zIndex: 2,
         cursor: assignment.phase === 'qa' ? 'default' : 'grab',
         display: 'flex',
@@ -381,6 +412,33 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         overflow: 'hidden',
       }}
     >
+      {factPct > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${factPct * 100}%`,
+            background: 'rgba(255,255,255,0.30)',
+            borderRadius: '3px 0 0 3px',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+      )}
+      {assignment.worklog_hours_actual > (assignment.hours_allocated ?? 0) && assignment.hours_allocated && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            border: '1.5px solid #ef4444',
+            borderRadius: 3,
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
+        />
+      )}
       {unavailableDays && unavailableDays.length > 0 && (
         <UnavailabilityOverlay
           start={assignment.start_date}
@@ -745,7 +803,7 @@ function TwoLevelRows({
                       display: 'flex',
                       height: ROW_HEIGHT - 4,
                       borderBottom: '1px solid #0e2540',
-                      background: isHighlighted ? 'rgba(0,201,200,0.06)' : 'transparent',
+                      background: isHighlighted ? 'rgba(0,201,200,0.18)' : 'transparent',
                     }}
                   >
                     <ItemTitleCell
@@ -790,9 +848,43 @@ function TwoLevelRows({
                                 }>;
                               }).unavailable_days
                             }
+                            highlightedEmployeeId={highlightedEmployeeId}
+                            pulseEmp={rpPrefs.pulse_highlighted_employee}
+                            pulseCp={rpPrefs.pulse_critical_path}
                           />
                         );
                       })}
+                      {/* Task 21: dashed connectors between split parts */}
+                      {(() => {
+                        const dated = sg.assignments
+                          .filter(a => a.start_date && a.end_date)
+                          .sort((x, y) => (x.part_number ?? 1) - (y.part_number ?? 1));
+                        if (dated.length < 2) return null;
+                        return dated.slice(1).map((next, i) => {
+                          const prev = dated[i];
+                          if (!prev.end_date || !next.start_date) return null;
+                          const leftPct = dateToLeft(prev.end_date, timeline);
+                          const rightPct = dateToLeft(next.start_date, timeline);
+                          const widthPct = rightPct - leftPct;
+                          if (widthPct <= 0) return null;
+                          return (
+                            <div
+                              key={`conn-${prev.id}-${next.id}`}
+                              style={{
+                                position: 'absolute',
+                                left: `${leftPct}%`,
+                                width: `${widthPct}%`,
+                                top: 'calc(50% - 1px)',
+                                height: 2,
+                                borderTop: `1px dashed ${color}`,
+                                zIndex: 1,
+                                pointerEvents: 'none',
+                                opacity: 0.6,
+                              }}
+                            />
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 );
@@ -849,6 +941,10 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
             whiteSpace: 'nowrap',
             textOverflow: 'ellipsis',
             gap: 8,
+            position: 'sticky',
+            left: 0,
+            zIndex: 4,
+            background: '#0a1628',
           }}>
             <EmployeeAvatar name={empAssignments[0]?.employee_name ?? null} role={empAssignments[0]?.employee_role} size={20} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>

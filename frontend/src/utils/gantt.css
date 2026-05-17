@@ -1,0 +1,19 @@
+@keyframes rp-pulse-employee {
+  0%, 100% { box-shadow: 0 0 4px rgba(0, 201, 200, 0.45), 0 0 0 2px rgba(0, 201, 200, 0.6); }
+  50%      { box-shadow: 0 0 14px rgba(0, 201, 200, 0.90), 0 0 0 3px rgba(0, 201, 200, 1.0); }
+}
+
+@keyframes rp-pulse-critical {
+  0%, 100% { box-shadow: 0 0 4px rgba(232, 93, 74, 0.45); }
+  50%      { box-shadow: 0 0 14px rgba(232, 93, 74, 0.90); }
+}
+
+.rp-bar-emp-highlighted { animation: rp-pulse-employee 1.4s ease-in-out infinite; }
+.rp-bar-critical { animation: rp-pulse-critical 2s ease-in-out infinite; }
+
+.rp-track-animated {
+  transition: width 250ms ease-out;
+}
+.rp-track-animated * {
+  transition: left 250ms ease-out, width 250ms ease-out;
+}

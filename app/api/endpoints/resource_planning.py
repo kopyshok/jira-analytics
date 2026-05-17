@@ -91,6 +91,7 @@ def _assignment_to_out(
     unavailable_days: Optional[List["UnavailableDay"]] = None,
     chunk_index: Optional[int] = None,
     chunks_total: Optional[int] = None,
+    worklog_hours_actual: float = 0.0,
 ) -> "AssignmentOut":
     """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut."""
     bi = a.backlog_item
@@ -127,8 +128,44 @@ def _assignment_to_out(
         chunks_total=chunks_total,
         out_of_quarter=a.out_of_quarter,
         daily_hours=_parse_daily_hours(a.daily_hours_json),
-        worklog_hours_actual=0.0,
+        worklog_hours_actual=worklog_hours_actual,
     )
+
+
+def _compute_worklog_hours_actual(
+    db: Session,
+    assignments: List["ResourcePlanAssignment"],
+) -> Dict[str, float]:
+    """Вернуть {assignment_id: часы из Worklog} для окна [start_date..end_date]."""
+    from datetime import timedelta as _td2
+    from sqlalchemy import func
+    from app.models import BacklogItem as _BacklogItem
+    from app.models.worklog import Worklog as _Worklog
+
+    out: Dict[str, float] = {}
+    if not assignments:
+        return out
+    for a in assignments:
+        if not a.employee_id or not a.start_date or not a.end_date or not a.backlog_item_id:
+            out[a.id] = 0.0
+            continue
+        bi = db.get(_BacklogItem, a.backlog_item_id)
+        if not bi or not bi.issue_id:
+            out[a.id] = 0.0
+            continue
+        from datetime import datetime as _dt
+        start_dt = _dt(a.start_date.year, a.start_date.month, a.start_date.day)
+        end_dt = _dt(a.end_date.year, a.end_date.month, a.end_date.day) + _td2(days=1)
+        result = db.execute(
+            select(func.sum(_Worklog.hours)).where(
+                _Worklog.employee_id == a.employee_id,
+                _Worklog.issue_id == bi.issue_id,
+                _Worklog.started_at >= start_dt,
+                _Worklog.started_at < end_dt,
+            )
+        ).scalar()
+        out[a.id] = float(result or 0.0)
+    return out
 
 
 class ResourcePlanCreate(BaseModel):
@@ -733,6 +770,8 @@ def get_gantt(
             d += _td(days=1)
         return out
 
+    worklog_map = _compute_worklog_hours_actual(db, assignments_raw)
+
     assignments = [
         _assignment_to_out(
             a,
@@ -740,6 +779,7 @@ def get_gantt(
             unavailable_days=_unavailable_days(a),
             chunk_index=(a.part_number - 1) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
+            worklog_hours_actual=worklog_map.get(a.id, 0.0),
         )
         for a in assignments_raw
     ]

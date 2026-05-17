@@ -11,6 +11,7 @@ import NonWorkingZones from './NonWorkingZones';
 import TrackGridlines from './TrackGridlines';
 import DependencyArrows from './DependencyArrows';
 import { useProductionCalendarYear } from '../../hooks/useProductionCalendar';
+import { useRpPreferences } from '../../hooks/useRpPreferences';
 
 const LEFT_COL_DEFAULT = 280;
 const LEFT_COL_TWO_LEVEL = 540;
@@ -68,15 +69,26 @@ export default function GanttChart({
 
   const calendarQuery = useProductionCalendarYear(year);
   const calendar = calendarQuery.data ?? [];
+  const { prefs } = useRpPreferences();
 
   // Workday mode forces day scale (week/month labels don't align with workday blocks)
   const effectiveScale: TimelineScale = hideWeekends ? 'day' : scale;
 
+  const hasOoQ = useMemo(() => assignments.some(a => a.out_of_quarter), [assignments]);
+  const oogMonths = hasOoQ ? (prefs.out_of_quarter_months ?? 1) : 0;
+
+  const qEndIso = useMemo(() => {
+    const { end } = quarterBounds(quarter, year);
+    return end.toISOString().slice(0, 10);
+  }, [quarter, year]);
+
   const timeline = useMemo(() => {
     const { start, end } = quarterBounds(quarter, year);
-    if (hideWeekends) return buildWorkdayTimeline(start, end, calendar);
-    return buildTimeline(start, end);
-  }, [quarter, year, hideWeekends, calendar]);
+    const extEnd = new Date(end);
+    if (oogMonths > 0) extEnd.setMonth(extEnd.getMonth() + oogMonths);
+    if (hideWeekends) return buildWorkdayTimeline(start, extEnd, calendar);
+    return buildTimeline(start, extEnd);
+  }, [quarter, year, hideWeekends, calendar, oogMonths]);
 
   const pxPerDay = PX_PER_DAY[effectiveScale];
   const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
@@ -133,6 +145,7 @@ export default function GanttChart({
       >
         <div
           ref={innerRef}
+          className="rp-track-animated"
           style={{
             position: 'relative',
             width: LEFT_COL + trackWidthPx,
@@ -188,6 +201,20 @@ export default function GanttChart({
             zIndex: 20,
             pointerEvents: 'none',
           }} />
+
+          {/* Quarter-end divider (shows when timeline is extended for out_of_quarter assignments) */}
+          {hasOoQ && (
+            <div style={{
+              position: 'absolute',
+              left: LEFT_COL + (dateToLeft(qEndIso, timeline) / 100) * trackWidthPx,
+              top: 0,
+              bottom: 0,
+              width: 0,
+              borderRight: '2px dashed #ffb432',
+              zIndex: 19,
+              pointerEvents: 'none',
+            }} />
+          )}
 
           {/* Blocked zones */}
           <div style={{

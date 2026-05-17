@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
+import '../utils/gantt.css';
 import { App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
 import {
   BarChartOutlined,
@@ -248,6 +249,18 @@ function ResourcePlanningPageInner() {
           >
             Цвета
           </Button>
+          {viewMode === 'two-level' && gantt && (
+            <Button
+              size="small"
+              onClick={() => {
+                const allIds = Array.from(new Set(gantt.assignments.map(a => a.backlog_item_id)));
+                const allCollapsed = (prefs.collapsed_initiative_ids ?? []).length === allIds.length;
+                patchPrefs({ collapsed_initiative_ids: allCollapsed ? [] : allIds });
+              }}
+            >
+              {(prefs.collapsed_initiative_ids ?? []).length > 0 ? '↥ Развернуть все' : '↧ Свернуть все'}
+            </Button>
+          )}
           <Segmented
             value={viewMode}
             onChange={v => setViewMode(v as ViewMode)}
