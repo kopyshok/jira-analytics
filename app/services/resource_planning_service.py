@@ -8,6 +8,8 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
+from dateutil.relativedelta import relativedelta
+
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
@@ -347,6 +349,9 @@ class ResourcePlanningService:
         alloc_by_item = self._load_alloc_by_item(plan)
 
         q_start, q_end = self._quarter_bounds(plan)
+        # Allow allocation to spill +1 month past quarter end.  Assignments
+        # with seg_start > q_end get out_of_quarter=True.
+        q_end_extended = q_end + relativedelta(months=1)
         employees = self._load_employees(plan)
         if not employees:
             plan.status = "ready"
@@ -362,7 +367,7 @@ class ResourcePlanningService:
             .all()
         )
 
-        avail = self.build_availability(employees, q_start, q_end, list(blocks))
+        avail = self.build_availability(employees, q_start, q_end_extended, list(blocks))
 
         # Снимок изначальной доступности (до любого расхода) — нужен для
         # split-логики `_allocate_hours`: отличаем «день занят preempting-фазой»
@@ -426,7 +431,7 @@ class ResourcePlanningService:
         # _analyst_split_map: {(item_id, "analyst") → N кусков}
         # _analyst_first_chunk_end: {item_id → end_date первого куска} — заполняется
         # в ходе основного цикла, затем используется для earliest_start dev-фазы.
-        _analyst_split_map = self._compute_legacy_split_map(items, employees, q_start, q_end)
+        _analyst_split_map = self._compute_legacy_split_map(items, employees, q_start, q_end_extended)
         _analyst_first_chunk_end: Dict[str, Optional[date]] = {}
 
         for item in items:
@@ -476,8 +481,8 @@ class ResourcePlanningService:
                     days_needed = max(1, int((hours + DEFAULT_HOURS_PER_DAY - 0.001)
                                              // DEFAULT_HOURS_PER_DAY))
                     seg_end = seg_start + timedelta(days=days_needed - 1)
-                    if seg_end > q_end:
-                        seg_end = q_end
+                    if seg_end > q_end_extended:
+                        seg_end = q_end_extended
                     a = ResourcePlanAssignment(
                         plan_id=plan_id,
                         backlog_item_id=item.id,
@@ -487,6 +492,7 @@ class ResourcePlanningService:
                         hours_allocated=hours,
                         start_date=seg_start,
                         end_date=seg_end,
+                        out_of_quarter=(seg_end > q_end),
                     )
                     new_assignments.append(a)
                     phase_end = seg_end
@@ -536,7 +542,7 @@ class ResourcePlanningService:
                         if not emp_id or p_hours <= 0:
                             continue
                         segments, daily = self._allocate_hours_with_breakdown(
-                            emp_id, p_hours, earliest_start, q_end, remaining,
+                            emp_id, p_hours, earliest_start, q_end_extended, remaining,
                             daily_capacity=opo_daily_cap,
                             preempt_locked=preempt_locked,
                             original_capacity=original_avail,
@@ -560,6 +566,7 @@ class ResourcePlanningService:
                                 hours_allocated=seg_hours,
                                 start_date=seg_start,
                                 end_date=seg_end,
+                                out_of_quarter=(seg_end > q_end),
                                 daily_hours_json=json.dumps(
                                     {d.isoformat(): h for d, h in daily.items()}
                                 ),
@@ -608,7 +615,7 @@ class ResourcePlanningService:
                             (last_chunk_end + timedelta(days=1)) if last_chunk_end else earliest_start
                         )
                         chunk_segs, chunk_daily = self._allocate_hours_with_breakdown(
-                            employee_id, chunk_hours, chunk_start, q_end, remaining,
+                            employee_id, chunk_hours, chunk_start, q_end_extended, remaining,
                             daily_capacity=phase_daily_cap,
                             preempt_locked=preempt_locked,
                             original_capacity=original_avail,
@@ -623,6 +630,7 @@ class ResourcePlanningService:
                                 hours_allocated=seg_hours,
                                 start_date=seg_start,
                                 end_date=seg_end,
+                                out_of_quarter=(seg_end > q_end),
                                 daily_hours_json=json.dumps(
                                     {d.isoformat(): h for d, h in chunk_daily.items()}
                                 ),
@@ -653,9 +661,9 @@ class ResourcePlanningService:
                 import math as _math
                 cal_end = min(
                     _advance_working_days(earliest_start, int(_math.ceil(cal_days))),
-                    q_end,
+                    q_end_extended,
                 )
-                alloc_deadline = cal_end if jira_cal_set else q_end
+                alloc_deadline = cal_end if jira_cal_set else q_end_extended
 
                 segments, phase_daily = self._allocate_hours_with_breakdown(
                     employee_id, hours, earliest_start, alloc_deadline, remaining,
@@ -665,9 +673,7 @@ class ResourcePlanningService:
                 )
 
                 # Если жёсткое окно из Jira (duration/involvement) не вмещает
-                # ВСЕ часы — добираем остаток до конца квартала. Раньше retry
-                # запускался только при пустом сегменте; частичное размещение
-                # (14ч из 20) проходило тихо, остаток терялся. Перегрузку
+                # ВСЕ часы — добираем остаток до конца расширенного окна. Перегрузку
                 # зафиксирует RCPSP-leveler.
                 allocated_h = sum(s[2] for s in segments)
                 if jira_cal_set and allocated_h + 0.01 < hours:
@@ -678,7 +684,7 @@ class ResourcePlanningService:
                         else earliest_start
                     )
                     extra_segs, extra_daily = self._allocate_hours_with_breakdown(
-                        employee_id, deficit, extra_start, q_end, remaining,
+                        employee_id, deficit, extra_start, q_end_extended, remaining,
                         daily_capacity=phase_daily_cap,
                         preempt_locked=preempt_locked,
                         original_capacity=original_avail,
@@ -704,6 +710,7 @@ class ResourcePlanningService:
                         hours_allocated=seg_hours,
                         start_date=seg_start,
                         end_date=seg_end,
+                        out_of_quarter=(seg_end > q_end),
                         daily_hours_json=json.dumps(
                             {d.isoformat(): h for d, h in phase_daily.items()}
                         ),
@@ -726,17 +733,17 @@ class ResourcePlanningService:
         self._ensure_default_predecessors(plan_id, new_assignments)
         self.db.flush()
         preds = self._load_predecessors(plan_id)
-        self._shift_to_obey_predecessors(new_assignments, preds, q_start, q_end)
+        self._shift_to_obey_predecessors(new_assignments, preds, q_start, q_end_extended)
 
         # CPM на первичных датах
-        self._compute_cpm(new_assignments, q_end)
+        self._compute_cpm(new_assignments, q_end_extended)
 
         # RCPSP-выравнивание перегрузок
         leveler = RcpspLeveler()
         role_pools = self._build_role_pools(employees)
-        leveling_events = leveler.level(new_assignments, avail, q_end, role_pools)
+        leveling_events = leveler.level(new_assignments, avail, q_end_extended, role_pools)
         # Always recompute CPM — leveling may have shifted dates; cheap O(N) anyway
-        self._compute_cpm(new_assignments, q_end)
+        self._compute_cpm(new_assignments, q_end_extended)
         # Cache events for Stage B persist_conflicts
         self._last_leveling_events = leveling_events
 
