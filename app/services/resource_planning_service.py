@@ -557,6 +557,11 @@ class ResourcePlanningService:
                                     locked_set.add(d_lock)
                                     d_lock += timedelta(days=1)
                         for seg_start, seg_end, seg_hours, part_num in segments:
+                            seg_daily = {
+                                d.isoformat(): h
+                                for d, h in daily.items()
+                                if seg_start <= d <= seg_end
+                            }
                             a = ResourcePlanAssignment(
                                 plan_id=plan_id,
                                 backlog_item_id=item.id,
@@ -567,9 +572,7 @@ class ResourcePlanningService:
                                 start_date=seg_start,
                                 end_date=seg_end,
                                 out_of_quarter=(seg_end > q_end),
-                                daily_hours_json=json.dumps(
-                                    {d.isoformat(): h for d, h in daily.items()}
-                                ),
+                                daily_hours_json=json.dumps(seg_daily) if seg_daily else None,
                             )
                             new_assignments.append(a)
                         if segments:
@@ -621,19 +624,25 @@ class ResourcePlanningService:
                             original_capacity=original_avail,
                         )
                         for seg_start, seg_end, seg_hours, seg_part in chunk_segs:
+                            # Encode chunk + inner preempt-split: chunk_idx*10+(seg_part-1)
+                            # e.g. chunk 2 seg 1 → 20, chunk 2 seg 2 → 21; ensures unique part_number.
+                            composite_part = chunk_idx * 10 + (seg_part - 1)
+                            seg_daily = {
+                                d.isoformat(): h
+                                for d, h in chunk_daily.items()
+                                if seg_start <= d <= seg_end
+                            }
                             a = ResourcePlanAssignment(
                                 plan_id=plan_id,
                                 backlog_item_id=item.id,
                                 phase=phase,
                                 employee_id=employee_id,
-                                part_number=chunk_idx,
+                                part_number=composite_part,
                                 hours_allocated=seg_hours,
                                 start_date=seg_start,
                                 end_date=seg_end,
                                 out_of_quarter=(seg_end > q_end),
-                                daily_hours_json=json.dumps(
-                                    {d.isoformat(): h for d, h in chunk_daily.items()}
-                                ),
+                                daily_hours_json=json.dumps(seg_daily) if seg_daily else None,
                             )
                             new_assignments.append(a)
                         # Calendar-based end for this chunk
@@ -701,6 +710,11 @@ class ResourcePlanningService:
                 effective_end = segments[-1][1] if segments else None
 
                 for seg_start, seg_end, seg_hours, part_num in segments:
+                    seg_daily = {
+                        d.isoformat(): h
+                        for d, h in phase_daily.items()
+                        if seg_start <= d <= seg_end
+                    }
                     a = ResourcePlanAssignment(
                         plan_id=plan_id,
                         backlog_item_id=item.id,
@@ -711,9 +725,7 @@ class ResourcePlanningService:
                         start_date=seg_start,
                         end_date=seg_end,
                         out_of_quarter=(seg_end > q_end),
-                        daily_hours_json=json.dumps(
-                            {d.isoformat(): h for d, h in phase_daily.items()}
-                        ),
+                        daily_hours_json=json.dumps(seg_daily) if seg_daily else None,
                     )
                     new_assignments.append(a)
 

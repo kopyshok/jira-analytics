@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -39,20 +39,20 @@ class ResourcePlanAssignment(Base, TimestampMixin):
     hours_allocated: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    is_on_critical_path: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    is_on_critical_path: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     slack_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pinned_employee: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0", index=True,
+        Boolean, nullable=False, default=False, server_default=false(), index=True,
     )
     pinned_start: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0",
+        Boolean, nullable=False, default=False, server_default=false(),
     )
     pinned_split: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0",
+        Boolean, nullable=False, default=False, server_default=false(),
     )
     manual_edit_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     out_of_quarter: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0"
+        Boolean, nullable=False, default=False, server_default=false()
     )
     daily_hours_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
