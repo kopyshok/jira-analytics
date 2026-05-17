@@ -1,16 +1,22 @@
 import { useMemo } from 'react';
-import type { GanttTimeline } from '../../utils/gantt';
+import type { GanttTimeline, TimelineScale, WorkdayTimeline } from '../../utils/gantt';
 import type { ProductionCalendarDayResponse } from '../../types/api';
 
 interface Props {
-  timeline: GanttTimeline;
+  timeline: GanttTimeline | WorkdayTimeline;
   calendar: ProductionCalendarDayResponse[];
+  scale: TimelineScale;
+  /** Если true — скрывать полосы в режимах week/month (визуальный мусор при крупном масштабе) */
+  hideInWeekMonth?: boolean;
 }
 
 // Фоновые полосы выходных/праздников во всю высоту трека. Подложка под бары
 // (zIndex: 0), не перехватывает события.
-export default function NonWorkingZones({ timeline, calendar }: Props) {
+export default function NonWorkingZones({ timeline, calendar, scale, hideInWeekMonth }: Props) {
+  const hidden = 'workdayIndex' in timeline || (!!hideInWeekMonth && (scale === 'week' || scale === 'month'));
+
   const stripes = useMemo(() => {
+    if (hidden || 'workdayIndex' in timeline) return [];
     const out: Array<{ key: string; leftPct: number; widthPct: number; kind: 'weekend' | 'holiday' }> = [];
     const calMap = new Map(calendar.map(d => [d.date, d]));
     const cursor = new Date(timeline.startDate);
@@ -37,7 +43,9 @@ export default function NonWorkingZones({ timeline, calendar }: Props) {
       cursor.setDate(cursor.getDate() + 1);
     }
     return out;
-  }, [timeline, calendar]);
+  }, [timeline, calendar, hidden]);
+
+  if (hidden) return null;
 
   return (
     <>

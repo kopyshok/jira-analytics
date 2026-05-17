@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import type { GanttTimeline, TimelineScale } from '../../utils/gantt';
+import type { GanttTimeline, TimelineScale, WorkdayTimeline } from '../../utils/gantt';
 import { getDayLabels, getMonthLabels, getWeekLabels } from '../../utils/gantt';
 import type { ProductionCalendarDayResponse } from '../../types/api';
 
 interface Props {
-  timeline: GanttTimeline;
+  timeline: GanttTimeline | WorkdayTimeline;
   leftColWidth: number;
   scale?: TimelineScale;
   trackWidthPx?: number;
@@ -84,6 +84,25 @@ export default function TimelineHeader({
 
   const upperRow = scale === 'month' ? years : months;
 
+  const weeksWithHoliday = useMemo(() => {
+    if (scale !== 'week') return new Set<string>();
+    const set = new Set<string>();
+    for (const w of lower) {
+      const weekStart = new Date(timeline.startDate);
+      weekStart.setDate(weekStart.getDate() + Math.round(w.leftPct / 100 * timeline.totalDays));
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      for (const cal of calendar ?? []) {
+        const d = new Date(cal.date + 'T00:00:00');
+        if (d >= weekStart && d <= weekEnd && !cal.is_workday && (cal.kind === 'holiday' || cal.kind === 'preholiday')) {
+          set.add(w.label);
+          break;
+        }
+      }
+    }
+    return set;
+  }, [timeline, scale, calendar, lower]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid #1e3a5f' }}>
       <div style={{ display: 'flex', height: 28, background: '#091829' }}>
@@ -131,6 +150,7 @@ export default function TimelineHeader({
                   left: `${w.leftPct}%`,
                   width: `${w.widthPct}%`,
                   height: '100%',
+                  position: 'relative',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -143,6 +163,14 @@ export default function TimelineHeader({
                 }}
               >
                 {w.label}
+                {scale === 'week' && weeksWithHoliday.has(w.label) && (
+                  <span
+                    title="В неделе есть праздничный день"
+                    style={{ position: 'absolute', bottom: 1, right: 4, color: '#f0a075', fontSize: 9, lineHeight: 1 }}
+                  >
+                    ●
+                  </span>
+                )}
               </div>
             );
           })}

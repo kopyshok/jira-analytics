@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import type { GanttTimeline, TimelineScale } from '../../utils/gantt';
+import type { GanttTimeline, TimelineScale, WorkdayTimeline } from '../../utils/gantt';
 
 interface Props {
-  timeline: GanttTimeline;
+  timeline: GanttTimeline | WorkdayTimeline;
   scale: TimelineScale;
 }
 
@@ -11,6 +11,29 @@ interface Props {
 export default function TrackGridlines({ timeline, scale }: Props) {
   const lines = useMemo(() => {
     const out: Array<{ key: string; leftPct: number; kind: 'day' | 'week' | 'month' }> = [];
+    const isWorkday = 'workdayIndex' in timeline;
+
+    if (isWorkday) {
+      // Workday mode: gridlines only between consecutive workdays
+      const { workdayDates, totalDays } = timeline as import('../../utils/gantt').WorkdayTimeline;
+      for (let i = 1; i < workdayDates.length; i++) {
+        const leftPct = (i / totalDays) * 100;
+        const iso = workdayDates[i];
+        const d = new Date(iso + 'T00:00:00');
+        const isMonthStart = d.getDate() === 1;
+        const isWeekStart = d.getDay() === 1;
+        const key = `wd-${iso}`;
+        if (isMonthStart) {
+          out.push({ key, leftPct, kind: 'month' });
+        } else if (isWeekStart) {
+          out.push({ key, leftPct, kind: 'week' });
+        } else {
+          out.push({ key, leftPct, kind: 'day' });
+        }
+      }
+      return out;
+    }
+
     const cursor = new Date(timeline.startDate);
     for (let i = 1; i < timeline.totalDays; i++) {
       cursor.setDate(cursor.getDate() + 1);
@@ -43,7 +66,7 @@ export default function TrackGridlines({ timeline, scale }: Props) {
         if (l.kind === 'month') {
           style.borderLeft = '1px solid rgba(160, 200, 240, 0.12)';
         } else if (l.kind === 'week') {
-          style.borderLeft = '1px dashed rgba(160, 200, 240, 0.08)';
+          style.borderLeft = '1px solid rgba(160, 200, 240, 0.20)';
         } else {
           style.borderLeft = '1px dotted rgba(160, 200, 240, 0.05)';
         }

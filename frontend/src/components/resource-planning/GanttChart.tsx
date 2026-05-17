@@ -2,7 +2,7 @@ import { useRef, useMemo, useState } from 'react';
 import type { AssignmentOut, DependencyOut, ScheduledBlock } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
-import { buildTimeline, dateToLeft, quarterBounds, PX_PER_DAY } from '../../utils/gantt';
+import { buildTimeline, buildWorkdayTimeline, dateToLeft, quarterBounds, PX_PER_DAY } from '../../utils/gantt';
 import type { ViewMode } from './GanttRows';
 import TimelineHeader from './TimelineHeader';
 import GanttRows from './GanttRows';
@@ -56,6 +56,7 @@ export default function GanttChart({
   onToggleCollapse,
   conflictAssignmentIds,
   onAssignmentClick,
+  hideWeekends = false,
   highlightedEmployeeId,
   onEmployeeRowClick,
 }: Props) {
@@ -65,16 +66,20 @@ export default function GanttChart({
   const innerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
 
-  const timeline = useMemo(() => {
-    const { start, end } = quarterBounds(quarter, year);
-    return buildTimeline(start, end);
-  }, [quarter, year]);
-
-  const pxPerDay = PX_PER_DAY[scale];
-  const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
-
   const calendarQuery = useProductionCalendarYear(year);
   const calendar = calendarQuery.data ?? [];
+
+  // Workday mode forces day scale (week/month labels don't align with workday blocks)
+  const effectiveScale: TimelineScale = hideWeekends ? 'day' : scale;
+
+  const timeline = useMemo(() => {
+    const { start, end } = quarterBounds(quarter, year);
+    if (hideWeekends) return buildWorkdayTimeline(start, end, calendar);
+    return buildTimeline(start, end);
+  }, [quarter, year, hideWeekends, calendar]);
+
+  const pxPerDay = PX_PER_DAY[effectiveScale];
+  const trackWidthPx = Math.round(timeline.totalDays * pxPerDay);
 
   const todayLeft = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -138,7 +143,7 @@ export default function GanttChart({
             <TimelineHeader
               timeline={timeline}
               leftColWidth={LEFT_COL}
-              scale={scale}
+              scale={effectiveScale}
               trackWidthPx={trackWidthPx}
               calendar={calendar}
             />
@@ -153,7 +158,12 @@ export default function GanttChart({
             pointerEvents: 'none',
             zIndex: 0,
           }}>
-            <NonWorkingZones timeline={timeline} calendar={calendar} />
+            <NonWorkingZones
+              timeline={timeline}
+              calendar={calendar}
+              scale={effectiveScale}
+              hideInWeekMonth
+            />
           </div>
 
           {/* Vertical gridlines */}
@@ -165,7 +175,7 @@ export default function GanttChart({
             pointerEvents: 'none',
             zIndex: 1,
           }}>
-            <TrackGridlines timeline={timeline} scale={scale} />
+            <TrackGridlines timeline={timeline} scale={effectiveScale} />
           </div>
 
           {/* Today marker */}

@@ -4,18 +4,73 @@ export interface GanttTimeline {
   totalDays: number;
 }
 
+export interface WorkdayTimeline extends GanttTimeline {
+  /** 'YYYY-MM-DD' → 0-based workday index */
+  workdayIndex: Map<string, number>;
+  /** Inverse: index → 'YYYY-MM-DD' */
+  workdayDates: string[];
+}
+
+interface CalendarRowLite {
+  date: string;
+  hours: number;
+  is_workday: boolean;
+  kind: string;
+}
+
+/** Workday-only timeline: weekends and RU holidays skipped. */
+export function buildWorkdayTimeline(
+  startDate: Date,
+  endDate: Date,
+  calendar: CalendarRowLite[],
+): WorkdayTimeline {
+  const calMap = new Map(calendar.map(c => [c.date, c]));
+  const workdayIndex = new Map<string, number>();
+  const workdayDates: string[] = [];
+  const d = new Date(startDate);
+  let idx = 0;
+  while (d <= endDate) {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const cal = calMap.get(iso);
+    const isWork = cal ? cal.is_workday : (d.getDay() >= 1 && d.getDay() <= 5);
+    if (isWork) {
+      workdayIndex.set(iso, idx);
+      workdayDates.push(iso);
+      idx++;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return { startDate, endDate, totalDays: idx, workdayIndex, workdayDates };
+}
+
 export function buildTimeline(startDate: Date, endDate: Date): GanttTimeline {
   const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1;
   return { startDate, endDate, totalDays };
 }
 
-export function dateToLeft(dateStr: string, tl: GanttTimeline): number {
+export function dateToLeft(dateStr: string, tl: GanttTimeline | WorkdayTimeline): number {
+  if ('workdayIndex' in tl) {
+    const idx = tl.workdayIndex.get(dateStr);
+    if (idx !== undefined) return (idx / tl.totalDays) * 100;
+    // Non-working day — snap to next workday
+    const next = tl.workdayDates.find((d) => d >= dateStr);
+    if (next !== undefined) return (tl.workdayIndex.get(next)! / tl.totalDays) * 100;
+    return 100;
+  }
   const d = new Date(dateStr + 'T00:00:00');
   const offsetDays = (d.getTime() - tl.startDate.getTime()) / 86_400_000;
   return Math.max(0, (offsetDays / tl.totalDays) * 100);
 }
 
-export function datesToWidth(startStr: string, endStr: string, tl: GanttTimeline): number {
+export function datesToWidth(startStr: string, endStr: string, tl: GanttTimeline | WorkdayTimeline): number {
+  if ('workdayIndex' in tl) {
+    let count = 0;
+    for (const d of tl.workdayDates) {
+      if (d >= startStr && d <= endStr) count++;
+    }
+    if (count === 0) return 0.5;
+    return (count / tl.totalDays) * 100;
+  }
   const s = new Date(startStr + 'T00:00:00');
   const e = new Date(endStr + 'T00:00:00');
   const days = (e.getTime() - s.getTime()) / 86_400_000 + 1;
@@ -33,7 +88,7 @@ export function quarterBounds(quarter: string, year: number): { start: Date; end
   return { start, end };
 }
 
-export function getWeekLabels(tl: GanttTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
+export function getWeekLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
   const weeks: Array<{ label: string; leftPct: number; widthPct: number }> = [];
   const d = new Date(tl.startDate);
   const dow = d.getDay();
@@ -67,7 +122,7 @@ export interface DayLabel {
   dow: number; // 0=Sun .. 6=Sat
 }
 
-export function getDayLabels(tl: GanttTimeline): DayLabel[] {
+export function getDayLabels(tl: GanttTimeline | WorkdayTimeline): DayLabel[] {
   const days: DayLabel[] = [];
   const d = new Date(tl.startDate);
   while (d <= tl.endDate) {
@@ -88,7 +143,7 @@ export function getDayLabels(tl: GanttTimeline): DayLabel[] {
   return days;
 }
 
-export function getMonthLabels(tl: GanttTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
+export function getMonthLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
   const months: Array<{ label: string; leftPct: number; widthPct: number }> = [];
   let cursor = new Date(tl.startDate.getFullYear(), tl.startDate.getMonth(), 1);
   while (cursor <= tl.endDate) {
