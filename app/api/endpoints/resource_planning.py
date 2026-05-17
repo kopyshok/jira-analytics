@@ -136,35 +136,75 @@ def _compute_worklog_hours_actual(
     db: Session,
     assignments: List["ResourcePlanAssignment"],
 ) -> Dict[str, float]:
-    """Вернуть {assignment_id: часы из Worklog} для окна [start_date..end_date]."""
-    from datetime import timedelta as _td2
+    """Вернуть {assignment_id: часы из Worklog} для окна [start_date..end_date].
+
+    Один батч-запрос группирует worklog часы по (employee_id, issue_id, дата),
+    затем питон-сторона раскладывает по assignment'ам. N+1 устранён.
+    """
+    from datetime import datetime as _dt, timedelta as _td2
     from sqlalchemy import func
-    from app.models import BacklogItem as _BacklogItem
     from app.models.worklog import Worklog as _Worklog
 
-    out: Dict[str, float] = {}
+    out: Dict[str, float] = {a.id: 0.0 for a in assignments}
     if not assignments:
         return out
+
+    # Собрать кандидатов: assignment'ы с emp + датами + связанной Jira issue.
+    # backlog_item уже подгружен (joinedload в /gantt), issue_id берём напрямую.
+    valid: list[tuple["ResourcePlanAssignment", str, str]] = []
+    emp_ids: set[str] = set()
+    issue_ids: set[str] = set()
     for a in assignments:
-        if not a.employee_id or not a.start_date or not a.end_date or not a.backlog_item_id:
-            out[a.id] = 0.0
+        bi = getattr(a, "backlog_item", None)
+        issue_id = getattr(bi, "issue_id", None) if bi else None
+        if (
+            a.employee_id and a.start_date and a.end_date and issue_id
+        ):
+            valid.append((a, a.employee_id, issue_id))
+            emp_ids.add(a.employee_id)
+            issue_ids.add(issue_id)
+    if not valid:
+        return out
+
+    # Глобальный диапазон, ограничивающий выборку (минимум start, максимум end).
+    min_start = min(a.start_date for a, _, _ in valid)
+    max_end = max(a.end_date for a, _, _ in valid)
+    start_dt = _dt(min_start.year, min_start.month, min_start.day)
+    end_dt = _dt(max_end.year, max_end.month, max_end.day) + _td2(days=1)
+
+    # Один SQL: per-day часы для каждой пары (employee, issue).
+    started_date = func.date(_Worklog.started_at)
+    rows = db.execute(
+        select(
+            _Worklog.employee_id,
+            _Worklog.issue_id,
+            started_date.label("d"),
+            func.sum(_Worklog.hours).label("h"),
+        ).where(
+            _Worklog.employee_id.in_(emp_ids),
+            _Worklog.issue_id.in_(issue_ids),
+            _Worklog.started_at >= start_dt,
+            _Worklog.started_at < end_dt,
+        ).group_by(_Worklog.employee_id, _Worklog.issue_id, started_date)
+    ).all()
+
+    # Index: {(emp_id, issue_id): {date_str: hours}}
+    buckets: Dict[tuple[str, str], Dict[str, float]] = {}
+    for emp_id, issue_id, d_raw, h in rows:
+        d_str = d_raw if isinstance(d_raw, str) else d_raw.isoformat()
+        buckets.setdefault((emp_id, issue_id), {})[d_str] = float(h or 0.0)
+
+    # Распределить по assignment'ам.
+    for a, emp_id, issue_id in valid:
+        bucket = buckets.get((emp_id, issue_id), {})
+        if not bucket:
             continue
-        bi = db.get(_BacklogItem, a.backlog_item_id)
-        if not bi or not bi.issue_id:
-            out[a.id] = 0.0
-            continue
-        from datetime import datetime as _dt
-        start_dt = _dt(a.start_date.year, a.start_date.month, a.start_date.day)
-        end_dt = _dt(a.end_date.year, a.end_date.month, a.end_date.day) + _td2(days=1)
-        result = db.execute(
-            select(func.sum(_Worklog.hours)).where(
-                _Worklog.employee_id == a.employee_id,
-                _Worklog.issue_id == bi.issue_id,
-                _Worklog.started_at >= start_dt,
-                _Worklog.started_at < end_dt,
-            )
-        ).scalar()
-        out[a.id] = float(result or 0.0)
+        total = 0.0
+        d = a.start_date
+        while d <= a.end_date:
+            total += bucket.get(d.isoformat(), 0.0)
+            d += _td2(days=1)
+        out[a.id] = total
     return out
 
 

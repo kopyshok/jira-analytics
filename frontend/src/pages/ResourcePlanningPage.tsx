@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import '../utils/gantt.css';
 import { App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
 import {
@@ -41,6 +42,7 @@ function ResourcePlanningPageInner() {
   const team = selectedTeams[0] ?? '';
 
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [planId, setPlanId] = usePersistedSearchParam('plan_id', 'resource_planning_plan_id');
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem('rp_view_mode');
@@ -203,7 +205,8 @@ function ResourcePlanningPageInner() {
           {viewMode === 'two-level' && (
             <Segmented
               size="small"
-              value={scale}
+              value={prefs.hide_weekends ? 'day' : scale}
+              disabled={prefs.hide_weekends}
               onChange={v => setScale(v as TimelineScale)}
               options={[
                 { label: 'День', value: 'day' },
@@ -350,6 +353,11 @@ function ResourcePlanningPageInner() {
         assignment={selectedAssignment}
         allAssignments={sortedAssignments}
         employees={employees}
+        onChanged={() => {
+          if (planId) {
+            qc.invalidateQueries({ queryKey: ['gantt', planId] });
+          }
+        }}
       />
 
       <ScheduledBlocksModal open={blocksOpen} onClose={() => setBlocksOpen(false)} team={team || undefined} />

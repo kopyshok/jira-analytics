@@ -350,7 +350,7 @@ class ResourcePlanningService:
 
         q_start, q_end = self._quarter_bounds(plan)
         # Allow allocation to spill +1 month past quarter end.  Assignments
-        # with seg_start > q_end get out_of_quarter=True.
+        # with seg_end > q_end (any boundary crossing) get out_of_quarter=True.
         q_end_extended = q_end + relativedelta(months=1)
         employees = self._load_employees(plan)
         if not employees:
