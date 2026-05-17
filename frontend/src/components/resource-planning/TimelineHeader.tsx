@@ -150,7 +150,6 @@ export default function TimelineHeader({
                   left: `${w.leftPct}%`,
                   width: `${w.widthPct}%`,
                   height: '100%',
-                  position: 'relative',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

@@ -155,7 +155,7 @@ function ItemTitleCell({
   );
 }
 
-function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees }: SubProps) {
+function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, onAssignmentClick }: SubProps) {
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; key: string | null; priority: number | null; assignments: AssignmentOut[] }>();
     for (const a of assignments) {
@@ -260,7 +260,7 @@ interface PhaseBarProps {
   pulseCp?: boolean;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, employees, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp }: PhaseBarProps) {
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     mode: 'move' | 'resize-start' | 'resize-end';
@@ -897,7 +897,7 @@ function TwoLevelRows({
   );
 }
 
-function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees }: SubProps) {
+function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, onAssignmentClick }: SubProps) {
   const itemOrder = useMemo(
     () => [...new Set(assignments.map(a => a.backlog_item_id))],
     [assignments],
