@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -51,6 +51,10 @@ class ResourcePlanAssignment(Base, TimestampMixin):
         Boolean, nullable=False, default=False, server_default="0",
     )
     manual_edit_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    out_of_quarter: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    daily_hours_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     plan: Mapped["ResourcePlan"] = relationship(back_populates="assignments")
     backlog_item: Mapped["BacklogItem"] = relationship("BacklogItem")
