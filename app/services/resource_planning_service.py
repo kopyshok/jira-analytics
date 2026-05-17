@@ -792,7 +792,7 @@ class ResourcePlanningService:
                 if seg_start is None:
                     seg_start = d
                 used = min(cap, remaining_h)
-                emp_days[d] = 0.0
+                emp_days[d] = max(0.0, avail_h - used)
                 remaining_h -= used
                 used_total += used
                 seg_end = d
