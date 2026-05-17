@@ -81,6 +81,9 @@ export interface AssignmentOut {
   /** Авто-сплит выключен; поля оставлены для обратной совместимости. */
   chunk_index?: number | null;
   chunks_total?: number | null;
+  out_of_quarter: boolean;
+  daily_hours: Record<string, number> | null;
+  worklog_hours_actual: number;
 }
 
 export interface ConflictOut {
@@ -289,6 +292,40 @@ export interface AssignmentExplainConflict {
   contributors: ConflictExplainContributor[];
 }
 
+export interface DailyBreakdownItem {
+  date: string;
+  available_hours: number;
+  used_hours: number;
+  status: 'work' | 'absence' | 'holiday' | 'weekend' | 'blocked_by_other';
+  blocker_assignment_id?: string | null;
+  blocker_item_key?: string | null;
+  blocker_phase_label?: string | null;
+}
+
+export interface AbsenceWindowItem {
+  date_start: string;
+  date_end: string;
+  reason_label: string;
+  is_holiday: boolean;
+}
+
+export interface PhaseCalcDetails {
+  duration_days_jira: number | null;
+  involvement_pct: number | null;
+  parallel_count: number;
+  role_pct: number | null;
+  daily_capacity_hours: number;
+}
+
+export interface HoursSummary {
+  total: number;
+  used: number;
+  remaining: number;
+  workdays: number;
+  blocked_days: number;
+}
+
+/** @deprecated Используй AssignmentExplainResponseV2 */
 export interface AssignmentExplainOut {
   assignment: {
     assignment_id: string;
@@ -304,8 +341,20 @@ export interface AssignmentExplainOut {
   conflicts: AssignmentExplainConflict[];
 }
 
+export interface AssignmentExplainResponseV2 {
+  assignment: AssignmentOut;
+  conflicts: AssignmentExplainConflict[];
+  algorithm_log: string[];
+  daily_breakdown: DailyBreakdownItem[];
+  absences_in_window: AbsenceWindowItem[];
+  phase_calc: PhaseCalcDetails | null;
+  hours_summary: HoursSummary | null;
+  /** @deprecated legacy back-compat (будет удалён в Task 14) */
+  summary?: unknown;
+}
+
 export const explainAssignment = (planId: string, assignmentId: string) =>
-  api.get<AssignmentExplainOut>(
+  api.get<AssignmentExplainResponseV2>(
     `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/explain`,
   );
 

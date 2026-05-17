@@ -1,10 +1,11 @@
 """Resource Planning API — ScheduledBlocks + ResourcePlan + Gantt projection."""
 
-from datetime import date, datetime, timezone
-from typing import List, Optional
+import json as _json
+from datetime import date, datetime, timedelta as _timedelta, timezone
+from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -73,6 +74,63 @@ def _block_to_out(block: ScheduledBlock) -> "ScheduledBlockOut":
     )
 
 
+def _parse_daily_hours(daily_hours_json: Optional[str]) -> Optional[Dict[str, float]]:
+    """Разобрать JSON-строку daily_hours_json в словарь {date_str: hours}."""
+    if not daily_hours_json:
+        return None
+    try:
+        return _json.loads(daily_hours_json)
+    except _json.JSONDecodeError:
+        return None
+
+
+def _assignment_to_out(
+    a: "ResourcePlanAssignment",
+    *,
+    predecessor_ids: Optional[List[str]] = None,
+    unavailable_days: Optional[List["UnavailableDay"]] = None,
+    chunk_index: Optional[int] = None,
+    chunks_total: Optional[int] = None,
+) -> "AssignmentOut":
+    """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut."""
+    bi = a.backlog_item
+    issue = bi.issue if bi else None
+    emp = a.employee
+    return AssignmentOut(
+        id=a.id,
+        backlog_item_id=a.backlog_item_id,
+        backlog_item_key=issue.key if issue else None,
+        backlog_item_title=bi.title if bi else "",
+        phase=a.phase,
+        employee_id=a.employee_id,
+        employee_name=emp.display_name if emp else None,
+        employee_role=emp.role if emp else None,
+        part_number=a.part_number,
+        hours_allocated=a.hours_allocated,
+        start_date=a.start_date,
+        end_date=a.end_date,
+        is_on_critical_path=a.is_on_critical_path,
+        slack_days=a.slack_days,
+        is_pinned=a.is_pinned,
+        pinned_employee=a.pinned_employee,
+        pinned_start=a.pinned_start,
+        pinned_split=a.pinned_split,
+        manual_edit_at=a.manual_edit_at,
+        predecessor_ids=predecessor_ids or [],
+        unavailable_days=unavailable_days or [],
+        scenario_assignee_employee_id=bi.assignee_employee_id if bi else None,
+        scenario_assignee_name=(
+            bi.assignee.display_name if bi and bi.assignee else None
+        ),
+        priority=bi.priority if bi else None,
+        chunk_index=chunk_index,
+        chunks_total=chunks_total,
+        out_of_quarter=a.out_of_quarter,
+        daily_hours=_parse_daily_hours(a.daily_hours_json),
+        worklog_hours_actual=0.0,
+    )
+
+
 class ResourcePlanCreate(BaseModel):
     scenario_id: Optional[str] = None
     team: str
@@ -134,8 +192,45 @@ class AssignmentOut(BaseModel):
     # Авто-сплит отключён, поля сохранены для обратной совместимости с фронтом.
     chunk_index: Optional[int] = None
     chunks_total: Optional[int] = None
+    # Новые поля (Task 10)
+    out_of_quarter: bool = False
+    daily_hours: Optional[Dict[str, float]] = None  # {"YYYY-MM-DD": hours}
+    worklog_hours_actual: float = 0.0  # Task 23 — фактически отработанные часы из Worklog
 
     model_config = {"from_attributes": True}
+
+
+class DailyBreakdownItem(BaseModel):
+    date: date
+    available_hours: float
+    used_hours: float
+    status: Literal["work", "absence", "holiday", "weekend", "blocked_by_other"]
+    blocker_assignment_id: Optional[str] = None
+    blocker_item_key: Optional[str] = None
+    blocker_phase_label: Optional[str] = None
+
+
+class AbsenceWindowItem(BaseModel):
+    date_start: date
+    date_end: date
+    reason_label: str
+    is_holiday: bool = False
+
+
+class PhaseCalcDetails(BaseModel):
+    duration_days_jira: Optional[int] = None
+    involvement_pct: Optional[int] = None
+    parallel_count: int = 1
+    role_pct: Optional[int] = None
+    daily_capacity_hours: float
+
+
+class HoursSummary(BaseModel):
+    total: float
+    used: float
+    remaining: float
+    workdays: int
+    blocked_days: int
 
 
 class ConflictOut(BaseModel):
@@ -616,37 +711,10 @@ def get_gantt(
         return out
 
     assignments = [
-        AssignmentOut(
-            id=a.id,
-            backlog_item_id=a.backlog_item_id,
-            backlog_item_key=(a.backlog_item.issue.key if a.backlog_item and a.backlog_item.issue else None),
-            backlog_item_title=a.backlog_item.title if a.backlog_item else "",
-            phase=a.phase,
-            employee_id=a.employee_id,
-            employee_name=a.employee.display_name if a.employee else None,
-            employee_role=(a.employee.role if a.employee else None),
-            part_number=a.part_number,
-            hours_allocated=a.hours_allocated,
-            start_date=a.start_date,
-            end_date=a.end_date,
-            is_on_critical_path=a.is_on_critical_path,
-            slack_days=a.slack_days,
-            is_pinned=a.is_pinned,
-            pinned_employee=a.pinned_employee,
-            pinned_start=a.pinned_start,
-            pinned_split=a.pinned_split,
-            manual_edit_at=a.manual_edit_at,
+        _assignment_to_out(
+            a,
             predecessor_ids=preds_by_succ.get(a.id, []),
             unavailable_days=_unavailable_days(a),
-            scenario_assignee_employee_id=(
-                a.backlog_item.assignee_employee_id if a.backlog_item else None
-            ),
-            scenario_assignee_name=(
-                a.backlog_item.assignee.display_name
-                if a.backlog_item and a.backlog_item.assignee
-                else None
-            ),
-            priority=(a.backlog_item.priority if a.backlog_item else None),
             chunk_index=(a.part_number - 1) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
         )
@@ -846,7 +914,17 @@ def patch_assignment(
     a_employee_id = a.employee_id
     a_employee_role = a.employee.role if a.employee else None
     a_is_pinned = a.is_pinned
+    a_pinned_employee = a.pinned_employee
+    a_pinned_start = a.pinned_start
+    a_pinned_split = a.pinned_split
+    a_manual_edit_at = a.manual_edit_at
     a_priority = a.backlog_item.priority if a.backlog_item else None
+    a_scenario_assignee_id = a.backlog_item.assignee_employee_id if a.backlog_item else None
+    a_scenario_assignee_name = (
+        a.backlog_item.assignee.display_name if a.backlog_item and a.backlog_item.assignee else None
+    )
+    a_out_of_quarter = a.out_of_quarter
+    a_daily_hours = _parse_daily_hours(a.daily_hours_json)
 
     db.commit()
     db.refresh(a)
@@ -869,7 +947,16 @@ def patch_assignment(
         is_on_critical_path=a_is_on_critical_path,
         slack_days=a_slack_days,
         is_pinned=a_is_pinned,
+        pinned_employee=a_pinned_employee,
+        pinned_start=a_pinned_start,
+        pinned_split=a_pinned_split,
+        manual_edit_at=a_manual_edit_at,
         priority=a_priority,
+        scenario_assignee_employee_id=a_scenario_assignee_id,
+        scenario_assignee_name=a_scenario_assignee_name,
+        out_of_quarter=a_out_of_quarter,
+        daily_hours=a_daily_hours,
+        worklog_hours_actual=0.0,
     )
 
 
@@ -1337,6 +1424,208 @@ def explain_conflict(
     return base
 
 
+# ── /explain helpers (Task 9) ──────────────────────────────────────────────
+
+
+def _build_algorithm_log(
+    a: "ResourcePlanAssignment",
+    plan: "ResourcePlan",
+    all_emp_assignments: List["ResourcePlanAssignment"],
+) -> List[str]:
+    """Текст «откуда дата старта» для боковой панели."""
+    log: List[str] = []
+    phase_ru = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
+    if a.phase == "analyst":
+        log.append(f"Старт фазы = начало квартала ({plan.quarter} {plan.year}).")
+    else:
+        prev_phase = {"dev": "analyst", "qa": "dev", "opo": "qa"}.get(a.phase)
+        if prev_phase:
+            prev = [
+                x for x in all_emp_assignments
+                if x.phase == prev_phase and x.backlog_item_id == a.backlog_item_id
+            ]
+            if prev:
+                p = max(prev, key=lambda x: x.end_date or date.min)
+                if p.end_date:
+                    log.append(
+                        f"Старт фазы = следующий рабочий день после фактического окончания "
+                        f"фазы «{phase_ru[prev_phase]}» ({p.end_date.isoformat()})."
+                    )
+    if a.out_of_quarter:
+        log.append("Фаза выходит за пределы квартала — часов не хватает в окне.")
+    if a.is_on_critical_path:
+        log.append(f"На критическом пути. Резерв: {a.slack_days or 0:.0f} д.")
+    return log
+
+
+def _build_daily_breakdown(
+    a: "ResourcePlanAssignment",
+    avail_map: Dict[date, float],
+    other_assignments: List["ResourcePlanAssignment"],
+    absences: list,
+    calendar_map: dict,
+) -> List[DailyBreakdownItem]:
+    if not a.start_date or not a.end_date:
+        return []
+    daily_used: Dict[date, float] = {}
+    if a.daily_hours_json:
+        try:
+            raw = _json.loads(a.daily_hours_json)
+            daily_used = {date.fromisoformat(k): float(v) for k, v in raw.items()}
+        except (_json.JSONDecodeError, ValueError):
+            pass
+    items: List[DailyBreakdownItem] = []
+    phase_label = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
+    d = a.start_date
+    while d <= a.end_date:
+        cal = calendar_map.get(d)
+        avail_h = avail_map.get(d, 0.0)
+        used_h = daily_used.get(d, 0.0)
+        if cal and not cal.is_workday and cal.kind in ("holiday", "preholiday"):
+            status: str = "holiday"
+        elif d.weekday() >= 5 and (not cal or not cal.is_workday):
+            status = "weekend"
+        elif any(ab.start_date <= d <= ab.end_date for ab in absences):
+            status = "absence"
+        elif used_h == 0 and avail_h > 0:
+            # Заблокирован другим назначением того же сотрудника в этот день?
+            blocker = next(
+                (
+                    x for x in other_assignments
+                    if x.id != a.id
+                    and x.employee_id == a.employee_id
+                    and x.start_date and x.end_date
+                    and x.start_date <= d <= x.end_date
+                ),
+                None,
+            )
+            if blocker:
+                bi = blocker.backlog_item
+                issue = bi.issue if bi else None
+                items.append(DailyBreakdownItem(
+                    date=d,
+                    available_hours=avail_h,
+                    used_hours=0.0,
+                    status="blocked_by_other",
+                    blocker_assignment_id=blocker.id,
+                    blocker_item_key=issue.key if issue else None,
+                    blocker_phase_label=phase_label.get(blocker.phase, blocker.phase),
+                ))
+                d += _timedelta(days=1)
+                continue
+            status = "work"
+        else:
+            status = "work"
+        items.append(DailyBreakdownItem(
+            date=d, available_hours=avail_h, used_hours=used_h, status=status,
+        ))
+        d += _timedelta(days=1)
+    return items
+
+
+def _build_absences_in_window(
+    a: "ResourcePlanAssignment",
+    absences: list,
+    calendar_map: dict,
+) -> List[AbsenceWindowItem]:
+    if not a.start_date or not a.end_date:
+        return []
+    items: List[AbsenceWindowItem] = [
+        AbsenceWindowItem(
+            date_start=max(ab.start_date, a.start_date),
+            date_end=min(ab.end_date, a.end_date),
+            reason_label=ab.reason.label if ab.reason else "Отсутствие",
+            is_holiday=False,
+        )
+        for ab in absences
+    ]
+    # Праздники в окне из карты календаря
+    for cal_date, cal_row in calendar_map.items():
+        if not cal_row.is_workday and cal_row.kind in ("holiday", "preholiday"):
+            items.append(AbsenceWindowItem(
+                date_start=cal_date,
+                date_end=cal_date,
+                reason_label="Праздник РФ",
+                is_holiday=True,
+            ))
+    return items
+
+
+def _build_phase_calc(
+    a: "ResourcePlanAssignment",
+    db: Session,
+) -> Optional[PhaseCalcDetails]:
+    bi = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
+    if not bi:
+        return None
+    phase = a.phase
+    dur_field = {
+        "analyst": "duration_analyst_days",
+        "dev": "duration_dev_days",
+        "qa": "duration_qa_days",
+        "opo": "duration_launch_days",
+    }.get(phase)
+    inv_field = {
+        "analyst": "involvement_analyst",
+        "dev": "involvement_dev",
+        "qa": "involvement_qa",
+        "opo": "involvement_launch",
+    }.get(phase)
+    par_field = {
+        "analyst": "parallel_count_analyst",
+        "dev": "parallel_count_dev",
+        "qa": "parallel_count_qa",
+        "opo": None,
+    }.get(phase)
+    if dur_field is None or inv_field is None:
+        return None
+    duration = getattr(bi, dur_field, None)
+    inv = getattr(bi, inv_field, None)
+    parallel = getattr(bi, par_field, None) if par_field else None
+    inv_pct = int(inv * 100) if inv else None
+    daily_cap = 8.0 * (inv or 1.0) * (parallel or 1)
+    return PhaseCalcDetails(
+        duration_days_jira=int(duration) if duration else None,
+        involvement_pct=inv_pct,
+        parallel_count=int(parallel or 1),
+        role_pct=None,
+        daily_capacity_hours=round(daily_cap, 2),
+    )
+
+
+def _build_hours_summary(
+    a: "ResourcePlanAssignment",
+    avail_map: Dict[date, float],
+) -> Optional[HoursSummary]:
+    if not a.start_date or not a.end_date or a.hours_allocated is None:
+        return None
+    daily_used: Dict[date, float] = {}
+    if a.daily_hours_json:
+        try:
+            raw = _json.loads(a.daily_hours_json)
+            daily_used = {date.fromisoformat(k): float(v) for k, v in raw.items()}
+        except (_json.JSONDecodeError, ValueError):
+            pass
+    used = sum(daily_used.values()) if daily_used else float(a.hours_allocated)
+    total = float(a.hours_allocated)
+    workdays = 0
+    blocked = 0
+    d = a.start_date
+    while d <= a.end_date:
+        if d in daily_used:
+            workdays += 1
+        elif avail_map.get(d, 0.0) > 0.0:
+            blocked += 1
+        d += _timedelta(days=1)
+    return HoursSummary(
+        total=round(total, 2),
+        used=round(used, 2),
+        remaining=round(max(0.0, total - used), 2),
+        workdays=workdays,
+        blocked_days=blocked,
+    )
+
+
 @router.get("/resource-plans/{plan_id}/assignments/{assignment_id}/explain")
 def explain_assignment(
     plan_id: str,
@@ -1350,22 +1639,37 @@ def explain_assignment(
     Для каждого PlanConflict, у которого `assignment_id == aid` или
     `employee_id == assignment.employee_id` и окно пересекает [start, end],
     возвращается breakdown (как в /conflicts/{cid}/explain).
-    """
-    from datetime import timedelta as _td
-    from app.models import Employee, PlanConflict
 
-    a = db.get(ResourcePlanAssignment, assignment_id)
-    if not a or a.plan_id != plan_id:
+    Также возвращает расширенные поля (Task 9):
+    - algorithm_log: текстовое объяснение откуда взялась дата старта
+    - daily_breakdown: посуточная разбивка usage/availability/статус
+    - absences_in_window: отсутствия и праздники в окне фазы
+    - phase_calc: параметры расчёта фазы из бэклога
+    - hours_summary: сводка часов фазы
+    """
+    from app.models import Absence, Employee, PlanConflict, ProductionCalendarDay
+
+    a = db.execute(
+        select(ResourcePlanAssignment)
+        .options(
+            joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue),
+            joinedload(ResourcePlanAssignment.backlog_item),
+            joinedload(ResourcePlanAssignment.employee),
+        )
+        .where(
+            ResourcePlanAssignment.id == assignment_id,
+            ResourcePlanAssignment.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not a:
         raise HTTPException(404, "Assignment not found")
     plan = db.get(ResourcePlan, plan_id)
     if not plan:
         raise HTTPException(404, "Plan not found")
 
-    emp_name: Optional[str] = None
-    if a.employee_id:
-        e = db.get(Employee, a.employee_id)
-        emp_name = e.display_name if e else None
+    emp_name: Optional[str] = a.employee.display_name if a.employee else None
 
+    # Сохранить legacy summary для обратной совместимости (frontend Task 14 переключится на новый shape)
     summary = {
         "assignment_id": a.id,
         "phase": a.phase,
@@ -1439,7 +1743,7 @@ def explain_assignment(
     )
     horizon_start = min((x.start_date for x in all_emp_assignments if x.start_date), default=a.start_date)
     horizon_end = max((x.end_date for x in all_emp_assignments if x.end_date), default=a.end_date)
-    full_avail: dict = {}
+    full_avail: Dict[date, float] = {}
     if a.employee_id and horizon_start and horizon_end:
         full_avail = svc.build_availability(
             [e for e in employees if e.id == a.employee_id],
@@ -1447,6 +1751,38 @@ def explain_assignment(
             horizon_end,
             list(blocks),
         ).get(a.employee_id, {})
+
+    # Calendar map для окна фазы
+    calendar_map: Dict[date, "ProductionCalendarDay"] = {}
+    if a.start_date and a.end_date:
+        cal_rows = (
+            db.execute(
+                select(ProductionCalendarDay).where(
+                    ProductionCalendarDay.date >= a.start_date,
+                    ProductionCalendarDay.date <= a.end_date,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        calendar_map = {row.date: row for row in cal_rows}
+
+    # Отсутствия сотрудника в окне фазы
+    absences_in_window_raw: List["Absence"] = []
+    if a.employee_id and a.start_date and a.end_date:
+        absences_in_window_raw = (
+            db.execute(
+                select(Absence)
+                .options(joinedload(Absence.reason))
+                .where(
+                    Absence.employee_id == a.employee_id,
+                    Absence.start_date <= a.end_date,
+                    Absence.end_date >= a.start_date,
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     conflicts_out: List[dict] = []
     for c in rows:
@@ -1472,18 +1808,37 @@ def explain_assignment(
                     continue
                 if not (x.start_date <= target_date <= x.end_date):
                     continue
-                wd = 0
-                d = x.start_date
-                while d <= x.end_date:
-                    if full_avail.get(d, 0.0) > 0.0:
-                        wd += 1
-                    d += _td(days=1)
-                if wd <= 0:
+                # Per-day часы: из daily_hours_json или fallback равномерное распределение
+                per_day_actual = 0.0
+                if x.daily_hours_json:
+                    try:
+                        dh = _json.loads(x.daily_hours_json)
+                        per_day_actual = float(dh.get(target_date.isoformat(), 0.0))
+                    except (_json.JSONDecodeError, ValueError):
+                        pass
+                if per_day_actual <= 0:
+                    # fallback (legacy равномерное распределение)
+                    wd = 0
+                    d = x.start_date
+                    while d <= x.end_date:
+                        if full_avail.get(d, 0.0) > 0.0:
+                            wd += 1
+                        d += _timedelta(days=1)
+                    if wd <= 0:
+                        continue
+                    per_day_actual = float(x.hours_allocated) / wd
+                if per_day_actual <= 0:
                     continue
-                per_day = float(x.hours_allocated) / wd
-                demand_total += per_day
+                demand_total += per_day_actual
                 bi = x.backlog_item
                 issue = bi.issue if bi else None
+                # working_days для отображения (легаси fallback)
+                wd_display = 0
+                d2 = x.start_date
+                while d2 <= x.end_date:
+                    if full_avail.get(d2, 0.0) > 0.0:
+                        wd_display += 1
+                    d2 += _timedelta(days=1)
                 contribs.append({
                     "assignment_id": x.id,
                     "backlog_item_id": x.backlog_item_id,
@@ -1491,11 +1846,11 @@ def explain_assignment(
                     "item_title": bi.title if bi else "",
                     "phase": x.phase,
                     "phase_label": phase_label.get(x.phase, x.phase),
-                    "hours_per_day": round(per_day, 2),
+                    "hours_per_day": round(per_day_actual, 2),
                     "hours_total": float(x.hours_allocated),
                     "start_date": x.start_date.isoformat(),
                     "end_date": x.end_date.isoformat(),
-                    "working_days": wd,
+                    "working_days": wd_display,
                 })
             contribs.sort(key=lambda r: -r["hours_per_day"])
             pct = (demand_total / avail * 100.0) if avail > 0 else None
@@ -1507,7 +1862,29 @@ def explain_assignment(
             })
         conflicts_out.append(item)
 
-    return {"assignment": summary, "conflicts": conflicts_out}
+    _phase_calc = _build_phase_calc(a, db)
+    _hours_summary = _build_hours_summary(a, full_avail)
+
+    return {
+        # Новый shape (Task 9)
+        "assignment": _assignment_to_out(a).model_dump(mode="json"),
+        "conflicts": conflicts_out,
+        "algorithm_log": _build_algorithm_log(a, plan, all_emp_assignments),
+        "daily_breakdown": [
+            item.model_dump(mode="json")
+            for item in _build_daily_breakdown(
+                a, full_avail, all_emp_assignments, absences_in_window_raw, calendar_map
+            )
+        ],
+        "absences_in_window": [
+            item.model_dump(mode="json")
+            for item in _build_absences_in_window(a, absences_in_window_raw, calendar_map)
+        ],
+        "phase_calc": _phase_calc.model_dump(mode="json") if _phase_calc is not None else None,
+        "hours_summary": _hours_summary.model_dump(mode="json") if _hours_summary is not None else None,
+        # Legacy back-compat (будет удалён в Task 14)
+        "summary": summary,
+    }
 
 
 # ── Diff ───────────────────────────────────────────────────────────────────

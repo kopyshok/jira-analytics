@@ -6,7 +6,7 @@ import {
   patchAssignment, type AssignmentPatch,
   patchConflict, type ConflictOut,
   explainConflict, type ConflictExplainOut,
-  explainAssignment, type AssignmentExplainOut,
+  explainAssignment, type AssignmentExplainResponseV2,
   forkPlan, getPlanDiff,
   getPlanQuality,
   createDependency, patchDependency, deleteDependency,
@@ -108,7 +108,7 @@ export function useExplainConflict(planId: string | null, conflictId: string | n
 }
 
 export function useExplainAssignment(planId: string | null, assignmentId: string | null, enabled: boolean) {
-  return useQuery<AssignmentExplainOut>({
+  return useQuery<AssignmentExplainResponseV2>({
     queryKey: ['assignment-explain', planId, assignmentId],
     queryFn: () => explainAssignment(planId!, assignmentId!),
     enabled: !!planId && !!assignmentId && enabled,
