@@ -11,9 +11,9 @@
 .rp-bar-emp-highlighted { animation: rp-pulse-employee 1.4s ease-in-out infinite; }
 .rp-bar-critical { animation: rp-pulse-critical 2s ease-in-out infinite; }
 
+/* Smooth zoom transition: контейнер плавно растягивается, но содержимое
+   (бары/стрелки) перерисовывается мгновенно — иначе CSS-анимация баров
+   расходится с SVG-стрелками, которые перерисовываются по событию. */
 .rp-track-animated {
   transition: width 250ms ease-out;
-}
-.rp-track-animated * {
-  transition: left 250ms ease-out, width 250ms ease-out;
 }

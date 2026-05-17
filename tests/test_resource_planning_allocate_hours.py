@@ -9,8 +9,11 @@ from app.services.resource_planning_service import ResourcePlanningService
 # ── Task 2 ────────────────────────────────────────────────────────────────────
 
 
-def test_allocate_preserves_unused_daily_capacity():
-    """daily_capacity=4 on an 8h day → 4h remaining after allocation, not 0."""
+def test_allocate_blocks_day_for_serialization():
+    """День занят фазой целиком — следующая фаза того же сотрудника
+    не может сесть на тот же день параллельно (relay/serialization).
+    Точное число часов сохраняется в daily_hours_json для конфликт-расчёта.
+    """
     db = MagicMock()
     svc = ResourcePlanningService(db)
 
@@ -22,16 +25,14 @@ def test_allocate_preserves_unused_daily_capacity():
         }
     }
 
-    # Allocate 4h total with a daily cap of 4h.  Day 1 should consume 4h and
-    # leave 4h remaining, not zero out the whole day.
     svc._allocate_hours(
         emp_id, 4.0, date(2026, 4, 1), date(2026, 4, 30), remaining,
         daily_capacity=4.0,
     )
 
-    assert remaining[emp_id][date(2026, 4, 1)] == 4.0, (
-        f"Ожидалось 4.0ч остатка, получено {remaining[emp_id][date(2026, 4, 1)]}"
-    )
+    # День консьюмится полностью — другая задача того же сотрудника
+    # не может стартовать в этот день. Это обеспечивает «эстафету».
+    assert remaining[emp_id][date(2026, 4, 1)] == 0.0
     # Day 2 untouched
     assert remaining[emp_id][date(2026, 4, 2)] == 8.0
 

@@ -824,7 +824,13 @@ class ResourcePlanningService:
                 if seg_start is None:
                     seg_start = d
                 used = min(cap, remaining_h)
-                emp_days[d] = max(0.0, avail_h - used)
+                # День занят этой фазой целиком — другие фазы того же сотрудника
+                # не могут садиться на этот день параллельно (relay/serialization).
+                # Точное использование часов хранится в daily_hours_json для
+                # корректного OVERLOAD-расчёта (Task 8). Preempting-фазы (ОПЭ)
+                # используют отдельный путь через preempt_locked — там day не
+                # consumed заранее.
+                emp_days[d] = 0.0
                 remaining_h -= used
                 seg_hours += used
                 daily_used[d] = used

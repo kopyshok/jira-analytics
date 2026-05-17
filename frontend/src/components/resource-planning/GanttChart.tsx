@@ -236,6 +236,7 @@ export default function GanttChart({
             manualDependencies={dependencies}
             onDeleteDependency={onDeleteDependency}
             highlightedEmployeeId={highlightedEmployeeId}
+            redrawKey={`${effectiveScale}:${trackWidthPx}`}
           />
 
           <GanttRows

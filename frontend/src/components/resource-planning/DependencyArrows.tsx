@@ -9,6 +9,8 @@ interface Props {
   manualDependencies?: DependencyOut[];
   onDeleteDependency?: (depId: string) => void;
   highlightedEmployeeId?: string | null;
+  /** Передаётся для пересчёта стрелок при смене масштаба День/Неделя/Месяц. */
+  redrawKey?: string | number;
 }
 
 const ANALYST_ROLE_CODES_ARROW = new Set([
@@ -24,6 +26,7 @@ export default function DependencyArrows({
   manualDependencies = [],
   onDeleteDependency,
   highlightedEmployeeId,
+  redrawKey,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -324,7 +327,7 @@ export default function DependencyArrows({
       cancelled = true;
       cancelAnimationFrame(raf1);
     };
-  }, [assignments, manualDependencies, showRelayArrows, onDeleteDependency, containerRef, rowRefs, highlightedEmployeeId]);
+  }, [assignments, manualDependencies, showRelayArrows, onDeleteDependency, containerRef, rowRefs, highlightedEmployeeId, redrawKey]);
 
   return (
     <svg
