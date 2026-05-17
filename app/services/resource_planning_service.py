@@ -684,20 +684,9 @@ class ResourcePlanningService:
                         merged_h = allocated_h + sum(s[2] for s in extra_segs)
                         segments = [(merged_start, merged_end, merged_h, 1)]
 
-                if jira_cal_set:
-                    if segments and segments[-1][1] > cal_end:
-                        effective_end = segments[-1][1]
-                    else:
-                        effective_end = cal_end
-                elif segments:
-                    effective_end = segments[-1][1]
-                else:
-                    effective_end = None
+                effective_end = segments[-1][1] if segments else None
 
-                for idx, (seg_start, seg_end, seg_hours, part_num) in enumerate(segments):
-                    # When Jira cal sets a wider span, stretch the last segment's end.
-                    if jira_cal_set and idx == len(segments) - 1:
-                        seg_end = effective_end
+                for seg_start, seg_end, seg_hours, part_num in segments:
                     a = ResourcePlanAssignment(
                         plan_id=plan_id,
                         backlog_item_id=item.id,

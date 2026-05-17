@@ -662,7 +662,8 @@ def test_resolve_phase_calendar_days_default_fallback():
 
 
 def test_compute_uses_duration_days(db_session: Session) -> None:
-    """estimate_analyst_hours=8, duration_analyst_days=5 → analyst spans 5 working days."""
+    """estimate_analyst_hours=8, duration_analyst_days=5 → alloc bounded to 5-day window;
+    bar ends at actual last work day (no stretch past hours exhaustion)."""
     from sqlalchemy import select
 
     from app.models.backlog_item import BacklogItem
@@ -730,8 +731,11 @@ def test_compute_uses_duration_days(db_session: Session) -> None:
             span_days += 1
         d += timedelta(days=1)
 
-    assert span_days >= 5, (
-        f"Ожидалось span ≥ 5 рабочих дней (duration_analyst_days=5), получено {span_days}"
+    # After Task 3 fix: bar end = actual last day, no Jira-duration stretch.
+    # 8h / 6h_per_day ≈ 2 working days; duration_analyst_days=5 no longer
+    # stretches the bar — it only bounds the alloc window.
+    assert 1 <= span_days <= 5, (
+        f"Ожидалось 1-5 рабочих дней (8h без stretch), получено {span_days}"
     )
 
 
