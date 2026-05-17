@@ -139,8 +139,7 @@ export default function GanttChart({
         style={{
           position: 'relative',
           overflowX: 'auto',
-          overflowY: 'auto',
-          maxHeight: 'calc(100vh - 280px)',
+          overflowY: 'visible',
         }}
       >
         <div
