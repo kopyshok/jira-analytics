@@ -4,7 +4,6 @@ import type { EmployeeResponse } from '../../types/api';
 import type { GanttTimeline } from '../../utils/gantt';
 import { dateToLeft, datesToWidth, PHASE_COLORS, PHASE_LABELS, getItemColor } from '../../utils/gantt';
 import EmployeeAvatar from './EmployeeAvatar';
-import AssignEmployeePopover from './AssignEmployeePopover';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 
@@ -189,9 +188,15 @@ function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowR
               const left = dateToLeft(a.start_date!, timeline);
               const width = datesToWidth(a.start_date!, a.end_date!, timeline);
               const color = PHASE_COLORS[a.phase] ?? '#888';
-              const bar = (
+              return (
                 <div
+                  key={a.id}
                   title={`${PHASE_LABELS[a.phase]} — ${a.employee_name ?? '—'} (${a.hours_allocated?.toFixed(0)}ч)`}
+                  onClick={(e) => {
+                    if (a.phase === 'qa') return;
+                    e.stopPropagation();
+                    onAssignmentClick?.(a.id);
+                  }}
                   style={{
                     position: 'absolute',
                     left: `${left}%`,
@@ -221,19 +226,6 @@ function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowR
                   )}
                   <span style={{ fontSize: 9 }}>{PHASE_LABELS[a.phase]}</span>
                 </div>
-              );
-              return (
-                <AssignEmployeePopover
-                  key={a.id}
-                  assignmentId={a.id}
-                  planId={planId}
-                  phase={a.phase}
-                  currentEmployeeId={a.employee_id}
-                  employees={employees}
-                  isPinned={a.is_pinned}
-                >
-                  {bar}
-                </AssignEmployeePopover>
               );
             })}
           </div>
@@ -399,16 +391,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
 
   return (
     <>
-      <AssignEmployeePopover
-        assignmentId={assignment.id}
-        planId={planId}
-        phase={assignment.phase}
-        currentEmployeeId={assignment.employee_id}
-        employees={employees}
-        isPinned={assignment.is_pinned}
-      >
-        {bar}
-      </AssignEmployeePopover>
+      {bar}
       {showResize && (
         <>
           <div
@@ -875,13 +858,19 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
               const left = dateToLeft(a.start_date!, timeline);
               const width = datesToWidth(a.start_date!, a.end_date!, timeline);
               const refKey = `${a.backlog_item_id}-${a.phase}-${a.part_number}`;
-              const bar = (
+              return (
                 <div
+                  key={a.id}
                   ref={el => {
                     if (el) rowRefs.current.set(refKey, el);
                     else rowRefs.current.delete(refKey);
                   }}
                   title={`${a.backlog_item_title} — ${PHASE_LABELS[a.phase]} (${a.hours_allocated?.toFixed(0)}ч)`}
+                  onClick={(e) => {
+                    if (a.phase === 'qa') return;
+                    e.stopPropagation();
+                    onAssignmentClick?.(a.id);
+                  }}
                   style={{
                     position: 'absolute',
                     left: `${left}%`,
@@ -907,19 +896,6 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
                 >
                   {a.backlog_item_title}
                 </div>
-              );
-              return (
-                <AssignEmployeePopover
-                  key={a.id}
-                  assignmentId={a.id}
-                  planId={planId}
-                  phase={a.phase}
-                  currentEmployeeId={a.employee_id}
-                  employees={employees}
-                  isPinned={a.is_pinned}
-                >
-                  {bar}
-                </AssignEmployeePopover>
               );
             })}
           </div>

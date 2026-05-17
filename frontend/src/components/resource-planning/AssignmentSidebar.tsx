@@ -55,7 +55,16 @@ export default function AssignmentSidebar({
   );
 
   if (!assignment) {
-    return <Drawer open={open} onClose={onClose} width={460} title="Назначение" />;
+    return (
+      <Drawer
+        open={open}
+        onClose={onClose}
+        width={920}
+        mask={false}
+        maskClosable={false}
+        title="Назначение"
+      />
+    );
   }
 
   const updateField = async (data: Parameters<typeof patchAssignment>[2]) => {
@@ -101,7 +110,9 @@ export default function AssignmentSidebar({
     <Drawer
       open={open}
       onClose={onClose}
-      width={460}
+      width={920}
+      mask={false}
+      maskClosable={false}
       title={
         <Space>
           <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
