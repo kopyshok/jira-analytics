@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar as cal_module
+import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
@@ -534,7 +535,7 @@ class ResourcePlanningService:
                     for emp_id, p_hours in parts:
                         if not emp_id or p_hours <= 0:
                             continue
-                        segments = self._allocate_hours(
+                        segments, daily = self._allocate_hours_with_breakdown(
                             emp_id, p_hours, earliest_start, q_end, remaining,
                             daily_capacity=opo_daily_cap,
                             preempt_locked=preempt_locked,
@@ -559,6 +560,9 @@ class ResourcePlanningService:
                                 hours_allocated=seg_hours,
                                 start_date=seg_start,
                                 end_date=seg_end,
+                                daily_hours_json=json.dumps(
+                                    {d.isoformat(): h for d, h in daily.items()}
+                                ),
                             )
                             new_assignments.append(a)
                         if segments:
@@ -603,7 +607,7 @@ class ResourcePlanningService:
                         chunk_start = earliest_start if chunk_idx == 1 else (
                             (last_chunk_end + timedelta(days=1)) if last_chunk_end else earliest_start
                         )
-                        chunk_segs = self._allocate_hours(
+                        chunk_segs, chunk_daily = self._allocate_hours_with_breakdown(
                             employee_id, chunk_hours, chunk_start, q_end, remaining,
                             daily_capacity=phase_daily_cap,
                             preempt_locked=preempt_locked,
@@ -619,6 +623,9 @@ class ResourcePlanningService:
                                 hours_allocated=seg_hours,
                                 start_date=seg_start,
                                 end_date=seg_end,
+                                daily_hours_json=json.dumps(
+                                    {d.isoformat(): h for d, h in chunk_daily.items()}
+                                ),
                             )
                             new_assignments.append(a)
                         # Calendar-based end for this chunk
@@ -650,7 +657,7 @@ class ResourcePlanningService:
                 )
                 alloc_deadline = cal_end if jira_cal_set else q_end
 
-                segments = self._allocate_hours(
+                segments, phase_daily = self._allocate_hours_with_breakdown(
                     employee_id, hours, earliest_start, alloc_deadline, remaining,
                     daily_capacity=phase_daily_cap,
                     preempt_locked=preempt_locked,
@@ -670,7 +677,7 @@ class ResourcePlanningService:
                         if segments
                         else earliest_start
                     )
-                    extra_segs = self._allocate_hours(
+                    extra_segs, extra_daily = self._allocate_hours_with_breakdown(
                         employee_id, deficit, extra_start, q_end, remaining,
                         daily_capacity=phase_daily_cap,
                         preempt_locked=preempt_locked,
@@ -683,6 +690,7 @@ class ResourcePlanningService:
                         merged_end = extra_segs[-1][1]
                         merged_h = allocated_h + sum(s[2] for s in extra_segs)
                         segments = [(merged_start, merged_end, merged_h, 1)]
+                        phase_daily.update(extra_daily)
 
                 effective_end = segments[-1][1] if segments else None
 
@@ -696,6 +704,9 @@ class ResourcePlanningService:
                         hours_allocated=seg_hours,
                         start_date=seg_start,
                         end_date=seg_end,
+                        daily_hours_json=json.dumps(
+                            {d.isoformat(): h for d, h in phase_daily.items()}
+                        ),
                     )
                     new_assignments.append(a)
 
@@ -741,6 +752,71 @@ class ResourcePlanningService:
         plan.computed_at = datetime.utcnow()
         self.db.commit()
 
+    def _allocate_hours_with_breakdown(
+        self,
+        employee_id: str,
+        total_hours: float,
+        earliest_start: date,
+        deadline: date,
+        remaining: Dict[str, Dict[date, float]],
+        daily_capacity: Optional[float] = None,
+        preempt_locked: Optional[Dict[str, set]] = None,
+        original_capacity: Optional[Dict[str, Dict[date, float]]] = None,
+    ) -> Tuple[List[Tuple[date, date, float, int]], Dict[date, float]]:
+        """Распределить total_hours по рабочим дням начиная с earliest_start.
+
+        Возвращает (segments, daily_used) где:
+        - segments — список (start, end, hours, part_number).  Когда
+          preempt_locked прерывает текущий сегмент, закрывается и открывается
+          новый с part_number+1.
+        - daily_used — {date: hours} использованные часы по каждому дню.
+
+        Если задан ``daily_capacity`` — за один день фаза не возьмёт больше
+        этой величины.
+        """
+        _ = original_capacity  # unused; kept for future
+        locked: set = (preempt_locked or {}).get(employee_id, set())
+        emp_days = remaining.get(employee_id, {})
+        remaining_h = total_hours
+        daily_used: Dict[date, float] = {}
+
+        segments: List[Tuple[date, date, float, int]] = []
+        seg_start: Optional[date] = None
+        seg_end: Optional[date] = None
+        seg_hours = 0.0
+        part_num = 1
+
+        d = earliest_start
+        while remaining_h > 0.01 and d <= deadline:
+            # Preempting-locked day: close current segment, skip this day
+            if d in locked:
+                if seg_start is not None and seg_end is not None and seg_hours > 0:
+                    segments.append((seg_start, seg_end, seg_hours, part_num))
+                    part_num += 1
+                    seg_start = None
+                    seg_end = None
+                    seg_hours = 0.0
+                d += timedelta(days=1)
+                continue
+
+            avail_h = emp_days.get(d, 0.0)
+            cap = avail_h if daily_capacity is None else min(avail_h, daily_capacity)
+            if cap > 0:
+                if seg_start is None:
+                    seg_start = d
+                used = min(cap, remaining_h)
+                emp_days[d] = max(0.0, avail_h - used)
+                remaining_h -= used
+                seg_hours += used
+                daily_used[d] = used
+                seg_end = d
+            d += timedelta(days=1)
+
+        if seg_start is not None and seg_end is not None and seg_hours > 0:
+            segments.append((seg_start, seg_end, seg_hours, part_num))
+
+        return segments, daily_used
+
     def _allocate_hours(
         self,
         employee_id: str,
@@ -752,44 +828,14 @@ class ResourcePlanningService:
         preempt_locked: Optional[Dict[str, set]] = None,
         original_capacity: Optional[Dict[str, Dict[date, float]]] = None,
     ) -> List[Tuple[date, date, float, int]]:
-        """Распределить total_hours по рабочим дням начиная с earliest_start.
-
-        Возвращает один сегмент (start, end, hours, 1) — единая полоса фазы.
-        Часы по-прежнему расходуются ТОЛЬКО на дни где cap>0 (preempting-locked
-        дни пропускаются, день остаётся в `remaining` нетронутым = preempt-фаза
-        получит его). Сам диапазон бара покрывает всё start..last_used включая
-        пропущенные дни — пропуски рисуются штриховкой через `unavailable_days`.
-
-        Если задан ``daily_capacity`` — за один день фаза не возьмёт больше
-        этой величины.
-        """
-        # preempt_locked / original_capacity больше не нужны для split-логики
-        # (бар всегда один). Параметры остаются в сигнатуре для совместимости —
-        # вдруг понадобится в будущем расширении.
-        _ = preempt_locked, original_capacity
-        emp_days = remaining.get(employee_id, {})
-        remaining_h = total_hours
-        used_total = 0.0
-        seg_start: Optional[date] = None
-        seg_end: Optional[date] = None
-
-        d = earliest_start
-        while remaining_h > 0.01 and d <= deadline:
-            avail_h = emp_days.get(d, 0.0)
-            cap = avail_h if daily_capacity is None else min(avail_h, daily_capacity)
-            if cap > 0:
-                if seg_start is None:
-                    seg_start = d
-                used = min(cap, remaining_h)
-                emp_days[d] = max(0.0, avail_h - used)
-                remaining_h -= used
-                used_total += used
-                seg_end = d
-            d += timedelta(days=1)
-
-        if seg_start is not None and seg_end is not None and used_total > 0:
-            return [(seg_start, seg_end, used_total, 1)]
-        return []
+        """Обёртка над _allocate_hours_with_breakdown (backward compat)."""
+        segs, _ = self._allocate_hours_with_breakdown(
+            employee_id, total_hours, earliest_start, deadline, remaining,
+            daily_capacity=daily_capacity,
+            preempt_locked=preempt_locked,
+            original_capacity=original_capacity,
+        )
+        return segs
 
     def _load_items(self, plan: ResourcePlan) -> List[BacklogItem]:
         """Загрузить включённые инициативы сценария, отсортированные по приоритету."""
