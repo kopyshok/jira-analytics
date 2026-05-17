@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { App, Button, ColorPicker, Modal, Segmented, Slider, Space, Typography } from 'antd';
+import { App, Button, Checkbox, ColorPicker, Modal, Slider, Space, Typography } from 'antd';
 import type { Color } from 'antd/es/color-picker';
 import type { AppearanceSettings } from '../../api/appearance';
 import { DEFAULT_APPEARANCE } from '../../contexts/appearanceDefaults';
 import { useUpdateAppearance } from '../../api/appearance';
+import { useRpPreferences } from '../../hooks/useRpPreferences';
 
 const { Text } = Typography;
 
@@ -34,28 +35,39 @@ function colorToHex(c: Color | string): string {
   return c.toHexString();
 }
 
+// Формула градиента: alphaTop = 0.05 + intensity/100 × 0.35,
+// alphaBottom = alphaTop × (1 − contrast/100 × 0.5).
+// При intensity=0,contrast=0 — практически прозрачно. При intensity=100,contrast=100 —
+// верх ярко (0.40), низ — почти невидимо (0.10).
+export function computeFillGradientAlphas(intensityPct: number, contrastPct: number): { alphaTop: number; alphaBottom: number } {
+  const i = Math.max(0, Math.min(100, intensityPct)) / 100;
+  const c = Math.max(0, Math.min(100, contrastPct)) / 100;
+  const alphaTop = 0.05 + i * 0.35;
+  const alphaBottom = alphaTop * (1 - c * 0.5);
+  return { alphaTop, alphaBottom };
+}
+
 function InitiativeBarPreview({
   bracketColor,
-  fillIntensity,
+  intensityPct,
+  contrastPct,
   animSpeed,
 }: {
   bracketColor: string;
-  fillIntensity: 'soft' | 'medium' | 'dense';
+  intensityPct: number;
+  contrastPct: number;
   animSpeed: number;
 }) {
   const [r, g, b] = hexToRgb(bracketColor);
-  const gradients: Record<string, string> = {
-    soft: `linear-gradient(180deg, rgba(${r},${g},${b},0.10), rgba(${r},${g},${b},0.05))`,
-    medium: `linear-gradient(180deg, rgba(${r},${g},${b},0.22), rgba(${r},${g},${b},0.12))`,
-    dense: `linear-gradient(180deg, rgba(${r},${g},${b},0.35), rgba(${r},${g},${b},0.20))`,
-  };
+  const { alphaTop, alphaBottom } = computeFillGradientAlphas(intensityPct, contrastPct);
+  const gradient = `linear-gradient(180deg, rgba(${r},${g},${b},${alphaTop}), rgba(${r},${g},${b},${alphaBottom}))`;
   const BAR_H = 22;
   return (
     <div style={{
       position: 'relative',
       width: '100%',
       height: BAR_H,
-      background: gradients[fillIntensity],
+      background: gradient,
     }}>
       <svg
         width="100%"
@@ -97,20 +109,28 @@ const PHASE_LABELS: Array<{ key: keyof AppearanceSettings['phase_colors']; label
   { key: 'opo', label: 'ОПЭ' },
 ];
 
-const INTENSITY_OPTIONS = [
-  { label: 'Слабая', value: 'soft' },
-  { label: 'Средняя', value: 'medium' },
-  { label: 'Плотная', value: 'dense' },
-];
-
 function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSettings; onClose: () => void }) {
   const { notification } = App.useApp();
   const updateMutation = useUpdateAppearance();
+  const { prefs, patch: patchPrefs } = useRpPreferences();
   const [draft, setDraft] = useState<AppearanceSettings>(initial);
+  // Локальные ползунки для интенсивности/контраста и переключатели пульсаций —
+  // источник правды у них в rp_preferences, тут только UI-снапшот.
+  const [intensityPct, setIntensityPct] = useState<number>(prefs.fill_intensity_pct);
+  const [contrastPct, setContrastPct] = useState<number>(prefs.fill_contrast_pct);
+  const [pulseCritical, setPulseCritical] = useState<boolean>(prefs.pulse_critical_path);
+  const [pulseEmployee, setPulseEmployee] = useState<boolean>(prefs.pulse_highlighted_employee);
 
   const handleSave = () => {
     updateMutation.mutate(draft, {
       onSuccess: () => {
+        // Сохранить ползунки и переключатели в rp_preferences отдельным запросом.
+        patchPrefs({
+          fill_intensity_pct: intensityPct,
+          fill_contrast_pct: contrastPct,
+          pulse_critical_path: pulseCritical,
+          pulse_highlighted_employee: pulseEmployee,
+        });
         notification.success({
           title: 'Настройки сохранены',
           description: 'Цвета планировщика обновлены.',
@@ -123,7 +143,13 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
     });
   };
 
-  const handleReset = () => setDraft(DEFAULT_APPEARANCE);
+  const handleReset = () => {
+    setDraft(DEFAULT_APPEARANCE);
+    setIntensityPct(50);
+    setContrastPct(50);
+    setPulseCritical(true);
+    setPulseEmployee(true);
+  };
 
   const setPhaseColor = (key: keyof AppearanceSettings['phase_colors'], color: Color | string) => {
     setDraft(d => ({
@@ -165,13 +191,30 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
       )}
 
       <div style={{ marginBottom: 12 }}>
-        <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 6 }}>Насыщенность заливки</Text>
-        <Segmented
-          value={draft.initiative_fill_intensity}
-          onChange={(v) => setDraft(d => ({ ...d, initiative_fill_intensity: v as AppearanceSettings['initiative_fill_intensity'] }))}
-          options={INTENSITY_OPTIONS}
-          size="small"
-          block
+        <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 4 }}>
+          Интенсивность заливки инициативы: {intensityPct}%
+        </Text>
+        <Slider
+          min={0}
+          max={100}
+          step={5}
+          value={intensityPct}
+          onChange={setIntensityPct}
+          marks={{ 0: '0', 50: '50', 100: '100' }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 4 }}>
+          Контраст градиента: {contrastPct}%
+        </Text>
+        <Slider
+          min={0}
+          max={100}
+          step={5}
+          value={contrastPct}
+          onChange={setContrastPct}
+          marks={{ 0: 'плоско', 50: '50', 100: 'резко' }}
         />
       </div>
 
@@ -188,11 +231,30 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
         />
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <Checkbox
+          checked={pulseCritical}
+          onChange={(e) => setPulseCritical(e.target.checked)}
+        >
+          Пульсация рамки на критическом пути
+        </Checkbox>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Checkbox
+          checked={pulseEmployee}
+          onChange={(e) => setPulseEmployee(e.target.checked)}
+        >
+          Пульсация при подсветке сотрудника
+        </Checkbox>
+      </div>
+
       <div style={{ marginBottom: 16 }}>
         <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 6 }}>Предпросмотр</Text>
         <InitiativeBarPreview
           bracketColor={draft.initiative_bracket_color}
-          fillIntensity={draft.initiative_fill_intensity}
+          intensityPct={intensityPct}
+          contrastPct={contrastPct}
           animSpeed={draft.animation_speed_seconds}
         />
       </div>

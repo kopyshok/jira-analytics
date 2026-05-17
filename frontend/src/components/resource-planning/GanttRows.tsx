@@ -6,6 +6,8 @@ import { dateToLeft, datesToWidth, PHASE_COLORS, PHASE_LABELS, getItemColor } fr
 import EmployeeAvatar from './EmployeeAvatar';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
+import { useRpPreferences } from '../../hooks/useRpPreferences';
+import { computeFillGradientAlphas } from './AppearanceModal';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
@@ -529,6 +531,7 @@ function TwoLevelRows({
   highlightedEmployeeId, onEmployeeRowClick,
 }: SubProps) {
   const appearance = useAppearanceSettings();
+  const { prefs: rpPrefs } = useRpPreferences();
   const collapsedSet = useMemo(() => new Set(collapsedItemIds ?? []), [collapsedItemIds]);
   const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
   const byItem = useMemo(() => {
@@ -615,12 +618,11 @@ function TwoLevelRows({
                   const width = datesToWidth(starts[0], ends.at(-1)!, timeline);
                   const BRACKET_COLOR = appearance.initiative_bracket_color;
                   const [br, bg, bb] = hexToRgb(BRACKET_COLOR);
-                  const fillIntensity = appearance.initiative_fill_intensity;
-                  const fillGradients: Record<string, string> = {
-                    soft: `linear-gradient(180deg, rgba(${br},${bg},${bb},0.10), rgba(${br},${bg},${bb},0.05))`,
-                    medium: `linear-gradient(180deg, rgba(${br},${bg},${bb},0.22), rgba(${br},${bg},${bb},0.12))`,
-                    dense: `linear-gradient(180deg, rgba(${br},${bg},${bb},0.35), rgba(${br},${bg},${bb},0.20))`,
-                  };
+                  const { alphaTop, alphaBottom } = computeFillGradientAlphas(
+                    rpPrefs.fill_intensity_pct,
+                    rpPrefs.fill_contrast_pct,
+                  );
+                  const fillGradient = `linear-gradient(180deg, rgba(${br},${bg},${bb},${alphaTop}), rgba(${br},${bg},${bb},${alphaBottom}))`;
                   const animSpeed = appearance.animation_speed_seconds;
                   const BAR_H = 22;
                   return (
@@ -633,7 +635,7 @@ function TwoLevelRows({
                       height: BAR_H,
                       zIndex: 2,
                       pointerEvents: 'none',
-                      background: fillGradients[fillIntensity],
+                      background: fillGradient,
                     }}>
                       <svg
                         width="100%"
