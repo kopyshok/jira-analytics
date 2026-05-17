@@ -11,6 +11,21 @@ const DEFAULT_PREFS: RpPreferences = {
   collapsed_initiative_ids: [],
   view_mode: null,
   show_relay: true,
+  detail_sections_visible: {
+    algorithm: true,
+    day_table: true,
+    absences: true,
+    sources: true,
+    duration: true,
+    critical_path: true,
+  },
+  detail_sections_collapsed: {},
+  fill_intensity_pct: 50,
+  fill_contrast_pct: 50,
+  pulse_highlighted_employee: true,
+  pulse_critical_path: true,
+  out_of_quarter_months: 1,
+  hide_weekend_stripes_week_mode: true,
 };
 
 const QUERY_KEY = ['rp-preferences'];

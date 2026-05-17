@@ -163,6 +163,14 @@ export interface RpPreferences {
   collapsed_initiative_ids: string[];
   view_mode: string | null;
   show_relay: boolean;
+  detail_sections_visible: Record<string, boolean>;
+  detail_sections_collapsed: Record<string, boolean>;
+  fill_intensity_pct: number;
+  fill_contrast_pct: number;
+  pulse_highlighted_employee: boolean;
+  pulse_critical_path: boolean;
+  out_of_quarter_months: number;
+  hide_weekend_stripes_week_mode: boolean;
 }
 
 export const getRpPreferences = () =>

@@ -324,6 +324,31 @@ class UserRpPrefsSchema(BaseModel):
     collapsed_initiative_ids: List[str] = []
     view_mode: Optional[str] = None
     show_relay: bool = True
+    detail_sections_visible: Dict[str, bool] = {}
+    detail_sections_collapsed: Dict[str, bool] = {}
+    fill_intensity_pct: int = 50
+    fill_contrast_pct: int = 50
+    pulse_highlighted_employee: bool = True
+    pulse_critical_path: bool = True
+    out_of_quarter_months: int = 1
+    hide_weekend_stripes_week_mode: bool = True
+
+
+def _prefs_to_schema(p: UserRpPreferences) -> UserRpPrefsSchema:
+    return UserRpPrefsSchema(
+        hide_weekends=p.hide_weekends,
+        collapsed_initiative_ids=p.collapsed_initiative_ids or [],
+        view_mode=p.view_mode,
+        show_relay=p.show_relay,
+        detail_sections_visible=p.detail_sections_visible or {},
+        detail_sections_collapsed=p.detail_sections_collapsed or {},
+        fill_intensity_pct=p.fill_intensity_pct,
+        fill_contrast_pct=p.fill_contrast_pct,
+        pulse_highlighted_employee=p.pulse_highlighted_employee,
+        pulse_critical_path=p.pulse_critical_path,
+        out_of_quarter_months=p.out_of_quarter_months,
+        hide_weekend_stripes_week_mode=p.hide_weekend_stripes_week_mode,
+    )
 
 
 @router.get("/preferences", response_model=UserRpPrefsSchema)
@@ -335,12 +360,7 @@ def get_user_rp_preferences(
     p = db.get(UserRpPreferences, current_user.id)
     if not p:
         return UserRpPrefsSchema()
-    return UserRpPrefsSchema(
-        hide_weekends=p.hide_weekends,
-        collapsed_initiative_ids=p.collapsed_initiative_ids or [],
-        view_mode=p.view_mode,
-        show_relay=p.show_relay,
-    )
+    return _prefs_to_schema(p)
 
 
 @router.patch("/preferences", response_model=UserRpPrefsSchema)
@@ -357,14 +377,17 @@ def patch_user_rp_preferences(
     p.collapsed_initiative_ids = list(payload.collapsed_initiative_ids or [])
     p.view_mode = payload.view_mode
     p.show_relay = payload.show_relay
+    p.detail_sections_visible = dict(payload.detail_sections_visible or {})
+    p.detail_sections_collapsed = dict(payload.detail_sections_collapsed or {})
+    p.fill_intensity_pct = max(0, min(100, payload.fill_intensity_pct))
+    p.fill_contrast_pct = max(0, min(100, payload.fill_contrast_pct))
+    p.pulse_highlighted_employee = payload.pulse_highlighted_employee
+    p.pulse_critical_path = payload.pulse_critical_path
+    p.out_of_quarter_months = max(0, min(3, payload.out_of_quarter_months))
+    p.hide_weekend_stripes_week_mode = payload.hide_weekend_stripes_week_mode
     db.commit()
     db.refresh(p)
-    return UserRpPrefsSchema(
-        hide_weekends=p.hide_weekends,
-        collapsed_initiative_ids=p.collapsed_initiative_ids or [],
-        view_mode=p.view_mode,
-        show_relay=p.show_relay,
-    )
+    return _prefs_to_schema(p)
 
 
 # ── ScheduledBlocks ────────────────────────────────────────────────────────
