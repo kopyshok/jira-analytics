@@ -2,16 +2,24 @@ import { useMemo, useState } from 'react';
 import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, Select, Space, Spin, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 
-import type { AssignmentExplainConflict, AssignmentOut } from '../../api/resourcePlanning';
+import type { AssignmentExplainConflict, AssignmentExplainResponseV2, AssignmentOut } from '../../api/resourcePlanning';
 import {
   clearAssignmentManualEdit,
   mergeAssignment,
   patchAssignment,
 } from '../../api/resourcePlanning';
 import { useExplainAssignment } from '../../hooks/useResourcePlanning';
+import { useRpPreferences } from '../../hooks/useRpPreferences';
 import type { EmployeeResponse } from '../../types/api';
 import { PHASE_LABELS } from '../../utils/gantt';
 import EmployeeAvatar from './EmployeeAvatar';
+import AbsencesSection from './sidebar/AbsencesSection';
+import AlgorithmSection from './sidebar/AlgorithmSection';
+import CriticalPathSection from './sidebar/CriticalPathSection';
+import DailyBreakdownSection from './sidebar/DailyBreakdownSection';
+import HoursSummarySection from './sidebar/HoursSummarySection';
+import PhaseCalcSection from './sidebar/PhaseCalcSection';
+import SectionVisibilityPopover from './sidebar/SectionVisibilityPopover';
 import SplitAssignmentModal from './SplitAssignmentModal';
 
 interface Props {
@@ -36,6 +44,7 @@ export default function AssignmentSidebar({
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
+  const { prefs, patch: patchPrefs } = useRpPreferences();
 
   const sameItemAssignments = useMemo(
     () => (assignment ? allAssignments.filter(a => a.backlog_item_id === assignment.backlog_item_id && a.id !== assignment.id) : []),
@@ -114,10 +123,17 @@ export default function AssignmentSidebar({
       mask={false}
       maskClosable={false}
       title={
-        <Space>
-          <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
-          {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
-          {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Space>
+            <span>{PHASE_LABELS[assignment.phase] ?? assignment.phase}</span>
+            {assignment.is_pinned && <Tag color="cyan">Закреплено</Tag>}
+            {assignment.is_on_critical_path && <Tag color="red">Критический путь</Tag>}
+            {assignment.out_of_quarter && <Tag color="orange">Вне квартала</Tag>}
+          </Space>
+          <SectionVisibilityPopover
+            visible={prefs.detail_sections_visible}
+            onChange={(next) => patchPrefs({ detail_sections_visible: next })}
+          />
         </Space>
       }
     >
@@ -212,6 +228,8 @@ export default function AssignmentSidebar({
           </Button>
         )}
       </Space>
+
+      <DetailSections planId={planId} assignment={assignment} prefs={prefs} patchPrefs={patchPrefs} />
 
       <SplitAssignmentModal
         open={splitOpen}
@@ -329,5 +347,85 @@ function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
         </div>
       }
     />
+  );
+}
+
+interface DetailSectionsProps {
+  planId: string;
+  assignment: AssignmentOut;
+  prefs: ReturnType<typeof useRpPreferences>['prefs'];
+  patchPrefs: ReturnType<typeof useRpPreferences>['patch'];
+}
+
+function DetailSections({ planId, assignment, prefs, patchPrefs }: DetailSectionsProps) {
+  const { data } = useExplainAssignment(planId, assignment.id, true) as { data: AssignmentExplainResponseV2 | undefined };
+
+  const isVisible = (k: string) => prefs.detail_sections_visible[k] !== false;
+  const isCollapsed = (k: string) => !!prefs.detail_sections_collapsed[k];
+  const toggleCollapse = (key: string) => {
+    patchPrefs({
+      detail_sections_collapsed: {
+        ...prefs.detail_sections_collapsed,
+        [key]: !prefs.detail_sections_collapsed[key],
+      },
+    });
+  };
+
+  // Resolve assignment from explain data (has full fields like daily_hours, out_of_quarter)
+  // Fall back to the prop assignment for critical path display if data not yet loaded.
+  const resolvedAssignment = data?.assignment ?? assignment;
+
+  return (
+    <>
+      <Divider>Детализация</Divider>
+
+      {isVisible('algorithm') && (
+        <AlgorithmSection
+          log={data?.algorithm_log ?? []}
+          collapsed={isCollapsed('algorithm')}
+          onToggleCollapse={() => toggleCollapse('algorithm')}
+        />
+      )}
+
+      {isVisible('day_table') && (
+        <DailyBreakdownSection
+          items={data?.daily_breakdown ?? []}
+          collapsed={isCollapsed('day_table')}
+          onToggleCollapse={() => toggleCollapse('day_table')}
+        />
+      )}
+
+      {isVisible('absences') && (
+        <AbsencesSection
+          items={data?.absences_in_window ?? []}
+          collapsed={isCollapsed('absences')}
+          onToggleCollapse={() => toggleCollapse('absences')}
+        />
+      )}
+
+      {isVisible('sources') && (
+        <PhaseCalcSection
+          data={data?.phase_calc ?? null}
+          collapsed={isCollapsed('sources')}
+          onToggleCollapse={() => toggleCollapse('sources')}
+        />
+      )}
+
+      {isVisible('duration') && (
+        <HoursSummarySection
+          data={data?.hours_summary ?? null}
+          collapsed={isCollapsed('duration')}
+          onToggleCollapse={() => toggleCollapse('duration')}
+        />
+      )}
+
+      {isVisible('critical_path') && (
+        <CriticalPathSection
+          assignment={resolvedAssignment}
+          collapsed={isCollapsed('critical_path')}
+          onToggleCollapse={() => toggleCollapse('critical_path')}
+        />
+      )}
+    </>
   );
 }
