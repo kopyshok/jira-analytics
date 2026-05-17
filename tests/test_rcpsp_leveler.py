@@ -44,6 +44,52 @@ def test_leveler_detects_overload_when_two_assignments_share_employee_day():
     assert overloads[(date(2026, 4, 1), "EMP-1")] == 10.0  # сумма demand
 
 
+def test_overload_uses_daily_hours_json_when_present():
+    """
+    Когда у assignment есть daily_hours_json — leveler читает per-day из него,
+    а не делит hours_allocated равномерно по длине бара.
+
+    Сценарий: 2 фазы пересекаются по date-range, но daily_hours показывает,
+    что в один и тот же день они НЕ работают вместе → overload отсутствует.
+    """
+    leveler = RcpspLeveler()
+    # Бар a1: 04.05-06.05, но реально работа только в 04.05 (8 ч).
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 5, 4), date(2026, 5, 6), 8.0, item_id="I1"
+    )
+    a1.daily_hours_json = '{"2026-05-04": 8.0}'
+    # Бар a2: 05.05-07.05, реально работа только в 05.05 и 06.05.
+    a2 = _mk_assignment(
+        "A2", "EMP-1", date(2026, 5, 5), date(2026, 5, 7), 16.0, item_id="I2"
+    )
+    a2.daily_hours_json = '{"2026-05-05": 8.0, "2026-05-06": 8.0}'
+    avail = {"EMP-1": {
+        date(2026, 5, 4): 8.0,
+        date(2026, 5, 5): 8.0,
+        date(2026, 5, 6): 8.0,
+        date(2026, 5, 7): 8.0,
+    }}
+    overloads = leveler._detect_overload([a1, a2], avail)
+    # Никакого overload — на каждый день вес 8 ч из ровно одной фазы.
+    assert overloads == {}
+
+
+def test_overload_falls_back_to_even_distribution_without_daily_hours():
+    """Старые assignment без daily_hours_json — fallback равномерное по рабочим дням."""
+    leveler = RcpspLeveler()
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 5, 4), date(2026, 5, 5), 16.0, item_id="I1"
+    )  # без daily_hours_json — fallback на 8 ч/день
+    a2 = _mk_assignment(
+        "A2", "EMP-1", date(2026, 5, 5), date(2026, 5, 5), 4.0, item_id="I2"
+    )
+    avail = {"EMP-1": {date(2026, 5, 4): 8.0, date(2026, 5, 5): 8.0}}
+    overloads = leveler._detect_overload([a1, a2], avail)
+    # 05.05: a1=8 + a2=4 = 12 > 8 → overload
+    assert (date(2026, 5, 5), "EMP-1") in overloads
+    assert overloads[(date(2026, 5, 5), "EMP-1")] == 12.0
+
+
 def test_delay_within_slack_shifts_assignment_when_slack_available():
     """Если у назначения есть slack ≥ overload_days, оно сдвигается, не эскалируется."""
     leveler = RcpspLeveler()

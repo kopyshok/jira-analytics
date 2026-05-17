@@ -10,12 +10,45 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Dict, List, Literal, Optional, Tuple
 
 from app.models import ResourcePlanAssignment
+
+
+def _per_day_hours(a: ResourcePlanAssignment, availability: Dict[str, Dict[date, float]]) -> Dict[date, float]:
+    """Реальная нагрузка фазы по дням.
+
+    Приоритет: assignment.daily_hours_json (план фактической дневной траты).
+    Fallback: hours_allocated равномерно по рабочим дням сегмента.
+    """
+    if a.daily_hours_json:
+        try:
+            raw = json.loads(a.daily_hours_json)
+            return {date.fromisoformat(k): float(v) for k, v in raw.items() if float(v) > 0}
+        except (json.JSONDecodeError, ValueError):
+            pass
+    if (
+        not a.start_date
+        or not a.end_date
+        or a.hours_allocated is None
+        or not a.employee_id
+    ):
+        return {}
+    avail_map = availability.get(a.employee_id, {})
+    working: List[date] = []
+    d = a.start_date
+    while d <= a.end_date:
+        if avail_map.get(d, 0.0) > 0.0:
+            working.append(d)
+        d += timedelta(days=1)
+    if not working:
+        return {}
+    per = a.hours_allocated / len(working)
+    return {d: per for d in working}
 
 
 LevelingAction = Literal["delay", "reassign", "escalate"]
@@ -226,42 +259,27 @@ class RcpspLeveler:
             or assignment.hours_allocated is None
         ):
             return False
-        peer_avail = availability.get(peer_id, {})
-        peer_working = []
-        d = assignment.start_date
-        while d <= assignment.end_date:
-            if peer_avail.get(d, 0.0) > 0.0:
-                peer_working.append(d)
-            d += timedelta(days=1)
-        if not peer_working:
+        # Сохраним оригинальный employee_id, чтобы _per_day_hours корректно
+        # построил fallback по peer_avail (мы переносим фазу на peer'а).
+        original_emp = assignment.employee_id
+        assignment.employee_id = peer_id
+        peer_per_day = _per_day_hours(assignment, availability)
+        assignment.employee_id = original_emp
+        if not peer_per_day:
             return False
-        per_day = assignment.hours_allocated / len(peer_working)
 
         # Текущая нагрузка peer от остальных назначений.
         peer_demand: Dict[date, float] = defaultdict(float)
         for a in all_assignments:
-            if (
-                a.employee_id != peer_id
-                or not a.start_date
-                or not a.end_date
-                or a.hours_allocated is None
-            ):
+            if a.employee_id != peer_id or a.id == assignment.id:
                 continue
-            a_working = []
-            dd = a.start_date
-            while dd <= a.end_date:
-                if peer_avail.get(dd, 0.0) > 0.0:
-                    a_working.append(dd)
-                dd += timedelta(days=1)
-            if not a_working:
-                continue
-            a_per_day = a.hours_allocated / len(a_working)
-            for dd in a_working:
-                peer_demand[dd] += a_per_day
+            for dd, h in _per_day_hours(a, availability).items():
+                peer_demand[dd] += h
 
-        for d in peer_working:
+        peer_avail = availability.get(peer_id, {})
+        for d, need in peer_per_day.items():
             free = peer_avail.get(d, 0.0) - peer_demand.get(d, 0.0)
-            if free < per_day - 0.01:
+            if free < need - 0.01:
                 return False
         assignment.employee_id = peer_id
         return True
@@ -312,25 +330,10 @@ class RcpspLeveler:
         """
         demand: Dict[Tuple[date, str], float] = defaultdict(float)
         for a in assignments:
-            if (
-                not a.start_date
-                or not a.end_date
-                or not a.employee_id
-                or a.hours_allocated is None
-            ):
+            if not a.employee_id:
                 continue
-            avail_map = availability.get(a.employee_id, {})
-            working = []
-            d = a.start_date
-            while d <= a.end_date:
-                if avail_map.get(d, 0.0) > 0.0:
-                    working.append(d)
-                d += timedelta(days=1)
-            if not working:
-                continue
-            per_day = a.hours_allocated / len(working)
-            for d in working:
-                demand[(d, a.employee_id)] += per_day
+            for d, h in _per_day_hours(a, availability).items():
+                demand[(d, a.employee_id)] += h
 
         overloads: Dict[Tuple[date, str], float] = {}
         for key, dem in demand.items():
