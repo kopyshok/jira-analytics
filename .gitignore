@@ -80,3 +80,4 @@ frontend/coverage/
 .playwright-mcp/
 design-reference/
 test.md
+.superpowers/
