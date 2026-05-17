@@ -97,7 +97,7 @@ function ItemTitleCell({
       overflow: 'hidden',
       position: 'sticky',
       left: 0,
-      zIndex: 4,
+      zIndex: 11,
       background: '#0a1628',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
@@ -638,35 +638,46 @@ function TwoLevelRows({
                 outline: isPendingFrom ? '2px solid #ff7a45' : 'none',
               }}
             >
-              <button
-                type="button"
-                aria-label={`${isCollapsed ? 'Развернуть' : 'Свернуть'} ${key ?? title}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleCollapse?.(itemId, !isCollapsed);
-                }}
+              <div
                 style={{
+                  display: 'flex',
                   flexShrink: 0,
-                  width: 24,
-                  background: 'none',
-                  border: 0,
-                  color: '#7a9ab8',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  padding: 0,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 12,
+                  background: isPendingFrom ? 'rgba(255,122,69,0.18)' : INIT_HEADER_BG,
                 }}
               >
-                {isCollapsed ? '▶' : '▼'}
-              </button>
-              <ItemTitleCell
-                title={title}
-                jiraKey={key}
-                priority={priority}
-                leftColWidth={leftColWidth - 24}
-                fontWeight={700}
-                assignee={initAssigneeName}
-                hours={totalHours > 0 ? `${Math.round(totalHours)} ч` : ''}
-              />
+                <button
+                  type="button"
+                  aria-label={`${isCollapsed ? 'Развернуть' : 'Свернуть'} ${key ?? title}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleCollapse?.(itemId, !isCollapsed);
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    width: 24,
+                    background: 'none',
+                    border: 0,
+                    color: '#7a9ab8',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    padding: 0,
+                  }}
+                >
+                  {isCollapsed ? '▶' : '▼'}
+                </button>
+                <ItemTitleCell
+                  title={title}
+                  jiraKey={key}
+                  priority={priority}
+                  leftColWidth={leftColWidth - 24}
+                  fontWeight={700}
+                  assignee={initAssigneeName}
+                  hours={totalHours > 0 ? `${Math.round(totalHours)} ч` : ''}
+                />
+              </div>
               <div style={trackStyle(trackWidthPx)}>
                 {(() => {
                   const starts = ia.filter(a => a.start_date).map(a => a.start_date!).sort();
@@ -943,7 +954,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
             gap: 8,
             position: 'sticky',
             left: 0,
-            zIndex: 4,
+            zIndex: 11,
             background: '#0a1628',
           }}>
             <EmployeeAvatar name={empAssignments[0]?.employee_name ?? null} role={empAssignments[0]?.employee_role} size={20} />
