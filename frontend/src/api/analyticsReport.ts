@@ -35,3 +35,21 @@ export function fetchIssueWorklogs(issueId: string, start: string, end: string, 
     `/analytics/report/issue/${issueId}/worklogs`, { start, end }, signal,
   );
 }
+
+export type AnalyticsLevel = 'team' | 'role' | 'employee' | 'work_type' | 'category' | 'issue';
+
+export interface AnalyticsLayout {
+  group_order?: AnalyticsLevel[];
+  hidden_levels?: AnalyticsLevel[];
+  active_preset?: string;
+  saved_presets?: { name: string; group_order: AnalyticsLevel[]; hidden_levels: AnalyticsLevel[] }[];
+}
+
+export async function fetchAnalyticsLayout(): Promise<AnalyticsLayout> {
+  const res = await api.get<{ layout: AnalyticsLayout }>('/users/me/analytics-layout');
+  return res.layout ?? {};
+}
+
+export async function saveAnalyticsLayout(layout: AnalyticsLayout): Promise<void> {
+  await api.put('/users/me/analytics-layout', { layout });
+}
