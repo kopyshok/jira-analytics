@@ -100,3 +100,23 @@ def set_my_appearance(
     current_user.appearance_settings = payload.model_dump()
     db.commit()
     return payload
+
+
+class AnalyticsLayoutPayload(BaseModel):
+    layout: dict
+
+
+@router.get("/me/analytics-layout")
+def get_my_analytics_layout(current_user: User = Depends(get_current_user)):
+    return {"layout": current_user.analytics_layout}
+
+
+@router.put("/me/analytics-layout")
+def set_my_analytics_layout(
+    payload: AnalyticsLayoutPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_user.analytics_layout = payload.layout
+    db.commit()
+    return {"ok": True}
