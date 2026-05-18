@@ -38,6 +38,8 @@ import KpiCard from '../components/executive/KpiCard';
 import AISummary from '../components/executive/AISummary';
 import ModuleHealth from '../components/executive/ModuleHealth';
 import RiskList from '../components/executive/RiskList';
+import { AiGate } from '../components/shared/AiGate';
+import { useAiEnabled } from '../hooks/useAiEnabled';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { CHART_COLORS, DARK_THEME, FONTS } from '../utils/constants';
@@ -169,6 +171,7 @@ export default function ExecutiveDashboardPage() {
 
   const report = reportQuery.data ?? null;
   const data = report?.data ?? null;
+  const { enabled: aiEnabled } = useAiEnabled();
 
   const isInitialLoading = reportQuery.isLoading && !report;
   const isBuilding = buildMutation.isPending;
@@ -180,13 +183,15 @@ export default function ExecutiveDashboardPage() {
           AI-сводка обновлена {formatGenerated(report.generated_at)}
         </Typography.Text>
       ) : null}
-      <Button
-        type="primary"
-        loading={isBuilding}
-        onClick={() => buildMutation.mutate()}
-      >
-        {report ? 'Пересчитать' : 'Построить'}
-      </Button>
+      <AiGate>
+        <Button
+          type="primary"
+          loading={isBuilding}
+          onClick={() => buildMutation.mutate()}
+        >
+          {report ? 'Пересчитать' : 'Построить'}
+        </Button>
+      </AiGate>
     </div>
   );
 
@@ -261,13 +266,15 @@ export default function ExecutiveDashboardPage() {
               </span>
             }
           >
-            <Button
-              type="primary"
-              loading={isBuilding}
-              onClick={() => buildMutation.mutate()}
-            >
-              Построить
-            </Button>
+            <AiGate>
+              <Button
+                type="primary"
+                loading={isBuilding}
+                onClick={() => buildMutation.mutate()}
+              >
+                Построить
+              </Button>
+            </AiGate>
           </Empty>
         </Card>
       ) : (
@@ -313,6 +320,15 @@ export default function ExecutiveDashboardPage() {
           </Row>
 
           {/* AI summary */}
+          {!aiEnabled && (
+            <Alert
+              type="info"
+              showIcon
+              message="ИИ выключен администратором — AI-сводка не обновляется"
+              description="Показаны последние сгенерированные данные. Чтобы пересчитать, попросите администратора включить ИИ."
+              style={{ marginBottom: 12 }}
+            />
+          )}
           <AISummary
             improved={data.ai_summary.improved}
             risk={data.ai_summary.risk}

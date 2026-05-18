@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
 import { useRegenerateSummary } from '../../hooks/useProjectSummary';
+import { AiGate } from '../shared/AiGate';
 
 type ViewMode = 'analysis' | 'presentation';
 
@@ -189,16 +190,18 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
           </Button>
         </Button.Group>
 
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          loading={regen.isPending}
-          onClick={handleRegen}
-          disabled={!detail}
-          style={{ color: '#7e94b8' }}
-        >
-          Обновить AI
-        </Button>
+        <AiGate>
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            loading={regen.isPending}
+            onClick={handleRegen}
+            disabled={!detail}
+            style={{ color: '#7e94b8' }}
+          >
+            Обновить AI
+          </Button>
+        </AiGate>
 
         <Button
           size="small"

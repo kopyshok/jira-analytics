@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Form, Input, Select, Space, App, Typography, Tag, Divider, Alert } from 'antd';
+import { Button, Card, Form, Input, Select, Space, App, Typography, Tag, Divider, Alert, Switch } from 'antd';
 import { EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
+import { useQueryClient } from '@tanstack/react-query';
 import type { InputProps } from 'antd';
 import {
   llmApi,
@@ -9,6 +10,8 @@ import {
   type PromptDefault,
 } from '../../api/llm';
 import { api } from '../../api/client';
+import { aiStatusApi } from '../../api/aiStatus';
+import { useAiEnabled } from '../../hooks/useAiEnabled';
 
 const FALLBACK_GEMINI_MODELS: GeminiModelInfo[] = [
   { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview (рекомендуется на free)', version: 3.1 },
@@ -53,9 +56,25 @@ const DEFAULT_OPENROUTER_FALLBACKS = [
 
 export const AITab: React.FC = () => {
   const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
+  const { enabled: aiEnabled, isLoading: aiStatusLoading } = useAiEnabled();
   const [form] = Form.useForm<FormValues>();
   const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<string>('gemini');
+  const [switching, setSwitching] = useState(false);
+
+  const onToggleAi = async (next: boolean) => {
+    setSwitching(true);
+    try {
+      await aiStatusApi.set(next);
+      await queryClient.invalidateQueries({ queryKey: ['ai-status'] });
+      message.success(next ? 'ИИ включён' : 'ИИ выключен');
+    } catch (e: unknown) {
+      message.error(e instanceof Error ? e.message : 'Не удалось сменить состояние');
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   const [geminiModels, setGeminiModels] = useState<GeminiModelInfo[]>(FALLBACK_GEMINI_MODELS);
   const [geminiModelsLoading, setGeminiModelsLoading] = useState(false);
@@ -228,13 +247,34 @@ export const AITab: React.FC = () => {
   return (
     <Card
       title="AI-провайдер"
-      extra={<Button onClick={onRegenAll}>Перегенерировать все саммари</Button>}
+      extra={
+        <Space>
+          <Typography.Text>ИИ включён</Typography.Text>
+          <Switch
+            checked={aiEnabled}
+            loading={switching || aiStatusLoading}
+            onChange={onToggleAi}
+          />
+          <Button onClick={onRegenAll} disabled={!aiEnabled}>
+            Перегенерировать все саммари
+          </Button>
+        </Space>
+      }
     >
+      {!aiEnabled && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="ИИ выключен администратором"
+          description="Все AI-вызовы заблокированы (саммари проектов, тематический отчёт, executive AI-сводка). Существующие сгенерированные данные остаются видимыми. Чтобы включить — переведите переключатель «ИИ включён» в правом верхнем углу."
+        />
+      )}
       <Form
         form={form}
         layout="vertical"
         onFinish={onSave}
-        disabled={loading}
+        disabled={loading || !aiEnabled}
         autoComplete="off"
         onValuesChange={(changed) => {
           if (changed.provider) setProvider(changed.provider);

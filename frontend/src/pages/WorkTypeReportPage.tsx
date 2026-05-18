@@ -23,6 +23,8 @@ import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { DARK_THEME } from '../utils/constants';
 import type { GroupingDim, Theme } from '../types/workTypeReport';
 import BuildProgressModal from '../components/work-type-report/BuildProgressModal';
+import { AiOffNotice } from '../components/shared/AiOffNotice';
+import { useAiEnabled } from '../hooks/useAiEnabled';
 
 /** Returns ISO date bounds for a quarter (or a specific month). */
 function periodBounds(year: number, quarter: number, month?: number): { start: string; end: string } {
@@ -55,6 +57,19 @@ function findIssueClassification(
 }
 
 export default function WorkTypeReportPage() {
+  const { enabled: aiEnabled, isLoading: aiStatusLoading } = useAiEnabled();
+  if (!aiStatusLoading && !aiEnabled) {
+    return (
+      <AiOffNotice
+        title="Тематический отчёт выключен администратором"
+        description="Раздел полностью построен на ИИ. Чтобы открыть, обратитесь к администратору сервиса для включения ИИ."
+      />
+    );
+  }
+  return <WorkTypeReportPageInner />;
+}
+
+function WorkTypeReportPageInner() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: workTypes, isLoading: wtLoading } = useMandatoryWorkTypes();
   const { period } = useGlobalPeriod();
