@@ -1,8 +1,13 @@
 from app.services.llm.prompt import build_prompt, PROMPT_VERSION
 
 
-def test_prompt_uses_v3_base():
-    assert PROMPT_VERSION.startswith("v3-")
+def test_prompt_version_has_canonical_format():
+    """Версия промпта: `v<N>-<hash>` где hash — fingerprint поверх FORMAT_SPEC."""
+    parts = PROMPT_VERSION.split("-", 1)
+    assert len(parts) == 2
+    assert parts[0].startswith("v")
+    assert parts[0][1:].isdigit()
+    assert len(parts[1]) >= 4
 
 
 def test_prompt_includes_full_8000_description():

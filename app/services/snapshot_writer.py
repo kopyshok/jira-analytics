@@ -304,30 +304,23 @@ class SnapshotWriter:
                 and wt_subtracts.get(r.work_type_id, False)
             )
 
+        # Используем CapacityService — он же используется в /capacity-diff
+        # endpoint'е. Раньше SnapshotWriter считал часы strict-only по
+        # production_calendar_day, а diff брал из CapacityService с fallback
+        # «8h Пн–Пт» — это давало ложные drift'ы там, где календарь заполнен
+        # частично или вообще не заполнен. Теперь обе стороны видят одинаковую
+        # норму.
+        from app.services.capacity_service import CapacityService
+        capacity_svc = CapacityService(self.db)
+
         now = datetime.utcnow()
         for emp in employees:
             pct_mandatory = _sum_pct(emp.role)
-            emp_abs = abs_by_emp.get(emp.id, [])
             for month in months:
-                month_start = date(scenario.year, month, 1)
-                last_day = calendar.monthrange(scenario.year, month)[1]
-                month_end = date(scenario.year, month, last_day)
-
-                gross = 0.0
-                absence_hrs = 0.0
-                cur = month_start
-                while cur <= month_end:
-                    day_h = cal_by_date.get(cur, 0.0)
-                    if day_h > 0:
-                        # hours_per_day coefficient (day_h × emp.hours_per_day / 8) опущен:
-                        # Employee пока не имеет hours_per_day, все работают по 8ч.
-                        # Вернуть когда появится part-time поддержка.
-                        gross += day_h
-                        if any(s <= cur <= e for s, e in emp_abs):
-                            absence_hrs += day_h
-                    cur += timedelta(days=1)
-
-                available = max(0.0, gross - absence_hrs)
+                mc = capacity_svc.monthly_capacity(emp.id, scenario.year, month)
+                gross = mc.norm_hours
+                absence_hrs = mc.vacation_hours
+                available = mc.available_hours
                 mandatory = round(available * pct_mandatory / 100, 2)
                 project = round(max(0.0, available - mandatory), 2)
 

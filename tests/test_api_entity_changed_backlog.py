@@ -55,6 +55,8 @@ def test_update_backlog_item_publishes_backlog(testclient_db_session):
 
 
 def test_archive_backlog_item_publishes_backlog(testclient_db_session):
+    """Archive затрагивает и planning (удаляет allocations в draft-сценариях),
+    поэтому событие включает обе сущности."""
     mock_bus = AsyncMock()
     item = _seed_item(testclient_db_session)
     client = _make_client(testclient_db_session, mock_bus)
@@ -64,7 +66,7 @@ def test_archive_backlog_item_publishes_backlog(testclient_db_session):
     finally:
         _teardown()
     mock_bus.publish.assert_called_once_with(
-        {"type": "entity_changed", "entities": ["backlog"]}
+        {"type": "entity_changed", "entities": ["backlog", "planning"]}
     )
 
 

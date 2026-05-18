@@ -99,8 +99,9 @@ def test_analyst_assigned_regardless_of_role(db_session):
     assert result["analyst"][item.id] == dev.id
 
 
-def test_analyst_none_if_no_assignee(db_session):
-    """Без исполнителя аналитик не определяется."""
+def test_analyst_falls_back_to_pool_if_no_assignee(db_session):
+    """Без исполнителя аналитик подбирается из пула наименее загруженных
+    (см. resource_planning_service.py: «фаза Анализ всё равно появится»)."""
     analyst = _make_emp(db_session, "Иванов", "analyst")
     item = _make_item(
         db_session,
@@ -109,6 +110,19 @@ def test_analyst_none_if_no_assignee(db_session):
     )
     svc = ResourcePlanningService(db_session)
     result = svc._assign_employees([item], [analyst])
+    assert result["analyst"].get(item.id) == analyst.id
+
+
+def test_analyst_none_if_no_assignee_and_empty_pool(db_session):
+    """Без исполнителя и без пула аналитиков фаза «Анализ» остаётся пустой."""
+    dev = _make_emp(db_session, "Разраб", "developer")
+    item = _make_item(
+        db_session,
+        estimate_analyst_hours=10.0,
+        assignee_employee_id=None,
+    )
+    svc = ResourcePlanningService(db_session)
+    result = svc._assign_employees([item], [dev])
     assert result["analyst"].get(item.id) is None
 
 

@@ -42,6 +42,29 @@ def _uid() -> str:
     return str(uuid.uuid4())
 
 
+def _seed_full_q2_calendar(db_session: Session, workdays: list) -> None:
+    """Заполнить полный календарь Q2 2026: указанные даты — 8ч рабочие,
+    все остальные дни — 0ч (нерабочие).
+
+    Тесты SnapshotWriter раньше засеивали только рабочие дни и полагались на
+    strict-логику. После перевода snapshot на CapacityService для пустых дней
+    применяется fallback «8h Пн–Пт» — поэтому без явного «нерабочего» дня
+    результаты ломаются. Helper закрывает все дни Q2.
+    """
+    from datetime import timedelta as _td
+    workday_set = set(workdays)
+    start = ddate(2026, 4, 1)
+    end = ddate(2026, 6, 30)
+    cur = start
+    while cur <= end:
+        hours = 8.0 if cur in workday_set else 0.0
+        db_session.add(ProductionCalendarDay(
+            date=cur, hours=hours, is_workday=bool(hours),
+            kind="workday" if hours else "weekend", source="manual",
+        ))
+        cur += _td(days=1)
+
+
 @pytest.fixture
 def db_session():
     engine = create_engine(
@@ -312,13 +335,12 @@ def test_write_capacity_snapshot_per_emp_per_month(
     )
     db_session.add(ar)
 
-    # Календарь Q2: 3 рабочих дня по 8ч в каждом месяце
-    for d in [ddate(2026, 4, 1), ddate(2026, 4, 2), ddate(2026, 4, 3),
-              ddate(2026, 5, 1), ddate(2026, 5, 4), ddate(2026, 5, 5),
-              ddate(2026, 6, 1), ddate(2026, 6, 2), ddate(2026, 6, 3)]:
-        db_session.add(ProductionCalendarDay(
-            date=d, hours=8.0, is_workday=True, kind="workday", source="manual",
-        ))
+    # Календарь Q2: 3 рабочих дня по 8ч в каждом месяце, остальные — 0ч.
+    _seed_full_q2_calendar(db_session, [
+        ddate(2026, 4, 1), ddate(2026, 4, 2), ddate(2026, 4, 3),
+        ddate(2026, 5, 1), ddate(2026, 5, 4), ddate(2026, 5, 5),
+        ddate(2026, 6, 1), ddate(2026, 6, 2), ddate(2026, 6, 3),
+    ])
 
     # Иванов (e-1) в отпуске весь май
     db_session.add(Absence(
@@ -392,12 +414,11 @@ def test_write_norm_snapshot_uses_available_not_gross(
         is_planned=True, color=None, is_active=True, sort_order=1,
     )
     db_session.add(ar)
-    for d in [ddate(2026, 4, 1), ddate(2026, 4, 2),
-              ddate(2026, 5, 4), ddate(2026, 5, 5),
-              ddate(2026, 6, 1), ddate(2026, 6, 2)]:
-        db_session.add(ProductionCalendarDay(
-            date=d, hours=8.0, is_workday=True, kind="workday", source="manual",
-        ))
+    _seed_full_q2_calendar(db_session, [
+        ddate(2026, 4, 1), ddate(2026, 4, 2),
+        ddate(2026, 5, 4), ddate(2026, 5, 5),
+        ddate(2026, 6, 1), ddate(2026, 6, 2),
+    ])
     # Иванов (e-1) в отпуске 1-2 апреля (оба рабочих дня апреля)
     db_session.add(Absence(
         id="ab-n1", employee_id="e-1",

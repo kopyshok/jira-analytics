@@ -73,7 +73,12 @@ def test_new_issue_no_parent_is_unverified(db):
     assert issue.category_verified is False
 
 
-def test_new_issue_parent_verified_no_flag_is_auto_verified(db):
+def test_new_issue_parent_verified_no_flag_is_still_unverified(db):
+    """Все новые задачи попадают в стек на разбор независимо от родителя.
+
+    `require_child_verification` на родителе — UI-подсказка при ручной
+    верификации, не влияет на дефолт для новой задачи (sync_service.py:656).
+    """
     db.add(Project(id="p1", jira_project_id="J1", key="PRJ", name="Project"))
     parent = Issue(
         id="par1", jira_issue_id="99", key="PRJ-99",
@@ -86,7 +91,7 @@ def test_new_issue_parent_verified_no_flag_is_auto_verified(db):
     issue, created = svc._upsert_issue(_jira_issue("100", "PRJ-100"), "p1", parent_id="par1")
     db.flush()
     assert created is True
-    assert issue.category_verified is True
+    assert issue.category_verified is False
 
 
 def test_new_issue_parent_verified_with_flag_is_unverified(db):

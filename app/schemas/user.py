@@ -62,6 +62,13 @@ class UserResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @field_validator("selected_theme", mode="before")
+    @classmethod
+    def _default_theme(cls, v: str | None) -> str:
+        # Свежесозданный User-объект до flush'а имеет `selected_theme=None`,
+        # SQL-default «dark-blue» применяется только в БД.
+        return v if v else "dark-blue"
+
 
 class UserCreate(BaseModel):
     email: str

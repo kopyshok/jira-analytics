@@ -98,6 +98,12 @@ def test_sync_backlog_excludes_archived_items(db_session):
 
 
 def test_allocation_response_has_source_category(db_session):
+    """Allocations отдают исходную категорию задачи (initiatives_rfa в draft).
+
+    Draft-сценарий фильтрует allocations по `initiatives_rfa` (или
+    `quarterly_tasks` если сценарий уже был approved). Тут проверяем что
+    поле `source_category` присутствует в ответе.
+    """
     from app.models import BacklogItem, Issue, Project
 
     proj = Project(
@@ -111,13 +117,13 @@ def test_allocation_response_has_source_category(db_session):
         id="i-sc",
         jira_issue_id="i-sc-jira",
         key="ITL-SC1",
-        summary="Quarterly",
+        summary="Initiative",
         issue_type="ITL",
         status="Open",
         project_id=proj.id,
-        category="quarterly_tasks",
+        category="initiatives_rfa",
     )
-    item = BacklogItem(id="bi-sc", title="Quarterly", issue_id=issue.id)
+    item = BacklogItem(id="bi-sc", title="Initiative", issue_id=issue.id)
     db_session.add_all([proj, issue, item])
     db_session.commit()
 
@@ -135,6 +141,6 @@ def test_allocation_response_has_source_category(db_session):
         assert r2.status_code == 200, r2.text
         allocs = r2.json()
         qt_alloc = next(a for a in allocs if a["backlog_item_id"] == "bi-sc")
-        assert qt_alloc["source_category"] == "quarterly_tasks"
+        assert qt_alloc["source_category"] == "initiatives_rfa"
     finally:
         app.dependency_overrides.clear()
