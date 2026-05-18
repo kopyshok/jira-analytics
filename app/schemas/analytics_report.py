@@ -10,10 +10,14 @@ class NodeTotals(BaseModel):
     plan_hours: Optional[float] = None
     pct_plan: Optional[float] = None
     pct_total: float
+    pct_in_group: Optional[float] = None
     worklog_count: int
     issue_count: int
     employee_count: int
     avg_worklog_minutes: float
+    foreign_issue_count: int = 0
+    foreign_hours: float = 0.0
+    foreign_pct: float = 0.0
 
 
 class AnalyticsIssueNode(BaseModel):
