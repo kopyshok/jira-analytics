@@ -625,6 +625,18 @@ export default function AnalyticsTable({
       align: 'right',
     },
     {
+      title: '% в группе',
+      key: 'pct_in_group',
+      render: (_, r) =>
+        isBlock(r)
+          ? null
+          : r.totals.pct_in_group != null
+            ? `${r.totals.pct_in_group.toFixed(1)}%`
+            : '—',
+      width: 100,
+      align: 'right',
+    },
+    {
       title: '% от итога',
       key: 'pct_total',
       render: (_, r) => (isBlock(r) ? null : `${r.totals.pct_total.toFixed(1)}%`),
