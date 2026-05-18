@@ -191,6 +191,31 @@ function buildIssueNode(
   return node;
 }
 
+function ForeignChip({ totals }: { totals: NodeTotals }) {
+  if (!totals.foreign_issue_count || totals.foreign_issue_count === 0) return null;
+  return (
+    <Tooltip title={`Чужие задачи под этим узлом: ${totals.foreign_issue_count} зад. · ${totals.foreign_hours.toFixed(1)}ч · ${totals.foreign_pct.toFixed(1)}% от факта`}>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          marginLeft: 8,
+          padding: '2px 8px',
+          borderRadius: 999,
+          fontSize: 11,
+          fontWeight: 600,
+          background: 'rgba(255, 156, 74, 0.12)',
+          color: '#ff9c4a',
+          border: '1px solid rgba(255, 156, 74, 0.35)',
+        }}
+      >
+        ⚠ {totals.foreign_issue_count} · {totals.foreign_hours.toFixed(0)}ч · {totals.foreign_pct.toFixed(0)}%
+      </span>
+    </Tooltip>
+  );
+}
+
 // ─── Flat-row extraction ──────────────────────────────────────────────────────
 
 interface FlatRow {
@@ -593,11 +618,14 @@ export default function AnalyticsTable({
       key: 'fact_hours',
       render: (_, r) =>
         isBlock(r) ? null : (
-          <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
-            {r.totals.fact_hours.toFixed(1)}
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
+              {r.totals.fact_hours.toFixed(1)}
+            </span>
+            {r.kind !== 'issue' && <ForeignChip totals={r.totals} />}
           </span>
         ),
-      width: 100,
+      width: 200,
       align: 'right',
     },
     {
