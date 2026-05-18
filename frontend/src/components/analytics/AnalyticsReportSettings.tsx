@@ -1,6 +1,7 @@
 import { Modal, Checkbox } from 'antd';
 import type { CheckboxGroupProps } from 'antd/es/checkbox';
 import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
+import GroupingEditor from './GroupingEditor';
 
 const COLUMN_LABELS: Record<string, string> = {
   plan_hours: 'Часы план',
@@ -19,7 +20,7 @@ interface Props {
   onClose: () => void;
 }
 
-export default function AnalyticsColumnSettings({ open, onClose }: Props) {
+export default function AnalyticsReportSettings({ open, onClose }: Props) {
   const { visible, setVisible } = useAnalyticsColumns();
 
   const options: CheckboxGroupProps['options'] = CONFIGURABLE_COLUMNS.map((col) => ({
@@ -36,11 +37,17 @@ export default function AnalyticsColumnSettings({ open, onClose }: Props) {
 
   return (
     <Modal
-      title="Настройка столбцов"
+      title="Настройка отчёта"
       open={open}
       onCancel={onClose}
       footer={null}
     >
+      <h4 style={{ marginTop: 0, color: '#e6edf7' }}>Группировка</h4>
+      <GroupingEditor />
+
+      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
+
+      <h4 style={{ color: '#e6edf7' }}>Столбцы</h4>
       <Checkbox.Group
         options={options}
         value={currentChecked}
