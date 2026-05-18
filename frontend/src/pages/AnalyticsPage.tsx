@@ -7,7 +7,7 @@ import PageHeader from '../components/shared/PageHeader';
 import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import AnalyticsTable from '../components/analytics/AnalyticsTable';
-import AnalyticsColumnSettings from '../components/analytics/AnalyticsColumnSettings';
+import AnalyticsReportSettings from '../components/analytics/AnalyticsReportSettings';
 import AnalyticsDetailWorkspace from '../components/analytics/AnalyticsDetailWorkspace';
 import AnalyticsKpiTiles from '../components/analytics/AnalyticsKpiTiles';
 import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
@@ -157,7 +157,7 @@ export default function AnalyticsPage() {
         icon={<SettingOutlined />}
         onClick={() => setColumnSettingsOpen(true)}
       >
-        Настройка столбцов
+        Настройка отчёта
       </Button>
       <Button
         onClick={() => {
@@ -190,7 +190,7 @@ export default function AnalyticsPage() {
         actions={headerActions}
       />
 
-      <AnalyticsColumnSettings
+      <AnalyticsReportSettings
         open={columnSettingsOpen}
         onClose={() => setColumnSettingsOpen(false)}
       />
