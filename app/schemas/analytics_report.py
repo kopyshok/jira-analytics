@@ -31,6 +31,7 @@ class AnalyticsIssueNode(BaseModel):
     last_worklog_at: Optional[datetime] = None
     assignee_name: Optional[str] = None
     is_foreign: bool = False
+    team: Optional[str] = None
     totals: NodeTotals
 
 

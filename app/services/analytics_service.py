@@ -1425,6 +1425,7 @@ class AnalyticsService:
                     "last_at": None,
                     "assignee_name": assignee_name_val,
                     "is_foreign": is_foreign,
+                    "team": issue_team,
                 }
                 bucket[key] = entry
             entry["fact_hours"] += h
@@ -1551,6 +1552,7 @@ class AnalyticsService:
                                     last_worklog_at=v["last_at"],
                                     assignee_name=v.get("assignee_name"),
                                     is_foreign=v.get("is_foreign", False),
+                                    team=v.get("team"),
                                     totals=calc_totals([v], parent_total=grand_total_fact,
                                                        parent_fact=_cat_fact),
                                 ))
