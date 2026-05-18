@@ -49,7 +49,9 @@ def _empty_totals() -> "NodeTotals":
     from app.schemas.analytics_report import NodeTotals
     return NodeTotals(
         fact_hours=0.0, plan_hours=None, pct_plan=None, pct_total=0.0,
+        pct_in_group=None,
         worklog_count=0, issue_count=0, employee_count=0, avg_worklog_minutes=0.0,
+        foreign_issue_count=0, foreign_hours=0.0, foreign_pct=0.0,
     )
 
 
@@ -1232,28 +1234,51 @@ class AnalyticsService:
         EXCLUDED_WT_ID = "__excluded__"
         EXCLUDED_WT_LABEL = "Исключено из анализа"
 
-        # 3. Сотрудники + primary team
-        emp_query = self.db.query(Employee).filter(Employee.is_active.is_(True))
+        # 3. Сотрудники + team membership.
+        # Не фильтруем по is_active: неактивные могли работать в выбранном
+        # периоде, факт должен быть виден. Бакет естественно отсечёт тех,
+        # у кого нет ворклогов.
+        emp_query = self.db.query(Employee)
         if employee_id:
             emp_query = emp_query.filter(Employee.id == employee_id)
         all_employees: list[Employee] = emp_query.all()
 
+        # Любое членство в команде, не только primary — соответствует логике
+        # дашборд-виджетов (drill-in с плитки должен находить те же часы).
         emp_team_rows = (
-            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
-            .filter(
-                EmployeeTeam.employee_id.in_([e.id for e in all_employees]),
-                EmployeeTeam.is_primary.is_(True),
-            )
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team, EmployeeTeam.is_primary)
+            .filter(EmployeeTeam.employee_id.in_([e.id for e in all_employees]))
             .all()
         )
-        emp_team_by_id: dict[str, str] = {r.employee_id: r.team for r in emp_team_rows}
+        emp_teams_all: dict[str, list[str]] = {}
+        emp_primary: dict[str, str] = {}
+        for r in emp_team_rows:
+            emp_teams_all.setdefault(r.employee_id, []).append(r.team)
+            if r.is_primary:
+                emp_primary[r.employee_id] = r.team
 
-        # team filter — оставляем только сотрудников чья primary team подходит
+        # team filter — сотрудник проходит, если ЛЮБОЕ его членство в выбранных.
+        # Атрибутирование в иерархии: primary, если он в выбранных, иначе
+        # первое совпавшее членство.
         if teams:
             team_set = set(teams)
-            employees = [e for e in all_employees if emp_team_by_id.get(e.id) in team_set]
+            employees = [
+                e for e in all_employees
+                if any(t in team_set for t in emp_teams_all.get(e.id, []))
+            ]
+            emp_team_by_id: dict[str, str] = {}
+            for e in employees:
+                primary = emp_primary.get(e.id)
+                if primary and primary in team_set:
+                    emp_team_by_id[e.id] = primary
+                    continue
+                for t in emp_teams_all.get(e.id, []):
+                    if t in team_set:
+                        emp_team_by_id[e.id] = t
+                        break
         else:
             employees = all_employees
+            emp_team_by_id = dict(emp_primary)
 
         if not employees:
             return AnalyticsReportResponse(
@@ -1379,7 +1404,10 @@ class AnalyticsService:
                 if wt_code not in work_type_codes:
                     continue
             if category_codes:
-                if cat_code_eff not in category_codes:
+                # Сверяем с сырым Issue.category (как виджет дашборда),
+                # а не с cat_code_eff: foreign-routing переписывает cat_code_eff
+                # в None, что прятало бы legitimate строки при drill-in с плитки.
+                if cat_code not in category_codes:
                     continue
 
             team_key = emp_team or "__no_team__"
@@ -1416,26 +1444,74 @@ class AnalyticsService:
             teams=teams, employees=employees, work_types=work_types,
         )
 
-        def calc_totals(rows: list[dict], plan_hours: "float | None" = None,
-                        emp_count: int = 0, parent_total: "float | None" = None) -> NodeTotals:
+        def calc_totals(
+            rows: list[dict],
+            plan_hours: "float | None" = None,
+            emp_count: int = 0,
+            parent_total: "float | None" = None,
+            parent_fact: "float | None" = None,
+        ) -> NodeTotals:
             fact = sum(r["fact_hours"] for r in rows)
             wl = sum(r["wl_count"] for r in rows)
             issues = len({r["issue_id"] for r in rows})
             avg_min = (fact * 60 / wl) if wl else 0.0
             pct_plan = (fact / plan_hours * 100) if plan_hours and plan_hours > 0 else None
             pct_total = (fact / parent_total * 100) if parent_total and parent_total > 0 else 0.0
+            pct_in_group = (
+                (fact / parent_fact * 100)
+                if parent_fact and parent_fact > 0
+                else None
+            )
+            foreign_rows = [r for r in rows if r.get("is_foreign")]
+            foreign_hours = sum(r["fact_hours"] for r in foreign_rows)
+            foreign_issue_count = len({r["issue_id"] for r in foreign_rows})
+            foreign_pct = (foreign_hours / fact * 100) if fact > 0 else 0.0
             return NodeTotals(
                 fact_hours=round(fact, 1),
                 plan_hours=round(plan_hours, 1) if plan_hours is not None else None,
                 pct_plan=round(pct_plan, 1) if pct_plan is not None else None,
                 pct_total=round(pct_total, 1),
+                pct_in_group=round(pct_in_group, 1) if pct_in_group is not None else None,
                 worklog_count=wl,
                 issue_count=issues,
                 employee_count=emp_count,
                 avg_worklog_minutes=round(avg_min, 1),
+                foreign_issue_count=foreign_issue_count,
+                foreign_hours=round(foreign_hours, 1),
+                foreign_pct=round(foreign_pct, 1),
             )
 
         grand_total_fact = sum(v["fact_hours"] for v in bucket.values())
+
+        # Precompute fact totals at every level for parent_fact threading.
+        def _sum_rows(rows: list[dict]) -> float:
+            return sum(r["fact_hours"] for r in rows)
+
+        team_fact: dict[str, float] = {}
+        role_fact: dict[tuple, float] = {}
+        emp_fact: dict[tuple, float] = {}
+        wt_fact: dict[tuple, float] = {}
+        cat_fact: dict[tuple, float] = {}
+
+        for _tk, _rd in tree.items():
+            _t_total = 0.0
+            for _rk, _ed in _rd.items():
+                _r_total = 0.0
+                for _eid, _wd in _ed.items():
+                    _e_total = 0.0
+                    for _wid, _cd in _wd.items():
+                        _w_total = 0.0
+                        for _cc, _il in _cd.items():
+                            _c = _sum_rows(_il)
+                            cat_fact[(_tk, _rk, _eid, _wid, _cc)] = _c
+                            _w_total += _c
+                        wt_fact[(_tk, _rk, _eid, _wid)] = _w_total
+                        _e_total += _w_total
+                    emp_fact[(_tk, _rk, _eid)] = _e_total
+                    _r_total += _e_total
+                role_fact[(_tk, _rk)] = _r_total
+                _t_total += _r_total
+            team_fact[_tk] = _t_total
 
         teams_out: list[AnalyticsTeamNode] = []
         for team_key, roles_dict in tree.items():
@@ -1465,6 +1541,7 @@ class AnalyticsService:
                             cat_label, cat_color, _ = cat_meta.get(
                                 cat_code or "", (ORPHAN_CAT_LABEL, "#7e94b8", None)
                             )
+                            _cat_fact = cat_fact.get((team_key, role_key, emp_id, wt_id, cat_code))
                             issues_out: list[AnalyticsIssueNode] = []
                             for v in issues_list:
                                 issues_out.append(AnalyticsIssueNode(
@@ -1474,12 +1551,17 @@ class AnalyticsService:
                                     last_worklog_at=v["last_at"],
                                     assignee_name=v.get("assignee_name"),
                                     is_foreign=v.get("is_foreign", False),
-                                    totals=calc_totals([v], parent_total=grand_total_fact),
+                                    totals=calc_totals([v], parent_total=grand_total_fact,
+                                                       parent_fact=_cat_fact),
                                 ))
                             cats_out.append(AnalyticsCategoryNode(
                                 category_code=cat_code,
                                 label=cat_label, color=cat_color,
-                                totals=calc_totals(issues_list, parent_total=grand_total_fact),
+                                totals=calc_totals(
+                                    issues_list,
+                                    parent_total=grand_total_fact,
+                                    parent_fact=wt_fact.get((team_key, role_key, emp_id, wt_id)),
+                                ),
                                 issues=sorted(issues_out, key=lambda x: -x.totals.fact_hours),
                             ))
                             wt_rows.extend(issues_list)
@@ -1488,8 +1570,11 @@ class AnalyticsService:
                             plan_for_wt = None
                         wts_out.append(AnalyticsWorkTypeNode(
                             work_type_id=wt_id, label=wt_label,
-                            totals=calc_totals(wt_rows, plan_hours=plan_for_wt,
-                                               parent_total=grand_total_fact),
+                            totals=calc_totals(
+                                wt_rows, plan_hours=plan_for_wt,
+                                parent_total=grand_total_fact,
+                                parent_fact=emp_fact.get((team_key, role_key, emp_id)),
+                            ),
                             categories=sorted(cats_out, key=lambda x: -x.totals.fact_hours),
                         ))
                         emp_rows.extend(wt_rows)
@@ -1498,9 +1583,13 @@ class AnalyticsService:
                         employee_id=emp.id,
                         name=emp.display_name or "",
                         initials=_initials(emp.display_name or ""),
-                        totals=calc_totals(emp_rows,
-                                           plan_hours=emp_plan if emp_plan > 0 else None,
-                                           emp_count=1, parent_total=grand_total_fact),
+                        totals=calc_totals(
+                            emp_rows,
+                            plan_hours=emp_plan if emp_plan > 0 else None,
+                            emp_count=1,
+                            parent_total=grand_total_fact,
+                            parent_fact=role_fact.get((team_key, role_key)),
+                        ),
                         work_types=sorted(wts_out, key=lambda x: -x.totals.fact_hours),
                     ))
                     role_rows.extend(emp_rows)
@@ -1515,10 +1604,13 @@ class AnalyticsService:
                 roles_out.append(AnalyticsRoleNode(
                     role_code=role_key,
                     role_label=role_label, role_color=role_color_main,
-                    totals=calc_totals(role_rows,
-                                       plan_hours=role_plan if role_plan > 0 else None,
-                                       emp_count=len(emps_out),
-                                       parent_total=grand_total_fact),
+                    totals=calc_totals(
+                        role_rows,
+                        plan_hours=role_plan if role_plan > 0 else None,
+                        emp_count=len(emps_out),
+                        parent_total=grand_total_fact,
+                        parent_fact=team_fact.get(team_key),
+                    ),
                     employees=sorted(emps_out, key=lambda x: -x.totals.fact_hours),
                 ))
                 team_rows.extend(role_rows)
@@ -1529,10 +1621,13 @@ class AnalyticsService:
             )
             teams_out.append(AnalyticsTeamNode(
                 team=team_key if team_key != "__no_team__" else None,
-                totals=calc_totals(team_rows,
-                                   plan_hours=team_plan if team_plan > 0 else None,
-                                   emp_count=len(team_emp_ids),
-                                   parent_total=grand_total_fact),
+                totals=calc_totals(
+                    team_rows,
+                    plan_hours=team_plan if team_plan > 0 else None,
+                    emp_count=len(team_emp_ids),
+                    parent_total=grand_total_fact,
+                    parent_fact=None,  # Team is the root level — no parent in group
+                ),
                 roles=sorted(roles_out, key=lambda x: -x.totals.fact_hours),
             ))
 
@@ -1547,6 +1642,14 @@ class AnalyticsService:
             for eid in all_emp_ids
         )
         total_wl = sum(v["wl_count"] for v in bucket.values())
+        all_rows = list(bucket.values())
+        all_foreign = [r for r in all_rows if r.get("is_foreign")]
+        grand_foreign_hours = sum(r["fact_hours"] for r in all_foreign)
+        grand_foreign_issues = len({r["issue_id"] for r in all_foreign})
+        grand_foreign_pct = (
+            (grand_foreign_hours / grand_total_fact * 100)
+            if grand_total_fact > 0 else 0.0
+        )
         return AnalyticsReportResponse(
             teams=teams_out,
             grand_totals=NodeTotals(
@@ -1554,6 +1657,7 @@ class AnalyticsService:
                 plan_hours=round(grand_plan, 1) if grand_plan > 0 else None,
                 pct_plan=round(grand_total_fact / grand_plan * 100, 1) if grand_plan > 0 else None,
                 pct_total=100.0 if grand_total_fact > 0 else 0.0,
+                pct_in_group=None,
                 worklog_count=total_wl,
                 issue_count=len({v["issue_id"] for v in bucket.values()}),
                 employee_count=len(all_emp_ids),
@@ -1562,6 +1666,9 @@ class AnalyticsService:
                     if total_wl else 0.0,
                     1,
                 ),
+                foreign_issue_count=grand_foreign_issues,
+                foreign_hours=round(grand_foreign_hours, 1),
+                foreign_pct=round(grand_foreign_pct, 1),
             ),
         )
 
