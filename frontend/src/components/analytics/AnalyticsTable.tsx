@@ -42,10 +42,14 @@ const EMPTY_TOTALS: NodeTotals = {
   plan_hours: null,
   pct_plan: null,
   pct_total: 0,
+  pct_in_group: null,
   worklog_count: 0,
   issue_count: 0,
   employee_count: 0,
   avg_worklog_minutes: 0,
+  foreign_issue_count: 0,
+  foreign_hours: 0,
+  foreign_pct: 0,
 };
 
 function initialsOf(name: string): string {

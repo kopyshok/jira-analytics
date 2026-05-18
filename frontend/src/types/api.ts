@@ -420,7 +420,8 @@ export interface BacklogItemResponse {
   jira_status_category: string | null;
   jira_status_changed_at: string | null;
   quarter_label: string | null;
-  // Jira involvement (0–1) and calendar duration (days) — read-only, sourced from Jira.
+  // Planning parameters — effective values (from Jira or manual override).
+  // Override via PATCH /backlog/{id}; sync no longer wipes manual values when Jira is empty.
   involvement_analyst: number | null;
   involvement_dev: number | null;
   involvement_qa: number | null;
@@ -429,6 +430,15 @@ export interface BacklogItemResponse {
   duration_dev_days: number | null;
   duration_qa_days: number | null;
   duration_launch_days: number | null;
+  // Current Jira values (for badge "from Jira" vs "manual override").
+  involvement_analyst_jira: number | null;
+  involvement_dev_jira: number | null;
+  involvement_qa_jira: number | null;
+  involvement_launch_jira: number | null;
+  duration_analyst_days_jira: number | null;
+  duration_dev_days_jira: number | null;
+  duration_qa_days_jira: number | null;
+  duration_launch_days_jira: number | null;
   // Parallel staffing overrides (null = inherit from project default, which defaults to 1).
   parallel_count_analyst: number | null;
   parallel_count_dev: number | null;
@@ -841,10 +851,14 @@ export interface NodeTotals {
   plan_hours: number | null;
   pct_plan: number | null;
   pct_total: number;
+  pct_in_group: number | null;
   worklog_count: number;
   issue_count: number;
   employee_count: number;
   avg_worklog_minutes: number;
+  foreign_issue_count: number;
+  foreign_hours: number;
+  foreign_pct: number;
 }
 
 export interface AnalyticsIssueNode {
