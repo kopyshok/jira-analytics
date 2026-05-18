@@ -3,6 +3,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.ai_deps import require_ai_enabled
 from app.database import get_db
 from app.jobs.regenerate_summaries import regenerate_outdated_summaries
 from app.services.llm.base import ConfigurationError, get_llm_provider
@@ -13,7 +14,7 @@ from app.models.app_setting import AppSetting
 router = APIRouter()
 
 
-@router.post("/test")
+@router.post("/test", dependencies=[Depends(require_ai_enabled)])
 async def test_connection(db: Session = Depends(get_db)):
     """Проверка соединения с настроенным LLM-провайдером."""
     try:
@@ -25,7 +26,7 @@ async def test_connection(db: Session = Depends(get_db)):
     return {"ok": ok, "provider": provider.name, "model": provider.model, "error": error}
 
 
-@router.post("/regenerate-all")
+@router.post("/regenerate-all", dependencies=[Depends(require_ai_enabled)])
 async def regenerate_all(background: BackgroundTasks):
     """Запускает в background регенерацию всех устаревших AI-саммари."""
     background.add_task(regenerate_outdated_summaries)
@@ -50,7 +51,7 @@ _GEMINI_EXCLUDE_KEYWORDS = (
 )
 
 
-@router.get("/gemini/models")
+@router.get("/gemini/models", dependencies=[Depends(require_ai_enabled)])
 async def list_gemini_models(db: Session = Depends(get_db)):
     """Живой список доступных Gemini-моделей из Google API.
 
@@ -91,7 +92,7 @@ async def list_gemini_models(db: Session = Depends(get_db)):
     return out
 
 
-@router.get("/openrouter/models")
+@router.get("/openrouter/models", dependencies=[Depends(require_ai_enabled)])
 async def list_openrouter_models(db: Session = Depends(get_db)):
     """Список бесплатных моделей OpenRouter (pricing.prompt == 0 AND completion == 0).
 

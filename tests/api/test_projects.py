@@ -103,5 +103,7 @@ def test_summary_returns_null_when_no_cache(test_client, test_db_session):
 
 def test_regenerate_summary_404_for_unknown_key(test_client, test_db_session):
     _seed(test_db_session)
+    # AI рубильник по умолчанию выключен — включаем для теста бизнес-логики.
+    test_client.put("/api/v1/settings/generic", json={"key": "ai_enabled", "value": "true"})
     r = test_client.post("/api/v1/projects/UNKNOWN/regenerate-summary")
     assert r.status_code in (400, 404)

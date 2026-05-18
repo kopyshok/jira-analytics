@@ -11,6 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.core.ai_deps import require_ai_enabled
 from app.core.auth_deps import get_current_user
 from app.models.user import User
 from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
@@ -65,7 +66,7 @@ def _make_service(db: Session) -> WorkTypeReportService:
     )
 
 
-@router.post("", response_model=WorkTypeReportResponse)
+@router.post("", response_model=WorkTypeReportResponse, dependencies=[Depends(require_ai_enabled)])
 async def build_report(
     payload: WorkTypeReportRequest,
     db: Session = Depends(get_db),
@@ -92,7 +93,7 @@ def _disconnect_checker(request: Request):
     return _check
 
 
-@router.post("/build/stream")
+@router.post("/build/stream", dependencies=[Depends(require_ai_enabled)])
 async def build_report_stream(
     payload: WorkTypeReportRequest,
     http_request: Request,
@@ -186,7 +187,7 @@ async def get_report(
     return _to_response(snap, wt)
 
 
-@router.post("/candidates/accept")
+@router.post("/candidates/accept", dependencies=[Depends(require_ai_enabled)])
 def accept_candidate(
     payload: CandidateAcceptRequest,
     db: Session = Depends(get_db),
@@ -222,7 +223,7 @@ def accept_candidate(
     return {"ok": True, "theme_id": theme.id}
 
 
-@router.post("/candidates/merge")
+@router.post("/candidates/merge", dependencies=[Depends(require_ai_enabled)])
 def merge_candidate(
     payload: CandidateMergeRequest,
     db: Session = Depends(get_db),
@@ -259,7 +260,11 @@ def merge_candidate(
     return {"ok": True}
 
 
-@router.post("/themes/{theme_id}/aliases", response_model=ThemeAliasResponse)
+@router.post(
+    "/themes/{theme_id}/aliases",
+    response_model=ThemeAliasResponse,
+    dependencies=[Depends(require_ai_enabled)],
+)
 def add_theme_alias(
     theme_id: str,
     payload: AliasAddRequest,
@@ -274,7 +279,11 @@ def add_theme_alias(
     return ThemeAliasResponse(theme_id=t.id, aliases=t.aliases)
 
 
-@router.delete("/themes/{theme_id}/aliases", response_model=ThemeAliasResponse)
+@router.delete(
+    "/themes/{theme_id}/aliases",
+    response_model=ThemeAliasResponse,
+    dependencies=[Depends(require_ai_enabled)],
+)
 def delete_theme_alias(
     theme_id: str,
     alias: str = Query(..., min_length=1, max_length=255),
@@ -315,7 +324,7 @@ def set_embedding_threshold(
     return ThresholdResponse(threshold=payload.threshold)
 
 
-@router.post("/candidates/ignore")
+@router.post("/candidates/ignore", dependencies=[Depends(require_ai_enabled)])
 def ignore_candidate(
     payload: CandidateIgnoreRequest,
     db: Session = Depends(get_db),
@@ -344,7 +353,7 @@ def ignore_candidate(
     return {"ok": True}
 
 
-@router.post("/manual-classify")
+@router.post("/manual-classify", dependencies=[Depends(require_ai_enabled)])
 def manual_classify(
     payload: ManualClassifyRequest,
     db: Session = Depends(get_db),

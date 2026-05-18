@@ -49,7 +49,10 @@ def client(db_session, monkeypatch):
         "app.api.endpoints.work_type_report.get_llm_provider", _no_provider,
     )
     try:
-        yield TestClient(app)
+        c = TestClient(app)
+        # AI рубильник по умолчанию выключен — включаем для теста бизнес-логики WTR.
+        c.put("/api/v1/settings/generic", json={"key": "ai_enabled", "value": "true"})
+        yield c
     finally:
         app.dependency_overrides.clear()
 

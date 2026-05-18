@@ -39,8 +39,15 @@ def test_client(test_db_session):
         app.dependency_overrides.clear()
 
 
+def _enable_ai(client: TestClient) -> None:
+    """Включить ИИ для тестов — без этого все /llm/* эндпоинты вернут 503."""
+    r = client.put("/api/v1/settings/generic", json={"key": "ai_enabled", "value": "true"})
+    assert r.status_code in (200, 204)
+
+
 def test_llm_test_returns_400_without_key(test_client, test_db_session):
-    """Без сконфигурированного API key возвращает 400."""
+    """Без сконфигурированного API key возвращает 400 (когда ИИ включён)."""
+    _enable_ai(test_client)
     r = test_client.post("/api/v1/llm/test")
     assert r.status_code == 400
     assert "not configured" in r.json()["detail"].lower()
@@ -62,6 +69,7 @@ def test_llm_settings_keys_accepted(test_client):
 
 def test_regenerate_all_returns_started(test_client):
     """POST /llm/regenerate-all запускает background задачу и возвращает started=True."""
+    _enable_ai(test_client)
     r = test_client.post("/api/v1/llm/regenerate-all")
     assert r.status_code == 200
     assert r.json() == {"started": True}

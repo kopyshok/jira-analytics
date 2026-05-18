@@ -78,6 +78,8 @@ def _is_allowed_generic_key(key: str) -> bool:
     """Limit generic settings to non-secret UI/runtime keys."""
     if key in LLM_KEYS:
         return True
+    if key == "ai_enabled":
+        return True
     return (
         key.startswith("ui_")
         or key == "worklog_reload_since_date"

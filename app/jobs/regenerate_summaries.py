@@ -9,6 +9,7 @@ from app.database import SessionLocal
 from app.models.issue import Issue
 from app.models.project_ai_summary import ProjectAISummary
 from app.models.worklog import Worklog
+from app.services.llm.base import is_ai_enabled
 from app.services.llm.prompt import current_prompt_version
 from app.services.project_summary_service import ProjectSummaryService
 from app.services.projects_service import PROJECT_CATEGORY_CODES
@@ -26,6 +27,10 @@ async def regenerate_outdated_summaries() -> dict:
     """
     db = SessionLocal()
     try:
+        if not is_ai_enabled(db):
+            logger.info("Nightly regen skipped: AI disabled by administrator")
+            return {"processed": 0, "regenerated": 0, "skipped": 0, "errors": 0, "ai_disabled": True}
+
         epics = db.execute(
             select(Issue).where(Issue.category.in_(PROJECT_CATEGORY_CODES))
         ).scalars().all()

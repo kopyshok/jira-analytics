@@ -42,6 +42,11 @@ def _get_app_setting(db: Session, key: str) -> str | None:
     return row.value if row else None
 
 
+def is_ai_enabled(db: Session) -> bool:
+    """Глобальный «рубильник» ИИ. По умолчанию выключен (нет ключа → False)."""
+    return (_get_app_setting(db, "ai_enabled") or "").strip().lower() == "true"
+
+
 def get_llm_provider(db: Session) -> LLMProvider:
     """Factory по AppSetting.llm_provider (default 'gemini')."""
     provider_name = (_get_app_setting(db, "llm_provider") or "gemini").lower()

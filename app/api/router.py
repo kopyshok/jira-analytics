@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.endpoints import admin_users as admin_users_endpoints
+from app.api.endpoints import ai_status as ai_status_endpoints
 from app.api.endpoints import auth as auth_endpoints
 from app.api.endpoints import llm as llm_endpoints
 from app.api.endpoints import users as users_endpoints
@@ -153,6 +154,9 @@ api_router.include_router(
 )
 api_router.include_router(
     llm_endpoints.router, prefix="/llm", tags=["llm"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    ai_status_endpoints.router, prefix="/ai-status", tags=["ai-status"], dependencies=_auth_dep,
 )
 api_router.include_router(
     resource_planning.router,

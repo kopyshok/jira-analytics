@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.ai_deps import require_ai_enabled
 from app.database import get_db
 from app.models import Project
 from app.services.llm.base import ConfigurationError
@@ -208,7 +209,11 @@ async def get_summary(key: str, db: Session = Depends(get_db)):
     return _serialize_summary(row) if row else None
 
 
-@router.post("/{key}/regenerate-summary", response_model=ProjectSummarySchema)
+@router.post(
+    "/{key}/regenerate-summary",
+    response_model=ProjectSummarySchema,
+    dependencies=[Depends(require_ai_enabled)],
+)
 async def regenerate_summary(key: str, db: Session = Depends(get_db)):
     """Синхронная регенерация AI-саммари через LLM. Публикует SSE-событие после успеха."""
     import httpx

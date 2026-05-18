@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.ai_deps import require_ai_enabled
 from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models.executive_snapshot import ExecutiveSnapshot
@@ -81,7 +82,11 @@ def get_dashboard(
     return _make_response(snap)
 
 
-@router.post("/dashboard/build", response_model=ExecutiveDashboardResponse)
+@router.post(
+    "/dashboard/build",
+    response_model=ExecutiveDashboardResponse,
+    dependencies=[Depends(require_ai_enabled)],
+)
 async def build_dashboard(
     payload: ExecutiveBuildRequest,
     db: Session = Depends(get_db),
