@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { Space, DatePicker, Switch, Empty, Spin, Button } from 'antd';
+import { Space, DatePicker, Switch, Empty, Spin, Button, Segmented } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../components/shared/PageHeader';
@@ -8,6 +8,8 @@ import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import AnalyticsTable from '../components/analytics/AnalyticsTable';
 import AnalyticsColumnSettings from '../components/analytics/AnalyticsColumnSettings';
+import AnalyticsDetailWorkspace from '../components/analytics/AnalyticsDetailWorkspace';
+import AnalyticsKpiTiles from '../components/analytics/AnalyticsKpiTiles';
 import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
 import { useAnalyticsColumns } from '../hooks/useAnalyticsColumns';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
@@ -29,6 +31,10 @@ function periodBounds(year: number, quarter: number, month?: number): { start: s
   };
 }
 
+type AnalyticsViewMode = 'classic' | 'detail';
+
+const VIEW_MODE_STORAGE_KEY = 'analytics:view-mode';
+
 export default function AnalyticsPage() {
   const [params, setParams] = useSearchParams();
   const { period } = useGlobalPeriod();
@@ -47,6 +53,21 @@ export default function AnalyticsPage() {
   const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('drawer');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<AnalyticsViewMode>(() => {
+    try {
+      return localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'detail' ? 'detail' : 'classic';
+    } catch {
+      return 'classic';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    } catch {
+      /* localStorage may be unavailable */
+    }
+  }, [viewMode]);
 
   const queryParams = useMemo(() => ({
     year: period.year,
@@ -74,21 +95,64 @@ export default function AnalyticsPage() {
     return periodBounds(period.year, period.quarter, period.month);
   }, [localRange, period]);
 
+  const handleFilterChange = (next: {
+    employeeId?: string;
+    workType?: string;
+    category?: string;
+    taskQ?: string;
+  }) => {
+    const p = new URLSearchParams(params);
+    const set = (k: string, v: string | undefined) => {
+      if (v) p.set(k, v); else p.delete(k);
+    };
+    set('employee', next.employeeId);
+    set('work_type', next.workType);
+    set('category', next.category);
+    set('task', next.taskQ);
+    setParams(p);
+  };
+
+  const hasActiveFilters = Boolean(
+    employeeId || workType || category || taskQ || localRange?.[0] || localRange?.[1],
+  );
+
+  const resetFilters = () => {
+    setLocalRange(null);
+    const p = new URLSearchParams(params);
+    p.delete('employee');
+    p.delete('work_type');
+    p.delete('category');
+    p.delete('task');
+    setParams(p);
+  };
+
   const headerActions = (
     <Space wrap>
+      <Segmented
+        value={viewMode}
+        onChange={(value) => setViewMode(value as AnalyticsViewMode)}
+        options={[
+          { label: 'Текущий вид', value: 'classic' },
+          { label: 'Новый вид', value: 'detail' },
+        ]}
+      />
       <DatePicker.RangePicker
         value={localRange}
         onChange={setLocalRange}
         placeholder={['Уточнить с', 'по']}
         allowClear
       />
-      <span>Ворклоги:</span>
-      <Switch
-        checkedChildren="inline"
-        unCheckedChildren="drawer"
-        checked={worklogMode === 'inline'}
-        onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
-      />
+      {viewMode === 'classic' && (
+        <>
+          <span>Ворклоги:</span>
+          <Switch
+            checkedChildren="inline"
+            unCheckedChildren="drawer"
+            checked={worklogMode === 'inline'}
+            onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
+          />
+        </>
+      )}
       <Button
         icon={<SettingOutlined />}
         onClick={() => setColumnSettingsOpen(true)}
@@ -131,32 +195,41 @@ export default function AnalyticsPage() {
         onClose={() => setColumnSettingsOpen(false)}
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
-        <AnalyticsTeamList
+      {isLoading ? (
+        <Spin />
+      ) : !data?.teams.length ? (
+        <Empty description="Нет данных за выбранный период">
+          {hasActiveFilters && (
+            <Button type="primary" onClick={resetFilters}>
+              Сбросить фильтры
+            </Button>
+          )}
+        </Empty>
+      ) : viewMode === 'detail' ? (
+        <AnalyticsDetailWorkspace
           data={data}
-          selected={selectedTeam}
-          onSelect={setSelectedTeam}
+          selectedTeam={selectedTeam}
+          onSelectTeam={setSelectedTeam}
+          urlParams={{ employeeId, workType, category, taskQ }}
+          onFilterChange={handleFilterChange}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          onOpenColumnSettings={() => setColumnSettingsOpen(true)}
         />
-        <div>
-          <AnalyticsFilters
-            urlParams={{ employeeId, workType, category, taskQ }}
-            onChange={(next) => {
-              const p = new URLSearchParams(params);
-              const set = (k: string, v: string | undefined) => {
-                if (v) p.set(k, v); else p.delete(k);
-              };
-              set('employee', next.employeeId);
-              set('work_type', next.workType);
-              set('category', next.category);
-              set('task', next.taskQ);
-              setParams(p);
-            }}
+      ) : (
+        <>
+          <AnalyticsKpiTiles totals={data.grand_totals} />
+          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
+          <AnalyticsTeamList
+            data={data}
+            selected={selectedTeam}
+            onSelect={setSelectedTeam}
           />
-          {isLoading ? (
-            <Spin />
-          ) : !data?.teams.length ? (
-            <Empty description="Нет данных за выбранный период" />
-          ) : (
+          <div>
+            <AnalyticsFilters
+              urlParams={{ employeeId, workType, category, taskQ }}
+              onChange={handleFilterChange}
+            />
             <AnalyticsTable
               data={data}
               selectedTeam={selectedTeam}
@@ -164,9 +237,10 @@ export default function AnalyticsPage() {
               periodStart={periodStart}
               periodEnd={periodEnd}
             />
-          )}
+          </div>
         </div>
-      </div>
+        </>
+      )}
     </Space>
   );
 }
