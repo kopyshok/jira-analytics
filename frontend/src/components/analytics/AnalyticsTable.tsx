@@ -79,6 +79,18 @@ function stripKeyPrefix(summary: string, key: string): string {
   return trimmed;
 }
 
+const TEAM_COLOR_PALETTE = [
+  '#9c6bff', '#22d3ee', '#f97316', '#10b981',
+  '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4',
+];
+
+function teamColor(name: string | null | undefined): string {
+  if (!name) return '#7e94b8';
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return TEAM_COLOR_PALETTE[Math.abs(h) % TEAM_COLOR_PALETTE.length];
+}
+
 function buildIssueNode(
   i: AnalyticsIssueNode,
   prefix: string,
@@ -135,6 +147,19 @@ function buildIssueNode(
             title="Задача чужой команды (списание часов вне scope сотрудника)"
           >
             Чужая
+          </Tag>
+        )}
+        {i.is_foreign && i.team && (
+          <Tag
+            style={{
+              marginInlineEnd: 0,
+              flexShrink: 0,
+              background: 'transparent',
+              border: `1px solid ${teamColor(i.team)}`,
+              color: teamColor(i.team),
+            }}
+          >
+            {i.team}
           </Tag>
         )}
         <span
