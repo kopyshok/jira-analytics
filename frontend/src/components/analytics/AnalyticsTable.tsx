@@ -641,16 +641,44 @@ export default function AnalyticsTable({
     {
       title: 'Часы факт',
       key: 'fact_hours',
-      render: (_, r) =>
-        isBlock(r) ? null : (
-          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
-              {r.totals.fact_hours.toFixed(1)}
+      render: (_, r) => {
+        if (isBlock(r)) return null;
+        const pct = r.depth === 0
+          ? r.totals.pct_total
+          : (r.totals.pct_in_group ?? 0);
+        const barWidth = Math.min(100, Math.max(0, pct));
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <span style={{ color: pctColor(r.totals.pct_plan), fontWeight: 600 }}>
+                {r.totals.fact_hours.toFixed(1)}
+              </span>
+              {r.kind !== 'issue' && <ForeignChip totals={r.totals} />}
             </span>
-            {r.kind !== 'issue' && <ForeignChip totals={r.totals} />}
-          </span>
-        ),
-      width: 200,
+            {r.kind !== 'issue' && (
+              <div
+                style={{
+                  width: '100%',
+                  height: 3,
+                  background: 'rgba(255,255,255,0.06)',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${barWidth}%`,
+                    height: '100%',
+                    background: '#00c9c8',
+                    opacity: 0.85,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      },
+      width: 220,
       align: 'right',
     },
     {
