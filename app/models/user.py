@@ -37,6 +37,9 @@ class User(Base, TimestampMixin):
     analytics_columns_raw: Mapped[str] = mapped_column(
         "analytics_columns", Text, nullable=False, default="[]"
     )
+    analytics_layout_raw: Mapped[str] = mapped_column(
+        "analytics_layout", Text, nullable=False, default="{}", server_default="{}"
+    )
     selected_theme: Mapped[str] = mapped_column(
         String(20), nullable=False, default="dark-blue", server_default="dark-blue"
     )
@@ -76,6 +79,17 @@ class User(Base, TimestampMixin):
     @analytics_columns.setter
     def analytics_columns(self, value: list[str]) -> None:
         self.analytics_columns_raw = json.dumps(list(value or []))
+
+    @property
+    def analytics_layout(self) -> dict:
+        try:
+            return json.loads(self.analytics_layout_raw or "{}")
+        except (TypeError, ValueError):
+            return {}
+
+    @analytics_layout.setter
+    def analytics_layout(self, value: dict) -> None:
+        self.analytics_layout_raw = json.dumps(value or {})
 
     @property
     def appearance_settings(self) -> dict:
