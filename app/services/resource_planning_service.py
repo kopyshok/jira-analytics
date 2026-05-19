@@ -994,13 +994,17 @@ class ResourcePlanningService:
                 if seg_start is None:
                     seg_start = d
                 used = min(cap, remaining_h)
-                # Списываем фактически использованные часы, остаток дня доступен
-                # последующим фазам того же сотрудника (e.g. involvement<1 фаза
-                # отъела 4h из 8h — оставшиеся 4h должны достаться следующей
-                # фазе). Точное распределение часов внутри дня хранится в
-                # daily_hours_json для OVERLOAD-расчёта. Preempting-фазы (ОПЭ)
-                # идут отдельным путём через preempt_locked.
-                emp_days[d] = max(0.0, emp_days[d] - used)
+                # День занят этой фазой целиком — другие фазы того же сотрудника
+                # не могут садиться на этот день параллельно (relay/serialization).
+                # Точное использование часов хранится в daily_hours_json для
+                # корректного OVERLOAD-расчёта. Preempting-фазы (ОПЭ) используют
+                # отдельный путь через preempt_locked — там day не consumed
+                # заранее.
+                # NB: попытка списать только used часов (Batch 1 audit fix) ломала
+                # порядок приоритетов — низкоприоритетная задача с маленьким
+                # per-day cap влезала в дробный остаток дня раньше, чем
+                # высокоприоритетная.
+                emp_days[d] = 0.0
                 remaining_h -= used
                 seg_hours += used
                 daily_used[d] = used
