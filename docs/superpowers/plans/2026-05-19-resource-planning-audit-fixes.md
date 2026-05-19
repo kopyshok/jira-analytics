@@ -176,32 +176,37 @@ User chose option **A**: ship all 21 findings in batches (P0 → P1 → P2). Res
 
 ## Execution plan (batches)
 
-### Batch 1 — P0 (4 fixes, ~1.5h)
-1. Allocator partial-day capacity (finding 1)
-2. add_predecessor atomic cycle check (finding 2)
-3. merge preserve external successors (finding 3)
-4. Leveler daily JSON sync (finding 4)
+### Batch 1 — P0 (4 fixes) ✅ e8e1ab1
+1. ✅ Allocator partial-day capacity (finding 1)
+2. ✅ add_predecessor atomic cycle check (finding 2)
+3. ✅ merge preserve external successors (finding 3)
+4. ✅ Leveler daily JSON sync (finding 4)
 
-Test: re-run live plan compute + all RP tests. Hand-verify with planted scenarios (involvement<1, cyclic predecessor, cascade-split + merge, leveler shift case).
+### Batch 2 — P1 group A (5 fixes) ✅ 85f634b
+5. ✅ OPO dual-row default chain
+6. ✅ Shift daily JSON trim
+8. ✅ Quarter spillover not critical (slack < 0)
+9. ✅ Redistribute respects phases_with_inbound_pred
+10. ✅ pinned_employee snapshot regardless of other flags
 
-### Batch 2 — P1 group A (5 fixes, ~1.5h)
-5. OPO dual-row default chain
-6. Shift daily JSON trim
-8. Quarter spillover not critical
-9. Redistribute respects phases_with_inbound_pred
-10. pinned_employee snapshot regardless of other flags
+### Batch 3 — P1 group B (5 fixes) ✅ 277726d
+7. ✅ split_assignment pre-check blocks cascade on already-split downstream
+11. ✅ _restore_predecessors 4-tuple → 3-tuple fallback
+12. ✅ PATCH no-op start_date doesn't pin
+13. ✅ Force-employee + start_date combo → 422
+14. ✅ Leveler fallback daily cap
 
-### Batch 3 — P1 group B (5 fixes, ~1.5h)
-7. _cascade_split warns on already-split downstream
-11. _restore_predecessors employee_id key relaxation
-12. PATCH no-op start_date doesn't pin
-13. Force-employee + start_date combo
-14. Leveler fallback daily cap
+### Batch 4 — P2 (7 fixes) ✅ 2c40263
+15. ✅ Dead code cleanup (legacy split map + opo placeholder)
+16. ✅ _topological_order O(N+E) via adjacency list
+17. ✅ split_assignment guards pinned_split
+18. ✅ _quarter_bounds raises ValueError → 422
+19. ✅ fork copies manual-edit state
+20. ✅ muted conflicts re-evaluated
+21. ✅ N+1 employee/item lookup → bulk
 
-### Batch 4 — P2 (7 fixes, ~1h)
-15-21 (dead code, perf, defensive guards, fork copy, muted cleanup, N+1)
-
-After each batch: commit + push, update this plan with ✅ on completed items.
+Все 21 финдинг закрыты. Test suite: 977 passed (+1 pre-existing fail
+`test_pinned_start_preserved_on_recompute` из 2145b05, не связан).
 
 ---
 
