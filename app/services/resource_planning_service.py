@@ -484,7 +484,14 @@ class ResourcePlanningService:
 
         # Преварительно вычесть часы pinned-сегментов из remaining чтобы не
         # перегрузить тех же сотрудников при пересчёте non-pinned фаз.
+        # pinned_split — только структурный маркер, дата НЕ зафиксирована
+        # (см. _shift_to_obey_predecessors); часы такой строки разложит
+        # отдельный re-distribute проход после шага shift, поэтому здесь её
+        # часы не учитываем — иначе resource дважды списан с тех дней, где
+        # фактической работы не будет.
         for a in pinned_existing:
+            if not a.pinned_start:
+                continue
             if (
                 a.employee_id
                 and a.start_date
@@ -883,6 +890,40 @@ class ResourcePlanningService:
         self.db.flush()
         preds = self._load_predecessors(plan_id)
         self._shift_to_obey_predecessors(new_assignments, preds, q_start, q_end_extended)
+
+        # Pinned_split — только структурный маркер N частей. После shift его
+        # start_date может попасть на выходной/отпуск; перераскладываем часы
+        # через allocator от текущего start_date, чтобы фаза легла на реально
+        # рабочие дни сотрудника. pinned_start (явная заморозка даты) при этом
+        # уважается — его не трогаем.
+        for a in new_assignments:
+            if not a.pinned_split or a.pinned_start:
+                continue
+            if not a.employee_id or not a.hours_allocated or not a.start_date:
+                continue
+            if a.employee_id not in remaining:
+                continue
+            segments, daily = self._allocate_hours_with_breakdown(
+                a.employee_id,
+                float(a.hours_allocated),
+                a.start_date,
+                q_end_extended,
+                remaining,
+                preempt_locked=preempt_locked,
+                original_capacity=original_avail,
+            )
+            if not segments:
+                continue
+            new_start = segments[0][0]
+            new_end = segments[-1][1]
+            a.start_date = new_start
+            a.end_date = new_end
+            a.out_of_quarter = new_end > q_end
+            a.daily_hours_json = (
+                json.dumps({d.isoformat(): h for d, h in daily.items()})
+                if daily
+                else None
+            )
 
         # CPM на первичных датах
         self._compute_cpm(new_assignments, q_end_extended)
