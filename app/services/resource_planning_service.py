@@ -369,6 +369,29 @@ class ResourcePlanningService:
 
         avail = self.build_availability(employees, q_start, q_end_extended, list(blocks))
 
+        # Календарь рабочих часов БЕЗ сотрудника — для фазы QA (часы-only,
+        # без employee_id). Используется чтобы пропускать выходные/праздники
+        # при раскладке часов QA, иначе фаза «теряет» часы, попавшие на
+        # нерабочие дни (см. баг ITL-304: 20 ч QA, окно Чт-Вс → 14.4 ч).
+        qa_cal_rows = (
+            self.db.execute(
+                select(ProductionCalendarDay).where(
+                    and_(
+                        ProductionCalendarDay.date >= q_start,
+                        ProductionCalendarDay.date <= q_end_extended,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        qa_cal_anomalies = {row.date: row.hours for row in qa_cal_rows}
+        def _qa_daily_hours(d: date) -> float:
+            h = qa_cal_anomalies.get(d)
+            if h is None:
+                return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
+            return h
+
         # Снимок изначальной доступности (до любого расхода) — нужен для
         # split-логики `_allocate_hours`: отличаем «день занят preempting-фазой»
         # от «день недоступен по календарю». Глубокая копия по дням.
@@ -476,13 +499,29 @@ class ResourcePlanningService:
                     )
 
                 if phase == "qa":
-                    # QA — часы-only, без сотрудника. Длина = ceil(hours / 6) дней.
-                    seg_start = earliest_start
-                    days_needed = max(1, int((hours + DEFAULT_HOURS_PER_DAY - 0.001)
-                                             // DEFAULT_HOURS_PER_DAY))
-                    seg_end = seg_start + timedelta(days=days_needed - 1)
-                    if seg_end > q_end_extended:
-                        seg_end = q_end_extended
+                    # QA — часы-only, без сотрудника. Раскладываем часы по
+                    # рабочим дням производственного календаря (выходные и
+                    # праздники пропускаем). Старая логика `ceil(hours/6)`
+                    # считала календарными днями и теряла часы, попавшие на
+                    # выходные.
+                    qa_daily: Dict[date, float] = {}
+                    remaining_h = hours
+                    cursor = earliest_start
+                    while remaining_h > 0.001 and cursor <= q_end_extended:
+                        avail_h = _qa_daily_hours(cursor)
+                        if avail_h > 0:
+                            take = min(remaining_h, avail_h)
+                            qa_daily[cursor] = take
+                            remaining_h -= take
+                        cursor += timedelta(days=1)
+                    if not qa_daily:
+                        phase_end = earliest_start
+                        continue
+                    seg_start = min(qa_daily.keys())
+                    seg_end = max(qa_daily.keys())
+                    daily_json = json.dumps(
+                        {d.isoformat(): h for d, h in qa_daily.items()}
+                    )
                     a = ResourcePlanAssignment(
                         plan_id=plan_id,
                         backlog_item_id=item.id,
@@ -493,6 +532,7 @@ class ResourcePlanningService:
                         start_date=seg_start,
                         end_date=seg_end,
                         out_of_quarter=(seg_end > q_end),
+                        daily_hours_json=daily_json,
                     )
                     new_assignments.append(a)
                     phase_end = seg_end
