@@ -170,30 +170,28 @@ export default function DependencyArrows({
       (svg as SVGSVGElement).appendChild(path);
     }
 
-    // Intra-initiative arrows (phase → next phase, same item)
-    const PHASE_ORDER = ['analyst', 'dev', 'qa', 'opo'];
+    // Intra-initiative arrows — data-driven по фактическим predecessor_ids.
+    // Снятие связи в сайдбаре сразу убирает стрелку; восстановление — рисует.
+    const byId = new Map<string, AssignmentOut>();
+    for (const a of assignments) byId.set(a.id, a);
     const byItem = new Map<string, AssignmentOut[]>();
     for (const a of assignments) {
       if (!byItem.has(a.backlog_item_id)) byItem.set(a.backlog_item_id, []);
       byItem.get(a.backlog_item_id)!.push(a);
     }
 
-    for (const [, itemAssignments] of byItem) {
-      for (let i = 0; i < PHASE_ORDER.length - 1; i++) {
-        const fromPhase = PHASE_ORDER[i];
-        const toPhase = PHASE_ORDER[i + 1];
-        const fromCandidates = itemAssignments.filter(a => a.phase === fromPhase);
-        const maxPart = Math.max(...fromCandidates.map(x => x.part_number), 0);
-        const from = fromCandidates.find(a => a.part_number === maxPart);
-        const to = itemAssignments.find(a => a.phase === toPhase && a.part_number === 1);
-        if (!from || !to) continue;
-
-        const fromEl = rowRefs.current.get(`${from.backlog_item_id}-${from.phase}-${from.part_number}`);
-        const toEl = rowRefs.current.get(`${to.backlog_item_id}-${to.phase}-${to.part_number}`);
-        if (!fromEl || !toEl) continue;
-
+    for (const a of assignments) {
+      const predIds = a.predecessor_ids ?? [];
+      if (predIds.length === 0) continue;
+      const toEl = rowRefs.current.get(`${a.backlog_item_id}-${a.phase}-${a.part_number}`);
+      if (!toEl) continue;
+      const tRect = toEl.getBoundingClientRect();
+      for (const pid of predIds) {
+        const pred = byId.get(pid);
+        if (!pred) continue;
+        const fromEl = rowRefs.current.get(`${pred.backlog_item_id}-${pred.phase}-${pred.part_number}`);
+        if (!fromEl) continue;
         const fRect = fromEl.getBoundingClientRect();
-        const tRect = toEl.getBoundingClientRect();
         drawArrow(
           fRect.right - cRect.left,
           fRect.top + fRect.height / 2 - cRect.top,
