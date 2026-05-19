@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 from dateutil.relativedelta import relativedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -1407,18 +1407,43 @@ class ResourcePlanningService:
             Tuple[Tuple[str, str, int, Optional[str]], Tuple[str, str, int, Optional[str]]]
         ],
     ) -> None:
-        """Воссоздать рёбра PhasePredecessor по снимку логических ключей."""
+        """Воссоздать рёбра PhasePredecessor по снимку логических ключей.
+
+        Lookup в две фазы:
+        1. Точный 4-tuple (item, phase, part, employee_id) — для opo, где две
+           строки на инициативу различаются только сотрудником.
+        2. Fallback 3-tuple (item, phase, part) — для случаев, когда фаза
+           reassigned на другого сотрудника (allocator выбрал другого peer).
+           Берём единственного кандидата по 3-tuple; для phase=opo
+           пропускаем 3-tuple fallback (дубликаты разруливать нечем).
+        """
         if not snapshot:
             return
         from app.models import PhasePredecessor
 
-        by_key: Dict[Tuple[str, str, int, Optional[str]], ResourcePlanAssignment] = {}
+        by_key_4: Dict[Tuple[str, str, int, Optional[str]], ResourcePlanAssignment] = {}
+        by_key_3: Dict[Tuple[str, str, int], List[ResourcePlanAssignment]] = (
+            defaultdict(list)
+        )
         for a in assignments:
-            key = (a.backlog_item_id, a.phase, a.part_number, a.employee_id)
-            by_key[key] = a
-        # Рёбра между date-pinned строками не каскадятся при delete, поэтому
-        # могут уже существовать в DB. Подтягиваем их в `seen`, чтобы повторная
-        # вставка не упала на UNIQUE.
+            by_key_4[(a.backlog_item_id, a.phase, a.part_number, a.employee_id)] = a
+            by_key_3[(a.backlog_item_id, a.phase, a.part_number)].append(a)
+
+        def resolve(
+            key: Tuple[str, str, int, Optional[str]],
+        ) -> Optional[ResourcePlanAssignment]:
+            hit = by_key_4.get(key)
+            if hit:
+                return hit
+            item_id, phase, part, _emp = key
+            if phase == "opo":
+                # Дубли OPO без точного employee_id-матча не resolved безопасно.
+                return None
+            candidates = by_key_3.get((item_id, phase, part), [])
+            if len(candidates) == 1:
+                return candidates[0]
+            return None
+
         existing_pairs = self.db.execute(
             select(
                 PhasePredecessor.successor_assignment_id,
@@ -1427,8 +1452,8 @@ class ResourcePlanningService:
         ).all()
         seen: set[Tuple[str, str]] = {(r[0], r[1]) for r in existing_pairs}
         for succ_key, pred_key in snapshot:
-            s = by_key.get(succ_key)
-            p = by_key.get(pred_key)
+            s = resolve(succ_key)
+            p = resolve(pred_key)
             if not s or not p or not s.id or not p.id or s.id == p.id:
                 continue
             pair = (s.id, p.id)
@@ -1723,6 +1748,40 @@ class ResourcePlanningService:
             raise ValueError(
                 f"parts sum {sum(parts_hours)} != phase hours {total}"
             )
+
+        # Pre-check для cascade: downstream-фазы не должны быть уже разбиты
+        # пользователем (part_number > 1), иначе _cascade_split их молча
+        # скипает и пропорции расходятся. OPO структурно имеет 2 строки
+        # (analyst-кусок + dev-кусок) с part_number=1 — это не split.
+        if cascade:
+            try:
+                src_idx = PHASE_ORDER.index(a.phase)
+            except ValueError:
+                src_idx = -1
+            if src_idx >= 0:
+                downstream_split_phases: List[str] = []
+                for ph in PHASE_ORDER[src_idx + 1 :]:
+                    max_part = (
+                        self.db.execute(
+                            select(
+                                func.max(ResourcePlanAssignment.part_number)
+                            ).where(
+                                ResourcePlanAssignment.plan_id == a.plan_id,
+                                ResourcePlanAssignment.backlog_item_id
+                                == a.backlog_item_id,
+                                ResourcePlanAssignment.phase == ph,
+                            )
+                        )
+                        .scalar()
+                    )
+                    if max_part and max_part > 1:
+                        downstream_split_phases.append(ph)
+                if downstream_split_phases:
+                    raise ValueError(
+                        "cascade blocked: downstream phases already split: "
+                        + ",".join(downstream_split_phases)
+                        + ". Merge them first or split source without cascade."
+                    )
 
         plan_id = a.plan_id
         item_id = a.backlog_item_id
