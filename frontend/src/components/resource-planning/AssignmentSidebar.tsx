@@ -7,6 +7,7 @@ import type {
   AssignmentExplainResponseV2,
   AssignmentOut,
   EmployeeChangePreviewResponse,
+  ManualEditFlag,
 } from '../../api/resourcePlanning';
 import {
   clearAssignmentManualEdit,
@@ -150,10 +151,10 @@ export default function AssignmentSidebar({
     }
   };
 
-  const handleClearManual = async () => {
+  const handleClearManual = async (flags?: ManualEditFlag[]) => {
     setSaving(true);
     try {
-      await clearAssignmentManualEdit(planId, assignment.id);
+      await clearAssignmentManualEdit(planId, assignment.id, flags);
       message.success('Ручные правки сняты');
       onChanged?.();
     } catch (e) {
@@ -270,9 +271,39 @@ export default function AssignmentSidebar({
             Слить части в одну
           </Button>
         )}
+        {assignment.pinned_employee && (
+          <Button
+            block
+            danger
+            onClick={() => handleClearManual(['employee'])}
+            disabled={saving}
+          >
+            Сбросить закреплённого исполнителя
+          </Button>
+        )}
+        {assignment.pinned_start && (
+          <Button
+            block
+            danger
+            onClick={() => handleClearManual(['start'])}
+            disabled={saving}
+          >
+            Сбросить ручную дату
+          </Button>
+        )}
+        {assignment.pinned_split && hasSiblings && (
+          <Button
+            block
+            danger
+            onClick={() => handleClearManual(['split'])}
+            disabled={saving}
+          >
+            Сбросить признак разбивки
+          </Button>
+        )}
         {assignment.is_pinned && (
-          <Button block danger onClick={handleClearManual} disabled={saving}>
-            Снять ручные правки
+          <Button block onClick={() => handleClearManual()} disabled={saving}>
+            Снять все ручные правки
           </Button>
         )}
       </Space>
