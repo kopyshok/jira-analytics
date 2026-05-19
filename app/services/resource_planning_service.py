@@ -893,20 +893,39 @@ class ResourcePlanningService:
 
         # Pinned_split — только структурный маркер N частей. После shift его
         # start_date может попасть на выходной/отпуск; перераскладываем часы
-        # через allocator от текущего start_date, чтобы фаза легла на реально
-        # рабочие дни сотрудника. pinned_start (явная заморозка даты) при этом
-        # уважается — его не трогаем.
-        for a in new_assignments:
+        # через allocator. earliest_start считаем тем же образом, что в основном
+        # цикле: max(pred ends)+1, либо q_start для user_touched инициатив без
+        # входящих рёбер. pinned_start (явная заморозка даты) — обходим.
+        by_id_for_split = {x.id: x for x in new_assignments if x.id}
+        # Идём в топологическом порядке, чтобы part2 видела обновлённый
+        # end_date part1, а qa в том же item — обновлённый end последней
+        # части dev.
+        split_order = self._topological_order(new_assignments, preds)
+        for a in split_order:
             if not a.pinned_split or a.pinned_start:
                 continue
-            if not a.employee_id or not a.hours_allocated or not a.start_date:
+            if not a.employee_id or not a.hours_allocated:
                 continue
             if a.employee_id not in remaining:
                 continue
+            pred_ids = preds.get(a.id, [])
+            pred_ends = [
+                by_id_for_split[pid].end_date
+                for pid in pred_ids
+                if pid in by_id_for_split and by_id_for_split[pid].end_date
+            ]
+            if pred_ends:
+                earliest = max(max(pred_ends) + timedelta(days=1), q_start)
+            elif a.backlog_item_id in user_touched_items_snapshot:
+                earliest = q_start
+            elif a.start_date:
+                earliest = a.start_date
+            else:
+                earliest = q_start
             segments, daily = self._allocate_hours_with_breakdown(
                 a.employee_id,
                 float(a.hours_allocated),
-                a.start_date,
+                earliest,
                 q_end_extended,
                 remaining,
                 preempt_locked=preempt_locked,
@@ -924,6 +943,10 @@ class ResourcePlanningService:
                 if daily
                 else None
             )
+            # Если есть последующие части той же фазы (предшественник=эта),
+            # они процессятся ниже в том же цикле; их earliest подтянется к
+            # обновлённому end_date через pred_ends. by_id_for_split уже
+            # ссылается на эти объекты — изменения видны.
 
         # CPM на первичных датах
         self._compute_cpm(new_assignments, q_end_extended)
@@ -1659,6 +1682,28 @@ class ResourcePlanningService:
         start = a.start_date
         end = a.end_date
 
+        # Снимок рёбер ДО удаления: при cascade-delete PhasePredecessor строки
+        # уйдут, а потом надо восстановить как minimum связь
+        # «внешний предшественник → part 1» и «last part → внешний successor»,
+        # иначе фаза после split окажется без attachment к графу и встанет
+        # на старую дату исходной строки.
+        predecessor_ids_external = [
+            r[0]
+            for r in self.db.execute(
+                select(PhasePredecessor.predecessor_assignment_id).where(
+                    PhasePredecessor.successor_assignment_id == a.id
+                )
+            ).all()
+        ]
+        successor_ids_external = [
+            r[0]
+            for r in self.db.execute(
+                select(PhasePredecessor.successor_assignment_id).where(
+                    PhasePredecessor.predecessor_assignment_id == a.id
+                )
+            ).all()
+        ]
+
         self.db.delete(a)
         self.db.flush()
 
@@ -1706,6 +1751,27 @@ class ResourcePlanningService:
             consumed_days += seg_days
             if seg_end:
                 cursor = seg_end + timedelta(days=1)
+
+        # Восстановить внешние рёбра: внешний предшественник → part 1,
+        # last part → внешний successor.
+        if parts and predecessor_ids_external:
+            first_id = parts[0].id
+            for pid in predecessor_ids_external:
+                self.db.add(
+                    PhasePredecessor(
+                        successor_assignment_id=first_id,
+                        predecessor_assignment_id=pid,
+                    )
+                )
+        if parts and successor_ids_external:
+            last_id = parts[-1].id
+            for sid in successor_ids_external:
+                self.db.add(
+                    PhasePredecessor(
+                        successor_assignment_id=sid,
+                        predecessor_assignment_id=last_id,
+                    )
+                )
 
         cascaded: List[ResourcePlanAssignment] = []
         if cascade:
