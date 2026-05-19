@@ -1550,16 +1550,37 @@ def merge_assignment(
 def clear_manual_edits(
     plan_id: str,
     assignment_id: str,
+    flags: Optional[str] = Query(
+        None,
+        description=(
+            "Comma-separated list: start|employee|split. Omit → clear all "
+            "(back-compat). E.g. flags=start clears only date pin."
+        ),
+    ),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     a = db.get(ResourcePlanAssignment, assignment_id)
     if not a or a.plan_id != plan_id:
         raise HTTPException(404, "Assignment not found")
-    a.pinned_start = False
-    a.pinned_employee = False
-    a.pinned_split = False
-    a.manual_edit_at = None
+    requested = (
+        {p.strip() for p in flags.split(",") if p.strip()}
+        if flags
+        else {"start", "employee", "split"}
+    )
+    unknown = requested - {"start", "employee", "split"}
+    if unknown:
+        raise HTTPException(
+            422, f"unknown flag(s): {','.join(sorted(unknown))}"
+        )
+    if "start" in requested:
+        a.pinned_start = False
+    if "employee" in requested:
+        a.pinned_employee = False
+    if "split" in requested:
+        a.pinned_split = False
+    if not (a.pinned_start or a.pinned_employee or a.pinned_split):
+        a.manual_edit_at = None
     plan = db.get(ResourcePlan, plan_id)
     if plan:
         plan.status = "stale"

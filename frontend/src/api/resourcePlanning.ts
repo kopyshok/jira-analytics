@@ -243,10 +243,18 @@ export const mergeAssignment = (planId: string, assignmentId: string) =>
     {},
   );
 
-export const clearAssignmentManualEdit = (planId: string, assignmentId: string) =>
-  api.del(
-    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/manual-edit`,
+export type ManualEditFlag = 'start' | 'employee' | 'split';
+
+export const clearAssignmentManualEdit = (
+  planId: string,
+  assignmentId: string,
+  flags?: ManualEditFlag[],
+) => {
+  const query = flags && flags.length ? `?flags=${flags.join(',')}` : '';
+  return api.del(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/manual-edit${query}`,
   );
+};
 
 export const getScheduledBlocks = (team?: string) =>
   api.get<ScheduledBlock[]>('/resource-planning/scheduled-blocks', team ? { team } : undefined);
