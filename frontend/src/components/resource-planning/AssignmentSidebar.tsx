@@ -512,6 +512,7 @@ function DetailSections({ planId, assignment, prefs, patchPrefs }: DetailSection
           items={data?.daily_breakdown ?? []}
           collapsed={isCollapsed('day_table')}
           onToggleCollapse={() => toggleCollapse('day_table')}
+          involvementPct={data?.phase_calc?.involvement_pct ?? null}
         />
       )}
 
