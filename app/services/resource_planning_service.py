@@ -1062,13 +1062,13 @@ class ResourcePlanningService:
                 if seg_start is None:
                     seg_start = d
                 used = min(cap, remaining_h)
-                # День занят этой фазой целиком — другие фазы того же сотрудника
-                # не могут садиться на этот день параллельно (relay/serialization).
-                # Точное использование часов хранится в daily_hours_json для
-                # корректного OVERLOAD-расчёта (Task 8). Preempting-фазы (ОПЭ)
-                # используют отдельный путь через preempt_locked — там day не
-                # consumed заранее.
-                emp_days[d] = 0.0
+                # Списываем фактически использованные часы, остаток дня доступен
+                # последующим фазам того же сотрудника (e.g. involvement<1 фаза
+                # отъела 4h из 8h — оставшиеся 4h должны достаться следующей
+                # фазе). Точное распределение часов внутри дня хранится в
+                # daily_hours_json для OVERLOAD-расчёта. Preempting-фазы (ОПЭ)
+                # идут отдельным путём через preempt_locked.
+                emp_days[d] = max(0.0, emp_days[d] - used)
                 remaining_h -= used
                 seg_hours += used
                 daily_used[d] = used
@@ -1890,7 +1890,15 @@ class ResourcePlanningService:
         return cascaded
 
     def merge_assignment(self, assignment_id: str) -> ResourcePlanAssignment:
-        """Слить все части одной (item, phase) обратно в одну строку."""
+        """Слить все части одной (item, phase) обратно в одну строку.
+
+        Внешние outbound-рёбра удаляемых siblings переносятся на first.id —
+        иначе CASCADE при delete теряет связи вроде `dev-part-3 → qa-part-3`,
+        и после merge от cascade-split остаётся только то, что выходило из
+        первой части.
+        """
+        from app.models import PhasePredecessor
+
         a = self.db.get(ResourcePlanAssignment, assignment_id)
         if not a:
             raise ValueError("assignment not found")
@@ -1912,6 +1920,41 @@ class ResourcePlanningService:
         total_h = sum((s.hours_allocated or 0.0) for s in siblings)
         first = siblings[0]
         last = siblings[-1]
+        sibling_ids = {s.id for s in siblings}
+        deleted_ids = {s.id for s in siblings[1:]}
+
+        # Снимок outbound-рёбер удаляемых siblings: куда они вели наружу
+        # (за пределы текущей группы siblings). Перенесём на first.id.
+        outbound = (
+            self.db.execute(
+                select(PhasePredecessor).where(
+                    PhasePredecessor.predecessor_assignment_id.in_(deleted_ids)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # Уже существующие outbound first.id — чтобы не плодить дубли при дедупе.
+        existing_first_out = (
+            self.db.execute(
+                select(PhasePredecessor.successor_assignment_id).where(
+                    PhasePredecessor.predecessor_assignment_id == first.id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        first_out_set = set(existing_first_out)
+        new_targets: set[str] = set()
+        for edge in outbound:
+            succ = edge.successor_assignment_id
+            # Внутренние рёбра между siblings уйдут вместе с CASCADE — пропускаем.
+            if succ in sibling_ids:
+                continue
+            if succ in first_out_set or succ in new_targets:
+                continue
+            new_targets.add(succ)
+
         first.part_number = 1
         first.hours_allocated = total_h
         first.pinned_split = False
@@ -1920,6 +1963,14 @@ class ResourcePlanningService:
             first.end_date = last.end_date
         for s in siblings[1:]:
             self.db.delete(s)
+        self.db.flush()  # CASCADE удалит исходные outbound siblings'ов
+        for succ in new_targets:
+            self.db.add(
+                PhasePredecessor(
+                    successor_assignment_id=succ,
+                    predecessor_assignment_id=first.id,
+                )
+            )
         plan = self.db.get(ResourcePlan, a.plan_id)
         if plan:
             plan.status = "stale"
@@ -1927,7 +1978,11 @@ class ResourcePlanningService:
         return first
 
     def add_predecessor(self, successor_id: str, predecessor_id: str) -> None:
-        """Добавить ребро с проверкой на цикл. ValueError если цикл."""
+        """Добавить ребро с проверкой на цикл. ValueError если цикл.
+
+        Коммитит сама. Для bulk-обновления (несколько рёбер одновременно)
+        используй set_predecessors — она атомарна по всему набору.
+        """
         from app.models import PhasePredecessor
 
         existing = (
@@ -1945,6 +2000,50 @@ class ResourcePlanningService:
                 predecessor_assignment_id=predecessor_id,
             )
         )
+        self.db.commit()
+
+    def set_predecessors(
+        self, successor_id: str, predecessor_ids: List[str]
+    ) -> None:
+        """Атомарно заменить весь набор предшественников у successor_id.
+
+        Проверка цикла по полному prospective edge-set ДО вставки. Если цикл —
+        ValueError, состояние БД не меняется. Коммитит сама.
+        """
+        from app.models import PhasePredecessor
+
+        for pid in predecessor_ids:
+            if pid == successor_id:
+                raise ValueError("cycle: self-reference")
+
+        existing = (
+            self.db.execute(select(PhasePredecessor)).scalars().all()
+        )
+        edges: Dict[str, List[str]] = defaultdict(list)
+        for e in existing:
+            # Рёбра текущего successor исключаем — мы их заменяем целиком.
+            if e.successor_assignment_id == successor_id:
+                continue
+            edges[e.successor_assignment_id].append(e.predecessor_assignment_id)
+        # Полный prospective набор для successor_id
+        for pid in predecessor_ids:
+            edges[successor_id].append(pid)
+        if self._has_cycle(edges):
+            raise ValueError("cycle")
+
+        # Только тут трогаем БД: удаляем старые, вставляем новые, один commit.
+        self.db.execute(
+            PhasePredecessor.__table__.delete().where(
+                PhasePredecessor.successor_assignment_id == successor_id
+            )
+        )
+        for pid in predecessor_ids:
+            self.db.add(
+                PhasePredecessor(
+                    successor_assignment_id=successor_id,
+                    predecessor_assignment_id=pid,
+                )
+            )
         self.db.commit()
 
     def _has_cycle(self, edges: Dict[str, List[str]]) -> bool:
