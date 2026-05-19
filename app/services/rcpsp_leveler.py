@@ -259,12 +259,16 @@ class RcpspLeveler:
             or assignment.hours_allocated is None
         ):
             return False
-        # Сохраним оригинальный employee_id, чтобы _per_day_hours корректно
-        # построил fallback по peer_avail (мы переносим фазу на peer'а).
+        # Считаем peer_per_day без учёта старого daily_hours_json — он
+        # привязан к рабочим дням исходного сотрудника. Временно скрываем JSON
+        # и employee, чтобы _per_day_hours прошёл по fallback'у peer'а.
         original_emp = assignment.employee_id
+        original_json = assignment.daily_hours_json
         assignment.employee_id = peer_id
+        assignment.daily_hours_json = None
         peer_per_day = _per_day_hours(assignment, availability)
         assignment.employee_id = original_emp
+        assignment.daily_hours_json = original_json
         if not peer_per_day:
             return False
 
@@ -282,6 +286,10 @@ class RcpspLeveler:
             if free < need - 0.01:
                 return False
         assignment.employee_id = peer_id
+        # daily_hours_json привязан к старому сотруднику (его рабочие дни
+        # и отсутствия). Сбрасываем — пусть последующий компут перестроит,
+        # либо overload-расчёт пройдёт по fallback'у peer'а.
+        assignment.daily_hours_json = None
         return True
 
     def _try_delay(
@@ -315,6 +323,27 @@ class RcpspLeveler:
         assignment.start_date = new_start
         assignment.end_date = new_end
         assignment.slack_days = max(0.0, slack - delta_days)
+        # Синхронизировать daily_hours_json — иначе клампы в сервисе вернут
+        # фазу на старые ключи дней, и overload-расчёт увидит и старый, и
+        # новый диапазон.
+        if assignment.daily_hours_json and delta_days != 0:
+            try:
+                daily = json.loads(assignment.daily_hours_json)
+            except (json.JSONDecodeError, ValueError):
+                daily = {}
+            if daily:
+                shifted: Dict[str, float] = {}
+                for k, v in daily.items():
+                    try:
+                        new_key = (
+                            date.fromisoformat(k) + timedelta(days=delta_days)
+                        ).isoformat()
+                    except ValueError:
+                        continue
+                    shifted[new_key] = float(v)
+                assignment.daily_hours_json = (
+                    json.dumps(shifted) if shifted else None
+                )
         return True
 
     def _detect_overload(

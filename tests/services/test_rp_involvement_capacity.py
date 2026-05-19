@@ -34,7 +34,8 @@ def test_daily_capacity_clamps_invalid_involvement(db_session):
 
 
 def test_allocate_hours_respects_daily_capacity(db_session):
-    """20ч, daily_capacity=5.6 → 4 дня; день блокируется целиком для serialization."""
+    """20ч, daily_capacity=5.6 → 4 дня; используется 5.6ч/день, остаток дня
+    (8−5.6=2.4ч) доступен последующим фазам того же сотрудника."""
     svc = ResourcePlanningService(db_session)
     start = date(2026, 5, 4)  # Monday
     days = [start + timedelta(days=i) for i in range(14) if (start + timedelta(days=i)).weekday() < 5]
@@ -51,11 +52,12 @@ def test_allocate_hours_respects_daily_capacity(db_session):
     assert len(segments) == 1  # single bar
     seg_start, seg_end, seg_hours, _ = segments[0]
     assert seg_hours == pytest.approx(20.0, abs=0.01)
-    # Семантика: каждый день, на котором фаза работает, занят целиком —
-    # другая фаза того же сотрудника не может сесть на него (эстафета).
-    # Реально потраченные часы (5.6/день) хранятся в daily_hours_json для конфликт-расчёта.
-    blocked = sum(1 for d in days if remaining["emp-1"][d] == 0.0)
-    assert blocked == 4  # ceil(20 / 5.6) = 4 дня заняты целиком
+    # 4 full дня по 5.6ч (4*5.6=22.4, последний день частично — 20−16.8=3.2ч).
+    # Дни 1..3: остаток 8−5.6=2.4ч, день 4: остаток 8−3.2=4.8ч.
+    used_days = [d for d in days if remaining["emp-1"][d] < 8.0]
+    assert len(used_days) == 4
+    assert remaining["emp-1"][used_days[0]] == pytest.approx(2.4, abs=0.01)
+    assert remaining["emp-1"][used_days[3]] == pytest.approx(4.8, abs=0.01)
     # Длительность бара: 4 дня от seg_start до seg_end.
     assert (seg_end - seg_start).days == 3
 

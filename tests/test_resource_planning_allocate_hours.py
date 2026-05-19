@@ -9,10 +9,10 @@ from app.services.resource_planning_service import ResourcePlanningService
 # ── Task 2 ────────────────────────────────────────────────────────────────────
 
 
-def test_allocate_blocks_day_for_serialization():
-    """День занят фазой целиком — следующая фаза того же сотрудника
-    не может сесть на тот же день параллельно (relay/serialization).
-    Точное число часов сохраняется в daily_hours_json для конфликт-расчёта.
+def test_allocate_subtracts_used_leaves_remainder():
+    """Списываются ровно использованные часы, остаток дня доступен
+    последующим фазам того же сотрудника. Иначе при involvement<1 (cap<avail)
+    остаток капасити пропадал, и параллельные фазы видели фантомно-пустой день.
     """
     db = MagicMock()
     svc = ResourcePlanningService(db)
@@ -30,10 +30,9 @@ def test_allocate_blocks_day_for_serialization():
         daily_capacity=4.0,
     )
 
-    # День консьюмится полностью — другая задача того же сотрудника
-    # не может стартовать в этот день. Это обеспечивает «эстафету».
-    assert remaining[emp_id][date(2026, 4, 1)] == 0.0
-    # Day 2 untouched
+    # 4ч списали из 8ч дня — остаток 4ч доступен следующей фазе.
+    assert remaining[emp_id][date(2026, 4, 1)] == 4.0
+    # Day 2 не тронут
     assert remaining[emp_id][date(2026, 4, 2)] == 8.0
 
 

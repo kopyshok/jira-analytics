@@ -1330,28 +1330,18 @@ def patch_assignment(
         setattr(a, k, v)
 
     if new_predecessor_ids is not None:
-        from app.models.phase_predecessor import PhasePredecessor
-
         # Пометить, что пользователь явно отредактировал список
         # предшественников. _ensure_default_predecessors не будет
         # перевосстанавливать дефолтную цепочку для этой инициативы.
         a.predecessors_user_set = True
-        # Удалить существующие рёбра у этого назначения и вставить новые с
-        # проверкой цикла. Цикл — 400.
-        db.execute(
-            PhasePredecessor.__table__.delete().where(
-                PhasePredecessor.successor_assignment_id == a.id
-            )
-        )
-        db.flush()
-        svc_for_cycle = ResourcePlanningService(db)
+        # Атомарно заменить весь набор: цикл проверяется по полному
+        # prospective edge-set ДО любой вставки/удаления. При цикле БД не
+        # меняется (раньше per-call commit оставлял половину рёбер).
         try:
-            for pid in new_predecessor_ids:
-                if pid == a.id:
-                    raise HTTPException(400, "cycle: self-reference")
-                svc_for_cycle.add_predecessor(successor_id=a.id, predecessor_id=pid)
+            ResourcePlanningService(db).set_predecessors(
+                successor_id=a.id, predecessor_ids=list(new_predecessor_ids)
+            )
         except ValueError as e:
-            db.rollback()
             raise HTTPException(400, f"cycle: {e}")
         a.manual_edit_at = datetime.utcnow()
 
