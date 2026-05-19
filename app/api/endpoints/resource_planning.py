@@ -1322,6 +1322,10 @@ def patch_assignment(
     if new_predecessor_ids is not None:
         from app.models.phase_predecessor import PhasePredecessor
 
+        # Пометить, что пользователь явно отредактировал список
+        # предшественников. _ensure_default_predecessors не будет
+        # перевосстанавливать дефолтную цепочку для этой инициативы.
+        a.predecessors_user_set = True
         # Удалить существующие рёбра у этого назначения и вставить новые с
         # проверкой цикла. Цикл — 400.
         db.execute(
