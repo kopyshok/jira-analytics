@@ -527,13 +527,6 @@ class ResourcePlanningService:
             (a.backlog_item_id, a.phase) for a in pinned_existing
         }
 
-        # Phase 5: вычислить решения о сплите аналитических фаз до основного цикла.
-        # _analyst_split_map: {(item_id, "analyst") → N кусков}
-        # _analyst_first_chunk_end: {item_id → end_date первого куска} — заполняется
-        # в ходе основного цикла, затем используется для earliest_start dev-фазы.
-        _analyst_split_map = self._compute_legacy_split_map(items, employees, q_start, q_end_extended)
-        _analyst_first_chunk_end: Dict[str, Optional[date]] = {}
-
         for item in items:
             phase_end: Optional[date] = None
             for phase in PHASE_ORDER:
@@ -555,25 +548,10 @@ class ResourcePlanningService:
                         phase_end = pe
                     continue
 
-                # Phase 5: dev-фаза стартует после первого куска аналитической фазы,
-                # если аналитик был разбит на куски (earlier_start эффект).
-                if phase == "dev" and item.id in _analyst_first_chunk_end:
-                    first_chunk_end = _analyst_first_chunk_end[item.id]
-                    if first_chunk_end is not None:
-                        earliest_start = max(
-                            q_start,
-                            first_chunk_end + timedelta(days=1),
-                        )
-                    else:
-                        earliest_start = max(
-                            q_start,
-                            (phase_end + timedelta(days=1)) if phase_end else q_start,
-                        )
-                else:
-                    earliest_start = max(
-                        q_start,
-                        (phase_end + timedelta(days=1)) if phase_end else q_start,
-                    )
+                earliest_start = max(
+                    q_start,
+                    (phase_end + timedelta(days=1)) if phase_end else q_start,
+                )
 
                 # Пользователь снял предшественников этой фазы → не цепляться
                 # к концу предыдущей фазы PHASE_ORDER, искать ресурс с начала
@@ -734,61 +712,6 @@ class ResourcePlanningService:
                     involvement=phase_involvement,
                     parallel_count=parallel_n,
                 )
-
-                # Авто-сплит аналитической фазы (Phase 5): если для этого item
-                # решение о сплите уже принято — используем его.
-                analyst_split_chunks = _analyst_split_map.get((item.id, phase), 1)
-                if analyst_split_chunks > 1:
-                    # Делим фазу на N равных кусков; dev стартует после первого куска.
-                    chunk_cal_days = max(1.0, cal_days / analyst_split_chunks)
-                    chunk_hours = hours / analyst_split_chunks
-                    first_chunk_end: Optional[date] = None
-                    last_chunk_end: Optional[date] = None
-                    for chunk_idx in range(1, analyst_split_chunks + 1):
-                        chunk_start = earliest_start if chunk_idx == 1 else (
-                            (last_chunk_end + timedelta(days=1)) if last_chunk_end else earliest_start
-                        )
-                        chunk_segs, chunk_daily = self._allocate_hours_with_breakdown(
-                            employee_id, chunk_hours, chunk_start, q_end_extended, remaining,
-                            daily_capacity=phase_daily_cap,
-                            preempt_locked=preempt_locked,
-                            original_capacity=original_avail,
-                        )
-                        for seg_start, seg_end, seg_hours, seg_part in chunk_segs:
-                            # Encode chunk + inner preempt-split: chunk_idx*10+(seg_part-1)
-                            # e.g. chunk 2 seg 1 → 20, chunk 2 seg 2 → 21; ensures unique part_number.
-                            composite_part = chunk_idx * 10 + (seg_part - 1)
-                            seg_daily = {
-                                d.isoformat(): h
-                                for d, h in chunk_daily.items()
-                                if seg_start <= d <= seg_end
-                            }
-                            a = ResourcePlanAssignment(
-                                plan_id=plan_id,
-                                backlog_item_id=item.id,
-                                phase=phase,
-                                employee_id=employee_id,
-                                part_number=composite_part,
-                                hours_allocated=seg_hours,
-                                start_date=seg_start,
-                                end_date=seg_end,
-                                out_of_quarter=(seg_end > q_end),
-                                daily_hours_json=json.dumps(seg_daily) if seg_daily else None,
-                            )
-                            new_assignments.append(a)
-                        # Calendar-based end for this chunk
-                        cal_end = _advance_working_days(chunk_start, int(chunk_cal_days))
-                        chunk_end = max(
-                            chunk_segs[-1][1] if chunk_segs else chunk_start,
-                            cal_end,
-                        )
-                        if first_chunk_end is None:
-                            first_chunk_end = chunk_end
-                        last_chunk_end = chunk_end
-                    # Dev starts after first chunk; overall phase_end after last chunk.
-                    _analyst_first_chunk_end[item.id] = first_chunk_end
-                    phase_end = last_chunk_end
-                    continue
 
                 # Phase 3+4: when Jira fields are set, cal_end is authoritative.
                 # - Limit alloc_deadline to cal_end so hours don't spill beyond it
@@ -1183,11 +1106,21 @@ class ResourcePlanningService:
         return list(rows)
 
     def _quarter_bounds(self, plan: ResourcePlan) -> Tuple[date, date]:
-        """Вернуть (начало, конец) квартала плана."""
+        """Вернуть (начало, конец) квартала плана. ValueError на мусоре."""
         from app.services.capacity_service import QUARTER_MONTHS
 
-        quarter_num = int(str(plan.quarter).replace("Q", ""))
-        months = QUARTER_MONTHS.get(quarter_num, (1, 2, 3))
+        raw = str(plan.quarter or "").strip().upper().replace("Q", "")
+        try:
+            quarter_num = int(raw)
+        except ValueError as e:
+            raise ValueError(
+                f"plan.quarter='{plan.quarter}' не парсится как номер квартала"
+            ) from e
+        if quarter_num not in QUARTER_MONTHS:
+            raise ValueError(
+                f"plan.quarter={quarter_num} вне диапазона 1..4"
+            )
+        months = QUARTER_MONTHS[quarter_num]
         year = plan.year or date.today().year
         q_start = date(year, months[0], 1)
         last_month = months[-1]
@@ -1208,8 +1141,8 @@ class ResourcePlanningService:
                    Если у задачи нет исполнителя — None.
         - dev:     greedy по минимальной нагрузке в пуле DEV_ROLES (fallback — все).
         - qa:      всегда None (часы-only, дату назначаем без сотрудника).
-        - opo:     placeholder analyst_id или dev_id; реально создаётся как 2 строки
-                   через `_opo_split` в compute_schedule.
+        - opo:     не возвращается — реально создаётся как 2 строки через
+                   `_opo_split` в compute_schedule.
 
         ``pinned`` — словарь {(item_id, phase, part_number): employee_id}. Если
         для (item, phase, 1) есть pin — используется он, обычная логика игнорится.
@@ -1269,8 +1202,8 @@ class ResourcePlanningService:
             # ── qa: без сотрудника ─────────────────────────────────────
             result["qa"][item.id] = None
 
-            # ── opo: маркер для compute_schedule, реально 2 строки ────
-            result["opo"][item.id] = analyst_id or dev_id
+            # OPO здесь не пишем — реальные 2 строки (analyst+dev) создаются
+            # через _opo_split в compute_schedule.
 
         return result
 
@@ -1293,16 +1226,6 @@ class ResourcePlanningService:
         an_hours = round(total * ratio, 2)
         dev_hours = round(total - an_hours, 2)
         return [(analyst_id, an_hours), (dev_id, dev_hours)]
-
-    def _compute_legacy_split_map(
-        self,
-        items: List[BacklogItem],
-        employees: List[Employee],
-        q_start: date,
-        q_end: date,
-    ) -> Dict[Tuple[str, str], int]:
-        """Авто-сплит фаз отключён: декомпозиция задаётся пользователем вручную."""
-        return {}
 
     def _build_role_pools(self, employees: List[Employee]) -> Dict[str, List[str]]:
         """{employee_id: [peer_ids same role]} для reassign-стратегии."""
@@ -1590,23 +1513,30 @@ class ResourcePlanningService:
         assignments: List[ResourcePlanAssignment],
         preds: Dict[str, List[str]],
     ) -> List[ResourcePlanAssignment]:
-        """Kahn — топологическая сортировка по графу preds. Cycle → ValueError."""
+        """Kahn — топологическая сортировка по графу preds. Cycle → ValueError.
+
+        O(N+E): precomputed adjacency list для прохода по successor'ам вместо
+        повторного скана preds.items() на каждом dequeue.
+        """
         by_id: Dict[str, ResourcePlanAssignment] = {a.id: a for a in assignments if a.id}
         indeg: Dict[str, int] = {aid: 0 for aid in by_id}
+        # adj: predecessor_id → [successor_ids]
+        adj: Dict[str, List[str]] = defaultdict(list)
         for succ_id, p_list in preds.items():
             if succ_id not in by_id:
                 continue
             for p_id in p_list:
                 if p_id in by_id:
                     indeg[succ_id] += 1
-        queue = [aid for aid, d in indeg.items() if d == 0]
+                    adj[p_id].append(succ_id)
+        from collections import deque
+
+        queue: deque[str] = deque(aid for aid, d in indeg.items() if d == 0)
         result: List[ResourcePlanAssignment] = []
         while queue:
-            aid = queue.pop(0)
+            aid = queue.popleft()
             result.append(by_id[aid])
-            for succ_id, p_list in preds.items():
-                if succ_id not in by_id or aid not in p_list:
-                    continue
+            for succ_id in adj.get(aid, []):
                 indeg[succ_id] -= 1
                 if indeg[succ_id] == 0:
                     queue.append(succ_id)
@@ -1728,6 +1658,8 @@ class ResourcePlanningService:
             raise ValueError("assignment not found")
         if a.part_number != 1:
             raise ValueError("can split only single-part phase")
+        if a.pinned_split:
+            raise ValueError("phase already split (pinned_split=True)")
         siblings_count = (
             self.db.execute(
                 select(ResourcePlanAssignment).where(
@@ -2231,7 +2163,10 @@ class ResourcePlanningService:
                 )
 
         for key, c in existing_by_key.items():
-            if key not in detected_keys and c.status != "muted":
+            if key not in detected_keys:
+                # Muted-конфликт удаляем, если детектор больше не выдаёт
+                # эту detection_key — причина устранена, mute больше не
+                # нужен. Без этого muted-строки копились вечно.
                 self.db.delete(c)
 
     def _build_conflict_dicts(

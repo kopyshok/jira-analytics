@@ -70,6 +70,17 @@ def aggregate_conflicts(
         key = (r.get("type"), r.get("employee_id"), r.get("assignment_id"))
         groups[key].append(r)
 
+    # Bulk-load имён сотрудников и меток инициатив одним запросом каждый —
+    # вместо N+1 db.get() в _build_message.
+    emp_names = _bulk_employee_names(
+        {r.get("employee_id") for r in raw if r.get("employee_id")},
+        db_session,
+    )
+    item_labels = _bulk_item_labels(
+        {r.get("backlog_item_id") for r in raw if r.get("backlog_item_id")},
+        db_session,
+    )
+
     out: List[dict] = []
     for items in groups.values():
         items.sort(key=lambda x: _to_date(x.get("window_start")) or date.min)
@@ -99,24 +110,22 @@ def aggregate_conflicts(
             copy = {**it, "window_start": it_start, "window_end": it_end}
             merged.append(copy)
         for m in merged:
-            m["message"] = _build_message(m, db_session)
+            m["message"] = _build_message(m, emp_names, item_labels)
             out.append(m)
     return out
 
 
-def _build_message(c: Dict[str, Any], db: Optional[Session]) -> str:
+def _build_message(
+    c: Dict[str, Any],
+    emp_names: Dict[str, str],
+    item_labels: Dict[str, str],
+) -> str:
     t = c.get("type", "")
     rng = _format_date_range(_to_date(c.get("window_start")), _to_date(c.get("window_end")))
-    emp_name = (
-        _resolve_employee_name(c.get("employee_id"), db)
-        if db is not None
-        else (c.get("employee_id") or "")
-    )
-    item_label = (
-        _resolve_item_label(c.get("backlog_item_id"), db)
-        if db is not None
-        else ""
-    )
+    emp_id = c.get("employee_id")
+    emp_name = emp_names.get(emp_id, emp_id or "") if emp_id else ""
+    item_id = c.get("backlog_item_id")
+    item_label = item_labels.get(item_id, "") if item_id else ""
     if t.startswith("OVERLOAD_"):
         pct = int(round(float(c.get("metric_value") or 0)))
         rng_part = f" в период {rng}" if rng else ""
@@ -148,24 +157,45 @@ def _build_message(c: Dict[str, Any], db: Optional[Session]) -> str:
     return c.get("message", t) or t
 
 
-def _resolve_employee_name(emp_id: Optional[str], db: Session) -> str:
-    if not emp_id:
-        return ""
+def _bulk_employee_names(
+    emp_ids: set[str], db: Optional[Session]
+) -> Dict[str, str]:
+    """Загрузить display_name для всех нужных сотрудников одним запросом."""
+    if not emp_ids or db is None:
+        return {}
+    from sqlalchemy import select
+
     from app.models import Employee
 
-    e = db.get(Employee, emp_id)
-    return e.display_name if e and e.display_name else (emp_id or "")
+    rows = db.execute(
+        select(Employee.id, Employee.display_name).where(Employee.id.in_(emp_ids))
+    ).all()
+    return {r[0]: (r[1] or r[0]) for r in rows}
 
 
-def _resolve_item_label(item_id: Optional[str], db: Session) -> str:
-    if not item_id:
-        return ""
+def _bulk_item_labels(
+    item_ids: set[str], db: Optional[Session]
+) -> Dict[str, str]:
+    """Загрузить «key title» для backlog items одним запросом."""
+    if not item_ids or db is None:
+        return {}
+    from sqlalchemy import select
+    from sqlalchemy.orm import joinedload
+
     from app.models import BacklogItem
 
-    it = db.get(BacklogItem, item_id)
-    if not it:
-        return ""
-    issue = getattr(it, "issue", None)
-    key = getattr(issue, "key", "") if issue is not None else ""
-    title = it.title or ""
-    return f"{key} {title}".strip()
+    rows = (
+        db.execute(
+            select(BacklogItem)
+            .options(joinedload(BacklogItem.issue))
+            .where(BacklogItem.id.in_(item_ids))
+        )
+        .scalars()
+        .all()
+    )
+    out: Dict[str, str] = {}
+    for it in rows:
+        key = getattr(it.issue, "key", "") if it.issue is not None else ""
+        title = it.title or ""
+        out[it.id] = f"{key} {title}".strip()
+    return out

@@ -975,7 +975,10 @@ def get_gantt(
         )
         if plan_employees:
             svc = ResourcePlanningService(db)
-            q_start, q_end = svc._quarter_bounds(plan)
+            try:
+                q_start, q_end = svc._quarter_bounds(plan)
+            except ValueError as e:
+                raise HTTPException(422, str(e))
             avail = svc.build_availability(plan_employees, q_start, q_end, [])
             # Часы по дням на сотрудника по фазам (равномерно по диапазону фазы).
             used: dict[str, dict] = {e.id: {} for e in plan_employees}
@@ -2561,6 +2564,15 @@ def fork_plan(
                 end_date=a.end_date,
                 is_on_critical_path=a.is_on_critical_path,
                 slack_days=a.slack_days,
+                # Manual-edit state — без этих полей форк терял пины и
+                # редактировал бы расписание с нуля при первом compute.
+                pinned_employee=a.pinned_employee,
+                pinned_start=a.pinned_start,
+                pinned_split=a.pinned_split,
+                predecessors_user_set=a.predecessors_user_set,
+                manual_edit_at=a.manual_edit_at,
+                daily_hours_json=a.daily_hours_json,
+                out_of_quarter=a.out_of_quarter,
             )
         )
 
