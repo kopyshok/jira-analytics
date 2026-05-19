@@ -1,10 +1,14 @@
-import { Collapse, Table, Typography } from 'antd';
+import { Collapse, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { DailyBreakdownItem } from '../../../api/resourcePlanning';
 
 interface Props {
   items: DailyBreakdownItem[];
   collapsed: boolean;
   onToggleCollapse: () => void;
+  /** Коэффициент вовлечённости для текущей фазы, в процентах (90 = 0.9). */
+  involvementPct?: number | null;
+  /** Сырая дневная ёмкость до вовлечённости (обычно 8ч). */
+  baseDailyHours?: number;
 }
 
 const STATUS_LABELS: Record<DailyBreakdownItem['status'], string> = {
@@ -22,7 +26,18 @@ function formatDateDDMM(dateStr: string): string {
   return `${dd}.${mm}`;
 }
 
-export default function DailyBreakdownSection({ items, collapsed, onToggleCollapse }: Props) {
+export default function DailyBreakdownSection({
+  items,
+  collapsed,
+  onToggleCollapse,
+  involvementPct,
+  baseDailyHours = 8,
+}: Props) {
+  const invFactor = involvementPct != null ? involvementPct / 100 : 1;
+  const adjustedDaily = baseDailyHours * invFactor;
+  const formula = involvementPct != null
+    ? `${baseDailyHours.toFixed(0)} ч × ${involvementPct}% = ${adjustedDaily.toFixed(1)} ч/день`
+    : `${baseDailyHours.toFixed(0)} ч/день (вовлечённость не задана → 100%)`;
   return (
     <Collapse
       ghost
@@ -34,7 +49,14 @@ export default function DailyBreakdownSection({ items, collapsed, onToggleCollap
         children: items.length === 0
           ? <Typography.Text type="secondary">Нет данных</Typography.Text>
           : (
-            <Table<DailyBreakdownItem>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Tooltip title="«Доступно ч» в таблице ниже = календарь × коэф. вовлечённости. Так же планировщик раскладывает часы фазы по дням.">
+                <Space size={6}>
+                  <Tag color="cyan">Базовая ёмкость</Tag>
+                  <Typography.Text style={{ fontSize: 12 }}>{formula}</Typography.Text>
+                </Space>
+              </Tooltip>
+              <Table<DailyBreakdownItem>
               size="small"
               pagination={false}
               dataSource={items}
@@ -81,6 +103,7 @@ export default function DailyBreakdownSection({ items, collapsed, onToggleCollap
                 },
               ]}
             />
+            </Space>
           ),
       }]}
     />

@@ -2253,12 +2253,27 @@ def explain_assignment(
         )
         calendar_map = {row.date: row for row in cal_rows}
 
+    # Коэффициент вовлечённости для текущей фазы (из BacklogItem).
+    # «Доступно» в детализации = календарь × involvement, чтобы единообразно
+    # для всех фаз (Анализ/Разработка/Тестирование/ОПЭ) показывать сколько
+    # часов реально может уйти на этот проект, а не голый календарь.
+    _bi_for_inv = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
+    _inv_field = {
+        "analyst": "involvement_analyst",
+        "dev": "involvement_dev",
+        "qa": "involvement_qa",
+        "opo": "involvement_launch",
+    }.get(a.phase)
+    _inv_value = (
+        float(getattr(_bi_for_inv, _inv_field) or 1.0)
+        if _bi_for_inv and _inv_field and getattr(_bi_for_inv, _inv_field, None) is not None
+        else 1.0
+    )
+
     # QA — внешний ресурс без сотрудника. Доступность по дням = 8ч × involvement_qa
     # на рабочих днях, 0 на выходных/праздниках.
     if a.phase == "qa" and not full_avail and a.start_date and a.end_date:
-        bi_for_inv = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
-        inv_qa = float(bi_for_inv.involvement_qa) if bi_for_inv and bi_for_inv.involvement_qa else 1.0
-        qa_daily = 8.0 * inv_qa
+        qa_daily = 8.0 * _inv_value
         d_iter = a.start_date
         while d_iter <= a.end_date:
             cal = calendar_map.get(d_iter)
@@ -2268,6 +2283,12 @@ def explain_assignment(
                 is_workday = d_iter.weekday() < 5
             full_avail[d_iter] = qa_daily if is_workday else 0.0
             d_iter += _timedelta(days=1)
+    elif a.phase != "qa" and full_avail and _inv_value != 1.0:
+        # Для не-QA фаз full_avail уже построен build_availability как сырой
+        # календарь минус отсутствия. Применяем коэф. вовлечённости поверх,
+        # чтобы детализация показывала ту же ёмкость, которую использует
+        # планировщик (_daily_role_capacity внутри compute_schedule).
+        full_avail = {d: h * _inv_value for d, h in full_avail.items()}
 
     # Отсутствия сотрудника в окне фазы
     absences_in_window_raw: List["Absence"] = []

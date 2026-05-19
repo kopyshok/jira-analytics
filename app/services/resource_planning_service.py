@@ -501,14 +501,18 @@ class ResourcePlanningService:
                 if phase == "qa":
                     # QA — часы-only, без сотрудника. Раскладываем часы по
                     # рабочим дням производственного календаря (выходные и
-                    # праздники пропускаем). Старая логика `ceil(hours/6)`
-                    # считала календарными днями и теряла часы, попавшие на
-                    # выходные.
+                    # праздники пропускаем), дневная ёмкость = календарь ×
+                    # involvement_qa. Старая логика `ceil(hours/6)` считала
+                    # календарными днями и теряла часы, попавшие на выходные;
+                    # промежуточный фикс брал 8ч/день и расходился с explain
+                    # (там «Доступно» = 8 × involvement_qa = 7.2).
+                    qa_inv = self._involvement_for_phase(item, "qa") or 1.0
                     qa_daily: Dict[date, float] = {}
                     remaining_h = hours
                     cursor = earliest_start
                     while remaining_h > 0.001 and cursor <= q_end_extended:
-                        avail_h = _qa_daily_hours(cursor)
+                        cal_h = _qa_daily_hours(cursor)
+                        avail_h = cal_h * qa_inv
                         if avail_h > 0:
                             take = min(remaining_h, avail_h)
                             qa_daily[cursor] = take
