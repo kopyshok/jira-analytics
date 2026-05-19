@@ -1337,7 +1337,16 @@ class ResourcePlanningService:
         for a in assignments:
             key = (a.backlog_item_id, a.phase, a.part_number, a.employee_id)
             by_key[key] = a
-        seen: set[Tuple[str, str]] = set()
+        # Рёбра между date-pinned строками не каскадятся при delete, поэтому
+        # могут уже существовать в DB. Подтягиваем их в `seen`, чтобы повторная
+        # вставка не упала на UNIQUE.
+        existing_pairs = self.db.execute(
+            select(
+                PhasePredecessor.successor_assignment_id,
+                PhasePredecessor.predecessor_assignment_id,
+            )
+        ).all()
+        seen: set[Tuple[str, str]] = {(r[0], r[1]) for r in existing_pairs}
         for succ_key, pred_key in snapshot:
             s = by_key.get(succ_key)
             p = by_key.get(pred_key)
@@ -1402,6 +1411,17 @@ class ResourcePlanningService:
         )
         items_user_touched: set[str] = {r[0] for r in user_set_rows}
 
+        # Существующие пары — защита от UNIQUE-конфликта на повторной вставке.
+        existing_pairs: set[Tuple[str, str]] = {
+            (r[0], r[1])
+            for r in self.db.execute(
+                select(
+                    PhasePredecessor.successor_assignment_id,
+                    PhasePredecessor.predecessor_assignment_id,
+                )
+            ).all()
+        }
+
         by_item: Dict[str, Dict[str, ResourcePlanAssignment]] = defaultdict(dict)
         for a in assignments:
             # Несколько строк opo (analyst-кусок + dev-кусок) — берём последнюю,
@@ -1416,6 +1436,10 @@ class ResourcePlanningService:
                 pred = chain[i - 1]
                 if not succ or not pred or not succ.id or not pred.id:
                     continue
+                pair = (succ.id, pred.id)
+                if pair in existing_pairs:
+                    continue
+                existing_pairs.add(pair)
                 self.db.add(
                     PhasePredecessor(
                         successor_assignment_id=succ.id,
