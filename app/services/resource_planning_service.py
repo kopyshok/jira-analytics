@@ -314,6 +314,15 @@ class ResourcePlanningService:
         # по (item_id, phase, part_number, employee_id).
         pred_snapshot = self._snapshot_predecessors(plan_id)
 
+        # Какие (item_id, phase) имеют входящие рёбра в снапшоте. Используется
+        # вместе с `user_touched_items_snapshot`: для user-touched инициатив
+        # фаза без входящих рёбер игнорирует phase_end внутри PHASE_ORDER и
+        # стартует с q_start — пользователь явно убрал предшественника,
+        # значит должна искать ресурс с начала квартала.
+        phases_with_inbound_pred: set[Tuple[str, str]] = {
+            (succ_key[0], succ_key[1]) for succ_key, _ in pred_snapshot
+        }
+
         # Снимок инициатив, где пользователь явно правил предшественников
         # (флаг `predecessors_user_set` хотя бы у одной фазы). Удаляемые
         # назначения теряют флаг → запоминаем на уровне инициативы и
@@ -557,6 +566,16 @@ class ResourcePlanningService:
                         q_start,
                         (phase_end + timedelta(days=1)) if phase_end else q_start,
                     )
+
+                # Пользователь снял предшественников этой фазы → не цепляться
+                # к концу предыдущей фазы PHASE_ORDER, искать ресурс с начала
+                # квартала. Защищает от автоматического каскада analyst→dev,
+                # когда пользователь явно отвязал Разработку от Анализа.
+                if (
+                    item.id in user_touched_items_snapshot
+                    and (item.id, phase) not in phases_with_inbound_pred
+                ):
+                    earliest_start = q_start
 
                 if phase == "qa":
                     # QA — часы-only, без сотрудника. Раскладываем часы по
