@@ -1185,30 +1185,40 @@ class ResourcePlanningService:
         plan_id: str,
         assignments: List[ResourcePlanAssignment],
     ) -> None:
-        """Посеять дефолтную цепочку analyst→dev→qa→opo если рёбер ещё нет."""
+        """Посеять дефолтную цепочку analyst→dev→qa→opo пер-инициативно.
+
+        Сеется на уровне КАЖДОЙ инициативы у которой нет ни одной входящей
+        связи. Это важно для инициатив, добавленных позже через
+        auto-sync `initiatives_rfa` — раньше ранний выход «есть хоть одна
+        связь в плане» оставлял новые инициативы без цепочки.
+        """
         from app.models import PhasePredecessor
 
-        existing = (
+        # Какие инициативы уже имеют входящие рёбра — их не трогаем.
+        rows = (
             self.db.execute(
-                select(PhasePredecessor)
+                select(
+                    ResourcePlanAssignment.backlog_item_id,
+                )
                 .join(
-                    ResourcePlanAssignment,
+                    PhasePredecessor,
                     PhasePredecessor.successor_assignment_id == ResourcePlanAssignment.id,
                 )
                 .where(ResourcePlanAssignment.plan_id == plan_id)
-                .limit(1)
+                .distinct()
             )
-            .scalars()
-            .first()
+            .all()
         )
-        if existing:
-            return
+        items_with_edges: set[str] = {r[0] for r in rows}
+
         by_item: Dict[str, Dict[str, ResourcePlanAssignment]] = defaultdict(dict)
         for a in assignments:
             # Несколько строк opo (analyst-кусок + dev-кусок) — берём последнюю,
             # дефолтная цепочка ссылается на одну строку фазы.
             by_item[a.backlog_item_id][a.phase] = a
-        for phases in by_item.values():
+        for item_id, phases in by_item.items():
+            if item_id in items_with_edges:
+                continue
             chain = [phases.get(p) for p in PHASE_ORDER if phases.get(p) is not None]
             for i in range(1, len(chain)):
                 succ = chain[i]

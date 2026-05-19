@@ -84,6 +84,92 @@ def _parse_daily_hours(daily_hours_json: Optional[str]) -> Optional[Dict[str, fl
         return None
 
 
+def _compute_unavailable_days_for_assignment(
+    db: Session, a: "ResourcePlanAssignment"
+) -> List["UnavailableDay"]:
+    """Посчитать недоступные дни для одной фазы (выходные/праздники/отпуска/блокировки ОПЭ).
+
+    Использует ту же логику, что и батч-функция в get_gantt, но точечным
+    запросом — для случаев, когда нужно вернуть актуальное состояние одного
+    назначения (например, после PATCH).
+    """
+    from app.models import Absence, ProductionCalendarDay
+    from app.services.resource_planning_service import PREEMPTING_PHASES
+
+    if not a.start_date or not a.end_date:
+        return []
+
+    cal_rows = (
+        db.execute(
+            select(ProductionCalendarDay).where(
+                ProductionCalendarDay.date >= a.start_date,
+                ProductionCalendarDay.date <= a.end_date,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    cal_map = {row.date: row.hours for row in cal_rows}
+
+    emp_absences: list = []
+    emp_preempts: list = []
+    if a.employee_id:
+        emp_absences = (
+            db.execute(
+                select(Absence).where(
+                    Absence.employee_id == a.employee_id,
+                    Absence.end_date >= a.start_date,
+                    Absence.start_date <= a.end_date,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        preempts = (
+            db.execute(
+                select(ResourcePlanAssignment).where(
+                    ResourcePlanAssignment.plan_id == a.plan_id,
+                    ResourcePlanAssignment.employee_id == a.employee_id,
+                    ResourcePlanAssignment.id != a.id,
+                    ResourcePlanAssignment.phase.in_(PREEMPTING_PHASES),
+                )
+            )
+            .scalars()
+            .all()
+        )
+        emp_preempts = [
+            (p.id, p.start_date, p.end_date)
+            for p in preempts
+            if p.start_date
+            and p.end_date
+            and not (p.end_date < a.start_date or p.start_date > a.end_date)
+        ]
+
+    out: List[UnavailableDay] = []
+    d = a.start_date
+    while d <= a.end_date:
+        cal_h = cal_map.get(d, None)
+        kind: Optional[str] = None
+        if cal_h is None:
+            if d.weekday() >= 5:
+                kind = "weekend"
+        else:
+            if cal_h == 0:
+                kind = "weekend" if d.weekday() >= 5 else "holiday"
+        if a.employee_id and any(
+            ab.start_date <= d <= ab.end_date for ab in emp_absences
+        ):
+            kind = "absence"
+        if a.phase not in PREEMPTING_PHASES and any(
+            ss <= d <= se for _sid, ss, se in emp_preempts
+        ):
+            kind = "block"
+        if kind:
+            out.append(UnavailableDay(date=d, type=kind))
+        d += _timedelta(days=1)
+    return out
+
+
 def _assignment_to_out(
     a: "ResourcePlanAssignment",
     *,
@@ -379,6 +465,41 @@ class AssignmentPatch(BaseModel):
     end_date: Optional[date] = None
     hours_allocated: Optional[float] = None
     predecessor_ids: Optional[List[str]] = None
+    # При смене employee_id фронт сначала запрашивает /preview-employee-change.
+    # Если есть пересечения с отпусками или потенциальные перегрузки —
+    # фронт показывает модалку «всё равно сохранить?» и при подтверждении
+    # ставит force=True, что разрешает применить смену + запустить локальный
+    # пересдвиг текущей фазы и leveling на остальных назначениях этого
+    # сотрудника в плане.
+    force: bool = False
+
+
+class EmployeeChangePreviewRequest(BaseModel):
+    employee_id: str
+
+
+class EmployeeAbsenceConflict(BaseModel):
+    start_date: date
+    end_date: date
+    reason: Optional[str] = None
+    overlap_days: int
+
+
+class EmployeeOverloadConflict(BaseModel):
+    date: date
+    other_assignment_id: str
+    other_phase: str
+    other_backlog_item_key: Optional[str] = None
+    other_backlog_item_title: str
+    hours_on_day: float
+
+
+class EmployeeChangePreviewResponse(BaseModel):
+    new_employee_id: str
+    new_employee_name: Optional[str] = None
+    absences: List[EmployeeAbsenceConflict] = []
+    overloads: List[EmployeeOverloadConflict] = []
+    has_conflicts: bool
 
 
 class DependencyCreate(BaseModel):
@@ -912,6 +1033,204 @@ def get_gantt(
     )
 
 
+def _detect_employee_change_conflicts(
+    db: Session,
+    a: ResourcePlanAssignment,
+    new_employee_id: str,
+) -> tuple[List["EmployeeAbsenceConflict"], List["EmployeeOverloadConflict"]]:
+    """Найти пересечения с отпусками и потенциальные перегрузки в плане.
+
+    Используется и в preview-endpoint (показать модалку), и в PATCH с
+    force=False (вернуть 409). Не мутирует.
+    """
+    from app.models import Absence, AbsenceReason
+
+    if not a.start_date or not a.end_date:
+        return [], []
+
+    # 1. Отпуска нового сотрудника в окне фазы
+    absences_raw = (
+        db.execute(
+            select(Absence)
+            .options(joinedload(Absence.reason))
+            .where(
+                Absence.employee_id == new_employee_id,
+                Absence.end_date >= a.start_date,
+                Absence.start_date <= a.end_date,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    absences_out: List[EmployeeAbsenceConflict] = []
+    for ab in absences_raw:
+        overlap_start = max(ab.start_date, a.start_date)
+        overlap_end = min(ab.end_date, a.end_date)
+        overlap_days = (overlap_end - overlap_start).days + 1
+        absences_out.append(
+            EmployeeAbsenceConflict(
+                start_date=ab.start_date,
+                end_date=ab.end_date,
+                reason=(ab.reason.label if ab.reason else None),
+                overlap_days=max(0, overlap_days),
+            )
+        )
+
+    # 2. Другие назначения этого сотрудника в плане, перекрывающие окно фазы.
+    #    Дневная нагрузка > 8ч на одном дне — потенциальная перегрузка.
+    overlapping = (
+        db.execute(
+            select(ResourcePlanAssignment)
+            .options(
+                joinedload(ResourcePlanAssignment.backlog_item).joinedload(
+                    BacklogItem.issue
+                )
+            )
+            .where(
+                ResourcePlanAssignment.plan_id == a.plan_id,
+                ResourcePlanAssignment.employee_id == new_employee_id,
+                ResourcePlanAssignment.id != a.id,
+                ResourcePlanAssignment.start_date.is_not(None),
+                ResourcePlanAssignment.end_date.is_not(None),
+                ResourcePlanAssignment.end_date >= a.start_date,
+                ResourcePlanAssignment.start_date <= a.end_date,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    overloads_out: List[EmployeeOverloadConflict] = []
+    # Часы фазы-кандидата по дням
+    cand_daily = _parse_daily_hours(a.daily_hours_json) or {}
+    if not cand_daily and a.hours_allocated and a.start_date and a.end_date:
+        days_count = max(1, (a.end_date - a.start_date).days + 1)
+        per = a.hours_allocated / days_count
+        d = a.start_date
+        while d <= a.end_date:
+            cand_daily[d.isoformat()] = per
+            d += _timedelta(days=1)
+    for other in overlapping:
+        other_daily = _parse_daily_hours(other.daily_hours_json) or {}
+        if not other_daily and other.hours_allocated and other.start_date and other.end_date:
+            days_count = max(1, (other.end_date - other.start_date).days + 1)
+            per = other.hours_allocated / days_count
+            d = other.start_date
+            while d <= other.end_date:
+                other_daily[d.isoformat()] = per
+                d += _timedelta(days=1)
+        for d_iso, cand_h in cand_daily.items():
+            other_h = other_daily.get(d_iso, 0.0)
+            total = cand_h + other_h
+            if total > 8.0:
+                bi = other.backlog_item
+                overloads_out.append(
+                    EmployeeOverloadConflict(
+                        date=date.fromisoformat(d_iso),
+                        other_assignment_id=other.id,
+                        other_phase=other.phase,
+                        other_backlog_item_key=(
+                            bi.issue.key if bi and bi.issue else None
+                        ),
+                        other_backlog_item_title=(bi.title if bi else ""),
+                        hours_on_day=total,
+                    )
+                )
+                # достаточно одного дня на каждое перекрывающее назначение
+                break
+
+    return absences_out, overloads_out
+
+
+def _shift_phase_to_skip_absences(
+    db: Session,
+    a: ResourcePlanAssignment,
+    q_end: date,
+) -> bool:
+    """Локально сдвинуть фазу за окно отпусков нового сотрудника.
+
+    Простая стратегия: если первый день фазы попадает в отпуск, двигаем
+    start_date на день после окончания отпуска, end_date на ту же дельту.
+    Возвращает True если сдвиг был применён. Ограничения: не выходим за
+    конец квартала (extended); если не помещается — оставляем как есть.
+    """
+    from app.models import Absence
+
+    if not a.start_date or not a.end_date or not a.employee_id:
+        return False
+
+    max_iterations = 12  # защита от бесконечного цикла на странных данных
+    shifted = False
+    for _ in range(max_iterations):
+        absences = (
+            db.execute(
+                select(Absence).where(
+                    Absence.employee_id == a.employee_id,
+                    Absence.end_date >= a.start_date,
+                    Absence.start_date <= a.end_date,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # Найти отпуск, перекрывающий start_date или ближайший к нему
+        blocking = [ab for ab in absences if ab.start_date <= a.start_date <= ab.end_date]
+        if not blocking:
+            return shifted
+        # Сдвинуть за самый поздний из перекрывающих start_date
+        skip_to = max(ab.end_date for ab in blocking) + _timedelta(days=1)
+        delta = (skip_to - a.start_date).days
+        if delta <= 0:
+            return shifted
+        new_end = a.end_date + _timedelta(days=delta)
+        if new_end > q_end:
+            # вылазит за квартал — оставить как есть, пусть пользователь решает
+            return shifted
+        a.start_date = skip_to
+        a.end_date = new_end
+        shifted = True
+    return shifted
+
+
+@router.post(
+    "/resource-plans/{plan_id}/assignments/{assignment_id}/preview-employee-change",
+    response_model=EmployeeChangePreviewResponse,
+)
+def preview_employee_change(
+    plan_id: str,
+    assignment_id: str,
+    body: EmployeeChangePreviewRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Превью смены сотрудника: показывает отпуска и потенциальные перегрузки.
+
+    Фронт вызывает перед PATCH; если есть конфликты — показывает модалку
+    «всё равно сохранить?» и при подтверждении ставит force=True в PATCH.
+    """
+    from app.models import Employee
+
+    a = db.execute(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.id == assignment_id,
+            ResourcePlanAssignment.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+    new_emp = db.get(Employee, body.employee_id)
+    if not new_emp:
+        raise HTTPException(404, "Employee not found")
+
+    absences, overloads = _detect_employee_change_conflicts(db, a, body.employee_id)
+    return EmployeeChangePreviewResponse(
+        new_employee_id=body.employee_id,
+        new_employee_name=new_emp.display_name,
+        absences=absences,
+        overloads=overloads,
+        has_conflicts=bool(absences) or bool(overloads),
+    )
+
+
 @router.patch(
     "/resource-plans/{plan_id}/assignments/{assignment_id}",
     response_model=AssignmentOut,
@@ -941,6 +1260,30 @@ def patch_assignment(
 
     # predecessor_ids — отдельная ветка с проверкой цикла, не пишется в Assignment
     new_predecessor_ids = patch.pop("predecessor_ids", None)
+    # force — флаг подтверждения смены сотрудника при наличии конфликтов.
+    # Не атрибут модели, обрабатываем отдельно.
+    force = bool(patch.pop("force", False))
+
+    # При смене сотрудника без force — проверить конфликты и вернуть 409.
+    if (
+        "employee_id" in patch
+        and patch["employee_id"]
+        and patch["employee_id"] != a.employee_id
+        and not force
+    ):
+        absences, overloads = _detect_employee_change_conflicts(
+            db, a, patch["employee_id"]
+        )
+        if absences or overloads:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "employee_change_conflicts",
+                    "message": "Новый сотрудник недоступен в окне фазы. Используйте force=true для подтверждения.",
+                    "absences": [ab.model_dump(mode="json") for ab in absences],
+                    "overloads": [o.model_dump(mode="json") for o in overloads],
+                },
+            )
 
     new_start = patch.get("start_date", a.start_date)
     new_end = patch.get("end_date", a.end_date)
@@ -1002,6 +1345,30 @@ def patch_assignment(
     if plan:
         plan.status = "stale"
 
+    # При force-смене сотрудника — запустить полный пересчёт плана.
+    # pinned_employee=True гарантирует, что этот выбор сохранится; остальные
+    # фазы этого же сотрудника пройдут через leveler и сдвинутся, чтобы
+    # разрулить новые перегрузки и обойти отпуска.
+    if "employee_id" in patch and force and plan:
+        db.flush()  # зафиксировать pinned_employee + новый employee_id
+        try:
+            ResourcePlanningService(db).compute_schedule(plan_id)
+        except ValueError as e:
+            raise HTTPException(409, f"reschedule_failed: {e}")
+        # compute_schedule сам коммитит, перечитать назначение
+        a = db.execute(
+            select(ResourcePlanAssignment)
+            .options(
+                joinedload(ResourcePlanAssignment.backlog_item).joinedload(
+                    BacklogItem.issue
+                )
+            )
+            .options(joinedload(ResourcePlanAssignment.employee))
+            .where(ResourcePlanAssignment.id == assignment_id)
+        ).scalar_one_or_none()
+        if not a:
+            raise HTTPException(404, "Assignment vanished after reschedule")
+
     # Snapshot values before commit (SQLite session expire caveat)
     a_id = a.id
     a_backlog_item_id = a.backlog_item_id
@@ -1028,6 +1395,20 @@ def patch_assignment(
     )
     a_out_of_quarter = a.out_of_quarter
     a_daily_hours = _parse_daily_hours(a.daily_hours_json)
+
+    # Подтянуть predecessor_ids и unavailable_days, чтобы фронт после PATCH
+    # видел актуальное состояние без полного рефетча (нужно для корректного
+    # отображения связей в сайдбаре сразу после смены сотрудника/дат).
+    from app.models.phase_predecessor import PhasePredecessor as _PP
+    a_predecessor_ids = [
+        row[0]
+        for row in db.execute(
+            select(_PP.predecessor_assignment_id).where(
+                _PP.successor_assignment_id == a_id
+            )
+        ).all()
+    ]
+    a_unavailable_days = _compute_unavailable_days_for_assignment(db, a)
 
     db.commit()
     db.refresh(a)
@@ -1060,6 +1441,8 @@ def patch_assignment(
         out_of_quarter=a_out_of_quarter,
         daily_hours=a_daily_hours,
         worklog_hours_actual=0.0,
+        predecessor_ids=a_predecessor_ids,
+        unavailable_days=a_unavailable_days,
     )
 
 
@@ -1869,6 +2252,22 @@ def explain_assignment(
             .all()
         )
         calendar_map = {row.date: row for row in cal_rows}
+
+    # QA — внешний ресурс без сотрудника. Доступность по дням = 8ч × involvement_qa
+    # на рабочих днях, 0 на выходных/праздниках.
+    if a.phase == "qa" and not full_avail and a.start_date and a.end_date:
+        bi_for_inv = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
+        inv_qa = float(bi_for_inv.involvement_qa) if bi_for_inv and bi_for_inv.involvement_qa else 1.0
+        qa_daily = 8.0 * inv_qa
+        d_iter = a.start_date
+        while d_iter <= a.end_date:
+            cal = calendar_map.get(d_iter)
+            if cal is not None:
+                is_workday = cal.is_workday
+            else:
+                is_workday = d_iter.weekday() < 5
+            full_avail[d_iter] = qa_daily if is_workday else 0.0
+            d_iter += _timedelta(days=1)
 
     # Отсутствия сотрудника в окне фазы
     absences_in_window_raw: List["Absence"] = []

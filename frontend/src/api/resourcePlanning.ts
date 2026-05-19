@@ -156,6 +156,32 @@ export interface AssignmentPatch {
   end_date?: string;
   hours_allocated?: number;
   predecessor_ids?: string[];
+  /** Подтверждение смены сотрудника при наличии конфликтов (отпуска/перегрузки). */
+  force?: boolean;
+}
+
+export interface EmployeeAbsenceConflict {
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  overlap_days: number;
+}
+
+export interface EmployeeOverloadConflict {
+  date: string;
+  other_assignment_id: string;
+  other_phase: string;
+  other_backlog_item_key: string | null;
+  other_backlog_item_title: string;
+  hours_on_day: number;
+}
+
+export interface EmployeeChangePreviewResponse {
+  new_employee_id: string;
+  new_employee_name: string | null;
+  absences: EmployeeAbsenceConflict[];
+  overloads: EmployeeOverloadConflict[];
+  has_conflicts: boolean;
 }
 
 export interface RpPreferences {
@@ -380,6 +406,17 @@ export async function patchAssignment(
   return api.patch<AssignmentOut>(
     `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}`,
     data,
+  );
+}
+
+export async function previewEmployeeChange(
+  planId: string,
+  assignmentId: string,
+  employeeId: string,
+): Promise<EmployeeChangePreviewResponse> {
+  return api.post<EmployeeChangePreviewResponse>(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/preview-employee-change`,
+    { employee_id: employeeId },
   );
 }
 

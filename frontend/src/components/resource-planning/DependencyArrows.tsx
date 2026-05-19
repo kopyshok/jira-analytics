@@ -113,7 +113,10 @@ export default function DependencyArrows({
       //  на границе строк, а столбец target.left-14 обычно свободен).
       const dy = y2 - y1;
       const EXIT_STUB = 6;        // отступ вправо от source перед спуском
-      const APPROACH = 14;        // длина горизонтальной «полки» перед target
+      const APPROACH = 24;        // длина горизонтальной «полки» перед target
+      // APPROACH ≥ marker_width(9) + rr(4) + margin, иначе Q-арка
+      // совпадает с верхней гранью треугольника и линия читается как
+      // заход в верхний угол вместо центра левой грани.
       const GUTTER_OFFSET = 18;   // полу-строка (ROW_HEIGHT ≈ 32–36)
       const r = 4;
       const vSign = dy >= 0 ? 1 : -1;

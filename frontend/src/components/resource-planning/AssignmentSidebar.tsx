@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react';
-import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, Select, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 
-import type { AssignmentExplainConflict, AssignmentExplainResponseV2, AssignmentOut } from '../../api/resourcePlanning';
+import type {
+  AssignmentExplainConflict,
+  AssignmentExplainResponseV2,
+  AssignmentOut,
+  EmployeeChangePreviewResponse,
+} from '../../api/resourcePlanning';
 import {
   clearAssignmentManualEdit,
   mergeAssignment,
   patchAssignment,
+  previewEmployeeChange,
 } from '../../api/resourcePlanning';
 import { useExplainAssignment } from '../../hooks/useResourcePlanning';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
@@ -44,6 +50,10 @@ export default function AssignmentSidebar({
   const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
+  const [pendingEmpChange, setPendingEmpChange] = useState<{
+    employeeId: string;
+    preview: EmployeeChangePreviewResponse;
+  } | null>(null);
   const { prefs, patch: patchPrefs } = useRpPreferences();
 
   const sameItemAssignments = useMemo(
@@ -69,8 +79,8 @@ export default function AssignmentSidebar({
         open={open}
         onClose={onClose}
         width={920}
-        mask={false}
-        maskClosable={false}
+        mask
+        maskClosable
         title="Назначение"
       />
     );
@@ -83,6 +93,44 @@ export default function AssignmentSidebar({
       onChanged?.();
     } catch (e) {
       message.error((e as Error).message || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEmployeeChange = async (newEmpId: string) => {
+    if (!newEmpId || newEmpId === assignment.employee_id) return;
+    setSaving(true);
+    try {
+      const preview = await previewEmployeeChange(planId, assignment.id, newEmpId);
+      if (preview.has_conflicts) {
+        setPendingEmpChange({ employeeId: newEmpId, preview });
+        setSaving(false);
+        return;
+      }
+      // Без конфликтов — сразу применяем
+      await patchAssignment(planId, assignment.id, { employee_id: newEmpId });
+      onChanged?.();
+    } catch (e) {
+      message.error((e as Error).message || 'Ошибка');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmEmployeeChange = async () => {
+    if (!pendingEmpChange) return;
+    setSaving(true);
+    try {
+      await patchAssignment(planId, assignment.id, {
+        employee_id: pendingEmpChange.employeeId,
+        force: true,
+      });
+      setPendingEmpChange(null);
+      message.success('Сотрудник заменён, план пересчитан');
+      onChanged?.();
+    } catch (e) {
+      message.error((e as Error).message || 'Ошибка пересчёта');
     } finally {
       setSaving(false);
     }
@@ -120,8 +168,8 @@ export default function AssignmentSidebar({
       open={open}
       onClose={onClose}
       width={920}
-      mask={false}
-      maskClosable={false}
+      mask
+      maskClosable
       title={
         <Space style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space>
@@ -162,7 +210,7 @@ export default function AssignmentSidebar({
               loading={saving}
               showSearch
               optionFilterProp="label"
-              onChange={(empId) => updateField({ employee_id: empId })}
+              onChange={(empId) => handleEmployeeChange(empId)}
               options={employees.map((e) => ({
                 value: e.id,
                 label: e.display_name,
@@ -238,6 +286,78 @@ export default function AssignmentSidebar({
         assignment={assignment}
         onSplit={onChanged}
       />
+
+      <Modal
+        open={!!pendingEmpChange}
+        onCancel={() => setPendingEmpChange(null)}
+        onOk={confirmEmployeeChange}
+        okText="Всё равно сохранить и пересчитать"
+        cancelText="Отмена"
+        okButtonProps={{ danger: true, loading: saving }}
+        width={720}
+        title={
+          <Space>
+            <Tag color="orange">Конфликты</Tag>
+            <span>Новый сотрудник: {pendingEmpChange?.preview.new_employee_name ?? '—'}</span>
+          </Space>
+        }
+      >
+        {pendingEmpChange && (
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            <Alert
+              type="warning"
+              showIcon
+              message="При подтверждении план будет пересчитан. Другие фазы этого сотрудника могут сдвинуться, чтобы разрулить перегрузки и обойти отпуска."
+            />
+            {pendingEmpChange.preview.absences.length > 0 && (
+              <>
+                <Typography.Text strong>Отпуска / отсутствия в окне фазы ({pendingEmpChange.preview.absences.length})</Typography.Text>
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey={(_, i) => `abs-${i}`}
+                  dataSource={pendingEmpChange.preview.absences}
+                  columns={[
+                    { title: 'Начало', dataIndex: 'start_date', width: 110 },
+                    { title: 'Окончание', dataIndex: 'end_date', width: 110 },
+                    { title: 'Причина', dataIndex: 'reason', render: (v) => v ?? '—' },
+                    { title: 'Пересечение', dataIndex: 'overlap_days', width: 110, render: (v) => `${v} д.` },
+                  ]}
+                />
+              </>
+            )}
+            {pendingEmpChange.preview.overloads.length > 0 && (
+              <>
+                <Typography.Text strong>Перегрузки с другими фазами ({pendingEmpChange.preview.overloads.length})</Typography.Text>
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey={(_, i) => `ovl-${i}`}
+                  dataSource={pendingEmpChange.preview.overloads}
+                  columns={[
+                    { title: 'День', dataIndex: 'date', width: 110 },
+                    {
+                      title: 'Другая задача',
+                      render: (_, r) => `${r.other_backlog_item_key ?? '—'} · ${r.other_backlog_item_title}`,
+                    },
+                    { title: 'Фаза', dataIndex: 'other_phase', width: 90 },
+                    {
+                      title: 'Итого ч/день',
+                      dataIndex: 'hours_on_day',
+                      width: 110,
+                      render: (v: number) => (
+                        <span style={{ color: v > 10 ? '#ef4444' : '#ffb432', fontWeight: 700 }}>
+                          {v.toFixed(1)} ч
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+              </>
+            )}
+          </Space>
+        )}
+      </Modal>
     </Drawer>
   );
 }
