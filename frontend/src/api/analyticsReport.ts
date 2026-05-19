@@ -43,6 +43,7 @@ export interface AnalyticsLayout {
   hidden_levels?: AnalyticsLevel[];
   active_preset?: string;
   saved_presets?: { name: string; group_order: AnalyticsLevel[]; hidden_levels: AnalyticsLevel[] }[];
+  show_fact_bar?: boolean;
 }
 
 export async function fetchAnalyticsLayout(): Promise<AnalyticsLayout> {

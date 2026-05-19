@@ -28,6 +28,7 @@ export interface ResolvedLayout {
   visibleLevels: AnalyticsLevel[];
   hiddenLevels: AnalyticsLevel[];
   activePreset?: string;
+  showFactBar: boolean;
 }
 
 export function resolveLayout(layout: AnalyticsLayout | undefined): ResolvedLayout {
@@ -44,6 +45,7 @@ export function resolveLayout(layout: AnalyticsLayout | undefined): ResolvedLayo
     visibleLevels,
     hiddenLevels: Array.from(hidden),
     activePreset: layout?.active_preset,
+    showFactBar: layout?.show_fact_bar ?? true,
   };
 }
 

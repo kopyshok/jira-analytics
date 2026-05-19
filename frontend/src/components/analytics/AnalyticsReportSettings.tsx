@@ -1,6 +1,7 @@
 import { Modal, Checkbox } from 'antd';
 import type { CheckboxGroupProps } from 'antd/es/checkbox';
 import { useAnalyticsColumns } from '../../hooks/useAnalyticsColumns';
+import { useAnalyticsLayout } from '../../hooks/useAnalyticsLayout';
 import GroupingEditor from './GroupingEditor';
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -22,6 +23,7 @@ interface Props {
 
 export default function AnalyticsReportSettings({ open, onClose }: Props) {
   const { visible, setVisible } = useAnalyticsColumns();
+  const { layout, resolved, save, isSaving } = useAnalyticsLayout();
 
   const options: CheckboxGroupProps['options'] = CONFIGURABLE_COLUMNS.map((col) => ({
     label: COLUMN_LABELS[col],
@@ -54,6 +56,19 @@ export default function AnalyticsReportSettings({ open, onClose }: Props) {
         onChange={handleChange}
         style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
       />
+
+      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
+
+      <h4 style={{ color: '#e6edf7' }}>Визуализация</h4>
+      <Checkbox
+        checked={resolved.showFactBar}
+        disabled={isSaving}
+        onChange={(e) =>
+          save({ ...layout, show_fact_bar: e.target.checked })
+        }
+      >
+        Полоска заполнения в колонке «Часы факт»
+      </Checkbox>
     </Modal>
   );
 }

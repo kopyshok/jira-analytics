@@ -111,80 +111,93 @@ function buildIssueNode(
     issueKey: i.key,
     label: indent(
       depth,
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 6,
-          minWidth: 0,
-        }}
-      >
-        <a
-          href={`https://example.atlassian.net/browse/${i.key}`}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <div
           style={{
-            color: '#22d3ee',
-            textDecoration: 'underline',
-            fontWeight: 600,
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {i.key}
-        </a>
-        <Tag
-          color={statusTagColor(i.status, i.status_category)}
-          style={{ marginInlineEnd: 0, flexShrink: 0 }}
-        >
-          {i.status}
-        </Tag>
-        {i.is_foreign && (
-          <Tag
-            color="orange"
-            style={{ marginInlineEnd: 0, flexShrink: 0 }}
-            title="Задача чужой команды (списание часов вне scope сотрудника)"
-          >
-            Чужая
-          </Tag>
-        )}
-        {i.is_foreign && i.team && (
-          <Tag
-            style={{
-              marginInlineEnd: 0,
-              flexShrink: 0,
-              background: 'transparent',
-              border: `1px solid ${teamColor(i.team)}`,
-              color: teamColor(i.team),
-            }}
-          >
-            {i.team}
-          </Tag>
-        )}
-        <span
-          style={{
-            color: '#e6edf7',
-            whiteSpace: 'normal',
-            wordBreak: 'break-word',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 6,
             minWidth: 0,
-            flex: '1 1 auto',
           }}
         >
-          {cleanSummary}
-        </span>
-        {isProject && (
-          <Button
-            size="small"
-            type="link"
-            icon={<ArrowRightOutlined />}
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/projects/${encodeURIComponent(i.key)}`);
+          <a
+            href={`https://example.atlassian.net/browse/${i.key}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              color: '#22d3ee',
+              textDecoration: 'underline',
+              fontWeight: 600,
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
             }}
-            title="Открыть страницу проекта"
-            style={{ flexShrink: 0, padding: '0 4px' }}
-          />
+          >
+            {i.key}
+          </a>
+          <Tag
+            color={statusTagColor(i.status, i.status_category)}
+            style={{ marginInlineEnd: 0, flexShrink: 0 }}
+          >
+            {i.status}
+          </Tag>
+          {i.is_foreign && (
+            <Tag
+              color="orange"
+              style={{ marginInlineEnd: 0, flexShrink: 0 }}
+              title="Задача чужой команды (списание часов вне scope сотрудника)"
+            >
+              Чужая
+            </Tag>
+          )}
+          <span
+            style={{
+              color: '#e6edf7',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+              minWidth: 0,
+              flex: '1 1 auto',
+            }}
+          >
+            {cleanSummary}
+          </span>
+          {isProject && (
+            <Button
+              size="small"
+              type="link"
+              icon={<ArrowRightOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/projects/${encodeURIComponent(i.key)}`);
+              }}
+              title="Открыть страницу проекта"
+              style={{ flexShrink: 0, padding: '0 4px' }}
+            />
+          )}
+        </div>
+        {i.is_foreign && i.team && (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 11,
+              color: '#7e94b8',
+              paddingLeft: 2,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 2,
+                background: teamColor(i.team),
+                display: 'inline-block',
+                flexShrink: 0,
+              }}
+            />
+            <span>Команда: <span style={{ color: teamColor(i.team) }}>{i.team}</span></span>
+          </div>
         )}
       </div>,
     ),
@@ -647,6 +660,7 @@ export default function AnalyticsTable({
           ? r.totals.pct_total
           : (r.totals.pct_in_group ?? 0);
         const barWidth = Math.min(100, Math.max(0, pct));
+        const showBar = resolved.showFactBar && r.kind !== 'issue';
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center' }}>
@@ -655,7 +669,7 @@ export default function AnalyticsTable({
               </span>
               {r.kind !== 'issue' && <ForeignChip totals={r.totals} />}
             </span>
-            {r.kind !== 'issue' && (
+            {showBar && (
               <div
                 style={{
                   width: '100%',
