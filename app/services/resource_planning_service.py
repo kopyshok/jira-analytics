@@ -295,10 +295,15 @@ class ResourcePlanningService:
     def compute_schedule(self, plan_id: str) -> None:
         """Рассчитать расписание фаз для всех инициатив плана.
 
-        Назначения с любым из флагов `pinned_employee`/`pinned_start`/`pinned_split`=True
-        не пересчитываются и не удаляются: используются как фиксированный
-        сотрудник/дата/разбивка в `_assign_employees`, а старые строки сохраняются
-        в БД и сливаются с новыми non-pinned результатами.
+        Семантика pin-флагов:
+        - `pinned_start` / `pinned_split` → даты/раскладка зафиксированы:
+          строка не удаляется и не пересчитывается, бар остаётся в выбранном
+          окне.
+        - `pinned_employee` → зафиксирован только сотрудник; строка удаляется
+          и пересоздаётся, но `pinned_map` сохраняет выбор исполнителя, а флаг
+          восстанавливается на одноимённой фазе после пересчёта. Даты считаются
+          заново — чтобы расписание реагировало на снятие предшественников и
+          доступность исполнителя.
         """
         plan = self.db.get(ResourcePlan, plan_id)
         if not plan:
@@ -310,9 +315,9 @@ class ResourcePlanningService:
         pred_snapshot = self._snapshot_predecessors(plan_id)
 
         # Снимок инициатив, где пользователь явно правил предшественников
-        # (флаг `predecessors_user_set` хотя бы у одной фазы). Non-pinned
-        # назначения удаляются при пересчёте и флаг теряется → запоминаем
-        # на уровне инициативы и передаём в default-seeder.
+        # (флаг `predecessors_user_set` хотя бы у одной фазы). Удаляемые
+        # назначения теряют флаг → запоминаем на уровне инициативы и
+        # передаём в default-seeder.
         user_touched_items_snapshot: set[str] = {
             r[0]
             for r in self.db.execute(
@@ -325,29 +330,68 @@ class ResourcePlanningService:
             ).all()
         }
 
-        # Сохранить pinned до удаления, удалить только non-pinned
+        # Семантика флагов:
+        #   pinned_start / pinned_split — фиксируют ДАТЫ/раскладку: фаза не
+        #     пересчитывается, бар остаётся в выбранном окне.
+        #   pinned_employee — фиксирует только СОТРУДНИКА: даты считаются
+        #     заново, чтобы расписание реагировало на снятие предшественников
+        #     и доступность исполнителя.
+        # Поэтому date-pinned строки сохраняем целиком, а employee-only —
+        # удаляем и пересоздаём; map исполнителей + флаг pinned_employee
+        # снимаем в снапшоты заранее.
         pinned_existing = list(
             self.db.execute(
                 select(ResourcePlanAssignment).where(
                     ResourcePlanAssignment.plan_id == plan_id,
                     or_(
-                        ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
                         ResourcePlanAssignment.pinned_start == True,  # noqa: E712
                         ResourcePlanAssignment.pinned_split == True,  # noqa: E712
                     ),
                 )
             ).scalars()
         )
+        # pinned_map — выбор сотрудника для любых пин-флагов (date или employee).
+        pinned_emp_rows = self.db.execute(
+            select(
+                ResourcePlanAssignment.backlog_item_id,
+                ResourcePlanAssignment.phase,
+                ResourcePlanAssignment.part_number,
+                ResourcePlanAssignment.employee_id,
+            ).where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                or_(
+                    ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
+                    ResourcePlanAssignment.pinned_start == True,  # noqa: E712
+                    ResourcePlanAssignment.pinned_split == True,  # noqa: E712
+                ),
+                ResourcePlanAssignment.employee_id.is_not(None),
+            )
+        ).all()
         pinned_map: Dict[Tuple[str, str, int], str] = {
-            (a.backlog_item_id, a.phase, a.part_number): a.employee_id
-            for a in pinned_existing
-            if a.employee_id is not None
+            (r[0], r[1], r[2]): r[3] for r in pinned_emp_rows
+        }
+        # Снимок (item_id, phase) с employee-pin без date-pin — после
+        # пересоздания восстановим флаг pinned_employee на той же фазе.
+        pinned_employee_phase_snapshot: set[Tuple[str, str]] = {
+            (r[0], r[1])
+            for r in self.db.execute(
+                select(
+                    ResourcePlanAssignment.backlog_item_id,
+                    ResourcePlanAssignment.phase,
+                )
+                .where(
+                    ResourcePlanAssignment.plan_id == plan_id,
+                    ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
+                    ResourcePlanAssignment.pinned_start == False,  # noqa: E712
+                    ResourcePlanAssignment.pinned_split == False,  # noqa: E712
+                )
+                .distinct()
+            ).all()
         }
 
         self.db.execute(
             ResourcePlanAssignment.__table__.delete().where(
                 ResourcePlanAssignment.plan_id == plan_id,
-                ResourcePlanAssignment.pinned_employee == False,  # noqa: E712
                 ResourcePlanAssignment.pinned_start == False,  # noqa: E712
                 ResourcePlanAssignment.pinned_split == False,  # noqa: E712
             )
@@ -807,6 +851,14 @@ class ResourcePlanningService:
             for a in new_assignments:
                 if a.backlog_item_id in user_touched_items_snapshot:
                     a.predecessors_user_set = True
+        # Восстановить pinned_employee на той же фазе инициативы:
+        # employee-only пин не препятствует пересчёту дат, но должен сохраниться
+        # при следующих compute, чтобы исполнитель не «отъехал» обратно к
+        # автовыбору allocator-а.
+        if pinned_employee_phase_snapshot:
+            for a in new_assignments:
+                if (a.backlog_item_id, a.phase) in pinned_employee_phase_snapshot:
+                    a.pinned_employee = True
         self.db.flush()
         self._ensure_default_predecessors(plan_id, new_assignments)
         self.db.flush()
