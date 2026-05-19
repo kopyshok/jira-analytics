@@ -144,7 +144,12 @@ def test_allocate_hours_single_segment_across_gap():
 
 
 def test_compute_cpm_critical_path():
-    """Initiative with opo ending ON quarter end → slack=0, critical=True."""
+    """Initiative with opo ending PAST deadline → slack<0, critical=True.
+
+    Семантика: critical = инициатива не вмещается в дедлайн (extended-quarter).
+    Фаза, заканчивающаяся ровно на дедлайне (slack=0), считается ОК — spillover
+    в пределах extended-квартала by design не подсвечивается красным.
+    """
     from datetime import date
     from unittest.mock import MagicMock
     from app.services.resource_planning_service import ResourcePlanningService
@@ -152,12 +157,12 @@ def test_compute_cpm_critical_path():
     db = MagicMock()
     svc = ResourcePlanningService(db)
 
-    q_end = date(2026, 3, 31)  # Q1 2026 end
+    q_end = date(2026, 3, 31)  # Q1 2026 end (для теста — extended deadline)
 
     a_opo = MagicMock()
     a_opo.backlog_item_id = "item1"
     a_opo.phase = "opo"
-    a_opo.end_date = date(2026, 3, 31)
+    a_opo.end_date = date(2026, 4, 5)  # 5 дней за дедлайн
 
     a_analyst = MagicMock()
     a_analyst.backlog_item_id = "item1"
@@ -166,10 +171,35 @@ def test_compute_cpm_critical_path():
 
     svc._compute_cpm([a_opo, a_analyst], q_end)
 
-    assert a_opo.slack_days == 0.0
+    assert a_opo.slack_days == -5.0
     assert a_opo.is_on_critical_path is True
-    assert a_analyst.slack_days == 0.0
+    assert a_analyst.slack_days == -5.0
     assert a_analyst.is_on_critical_path is True
+
+
+def test_compute_cpm_zero_slack_not_critical():
+    """Phase ending exactly on deadline → slack=0 НЕ critical.
+
+    Только реальный overflow (slack<0) поднимает критический флаг.
+    """
+    from datetime import date
+    from unittest.mock import MagicMock
+    from app.services.resource_planning_service import ResourcePlanningService
+
+    db = MagicMock()
+    svc = ResourcePlanningService(db)
+
+    q_end = date(2026, 3, 31)
+
+    a_opo = MagicMock()
+    a_opo.backlog_item_id = "item1"
+    a_opo.phase = "opo"
+    a_opo.end_date = date(2026, 3, 31)
+
+    svc._compute_cpm([a_opo], q_end)
+
+    assert a_opo.slack_days == 0.0
+    assert a_opo.is_on_critical_path is False
 
 
 def test_compute_cpm_slack():

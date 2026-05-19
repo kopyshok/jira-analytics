@@ -379,8 +379,11 @@ class ResourcePlanningService:
         pinned_map: Dict[Tuple[str, str, int], str] = {
             (r[0], r[1], r[2]): r[3] for r in pinned_emp_rows
         }
-        # Снимок (item_id, phase) с employee-pin без date-pin — после
-        # пересоздания восстановим флаг pinned_employee на той же фазе.
+        # Снимок (item_id, phase) с employee-pin независимо от других флагов —
+        # после пересоздания восстановим флаг pinned_employee. Иначе сценарий
+        # «pinned_employee + pinned_start → пользователь снимает date-pin →
+        # recompute» теряет pinned_employee (раньше выпадал из снапшота из-за
+        # фильтра pinned_start == False).
         pinned_employee_phase_snapshot: set[Tuple[str, str]] = {
             (r[0], r[1])
             for r in self.db.execute(
@@ -391,8 +394,6 @@ class ResourcePlanningService:
                 .where(
                     ResourcePlanAssignment.plan_id == plan_id,
                     ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
-                    ResourcePlanAssignment.pinned_start == False,  # noqa: E712
-                    ResourcePlanAssignment.pinned_split == False,  # noqa: E712
                 )
                 .distinct()
             ).all()
@@ -916,6 +917,14 @@ class ResourcePlanningService:
             ]
             if pred_ends:
                 earliest = max(max(pred_ends) + timedelta(days=1), q_start)
+            elif (
+                a.backlog_item_id in user_touched_items_snapshot
+                and (a.backlog_item_id, a.phase) not in phases_with_inbound_pred
+            ):
+                # Зеркалим main-loop (lines ~581-585): пользователь снял
+                # предшественников у этой фазы → ищем ресурс с q_start, не
+                # от старого a.start_date.
+                earliest = q_start
             elif a.backlog_item_id in user_touched_items_snapshot:
                 earliest = q_start
             elif a.start_date:
@@ -1316,6 +1325,9 @@ class ResourcePlanningService:
 
         В последовательной цепи фаз (analyst→dev→qa→opo) каждая фаза
         инициативы имеет одинаковый total float = q_end - last_phase_end.
+        Здесь `q_end` — обычно q_end_extended (q_end + 1 месяц), spillover в
+        пределах extended-квартала — by design и не должен подсвечиваться как
+        critical/LATE_START.
         """
 
         by_item: Dict[str, List["ResourcePlanAssignment"]] = defaultdict(list)
@@ -1331,7 +1343,10 @@ class ResourcePlanningService:
             slack = (q_end - last_end).days
             for a in item_assignments:
                 a.slack_days = float(slack)
-                a.is_on_critical_path = slack <= 0
+                # Строгое неравенство: фаза, заканчивающаяся ровно на дедлайне,
+                # не considered critical. Slack < 0 = инициатива переползла за
+                # q_end_extended и реально требует внимания.
+                a.is_on_critical_path = slack < 0
 
     # ------------------------------------------------------------------
     # Phase predecessor graph (свободный граф зависимостей)
@@ -1487,9 +1502,13 @@ class ResourcePlanningService:
         }
 
         by_item: Dict[str, Dict[str, ResourcePlanAssignment]] = defaultdict(dict)
+        # Все строки фазы opo (analyst-кусок + dev-кусок) — обе должны
+        # получить ребро qa→opo, иначе одна остаётся без предшественника
+        # и стартует с q_start.
+        opo_rows_by_item: Dict[str, List[ResourcePlanAssignment]] = defaultdict(list)
         for a in assignments:
-            # Несколько строк opo (analyst-кусок + dev-кусок) — берём последнюю,
-            # дефолтная цепочка ссылается на одну строку фазы.
+            if a.phase == "opo":
+                opo_rows_by_item[a.backlog_item_id].append(a)
             by_item[a.backlog_item_id][a.phase] = a
         for item_id, phases in by_item.items():
             if item_id in items_with_edges or item_id in items_user_touched:
@@ -1500,16 +1519,25 @@ class ResourcePlanningService:
                 pred = chain[i - 1]
                 if not succ or not pred or not succ.id or not pred.id:
                     continue
-                pair = (succ.id, pred.id)
-                if pair in existing_pairs:
-                    continue
-                existing_pairs.add(pair)
-                self.db.add(
-                    PhasePredecessor(
-                        successor_assignment_id=succ.id,
-                        predecessor_assignment_id=pred.id,
+                # Для opo звена цепочки сеем ребро на ОБЕ opo-строки
+                # (analyst-кусок + dev-кусок), иначе одна остаётся без preds.
+                if succ.phase == "opo":
+                    succ_rows = opo_rows_by_item.get(item_id, [succ])
+                else:
+                    succ_rows = [succ]
+                for sr in succ_rows:
+                    if not sr.id:
+                        continue
+                    pair = (sr.id, pred.id)
+                    if pair in existing_pairs:
+                        continue
+                    existing_pairs.add(pair)
+                    self.db.add(
+                        PhasePredecessor(
+                            successor_assignment_id=sr.id,
+                            predecessor_assignment_id=pred.id,
+                        )
                     )
-                )
 
     def _load_predecessors(self, plan_id: str) -> Dict[str, List[str]]:
         """Загрузить рёбра предшественников плана: {succ_id: [pred_id, ...]}."""
@@ -1632,6 +1660,27 @@ class ResourcePlanningService:
                             continue
                         shifted[new_key] = v
                     a.daily_hours_json = json.dumps(shifted) if shifted else None
+            # Если фаза упёрлась в q_end — обрезать ключи JSON в окне
+            # [new_start, new_end]. Иначе бар визуально выходит за квартал,
+            # потому что в JSON остались дни после клампа.
+            if a.daily_hours_json:
+                try:
+                    daily = json.loads(a.daily_hours_json)
+                except json.JSONDecodeError:
+                    daily = {}
+                if daily:
+                    trimmed = {}
+                    for k, v in daily.items():
+                        try:
+                            d = date.fromisoformat(k)
+                        except ValueError:
+                            continue
+                        if new_start <= d <= new_end:
+                            trimmed[k] = v
+                    if len(trimmed) != len(daily):
+                        a.daily_hours_json = (
+                            json.dumps(trimmed) if trimmed else None
+                        )
 
     def split_assignment(
         self,
