@@ -55,6 +55,15 @@ class ResourcePlanAssignment(Base, TimestampMixin):
         Boolean, nullable=False, default=False, server_default=false()
     )
     daily_hours_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Пользователь явно отредактировал список предшественников этой фазы
+    # (через PATCH /assignments/{id} с predecessor_ids в payload).
+    # _ensure_default_predecessors при пересчёте плана пропускает инициативу,
+    # если хоть одна её фаза имеет этот флаг — иначе дефолтная цепочка
+    # analyst→dev→qa→opo восстанавливала бы связь, которую пользователь
+    # только что удалил.
+    predecessors_user_set: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     plan: Mapped["ResourcePlan"] = relationship(back_populates="assignments")
     backlog_item: Mapped["BacklogItem"] = relationship("BacklogItem")

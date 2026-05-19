@@ -309,6 +309,22 @@ class ResourcePlanningService:
         # по (item_id, phase, part_number, employee_id).
         pred_snapshot = self._snapshot_predecessors(plan_id)
 
+        # Снимок инициатив, где пользователь явно правил предшественников
+        # (флаг `predecessors_user_set` хотя бы у одной фазы). Non-pinned
+        # назначения удаляются при пересчёте и флаг теряется → запоминаем
+        # на уровне инициативы и передаём в default-seeder.
+        user_touched_items_snapshot: set[str] = {
+            r[0]
+            for r in self.db.execute(
+                select(ResourcePlanAssignment.backlog_item_id)
+                .where(
+                    ResourcePlanAssignment.plan_id == plan_id,
+                    ResourcePlanAssignment.predecessors_user_set == True,  # noqa: E712
+                )
+                .distinct()
+            ).all()
+        }
+
         # Сохранить pinned до удаления, удалить только non-pinned
         pinned_existing = list(
             self.db.execute(
@@ -785,6 +801,12 @@ class ResourcePlanningService:
         # compute (когда снапшот пуст). Сдвиг по графу выполняем после.
         self.db.flush()
         self._restore_predecessors(new_assignments, pred_snapshot)
+        # Восстановить флаг «пользователь явно правил связи» на хотя бы одной
+        # фазе каждой такой инициативы — чтобы default-seeder её пропустил.
+        if user_touched_items_snapshot:
+            for a in new_assignments:
+                if a.backlog_item_id in user_touched_items_snapshot:
+                    a.predecessors_user_set = True
         self.db.flush()
         self._ensure_default_predecessors(plan_id, new_assignments)
         self.db.flush()
@@ -802,6 +824,43 @@ class ResourcePlanningService:
         self._compute_cpm(new_assignments, q_end_extended)
         # Cache events for Stage B persist_conflicts
         self._last_leveling_events = leveling_events
+
+        # Защитный clamp дат к рабочим дням: start_date/end_date не должны
+        # попадать на выходные, праздники или дни с нулевой доступностью
+        # (отпуска). Иначе бар визуально «вылазит» на выходные, что выглядит
+        # неаккуратно. Источник правды — daily_hours_json (если есть) или
+        # availability сотрудника.
+        for a in new_assignments:
+            if not a.start_date or not a.end_date:
+                continue
+            # 1. Предпочитаем границы из daily_hours_json (там только дни с часами).
+            if a.daily_hours_json:
+                try:
+                    daily_keys = [
+                        date.fromisoformat(k)
+                        for k, v in json.loads(a.daily_hours_json).items()
+                        if float(v) > 0.0
+                    ]
+                except (json.JSONDecodeError, ValueError):
+                    daily_keys = []
+                if daily_keys:
+                    a.start_date = min(daily_keys)
+                    a.end_date = max(daily_keys)
+                    continue
+            # 2. Fallback: подтянуть start вперёд / end назад к первому/
+            #    последнему дню с avail > 0 для сотрудника.
+            emp_avail = avail.get(a.employee_id, {}) if a.employee_id else {}
+            if not emp_avail:
+                continue
+            s = a.start_date
+            while s <= a.end_date and emp_avail.get(s, 0.0) <= 0.01:
+                s += timedelta(days=1)
+            e = a.end_date
+            while e >= a.start_date and emp_avail.get(e, 0.0) <= 0.01:
+                e -= timedelta(days=1)
+            if s <= e:
+                a.start_date = s
+                a.end_date = e
 
         # Persist conflicts (Stage B): сначала агрегатор склеивает daily
         # OVERLOAD-события в диапазоны и проштамповывает шаблонные сообщения.
@@ -1255,13 +1314,30 @@ class ResourcePlanningService:
         )
         items_with_edges: set[str] = {r[0] for r in rows}
 
+        # Инициативы, где пользователь явно правил связи хотя бы у одной фазы
+        # (например, удалил Анализ из предшественников Разработки). Не сеем
+        # дефолты, иначе восстановим ту самую связь, которую он только что
+        # снял.
+        user_set_rows = (
+            self.db.execute(
+                select(ResourcePlanAssignment.backlog_item_id)
+                .where(
+                    ResourcePlanAssignment.plan_id == plan_id,
+                    ResourcePlanAssignment.predecessors_user_set == True,  # noqa: E712
+                )
+                .distinct()
+            )
+            .all()
+        )
+        items_user_touched: set[str] = {r[0] for r in user_set_rows}
+
         by_item: Dict[str, Dict[str, ResourcePlanAssignment]] = defaultdict(dict)
         for a in assignments:
             # Несколько строк opo (analyst-кусок + dev-кусок) — берём последнюю,
             # дефолтная цепочка ссылается на одну строку фазы.
             by_item[a.backlog_item_id][a.phase] = a
         for item_id, phases in by_item.items():
-            if item_id in items_with_edges:
+            if item_id in items_with_edges or item_id in items_user_touched:
                 continue
             chain = [phases.get(p) for p in PHASE_ORDER if phases.get(p) is not None]
             for i in range(1, len(chain)):
