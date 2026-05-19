@@ -745,7 +745,17 @@ def compute_plan(
     plan.status = "computing"
     db.commit()
     svc = ResourcePlanningService(db)
-    svc.compute_schedule(plan_id)
+    try:
+        svc.compute_schedule(plan_id)
+    except Exception:
+        # Не оставлять план в `computing` если расчёт упал — иначе UI
+        # бесконечно показывает «Считается…» и блокирует кнопку.
+        db.rollback()
+        plan2 = db.get(ResourcePlan, plan_id)
+        if plan2 and plan2.status == "computing":
+            plan2.status = "stale"
+            db.commit()
+        raise
     db.refresh(plan)
     return plan
 
