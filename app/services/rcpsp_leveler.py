@@ -23,7 +23,10 @@ def _per_day_hours(a: ResourcePlanAssignment, availability: Dict[str, Dict[date,
     """Реальная нагрузка фазы по дням.
 
     Приоритет: assignment.daily_hours_json (план фактической дневной траты).
-    Fallback: hours_allocated равномерно по рабочим дням сегмента.
+    Fallback: hours_allocated равномерно по рабочим дням сегмента, но
+    capped на per-day availability — иначе при involvement<1 (allocator
+    кэпил дневную ёмкость ниже avail) равномерный fallback мог приписать
+    8ч/день и поднять false overload.
     """
     if a.daily_hours_json:
         try:
@@ -48,7 +51,7 @@ def _per_day_hours(a: ResourcePlanAssignment, availability: Dict[str, Dict[date,
     if not working:
         return {}
     per = a.hours_allocated / len(working)
-    return {d: per for d in working}
+    return {d: min(per, avail_map.get(d, per)) for d in working}
 
 
 LevelingAction = Literal["delay", "reassign", "escalate"]

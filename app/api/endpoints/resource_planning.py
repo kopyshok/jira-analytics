@@ -1295,6 +1295,32 @@ def patch_assignment(
                 },
             )
 
+    # No-op фильтр: start_date в патче равен текущему — не считаем это
+    # явным пином. Иначе повторная отправка формы плодит фантомные пины и
+    # двигает end_date с дельтой=0.
+    start_date_is_noop = (
+        "start_date" in patch
+        and patch.get("start_date") == a.start_date
+    )
+    if start_date_is_noop:
+        patch.pop("start_date", None)
+
+    # Force-employee + start_date в одном PATCH несовместимы: pinned_start=True
+    # ставится ДО compute_schedule, а ему передаётся новая дата без правильного
+    # пересчёта pre-deduct'а. Защитный 422 — пусть UI шлёт двумя запросами
+    # (сначала смена сотрудника + пересчёт, потом ручная дата).
+    if (
+        force
+        and "employee_id" in patch
+        and "start_date" in patch
+        and patch.get("start_date") != a.start_date
+    ):
+        raise HTTPException(
+            422,
+            "force=true смена сотрудника не сочетается с ручной датой "
+            "в одном PATCH — сначала закрепи сотрудника, потом дату.",
+        )
+
     new_start = patch.get("start_date", a.start_date)
     new_end = patch.get("end_date", a.end_date)
 
