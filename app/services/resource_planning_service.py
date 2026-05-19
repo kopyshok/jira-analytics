@@ -1514,13 +1514,15 @@ class ResourcePlanningService:
 
         Двигает только тогда, когда start_date РАНЬШЕ требуемого preds (вперёд)
         или ПОЗЖЕ (назад) — для случая, когда пользователь rewires цепочку,
-        делая фазу параллельной (qa→analyst вместо qa→dev). Pinned-start/
-        Pinned-split не сдвигаются.
+        делая фазу параллельной (qa→analyst вместо qa→dev). Pinned-start
+        зафиксирован пользователем явно — не двигаем. Pinned-split — только
+        структурный маркер «фаза разбита на части», даты должны течь по
+        графу предшественников.
         """
         order = self._topological_order(assignments, preds)
         by_id = {a.id: a for a in assignments if a.id}
         for a in order:
-            if a.pinned_start or a.pinned_split:
+            if a.pinned_start:
                 continue
             if a.start_date is None or a.end_date is None:
                 continue
@@ -1540,6 +1542,7 @@ class ResourcePlanningService:
             if new_start == a.start_date:
                 continue
             duration = (a.end_date - a.start_date).days
+            delta = (new_start - a.start_date).days
             if new_start > q_end:
                 new_start = q_end
             a.start_date = new_start
@@ -1547,6 +1550,24 @@ class ResourcePlanningService:
             if new_end > q_end:
                 new_end = q_end
             a.end_date = new_end
+            # Сдвинуть daily_hours_json вместе с датами, иначе защитный clamp
+            # после CPM/leveler вернёт фазу на старые ключи дней.
+            if a.daily_hours_json and delta != 0:
+                try:
+                    daily = json.loads(a.daily_hours_json)
+                except json.JSONDecodeError:
+                    daily = {}
+                if daily:
+                    shifted = {}
+                    for k, v in daily.items():
+                        try:
+                            new_key = (
+                                date.fromisoformat(k) + timedelta(days=delta)
+                            ).isoformat()
+                        except ValueError:
+                            continue
+                        shifted[new_key] = v
+                    a.daily_hours_json = json.dumps(shifted) if shifted else None
 
     def split_assignment(
         self,
