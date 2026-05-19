@@ -1354,12 +1354,19 @@ def patch_assignment(
     # фазы этого же сотрудника пройдут через leveler и сдвинутся, чтобы
     # разрулить новые перегрузки и обойти отпуска.
     if "employee_id" in patch and force and plan:
+        # Запомнить логический ключ ДО compute: employee-only pinned rows
+        # удаляются и пересоздаются с новым id, поэтому после пересчёта
+        # ищем по (backlog_item_id, phase, part_number).
+        target_item_id = a.backlog_item_id
+        target_phase = a.phase
+        target_part_number = a.part_number
         db.flush()  # зафиксировать pinned_employee + новый employee_id
         try:
             ResourcePlanningService(db).compute_schedule(plan_id)
         except ValueError as e:
             raise HTTPException(409, f"reschedule_failed: {e}")
-        # compute_schedule сам коммитит, перечитать назначение
+        # compute_schedule сам коммитит. Перечитать назначение по логическому
+        # ключу — id мог смениться при пересоздании employee-only-pin строки.
         a = db.execute(
             select(ResourcePlanAssignment)
             .options(
@@ -1368,7 +1375,12 @@ def patch_assignment(
                 )
             )
             .options(joinedload(ResourcePlanAssignment.employee))
-            .where(ResourcePlanAssignment.id == assignment_id)
+            .where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.backlog_item_id == target_item_id,
+                ResourcePlanAssignment.phase == target_phase,
+                ResourcePlanAssignment.part_number == target_part_number,
+            )
         ).scalar_one_or_none()
         if not a:
             raise HTTPException(404, "Assignment vanished after reschedule")
