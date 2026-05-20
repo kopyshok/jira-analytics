@@ -714,18 +714,36 @@ class AnalyticsService:
                 roles=[], total_plan=0.0, total_fact=0.0, total_pct=0.0,
             )
 
-        # Primary team каждого выбранного сотрудника — для cross-team routing.
+        # Team каждого сотрудника для классификации «чужой» задачи. Совпадает
+        # с логикой иерархического отчёта Аналитики: если активен фильтр teams,
+        # выбираем primary (если он в фильтре) либо первое совпавшее членство;
+        # без фильтра — primary.
         emp_team_rows = (
-            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
-            .filter(
-                EmployeeTeam.employee_id.in_([e.id for e in employees]),
-                EmployeeTeam.is_primary.is_(True),
-            )
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team, EmployeeTeam.is_primary)
+            .filter(EmployeeTeam.employee_id.in_([e.id for e in employees]))
             .all()
         )
-        emp_team_by_id: dict[str, str] = {
-            row.employee_id: row.team for row in emp_team_rows
-        }
+        emp_teams_all: dict[str, list[str]] = {}
+        emp_primary: dict[str, str] = {}
+        for row in emp_team_rows:
+            emp_teams_all.setdefault(row.employee_id, []).append(row.team)
+            if row.is_primary:
+                emp_primary[row.employee_id] = row.team
+
+        emp_team_by_id: dict[str, str] = {}
+        if teams:
+            team_set = set(teams)
+            for e in employees:
+                primary = emp_primary.get(e.id)
+                if primary and primary in team_set:
+                    emp_team_by_id[e.id] = primary
+                    continue
+                for t in emp_teams_all.get(e.id, []):
+                    if t in team_set:
+                        emp_team_by_id[e.id] = t
+                        break
+        else:
+            emp_team_by_id = dict(emp_primary)
 
         # 4. Роли реестр
         roles_db: list[Role] = self.db.query(Role).filter(Role.is_active.is_(True)).order_by(Role.sort_order).all()
@@ -798,11 +816,18 @@ class AnalyticsService:
         ORPHAN_WT_LABEL = "Не указана категория/вид работ"
 
         fact_per_emp_wt: dict[str, dict[str, float]] = {e.id: {} for e in employees}
+        # Справочный счётчик чужих часов: суммируется по всем foreign-ворклогам
+        # независимо от того, ушли ли часы в other_foreign WT или в обычную
+        # категорию через assigned_category. Совпадает с классификацией в
+        # иерархическом отчёте Аналитики (`_classify_foreign`).
+        foreign_fact_per_emp: dict[str, float] = {e.id: 0.0 for e in employees}
         for emp_id, cat_code, assigned_cat, issue_team, parts_json, secs in wl_rows:
             h = (secs or 0) / 3600.0
             emp_team = emp_team_by_id.get(emp_id)
 
             is_foreign = _classify_foreign(emp_team, issue_team, parts_json)
+            if is_foreign:
+                foreign_fact_per_emp[emp_id] = foreign_fact_per_emp.get(emp_id, 0.0) + h
 
             # Чужая задача без ручной assigned_category → other_foreign.
             # Если категория проставлена руками — она перебивает foreign-routing,
@@ -966,10 +991,7 @@ class AnalyticsService:
                         pct=0.0,
                     ))
 
-                emp_foreign = (
-                    fact_per_emp_wt.get(emp.id, {}).get(other_foreign_wt.id, 0.0)
-                    if other_foreign_wt is not None else 0.0
-                )
+                emp_foreign = foreign_fact_per_emp.get(emp.id, 0.0)
                 emp_foreign_pct = (emp_foreign / fact_total * 100) if fact_total > 0 else 0.0
 
                 emp_items.append(NormWorkEmployee(

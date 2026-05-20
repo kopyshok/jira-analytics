@@ -322,6 +322,64 @@ def test_foreign_hours_aggregated_at_employee_role_and_total(db_session, client)
     assert emp_block["foreign_pct"] == 40.0
 
 
+def test_foreign_hours_count_assigned_category_routed(db_session, client):
+    """Чужие часы с ручной assigned_category всё равно учитываются в foreign_hours."""
+    _seed_work_types_and_categories(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_employee(db_session, "Помогаю", "Команда A")
+    issue = _seed_issue(db_session, project, "OVR-2", team="Команда B")
+    issue.assigned_category = "support_consultation"
+    db_session.commit()
+    _seed_worklog(db_session, issue, emp, 5.0)
+
+    resp = client.get(
+        "/api/v1/analytics/dashboard/norm-work",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A"},
+    )
+    body = resp.json()
+    emp_block = _find_emp_breakdown(body, emp.id)
+    # часы лежат в категории Сопровождение (assigned_category перебивает routing)
+    assert _wt_label_hours(emp_block, "Сопровождение") == 5.0
+    # но foreign_hours всё равно их считает
+    assert emp_block["foreign_hours"] == 5.0
+    assert emp_block["foreign_pct"] == 100.0
+    assert body["foreign_hours"] == 5.0
+
+
+def test_foreign_hours_team_aware_for_multi_team_member(db_session, client):
+    """Если фильтр teams выбирает не-primary команду — emp_team берётся из фильтра."""
+    _seed_work_types_and_categories(db_session)
+    project = _seed_project(db_session)
+    emp = Employee(
+        id=str(uuid.uuid4()),
+        jira_account_id=f"acc-{uuid.uuid4()}",
+        display_name="Мульти Член",
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(id=str(uuid.uuid4()), employee_id=emp.id, team="Команда A", is_primary=True))
+    db_session.add(EmployeeTeam(id=str(uuid.uuid4()), employee_id=emp.id, team="Команда B", is_primary=False))
+    db_session.commit()
+
+    own_b = _seed_issue(db_session, project, "MB-1", team="Команда B")
+    foreign_c = _seed_issue(db_session, project, "MC-1", team="Команда C")
+    _seed_worklog(db_session, own_b, emp, 4.0)
+    _seed_worklog(db_session, foreign_c, emp, 2.0)
+
+    # Фильтр по Команда B — emp_team должен быть B, не primary A
+    resp = client.get(
+        "/api/v1/analytics/dashboard/norm-work",
+        params={"year": 2026, "quarter": 2, "teams": "Команда B"},
+    )
+    body = resp.json()
+    emp_block = _find_emp_breakdown(body, emp.id)
+    assert emp_block is not None
+    # 2ч на Команду C — чужие; 4ч на B — свои
+    assert emp_block["foreign_hours"] == 2.0
+
+
 def test_foreign_hours_zero_when_no_foreign_work(db_session, client):
     """Чистая своя команда → foreign_hours/foreign_pct = 0 на всех уровнях."""
     _seed_work_types_and_categories(db_session)
