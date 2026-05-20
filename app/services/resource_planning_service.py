@@ -1601,6 +1601,65 @@ class ResourcePlanningService:
             if new_end > q_end:
                 new_end = q_end
             a.end_date = new_end
+
+            # QA — часы-only без сотрудника; blind-shift ключей daily_hours_json
+            # на delta дней может выбросить их на выходные/праздники (если
+            # оригинальный layout заканчивается в пятницу, то ключи
+            # вида Mon/Tue/Wed + delta → Sat/Sun). Пересчитываем layout
+            # по производственному календарю с нуля от нового new_start.
+            if a.phase == "qa":
+                item_obj = self.db.get(BacklogItem, a.backlog_item_id)
+                qa_hours = (item_obj.estimate_qa_hours or 0.0) if item_obj else 0.0
+                if qa_hours > 0.0:
+                    qa_inv = (
+                        self._involvement_for_phase(item_obj, "qa") or 1.0
+                        if item_obj else 1.0
+                    )
+                    # Загружаем аномалии производственного календаря для окна
+                    # [new_start, q_end]
+                    cal_rows = (
+                        self.db.execute(
+                            select(ProductionCalendarDay).where(
+                                and_(
+                                    ProductionCalendarDay.date >= new_start,
+                                    ProductionCalendarDay.date <= q_end,
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    cal_anomalies: Dict[date, float] = {
+                        row.date: row.hours for row in cal_rows
+                    }
+
+                    def _cal_hours(d: date) -> float:
+                        h = cal_anomalies.get(d)
+                        if h is None:
+                            return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
+                        return h
+
+                    qa_daily: Dict[date, float] = {}
+                    remaining_h = qa_hours
+                    cursor = new_start
+                    while remaining_h > 0.001 and cursor <= q_end:
+                        avail_h = _cal_hours(cursor) * qa_inv
+                        if avail_h > 0:
+                            take = min(remaining_h, avail_h)
+                            qa_daily[cursor] = take
+                            remaining_h -= take
+                        cursor += timedelta(days=1)
+
+                    if qa_daily:
+                        a.start_date = min(qa_daily.keys())
+                        a.end_date = max(qa_daily.keys())
+                        a.daily_hours_json = json.dumps(
+                            {d.isoformat(): h for d, h in qa_daily.items()}
+                        )
+                    else:
+                        a.daily_hours_json = None
+                continue
+
             # Сдвинуть daily_hours_json вместе с датами, иначе защитный clamp
             # после CPM/leveler вернёт фазу на старые ключи дней.
             if a.daily_hours_json and delta != 0:
