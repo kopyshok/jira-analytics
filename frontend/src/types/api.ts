@@ -795,6 +795,8 @@ export interface NormWorkEmployee {
   plan_hours: number;
   fact_hours: number;
   pct: number;
+  foreign_hours: number;
+  foreign_pct: number;
   work_types: NormWorkTypeBreakdown[];
 }
 
@@ -806,6 +808,8 @@ export interface NormWorkRoleGroup {
   total_plan: number;
   total_fact: number;
   total_pct: number;
+  foreign_hours: number;
+  foreign_pct: number;
   employees: NormWorkEmployee[];
 }
 
@@ -814,6 +818,8 @@ export interface DashboardNormWorkResponse {
   total_plan: number;
   total_fact: number;
   total_pct: number;
+  foreign_hours: number;
+  foreign_pct: number;
 }
 
 export interface CategoryMetaItem {

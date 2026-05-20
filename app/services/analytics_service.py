@@ -928,6 +928,7 @@ class AnalyticsService:
             emp_items: list[NormWorkEmployee] = []
             role_plan = 0.0
             role_fact = 0.0
+            role_foreign = 0.0
 
             for emp, plan_total, fact_total, emp_pct in emp_with_totals:
                 wt_breakdowns: list[NormWorkTypeBreakdown] = []
@@ -965,6 +966,12 @@ class AnalyticsService:
                         pct=0.0,
                     ))
 
+                emp_foreign = (
+                    fact_per_emp_wt.get(emp.id, {}).get(other_foreign_wt.id, 0.0)
+                    if other_foreign_wt is not None else 0.0
+                )
+                emp_foreign_pct = (emp_foreign / fact_total * 100) if fact_total > 0 else 0.0
+
                 emp_items.append(NormWorkEmployee(
                     employee_id=emp.id,
                     name=emp.display_name or "",
@@ -972,12 +979,16 @@ class AnalyticsService:
                     plan_hours=round(plan_total, 1),
                     fact_hours=round(fact_total, 1),
                     pct=round(emp_pct, 1),
+                    foreign_hours=round(emp_foreign, 1),
+                    foreign_pct=round(emp_foreign_pct, 1),
                     work_types=wt_breakdowns,
                 ))
                 role_plan += plan_total
                 role_fact += fact_total
+                role_foreign += emp_foreign
 
             role_pct = (role_fact / role_plan * 100) if role_plan > 0 else 0.0
+            role_foreign_pct = (role_foreign / role_fact * 100) if role_fact > 0 else 0.0
             roles_out.append(NormWorkRoleGroup(
                 role_code=role_code or "_unassigned",
                 role_label=role_label,
@@ -986,18 +997,24 @@ class AnalyticsService:
                 total_plan=round(role_plan, 1),
                 total_fact=round(role_fact, 1),
                 total_pct=round(role_pct, 1),
+                foreign_hours=round(role_foreign, 1),
+                foreign_pct=round(role_foreign_pct, 1),
                 employees=emp_items,
             ))
             grand_plan += role_plan
             grand_fact += role_fact
 
         grand_pct = (grand_fact / grand_plan * 100) if grand_plan > 0 else 0.0
+        grand_foreign = sum(r.foreign_hours for r in roles_out)
+        grand_foreign_pct = (grand_foreign / grand_fact * 100) if grand_fact > 0 else 0.0
 
         return DashboardNormWorkResponse(
             roles=roles_out,
             total_plan=round(grand_plan, 1),
             total_fact=round(grand_fact, 1),
             total_pct=round(grand_pct, 1),
+            foreign_hours=round(grand_foreign, 1),
+            foreign_pct=round(grand_foreign_pct, 1),
         )
 
     def get_dashboard_categories(

@@ -65,6 +65,8 @@ class NormWorkEmployee(BaseModel):
     plan_hours: float
     fact_hours: float
     pct: float
+    foreign_hours: float = 0.0
+    foreign_pct: float = 0.0
     work_types: list[NormWorkTypeBreakdown]
 
 
@@ -76,6 +78,8 @@ class NormWorkRoleGroup(BaseModel):
     total_plan: float
     total_fact: float
     total_pct: float
+    foreign_hours: float = 0.0
+    foreign_pct: float = 0.0
     employees: list[NormWorkEmployee]
 
 
@@ -84,6 +88,8 @@ class DashboardNormWorkResponse(BaseModel):
     total_plan: float
     total_fact: float
     total_pct: float
+    foreign_hours: float = 0.0
+    foreign_pct: float = 0.0
 
 
 # ── Widget 3: Category metrics ───────────────────────────────────────────────

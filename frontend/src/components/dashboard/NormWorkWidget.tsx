@@ -114,11 +114,34 @@ function WorkTypeRow({
   );
 }
 
+const FOREIGN_BADGE_MIN_HOURS = 8;
+const FOREIGN_BADGE_MIN_PCT = 5;
+
+function ForeignBadge({ hours, pct, compact = false }: { hours: number; pct: number; compact?: boolean }) {
+  if (hours <= 0) return null;
+  const label = `чужие ${Math.round(hours)} ч · ${Math.round(pct)}%`;
+  return (
+    <Tooltip title="Часы сотрудника на задачи чужой продуктовой команды (из общего факта)">
+      <span style={{
+        fontSize: compact ? 11 : 12,
+        padding: compact ? '1px 6px' : '2px 8px',
+        borderRadius: 4,
+        background: 'rgba(255, 77, 79, 0.12)',
+        color: '#ff7875',
+        border: '1px solid rgba(255, 77, 79, 0.35)',
+        whiteSpace: 'nowrap',
+      }}>{label}</span>
+    </Tooltip>
+  );
+}
+
 function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWorkRoleGroup; t: Thresholds }) {
   const navigate = useNavigate();
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
   const color = statusColor(emp.pct, t);
+  const showForeignBadge =
+    emp.foreign_hours >= FOREIGN_BADGE_MIN_HOURS || emp.foreign_pct >= FOREIGN_BADGE_MIN_PCT;
   const openAnalytics = (extra: Record<string, string> = {}) => {
     const params = new URLSearchParams({ employee: emp.employee_id, ...extra });
     navigate(`/analytics?${params.toString()}`);
@@ -142,7 +165,7 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
         onClick={handleOpenAnalytics}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenAnalytics(); } }}
         style={{
-          display: 'grid', gridTemplateColumns: '28px 1fr auto',
+          display: 'grid', gridTemplateColumns: '28px 1fr auto auto',
           gap: 8, alignItems: 'center', marginBottom: 8,
           cursor: 'pointer',
         }}>
@@ -154,6 +177,7 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
         <div style={{ fontSize: 14, color: '#e6edf7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {emp.name}
         </div>
+        {showForeignBadge ? <ForeignBadge hours={emp.foreign_hours} pct={emp.foreign_pct} compact /> : <span />}
         <div style={{ fontSize: 14, fontWeight: 700, color }}>
           {Math.round(emp.pct)}%
         </div>
@@ -190,6 +214,16 @@ function RoleColumn({ role, t }: { role: NormWorkRoleGroup; t: Thresholds }) {
           Σ план <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(role.total_plan)} ч</b>
           {' · '}Σ факт <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(role.total_fact)} ч</b>
           {' · '}средн. <b style={{ color: statusColor(role.total_pct, t) }}>{Math.round(role.total_pct)}%</b>
+          {role.foreign_hours > 0 && (
+            <>
+              {' · '}
+              <Tooltip title="Часы роли на задачи чужих продуктовых команд (из общего факта)">
+                <span style={{ color: '#ff7875' }}>
+                  чужие <b>{Math.round(role.foreign_hours)} ч</b> ({Math.round(role.foreign_pct)}%)
+                </span>
+              </Tooltip>
+            </>
+          )}
         </div>
       </div>
       <div style={{ padding: 12 }}>
@@ -227,10 +261,15 @@ export default function NormWorkWidget({ data, loading }: Props) {
     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 16 }}>
       <span style={{ fontSize: 15, fontWeight: 600, color: '#e6edf7' }}>Нормированные работы</span>
       {data && !loading && (
-        <span style={{ fontSize: 14, color: DARK_THEME.textMuted }}>
-          Σ план <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_plan)} ч</b>
-          {' · '}Σ факт <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_fact)} ч</b>
-          {' · '}загрузка <b style={{ color: statusColor(data.total_pct, t) }}>{Math.round(data.total_pct)}%</b>
+        <span style={{ fontSize: 14, color: DARK_THEME.textMuted, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span>
+            Σ план <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_plan)} ч</b>
+            {' · '}Σ факт <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_fact)} ч</b>
+            {' · '}загрузка <b style={{ color: statusColor(data.total_pct, t) }}>{Math.round(data.total_pct)}%</b>
+          </span>
+          {data.foreign_hours > 0 && (
+            <ForeignBadge hours={data.foreign_hours} pct={data.foreign_pct} />
+          )}
         </span>
       )}
       {gear}

@@ -289,3 +289,54 @@ def test_other_foreign_row_visible_when_plan_zero_fact_positive(db_session, clie
     assert other_row["plan_hours"] == 0
     assert other_row["fact_hours"] == 6.0
     assert other_row["pct"] == 0.0  # план 0 → pct=0 по текущей логике, фронт сам красит
+
+
+def test_foreign_hours_aggregated_at_employee_role_and_total(db_session, client):
+    """foreign_hours / foreign_pct поднимаются на сотрудника, роль и виджет."""
+    _seed_work_types_and_categories(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_employee(db_session, "Хелпер", "Команда A")
+
+    own_issue = _seed_issue(db_session, project, "OWN-2", team="Команда A")
+    foreign_issue = _seed_issue(db_session, project, "FOR-2", team="Команда B")
+    _seed_worklog(db_session, own_issue, emp, 6.0)
+    _seed_worklog(db_session, foreign_issue, emp, 4.0)
+
+    resp = client.get(
+        "/api/v1/analytics/dashboard/norm-work",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["foreign_hours"] == 4.0
+    assert body["foreign_pct"] == 40.0  # 4 из 10 факта
+
+    role = next(r for r in body["roles"] if any(e["employee_id"] == emp.id for e in r["employees"]))
+    assert role["foreign_hours"] == 4.0
+    assert role["foreign_pct"] == 40.0
+
+    emp_block = _find_emp_breakdown(body, emp.id)
+    assert emp_block is not None
+    assert emp_block["foreign_hours"] == 4.0
+    assert emp_block["foreign_pct"] == 40.0
+
+
+def test_foreign_hours_zero_when_no_foreign_work(db_session, client):
+    """Чистая своя команда → foreign_hours/foreign_pct = 0 на всех уровнях."""
+    _seed_work_types_and_categories(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_employee(db_session, "Свойчик", "Команда A")
+    issue = _seed_issue(db_session, project, "PURE-1", team="Команда A")
+    _seed_worklog(db_session, issue, emp, 8.0)
+
+    resp = client.get(
+        "/api/v1/analytics/dashboard/norm-work",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A"},
+    )
+    body = resp.json()
+    assert body["foreign_hours"] == 0.0
+    assert body["foreign_pct"] == 0.0
+    emp_block = _find_emp_breakdown(body, emp.id)
+    assert emp_block["foreign_hours"] == 0.0
+    assert emp_block["foreign_pct"] == 0.0
