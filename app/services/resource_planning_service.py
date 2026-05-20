@@ -477,10 +477,9 @@ class ResourcePlanningService:
         # effective_estimate_hours (override приоритетнее BacklogItem).
         alloc_by_item = self._load_alloc_by_item(plan)
 
-        q_start, q_end = self._quarter_bounds(plan)
-        # Allow allocation to spill +1 month past quarter end.  Assignments
-        # with seg_end > q_end (any boundary crossing) get out_of_quarter=True.
-        q_end_extended = q_end + relativedelta(months=1)
+        q_start, q_end, q_end_extended = self._quarter_bounds_extended(plan)
+        # q_end_extended = q_end + 1 месяц — буфер spillover. Assignments
+        # с seg_end > q_end (строгий конец квартала) получают out_of_quarter=True.
         employees = self._load_employees(plan)
         if not employees:
             plan.status = "ready"
@@ -573,7 +572,7 @@ class ResourcePlanningService:
                     start_date=a.start_date,
                     hours=a.hours_allocated,
                     involvement=inv,
-                    q_end=q_end,
+                    q_end=q_end_extended,
                 )
                 a.end_date = new_end
                 # _extend_window_for_hours возвращает "{}" если ни один
@@ -582,6 +581,8 @@ class ResourcePlanningService:
                 a.daily_hours_json = (
                     daily_json if daily_json and daily_json != "{}" else None
                 )
+                # Окно расширяем до q_end_extended (буфер spillover), но
+                # флаг out_of_quarter — относительно строгого q_end.
                 a.out_of_quarter = new_end > q_end
             if (
                 a.employee_id
@@ -1221,6 +1222,19 @@ class ResourcePlanningService:
         last_day = cal_module.monthrange(year, last_month)[1]
         q_end = date(year, last_month, last_day)
         return q_start, q_end
+
+    def _quarter_bounds_extended(
+        self, plan: ResourcePlan
+    ) -> Tuple[date, date, date]:
+        """Вернуть (q_start, q_end, q_end_extended).
+
+        ``q_end_extended = q_end + 1 месяц`` — буфер spillover, в который
+        разрешено выползать pinned-фазам и аллокатору. Строгий ``q_end``
+        по-прежнему используется как граница флага ``out_of_quarter``.
+        """
+        q_start, q_end = self._quarter_bounds(plan)
+        q_end_extended = q_end + relativedelta(months=1)
+        return q_start, q_end, q_end_extended
 
     def _assign_employees(
         self,
