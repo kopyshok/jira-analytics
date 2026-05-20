@@ -186,11 +186,27 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
   const { message } = App.useApp();
   const patchMutation = usePatchConflict(planId);
   const [showHidden, setShowHidden] = useState(false);
+  const [showReassigns, setShowReassigns] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('item');
 
-  const active = conflicts.filter(c => c.status !== 'muted' && c.status !== 'resolved');
-  const hidden = conflicts.filter(c => c.status === 'muted' || c.status === 'resolved');
-  const visible = showHidden ? conflicts : active;
+  const reassignCount = useMemo(
+    () =>
+      conflicts.filter(
+        c => c.type === 'LEVELING_REASSIGN' && c.status !== 'muted' && c.status !== 'resolved',
+      ).length,
+    [conflicts],
+  );
+  const { active, hidden, visible } = useMemo(() => {
+    const filterReassigns = (list: ConflictOut[]) =>
+      showReassigns ? list : list.filter(c => c.type !== 'LEVELING_REASSIGN');
+    const a = filterReassigns(
+      conflicts.filter(c => c.status !== 'muted' && c.status !== 'resolved'),
+    );
+    const h = filterReassigns(
+      conflicts.filter(c => c.status === 'muted' || c.status === 'resolved'),
+    );
+    return { active: a, hidden: h, visible: showHidden ? [...a, ...h] : a };
+  }, [conflicts, showHidden, showReassigns]);
 
   const groups = useMemo(() => {
     const map = new Map<string, { label: string; items: ConflictOut[] }>();
@@ -217,7 +233,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
       .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
   }, [visible, groupBy]);
 
-  if (active.length === 0 && hidden.length === 0) return null;
+  if (conflicts.length === 0) return null;
 
   const criticals = active.filter(c => c.severity === 'critical');
   const warnings = active.filter(c => c.severity === 'warning');
@@ -266,16 +282,30 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
                   { label: 'По типу', value: 'type' },
                 ]}
               />
-              {hidden.length > 0 && (
-                <Button
-                  size="small"
-                  type="link"
-                  style={{ padding: 0, fontSize: 12 }}
-                  onClick={() => setShowHidden(!showHidden)}
-                >
-                  {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} погашенных`}
-                </Button>
-              )}
+              <Space size={8}>
+                {reassignCount > 0 && (
+                  <Button
+                    size="small"
+                    type="link"
+                    style={{ padding: 0, fontSize: 12 }}
+                    onClick={() => setShowReassigns(!showReassigns)}
+                  >
+                    {showReassigns
+                      ? 'Скрыть переназначения'
+                      : `Показать переназначения (${reassignCount})`}
+                  </Button>
+                )}
+                {hidden.length > 0 && (
+                  <Button
+                    size="small"
+                    type="link"
+                    style={{ padding: 0, fontSize: 12 }}
+                    onClick={() => setShowHidden(!showHidden)}
+                  >
+                    {showHidden ? 'Скрыть погашенные' : `Показать ${hidden.length} погашенных`}
+                  </Button>
+                )}
+              </Space>
             </Space>
             {groups.map(g => (
               <div key={g.key} style={{ borderTop: '1px solid #1e3a5f', paddingTop: 6 }}>
