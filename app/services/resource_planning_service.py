@@ -1399,36 +1399,16 @@ class ResourcePlanningService:
         plan_id: str,
         assignments: List[ResourcePlanAssignment],
     ) -> None:
-        """Посеять дефолтную цепочку analyst→dev→qa→opo пер-инициативно.
+        """Дополнить недостающие рёбра дефолтной цепочки analyst→dev→qa→opo.
 
-        Сеется на уровне КАЖДОЙ инициативы у которой нет ни одной входящей
-        связи. Это важно для инициатив, добавленных позже через
-        auto-sync `initiatives_rfa` — раньше ранний выход «есть хоть одна
-        связь в плане» оставлял новые инициативы без цепочки.
+        Per-pair seeding: для каждой пары (prev, next) из PHASE_ORDER проверяем,
+        что ребро в БД есть. Если нет — добавляем. Инициативы, где пользователь
+        явно правил предшественников ХОТЯ БЫ ОДНОЙ ФАЗЫ (predecessors_user_set
+        на этой фазе или флаг в snapshot), пропускаем целиком — пользователь
+        мог удалить дефолтную связь намеренно.
         """
         from app.models import PhasePredecessor
 
-        # Какие инициативы уже имеют входящие рёбра — их не трогаем.
-        rows = (
-            self.db.execute(
-                select(
-                    ResourcePlanAssignment.backlog_item_id,
-                )
-                .join(
-                    PhasePredecessor,
-                    PhasePredecessor.successor_assignment_id == ResourcePlanAssignment.id,
-                )
-                .where(ResourcePlanAssignment.plan_id == plan_id)
-                .distinct()
-            )
-            .all()
-        )
-        items_with_edges: set[str] = {r[0] for r in rows}
-
-        # Инициативы, где пользователь явно правил связи хотя бы у одной фазы
-        # (например, удалил Анализ из предшественников Разработки). Не сеем
-        # дефолты, иначе восстановим ту самую связь, которую он только что
-        # снял.
         user_set_rows = (
             self.db.execute(
                 select(ResourcePlanAssignment.backlog_item_id)
@@ -1437,12 +1417,10 @@ class ResourcePlanningService:
                     ResourcePlanAssignment.predecessors_user_set == True,  # noqa: E712
                 )
                 .distinct()
-            )
-            .all()
+            ).all()
         )
         items_user_touched: set[str] = {r[0] for r in user_set_rows}
 
-        # Существующие пары — защита от UNIQUE-конфликта на повторной вставке.
         existing_pairs: set[Tuple[str, str]] = {
             (r[0], r[1])
             for r in self.db.execute(
@@ -1453,43 +1431,40 @@ class ResourcePlanningService:
             ).all()
         }
 
-        by_item: Dict[str, Dict[str, ResourcePlanAssignment]] = defaultdict(dict)
-        # Все строки фазы opo (analyst-кусок + dev-кусок) — обе должны
-        # получить ребро qa→opo, иначе одна остаётся без предшественника
-        # и стартует с q_start.
-        opo_rows_by_item: Dict[str, List[ResourcePlanAssignment]] = defaultdict(list)
+        by_item: Dict[str, Dict[str, List[ResourcePlanAssignment]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
         for a in assignments:
-            if a.phase == "opo":
-                opo_rows_by_item[a.backlog_item_id].append(a)
-            by_item[a.backlog_item_id][a.phase] = a
+            by_item[a.backlog_item_id][a.phase].append(a)
+
         for item_id, phases in by_item.items():
-            if item_id in items_with_edges or item_id in items_user_touched:
+            if item_id in items_user_touched:
                 continue
-            chain = [phases.get(p) for p in PHASE_ORDER if phases.get(p) is not None]
-            for i in range(1, len(chain)):
-                succ = chain[i]
-                pred = chain[i - 1]
-                if not succ or not pred or not succ.id or not pred.id:
+            # Идём по парам в PHASE_ORDER. На каждой паре связываем «последняя
+            # строка предыдущей фазы» → «все строки следующей фазы» (важно для
+            # split-разбитой dev → qa и для двух строк opo).
+            prev_phase_rows: Optional[List[ResourcePlanAssignment]] = None
+            for ph in PHASE_ORDER:
+                cur_rows = phases.get(ph)
+                if not cur_rows:
                     continue
-                # Для opo звена цепочки сеем ребро на ОБЕ opo-строки
-                # (analyst-кусок + dev-кусок), иначе одна остаётся без preds.
-                if succ.phase == "opo":
-                    succ_rows = opo_rows_by_item.get(item_id, [succ])
-                else:
-                    succ_rows = [succ]
-                for sr in succ_rows:
-                    if not sr.id:
-                        continue
-                    pair = (sr.id, pred.id)
-                    if pair in existing_pairs:
-                        continue
-                    existing_pairs.add(pair)
-                    self.db.add(
-                        PhasePredecessor(
-                            successor_assignment_id=sr.id,
-                            predecessor_assignment_id=pred.id,
+                if prev_phase_rows:
+                    # «Последняя» строка предыдущей фазы — с максимальным part_number.
+                    pred = max(prev_phase_rows, key=lambda x: x.part_number or 1)
+                    for succ in cur_rows:
+                        if not succ.id or not pred.id:
+                            continue
+                        pair = (succ.id, pred.id)
+                        if pair in existing_pairs:
+                            continue
+                        existing_pairs.add(pair)
+                        self.db.add(
+                            PhasePredecessor(
+                                successor_assignment_id=succ.id,
+                                predecessor_assignment_id=pred.id,
+                            )
                         )
-                    )
+                prev_phase_rows = cur_rows
 
     def _load_predecessors(self, plan_id: str) -> Dict[str, List[str]]:
         """Загрузить рёбра предшественников плана: {succ_id: [pred_id, ...]}."""
