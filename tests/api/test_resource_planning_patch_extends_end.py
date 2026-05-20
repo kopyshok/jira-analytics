@@ -189,6 +189,13 @@ def test_patch_with_explicit_end_date_does_not_auto_extend(
     """Если пользователь явно передал end_date — auto-extend не запускается."""
     from app.models import ResourcePlanAssignment
 
+    # Снимок daily_hours_json ДО PATCH — если auto-extend-ветка ошибочно
+    # запустится при явном end_date, она перезапишет это значение через
+    # _extend_window_for_hours.
+    a_before = db_session.get(ResourcePlanAssignment, dev_plan["assignment_id"])
+    daily_before = a_before.daily_hours_json
+    db_session.expire_all()
+
     resp = client.patch(
         f"/api/v1/resource-planning/resource-plans/{dev_plan['plan_id']}/assignments/{dev_plan['assignment_id']}",
         json={"start_date": "2026-04-20", "end_date": "2026-04-22"},
@@ -199,9 +206,9 @@ def test_patch_with_explicit_end_date_does_not_auto_extend(
     # Явный end_date пользователя сохраняется как есть, auto-extend не вмешивается.
     assert body["end_date"] == "2026-04-22"
 
-    a = db_session.get(ResourcePlanAssignment, dev_plan["assignment_id"])
-    db_session.refresh(a)
-    # daily_hours_json не должен быть переписан хелпером расширения.
-    # (Старое значение из compute_schedule или None — оба варианта допустимы;
-    # главное — что end_date остался ровно тем, что просил пользователь.)
-    assert a.end_date.isoformat() == "2026-04-22"
+    db_session.expire_all()
+    a_after = db_session.get(ResourcePlanAssignment, dev_plan["assignment_id"])
+    assert a_after.end_date.isoformat() == "2026-04-22"
+    # daily_hours_json не должен быть переписан хелпером расширения —
+    # сравниваем со снимком до PATCH.
+    assert a_after.daily_hours_json == daily_before
