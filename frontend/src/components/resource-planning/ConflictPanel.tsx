@@ -21,6 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
   NO_ANALYST: 'Нет аналитика',
   NO_DEV: 'Нет разработчика',
   LATE_START: 'Поздний старт',
+  PREDECESSOR_VIOLATED: 'Нарушен порядок предшественников',
   LEVELING_DELAY: 'Сдвиг при выравнивании',
   LEVELING_REASSIGN: 'Переназначение',
 };
