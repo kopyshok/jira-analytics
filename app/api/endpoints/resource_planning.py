@@ -1329,21 +1329,42 @@ def patch_assignment(
     new_start = patch.get("start_date", a.start_date)
     new_end = patch.get("end_date", a.end_date)
 
-    # Если пользователь сдвигает start_date без явного end_date — двигаем end на ту
-    # же дельту, чтобы сохранить длительность фазы.
+    # Если пользователь сдвигает start_date без явного end_date — расширяем
+    # окно вправо так, чтобы вместить ровно hours_allocated с учётом
+    # involvement, выходных и аномалий календаря. Старое поведение сохраняло
+    # длительность фазы (new_end = end + delta_days), что молча обрезало
+    # плановые часы при day_cap × duration < hours.
     if (
         "start_date" in patch
         and "end_date" not in patch
         and a.start_date
         and a.end_date
         and patch["start_date"]
+        and a.hours_allocated
+        and a.hours_allocated > 0
     ):
-        delta_days = (patch["start_date"] - a.start_date).days
-        if delta_days != 0:
-            from datetime import timedelta as _td
-
-            new_end = a.end_date + _td(days=delta_days)
-            patch["end_date"] = new_end
+        plan_for_window = db.get(ResourcePlan, plan_id)
+        backlog_item = a.backlog_item
+        if plan_for_window and backlog_item:
+            inv = (
+                ResourcePlanningService._involvement_for_phase(
+                    backlog_item, a.phase
+                )
+                or 1.0
+            )
+            _, q_end = ResourcePlanningService(db)._quarter_bounds(plan_for_window)
+            new_end_dt, daily_json = ResourcePlanningService(
+                db
+            )._extend_window_for_hours(
+                start_date=patch["start_date"],
+                hours=a.hours_allocated,
+                involvement=inv,
+                q_end=q_end,
+            )
+            patch["end_date"] = new_end_dt
+            a.daily_hours_json = daily_json
+            a.out_of_quarter = new_end_dt > q_end
+            new_end = new_end_dt
 
     if new_start and new_end and new_end < new_start:
         raise HTTPException(422, "end_date must be >= start_date")
