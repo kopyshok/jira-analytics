@@ -1353,12 +1353,12 @@ def patch_assignment(
                 or 1.0
             )
             svc = ResourcePlanningService(db)
-            _, q_end = svc._quarter_bounds(plan_for_window)
+            _, q_end, q_end_extended = svc._quarter_bounds_extended(plan_for_window)
             new_end_dt, daily_json = svc._extend_window_for_hours(
                 start_date=patch["start_date"],
                 hours=a.hours_allocated,
                 involvement=inv,
-                q_end=q_end,
+                q_end=q_end_extended,
             )
             patch["end_date"] = new_end_dt
             # _extend_window_for_hours возвращает "{}" если ни один рабочий день
@@ -1367,6 +1367,8 @@ def patch_assignment(
             a.daily_hours_json = (
                 daily_json if daily_json and daily_json != "{}" else None
             )
+            # Окно расширяем до q_end_extended (буфер spillover), но
+            # флаг out_of_quarter — относительно строгого q_end.
             a.out_of_quarter = new_end_dt > q_end
             new_end = new_end_dt
 
