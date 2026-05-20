@@ -281,14 +281,22 @@ export default function AssignmentSidebar({
             Сбросить закреплённого исполнителя
           </Button>
         )}
-        {assignment.pinned_start && (
+        {assignment.pinned_start ? (
           <Button
             block
             danger
-            onClick={() => handleClearManual(['start'])}
+            onClick={() => updateField({ pinned_start: false })}
             disabled={saving}
           >
-            Сбросить ручную дату
+            Снять фиксацию даты
+          </Button>
+        ) : (
+          <Button
+            block
+            onClick={() => updateField({ pinned_start: true })}
+            disabled={saving}
+          >
+            Зафиксировать дату
           </Button>
         )}
         {assignment.pinned_split && hasSiblings && (

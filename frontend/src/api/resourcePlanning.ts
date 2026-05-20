@@ -156,6 +156,8 @@ export interface AssignmentPatch {
   end_date?: string;
   hours_allocated?: number;
   predecessor_ids?: string[];
+  /** Явное закрепление даты. Опускаем → drag по дате ставит флаг как раньше. */
+  pinned_start?: boolean;
   /** Подтверждение смены сотрудника при наличии конфликтов (отпуска/перегрузки). */
   force?: boolean;
 }
