@@ -258,7 +258,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
   const handleCategoryChange = async (code: string | null) => {
     await setIssueCategory(child.id, code);
     qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-    qc.invalidateQueries({ queryKey: ['analytics', 'report'] });
+    qc.invalidateQueries({ queryKey: ['analytics-report'] });
     qc.invalidateQueries({ queryKey: ['issue', 'context', child.id] });
     onSaved();
   };
@@ -266,7 +266,7 @@ function ChildRow({ child, categories, onDrillDown, onSaved }: ChildRowProps) {
   const handleIncludeChange = async (checked: boolean) => {
     await setIssueInclude(child.id, checked);
     qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-    qc.invalidateQueries({ queryKey: ['analytics', 'report'] });
+    qc.invalidateQueries({ queryKey: ['analytics-report'] });
     qc.invalidateQueries({ queryKey: ['issue', 'context', child.id] });
     onSaved();
   };

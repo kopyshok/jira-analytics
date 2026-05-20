@@ -30,7 +30,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
 
   const invalidate = (id: string) => {
     qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-    qc.invalidateQueries({ queryKey: ['analytics', 'report'] });
+    qc.invalidateQueries({ queryKey: ['analytics-report'] });
     qc.invalidateQueries({ queryKey: ['issue', 'context', id] });
     // Инвалидируем контекст предков (для drill-back)
     for (const anc of context.ancestors) {
