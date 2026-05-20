@@ -457,6 +457,10 @@ class GanttProjection(BaseModel):
     pert_projection: List[InitiativePertOut]
     dependencies: List[DependencyOut] = []
     employee_load: List[EmployeeLoadOut] = []
+    # Счётчики для bulk-reset dropdown'а на фронте: сколько фаз
+    # затронет каждый режим сброса. Позволяет дизейблить пункты с 0
+    # и показывать «Сбросить закреплённые даты (N)».
+    reset_counts: Dict[str, int] = {}
 
 
 class AssignmentPatch(BaseModel):
@@ -1038,6 +1042,14 @@ def get_gantt(
         for d in deps_raw
     ]
 
+    reset_counts = {
+        "pinned_dates": sum(1 for a in assignments_raw if a.pinned_start),
+        "pinned_employees": sum(1 for a in assignments_raw if a.pinned_employee),
+        "edited_predecessors": sum(
+            1 for a in assignments_raw if a.predecessors_user_set
+        ),
+    }
+
     return GanttProjection(
         plan=plan,
         assignments=assignments,
@@ -1045,6 +1057,7 @@ def get_gantt(
         pert_projection=pert_projection,
         dependencies=deps,
         employee_load=employee_load,
+        reset_counts=reset_counts,
     )
 
 
