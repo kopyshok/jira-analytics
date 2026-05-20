@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Issue, Worklog, CategoryMapping
 from app.repositories.base import BaseRepository
-from app.services.backlog_service import BacklogService
+from app.services.backlog_service import BacklogService, TRACKED_CATEGORIES
 from app.services.category_resolver import CategoryResolver
 
 
@@ -148,9 +148,13 @@ class MappingService:
                 cache=mapping_cache,
             )
 
-            # Синкаем BacklogItem только для реально изменившихся задач —
-            # экономим N*M запросов для остального большинства.
-            if category_changed:
+            # Синкаем BacklogItem:
+            #  - при смене категории (archive/restore + create);
+            #  - либо если задача в TRACKED_CATEGORIES — чтобы Jira-поля
+            #    (часы, involvement, длительности, приоритет) доезжали до
+            #    реестра инициатив при каждом синке, а не только при первом
+            #    попадании в категорию.
+            if category_changed or resolution.category_code in TRACKED_CATEGORIES:
                 backlog.sync_from_issue(issue)
 
             count += 1
@@ -217,8 +221,12 @@ class MappingService:
             category_changed = issue.category != resolution.category_code
             if category_changed:
                 issue.category = resolution.category_code
-                backlog.sync_from_issue(issue)
                 affected += 1
+            # Тот же расширенный триггер sync_from_issue, что и в
+            # recalculate_issues: при смене категории И для уже включённых
+            # в реестр TRACKED-задач — чтобы Jira-поля доезжали до реестра.
+            if category_changed or resolution.category_code in TRACKED_CATEGORIES:
+                backlog.sync_from_issue(issue)
             self._upsert_mapping(
                 entity_type="issue",
                 entity_id=issue.id,

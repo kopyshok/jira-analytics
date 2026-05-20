@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   ArrowRightOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
-  InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, UndoOutlined,
+  InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, SettingOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -15,6 +15,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import PageHeader from '../components/shared/PageHeader';
 import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
+import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningParamsModal';
 import { statusTagColor } from '../utils/status';
 import { daysSince, formatDateOnly } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
@@ -103,6 +104,8 @@ export default function BacklogPage() {
   const [editing, setEditing] = useState<BacklogItemResponse | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<BacklogItemResponse | null>(null);
+  const [paramsOpen, setParamsOpen] = useState(false);
+  const [paramsTarget, setParamsTarget] = useState<BacklogItemResponse | null>(null);
 
   const [groupByQuarter, setGroupByQuarter] = useState<boolean>(() => {
     return localStorage.getItem('backlog-archive-group') === 'true';
@@ -158,6 +161,7 @@ export default function BacklogPage() {
   const openCreate = () => { setEditing(null); setManualOpen(true); };
   const openEdit = (item: BacklogItemResponse) => { setEditing(item); setManualOpen(true); };
   const openLink = (item: BacklogItemResponse) => { setLinkTarget(item); setLinkOpen(true); };
+  const openParams = (item: BacklogItemResponse) => { setParamsTarget(item); setParamsOpen(true); };
 
   const patch = (id: string, data: Parameters<typeof update.mutate>[0]['data']) => {
     update.mutate(
@@ -461,6 +465,9 @@ export default function BacklogPage() {
           </Tooltip>
         </>
       )}
+      <Tooltip title="Параметры планирования">
+        <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
+      </Tooltip>
       <Popconfirm
         title="Убрать из активного бэклога?"
         description="Инициатива попадёт в раздел «Архив». Связь с Jira сохраняется."
@@ -513,6 +520,9 @@ export default function BacklogPage() {
           <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
         </Tooltip>
       )}
+      <Tooltip title="Параметры планирования">
+        <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
+      </Tooltip>
       <Popconfirm
         title="Удалить идею?"
         onConfirm={() => del.mutate(r.id, {
@@ -552,6 +562,17 @@ export default function BacklogPage() {
               </Space>
             );
           },
+        },
+        {
+          title: 'Действия',
+          key: 'actions',
+          width: 80,
+          fixed: 'right' as const,
+          render: (_: unknown, r: BacklogItemResponse) => (
+            <Tooltip title="Параметры планирования">
+              <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
+            </Tooltip>
+          ),
         },
       ]}
     />
@@ -682,6 +703,11 @@ export default function BacklogPage() {
         open={linkOpen}
         item={linkTarget}
         onClose={() => { setLinkOpen(false); setLinkTarget(null); }}
+      />
+      <BacklogPlanningParamsModal
+        open={paramsOpen}
+        item={paramsTarget}
+        onClose={() => { setParamsOpen(false); setParamsTarget(null); }}
       />
 
       <Tabs

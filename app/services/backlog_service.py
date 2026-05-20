@@ -195,15 +195,16 @@ class BacklogService:
             existing.estimate_opo_hours = issue.planned_opo_hours
             existing.impact = issue.impact
             existing.risk = issue.risk
-            # Jira involvement + calendar duration — propagate as-is (None allowed).
-            existing.involvement_analyst = issue.involvement_analyst
-            existing.involvement_dev = issue.involvement_dev
-            existing.involvement_qa = issue.involvement_qa
-            existing.involvement_launch = issue.involvement_launch
-            existing.duration_analyst_days = issue.duration_analyst_days
-            existing.duration_dev_days = issue.duration_dev_days
-            existing.duration_qa_days = issue.duration_qa_days
-            existing.duration_launch_days = issue.duration_launch_days
+            # Jira involvement + calendar duration: только заполненные значения из Jira
+            # перетирают локальные. Пустое поле в Jira не сбрасывает ручную правку PM.
+            # Сброс к Jira — через PATCH /backlog/{id} с явным null.
+            for fld in (
+                "involvement_analyst", "involvement_dev", "involvement_qa", "involvement_launch",
+                "duration_analyst_days", "duration_dev_days", "duration_qa_days", "duration_launch_days",
+            ):
+                jira_val = getattr(issue, fld, None)
+                if jira_val is not None:
+                    setattr(existing, fld, jira_val)
             total = sum(
                 v or 0
                 for v in (
