@@ -154,3 +154,100 @@ def test_escalate_when_no_slack_no_peer():
     esc = [e for e in events if e.action == "escalate"]
     assert len(esc) == 1
     assert esc[0].overload_pct >= 100.0
+
+
+def test_pinned_employee_blocks_reassign_to_peer():
+    """Закреплённого сотрудника leveler не переключает на peer-а,
+    даже если есть свободный коллега и slack=0.
+
+    Регрессия: пользователь выбирает исполнителя в панели задачи (ставит
+    pinned_employee=True), затем при пересчёте leveler видит перегрузку и
+    переключает задачу на peer-а, игнорируя пин.
+
+    Оба назначения помечены закреплёнными — перегрузка не разрешима
+    переключением, leveler обязан эскалировать.
+    """
+    leveler = RcpspLeveler()
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 6.0, item_id="I1"
+    )
+    a1.slack_days = 0.0
+    a1.pinned_employee = True
+    a2 = _mk_assignment(
+        "A2", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 4.0, item_id="I2"
+    )
+    a2.slack_days = 0.0
+    a2.pinned_employee = True  # явное закрепление пользователем
+    avail = {
+        "EMP-1": {date(2026, 4, 1): 8.0},
+        "EMP-2": {date(2026, 4, 1): 8.0},
+    }
+    peers = {"EMP-1": ["EMP-1", "EMP-2"]}
+    events = leveler.level([a1, a2], avail, q_end=date(2026, 4, 30), role_pools=peers)
+
+    # Оба pinned — ни один не переключился
+    assert a1.employee_id == "EMP-1"
+    assert a2.employee_id == "EMP-1"
+    reassign = [e for e in events if e.action == "reassign"]
+    assert reassign == []
+    # Перегрузка эскалирована с пояснением про закрепление
+    esc = [e for e in events if e.action == "escalate"]
+    assert len(esc) == 1
+    assert "закреплён" in esc[0].reason
+
+
+def test_pinned_employee_can_still_delay_within_slack():
+    """Пин фиксирует только сотрудника — даты leveler двигать по-прежнему может."""
+    leveler = RcpspLeveler()
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 6.0, item_id="I1"
+    )
+    a2 = _mk_assignment(
+        "A2", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 4.0, item_id="I2"
+    )
+    a2.slack_days = 5.0
+    a2.pinned_employee = True
+    avail = {"EMP-1": {date(2026, 4, 1): 8.0, date(2026, 4, 2): 8.0}}
+    events = leveler.level([a1, a2], avail, q_end=date(2026, 4, 30))
+
+    # a2 сдвинулся, но остался у EMP-1
+    assert a2.employee_id == "EMP-1"
+    assert a2.start_date == date(2026, 4, 2)
+    delay = [e for e in events if e.action == "delay"]
+    assert len(delay) == 1
+    assert delay[0].assignment_id == "A2"
+
+
+def test_reassign_falls_back_to_non_pinned_candidate():
+    """Когда среди кандидатов есть и закреплённый, и обычный — leveler
+    переключает только обычного."""
+    leveler = RcpspLeveler()
+    # Базовая нагрузка
+    a1 = _mk_assignment(
+        "A1", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 6.0, item_id="I1"
+    )
+    # Закреплённый — трогать нельзя
+    a_pin = _mk_assignment(
+        "A_PIN", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 2.0, item_id="I2"
+    )
+    a_pin.slack_days = 0.0
+    a_pin.pinned_employee = True
+    # Обычный — leveler должен переключить именно его
+    a_free = _mk_assignment(
+        "A_FREE", "EMP-1", date(2026, 4, 1), date(2026, 4, 1), 2.0, item_id="I3"
+    )
+    a_free.slack_days = 0.0
+    avail = {
+        "EMP-1": {date(2026, 4, 1): 8.0},
+        "EMP-2": {date(2026, 4, 1): 8.0},
+    }
+    peers = {"EMP-1": ["EMP-1", "EMP-2"]}
+    events = leveler.level(
+        [a1, a_pin, a_free], avail, q_end=date(2026, 4, 30), role_pools=peers
+    )
+
+    assert a_pin.employee_id == "EMP-1"
+    assert a_free.employee_id == "EMP-2"
+    reassign = [e for e in events if e.action == "reassign"]
+    assert len(reassign) == 1
+    assert reassign[0].assignment_id == "A_FREE"

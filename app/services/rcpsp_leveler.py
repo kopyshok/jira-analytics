@@ -164,13 +164,19 @@ class RcpspLeveler:
             # Try reassign — pick any candidate (not just movable), prefer one with no slack
             # Расширено: пробуем все кандидаты (не только первый), поскольку peer может быть
             # несовместим с конкретным окном; перебираем от наиболее ограниченного.
+            # Закреплённого сотрудника (pinned_employee=True) пользователь выбрал явно —
+            # leveler не имеет права его переключать. Такие строки исключаем из пула
+            # целей reassign; для них допустим только delay или escalate.
             candidates.sort(key=lambda a: a.slack_days or 0.0)
+            reassign_targets = [c for c in candidates if not c.pinned_employee]
             peers_for_target = role_pools.get(target_emp, [])
             peers_excl_self = [p for p in peers_for_target if p != target_emp]
-            if not peers_excl_self:
+            if not reassign_targets:
+                reassign_failed_reason = "pinned"
+            elif not peers_excl_self:
                 reassign_failed_reason = "no_peers"
             else:
-                for target in candidates:
+                for target in reassign_targets:
                     reassigned = False
                     for peer_id in peers_excl_self:
                         original_emp = target.employee_id
@@ -219,6 +225,8 @@ class RcpspLeveler:
                     parts.append("нет peers той же роли")
                 elif reassign_failed_reason == "all_peers_busy":
                     parts.append("все peers заняты")
+                elif reassign_failed_reason == "pinned":
+                    parts.append("исполнитель закреплён вручную")
                 reason = (
                     f"Не удалось разрешить перегрузку {target_emp} {target_day}: "
                     + ("; ".join(parts) if parts else "неизвестная причина")
