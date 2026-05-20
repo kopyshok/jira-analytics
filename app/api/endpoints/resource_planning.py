@@ -465,6 +465,8 @@ class AssignmentPatch(BaseModel):
     end_date: Optional[date] = None
     hours_allocated: Optional[float] = None
     predecessor_ids: Optional[List[str]] = None
+    # None = не указан; True = явно зафиксировать; False = явно снять.
+    pinned_start: Optional[bool] = None
     # При смене employee_id фронт сначала запрашивает /preview-employee-change.
     # Если есть пересечения с отпусками или потенциальные перегрузки —
     # фронт показывает модалку «всё равно сохранить?» и при подтверждении
@@ -1351,7 +1353,16 @@ def patch_assignment(
         a.pinned_employee = True
         a.manual_edit_at = datetime.utcnow()
 
-    if "start_date" in patch:
+    # Явный pinned_start в payload имеет приоритет.
+    # pop() ДО цикла setattr — иначе цикл перепишет a.pinned_start значением
+    # из patch (или упадёт на мутации dict во время итерации).
+    explicit_pin = patch.pop("pinned_start", None)
+    if explicit_pin is not None:
+        a.pinned_start = bool(explicit_pin)
+        a.manual_edit_at = datetime.utcnow()
+    elif "start_date" in patch:
+        # Drag / любое изменение даты без явного pinned_start = фиксация
+        # (UI ставит pin неявно через перемещение бара).
         a.pinned_start = True
         a.manual_edit_at = datetime.utcnow()
 
