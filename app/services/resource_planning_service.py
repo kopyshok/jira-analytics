@@ -288,6 +288,66 @@ class ResourcePlanningService:
         targets.update(e.employee_id for e in block.employees)
         return list(targets)
 
+    def _extend_window_for_hours(
+        self,
+        start_date: date,
+        hours: float,
+        involvement: float,
+        q_end: date,
+        base_hours_per_workday: float = 8.0,
+    ) -> tuple[date, str]:
+        """Расширить окно вправо так, чтобы вместить ``hours`` часов работы.
+
+        Greedy-заполнение по дням: для каждого дня вычисляется база
+        (праздник/перенос/сокращённый день — из производственного календаря,
+        иначе ``base_hours_per_workday`` в будни, 0 в выходные), затем
+        умножается на ``involvement``. На день берётся
+        ``min(remaining_hours, day_cap)``. Дни с ``cap == 0`` пропускаются.
+
+        Возвращает ``(last_filled_day, daily_hours_json)`` — последний день,
+        в который что-то было записано, и JSON-строку
+        ``{iso_date: hours, ...}``. Если в окне ``[start_date, q_end]`` нет
+        рабочих дней или ``hours <= 0`` — возвращает ``(start_date, "{}")``.
+        """
+        if hours <= 0.001 or start_date > q_end:
+            return start_date, "{}"
+
+        # Загружаем аномалии календаря один раз на всё окно.
+        cal_rows = (
+            self.db.execute(
+                select(ProductionCalendarDay).where(
+                    and_(
+                        ProductionCalendarDay.date >= start_date,
+                        ProductionCalendarDay.date <= q_end,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        cal: Dict[date, float] = {row.date: row.hours for row in cal_rows}
+
+        inv = max(0.0, min(1.0, involvement))
+        remaining = float(hours)
+        daily: Dict[str, float] = {}
+        last_filled = start_date
+        cursor = start_date
+        while remaining > 0.001 and cursor <= q_end:
+            cal_hours = cal.get(cursor)
+            if cal_hours is None:
+                cal_hours = base_hours_per_workday if cursor.weekday() < 5 else 0.0
+            day_cap = cal_hours * inv
+            if day_cap > 0.0:
+                take = min(remaining, day_cap)
+                daily[cursor.isoformat()] = take
+                remaining -= take
+                last_filled = cursor
+            cursor += timedelta(days=1)
+
+        if not daily:
+            return start_date, "{}"
+        return last_filled, json.dumps(daily)
+
     # ------------------------------------------------------------------
     # Schedule computation
     # ------------------------------------------------------------------
