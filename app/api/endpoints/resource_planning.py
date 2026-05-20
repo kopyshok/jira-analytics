@@ -1646,6 +1646,100 @@ def clear_manual_edits(
     return {"assignment": _assignment_to_dict(a)}
 
 
+class BulkClearPayload(BaseModel):
+    mode: Literal["dates", "employees", "predecessors", "all"]
+
+
+@router.post("/resource-plans/{plan_id}/bulk-clear")
+def bulk_clear_manual_edits(
+    plan_id: str,
+    payload: BulkClearPayload,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Снять ручные правки сразу со ВСЕХ назначений плана.
+
+    Режимы:
+    - ``dates``: снять `pinned_start` у всех закреплённых фаз.
+    - ``employees``: снять `pinned_employee` у всех закреплённых фаз.
+    - ``predecessors``: удалить ребра `PhasePredecessor` к фазам, у которых
+      `predecessors_user_set=True`, и снять сам флаг.
+    - ``all``: всё вышеперечисленное + `pinned_split=False`,
+      `daily_hours_json=None`, `manual_edit_at=None`.
+
+    После очистки переводит план в `stale` и запускает `compute_schedule`,
+    чтобы UI сразу видел свежее состояние. `cleared_count` — число задетых
+    строк (по `all` каждая строка считается один раз даже если задета
+    несколькими флагами сразу).
+    """
+    from app.models import PhasePredecessor
+
+    plan = db.get(ResourcePlan, plan_id)
+    if not plan:
+        raise HTTPException(404, "ResourcePlan not found")
+
+    assignments = (
+        db.query(ResourcePlanAssignment)
+        .filter(ResourcePlanAssignment.plan_id == plan_id)
+        .all()
+    )
+
+    mode = payload.mode
+    touched: set[str] = set()
+
+    if mode in ("dates", "all"):
+        for a in assignments:
+            if a.pinned_start:
+                a.pinned_start = False
+                touched.add(a.id)
+
+    if mode in ("employees", "all"):
+        for a in assignments:
+            if a.pinned_employee:
+                a.pinned_employee = False
+                touched.add(a.id)
+
+    if mode in ("predecessors", "all"):
+        successor_ids_user_set = [
+            a.id for a in assignments if a.predecessors_user_set
+        ]
+        if successor_ids_user_set:
+            db.query(PhasePredecessor).filter(
+                PhasePredecessor.successor_assignment_id.in_(
+                    successor_ids_user_set
+                )
+            ).delete(synchronize_session=False)
+        for a in assignments:
+            if a.predecessors_user_set:
+                a.predecessors_user_set = False
+                touched.add(a.id)
+
+    if mode == "all":
+        for a in assignments:
+            changed = False
+            if a.pinned_split:
+                a.pinned_split = False
+                changed = True
+            if a.daily_hours_json is not None:
+                a.daily_hours_json = None
+                changed = True
+            if a.manual_edit_at is not None:
+                a.manual_edit_at = None
+                changed = True
+            if changed:
+                touched.add(a.id)
+
+    plan.status = "stale"
+    db.commit()
+
+    try:
+        ResourcePlanningService(db).compute_schedule(plan_id)
+    except ValueError as e:
+        raise HTTPException(409, f"recompute_failed: {e}")
+
+    return {"cleared_count": len(touched), "mode": mode}
+
+
 def _detect_conflicts(plan, assignments, db):
     """Read persistent conflicts from DB. Detection runs in compute_schedule."""
     from app.models import BacklogItem, Employee, PlanConflict
