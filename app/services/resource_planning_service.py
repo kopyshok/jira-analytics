@@ -552,6 +552,37 @@ class ResourcePlanningService:
         for a in pinned_existing:
             if not a.pinned_start:
                 continue
+            # Пере-вывести end_date + daily_hours_json по текущим
+            # hours_allocated / involvement / производственному календарю —
+            # сохранённое окно могло перестать вмещать часы (involvement
+            # упал, hours_allocated вырос, появился праздник). Старт
+            # зафиксирован пользователем — не трогаем; конец = последний
+            # день, в который что-то фактически положили. Делаем ДО
+            # capacity-subtraction, чтобы списать часы с актуального окна.
+            if (
+                a.employee_id
+                and a.start_date
+                and a.hours_allocated
+                and a.hours_allocated > 0
+            ):
+                bi = self.db.get(BacklogItem, a.backlog_item_id)
+                inv = (
+                    self._involvement_for_phase(bi, a.phase) if bi else None
+                ) or 1.0
+                new_end, daily_json = self._extend_window_for_hours(
+                    start_date=a.start_date,
+                    hours=a.hours_allocated,
+                    involvement=inv,
+                    q_end=q_end,
+                )
+                a.end_date = new_end
+                # _extend_window_for_hours возвращает "{}" если ни один
+                # рабочий день не влез — выравниваем конвенцию None как в
+                # drag-pin entry point (Task 2).
+                a.daily_hours_json = (
+                    daily_json if daily_json and daily_json != "{}" else None
+                )
+                a.out_of_quarter = new_end > q_end
             if (
                 a.employee_id
                 and a.start_date
