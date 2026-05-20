@@ -154,6 +154,13 @@ def _build_message(
             if item_label
             else (c.get("message") or t)
         )
+    if t == "PREDECESSOR_VIOLATED":
+        return (
+            f"{item_label}: фаза стартует до завершения предшественника — "
+            f"снимите ручную фиксацию даты или измените связь"
+            if item_label
+            else "Фаза стартует до завершения предшественника"
+        )
     return c.get("message", t) or t
 
 

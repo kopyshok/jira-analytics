@@ -2282,6 +2282,38 @@ class ResourcePlanningService:
                     }
                 )
 
+        # PREDECESSOR_VIOLATED — succ.start_date <= max(pred.end_date).
+        # Включает кейс «pinned_start выигрывает над связью» — иначе пользователь
+        # не видит, что закреплённая дата нарушает граф.
+        preds_map = self._load_predecessors(plan.id)
+        by_id = {a.id: a for a in assignments}
+        for a in assignments:
+            if not a.start_date:
+                continue
+            pred_ids = preds_map.get(a.id, [])
+            if not pred_ids:
+                continue
+            pred_ends = [
+                by_id[pid].end_date
+                for pid in pred_ids
+                if pid in by_id and by_id[pid].end_date
+            ]
+            if not pred_ends:
+                continue
+            latest_pred_end = max(pred_ends)
+            if a.start_date <= latest_pred_end:
+                result.append(
+                    {
+                        "type": "PREDECESSOR_VIOLATED",
+                        "severity": "warning",
+                        "detection_key": f"PREDECESSOR_VIOLATED:{a.id}",
+                        "backlog_item_id": a.backlog_item_id,
+                        "assignment_id": a.id,
+                        "employee_id": a.employee_id,
+                        # message сгенерит conflict_aggregator
+                    }
+                )
+
         # NO_ANALYST / NO_DEV
         ANALYST_CODES = {"аналитик", "analyst", "an"}
         DEV_CODES = {"разработчик", "developer", "dev", "rp"}
