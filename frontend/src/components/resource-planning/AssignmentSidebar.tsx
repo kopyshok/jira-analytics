@@ -403,7 +403,6 @@ export default function AssignmentSidebar({
 
 function AssignmentExplainSection({ planId, assignmentId }: { planId: string; assignmentId: string }) {
   const { data, isLoading, isError } = useExplainAssignment(planId, assignmentId, true);
-  const [showReassigns, setShowReassigns] = useState(false);
   if (isLoading) {
     return (
       <>
@@ -420,14 +419,10 @@ function AssignmentExplainSection({ planId, assignmentId }: { planId: string; as
       </>
     );
   }
-  const allConflicts = data.conflicts ?? [];
-  const reassigns = allConflicts.filter(c => c.type === 'LEVELING_REASSIGN');
-  const conflicts = showReassigns
-    ? allConflicts
-    : allConflicts.filter(c => c.type !== 'LEVELING_REASSIGN');
+  const conflicts = (data.conflicts ?? []).filter(c => c.severity !== 'info');
   const onCp = data.assignment.is_on_critical_path;
   const slack = data.assignment.slack_days ?? 0;
-  if (conflicts.length === 0 && !onCp && reassigns.length === 0) {
+  if (conflicts.length === 0 && !onCp) {
     return (
       <>
         <Divider>Расчёт проблем</Divider>
@@ -448,26 +443,9 @@ function AssignmentExplainSection({ planId, assignmentId }: { planId: string; as
             message={<span>Фаза на критическом пути. Резерв: <b>{slack.toFixed(0)} д.</b> Сдвиг сорвёт срок проекта.</span>}
           />
         )}
-        {conflicts.length === 0 && !onCp && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Конфликтов нет. Резерв: {slack.toFixed(0)} д.
-          </Typography.Text>
-        )}
         {conflicts.map(c => (
           <ConflictBlock key={c.id} c={c} />
         ))}
-        {reassigns.length > 0 && (
-          <Button
-            size="small"
-            type="link"
-            style={{ padding: 0, fontSize: 12, alignSelf: 'flex-start' }}
-            onClick={() => setShowReassigns(v => !v)}
-          >
-            {showReassigns
-              ? 'Скрыть переназначения'
-              : `Показать переназначения (${reassigns.length})`}
-          </Button>
-        )}
       </Space>
     </>
   );
