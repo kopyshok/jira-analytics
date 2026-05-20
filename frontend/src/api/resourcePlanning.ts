@@ -141,6 +141,12 @@ export interface EmployeeLoadOut {
   days: EmployeeLoadDay[];
 }
 
+export interface ResetCounts {
+  pinned_dates: number;
+  pinned_employees: number;
+  edited_predecessors: number;
+}
+
 export interface GanttProjection {
   plan: ResourcePlan;
   assignments: AssignmentOut[];
@@ -148,6 +154,7 @@ export interface GanttProjection {
   pert_projection: InitiativePertOut[];
   dependencies: DependencyOut[];
   employee_load?: EmployeeLoadOut[];
+  reset_counts: ResetCounts;
 }
 
 export interface AssignmentPatch {
@@ -281,6 +288,19 @@ export const deleteResourcePlan = (id: string) =>
 
 export const computeResourcePlan = (id: string) =>
   api.post<ResourcePlan>(`/resource-planning/resource-plans/${id}/compute`, {});
+
+export type BulkClearMode = 'dates' | 'employees' | 'predecessors' | 'all';
+
+export interface BulkClearResponse {
+  cleared_count: number;
+  mode: BulkClearMode;
+}
+
+export const bulkClearAssignments = (planId: string, mode: BulkClearMode) =>
+  api.post<BulkClearResponse>(
+    `/resource-planning/resource-plans/${planId}/bulk-clear`,
+    { mode },
+  );
 
 export const getGanttProjection = (id: string) =>
   api.get<GanttProjection>(`/resource-planning/resource-plans/${id}/gantt`);

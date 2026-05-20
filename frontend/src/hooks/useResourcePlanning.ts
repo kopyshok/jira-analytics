@@ -11,6 +11,7 @@ import {
   getPlanQuality,
   createDependency, patchDependency, deleteDependency,
   type DependencyOut,
+  bulkClearAssignments, type BulkClearMode,
 } from '../api/resourcePlanning';
 
 export const useScheduledBlocks = (team?: string) =>
@@ -94,6 +95,20 @@ export function usePatchConflict(planId: string | null) {
       patchConflict(planId!, conflictId, status),
     onSuccess: () => {
       if (planId) qc.invalidateQueries({ queryKey: ['gantt', planId] });
+    },
+  });
+}
+
+export function useBulkClear(planId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: BulkClearMode) => {
+      if (!planId) throw new Error('No plan selected');
+      return bulkClearAssignments(planId, mode);
+    },
+    onSuccess: () => {
+      if (!planId) return;
+      qc.invalidateQueries({ queryKey: ['gantt', planId] });
     },
   });
 }

@@ -21,6 +21,7 @@ import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlock
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
 import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
 import AppearanceModal from '../components/resource-planning/AppearanceModal';
+import BulkResetDropdown from '../components/resource-planning/BulkResetDropdown';
 import type { ViewMode } from '../components/resource-planning/GanttRows';
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
@@ -191,6 +192,9 @@ function ResourcePlanningPageInner() {
           <Button size="small" onClick={() => setForkModalOpen(true)}>
             Сделать копию
           </Button>
+        )}
+        {planId && gantt && (
+          <BulkResetDropdown planId={planId} counts={gantt.reset_counts} />
         )}
         {gantt?.plan.parent_plan_id && (
           <Button
