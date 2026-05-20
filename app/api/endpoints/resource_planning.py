@@ -1668,9 +1668,12 @@ def bulk_clear_manual_edits(
       `daily_hours_json=None`, `manual_edit_at=None`.
 
     После очистки переводит план в `stale` и запускает `compute_schedule`,
-    чтобы UI сразу видел свежее состояние. `cleared_count` — число задетых
-    строк (по `all` каждая строка считается один раз даже если задета
-    несколькими флагами сразу).
+    чтобы UI сразу видел свежее состояние.
+
+    `cleared_count` — число затронутых назначений (с дедупликацией). Строка,
+    у которой в режиме `all` были одновременно сняты `pinned_start` и
+    `pinned_employee`, считается за 1, а не за 2. Тост на фронте должен
+    говорить «фазы сброшены», а не «правки очищены».
     """
     from app.models import PhasePredecessor
 
@@ -1704,6 +1707,9 @@ def bulk_clear_manual_edits(
             a.id for a in assignments if a.predecessors_user_set
         ]
         if successor_ids_user_set:
+            # synchronize_session=False is safe here: compute_schedule re-queries
+            # PhasePredecessor from scratch via _snapshot_predecessors, so the stale
+            # session cache is never read again.
             db.query(PhasePredecessor).filter(
                 PhasePredecessor.successor_assignment_id.in_(
                     successor_ids_user_set
