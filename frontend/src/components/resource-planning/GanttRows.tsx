@@ -41,8 +41,17 @@ const trackStyle = (trackWidthPx?: number): React.CSSProperties =>
 const ROW_HEIGHT = 36;
 const JIRA_BASE = 'https://itgri.atlassian.net';
 const ROW_BG = 'transparent';
-const INIT_HEADER_BG = 'rgba(0,201,200,0.10)';
-const INIT_DIVIDER = '2px solid rgba(0,201,200,0.45)';
+const INIT_HEADER_BG = 'rgba(0,201,200,0.20)';
+const INIT_PENDING_BG = 'rgba(255,122,69,0.22)';
+const INIT_DIVIDER = '2px solid #066770';
+// Opaque blends of INIT_HEADER_BG / INIT_PENDING_BG over pageBg #0d1c33 — used on
+// sticky left-column wrappers so absolute bars/markers don't bleed through during horizontal scroll.
+// Must visually match the translucent tints above when rendered over #0d1c33.
+const INIT_HEADER_BG_OPAQUE = '#0a3f51';
+const PENDING_FROM_BG_OPAQUE = '#423137';
+// Sticky left-column z-index must exceed overlay layers (today marker z=20, OoQ divider z=19).
+const STICKY_CELL_Z = 25;
+const STICKY_INIT_Z = 26;
 
 // Зеркало backend ANALYST_ROLES / DEV_ROLES — нужно для разделения ОПЭ на 2 строки.
 const ANALYST_ROLE_CODES = new Set([
@@ -54,12 +63,13 @@ const DEV_ROLE_CODES = new Set(['разработчик', 'developer', 'dev', '�
 
 function ItemTitleCell({
   title, jiraKey, priority, leftColWidth, fontWeight = 600,
-  dotColor, assignee, hours,
+  dotColor, assignee, hours, bg = '#0a1628',
 }: {
   title: string; jiraKey: string | null; priority?: number | null;
   leftColWidth: number; fontWeight?: number;
   dotColor?: string;
   assignee?: React.ReactNode; hours?: React.ReactNode;
+  bg?: string;
 }) {
   const titleNode = (
     <span
@@ -97,8 +107,12 @@ function ItemTitleCell({
       overflow: 'hidden',
       position: 'sticky',
       left: 0,
-      zIndex: 11,
-      background: '#0a1628',
+      zIndex: STICKY_CELL_Z,
+      background: bg,
+      // Extend opaque coverage below cell to cover SVG arrows (z=10) in row gaps.
+      // 1px = subrow borderBottom (#0e2540); +2px = init divider (#066770) for last subrow before next initiative.
+      // Middle subrows: next subrow's sticky cell (z=25, after in DOM) overlays the extra 2px → no visual bleed.
+      boxShadow: '0 1px 0 0 #0e2540, 0 3px 0 0 #066770',
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
         {jiraKey && (
@@ -633,7 +647,7 @@ function TwoLevelRows({
                 display: 'flex',
                 minHeight: ROW_HEIGHT,
                 borderBottom: '1px solid #1e3a5f',
-                background: isPendingFrom ? 'rgba(255,122,69,0.18)' : INIT_HEADER_BG,
+                background: isPendingFrom ? INIT_PENDING_BG : INIT_HEADER_BG,
                 cursor: depDrawMode ? 'crosshair' : 'default',
                 outline: isPendingFrom ? '2px solid #ff7a45' : 'none',
               }}
@@ -644,8 +658,9 @@ function TwoLevelRows({
                   flexShrink: 0,
                   position: 'sticky',
                   left: 0,
-                  zIndex: 12,
-                  background: isPendingFrom ? 'rgba(255,122,69,0.18)' : INIT_HEADER_BG,
+                  zIndex: STICKY_INIT_Z,
+                  background: isPendingFrom ? PENDING_FROM_BG_OPAQUE : INIT_HEADER_BG_OPAQUE,
+                  boxShadow: '0 1px 0 0 #1e3a5f',
                 }}
               >
                 <button
@@ -676,6 +691,7 @@ function TwoLevelRows({
                   fontWeight={700}
                   assignee={initAssigneeName}
                   hours={totalHours > 0 ? `${Math.round(totalHours)} ч` : ''}
+                  bg={isPendingFrom ? PENDING_FROM_BG_OPAQUE : INIT_HEADER_BG_OPAQUE}
                 />
               </div>
               <div style={trackStyle(trackWidthPx)}>
@@ -954,8 +970,9 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
             gap: 8,
             position: 'sticky',
             left: 0,
-            zIndex: 11,
+            zIndex: STICKY_CELL_Z,
             background: '#0a1628',
+            boxShadow: '0 1px 0 0 #1e3a5f',
           }}>
             <EmployeeAvatar name={empAssignments[0]?.employee_name ?? null} role={empAssignments[0]?.employee_role} size={20} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
