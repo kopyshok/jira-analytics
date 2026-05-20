@@ -8,46 +8,46 @@
 from datetime import date
 import json
 
+from app.models.production_calendar_day import ProductionCalendarDay
 from app.services.resource_planning_service import ResourcePlanningService
 
 
 def test_extend_window_fits_in_window(db_session):
     svc = ResourcePlanningService(db_session)
-    # 30h at 8 * 0.9 = 7.2h/day cap, starting Mon 20.04 -> need ceil(30/7.2)=5 days
-    # Sum should equal exactly 30h.
+    # 30h at 6 * 0.9 = 5.4h/day cap, starting Mon 20.04 -> ceil(30/5.4)=6 days.
+    # 5.4 * 5 = 27h за пн..пт; на пн 27.04 остаётся 3h. Итого 6 ключей, сумма = 30.
     end, daily_json = svc._extend_window_for_hours(
         start_date=date(2026, 4, 20),
         hours=30.0,
         involvement=0.9,
         q_end=date(2026, 6, 30),
     )
-    assert end == date(2026, 4, 24)  # Mon..Fri
+    assert end == date(2026, 4, 27)
     daily = json.loads(daily_json)
     assert abs(sum(daily.values()) - 30.0) < 0.01
-    assert len(daily) == 5
+    assert len(daily) == 6
 
 
 def test_extend_window_grows_when_hours_exceed_cap(db_session):
     svc = ResourcePlanningService(db_session)
-    # 40h at 7.2h/day = ceil(40/7.2)=6 working days. Mon 20.04 + 5wd skipping
-    # Sat 25/Sun 26 -> end is Mon 27.04.
+    # 40h at 5.4h/day -> ceil(40/5.4)=8 working days. Mon 20.04 + 7 weekday-skip = Wed 29.04.
     end, daily_json = svc._extend_window_for_hours(
         start_date=date(2026, 4, 20),
         hours=40.0,
         involvement=0.9,
         q_end=date(2026, 6, 30),
     )
-    assert end == date(2026, 4, 27)
+    assert end == date(2026, 4, 29)
     daily = json.loads(daily_json)
     assert abs(sum(daily.values()) - 40.0) < 0.01
-    # 6 working days
-    assert len(daily) == 6
+    # 8 working days
+    assert len(daily) == 8
 
 
 def test_extend_window_clamps_to_quarter_end(db_session):
     svc = ResourcePlanningService(db_session)
     # 100h from Mon 29.06; q_end = Tue 30.06. Only 2 working days available.
-    # Sum allocated = 14.4h (capped); last day = 30.06.
+    # Sum allocated = 2 * 5.4 = 10.8h (capped); last day = 30.06.
     end, daily_json = svc._extend_window_for_hours(
         start_date=date(2026, 6, 29),
         hours=100.0,
@@ -56,21 +56,49 @@ def test_extend_window_clamps_to_quarter_end(db_session):
     )
     assert end == date(2026, 6, 30)
     daily = json.loads(daily_json)
-    assert abs(sum(daily.values()) - 14.4) < 0.01
+    assert abs(sum(daily.values()) - 10.8) < 0.01
     assert len(daily) == 2
 
 
 def test_extend_window_skips_weekend(db_session):
     svc = ResourcePlanningService(db_session)
-    # Start on Friday 24.04; need 16h at 8h/day cap (involvement=1.0).
-    # Fri=8, Sat=0, Sun=0, Mon=8 -> end = Mon 27.04.
+    # Start on Friday 24.04; need 16h at 6h/day cap (involvement=1.0).
+    # Fri=6, Sat=0, Sun=0, Mon=6, Tue=4 -> end = Tue 28.04. Keys = {24, 27, 28}.
     end, daily_json = svc._extend_window_for_hours(
         start_date=date(2026, 4, 24),
         hours=16.0,
         involvement=1.0,
         q_end=date(2026, 6, 30),
     )
-    assert end == date(2026, 4, 27)
+    assert end == date(2026, 4, 28)
     daily = json.loads(daily_json)
-    assert set(daily.keys()) == {"2026-04-24", "2026-04-27"}
+    assert set(daily.keys()) == {"2026-04-24", "2026-04-27", "2026-04-28"}
+    assert abs(sum(daily.values()) - 16.0) < 0.01
+
+
+def test_extend_window_honours_production_calendar_holiday(db_session):
+    # Wed 22.04 — праздник (0h по календарю).
+    db_session.add(
+        ProductionCalendarDay(
+            date=date(2026, 4, 22),
+            hours=0.0,
+            is_workday=False,
+            kind="holiday",
+            source="manual",
+        )
+    )
+    db_session.commit()
+    svc = ResourcePlanningService(db_session)
+    # 16h, inv=1.0, cap=6/день. Mon=6, Tue=6, Wed=0 (праздник пропускается),
+    # Thu=4 -> end Thu 23.04, 3 ключа с часами.
+    end, daily_json = svc._extend_window_for_hours(
+        start_date=date(2026, 4, 20),
+        hours=16.0,
+        involvement=1.0,
+        q_end=date(2026, 6, 30),
+    )
+    assert end == date(2026, 4, 23)
+    daily = json.loads(daily_json)
+    assert "2026-04-22" not in daily  # holiday skipped
+    assert set(daily.keys()) == {"2026-04-20", "2026-04-21", "2026-04-23"}
     assert abs(sum(daily.values()) - 16.0) < 0.01

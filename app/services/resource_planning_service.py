@@ -294,13 +294,12 @@ class ResourcePlanningService:
         hours: float,
         involvement: float,
         q_end: date,
-        base_hours_per_workday: float = 8.0,
     ) -> tuple[date, str]:
         """Расширить окно вправо так, чтобы вместить ``hours`` часов работы.
 
         Greedy-заполнение по дням: для каждого дня вычисляется база
         (праздник/перенос/сокращённый день — из производственного календаря,
-        иначе ``base_hours_per_workday`` в будни, 0 в выходные), затем
+        иначе ``DEFAULT_HOURS_PER_DAY`` в будни, 0 в выходные), затем
         умножается на ``involvement``. На день берётся
         ``min(remaining_hours, day_cap)``. Дни с ``cap == 0`` пропускаются.
 
@@ -335,7 +334,7 @@ class ResourcePlanningService:
         while remaining > 0.001 and cursor <= q_end:
             cal_hours = cal.get(cursor)
             if cal_hours is None:
-                cal_hours = base_hours_per_workday if cursor.weekday() < 5 else 0.0
+                cal_hours = DEFAULT_HOURS_PER_DAY if cursor.weekday() < 5 else 0.0
             day_cap = cal_hours * inv
             if day_cap > 0.0:
                 take = min(remaining, day_cap)
@@ -1668,6 +1667,8 @@ class ResourcePlanningService:
                         row.date: row.hours for row in cal_rows
                     }
 
+                    # TODO(Task 3 of plan 2026-05-20): replace this greedy QA-fill
+                    # with a call to self._extend_window_for_hours(...). Same algorithm, dedupe.
                     def _cal_hours(d: date) -> float:
                         h = cal_anomalies.get(d)
                         if h is None:
