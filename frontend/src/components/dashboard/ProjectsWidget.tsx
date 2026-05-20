@@ -20,13 +20,13 @@ type ColKey = 'status' | 'subtasks' | 'assignees' | 'due' | 'trend' | 'forecast'
 type BlockKey = 'donut' | 'kpi' | 'sparklines';
 
 const COLS: { key: ColKey; label: string; width: string; align?: 'right' }[] = [
-  { key: 'status', label: 'Статус', width: '120px' },
-  { key: 'subtasks', label: 'Подзад', width: '70px' },
+  { key: 'status', label: 'Статус', width: 'minmax(0,150px)' },
+  { key: 'subtasks', label: 'Задачи', width: '70px' },
   { key: 'assignees', label: 'Команда', width: '70px' },
   { key: 'due', label: 'Срок', width: '95px' },
   { key: 'trend', label: 'Тренд', width: '75px' },
   { key: 'forecast', label: 'Прогноз', width: '85px' },
-  { key: 'progress', label: 'Прогресс', width: '1fr' },
+  { key: 'progress', label: 'Прогресс', width: 'minmax(80px,160px)' },
   { key: 'factplan', label: 'Факт / План', width: '80px', align: 'right' },
   { key: 'pct', label: '%', width: '50px', align: 'right' },
 ];
@@ -183,7 +183,21 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
     case 'status': {
       const cat = project.status_category === 'overdue' ? 'indeterminate' : project.status_category;
       return project.status
-        ? <Tag color={statusTagColor(project.status, cat)} style={{ marginInlineEnd: 0 }}>{project.status}</Tag>
+        ? (
+          <Tag
+            color={statusTagColor(project.status, cat)}
+            title={project.status}
+            style={{
+              marginInlineEnd: 0,
+              maxWidth: '100%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {project.status}
+          </Tag>
+        )
         : <span style={{ color: DARK_THEME.textMuted, fontSize: 13 }}>—</span>;
     }
     case 'subtasks':
@@ -303,7 +317,7 @@ function ProjectRow({
         )}
       </div>
       {visibleCols.map((key) => (
-        <div key={key}>{renderCell(key, project, { isDone, pct, barColor })}</div>
+        <div key={key} style={{ minWidth: 0, overflow: 'hidden' }}>{renderCell(key, project, { isDone, pct, barColor })}</div>
       ))}
     </div>
   );
