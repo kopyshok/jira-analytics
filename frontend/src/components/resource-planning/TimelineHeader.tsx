@@ -3,6 +3,25 @@ import type { GanttTimeline, TimelineScale, WorkdayTimeline } from '../../utils/
 import { getDayLabels, getMonthLabels, getWeekLabels } from '../../utils/gantt';
 import type { ProductionCalendarDayResponse } from '../../types/api';
 
+/** Дата, к которой относится позиция leftPct на timeline.
+ *  Для calendar-таймлайна: startDate + leftPct/100*totalDays calendar-days.
+ *  Для workday-таймлайна: workdayDates[round(leftPct/100*totalDays)] — иначе
+ *  смешение workday-процента с calendar-сдвигом даёт неверный месяц.
+ */
+function dateAtLeftPct(tl: GanttTimeline | WorkdayTimeline, leftPct: number): Date {
+  if ('workdayIndex' in tl) {
+    const idx = Math.min(
+      Math.max(0, Math.round(leftPct / 100 * tl.totalDays)),
+      tl.workdayDates.length - 1,
+    );
+    const iso = tl.workdayDates[idx];
+    if (iso) return new Date(iso + 'T00:00:00');
+  }
+  const d = new Date(tl.startDate);
+  d.setDate(d.getDate() + Math.round(leftPct / 100 * tl.totalDays));
+  return d;
+}
+
 interface Props {
   timeline: GanttTimeline | WorkdayTimeline;
   leftColWidth: number;
@@ -59,8 +78,7 @@ export default function TimelineHeader({
   const months = useMemo(() => {
     const map = new Map<string, { label: string; leftPct: number; rightPct: number }>();
     lower.forEach(w => {
-      const approxDate = new Date(timeline.startDate);
-      approxDate.setDate(approxDate.getDate() + Math.round(w.leftPct / 100 * timeline.totalDays));
+      const approxDate = dateAtLeftPct(timeline, w.leftPct);
       const key = `${approxDate.getFullYear()}-${approxDate.getMonth()}`;
       const label = `${MONTH_NAMES[approxDate.getMonth()]} ${approxDate.getFullYear()}`;
       if (!map.has(key)) map.set(key, { label, leftPct: w.leftPct, rightPct: w.leftPct + w.widthPct });
@@ -73,8 +91,7 @@ export default function TimelineHeader({
     if (scale !== 'month') return [];
     const map = new Map<number, { label: string; leftPct: number; rightPct: number }>();
     lower.forEach(w => {
-      const approxDate = new Date(timeline.startDate);
-      approxDate.setDate(approxDate.getDate() + Math.round(w.leftPct / 100 * timeline.totalDays));
+      const approxDate = dateAtLeftPct(timeline, w.leftPct);
       const y = approxDate.getFullYear();
       if (!map.has(y)) map.set(y, { label: String(y), leftPct: w.leftPct, rightPct: w.leftPct + w.widthPct });
       else map.get(y)!.rightPct = w.leftPct + w.widthPct;
@@ -88,8 +105,7 @@ export default function TimelineHeader({
     if (scale !== 'week') return new Set<string>();
     const set = new Set<string>();
     for (const w of lower) {
-      const weekStart = new Date(timeline.startDate);
-      weekStart.setDate(weekStart.getDate() + Math.round(w.leftPct / 100 * timeline.totalDays));
+      const weekStart = dateAtLeftPct(timeline, w.leftPct);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 6);
       for (const cal of calendar ?? []) {
