@@ -102,6 +102,7 @@ export default function DependencyArrows({
       color: string, width: string, dashArray: string, markerId: string,
       onClick?: () => void,
       className?: string,
+      opacity?: number,
     ) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       // Orthogonal routing через gutter между строками:
@@ -162,6 +163,11 @@ export default function DependencyArrows({
       path.setAttribute('stroke-linejoin', 'round');
       if (dashArray) path.setAttribute('stroke-dasharray', dashArray);
       path.setAttribute('marker-end', `url(#${markerId})`);
+      // opacity на path применяется к stroke И к marker (head) — иначе
+      // голова стрелки остаётся ярко цветной из-за фиксированного fill в defs.
+      if (opacity !== undefined && opacity < 1) {
+        path.setAttribute('opacity', String(opacity));
+      }
       if (className) path.setAttribute('class', className);
       if (onClick) {
         path.setAttribute('style', 'pointer-events: stroke; cursor: pointer;');
@@ -192,12 +198,16 @@ export default function DependencyArrows({
         const fromEl = rowRefs.current.get(`${pred.backlog_item_id}-${pred.phase}-${pred.part_number}`);
         if (!fromEl) continue;
         const fRect = fromEl.getBoundingClientRect();
+        // Подсветка ресурса — связи целиком в общем dim, ярко остаются
+        // только бары выбранного сотрудника.
+        const isFaded = !!highlightedEmployeeId;
         drawArrow(
           fRect.right - cRect.left,
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
           '#7aa7ff', '2', '', 'rp-arrowhead',
+          undefined, undefined, isFaded ? 0.18 : 1,
         );
       }
     }
@@ -231,17 +241,16 @@ export default function DependencyArrows({
         if (!fromEl || !toEl) return;
         const fRect = fromEl.getBoundingClientRect();
         const tRect = toEl.getBoundingClientRect();
-        const isFaded =
-          !!highlightedEmployeeId && from.employee_id !== highlightedEmployeeId;
-        const color = isFaded ? 'rgba(0,230,192,0.18)' : '#00e6c0';
+        const isFaded = !!highlightedEmployeeId;
         drawArrow(
           fRect.right - cRect.left,
           fRect.top + fRect.height / 2 - cRect.top,
           tRect.left - cRect.left,
           tRect.top + tRect.height / 2 - cRect.top,
-          color, '2', '8 4', 'rp-relay-arrowhead',
+          '#00e6c0', '2', '8 4', 'rp-relay-arrowhead',
           undefined,
           isFaded ? undefined : 'rp-flow',
+          isFaded ? 0.18 : 1,
         );
       };
 
@@ -280,6 +289,7 @@ export default function DependencyArrows({
 
           const fRect = fromEl.getBoundingClientRect();
           const tRect = toEl.getBoundingClientRect();
+          const isFaded = !!highlightedEmployeeId;
           drawArrow(
             fRect.right - cRect.left,
             fRect.top + fRect.height / 2 - cRect.top,
@@ -287,7 +297,8 @@ export default function DependencyArrows({
             tRect.top + tRect.height / 2 - cRect.top,
             '#00e6c0', '2', '8 4', 'rp-relay-arrowhead',
             undefined,
-            'rp-flow',
+            isFaded ? undefined : 'rp-flow',
+            isFaded ? 0.18 : 1,
           );
         }
       }
@@ -307,6 +318,7 @@ export default function DependencyArrows({
         const endSide = (dep.dep_type === 'SS' || dep.dep_type === 'FS')
           ? tRect.left - cRect.left
           : tRect.right - cRect.left;
+        const manualFaded = !!highlightedEmployeeId;
         drawArrow(
           startSide,
           fRect.top + fRect.height / 2 - cRect.top,
@@ -319,6 +331,8 @@ export default function DependencyArrows({
               onDeleteDependency(dep.id);
             }
           } : undefined,
+          undefined,
+          manualFaded ? 0.18 : 1,
         );
       }
     }

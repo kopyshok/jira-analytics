@@ -358,7 +358,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   const width = datesToWidth(assignment.start_date, assignment.end_date, timeline);
 
   const isMe = !!highlightedEmployeeId && assignment.employee_id === highlightedEmployeeId;
-  const isDimmedByHighlight = !!highlightedEmployeeId && !isMe && assignment.phase !== 'qa';
+  const isDimmedByHighlight = !!highlightedEmployeeId && !isMe;
   const effectiveDimmed = dimmed || isDimmedByHighlight;
 
   const isOoQ = assignment.out_of_quarter;
@@ -457,7 +457,11 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         <UnavailabilityOverlay
           start={assignment.start_date}
           end={assignment.end_date}
-          days={unavailableDays}
+          days={
+            'workdayIndex' in timeline
+              ? unavailableDays.filter(d => d.type !== 'weekend' && d.type !== 'holiday')
+              : unavailableDays
+          }
         />
       )}
     </div>
@@ -721,6 +725,7 @@ function TwoLevelRows({
                       zIndex: 2,
                       pointerEvents: 'none',
                       background: fillGradient,
+                      opacity: highlightedEmployeeId ? 0.18 : 1,
                     }}>
                       <svg
                         width="100%"
@@ -797,7 +802,7 @@ function TwoLevelRows({
                   ? `${PHASE_LABELS[phase]} · ${sg.roleLabel}`
                   : PHASE_LABELS[phase];
                 const isHighlighted = !!highlightedEmployeeId && empId === highlightedEmployeeId;
-                const isDimmed = !!highlightedEmployeeId && !isHighlighted && phase !== 'qa';
+                const isDimmed = !!highlightedEmployeeId && !isHighlighted;
                 const assigneeNode = phase === 'qa' ? (
                   <span style={{ color: '#4a6a90' }}>—</span>
                 ) : (
@@ -830,7 +835,7 @@ function TwoLevelRows({
                       display: 'flex',
                       height: ROW_HEIGHT - 4,
                       borderBottom: '1px solid #0e2540',
-                      background: isHighlighted ? 'rgba(0,201,200,0.18)' : 'transparent',
+                      background: 'transparent',
                     }}
                   >
                     <ItemTitleCell

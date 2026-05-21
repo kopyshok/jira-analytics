@@ -20,8 +20,8 @@ export default function PageHeader({ eyebrow, title, subtitle, actions }: Props)
         alignItems: 'flex-start',
         justifyContent: 'space-between',
         gap: 24,
-        marginBottom: 28,
-        paddingBottom: 20,
+        marginBottom: 12,
+        paddingBottom: 10,
         borderBottom: `1px solid ${DARK_THEME.border}`,
       }}
     >

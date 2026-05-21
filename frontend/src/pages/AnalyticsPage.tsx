@@ -183,7 +183,7 @@ export default function AnalyticsPage() {
   );
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Аналитика"
         title="Иерархический отчёт по часам"

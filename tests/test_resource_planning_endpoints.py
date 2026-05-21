@@ -43,6 +43,8 @@ def client(db_session):
 def ready_plan(db_session, client):
     from app.models import BacklogItem, Employee, ResourcePlan, ResourcePlanAssignment
     from app.models.employee_team import EmployeeTeam
+    from app.models.planning_scenario import PlanningScenario
+    from app.models.scenario_allocation import ScenarioAllocation
 
     e1 = Employee(jira_account_id="jira-e1", display_name="Аналитик", role="analyst", team="T", is_active=True)
     e2 = Employee(jira_account_id="jira-e2", display_name="Разраб2", role="developer", team="T", is_active=True)
@@ -58,7 +60,17 @@ def ready_plan(db_session, client):
     db_session.add(item)
     db_session.commit()
 
-    plan = ResourcePlan(team="T", quarter="Q2", year=2026, status="ready")
+    # Scenario + allocation нужны, чтобы compute_schedule пересчитывал план
+    # с реальными данными при смене сотрудника (а не удалял всё).
+    scenario = PlanningScenario(name="T", quarter="Q2", year=2026, team="T", status="approved")
+    db_session.add(scenario)
+    db_session.commit()
+    db_session.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True,
+    ))
+    db_session.commit()
+
+    plan = ResourcePlan(team="T", quarter="Q2", year=2026, status="ready", scenario_id=scenario.id)
     db_session.add(plan)
     db_session.commit()
 

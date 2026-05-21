@@ -53,7 +53,13 @@ export default function AppLayout() {
         onCollapse={setCollapsed}
         breakpoint="lg"
         width={232}
-        style={{ borderRight: `1px solid ${DARK_THEME.border}` }}
+        style={{
+          borderRight: `1px solid ${DARK_THEME.border}`,
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+          overflowY: 'auto',
+        }}
       >
         <LogoMark collapsed={collapsed} />
         <SideMenu />
@@ -115,7 +121,7 @@ export default function AppLayout() {
         </Header>
         <Content
           style={{
-            padding: '28px 32px 48px',
+            padding: '14px 32px 32px',
             minHeight: 280,
             background: 'transparent',
           }}

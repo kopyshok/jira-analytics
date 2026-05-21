@@ -41,7 +41,10 @@ DEFAULT_HOURS_PER_DAY = 6.0
 # означает, что Анализ/Разработка младших по приоритету задач показывают зазор
 # = окно preempting-фазы старшей задачи. Конфиг-флаг — расширяется в будущем
 # (например, "Приоритет"/"Важный" на любой фазе).
-PREEMPTING_PHASES: set = {"opo"}
+# ОПЭ намеренно НЕ preempting: она короткая (5ч), лочить весь день под 5ч
+# излишне. ОПЭ конкурирует за часы дня обычным путём, leftover уходит на
+# анализ младшей задачи (bug 2 fix — last-day spillover).
+PREEMPTING_PHASES: set = set()
 
 # Допустимые роли исполнителя для аналитической фазы.
 ANALYST_ROLES = {
@@ -904,7 +907,16 @@ class ResourcePlanningService:
         self._ensure_default_predecessors(plan_id, new_assignments)
         self.db.flush()
         preds = self._load_predecessors(plan_id)
-        self._shift_to_obey_predecessors(new_assignments, preds, q_start, q_end_extended)
+        self._shift_to_obey_predecessors(
+            new_assignments,
+            preds,
+            q_start,
+            q_end_extended,
+            alloc_by_item,
+            remaining=remaining,
+            preempt_locked=preempt_locked,
+            original_avail=original_avail,
+        )
 
         # Pinned_split — только структурный маркер N частей. После shift его
         # start_date может попасть на выходной/отпуск; перераскладываем часы
@@ -1087,19 +1099,19 @@ class ResourcePlanningService:
                 used = min(cap, remaining_h)
                 # День занят этой фазой целиком — другие фазы того же сотрудника
                 # не могут садиться на этот день параллельно (relay/serialization).
-                # Точное использование часов хранится в daily_hours_json для
-                # корректного OVERLOAD-расчёта. Preempting-фазы (ОПЭ) используют
-                # отдельный путь через preempt_locked — там day не consumed
-                # заранее.
-                # NB: попытка списать только used часов (Batch 1 audit fix) ломала
-                # порядок приоритетов — низкоприоритетная задача с маленьким
-                # per-day cap влезала в дробный остаток дня раньше, чем
-                # высокоприоритетная.
+                # Исключение: ПОСЛЕДНИЙ день фазы. Если фаза взяла только часть
+                # дневной ёмкости (например 0.8 ч из 7.2), остаток оставляем
+                # доступным для следующей по приоритету инициативы — spillover
+                # на тот же день. Приоритет сохраняется: items обрабатываются
+                # в порядке убывания priority, поэтому младшие задачи увидят
+                # leftover только после того, как старшие закончили распределение.
                 emp_days[d] = 0.0
                 remaining_h -= used
                 seg_hours += used
                 daily_used[d] = used
                 seg_end = d
+                if remaining_h <= 0.01:
+                    emp_days[d] = max(0.0, avail_h - used)
             d += timedelta(days=1)
 
         if seg_start is not None and seg_end is not None and seg_hours > 0:
@@ -1633,6 +1645,10 @@ class ResourcePlanningService:
         preds: Dict[str, List[str]],
         q_start: date,
         q_end: date,
+        alloc_by_item: Optional[Dict[str, ScenarioAllocation]] = None,
+        remaining: Optional[Dict[str, Dict[date, float]]] = None,
+        preempt_locked: Optional[Dict[str, set]] = None,
+        original_avail: Optional[Dict[str, Dict[date, float]]] = None,
     ) -> None:
         """Сдвинуть start/end по графу preds, сохраняя длительность фазы.
 
@@ -1688,7 +1704,14 @@ class ResourcePlanningService:
             # по производственному календарю с нуля от нового new_start.
             if a.phase == "qa":
                 item_obj = self.db.get(BacklogItem, a.backlog_item_id)
-                qa_hours = (item_obj.estimate_qa_hours or 0.0) if item_obj else 0.0
+                # Часы QA — через override сценария (если есть), иначе BacklogItem.
+                # Без override `_shift` ранее раздувал qa_daily до сырых
+                # estimate_qa_hours, растягивая фазу и сдвигая ОПЭ — это в свою
+                # очередь оставляло устаревший preempt_locked в allocator и
+                # рвало анализ младших задач без видимой причины.
+                qa_hours = 0.0
+                if item_obj:
+                    qa_hours = self._phase_hours(item_obj, "qa", alloc_by_item or {})
                 if qa_hours > 0.0:
                     qa_inv = (
                         self._involvement_for_phase(item_obj, "qa") or 1.0
@@ -1741,45 +1764,62 @@ class ResourcePlanningService:
                         a.daily_hours_json = None
                 continue
 
-            # Сдвинуть daily_hours_json вместе с датами, иначе защитный clamp
-            # после CPM/leveler вернёт фазу на старые ключи дней.
-            if a.daily_hours_json and delta != 0:
+            # Non-QA фаза (analyst/dev/opo): пересобрать раскладку через
+            # allocator от new_start, а не блайнд-сдвигать ключи daily_hours_json.
+            # Блайнд-сдвиг роняет дни на выходные/отпуска нового владельца,
+            # потому что timedelta(days=delta) не смотрит ни на производственный
+            # календарь, ни на Absence сотрудника.
+            if (
+                remaining is not None
+                and a.employee_id
+                and a.hours_allocated
+                and a.hours_allocated > 0
+                and a.employee_id in remaining
+            ):
+                # Восстановить старое окно фазы в remaining: основной цикл
+                # консьюмил эти дни целиком (relay/serialization), теперь
+                # фаза уехала вперёд — дни должны вернуться к исходной
+                # ёмкости, иначе allocator будет думать что они заняты.
+                emp_days = remaining[a.employee_id]
+                orig_days = (original_avail or {}).get(a.employee_id, {})
                 try:
-                    daily = json.loads(a.daily_hours_json)
+                    old_daily = json.loads(a.daily_hours_json) if a.daily_hours_json else {}
                 except json.JSONDecodeError:
-                    daily = {}
-                if daily:
-                    shifted = {}
-                    for k, v in daily.items():
-                        try:
-                            new_key = (
-                                date.fromisoformat(k) + timedelta(days=delta)
-                            ).isoformat()
-                        except ValueError:
-                            continue
-                        shifted[new_key] = v
-                    a.daily_hours_json = json.dumps(shifted) if shifted else None
-            # Если фаза упёрлась в q_end — обрезать ключи JSON в окне
-            # [new_start, new_end]. Иначе бар визуально выходит за квартал,
-            # потому что в JSON остались дни после клампа.
-            if a.daily_hours_json:
-                try:
-                    daily = json.loads(a.daily_hours_json)
-                except json.JSONDecodeError:
-                    daily = {}
-                if daily:
-                    trimmed = {}
-                    for k, v in daily.items():
-                        try:
-                            d = date.fromisoformat(k)
-                        except ValueError:
-                            continue
-                        if new_start <= d <= new_end:
-                            trimmed[k] = v
-                    if len(trimmed) != len(daily):
-                        a.daily_hours_json = (
-                            json.dumps(trimmed) if trimmed else None
-                        )
+                    old_daily = {}
+                for k in old_daily:
+                    try:
+                        d_old = date.fromisoformat(k)
+                    except ValueError:
+                        continue
+                    if d_old in orig_days:
+                        emp_days[d_old] = orig_days[d_old]
+
+                item_obj = self.db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
+                inv = self._involvement_for_phase(item_obj, a.phase) if item_obj else None
+                parallel_n = _resolve_parallel_count_legacy(item_obj, a.phase) if item_obj else 1
+                phase_cap = self._daily_role_capacity(
+                    avail_hours=8.0,
+                    involvement=inv,
+                    parallel_count=parallel_n,
+                )
+                segments, new_daily = self._allocate_hours_with_breakdown(
+                    a.employee_id,
+                    float(a.hours_allocated),
+                    new_start,
+                    q_end,
+                    remaining,
+                    daily_capacity=phase_cap,
+                    preempt_locked=preempt_locked,
+                    original_capacity=original_avail,
+                )
+                if segments and new_daily:
+                    a.start_date = segments[0][0]
+                    a.end_date = segments[-1][1]
+                    a.daily_hours_json = json.dumps(
+                        {d.isoformat(): h for d, h in new_daily.items()}
+                    )
+                else:
+                    a.daily_hours_json = None
 
     def split_assignment(
         self,

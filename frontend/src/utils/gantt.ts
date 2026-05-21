@@ -88,6 +88,10 @@ export function quarterBounds(quarter: string, year: number): { start: Date; end
   return { start, end };
 }
 
+function fmtLocalIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function getWeekLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
   const weeks: Array<{ label: string; leftPct: number; widthPct: number }> = [];
   const d = new Date(tl.startDate);
@@ -101,8 +105,8 @@ export function getWeekLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ labe
     weekEnd.setDate(weekEnd.getDate() + 6);
     const clampedStart = weekStart < tl.startDate ? tl.startDate : weekStart;
     const clampedEnd = weekEnd > tl.endDate ? tl.endDate : weekEnd;
-    const left = dateToLeft(clampedStart.toISOString().slice(0, 10), tl);
-    const width = datesToWidth(clampedStart.toISOString().slice(0, 10), clampedEnd.toISOString().slice(0, 10), tl);
+    const left = dateToLeft(fmtLocalIso(clampedStart), tl);
+    const width = datesToWidth(fmtLocalIso(clampedStart), fmtLocalIso(clampedEnd), tl);
     weeks.push({ label: `W${weekNum}`, leftPct: left, widthPct: width });
     d.setDate(d.getDate() + 7);
     weekNum++;
@@ -123,14 +127,19 @@ export interface DayLabel {
 }
 
 export function getDayLabels(tl: GanttTimeline | WorkdayTimeline): DayLabel[] {
+  const isWorkday = 'workdayIndex' in tl;
   const days: DayLabel[] = [];
   const d = new Date(tl.startDate);
   while (d <= tl.endDate) {
-    const dayEnd = new Date(d);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const isoEnd = `${dayEnd.getFullYear()}-${String(dayEnd.getMonth() + 1).padStart(2, '0')}-${String(dayEnd.getDate()).padStart(2, '0')}`;
+    const iso = fmtLocalIso(d);
+    // В режиме «только рабочие» нерабочие дни не должны появляться в шапке —
+    // иначе они стекаются 0.5%-ячейками на позиции следующего рабочего дня.
+    if (isWorkday && !(tl as WorkdayTimeline).workdayIndex.has(iso)) {
+      d.setDate(d.getDate() + 1);
+      continue;
+    }
     const left = dateToLeft(iso, tl);
-    const width = datesToWidth(iso, isoEnd, tl);
+    const width = datesToWidth(iso, iso, tl);
     days.push({
       label: String(d.getDate()),
       leftPct: left,
@@ -150,10 +159,10 @@ export function getMonthLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ lab
     const monthStart = cursor < tl.startDate ? tl.startDate : cursor;
     const next = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
     const monthEndExclusive = next > tl.endDate ? tl.endDate : new Date(next.getTime() - 86_400_000);
-    const left = dateToLeft(monthStart.toISOString().slice(0, 10), tl);
+    const left = dateToLeft(fmtLocalIso(monthStart), tl);
     const width = datesToWidth(
-      monthStart.toISOString().slice(0, 10),
-      monthEndExclusive.toISOString().slice(0, 10),
+      fmtLocalIso(monthStart),
+      fmtLocalIso(monthEndExclusive),
       tl,
     );
     months.push({ label: RU_MONTHS[cursor.getMonth()], leftPct: left, widthPct: width });

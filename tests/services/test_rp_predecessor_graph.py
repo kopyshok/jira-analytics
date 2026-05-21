@@ -121,6 +121,9 @@ def test_custom_predecessor_overrides_chain(db_session, sample_plan):
     analyst = next(a for a in rows if a.phase == "analyst")
 
     # Удалить существующие предшественники qa и привязать qa только к analyst.
+    # API `/predecessors` помечает фазу `predecessors_user_set=True`; иначе
+    # `_ensure_default_predecessors` досоздаёт дефолтную пару qa→dev, и qa
+    # перестаёт быть параллельной dev.
     db_session.execute(
         PhasePredecessor.__table__.delete().where(
             PhasePredecessor.successor_assignment_id == qa.id
@@ -132,6 +135,7 @@ def test_custom_predecessor_overrides_chain(db_session, sample_plan):
             predecessor_assignment_id=analyst.id,
         )
     )
+    qa.predecessors_user_set = True
     db_session.commit()
 
     svc.compute_schedule(sample_plan.id)

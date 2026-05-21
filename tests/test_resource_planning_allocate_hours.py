@@ -9,10 +9,12 @@ from app.services.resource_planning_service import ResourcePlanningService
 # ── Task 2 ────────────────────────────────────────────────────────────────────
 
 
-def test_allocate_blocks_day_for_serialization():
-    """День занят фазой целиком — следующая фаза того же сотрудника
-    не может сесть на тот же день параллельно (relay/serialization).
-    Точное число часов сохраняется в daily_hours_json для конфликт-расчёта.
+def test_allocate_preserves_last_day_leftover_for_spillover():
+    """Промежуточные дни фазы консьюмятся целиком (relay/serialization).
+    На последнем дне (когда фаза «доел» оставшиеся часы) — leftover остаётся
+    доступным, чтобы фаза следующей по приоритету инициативы могла
+    стартовать в тот же день. Приоритет сохраняется: items обрабатываются
+    в порядке убывания priority.
     """
     db = MagicMock()
     svc = ResourcePlanningService(db)
@@ -22,19 +24,22 @@ def test_allocate_blocks_day_for_serialization():
         emp_id: {
             date(2026, 4, 1): 8.0,
             date(2026, 4, 2): 8.0,
+            date(2026, 4, 3): 8.0,
         }
     }
 
+    # Фаза 12ч, daily_cap=4 → дни 1+2 полностью (4ч), день 3 — 4ч из 8.
     svc._allocate_hours(
-        emp_id, 4.0, date(2026, 4, 1), date(2026, 4, 30), remaining,
+        emp_id, 12.0, date(2026, 4, 1), date(2026, 4, 30), remaining,
         daily_capacity=4.0,
     )
 
-    # День консьюмится полностью — другая задача того же сотрудника
-    # не может стартовать в этот день. Это обеспечивает «эстафету».
+    # Промежуточные дни целиком: на эти дни параллельная фаза этого
+    # сотрудника не может сесть.
     assert remaining[emp_id][date(2026, 4, 1)] == 0.0
-    # Day 2 untouched
-    assert remaining[emp_id][date(2026, 4, 2)] == 8.0
+    assert remaining[emp_id][date(2026, 4, 2)] == 0.0
+    # На последнем дне остаток (8 − 4 = 4ч) сохранён для spillover.
+    assert remaining[emp_id][date(2026, 4, 3)] == 4.0
 
 
 # ── Task 3 ────────────────────────────────────────────────────────────────────
