@@ -2184,9 +2184,16 @@ def _build_daily_breakdown(
         cal = calendar_map.get(d)
         avail_h = avail_map.get(d, 0.0)
         used_h = daily_used.get(d, 0.0)
-        if cal and not cal.is_workday and cal.kind in ("holiday", "preholiday"):
-            status: str = "holiday"
-        elif d.weekday() >= 5 and (not cal or not cal.is_workday):
+        if cal and not cal.is_workday:
+            # Перенос рабочего/выходного дня: понедельник с kind='weekend'
+            # тоже нерабочий и должен показываться как «Выходной», а не
+            # «Работа». Раньше попадал в финальный else, потому что
+            # weekday()<5 + kind='weekend' не ловилось ни одной проверкой.
+            if d.weekday() >= 5:
+                status: str = "weekend"
+            else:
+                status = "holiday"
+        elif d.weekday() >= 5 and not cal:
             status = "weekend"
         elif any(ab.start_date <= d <= ab.end_date for ab in absences):
             status = "absence"
