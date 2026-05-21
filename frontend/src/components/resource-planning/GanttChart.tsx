@@ -256,6 +256,7 @@ export default function GanttChart({
             onAssignmentClick={onAssignmentClick}
             highlightedEmployeeId={highlightedEmployeeId}
             onEmployeeRowClick={onEmployeeRowClick}
+            quarterEndDate={qEndIso}
           />
         </div>
       </div>

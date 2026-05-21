@@ -29,6 +29,9 @@ interface Props {
   onAssignmentClick?: (assignmentId: string) => void;
   highlightedEmployeeId?: string | null;
   onEmployeeRowClick?: (employeeId: string | null) => void;
+  /** ISO end of strict quarter (without spillover buffer). Days past this
+   *  date are striped to mark out-of-quarter portion of phase bars. */
+  quarterEndDate?: string;
 }
 
 type SubProps = Omit<Props, 'viewMode'>;
@@ -272,9 +275,11 @@ interface PhaseBarProps {
   highlightedEmployeeId?: string | null;
   pulseEmp?: boolean;
   pulseCp?: boolean;
+  /** ISO end of strict quarter — bar portion past this date is striped. */
+  quarterEndDate?: string;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp, quarterEndDate }: PhaseBarProps) {
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     mode: 'move' | 'resize-start' | 'resize-end';
@@ -363,6 +368,23 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
 
   const isOoQ = assignment.out_of_quarter;
 
+  // Часть бара после q_end (строгий конец квартала) — рисуется штриховкой
+  // overlay-дивом. Сам бар — сплошной цвет. Раньше bar background был
+  // целиком gradient, что выглядело как «вся фаза в out_of_quarter».
+  const ooqOverlayRange = (() => {
+    if (!isOoQ || !quarterEndDate) return null;
+    if (!assignment.start_date || !assignment.end_date) return null;
+    if (assignment.end_date <= quarterEndDate) return null;
+    // Первый day after q_end в локальной таймзоне
+    const qEnd = new Date(quarterEndDate + 'T00:00:00');
+    qEnd.setDate(qEnd.getDate() + 1);
+    const ooqStart = (() => {
+      const s = `${qEnd.getFullYear()}-${String(qEnd.getMonth() + 1).padStart(2, '0')}-${String(qEnd.getDate()).padStart(2, '0')}`;
+      return s > assignment.start_date! ? s : assignment.start_date!;
+    })();
+    return { start: ooqStart, end: assignment.end_date };
+  })();
+
   const factPct = assignment.hours_allocated && assignment.worklog_hours_actual
     ? Math.min(1, assignment.worklog_hours_actual / assignment.hours_allocated)
     : 0;
@@ -400,16 +422,12 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         top: '50%',
         transform: 'translateY(-50%)',
         height: 18,
-        background: isOoQ
-          ? `repeating-linear-gradient(45deg, ${color} 0 6px, rgba(0,0,0,0.15) 6px 12px)`
-          : color,
-        opacity: effectiveDimmed ? 0.12 : (isOoQ ? 0.6 : 1),
+        background: color,
+        opacity: effectiveDimmed ? 0.12 : 1,
         borderRadius: 3,
-        border: isOoQ
-          ? '1px solid #ffb432'
-          : assignment.is_on_critical_path
-            ? '1px solid #e85d4a'
-            : 'none',
+        border: assignment.is_on_critical_path
+          ? '1px solid #e85d4a'
+          : 'none',
         boxShadow: hasConflict
           ? 'inset 0 0 0 2px #ef4444'
           : isMe
@@ -451,6 +469,15 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
             pointerEvents: 'none',
             zIndex: 2,
           }}
+        />
+      )}
+      {ooqOverlayRange && (
+        <OutOfQuarterOverlay
+          barStart={assignment.start_date}
+          barEnd={assignment.end_date}
+          ooqStart={ooqOverlayRange.start}
+          ooqEnd={ooqOverlayRange.end}
+          timeline={timeline}
         />
       )}
       {unavailableDays && unavailableDays.length > 0 && (
@@ -521,6 +548,47 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
         />
       )}
     </>
+  );
+}
+
+interface OutOfQuarterOverlayProps {
+  barStart: string;
+  barEnd: string;
+  ooqStart: string;
+  ooqEnd: string;
+  timeline: GanttTimeline;
+}
+
+function OutOfQuarterOverlay({ barStart, barEnd, ooqStart, ooqEnd, timeline }: OutOfQuarterOverlayProps) {
+  // Считаем позицию относительно бара (inset: 0 + проценты внутри).
+  // datesToWidth учитывает workday-режим, dateToLeft — тоже.
+  const isWorkday = 'workdayIndex' in timeline;
+  // Внутри бара inset:0 → координаты пересчитываем по таймлайну,
+  // но bar уже left/width в %. Переводим в проценты относительно бара.
+  const barLeft = dateToLeft(barStart, timeline);
+  const barWidth = datesToWidth(barStart, barEnd, timeline);
+  const ooqLeft = dateToLeft(ooqStart, timeline);
+  const ooqWidth = datesToWidth(ooqStart, ooqEnd, timeline);
+  if (barWidth <= 0) return null;
+  // Координаты относительно бара (0..100%)
+  const leftPct = ((ooqLeft - barLeft) / barWidth) * 100;
+  const widthPct = (ooqWidth / barWidth) * 100;
+  if (widthPct <= 0) return null;
+  void isWorkday;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: `${Math.max(0, leftPct)}%`,
+        width: `${Math.min(100 - Math.max(0, leftPct), widthPct)}%`,
+        top: 0,
+        bottom: 0,
+        background: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.45) 0 6px, rgba(255,255,255,0.06) 6px 12px)',
+        borderLeft: '1px dashed #ffb432',
+        pointerEvents: 'none',
+        zIndex: 3,
+      }}
+    />
   );
 }
 
@@ -604,7 +672,7 @@ function TwoLevelRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
-  highlightedEmployeeId, onEmployeeRowClick,
+  highlightedEmployeeId, onEmployeeRowClick, quarterEndDate,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -883,6 +951,7 @@ function TwoLevelRows({
                             highlightedEmployeeId={highlightedEmployeeId}
                             pulseEmp={rpPrefs.pulse_highlighted_employee}
                             pulseCp={rpPrefs.pulse_critical_path}
+                            quarterEndDate={quarterEndDate}
                           />
                         );
                       })}
