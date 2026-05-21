@@ -1776,23 +1776,29 @@ class ResourcePlanningService:
                 and a.hours_allocated > 0
                 and a.employee_id in remaining
             ):
-                # Восстановить старое окно фазы в remaining: основной цикл
-                # консьюмил эти дни целиком (relay/serialization), теперь
-                # фаза уехала вперёд — дни должны вернуться к исходной
-                # ёмкости, иначе allocator будет думать что они заняты.
+                # Откатить вклад этой фазы в remaining: возвращаем только те
+                # часы, что списала ИМЕННО она (из old daily_hours_json), —
+                # не полную исходную ёмкость дня. Иначе если в день уже
+                # положилась другая фаза/инициатива через spillover (last-day
+                # leftover консьюмится частично, остаток остаётся для младшей
+                # инициативы), restore затрёт её consumption и allocator
+                # сядет в тот же день вторым слоем → «Перекрывают день»
+                # по всему окну, бар штрихуется целиком.
                 emp_days = remaining[a.employee_id]
                 orig_days = (original_avail or {}).get(a.employee_id, {})
                 try:
                     old_daily = json.loads(a.daily_hours_json) if a.daily_hours_json else {}
                 except json.JSONDecodeError:
                     old_daily = {}
-                for k in old_daily:
+                for k, h_used in old_daily.items():
                     try:
                         d_old = date.fromisoformat(k)
                     except ValueError:
                         continue
-                    if d_old in orig_days:
-                        emp_days[d_old] = orig_days[d_old]
+                    if d_old not in orig_days:
+                        continue
+                    current = emp_days.get(d_old, 0.0)
+                    emp_days[d_old] = min(orig_days[d_old], current + float(h_used))
 
                 item_obj = self.db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
                 inv = self._involvement_for_phase(item_obj, a.phase) if item_obj else None
