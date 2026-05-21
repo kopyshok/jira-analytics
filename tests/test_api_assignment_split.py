@@ -173,6 +173,34 @@ def test_merge_assignment_combines_parts(client, db_session, ready_plan):
     assert merged["pinned_split"] is False
 
 
+def test_split_cascade_remerges_already_split_downstream(client, db_session, ready_plan):
+    """Cascade split поверх уже разбитого downstream: backend сам сливает
+    downstream обратно и нарезает заново под новые parts источника, не
+    блокируя пользователя с «merge first».
+    """
+    a = _phase(db_session, ready_plan, "analyst")
+    assert a is not None
+    # Первый split с cascade → dev/qa разбиты.
+    r1 = client.post(
+        f"/api/v1/resource-planning/resource-plans/{ready_plan}/assignments/{a.id}/split",
+        json={"parts": [12, 8], "cascade": True},
+    )
+    assert r1.status_code == 200, r1.text
+    # Второй split того же analyst (после re-fetch part1) с другим разбиением +
+    # cascade. Должен пройти, downstream split сам слиться и пере-нарезаться.
+    a2 = _phase(db_session, ready_plan, "analyst")
+    assert a2 is not None and a2.part_number == 1
+    # merge analyst обратно, чтобы можно было снова split (источник уже split,
+    # повторный split той же phase запрещён правилом "phase already split").
+    client.post(f"/api/v1/resource-planning/resource-plans/{ready_plan}/assignments/{a2.id}/merge")
+    a3 = _phase(db_session, ready_plan, "analyst")
+    r2 = client.post(
+        f"/api/v1/resource-planning/resource-plans/{ready_plan}/assignments/{a3.id}/split",
+        json={"parts": [10, 5, 5], "cascade": True},
+    )
+    assert r2.status_code == 200, r2.text
+
+
 def test_split_sum_mismatch_rejected(client, db_session, ready_plan):
     a = _phase(db_session, ready_plan, "analyst")
     assert a is not None

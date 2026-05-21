@@ -1871,9 +1871,12 @@ class ResourcePlanningService:
                 f"parts sum {sum(parts_hours)} != phase hours {total}"
             )
 
-        # Pre-check для cascade: downstream-фазы не должны быть уже разбиты
-        # пользователем (part_number > 1), иначе _cascade_split их молча
-        # скипает и пропорции расходятся. OPO структурно имеет 2 строки
+        # Cascade поверх уже разбитых downstream-фаз: автоматически сливаем
+        # их обратно в одну строку, чтобы новый cascade_split нарезал
+        # пропорционально свежим parts источника. Раньше блокировали с
+        # «merge first or split without cascade» — пользователь не понимал
+        # что делать и операция фактически становилась недоступной после
+        # любого предыдущего cascade-split. OPO структурно имеет 2 строки
         # (analyst-кусок + dev-кусок) с part_number=1 — это не split.
         if cascade:
             try:
@@ -1881,29 +1884,32 @@ class ResourcePlanningService:
             except ValueError:
                 src_idx = -1
             if src_idx >= 0:
-                downstream_split_phases: List[str] = []
                 for ph in PHASE_ORDER[src_idx + 1 :]:
-                    max_part = (
-                        self.db.execute(
-                            select(
-                                func.max(ResourcePlanAssignment.part_number)
-                            ).where(
-                                ResourcePlanAssignment.plan_id == a.plan_id,
-                                ResourcePlanAssignment.backlog_item_id
-                                == a.backlog_item_id,
-                                ResourcePlanAssignment.phase == ph,
-                            )
+                    # max(part_number) > 1 — признак реального split.
+                    # OPO структурно имеет 2 строки part_number=1
+                    # (analyst-кусок + dev-кусок), это не split — не трогаем.
+                    max_part = self.db.execute(
+                        select(func.max(ResourcePlanAssignment.part_number)).where(
+                            ResourcePlanAssignment.plan_id == a.plan_id,
+                            ResourcePlanAssignment.backlog_item_id == a.backlog_item_id,
+                            ResourcePlanAssignment.phase == ph,
                         )
-                        .scalar()
-                    )
-                    if max_part and max_part > 1:
-                        downstream_split_phases.append(ph)
-                if downstream_split_phases:
-                    raise ValueError(
-                        "cascade blocked: downstream phases already split: "
-                        + ",".join(downstream_split_phases)
-                        + ". Merge them first or split source without cascade."
-                    )
+                    ).scalar()
+                    if not max_part or max_part <= 1:
+                        continue
+                    first_sibling = self.db.execute(
+                        select(ResourcePlanAssignment)
+                        .where(
+                            ResourcePlanAssignment.plan_id == a.plan_id,
+                            ResourcePlanAssignment.backlog_item_id == a.backlog_item_id,
+                            ResourcePlanAssignment.phase == ph,
+                            ResourcePlanAssignment.part_number == 1,
+                        )
+                    ).scalar_one_or_none()
+                    if first_sibling:
+                        self.merge_assignment(first_sibling.id)
+                # merge_assignment делает self.db.flush() внутри, перечитывать
+                # source assignment `a` не нужно — он не из downstream фаз.
 
         plan_id = a.plan_id
         item_id = a.backlog_item_id
