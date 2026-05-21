@@ -199,6 +199,127 @@ def test_explain_daily_breakdown_marks_blocked_by_other(client, tc_session):
         app.dependency_overrides.pop(get_db, None)
 
 
+def test_explain_pre_start_shift_due_to_absence(client, tc_session):
+    """Если фаза «Разработка» сдвинута из-за отпуска исполнителя, /explain
+    должен:
+    - вернуть pre-start строки в daily_breakdown (is_pre_start=True) с
+      причиной отсутствия;
+    - указать сдвиг и группу причин в algorithm_log.
+    """
+    from app.models import (
+        Absence,
+        AbsenceReason,
+        BacklogItem,
+        Employee,
+        ResourcePlan,
+        ResourcePlanAssignment,
+    )
+    from app.models.employee_team import EmployeeTeam
+
+    e = Employee(
+        jira_account_id="jira-vac",
+        display_name="Пак Илья",
+        role="developer",
+        team="DT",
+        is_active=True,
+    )
+    tc_session.add(e)
+    tc_session.commit()
+    tc_session.add(EmployeeTeam(employee_id=e.id, team="DT", is_primary=True))
+    tc_session.commit()
+
+    reason = AbsenceReason(code="vacation", label="Отпуск", sort_order=1, is_active=True)
+    tc_session.add(reason)
+    tc_session.commit()
+
+    item = BacklogItem(
+        title="ITL-342", estimate_analyst_hours=8, estimate_dev_hours=20,
+        involvement_dev=0.9,
+    )
+    tc_session.add(item)
+    tc_session.commit()
+
+    plan = ResourcePlan(team="DT", quarter="Q2", year=2026, status="ready")
+    tc_session.add(plan)
+    tc_session.commit()
+
+    # Анализ закончился 06.04.2026 (понедельник)
+    a_analyst = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="analyst",
+        employee_id=e.id,
+        hours_allocated=8.0,
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 6),
+        daily_hours_json=json.dumps({"2026-04-06": 8.0}),
+    )
+    # Разработка должна была 07.04, по факту 13.04 (понедельник)
+    a_dev = ResourcePlanAssignment(
+        plan_id=plan.id,
+        backlog_item_id=item.id,
+        phase="dev",
+        employee_id=e.id,
+        hours_allocated=20.0,
+        start_date=date(2026, 4, 13),
+        end_date=date(2026, 4, 15),
+        daily_hours_json=json.dumps({
+            "2026-04-13": 7.2, "2026-04-14": 7.2, "2026-04-15": 5.6,
+        }),
+    )
+    tc_session.add_all([a_analyst, a_dev])
+    tc_session.commit()
+
+    # Отпуск 30.03–12.04 — перекрывает 07-10.04 = pre-start окно dev
+    absence = Absence(
+        employee_id=e.id,
+        reason_id=reason.id,
+        start_date=date(2026, 3, 30),
+        end_date=date(2026, 4, 12),
+    )
+    tc_session.add(absence)
+    tc_session.commit()
+
+    def _override():
+        yield tc_session
+
+    app.dependency_overrides[get_db] = _override
+    try:
+        c = TestClient(app)
+        r = c.get(
+            f"/api/v1/resource-planning/resource-plans/{plan.id}/assignments/{a_dev.id}/explain"
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+
+        breakdown = body.get("daily_breakdown", [])
+        pre_dates = [d["date"] for d in breakdown if d.get("is_pre_start")]
+        # 07-10 апреля — будни в отпуске, 11-12 — выходные
+        assert "2026-04-07" in pre_dates, f"07.04 должна быть pre-start: {pre_dates}"
+        assert "2026-04-10" in pre_dates, f"10.04 должна быть pre-start: {pre_dates}"
+        absence_rows = [
+            d for d in breakdown
+            if d.get("is_pre_start") and d["status"] == "absence"
+        ]
+        assert absence_rows, "Хотя бы одна pre-start строка должна быть отпуском"
+        assert any(d.get("absence_reason") == "Отпуск" for d in absence_rows), (
+            f"absence_reason должен быть 'Отпуск': {absence_rows}"
+        )
+
+        log = body.get("algorithm_log", [])
+        assert any("Сдвиг" in entry for entry in log), (
+            f"Лог должен упомянуть сдвиг: {log}"
+        )
+        assert any("Отпуск" in entry for entry in log), (
+            f"Лог должен упомянуть причину сдвига 'Отпуск': {log}"
+        )
+        assert any("Фактический старт" in entry for entry in log), (
+            f"Лог должен упомянуть фактический старт: {log}"
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
 def test_explain_absences_in_window_includes_holidays(client, tc_session):
     """ProductionCalendarDay с is_workday=False и kind='holiday' попадает в absences_in_window."""
     from app.models import BacklogItem, Employee, ResourcePlan, ResourcePlanAssignment, ProductionCalendarDay

@@ -367,10 +367,19 @@ class DailyBreakdownItem(BaseModel):
     date: date
     available_hours: float
     used_hours: float
-    status: Literal["work", "absence", "holiday", "weekend", "blocked_by_other"]
+    status: Literal[
+        "work",
+        "absence",
+        "holiday",
+        "weekend",
+        "blocked_by_other",
+        "pre_start_idle",
+    ]
     blocker_assignment_id: Optional[str] = None
     blocker_item_key: Optional[str] = None
     blocker_phase_label: Optional[str] = None
+    absence_reason: Optional[str] = None
+    is_pre_start: bool = False
 
 
 class AbsenceWindowItem(BaseModel):
@@ -2130,30 +2139,208 @@ def explain_conflict(
 # ── /explain helpers (Task 9) ──────────────────────────────────────────────
 
 
+PHASE_RU = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
+PREV_PHASE = {"dev": "analyst", "qa": "dev", "opo": "qa"}
+
+
+def _ddmm(d: date) -> str:
+    return f"{d.day:02d}.{d.month:02d}"
+
+
+def _format_date_range(d_start: date, d_end: date) -> str:
+    return _ddmm(d_start) if d_start == d_end else f"{_ddmm(d_start)}–{_ddmm(d_end)}"
+
+
+def _plan_quarter_bounds(plan: "ResourcePlan") -> Optional[date]:
+    """Начало квартала плана. None если квартал не парсится."""
+    from app.services.capacity_service import QUARTER_MONTHS
+
+    try:
+        q_num = int(str(plan.quarter or "").strip().upper().replace("Q", ""))
+    except (ValueError, AttributeError):
+        return None
+    months = QUARTER_MONTHS.get(q_num)
+    if not months:
+        return None
+    year = plan.year or date.today().year
+    return date(year, months[0], 1)
+
+
+def _expected_start(
+    a: "ResourcePlanAssignment",
+    plan: "ResourcePlan",
+    same_item_assignments: List["ResourcePlanAssignment"],
+) -> Optional[date]:
+    """Где фаза должна была стартовать по логике планировщика.
+
+    analyst: q_start
+    dev/qa/opo: max(end_date предыдущей фазы того же item) + 1 день
+    """
+    if a.phase == "analyst":
+        return _plan_quarter_bounds(plan)
+    prev_phase = PREV_PHASE.get(a.phase)
+    if not prev_phase:
+        return _plan_quarter_bounds(plan)
+    prev_rows = [
+        x for x in same_item_assignments
+        if x.phase == prev_phase and x.end_date is not None
+    ]
+    if not prev_rows:
+        return _plan_quarter_bounds(plan)
+    return max(x.end_date for x in prev_rows) + _timedelta(days=1)
+
+
+def _classify_day(
+    d: date,
+    employee_id: Optional[str],
+    avail_map: Dict[date, float],
+    other_assignments: List["ResourcePlanAssignment"],
+    absences: list,
+    calendar_map: dict,
+    used_h: float,
+    skip_assignment_id: Optional[str] = None,
+) -> Dict[str, object]:
+    """Классификация одного дня для daily_breakdown / algorithm_log.
+
+    Возвращает dict {status, absence_reason, blocker_*}.
+    """
+    cal = calendar_map.get(d)
+    if cal and not cal.is_workday:
+        return {"status": "weekend" if d.weekday() >= 5 else "holiday"}
+    if d.weekday() >= 5 and not cal:
+        return {"status": "weekend"}
+    absence = next(
+        (
+            ab for ab in absences
+            if (employee_id is None or ab.employee_id == employee_id)
+            and ab.start_date <= d <= ab.end_date
+        ),
+        None,
+    )
+    if absence is not None:
+        return {
+            "status": "absence",
+            "absence_reason": absence.reason.label if absence.reason else "Отсутствие",
+        }
+    if used_h > 0:
+        return {"status": "work"}
+    avail_h = avail_map.get(d, 0.0)
+    if avail_h <= 0.01:
+        # Доступность 0 без отпуска/праздника — блокировка (ScheduledBlock)
+        return {"status": "absence", "absence_reason": "Блокировка"}
+    blocker = next(
+        (
+            x for x in other_assignments
+            if x.id != skip_assignment_id
+            and x.employee_id == employee_id
+            and x.start_date and x.end_date
+            and x.start_date <= d <= x.end_date
+        ),
+        None,
+    )
+    if blocker:
+        bi = blocker.backlog_item
+        issue = bi.issue if bi else None
+        return {
+            "status": "blocked_by_other",
+            "blocker_assignment_id": blocker.id,
+            "blocker_item_key": issue.key if issue else None,
+            "blocker_phase_label": PHASE_RU.get(blocker.phase, blocker.phase),
+        }
+    return {"status": "pre_start_idle"}
+
+
 def _build_algorithm_log(
     a: "ResourcePlanAssignment",
     plan: "ResourcePlan",
     all_emp_assignments: List["ResourcePlanAssignment"],
+    same_item_assignments: List["ResourcePlanAssignment"],
+    avail_map: Dict[date, float],
+    absences: list,
+    calendar_map: dict,
 ) -> List[str]:
-    """Текст «откуда дата старта» для боковой панели."""
+    """Текст «откуда дата старта» для боковой панели.
+
+    Структура:
+      1. Откуда плановый старт (квартал / предыдущая фаза).
+      2. Если факт > план — группированный список причин сдвига по дням.
+      3. Фактический старт.
+      4. Доп. флаги (вне квартала, критический путь).
+    """
     log: List[str] = []
-    phase_ru = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
     if a.phase == "analyst":
-        log.append(f"Старт фазы = начало квартала ({plan.quarter} {plan.year}).")
+        log.append(f"Плановый старт = начало квартала ({plan.quarter} {plan.year}).")
     else:
-        prev_phase = {"dev": "analyst", "qa": "dev", "opo": "qa"}.get(a.phase)
-        if prev_phase:
-            prev = [
-                x for x in all_emp_assignments
-                if x.phase == prev_phase and x.backlog_item_id == a.backlog_item_id
-            ]
-            if prev:
-                p = max(prev, key=lambda x: x.end_date or date.min)
-                if p.end_date:
+        prev_phase = PREV_PHASE.get(a.phase)
+        prev_rows = [
+            x for x in same_item_assignments
+            if x.phase == prev_phase and x.end_date is not None
+        ] if prev_phase else []
+        if prev_rows:
+            p = max(prev_rows, key=lambda x: x.end_date or date.min)
+            log.append(
+                f"Плановый старт = следующий день после «{PHASE_RU[prev_phase]}» "
+                f"({_ddmm(p.end_date)}) = {_ddmm(p.end_date + _timedelta(days=1))}."
+            )
+        else:
+            log.append("Плановый старт = начало квартала (предыдущая фаза не найдена).")
+
+    expected = _expected_start(a, plan, same_item_assignments)
+    actual = a.start_date
+    if expected and actual and expected < actual:
+        # Группируем причины сдвига по подряд идущим дням с одинаковым статусом.
+        groups: List[Dict[str, object]] = []
+        d = expected
+        while d < actual:
+            info = _classify_day(
+                d,
+                a.employee_id,
+                avail_map,
+                all_emp_assignments,
+                absences,
+                calendar_map,
+                used_h=0.0,
+                skip_assignment_id=a.id,
+            )
+            key = (
+                info["status"],
+                info.get("absence_reason"),
+                info.get("blocker_item_key"),
+                info.get("blocker_phase_label"),
+            )
+            if groups and groups[-1]["key"] == key:
+                groups[-1]["end"] = d
+            else:
+                groups.append({"key": key, "start": d, "end": d, "info": info})
+            d += _timedelta(days=1)
+
+        if groups:
+            shift_days = (actual - expected).days
+            log.append(f"Сдвиг на {shift_days} д. из-за:")
+            for g in groups:
+                rng = _format_date_range(g["start"], g["end"])
+                info = g["info"]
+                status = info["status"]
+                if status == "absence":
+                    log.append(f"  · {rng} — отсутствие ({info.get('absence_reason')}).")
+                elif status == "holiday":
+                    log.append(f"  · {rng} — праздник.")
+                elif status == "weekend":
+                    log.append(f"  · {rng} — выходной.")
+                elif status == "blocked_by_other":
+                    blocker_key = info.get("blocker_item_key") or "—"
+                    blocker_phase = info.get("blocker_phase_label") or ""
                     log.append(
-                        f"Старт фазы = следующий рабочий день после фактического окончания "
-                        f"фазы «{phase_ru[prev_phase]}» ({p.end_date.isoformat()})."
+                        f"  · {rng} — занят: {blocker_key} «{blocker_phase}»."
                     )
+                else:
+                    log.append(
+                        f"  · {rng} — день свободен, но фаза сюда не встала "
+                        f"(выравнивание перегрузки или зависимость)."
+                    )
+
+    if actual:
+        log.append(f"Фактический старт: {_ddmm(actual)}.")
     if a.out_of_quarter:
         log.append("Фаза выходит за пределы квартала — часов не хватает в окне.")
     if a.is_on_critical_path:
@@ -2167,7 +2354,14 @@ def _build_daily_breakdown(
     other_assignments: List["ResourcePlanAssignment"],
     absences: list,
     calendar_map: dict,
+    expected_start: Optional[date] = None,
 ) -> List[DailyBreakdownItem]:
+    """Посуточная разбивка фазы.
+
+    Если ``expected_start`` < ``a.start_date`` — таблица расширяется влево,
+    pre-start строки получают ``is_pre_start=True`` и причину сдвига
+    (отпуск/выходной/праздник/занят/свободен-но-сдвинут).
+    """
     if not a.start_date or not a.end_date:
         return []
     daily_used: Dict[date, float] = {}
@@ -2178,56 +2372,37 @@ def _build_daily_breakdown(
         except (_json.JSONDecodeError, ValueError):
             pass
     items: List[DailyBreakdownItem] = []
-    phase_label = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
-    d = a.start_date
+    range_start = (
+        expected_start
+        if expected_start is not None and expected_start < a.start_date
+        else a.start_date
+    )
+    d = range_start
     while d <= a.end_date:
-        cal = calendar_map.get(d)
-        avail_h = avail_map.get(d, 0.0)
         used_h = daily_used.get(d, 0.0)
-        if cal and not cal.is_workday:
-            # Перенос рабочего/выходного дня: понедельник с kind='weekend'
-            # тоже нерабочий и должен показываться как «Выходной», а не
-            # «Работа». Раньше попадал в финальный else, потому что
-            # weekday()<5 + kind='weekend' не ловилось ни одной проверкой.
-            if d.weekday() >= 5:
-                status: str = "weekend"
-            else:
-                status = "holiday"
-        elif d.weekday() >= 5 and not cal:
-            status = "weekend"
-        elif any(ab.start_date <= d <= ab.end_date for ab in absences):
-            status = "absence"
-        elif used_h == 0 and avail_h > 0:
-            # Заблокирован другим назначением того же сотрудника в этот день?
-            blocker = next(
-                (
-                    x for x in other_assignments
-                    if x.id != a.id
-                    and x.employee_id == a.employee_id
-                    and x.start_date and x.end_date
-                    and x.start_date <= d <= x.end_date
-                ),
-                None,
-            )
-            if blocker:
-                bi = blocker.backlog_item
-                issue = bi.issue if bi else None
-                items.append(DailyBreakdownItem(
-                    date=d,
-                    available_hours=avail_h,
-                    used_hours=0.0,
-                    status="blocked_by_other",
-                    blocker_assignment_id=blocker.id,
-                    blocker_item_key=issue.key if issue else None,
-                    blocker_phase_label=phase_label.get(blocker.phase, blocker.phase),
-                ))
-                d += _timedelta(days=1)
-                continue
-            status = "work"
-        else:
-            status = "work"
+        avail_h = avail_map.get(d, 0.0)
+        is_pre = d < a.start_date
+        info = _classify_day(
+            d,
+            a.employee_id,
+            avail_map,
+            other_assignments,
+            absences,
+            calendar_map,
+            used_h=used_h,
+            skip_assignment_id=a.id,
+        )
+        status = info["status"]
         items.append(DailyBreakdownItem(
-            date=d, available_hours=avail_h, used_hours=used_h, status=status,
+            date=d,
+            available_hours=avail_h,
+            used_hours=used_h,
+            status=status,
+            blocker_assignment_id=info.get("blocker_assignment_id"),
+            blocker_item_key=info.get("blocker_item_key"),
+            blocker_phase_label=info.get("blocker_phase_label"),
+            absence_reason=info.get("absence_reason"),
+            is_pre_start=is_pre,
         ))
         d += _timedelta(days=1)
     return items
@@ -2451,7 +2626,33 @@ def explain_assignment(
         if a.employee_id
         else []
     )
-    horizon_start = min((x.start_date for x in all_emp_assignments if x.start_date), default=a.start_date)
+    # Все фазы той же инициативы (на любого сотрудника) — нужны для
+    # вычисления планового старта (конец предыдущей фазы) и трассы сдвига.
+    same_item_assignments = (
+        db.execute(
+            select(ResourcePlanAssignment)
+            .where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.backlog_item_id == a.backlog_item_id,
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+    expected_start_date = _expected_start(a, plan, same_item_assignments)
+    # Левая граница окна для horizon/calendar/absences — берём минимум из
+    # фактического старта и планового, чтобы pre-start строки получили
+    # корректную классификацию (отпуск/выходной/занят).
+    window_start_left = a.start_date
+    if expected_start_date and a.start_date and expected_start_date < a.start_date:
+        window_start_left = expected_start_date
+    horizon_start = min(
+        (x.start_date for x in all_emp_assignments if x.start_date),
+        default=window_start_left,
+    )
+    if window_start_left and (horizon_start is None or window_start_left < horizon_start):
+        horizon_start = window_start_left
     horizon_end = max((x.end_date for x in all_emp_assignments if x.end_date), default=a.end_date)
     full_avail: Dict[date, float] = {}
     if a.employee_id and horizon_start and horizon_end:
@@ -2462,13 +2663,14 @@ def explain_assignment(
             list(blocks),
         ).get(a.employee_id, {})
 
-    # Calendar map для окна фазы
+    # Calendar map для окна фазы (расширено влево до expected_start для трассы).
     calendar_map: Dict[date, "ProductionCalendarDay"] = {}
     if a.start_date and a.end_date:
+        cal_left = window_start_left or a.start_date
         cal_rows = (
             db.execute(
                 select(ProductionCalendarDay).where(
-                    ProductionCalendarDay.date >= a.start_date,
+                    ProductionCalendarDay.date >= cal_left,
                     ProductionCalendarDay.date <= a.end_date,
                 )
             )
@@ -2514,9 +2716,11 @@ def explain_assignment(
         # планировщик (_daily_role_capacity внутри compute_schedule).
         full_avail = {d: h * _inv_value for d, h in full_avail.items()}
 
-    # Отсутствия сотрудника в окне фазы
+    # Отсутствия сотрудника в окне фазы (расширено влево до expected_start
+    # для трассы сдвига).
     absences_in_window_raw: List["Absence"] = []
     if a.employee_id and a.start_date and a.end_date:
+        absence_left = window_start_left or a.start_date
         absences_in_window_raw = (
             db.execute(
                 select(Absence)
@@ -2524,7 +2728,7 @@ def explain_assignment(
                 .where(
                     Absence.employee_id == a.employee_id,
                     Absence.start_date <= a.end_date,
-                    Absence.end_date >= a.start_date,
+                    Absence.end_date >= absence_left,
                 )
             )
             .scalars()
@@ -2616,11 +2820,15 @@ def explain_assignment(
         # Новый shape (Task 9)
         "assignment": _assignment_to_out(a).model_dump(mode="json"),
         "conflicts": conflicts_out,
-        "algorithm_log": _build_algorithm_log(a, plan, all_emp_assignments),
+        "algorithm_log": _build_algorithm_log(
+            a, plan, all_emp_assignments, same_item_assignments,
+            full_avail, absences_in_window_raw, calendar_map,
+        ),
         "daily_breakdown": [
             item.model_dump(mode="json")
             for item in _build_daily_breakdown(
-                a, full_avail, all_emp_assignments, absences_in_window_raw, calendar_map
+                a, full_avail, all_emp_assignments, absences_in_window_raw,
+                calendar_map, expected_start=expected_start_date,
             )
         ],
         "absences_in_window": [

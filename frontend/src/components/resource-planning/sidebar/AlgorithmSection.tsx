@@ -1,9 +1,54 @@
+import type { ReactNode } from 'react';
 import { Collapse, Typography } from 'antd';
 
 interface Props {
   log: string[];
   collapsed: boolean;
   onToggleCollapse: () => void;
+}
+
+/** Строки-подпункты приходят с префиксом «  · ». Они не получают своего номера
+ *  в нумерованном списке, а рендерятся как отступленные пояснения. */
+function renderLog(log: string[]) {
+  const nodes: ReactNode[] = [];
+  let idx = 1;
+  for (let i = 0; i < log.length; i++) {
+    const line = log[i];
+    if (line.startsWith('  ·') || line.startsWith('  ·')) {
+      // sub-bullet — отступ относительно последнего пункта
+      nodes.push(
+        <div
+          key={`s-${i}`}
+          style={{
+            fontSize: 12,
+            color: '#8ab0d8',
+            marginLeft: 16,
+            marginBottom: 2,
+            lineHeight: 1.45,
+          }}
+        >
+          {line.replace(/^\s*·\s*/, '· ')}
+        </div>
+      );
+    } else {
+      nodes.push(
+        <div
+          key={`n-${i}`}
+          style={{
+            fontSize: 12,
+            color: '#cfe1f5',
+            marginBottom: 2,
+            lineHeight: 1.45,
+          }}
+        >
+          <span style={{ color: '#7a9ab8', marginRight: 6 }}>{idx}.</span>
+          {line}
+        </div>
+      );
+      idx += 1;
+    }
+  }
+  return nodes;
 }
 
 export default function AlgorithmSection({ log, collapsed, onToggleCollapse }: Props) {
@@ -17,13 +62,7 @@ export default function AlgorithmSection({ log, collapsed, onToggleCollapse }: P
         label: 'Откуда дата старта',
         children: log.length === 0
           ? <Typography.Text type="secondary">Нет данных</Typography.Text>
-          : (
-            <ol style={{ margin: 0, paddingLeft: 20 }}>
-              {log.map((item, i) => (
-                <li key={i} style={{ fontSize: 12, color: '#cfe1f5', marginBottom: 2 }}>{item}</li>
-              ))}
-            </ol>
-          ),
+          : <div style={{ margin: 0 }}>{renderLog(log)}</div>,
       }]}
     />
   );

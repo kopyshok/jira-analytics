@@ -17,6 +17,7 @@ const STATUS_LABELS: Record<DailyBreakdownItem['status'], string> = {
   holiday: 'Праздник',
   weekend: 'Выходной',
   blocked_by_other: 'Занят другой задачей',
+  pre_start_idle: 'Свободен (сдвиг)',
 };
 
 function formatDateDDMM(dateStr: string): string {
@@ -62,11 +63,13 @@ export default function DailyBreakdownSection({
               dataSource={items}
               rowKey="date"
               onRow={(row) => ({
-                style: row.status === 'blocked_by_other'
-                  ? { background: 'rgba(239,68,68,0.08)' }
-                  : row.status !== 'work'
-                    ? { background: 'rgba(255,180,50,0.06)' }
-                    : {},
+                style: row.is_pre_start
+                  ? { background: 'rgba(120,140,180,0.10)', opacity: 0.85 }
+                  : row.status === 'blocked_by_other'
+                    ? { background: 'rgba(239,68,68,0.08)' }
+                    : row.status !== 'work'
+                      ? { background: 'rgba(255,180,50,0.06)' }
+                      : {},
               })}
               columns={[
                 {
@@ -96,10 +99,18 @@ export default function DailyBreakdownSection({
                 {
                   title: 'Источник',
                   key: 'source',
-                  render: (_: unknown, row: DailyBreakdownItem) =>
-                    row.status === 'blocked_by_other'
-                      ? `${row.blocker_item_key ?? ''} · ${row.blocker_phase_label ?? ''}`.replace(/^ · | · $/, '')
-                      : '',
+                  render: (_: unknown, row: DailyBreakdownItem) => {
+                    if (row.status === 'blocked_by_other') {
+                      return `${row.blocker_item_key ?? ''} · ${row.blocker_phase_label ?? ''}`.replace(/^ · | · $/, '');
+                    }
+                    if (row.status === 'absence' && row.absence_reason) {
+                      return row.absence_reason;
+                    }
+                    if (row.is_pre_start && row.status === 'pre_start_idle') {
+                      return 'до старта фазы';
+                    }
+                    return '';
+                  },
                 },
               ]}
             />
