@@ -297,3 +297,81 @@ def test_qa_split_part_uses_own_hours_after_shift(db_session):
     assert len(daily) == 1, (
         f"QA part 3 раздулась до {len(daily)} дней — должно быть 1 для 5ч"
     )
+
+
+def test_qa_split_drift_rebuilds_when_delta_zero(db_session):
+    """Если QA-part уже стоит ровно на «day after pred» (delta=0), но в
+    daily_hours_json остался устаревший расход на item-total часы
+    (например, 20ч вместо 7.5ч после изменения логики `_phase_hours`),
+    shift должен ВСЁ РАВНО пересобрать раскладку под фактические
+    a.hours_allocated. Иначе раскладка остаётся stale и фронт показывает
+    20ч в карточке split-части.
+    """
+    team = "T_QA_DRIFT"
+    emp = Employee(
+        jira_account_id=_uid()[:16],
+        display_name="Разраб-qa-drift",
+        team=team,
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=team, is_primary=True))
+
+    item = BacklogItem(
+        title="qa-drift",
+        priority=1,
+        estimate_analyst_hours=0.0,
+        estimate_dev_hours=20.0,
+        estimate_qa_hours=20.0,
+        estimate_opo_hours=0.0,
+        opo_analyst_ratio=0.5,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    scenario = PlanningScenario(name="qa-drift-s", quarter="Q2", year=2026, status="draft", team=team)
+    db_session.add(scenario)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.flush()
+
+    # Dev part 1 заканчивает Пн 06.04
+    dev_p1 = ResourcePlanAssignment(
+        plan_id=plan.id, backlog_item_id=item.id, phase="dev",
+        employee_id=emp.id, part_number=1, hours_allocated=10.0,
+        start_date=date(2026, 4, 6), end_date=date(2026, 4, 6),
+        daily_hours_json=json.dumps({"2026-04-06": 10.0}),
+        pinned_split=True,
+    )
+    # QA part 1: hours_allocated=7.5, но daily_hours_json содержит 20ч
+    # (артефакт прошлой логики shift, считавшей по item-total).
+    qa_p1 = ResourcePlanAssignment(
+        plan_id=plan.id, backlog_item_id=item.id, phase="qa",
+        employee_id=None, part_number=1, hours_allocated=7.5,
+        start_date=date(2026, 4, 7), end_date=date(2026, 4, 9),
+        daily_hours_json=json.dumps({"2026-04-07": 8.0, "2026-04-08": 8.0, "2026-04-09": 4.0}),
+        pinned_split=True,
+    )
+    db_session.add_all([dev_p1, qa_p1])
+    db_session.flush()
+    db_session.add(PhasePredecessor(
+        successor_assignment_id=qa_p1.id,
+        predecessor_assignment_id=dev_p1.id,
+    ))
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    preds = {qa_p1.id: [dev_p1.id]}
+    # new_start = dev_p1.end+1 = 07.04, qa_p1.start_date=07.04 → delta=0.
+    # Под старой логикой continue → daily остаётся 20ч.
+    svc._shift_to_obey_predecessors([dev_p1, qa_p1], preds, date(2026, 4, 1), date(2026, 6, 30))
+
+    daily = json.loads(qa_p1.daily_hours_json)
+    assert sum(daily.values()) == pytest.approx(7.5, abs=0.01), (
+        f"QA part 1 daily total = {sum(daily.values())}, ожидался 7.5"
+    )
