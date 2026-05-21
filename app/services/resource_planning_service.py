@@ -1686,7 +1686,22 @@ class ResourcePlanningService:
                 continue
             new_start = max(ends) + timedelta(days=1)
             if new_start == a.start_date:
-                continue
+                # Для QA при delta=0 всё равно проверяем дрифт
+                # daily_hours_json vs hours_allocated: после cascade-split
+                # daily мог остаться от старого compute, когда часы брались
+                # из item-total `_phase_hours`. Пропуск тут оставлял QA-part
+                # с раскладкой 20ч при hours_allocated=7.5ч.
+                if a.phase == "qa" and a.hours_allocated and a.hours_allocated > 0:
+                    try:
+                        _cur = json.loads(a.daily_hours_json) if a.daily_hours_json else {}
+                        _cur_sum = sum(float(v) for v in _cur.values())
+                    except (json.JSONDecodeError, ValueError):
+                        _cur_sum = -1.0
+                    if abs(_cur_sum - float(a.hours_allocated)) <= 0.01:
+                        continue
+                    # fall through → QA-ветка пересоберёт раскладку
+                else:
+                    continue
             duration = (a.end_date - a.start_date).days
             delta = (new_start - a.start_date).days
             if new_start > q_end:
