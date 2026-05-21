@@ -1704,14 +1704,14 @@ class ResourcePlanningService:
             # по производственному календарю с нуля от нового new_start.
             if a.phase == "qa":
                 item_obj = self.db.get(BacklogItem, a.backlog_item_id)
-                # Часы QA — через override сценария (если есть), иначе BacklogItem.
-                # Без override `_shift` ранее раздувал qa_daily до сырых
-                # estimate_qa_hours, растягивая фазу и сдвигая ОПЭ — это в свою
-                # очередь оставляло устаревший preempt_locked в allocator и
-                # рвало анализ младших задач без видимой причины.
-                qa_hours = 0.0
-                if item_obj:
-                    qa_hours = self._phase_hours(item_obj, "qa", alloc_by_item or {})
+                # Часы QA берём из самой этой строки (a.hours_allocated), а не
+                # из item-level _phase_hours. Иначе для split-QA каждая часть
+                # пересчитывалась бы на ПОЛНЫЕ часы инициативы (например, для
+                # 3 частей по 5ч/7.5ч/7.5ч из суммарных 20ч `_phase_hours`
+                # вернул бы 20 и каждая часть раздулась бы в 3-4 рабочих дня,
+                # перекрывая соседние и стартуя раньше окончания своих
+                # предшественников dev part N).
+                qa_hours = float(a.hours_allocated or 0.0)
                 if qa_hours > 0.0:
                     qa_inv = (
                         self._involvement_for_phase(item_obj, "qa") or 1.0

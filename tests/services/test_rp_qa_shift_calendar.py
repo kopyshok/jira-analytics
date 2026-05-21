@@ -217,3 +217,83 @@ def test_qa_shift_lands_on_weekdays(db_session, qa_shift_plan):
             f"daily_hours_json contains weekend key {k} (weekday={d.weekday()})"
         )
         assert v > 0, f"daily_hours_json key {k} has zero hours"
+
+
+def test_qa_split_part_uses_own_hours_after_shift(db_session):
+    """Split QA: каждая часть после shift расходует ТОЛЬКО свои часы,
+    не суммарные QA-часы инициативы. Иначе для 5ч-части layout
+    раздувается на 3-4 рабочих дня (как если бы у этой строки 20ч),
+    бар наезжает на следующую фазу и стартует одновременно с
+    предшественником вместо «день после конца».
+    """
+    team = "T_QA_SPLIT"
+    emp = Employee(
+        jira_account_id=_uid()[:16],
+        display_name="Разраб-qa-split",
+        team=team,
+        is_active=True,
+        role="developer",
+    )
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=team, is_primary=True))
+
+    item = BacklogItem(
+        title="qa-split",
+        priority=1,
+        estimate_analyst_hours=0.0,
+        estimate_dev_hours=24.0,
+        estimate_qa_hours=20.0,  # total — split на 3 части
+        estimate_opo_hours=0.0,
+        opo_analyst_ratio=0.5,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    scenario = PlanningScenario(name="qa-split-s", quarter="Q2", year=2026, status="draft", team=team)
+    db_session.add(scenario)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True))
+
+    plan = ResourcePlan(team=team, quarter="Q2", year=2026, status="draft", scenario_id=scenario.id)
+    db_session.add(plan)
+    db_session.flush()
+
+    # Dev part 3 (предшественник QA part 3) заканчивает во вторник 2026-06-23
+    dev_p3 = ResourcePlanAssignment(
+        plan_id=plan.id, backlog_item_id=item.id, phase="dev",
+        employee_id=emp.id, part_number=3, hours_allocated=8.0,
+        start_date=date(2026, 6, 19), end_date=date(2026, 6, 23),
+        daily_hours_json=json.dumps({"2026-06-19": 4.0, "2026-06-22": 4.0}),
+        pinned_split=True,
+    )
+    # QA part 3 — 5ч (одна из трёх частей split), стоит ДО конца своего dev.
+    qa_p3 = ResourcePlanAssignment(
+        plan_id=plan.id, backlog_item_id=item.id, phase="qa",
+        employee_id=None, part_number=3, hours_allocated=5.0,
+        start_date=date(2026, 6, 22), end_date=date(2026, 6, 24),
+        daily_hours_json=json.dumps({"2026-06-22": 5.0}),
+        pinned_split=True,
+    )
+    db_session.add_all([dev_p3, qa_p3])
+    db_session.flush()
+    db_session.add(PhasePredecessor(
+        successor_assignment_id=qa_p3.id,
+        predecessor_assignment_id=dev_p3.id,
+    ))
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    preds = {qa_p3.id: [dev_p3.id]}
+    svc._shift_to_obey_predecessors([dev_p3, qa_p3], preds, date(2026, 4, 1), date(2026, 6, 30))
+
+    # QA part 3 должна стартовать НЕ РАНЬШЕ 24.06 (день после dev part 3 end)
+    assert qa_p3.start_date >= date(2026, 6, 24), (
+        f"QA part 3 стартует {qa_p3.start_date}, до конца dev part 3 (23.06)"
+    )
+    # Расход 5ч → ОДИН день при cap=6ч/день (DEFAULT_HOURS_PER_DAY), не 3-4.
+    daily = json.loads(qa_p3.daily_hours_json)
+    assert sum(daily.values()) == pytest.approx(5.0, abs=0.01)
+    assert len(daily) == 1, (
+        f"QA part 3 раздулась до {len(daily)} дней — должно быть 1 для 5ч"
+    )
