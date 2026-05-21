@@ -995,6 +995,73 @@ class ResourcePlanningService:
         # Cache events for Stage B persist_conflicts
         self._last_leveling_events = leveling_events
 
+        # Post-leveler QA sync: leveler сдвигает employee-фазы (например dev_3)
+        # вперёд под перегрузки, а QA-фазы (employee_id=None) не выравниваются,
+        # их даты выставил предыдущий _shift_to_obey_predecessors на основе
+        # PRE-leveler концов dev. Если leveler сдвинул предшественника QA,
+        # QA-кусок остаётся в старом окне и накладывается на свой dev.
+        # Лечим: для каждой QA-строки с preds пересобираем layout под текущие
+        # pred.end_date через тот же calendar-based fill, что и в основной
+        # ветке _shift_to_obey_predecessors.
+        by_id_post = {x.id: x for x in new_assignments if x.id}
+        qa_cal_anomalies_post: Dict[date, float] = {
+            row.date: row.hours for row in qa_cal_rows
+        }
+        def _qa_cal_post(d: date) -> float:
+            h = qa_cal_anomalies_post.get(d)
+            if h is None:
+                return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
+            return h
+
+        for a in new_assignments:
+            if a.phase != "qa" or a.pinned_start:
+                continue
+            if not a.hours_allocated or a.hours_allocated <= 0:
+                continue
+            pred_ids = preds.get(a.id, [])
+            if not pred_ids:
+                continue
+            pred_ends = [
+                by_id_post[pid].end_date
+                for pid in pred_ids
+                if pid in by_id_post and by_id_post[pid].end_date
+            ]
+            if not pred_ends:
+                continue
+            new_start = max(pred_ends) + timedelta(days=1)
+            if a.start_date == new_start:
+                # Дрифт daily также возможен; проверка как в _shift_to_obey_predecessors.
+                try:
+                    cur = json.loads(a.daily_hours_json) if a.daily_hours_json else {}
+                    cur_sum = sum(float(v) for v in cur.values())
+                except (json.JSONDecodeError, ValueError):
+                    cur_sum = -1.0
+                if abs(cur_sum - float(a.hours_allocated)) <= 0.01:
+                    continue
+            item_obj = self.db.get(BacklogItem, a.backlog_item_id)
+            qa_inv = (
+                self._involvement_for_phase(item_obj, "qa") or 1.0
+                if item_obj else 1.0
+            )
+            qa_hours_part = float(a.hours_allocated or 0.0)
+            qa_daily: Dict[date, float] = {}
+            remaining_h = qa_hours_part
+            cursor = new_start
+            while remaining_h > 0.001 and cursor <= q_end_extended:
+                avail_h_post = _qa_cal_post(cursor) * qa_inv
+                if avail_h_post > 0:
+                    take = min(remaining_h, avail_h_post)
+                    qa_daily[cursor] = take
+                    remaining_h -= take
+                cursor += timedelta(days=1)
+            if qa_daily:
+                a.start_date = min(qa_daily.keys())
+                a.end_date = max(qa_daily.keys())
+                a.daily_hours_json = json.dumps(
+                    {d.isoformat(): h for d, h in qa_daily.items()}
+                )
+                a.out_of_quarter = a.end_date > q_end
+
         # Защитный clamp дат к рабочим дням: start_date/end_date не должны
         # попадать на выходные, праздники или дни с нулевой доступностью
         # (отпуска). Иначе бар визуально «вылазит» на выходные, что выглядит
