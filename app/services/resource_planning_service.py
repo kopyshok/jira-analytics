@@ -1120,6 +1120,25 @@ class ResourcePlanningService:
                 )
                 a.out_of_quarter = a.end_date > q_end
 
+        # Post-QA-sync propagation: OPO (и другие non-pinned employee-фазы)
+        # были созданы в main-loop с earliest_start = pre-shift конца QA.
+        # После QA-sync концы QA могли сдвинуться (leveler + cascade-split),
+        # но OPO остался на старом start. Повторный вызов _shift пропагирует
+        # обновлённые preds через граф: pinned_start пропускаются (line 1796),
+        # уже-корректные строки скипают (line 1813), сдвигаются только реально
+        # отставшие. Refund-then-reallocate в non-QA ветке корректно сохраняет
+        # `remaining` (вернёт ровно то, что списала, и заново снимет).
+        self._shift_to_obey_predecessors(
+            new_assignments,
+            preds,
+            q_start,
+            q_end_extended,
+            alloc_by_item,
+            remaining=remaining,
+            preempt_locked=preempt_locked,
+            original_avail=original_avail,
+        )
+
         # Защитный clamp дат к рабочим дням: start_date/end_date не должны
         # попадать на выходные, праздники или дни с нулевой доступностью
         # (отпуска). Иначе бар визуально «вылазит» на выходные, что выглядит
