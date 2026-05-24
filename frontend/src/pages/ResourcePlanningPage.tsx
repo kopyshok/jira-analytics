@@ -35,6 +35,7 @@ import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
 import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
+import { DARK_THEME } from '../utils/constants';
 
 function ResourcePlanningPageInner() {
   const { message } = App.useApp();
@@ -142,18 +143,35 @@ function ResourcePlanningPageInner() {
 
   return (
     <div style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>
-      <PageHeader
-        title="Ресурсное планирование"
-        actions={
-          <Space>
-            <Button icon={<SettingOutlined />} onClick={() => setBlocksOpen(true)} size="small">
-              Заблокированные периоды
-            </Button>
-          </Space>
-        }
-      />
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 20,
+          background: DARK_THEME.pageBg,
+          marginLeft: -24,
+          marginRight: -24,
+          paddingLeft: 24,
+          paddingRight: 24,
+          paddingTop: 16,
+          marginTop: -16,
+          paddingBottom: 8,
+          marginBottom: 8,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+        }}
+      >
+        <PageHeader
+          title="Ресурсное планирование"
+          actions={
+            <Space>
+              <Button icon={<SettingOutlined />} onClick={() => setBlocksOpen(true)} size="small">
+                Заблокированные периоды
+              </Button>
+            </Space>
+          }
+        />
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <Select
           loading={plansLoading}
           placeholder="Выберите план"
@@ -279,6 +297,7 @@ function ResourcePlanningPageInner() {
             ]}
           />
         </Space>
+        </div>
       </div>
 
       {gantt && viewMode !== 'plane' && (
