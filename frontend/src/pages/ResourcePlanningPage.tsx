@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import '../utils/gantt.css';
@@ -65,6 +65,21 @@ function ResourcePlanningPageInner() {
   const createDep = useCreateDependency();
   const deleteDep = useDeleteDependency();
   const { prefs, patch: patchPrefs } = useRpPreferences();
+  const stickyRef = useRef<HTMLDivElement | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const el = stickyRef.current;
+    const page = pageRef.current;
+    if (!el || !page) return;
+    const apply = () => {
+      page.style.setProperty('--rp-page-sticky-h', `${el.offsetHeight}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const scenarioId = searchParams.get('scenario_id');
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
@@ -142,12 +157,13 @@ function ResourcePlanningPageInner() {
   });
 
   return (
-    <div style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>
+    <div ref={pageRef} style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>
       <div
+        ref={stickyRef}
         style={{
           position: 'sticky',
           top: 0,
-          zIndex: 20,
+          zIndex: 50,
           background: DARK_THEME.pageBg,
           marginLeft: -24,
           marginRight: -24,

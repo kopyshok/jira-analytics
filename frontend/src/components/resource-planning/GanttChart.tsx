@@ -151,7 +151,7 @@ export default function GanttChart({
             minWidth: '100%',
           }}
         >
-          <div style={{ position: 'sticky', top: 0, zIndex: 30, background: '#0a1628' }}>
+          <div style={{ position: 'sticky', top: 'var(--rp-page-sticky-h, 0px)', zIndex: 30, background: '#0a1628' }}>
             <TimelineHeader
               timeline={timeline}
               leftColWidth={LEFT_COL}
