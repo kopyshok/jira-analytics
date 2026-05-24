@@ -297,6 +297,7 @@ class ResourcePlanningService:
         hours: float,
         involvement: float,
         q_end: date,
+        employee_id: Optional[str] = None,
     ) -> tuple[date, str]:
         """Расширить окно вправо так, чтобы вместить ``hours`` часов работы.
 
@@ -305,6 +306,11 @@ class ResourcePlanningService:
         иначе ``DEFAULT_HOURS_PER_DAY`` в будни, 0 в выходные), затем
         умножается на ``involvement``. На день берётся
         ``min(remaining_hours, day_cap)``. Дни с ``cap == 0`` пропускаются.
+
+        Если задан ``employee_id`` — дни из ``Absence`` сотрудника,
+        пересекающиеся с окном, считаются нулевыми (как выходные). Иначе
+        scheduler положит часы на отпуск, и день покажет план=0 vs факт=cap
+        (перегруз 5600%).
 
         Возвращает ``(last_filled_day, daily_hours_json)`` — последний день,
         в который что-то было записано, и JSON-строку
@@ -329,12 +335,38 @@ class ResourcePlanningService:
         )
         cal: Dict[date, float] = {row.date: row.hours for row in cal_rows}
 
+        # Отсутствия конкретного сотрудника в окне → дни с cap=0.
+        absent_days: set[date] = set()
+        if employee_id:
+            absences = (
+                self.db.execute(
+                    select(Absence).where(
+                        and_(
+                            Absence.employee_id == employee_id,
+                            Absence.start_date <= q_end,
+                            Absence.end_date >= start_date,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for ab in absences:
+                d = max(ab.start_date, start_date)
+                end_overlap = min(ab.end_date, q_end)
+                while d <= end_overlap:
+                    absent_days.add(d)
+                    d += timedelta(days=1)
+
         inv = max(0.0, min(1.0, involvement))
         remaining = float(hours)
         daily: Dict[str, float] = {}
         last_filled = start_date
         cursor = start_date
         while remaining > 0.001 and cursor <= q_end:
+            if cursor in absent_days:
+                cursor += timedelta(days=1)
+                continue
             cal_hours = cal.get(cursor)
             if cal_hours is None:
                 cal_hours = DEFAULT_HOURS_PER_DAY if cursor.weekday() < 5 else 0.0
@@ -576,6 +608,7 @@ class ResourcePlanningService:
                     hours=a.hours_allocated,
                     involvement=inv,
                     q_end=q_end_extended,
+                    employee_id=a.employee_id,
                 )
                 a.end_date = new_end
                 # _extend_window_for_hours возвращает "{}" если ни один

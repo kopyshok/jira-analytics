@@ -1381,6 +1381,7 @@ def patch_assignment(
                 hours=a.hours_allocated,
                 involvement=inv,
                 q_end=q_end_extended,
+                employee_id=patch.get("employee_id", a.employee_id),
             )
             patch["end_date"] = new_end_dt
             # _extend_window_for_hours возвращает "{}" если ни один рабочий день

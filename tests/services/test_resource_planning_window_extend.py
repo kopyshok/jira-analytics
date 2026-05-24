@@ -8,6 +8,7 @@
 from datetime import date
 import json
 
+from app.models import Absence, AbsenceReason, Employee
 from app.models.production_calendar_day import ProductionCalendarDay
 from app.services.resource_planning_service import ResourcePlanningService
 
@@ -102,3 +103,93 @@ def test_extend_window_honours_production_calendar_holiday(db_session):
     assert "2026-04-22" not in daily  # holiday skipped
     assert set(daily.keys()) == {"2026-04-20", "2026-04-21", "2026-04-23"}
     assert abs(sum(daily.values()) - 16.0) < 0.01
+
+
+def test_extend_window_skips_employee_absence(db_session):
+    """Дни отпуска конкретного сотрудника пропускаются как выходные.
+
+    Без передачи `employee_id` хелпер раскладывает часы строго по
+    производственному календарю — отпуск Фокеевой 08-10.06 получал план=0
+    (через `build_availability`), но scheduler через `_extend_window_for_hours`
+    клал туда часы → перегруз 5600%.
+    """
+    reason = AbsenceReason(
+        code="vacation", label="Отпуск", is_planned=True, is_active=True
+    )
+    db_session.add(reason)
+    emp = Employee(
+        jira_account_id="acc-extend-abs",
+        display_name="Vacationer",
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(
+        Absence(
+            employee_id=emp.id,
+            start_date=date(2026, 6, 8),
+            end_date=date(2026, 6, 10),
+            reason_id=reason.id,
+        )
+    )
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    # 40h от Mon 01.06.2026, involvement=1.0 (cap 6h/день). Без отпуска:
+    # 01-05.06 (Пн-Пт) = 30h, 06-07 выходные, 08-10 — 10h → end 10.06 (7 ключей).
+    # С отпуском 08-10.06: 01-05.06 = 30h, далее пропускаем 06-10.06, 11-12.06
+    # (Чт-Пт) = 12h. На 11.06 уместится 6h, на 12.06 — 4h → end 12.06, 7 ключей.
+    end, daily_json = svc._extend_window_for_hours(
+        start_date=date(2026, 6, 1),
+        hours=40.0,
+        involvement=1.0,
+        q_end=date(2026, 6, 30),
+        employee_id=emp.id,
+    )
+    daily = json.loads(daily_json)
+    # Дни отпуска НЕ должны попасть в раскладку.
+    for iso in ("2026-06-08", "2026-06-09", "2026-06-10"):
+        assert iso not in daily, f"{iso} — отпуск, не должно быть в daily_hours"
+    # Все часы разложены, окно расширено за отпуск.
+    assert abs(sum(daily.values()) - 40.0) < 0.01
+    assert end == date(2026, 6, 12)
+    assert "2026-06-12" in daily
+
+
+def test_extend_window_without_employee_ignores_absences(db_session):
+    """Backward compat: вызов без `employee_id` НЕ грузит отсутствия и
+    раскладывает часы по производственному календарю, как раньше."""
+    reason = AbsenceReason(
+        code="vacation", label="Отпуск", is_planned=True, is_active=True
+    )
+    db_session.add(reason)
+    emp = Employee(
+        jira_account_id="acc-no-emp-id",
+        display_name="X",
+        is_active=True,
+    )
+    db_session.add(emp)
+    db_session.flush()
+    db_session.add(
+        Absence(
+            employee_id=emp.id,
+            start_date=date(2026, 6, 8),
+            end_date=date(2026, 6, 10),
+            reason_id=reason.id,
+        )
+    )
+    db_session.commit()
+
+    svc = ResourcePlanningService(db_session)
+    end, daily_json = svc._extend_window_for_hours(
+        start_date=date(2026, 6, 1),
+        hours=40.0,
+        involvement=1.0,
+        q_end=date(2026, 6, 30),
+    )
+    daily = json.loads(daily_json)
+    # employee_id не передан → отсутствия игнорируются, дни 08-09.06 в раскладке
+    # (01-05 = 30h, 06-07 выходные, 08.06 = 6h, 09.06 = 4h → end 09.06).
+    assert "2026-06-08" in daily
+    assert abs(sum(daily.values()) - 40.0) < 0.01
+    assert end == date(2026, 6, 9)
