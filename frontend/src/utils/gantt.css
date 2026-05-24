@@ -17,3 +17,13 @@
 .rp-track-animated {
   transition: width 250ms ease-out;
 }
+
+/* Sticky шапка таймлайна с overflowX:auto — синхронизируется с телом
+   графика через scrollLeft. Скрываем родную полосу скролла, чтобы пользователь
+   видел только нижнюю полосу у тела. */
+.rp-sticky-header-track {
+  scrollbar-width: none;
+}
+.rp-sticky-header-track::-webkit-scrollbar {
+  display: none;
+}

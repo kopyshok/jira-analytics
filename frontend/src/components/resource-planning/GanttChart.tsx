@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState } from 'react';
+import { useRef, useMemo, useState, useEffect } from 'react';
 import type { AssignmentOut, DependencyOut, ScheduledBlock } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
@@ -65,7 +65,36 @@ export default function GanttChart({
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const headerScrollRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
+
+  // Двусторонний sync горизонтального скролла между sticky-шапкой и телом
+  // графика. Флаг предотвращает рекурсивный onScroll при программной установке
+  // scrollLeft.
+  useEffect(() => {
+    const body = containerRef.current;
+    const header = headerScrollRef.current;
+    if (!body || !header) return;
+    let syncing = false;
+    const fromBody = () => {
+      if (syncing) return;
+      syncing = true;
+      header.scrollLeft = body.scrollLeft;
+      requestAnimationFrame(() => { syncing = false; });
+    };
+    const fromHeader = () => {
+      if (syncing) return;
+      syncing = true;
+      body.scrollLeft = header.scrollLeft;
+      requestAnimationFrame(() => { syncing = false; });
+    };
+    body.addEventListener('scroll', fromBody, { passive: true });
+    header.addEventListener('scroll', fromHeader, { passive: true });
+    return () => {
+      body.removeEventListener('scroll', fromBody);
+      header.removeEventListener('scroll', fromHeader);
+    };
+  }, []);
 
   const calendarQuery = useProductionCalendarYear(year);
   const calendar = calendarQuery.data ?? [];
@@ -111,11 +140,45 @@ export default function GanttChart({
   };
 
   return (
+    <>
+    {/* Sticky шапка таймлайна. position:sticky якорится к ближайшему
+        scroll-ancestor; card ниже использует overflow:hidden для рамки и
+        собственный overflowX:auto для скролла, что делает sticky внутри неё
+        невидимой для viewport. Лифтим шапку как sibling над card и синхроним
+        scrollLeft с containerRef через scroll-event обмен. */}
+    <div
+      ref={headerScrollRef}
+      className="rp-sticky-header-track"
+      style={{
+        position: 'sticky',
+        top: 'var(--rp-page-sticky-h, 0px)',
+        zIndex: 40,
+        background: '#0a1628',
+        border: '1px solid #1e3a5f',
+        borderBottom: 'none',
+        borderTopLeftRadius: 8,
+        borderTopRightRadius: 8,
+        overflowX: 'auto',
+        overflowY: 'hidden',
+      }}
+    >
+      <div style={{ width: LEFT_COL + trackWidthPx, minWidth: '100%' }}>
+        <TimelineHeader
+          timeline={timeline}
+          leftColWidth={LEFT_COL}
+          scale={effectiveScale}
+          trackWidthPx={trackWidthPx}
+          calendar={calendar}
+        />
+      </div>
+    </div>
     <div
       style={{
         background: '#0a1628',
         border: '1px solid #1e3a5f',
-        borderRadius: 8,
+        borderTop: 'none',
+        borderBottomLeftRadius: 8,
+        borderBottomRightRadius: 8,
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -151,16 +214,6 @@ export default function GanttChart({
             minWidth: '100%',
           }}
         >
-          <div style={{ position: 'sticky', top: 'var(--rp-page-sticky-h, 0px)', zIndex: 30, background: '#0a1628' }}>
-            <TimelineHeader
-              timeline={timeline}
-              leftColWidth={LEFT_COL}
-              scale={effectiveScale}
-              trackWidthPx={trackWidthPx}
-              calendar={calendar}
-            />
-          </div>
-
           {/* Non-working zones (weekends/holidays) — background layer */}
           <div style={{
             position: 'absolute',
@@ -261,5 +314,6 @@ export default function GanttChart({
         </div>
       </div>
     </div>
+    </>
   );
 }
