@@ -990,12 +990,37 @@ class ResourcePlanningService:
                 earliest = a.start_date
             else:
                 earliest = q_start
+            # Дневная ёмкость фазы для сотрудника — involvement × parallel.
+            # Без этой шапки аллокатор берёт календарный 8ч/день и кладёт всю
+            # норму в день, игнорируя involvement (например 0.7 → 5.6 cap),
+            # что выглядит на breakdown как «доступно 5.6 / назначено 8.0».
+            split_item = (
+                self.db.get(BacklogItem, a.backlog_item_id)
+                if a.backlog_item_id
+                else None
+            )
+            split_inv = (
+                self._involvement_for_phase(split_item, a.phase)
+                if split_item
+                else None
+            )
+            split_parallel = (
+                _resolve_parallel_count_legacy(split_item, a.phase)
+                if split_item
+                else 1
+            )
+            split_cap = self._daily_role_capacity(
+                avail_hours=8.0,
+                involvement=split_inv,
+                parallel_count=split_parallel,
+            )
             segments, daily = self._allocate_hours_with_breakdown(
                 a.employee_id,
                 float(a.hours_allocated),
                 earliest,
                 q_end_extended,
                 remaining,
+                daily_capacity=split_cap,
                 preempt_locked=preempt_locked,
                 original_capacity=original_avail,
             )
@@ -2158,18 +2183,22 @@ class ResourcePlanningService:
         except ValueError:
             return []
         downstream = PHASE_ORDER[src_idx + 1 :]
+        # Backlog item может быть в нескольких планах (разные сценарии /
+        # кварталы). Без фильтра по plan_id `existing` собирает строки из
+        # чужих планов → len != 1 → cascade молча скипает dev/qa в текущем
+        # плане.
+        source_plan_id = source_parts[0].plan_id if source_parts else None
         cascaded: List[ResourcePlanAssignment] = []
         for phase in downstream:
-            existing = (
-                self.db.execute(
-                    select(ResourcePlanAssignment).where(
-                        ResourcePlanAssignment.backlog_item_id == item_id,
-                        ResourcePlanAssignment.phase == phase,
-                    )
-                )
-                .scalars()
-                .all()
+            existing_q = select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.backlog_item_id == item_id,
+                ResourcePlanAssignment.phase == phase,
             )
+            if source_plan_id is not None:
+                existing_q = existing_q.where(
+                    ResourcePlanAssignment.plan_id == source_plan_id
+                )
+            existing = self.db.execute(existing_q).scalars().all()
             if len(existing) != 1:
                 continue
             orig = existing[0]
