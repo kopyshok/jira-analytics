@@ -17,6 +17,7 @@ from app.api.endpoints import (
     events as events_endpoints,
     executive as executive_endpoints,
     exports,
+    feedback as feedback_endpoints,
     hierarchy_rules as hierarchy_rules_endpoints,
     issue_config,
     mandatory_work_types,
@@ -175,6 +176,9 @@ api_router.include_router(
 )
 api_router.include_router(
     ui_config_endpoints.router, prefix="/ui-config", tags=["ui-config"],
+)
+api_router.include_router(
+    feedback_endpoints.router, prefix="/feedback", tags=["feedback"], dependencies=_auth_dep,
 )
 
 # Admin-only routers
