@@ -37,7 +37,12 @@ const consoleErrors: ConsoleErrorEntry[] = [];
 const listeners = new Set<() => void>();
 
 function notify(): void {
-  listeners.forEach((fn) => fn());
+  // Откладываем оповещение в микротаск, чтобы вызовы pushError/pushConsoleError
+  // во время рендера React (например, при console.error из дев-варнинга AntD)
+  // не приводили к setState-in-render у подписчиков.
+  queueMicrotask(() => {
+    listeners.forEach((fn) => fn());
+  });
 }
 
 export function subscribe(fn: () => void): () => void {
