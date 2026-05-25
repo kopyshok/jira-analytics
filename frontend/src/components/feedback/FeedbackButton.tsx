@@ -87,7 +87,6 @@ export default function FeedbackButton() {
       <FloatButton.Group
         trigger="hover"
         icon={<CommentOutlined />}
-        tooltip="Обратная связь"
         badge={count > 0 ? { count, overflowCount: 99 } : undefined}
       >
         <FloatButton
