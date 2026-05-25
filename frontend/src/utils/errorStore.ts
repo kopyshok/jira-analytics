@@ -106,17 +106,3 @@ export function buildContext(): FeedbackContext {
   };
 }
 
-// --- Backwards-compat shims (removed in Batch 5 together with BugReportButton) ---
-
-/** @deprecated Use NetworkErrorEntry. Kept for BugReportButton compile. */
-export type ErrorEntry = NetworkErrorEntry;
-
-/** @deprecated Use getNetworkErrors(). Kept for BugReportButton compile. */
-export function getErrors(): readonly NetworkErrorEntry[] {
-  return networkErrors;
-}
-
-/** @deprecated Old clipboard flow. Returns empty string; removed in Batch 5. */
-export function buildBugReport(): string {
-  return '';
-}

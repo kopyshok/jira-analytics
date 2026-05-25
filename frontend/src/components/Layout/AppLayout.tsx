@@ -7,7 +7,7 @@ import LogoMark from './LogoMark';
 import SyncIndicator from './SyncIndicator';
 import GlobalTeamFilterButton from './GlobalTeamFilterButton';
 import GlobalPeriodPicker from '../shared/GlobalPeriodPicker';
-import BugReportButton from '../BugReportButton';
+import FeedbackButton from '../feedback/FeedbackButton';
 import { DARK_THEME, APP_THEMES, type AppTheme } from '../../utils/constants';
 import { useEventStream } from '../../hooks/useEventStream';
 import { useAuth } from '../../hooks/useAuth';
@@ -129,7 +129,7 @@ export default function AppLayout() {
           <Outlet />
         </Content>
       </Layout>
-      <BugReportButton />
+      <FeedbackButton />
     </Layout>
   );
 }
