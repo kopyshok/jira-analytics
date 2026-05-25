@@ -30,11 +30,11 @@ export default function FeedbackDetailDrawer({ item, onClose }: Props) {
     <Drawer
       open={!!item}
       onClose={onClose}
-      width={720}
+      styles={{ wrapper: { width: 720 } }}
       title={item.title}
       destroyOnHidden
     >
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <Descriptions column={1} size="small" bordered>
           <Descriptions.Item label="Тип">
             <Tag color={item.kind === 'bug' ? 'red' : 'blue'}>
