@@ -91,12 +91,12 @@ export default function FeedbackButton() {
       >
         <FloatButton
           icon={<CommentOutlined />}
-          tooltip="Создать обращение (форма)"
+          tooltip="Форма"
           onClick={() => setOpen(true)}
         />
         <FloatButton
           icon={<ThunderboltOutlined />}
-          tooltip="Быстрый баг → в буфер и админу"
+          tooltip="В буфер"
           onClick={handleQuickBug}
         />
       </FloatButton.Group>
