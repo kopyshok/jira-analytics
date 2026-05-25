@@ -34,6 +34,7 @@ import VisibilityTab from '../components/settings/VisibilityTab';
 import PageHeader from '../components/shared/PageHeader';
 import { useAuth } from '../hooks/useAuth';
 import UsersTab from './settings/UsersTab';
+import FeedbackAdminTab from '../components/feedback/FeedbackAdminTab';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -42,7 +43,7 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'visibility', 'users'] as const;
+const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'visibility', 'users', 'feedback'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function readHashKey(): TabKey {
@@ -86,7 +87,12 @@ export default function SettingsPage() {
           { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
           { key: 'ai', label: 'AI', children: <AITab /> },
           { key: 'visibility', label: 'Видимость разделов', children: <VisibilityTab /> },
-          ...(user?.role === 'admin' ? [{ key: 'users', label: 'Пользователи', children: <UsersTab /> }] : []),
+          ...(user?.role === 'admin'
+            ? [
+                { key: 'users', label: 'Пользователи', children: <UsersTab /> },
+                { key: 'feedback', label: 'Обратная связь', children: <FeedbackAdminTab /> },
+              ]
+            : []),
         ]}
       />
     </>
