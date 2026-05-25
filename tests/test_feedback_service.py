@@ -173,3 +173,33 @@ def test_export_markdown_idea_format(db_session: Session, author: User) -> None:
     assert "# Идеи — выгрузка" in md
     assert "CSV" in md
     assert "Шаги воспроизведения" not in md  # idea md skips bug-only sections
+
+
+def test_save_attachment_returns_ref(tmp_path, db_session: Session) -> None:
+    from app.services.feedback_service import FeedbackService
+
+    storage = tmp_path / "atts"
+    svc = FeedbackService(attachments_dir=str(storage))
+    ref = svc.save_attachment(filename="screenshot.png", mime="image/png", data=b"\x89PNG...")
+    assert ref.filename == "screenshot.png"
+    assert ref.mime == "image/png"
+    assert ref.size == len(b"\x89PNG...")
+    assert (storage / ref.path).exists()
+
+
+def test_save_attachment_rejects_bad_mime(tmp_path) -> None:
+    from app.services.feedback_service import FeedbackService
+
+    svc = FeedbackService(attachments_dir=str(tmp_path))
+    with pytest.raises(ValueError):
+        svc.save_attachment(filename="evil.exe", mime="application/x-msdownload", data=b"X")
+
+
+def test_save_attachment_rejects_oversize(tmp_path) -> None:
+    from app.services.feedback_service import FeedbackService
+
+    svc = FeedbackService(attachments_dir=str(tmp_path))
+    with pytest.raises(ValueError):
+        svc.save_attachment(
+            filename="big.png", mime="image/png", data=b"X" * (5 * 1024 * 1024 + 1)
+        )
