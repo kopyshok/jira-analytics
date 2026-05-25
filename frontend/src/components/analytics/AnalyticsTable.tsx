@@ -319,7 +319,12 @@ function keyOf(level: AnalyticsLevel, row: FlatRow): string {
   }
 }
 
-function aggregateTotals(rows: FlatRow[], parentFact: number | null, grandFact: number): NodeTotals {
+function aggregateTotals(
+  rows: FlatRow[],
+  parentFact: number | null,
+  grandFact: number,
+  planByEmpWt: Map<string, number>,
+): NodeTotals {
   const fact = rows.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
   const issueIds = new Set(rows.map((r) => r.issue.id));
   const empIds = new Set(rows.map((r) => r.employee_id));
@@ -327,10 +332,24 @@ function aggregateTotals(rows: FlatRow[], parentFact: number | null, grandFact: 
   const foreignHours = foreignRows.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
   const foreignIssues = new Set(foreignRows.map((r) => r.issue.id));
   const wl = rows.reduce((s, r) => s + r.issue.totals.worklog_count, 0);
+
+  const planKeys = new Set<string>();
+  for (const r of rows) planKeys.add(`${r.employee_id}|${r.work_type_id}`);
+  let plan = 0;
+  let havePlan = false;
+  for (const k of planKeys) {
+    const p = planByEmpWt.get(k);
+    if (p != null) { plan += p; havePlan = true; }
+  }
+  const planHours = havePlan && plan > 0 ? Math.round(plan * 10) / 10 : null;
+  const pctPlan = planHours != null && planHours > 0
+    ? Math.round((fact / planHours) * 1000) / 10
+    : null;
+
   return {
     fact_hours: Math.round(fact * 10) / 10,
-    plan_hours: null,
-    pct_plan: null,
+    plan_hours: planHours,
+    pct_plan: pctPlan,
     pct_total: grandFact > 0 ? Math.round((fact / grandFact) * 1000) / 10 : 0,
     pct_in_group: parentFact && parentFact > 0 ? Math.round((fact / parentFact) * 1000) / 10 : null,
     worklog_count: wl,
@@ -365,6 +384,19 @@ function buildTreeFromLayout(
 ): TreeNode[] {
   const flat = flattenResponse(data);
   const grandFact = flat.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
+
+  const planByEmpWt = new Map<string, number>();
+  for (const t of data.teams) {
+    for (const r of t.roles) {
+      for (const e of r.employees) {
+        for (const w of e.work_types) {
+          if (w.totals.plan_hours != null) {
+            planByEmpWt.set(`${e.employee_id}|${w.work_type_id}`, w.totals.plan_hours);
+          }
+        }
+      }
+    }
+  }
 
   function labelOf(level: AnalyticsLevel, row: FlatRow, depth: number): React.ReactNode {
     switch (level) {
@@ -498,7 +530,7 @@ function buildTreeFromLayout(
       const nodes: TreeNode[] = [];
       for (const [, grp] of byId.entries()) {
         const sample = grp[0];
-        const totals = aggregateTotals(grp, parentFact, grandFact);
+        const totals = aggregateTotals(grp, parentFact, grandFact, planByEmpWt);
         const issueLikeRow: AnalyticsIssueNode = { ...sample.issue, totals };
         const node = buildIssueNode(
           issueLikeRow,
@@ -526,7 +558,7 @@ function buildTreeFromLayout(
     const nodes: TreeNode[] = [];
     for (const [k, rs] of groups.entries()) {
       const sample = rs[0];
-      const totals = aggregateTotals(rs, parentFact, grandFact);
+      const totals = aggregateTotals(rs, parentFact, grandFact, planByEmpWt);
       const nodeKey = `${keyPrefix}/${head}:${k}`;
       const children = group(rs, rest, depth + 1, nodeKey, totals.fact_hours);
       nodes.push({
@@ -541,7 +573,7 @@ function buildTreeFromLayout(
     return nodes.sort((a, b) => b.totals.fact_hours - a.totals.fact_hours);
   }
 
-  return group(flat, layout, 0, 'root', null);
+  return group(flat, layout, 0, 'root', grandFact);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────

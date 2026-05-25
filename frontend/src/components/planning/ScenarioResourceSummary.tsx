@@ -35,42 +35,103 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   const { data: roles = [] } = useRoles();
 
   const LS_KEY = 'planning_resource_table_collapsed';
-  const [userCollapsed, setUserCollapsed] = useState<boolean>(
-    () => localStorage.getItem(LS_KEY) === 'true',
+  // 3-state override:
+  //   'auto'            — следуем за scroll (isStuck)
+  //   'force-expanded'  — юзер кликнул «Развернуть» пока isStuck=true,
+  //                       держим развёрнутым, пока он не вернётся к верху
+  //   'force-collapsed' — юзер сам свернул в верху страницы, держим свёрнутым
+  //                       (персистится в localStorage)
+  type Mode = 'auto' | 'force-expanded' | 'force-collapsed';
+  const [mode, setMode] = useState<Mode>(
+    () => (localStorage.getItem(LS_KEY) === 'true' ? 'force-collapsed' : 'auto'),
   );
   const [isStuck, setIsStuck] = useState(false);
-  // Callback-ref на сам sticky-блок: при скролле проверяем его позицию через
-  // getBoundingClientRect(). Когда top достиг 0 — значит блок прилип к верху
-  // viewport. Раньше использовался IntersectionObserver на 1px sentinel внутри
-  // sticky-блока, но он давал ложные срабатывания на границе и не всегда
-  // переключался; scroll-listener с rect.top надёжнее в этом конкретном
-  // случае (sticky внутри flex-column, родитель — высокий контейнер страницы).
-  const [stickyEl, setStickyEl] = useState<HTMLDivElement | null>(null);
+  // Sentinel — 1px блок СНАРУЖИ и ВЫШЕ sticky. Проверяем его top через
+  // getBoundingClientRect при скролле. Sentinel в обычном потоке, его высота
+  // не меняется от сжатия sticky → нет обратной связи collapse↔measure
+  // (которая раньше давала автоколебание: сжимаемся → документ короче →
+  // scrollY клампится → sticky отлипает → разворачиваемся → опять прилипает).
+  // Callback-ref state: sentinel рендерится после загрузки данных (компонент
+  // имеет ранние return), useEffect с deps:[sentinelEl] перепривязывает
+  // listener когда DOM-узел появляется.
+  const [sentinelEl, setSentinelEl] = useState<HTMLDivElement | null>(null);
+  // Хитрая логика чтобы автоколебание не возвращалось:
+  //   1. lockoutUntilRef — пока collapse-анимация идёт, не реагируем на scroll-
+  //      события (height interpolates → page shrinks → scrollY clamping
+  //      порождает фейковые scroll события, не от пользователя).
+  //   2. expandBaselineRef — после lockout фиксируем sentinel.top как baseline
+  //      (включает любой clamp-прыжок). Expand триггерится только если
+  //      sentinel.top > baseline + 20 — значит юзер реально скроллил вверх
+  //      относительно того положения, к которому пришли после collapse.
+  const heightsRef = useRef<{ full: number; collapsed: number }>({ full: 0, collapsed: 0 });
+  const lockoutUntilRef = useRef<number>(0);
+  const expandBaselineRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!stickyEl) return;
+    if (!sentinelEl) return;
     const update = () => {
-      // Прилипший означает, что собственная top-позиция блока ровно на 0
-      // (с поправкой 1px на возможные subpixel-округления).
-      setIsStuck(stickyEl.getBoundingClientRect().top <= 1);
+      const top = sentinelEl.getBoundingClientRect().top;
+      const now = performance.now();
+      setIsStuck((prev) => {
+        if (!prev) {
+          if (top <= 0) {
+            // Транзишен 0.8s — даём 850мс на settling layout + clamp.
+            lockoutUntilRef.current = now + 850;
+            expandBaselineRef.current = null;
+            return true;
+          }
+          return false;
+        }
+        // Stuck. До конца lockout — не меняем состояние.
+        if (now < lockoutUntilRef.current) return prev;
+        // Первое чтение после lockout — фиксируем baseline.
+        if (expandBaselineRef.current === null) {
+          expandBaselineRef.current = top;
+        }
+        return top > expandBaselineRef.current + 20 ? false : prev;
+      });
+      // Sentinel снова в viewport — снимаем force-expanded, чтобы auto-collapse
+      // на следующем скролле вниз снова работал.
+      if (top > 0) {
+        setMode((m) => (m === 'force-expanded' ? 'auto' : m));
+      }
     };
     update();
-    window.addEventListener('scroll', update, { passive: true });
+    // Layout-обёртка может скроллить контент во вложенном контейнере
+    // (overflow:auto/scroll/overlay), и тогда window не получает scroll-событий.
+    // Слушаем и window, и всех scrollable-предков sentinel.
+    const scrollers: (Window | HTMLElement)[] = [window];
+    let node: HTMLElement | null = sentinelEl.parentElement;
+    while (node) {
+      const style = getComputedStyle(node);
+      if (/(auto|scroll|overlay)/.test(style.overflowY + style.overflow)) {
+        scrollers.push(node);
+      }
+      node = node.parentElement;
+    }
+    scrollers.forEach((s) => s.addEventListener('scroll', update, { passive: true }));
     window.addEventListener('resize', update, { passive: true });
     return () => {
-      window.removeEventListener('scroll', update);
+      scrollers.forEach((s) => s.removeEventListener('scroll', update));
       window.removeEventListener('resize', update);
     };
-  }, [stickyEl]);
+  }, [sentinelEl]);
 
-  const collapsed = userCollapsed || isStuck;
+  const collapsed =
+    mode === 'force-collapsed' || (mode === 'auto' && isStuck);
 
   const toggleCollapsed = () => {
-    setUserCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem(LS_KEY, String(next));
-      return next;
-    });
+    if (collapsed) {
+      // Разворачиваем: если сейчас auto+stuck — нужен force-expanded, иначе auto.
+      const next: Mode = isStuck && mode !== 'force-collapsed' ? 'force-expanded' : 'auto';
+      setMode(next);
+      localStorage.setItem(LS_KEY, 'false');
+    } else {
+      // Сворачиваем: если scroll и так свернул бы — auto хватит, иначе force-collapsed.
+      const next: Mode = isStuck ? 'auto' : 'force-collapsed';
+      setMode(next);
+      localStorage.setItem(LS_KEY, next === 'force-collapsed' ? 'true' : 'false');
+    }
   };
 
   // Потребность по роли исполнителя: часы РП идут в пул РП, не аналитика
@@ -94,6 +155,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     const measure = () => {
       const full = expandedRef.current?.offsetHeight ?? 0;
       const col = collapsedRef.current?.offsetHeight ?? 0;
+      heightsRef.current = { full, collapsed: col };
       setHeights((prev) => (prev.full === full && prev.collapsed === col ? prev : { full, collapsed: col }));
     };
     measure();
@@ -216,18 +278,15 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
         </div>
         <button
           onClick={toggleCollapsed}
-          disabled={isStuck && !userCollapsed}
-          title={isStuck ? 'Раскроется автоматически при прокрутке наверх' : undefined}
           style={{
             marginLeft: 'auto',
             padding: '0 14px',
             height: '100%',
             background: 'none',
             border: 'none',
-            cursor: isStuck && !userCollapsed ? 'not-allowed' : 'pointer',
+            cursor: 'pointer',
             fontSize: 11,
             color: DARK_THEME.textMuted,
-            opacity: isStuck && !userCollapsed ? 0.4 : 1,
           }}
         >
           ↓ Развернуть
@@ -667,18 +726,23 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
   // Контент ниже sticky естественно подтягивается за сжимающимся слотом —
   // никакой spacer не нужен; плавность даёт длительность + material-easing.
   const innerHeight = !measured ? undefined : (collapsed ? heights.collapsed : heights.full);
-  const EASE = 'cubic-bezier(0.4, 0, 0.2, 1)';
+  // Мягкое замедление в конце (ease-out квадратичная) и подобранная длительность
+  // ~0.8с — чтобы сжатие/расширение блока ощущалось плавно и нижняя таблица
+  // (Элементы бэклога) подтягивалась без резкого скачка.
+  const EASE = 'cubic-bezier(0.25, 0.1, 0.25, 1)';
+  const DUR = '0.8s';
 
   return (
+    <>
+      <div ref={setSentinelEl} aria-hidden style={{ height: 1, marginBottom: -1 }} />
     <div
-      ref={setStickyEl}
       style={{
         position: 'sticky',
         top: 0,
         zIndex: 20,
         height: innerHeight,
         overflow: 'hidden',
-        transition: `height 0.55s ${EASE}, box-shadow .2s ease`,
+        transition: `height ${DUR} ${EASE}, box-shadow .2s ease`,
         boxShadow: isStuck ? '0 6px 16px rgba(0,0,0,0.45)' : 'none',
       }}
     >
@@ -692,7 +756,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           left: 0,
           right: 0,
           opacity: collapsed ? 0 : 1,
-          transition: `opacity 0.35s ${EASE}`,
+          transition: `opacity ${DUR} ${EASE}`,
           pointerEvents: collapsed ? 'none' : 'auto',
         }}
         aria-hidden={collapsed}
@@ -707,7 +771,7 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
           left: 0,
           right: 0,
           opacity: collapsed ? 1 : 0,
-          transition: `opacity 0.35s ${EASE}`,
+          transition: `opacity ${DUR} ${EASE}`,
           pointerEvents: collapsed ? 'auto' : 'none',
           // До первого замера прячем — иначе мерцает поверх expandedCard.
           visibility: measured ? 'visible' : 'hidden',
@@ -717,5 +781,6 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
         {collapsedCard}
       </div>
     </div>
+    </>
   );
 }

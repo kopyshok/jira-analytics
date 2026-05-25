@@ -4,6 +4,7 @@
 """
 
 import json
+import logging
 from datetime import datetime
 from typing import List, Optional
 
@@ -18,6 +19,8 @@ from app.services.llm.base import ConfigurationError
 from app.services.project_summary_service import ProjectSummaryService
 from app.services.projects_service import ProjectsService
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -228,9 +231,11 @@ async def regenerate_summary(key: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
     except httpx.HTTPStatusError as e:
         status = e.response.status_code
+        body = (e.response.text or "")[:400]
+        logger.error("LLM regenerate failed for %s: HTTP %s body=%s", key, status, body)
         if status == 429:
             raise HTTPException(status_code=503, detail="LLM rate limit. Подождите минуту или смените модель в Настройках → AI.")
-        raise HTTPException(status_code=503, detail=f"LLM ответил {status}. Проверьте ключ и модель в Настройках → AI.")
+        raise HTTPException(status_code=503, detail=f"LLM ответил {status}: {body[:250]}. Проверьте ключ и модель в Настройках → AI.")
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="LLM не ответил за 30с. Попробуйте более быструю модель в Настройках → AI.")
     from app.services.event_bus import get_event_bus

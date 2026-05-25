@@ -1667,7 +1667,7 @@ class AnalyticsService:
                     plan_hours=team_plan if team_plan > 0 else None,
                     emp_count=len(team_emp_ids),
                     parent_total=grand_total_fact,
-                    parent_fact=None,  # Team is the root level — no parent in group
+                    parent_fact=grand_total_fact,
                 ),
                 roles=sorted(roles_out, key=lambda x: -x.totals.fact_hours),
             ))
@@ -1698,7 +1698,7 @@ class AnalyticsService:
                 plan_hours=round(grand_plan, 1) if grand_plan > 0 else None,
                 pct_plan=round(grand_total_fact / grand_plan * 100, 1) if grand_plan > 0 else None,
                 pct_total=100.0 if grand_total_fact > 0 else 0.0,
-                pct_in_group=None,
+                pct_in_group=100.0 if grand_total_fact > 0 else None,
                 worklog_count=total_wl,
                 issue_count=len({v["issue_id"] for v in bucket.values()}),
                 employee_count=len(all_emp_ids),

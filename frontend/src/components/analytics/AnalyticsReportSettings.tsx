@@ -7,6 +7,7 @@ import GroupingEditor from './GroupingEditor';
 const COLUMN_LABELS: Record<string, string> = {
   plan_hours: 'Часы план',
   pct_plan: '% план',
+  pct_in_group: '% в группе',
   pct_total: '% от итога',
   worklog_count: 'Ворклогов',
   issue_count: 'Задач',

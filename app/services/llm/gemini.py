@@ -47,7 +47,7 @@ GEMINI_RESPONSE_SCHEMA = {
                     "child_keys": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "maxItems": 50,
+                        "maxItems": 20,
                     },
                 },
                 "required": ["bucket", "label", "child_keys"],

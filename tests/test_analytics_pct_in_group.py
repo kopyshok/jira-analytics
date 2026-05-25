@@ -118,8 +118,8 @@ def _seed_worklog(db, issue, emp, hours, day=15):
 # Tests
 # ---------------------------------------------------------------------------
 
-def test_pct_in_group_root_is_none(db_session, client):
-    """На корневых строках (Team) pct_in_group = None — нет родителя в группе."""
+def test_pct_in_group_root_is_share_of_grand_total(db_session, client):
+    """На корневых строках (Team) pct_in_group = team_fact / grand_total_fact * 100."""
     _seed_minimal(db_session)
     project = _seed_project(db_session)
     emp = _seed_emp(db_session, "Тест", "Команда A")
@@ -132,8 +132,11 @@ def test_pct_in_group_root_is_none(db_session, client):
     )
     assert response.status_code == 200
     data = response.json()
-    for team in data["teams"]:
-        assert team["totals"]["pct_in_group"] is None
+    grand = data["grand_totals"]["fact_hours"]
+    total = sum(team["totals"]["pct_in_group"] or 0 for team in data["teams"])
+    assert grand > 0
+    assert 99.0 <= total <= 101.0
+    assert data["grand_totals"]["pct_in_group"] == 100.0
 
 
 def test_pct_in_group_child_sums_to_100(db_session, client):
