@@ -57,6 +57,7 @@ from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
 from app.models.work_type_report_layout import WorkTypeReportLayout
 from app.models.executive_snapshot import ExecutiveSnapshot
 from app.models.user_rp_preferences import UserRpPreferences
+from app.models.feedback import FeedbackItem, FeedbackKind
 
 __all__ = [
     "TimestampMixin",
@@ -119,4 +120,6 @@ __all__ = [
     "WorkTypeReportLayout",
     "ExecutiveSnapshot",
     "UserRpPreferences",
+    "FeedbackItem",
+    "FeedbackKind",
 ]
