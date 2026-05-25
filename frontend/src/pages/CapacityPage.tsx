@@ -257,7 +257,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
               teams: next,
               primary: next.includes(primary ?? '') ? primary : next[0],
             })}
-            onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
+            onOpenChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
             loading={jiraTeams.isFetching}
             tagRender={(props) => {
               const isPrimary = props.value === primary;

@@ -217,7 +217,7 @@ export default function TaskSectionsTab() {
             allowClear
             style={{ width: 320 }}
             options={(jiraTeams.data ?? []).map(t => ({ value: t, label: t }))}
-            onDropdownVisibleChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
+            onOpenChange={(open) => { if (open && !jiraTeams.data) jiraTeams.refetch(); }}
             loading={jiraTeams.isFetching}
             notFoundContent={jiraTeams.isError ? 'Настройте поля команды' : undefined}
           />

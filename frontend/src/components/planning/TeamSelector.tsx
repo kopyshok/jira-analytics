@@ -43,7 +43,7 @@ export function TeamSelector({
       style={{ minWidth: 200, ...style }}
       status={status}
       showSearch
-      onDropdownVisibleChange={(open) => {
+      onOpenChange={(open) => {
         if (open && !teams) refetch();
       }}
     />

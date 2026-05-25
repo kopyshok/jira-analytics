@@ -137,7 +137,7 @@ export default function JiraFieldsCard() {
         placeholder={`customfield_XXXXX`}
         options={fieldOptions}
         loading={jiraFields.isFetching}
-        onDropdownVisibleChange={open => {
+        onOpenChange={open => {
           if (open && !jiraFields.data) jiraFields.refetch();
         }}
       />
