@@ -108,6 +108,23 @@ def test_list_user_scope_all_ideas_visible(db_session: Session, author: User) ->
     assert {x.id for x in feed} == {own.id, foreign.id}
 
 
+def test_list_user_scope_all_bugs_returns_all_at_service_level(
+    db_session: Session, author: User
+) -> None:
+    other = User(
+        email="charlie@example.com", password_hash="x", display_name="Charlie", role=UserRole.manager,
+    )
+    db_session.add(other)
+    db_session.commit()
+    svc = FeedbackService()
+    own = svc.create_bug(db_session, author=author, payload=BugCreate(title="O", body="b"))
+    foreign = svc.create_bug(db_session, author=other, payload=BugCreate(title="F", body="b"))
+    result = svc.list_for_user(
+        db_session, author_id=author.id, kind=FeedbackKind.bug, scope="all"
+    )
+    assert {x.id for x in result} == {own.id, foreign.id}
+
+
 def test_mark_unread_clears_read_at(db_session: Session, author: User) -> None:
     svc = FeedbackService()
     item = svc.create_bug(db_session, author=author, payload=BugCreate(title="T", body="b"))
@@ -175,9 +192,21 @@ def test_export_markdown_idea_format(db_session: Session, author: User) -> None:
     assert "Шаги воспроизведения" not in md  # idea md skips bug-only sections
 
 
-def test_save_attachment_returns_ref(tmp_path, db_session: Session) -> None:
-    from app.services.feedback_service import FeedbackService
+def test_export_mark_after_requires_reader_id(db_session: Session, author: User) -> None:
+    svc = FeedbackService()
+    svc.create_bug(db_session, author=author, payload=BugCreate(title="x", body="b"))
+    with pytest.raises(ValueError, match="reader_id required"):
+        svc.export_markdown(
+            db_session,
+            kind=FeedbackKind.bug,
+            ids=None,
+            only_unread=True,
+            mark_after=True,
+            reader_id=None,
+        )
 
+
+def test_save_attachment_returns_ref(tmp_path) -> None:
     storage = tmp_path / "atts"
     svc = FeedbackService(attachments_dir=str(storage))
     ref = svc.save_attachment(filename="screenshot.png", mime="image/png", data=b"\x89PNG...")
@@ -188,16 +217,12 @@ def test_save_attachment_returns_ref(tmp_path, db_session: Session) -> None:
 
 
 def test_save_attachment_rejects_bad_mime(tmp_path) -> None:
-    from app.services.feedback_service import FeedbackService
-
     svc = FeedbackService(attachments_dir=str(tmp_path))
     with pytest.raises(ValueError):
         svc.save_attachment(filename="evil.exe", mime="application/x-msdownload", data=b"X")
 
 
 def test_save_attachment_rejects_oversize(tmp_path) -> None:
-    from app.services.feedback_service import FeedbackService
-
     svc = FeedbackService(attachments_dir=str(tmp_path))
     with pytest.raises(ValueError):
         svc.save_attachment(
