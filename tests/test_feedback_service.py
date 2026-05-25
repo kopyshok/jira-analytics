@@ -118,3 +118,58 @@ def test_mark_unread_clears_read_at(db_session: Session, author: User) -> None:
     db_session.refresh(item)
     assert item.read_at is None
     assert item.read_by is None
+
+
+def test_export_markdown_bug_contains_all_sections(db_session: Session, author: User) -> None:
+    svc = FeedbackService()
+    item = svc.create_bug(
+        db_session,
+        author=author,
+        payload=BugCreate(
+            title="Crash",
+            body="freezes",
+            steps_to_reproduce="1. click",
+            expected="ok",
+            actual="crash",
+            page_url="/x",
+            context=FeedbackContext(active_team="ACME", user_agent="Chrome"),
+        ),
+    )
+    md = svc.export_markdown(
+        db_session, kind=FeedbackKind.bug, ids=[item.id], only_unread=False, mark_after=False
+    )
+    assert "## #1 — Crash" in md
+    assert "Шаги воспроизведения" in md
+    assert "ACME" in md
+    assert "Chrome" in md
+
+
+def test_export_markdown_mark_after_marks_unread(db_session: Session, author: User) -> None:
+    svc = FeedbackService()
+    a = svc.create_bug(db_session, author=author, payload=BugCreate(title="A", body="b"))
+    b = svc.create_bug(db_session, author=author, payload=BugCreate(title="B", body="b"))
+    svc.export_markdown(
+        db_session,
+        kind=FeedbackKind.bug,
+        ids=None,
+        only_unread=True,
+        mark_after=True,
+        reader_id=author.id,
+    )
+    db_session.refresh(a)
+    db_session.refresh(b)
+    assert a.read_at is not None
+    assert b.read_at is not None
+
+
+def test_export_markdown_idea_format(db_session: Session, author: User) -> None:
+    svc = FeedbackService()
+    item = svc.create_idea(
+        db_session, author=author, payload=IdeaCreate(title="CSV", body="useful")
+    )
+    md = svc.export_markdown(
+        db_session, kind=FeedbackKind.idea, ids=[item.id], only_unread=False, mark_after=False
+    )
+    assert "# Идеи — выгрузка" in md
+    assert "CSV" in md
+    assert "Шаги воспроизведения" not in md  # idea md skips bug-only sections

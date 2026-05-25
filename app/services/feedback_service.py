@@ -107,3 +107,102 @@ class FeedbackService:
             item.read_by = None
         db.commit()
         return len(items)
+
+    def export_markdown(
+        self,
+        db: Session,
+        *,
+        kind: FeedbackKind,
+        ids: list[str] | None,
+        only_unread: bool,
+        mark_after: bool,
+        reader_id: str | None = None,
+    ) -> str:
+        stmt = select(FeedbackItem).where(FeedbackItem.kind == kind)
+        if only_unread:
+            stmt = stmt.where(FeedbackItem.read_at.is_(None))
+        if ids:
+            stmt = stmt.where(FeedbackItem.id.in_(ids))
+        stmt = stmt.order_by(FeedbackItem.created_at.desc())
+        items = list(db.execute(stmt).scalars())
+
+        # Pre-load authors to avoid lazy-load after commit.
+        author_ids = {it.author_id for it in items}
+        authors = {
+            u.id: u
+            for u in db.execute(
+                select(User).where(User.id.in_(author_ids))
+            ).scalars()
+        }
+
+        header = "# Баги" if kind == FeedbackKind.bug else "# Идеи"
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        lines: list[str] = [f"{header} — выгрузка {today} ({len(items)} штук)", ""]
+
+        for idx, it in enumerate(items, start=1):
+            author = authors.get(it.author_id)
+            display = author.display_name if author else "—"
+            email = author.email if author else "—"
+            lines.append("---\n")
+            lines.append(f"## #{idx} — {it.title}\n")
+            lines.append(
+                f"**Автор:** {display} ({email})  |  "
+                f"**Создан:** {it.created_at.strftime('%Y-%m-%d %H:%M')}  |  "
+                f"**URL:** {it.page_url or '—'}\n"
+            )
+            section_label = "Что случилось" if kind == FeedbackKind.bug else "Описание"
+            lines.append(f"### {section_label}\n{it.body}\n")
+            if kind == FeedbackKind.bug:
+                if it.steps_to_reproduce:
+                    lines.append(f"### Шаги воспроизведения\n{it.steps_to_reproduce}\n")
+                if it.expected:
+                    lines.append(f"### Ожидание\n{it.expected}\n")
+                if it.actual:
+                    lines.append(f"### Факт\n{it.actual}\n")
+                if it.context_json:
+                    ctx = json.loads(it.context_json)
+                    lines.append("### Контекст")
+                    if ctx.get("user_agent"):
+                        lines.append(f"- Браузер: {ctx['user_agent']}")
+                    if ctx.get("screen_w") and ctx.get("screen_h"):
+                        lines.append(f"- Экран: {ctx['screen_w']}×{ctx['screen_h']}")
+                    if ctx.get("active_team"):
+                        lines.append(f"- Активная команда: {ctx['active_team']}")
+                    if ctx.get("active_period"):
+                        lines.append(f"- Период: {ctx['active_period']}")
+                    if ctx.get("theme"):
+                        lines.append(f"- Тема: {ctx['theme']}")
+                    lines.append("")
+                    ce = ctx.get("console_errors") or []
+                    if ce:
+                        lines.append(f"### Консольные ошибки ({len(ce)})")
+                        for i, e in enumerate(ce, start=1):
+                            msg = e.get("message", "")
+                            stack = e.get("stack", "")
+                            lines.append(f"{i}. `{msg}`" + (f" — {stack}" if stack else ""))
+                        lines.append("")
+                    ne = ctx.get("network_errors") or []
+                    if ne:
+                        lines.append(f"### Сетевые ошибки ({len(ne)})")
+                        for i, e in enumerate(ne, start=1):
+                            lines.append(
+                                f"{i}. `{e.get('method', '')} {e.get('url', '')} "
+                                f"{e.get('status', '')}` → {e.get('detail', '')}"
+                            )
+                        lines.append("")
+                if it.attachments_json:
+                    atts = json.loads(it.attachments_json)
+                    if atts:
+                        lines.append(f"### Приложения ({len(atts)})")
+                        for a in atts:
+                            lines.append(
+                                f"- `{a['filename']}` → /api/v1/feedback/attachments/{a['path']}"
+                            )
+                        lines.append("")
+
+        if mark_after and items:
+            self.mark_read(
+                db, ids=[it.id for it in items], reader_id=reader_id or items[0].author_id
+            )
+
+        return "\n".join(lines)
