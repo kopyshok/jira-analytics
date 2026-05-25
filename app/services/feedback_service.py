@@ -1,16 +1,26 @@
 """FeedbackService — баги и идеи от пользователей."""
 import json
+import os
+import uuid
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.feedback import FeedbackItem, FeedbackKind
 from app.models.user import User
-from app.schemas.feedback import BugCreate, IdeaCreate
+from app.schemas.feedback import AttachmentRef, BugCreate, IdeaCreate
+
+_ALLOWED_MIME_PREFIXES = ("image/",)
+_ALLOWED_MIME_EXACT = {"application/pdf", "text/plain", "application/json"}
+_MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 
 
 class FeedbackService:
+    def __init__(self, attachments_dir: str | None = None) -> None:
+        self.attachments_dir = attachments_dir or "data/feedback_attachments"
+
     def create_bug(
         self, db: Session, *, author: User, payload: BugCreate
     ) -> FeedbackItem:
@@ -206,3 +216,25 @@ class FeedbackService:
             )
 
         return "\n".join(lines)
+
+    def save_attachment(
+        self, *, filename: str, mime: str, data: bytes
+    ) -> AttachmentRef:
+        if len(data) > _MAX_ATTACHMENT_BYTES:
+            raise ValueError("Файл слишком большой (>5 МБ)")
+        if not (
+            any(mime.startswith(p) for p in _ALLOWED_MIME_PREFIXES)
+            or mime in _ALLOWED_MIME_EXACT
+        ):
+            raise ValueError(f"Тип файла не разрешён: {mime}")
+        Path(self.attachments_dir).mkdir(parents=True, exist_ok=True)
+        ext = os.path.splitext(filename)[1] or ""
+        stored_name = f"{uuid.uuid4()}{ext}"
+        full = Path(self.attachments_dir) / stored_name
+        full.write_bytes(data)
+        return AttachmentRef(filename=filename, mime=mime, size=len(data), path=stored_name)
+
+    def attachment_full_path(self, stored_name: str) -> Path:
+        # Защита от path traversal.
+        safe = os.path.basename(stored_name)
+        return Path(self.attachments_dir) / safe
