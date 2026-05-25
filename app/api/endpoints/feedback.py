@@ -2,8 +2,8 @@
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, status
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.auth_deps import get_current_user, require_admin
@@ -167,3 +167,32 @@ def admin_export(
         media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/attachments", response_model=AttachmentRef)
+async def upload_attachment(
+    file: UploadFile,
+    _: User = Depends(get_current_user),
+) -> AttachmentRef:
+    data = await file.read()
+    try:
+        ref = _service.save_attachment(
+            filename=file.filename or "file",
+            mime=file.content_type or "application/octet-stream",
+            data=data,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return ref
+
+
+@router.get("/attachments/{stored_name}")
+def download_attachment(
+    stored_name: str,
+    _: User = Depends(get_current_user),
+) -> FileResponse:
+    # Минимальная защита: UUID-имена не угадаешь, любой authenticated может скачать.
+    path = _service.attachment_full_path(stored_name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    return FileResponse(path)

@@ -192,3 +192,53 @@ def test_admin_export_marks_read_atomically(testclient_db_session: Session) -> N
         assert r2.json() == []
     finally:
         _teardown()
+
+
+# --- Task A10: attachments ---
+
+
+def test_upload_attachment_returns_ref(
+    testclient_db_session: Session, tmp_path, monkeypatch
+) -> None:
+    from app.api.endpoints import feedback as feedback_endpoints
+
+    monkeypatch.setattr(feedback_endpoints._service, "attachments_dir", str(tmp_path))
+    manager = _seed_user(
+        testclient_db_session, email="m@example.com", role=UserRole.manager, display_name="Mgr"
+    )
+    client = _make_client(testclient_db_session)
+    try:
+        _set_user(manager)
+        r = client.post(
+            "/api/v1/feedback/attachments",
+            files={"file": ("s.png", b"\x89PNG\r\n\x1a\nfake", "image/png")},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["filename"] == "s.png"
+        assert data["mime"] == "image/png"
+        assert data["size"] > 0
+        assert data["path"].endswith(".png")
+    finally:
+        _teardown()
+
+
+def test_upload_rejects_bad_mime(
+    testclient_db_session: Session, tmp_path, monkeypatch
+) -> None:
+    from app.api.endpoints import feedback as feedback_endpoints
+
+    monkeypatch.setattr(feedback_endpoints._service, "attachments_dir", str(tmp_path))
+    manager = _seed_user(
+        testclient_db_session, email="m@example.com", role=UserRole.manager, display_name="Mgr"
+    )
+    client = _make_client(testclient_db_session)
+    try:
+        _set_user(manager)
+        r = client.post(
+            "/api/v1/feedback/attachments",
+            files={"file": ("x.exe", b"MZ", "application/x-msdownload")},
+        )
+        assert r.status_code == 400
+    finally:
+        _teardown()
