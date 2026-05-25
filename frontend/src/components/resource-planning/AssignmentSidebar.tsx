@@ -79,7 +79,7 @@ export default function AssignmentSidebar({
       <Drawer
         open={open}
         onClose={onClose}
-        width={920}
+        styles={{ wrapper: { width: 920 } }}
         mask
         maskClosable
         title="Назначение"
@@ -168,7 +168,7 @@ export default function AssignmentSidebar({
     <Drawer
       open={open}
       onClose={onClose}
-      width={920}
+      styles={{ wrapper: { width: 920 } }}
       mask
       maskClosable
       title={

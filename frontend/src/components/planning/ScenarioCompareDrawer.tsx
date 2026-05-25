@@ -41,7 +41,7 @@ export default function ScenarioCompareDrawer({ open, onClose, initialScenarioId
       title="Сравнение сценариев"
       open={open}
       onClose={onClose}
-      width="80vw"
+      styles={{ wrapper: { width: '80vw' } }}
     >
       <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>

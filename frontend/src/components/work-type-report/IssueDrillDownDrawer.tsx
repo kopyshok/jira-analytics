@@ -347,7 +347,6 @@ export default function IssueDrillDownDrawer({
       open={open}
       onClose={onClose}
       placement="right"
-      width={600}
       closable
       title={
         issueKey ? (
@@ -359,7 +358,7 @@ export default function IssueDrillDownDrawer({
       styles={{
         body: { padding: 0, background: DARK_THEME.cardBg },
         header: { background: DARK_THEME.cardBg, borderBottom: `1px solid ${DARK_THEME.border}` },
-        wrapper: { background: DARK_THEME.cardBg },
+        wrapper: { width: 600, background: DARK_THEME.cardBg },
       }}
     >
       {open && issueId && issueKey && (

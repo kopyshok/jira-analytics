@@ -99,12 +99,12 @@ export default function HelpDrawer({ open, onClose, title, content, imageBase = 
       title={title}
       open={open}
       onClose={onClose}
-      width="min(960px, 70vw)"
       placement="right"
       destroyOnClose
       styles={{
         body: { padding: '20px 28px', background: DARK_THEME.cardBg },
         header: { background: DARK_THEME.cardBg, borderBottom: `1px solid ${DARK_THEME.border}` },
+        wrapper: { width: 'min(960px, 70vw)' },
       }}
     >
       <div className="help-markdown">

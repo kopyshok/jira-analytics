@@ -156,7 +156,7 @@ export default function HierarchyRulesTab() {
         title={form.id ? 'Редактировать правило' : 'Новое правило'}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={420}
+        styles={{ wrapper: { width: 420 } }}
         extra={
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>Отмена</Button>

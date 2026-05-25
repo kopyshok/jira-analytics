@@ -621,13 +621,13 @@ export default function ThemeDictionaryDrawer({
     <Drawer
       open={open}
       placement="right"
-      width={720}
       title="Словарь тем"
       onClose={onClose}
       destroyOnHidden
       styles={{
         body: { padding: '12px 16px', background: DARK_THEME.pageBg },
         header: { background: DARK_THEME.cardBg, borderBottom: `1px solid ${DARK_THEME.border}` },
+        wrapper: { width: 720 },
       }}
     >
       <Tabs

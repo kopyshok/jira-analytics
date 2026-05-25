@@ -245,13 +245,12 @@ export default function AnalyticsIssueDrawer({
     <Drawer
       open={open}
       onClose={handleClose}
-      width={720}
       destroyOnClose={false}
       closable={false}
       styles={{
         header: { display: 'none' },
         body: { padding: 0, background: '#0f2340', display: 'flex', flexDirection: 'column' },
-        wrapper: { background: '#0f2340' },
+        wrapper: { width: 720, background: '#0f2340' },
       }}
       style={{ background: '#0f2340' }}
     >

@@ -48,7 +48,7 @@ export default function ScenarioRevisionHistoryDrawer({ open, onClose, scenarioI
       title="История ревизий сценария"
       open={open}
       onClose={onClose}
-      width="80vw"
+      styles={{ wrapper: { width: '80vw' } }}
     >
       {isLoading ? (
         <Spin />

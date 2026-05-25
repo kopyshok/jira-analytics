@@ -56,7 +56,7 @@ export default function ScenarioDiffPanel({
       title={`Diff: «${draftScenario.name}» vs последний утверждённый`}
       open={open}
       onClose={onClose}
-      width={620}
+      styles={{ wrapper: { width: 620 } }}
     >
       {!lastApproved ? (
         <Empty description="Утверждённых сценариев на этот квартал ещё нет" />
