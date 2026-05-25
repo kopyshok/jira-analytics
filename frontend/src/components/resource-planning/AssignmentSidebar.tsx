@@ -260,7 +260,7 @@ export default function AssignmentSidebar({
       <AssignmentExplainSection planId={planId} assignmentId={assignment.id} />
 
       <Divider>Действия</Divider>
-      <Space direction="vertical" style={{ width: '100%' }}>
+      <Space orientation="vertical" style={{ width: '100%' }}>
         {!hasSiblings && assignment.phase !== 'qa' && (
           <Button block onClick={() => setSplitOpen(true)} disabled={saving}>
             Разбить на части
@@ -342,7 +342,7 @@ export default function AssignmentSidebar({
         }
       >
         {pendingEmpChange && (
-          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Space orientation="vertical" style={{ width: '100%' }} size={12}>
             <Alert
               type="warning"
               showIcon
@@ -435,7 +435,7 @@ function AssignmentExplainSection({ planId, assignmentId }: { planId: string; as
   return (
     <>
       <Divider>Расчёт проблем</Divider>
-      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+      <Space orientation="vertical" style={{ width: '100%' }} size={8}>
         {onCp && (
           <Alert
             type="error"

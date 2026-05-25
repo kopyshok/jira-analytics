@@ -50,13 +50,13 @@ function Editor({ initialKeys }: { initialKeys: string[] }) {
   const groups = Array.from(new Set(SECTIONS.map((s) => s.group)));
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: 720 }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%', maxWidth: 720 }}>
       <Typography.Paragraph type="secondary">
         Отметьте разделы, которые нужно скрыть из бокового меню. Изменения применяются для всех пользователей после перезагрузки страницы.
       </Typography.Paragraph>
       {groups.map((g) => (
         <Card key={g} size="small" title={g}>
-          <Space direction="vertical">
+          <Space orientation="vertical">
             {SECTIONS.filter((s) => s.group === g).map((s) => (
               <Checkbox
                 key={s.key}

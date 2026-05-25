@@ -166,7 +166,7 @@ export default function JiraFieldsCard() {
             key: g.panelKey,
             label: g.title,
             children: (
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space orientation="vertical" style={{ width: '100%' }}>
                 {g.subtitle && <Text type="secondary" style={{ fontSize: 12 }}>{g.subtitle}</Text>}
                 {g.fields.map(renderField)}
               </Space>

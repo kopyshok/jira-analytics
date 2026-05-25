@@ -200,7 +200,7 @@ export default function BacklogPage() {
     {
       title: 'Идея', dataIndex: 'title',
       render: (v: string, r: BacklogItemResponse) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{v}</Typography.Text>
           {r.jira_key && (
             jiraBaseUrl
@@ -288,7 +288,7 @@ export default function BacklogPage() {
           else if (days >= 180) ageColor = DARK_THEME.yellow;
         }
         return (
-          <Space direction="vertical" size={0} style={{ lineHeight: 1.1 }}>
+          <Space orientation="vertical" size={0} style={{ lineHeight: 1.1 }}>
             <Tag color={statusTagColor(r.jira_status, r.jira_status_category)} style={{ marginInlineEnd: 0 }}>
               {r.jira_status}
             </Tag>
@@ -553,7 +553,7 @@ export default function BacklogPage() {
             if (!r.approved_scenarios?.length)
               return <span style={{ color: '#8faec8' }}>—</span>;
             return (
-              <Space direction="vertical" size={2}>
+              <Space orientation="vertical" size={2}>
                 {r.approved_scenarios.map((s) => (
                   <Tag key={s.id} color="cyan" style={{ marginInlineEnd: 0 }}>
                     {s.name}
@@ -674,7 +674,7 @@ export default function BacklogPage() {
   );
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <PageHeader
         eyebrow="Планирование"
         title="Целевые задачи"

@@ -456,7 +456,7 @@ export default function PlanningPage() {
   );
 
   return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={12} style={{ width: '100%' }}>
       <div style={{ marginBottom: -36 }}>
       <PageHeader
         eyebrow="Планирование"
@@ -505,7 +505,7 @@ export default function PlanningPage() {
 
       {scenarioId && scenario && !scenario.team && (
         <Card>
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          <Space orientation="vertical" size="large" style={{ width: '100%' }}>
             <Alert
               type="info"
               message="Для работы со сценарием выберите команду"

@@ -706,7 +706,7 @@ export default function CategoriesEditorPage() {
             else if (days >= 180) ageColor = DARK_THEME.yellow;
           }
           return (
-            <Space direction="vertical" size={0} style={{ lineHeight: 1.1 }}>
+            <Space orientation="vertical" size={0} style={{ lineHeight: 1.1 }}>
               <Text style={{ fontSize: 12 }}>{formatDateOnly(iso)}</Text>
               {days !== null && (
                 <Text style={{ fontSize: 11, color: ageColor }}>{days} д назад</Text>

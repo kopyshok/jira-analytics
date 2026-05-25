@@ -69,7 +69,7 @@ export default function ConnectionCard() {
 
   return (
     <Card title="Подключение к Jira" size="small">
-      <Space direction="vertical" style={{ width: '100%' }}>
+      <Space orientation="vertical" style={{ width: '100%' }}>
         <Space wrap>
           <Input
             placeholder="Base URL (https://your-domain.atlassian.net)"

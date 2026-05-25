@@ -4,7 +4,7 @@ import TaskSectionsTab from './TaskSectionsTab';
 
 export default function ScopeAdmin() {
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <ScopeOverview />
       <TaskSectionsTab />
     </Space>

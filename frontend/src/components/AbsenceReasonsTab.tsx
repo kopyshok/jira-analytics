@@ -32,7 +32,7 @@ export default function AbsenceReasonsTab() {
   };
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Button icon={<PlusOutlined />} type="primary" onClick={() => {
         form.resetFields();
         setOpen(true);

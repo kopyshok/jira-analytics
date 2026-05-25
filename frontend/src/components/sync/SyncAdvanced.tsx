@@ -117,14 +117,14 @@ export default function SyncAdvanced() {
   const worklogsInProgress = reload.isPending || update.isPending;
 
   return (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <Text type="secondary" style={{ fontSize: 12 }}>
         Ручной backfill ворклогов с произвольной даты и полная перезагрузка
         (единственный способ подчистить worklog, удалённые в&nbsp;Jira). В&nbsp;повседневке
         используйте «Синхронизация».
       </Text>
       <Card title="Ворклоги" size="small">
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space orientation="vertical" style={{ width: '100%' }}>
           <Space wrap>
             <DatePicker
               value={sinceDate}
@@ -182,7 +182,7 @@ export default function SyncAdvanced() {
           </Space>
 
           {worklogsInProgress && (
-            <Space direction="vertical" size={2} style={{ width: '100%', maxWidth: 640 }}>
+            <Space orientation="vertical" size={2} style={{ width: '100%', maxWidth: 640 }}>
               <Progress
                 percent={99.9}
                 status="active"

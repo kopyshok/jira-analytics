@@ -116,7 +116,7 @@ export default function SyncHistory() {
 
   const expandable = {
     expandedRowRender: (r: SyncRunOut) => (
-      <Space direction="vertical" style={{ width: '100%', paddingLeft: 16 }}>
+      <Space orientation="vertical" style={{ width: '100%', paddingLeft: 16 }}>
         {r.error_text && (
           <Text type="danger" style={{ fontSize: 12 }}>{r.error_text}</Text>
         )}

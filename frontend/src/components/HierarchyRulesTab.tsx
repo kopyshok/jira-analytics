@@ -135,7 +135,7 @@ export default function HierarchyRulesTab() {
   ];
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+    <Space orientation="vertical" style={{ width: '100%' }} size="middle">
       <Space>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Правило

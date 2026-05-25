@@ -22,7 +22,7 @@ export default function SectionVisibilityPopover({ visible, onChange }: Props) {
       placement="bottomRight"
       title="Показывать секции"
       content={
-        <Space direction="vertical">
+        <Space orientation="vertical">
           {Object.entries(LABELS).map(([key, label]) => (
             <Checkbox
               key={key}

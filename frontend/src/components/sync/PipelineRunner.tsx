@@ -75,7 +75,7 @@ export default function PipelineRunner({ teams = [] }: Props) {
         ) : null
       }
     >
-      <Space direction="vertical" style={{ width: '100%' }}>
+      <Space orientation="vertical" style={{ width: '100%' }}>
         <Space wrap>
           <Select
             value={mode}
@@ -125,7 +125,7 @@ export default function PipelineRunner({ teams = [] }: Props) {
         )}
 
         {state.stages.length > 0 && (
-          <Space direction="vertical" size={4} style={{ width: '100%', paddingTop: 4 }}>
+          <Space orientation="vertical" size={4} style={{ width: '100%', paddingTop: 4 }}>
             {state.stages.map((s) => (
               <StageRow key={s.stage} stage={s} />
             ))}

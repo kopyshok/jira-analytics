@@ -208,7 +208,7 @@ export default function TaskSectionsTab() {
         </Space>
       }
     >
-      <Space direction="vertical" style={{ width: '100%' }}>
+      <Space orientation="vertical" style={{ width: '100%' }}>
         <Space wrap>
           <Select
             placeholder="Команда (продуктовая или участвующая)"
@@ -264,7 +264,7 @@ export default function TaskSectionsTab() {
         confirmLoading={saveFieldSetting.isPending}
         width={640}
       >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+        <Space orientation="vertical" style={{ width: '100%' }} size="middle">
           <Text type="secondary">
             Фильтр команд в списке проектов объединяет оба поля через ИЛИ.
             Можно оставить только одно из полей — второе будет проигнорировано.

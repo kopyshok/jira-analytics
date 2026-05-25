@@ -54,7 +54,7 @@ export default function BuildProgressModal({ open, state, showDone, onCancel, on
       }}
     >
       {showDone && (
-        <Space direction="vertical" align="center" style={{ width: '100%', padding: '16px 0' }}>
+        <Space orientation="vertical" align="center" style={{ width: '100%', padding: '16px 0' }}>
           <CheckCircleOutlined style={{ fontSize: 40, color: DARK_THEME.cyanPrimary }} />
           <Typography.Text style={{ fontSize: 16, color: DARK_THEME.textPrimary }}>
             Готово
@@ -63,7 +63,7 @@ export default function BuildProgressModal({ open, state, showDone, onCancel, on
       )}
 
       {isError && (
-        <Space direction="vertical" align="center" style={{ width: '100%', padding: '8px 0 16px' }}>
+        <Space orientation="vertical" align="center" style={{ width: '100%', padding: '8px 0 16px' }}>
           <CloseCircleOutlined style={{ fontSize: 32, color: '#ff4d4f' }} />
           <Typography.Text type="danger">{error}</Typography.Text>
           <Button onClick={onClose}>Закрыть</Button>
@@ -71,7 +71,7 @@ export default function BuildProgressModal({ open, state, showDone, onCancel, on
       )}
 
       {isRunning && !showDone && (
-        <Space direction="vertical" style={{ width: '100%', gap: 12 }}>
+        <Space orientation="vertical" style={{ width: '100%', gap: 12 }}>
           <Space align="center">
             <LoadingOutlined style={{ color: DARK_THEME.cyanPrimary }} />
             <Typography.Text style={{ color: DARK_THEME.textPrimary, fontSize: 15 }}>

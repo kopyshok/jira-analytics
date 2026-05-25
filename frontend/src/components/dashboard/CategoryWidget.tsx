@@ -67,7 +67,7 @@ function ThresholdsPopover({ value, onChange }: { value: Thresholds; onChange: (
   };
 
   const content = (
-    <Space direction="vertical" size={12} style={{ minWidth: 240 }}>
+    <Space orientation="vertical" size={12} style={{ minWidth: 240 }}>
       <div style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
         До скольки дней без ворклога считать «нормой» (зелёный) и «предупреждением» (жёлтый). Всё что выше — красный.
       </div>

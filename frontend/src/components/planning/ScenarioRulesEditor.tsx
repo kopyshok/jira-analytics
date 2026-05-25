@@ -213,7 +213,7 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
   const quarterOptions = [1, 2, 3, 4].map((q) => ({ value: q, label: `Q${q}` }));
 
   const copyContent = (
-    <Space direction="vertical" size={8} style={{ width: 200 }}>
+    <Space orientation="vertical" size={8} style={{ width: 200 }}>
       <Space>
         <Select
           size="small"
@@ -243,7 +243,7 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
   );
 
   return (
-    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={8} style={{ width: '100%' }}>
       <Table<RuleDraft>
         size="small"
         dataSource={drafts}

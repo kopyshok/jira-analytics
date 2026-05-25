@@ -73,11 +73,11 @@ export default function SplitAssignmentModal({ open, onClose, onSplit, planId, a
       okButtonProps={{ disabled: !valid }}
     >
       {assignment && (
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space orientation="vertical" style={{ width: '100%' }}>
           <Typography.Text type="secondary">
             {assignment.backlog_item_title} · фаза «{assignment.phase}» · всего {total.toFixed(0)} ч
           </Typography.Text>
-          <Space direction="vertical" style={{ width: '100%' }}>
+          <Space orientation="vertical" style={{ width: '100%' }}>
             {parts.map((h, idx) => (
               <Space key={idx} align="center">
                 <span style={{ width: 60 }}>Часть {idx + 1}</span>

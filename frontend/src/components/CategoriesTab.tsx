@@ -124,7 +124,7 @@ export default function CategoriesTab() {
   };
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <DndContext
         collisionDetection={closestCenter}
         modifiers={[restrictToVerticalAxis]}

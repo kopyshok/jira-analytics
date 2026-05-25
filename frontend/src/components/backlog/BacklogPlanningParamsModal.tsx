@@ -94,7 +94,7 @@ function PhaseRow({
       <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
         {PHASE_LABELS[phase]}
       </Typography.Title>
-      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+      <Space orientation="vertical" size={6} style={{ width: '100%' }}>
         <Space style={{ width: '100%' }}>
           <span style={{ width: 200, display: 'inline-block' }}>Вовлечённость (0–1)</span>
           <InputNumber

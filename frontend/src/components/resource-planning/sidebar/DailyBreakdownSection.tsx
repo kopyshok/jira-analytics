@@ -50,7 +50,7 @@ export default function DailyBreakdownSection({
         children: items.length === 0
           ? <Typography.Text type="secondary">Нет данных</Typography.Text>
           : (
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Space orientation="vertical" size={8} style={{ width: '100%' }}>
               <Tooltip title="«Доступно ч» в таблице ниже = календарь × коэф. вовлечённости. Так же планировщик раскладывает часы фазы по дням.">
                 <Space size={6}>
                   <Tag color="cyan">Базовая ёмкость</Tag>

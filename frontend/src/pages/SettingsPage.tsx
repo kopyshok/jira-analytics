@@ -176,7 +176,7 @@ function ProductionCalendarTab() {
   };
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <Space wrap>
         <InputNumber
           value={year}

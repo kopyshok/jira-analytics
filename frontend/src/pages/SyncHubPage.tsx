@@ -17,7 +17,7 @@ export default function SyncHubPage() {
           key: 'pipeline',
           label: 'Синхронизация',
           children: (
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Space orientation="vertical" style={{ width: '100%' }} size="middle">
               <PipelineRunner teams={teams} />
               <SyncHistory />
             </Space>

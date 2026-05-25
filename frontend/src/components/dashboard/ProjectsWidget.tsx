@@ -415,12 +415,12 @@ function SettingsPopover({ prefs, setPrefs }: { prefs: Prefs; setPrefs: (p: Pref
   const toggleBlock = (k: BlockKey, on: boolean) => setPrefs({ ...prefs, blocks: { ...prefs.blocks, [k]: on } });
 
   const content = (
-    <Space direction="vertical" size={12} style={{ minWidth: 220 }}>
+    <Space orientation="vertical" size={12} style={{ minWidth: 220 }}>
       <div>
         <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
           Колонки
         </div>
-        <Space direction="vertical" size={4}>
+        <Space orientation="vertical" size={4}>
           {COLS.map((c) => (
             <Checkbox
               key={c.key}
@@ -436,7 +436,7 @@ function SettingsPopover({ prefs, setPrefs }: { prefs: Prefs; setPrefs: (p: Pref
         <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
           Блоки
         </div>
-        <Space direction="vertical" size={4}>
+        <Space orientation="vertical" size={4}>
           {BLOCKS.map((b) => (
             <Checkbox
               key={b.key}
