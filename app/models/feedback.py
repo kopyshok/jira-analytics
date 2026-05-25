@@ -22,7 +22,7 @@ class FeedbackItem(Base, TimestampMixin):
         Enum(FeedbackKind, native_enum=False), nullable=False
     )
     author_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=False, index=True
+        String(36), ForeignKey("users.id"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
@@ -40,4 +40,5 @@ class FeedbackItem(Base, TimestampMixin):
 
     __table_args__ = (
         Index("ix_feedback_kind_read_created", "kind", "read_at", "created_at"),
+        Index("ix_feedback_author_created", "author_id", "created_at"),
     )

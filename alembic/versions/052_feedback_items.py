@@ -38,7 +38,11 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_feedback_items_author_id", "feedback_items", ["author_id"])
+    op.create_index(
+        "ix_feedback_author_created",
+        "feedback_items",
+        ["author_id", "created_at"],
+    )
     op.create_index(
         "ix_feedback_kind_read_created",
         "feedback_items",
@@ -48,5 +52,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_feedback_kind_read_created", table_name="feedback_items")
-    op.drop_index("ix_feedback_items_author_id", table_name="feedback_items")
+    op.drop_index("ix_feedback_author_created", table_name="feedback_items")
     op.drop_table("feedback_items")
