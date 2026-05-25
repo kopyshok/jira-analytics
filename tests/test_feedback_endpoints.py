@@ -125,3 +125,70 @@ def test_list_ideas_public_visible_to_all(testclient_db_session: Session) -> Non
         assert "Admin idea" in titles
     finally:
         _teardown()
+
+
+# --- Task A9: admin endpoints ---
+
+
+def test_admin_list_bugs_excludes_read_when_filter_unread(
+    testclient_db_session: Session,
+) -> None:
+    manager = _seed_user(
+        testclient_db_session, email="m@example.com", role=UserRole.manager, display_name="Mgr"
+    )
+    admin = _seed_user(
+        testclient_db_session, email="a@example.com", role=UserRole.admin, display_name="Adm"
+    )
+    client = _make_client(testclient_db_session)
+    try:
+        _set_user(manager)
+        a = client.post("/api/v1/feedback/bugs", json={"title": "A", "body": "x"}).json()
+        client.post("/api/v1/feedback/bugs", json={"title": "B", "body": "y"})
+        _set_user(admin)
+        client.post("/api/v1/feedback/admin/mark-read", json={"ids": [a["id"]]})
+        r = client.get("/api/v1/feedback/admin/bugs?filter=unread")
+        titles = [it["title"] for it in r.json()]
+        assert titles == ["B"]
+    finally:
+        _teardown()
+
+
+def test_admin_endpoints_403_for_manager(testclient_db_session: Session) -> None:
+    manager = _seed_user(
+        testclient_db_session, email="m@example.com", role=UserRole.manager, display_name="Mgr"
+    )
+    client = _make_client(testclient_db_session)
+    try:
+        _set_user(manager)
+        r = client.get("/api/v1/feedback/admin/bugs")
+        assert r.status_code == 403
+    finally:
+        _teardown()
+
+
+def test_admin_export_marks_read_atomically(testclient_db_session: Session) -> None:
+    manager = _seed_user(
+        testclient_db_session, email="m@example.com", role=UserRole.manager, display_name="Mgr"
+    )
+    admin = _seed_user(
+        testclient_db_session, email="a@example.com", role=UserRole.admin, display_name="Adm"
+    )
+    client = _make_client(testclient_db_session)
+    try:
+        _set_user(manager)
+        client.post("/api/v1/feedback/bugs", json={"title": "A", "body": "x"})
+        client.post("/api/v1/feedback/bugs", json={"title": "B", "body": "y"})
+        _set_user(admin)
+        r = client.post(
+            "/api/v1/feedback/admin/export",
+            json={"kind": "bug", "only_unread": True, "mark_after": True},
+        )
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/markdown")
+        body = r.text
+        assert "## #1" in body
+        # Now nothing should be unread.
+        r2 = client.get("/api/v1/feedback/admin/bugs?filter=unread")
+        assert r2.json() == []
+    finally:
+        _teardown()

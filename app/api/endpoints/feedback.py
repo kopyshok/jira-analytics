@@ -1,20 +1,24 @@
 """Feedback endpoints: bugs + ideas (user-facing) + admin moderation."""
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.core.auth_deps import get_current_user
+from app.core.auth_deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.feedback import FeedbackItem, FeedbackKind
 from app.models.user import User
 from app.schemas.feedback import (
     AttachmentRef,
     BugCreate,
+    ExportRequest,
     FeedbackAuthor,
     FeedbackContext,
     FeedbackRead,
     IdeaCreate,
+    MarkReadRequest,
 )
 from app.services.feedback_service import FeedbackService
 
@@ -99,3 +103,67 @@ def list_ideas_feed(
         db, author_id=user.id, kind=FeedbackKind.idea, scope=scope
     )
     return [_to_read(it, db) for it in items]
+
+
+@router.get("/admin/bugs", response_model=list[FeedbackRead])
+def admin_list_bugs(
+    filter: str = "unread",
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[FeedbackRead]:
+    items = _service.list_for_admin(db, kind=FeedbackKind.bug, filter_mode=filter)
+    return [_to_read(it, db) for it in items]
+
+
+@router.get("/admin/ideas", response_model=list[FeedbackRead])
+def admin_list_ideas(
+    filter: str = "unread",
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> list[FeedbackRead]:
+    items = _service.list_for_admin(db, kind=FeedbackKind.idea, filter_mode=filter)
+    return [_to_read(it, db) for it in items]
+
+
+@router.post("/admin/mark-read", status_code=204)
+def admin_mark_read(
+    payload: MarkReadRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> Response:
+    _service.mark_read(db, ids=payload.ids, reader_id=user.id)
+    return Response(status_code=204)
+
+
+@router.post("/admin/mark-unread", status_code=204)
+def admin_mark_unread(
+    payload: MarkReadRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> Response:
+    _service.mark_unread(db, ids=payload.ids)
+    return Response(status_code=204)
+
+
+@router.post("/admin/export")
+def admin_export(
+    payload: ExportRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> Response:
+    kind = FeedbackKind(payload.kind)
+    md = _service.export_markdown(
+        db,
+        kind=kind,
+        ids=payload.ids,
+        only_unread=payload.only_unread,
+        mark_after=payload.mark_after,
+        reader_id=user.id,
+    )
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    filename = f"feedback-{payload.kind}s-{today}.md"
+    return Response(
+        content=md,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
