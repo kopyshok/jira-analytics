@@ -20,8 +20,11 @@ dayjs.extend(localeData);
 dayjs.locale('ru');
 import { APP_THEMES, FONTS } from './utils/constants';
 import { ThemeProvider, useAppTheme } from './contexts/ThemeContext';
+import { installConsoleCapture } from './utils/consoleCapture';
 import './index.css';
 import './styles/print.css';
+
+installConsoleCapture();
 
 const queryClient = new QueryClient({
   defaultOptions: {
