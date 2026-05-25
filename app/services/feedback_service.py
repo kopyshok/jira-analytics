@@ -90,8 +90,7 @@ class FeedbackService:
         offset: int = 0,
     ) -> list[FeedbackItem]:
         stmt = select(FeedbackItem).where(FeedbackItem.kind == kind)
-        if scope == "mine" or kind == FeedbackKind.bug:
-            # Юзер видит только свои баги — чужие баги admin-only.
+        if scope == "mine":
             stmt = stmt.where(FeedbackItem.author_id == author_id)
         stmt = stmt.order_by(FeedbackItem.created_at.desc()).limit(limit).offset(offset)
         return list(db.execute(stmt).scalars())
@@ -211,9 +210,9 @@ class FeedbackService:
                         lines.append("")
 
         if mark_after and items:
-            self.mark_read(
-                db, ids=[it.id for it in items], reader_id=reader_id or items[0].author_id
-            )
+            if reader_id is None:
+                raise ValueError("reader_id required when mark_after=True")
+            self.mark_read(db, ids=[it.id for it in items], reader_id=reader_id)
 
         return "\n".join(lines)
 
