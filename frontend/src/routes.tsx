@@ -12,6 +12,7 @@ import {
   CategoriesEditorPage,
   DashboardPage,
   ExecutiveDashboardPage,
+  FeedbackPage,
   PlanningPage,
   ProjectsPage,
   ResourcePlanningPage,
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
           { path: 'resource-planning', element: <ProtectedRoute>{page(<ResourcePlanningPage />)}</ProtectedRoute> },
           { path: 'resource-planning/compare', element: <ProtectedRoute>{page(<ScenarioComparatorPage />)}</ProtectedRoute> },
           { path: 'settings', element: <ProtectedRoute adminOnly>{page(<SettingsPage />)}</ProtectedRoute> },
+          { path: 'feedback', element: <ProtectedRoute>{page(<FeedbackPage />)}</ProtectedRoute> },
         ],
       },
       {
