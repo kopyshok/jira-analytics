@@ -7,6 +7,7 @@ import {
   llmApi,
   type GeminiModelInfo,
   type OpenRouterModelInfo,
+  type DeepSeekModelInfo,
   type PromptDefault,
 } from '../../api/llm';
 import { api } from '../../api/client';
@@ -36,6 +37,11 @@ const FALLBACK_OPENROUTER_MODELS: OpenRouterModelInfo[] = [
 
 const RECOMMENDED_GEMINI = 'gemini-3.1-flash-lite-preview';
 const RECOMMENDED_OPENROUTER = 'qwen/qwen3-next-80b-a3b-instruct:free';
+const RECOMMENDED_DEEPSEEK = 'deepseek-chat';
+const FALLBACK_DEEPSEEK_MODELS: DeepSeekModelInfo[] = [
+  { id: 'deepseek-chat', label: 'DeepSeek V3.2 (chat, дешёвый, рекомендуется)' },
+  { id: 'deepseek-reasoner', label: 'DeepSeek R1 (reasoner, SOTA reasoning, дороже)' },
+];
 const PROMPT_KEY = 'llm_project_summary_system_prompt';
 
 type FormValues = {
@@ -45,6 +51,8 @@ type FormValues = {
   openrouter_key: string;
   openrouter_model: string;
   openrouter_fallback_models: string[];
+  deepseek_key: string;
+  deepseek_model: string;
   prompt_role: string;
 };
 
@@ -82,6 +90,9 @@ export const AITab: React.FC = () => {
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModelInfo[]>(FALLBACK_OPENROUTER_MODELS);
   const [openRouterModelsLoading, setOpenRouterModelsLoading] = useState(false);
 
+  const [deepSeekModels, setDeepSeekModels] = useState<DeepSeekModelInfo[]>(FALLBACK_DEEPSEEK_MODELS);
+  const [deepSeekModelsLoading, setDeepSeekModelsLoading] = useState(false);
+
   const [promptDefault, setPromptDefault] = useState<PromptDefault | null>(null);
 
   useEffect(() => {
@@ -96,6 +107,8 @@ export const AITab: React.FC = () => {
         DEFAULT_OPENROUTER_FALLBACKS.join(','),
       );
       const fallbackList = fallbackCsv.split(',').map((s) => s.trim()).filter(Boolean);
+      const deepSeekKey = await loadSetting('llm_deepseek_api_key', '');
+      const deepSeekModel = await loadSetting('llm_deepseek_model', RECOMMENDED_DEEPSEEK);
       const def = await llmApi.getPromptDefault().catch(() => null);
       setPromptDefault(def);
       const promptRole = (await loadSetting(PROMPT_KEY, '')) || (def?.system_role ?? '');
@@ -107,10 +120,14 @@ export const AITab: React.FC = () => {
         openrouter_key: openRouterKey,
         openrouter_model: openRouterModel,
         openrouter_fallback_models: fallbackList,
+        deepseek_key: deepSeekKey,
+        deepseek_model: deepSeekModel,
         prompt_role: promptRole,
       });
-      if (geminiKey) await refreshGeminiModels(true);
-      if (openRouterKey) await refreshOpenRouterModels(true);
+      const status = await aiStatusApi.get().catch(() => ({ enabled: false }));
+      if (status.enabled && geminiKey) await refreshGeminiModels(true);
+      if (status.enabled && openRouterKey) await refreshOpenRouterModels(true);
+      if (status.enabled && deepSeekKey) await refreshDeepSeekModels(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -141,6 +158,19 @@ export const AITab: React.FC = () => {
     }
   };
 
+  const refreshDeepSeekModels = async (silent = false) => {
+    setDeepSeekModelsLoading(true);
+    try {
+      const list = await llmApi.listDeepSeekModels();
+      if (list && list.length) setDeepSeekModels(list);
+      if (!silent) message.success(`Загружено ${list.length} моделей DeepSeek`);
+    } catch (e: unknown) {
+      if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
+    } finally {
+      setDeepSeekModelsLoading(false);
+    }
+  };
+
   const onSave = async (values: FormValues) => {
     setLoading(true);
     try {
@@ -158,6 +188,11 @@ export const AITab: React.FC = () => {
       });
       if (values.openrouter_key) {
         await api.put('/settings/generic', { key: 'llm_openrouter_api_key', value: values.openrouter_key });
+      }
+
+      await api.put('/settings/generic', { key: 'llm_deepseek_model', value: values.deepseek_model });
+      if (values.deepseek_key) {
+        await api.put('/settings/generic', { key: 'llm_deepseek_api_key', value: values.deepseek_key });
       }
 
       const role = (values.prompt_role ?? '').trim();
@@ -285,7 +320,7 @@ export const AITab: React.FC = () => {
             options={[
               { value: 'gemini', label: 'Google Gemini' },
               { value: 'openrouter', label: 'OpenRouter (десятки free-моделей)' },
-              { value: 'deepseek', label: 'DeepSeek V3 (заглушка)', disabled: true },
+              { value: 'deepseek', label: 'DeepSeek (прямой API, платный)' },
               { value: 'anthropic', label: 'Anthropic Claude (заглушка)', disabled: true },
               { value: 'openai', label: 'OpenAI GPT (заглушка)', disabled: true },
             ]}
@@ -381,6 +416,59 @@ export const AITab: React.FC = () => {
             extra="Получить ключ: openrouter.ai/keys"
           >
             <MaskedInput placeholder="sk-or-v1-..." name="openrouter_api_key_field" />
+          </Form.Item>
+        </div>
+
+        <div style={{ display: provider === 'deepseek' ? 'block' : 'none' }}>
+          <Form.Item
+            label={
+              <Space>
+                <span>Модель DeepSeek</span>
+                <Button
+                  size="small"
+                  type="link"
+                  loading={deepSeekModelsLoading}
+                  onClick={() => refreshDeepSeekModels(false)}
+                >
+                  Обновить список
+                </Button>
+              </Space>
+            }
+            name="deepseek_model"
+            extra={
+              <Typography.Text type="secondary">
+                deepseek-chat = V3.2 ($0.27/M in, $1.10/M out) — рекомендуется.
+                deepseek-reasoner = R1 chain-of-thought (~$0.55/M in, $2.19/M out).
+                Контекст 64K, max output 8K. Free tier нет.
+              </Typography.Text>
+            }
+          >
+            <Select
+              options={deepSeekModels.map((m) => ({
+                value: m.id,
+                label: (
+                  <span>
+                    {m.label}
+                    {m.id === RECOMMENDED_DEEPSEEK && (
+                      <Tag color="green" style={{ marginLeft: 8 }}>
+                        рекомендуется
+                      </Tag>
+                    )}
+                  </span>
+                ),
+                searchText: `${m.label} ${m.id}`,
+              }))}
+              optionLabelProp="label"
+              popupMatchSelectWidth={false}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="API key (DeepSeek)"
+            name="deepseek_key"
+            extra="Получить ключ: platform.deepseek.com/api_keys"
+          >
+            <MaskedInput placeholder="sk-..." name="deepseek_api_key_field" />
           </Form.Item>
         </div>
 

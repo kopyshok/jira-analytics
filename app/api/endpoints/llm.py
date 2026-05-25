@@ -133,6 +133,39 @@ async def list_openrouter_models(db: Session = Depends(get_db)):
     return out
 
 
+@router.get("/deepseek/models", dependencies=[Depends(require_ai_enabled)])
+async def list_deepseek_models(db: Session = Depends(get_db)):
+    """Live-список моделей DeepSeek через `/v1/models`.
+
+    DeepSeek возвращает короткий список (deepseek-chat, deepseek-reasoner).
+    Сортировка: имя по алфавиту.
+    """
+    row = db.query(AppSetting).filter(AppSetting.key == "llm_deepseek_api_key").first()
+    if not row or not row.value:
+        raise HTTPException(status_code=400, detail="DeepSeek API key not configured")
+
+    url = "https://api.deepseek.com/v1/models"
+    headers = {"Authorization": f"Bearer {row.value}"}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(url, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=503, detail=f"DeepSeek API ответил {e.response.status_code}")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"DeepSeek API недоступен: {e}")
+
+    out: list[dict] = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        if not model_id:
+            continue
+        out.append({"id": model_id, "label": model_id})
+    out.sort(key=lambda x: x["id"])
+    return out
+
+
 def _is_zero(price: str) -> bool:
     try:
         return float(price) == 0.0

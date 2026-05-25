@@ -68,6 +68,7 @@ LLM_KEYS = (
     "llm_openrouter_model",
     "llm_openrouter_fallback_models",
     "llm_deepseek_api_key",
+    "llm_deepseek_model",
     "llm_anthropic_api_key",
     "llm_openai_api_key",
     "llm_project_summary_system_prompt",
