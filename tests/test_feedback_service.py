@@ -61,3 +61,60 @@ def test_create_idea_minimal_fields(db_session: Session, author: User) -> None:
     assert item.kind == FeedbackKind.idea
     assert item.steps_to_reproduce is None
     assert item.context_json is None
+
+
+def test_list_admin_filter_unread(db_session: Session, author: User) -> None:
+    svc = FeedbackService()
+    a = svc.create_bug(db_session, author=author, payload=BugCreate(title="A", body="x"))
+    b = svc.create_bug(db_session, author=author, payload=BugCreate(title="B", body="y"))
+    svc.mark_read(db_session, ids=[a.id], reader_id=author.id)
+
+    unread = svc.list_for_admin(db_session, kind=FeedbackKind.bug, filter_mode="unread")
+    assert {x.id for x in unread} == {b.id}
+
+    all_items = svc.list_for_admin(db_session, kind=FeedbackKind.bug, filter_mode="all")
+    assert {x.id for x in all_items} == {a.id, b.id}
+
+
+def test_list_user_scope_mine_only_own_bugs(db_session: Session, author: User) -> None:
+    other = User(
+        email="alice@example.com", password_hash="x", display_name="Alice", role=UserRole.manager,
+    )
+    db_session.add(other)
+    db_session.commit()
+    svc = FeedbackService()
+    own = svc.create_bug(db_session, author=author, payload=BugCreate(title="Own", body="b"))
+    svc.create_bug(db_session, author=other, payload=BugCreate(title="Other", body="b"))
+
+    mine = svc.list_for_user(
+        db_session, author_id=author.id, kind=FeedbackKind.bug, scope="mine"
+    )
+    assert {x.id for x in mine} == {own.id}
+
+
+def test_list_user_scope_all_ideas_visible(db_session: Session, author: User) -> None:
+    other = User(
+        email="alice@example.com", password_hash="x", display_name="Alice", role=UserRole.manager,
+    )
+    db_session.add(other)
+    db_session.commit()
+    svc = FeedbackService()
+    own = svc.create_idea(db_session, author=author, payload=IdeaCreate(title="A", body="b"))
+    foreign = svc.create_idea(db_session, author=other, payload=IdeaCreate(title="B", body="b"))
+
+    feed = svc.list_for_user(
+        db_session, author_id=author.id, kind=FeedbackKind.idea, scope="all"
+    )
+    assert {x.id for x in feed} == {own.id, foreign.id}
+
+
+def test_mark_unread_clears_read_at(db_session: Session, author: User) -> None:
+    svc = FeedbackService()
+    item = svc.create_bug(db_session, author=author, payload=BugCreate(title="T", body="b"))
+    svc.mark_read(db_session, ids=[item.id], reader_id=author.id)
+    db_session.refresh(item)
+    assert item.read_at is not None
+    svc.mark_unread(db_session, ids=[item.id])
+    db_session.refresh(item)
+    assert item.read_at is None
+    assert item.read_by is None
