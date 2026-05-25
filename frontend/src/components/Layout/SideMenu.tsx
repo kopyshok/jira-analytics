@@ -12,6 +12,7 @@ import {
   FundProjectionScreenOutlined,
   SettingOutlined,
   TagsOutlined,
+  CommentOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -51,6 +52,7 @@ export default function SideMenu() {
   const data = [
     { key: '/sync', icon: <SyncOutlined />, label: 'Синхронизация' },
     { key: '/categories', icon: <TagsOutlined />, label: 'Категории задач' },
+    { key: '/feedback', icon: <CommentOutlined />, label: 'Обратная связь' },
     ...(isAdmin ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Настройки' }] : []),
   ].filter(it => !isHidden(it.key));
 
