@@ -1,4 +1,4 @@
-import { Collapse, List, Tag, Typography } from 'antd';
+import { Collapse, Tag, Typography } from 'antd';
 import type { AbsenceWindowItem } from '../../../api/resourcePlanning';
 
 interface Props {
@@ -30,11 +30,12 @@ export default function AbsencesSection({ items, collapsed, onToggleCollapse }: 
         children: items.length === 0
           ? <Typography.Text type="secondary">Нет данных</Typography.Text>
           : (
-            <List
-              size="small"
-              dataSource={items}
-              renderItem={(item) => (
-                <List.Item style={{ padding: '4px 0', border: 'none' }}>
+            <div>
+              {items.map((item, idx) => (
+                <div
+                  key={`${item.date_start}-${item.date_end}-${idx}`}
+                  style={{ padding: '4px 0', display: 'flex', alignItems: 'center' }}
+                >
                   <span style={{ fontSize: 12, color: '#cfe1f5' }}>
                     {formatRange(item)} — {item.reason_label}
                   </span>
@@ -44,9 +45,9 @@ export default function AbsencesSection({ items, collapsed, onToggleCollapse }: 
                   >
                     {item.is_holiday ? 'Праздник РФ' : 'Отсутствие'}
                   </Tag>
-                </List.Item>
-              )}
-            />
+                </div>
+              ))}
+            </div>
           ),
       }]}
     />
