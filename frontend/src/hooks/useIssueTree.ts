@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getIssueTree, setIssueCategory, setIssueInclude, batchSetCategory, verifyIssue } from '../api/issues';
+import { trackAction } from '../lib/usage/track';
 
 export function useIssueTree(params?: { project_keys?: string; teams?: string }) {
   return useQuery({
@@ -25,7 +26,10 @@ export function useSetIssueCategory() {
   return useMutation({
     mutationFn: ({ issueId, categoryCode }: { issueId: string; categoryCode: string | null }) =>
       setIssueCategory(issueId, categoryCode),
-    onSuccess: () => invalidateCategoryDependents(qc),
+    onSuccess: (_data, { issueId }) => {
+      invalidateCategoryDependents(qc);
+      trackAction('category_changed', issueId);
+    },
   });
 }
 
@@ -43,7 +47,10 @@ export function useBatchSetCategory() {
   return useMutation({
     mutationFn: ({ issueIds, categoryCode }: { issueIds: string[]; categoryCode: string | null }) =>
       batchSetCategory(issueIds, categoryCode),
-    onSuccess: () => invalidateCategoryDependents(qc),
+    onSuccess: (_data, { issueIds }) => {
+      invalidateCategoryDependents(qc);
+      trackAction('category_changed', issueIds[0]);
+    },
   });
 }
 

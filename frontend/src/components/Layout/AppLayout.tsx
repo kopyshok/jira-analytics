@@ -15,6 +15,7 @@ import { useThemeSync, useSaveTheme } from '../../hooks/useTheme';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { usePageView } from '../../lib/usage/usePageView';
 import { useHeartbeat } from '../../lib/usage/useHeartbeat';
+import { trackAction } from '../../lib/usage/track';
 
 function UsageTracker() {
   usePageView();
@@ -50,6 +51,7 @@ export default function AppLayout() {
 
   const handleLogout = useCallback(async () => {
     await logout();
+    trackAction('logout');
     navigate('/login', { replace: true });
   }, [logout, navigate]);
 

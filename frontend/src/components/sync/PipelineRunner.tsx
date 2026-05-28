@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useSyncPipeline, type PipelineStageState } from '../../hooks/useSyncPipeline';
 import type { PipelineMode } from '../../api/syncPipeline';
 import { DARK_THEME } from '../../utils/constants';
+import { trackAction } from '../../lib/usage/track';
 
 const { Text } = Typography;
 
@@ -51,6 +52,12 @@ export default function PipelineRunner({ teams = [] }: Props) {
 
   const handleStart = () => {
     start(mode, mode === 'team' ? team : undefined);
+    trackAction('sync_started');
+  };
+
+  const handleCancel = () => {
+    cancel();
+    trackAction('sync_cancelled');
   };
 
   const statusTag =
@@ -96,7 +103,7 @@ export default function PipelineRunner({ teams = [] }: Props) {
             />
           )}
           {isRunning ? (
-            <Button danger icon={<StopOutlined />} onClick={cancel}>
+            <Button danger icon={<StopOutlined />} onClick={handleCancel}>
               Прервать
             </Button>
           ) : (

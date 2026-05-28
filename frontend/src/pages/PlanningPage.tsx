@@ -48,6 +48,7 @@ import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { downloadScenarioXlsx } from '../api/exports';
+import { trackAction } from '../lib/usage/track';
 import { DARK_THEME, FONTS } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
 import { useJiraSettings } from '../hooks/useSettings';
@@ -406,6 +407,7 @@ export default function PlanningPage() {
     if (!scenarioId) return;
     approve.mutate(scenarioId, {
       onSuccess: () => {
+        trackAction('scenario_approved', scenarioId);
         setCelebrate(true);
         setTimeout(() => setCelebrate(false), 1700);
         notification.success({ title: 'Сценарий утверждён' });
@@ -601,7 +603,13 @@ export default function PlanningPage() {
                     История
                   </Button>
                 </Tooltip>
-                <Button size="small" onClick={() => downloadScenarioXlsx(scenarioId)}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    downloadScenarioXlsx(scenarioId);
+                    trackAction('scenario_xlsx_exported', scenarioId);
+                  }}
+                >
                   Экспорт
                 </Button>
                 <Popconfirm

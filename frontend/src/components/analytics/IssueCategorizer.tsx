@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { CategoryResponse } from '../../types/api';
 import type { IssueContextResponse } from '../../types/api';
 import { setIssueCategory, setIssueInclude, batchSetCategory } from '../../api/issues';
+import { trackAction } from '../../lib/usage/track';
 
 const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
 
@@ -53,6 +54,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
         await setIssueCategory(context.id, selectedCategory);
         await setIssueInclude(context.id, includeInAnalysis);
       }
+      trackAction('category_changed', context.id);
       invalidate(context.id);
       onSaved();
     } finally {

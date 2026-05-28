@@ -3,6 +3,7 @@ import { App, Form, Input, InputNumber, Modal, Select } from 'antd';
 import { useCreateScenario } from '../../hooks/usePlanning';
 import { useQuarterYear } from '../../hooks/useQuarterYear';
 import { TeamSelector } from './TeamSelector';
+import { trackAction } from '../../lib/usage/track';
 
 interface Props {
   open: boolean;
@@ -52,6 +53,7 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
   const handleSubmit = (values: FormValues) => {
     create.mutate(values, {
       onSuccess: (s) => {
+        trackAction('scenario_created', s.id);
         notification.success({ title: `Сценарий «${s.name}» создан` });
         onClose(s.id);
       },
