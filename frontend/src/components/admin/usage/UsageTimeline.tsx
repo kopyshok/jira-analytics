@@ -20,6 +20,7 @@ export default function UsageTimeline({ days }: Props) {
   const { data = [], isLoading } = useQuery({
     queryKey: ['usage', 'timeline', days] as const,
     queryFn: () => usageApi.timeline(days),
+    staleTime: 5 * 60_000,
   });
 
   if (!isLoading && data.length === 0) {

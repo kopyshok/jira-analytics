@@ -11,6 +11,7 @@ export default function UsageUsersTable({ days }: Props) {
   const { data = [], isLoading } = useQuery({
     queryKey: ['usage', 'users', days] as const,
     queryFn: () => usageApi.users(days),
+    staleTime: 5 * 60_000,
   });
 
   const columns = [

@@ -63,8 +63,8 @@ def test_post_events_inserts(testclient_db_session: Session) -> None:
         _set_user(user)
         now = datetime.utcnow().isoformat()
         r = client.post("/api/v1/usage/events", json={"events": [
-            {"event_type": "page_view", "path": "/dashboard", "at": now},
-            {"event_type": "heartbeat", "path": "/dashboard", "at": now},
+            {"event_type": "page_view", "path": "/sync", "at": now},
+            {"event_type": "heartbeat", "path": "/sync", "at": now},
         ]})
         assert r.status_code == 200, r.text
         assert r.json() == {"accepted": 2, "rejected": 0}
@@ -79,7 +79,7 @@ def test_post_events_ignores_garbage(testclient_db_session: Session) -> None:
         _set_user(user)
         now = datetime.utcnow().isoformat()
         r = client.post("/api/v1/usage/events", json={"events": [
-            {"event_type": "page_view", "path": "/dashboard", "at": now},
+            {"event_type": "page_view", "path": "/sync", "at": now},
             {"event_type": "page_view", "path": "/garbage", "at": now},
         ]})
         assert r.status_code == 200
@@ -94,7 +94,7 @@ def test_post_events_requires_auth(testclient_db_session: Session) -> None:
         _set_no_user()
         now = datetime.utcnow().isoformat()
         r = client.post("/api/v1/usage/events", json={"events": [
-            {"event_type": "page_view", "path": "/dashboard", "at": now},
+            {"event_type": "page_view", "path": "/sync", "at": now},
         ]})
         assert r.status_code in (401, 403)
     finally:

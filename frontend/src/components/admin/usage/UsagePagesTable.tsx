@@ -11,6 +11,7 @@ export default function UsagePagesTable({ days }: Props) {
   const { data = [], isLoading } = useQuery({
     queryKey: ['usage', 'pages', days] as const,
     queryFn: () => usageApi.pages(days),
+    staleTime: 5 * 60_000,
   });
 
   const columns = [

@@ -6,6 +6,7 @@ export default function UsageKpiBar() {
   const { data, isLoading } = useQuery({
     queryKey: ['usage', 'overview'] as const,
     queryFn: () => usageApi.overview(),
+    staleTime: 5 * 60_000,
   });
 
   return (

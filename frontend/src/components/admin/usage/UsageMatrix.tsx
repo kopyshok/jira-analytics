@@ -17,6 +17,7 @@ export default function UsageMatrix({ days }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ['usage', 'matrix', days] as const,
     queryFn: () => usageApi.matrix(days),
+    staleTime: 5 * 60_000,
   });
 
   const max = useMemo(() => {
