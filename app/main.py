@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.api.router import api_router
@@ -138,13 +139,31 @@ async def health_ready():
         db.close()
 
 
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if (
+                exc.status_code != 404
+                or not self.html
+                or path.lstrip("/").startswith("assets/")
+                or not self._accepts_html(scope)
+            ):
+                raise
+            return await super().get_response("index.html", scope)
+
+    def _accepts_html(self, scope) -> bool:
+        headers = dict(scope.get("headers") or [])
+        accept = headers.get(b"accept", b"").decode("latin-1")
+        return "text/html" in accept or "*/*" in accept
+
+
 # --- Serve built frontend (SPA) ---
 # Vite builds to frontend/dist; Docker image copies it to app/static.
-# Mount LAST so explicit routes (above) take precedence. html=True makes
-# StaticFiles serve index.html for unknown paths inside the static dir,
-# which is required for client-side SPA routing.
+# Mount LAST so explicit routes (above) take precedence.
 _STATIC_DIR = Path(__file__).parent / "static"
 if _STATIC_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="spa")
+    app.mount("/", SPAStaticFiles(directory=_STATIC_DIR, html=True), name="spa")
 else:
     logger.info("Static SPA directory %s does not exist — running API-only", _STATIC_DIR)

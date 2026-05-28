@@ -60,6 +60,11 @@ function isSuppressed404(method: string, status: number | null, url: string): bo
   return false;
 }
 
+function buildApiUrl(path: string): URL {
+  const browserOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  return new URL(`${BASE_URL}${path}`, browserOrigin);
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -67,7 +72,7 @@ async function request<T>(
   params?: Record<string, string | undefined>,
   signal?: AbortSignal,
 ): Promise<T> {
-  const url = new URL(`${BASE_URL}${path}`);
+  const url = buildApiUrl(path);
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== '') url.searchParams.set(k, v);
@@ -132,7 +137,7 @@ export const api = {
   del: <T>(path: string, signal?: AbortSignal) =>
     request<T>('DELETE', path, undefined, undefined, signal),
   download: async (path: string, params?: Record<string, string | undefined>) => {
-    const url = new URL(`${BASE_URL}${path}`);
+    const url = buildApiUrl(path);
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
         if (v !== undefined && v !== '') url.searchParams.set(k, v);
