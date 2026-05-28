@@ -197,25 +197,33 @@ class UsageService:
             .group_by(User.id)
             .all()
         )
-        out = []
-        for r in rows:
-            top = (
-                self.db.query(UsageDaily.path)
-                .filter(UsageDaily.user_id == r.id, UsageDaily.date >= start)
-                .group_by(UsageDaily.path)
-                .order_by(sqlfn.sum(UsageDaily.seconds).desc())
-                .first()
+
+        path_rows = (
+            self.db.query(
+                UsageDaily.user_id,
+                UsageDaily.path,
+                sqlfn.sum(UsageDaily.seconds).label("secs"),
             )
-            out.append({
-                "user_id": r.id,
-                "display_name": r.display_name,
-                "role": r.role.value if hasattr(r.role, "value") else r.role,
-                "last_seen": r.last_date,
-                "active_days": int(r.active_days or 0),
-                "hours": round((r.secs or 0) / 3600, 1),
-                "top_path": top[0] if top else None,
-            })
-        return out
+            .filter(UsageDaily.date >= start)
+            .group_by(UsageDaily.user_id, UsageDaily.path)
+            .all()
+        )
+        top_per_user: dict[str, tuple[str, int]] = {}
+        for pr in path_rows:
+            secs = int(pr.secs or 0)
+            cur = top_per_user.get(pr.user_id)
+            if cur is None or secs > cur[1]:
+                top_per_user[pr.user_id] = (pr.path, secs)
+
+        return [{
+            "user_id": r.id,
+            "display_name": r.display_name,
+            "role": r.role.value if hasattr(r.role, "value") else r.role,
+            "last_seen": r.last_date,
+            "active_days": int(r.active_days or 0),
+            "hours": round((r.secs or 0) / 3600, 1),
+            "top_path": top_per_user[r.id][0] if r.id in top_per_user else None,
+        } for r in rows]
 
     def query_pages(self, days: int = 30) -> list[dict]:
         start, _ = self._period(days)
@@ -258,6 +266,9 @@ class UsageService:
         )
         paths = [p[0] for p in top_paths]
 
+        if not user_ids or not paths:
+            return {"users": [], "paths": [], "cells": []}
+
         users_meta = {
             u.id: u.display_name for u in
             self.db.query(User).filter(User.id.in_(user_ids)).all()
@@ -270,8 +281,8 @@ class UsageService:
             )
             .filter(
                 UsageDaily.date >= start,
-                UsageDaily.user_id.in_(user_ids) if user_ids else False,
-                UsageDaily.path.in_(paths) if paths else False,
+                UsageDaily.user_id.in_(user_ids),
+                UsageDaily.path.in_(paths),
             )
             .group_by(UsageDaily.user_id, UsageDaily.path)
             .all()
@@ -329,7 +340,11 @@ class UsageService:
             agg[r.action_type]["total"] += r.c
             agg[r.action_type]["by_user"][r.user_id] += r.c
 
-        user_names = {u.id: u.display_name for u in self.db.query(User).all()}
+        seen_user_ids = {uid for data in agg.values() for uid in data["by_user"].keys()}
+        user_names = {
+            u.id: u.display_name
+            for u in self.db.query(User).filter(User.id.in_(seen_user_ids)).all()
+        } if seen_user_ids else {}
         out = []
         for action_type, data in agg.items():
             top = sorted(data["by_user"].items(), key=lambda kv: -kv[1])[:3]
