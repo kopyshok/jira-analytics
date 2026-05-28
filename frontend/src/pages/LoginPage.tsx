@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { getMe, login as apiLogin } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
+import { trackAction } from '../lib/usage/track';
 
 const { Title } = Typography;
 
@@ -24,6 +25,7 @@ export default function LoginPage() {
       await apiLogin(values.email, values.password);
       const profile = await getMe();
       login(profile);
+      trackAction('login');
       const redirect =
         profile.role === 'manager' && profile.default_team
           ? `/?teams=${encodeURIComponent(profile.default_team)}`

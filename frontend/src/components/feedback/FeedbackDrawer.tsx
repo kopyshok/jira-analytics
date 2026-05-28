@@ -14,6 +14,7 @@ import type { UploadFile } from 'antd';
 import { feedbackApi, type AttachmentRef, type FeedbackKind } from '../../api/feedback';
 import { buildContext } from '../../utils/errorStore';
 import { DARK_THEME } from '../../utils/constants';
+import { trackAction } from '../../lib/usage/track';
 
 interface Props {
   open: boolean;
@@ -87,6 +88,7 @@ export default function FeedbackDrawer({ open, onClose, onSubmitted }: Props) {
         });
         notification.success({ title: 'Идея отправлена', description: 'Спасибо! Идея появится в общей ленте.' });
       }
+      trackAction('feedback_submitted');
       close();
       onSubmitted?.();
     } catch (e) {

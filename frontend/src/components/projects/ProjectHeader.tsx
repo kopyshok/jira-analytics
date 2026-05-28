@@ -9,6 +9,7 @@ import {
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
 import { useRegenerateSummary } from '../../hooks/useProjectSummary';
 import { AiGate } from '../shared/AiGate';
+import { trackAction } from '../../lib/usage/track';
 
 type ViewMode = 'analysis' | 'presentation';
 
@@ -51,7 +52,10 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
 
   const handleRegen = () => {
     if (!detail) return;
-    regen.mutate(detail.key);
+    const projectKey = detail.key;
+    regen.mutate(projectKey, {
+      onSuccess: () => trackAction('ai_summary_refreshed', projectKey),
+    });
   };
 
   const handlePng = async () => {

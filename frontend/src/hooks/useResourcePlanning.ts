@@ -13,6 +13,7 @@ import {
   type DependencyOut,
   bulkClearAssignments, type BulkClearMode,
 } from '../api/resourcePlanning';
+import { trackAction } from '../lib/usage/track';
 
 export const useScheduledBlocks = (team?: string) =>
   useQuery({
@@ -143,9 +144,10 @@ export function usePatchAssignment() {
       assignmentId: string;
       data: AssignmentPatch;
     }) => patchAssignment(planId, assignmentId, data),
-    onSuccess: (_, { planId }) => {
+    onSuccess: (_, { planId, assignmentId }) => {
       qc.invalidateQueries({ queryKey: ['gantt', planId] });
       qc.invalidateQueries({ queryKey: ['resource-plans'] });
+      trackAction('resource_plan_edited', assignmentId);
     },
   });
 }

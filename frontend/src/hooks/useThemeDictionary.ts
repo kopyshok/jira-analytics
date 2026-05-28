@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App } from 'antd';
 import { themesApi } from '../api/themes';
 import { workTypeReportApi } from '../api/workTypeReport';
+import { trackAction } from '../lib/usage/track';
 import type {
   ThemeCreateRequest,
   ThemeUpdateRequest,
@@ -106,6 +107,7 @@ export function useMergeThemes() {
       themesApi.merge(themeId, body),
     onSuccess: (data) => {
       invalidateThemes(qc, data.work_type_id);
+      trackAction('theme_merged', data.id);
       message.success('Темы объединены');
     },
     onError: (e: unknown) => {
