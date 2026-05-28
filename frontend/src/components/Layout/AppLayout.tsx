@@ -13,6 +13,14 @@ import { useEventStream } from '../../hooks/useEventStream';
 import { useAuth } from '../../hooks/useAuth';
 import { useThemeSync, useSaveTheme } from '../../hooks/useTheme';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { usePageView } from '../../lib/usage/usePageView';
+import { useHeartbeat } from '../../lib/usage/useHeartbeat';
+
+function UsageTracker() {
+  usePageView();
+  useHeartbeat();
+  return null;
+}
 
 const { Header, Sider, Content } = Layout;
 
@@ -130,6 +138,7 @@ export default function AppLayout() {
         </Content>
       </Layout>
       <FeedbackButton />
+      {user && <UsageTracker />}
     </Layout>
   );
 }
