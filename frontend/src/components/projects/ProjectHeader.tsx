@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, Button, Dropdown, App } from 'antd';
+import { Tag, Button, Dropdown, App, Space } from 'antd';
 import html2canvas from 'html2canvas';
 import {
   ReloadOutlined,
@@ -171,7 +171,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
 
       {/* Right: controls */}
       <div className="project-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <Button.Group>
+        <Space.Compact>
           <Button
             size="small"
             type={view === 'analysis' ? 'primary' : 'default'}
@@ -188,7 +188,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
           >
             Презентация
           </Button>
-        </Button.Group>
+        </Space.Compact>
 
         <AiGate>
           <Button
