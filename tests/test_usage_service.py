@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from app.models import User, UsageDaily, UsageEvent, UsageEventType, UserRole
-from app.services.usage_service import UsageService, ALLOWED_PATHS
+from app.services.usage_service import UsageService
 
 
 @pytest.fixture

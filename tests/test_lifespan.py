@@ -49,5 +49,5 @@ async def test_lifespan_starts_scheduler_with_seeded_jobs():
             assert sched_svc.scheduler.running is True
 
             jobs = sched_svc.scheduler.get_jobs()
-            # 3 sync jobs + 1 regenerate_summaries cron job
-            assert len(jobs) == 4
+            # 3 sync jobs + regenerate_summaries + aggregate_usage cron jobs
+            assert len(jobs) == 5

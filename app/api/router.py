@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
+from app.api.endpoints import admin_usage as admin_usage_endpoints
 from app.api.endpoints import admin_users as admin_users_endpoints
 from app.api.endpoints import ai_status as ai_status_endpoints
 from app.api.endpoints import auth as auth_endpoints
@@ -199,5 +200,11 @@ api_router.include_router(
     hierarchy_rules_endpoints.router,
     prefix="/hierarchy-rules",
     tags=["hierarchy-rules"],
+    dependencies=_admin_dep,
+)
+api_router.include_router(
+    admin_usage_endpoints.router,
+    prefix="/admin/usage",
+    tags=["admin-usage"],
     dependencies=_admin_dep,
 )

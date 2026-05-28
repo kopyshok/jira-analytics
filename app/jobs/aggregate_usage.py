@@ -13,11 +13,13 @@ def aggregate_usage_job(
 ) -> None:
     """Свернуть вчерашний день в usage_daily, удалить события старше retention."""
     own_session = _session_factory is None
-    if own_session:
+    if _session_factory is None:
         from app.database import SessionLocal
-        _session_factory = SessionLocal
+        factory: Callable = SessionLocal
+    else:
+        factory = _session_factory
 
-    db = _session_factory()
+    db = factory()
     try:
         svc = UsageService(db)
         yesterday = (datetime.utcnow() - timedelta(days=1)).date()
