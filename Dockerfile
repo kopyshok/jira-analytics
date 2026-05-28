@@ -4,14 +4,15 @@
 # Stage 1: build the React frontend
 # ============================================================================
 FROM node:20-alpine AS frontend-builder
-WORKDIR /build
+WORKDIR /build/frontend
 
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN npm ci
 
 COPY frontend/ ./
+COPY docs/help /build/docs/help
 RUN npm run build
-# Output: /build/dist/{index.html, assets/*}
+# Output: /build/frontend/dist/{index.html, assets/*}
 
 
 # ============================================================================
@@ -71,7 +72,7 @@ COPY alembic.ini ./
 COPY scripts/ ./scripts/
 
 # Built frontend
-COPY --from=frontend-builder /build/dist ./app/static/
+COPY --from=frontend-builder /build/frontend/dist ./app/static/
 
 # Mutable data directory for exports / generated artifacts
 RUN mkdir -p /app/data && chown -R app:app /app /opt/hf-cache
