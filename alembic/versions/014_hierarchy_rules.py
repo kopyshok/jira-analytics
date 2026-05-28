@@ -61,14 +61,15 @@ def upgrade() -> None:
             "INSERT INTO hierarchy_rule "
             "(id, priority, project_key, issue_type, require_no_parent, "
             " is_container, is_enabled, description, created_at, updated_at) "
-            "VALUES (:id, :priority, :project, :itype, :np, :ic, 1, :desc, :now, :now)"
+            "VALUES (:id, :priority, :project, :itype, :np, :ic, :enabled, :desc, :now, :now)"
         ), {
             "id": str(uuid.uuid4()),
             "priority": priority,
             "project": project,
             "itype": itype,
-            "np": 1 if no_parent else 0,
-            "ic": 1 if is_container else 0,
+            "np": no_parent,
+            "ic": is_container,
+            "enabled": True,
             "desc": description,
             "now": now,
         })

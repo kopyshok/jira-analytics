@@ -29,10 +29,13 @@ def upgrade() -> None:
         "INSERT INTO hierarchy_rule "
         "(id, priority, project_key, issue_type, require_no_parent, "
         " is_container, is_enabled, description, created_at, updated_at) "
-        "VALUES (:id, 50, NULL, 'Main box', 0, 1, 1, "
+        "VALUES (:id, 50, NULL, 'Main box', :require_no_parent, :is_container, :enabled, "
         "'Main box — всегда контейнер', :now, :now)"
     ), {
         "id": str(uuid.uuid4()),
+        "require_no_parent": False,
+        "is_container": True,
+        "enabled": True,
         "now": datetime.utcnow().isoformat(),
     })
 

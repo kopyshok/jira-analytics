@@ -2,7 +2,7 @@
 
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, inspect, pool
 
 from alembic import context
 
@@ -43,6 +43,22 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _ensure_alembic_version_column(connection) -> None:
+    inspector = inspect(connection)
+    if "alembic_version" not in inspector.get_table_names():
+        connection.exec_driver_sql(
+            "CREATE TABLE alembic_version (version_num VARCHAR(64) NOT NULL PRIMARY KEY)"
+        )
+        return
+    columns = {column["name"]: column for column in inspector.get_columns("alembic_version")}
+    version_column = columns.get("version_num")
+    if version_column is None:
+        return
+    length = getattr(version_column["type"], "length", None)
+    if length is not None and length < 64:
+        connection.exec_driver_sql("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     url = config.get_main_option("sqlalchemy.url")
@@ -66,6 +82,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        _ensure_alembic_version_column(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

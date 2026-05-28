@@ -35,9 +35,9 @@ def upgrade():
     for code, label, color, counts, order in ROLES_SEED:
         conn.execute(sa.text(
             "INSERT INTO roles (id, code, label, color, is_active, counts_in_planning, sort_order) "
-            "VALUES (:id, :code, :label, :color, 1, :counts, :order)"
+            "VALUES (:id, :code, :label, :color, :is_active, :counts, :order)"
         ), {"id": str(uuid.uuid4()), "code": code, "label": label, "color": color,
-            "counts": 1 if counts else 0, "order": order})
+            "is_active": True, "counts": counts, "order": order})
 
 
 def downgrade():
