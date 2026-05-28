@@ -1,4 +1,4 @@
-.PHONY: install dev run test lint migrate clean release
+.PHONY: install dev run test lint migrate clean release release-auto
 
 # Install dependencies
 install:
@@ -52,6 +52,12 @@ clean:
 # Full reset (clean + migrate)
 reset: clean migrate
 
+# Semi-automatic release: analyze commits, propose version, confirm interactively.
+# Usage:  make release-auto             (interactive)
+#         make release-auto ARGS=--yes  (no prompt, use proposal)
+release-auto:
+	python scripts/release.py $(ARGS)
+
 # Cut a release: bump versions, commit, tag, push.
 # Usage:  make release VERSION=v1.2.3
 release:
@@ -82,3 +88,4 @@ help:
 	@echo "  make clean      - Clean up cache files"
 	@echo "  make reset      - Clean and migrate"
 	@echo "  make release VERSION=v1.2.3 - Bump versions, commit and tag"
+	@echo "  make release-auto - Propose version from commits and confirm interactively"
