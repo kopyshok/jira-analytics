@@ -13,10 +13,12 @@ interface UsageSenderOpts {
 }
 
 const DEFAULT_CAPACITY = 100;
+const FLUSH_DEBOUNCE_MS = 1_500;
 
 export class UsageSender {
   private buffer: UsageEvent[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
+  private firstFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private opts: Required<UsageSenderOpts>;
 
   constructor(opts: UsageSenderOpts) {
@@ -29,6 +31,12 @@ export class UsageSender {
   enqueue(ev: UsageEvent): void {
     if (this.buffer.length >= this.opts.capacity) return;
     this.buffer.push(ev);
+    if (this.firstFlushTimer === null) {
+      this.firstFlushTimer = setTimeout(() => {
+        this.firstFlushTimer = null;
+        void this.flushNow();
+      }, FLUSH_DEBOUNCE_MS);
+    }
   }
 
   bufferSize(): number {
@@ -39,15 +47,17 @@ export class UsageSender {
     if (this.buffer.length === 0) return;
     const batch = this.buffer.splice(0, this.buffer.length);
     try {
-      await fetch(this.opts.endpoint, {
+      const res = await fetch(this.opts.endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ events: batch }),
-        keepalive: true,
       });
-    } catch {
-      // fire-and-forget; drop on failure
+      if (!res.ok) {
+        console.warn('[usage] POST /usage/events failed:', res.status, res.statusText);
+      }
+    } catch (e) {
+      console.warn('[usage] POST /usage/events network error:', e);
     }
   }
 
@@ -63,15 +73,25 @@ export class UsageSender {
 
   dispose(): void {
     if (this.timer) clearInterval(this.timer);
+    if (this.firstFlushTimer) clearTimeout(this.firstFlushTimer);
     this.timer = null;
+    this.firstFlushTimer = null;
   }
 }
 
+function _resolveEndpoint(): string {
+  const base = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+  return `${base.replace(/\/$/, '')}/usage/events`;
+}
+
 export const usageSender = new UsageSender({
-  endpoint: `${import.meta.env.VITE_API_BASE_URL ?? '/api/v1'}/usage/events`,
+  endpoint: _resolveEndpoint(),
   flushIntervalMs: 30_000,
 });
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => usageSender.flushBeacon());
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') usageSender.flushBeacon();
+  });
 }
