@@ -1,10 +1,16 @@
-"""UsageService — запись raw событий + валидация."""
+"""UsageService — запись raw событий + валидация + дневная агрегация."""
+import json
+from collections import defaultdict
+from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy.orm import Session
 
-from app.models import UsageEvent, UsageEventType
+from app.models import UsageDaily, UsageEvent, UsageEventType
+
+
+HEARTBEAT_SECONDS = 30
 
 
 # Whitelist маршрутов SPA — нормализованные пути.
@@ -90,3 +96,57 @@ class UsageService:
         if abs((now - at).total_seconds()) > _MAX_TIME_SKEW.total_seconds():
             return False
         return True
+
+    def aggregate_day(self, target: date_type) -> int:
+        """Свернуть raw события за `target` в usage_daily. Идемпотентно."""
+        day_start = datetime.combine(target, datetime.min.time())
+        day_end = day_start + timedelta(days=1)
+
+        events = (
+            self.db.query(UsageEvent)
+            .filter(UsageEvent.at >= day_start, UsageEvent.at < day_end)
+            .all()
+        )
+        buckets: dict[tuple[str, str], dict] = defaultdict(
+            lambda: {"views": 0, "seconds": 0, "actions": defaultdict(int)}
+        )
+        for ev in events:
+            b = buckets[(ev.user_id, ev.path)]
+            if ev.event_type == UsageEventType.page_view:
+                b["views"] += 1
+            elif ev.event_type == UsageEventType.heartbeat:
+                b["seconds"] += HEARTBEAT_SECONDS
+            elif ev.event_type == UsageEventType.action and ev.action_type:
+                b["actions"][ev.action_type] += 1
+
+        upserted = 0
+        for (user_id, path), agg in buckets.items():
+            existing = (
+                self.db.query(UsageDaily)
+                .filter_by(date=target, user_id=user_id, path=path)
+                .one_or_none()
+            )
+            actions_json = json.dumps(dict(agg["actions"]))
+            if existing is None:
+                self.db.add(UsageDaily(
+                    date=target, user_id=user_id, path=path,
+                    views=agg["views"], seconds=agg["seconds"],
+                    actions_json=actions_json,
+                ))
+            else:
+                existing.views = agg["views"]
+                existing.seconds = agg["seconds"]
+                existing.actions_json = actions_json
+            upserted += 1
+        self.db.commit()
+        return upserted
+
+    def cleanup_old_events(self, retention_days: int = 90) -> int:
+        cutoff = datetime.utcnow() - timedelta(days=retention_days)
+        deleted = (
+            self.db.query(UsageEvent)
+            .filter(UsageEvent.at < cutoff)
+            .delete(synchronize_session=False)
+        )
+        self.db.commit()
+        return deleted
