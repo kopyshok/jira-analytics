@@ -116,3 +116,34 @@ def test_cleanup_old_events_deletes_past_retention(db_session, user):
     deleted = svc.cleanup_old_events(retention_days=90)
     assert deleted == 1
     assert db_session.query(UsageEvent).count() == 1
+
+
+def _seed_daily(db_session, user, day, path, views=0, seconds=0, actions=None):
+    db_session.add(UsageDaily(
+        date=day, user_id=user.id, path=path,
+        views=views, seconds=seconds,
+        actions_json=json.dumps(actions or {}),
+    ))
+    db_session.commit()
+
+
+def test_query_overview_counts_dau_wau_mau(db_session, user):
+    today = date.today()
+    _seed_daily(db_session, user, today, "/dashboard", views=1, seconds=3600)
+    svc = UsageService(db_session)
+    out = svc.query_overview()
+    assert out["dau"] >= 1
+    assert out["wau"] >= 1
+    assert out["mau"] >= 1
+    assert out["hours_30d"] >= 1.0
+
+
+def test_query_pages_aggregates_by_path(db_session, user):
+    today = date.today()
+    _seed_daily(db_session, user, today, "/dashboard", views=3, seconds=1800)
+    svc = UsageService(db_session)
+    rows = svc.query_pages(days=30)
+    by_path = {r["path"]: r for r in rows}
+    assert by_path["/dashboard"]["views"] == 3
+    assert by_path["/dashboard"]["unique_users"] == 1
+    assert by_path["/dashboard"]["hours"] == 0.5

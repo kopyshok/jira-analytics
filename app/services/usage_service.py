@@ -1,13 +1,14 @@
-"""UsageService — запись raw событий + валидация + дневная агрегация."""
+"""UsageService — запись raw событий + валидация + дневная агрегация + отчёты."""
 import json
 from collections import defaultdict
 from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
+from sqlalchemy import func as sqlfn
 from sqlalchemy.orm import Session
 
-from app.models import UsageDaily, UsageEvent, UsageEventType
+from app.models import UsageDaily, UsageEvent, UsageEventType, User
 
 
 HEARTBEAT_SECONDS = 30
@@ -150,3 +151,196 @@ class UsageService:
         )
         self.db.commit()
         return deleted
+
+    def _period(self, days: int) -> tuple[date_type, date_type]:
+        end = date_type.today()
+        start = end - timedelta(days=days - 1)
+        return start, end
+
+    def query_overview(self) -> dict:
+        today = date_type.today()
+        wk = today - timedelta(days=6)
+        mo = today - timedelta(days=29)
+
+        def _unique(since):
+            return (
+                self.db.query(UsageDaily.user_id)
+                .filter(UsageDaily.date >= since)
+                .distinct().count()
+            )
+
+        secs_30d = (
+            self.db.query(sqlfn.coalesce(sqlfn.sum(UsageDaily.seconds), 0))
+            .filter(UsageDaily.date >= mo)
+            .scalar() or 0
+        )
+        return {
+            "dau": _unique(today),
+            "wau": _unique(wk),
+            "mau": _unique(mo),
+            "hours_30d": round(secs_30d / 3600, 1),
+        }
+
+    def query_users(self, days: int = 30) -> list[dict]:
+        start, _ = self._period(days)
+        rows = (
+            self.db.query(
+                User.id, User.display_name, User.role,
+                sqlfn.count(sqlfn.distinct(UsageDaily.date)).label("active_days"),
+                sqlfn.coalesce(sqlfn.sum(UsageDaily.seconds), 0).label("secs"),
+                sqlfn.max(UsageDaily.date).label("last_date"),
+            )
+            .outerjoin(
+                UsageDaily,
+                (UsageDaily.user_id == User.id) & (UsageDaily.date >= start),
+            )
+            .group_by(User.id)
+            .all()
+        )
+        out = []
+        for r in rows:
+            top = (
+                self.db.query(UsageDaily.path)
+                .filter(UsageDaily.user_id == r.id, UsageDaily.date >= start)
+                .group_by(UsageDaily.path)
+                .order_by(sqlfn.sum(UsageDaily.seconds).desc())
+                .first()
+            )
+            out.append({
+                "user_id": r.id,
+                "display_name": r.display_name,
+                "role": r.role.value if hasattr(r.role, "value") else r.role,
+                "last_seen": r.last_date,
+                "active_days": int(r.active_days or 0),
+                "hours": round((r.secs or 0) / 3600, 1),
+                "top_path": top[0] if top else None,
+            })
+        return out
+
+    def query_pages(self, days: int = 30) -> list[dict]:
+        start, _ = self._period(days)
+        rows = (
+            self.db.query(
+                UsageDaily.path,
+                sqlfn.count(sqlfn.distinct(UsageDaily.user_id)).label("uu"),
+                sqlfn.sum(UsageDaily.views).label("views"),
+                sqlfn.sum(UsageDaily.seconds).label("secs"),
+            )
+            .filter(UsageDaily.date >= start)
+            .group_by(UsageDaily.path)
+            .all()
+        )
+        return [{
+            "path": r.path,
+            "unique_users": int(r.uu or 0),
+            "views": int(r.views or 0),
+            "hours": round((r.secs or 0) / 3600, 1),
+        } for r in rows]
+
+    def query_matrix(self, days: int = 30, top_n: int = 10) -> dict:
+        start, _ = self._period(days)
+
+        top_users = (
+            self.db.query(UsageDaily.user_id, sqlfn.sum(UsageDaily.seconds).label("s"))
+            .filter(UsageDaily.date >= start)
+            .group_by(UsageDaily.user_id)
+            .order_by(sqlfn.sum(UsageDaily.seconds).desc())
+            .limit(top_n).all()
+        )
+        user_ids = [u[0] for u in top_users]
+
+        top_paths = (
+            self.db.query(UsageDaily.path, sqlfn.sum(UsageDaily.seconds).label("s"))
+            .filter(UsageDaily.date >= start)
+            .group_by(UsageDaily.path)
+            .order_by(sqlfn.sum(UsageDaily.seconds).desc())
+            .limit(top_n).all()
+        )
+        paths = [p[0] for p in top_paths]
+
+        users_meta = {
+            u.id: u.display_name for u in
+            self.db.query(User).filter(User.id.in_(user_ids)).all()
+        }
+
+        cells_rows = (
+            self.db.query(
+                UsageDaily.user_id, UsageDaily.path,
+                sqlfn.sum(UsageDaily.seconds).label("secs"),
+            )
+            .filter(
+                UsageDaily.date >= start,
+                UsageDaily.user_id.in_(user_ids) if user_ids else False,
+                UsageDaily.path.in_(paths) if paths else False,
+            )
+            .group_by(UsageDaily.user_id, UsageDaily.path)
+            .all()
+        )
+        return {
+            "users": [{"user_id": uid, "display_name": users_meta.get(uid, uid)}
+                      for uid in user_ids],
+            "paths": [{"path": p} for p in paths],
+            "cells": [{
+                "user_id": r.user_id, "path": r.path,
+                "display_name": users_meta.get(r.user_id, r.user_id),
+                "hours": round((r.secs or 0) / 3600, 1),
+            } for r in cells_rows],
+        }
+
+    def query_timeline(self, days: int = 30) -> list[dict]:
+        start, _ = self._period(days)
+        rows = (
+            self.db.query(
+                UsageDaily.date,
+                sqlfn.sum(UsageDaily.views).label("views"),
+                sqlfn.sum(UsageDaily.seconds).label("secs"),
+                sqlfn.count(sqlfn.distinct(UsageDaily.user_id)).label("uu"),
+            )
+            .filter(UsageDaily.date >= start)
+            .group_by(UsageDaily.date)
+            .order_by(UsageDaily.date)
+            .all()
+        )
+        return [{
+            "date": r.date,
+            "views": int(r.views or 0),
+            "seconds": int(r.secs or 0),
+            "active_users": int(r.uu or 0),
+        } for r in rows]
+
+    def query_actions(self, days: int = 30) -> list[dict]:
+        start, _ = self._period(days)
+        rows = (
+            self.db.query(
+                UsageEvent.action_type, UsageEvent.user_id,
+                sqlfn.count().label("c"),
+            )
+            .filter(
+                UsageEvent.event_type == UsageEventType.action,
+                UsageEvent.at >= datetime.combine(start, datetime.min.time()),
+            )
+            .group_by(UsageEvent.action_type, UsageEvent.user_id)
+            .all()
+        )
+        agg: dict[str, dict] = defaultdict(
+            lambda: {"total": 0, "by_user": defaultdict(int)}
+        )
+        for r in rows:
+            agg[r.action_type]["total"] += r.c
+            agg[r.action_type]["by_user"][r.user_id] += r.c
+
+        user_names = {u.id: u.display_name for u in self.db.query(User).all()}
+        out = []
+        for action_type, data in agg.items():
+            top = sorted(data["by_user"].items(), key=lambda kv: -kv[1])[:3]
+            out.append({
+                "action_type": action_type,
+                "total": data["total"],
+                "top_users": [
+                    {"user_id": uid, "display_name": user_names.get(uid, uid),
+                     "count": cnt}
+                    for uid, cnt in top
+                ],
+            })
+        out.sort(key=lambda r: -r["total"])
+        return out
