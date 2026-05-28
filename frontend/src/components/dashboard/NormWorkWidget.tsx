@@ -14,6 +14,28 @@ import type {
 
 interface Thresholds { warnAbove: number; underBelow: number; }
 const DEFAULT_THRESHOLDS: Thresholds = { warnAbove: 110, underBelow: 70 };
+const STORAGE_KEY = 'dashboard.normWork.thresholds';
+
+function loadThresholds(): Thresholds {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_THRESHOLDS;
+    const parsed = JSON.parse(raw) as Partial<Thresholds>;
+    const warnAbove = Number.isFinite(parsed.warnAbove) ? Math.max(1, Math.min(500, Math.floor(parsed.warnAbove!))) : DEFAULT_THRESHOLDS.warnAbove;
+    const underBelow = Number.isFinite(parsed.underBelow) ? Math.max(1, Math.min(500, Math.floor(parsed.underBelow!))) : DEFAULT_THRESHOLDS.underBelow;
+    return { warnAbove, underBelow };
+  } catch {
+    return DEFAULT_THRESHOLDS;
+  }
+}
+
+function saveThresholds(t: Thresholds) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(t));
+  } catch {
+    // ignore
+  }
+}
 
 function statusColor(pct: number, t: Thresholds): string {
   // pct > warnAbove → перегруз (красный); underBelow ≤ pct ≤ warnAbove → норма (жёлтый);
@@ -244,7 +266,7 @@ interface Props {
 }
 
 export default function NormWorkWidget({ data, loading }: Props) {
-  const [t, setT] = useState<Thresholds>(DEFAULT_THRESHOLDS);
+  const [t, setT] = useState<Thresholds>(loadThresholds);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<Thresholds>();
 
@@ -295,17 +317,17 @@ export default function NormWorkWidget({ data, loading }: Props) {
       <Modal
         title="Настройка порогов загрузки"
         open={modalOpen}
-        onOk={() => form.validateFields().then((v) => { setT(v); setModalOpen(false); })}
+        onOk={() => form.validateFields().then((v) => { setT(v); saveThresholds(v); setModalOpen(false); })}
         onCancel={() => setModalOpen(false)}
         okText="Применить"
         cancelText="Отмена"
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="Перегруз — выше, % (красный)" name="warnAbove" rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
-            <InputNumber style={{ width: '100%' }} min={1} max={500} addonAfter="%" />
+            <InputNumber style={{ width: '100%' }} min={1} max={500} suffix="%" />
           </Form.Item>
           <Form.Item label="Недозагрузка — ниже, % (зелёный)" name="underBelow" rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
-            <InputNumber style={{ width: '100%' }} min={1} max={500} addonAfter="%" />
+            <InputNumber style={{ width: '100%' }} min={1} max={500} suffix="%" />
           </Form.Item>
         </Form>
       </Modal>
