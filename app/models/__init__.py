@@ -58,6 +58,8 @@ from app.models.work_type_report_layout import WorkTypeReportLayout
 from app.models.executive_snapshot import ExecutiveSnapshot
 from app.models.user_rp_preferences import UserRpPreferences
 from app.models.feedback import FeedbackItem, FeedbackKind
+from app.models.usage_event import UsageEvent, UsageEventType
+from app.models.usage_daily import UsageDaily
 
 __all__ = [
     "TimestampMixin",
@@ -122,4 +124,7 @@ __all__ = [
     "UserRpPreferences",
     "FeedbackItem",
     "FeedbackKind",
+    "UsageEvent",
+    "UsageEventType",
+    "UsageDaily",
 ]
