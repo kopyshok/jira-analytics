@@ -20,6 +20,7 @@ export function useHeartbeat(): void {
       });
     };
 
+    tick();
     const id = setInterval(tick, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(id);
   }, [location.pathname]);

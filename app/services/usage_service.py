@@ -155,32 +155,71 @@ class UsageService:
         start = end - timedelta(days=days - 1)
         return start, end
 
+    def _today_raw_buckets(self) -> dict[tuple[str, str], dict]:
+        """Сегодняшний срез raw событий, сгруппированный (user_id, path).
+
+        Нужен потому что usage_daily наполняется ночным cron-ом —
+        в течение дня данные за сегодня живут только в usage_events.
+        """
+        today = date_type.today()
+        day_start = datetime.combine(today, datetime.min.time())
+        day_end = day_start + timedelta(days=1)
+        events = (
+            self.db.query(UsageEvent)
+            .filter(UsageEvent.at >= day_start, UsageEvent.at < day_end)
+            .all()
+        )
+        buckets: dict[tuple[str, str], dict] = defaultdict(
+            lambda: {"views": 0, "seconds": 0, "actions": defaultdict(int)}
+        )
+        for ev in events:
+            b = buckets[(ev.user_id, ev.path)]
+            if ev.event_type == UsageEventType.page_view:
+                b["views"] += 1
+            elif ev.event_type == UsageEventType.heartbeat:
+                b["seconds"] += HEARTBEAT_SECONDS
+            elif ev.event_type == UsageEventType.action and ev.action_type:
+                b["actions"][ev.action_type] += 1
+        return buckets
+
     def query_overview(self) -> dict:
         today = date_type.today()
         wk = today - timedelta(days=6)
         mo = today - timedelta(days=29)
 
-        def _unique(since):
-            return (
+        def _unique_daily(since: date_type) -> set[str]:
+            return {
+                r[0] for r in
                 self.db.query(UsageDaily.user_id)
                 .filter(UsageDaily.date >= since)
-                .distinct().count()
-            )
+                .distinct().all()
+            }
 
-        secs_30d = (
-            self.db.query(sqlfn.coalesce(sqlfn.sum(UsageDaily.seconds), 0))
-            .filter(UsageDaily.date >= mo)
-            .scalar() or 0
-        )
+        today_buckets = self._today_raw_buckets()
+        today_users_raw = {uid for (uid, _) in today_buckets}
+        today_users_daily = {
+            r[0] for r in
+            self.db.query(UsageDaily.user_id)
+            .filter(UsageDaily.date == today)
+            .distinct().all()
+        }
+        today_users = today_users_raw | today_users_daily
+        today_secs_raw = sum(b["seconds"] for b in today_buckets.values())
+
         return {
-            "dau": _unique(today),
-            "wau": _unique(wk),
-            "mau": _unique(mo),
-            "hours_30d": round(secs_30d / 3600, 1),
+            "dau": len(today_users),
+            "wau": len(_unique_daily(wk) | today_users),
+            "mau": len(_unique_daily(mo) | today_users),
+            "hours_30d": round((
+                (self.db.query(sqlfn.coalesce(sqlfn.sum(UsageDaily.seconds), 0))
+                    .filter(UsageDaily.date >= mo).scalar() or 0)
+                + today_secs_raw
+            ) / 3600, 1),
         }
 
     def query_users(self, days: int = 30) -> list[dict]:
         start, _ = self._period(days)
+        today = date_type.today()
         rows = (
             self.db.query(
                 User.id, User.display_name, User.role,
@@ -213,13 +252,23 @@ class UsageService:
             if cur is None or secs > cur[1]:
                 top_per_user[pr.user_id] = (pr.path, secs)
 
+        today_buckets = self._today_raw_buckets()
+        today_secs_per_user: dict[str, int] = defaultdict(int)
+        today_users: set[str] = set()
+        for (uid, path), b in today_buckets.items():
+            today_users.add(uid)
+            today_secs_per_user[uid] += b["seconds"]
+            cur = top_per_user.get(uid)
+            if cur is None or b["seconds"] > cur[1]:
+                top_per_user[uid] = (path, b["seconds"])
+
         return [{
             "user_id": r.id,
             "display_name": r.display_name,
             "role": r.role.value if hasattr(r.role, "value") else r.role,
-            "last_seen": r.last_date,
-            "active_days": int(r.active_days or 0),
-            "hours": round((r.secs or 0) / 3600, 1),
+            "last_seen": today if r.id in today_users else r.last_date,
+            "active_days": int(r.active_days or 0) + (1 if r.id in today_users else 0),
+            "hours": round(((r.secs or 0) + today_secs_per_user.get(r.id, 0)) / 3600, 1),
             "top_path": top_per_user[r.id][0] if r.id in top_per_user else None,
         } for r in rows]
 
@@ -228,7 +277,6 @@ class UsageService:
         rows = (
             self.db.query(
                 UsageDaily.path,
-                sqlfn.count(sqlfn.distinct(UsageDaily.user_id)).label("uu"),
                 sqlfn.sum(UsageDaily.views).label("views"),
                 sqlfn.sum(UsageDaily.seconds).label("secs"),
             )
@@ -236,68 +284,83 @@ class UsageService:
             .group_by(UsageDaily.path)
             .all()
         )
+        users_per_path: dict[str, set[str]] = defaultdict(set)
+        for r in self.db.query(UsageDaily.path, UsageDaily.user_id).filter(
+            UsageDaily.date >= start,
+        ).distinct().all():
+            users_per_path[r.path].add(r.user_id)
+
+        agg: dict[str, dict] = {
+            r.path: {
+                "views": int(r.views or 0),
+                "seconds": int(r.secs or 0),
+                "users": set(users_per_path.get(r.path, set())),
+            } for r in rows
+        }
+        for (uid, path), b in self._today_raw_buckets().items():
+            slot = agg.setdefault(path, {"views": 0, "seconds": 0, "users": set()})
+            slot["views"] += b["views"]
+            slot["seconds"] += b["seconds"]
+            slot["users"].add(uid)
+
         return [{
-            "path": r.path,
-            "unique_users": int(r.uu or 0),
-            "views": int(r.views or 0),
-            "hours": round((r.secs or 0) / 3600, 1),
-        } for r in rows]
+            "path": path,
+            "unique_users": len(d["users"]),
+            "views": d["views"],
+            "hours": round(d["seconds"] / 3600, 1),
+        } for path, d in agg.items()]
 
     def query_matrix(self, days: int = 30, top_n: int = 10) -> dict:
         start, _ = self._period(days)
 
-        top_users = (
-            self.db.query(UsageDaily.user_id, sqlfn.sum(UsageDaily.seconds).label("s"))
+        cells: dict[tuple[str, str], int] = defaultdict(int)
+        for r in (
+            self.db.query(
+                UsageDaily.user_id, UsageDaily.path,
+                sqlfn.sum(UsageDaily.seconds).label("secs"),
+            )
             .filter(UsageDaily.date >= start)
-            .group_by(UsageDaily.user_id)
-            .order_by(sqlfn.sum(UsageDaily.seconds).desc())
-            .limit(top_n).all()
-        )
-        user_ids = [u[0] for u in top_users]
+            .group_by(UsageDaily.user_id, UsageDaily.path)
+            .all()
+        ):
+            cells[(r.user_id, r.path)] += int(r.secs or 0)
+        for (uid, path), b in self._today_raw_buckets().items():
+            cells[(uid, path)] += b["seconds"]
 
-        top_paths = (
-            self.db.query(UsageDaily.path, sqlfn.sum(UsageDaily.seconds).label("s"))
-            .filter(UsageDaily.date >= start)
-            .group_by(UsageDaily.path)
-            .order_by(sqlfn.sum(UsageDaily.seconds).desc())
-            .limit(top_n).all()
-        )
-        paths = [p[0] for p in top_paths]
-
-        if not user_ids or not paths:
+        if not cells:
             return {"users": [], "paths": [], "cells": []}
+
+        user_totals: dict[str, int] = defaultdict(int)
+        path_totals: dict[str, int] = defaultdict(int)
+        for (uid, path), s in cells.items():
+            user_totals[uid] += s
+            path_totals[path] += s
+
+        user_ids = [u for u, _ in sorted(user_totals.items(), key=lambda kv: -kv[1])[:top_n]]
+        paths = [p for p, _ in sorted(path_totals.items(), key=lambda kv: -kv[1])[:top_n]]
+        user_set = set(user_ids)
+        path_set = set(paths)
 
         users_meta = {
             u.id: u.display_name for u in
             self.db.query(User).filter(User.id.in_(user_ids)).all()
         }
 
-        cells_rows = (
-            self.db.query(
-                UsageDaily.user_id, UsageDaily.path,
-                sqlfn.sum(UsageDaily.seconds).label("secs"),
-            )
-            .filter(
-                UsageDaily.date >= start,
-                UsageDaily.user_id.in_(user_ids),
-                UsageDaily.path.in_(paths),
-            )
-            .group_by(UsageDaily.user_id, UsageDaily.path)
-            .all()
-        )
         return {
             "users": [{"user_id": uid, "display_name": users_meta.get(uid, uid)}
                       for uid in user_ids],
             "paths": [{"path": p} for p in paths],
             "cells": [{
-                "user_id": r.user_id, "path": r.path,
-                "display_name": users_meta.get(r.user_id, r.user_id),
-                "hours": round((r.secs or 0) / 3600, 1),
-            } for r in cells_rows],
+                "user_id": uid, "path": path,
+                "display_name": users_meta.get(uid, uid),
+                "hours": round(s / 3600, 1),
+            } for (uid, path), s in cells.items()
+              if uid in user_set and path in path_set],
         }
 
     def query_timeline(self, days: int = 30) -> list[dict]:
         start, _ = self._period(days)
+        today = date_type.today()
         rows = (
             self.db.query(
                 UsageDaily.date,
@@ -310,12 +373,33 @@ class UsageService:
             .order_by(UsageDaily.date)
             .all()
         )
+        out_by_date: dict[date_type, dict] = {
+            r.date: {
+                "views": int(r.views or 0),
+                "seconds": int(r.secs or 0),
+                "active_users": int(r.uu or 0),
+            } for r in rows
+        }
+
+        today_buckets = self._today_raw_buckets()
+        if today_buckets:
+            today_views = sum(b["views"] for b in today_buckets.values())
+            today_secs = sum(b["seconds"] for b in today_buckets.values())
+            today_uu = len({uid for (uid, _) in today_buckets})
+            out_by_date[today] = {
+                "views": out_by_date.get(today, {}).get("views", 0) + today_views,
+                "seconds": out_by_date.get(today, {}).get("seconds", 0) + today_secs,
+                "active_users": max(
+                    out_by_date.get(today, {}).get("active_users", 0), today_uu,
+                ),
+            }
+
         return [{
-            "date": r.date,
-            "views": int(r.views or 0),
-            "seconds": int(r.secs or 0),
-            "active_users": int(r.uu or 0),
-        } for r in rows]
+            "date": d,
+            "views": v["views"],
+            "seconds": v["seconds"],
+            "active_users": v["active_users"],
+        } for d, v in sorted(out_by_date.items())]
 
     def query_actions(self, days: int = 30) -> list[dict]:
         start, _ = self._period(days)
