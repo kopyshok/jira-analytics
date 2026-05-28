@@ -40,7 +40,7 @@ export default function ExternalQaInput({ scenarioId, value, disabled }: Props) 
           placeholder="не задано"
           disabled={disabled || update.isPending}
           style={{ width: '100%' }}
-          addonAfter="ч"
+          suffix="ч"
         />
       </Form.Item>
     </Form>

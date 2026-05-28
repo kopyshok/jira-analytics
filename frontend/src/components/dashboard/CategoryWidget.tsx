@@ -74,12 +74,12 @@ function ThresholdsPopover({ value, onChange }: { value: Thresholds; onChange: (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#67d68d' }} />
         <span style={{ flex: 1, fontSize: 13 }}>Зелёный — до</span>
-        <InputNumber min={0} max={365} value={value.greenMax} onChange={setGreen} style={{ width: 80 }} addonAfter="д" />
+        <InputNumber min={0} max={365} value={value.greenMax} onChange={setGreen} style={{ width: 80 }} suffix="д" />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#faad14' }} />
         <span style={{ flex: 1, fontSize: 13 }}>Жёлтый — до</span>
-        <InputNumber min={value.greenMax} max={365} value={value.yellowMax} onChange={setYellow} style={{ width: 80 }} addonAfter="д" />
+        <InputNumber min={value.greenMax} max={365} value={value.yellowMax} onChange={setYellow} style={{ width: 80 }} suffix="д" />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ff4d4f' }} />

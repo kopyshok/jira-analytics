@@ -86,7 +86,7 @@ export default function SplitAssignmentModal({ open, onClose, onSplit, planId, a
                   step={1}
                   value={h}
                   onChange={(v) => updatePart(idx, v as number | null)}
-                  addonAfter="ч"
+                  suffix="ч"
                 />
                 {parts.length > 2 && (
                   <Button size="small" danger onClick={() => removePart(idx)}>
