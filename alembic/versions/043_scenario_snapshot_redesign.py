@@ -20,6 +20,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    is_postgresql = bind.dialect.name == "postgresql"
+
     # --- scenario_revisions: новые поля ---
     # Добавляем колонки отдельно от FK, чтобы избежать CircularDependencyError
     # при batch-пересборке таблицы с self-referencing FK (parent_revision_id).
@@ -27,19 +30,35 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("parent_revision_id", sa.String(length=36), nullable=True))
         batch_op.add_column(sa.Column("approved_by_user_id", sa.String(length=36), nullable=True))
         batch_op.add_column(sa.Column("algo_version", sa.String(length=16), nullable=False, server_default="v1"))
-    with op.batch_alter_table("scenario_revisions", recreate="always") as batch_op:
-        batch_op.create_foreign_key(
+    if is_postgresql:
+        op.create_foreign_key(
             "fk_scenario_revisions_parent",
+            "scenario_revisions",
             "scenario_revisions",
             ["parent_revision_id"], ["id"],
             ondelete="SET NULL",
         )
-        batch_op.create_foreign_key(
+        op.create_foreign_key(
             "fk_scenario_revisions_user",
+            "scenario_revisions",
             "users",
             ["approved_by_user_id"], ["id"],
             ondelete="SET NULL",
         )
+    else:
+        with op.batch_alter_table("scenario_revisions", recreate="always") as batch_op:
+            batch_op.create_foreign_key(
+                "fk_scenario_revisions_parent",
+                "scenario_revisions",
+                ["parent_revision_id"], ["id"],
+                ondelete="SET NULL",
+            )
+            batch_op.create_foreign_key(
+                "fk_scenario_revisions_user",
+                "users",
+                ["approved_by_user_id"], ["id"],
+                ondelete="SET NULL",
+            )
 
     # --- scenario_capacity_snapshots: новые поля ---
     with op.batch_alter_table("scenario_capacity_snapshots") as batch_op:
@@ -171,6 +190,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    is_postgresql = bind.dialect.name == "postgresql"
+
     op.drop_table("scenario_dictionary_snapshots")
     op.drop_index("ix_alloc_breakdown_rev_alloc_month", table_name="scenario_allocation_breakdown_snapshots")
     op.drop_table("scenario_allocation_breakdown_snapshots")
@@ -187,10 +209,14 @@ def downgrade() -> None:
         batch_op.drop_column("mandatory_hours")
         batch_op.drop_column("absence_hours")
         batch_op.drop_column("gross_hours")
-    # Сначала удаляем FK (recreate, чтобы убрать self-referencing FK), затем колонки.
-    with op.batch_alter_table("scenario_revisions", recreate="always") as batch_op:
-        batch_op.drop_constraint("fk_scenario_revisions_user", type_="foreignkey")
-        batch_op.drop_constraint("fk_scenario_revisions_parent", type_="foreignkey")
+    # Сначала удаляем FK, затем колонки.
+    if is_postgresql:
+        op.drop_constraint("fk_scenario_revisions_user", "scenario_revisions", type_="foreignkey")
+        op.drop_constraint("fk_scenario_revisions_parent", "scenario_revisions", type_="foreignkey")
+    else:
+        with op.batch_alter_table("scenario_revisions", recreate="always") as batch_op:
+            batch_op.drop_constraint("fk_scenario_revisions_user", type_="foreignkey")
+            batch_op.drop_constraint("fk_scenario_revisions_parent", type_="foreignkey")
     with op.batch_alter_table("scenario_revisions") as batch_op:
         batch_op.drop_column("algo_version")
         batch_op.drop_column("approved_by_user_id")

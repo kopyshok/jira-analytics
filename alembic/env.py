@@ -83,6 +83,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         _ensure_alembic_version_column(connection)
+        connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
