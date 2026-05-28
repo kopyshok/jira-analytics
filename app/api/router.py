@@ -33,6 +33,7 @@ from app.api.endpoints import (
     teams as teams_endpoints,
     themes as themes_endpoints,
     ui_config as ui_config_endpoints,
+    usage as usage_endpoints,
     work_type_report as wtr_endpoints,
 )
 from app.core.auth_deps import get_current_user, require_admin
@@ -179,6 +180,9 @@ api_router.include_router(
 )
 api_router.include_router(
     feedback_endpoints.router, prefix="/feedback", tags=["feedback"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    usage_endpoints.router, prefix="/usage", tags=["usage"], dependencies=_auth_dep,
 )
 
 # Admin-only routers
