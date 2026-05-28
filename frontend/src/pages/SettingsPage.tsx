@@ -35,6 +35,7 @@ import PageHeader from '../components/shared/PageHeader';
 import { useAuth } from '../hooks/useAuth';
 import UsersTab from './settings/UsersTab';
 import FeedbackAdminTab from '../components/feedback/FeedbackAdminTab';
+import UsageTab from '../components/admin/usage/UsageTab';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -43,7 +44,7 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'visibility', 'users', 'feedback'] as const;
+const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'visibility', 'users', 'feedback', 'usage'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function readHashKey(): TabKey {
@@ -91,6 +92,7 @@ export default function SettingsPage() {
             ? [
                 { key: 'users', label: 'Пользователи', children: <UsersTab /> },
                 { key: 'feedback', label: 'Обратная связь', children: <FeedbackAdminTab /> },
+                { key: 'usage', label: 'Использование', children: <UsageTab /> },
               ]
             : []),
         ]}
