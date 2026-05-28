@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import {
   Button, Space, Table, Tag, App,
   Select, Typography, Modal, Checkbox, Switch,
@@ -521,13 +521,79 @@ export default function CategoriesEditorPage() {
     },
   []);
 
+  // Индекс id → node. Нужен для cascade-эффекта setPendingCategory: чтобы от
+  // родителя пройти его поддерево в текущем дереве. Пересоздаётся только при
+  // изменении серверного дерева.
+  const nodeById = useMemo(() => {
+    const map = new Map<string, IssueTreeNode>();
+    const walk = (nodes: IssueTreeNode[]) => {
+      for (const n of nodes) {
+        map.set(n.id, n);
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(issueTree.data ?? []);
+    return map;
+  }, [issueTree.data]);
+
+  // Какие id поставлены каскадом (не вручную). Нужно чтобы смена кода на
+  // родителе протащила обновление по уже каскадно-проставленным потомкам, но
+  // не тронула ручной выбор PM, даже если он совпадает с прежним кодом
+  // родителя. Сбрасывается там же где pendingCats.
+  const cascadedIdsRef = useRef<Set<string>>(new Set());
+
+  // Поставить категорию + (на вкладке «К разбору») каскадно её же — на
+  // видимых потомков «в стеке». Граница каскада: потомок с явным ручным
+  // выбором PM (своя assigned_category на сервере или ручной pending в этой
+  // сессии). Каскадно-проставленные потомки продолжают подхватывать смену
+  // кода родителя. При снятии (code=null) каскадно убираем pending у тех,
+  // кому каскад его поставил.
   const setPendingCategory = useCallback((issueId: string, code: string | null) => {
     setPendingCats(prev => {
       const next = new Map(prev);
       next.set(issueId, code);
+      cascadedIdsRef.current.delete(issueId); // ручной выбор PM на корне
+
+      if (innerTab !== 'stack') return next;
+
+      const root = nodeById.get(issueId);
+      if (!root) return next;
+
+      const cascaded = cascadedIdsRef.current;
+      const visit = (children: IssueTreeNode[] | undefined) => {
+        if (!children) return;
+        for (const ch of children) {
+          if (ch.issue_type === 'group') {
+            visit(ch.children);
+            continue;
+          }
+          if (ch.is_context) continue;
+
+          const hasOwnAssigned = !!ch.assigned_category;
+          if (hasOwnAssigned) continue; // ручной выбор на сервере = граница
+
+          const hasPending = next.has(ch.id);
+          const isCascaded = cascaded.has(ch.id);
+          // Ручной pending PM (не каскадом) — не трогаем + не идём глубже.
+          if (hasPending && !isCascaded) continue;
+
+          if (code === null) {
+            // Снятие у родителя — убираем каскадно-проставленного потомка.
+            if (hasPending && isCascaded) {
+              next.delete(ch.id);
+              cascaded.delete(ch.id);
+            }
+          } else {
+            next.set(ch.id, code);
+            cascaded.add(ch.id);
+          }
+          visit(ch.children);
+        }
+      };
+      visit(root.children);
       return next;
     });
-  }, []);
+  }, [innerTab, nodeById]);
 
   // Ids of context rows — ancestor rows outside the team filter, surfaced
   // only to keep hierarchy readable. The user can tick their checkbox as a
@@ -598,6 +664,7 @@ export default function CategoriesEditorPage() {
 
       const total = assignments.size;
       setPendingCats(new Map());
+      cascadedIdsRef.current = new Set();
       const parts: string[] = [];
       if (archivedIds.size > 0) parts.push(`в архив: ${archivedIds.size}`);
       if (skippedContainers.size > 0) parts.push(`пропущено родителей: ${skippedContainers.size}`);
@@ -988,7 +1055,7 @@ export default function CategoriesEditorPage() {
           <Space wrap>
             <Button
               icon={<CloseOutlined />}
-              onClick={() => setPendingCats(new Map())}
+              onClick={() => { setPendingCats(new Map()); cascadedIdsRef.current = new Set(); }}
             >
               Отменить
             </Button>

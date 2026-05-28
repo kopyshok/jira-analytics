@@ -38,13 +38,13 @@ export default function DependencyArrows({
     // Дать DOM settle после прихода новых assignments — rowRefs обновляются
     // в ref-callbacks PhaseBar, иногда useEffect выстреливает до апдейта.
     let cancelled = false;
+    let raf2: number | null = null;
     const raf1 = requestAnimationFrame(() => {
       if (cancelled) return;
-      const raf2 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
         if (cancelled) return;
         draw();
       });
-      (raf1 as unknown as { _inner?: number })._inner = raf2;
     });
 
     function draw() {
@@ -341,6 +341,7 @@ export default function DependencyArrows({
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf1);
+      if (raf2 !== null) cancelAnimationFrame(raf2);
     };
   }, [assignments, manualDependencies, showRelayArrows, onDeleteDependency, containerRef, rowRefs, highlightedEmployeeId, redrawKey]);
 
