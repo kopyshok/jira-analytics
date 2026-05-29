@@ -322,21 +322,26 @@ class AnalyticsService:
         fact_secs_by_issue: dict[str, int] = {r[0]: r[1] or 0 for r in fact_rows}
 
         # Аналогичный агрегат, но только по командным сотрудникам
-        if teams and team_employee_ids:
-            team_fact_rows = (
-                self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
-                .filter(
-                    Worklog.issue_id.in_(all_wl_ids),
-                    Worklog.started_at >= period_start_dt,
-                    Worklog.started_at <= period_end_dt,
-                    Worklog.employee_id.in_(team_employee_ids),
+        if teams:
+            # Фильтр команды задан — считаем командным только то, что от членов команды.
+            # Если команда без сопоставленных сотрудников — всё уходит в «помощь извне».
+            if team_employee_ids:
+                team_fact_rows = (
+                    self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
+                    .filter(
+                        Worklog.issue_id.in_(all_wl_ids),
+                        Worklog.started_at >= period_start_dt,
+                        Worklog.started_at <= period_end_dt,
+                        Worklog.employee_id.in_(team_employee_ids),
+                    )
+                    .group_by(Worklog.issue_id)
+                    .all()
                 )
-                .group_by(Worklog.issue_id)
-                .all()
-            )
-            team_fact_secs_by_issue: dict[str, int] = {r[0]: r[1] or 0 for r in team_fact_rows}
+                team_fact_secs_by_issue: dict[str, int] = {r[0]: r[1] or 0 for r in team_fact_rows}
+            else:
+                team_fact_secs_by_issue = {}
         else:
-            # Без фильтра команды — всё считается командным, alien=0
+            # Фильтр команды не задан — раздела нет, всё считается командным
             team_fact_secs_by_issue = dict(fact_secs_by_issue)
 
         def epic_fact_hours(epic_id: str) -> float:
@@ -419,7 +424,9 @@ class AnalyticsService:
 
         # Раздели epic_to_employees на свои/чужие; чужие пригодятся для alien_helpers
         epic_alien_employees: dict[str, dict[str, int]] = {}
-        if team_employee_ids:
+        if teams:
+            # Фильтр задан — отделяем чужих. Если team_employee_ids пуст,
+            # все сотрудники считаются чужими (team_employee_ids = пустое множество).
             for epic_id_key, emp_secs_map in epic_to_employees.items():
                 aliens = {
                     eid: secs for eid, secs in emp_secs_map.items()

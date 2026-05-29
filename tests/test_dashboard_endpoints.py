@@ -200,3 +200,80 @@ def test_dashboard_projects_splits_team_alien(testclient_db_session):
         assert project_item["alien_helpers"][0]["initials"] == "ЧО"
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_dashboard_projects_team_with_no_members_marks_all_as_alien(testclient_db_session):
+    """Команда задана но без сотрудников — все ворклоги считаются чужими."""
+    from datetime import datetime
+    from uuid import uuid4
+    from app.main import app
+    from app.database import get_db
+    from fastapi.testclient import TestClient
+    from app.models import (Project, Issue, Worklog, Employee,
+                            BacklogItem, PlanningScenario, ScenarioAllocation, Category)
+
+    db = testclient_db_session
+
+    cat = db.query(Category).filter_by(code="quarterly_tasks").first()
+    if not cat:
+        db.add(Category(id=str(uuid4()), code="quarterly_tasks",
+                        label="Квартальные задачи", color="#2dd4bf"))
+
+    project = Project(id=str(uuid4()), jira_project_id="jp_no_team", key="NTM",
+                      name="No-team project", is_active=True)
+    db.add(project)
+
+    epic_id = str(uuid4())
+    epic = Issue(id=epic_id, jira_issue_id="ji_no_team", key="NTM-1",
+                 summary="Epic without team members",
+                 issue_type="Epic", status="In Progress",
+                 status_category="indeterminate", project_id=project.id,
+                 category="quarterly_tasks")
+    db.add(epic)
+
+    bi = BacklogItem(id=str(uuid4()), title="Epic without team members",
+                    issue_id=epic_id, estimate_analyst_hours=50.0)
+    db.add(bi)
+
+    team_without_members = "Пустая команда"
+    scn = PlanningScenario(id=str(uuid4()), name="Q2 2026", year=2026,
+                           quarter="Q2", team=team_without_members, status="approved")
+    db.add(scn)
+    db.flush()
+
+    db.add(ScenarioAllocation(id=str(uuid4()), scenario_id=scn.id,
+                              backlog_item_id=bi.id, included_flag=True,
+                              planned_hours=50.0))
+
+    # Сотрудник не сопоставлен с этой командой (нет EmployeeTeam)
+    helper = Employee(id=str(uuid4()), jira_account_id="acc_helper",
+                      display_name="Помощник Один", is_active=True)
+    db.add(helper)
+
+    db.add(Worklog(id=str(uuid4()), jira_worklog_id="wl_help_1",
+                  issue_id=epic_id, employee_id=helper.id,
+                  started_at=datetime(2026, 4, 15, 10, 0, 0),
+                  time_spent_seconds=8*3600, hours=8.0))
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        c = TestClient(app)
+        resp = c.get(
+            f"/api/v1/analytics/dashboard/projects?year=2026&quarter=2&teams={team_without_members}"
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+
+        assert data["total_team_fact_hours"] == 0.0, data
+        assert data["total_alien_fact_hours"] == 8.0, data
+        assert data["alien_helper_count"] == 1
+        assert data["alien_projects_count"] == 1
+
+        assert len(data["projects"]) == 1, data
+        project_item = data["projects"][0]
+        assert project_item["team_fact_hours"] == 0.0
+        assert project_item["alien_fact_hours"] == 8.0
+        assert project_item["alien_helper_count"] == 1
+    finally:
+        app.dependency_overrides.pop(get_db, None)
