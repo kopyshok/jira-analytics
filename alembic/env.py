@@ -55,7 +55,7 @@ def _ensure_alembic_version_column(connection) -> None:
     if version_column is None:
         return
     length = getattr(version_column["type"], "length", None)
-    if length is not None and length < 64:
+    if length is not None and length < 64 and connection.dialect.name == "postgresql":
         connection.exec_driver_sql("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
 
 

@@ -140,14 +140,19 @@ async def health_ready():
 
 
 class SPAStaticFiles(StaticFiles):
+    def __init__(self, *args, **kwargs):
+        self._spa_fallback = kwargs.pop("html", False)
+        super().__init__(*args, html=False, **kwargs)
+
     async def get_response(self, path: str, scope):
         try:
             return await super().get_response(path, scope)
         except StarletteHTTPException as exc:
+            normalized = path.replace("\\", "/").lstrip("/")
             if (
                 exc.status_code != 404
-                or not self.html
-                or path.lstrip("/").startswith("assets/")
+                or not self._spa_fallback
+                or normalized.startswith("assets/")
                 or not self._accepts_html(scope)
             ):
                 raise
