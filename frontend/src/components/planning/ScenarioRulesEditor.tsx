@@ -13,6 +13,12 @@ interface RuleDraft extends ScenarioRuleInput {
   _key: string;
 }
 
+// AntD 6 Select запрещает value: null в options. Используем sentinel для UI,
+// конвертируем в null на границе ввода/вывода.
+const ALL_ROLES_SENTINEL = '__all__';
+const toRoleUi = (role: string | null): string => role ?? ALL_ROLES_SENTINEL;
+const fromRoleUi = (v: string): string | null => v === ALL_ROLES_SENTINEL ? null : v;
+
 interface Props {
   scenarioId: string;
 }
@@ -61,7 +67,7 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
   const hasDuplicates = duplicateKeys.size > 0;
 
   const roleOptions = useMemo(() => [
-    { value: null as string | null, label: 'Все' },
+    { value: ALL_ROLES_SENTINEL, label: 'Все' },
     ...roles.map((r) => ({ value: r.code, label: r.label })),
   ], [roles]);
 
@@ -138,9 +144,9 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
         <Select
           size="small"
           style={{ width: '100%' }}
-          value={record.role}
+          value={toRoleUi(record.role)}
           options={roleOptions}
-          onChange={(v) => updateRow(record._key, { role: v })}
+          onChange={(v) => updateRow(record._key, { role: fromRoleUi(v) })}
         />
       ),
     },
