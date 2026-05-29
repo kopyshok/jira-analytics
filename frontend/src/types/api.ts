@@ -762,6 +762,10 @@ export interface ProjectItem {
   forecast_in_quarter: boolean;
   silent_days: number;
   weekly_activity: number[];
+  team_fact_hours: number;
+  alien_fact_hours: number;
+  alien_helpers: ProjectAssignee[];
+  alien_helper_count: number;
 }
 
 export interface DashboardProjectsResponse {
@@ -777,6 +781,10 @@ export interface DashboardProjectsResponse {
   forecast_done: number;
   forecast_pct: number;
   projects: ProjectItem[];
+  total_team_fact_hours: number;
+  total_alien_fact_hours: number;
+  alien_helper_count: number;
+  alien_projects_count: number;
 }
 
 export interface NormWorkTypeBreakdown {
