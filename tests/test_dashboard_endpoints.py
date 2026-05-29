@@ -277,3 +277,71 @@ def test_dashboard_projects_team_with_no_members_marks_all_as_alien(testclient_d
         assert project_item["alien_helper_count"] == 1
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_dashboard_projects_alien_helpers_top3(testclient_db_session):
+    """В alien_helpers возвращается только top-3 по часам, но count полный."""
+    from datetime import datetime
+    from uuid import uuid4
+    from app.main import app
+    from app.database import get_db
+    from fastapi.testclient import TestClient
+    from app.models import (Project, Issue, Worklog, Employee,
+                            BacklogItem, PlanningScenario, ScenarioAllocation, Category)
+
+    db = testclient_db_session
+
+    cat = db.query(Category).filter_by(code="quarterly_tasks").first()
+    if not cat:
+        db.add(Category(id=str(uuid4()), code="quarterly_tasks",
+                        label="Квартальные задачи", color="#2dd4bf"))
+
+    project = Project(id=str(uuid4()), jira_project_id="jp_top3", key="TP3",
+                      name="Top-3 test project", is_active=True)
+    db.add(project)
+
+    epic_id = str(uuid4())
+    epic = Issue(id=epic_id, jira_issue_id="ji_top3", key="TP3-1",
+                 summary="Top-3 epic", issue_type="Epic", status="In Progress",
+                 status_category="indeterminate", project_id=project.id,
+                 category="quarterly_tasks")
+    db.add(epic)
+
+    bi = BacklogItem(id=str(uuid4()), title="Top-3 epic",
+                    issue_id=epic_id, estimate_analyst_hours=100.0)
+    db.add(bi)
+
+    team = "Команда Топ3"
+    scn = PlanningScenario(id=str(uuid4()), name="Q2 2026 top3", year=2026,
+                           quarter="Q2", team=team, status="approved")
+    db.add(scn)
+    db.flush()
+    db.add(ScenarioAllocation(id=str(uuid4()), scenario_id=scn.id,
+                              backlog_item_id=bi.id, included_flag=True,
+                              planned_hours=100.0))
+
+    started = datetime(2026, 4, 15, 10, 0, 0)
+
+    # 5 чужих с разными часами — никто в команде
+    hours_by_name = [("А А", 10), ("Б Б", 8), ("В В", 6), ("Г Г", 4), ("Д Д", 2)]
+    for idx, (name, h) in enumerate(hours_by_name):
+        emp = Employee(id=str(uuid4()), jira_account_id=f"acc_top3_{idx}",
+                       display_name=name, is_active=True)
+        db.add(emp)
+        db.add(Worklog(id=str(uuid4()), jira_worklog_id=f"wl_top3_{idx}",
+                       issue_id=epic_id, employee_id=emp.id,
+                       started_at=started, time_spent_seconds=h*3600,
+                       hours=float(h)))
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        c = TestClient(app)
+        resp = c.get(f"/api/v1/analytics/dashboard/projects?year=2026&quarter=2&teams={team}")
+        assert resp.status_code == 200, resp.text
+        project_item = resp.json()["projects"][0]
+        assert project_item["alien_helper_count"] == 5
+        assert len(project_item["alien_helpers"]) == 3
+        assert [h["initials"] for h in project_item["alien_helpers"]] == ["АА", "ББ", "ВВ"]
+    finally:
+        app.dependency_overrides.pop(get_db, None)
