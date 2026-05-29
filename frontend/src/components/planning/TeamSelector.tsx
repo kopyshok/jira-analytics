@@ -26,7 +26,7 @@ export function TeamSelector({
     return (
       <Alert
         type="warning"
-        message="Список команд пуст. Загрузите проекты из Jira в разделе Синхронизация."
+        title="Список команд пуст. Загрузите проекты из Jira в разделе Синхронизация."
         showIcon
       />
     );

@@ -44,7 +44,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
       <div style={{ padding: '16px 20px' }}>
         <Alert
           type="error"
-          message="Не удалось загрузить контекст задачи"
+          title="Не удалось загрузить контекст задачи"
           action={<Button size="small" onClick={() => refetch()}>Повторить</Button>}
         />
       </div>

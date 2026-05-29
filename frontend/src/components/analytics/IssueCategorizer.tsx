@@ -105,7 +105,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
             type="warning"
             showIcon
             icon={<span>⚠</span>}
-            message="Это контейнер. Категории ставятся детям, не самому контейнеру."
+            title="Это контейнер. Категории ставятся детям, не самому контейнеру."
             style={{
               marginBottom: 12,
               background: 'rgba(251,191,36,0.07)',

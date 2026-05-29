@@ -23,7 +23,7 @@ export default function CriticalPathSection({ assignment, collapsed, onToggleCol
             <Alert
               type="error"
               showIcon
-              message="Фаза на критическом пути."
+              title="Фаза на критическом пути."
               description={`Резерв: ${slack} дней. Сдвиг сорвёт срок проекта.`}
             />
           )
