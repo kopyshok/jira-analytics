@@ -27,7 +27,7 @@ def upgrade() -> None:
         SET hours = CASE
             WHEN kind = 'preholiday' THEN 7
             WHEN kind IN ('workday', 'workday_moved') THEN 8
-            WHEN is_workday = 1 THEN 8
+            WHEN is_workday THEN 8
             ELSE 0
         END
         """

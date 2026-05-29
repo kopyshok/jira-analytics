@@ -11,6 +11,7 @@ psycopg2-binary>=2.9,<3.0
 
 # HTTP client for Jira API
 httpx>=0.26.0
+python-multipart>=0.0.9
 
 # Exports (M5)
 openpyxl>=3.1.0
