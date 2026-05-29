@@ -10,10 +10,10 @@ import type { QuarterPeriod } from '../types/api';
 export const useEmployeesForFilter = () =>
   useQuery({ queryKey: ['employees'], queryFn: () => getEmployees() });
 
-export function useDashboardProjects(period: QuarterPeriod) {
+export function useDashboardProjects(period: QuarterPeriod, teams?: Record<string, string>) {
   return useQuery({
-    queryKey: ['dashboard-projects', period],
-    queryFn: ({ signal }) => fetchDashboardProjects(period, signal),
+    queryKey: ['dashboard-projects', period, teams],
+    queryFn: ({ signal }) => fetchDashboardProjects(period, teams, signal),
     staleTime: 30_000,
     retry: 1,
   });

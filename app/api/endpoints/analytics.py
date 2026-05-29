@@ -63,12 +63,15 @@ def dashboard_projects(
     year: int = Query(..., ge=2020, le=2100),
     quarter: int = Query(..., ge=1, le=4),
     month: Optional[int] = Query(None, ge=1, le=12),
+    teams: Optional[str] = Query(None, description="Команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Widget 1: обзор проектов квартала из утверждённого сценария."""
     svc = AnalyticsService(db)
     try:
-        return svc.get_dashboard_projects(year=year, quarter=quarter, month=month)
+        return svc.get_dashboard_projects(
+            year=year, quarter=quarter, month=month, teams=parse_teams_csv(teams)
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
