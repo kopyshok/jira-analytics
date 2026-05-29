@@ -55,6 +55,59 @@ DEFAULT_SKIP: Set[str] = {
 }
 
 
+def _self_referencing_fk_columns(table: Table) -> list[str]:
+    columns: list[str] = []
+    for constraint in table.foreign_key_constraints:
+        for element in constraint.elements:
+            if element.column.table.name == table.name:
+                columns.append(element.parent.name)
+    return columns
+
+
+def _order_rows_for_self_referencing_table(table_name: str, rows: List[dict]) -> List[dict]:
+    table = Base.metadata.tables.get(table_name)
+    if table is None or len(rows) < 2:
+        return rows
+
+    self_fk_columns = _self_referencing_fk_columns(table)
+    if not self_fk_columns:
+        return rows
+
+    rows_by_id = {
+        row["id"]: row
+        for row in rows
+        if row.get("id") is not None
+    }
+    state: dict[str, int] = {}
+    ordered: list[dict] = []
+
+    def visit(row: dict) -> None:
+        row_id = row.get("id")
+        if row_id is None:
+            ordered.append(row)
+            return
+
+        current_state = state.get(row_id, 0)
+        if current_state == 2:
+            return
+        if current_state == 1:
+            return
+
+        state[row_id] = 1
+        for column in self_fk_columns:
+            parent_id = row.get(column)
+            parent_row = rows_by_id.get(parent_id)
+            if parent_row is not None and parent_row is not row:
+                visit(parent_row)
+        state[row_id] = 2
+        ordered.append(row)
+
+    for row in rows:
+        visit(row)
+
+    return ordered
+
+
 def _check_alembic_head(target_url: str) -> None:
     """Fail fast if the target schema is not at the latest revision."""
     from alembic.config import Config
@@ -98,10 +151,20 @@ def _copy_table(
         return 0, 0
 
     copied = 0
+    self_fk_columns = _self_referencing_fk_columns(table)
     with source.connect() as src_conn:
         result = src_conn.execution_options(stream_results=True).execute(
             select(table)
         )
+        if self_fk_columns:
+            rows = [dict(row._mapping) for row in result]
+            ordered_rows = _order_rows_for_self_referencing_table(table.name, rows)
+            for start in range(0, len(ordered_rows), batch_size):
+                batch = ordered_rows[start:start + batch_size]
+                _insert_batch(target, table, batch)
+                copied += len(batch)
+            return source_count, copied
+
         batch: list[dict] = []
         for row in result:
             batch.append(dict(row._mapping))

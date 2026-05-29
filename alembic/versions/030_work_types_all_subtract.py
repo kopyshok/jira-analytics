@@ -14,14 +14,14 @@ depends_on = None
 
 
 def upgrade():
-    op.execute("UPDATE mandatory_work_types SET subtracts_from_pool = 1")
+    op.execute("UPDATE mandatory_work_types SET subtracts_from_pool = true")
 
 
 def downgrade():
     # Restore the original 026 logic: work types with linked categories → False
     op.execute("""
         UPDATE mandatory_work_types
-        SET subtracts_from_pool = 0
+        SET subtracts_from_pool = false
         WHERE id IN (
             SELECT DISTINCT work_type_id FROM categories WHERE work_type_id IS NOT NULL
         )

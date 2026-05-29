@@ -68,10 +68,10 @@ def upgrade() -> None:
                 sa.text(
                     "INSERT INTO sync_schedule "
                     "(id, name, cron_expr, mode, enabled, created_at, updated_at) "
-                    "VALUES (:id, :name, :cron, :mode, 1, "
+                    "VALUES (:id, :name, :cron, :mode, :enabled, "
                     "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
                 ),
-                {"id": str(uuid.uuid4()), "name": name, "cron": cron, "mode": mode},
+                {"id": str(uuid.uuid4()), "name": name, "cron": cron, "mode": mode, "enabled": True},
             )
 
 

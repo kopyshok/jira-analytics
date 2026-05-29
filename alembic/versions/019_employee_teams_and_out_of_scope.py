@@ -54,8 +54,8 @@ def upgrade() -> None:
     for emp_id, team in rows:
         bind.execute(sa.text(
             "INSERT INTO employee_teams (id, employee_id, team, is_primary, created_at) "
-            "VALUES (:id, :eid, :team, 1, :now)"
-        ), {"id": str(uuid.uuid4()), "eid": emp_id, "team": team, "now": now})
+            "VALUES (:id, :eid, :team, :is_primary, :now)"
+        ), {"id": str(uuid.uuid4()), "eid": emp_id, "team": team, "is_primary": True, "now": now})
 
 
 def downgrade() -> None:

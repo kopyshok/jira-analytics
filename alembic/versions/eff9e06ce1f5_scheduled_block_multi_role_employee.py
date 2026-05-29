@@ -5,6 +5,7 @@ Revises: 0b8523de3ff1
 Create Date: 2026-05-10 19:27:44.137023
 
 """
+import uuid
 from typing import Sequence, Union
 
 from alembic import op
@@ -63,22 +64,62 @@ def upgrade() -> None:
     )
 
     # Data migration — copy existing single role_id / employee_id to new tables.
-    op.execute(
-        """
-        INSERT INTO scheduled_block_role (id, block_id, role_id)
-        SELECT lower(hex(randomblob(16))), id, role_id
-        FROM scheduled_blocks
-        WHERE role_id IS NOT NULL
-        """
-    )
-    op.execute(
-        """
-        INSERT INTO scheduled_block_employee (id, block_id, employee_id)
-        SELECT lower(hex(randomblob(16))), id, employee_id
-        FROM scheduled_blocks
-        WHERE employee_id IS NOT NULL
-        """
-    )
+    bind = op.get_bind()
+    role_rows = bind.execute(
+        sa.text(
+            """
+            SELECT id, role_id
+            FROM scheduled_blocks
+            WHERE role_id IS NOT NULL
+            """
+        )
+    ).all()
+    if role_rows:
+        scheduled_block_role = sa.table(
+            "scheduled_block_role",
+            sa.column("id", sa.String),
+            sa.column("block_id", sa.String),
+            sa.column("role_id", sa.String),
+        )
+        op.bulk_insert(
+            scheduled_block_role,
+            [
+                {
+                    "id": str(uuid.uuid4()),
+                    "block_id": block_id,
+                    "role_id": role_id,
+                }
+                for block_id, role_id in role_rows
+            ],
+        )
+
+    employee_rows = bind.execute(
+        sa.text(
+            """
+            SELECT id, employee_id
+            FROM scheduled_blocks
+            WHERE employee_id IS NOT NULL
+            """
+        )
+    ).all()
+    if employee_rows:
+        scheduled_block_employee = sa.table(
+            "scheduled_block_employee",
+            sa.column("id", sa.String),
+            sa.column("block_id", sa.String),
+            sa.column("employee_id", sa.String),
+        )
+        op.bulk_insert(
+            scheduled_block_employee,
+            [
+                {
+                    "id": str(uuid.uuid4()),
+                    "block_id": block_id,
+                    "employee_id": employee_id,
+                }
+                for block_id, employee_id in employee_rows
+            ],
+        )
 
     # Drop legacy columns.
     with op.batch_alter_table("scheduled_blocks") as batch:

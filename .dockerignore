@@ -39,6 +39,8 @@ Dockerfile
 
 # --- Docs and design assets ---
 docs/
+!docs/help/
+!docs/help/*.md
 TZ/
 *.md
 LICENSE
