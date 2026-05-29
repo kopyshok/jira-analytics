@@ -345,3 +345,79 @@ def test_dashboard_projects_alien_helpers_top3(testclient_db_session):
         assert [h["initials"] for h in project_item["alien_helpers"]] == ["АА", "ББ", "ВВ"]
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_dashboard_projects_qa_role_counts_as_team(testclient_db_session):
+    """Сотрудник с ролью qa — общий ресурс, не «помощь», даже если не сопоставлен с командой."""
+    from datetime import datetime
+    from uuid import uuid4
+    from app.main import app
+    from app.database import get_db
+    from fastapi.testclient import TestClient
+    from app.models import (Project, Issue, Worklog, Employee, EmployeeTeam,
+                            BacklogItem, PlanningScenario, ScenarioAllocation, Category)
+
+    db = testclient_db_session
+
+    cat = db.query(Category).filter_by(code="quarterly_tasks").first()
+    if not cat:
+        db.add(Category(id=str(uuid4()), code="quarterly_tasks",
+                        label="Квартальные задачи", color="#2dd4bf"))
+
+    project = Project(id=str(uuid4()), jira_project_id="jp_qa", key="QAT",
+                      name="QA test project", is_active=True)
+    db.add(project)
+
+    epic_id = str(uuid4())
+    epic = Issue(id=epic_id, jira_issue_id="ji_qa", key="QAT-1",
+                 summary="Epic with QA help", issue_type="Epic", status="In Progress",
+                 status_category="indeterminate", project_id=project.id,
+                 category="quarterly_tasks")
+    db.add(epic)
+
+    bi = BacklogItem(id=str(uuid4()), title="QA epic",
+                    issue_id=epic_id, estimate_analyst_hours=50.0)
+    db.add(bi)
+
+    team = "Команда QA-тест"
+    scn = PlanningScenario(id=str(uuid4()), name="Q2 2026 QA", year=2026,
+                           quarter="Q2", team=team, status="approved")
+    db.add(scn)
+    db.flush()
+    db.add(ScenarioAllocation(id=str(uuid4()), scenario_id=scn.id,
+                              backlog_item_id=bi.id, included_flag=True,
+                              planned_hours=50.0))
+
+    # Один член команды (без роли) + один QA не сопоставлен с командой
+    own = Employee(id=str(uuid4()), jira_account_id="acc_qa_own",
+                   display_name="Свой Иван", is_active=True)
+    qa = Employee(id=str(uuid4()), jira_account_id="acc_qa_shared",
+                  display_name="QA Шевелёв", is_active=True, role="qa")
+    db.add_all([own, qa])
+    db.add(EmployeeTeam(id=str(uuid4()), employee_id=own.id, team=team, is_primary=True))
+
+    started = datetime(2026, 4, 15, 10, 0, 0)
+    db.add_all([
+        Worklog(id=str(uuid4()), jira_worklog_id="wl_qa_own", issue_id=epic_id,
+                employee_id=own.id, started_at=started,
+                time_spent_seconds=10*3600, hours=10.0),
+        Worklog(id=str(uuid4()), jira_worklog_id="wl_qa_shared", issue_id=epic_id,
+                employee_id=qa.id, started_at=started,
+                time_spent_seconds=4*3600, hours=4.0),
+    ])
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        c = TestClient(app)
+        resp = c.get(f"/api/v1/analytics/dashboard/projects?year=2026&quarter=2&teams={team}")
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+
+        # QA шевелёв должен попасть в команду, не в чужих
+        assert data["total_team_fact_hours"] == 14.0, data
+        assert data["total_alien_fact_hours"] == 0.0, data
+        assert data["alien_helper_count"] == 0
+        assert data["alien_projects_count"] == 0
+    finally:
+        app.dependency_overrides.pop(get_db, None)

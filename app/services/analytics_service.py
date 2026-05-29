@@ -278,7 +278,8 @@ class AnalyticsService:
         # Все ID для ворклог-агрегаций
         all_wl_ids = issue_id_set | set(child_to_parent.keys())
 
-        # Множество ID сотрудников команды — для split team vs alien (Task M11)
+        # Множество ID сотрудников команды — для split team vs alien (Task M11).
+        # QA — общий ресурс компании, считается командным для всех команд.
         if teams:
             team_emp_rows = (
                 self.db.query(EmployeeTeam.employee_id)
@@ -286,8 +287,14 @@ class AnalyticsService:
                 .all()
             )
             team_employee_ids: set[str] = {r[0] for r in team_emp_rows}
+            qa_emp_rows = (
+                self.db.query(Employee.id)
+                .filter(Employee.role == "qa")
+                .all()
+            )
+            team_employee_ids |= {r[0] for r in qa_emp_rows}
         else:
-            team_employee_ids = set()  # пусто — фильтр не задан, всё считаем командным
+            team_employee_ids = set()  # фильтр не задан — раздела нет
 
         # Last worklog per epic (для silence)
         last_wl_rows = (
