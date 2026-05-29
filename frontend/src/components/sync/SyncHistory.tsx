@@ -130,7 +130,7 @@ export default function SyncHistory() {
     try {
       await refetch();
     } catch (e) {
-      notification.error({ message: 'Ошибка загрузки', description: (e as Error).message });
+      notification.error({ title: 'Ошибка загрузки', description: (e as Error).message });
     }
   };
 

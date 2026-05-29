@@ -43,7 +43,14 @@ export default function DependencyArrows({
       if (cancelled) return;
       raf2 = requestAnimationFrame(() => {
         if (cancelled) return;
-        draw();
+        try {
+          draw();
+        } catch (err) {
+          // Guard: defensive — корректные refs могут на короткий миг
+          // оказаться нечисловыми/нестабильными при HMR/перерендере.
+          // Не валим весь экран — стрелки просто не отрисуются.
+          console.warn('[DependencyArrows] draw failed:', err);
+        }
       });
     });
 

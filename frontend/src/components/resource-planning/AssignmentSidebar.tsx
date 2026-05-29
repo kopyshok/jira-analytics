@@ -80,8 +80,7 @@ export default function AssignmentSidebar({
         open={open}
         onClose={onClose}
         styles={{ wrapper: { width: 920 } }}
-        mask
-        maskClosable
+        mask={{ closable: true }}
         title="Назначение"
       />
     );
@@ -169,8 +168,7 @@ export default function AssignmentSidebar({
       open={open}
       onClose={onClose}
       styles={{ wrapper: { width: 920 } }}
-      mask
-      maskClosable
+      mask={{ closable: true }}
       title={
         <Space style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space>

@@ -35,24 +35,24 @@ export default function SyncSchedule() {
       updateSchedule(id, { enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sync', 'schedule'] }),
     onError: (e) =>
-      notification.error({ message: 'Ошибка', description: (e as Error).message }),
+      notification.error({ title: 'Ошибка', description: (e as Error).message }),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteSchedule(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sync', 'schedule'] }),
     onError: (e) =>
-      notification.error({ message: 'Ошибка удаления', description: (e as Error).message }),
+      notification.error({ title: 'Ошибка удаления', description: (e as Error).message }),
   });
 
   const runNowMut = useMutation({
     mutationFn: (id: string) => runScheduleNow(id),
     onSuccess: () => {
-      notification.success({ message: 'Запущено' });
+      notification.success({ title: 'Запущено' });
       qc.invalidateQueries({ queryKey: ['sync', 'runs'] });
     },
     onError: (e) =>
-      notification.error({ message: 'Ошибка запуска', description: (e as Error).message }),
+      notification.error({ title: 'Ошибка запуска', description: (e as Error).message }),
   });
 
   const [addOpen, setAddOpen] = useState(false);
@@ -64,10 +64,10 @@ export default function SyncSchedule() {
       qc.invalidateQueries({ queryKey: ['sync', 'schedule'] });
       setAddOpen(false);
       form.resetFields();
-      notification.success({ message: 'Расписание создано' });
+      notification.success({ title: 'Расписание создано' });
     },
     onError: (e) =>
-      notification.error({ message: 'Ошибка создания', description: (e as Error).message }),
+      notification.error({ title: 'Ошибка создания', description: (e as Error).message }),
   });
 
   const columns = [

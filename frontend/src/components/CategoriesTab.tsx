@@ -86,7 +86,7 @@ export default function CategoriesTab() {
         qc.invalidateQueries({ queryKey: ['categories'] });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Неизвестная ошибка';
-        notification.error({ message: 'Ошибка сортировки', description: msg });
+        notification.error({ title: 'Ошибка сортировки', description: msg });
       }
     },
     [items, qc, notification],
@@ -241,9 +241,9 @@ export default function CategoriesTab() {
           onClick={() =>
             recalculate.mutate(undefined, {
               onSuccess: (res) =>
-                notification.success({ message: 'Маппинг пересчитан', description: res.message }),
+                notification.success({ title: 'Маппинг пересчитан', description: res.message }),
               onError: (e) =>
-                notification.error({ message: 'Ошибка маппинга', description: e.message }),
+                notification.error({ title: 'Ошибка маппинга', description: e.message }),
             })
           }
         >

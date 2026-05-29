@@ -485,7 +485,7 @@ export default function CategoriesEditorPage() {
       { issueId, include: checked, recursive: hasChildren },
       {
         onError: (err) => {
-          notification.error({ message: 'Ошибка', description: err.message });
+          notification.error({ title: 'Ошибка', description: err.message });
           issueTree.refetch();
         },
       },
@@ -508,7 +508,7 @@ export default function CategoriesEditorPage() {
         onError: (err) => {
           // Rollback on failure
           qc.setQueryData(treeQueryKey, previous);
-          notification.error({ message: 'Ошибка верификации', description: (err as Error).message });
+          notification.error({ title: 'Ошибка верификации', description: (err as Error).message });
         },
       },
     );
@@ -669,14 +669,14 @@ export default function CategoriesEditorPage() {
       if (skippedContainers.size > 0) parts.push(`пропущено родителей: ${skippedContainers.size}`);
       if (parts.length > 0) {
         notification.success({
-          message: `Сохранено категорий: ${total}`,
+          title: `Сохранено категорий: ${total}`,
           description: parts.join(' · '),
         });
       } else {
         message.success(`Сохранено категорий: ${total}`);
       }
     } catch (e) {
-      notification.error({ message: 'Ошибка сохранения', description: (e as Error).message });
+      notification.error({ title: 'Ошибка сохранения', description: (e as Error).message });
     }
   };
 

@@ -40,9 +40,9 @@ export default function UsersTab() {
       refresh();
       setCreateOpen(false);
       form.resetFields();
-      notification.success({ message: 'Пользователь создан' });
+      notification.success({ title: 'Пользователь создан' });
     } catch {
-      notification.error({ message: 'Ошибка при создании' });
+      notification.error({ title: 'Ошибка при создании' });
     }
   }
 

@@ -100,11 +100,11 @@ export default function TaskSectionsTab() {
       { add: [...pendingAdd], remove: [...pendingRemove] },
       {
         onSuccess: (res) => {
-          notification.success({ message: 'Scope обновлён', description: `Добавлено: ${res.added}, удалено: ${res.removed}` });
+          notification.success({ title: 'Scope обновлён', description: `Добавлено: ${res.added}, удалено: ${res.removed}` });
           setPendingAdd(new Set());
           setPendingRemove(new Set());
         },
-        onError: (e) => notification.error({ message: 'Ошибка', description: e.message }),
+        onError: (e) => notification.error({ title: 'Ошибка', description: e.message }),
       },
     );
   };

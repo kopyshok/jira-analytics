@@ -53,14 +53,14 @@ export default function SyncAdvanced() {
       {
         onSuccess: (stats) => {
           notification.success({
-            message: "Worklog'и перезагружены",
+            title: "Worklog'и перезагружены",
             description: `Удалено: ${stats.deleted}, issues: ${stats.issues_scanned}, вставлено: ${stats.worklogs_inserted}`,
           });
           saveReloadSince.mutate({ key: 'worklog_reload_since_date', value: iso });
         },
         onError: (e) => {
           if (e.name === 'AbortError') return;
-          notification.error({ message: 'Ошибка', description: e.message });
+          notification.error({ title: 'Ошибка', description: e.message });
         },
         onSettled: () => {
           reloadAbortRef.current = null;
@@ -93,7 +93,7 @@ export default function SyncAdvanced() {
       {
         onSuccess: (stats) => {
           notification.success({
-            message: 'Ворклоги обновлены',
+            title: 'Ворклоги обновлены',
             description:
               `A: issues ${stats.bucket_a_issues_scanned}, worklog ${stats.bucket_a_worklogs_upserted}. ` +
               `B: issues ${stats.bucket_b_issues_scanned}, worklog ${stats.bucket_b_worklogs_upserted}, ` +
@@ -103,7 +103,7 @@ export default function SyncAdvanced() {
         },
         onError: (e) => {
           if (e.name === 'AbortError') return;
-          notification.error({ message: 'Ошибка обновления', description: e.message });
+          notification.error({ title: 'Ошибка обновления', description: e.message });
         },
         onSettled: () => {
           updateAbortRef.current = null;

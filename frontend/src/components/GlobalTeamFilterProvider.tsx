@@ -23,7 +23,7 @@ export function GlobalTeamFilterProvider({ children }: { children: ReactNode }) 
       qc.invalidateQueries();
     } catch {
       updateUser({ ...user, selected_teams: prev });
-      notification.error({ message: 'Не удалось сохранить выбор команд' });
+      notification.error({ title: 'Не удалось сохранить выбор команд' });
     } finally {
       setSaving(false);
     }

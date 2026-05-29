@@ -202,9 +202,9 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
         onSuccess: () => {
           setCopyOpen(false);
           setDirty(false);
-          notification.success({ message: `Правила скопированы из Q${copyQuarter} ${copyYear}` });
+          notification.success({ title: `Правила скопированы из Q${copyQuarter} ${copyYear}` });
         },
-        onError: (e) => notification.error({ message: 'Ошибка', description: (e as Error).message }),
+        onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
       },
     );
   };

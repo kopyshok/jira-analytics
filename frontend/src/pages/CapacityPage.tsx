@@ -135,8 +135,13 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
 
   const groupByTeam = (rows: QuarterCapacityResponse[]): TeamRow[] => {
     const buckets = new Map<string, QuarterCapacityResponse[]>();
+    const seenPerBucket = new Map<string, Set<string>>();
     for (const r of rows) {
       const k = r.team ?? '__none__';
+      const seen = seenPerBucket.get(k) ?? new Set<string>();
+      if (seen.has(r.employee_id)) continue;
+      seen.add(r.employee_id);
+      seenPerBucket.set(k, seen);
       const arr = buckets.get(k) ?? [];
       arr.push(r);
       buckets.set(k, arr);
