@@ -1,9 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { Space, DatePicker, Switch, Empty, Spin, Button, Segmented } from 'antd';
-import { SettingOutlined } from '@ant-design/icons';
+import { SettingOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../components/shared/PageHeader';
+import HelpDrawer from '../components/shared/HelpDrawer';
+import analyticsHelp from '../../../docs/help/analytics.md?raw';
 import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import AnalyticsTable from '../components/analytics/AnalyticsTable';
@@ -53,6 +55,7 @@ export default function AnalyticsPage() {
   const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('drawer');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [viewMode, setViewMode] = useState<AnalyticsViewMode>(() => {
     try {
       return localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'detail' ? 'detail' : 'classic';
@@ -160,6 +163,14 @@ export default function AnalyticsPage() {
         Настройка отчёта
       </Button>
       <Button
+        type="text"
+        icon={<QuestionCircleOutlined />}
+        onClick={() => setHelpOpen(true)}
+        title="Справка по разделу"
+      >
+        Справка
+      </Button>
+      <Button
         onClick={() => {
           const p = new URLSearchParams({
             year: String(period.year),
@@ -188,6 +199,14 @@ export default function AnalyticsPage() {
         eyebrow="Аналитика"
         title="Иерархический отчёт по часам"
         actions={headerActions}
+      />
+
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Аналитика трудозатрат"
+        content={analyticsHelp}
+        imageBase="/help-assets/"
       />
 
       <AnalyticsReportSettings

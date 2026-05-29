@@ -8,11 +8,14 @@ import {
   BgColorsOutlined,
   CalculatorOutlined,
   ExperimentOutlined,
+  QuestionCircleOutlined,
   ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
+import HelpDrawer from '../components/shared/HelpDrawer';
+import resourcePlanningHelp from '../../../docs/help/resource-planning.md?raw';
 import PlanQualityBadge from '../components/resource-planning/PlanQualityBadge';
 import GanttChart from '../components/resource-planning/GanttChart';
 import PlaneGantt from '../components/resource-planning/PlaneGantt';
@@ -60,6 +63,7 @@ function ResourcePlanningPageInner() {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [highlightedEmployeeId, setHighlightedEmployeeId] = useState<string | null>(null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const appearanceSettings = useAppearanceSettings();
   const forkMutation = useForkPlan();
   const createDep = useCreateDependency();
@@ -182,6 +186,14 @@ function ResourcePlanningPageInner() {
             <Space>
               <Button icon={<SettingOutlined />} onClick={() => setBlocksOpen(true)} size="small">
                 Заблокированные периоды
+              </Button>
+              <Button
+                type="text"
+                icon={<QuestionCircleOutlined />}
+                onClick={() => setHelpOpen(true)}
+                title="Справка по разделу"
+              >
+                Справка
               </Button>
             </Space>
           }
@@ -433,6 +445,14 @@ function ResourcePlanningPageInner() {
         open={appearanceOpen}
         current={appearanceSettings}
         onClose={() => setAppearanceOpen(false)}
+      />
+
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Планирование ресурсов"
+        content={resourcePlanningHelp}
+        imageBase="/help-assets/"
       />
     </div>
   );

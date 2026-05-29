@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Card, Col, Row, Spin } from 'antd';
+import { Button, Card, Col, Row, Spin } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+import HelpDrawer from '../components/shared/HelpDrawer';
+import workTypeReportHelp from '../../../docs/help/work-type-report.md?raw';
 import Toolbar from '../components/work-type-report/Toolbar';
 import { FONTS } from '../utils/constants';
 import AiHeadline from '../components/work-type-report/AiHeadline';
@@ -82,6 +85,7 @@ function WorkTypeReportPageInner() {
   const [dictionaryDrawer, setDictionaryDrawer] = useState<{ open: boolean; tab: 'active' | 'archived' | 'candidates' }>({ open: false, tab: 'active' });
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [buildDone, setBuildDone] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const buildStream = useBuildWorkTypeReportStream();
 
   const activeTypes = useMemo(() => workTypes ?? [], [workTypes]);
@@ -233,7 +237,24 @@ function WorkTypeReportPageInner() {
         >
           Тематический отчёт
         </span>
+        <Button
+          type="text"
+          size="small"
+          icon={<QuestionCircleOutlined />}
+          onClick={() => setHelpOpen(true)}
+          title="Справка по разделу"
+          style={{ marginLeft: 'auto' }}
+        >
+          Справка
+        </Button>
       </div>
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Отчёт по видам работ"
+        content={workTypeReportHelp}
+        imageBase="/help-assets/"
+      />
 
       {isLoading ? (
         <div style={{ display: 'grid', placeItems: 'center', minHeight: 300 }}>

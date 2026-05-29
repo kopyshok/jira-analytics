@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Tabs, Table, Button, Space, App, Checkbox, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, InputNumber } from 'antd';
-import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
+import { PlusOutlined, TeamOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import HelpDrawer from '../components/shared/HelpDrawer';
+import capacityHelp from '../../../docs/help/capacity.md?raw';
 import dayjs from 'dayjs';
 import minMax from 'dayjs/plugin/minMax';
 import PageHeader from '../components/shared/PageHeader';
@@ -681,6 +683,7 @@ export default function CapacityPage() {
   const [overrideOn, setOverrideOn] = useState(false);
   const [localYear, setLocalYear] = useState<string>(String(globalPeriod.year));
   const [localQuarter, setLocalQuarter] = useState<string>(String(globalPeriod.quarter));
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const year = overrideOn ? localYear : String(globalPeriod.year);
   const quarter = overrideOn ? localQuarter : String(globalPeriod.quarter);
@@ -700,15 +703,32 @@ export default function CapacityPage() {
         title="Ресурсы команды"
         subtitle="План · факт · отпуска · правила обязательной загрузки"
         actions={
-          <CapacityPeriodSelector
-            year={year}
-            quarter={quarter}
-            overrideOn={overrideOn}
-            onToggleOverride={handleToggleOverride}
-            onYearChange={setLocalYear}
-            onQuarterChange={setLocalQuarter}
-          />
+          <Space size={8} align="center">
+            <CapacityPeriodSelector
+              year={year}
+              quarter={quarter}
+              overrideOn={overrideOn}
+              onToggleOverride={handleToggleOverride}
+              onYearChange={setLocalYear}
+              onQuarterChange={setLocalQuarter}
+            />
+            <Button
+              type="text"
+              icon={<QuestionCircleOutlined />}
+              onClick={() => setHelpOpen(true)}
+              title="Справка по разделу"
+            >
+              Справка
+            </Button>
+          </Space>
         }
+      />
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Capacity сотрудников"
+        content={capacityHelp}
+        imageBase="/help-assets/"
       />
       <Tabs items={[
         { key: 'team', label: 'Команда', children: <TeamTab year={year} quarter={quarter} /> },

@@ -1,9 +1,12 @@
 import { Button, Form, Input, Typography } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { getMe, login as apiLogin } from '../api/auth';
 import { useAuth } from '../hooks/useAuth';
 import { trackAction } from '../lib/usage/track';
+import HelpDrawer from '../components/shared/HelpDrawer';
+import loginHelp from '../../../docs/help/login.md?raw';
 
 const { Title } = Typography;
 
@@ -17,6 +20,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   async function onFinish(values: LoginForm) {
     setLoading(true);
@@ -70,7 +74,25 @@ export default function LoginPage() {
             </Button>
           </Form.Item>
         </Form>
+        <div style={{ textAlign: 'center', marginTop: 8 }}>
+          <Button
+            type="text"
+            size="small"
+            icon={<QuestionCircleOutlined />}
+            onClick={() => setHelpOpen(true)}
+            style={{ color: 'rgba(255,255,255,0.55)' }}
+          >
+            Справка
+          </Button>
+        </div>
       </div>
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Вход в сервис"
+        content={loginHelp}
+        imageBase="/help-assets/"
+      />
     </div>
   );
 }
