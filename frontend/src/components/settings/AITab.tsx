@@ -133,6 +133,7 @@ export const AITab: React.FC = () => {
   }, []);
 
   const refreshGeminiModels = async (silent = false) => {
+    if (!aiEnabled) return;
     setGeminiModelsLoading(true);
     try {
       const list = await llmApi.listGeminiModels();
@@ -146,6 +147,7 @@ export const AITab: React.FC = () => {
   };
 
   const refreshOpenRouterModels = async (silent = false) => {
+    if (!aiEnabled) return;
     setOpenRouterModelsLoading(true);
     try {
       const list = await llmApi.listOpenRouterModels();
@@ -159,6 +161,7 @@ export const AITab: React.FC = () => {
   };
 
   const refreshDeepSeekModels = async (silent = false) => {
+    if (!aiEnabled) return;
     setDeepSeekModelsLoading(true);
     try {
       const list = await llmApi.listDeepSeekModels();
@@ -336,6 +339,7 @@ export const AITab: React.FC = () => {
                   size="small"
                   type="link"
                   loading={geminiModelsLoading}
+                  disabled={!aiEnabled}
                   onClick={() => refreshGeminiModels(false)}
                 >
                   Обновить список
@@ -372,6 +376,7 @@ export const AITab: React.FC = () => {
                   size="small"
                   type="link"
                   loading={openRouterModelsLoading}
+                  disabled={!aiEnabled}
                   onClick={() => refreshOpenRouterModels(false)}
                 >
                   Обновить список
@@ -428,6 +433,7 @@ export const AITab: React.FC = () => {
                   size="small"
                   type="link"
                   loading={deepSeekModelsLoading}
+                  disabled={!aiEnabled}
                   onClick={() => refreshDeepSeekModels(false)}
                 >
                   Обновить список
