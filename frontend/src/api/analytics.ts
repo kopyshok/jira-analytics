@@ -15,9 +15,14 @@ export type TeamFilterParams = {
 
 export function fetchDashboardProjects(
   period: QuarterPeriod,
+  teams?: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<DashboardProjectsResponse> {
-  return api.get<DashboardProjectsResponse>('/analytics/dashboard/projects', periodToParams(period), signal);
+  return api.get<DashboardProjectsResponse>(
+    '/analytics/dashboard/projects',
+    { ...periodToParams(period), ...(teams ?? {}) },
+    signal,
+  );
 }
 
 export function fetchDashboardNormWork(

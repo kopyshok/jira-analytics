@@ -21,7 +21,7 @@ export default function DashboardPage() {
   const { queryParams: teamParams } = useGlobalTeamFilter();
   const [helpOpen, setHelpOpen] = useState(false);
 
-  const { data: projects, isLoading: projLoading } = useDashboardProjects(period);
+  const { data: projects, isLoading: projLoading } = useDashboardProjects(period, teamParams);
   const { data: normWork, isLoading: normLoading } = useDashboardNormWork(period, teamParams);
   const { data: categories, isLoading: catLoading } = useDashboardCategories(period, teamParams);
 

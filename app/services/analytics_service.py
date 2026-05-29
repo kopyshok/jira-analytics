@@ -182,7 +182,7 @@ class AnalyticsService:
         year: int,
         quarter: int,
         month: Optional[int] = None,
-        team: Optional[str] = None,
+        teams: Optional[list[str]] = None,
         silence_days: int = 14,
     ) -> DashboardProjectsResponse:
         """Widget 1: обзор проектов квартала из утверждённого сценария."""
@@ -201,8 +201,8 @@ class AnalyticsService:
                 PlanningScenario.status == "approved",
             )
         )
-        if team:
-            approved_q = approved_q.filter(PlanningScenario.team == team)
+        if teams:
+            approved_q = approved_q.filter(PlanningScenario.team.in_(teams))
         scenario_ids = [row[0] for row in approved_q.all()]
 
         empty_response = DashboardProjectsResponse(
