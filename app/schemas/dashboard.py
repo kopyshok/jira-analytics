@@ -30,6 +30,10 @@ class ProjectItem(BaseModel):
     forecast_in_quarter: bool          # успевает ли к концу квартала
     silent_days: int                   # дни с последнего ворклога (0 если был сегодня)
     weekly_activity: list[float]       # 8 точек спарклайна (часы/неделю с конца периода назад)
+    team_fact_hours: float = 0.0       # часы команды по эпику (включая детей)
+    alien_fact_hours: float = 0.0      # часы помощников извне
+    alien_helpers: list[ProjectAssignee] = []   # top-3 помощника
+    alien_helper_count: int = 0        # сколько всего помощников
 
 
 class DashboardProjectsResponse(BaseModel):
@@ -45,6 +49,10 @@ class DashboardProjectsResponse(BaseModel):
     forecast_done: int
     forecast_pct: float
     projects: list[ProjectItem]
+    total_team_fact_hours: float = 0.0     # факт только команды
+    total_alien_fact_hours: float = 0.0    # факт помощников извне
+    alien_helper_count: int = 0            # уникальных помощников
+    alien_projects_count: int = 0          # сколько проектов получили помощь
 
 
 # ── Widget 2: Norm work plan/fact ────────────────────────────────────────────
