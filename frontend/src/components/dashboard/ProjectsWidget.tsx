@@ -16,12 +16,13 @@ const STATUS_COLORS = {
 const SILENCE_THRESHOLD = 14;
 const DUE_SOON_THRESHOLD = 7;
 
-type ColKey = 'status' | 'subtasks' | 'assignees' | 'due' | 'trend' | 'forecast' | 'progress' | 'factplan' | 'pct';
+type ColKey = 'status' | 'subtasks' | 'help' | 'assignees' | 'due' | 'trend' | 'forecast' | 'progress' | 'factplan' | 'pct';
 type BlockKey = 'donut' | 'kpi' | 'sparklines';
 
 const COLS: { key: ColKey; label: string; width: string; align?: 'right' }[] = [
   { key: 'status', label: 'Статус', width: 'minmax(0,150px)' },
   { key: 'subtasks', label: 'Задачи', width: '70px' },
+  { key: 'help', label: 'Помощь', width: '95px' },
   { key: 'assignees', label: 'Команда', width: '70px' },
   { key: 'due', label: 'Срок', width: '95px' },
   { key: 'trend', label: 'Тренд', width: '75px' },
@@ -45,7 +46,7 @@ type Prefs = {
 };
 
 const DEFAULT_PREFS: Prefs = {
-  cols: { status: true, subtasks: true, assignees: true, due: true, trend: true, forecast: true, progress: true, factplan: true, pct: true },
+  cols: { status: true, subtasks: true, help: true, assignees: true, due: true, trend: true, forecast: true, progress: true, factplan: true, pct: true },
   blocks: { donut: true, kpi: true, sparklines: true },
 };
 
@@ -177,6 +178,48 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
   );
 }
 
+function AlienHelpersStack({ project }: { project: ProjectItem }) {
+  if (project.alien_helper_count === 0) {
+    return <span style={{ color: DARK_THEME.textMuted, fontSize: 12 }}>—</span>;
+  }
+  const extra = project.alien_helper_count - project.alien_helpers.length;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        {project.alien_helpers.map((a, i) => (
+          <div
+            key={i}
+            title={a.initials}
+            style={{
+              width: 22, height: 22, borderRadius: '50%',
+              border: `2px solid ${DARK_THEME.cardBg}`,
+              background: 'linear-gradient(135deg, #84cc16 0%, #22c55e 100%)',
+              color: '#052e16', fontSize: 9, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginLeft: i === 0 ? 0 : -6,
+            }}
+          >
+            {a.initials}
+          </div>
+        ))}
+        {extra > 0 && (
+          <div style={{
+            width: 22, height: 22, borderRadius: '50%',
+            border: `2px solid ${DARK_THEME.cardBg}`,
+            background: 'rgba(132,204,22,0.15)', color: '#84cc16',
+            fontSize: 9, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginLeft: -6,
+          }}>+{extra}</div>
+        )}
+      </div>
+      <span style={{ fontSize: 11, color: '#84cc16', fontWeight: 600 }}>
+        +{Math.round(project.alien_fact_hours)}ч
+      </span>
+    </div>
+  );
+}
+
 function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; pct: number; barColor: string }) {
   const fmtDate = (s: string | null) => s ? new Date(s).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—';
   switch (key) {
@@ -213,6 +256,8 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
           </div>
         </div>
       );
+    case 'help':
+      return <AlienHelpersStack project={project} />;
     case 'assignees':
       return <AssigneeStack project={project} />;
     case 'due':
