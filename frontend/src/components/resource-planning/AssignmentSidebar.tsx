@@ -346,7 +346,7 @@ export default function AssignmentSidebar({
             <Alert
               type="warning"
               showIcon
-              message="При подтверждении план будет пересчитан. Другие фазы этого сотрудника могут сдвинуться, чтобы разрулить перегрузки и обойти отпуска."
+              title="При подтверждении план будет пересчитан. Другие фазы этого сотрудника могут сдвинуться, чтобы разрулить перегрузки и обойти отпуска."
             />
             {pendingEmpChange.preview.absences.length > 0 && (
               <>
@@ -440,7 +440,7 @@ function AssignmentExplainSection({ planId, assignmentId }: { planId: string; as
           <Alert
             type="error"
             showIcon
-            message={<span>Фаза на критическом пути. Резерв: <b>{slack.toFixed(0)} д.</b> Сдвиг сорвёт срок проекта.</span>}
+            title={<span>Фаза на критическом пути. Резерв: <b>{slack.toFixed(0)} д.</b> Сдвиг сорвёт срок проекта.</span>}
           />
         )}
         {conflicts.map(c => (
@@ -458,7 +458,7 @@ function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
     <Alert
       type={sev}
       showIcon
-      message={
+      title={
         <div style={{ width: '100%', fontSize: 12 }}>
           <div style={{ marginBottom: 6 }}>{c.message}</div>
           {isOverload && (

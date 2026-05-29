@@ -260,7 +260,7 @@ export default function ExecutiveDashboardPage() {
         <Alert
           type="error"
           showIcon
-          message="Не удалось загрузить дашборд"
+          title="Не удалось загрузить дашборд"
           description={(reportQuery.error as Error).message}
           style={{ marginBottom: 16 }}
         />
@@ -344,7 +344,7 @@ export default function ExecutiveDashboardPage() {
             <Alert
               type="info"
               showIcon
-              message="ИИ выключен администратором — AI-сводка не обновляется"
+              title="ИИ выключен администратором — AI-сводка не обновляется"
               description="Показаны последние сгенерированные данные. Чтобы пересчитать, попросите администратора включить ИИ."
               style={{ marginBottom: 12 }}
             />

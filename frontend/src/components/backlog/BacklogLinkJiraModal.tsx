@@ -56,7 +56,7 @@ export default function BacklogLinkJiraModal({ open, item, onClose }: Props) {
         type="warning"
         showIcon
         style={{ marginBottom: 16 }}
-        message="Локальные оценки часов, impact и risk будут заменены значениями из Jira."
+        title="Локальные оценки часов, impact и risk будут заменены значениями из Jira."
       />
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item

@@ -65,7 +65,7 @@ function ConflictAlert({
     <Alert
       type={SEVERITY_TYPE[c.severity] ?? 'info'}
       showIcon
-      message={
+      title={
         <div style={{ width: '100%' }}>
           <Space size={8} align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
             <span

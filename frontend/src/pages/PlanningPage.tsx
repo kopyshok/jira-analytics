@@ -522,7 +522,7 @@ export default function PlanningPage() {
           <Space orientation="vertical" size="large" style={{ width: '100%' }}>
             <Alert
               type="info"
-              message="Для работы со сценарием выберите команду"
+              title="Для работы со сценарием выберите команду"
               description="Сценарий привязан к конкретной команде — именно по ней считается ресурс и загрузка."
               showIcon
             />
