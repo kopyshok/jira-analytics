@@ -6,6 +6,7 @@ import { CopyOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-d
 import { useScenarioRules, usePutScenarioRules, useCopyRulesFromTemplate } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
 import { useMandatoryWorkTypes } from '../../hooks/useCapacity';
+import { uid } from '../../utils/uid';
 import type { ScenarioRuleInput } from '../../types/api';
 
 interface RuleDraft extends ScenarioRuleInput {
@@ -77,7 +78,7 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
     setDrafts((prev) => [
       ...prev,
       {
-        _key: crypto.randomUUID(),
+        _key: uid(),
         role: null,
         work_type_id: workTypes[0]?.id ?? '',
         percent_of_norm: 0,
