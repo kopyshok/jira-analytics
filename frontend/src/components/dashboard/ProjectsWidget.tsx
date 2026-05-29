@@ -296,7 +296,7 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
     case 'factplan':
       return (
         <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#a4b8d8' }}>
-          {Math.round(project.fact_hours)} / {Math.round(project.plan_hours)} ч
+          {Math.round(project.team_fact_hours)} / {Math.round(project.plan_hours)} ч
         </div>
       );
     case 'pct':
@@ -320,8 +320,8 @@ function ProjectRow({
   gridTemplate: string;
 }) {
   const isDone = project.status_category === 'done';
-  const overrun = project.fact_hours > project.plan_hours && project.plan_hours > 0;
-  const pct = project.plan_hours > 0 ? (project.fact_hours / project.plan_hours) * 100 : 0;
+  const overrun = project.team_fact_hours > project.plan_hours && project.plan_hours > 0;
+  const pct = project.plan_hours > 0 ? (project.team_fact_hours / project.plan_hours) * 100 : 0;
   const barColor = STATUS_COLORS[project.status_category] || DARK_THEME.textMuted;
 
   return (
@@ -357,7 +357,7 @@ function ProjectRow({
         )}
         {overrun && (
           <span style={{ background: '#ff4d4f22', color: '#ff4d4f', fontSize: 10, padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
-            +{Math.round(project.delta_hours)} ч
+            +{Math.round(project.team_fact_hours - project.plan_hours)} ч
           </span>
         )}
       </div>
@@ -372,7 +372,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
   const tiles = [
     {
       label: 'ВСЕГО ФАКТОМ',
-      value: `${Math.round(data.total_fact_hours)} ч`,
+      value: `${Math.round(data.total_team_fact_hours)} ч`,
       sub: `из ${Math.round(data.total_plan_hours)} план`,
       color: DARK_THEME.textPrimary,
     },
@@ -381,6 +381,14 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
       value: `${Math.round(data.avg_load_pct)}%`,
       sub: 'факт / план',
       color: loadColor(data.avg_load_pct),
+    },
+    {
+      label: 'ПОМОЩЬ ИЗВНЕ',
+      value: data.total_alien_fact_hours > 0 ? `+${Math.round(data.total_alien_fact_hours)} ч` : '—',
+      sub: data.total_alien_fact_hours > 0
+        ? `${data.alien_helper_count} чел · ${data.alien_projects_count} проектов`
+        : 'нет внешней помощи',
+      color: data.total_alien_fact_hours > 0 ? '#84cc16' : DARK_THEME.textMuted,
     },
     {
       label: 'МОЛЧАТ > 14 ДНЕЙ',
@@ -397,22 +405,28 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
   ];
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      {tiles.map((t) => (
-        <div key={t.label} style={{
-          background: '#0a1d3a', border: `1px solid ${DARK_THEME.darkRows}`, borderRadius: 8,
-          padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
-        }}>
-          <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t.label}</div>
-          <div style={{ fontSize: 32, fontWeight: 700, color: t.color, lineHeight: 1 }}>{t.value}</div>
-          <div style={{ fontSize: 13, color: DARK_THEME.textMuted }}>{t.sub}</div>
-        </div>
-      ))}
+      {tiles.map((t, idx) => {
+        const isHelp = t.label === 'ПОМОЩЬ ИЗВНЕ' && data.total_alien_fact_hours > 0;
+        return (
+          <div key={t.label} style={{
+            background: isHelp ? 'rgba(132,204,22,0.06)' : '#0a1d3a',
+            border: isHelp ? '1px solid rgba(132,204,22,0.25)' : `1px solid ${DARK_THEME.darkRows}`,
+            borderRadius: 8,
+            padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
+            gridColumn: idx === tiles.length - 1 && tiles.length % 2 === 1 ? '1 / -1' : undefined,
+          }}>
+            <div style={{ fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t.label}</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: t.color, lineHeight: 1 }}>{t.value}</div>
+            <div style={{ fontSize: 13, color: DARK_THEME.textMuted }}>{t.sub}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function Sparklines({ projects }: { projects: ProjectItem[] }) {
-  const visible = [...projects].sort((a, b) => b.fact_hours - a.fact_hours).slice(0, 6);
+  const visible = [...projects].sort((a, b) => b.team_fact_hours - a.team_fact_hours).slice(0, 6);
   return (
     <div style={{ background: '#0a1d3a', border: `1px solid ${DARK_THEME.darkRows}`, borderRadius: 8, padding: 14 }}>
       <div style={{
@@ -428,7 +442,7 @@ function Sparklines({ projects }: { projects: ProjectItem[] }) {
           .join(' ');
         const isActive = p.silent_days <= SILENCE_THRESHOLD;
         const stroke = isActive
-          ? (p.status_category === 'overdue' || p.fact_hours > p.plan_hours ? '#ff4d4f' : (p.status_category === 'done' ? '#67d68d' : CHART_COLORS.cyan))
+          ? (p.status_category === 'overdue' || p.team_fact_hours > p.plan_hours ? '#ff4d4f' : (p.status_category === 'done' ? '#67d68d' : CHART_COLORS.cyan))
           : '#2a4060';
         return (
           <div key={p.issue_key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
