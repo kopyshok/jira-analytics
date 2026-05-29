@@ -5,11 +5,14 @@ import {
   ReloadOutlined,
   FileImageOutlined,
   MoreOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 import type { ProjectDetail, ProjectSummary } from '../../types/projects';
 import { useRegenerateSummary } from '../../hooks/useProjectSummary';
 import { AiGate } from '../shared/AiGate';
 import { trackAction } from '../../lib/usage/track';
+import HelpDrawer from '../shared/HelpDrawer';
+import projectsHelp from '../../../../docs/help/projects.md?raw';
 
 type ViewMode = 'analysis' | 'presentation';
 
@@ -49,6 +52,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
   const regen = useRegenerateSummary();
   const { message } = App.useApp();
   const [exporting, setExporting] = React.useState(false);
+  const [helpOpen, setHelpOpen] = React.useState(false);
 
   const handleRegen = () => {
     if (!detail) return;
@@ -221,7 +225,24 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
         <Dropdown menu={{ items: moreItems }} trigger={['click']}>
           <Button size="small" icon={<MoreOutlined />} style={{ color: '#7e94b8' }} />
         </Dropdown>
+
+        <Button
+          size="small"
+          type="text"
+          icon={<QuestionCircleOutlined />}
+          onClick={() => setHelpOpen(true)}
+          title="Справка по разделу"
+          style={{ color: '#7e94b8' }}
+        />
       </div>
+
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Проекты"
+        content={projectsHelp}
+        imageBase="/help-assets/"
+      />
     </div>
   );
 };

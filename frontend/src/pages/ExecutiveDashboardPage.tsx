@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   App,
@@ -13,9 +13,12 @@ import {
 import {
   AlertOutlined,
   HeartOutlined,
+  QuestionCircleOutlined,
   RocketOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
+import HelpDrawer from '../components/shared/HelpDrawer';
+import executiveHelp from '../../../docs/help/executive.md?raw';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Area,
@@ -147,6 +150,7 @@ export default function ExecutiveDashboardPage() {
   const { period } = useGlobalPeriod();
   const { selectedTeams } = useGlobalTeamFilter();
   const qc = useQueryClient();
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const teamsKey = useMemo(() => [...selectedTeams].sort(), [selectedTeams]);
 
@@ -183,6 +187,14 @@ export default function ExecutiveDashboardPage() {
           AI-сводка обновлена {formatGenerated(report.generated_at)}
         </Typography.Text>
       ) : null}
+      <Button
+        type="text"
+        icon={<QuestionCircleOutlined />}
+        onClick={() => setHelpOpen(true)}
+        title="Справка по разделу"
+      >
+        Справка
+      </Button>
       <AiGate>
         <Button
           type="primary"
@@ -235,6 +247,14 @@ export default function ExecutiveDashboardPage() {
         </div>
         {headerRight}
       </div>
+
+      <HelpDrawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Дашборд руководителя"
+        content={executiveHelp}
+        imageBase="/help-assets/"
+      />
 
       {reportQuery.isError ? (
         <Alert
