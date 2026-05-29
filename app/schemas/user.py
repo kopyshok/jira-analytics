@@ -42,6 +42,11 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, v: str) -> str:
+        return v.strip().lower() if isinstance(v, str) else v
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -76,6 +81,11 @@ class UserCreate(BaseModel):
     display_name: str
     role: UserRole
     default_team: str | None = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, v: str) -> str:
+        return v.strip().lower() if isinstance(v, str) else v
 
 
 class UserUpdate(BaseModel):

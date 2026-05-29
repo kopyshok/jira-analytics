@@ -92,6 +92,20 @@ def test_me_returns_profile(testclient_db_session):
         _teardown()
 
 
+def test_login_case_insensitive_email(testclient_db_session):
+    _seed(testclient_db_session, "case@example.com")
+    client = _make_client(testclient_db_session)
+    try:
+        r = client.post(
+            "/api/v1/auth/login",
+            json={"email": "  CASE@Example.COM  ", "password": "password123"},
+        )
+        assert r.status_code == 200
+        assert "access_token" in r.json()
+    finally:
+        _teardown()
+
+
 def test_me_invalid_token(testclient_db_session):
     client = _make_client(testclient_db_session)
     try:
