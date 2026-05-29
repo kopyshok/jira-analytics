@@ -91,7 +91,9 @@ def _order_rows_for_self_referencing_table(table_name: str, rows: List[dict]) ->
         if current_state == 2:
             return
         if current_state == 1:
-            return
+            raise RuntimeError(
+                f"Cycle detected in self-referencing FK for table {table_name!r} at row id={row_id!r}"
+            )
 
         state[row_id] = 1
         for column in self_fk_columns:
