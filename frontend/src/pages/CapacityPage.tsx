@@ -368,7 +368,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
       </Space>
       <Table
         dataSource={tree}
-        rowKey={(r: TreeRow) => 'isTeam' in r ? r.key : r.employee_id}
+        rowKey={(r: TreeRow) => 'isTeam' in r ? r.key : `${r.team ?? '__none__'}::${r.employee_id}`}
         loading={isLoading}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         columns={columns as any}

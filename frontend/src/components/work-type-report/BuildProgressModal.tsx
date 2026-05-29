@@ -46,7 +46,7 @@ export default function BuildProgressModal({ open, state, showDone, onCancel, on
       title="Построение отчёта"
       closable={closable}
       onCancel={onClose}
-      maskClosable={false}
+      mask={{ closable: false }}
       destroyOnHidden
       footer={null}
       styles={{
