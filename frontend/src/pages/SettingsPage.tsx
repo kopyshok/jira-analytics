@@ -20,11 +20,10 @@ import {
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
-  QuestionCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import HelpDrawer from '../components/shared/HelpDrawer';
 import settingsHelp from '../../../docs/help/settings.md?raw';
+import { useRegisterHelp } from '../contexts/HelpContext';
 import ConnectionCard from '../components/ConnectionCard';
 import ScopeAdmin from '../components/ScopeAdmin';
 import JiraFieldsCard from '../components/JiraFieldsCard';
@@ -57,8 +56,8 @@ function readHashKey(): TabKey {
 
 export default function SettingsPage() {
   const [activeKey, setActiveKey] = useState<TabKey>(readHashKey);
-  const [helpOpen, setHelpOpen] = useState(false);
   const { user } = useAuth();
+  useRegisterHelp('Настройки сервиса', settingsHelp);
 
   useEffect(() => {
     const handler = () => setActiveKey(readHashKey());
@@ -77,23 +76,6 @@ export default function SettingsPage() {
         eyebrow="Данные"
         title="Настройки"
         subtitle="Подключение к Jira, scope проектов, поля, правила иерархии, производственный календарь"
-        actions={
-          <Button
-            type="text"
-            icon={<QuestionCircleOutlined />}
-            onClick={() => setHelpOpen(true)}
-            title="Справка по разделу"
-          >
-            Справка
-          </Button>
-        }
-      />
-      <HelpDrawer
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        title="Настройки сервиса"
-        content={settingsHelp}
-        imageBase="/help-assets/"
       />
       <Tabs
         activeKey={activeKey}

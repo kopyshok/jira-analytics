@@ -1,12 +1,10 @@
-import { useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Button, Card, Col, Row, Select, Statistic, Table, Tag, Empty } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Select, Statistic, Table, Tag, Empty } from 'antd';
 import PageHeader from '../components/shared/PageHeader';
-import HelpDrawer from '../components/shared/HelpDrawer';
 import compareHelp from '../../../docs/help/scenario-compare.md?raw';
 import { useResourcePlans, usePlanDiff } from '../hooks/useResourcePlanning';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { useRegisterHelp } from '../contexts/HelpContext';
 import type { AssignmentShift } from '../api/resourcePlanning';
 
 export default function ScenarioComparatorPage() {
@@ -16,7 +14,7 @@ export default function ScenarioComparatorPage() {
   const { selectedTeams } = useGlobalTeamFilter();
   const { data: plans = [] } = useResourcePlans(selectedTeams[0]);
   const { data: diff } = usePlanDiff(scenId, baseId);
-  const [helpOpen, setHelpOpen] = useState(false);
+  useRegisterHelp('Сравнение сценариев', compareHelp);
 
   const planOpts = plans.map(p => ({
     label: `${p.label ?? `${p.quarter} ${p.year}`} ${p.is_baseline ? '★' : ''}`.trim(),
@@ -30,23 +28,6 @@ export default function ScenarioComparatorPage() {
     <div style={{ padding: '16px 24px' }}>
       <PageHeader
         title="Сравнение сценариев"
-        actions={
-          <Button
-            type="text"
-            icon={<QuestionCircleOutlined />}
-            onClick={() => setHelpOpen(true)}
-            title="Справка по разделу"
-          >
-            Справка
-          </Button>
-        }
-      />
-      <HelpDrawer
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        title="Сравнение сценариев"
-        content={compareHelp}
-        imageBase="/help-assets/"
       />
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={12}>

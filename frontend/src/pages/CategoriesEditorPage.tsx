@@ -7,10 +7,9 @@ import {
 import {
   CheckOutlined, CloseOutlined,
   SaveOutlined,
-  QuestionCircleOutlined,
 } from '@ant-design/icons';
-import HelpDrawer from '../components/shared/HelpDrawer';
 import categoriesHelp from '../../../docs/help/categories.md?raw';
+import { useRegisterHelp } from '../contexts/HelpContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
@@ -213,8 +212,8 @@ export default function CategoriesEditorPage() {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
   const [pendingVerifyFlags, setPendingVerifyFlags] = useState<Map<string, boolean>>(new Map());
-  const [helpOpen, setHelpOpen] = useState(false);
   const verifyMut = useVerifyIssue();
+  useRegisterHelp('Категоризация задач', categoriesHelp);
 
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
@@ -949,27 +948,10 @@ export default function CategoriesEditorPage() {
             Выберите задачи, назначьте категорию и сохраните черновик.
           </Text>
         </Space>
-        <Space size={8} align="center">
-          <Tag color={stackCount > 0 ? 'gold' : 'cyan'} className="category-triage-attention">
-            {stackCount} ждут разбора
-          </Tag>
-          <Button
-            type="text"
-            icon={<QuestionCircleOutlined />}
-            onClick={() => setHelpOpen(true)}
-            title="Справка по разделу"
-          >
-            Справка
-          </Button>
-        </Space>
+        <Tag color={stackCount > 0 ? 'gold' : 'cyan'} className="category-triage-attention">
+          {stackCount} ждут разбора
+        </Tag>
       </section>
-      <HelpDrawer
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        title="Категоризация задач"
-        content={categoriesHelp}
-        imageBase="/help-assets/"
-      />
 
       <div className="category-queue-summary" aria-label="Очереди разбора задач">
         {queueItems.map(item => (

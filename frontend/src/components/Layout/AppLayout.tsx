@@ -7,7 +7,9 @@ import LogoMark from './LogoMark';
 import SyncIndicator from './SyncIndicator';
 import GlobalTeamFilterButton from './GlobalTeamFilterButton';
 import GlobalPeriodPicker from '../shared/GlobalPeriodPicker';
+import GlobalHelpButton from './GlobalHelpButton';
 import FeedbackButton from '../feedback/FeedbackButton';
+import { HelpProvider } from '../../contexts/HelpContext';
 import { DARK_THEME, APP_THEMES, type AppTheme } from '../../utils/constants';
 import { useEventStream } from '../../hooks/useEventStream';
 import { useAuth } from '../../hooks/useAuth';
@@ -56,6 +58,7 @@ export default function AppLayout() {
   }, [logout, navigate]);
 
   return (
+    <HelpProvider>
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
       <Sider
         collapsible
@@ -105,6 +108,7 @@ export default function AppLayout() {
               <>
                 <GlobalTeamFilterButton />
                 <GlobalPeriodPicker />
+                <GlobalHelpButton />
                 <Select
                   value={currentTheme}
                   options={THEME_OPTIONS}
@@ -142,5 +146,6 @@ export default function AppLayout() {
       <FeedbackButton />
       {user && <UsageTracker />}
     </Layout>
+    </HelpProvider>
   );
 }

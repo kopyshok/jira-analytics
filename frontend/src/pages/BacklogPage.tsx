@@ -6,10 +6,10 @@ import {
 } from 'antd';
 import {
   ArrowRightOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
-  InboxOutlined, LinkOutlined, PlusOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, UndoOutlined,
+  InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, SettingOutlined, UndoOutlined,
 } from '@ant-design/icons';
-import HelpDrawer from '../components/shared/HelpDrawer';
 import backlogHelp from '../../../docs/help/backlog.md?raw';
+import { useRegisterHelp } from '../contexts/HelpContext';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -108,7 +108,7 @@ export default function BacklogPage() {
   const [linkTarget, setLinkTarget] = useState<BacklogItemResponse | null>(null);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [paramsTarget, setParamsTarget] = useState<BacklogItemResponse | null>(null);
-  const [helpOpen, setHelpOpen] = useState(false);
+  useRegisterHelp('Бэклог инициатив', backlogHelp);
 
   const [groupByQuarter, setGroupByQuarter] = useState<boolean>(() => {
     return localStorage.getItem('backlog-archive-group') === 'true';
@@ -685,13 +685,6 @@ export default function BacklogPage() {
         actions={
           <Space>
             <Button
-              icon={<QuestionCircleOutlined />}
-              onClick={() => setHelpOpen(true)}
-              title="Справка по разделу"
-            >
-              Справка
-            </Button>
-            <Button
               icon={<ReloadOutlined />}
               onClick={handleRefreshFromJira}
             >
@@ -704,13 +697,6 @@ export default function BacklogPage() {
         }
       />
 
-      <HelpDrawer
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        title="Бэклог инициатив"
-        content={backlogHelp}
-        imageBase="/help-assets/"
-      />
 
       <BacklogManualModal
         open={manualOpen}

@@ -11,12 +11,11 @@ import {
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
   DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined, HolderOutlined, PlusOutlined,
-  QuestionCircleOutlined,
   RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
-import HelpDrawer from '../components/shared/HelpDrawer';
 import planningHelp from '../../../docs/help/planning.md?raw';
+import { useRegisterHelp } from '../contexts/HelpContext';
 import PlanningCapacityPanel from '../components/planning/PlanningCapacityPanel';
 import ScenarioCreateModal from '../components/planning/ScenarioCreateModal';
 import ScenarioRulesEditor from '../components/planning/ScenarioRulesEditor';
@@ -235,7 +234,7 @@ export default function PlanningPage() {
   const [diffOpen, setDiffOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
+  useRegisterHelp('Планирование сценариев', planningHelp);
   const [compact, setCompact] = useState<boolean>(
     () => localStorage.getItem('planning_backlog_compact') === 'true',
   );
@@ -486,14 +485,6 @@ export default function PlanningPage() {
             </Tooltip>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
               Новый сценарий
-            </Button>
-            <Button
-              type="text"
-              icon={<QuestionCircleOutlined />}
-              onClick={() => setHelpOpen(true)}
-              title="Справка по разделу"
-            >
-              Справка
             </Button>
           </Space>
         }
@@ -1104,13 +1095,6 @@ export default function PlanningPage() {
         scenarioId={scenarioId}
       />
       <ApproveCelebration visible={celebrate} />
-      <HelpDrawer
-        open={helpOpen}
-        onClose={() => setHelpOpen(false)}
-        title="Планирование сценариев"
-        content={planningHelp}
-        imageBase="/help-assets/"
-      />
     </Space>
   );
 }
