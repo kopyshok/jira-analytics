@@ -278,6 +278,17 @@ class AnalyticsService:
         # Все ID для ворклог-агрегаций
         all_wl_ids = issue_id_set | set(child_to_parent.keys())
 
+        # Множество ID сотрудников команды — для split team vs alien (Task M11)
+        if teams:
+            team_emp_rows = (
+                self.db.query(EmployeeTeam.employee_id)
+                .filter(EmployeeTeam.team.in_(teams))
+                .all()
+            )
+            team_employee_ids: set[str] = {r[0] for r in team_emp_rows}
+        else:
+            team_employee_ids = set()  # пусто — фильтр не задан, всё считаем командным
+
         # Last worklog per epic (для silence)
         last_wl_rows = (
             self.db.query(Worklog.issue_id, func.max(Worklog.started_at).label("last_wl"))
@@ -310,12 +321,40 @@ class AnalyticsService:
         )
         fact_secs_by_issue: dict[str, int] = {r[0]: r[1] or 0 for r in fact_rows}
 
+        # Аналогичный агрегат, но только по командным сотрудникам
+        if teams and team_employee_ids:
+            team_fact_rows = (
+                self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
+                .filter(
+                    Worklog.issue_id.in_(all_wl_ids),
+                    Worklog.started_at >= period_start_dt,
+                    Worklog.started_at <= period_end_dt,
+                    Worklog.employee_id.in_(team_employee_ids),
+                )
+                .group_by(Worklog.issue_id)
+                .all()
+            )
+            team_fact_secs_by_issue: dict[str, int] = {r[0]: r[1] or 0 for r in team_fact_rows}
+        else:
+            # Без фильтра команды — всё считается командным, alien=0
+            team_fact_secs_by_issue = dict(fact_secs_by_issue)
+
         def epic_fact_hours(epic_id: str) -> float:
             secs = fact_secs_by_issue.get(epic_id, 0)
             for child_id, parent_id in child_to_parent.items():
                 if parent_id == epic_id:
                     secs += fact_secs_by_issue.get(child_id, 0)
             return secs / 3600.0
+
+        def epic_team_fact_hours(epic_id: str) -> float:
+            secs = team_fact_secs_by_issue.get(epic_id, 0)
+            for child_id, parent_id in child_to_parent.items():
+                if parent_id == epic_id:
+                    secs += team_fact_secs_by_issue.get(child_id, 0)
+            return secs / 3600.0
+
+        def epic_alien_fact_hours(epic_id: str) -> float:
+            return epic_fact_hours(epic_id) - epic_team_fact_hours(epic_id)
 
         # Тренд: часы за последние 7д vs предыдущие 7д
         trend_cutoff_now = today_dt - timedelta(days=7)
@@ -377,6 +416,17 @@ class AnalyticsService:
         employee_ids = {eid for d in epic_to_employees.values() for eid in d.keys()}
         employees = self.db.query(Employee).filter(Employee.id.in_(employee_ids)).all() if employee_ids else []
         emp_by_id: dict[str, Employee] = {e.id: e for e in employees}
+
+        # Раздели epic_to_employees на свои/чужие; чужие пригодятся для alien_helpers
+        epic_alien_employees: dict[str, dict[str, int]] = {}
+        if team_employee_ids:
+            for epic_id_key, emp_secs_map in epic_to_employees.items():
+                aliens = {
+                    eid: secs for eid, secs in emp_secs_map.items()
+                    if eid not in team_employee_ids
+                }
+                if aliens:
+                    epic_alien_employees[epic_id_key] = aliens
 
         def employee_initials(name: str) -> str:
             parts = [p for p in name.split() if p]
@@ -497,6 +547,21 @@ class AnalyticsService:
                     ))
             assignees_total = len(emp_secs)
 
+            # Помощь извне для эпика
+            team_fact_h = epic_team_fact_hours(issue.id)
+            alien_fact_h = epic_alien_fact_hours(issue.id)
+            alien_emp_secs = epic_alien_employees.get(issue.id, {})
+            sorted_aliens = sorted(alien_emp_secs.items(), key=lambda x: -x[1])
+            top3_aliens = sorted_aliens[:3]
+            alien_helpers_list: list[ProjectAssignee] = []
+            for emp_id, _ in top3_aliens:
+                emp = emp_by_id.get(emp_id)
+                if emp:
+                    alien_helpers_list.append(ProjectAssignee(
+                        initials=employee_initials(emp.display_name or ""),
+                        color="#84cc16",  # мятно-зелёный — цвет помощи
+                    ))
+
             days_to_due_val: int | None = None
             if issue.due_date is not None:
                 days_to_due_val = (issue.due_date.date() - today).days
@@ -513,6 +578,10 @@ class AnalyticsService:
                 subtasks_total=subtasks_total_by_parent.get(issue.id, 0),
                 assignees=assignees,
                 assignees_total=assignees_total,
+                team_fact_hours=round(team_fact_h, 1),
+                alien_fact_hours=round(alien_fact_h, 1),
+                alien_helpers=alien_helpers_list,
+                alien_helper_count=len(alien_emp_secs),
                 due_date=issue.due_date.date() if issue.due_date else None,
                 days_to_due=days_to_due_val,
                 trend_hours_week=trend_h,
@@ -526,7 +595,16 @@ class AnalyticsService:
         status_order = {"overdue": 0, "indeterminate": 1, "new": 2, "done": 3}
         project_items.sort(key=lambda p: (status_order.get(p.status_category, 99), -p.fact_hours))
 
-        avg_load = (total_fact / total_plan * 100) if total_plan > 0 else 0.0
+        total_team_fact = sum(epic_team_fact_hours(i.id) for i in issues)
+        total_alien_fact = sum(epic_alien_fact_hours(i.id) for i in issues)
+        all_alien_emp_ids: set[str] = set()
+        alien_projects_count = 0
+        for _epic_id_key, _aliens in epic_alien_employees.items():
+            if _aliens:
+                alien_projects_count += 1
+                all_alien_emp_ids.update(_aliens.keys())
+
+        avg_load = (total_team_fact / total_plan * 100) if total_plan > 0 else 0.0
 
         passed_days = (today - period_start).days
         remaining_days = (period_end - today).days
@@ -553,6 +631,10 @@ class AnalyticsService:
             forecast_done=forecast_done,
             forecast_pct=forecast_pct,
             projects=project_items,
+            total_team_fact_hours=round(total_team_fact, 1),
+            total_alien_fact_hours=round(total_alien_fact, 1),
+            alien_helper_count=len(all_alien_emp_ids),
+            alien_projects_count=alien_projects_count,
         )
 
     # === Dashboard widgets 2 & 3 ===

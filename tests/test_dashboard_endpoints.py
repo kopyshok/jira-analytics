@@ -144,7 +144,8 @@ def test_dashboard_projects_splits_team_alien(testclient_db_session):
     db.add(epic)
 
     # BacklogItem + Scenario + Allocation
-    bi = BacklogItem(id=str(uuid4()), title="Test epic", issue_id=epic_id)
+    bi = BacklogItem(id=str(uuid4()), title="Test epic", issue_id=epic_id,
+                    estimate_analyst_hours=100.0)
     db.add(bi)
 
     team = "Команда Тест"
