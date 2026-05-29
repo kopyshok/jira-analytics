@@ -111,3 +111,91 @@ def test_categories_widget_returns_200():
     for emp in data["employees"]:
         for k in ["employee_id", "name", "initials", "last_worklog_at", "days_since_last"]:
             assert k in emp
+
+
+def test_dashboard_projects_splits_team_alien(testclient_db_session):
+    """Виджет делит часы на командные и чужие; загрузка считается от команды."""
+    from datetime import datetime
+    from uuid import uuid4
+    from app.main import app
+    from app.database import get_db
+    from fastapi.testclient import TestClient
+    from app.models import (Project, Issue, Worklog, Employee, EmployeeTeam,
+                            BacklogItem, PlanningScenario, ScenarioAllocation, Category)
+
+    db = testclient_db_session
+
+    # seed Category
+    cat = db.query(Category).filter_by(code="quarterly_tasks").first()
+    if not cat:
+        db.add(Category(id=str(uuid4()), code="quarterly_tasks",
+                        label="Квартальные задачи", color="#2dd4bf"))
+
+    # Project + Epic
+    project = Project(id=str(uuid4()), jira_project_id="jp1", key="TST",
+                      name="Test project", is_active=True)
+    db.add(project)
+
+    epic_id = str(uuid4())
+    epic = Issue(id=epic_id, jira_issue_id="ji1", key="TST-1", summary="Test epic",
+                 issue_type="Epic", status="In Progress",
+                 status_category="indeterminate", project_id=project.id,
+                 category="quarterly_tasks")
+    db.add(epic)
+
+    # BacklogItem + Scenario + Allocation
+    bi = BacklogItem(id=str(uuid4()), title="Test epic", issue_id=epic_id)
+    db.add(bi)
+
+    team = "Команда Тест"
+    scn = PlanningScenario(id=str(uuid4()), name="Q2 2026 plan", year=2026,
+                           quarter="Q2", team=team, status="approved")
+    db.add(scn)
+    db.flush()
+
+    db.add(ScenarioAllocation(id=str(uuid4()), scenario_id=scn.id,
+                              backlog_item_id=bi.id, included_flag=True,
+                              planned_hours=100.0))
+
+    # Двое сотрудников: один в команде, один вне
+    own = Employee(id=str(uuid4()), jira_account_id="acc1",
+                   display_name="Свой Иван", is_active=True)
+    alien = Employee(id=str(uuid4()), jira_account_id="acc2",
+                     display_name="Чужой Орлов", is_active=True)
+    db.add_all([own, alien])
+    db.add(EmployeeTeam(id=str(uuid4()), employee_id=own.id,
+                        team=team, is_primary=True))
+
+    # Worklogs: 10ч свой + 5ч чужой
+    started = datetime(2026, 4, 15, 10, 0, 0)
+    db.add_all([
+        Worklog(id=str(uuid4()), jira_worklog_id="wl1", issue_id=epic_id,
+                employee_id=own.id, started_at=started,
+                time_spent_seconds=10*3600, hours=10.0),
+        Worklog(id=str(uuid4()), jira_worklog_id="wl2", issue_id=epic_id,
+                employee_id=alien.id, started_at=started,
+                time_spent_seconds=5*3600, hours=5.0),
+    ])
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        c = TestClient(app)
+        resp = c.get(f"/api/v1/analytics/dashboard/projects?year=2026&quarter=2&teams={team}")
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+
+        assert data["total_team_fact_hours"] == 10.0, data
+        assert data["total_alien_fact_hours"] == 5.0, data
+        assert data["alien_helper_count"] == 1
+        assert data["alien_projects_count"] == 1
+
+        assert len(data["projects"]) == 1, data
+        project_item = data["projects"][0]
+        assert project_item["team_fact_hours"] == 10.0
+        assert project_item["alien_fact_hours"] == 5.0
+        assert project_item["alien_helper_count"] == 1
+        assert len(project_item["alien_helpers"]) == 1
+        assert project_item["alien_helpers"][0]["initials"] == "ЧО"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
