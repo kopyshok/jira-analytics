@@ -10,6 +10,7 @@ export default function GlobalHelpButton() {
   const [open, setOpen] = useState(false);
   const { data: unread } = useUnreadReleaseNotes();
   const hasUnread = (unread?.unread_versions.length ?? 0) > 0;
+  // Кнопка disabled только когда И справки нет, И непрочитанных нет.
   const disabled = !current && !hasUnread;
 
   const title = hasUnread
@@ -33,15 +34,14 @@ export default function GlobalHelpButton() {
           }}
         />
       </Badge>
-      {current && (
-        <HelpDrawer
-          open={open}
-          onClose={() => setOpen(false)}
-          title={current.title}
-          content={current.content}
-          imageBase="/help-assets/"
-        />
-      )}
+      <HelpDrawer
+        open={open}
+        onClose={() => setOpen(false)}
+        title={current?.title ?? 'Справка'}
+        content={current?.content ?? ''}
+        imageBase="/help-assets/"
+        defaultTab={hasUnread ? 'whats-new' : 'help'}
+      />
     </>
   );
 }

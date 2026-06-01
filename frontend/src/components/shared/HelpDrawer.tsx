@@ -1,8 +1,9 @@
 import { useMemo, type ReactNode } from 'react';
-import { Drawer, Typography } from 'antd';
+import { Drawer, Tabs, Typography } from 'antd';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { DARK_THEME } from '../../utils/constants';
+import AllVersionsView from '../release-notes/AllVersionsView';
 
 interface Props {
   open: boolean;
@@ -12,13 +13,18 @@ interface Props {
   content: string;
   /** Base URL for relative image paths inside markdown. Default: /docs/help/ */
   imageBase?: string;
+  /** Если есть непрочитанные релизы — открыть вкладку «Что нового» по умолчанию. */
+  defaultTab?: 'help' | 'whats-new';
 }
 
 /**
- * Right-side справочный drawer. Рендерит markdown из docs/help/, поддерживает
- * GFM таблицы. Картинки разрешаются относительно imageBase.
+ * Right-side справочный drawer с двумя вкладками: «Справка» (markdown по разделу)
+ * и «Что нового» (лента релизных заметок). Поддерживает GFM таблицы; картинки
+ * resolveятся относительно imageBase.
  */
-export default function HelpDrawer({ open, onClose, title, content, imageBase = '/docs/help/' }: Props) {
+export default function HelpDrawer({
+  open, onClose, title, content, imageBase = '/docs/help/', defaultTab = 'help',
+}: Props) {
   const components = useMemo(() => ({
     h1: ({ children }: { children?: ReactNode }) => (
       <Typography.Title level={2} style={{ marginTop: 0, color: DARK_THEME.cyanPrimary }}>
@@ -31,14 +37,10 @@ export default function HelpDrawer({ open, onClose, title, content, imageBase = 
       </Typography.Title>
     ),
     h3: ({ children }: { children?: ReactNode }) => (
-      <Typography.Title level={4} style={{ marginTop: 22 }}>
-        {children}
-      </Typography.Title>
+      <Typography.Title level={4} style={{ marginTop: 22 }}>{children}</Typography.Title>
     ),
     h4: ({ children }: { children?: ReactNode }) => (
-      <Typography.Title level={5} style={{ marginTop: 18 }}>
-        {children}
-      </Typography.Title>
+      <Typography.Title level={5} style={{ marginTop: 18 }}>{children}</Typography.Title>
     ),
     table: ({ children }: { children?: ReactNode }) => (
       <div className="help-table-wrap">
@@ -51,29 +53,20 @@ export default function HelpDrawer({ open, onClose, title, content, imageBase = 
         : props.src;
       return (
         <img
-          src={src}
-          alt={props.alt}
-          title={props.alt}
+          src={src} alt={props.alt} title={props.alt}
           style={{
-            display: 'block',
-            maxWidth: '100%',
-            borderRadius: 6,
-            border: `1px solid ${DARK_THEME.border}`,
-            margin: '12px 0 6px 0',
+            display: 'block', maxWidth: '100%', borderRadius: 6,
+            border: `1px solid ${DARK_THEME.border}`, margin: '12px 0 6px 0',
           }}
         />
       );
     },
     p: ({ children }: { children?: ReactNode }) => {
-      // Avoid <p> wrapping a block-level img — yields invalid DOM.
-      // Detect single-child img and unwrap. Otherwise normal paragraph.
       const arr = Array.isArray(children) ? children : [children];
       const first = arr.find(c => c !== null && c !== undefined && c !== '');
       if (
         arr.filter(c => c !== null && c !== undefined && c !== '' && !(typeof c === 'string' && c.trim() === '')).length === 1
-        && first
-        && typeof first === 'object'
-        && 'type' in (first as object)
+        && first && typeof first === 'object' && 'type' in (first as object)
         && (first as { type?: unknown }).type === 'img'
       ) {
         return <>{children}</>;
@@ -82,9 +75,7 @@ export default function HelpDrawer({ open, onClose, title, content, imageBase = 
     },
     code: ({ children, className }: { children?: ReactNode; className?: string }) => {
       const isBlock = className?.startsWith('language-');
-      if (isBlock) {
-        return <pre className="help-code-block"><code>{children}</code></pre>;
-      }
+      if (isBlock) return <pre className="help-code-block"><code>{children}</code></pre>;
       return <code className="help-code-inline">{children}</code>;
     },
     a: ({ href, children }: { href?: string; children?: ReactNode }) => (
@@ -107,11 +98,28 @@ export default function HelpDrawer({ open, onClose, title, content, imageBase = 
         wrapper: { width: 'min(960px, 70vw)' },
       }}
     >
-      <div className="help-markdown">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-          {content}
-        </ReactMarkdown>
-      </div>
+      <Tabs
+        defaultActiveKey={defaultTab}
+        items={[
+          {
+            key: 'help',
+            label: 'Справка',
+            disabled: !content,
+            children: (
+              <div className="help-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+                  {content}
+                </ReactMarkdown>
+              </div>
+            ),
+          },
+          {
+            key: 'whats-new',
+            label: 'Что нового',
+            children: <AllVersionsView />,
+          },
+        ]}
+      />
     </Drawer>
   );
 }
