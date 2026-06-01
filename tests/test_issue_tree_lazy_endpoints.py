@@ -39,6 +39,36 @@ def _mk_issue(db, proj, key, **overrides):
     return i
 
 
+def test_tree_roots_skips_in_team_tasks_under_foreign_parent(client, db):
+    """owned-by-team: in-team задача под чужим эпиком не показывается."""
+    p = _mk_proj(db, "OWN")
+    # Чужой эпик (другая команда) — не попадёт в primary_only выборку для A
+    _mk_issue(db, p, "OWN-1", team="B", assigned_category="dev")
+    # In-team задача с parent=чужой эпик — должна быть скрыта
+    _mk_issue(db, p, "OWN-2", team="A", parent_id="i-OWN-1",
+              assigned_category=None, category_verified=False)
+    # In-team root — единственная в дереве
+    _mk_issue(db, p, "OWN-3", team="A",
+              assigned_category=None, category_verified=False)
+    db.commit()
+    try:
+        resp = client.get("/api/v1/issues/tree/roots", params={
+            "project_keys": "OWN", "teams": "A", "tab": "stack",
+        })
+        assert resp.status_code == 200
+        keys = sorted([n["key"] for n in resp.json()])
+        assert keys == ["OWN-3"], f"Ожидалось только OWN-3, получено {keys}"
+
+        counts = client.get("/api/v1/issues/tree/counts", params={
+            "project_keys": "OWN", "teams": "A",
+        }).json()
+        assert counts["stack"] == 1
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
 def test_tree_roots_skips_participating_only_tasks(client, db):
     """primary_only: задачи, где команда только в participating_teams,
     не подтягиваются — их разбирает продуктовая команда."""
