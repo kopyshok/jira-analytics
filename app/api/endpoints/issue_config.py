@@ -957,22 +957,31 @@ def get_issue_children(
             for ch in children
         ]
 
-    # С tab: BFS по поддереву, фильтр по эффективной категории
-    subtree: dict[str, Issue] = {}
-    frontier = [parent_id]
+    # С tab: возвращаем ПРЯМЫЕ дети parent_id, которые либо сами матчат вкладку,
+    # либо имеют tab-матчащих потомков глубже. Иерархия сохраняется — PM
+    # раскрывает intermediate уровни поэтапно. Внуки НЕ всплывают в плоский
+    # список (иначе дубликаты при раскрытии разных уровней).
+    direct_children = (
+        db.query(Issue).filter(Issue.parent_id == parent_id).all()
+    )
+    if not direct_children:
+        return []
+
+    # Полное поддерево для подсчёта desc_match по каждому прямому ребёнку
+    subtree: dict[str, Issue] = {c.id: c for c in direct_children}
+    frontier = [c.id for c in direct_children]
     while frontier:
-        batch = db.query(Issue).filter(Issue.parent_id.in_(frontier)).limit(limit * 5).all()
+        batch = db.query(Issue).filter(Issue.parent_id.in_(frontier)).limit(limit * 10).all()
         next_f = []
-        for ch in batch:
-            if ch.id in subtree:
+        for d in batch:
+            if d.id in subtree:
                 continue
-            subtree[ch.id] = ch
-            next_f.append(ch.id)
+            subtree[d.id] = d
+            next_f.append(d.id)
         frontier = next_f
 
     by_id_full = dict(subtree)
     by_id_full[parent.id] = parent
-    # Дотащим предков parent для walk up effective
     cur = parent
     while cur.parent_id and cur.parent_id not in by_id_full:
         anc = db.get(Issue, cur.parent_id)
@@ -998,9 +1007,30 @@ def get_issue_children(
             cur_id = par.parent_id
         return None
 
+    def matches_tab(node: Issue) -> bool:
+        return _node_matches_tab(effective(node), node.category_verified or False, tab)
+
+    # BFS desc_match для каждого узла в subtree
+    children_by_parent: dict[str, list[Issue]] = {}
+    for d in subtree.values():
+        if d.parent_id:
+            children_by_parent.setdefault(d.parent_id, []).append(d)
+
+    desc_match_cache: dict[str, int] = {}
+    def desc_match(node_id: str) -> int:
+        if node_id in desc_match_cache:
+            return desc_match_cache[node_id]
+        total = 0
+        for ch in children_by_parent.get(node_id, []):
+            if matches_tab(ch):
+                total += 1
+            total += desc_match(ch.id)
+        desc_match_cache[node_id] = total
+        return total
+
     matched = [
-        ch for ch in subtree.values()
-        if _node_matches_tab(effective(ch), ch.category_verified or False, tab)
+        c for c in direct_children
+        if matches_tab(c) or desc_match(c.id) > 0
     ]
     matched.sort(key=lambda c: c.key)
     matched = matched[:limit]
@@ -1009,11 +1039,7 @@ def get_issue_children(
         p.id: p.key
         for p in db.query(Project).filter(Project.id.in_({c.project_id for c in matched if c.project_id})).all()
     }
-    has_kids_set = {
-        cid for (cid,) in db.query(Issue.parent_id)
-        .filter(Issue.parent_id.in_({c.id for c in matched}))
-        .distinct().all()
-    }
+    has_kids_set = {c.id for c in matched if children_by_parent.get(c.id)}
     return [
         IssueTreeRootNode(
             id=ch.id,
@@ -1037,9 +1063,9 @@ def get_issue_children(
             )),
             category_verified=ch.category_verified if ch.category_verified is not None else True,
             require_child_verification=ch.require_child_verification if ch.require_child_verification is not None else False,
-            has_children=any(c.parent_id == ch.id for c in subtree.values()),
+            has_children=ch.id in has_kids_set,
             descendant_count=0,
-            descendant_match_count=0,
+            descendant_match_count=desc_match(ch.id),
         )
         for ch in matched
     ]
