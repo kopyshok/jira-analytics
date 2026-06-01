@@ -235,15 +235,35 @@ export default function CategoriesEditorPage() {
   [hiddenStatuses]);
 
   const displayData = useMemo<TreeNodeWithChildren[]>(() => {
+    const makeStub = (parent: IssueTreeRootNode, depth: number): TreeNodeWithChildren => ({
+      ...parent,
+      id: `__loading__${parent.id}`,
+      key: '',
+      summary: 'Загрузка…',
+      issue_type: 'group',
+      is_context: false,
+      is_container: false,
+      has_children: false,
+      descendant_count: 0,
+      descendant_match_count: 0,
+      __depth: depth,
+    } as TreeNodeWithChildren);
     const attachChildren = (node: IssueTreeRootNode, depth: number): TreeNodeWithChildren => {
       const kids = loadedChildren.get(node.id);
-      return {
-        ...node,
-        __depth: depth,
-        children: kids
-          ?.filter(passesHiddenStatuses)
-          .map(k => attachChildren(k, depth + 1)),
-      };
+      if (kids) {
+        const real = kids.filter(passesHiddenStatuses).map(k => attachChildren(k, depth + 1));
+        return {
+          ...node,
+          __depth: depth,
+          children: real.length > 0 ? real : undefined,
+        };
+      }
+      // Не загружено: если backend сказал has_children, подставляем stub —
+      // AntD покажет стрелку раскрытия, onExpand подгрузит реальных детей.
+      if (node.has_children) {
+        return { ...node, __depth: depth, children: [makeStub(node, depth + 1)] };
+      }
+      return { ...node, __depth: depth };
     };
     return (rootsQuery.data ?? []).filter(passesHiddenStatuses).map(r => attachChildren(r, 0));
   }, [rootsQuery.data, loadedChildren, passesHiddenStatuses]);
