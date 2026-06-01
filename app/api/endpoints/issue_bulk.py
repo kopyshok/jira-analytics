@@ -8,16 +8,13 @@ import json
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Issue, Project
-from app.services.backlog_service import BacklogService
-from app.services.category_resolver import CategoryResolver
-from app.services.event_bus import EventBroadcaster, get_event_bus
 
 router = APIRouter()
 
