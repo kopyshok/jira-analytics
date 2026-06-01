@@ -211,3 +211,68 @@ async def bulk_accept_suggestions(
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return BulkAcceptResponse(applied=applied, skipped_no_suggestion=skipped)
+
+
+class BulkCascadeRequest(BaseModel):
+    ancestor_ids: List[str]
+
+
+class BulkCascadeResponse(BaseModel):
+    applied: int
+    skipped_ancestors: int
+
+
+def _walk_subtree_no_assigned(db: Session, root_id: str) -> list[Issue]:
+    """BFS вниз от root_id, останавливаемся на потомках с собственной
+    assigned_category (граница). Сам root в результат не входит.
+    """
+    out: list[Issue] = []
+    frontier = [root_id]
+    visited: set[str] = {root_id}
+    while frontier:
+        children = db.query(Issue).filter(Issue.parent_id.in_(frontier)).all()
+        next_frontier: list[str] = []
+        for ch in children:
+            if ch.id in visited:
+                continue
+            visited.add(ch.id)
+            if ch.assigned_category is not None:
+                # Граница каскада — ручной выбор PM. Поддерево под этой задачей
+                # унаследует уже её код через CategoryResolver, не root'овый.
+                continue
+            out.append(ch)
+            next_frontier.append(ch.id)
+        frontier = next_frontier
+    return out
+
+
+@router.post("/bulk/cascade-inherit", response_model=BulkCascadeResponse)
+async def bulk_cascade_inherit(
+    body: BulkCascadeRequest,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Протолкнуть assigned_category эпика/контейнера на всех потомков
+    без своей категории. Останавливается на ручных решениях PM.
+    """
+    ancestors = db.query(Issue).filter(Issue.id.in_(body.ancestor_ids)).all()
+    backlog = BacklogService(db)
+    applied = 0
+    skipped_ancestors = 0
+    for anc in ancestors:
+        if not anc.assigned_category:
+            skipped_ancestors += 1
+            continue
+        descendants = _walk_subtree_no_assigned(db, anc.id)
+        for d in descendants:
+            d.assigned_category = anc.assigned_category
+            d.category = anc.assigned_category
+            d.category_verified = True
+            if anc.assigned_category in ARCHIVE_CATEGORY_CODES and d.include_in_analysis:
+                d.include_in_analysis = False
+            backlog.sync_from_issue(d)
+            applied += 1
+
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    return BulkCascadeResponse(applied=applied, skipped_ancestors=skipped_ancestors)

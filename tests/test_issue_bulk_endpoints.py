@@ -151,3 +151,62 @@ def test_bulk_accept_suggestions_writes_derived_into_assigned(client, db):
         db.query(Issue).filter(Issue.project_id == p.id).delete()
         db.query(Project).filter(Project.id == p.id).delete()
         db.commit()
+
+
+def test_bulk_cascade_inherit_pushes_assigned_to_descendants(client, db):
+    p = _mk_project(db, key="CAS")
+    epic = _mk_issue(db, p, "CAS-1",
+                     issue_type="Epic",
+                     assigned_category="support",
+                     category_verified=True)
+    child1 = _mk_issue(db, p, "CAS-2",
+                       parent_id=epic.id,
+                       assigned_category=None,
+                       category_verified=False)
+    # Уже с собственной категорией — НЕ трогаем
+    child2 = _mk_issue(db, p, "CAS-3",
+                       parent_id=epic.id,
+                       assigned_category="dev",
+                       category_verified=True)
+    grandchild = _mk_issue(db, p, "CAS-4",
+                           parent_id=child1.id,
+                           assigned_category=None,
+                           category_verified=False)
+    db.commit()
+    try:
+        resp = client.post("/api/v1/issues/bulk/cascade-inherit", json={
+            "ancestor_ids": [epic.id],
+        })
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["applied"] == 2
+
+        db.expire_all()
+        assert db.get(Issue, child1.id).assigned_category == "support"
+        assert db.get(Issue, child1.id).category_verified is True
+        assert db.get(Issue, child2.id).assigned_category == "dev"
+        assert db.get(Issue, grandchild.id).assigned_category == "support"
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
+def test_bulk_cascade_inherit_rejects_ancestor_without_assigned(client, db):
+    p = _mk_project(db, key="CAS2")
+    epic = _mk_issue(db, p, "CAS2-1",
+                     issue_type="Epic",
+                     assigned_category=None)
+    db.commit()
+    try:
+        resp = client.post("/api/v1/issues/bulk/cascade-inherit", json={
+            "ancestor_ids": [epic.id],
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["applied"] == 0
+        assert data["skipped_ancestors"] == 1
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
