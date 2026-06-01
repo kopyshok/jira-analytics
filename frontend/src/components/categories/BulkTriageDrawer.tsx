@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Drawer, Tabs, Typography } from 'antd';
+import BulkArchiveSection from './sections/BulkArchiveSection';
 
 const { Title, Text } = Typography;
 
@@ -19,8 +20,6 @@ export default function BulkTriageDrawer({
   scopeProjectKeys,
 }: Props) {
   const [active, setActive] = useState<Section>('archive');
-  void selectedTeams;
-  void scopeProjectKeys;
 
   return (
     <Drawer
@@ -46,7 +45,13 @@ export default function BulkTriageDrawer({
           {
             key: 'archive',
             label: 'Архив по фильтру',
-            children: <Text type="secondary">Будет добавлено в следующем шаге.</Text>,
+            children: (
+              <BulkArchiveSection
+                selectedTeams={selectedTeams}
+                scopeProjectKeys={scopeProjectKeys}
+                onApplied={onClose}
+              />
+            ),
           },
           {
             key: 'accept',
