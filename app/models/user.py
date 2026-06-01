@@ -46,6 +46,9 @@ class User(Base, TimestampMixin):
     appearance_settings_raw: Mapped[str] = mapped_column(
         "appearance_settings", Text, nullable=False, default="{}", server_default="{}"
     )
+    last_seen_release_version: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
 
     @property
     def selected_teams(self) -> list[str]:
