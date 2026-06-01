@@ -79,12 +79,12 @@ export const bulkCascadeInherit = (ancestorIds: string[]) =>
   api.post<BulkCascadeResponse>('/issues/bulk/cascade-inherit', { ancestor_ids: ancestorIds });
 
 export const getTreeRoots = (
-  params: { project_keys?: string; teams?: string; tab: string; search?: string; excluded_statuses?: string },
+  params: { project_keys?: string; teams?: string; tab: string; search?: string },
   signal?: AbortSignal,
 ) => api.get<IssueTreeRootNode[]>('/issues/tree/roots', params as Record<string, string | undefined>, signal);
 
 export const getTreeCounts = (
-  params: { project_keys?: string; teams?: string; excluded_statuses?: string },
+  params: { project_keys?: string; teams?: string },
   signal?: AbortSignal,
 ) => api.get<IssueTreeCounts>('/issues/tree/counts', params as Record<string, string | undefined>, signal);
 

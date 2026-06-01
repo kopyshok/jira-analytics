@@ -321,7 +321,6 @@ async def get_issue_tree(
 def get_tree_counts(
     project_keys: Optional[str] = None,
     teams: Optional[str] = None,
-    excluded_statuses: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Счётчики по вкладкам категоризации. Не учитывает pending-правки клиента —
@@ -329,14 +328,8 @@ def get_tree_counts(
 
     ``primary_only=True`` — участвующие задачи (participating_teams) не считаются.
     Дополнительно отсекает «in-team задачи под чужим эпиком».
-    ``excluded_statuses`` — список статусов (CSV), которые UI скрывает; их не
-    учитываем чтобы счётчик совпадал с видимым списком.
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
-    if excluded_statuses:
-        ex_list = [s.strip() for s in excluded_statuses.split(",") if s.strip()]
-        if ex_list:
-            base = base.filter(~Issue.status.in_(ex_list))
     all_rows = base.all()
     by_id_full = {r.id: r for r in all_rows}
 
@@ -400,7 +393,6 @@ def get_tree_roots(
     teams: Optional[str] = None,
     tab: str = "stack",
     search: Optional[str] = None,
-    excluded_statuses: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Корневые узлы вкладки. «Корень» = верхнеуровневая задача (или эпик),
@@ -409,13 +401,8 @@ def get_tree_roots(
 
     ``primary_only=True`` — participating-задачи не подтягиваются.
     Owned-by-team — задачи под чужими эпиками скрыты.
-    ``excluded_statuses`` — CSV статусов, которые UI скрывает.
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
-    if excluded_statuses:
-        ex_list = [s.strip() for s in excluded_statuses.split(",") if s.strip()]
-        if ex_list:
-            base = base.filter(~Issue.status.in_(ex_list))
     all_rows = base.all()
     all_by_id = {r.id: r for r in all_rows}
 
