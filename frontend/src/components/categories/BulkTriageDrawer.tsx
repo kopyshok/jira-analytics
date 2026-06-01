@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Drawer, Tabs, Typography } from 'antd';
 import BulkArchiveSection from './sections/BulkArchiveSection';
 import BulkAcceptSuggestionsSection from './sections/BulkAcceptSuggestionsSection';
-import BulkCascadeInheritSection, { type EpicCandidate } from './sections/BulkCascadeInheritSection';
+import BulkCascadeInheritSection from './sections/BulkCascadeInheritSection';
 
 const { Title, Text } = Typography;
 
@@ -13,7 +13,6 @@ type Props = {
   onClose: () => void;
   selectedTeams: string[];
   scopeProjectKeys: string[];
-  epicCandidates: EpicCandidate[];
 };
 
 export default function BulkTriageDrawer({
@@ -21,7 +20,6 @@ export default function BulkTriageDrawer({
   onClose,
   selectedTeams,
   scopeProjectKeys,
-  epicCandidates,
 }: Props) {
   const [active, setActive] = useState<Section>('archive');
 
@@ -73,7 +71,7 @@ export default function BulkTriageDrawer({
             label: 'Каскад от эпика',
             children: (
               <BulkCascadeInheritSection
-                candidates={epicCandidates}
+                candidates={[]}
                 onApplied={onClose}
               />
             ),

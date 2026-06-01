@@ -20,8 +20,13 @@ import { formatDateOnly, daysSince } from '../utils/format';
 import { statusTagColor } from '../utils/status';
 import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
-import { useIssueTree, useSetIssueInclude, useBatchSetCategory, useVerifyIssue } from '../hooks/useIssueTree';
-import type { IssueTreeNode } from '../types/api';
+import { useSetIssueInclude, useBatchSetCategory, useVerifyIssue } from '../hooks/useIssueTree';
+import {
+  useIssueRoots,
+  useIssueTreeCounts,
+  useLoadChildrenMutation,
+} from '../hooks/useIssueLazyTree';
+import type { IssueTreeRootNode } from '../types/api';
 import BulkTriageDrawer from '../components/categories/BulkTriageDrawer';
 
 const { Text } = Typography;
@@ -53,18 +58,12 @@ function ResizableTitle({ onResize, width, ...rest }: ResizableTitleProps) {
   );
 }
 
-type TreeNodeWithChildren = Omit<IssueTreeNode, 'children'> & {
+type TreeNodeWithChildren = IssueTreeRootNode & {
   children?: TreeNodeWithChildren[];
   __depth?: number;
-  // Ближайший assigned_category предка (уже с учётом pending). Дети наследуют
-  // категорию эпика визуально, иначе PRJ-9882 (archive) остаётся в «стеке»,
-  // потому что его 24 ребёнка без собственной категории якорят его.
-  __inheritedAssigned?: string | null;
 };
 
 type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
-const ARCHIVE_CODES = new Set(['archive', 'archive_target']);
-const INITIATIVES_CODE = 'initiatives_rfa';
 const QUEUE_ORDER: InnerTab[] = ['stack', 'active', 'initiatives', 'archive_target', 'archive'];
 const QUEUE_META: Record<InnerTab, { title: string; hint: string; tone: string }> = {
   stack: { title: 'К разбору', hint: 'без решения', tone: 'attention' },
@@ -83,36 +82,6 @@ function countUnverifiedBelow(node: TreeNodeWithChildren): number {
   return count;
 }
 
-function patchVerified(nodes: IssueTreeNode[], issueId: string, cascade: boolean): IssueTreeNode[] {
-  return nodes.map(n => {
-    if (n.id === issueId) {
-      const markTree = (node: IssueTreeNode): IssueTreeNode => ({
-        ...node,
-        category_verified: true,
-        children: cascade ? node.children.map(markTree) : node.children,
-      });
-      return markTree(n);
-    }
-    return { ...n, children: patchVerified(n.children, issueId, cascade) };
-  });
-}
-
-function matchesTab(effective: string | null, verified: boolean, tab: InnerTab): boolean {
-  if (!verified) return tab === 'stack';
-  switch (tab) {
-    case 'stack': return effective === null;
-    case 'active':
-      return (
-        effective !== null
-        && !ARCHIVE_CODES.has(effective)
-        && effective !== INITIATIVES_CODE
-      );
-    case 'initiatives': return effective === INITIATIVES_CODE;
-    case 'archive_target': return effective === 'archive_target';
-    case 'archive': return effective === 'archive';
-  }
-}
-
 // ─── Memoised table cells ────────────────────────────────────────
 // Cell rerenders are driven by primitive per-row props, not the whole
 // record — so selecting a checkbox (which only flips rowSelection)
@@ -125,7 +94,6 @@ type CategoryCellProps = {
   hasPending: boolean;
   pendingValue: string | undefined;
   assignedValue: string | undefined;
-  inheritedAssigned: string | null | undefined;
   derivedCategory: string | null;
   categoryOptions: { value: string; label: string }[];
   categoryLabels: Record<string, string>;
@@ -135,17 +103,16 @@ type CategoryCellProps = {
 const CategoryCell = memo(function CategoryCell({
   issueId, isGroup, isContext,
   hasPending, pendingValue, assignedValue,
-  inheritedAssigned, derivedCategory,
+  derivedCategory,
   categoryOptions, categoryLabels, onChange,
 }: CategoryCellProps) {
   if (isGroup) return null;
   if (isContext) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
   const value = hasPending ? pendingValue : assignedValue;
-  const ancestorCat = !value ? inheritedAssigned ?? null : null;
-  const derivedCat = !value && !ancestorCat ? derivedCategory : null;
-  const placeholderCode = ancestorCat ?? derivedCat;
+  const derivedCat = !value ? derivedCategory : null;
+  const placeholderCode = derivedCat;
   const placeholderLabel = placeholderCode
-    ? (ancestorCat ? '↑ ' : '') + (categoryLabels[placeholderCode] || placeholderCode)
+    ? (categoryLabels[placeholderCode] || placeholderCode)
     : 'Не назначена';
   return (
     <Select
@@ -219,343 +186,91 @@ export default function CategoriesEditorPage() {
 
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
-  const issueTreeParams = useMemo(
-    () => ({
-      project_keys: scopeKeys || undefined,
-      teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
-    }),
-    [scopeKeys, selectedTeams],
-  );
-  const issueTree = useIssueTree(issueTreeParams);
+
+  const rootsQuery = useIssueRoots({
+    project_keys: scopeKeys || undefined,
+    teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+    tab: innerTab,
+    search: normalizedSearch || undefined,
+  });
+  const countsQuery = useIssueTreeCounts({
+    project_keys: scopeKeys || undefined,
+    teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+  });
+
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const setIncludeMut = useSetIssueInclude();
   const batchCategoryMut = useBatchSetCategory();
   const { options: categoryOptions, labels: categoryLabels } = useCategories();
 
-  const treeQueryKey = useMemo(() => ['issues', 'tree', issueTreeParams], [issueTreeParams]);
+  // ─── Lazy expand state ────────────────────────────────────────
 
-  // Effective assigned category (server + pending)
-  const effectiveAssigned = (node: IssueTreeNode): string | null | undefined => {
-    if (pendingCats.has(node.id)) return pendingCats.get(node.id);
-    return node.assigned_category ?? null;
-  };
+  const [loadedChildren, setLoadedChildren] = useState<Map<string, IssueTreeRootNode[]>>(new Map());
+  const loadChildrenMut = useLoadChildrenMutation();
 
-  // Unique statuses from loaded data (for status filter dropdown)
+  // Reset loaded children and expanded keys on tab/scope/team/search change
+  useEffect(() => {
+    setLoadedChildren(new Map());
+    setExpandedRowKeys([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [innerTab, selectedTeams.join(','), scopeKeys, normalizedSearch]);
+
+  const onExpand = useCallback(async (expanded: boolean, record: TreeNodeWithChildren) => {
+    if (!expanded) return;
+    if (loadedChildren.has(record.id)) return;
+    if (!record.has_children) return;
+    const children = await loadChildrenMut.mutateAsync({ parentId: record.id, tab: innerTab });
+    setLoadedChildren(prev => {
+      const next = new Map(prev);
+      next.set(record.id, children);
+      return next;
+    });
+  }, [loadedChildren, loadChildrenMut, innerTab]);
+
+  // ─── displayData from roots + loadedChildren ─────────────────
+
+  const passesHiddenStatuses = useCallback((n: IssueTreeRootNode): boolean =>
+    !hiddenStatuses.includes(n.status) || n.is_context,
+  [hiddenStatuses]);
+
+  const displayData = useMemo<TreeNodeWithChildren[]>(() => {
+    const attachChildren = (node: IssueTreeRootNode, depth: number): TreeNodeWithChildren => {
+      const kids = loadedChildren.get(node.id);
+      return {
+        ...node,
+        __depth: depth,
+        children: kids
+          ?.filter(passesHiddenStatuses)
+          .map(k => attachChildren(k, depth + 1)),
+      };
+    };
+    return (rootsQuery.data ?? []).filter(passesHiddenStatuses).map(r => attachChildren(r, 0));
+  }, [rootsQuery.data, loadedChildren, passesHiddenStatuses]);
+
+  // ─── Unique statuses from loaded data ────────────────────────
+
   const uniqueStatuses = useMemo(() => {
     const s = new Set<string>();
-    const walk = (nodes: IssueTreeNode[]) => {
-      nodes.forEach(n => { if (n.status) s.add(n.status); walk(n.children); });
-    };
-    walk(issueTree.data ?? []);
+    (rootsQuery.data ?? []).forEach(n => { if (n.status) s.add(n.status); });
+    Array.from(loadedChildren.values()).flat().forEach(n => { if (n.status) s.add(n.status); });
     return Array.from(s).sort();
-  }, [issueTree.data]);
+  }, [rootsQuery.data, loadedChildren]);
 
-  // Effective category for a node = own (pending/assigned) OR nearest ancestor's
-  // assigned_category. Used to route nodes into the right tab.
-  const effectiveFor = (n: TreeNodeWithChildren): string | null => {
-    const own = effectiveAssigned(n as IssueTreeNode);
-    if (own) return own;
-    return n.__inheritedAssigned ?? null;
-  };
+  // ─── Tab counters from server ─────────────────────────────────
 
-  // Builds the tree for a given tab: node is kept if it self-matches the tab
-  // OR any of its descendants does. Annotates __depth + __inheritedAssigned.
-  const buildTabData = (tab: InnerTab): TreeNodeWithChildren[] => {
-    const walk = (
-      nodes: IssueTreeNode[],
-      depth: number,
-      parentAssigned: string | null,
-    ): TreeNodeWithChildren[] => nodes
-      .map(n => {
-        const own = effectiveAssigned(n) ?? null;
-        const passDown = own ?? parentAssigned;
-        const kids = walk(n.children, depth + 1, passDown);
-        return {
-          ...n,
-          __depth: depth,
-          __inheritedAssigned: parentAssigned,
-          children: kids.length > 0 ? kids : undefined,
-        };
-      })
-      .filter(n => {
-        if (n.issue_type === 'group') return (n.children?.length ?? 0) > 0;
-        if (hiddenStatuses.includes(n.status) && !(n.children?.length ?? 0)) return false;
-        if (n.is_context) return (n.children?.length ?? 0) > 0;
-        const selfMatches = matchesTab(effectiveFor(n), n.category_verified ?? true, tab);
-        return selfMatches || (n.children?.length ?? 0) > 0;
-      });
-    return walk(issueTree.data ?? [], 0, null);
-  };
-
-  // Count of all descendant tasks in the raw loaded tree — not filtered by
-  // tab / hidden status / category. Virtual group nodes don't count as
-  // tasks. Recomputed only when the server-side tree changes, not on
-  // pendingCats flips.
-  const descendantCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    const dfs = (node: IssueTreeNode): number => {
-      let count = 0;
-      for (const child of node.children) {
-        const childSubtree = dfs(child);
-        if (child.issue_type !== 'group') count += 1;
-        count += childSubtree;
-      }
-      map.set(node.id, count);
-      return count;
-    };
-    (issueTree.data ?? []).forEach(dfs);
-    return map;
-  }, [issueTree.data]);
-
-  // Epic candidates for cascade: issues with assigned_category and children
-  const epicCandidates = useMemo(() => {
-    const out: { id: string; key: string; summary: string; assigned_category: string }[] = [];
-    const walk = (nodes: IssueTreeNode[]) => {
-      for (const n of nodes) {
-        if (n.assigned_category && (n.children?.length ?? 0) > 0) {
-          out.push({
-            id: n.id,
-            key: n.key,
-            summary: n.summary,
-            assigned_category: n.assigned_category,
-          });
-        }
-        if (n.children?.length) walk(n.children);
-      }
-    };
-    walk(issueTree.data ?? []);
-    return out;
-  }, [issueTree.data]);
-
-  const countTriage = (nodes: TreeNodeWithChildren[], tab: InnerTab): number => {
-    let n = 0;
-    const walk = (arr: TreeNodeWithChildren[]) => {
-      arr.forEach(node => {
-        if (node.issue_type !== 'group' && !node.is_context) {
-          if (matchesTab(effectiveFor(node), node.category_verified ?? true, tab)) n++;
-        }
-        if (node.children) walk(node.children);
-      });
-    };
-    walk(nodes);
-    return n;
-  };
-
-  const stackData = useMemo(
-    () => buildTabData('stack'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [issueTree.data, hiddenStatuses, pendingCats],
-  );
-  const activeData = useMemo(
-    () => buildTabData('active'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [issueTree.data, hiddenStatuses, pendingCats],
-  );
-  const initiativesData = useMemo(
-    () => buildTabData('initiatives'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [issueTree.data, hiddenStatuses, pendingCats],
-  );
-  const archiveTargetData = useMemo(
-    () => buildTabData('archive_target'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [issueTree.data, hiddenStatuses, pendingCats],
-  );
-  const archiveData = useMemo(
-    () => buildTabData('archive'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [issueTree.data, hiddenStatuses, pendingCats],
+  const counts = useMemo(
+    () => countsQuery.data ?? { stack: 0, active: 0, initiatives: 0, archive_target: 0, archive: 0 },
+    [countsQuery.data],
   );
 
-  const tabData =
-    innerTab === 'stack' ? stackData
-    : innerTab === 'active' ? activeData
-    : innerTab === 'initiatives' ? initiativesData
-    : innerTab === 'archive_target' ? archiveTargetData
-    : archiveData;
+  const queueItems = useMemo(() => QUEUE_ORDER.map(key => ({
+    key,
+    count: counts[key],
+    ...QUEUE_META[key],
+  })), [counts]);
 
-  // Поиск по ключу/названию — фильтрует уже построенное дерево вкладки,
-  // не трогая счётчики карточек. Узел остаётся, если совпадает сам или
-  // содержит совпавшего потомка.
-  const displayData = useMemo(() => {
-    if (!normalizedSearch) return tabData;
-    const walk = (nodes: TreeNodeWithChildren[]): TreeNodeWithChildren[] => {
-      const out: TreeNodeWithChildren[] = [];
-      for (const n of nodes) {
-        const kids = walk(n.children ?? []);
-        const selfMatch =
-          (n.key ?? '').toLowerCase().includes(normalizedSearch)
-          || (n.summary ?? '').toLowerCase().includes(normalizedSearch);
-        if (selfMatch || kids.length > 0) {
-          out.push({ ...n, children: kids.length > 0 ? kids : undefined });
-        }
-      }
-      return out;
-    };
-    return walk(tabData);
-  }, [tabData, normalizedSearch]);
-
-  // Контекстные строки (родители вне фильтра команды) при загрузке автоматически
-  // раскрываем вместе со всей цепочкой предков — пользователю нужно сразу видеть
-  // реальную задачу внутри фильтра. Пользователь может свернуть вручную; сброс
-  // только при смене вкладки / фильтра команды / перезагрузке дерева — правки
-  // pendingCats expansion не трогают.
-  const [expandedRowKeys, setExpandedRowKeys] = useState<readonly Key[]>([]);
-  useEffect(() => {
-    const keys = new Set<string>();
-    const walk = (nodes: TreeNodeWithChildren[], ancestors: string[]) => {
-      nodes.forEach(n => {
-        if (n.is_context) {
-          keys.add(n.id);
-          ancestors.forEach(a => keys.add(a));
-        }
-        if (n.children?.length) walk(n.children, [...ancestors, n.id]);
-      });
-    };
-    walk(tabData, []);
-    // Мерджим в существующее состояние, а не заменяем — иначе setQueryData
-    // (оптимистичный патч верификации) триггерит эффект и схлопывает дерево.
-    setExpandedRowKeys(prev => Array.from(new Set([...prev, ...keys])));
-    // tabData умышленно не в зависимостях: он пересобирается на каждом pendingCats-
-    // клике, а сброс раскрытия нам нужен только на структурных изменениях.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [issueTree.data, innerTab, selectedTeams, hiddenStatuses]);
-  const tableExpandable = useMemo(
-    () => ({ expandedRowKeys, onExpandedRowsChange: setExpandedRowKeys, expandRowByClick: true }),
-    [expandedRowKeys],
-  );
-
-  const expandAll = useCallback(() => {
-    const ids: string[] = [];
-    const walk = (nodes: TreeNodeWithChildren[]) => {
-      nodes.forEach(n => {
-        if (n.children?.length) { ids.push(n.id); walk(n.children); }
-      });
-    };
-    walk(displayData);
-    setExpandedRowKeys(ids);
-  }, [displayData]);
-
-  // При активном поиске автоматически раскрываем все ветви с совпадениями.
-  useEffect(() => {
-    if (!normalizedSearch) return;
-    const ids: string[] = [];
-    const walk = (nodes: TreeNodeWithChildren[]) => {
-      nodes.forEach(n => {
-        if (n.children?.length) { ids.push(n.id); walk(n.children); }
-      });
-    };
-    walk(displayData);
-    setExpandedRowKeys(prev => Array.from(new Set([...prev, ...ids])));
-  }, [normalizedSearch, displayData]);
-
-  const collapseAll = useCallback(() => setExpandedRowKeys([]), []);
-
-  // Counts walk the whole tree — memoise per tab so selectedIds changes
-  // don't re-trigger four tree walks. countTriage closes over pendingCats
-  // (via effectiveFor/effectiveAssigned), so we match the buildTabData
-  // deps pattern: whenever pendingCats changes, tabData is rebuilt too.
-  const stackCount = useMemo(() => countTriage(stackData, 'stack'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stackData]);
-  const activeCount = useMemo(() => countTriage(activeData, 'active'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeData]);
-  const initiativesCount = useMemo(() => countTriage(initiativesData, 'initiatives'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [initiativesData]);
-  const archiveTargetCount = useMemo(() => countTriage(archiveTargetData, 'archive_target'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [archiveTargetData]);
-  const archiveCount = useMemo(() => countTriage(archiveData, 'archive'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [archiveData]);
-
-  const queueItems = useMemo(() => {
-    const counts: Record<InnerTab, number> = {
-      stack: stackCount,
-      active: activeCount,
-      initiatives: initiativesCount,
-      archive_target: archiveTargetCount,
-      archive: archiveCount,
-    };
-    return QUEUE_ORDER.map(key => ({
-      key,
-      count: counts[key],
-      ...QUEUE_META[key],
-    }));
-  }, [stackCount, activeCount, initiativesCount, archiveTargetCount, archiveCount]);
-
-  // Optimistic toggle for include_in_analysis.
-  // Takes (issueId, hasChildren) instead of full record so memoized cells
-  // can pass only primitives and benefit from React.memo equality.
-  const toggleInclude = useCallback((issueId: string, hasChildren: boolean, checked: boolean) => {
-    const patchSubtree = (node: IssueTreeNode): IssueTreeNode => ({
-      ...node,
-      include_in_analysis: checked,
-      children: node.children.map(patchSubtree),
-    });
-    const patchTree = (nodes: IssueTreeNode[]): IssueTreeNode[] => nodes.map(n => {
-      if (n.id === issueId) {
-        return hasChildren ? patchSubtree(n) : { ...n, include_in_analysis: checked };
-      }
-      return { ...n, children: patchTree(n.children) };
-    });
-    qc.setQueryData<IssueTreeNode[]>(treeQueryKey, (old) => old ? patchTree(old) : old);
-    setIncludeMut.mutate(
-      { issueId, include: checked, recursive: hasChildren },
-      {
-        onError: (err) => {
-          notification.error({ title: 'Ошибка', description: err.message });
-          issueTree.refetch();
-        },
-      },
-    );
-  }, [qc, treeQueryKey, setIncludeMut, notification, issueTree]);
-
-  const handleVerify = useCallback((
-    issueId: string,
-    cascade: boolean,
-  ) => {
-    const requireChildVerification = pendingVerifyFlags.get(issueId) ?? false;
-    // Optimistic: patch cache immediately so items fade out without refetch
-    const previous = qc.getQueryData<IssueTreeNode[]>(treeQueryKey);
-    qc.setQueryData<IssueTreeNode[]>(treeQueryKey, old =>
-      old ? patchVerified(old, issueId, cascade) : old,
-    );
-    verifyMut.mutate(
-      { issueId, cascade, requireChildVerification },
-      {
-        onError: (err) => {
-          // Rollback on failure
-          qc.setQueryData(treeQueryKey, previous);
-          notification.error({ title: 'Ошибка верификации', description: (err as Error).message });
-        },
-      },
-    );
-  }, [pendingVerifyFlags, verifyMut, notification, qc, treeQueryKey]);
-
-  const handleResize = useCallback((colKey: string) =>
-    (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
-      setWidths(w => ({ ...w, [colKey]: size.width }));
-    },
-  []);
-
-  // Индекс id → node. Нужен для cascade-эффекта setPendingCategory: чтобы от
-  // родителя пройти его поддерево в текущем дереве. Пересоздаётся только при
-  // изменении серверного дерева.
-  const nodeById = useMemo(() => {
-    const map = new Map<string, IssueTreeNode>();
-    const walk = (nodes: IssueTreeNode[]) => {
-      for (const n of nodes) {
-        map.set(n.id, n);
-        if (n.children?.length) walk(n.children);
-      }
-    };
-    walk(issueTree.data ?? []);
-    return map;
-  }, [issueTree.data]);
+  // ─── Cascade ref ──────────────────────────────────────────────
 
   // Какие id поставлены каскадом (не вручную). Нужно чтобы смена кода на
   // родителе протащила обновление по уже каскадно-проставленным потомкам, но
@@ -563,43 +278,28 @@ export default function CategoriesEditorPage() {
   // родителя. Сбрасывается там же где pendingCats.
   const cascadedIdsRef = useRef<Set<string>>(new Set());
 
-  // Поставить категорию + (на вкладке «К разбору») каскадно её же — на
-  // видимых потомков «в стеке». Граница каскада: потомок с явным ручным
-  // выбором PM (своя assigned_category на сервере или ручной pending в этой
-  // сессии). Каскадно-проставленные потомки продолжают подхватывать смену
-  // кода родителя. При снятии (code=null) каскадно убираем pending у тех,
-  // кому каскад его поставил.
+  // ─── setPendingCategory: cascade only through LOADED children ─
+
   const setPendingCategory = useCallback((issueId: string, code: string | null) => {
     setPendingCats(prev => {
       const next = new Map(prev);
       next.set(issueId, code);
-      cascadedIdsRef.current.delete(issueId); // ручной выбор PM на корне
+      cascadedIdsRef.current.delete(issueId);
 
       if (innerTab !== 'stack') return next;
 
-      const root = nodeById.get(issueId);
-      if (!root) return next;
-
       const cascaded = cascadedIdsRef.current;
-      const visit = (children: IssueTreeNode[] | undefined) => {
-        if (!children) return;
-        for (const ch of children) {
-          if (ch.issue_type === 'group') {
-            visit(ch.children);
-            continue;
-          }
+      const visit = (parentId: string) => {
+        const kids = loadedChildren.get(parentId);
+        if (!kids) return;
+        for (const ch of kids) {
+          if (ch.issue_type === 'group') { visit(ch.id); continue; }
           if (ch.is_context) continue;
-
-          const hasOwnAssigned = !!ch.assigned_category;
-          if (hasOwnAssigned) continue; // ручной выбор на сервере = граница
-
+          if (ch.assigned_category) continue;
           const hasPending = next.has(ch.id);
           const isCascaded = cascaded.has(ch.id);
-          // Ручной pending PM (не каскадом) — не трогаем + не идём глубже.
           if (hasPending && !isCascaded) continue;
-
           if (code === null) {
-            // Снятие у родителя — убираем каскадно-проставленного потомка.
             if (hasPending && isCascaded) {
               next.delete(ch.id);
               cascaded.delete(ch.id);
@@ -608,29 +308,22 @@ export default function CategoriesEditorPage() {
             next.set(ch.id, code);
             cascaded.add(ch.id);
           }
-          visit(ch.children);
+          visit(ch.id);
         }
       };
-      visit(root.children);
+      visit(issueId);
       return next;
     });
-  }, [innerTab, nodeById]);
+  }, [innerTab, loadedChildren]);
 
-  // Ids of context rows — ancestor rows outside the team filter, surfaced
-  // only to keep hierarchy readable. The user can tick their checkbox as a
-  // bulk-select gesture (cascade picks up descendants), but the context row
-  // itself must never receive a category.
+  // ─── Context rows set ─────────────────────────────────────────
+
   const contextIdSet = useMemo(() => {
     const out = new Set<string>();
-    const walk = (nodes: IssueTreeNode[]) => {
-      nodes.forEach(n => {
-        if (n.is_context) out.add(n.id);
-        walk(n.children);
-      });
-    };
-    walk(issueTree.data ?? []);
+    (rootsQuery.data ?? []).forEach(n => { if (n.is_context) out.add(n.id); });
+    Array.from(loadedChildren.values()).flat().forEach(n => { if (n.is_context) out.add(n.id); });
     return out;
-  }, [issueTree.data]);
+  }, [rootsQuery.data, loadedChildren]);
 
   const applicableSelectedIds = useMemo(
     () => selectedIds.filter(id => !contextIdSet.has(id)),
@@ -648,6 +341,38 @@ export default function CategoriesEditorPage() {
     setBulkCategory(undefined);
     setSelectedIds([]);
   };
+
+  // ─── Mutations → invalidate tree ─────────────────────────────
+
+  const toggleInclude = useCallback((issueId: string, hasChildren: boolean, checked: boolean) => {
+    setIncludeMut.mutate(
+      { issueId, include: checked, recursive: hasChildren },
+      {
+        onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
+        onError: (err) => notification.error({ title: 'Ошибка', description: err.message }),
+      },
+    );
+  }, [setIncludeMut, notification, qc]);
+
+  const handleVerify = useCallback((
+    issueId: string,
+    cascade: boolean,
+  ) => {
+    const requireChildVerification = pendingVerifyFlags.get(issueId) ?? false;
+    verifyMut.mutate(
+      { issueId, cascade, requireChildVerification },
+      {
+        onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
+        onError: (err) => notification.error({ title: 'Ошибка верификации', description: (err as Error).message }),
+      },
+    );
+  }, [pendingVerifyFlags, verifyMut, notification, qc]);
+
+  const handleResize = useCallback((colKey: string) =>
+    (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
+      setWidths(w => ({ ...w, [colKey]: size.width }));
+    },
+  []);
 
   const savePending = async () => {
     // Group by category code
@@ -670,18 +395,8 @@ export default function CategoriesEditorPage() {
         });
         res.archived_ids.forEach(id => archivedIds.add(id));
       }
-      // Patch the local tree cache so UI reflects saved state without a refetch.
-      const patchTree = (nodes: IssueTreeNode[]): IssueTreeNode[] => nodes.map(n => {
-        const nextAssigned = assignments.has(n.id) ? assignments.get(n.id) ?? null : n.assigned_category;
-        const nextInclude = archivedIds.has(n.id) ? false : n.include_in_analysis;
-        return {
-          ...n,
-          assigned_category: nextAssigned,
-          include_in_analysis: nextInclude,
-          children: patchTree(n.children),
-        };
-      });
-      qc.setQueryData<IssueTreeNode[]>(treeQueryKey, (old) => old ? patchTree(old) : old);
+
+      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
 
       const total = assignments.size;
       setPendingCats(new Map());
@@ -702,9 +417,31 @@ export default function CategoriesEditorPage() {
     }
   };
 
-  // Memoised columns — stable across selectedIds changes, rebuilds only
-  // when the inputs actually affecting cell output change. This is the
-  // main fix for checkbox-click latency on large trees.
+  // ─── Expand/collapse ─────────────────────────────────────────
+
+  const [expandedRowKeys, setExpandedRowKeys] = useState<readonly Key[]>([]);
+
+  const tableExpandable = useMemo(
+    () => ({
+      expandedRowKeys,
+      onExpandedRowsChange: setExpandedRowKeys,
+      onExpand,
+      expandRowByClick: true,
+    }),
+    [expandedRowKeys, onExpand],
+  );
+
+  const expandAll = useCallback(() => {
+    message.info('Раскрыть всё недоступно для больших деревьев. Раскрывайте интересующие эпики по клику.');
+  }, [message]);
+
+  const collapseAll = useCallback(() => {
+    setExpandedRowKeys([]);
+    setLoadedChildren(new Map());
+  }, []);
+
+  // ─── Columns ──────────────────────────────────────────────────
+
   const baseColumns = useMemo(() => {
     const base = [
       {
@@ -712,7 +449,7 @@ export default function CategoriesEditorPage() {
         dataIndex: 'key',
         key: 'key',
         width: widths.key,
-        render: (key: string, record: IssueTreeNode) => {
+        render: (key: string, record: IssueTreeRootNode) => {
           if (record.issue_type === 'group' || !key) return null;
           if (!jiraBaseUrl) return <Text strong style={{ whiteSpace: 'nowrap' }}>{key}</Text>;
           return (
@@ -728,7 +465,7 @@ export default function CategoriesEditorPage() {
         key: 'summary',
         width: widths.summary,
         render: (s: string, record: TreeNodeWithChildren) => {
-          const count = descendantCounts.get(record.id) ?? 0;
+          const count = record.descendant_count ?? 0;
           return (
             <span>
               <Text>{s}</Text>
@@ -758,7 +495,6 @@ export default function CategoriesEditorPage() {
             hasPending={pendingCats.has(record.id)}
             pendingValue={pendingCats.get(record.id) ?? undefined}
             assignedValue={record.assigned_category || undefined}
-            inheritedAssigned={record.__inheritedAssigned}
             derivedCategory={record.category}
             categoryOptions={categoryOptions}
             categoryLabels={categoryLabels}
@@ -771,7 +507,7 @@ export default function CategoriesEditorPage() {
         dataIndex: 'status',
         key: 'status',
         width: widths.status,
-        render: (v: string, record: IssueTreeNode) =>
+        render: (v: string, record: IssueTreeRootNode) =>
           v ? <Tag color={statusTagColor(v, record.status_category)}>{v}</Tag> : null,
       },
       {
@@ -779,12 +515,12 @@ export default function CategoriesEditorPage() {
         dataIndex: 'status_changed_at',
         key: 'statusChanged',
         width: widths.statusChanged,
-        sorter: (a: IssueTreeNode, b: IssueTreeNode) => {
+        sorter: (a: IssueTreeRootNode, b: IssueTreeRootNode) => {
           const ta = a.status_changed_at ? new Date(a.status_changed_at).getTime() : 0;
           const tb = b.status_changed_at ? new Date(b.status_changed_at).getTime() : 0;
           return ta - tb;
         },
-        render: (iso: string | null, record: IssueTreeNode) => {
+        render: (iso: string | null, record: IssueTreeRootNode) => {
           if (record.issue_type === 'group') return null;
           if (!iso) return <Text type="secondary">—</Text>;
           const days = daysSince(iso);
@@ -808,8 +544,8 @@ export default function CategoriesEditorPage() {
         dataIndex: 'goals',
         key: 'goals',
         width: widths.goals,
-        sorter: (a: IssueTreeNode, b: IssueTreeNode) => (a.goals ?? '').localeCompare(b.goals ?? ''),
-        render: (v: string | null, record: IssueTreeNode) => {
+        sorter: (a: IssueTreeRootNode, b: IssueTreeRootNode) => (a.goals ?? '').localeCompare(b.goals ?? ''),
+        render: (v: string | null, record: IssueTreeRootNode) => {
           if (record.issue_type === 'group') return null;
           if (!v) return <Text type="secondary">—</Text>;
           return (
@@ -844,7 +580,7 @@ export default function CategoriesEditorPage() {
     }));
   }, [
     widths, jiraBaseUrl,
-    pendingCats, categoryOptions, categoryLabels, descendantCounts,
+    pendingCats, categoryOptions, categoryLabels,
     setPendingCategory, toggleInclude, handleResize,
   ]);
 
@@ -970,8 +706,8 @@ export default function CategoriesEditorPage() {
             Выберите задачи, назначьте категорию и сохраните черновик.
           </Text>
         </Space>
-        <Tag color={stackCount > 0 ? 'gold' : 'cyan'} className="category-triage-attention">
-          {stackCount} ждут разбора
+        <Tag color={counts.stack > 0 ? 'gold' : 'cyan'} className="category-triage-attention">
+          {counts.stack} ждут разбора
         </Tag>
       </section>
 
@@ -1015,11 +751,11 @@ export default function CategoriesEditorPage() {
           />
         </Space>
         <Space wrap>
-          {issueTree.isFetching && (
+          {rootsQuery.isFetching && (
             <Button
               danger
               icon={<CloseOutlined />}
-              onClick={() => qc.cancelQueries({ queryKey: treeQueryKey })}
+              onClick={() => qc.cancelQueries({ queryKey: ['issues', 'tree', 'roots'] })}
             >
               Отменить загрузку
             </Button>
@@ -1048,7 +784,7 @@ export default function CategoriesEditorPage() {
           rowKey="id"
           rowSelection={rowSelection}
           rowClassName={rowClassName}
-          loading={issueTree.isFetching}
+          loading={rootsQuery.isFetching || loadChildrenMut.isPending}
           pagination={false}
           size="small"
           expandable={tableExpandable}
@@ -1116,7 +852,6 @@ export default function CategoriesEditorPage() {
         onClose={() => setBulkDrawerOpen(false)}
         selectedTeams={selectedTeams}
         scopeProjectKeys={(scopeProjects.data ?? []).map(p => p.jira_project_key)}
-        epicCandidates={epicCandidates}
       />
     </Space>
   );
