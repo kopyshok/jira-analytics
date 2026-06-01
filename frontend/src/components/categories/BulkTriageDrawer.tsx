@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Drawer, Tabs, Typography } from 'antd';
 import BulkArchiveSection from './sections/BulkArchiveSection';
+import BulkAcceptSuggestionsSection from './sections/BulkAcceptSuggestionsSection';
 
 const { Title, Text } = Typography;
 
@@ -56,7 +57,13 @@ export default function BulkTriageDrawer({
           {
             key: 'accept',
             label: 'Принять подсказки',
-            children: <Text type="secondary">Будет добавлено в следующем шаге.</Text>,
+            children: (
+              <BulkAcceptSuggestionsSection
+                selectedTeams={selectedTeams}
+                scopeProjectKeys={scopeProjectKeys}
+                onApplied={onClose}
+              />
+            ),
           },
           {
             key: 'cascade',
