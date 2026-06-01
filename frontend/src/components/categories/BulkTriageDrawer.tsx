@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Drawer, Tabs, Typography } from 'antd';
 
 const { Title, Text } = Typography;
+
+type Section = 'archive' | 'accept' | 'cascade';
 
 type Props = {
   open: boolean;
@@ -15,7 +18,7 @@ export default function BulkTriageDrawer({
   selectedTeams,
   scopeProjectKeys,
 }: Props) {
-  // Placeholder for Task 7+ to use selectedTeams and scopeProjectKeys
+  const [active, setActive] = useState<Section>('archive');
   void selectedTeams;
   void scopeProjectKeys;
 
@@ -36,10 +39,8 @@ export default function BulkTriageDrawer({
         применение системных подсказок, протяжка категории эпика на потомков.
       </Text>
       <Tabs
-        activeKey="archive"
-        onChange={() => {
-          // Placeholder for section-specific logic in Task 7+
-        }}
+        activeKey={active}
+        onChange={(k) => setActive(k as Section)}
         style={{ marginTop: 16 }}
         items={[
           {
