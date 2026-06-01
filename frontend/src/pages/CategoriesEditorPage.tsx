@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined,
-  SaveOutlined,
+  SaveOutlined, ToolOutlined,
 } from '@ant-design/icons';
 import categoriesHelp from '../../../docs/help/categories.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -22,6 +22,7 @@ import { DARK_THEME } from '../utils/constants';
 import { useCategories } from '../hooks/useCategories';
 import { useIssueTree, useSetIssueInclude, useBatchSetCategory, useVerifyIssue } from '../hooks/useIssueTree';
 import type { IssueTreeNode } from '../types/api';
+import BulkTriageDrawer from '../components/categories/BulkTriageDrawer';
 
 const { Text } = Typography;
 
@@ -211,6 +212,7 @@ export default function CategoriesEditorPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
+  const [bulkDrawerOpen, setBulkDrawerOpen] = useState(false);
   const [pendingVerifyFlags, setPendingVerifyFlags] = useState<Map<string, boolean>>(new Map());
   const verifyMut = useVerifyIssue();
   useRegisterHelp('Категоризация задач', categoriesHelp);
@@ -1003,6 +1005,12 @@ export default function CategoriesEditorPage() {
             </Button>
           )}
           <Button
+            icon={<ToolOutlined />}
+            onClick={() => setBulkDrawerOpen(true)}
+          >
+            Массовые операции
+          </Button>
+          <Button
             icon={<CheckOutlined />}
             disabled={applicableSelectedIds.length === 0}
             onClick={() => setBulkModalOpen(true)}
@@ -1083,6 +1091,12 @@ export default function CategoriesEditorPage() {
           />
         </div>
       </Modal>
+      <BulkTriageDrawer
+        open={bulkDrawerOpen}
+        onClose={() => setBulkDrawerOpen(false)}
+        selectedTeams={selectedTeams}
+        scopeProjectKeys={(scopeProjects.data ?? []).map(p => p.jira_project_key)}
+      />
     </Space>
   );
 }

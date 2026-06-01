@@ -1,0 +1,64 @@
+import { Drawer, Tabs, Typography } from 'antd';
+
+const { Title, Text } = Typography;
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  selectedTeams: string[];
+  scopeProjectKeys: string[];
+};
+
+export default function BulkTriageDrawer({
+  open,
+  onClose,
+  selectedTeams,
+  scopeProjectKeys,
+}: Props) {
+  // Placeholder for Task 7+ to use selectedTeams and scopeProjectKeys
+  void selectedTeams;
+  void scopeProjectKeys;
+
+  return (
+    <Drawer
+      title="Массовые операции"
+      placement="right"
+      width={680}
+      open={open}
+      onClose={onClose}
+      destroyOnClose
+    >
+      <Title level={5} style={{ marginTop: 0 }}>
+        Инструменты массового разбора
+      </Title>
+      <Text type="secondary">
+        Для онбординга руководителя проектов с большим стеком: архив по фильтру,
+        применение системных подсказок, протяжка категории эпика на потомков.
+      </Text>
+      <Tabs
+        activeKey="archive"
+        onChange={() => {
+          // Placeholder for section-specific logic in Task 7+
+        }}
+        style={{ marginTop: 16 }}
+        items={[
+          {
+            key: 'archive',
+            label: 'Архив по фильтру',
+            children: <Text type="secondary">Будет добавлено в следующем шаге.</Text>,
+          },
+          {
+            key: 'accept',
+            label: 'Принять подсказки',
+            children: <Text type="secondary">Будет добавлено в следующем шаге.</Text>,
+          },
+          {
+            key: 'cascade',
+            label: 'Каскад от эпика',
+            children: <Text type="secondary">Будет добавлено в следующем шаге.</Text>,
+          },
+        ]}
+      />
+    </Drawer>
+  );
+}
