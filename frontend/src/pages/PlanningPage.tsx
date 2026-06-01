@@ -52,6 +52,7 @@ import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { downloadScenarioXlsx } from '../api/exports';
 import { trackAction } from '../lib/usage/track';
 import { DARK_THEME, FONTS } from '../utils/constants';
+import { statusTagColor } from '../utils/status';
 import { useRoles } from '../hooks/useRoles';
 import { useJiraSettings } from '../hooks/useSettings';
 import { getRoleColor } from '../utils/roles';
@@ -896,20 +897,13 @@ export default function PlanningPage() {
                               />
                             )}
                           </div>
-                          {a.source_category === 'quarterly_tasks' && (
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                marginTop: 2,
-                                fontSize: 11,
-                                padding: '1px 6px',
-                                borderRadius: 3,
-                                background: 'rgba(29,158,117,0.15)',
-                                color: '#1D9E75',
-                              }}
+                          {a.status && (
+                            <Tag
+                              color={statusTagColor(a.status, a.status_category)}
+                              style={{ fontSize: 10, margin: '2px 4px 0 0', padding: '0 4px' }}
                             >
-                              В работе
-                            </span>
+                              {a.status}
+                            </Tag>
                           )}
                           {a.jira_key && (
                             jiraBaseUrl

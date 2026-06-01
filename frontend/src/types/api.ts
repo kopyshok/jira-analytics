@@ -587,6 +587,8 @@ export interface AllocationResponse {
   customer: string | null;
   cost_type: string | null;
   source_category: string | null;
+  status: string | null;
+  status_category: string | null;
 }
 
 // === Scenario rules ===
