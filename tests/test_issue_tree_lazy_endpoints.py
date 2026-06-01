@@ -60,3 +60,52 @@ def test_tree_counts_groups_by_tab(client, db):
         db.query(Issue).filter(Issue.project_id == p.id).delete()
         db.query(Project).filter(Project.id == p.id).delete()
         db.commit()
+
+
+def test_tree_roots_returns_matching_for_stack_tab(client, db):
+    p = _mk_proj(db, "RTS")
+    epic = _mk_issue(db, p, "RTS-1", issue_type="Epic", assigned_category="dev")
+    child = _mk_issue(db, p, "RTS-2", parent_id=epic.id,
+                      assigned_category=None, category_verified=False)
+    _mk_issue(db, p, "RTS-3", assigned_category=None, category_verified=False)
+    _mk_issue(db, p, "RTS-4", assigned_category="dev")
+    db.commit()
+    try:
+        resp = client.get("/api/v1/issues/tree/roots", params={
+            "project_keys": "RTS", "tab": "stack",
+        })
+        assert resp.status_code == 200, resp.text
+        items = resp.json()
+        keys = sorted([n["key"] for n in items])
+        assert "RTS-1" in keys
+        assert "RTS-3" in keys
+        epic_node = next(n for n in items if n["key"] == "RTS-1")
+        assert epic_node["has_children"] is True
+        assert epic_node["descendant_match_count"] >= 1
+        single = next(n for n in items if n["key"] == "RTS-3")
+        assert single["has_children"] is False
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
+def test_tree_roots_supports_search(client, db):
+    p = _mk_proj(db, "SRC")
+    _mk_issue(db, p, "SRC-1", summary="оплата заказа",
+              assigned_category=None, category_verified=False)
+    _mk_issue(db, p, "SRC-2", summary="отгрузка товара",
+              assigned_category=None, category_verified=False)
+    db.commit()
+    try:
+        resp = client.get("/api/v1/issues/tree/roots", params={
+            "project_keys": "SRC", "tab": "stack", "search": "оплат",
+        })
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["key"] == "SRC-1"
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()

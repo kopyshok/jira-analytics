@@ -86,6 +86,29 @@ class TreeCountsResponse(BaseModel):
     archive: int
 
 
+class IssueTreeRootNode(BaseModel):
+    id: str
+    key: str
+    summary: str
+    issue_type: str
+    status: str
+    status_category: Optional[str] = None
+    project_key: str
+    parent_key: Optional[str] = None
+    assigned_category: Optional[str] = None
+    category: Optional[str] = None
+    include_in_analysis: bool = True
+    status_changed_at: Optional[str] = None
+    goals: Optional[str] = None
+    is_context: bool = False
+    is_container: bool = False
+    category_verified: bool = True
+    require_child_verification: bool = False
+    has_children: bool = False
+    descendant_count: int = 0
+    descendant_match_count: int = 0
+
+
 INITIATIVES_CODE = "initiatives_rfa"
 
 
@@ -106,6 +129,25 @@ def _filter_query_by_tree_params(query, project_keys, teams, db: Session):
                 clauses.append(Issue.participating_teams.like(f"%{t_json}%"))
             query = query.filter(or_(*clauses))
     return query
+
+
+def _node_matches_tab(effective_code: Optional[str], verified: bool, tab: str) -> bool:
+    """Проверить, совпадает ли узел с фильтром вкладки."""
+    if not verified:
+        return tab == "stack"
+    if tab == "stack":
+        return effective_code is None
+    if tab == "active":
+        return (effective_code is not None
+                and effective_code not in ARCHIVE_CATEGORY_CODES
+                and effective_code != INITIATIVES_CODE)
+    if tab == "initiatives":
+        return effective_code == INITIATIVES_CODE
+    if tab == "archive_target":
+        return effective_code == "archive_target"
+    if tab == "archive":
+        return effective_code == "archive"
+    return False
 
 
 # --- Endpoints ---
@@ -331,6 +373,142 @@ def get_tree_counts(
         else:
             counts["active"] += 1
     return TreeCountsResponse(**counts)
+
+
+@router.get("/tree/roots", response_model=List[IssueTreeRootNode])
+def get_tree_roots(
+    project_keys: Optional[str] = None,
+    teams: Optional[str] = None,
+    tab: str = "stack",
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Корневые узлы вкладки. «Корень» = верхнеуровневая задача (или эпик),
+    которая сама матчит вкладку ИЛИ содержит матчащих потомков. Поиск
+    применяется к key + summary (LIKE %q%).
+    """
+    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db)
+    rows = base.all()
+    matched_ids = {r.id for r in rows}
+
+    by_id: dict[str, Issue] = {r.id: r for r in rows}
+    context_ids: set[str] = set()
+    frontier = {r.parent_id for r in rows if r.parent_id and r.parent_id not in matched_ids}
+    while frontier:
+        batch = db.query(Issue).filter(Issue.id.in_(frontier)).all()
+        next_f = set()
+        for a in batch:
+            if a.id in by_id:
+                continue
+            by_id[a.id] = a
+            context_ids.add(a.id)
+            if a.parent_id and a.parent_id not in by_id:
+                next_f.add(a.parent_id)
+        frontier = next_f
+
+    project_key_by_id = {
+        p.id: p.key
+        for p in db.query(Project)
+        .filter(Project.id.in_({r.project_id for r in by_id.values() if r.project_id}))
+        .all()
+    }
+
+    rules = load_rules(db)
+
+    def effective(node: Issue) -> Optional[str]:
+        if not (node.category_verified or False):
+            return None
+        if node.assigned_category:
+            return node.assigned_category
+        cur_id = node.parent_id
+        for _ in range(20):
+            if not cur_id:
+                return None
+            parent = by_id.get(cur_id)
+            if not parent:
+                return None
+            if parent.assigned_category:
+                return parent.assigned_category
+            cur_id = parent.parent_id
+        return None
+
+    search_lc = (search or "").strip().lower()
+
+    def text_matches(node: Issue) -> bool:
+        if not search_lc:
+            return True
+        return search_lc in (node.key or "").lower() or search_lc in (node.summary or "").lower()
+
+    self_match: dict[str, bool] = {}
+    for r in by_id.values():
+        self_match[r.id] = (
+            _node_matches_tab(effective(r), r.category_verified or False, tab)
+            and text_matches(r)
+        )
+
+    children_by_parent: dict[str, list[Issue]] = {}
+    for r in by_id.values():
+        if r.parent_id:
+            children_by_parent.setdefault(r.parent_id, []).append(r)
+
+    desc_total: dict[str, int] = {}
+    desc_match: dict[str, int] = {}
+    def compute_desc(node_id: str) -> tuple[int, int]:
+        if node_id in desc_total:
+            return desc_total[node_id], desc_match[node_id]
+        t = 0
+        m = 0
+        for ch in children_by_parent.get(node_id, []):
+            t += 1
+            if self_match.get(ch.id):
+                m += 1
+            ct, cm = compute_desc(ch.id)
+            t += ct
+            m += cm
+        desc_total[node_id] = t
+        desc_match[node_id] = m
+        return t, m
+
+    for r in by_id.values():
+        compute_desc(r.id)
+
+    roots: list[IssueTreeRootNode] = []
+    for r in by_id.values():
+        is_top = (not r.parent_id) or (r.parent_id not in by_id)
+        if not is_top:
+            continue
+        if not self_match.get(r.id) and desc_match.get(r.id, 0) == 0:
+            continue
+        is_container = classify(rules, EvaluationInput(
+            project_key=project_key_by_id.get(r.project_id, ""),
+            issue_type=r.issue_type,
+            has_parent=bool(r.parent_id),
+        ))
+        roots.append(IssueTreeRootNode(
+            id=r.id,
+            key=r.key,
+            summary=r.summary,
+            issue_type=r.issue_type,
+            status=r.status,
+            status_category=r.status_category,
+            project_key=project_key_by_id.get(r.project_id, ""),
+            parent_key=by_id[r.parent_id].key if r.parent_id and r.parent_id in by_id else None,
+            assigned_category=r.assigned_category,
+            category=r.category,
+            include_in_analysis=r.include_in_analysis if r.include_in_analysis is not None else True,
+            status_changed_at=r.status_changed_at.isoformat() if r.status_changed_at else None,
+            goals=r.goals or None,
+            is_context=r.id in context_ids,
+            is_container=is_container,
+            category_verified=r.category_verified if r.category_verified is not None else True,
+            require_child_verification=r.require_child_verification if r.require_child_verification is not None else False,
+            has_children=bool(children_by_parent.get(r.id)),
+            descendant_count=desc_total.get(r.id, 0),
+            descendant_match_count=desc_match.get(r.id, 0),
+        ))
+
+    roots.sort(key=lambda n: n.key)
+    return roots
 
 
 def _issue_is_container(db: Session, issue: Issue) -> bool:
