@@ -2,25 +2,32 @@ import { useMemo, useState } from 'react';
 import { App, Button, Space, Transfer, Typography } from 'antd';
 import type { TransferProps } from 'antd/es/transfer';
 import { useBulkCascadeInherit } from '../../../hooks/useBulkTriage';
+import { useEpicCandidates } from '../../../hooks/useIssueLazyTree';
 import { useCategories } from '../../../hooks/useCategories';
 
 const { Text } = Typography;
 
-export type EpicCandidate = {
-  id: string;
-  key: string;
-  summary: string;
-  assigned_category: string;
-};
-
 type Props = {
-  candidates: EpicCandidate[];
+  selectedTeams: string[];
+  scopeProjectKeys: string[];
   onApplied: () => void;
 };
 
-export default function BulkCascadeInheritSection({ candidates, onApplied }: Props) {
+export default function BulkCascadeInheritSection({
+  selectedTeams,
+  scopeProjectKeys,
+  onApplied,
+}: Props) {
   const { message, modal } = App.useApp();
   const { labels: categoryLabels } = useCategories();
+  const candidatesQuery = useEpicCandidates({
+    project_keys: scopeProjectKeys.length > 0 ? scopeProjectKeys.join(',') : undefined,
+    teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+  });
+  const candidates = useMemo(
+    () => candidatesQuery.data ?? [],
+    [candidatesQuery.data],
+  );
   const [targetKeys, setTargetKeys] = useState<string[]>([]);
   const cascadeMut = useBulkCascadeInherit();
 
@@ -52,6 +59,10 @@ export default function BulkCascadeInheritSection({ candidates, onApplied }: Pro
       },
     });
   };
+
+  if (candidatesQuery.isFetching) {
+    return <Text type="secondary">Загрузка списка эпиков…</Text>;
+  }
 
   if (candidates.length === 0) {
     return (

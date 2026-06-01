@@ -71,7 +71,8 @@ export default function BulkTriageDrawer({
             label: 'Каскад от эпика',
             children: (
               <BulkCascadeInheritSection
-                candidates={[]}
+                selectedTeams={selectedTeams}
+                scopeProjectKeys={scopeProjectKeys}
                 onApplied={onClose}
               />
             ),
