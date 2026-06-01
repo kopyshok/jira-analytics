@@ -253,3 +253,49 @@ def test_admin_versions_endpoint_returns_hidden(testclient_db_session: Session):
         assert "Visible" in titles
     finally:
         _teardown()
+
+
+def test_new_user_inherits_latest_published_version(testclient_db_session: Session):
+    """Свежий юзер не должен видеть модалку со старыми релизами."""
+    admin = _seed_user(testclient_db_session)
+    _make_note(testclient_db_session, version="v1.0.0")
+    _make_note(testclient_db_session, version="v1.5.0")
+    try:
+        r = _client_admin(testclient_db_session, admin).post(
+            "/api/v1/admin/users/",
+            json={
+                "email": "new@x.com",
+                "password": "secret123",
+                "display_name": "Newbie",
+                "role": "manager",
+            },
+        )
+        assert r.status_code == 201, r.text
+        new_user = (
+            testclient_db_session.query(User).filter_by(email="new@x.com").first()
+        )
+        assert new_user.last_seen_release_version == "v1.5.0"
+    finally:
+        _teardown()
+
+
+def test_new_user_no_versions_keeps_null(testclient_db_session: Session):
+    """Если нет опубликованных версий — поле остаётся NULL."""
+    admin = _seed_user(testclient_db_session)
+    try:
+        r = _client_admin(testclient_db_session, admin).post(
+            "/api/v1/admin/users/",
+            json={
+                "email": "empty@x.com",
+                "password": "secret123",
+                "display_name": "Empty",
+                "role": "manager",
+            },
+        )
+        assert r.status_code == 201
+        new_user = (
+            testclient_db_session.query(User).filter_by(email="empty@x.com").first()
+        )
+        assert new_user.last_seen_release_version is None
+    finally:
+        _teardown()

@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import PasswordReset, UserCreate, UserResponse, UserUpdate
+from app.services.release_note_service import ReleaseNoteService
 
 router = APIRouter()
 _repo = UserRepository()
@@ -30,6 +31,12 @@ def create_user(data: UserCreate, db: Session = Depends(get_db)) -> UserResponse
         default_team=data.default_team,
         is_active=True,
     )
+    # Новый пользователь не должен получать модалку «Что нового» со всеми
+    # старыми релизами при первом входе — высокая отметка = последняя
+    # опубликованная версия на момент регистрации.
+    versions = ReleaseNoteService(db).list_published_versions()
+    if versions:
+        user.last_seen_release_version = versions[-1]
     return _repo.create(db, user)
 
 
