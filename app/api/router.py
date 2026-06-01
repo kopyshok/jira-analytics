@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
+from app.api.endpoints import admin_release_notes as admin_release_notes_endpoints
 from app.api.endpoints import admin_usage as admin_usage_endpoints
 from app.api.endpoints import admin_users as admin_users_endpoints
 from app.api.endpoints import ai_status as ai_status_endpoints
@@ -217,5 +218,11 @@ api_router.include_router(
     admin_usage_endpoints.router,
     prefix="/admin/usage",
     tags=["admin-usage"],
+    dependencies=_admin_dep,
+)
+api_router.include_router(
+    admin_release_notes_endpoints.router,
+    prefix="/admin/release-notes",
+    tags=["release-notes-admin"],
     dependencies=_admin_dep,
 )
