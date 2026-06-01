@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Drawer, Tabs, Typography } from 'antd';
 import BulkArchiveSection from './sections/BulkArchiveSection';
 import BulkAcceptSuggestionsSection from './sections/BulkAcceptSuggestionsSection';
+import BulkCascadeInheritSection, { type EpicCandidate } from './sections/BulkCascadeInheritSection';
 
 const { Title, Text } = Typography;
 
@@ -12,6 +13,7 @@ type Props = {
   onClose: () => void;
   selectedTeams: string[];
   scopeProjectKeys: string[];
+  epicCandidates: EpicCandidate[];
 };
 
 export default function BulkTriageDrawer({
@@ -19,6 +21,7 @@ export default function BulkTriageDrawer({
   onClose,
   selectedTeams,
   scopeProjectKeys,
+  epicCandidates,
 }: Props) {
   const [active, setActive] = useState<Section>('archive');
 
@@ -68,7 +71,12 @@ export default function BulkTriageDrawer({
           {
             key: 'cascade',
             label: 'Каскад от эпика',
-            children: <Text type="secondary">Будет добавлено в следующем шаге.</Text>,
+            children: (
+              <BulkCascadeInheritSection
+                candidates={epicCandidates}
+                onApplied={onClose}
+              />
+            ),
           },
         ]}
       />

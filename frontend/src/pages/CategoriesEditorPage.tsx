@@ -308,6 +308,26 @@ export default function CategoriesEditorPage() {
     return map;
   }, [issueTree.data]);
 
+  // Epic candidates for cascade: issues with assigned_category and children
+  const epicCandidates = useMemo(() => {
+    const out: { id: string; key: string; summary: string; assigned_category: string }[] = [];
+    const walk = (nodes: IssueTreeNode[]) => {
+      for (const n of nodes) {
+        if (n.assigned_category && (n.children?.length ?? 0) > 0) {
+          out.push({
+            id: n.id,
+            key: n.key,
+            summary: n.summary,
+            assigned_category: n.assigned_category,
+          });
+        }
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(issueTree.data ?? []);
+    return out;
+  }, [issueTree.data]);
+
   const countTriage = (nodes: TreeNodeWithChildren[], tab: InnerTab): number => {
     let n = 0;
     const walk = (arr: TreeNodeWithChildren[]) => {
@@ -1096,6 +1116,7 @@ export default function CategoriesEditorPage() {
         onClose={() => setBulkDrawerOpen(false)}
         selectedTeams={selectedTeams}
         scopeProjectKeys={(scopeProjects.data ?? []).map(p => p.jira_project_key)}
+        epicCandidates={epicCandidates}
       />
     </Space>
   );
