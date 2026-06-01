@@ -499,13 +499,21 @@ def get_tree_roots(
     for r in by_id.values():
         compute_desc(r.id)
 
+    # На вкладке «К разбору» — плоский список всех stack-задач команды
+    # (без иерархии). PM разбирает задачи по одной, не нуждается в дереве
+    # эпиков для триажа. На других вкладках — обычная иерархия roots.
+    if tab == "stack":
+        candidate_iter = (r for r in by_id.values() if self_match.get(r.id))
+    else:
+        def is_root_candidate(r: Issue) -> bool:
+            is_top = (not r.parent_id) or (r.parent_id not in by_id)
+            if not is_top:
+                return False
+            return self_match.get(r.id, False) or desc_match.get(r.id, 0) > 0
+        candidate_iter = (r for r in by_id.values() if is_root_candidate(r))
+
     roots: list[IssueTreeRootNode] = []
-    for r in by_id.values():
-        is_top = (not r.parent_id) or (r.parent_id not in by_id)
-        if not is_top:
-            continue
-        if not self_match.get(r.id) and desc_match.get(r.id, 0) == 0:
-            continue
+    for r in candidate_iter:
         is_container = classify(rules, EvaluationInput(
             project_key=project_key_by_id.get(r.project_id, ""),
             issue_type=r.issue_type,
@@ -529,9 +537,10 @@ def get_tree_roots(
             is_container=is_container,
             category_verified=r.category_verified if r.category_verified is not None else True,
             require_child_verification=r.require_child_verification if r.require_child_verification is not None else False,
-            has_children=bool(children_by_parent.get(r.id)),
-            descendant_count=desc_total.get(r.id, 0),
-            descendant_match_count=desc_match.get(r.id, 0),
+            # На stack tab дети не раскрываются — плоский список
+            has_children=False if tab == "stack" else bool(children_by_parent.get(r.id)),
+            descendant_count=0 if tab == "stack" else desc_total.get(r.id, 0),
+            descendant_match_count=0 if tab == "stack" else desc_match.get(r.id, 0),
         ))
 
     roots.sort(key=lambda n: n.key)

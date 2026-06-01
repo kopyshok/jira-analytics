@@ -123,11 +123,12 @@ def test_tree_counts_groups_by_tab(client, db):
         db.commit()
 
 
-def test_tree_roots_returns_matching_for_stack_tab(client, db):
+def test_tree_roots_stack_tab_is_flat_list(client, db):
+    """Stack tab — плоский список self-match задач, без иерархии эпиков."""
     p = _mk_proj(db, "RTS")
     epic = _mk_issue(db, p, "RTS-1", issue_type="Epic", assigned_category="dev")
-    child = _mk_issue(db, p, "RTS-2", parent_id=epic.id,
-                      assigned_category=None, category_verified=False)
+    _mk_issue(db, p, "RTS-2", parent_id=epic.id,
+              assigned_category=None, category_verified=False)
     _mk_issue(db, p, "RTS-3", assigned_category=None, category_verified=False)
     _mk_issue(db, p, "RTS-4", assigned_category="dev")
     db.commit()
@@ -138,13 +139,36 @@ def test_tree_roots_returns_matching_for_stack_tab(client, db):
         assert resp.status_code == 200, resp.text
         items = resp.json()
         keys = sorted([n["key"] for n in items])
-        assert "RTS-1" in keys
-        assert "RTS-3" in keys
-        epic_node = next(n for n in items if n["key"] == "RTS-1")
+        # Плоско: RTS-2 (под эпиком, stack) + RTS-3 (orphan, stack).
+        # RTS-1 (эпик, разобран) и RTS-4 (разобран) — не stack.
+        assert keys == ["RTS-2", "RTS-3"]
+        for it in items:
+            assert it["has_children"] is False
+            assert it["descendant_count"] == 0
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
+def test_tree_roots_archive_tab_keeps_tree(client, db):
+    """Archive tab — иерархия сохраняется (эпик-родитель показывается с descendant_match_count)."""
+    p = _mk_proj(db, "ARH")
+    epic = _mk_issue(db, p, "ARH-1", issue_type="Epic", assigned_category="dev")
+    _mk_issue(db, p, "ARH-2", parent_id=epic.id, assigned_category="archive")
+    db.commit()
+    try:
+        resp = client.get("/api/v1/issues/tree/roots", params={
+            "project_keys": "ARH", "tab": "archive",
+        })
+        assert resp.status_code == 200, resp.text
+        items = resp.json()
+        keys = sorted([n["key"] for n in items])
+        # ARH-1 — эпик-родитель stack-задачи, попадает по descendant_match_count
+        assert "ARH-1" in keys
+        epic_node = next(n for n in items if n["key"] == "ARH-1")
         assert epic_node["has_children"] is True
         assert epic_node["descendant_match_count"] >= 1
-        single = next(n for n in items if n["key"] == "RTS-3")
-        assert single["has_children"] is False
     finally:
         db.query(Issue).filter(Issue.project_id == p.id).delete()
         db.query(Project).filter(Project.id == p.id).delete()
