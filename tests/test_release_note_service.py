@@ -100,3 +100,13 @@ def test_unread_for_user_skips_hidden(db_session: Session):
     db_session.commit()
     svc = ReleaseNoteService(db_session)
     assert svc.unread_versions_for(user) == []
+
+
+def test_publish_drafts_rejects_bad_version(db_session: Session):
+    svc = ReleaseNoteService(db_session)
+    _make_note(db_session)
+    try:
+        svc.publish_drafts("v1.2.0-rc1")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for non-strict version")

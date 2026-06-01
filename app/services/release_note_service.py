@@ -1,4 +1,6 @@
 """Сервис ленты «Что нового»."""
+import re
+
 from sqlalchemy.orm import Session
 
 from app.models.release_note import NOTE_TYPES, SECTIONS, ReleaseNote
@@ -8,6 +10,16 @@ from app.models.user import User
 # SemVer-ish сравнение: "v1.10.0" > "v1.2.0".
 def _ver_key(v: str) -> tuple[int, ...]:
     return tuple(int(p) for p in v.lstrip("v").split(".") if p.isdigit())
+
+
+_VERSION_RE = re.compile(r"^v?\d+(\.\d+)*$")
+
+
+def _validate_version(v: str) -> None:
+    if not _VERSION_RE.match(v):
+        raise ValueError(
+            f"Версия должна быть в формате vN.N.N: {v!r}"
+        )
 
 
 class ReleaseNoteService:
@@ -42,6 +54,7 @@ class ReleaseNoteService:
         return note
 
     def publish_drafts(self, version: str) -> int:
+        _validate_version(version)
         drafts = (
             self.db.query(ReleaseNote)
             .filter(ReleaseNote.version.is_(None))
@@ -63,24 +76,24 @@ class ReleaseNoteService:
         return sorted(versions, key=_ver_key)
 
     def unread_versions_for(self, user: User) -> list[str]:
-        all_versions = self.list_published_versions()
-        baseline = user.last_seen_release_version
-        unread = []
-        for v in all_versions:
-            if baseline and _ver_key(v) <= _ver_key(baseline):
-                continue
-            has_visible = (
-                self.db.query(ReleaseNote.id)
-                .filter(
-                    ReleaseNote.version == v,
-                    ReleaseNote.is_hidden.is_(False),
-                )
-                .first()
-                is not None
+        # Все версии, у которых есть хотя бы одна не-скрытая запись.
+        rows = (
+            self.db.query(ReleaseNote.version)
+            .filter(
+                ReleaseNote.version.isnot(None),
+                ReleaseNote.is_hidden.is_(False),
             )
-            if has_visible:
-                unread.append(v)
-        return unread
+            .distinct()
+            .all()
+        )
+        visible_versions = {r[0] for r in rows}
+        baseline = user.last_seen_release_version
+        base_key = _ver_key(baseline) if baseline else None
+        unread = [
+            v for v in visible_versions
+            if base_key is None or _ver_key(v) > base_key
+        ]
+        return sorted(unread, key=_ver_key)
 
     def mark_user_seen(self, user: User, version: str) -> None:
         user.last_seen_release_version = version
