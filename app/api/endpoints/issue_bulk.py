@@ -169,3 +169,45 @@ async def bulk_archive(
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return BulkApplyResponse(updated=updated, archived_ids=archived_ids)
+
+
+class BulkAcceptSuggestionsRequest(BaseModel):
+    filters: BulkFilter
+
+
+class BulkAcceptResponse(BaseModel):
+    applied: int
+    skipped_no_suggestion: int
+
+
+@router.post("/bulk/accept-suggestions", response_model=BulkAcceptResponse)
+async def bulk_accept_suggestions(
+    body: BulkAcceptSuggestionsRequest,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Перенести derived category (Issue.category) в assigned_category
+    для задач без своей категории. Подтверждает (category_verified=True).
+
+    Задачи без derived подсказки (Issue.category=NULL) пропускаются.
+    """
+    rows = _apply_filters(db.query(Issue), body.filters, db).all()
+    backlog = BacklogService(db)
+    applied = 0
+    skipped = 0
+    for issue in rows:
+        if issue.assigned_category is not None:
+            continue
+        if not issue.category:
+            skipped += 1
+            continue
+        issue.assigned_category = issue.category
+        issue.category_verified = True
+        if issue.category in ARCHIVE_CATEGORY_CODES and issue.include_in_analysis:
+            issue.include_in_analysis = False
+        backlog.sync_from_issue(issue)
+        applied += 1
+
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    return BulkAcceptResponse(applied=applied, skipped_no_suggestion=skipped)

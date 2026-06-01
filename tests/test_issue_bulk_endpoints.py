@@ -116,3 +116,38 @@ def test_bulk_archive_rejects_non_archive_code(client, db):
     })
     assert resp.status_code == 400
     assert "архивн" in resp.json()["detail"].lower()
+
+
+def test_bulk_accept_suggestions_writes_derived_into_assigned(client, db):
+    p = _mk_project(db, key="SUG")
+    _mk_issue(db, p, "SUG-1",
+              category="support",
+              assigned_category=None,
+              category_verified=False)
+    _mk_issue(db, p, "SUG-2",
+              category=None,
+              assigned_category=None,
+              category_verified=False)
+    _mk_issue(db, p, "SUG-3",
+              category="support",
+              assigned_category="dev",
+              category_verified=True)
+    db.commit()
+    try:
+        resp = client.post("/api/v1/issues/bulk/accept-suggestions", json={
+            "filters": {"project_keys": ["SUG"], "only_no_assigned": True},
+        })
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["applied"] == 1
+        assert data["skipped_no_suggestion"] == 1
+
+        db.expire_all()
+        assert db.get(Issue, "issue-SUG-1").assigned_category == "support"
+        assert db.get(Issue, "issue-SUG-1").category_verified is True
+        assert db.get(Issue, "issue-SUG-2").assigned_category is None
+        assert db.get(Issue, "issue-SUG-3").assigned_category == "dev"
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
