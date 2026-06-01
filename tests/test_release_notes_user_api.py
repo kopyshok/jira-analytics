@@ -1,6 +1,7 @@
 """Endpoint-уровень для /release-notes (пользовательские)."""
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -115,3 +116,11 @@ def test_mark_seen_updates_user(testclient_db_session: Session):
         assert user.last_seen_release_version == "v1.1.0"
     finally:
         _teardown()
+
+
+@pytest.mark.no_auth_bypass
+def test_unread_requires_auth():
+    """No auth → 401 (verifies router-level auth dep wiring)."""
+    client = TestClient(app)
+    r = client.get("/api/v1/release-notes/unread")
+    assert r.status_code == 401
