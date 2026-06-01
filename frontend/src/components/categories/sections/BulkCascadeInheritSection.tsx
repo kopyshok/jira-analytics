@@ -74,7 +74,7 @@ export default function BulkCascadeInheritSection({ candidates, onApplied }: Pro
         targetKeys={targetKeys}
         onChange={onChange}
         render={(item) => `${item.title} [${item.description}]`}
-        listStyle={{ width: 280, height: 320 }}
+        styles={{ section: { width: 280, height: 320 } }}
       />
       <Button
         type="primary"
