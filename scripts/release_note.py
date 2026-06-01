@@ -12,7 +12,14 @@ from __future__ import annotations
 import argparse
 import io
 import sys
+from pathlib import Path
 from typing import Optional
+
+# Скрипт может быть запущен как subprocess из scripts/release.py — sys.path[0]
+# окажется scripts/, а не корнем репо, и `from app.*` упадёт ModuleNotFoundError.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from sqlalchemy.orm import Session
 
