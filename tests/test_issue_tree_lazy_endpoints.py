@@ -39,6 +39,37 @@ def _mk_issue(db, proj, key, **overrides):
     return i
 
 
+def test_tree_roots_skips_participating_only_tasks(client, db):
+    """primary_only: задачи, где команда только в participating_teams,
+    не подтягиваются — их разбирает продуктовая команда."""
+    p = _mk_proj(db, "PRI")
+    # Продуктовая задача команды A в stack
+    _mk_issue(db, p, "PRI-1", team="A",
+              assigned_category=None, category_verified=False)
+    # Задача команды B, где A только участвует — НЕ должна попасть в выборку A
+    import json as _json
+    _mk_issue(db, p, "PRI-2", team="B",
+              participating_teams=_json.dumps(["A"]),
+              assigned_category=None, category_verified=False)
+    db.commit()
+    try:
+        resp = client.get("/api/v1/issues/tree/roots", params={
+            "project_keys": "PRI", "teams": "A", "tab": "stack",
+        })
+        assert resp.status_code == 200
+        keys = sorted([n["key"] for n in resp.json()])
+        assert keys == ["PRI-1"], f"Ожидалось только PRI-1, получено {keys}"
+
+        resp_counts = client.get("/api/v1/issues/tree/counts", params={
+            "project_keys": "PRI", "teams": "A",
+        })
+        assert resp_counts.json()["stack"] == 1
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
 def test_tree_counts_groups_by_tab(client, db):
     p = _mk_proj(db, "CNT")
     _mk_issue(db, p, "CNT-1", assigned_category=None, category_verified=False)  # stack

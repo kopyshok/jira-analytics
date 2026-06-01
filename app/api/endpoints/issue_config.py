@@ -111,8 +111,17 @@ class IssueTreeRootNode(BaseModel):
 INITIATIVES_CODE = "initiatives_rfa"
 
 
-def _filter_query_by_tree_params(query, project_keys, teams, db: Session):
-    """Общий фильтр project_keys + teams (как в существующем /tree)."""
+def _filter_query_by_tree_params(query, project_keys, teams, db: Session, primary_only: bool = False):
+    """Общий фильтр project_keys + teams.
+
+    ``primary_only=False`` (default): задача включается если её ``team`` совпадает
+    ИЛИ команда упомянута в ``participating_teams`` (используется legacy /tree
+    и bulk endpoints — там participating важен).
+
+    ``primary_only=True``: только продуктовая команда (``Issue.team``).
+    Используется на /categories (lazy endpoints) — категоризация отвечает
+    продуктовая команда; participating-задачи разбирает чужой PM.
+    """
     query = query.join(Project, Issue.project_id == Project.id)
     if project_keys:
         scope_keys = [k.strip() for k in project_keys.split(",") if k.strip()]
@@ -121,12 +130,15 @@ def _filter_query_by_tree_params(query, project_keys, teams, db: Session):
     if teams:
         team_list = [t.strip() for t in teams.split(",") if t.strip()]
         if team_list:
-            clauses = []
-            for t in team_list:
-                t_json = json.dumps(t, ensure_ascii=False)
-                clauses.append(Issue.team == t)
-                clauses.append(Issue.participating_teams.like(f"%{t_json}%"))
-            query = query.filter(or_(*clauses))
+            if primary_only:
+                query = query.filter(Issue.team.in_(team_list))
+            else:
+                clauses = []
+                for t in team_list:
+                    t_json = json.dumps(t, ensure_ascii=False)
+                    clauses.append(Issue.team == t)
+                    clauses.append(Issue.participating_teams.like(f"%{t_json}%"))
+                query = query.filter(or_(*clauses))
     return query
 
 
@@ -313,8 +325,11 @@ def get_tree_counts(
 ):
     """Счётчики по вкладкам категоризации. Не учитывает pending-правки клиента —
     клиент знает свои pending и сам корректирует UI; при «Сохранить» делает refetch.
+
+    Использует ``primary_only=True`` — участвующие задачи (participating_teams)
+    не считаются: их разбирает продуктовая команда.
     """
-    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db)
+    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
     rows = base.all()
 
     # nodeById для walk up
@@ -385,8 +400,10 @@ def get_tree_roots(
     """Корневые узлы вкладки. «Корень» = верхнеуровневая задача (или эпик),
     которая сама матчит вкладку ИЛИ содержит матчащих потомков. Поиск
     применяется к key + summary (LIKE %q%).
+
+    Использует ``primary_only=True`` — participating-задачи не подтягиваются.
     """
-    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db)
+    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
     rows = base.all()
     matched_ids = {r.id for r in rows}
 
@@ -849,9 +866,9 @@ def get_epic_candidates(
     db: Session = Depends(get_db),
 ):
     """Задачи с assigned_category и хотя бы одним ребёнком — кандидаты на каскад
-    в bulk-drawer. Фильтр scope/teams тот же, что у tree/roots.
+    в bulk-drawer. Фильтр scope/teams тот же, что у tree/roots (primary_only).
     """
-    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db)
+    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
     base = base.filter(Issue.assigned_category.isnot(None))
     candidates = base.all()
     # has_children check
