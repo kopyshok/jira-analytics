@@ -1,5 +1,14 @@
 import { api } from './client';
-import type { IssueChildNode, IssueContextResponse, IssueTreeNode } from '../types/api';
+import type {
+  IssueChildNode,
+  IssueContextResponse,
+  IssueTreeNode,
+  BulkFilter,
+  BulkPreviewResponse,
+  BulkApplyResponse,
+  BulkAcceptResponse,
+  BulkCascadeResponse,
+} from '../types/api';
 
 export const getIssueTree = (
   params?: { project_keys?: string; teams?: string },
@@ -53,3 +62,15 @@ export const getIssueContext = (issueId: string) =>
 
 export const getIssueChildren = (parentId: string, limit = 200) =>
   api.get<IssueChildNode[]>(`/issues/${parentId}/children`, { limit: String(limit) });
+
+export const bulkPreview = (filters: BulkFilter, limit = 200) =>
+  api.post<BulkPreviewResponse>('/issues/bulk/preview', { filters, limit });
+
+export const bulkArchive = (filters: BulkFilter, categoryCode: 'archive' | 'archive_target') =>
+  api.post<BulkApplyResponse>('/issues/bulk/archive', { filters, category_code: categoryCode });
+
+export const bulkAcceptSuggestions = (filters: BulkFilter) =>
+  api.post<BulkAcceptResponse>('/issues/bulk/accept-suggestions', { filters });
+
+export const bulkCascadeInherit = (ancestorIds: string[]) =>
+  api.post<BulkCascadeResponse>('/issues/bulk/cascade-inherit', { ancestor_ids: ancestorIds });

@@ -992,3 +992,35 @@ export interface IssueChildNode {
   assigned_category: string | null;
   include_in_analysis: boolean;
 }
+
+// === Bulk triage operations ===
+
+export type BulkFilter = {
+  project_keys?: string[];
+  teams?: string[];
+  statuses?: string[];
+  status_changed_before?: string;
+  only_unverified?: boolean;
+  only_no_assigned?: boolean;
+};
+
+export type BulkPreviewItem = {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  status_changed_at: string | null;
+  category: string | null;
+  assigned_category: string | null;
+  project_key: string;
+};
+
+export type BulkPreviewResponse = {
+  total: number;
+  truncated: boolean;
+  items: BulkPreviewItem[];
+};
+
+export type BulkApplyResponse = { updated: number; archived_ids: string[] };
+export type BulkAcceptResponse = { applied: number; skipped_no_suggestion: number };
+export type BulkCascadeResponse = { applied: number; skipped_ancestors: number };
