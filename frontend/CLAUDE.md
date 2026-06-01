@@ -71,6 +71,8 @@ Multi-team Select (`teams=A,B,C` OR'd in SQL, persisted via `ui_teams_categories
 
 Row tint deepens per depth level (`.tree-row-depth-0..5`) and italicizes context rows (`.tree-row-context`). Key column is a Jira deep link (`${base_url}/browse/{key}`); status tag uses `statusTagColor` mapping Jira `statusCategory` + name-override for cancel-like statuses; «Статус изменён» sortable with date + «N д назад» age thresholds (≥180d yellow, ≥365d red); «Цели» sortable purple tag per comma-value. Columns resizable via `react-resizable`.
 
+**Bulk drawer:** кнопка «Массовые операции» в тулбаре открывает [`BulkTriageDrawer`](src/components/categories/BulkTriageDrawer.tsx) с тремя секциями — архив по фильтру, принять подсказки, каскад от эпика. Хук [`useBulkTriage`](src/hooks/useBulkTriage.ts) держит мутации с общей инвалидацией (`issues/tree`, `backlog`, `planning`, `analytics`). Бэк: `/issues/bulk/{preview,archive,accept-suggestions,cascade-inherit}` — фильтр серверный (`BulkFilter` повторяет shape `/tree`). Используется на онбординге PM с большим стеком задач (6000+).
+
 ## SettingsPage (`/settings`, admin-only)
 
 Вкладки (порядок и точные ключи — [`SettingsPage.tsx`](src/pages/SettingsPage.tsx)):
