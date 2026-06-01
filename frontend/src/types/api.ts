@@ -457,6 +457,7 @@ export interface BacklogItemResponse {
   jira_status: string | null;
   jira_status_category: string | null;
   jira_status_changed_at: string | null;
+  goals: string | null;
   quarter_label: string | null;
   // Planning parameters — effective values (from Jira or manual override).
   // Override via PATCH /backlog/{id}; sync no longer wipes manual values when Jira is empty.

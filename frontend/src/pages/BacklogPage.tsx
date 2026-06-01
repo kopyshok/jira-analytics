@@ -64,7 +64,7 @@ function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-
   );
 }
 
-function groupArchiveByQuarter(items: BacklogItemResponse[]): [string, BacklogItemResponse[]][] {
+function groupByQuarterLabel(items: BacklogItemResponse[]): [string, BacklogItemResponse[]][] {
   const groups = new Map<string, BacklogItemResponse[]>();
   for (const item of items) {
     const key = item.quarter_label ?? '__none__';
@@ -117,6 +117,15 @@ export default function BacklogPage() {
   const toggleGroupByQuarter = (val: boolean) => {
     setGroupByQuarter(val);
     localStorage.setItem('backlog-archive-group', String(val));
+  };
+
+  const [groupActiveByQuarter, setGroupActiveByQuarter] = useState<boolean>(() => {
+    return localStorage.getItem('backlog-active-group') === 'true';
+  });
+
+  const toggleGroupActiveByQuarter = (val: boolean) => {
+    setGroupActiveByQuarter(val);
+    localStorage.setItem('backlog-active-group', String(val));
   };
 
   const projectMap = useMemo(
@@ -538,47 +547,104 @@ export default function BacklogPage() {
     </Space>
   );
 
+  const quarterlyColumns = [
+    ...baseColumns(false).filter((c) => !('dataIndex' in c && c.dataIndex === 'project_id')),
+    {
+      title: 'Цели',
+      dataIndex: 'goals',
+      key: 'goals',
+      width: 140,
+      sorter: (a: BacklogItemResponse, b: BacklogItemResponse) =>
+        (a.goals ?? '').localeCompare(b.goals ?? ''),
+      render: (v: string | null) => {
+        if (!v) return <span style={{ color: '#4a6a80' }}>—</span>;
+        return (
+          <Space size={4} wrap>
+            {v.split(',').map((s) => s.trim()).filter(Boolean).map((tag) => (
+              <Tag key={tag} color="purple" style={{ marginInlineEnd: 0 }}>{tag}</Tag>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Сценарий',
+      key: 'scenario',
+      width: 180,
+      render: (_: unknown, r: BacklogItemResponse) => {
+        if (!r.approved_scenarios?.length)
+          return <span style={{ color: '#8faec8' }}>—</span>;
+        return (
+          <Space orientation="vertical" size={2}>
+            {r.approved_scenarios.map((s) => (
+              <Tag key={s.id} color="cyan" style={{ marginInlineEnd: 0 }}>
+                {s.name}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Действия',
+      key: 'actions',
+      width: 80,
+      fixed: 'right' as const,
+      render: (_: unknown, r: BacklogItemResponse) => (
+        <Tooltip title="Параметры планирования">
+          <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
+        </Tooltip>
+      ),
+    },
+  ];
+
   const quarterlyTable = (
-    <Table<BacklogItemResponse>
-      dataSource={quarterlyRows}
-      rowKey="id"
-      loading={quarterly.isLoading}
-      pagination={false}
-      size="small"
-      scroll={{ x: 1400 }}
-      columns={[
-        ...baseColumns(false).filter((c) => !('dataIndex' in c && c.dataIndex === 'project_id')),
-        {
-          title: 'Сценарий',
-          key: 'scenario',
-          width: 180,
-          render: (_: unknown, r: BacklogItemResponse) => {
-            if (!r.approved_scenarios?.length)
-              return <span style={{ color: '#8faec8' }}>—</span>;
-            return (
-              <Space orientation="vertical" size={2}>
-                {r.approved_scenarios.map((s) => (
-                  <Tag key={s.id} color="cyan" style={{ marginInlineEnd: 0 }}>
-                    {s.name}
-                  </Tag>
-                ))}
-              </Space>
-            );
-          },
-        },
-        {
-          title: 'Действия',
-          key: 'actions',
-          width: 80,
-          fixed: 'right' as const,
-          render: (_: unknown, r: BacklogItemResponse) => (
-            <Tooltip title="Параметры планирования">
-              <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
-            </Tooltip>
-          ),
-        },
-      ]}
-    />
+    <div>
+      <Button
+        size="small"
+        type={groupActiveByQuarter ? 'primary' : 'default'}
+        ghost={groupActiveByQuarter}
+        onClick={() => toggleGroupActiveByQuarter(!groupActiveByQuarter)}
+        style={{ marginBottom: 8 }}
+      >
+        {groupActiveByQuarter ? 'Сгруппировано по кварталам' : 'Группировать по кварталам'}
+      </Button>
+      {groupActiveByQuarter ? (
+        groupByQuarterLabel(quarterlyRows ?? []).map(([key, rows]) => (
+          <div key={key} style={{ marginBottom: 16 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+              padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              {key === '__none__'
+                ? <span style={{ color: '#4a6a80', fontWeight: 600 }}>Без квартала</span>
+                : <Tag color="purple">{key}</Tag>
+              }
+              <span style={{ fontSize: 12, color: '#4a6a80' }}>{rows.length} {rows.length === 1 ? 'задача' : 'задач'}</span>
+            </div>
+            <Table<BacklogItemResponse>
+              dataSource={rows}
+              columns={quarterlyColumns}
+              rowKey="id"
+              loading={quarterly.isLoading}
+              size="small"
+              pagination={false}
+              scroll={{ x: true }}
+            />
+          </div>
+        ))
+      ) : (
+        <Table<BacklogItemResponse>
+          dataSource={quarterlyRows}
+          rowKey="id"
+          loading={quarterly.isLoading}
+          pagination={false}
+          size="small"
+          scroll={{ x: 1400 }}
+          columns={quarterlyColumns}
+        />
+      )}
+    </div>
   );
 
   const activeTable = (
@@ -639,7 +705,7 @@ export default function BacklogPage() {
         {groupByQuarter ? 'Сгруппировано по кварталам' : 'Группировать по кварталам'}
       </Button>
       {groupByQuarter ? (
-        groupArchiveByQuarter(archivedRows ?? []).map(([key, rows]) => (
+        groupByQuarterLabel(archivedRows ?? []).map(([key, rows]) => (
           <div key={key} style={{ marginBottom: 16 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
