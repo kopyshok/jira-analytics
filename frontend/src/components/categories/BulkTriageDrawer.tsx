@@ -29,10 +29,10 @@ export default function BulkTriageDrawer({
     <Drawer
       title="Массовые операции"
       placement="right"
-      width={680}
+      size={680}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
     >
       <Title level={5} style={{ marginTop: 0 }}>
         Инструменты массового разбора
