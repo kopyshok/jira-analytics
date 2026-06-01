@@ -150,7 +150,7 @@ async def bulk_archive(
     if body.category_code not in ARCHIVE_CATEGORY_CODES:
         raise HTTPException(
             status_code=400,
-            detail="Эндпоинт принимает только архивные категории",
+            detail="Можно выбрать только архивную категорию",
         )
 
     rows = _apply_filters(db.query(Issue), body.filters, db).all()
