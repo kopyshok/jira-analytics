@@ -328,33 +328,35 @@ def get_tree_counts(
 
     Использует ``primary_only=True`` — участвующие задачи (participating_teams)
     не считаются: их разбирает продуктовая команда.
+
+    Дополнительно отсекает «in-team задачи под чужим эпиком» — задача
+    учитывается только если её цепочка предков целиком в команде (или она
+    верхнеуровневая). Это убирает потомков context-эпиков из подсчёта.
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
-    rows = base.all()
+    all_rows = base.all()
+    by_id_full = {r.id: r for r in all_rows}
 
-    # nodeById для walk up
+    # Owned-by-team: parent chain до корня в команде ИЛИ нет parent.
+    owned_memo: dict[str, bool] = {}
+    def is_owned(r_id: str) -> bool:
+        if r_id in owned_memo:
+            return owned_memo[r_id]
+        r = by_id_full.get(r_id)
+        if not r:
+            owned_memo[r_id] = False
+            return False
+        if not r.parent_id:
+            owned_memo[r_id] = True
+            return True
+        if r.parent_id not in by_id_full:
+            owned_memo[r_id] = False
+            return False
+        owned_memo[r_id] = is_owned(r.parent_id)
+        return owned_memo[r_id]
+
+    rows = [r for r in all_rows if is_owned(r.id)]
     by_id = {r.id: r for r in rows}
-    # Дотащим predков (вне scope) для walk up по inherited категории
-    parent_ids_outside = {
-        r.parent_id for r in rows
-        if r.parent_id and r.parent_id not in by_id
-    }
-    if parent_ids_outside:
-        # Подтянем предков до корня (без team-фильтра — нужны для inherited)
-        ancestors = db.query(Issue).filter(Issue.id.in_(parent_ids_outside)).all()
-        for a in ancestors:
-            by_id[a.id] = a
-        # Дотащить выше (parent of parent) — рекурсивно, но обычно 2-3 уровня
-        frontier = {a.parent_id for a in ancestors if a.parent_id and a.parent_id not in by_id}
-        while frontier:
-            batch = db.query(Issue).filter(Issue.id.in_(frontier)).all()
-            frontier = set()
-            for a in batch:
-                if a.id in by_id:
-                    continue
-                by_id[a.id] = a
-                if a.parent_id and a.parent_id not in by_id:
-                    frontier.add(a.parent_id)
 
     def effective(node: Issue) -> Optional[str]:
         if not (node.category_verified or False):
@@ -402,25 +404,34 @@ def get_tree_roots(
     применяется к key + summary (LIKE %q%).
 
     Использует ``primary_only=True`` — participating-задачи не подтягиваются.
+    Дополнительно отсекает «in-team задачи под чужим эпиком»: задача попадает
+    в дерево только если её цепочка предков целиком в команде (context-эпики
+    и их subtree не показываются).
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
-    rows = base.all()
-    matched_ids = {r.id for r in rows}
+    all_rows = base.all()
+    all_by_id = {r.id: r for r in all_rows}
 
+    owned_memo: dict[str, bool] = {}
+    def is_owned(r_id: str) -> bool:
+        if r_id in owned_memo:
+            return owned_memo[r_id]
+        r = all_by_id.get(r_id)
+        if not r:
+            owned_memo[r_id] = False
+            return False
+        if not r.parent_id:
+            owned_memo[r_id] = True
+            return True
+        if r.parent_id not in all_by_id:
+            owned_memo[r_id] = False
+            return False
+        owned_memo[r_id] = is_owned(r.parent_id)
+        return owned_memo[r_id]
+
+    rows = [r for r in all_rows if is_owned(r.id)]
     by_id: dict[str, Issue] = {r.id: r for r in rows}
     context_ids: set[str] = set()
-    frontier = {r.parent_id for r in rows if r.parent_id and r.parent_id not in matched_ids}
-    while frontier:
-        batch = db.query(Issue).filter(Issue.id.in_(frontier)).all()
-        next_f = set()
-        for a in batch:
-            if a.id in by_id:
-                continue
-            by_id[a.id] = a
-            context_ids.add(a.id)
-            if a.parent_id and a.parent_id not in by_id:
-                next_f.add(a.parent_id)
-        frontier = next_f
 
     project_key_by_id = {
         p.id: p.key
