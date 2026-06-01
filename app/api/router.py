@@ -8,6 +8,7 @@ from app.api.endpoints import ai_status as ai_status_endpoints
 from app.api.endpoints import auth as auth_endpoints
 from app.api.endpoints import llm as llm_endpoints
 from app.api.endpoints import users as users_endpoints
+from app.api.endpoints import release_notes as release_notes_endpoints
 from app.api.endpoints import (
     analytics,
     backlog,
@@ -188,6 +189,12 @@ api_router.include_router(
 )
 api_router.include_router(
     usage_endpoints.router, prefix="/usage", tags=["usage"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    release_notes_endpoints.router,
+    prefix="/release-notes",
+    tags=["release-notes"],
+    dependencies=_auth_dep,
 )
 
 # Admin-only routers
