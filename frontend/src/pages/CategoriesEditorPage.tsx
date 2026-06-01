@@ -451,9 +451,33 @@ export default function CategoriesEditorPage() {
     [expandedRowKeys, onExpand],
   );
 
-  const expandAll = useCallback(() => {
-    message.info('Раскрыть всё недоступно для больших деревьев. Раскрывайте интересующие эпики по клику.');
-  }, [message]);
+  const expandAll = useCallback(async () => {
+    const SAFETY_LIMIT = 500;
+    const newLoaded = new Map(loadedChildren);
+    const expandIds = new Set<string>(expandedRowKeys.map(String));
+    const visited = new Set<string>();
+    const queue: IssueTreeRootNode[] = [...(rootsQuery.data ?? [])];
+    let safety = 0;
+    while (queue.length > 0 && safety < SAFETY_LIMIT) {
+      safety++;
+      const node = queue.shift()!;
+      if (visited.has(node.id)) continue;
+      visited.add(node.id);
+      if (!node.has_children) continue;
+      expandIds.add(node.id);
+      let kids = newLoaded.get(node.id);
+      if (!kids) {
+        kids = await loadChildrenMut.mutateAsync({ parentId: node.id, tab: innerTab });
+        newLoaded.set(node.id, kids);
+      }
+      queue.push(...kids);
+    }
+    if (safety >= SAFETY_LIMIT) {
+      message.warning(`Дерево слишком большое — раскрытие остановлено на ${SAFETY_LIMIT} узлах.`);
+    }
+    setLoadedChildren(newLoaded);
+    setExpandedRowKeys(Array.from(expandIds));
+  }, [rootsQuery.data, loadedChildren, expandedRowKeys, loadChildrenMut, innerTab, message]);
 
   const collapseAll = useCallback(() => {
     setExpandedRowKeys([]);
