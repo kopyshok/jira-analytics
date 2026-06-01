@@ -8,13 +8,16 @@ import json
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Issue, Project
+from app.services.backlog_service import BacklogService
+from app.services.category_resolver import CategoryResolver
+from app.services.event_bus import EventBroadcaster, get_event_bus
 
 router = APIRouter()
 
@@ -119,3 +122,50 @@ def bulk_preview(
         truncated=total > body.limit,
         items=items,
     )
+
+
+class BulkArchiveRequest(BaseModel):
+    filters: BulkFilter
+    category_code: str
+
+
+class BulkApplyResponse(BaseModel):
+    updated: int
+    archived_ids: List[str]
+
+
+@router.post("/bulk/archive", response_model=BulkApplyResponse)
+async def bulk_archive(
+    body: BulkArchiveRequest,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Массовая архивация по фильтру.
+
+    Принимает фильтр (как у preview) и архивный category_code. Применяет
+    категорию ко всем матчащим задачам, снимает include_in_analysis.
+    Запрещены не-архивные коды — для них используется существующий
+    `/issues/batch-category` с явным списком id.
+    """
+    if body.category_code not in ARCHIVE_CATEGORY_CODES:
+        raise HTTPException(
+            status_code=400,
+            detail="Эндпоинт принимает только архивные категории",
+        )
+
+    rows = _apply_filters(db.query(Issue), body.filters, db).all()
+    resolver = CategoryResolver(db)
+    backlog = BacklogService(db)
+    archived_ids: list[str] = []
+    for issue in rows:
+        issue.assigned_category = body.category_code
+        if issue.include_in_analysis:
+            issue.include_in_analysis = False
+            archived_ids.append(issue.id)
+        issue.category = resolver.resolve_for_issue(issue).category_code
+        backlog.sync_from_issue(issue)
+
+    updated = len(rows)
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    return BulkApplyResponse(updated=updated, archived_ids=archived_ids)

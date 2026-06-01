@@ -78,3 +78,41 @@ def test_bulk_preview_returns_filtered_issues(client, db):
         db.query(Issue).filter(Issue.project_id == p.id).delete()
         db.query(Project).filter(Project.id == p.id).delete()
         db.commit()
+
+
+def test_bulk_archive_applies_to_matching(client, db):
+    p = _mk_project(db, key="ARC")
+    _mk_issue(db, p, "ARC-1", status="Закрыто", include_in_analysis=True)
+    _mk_issue(db, p, "ARC-2", status="Закрыто", include_in_analysis=True)
+    _mk_issue(db, p, "ARC-3", status="Открыто", include_in_analysis=True)
+    db.commit()
+    try:
+        resp = client.post("/api/v1/issues/bulk/archive", json={
+            "filters": {"project_keys": ["ARC"], "statuses": ["Закрыто"]},
+            "category_code": "archive",
+        })
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["updated"] == 2
+        assert sorted(data["archived_ids"]) == sorted(["issue-ARC-1", "issue-ARC-2"])
+
+        db.expire_all()
+        i1 = db.get(Issue, "issue-ARC-1")
+        i3 = db.get(Issue, "issue-ARC-3")
+        assert i1.assigned_category == "archive"
+        assert i1.include_in_analysis is False
+        assert i3.assigned_category is None
+        assert i3.include_in_analysis is True
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
+def test_bulk_archive_rejects_non_archive_code(client, db):
+    resp = client.post("/api/v1/issues/bulk/archive", json={
+        "filters": {"project_keys": ["ARC"]},
+        "category_code": "support",
+    })
+    assert resp.status_code == 400
+    assert "архивн" in resp.json()["detail"].lower()
