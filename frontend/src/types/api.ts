@@ -158,6 +158,44 @@ export interface IssueTreeNode {
   children: IssueTreeNode[];
 }
 
+export interface IssueTreeRootNode {
+  id: string;
+  key: string;
+  summary: string;
+  issue_type: string;
+  status: string;
+  status_category: string | null;
+  project_key: string;
+  parent_key: string | null;
+  assigned_category: string | null;
+  category: string | null;
+  include_in_analysis: boolean;
+  status_changed_at: string | null;
+  goals: string | null;
+  is_context: boolean;
+  is_container: boolean;
+  category_verified: boolean;
+  require_child_verification: boolean;
+  has_children: boolean;
+  descendant_count: number;
+  descendant_match_count: number;
+}
+
+export interface IssueTreeCounts {
+  stack: number;
+  active: number;
+  initiatives: number;
+  archive_target: number;
+  archive: number;
+}
+
+export interface EpicCandidateApi {
+  id: string;
+  key: string;
+  summary: string;
+  assigned_category: string;
+}
+
 // === Jira Fields ===
 
 export interface JiraFieldItem {

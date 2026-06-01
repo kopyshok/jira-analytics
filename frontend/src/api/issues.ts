@@ -3,6 +3,9 @@ import type {
   IssueChildNode,
   IssueContextResponse,
   IssueTreeNode,
+  IssueTreeRootNode,
+  IssueTreeCounts,
+  EpicCandidateApi,
   BulkFilter,
   BulkPreviewResponse,
   BulkApplyResponse,
@@ -74,3 +77,21 @@ export const bulkAcceptSuggestions = (filters: BulkFilter) =>
 
 export const bulkCascadeInherit = (ancestorIds: string[]) =>
   api.post<BulkCascadeResponse>('/issues/bulk/cascade-inherit', { ancestor_ids: ancestorIds });
+
+export const getTreeRoots = (
+  params: { project_keys?: string; teams?: string; tab: string; search?: string },
+  signal?: AbortSignal,
+) => api.get<IssueTreeRootNode[]>('/issues/tree/roots', params as Record<string, string | undefined>, signal);
+
+export const getTreeCounts = (
+  params: { project_keys?: string; teams?: string },
+  signal?: AbortSignal,
+) => api.get<IssueTreeCounts>('/issues/tree/counts', params as Record<string, string | undefined>, signal);
+
+export const getIssueChildrenByTab = (parentId: string, tab: string, limit = 200) =>
+  api.get<IssueTreeRootNode[]>(`/issues/${parentId}/children`, { tab, limit: String(limit) });
+
+export const getEpicCandidates = (
+  params: { project_keys?: string; teams?: string },
+  signal?: AbortSignal,
+) => api.get<EpicCandidateApi[]>('/issues/tree/epic-candidates', params as Record<string, string | undefined>, signal);
