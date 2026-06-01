@@ -109,3 +109,33 @@ def test_tree_roots_supports_search(client, db):
         db.query(Issue).filter(Issue.project_id == p.id).delete()
         db.query(Project).filter(Project.id == p.id).delete()
         db.commit()
+
+
+def test_children_endpoint_filters_by_tab(client, db):
+    p = _mk_proj(db, "CHL")
+    epic = _mk_issue(db, p, "CHL-1", issue_type="Epic", assigned_category="dev")
+    _mk_issue(db, p, "CHL-2", parent_id=epic.id,
+              assigned_category=None, category_verified=False)  # stack
+    _mk_issue(db, p, "CHL-3", parent_id=epic.id,
+              assigned_category="dev")  # active (через свою dev)
+    _mk_issue(db, p, "CHL-4", parent_id=epic.id,
+              assigned_category="archive")  # archive
+    db.commit()
+    try:
+        resp_stack = client.get(f"/api/v1/issues/{epic.id}/children", params={"tab": "stack"})
+        assert resp_stack.status_code == 200
+        keys = sorted([n["key"] for n in resp_stack.json()])
+        assert keys == ["CHL-2"]
+
+        resp_archive = client.get(f"/api/v1/issues/{epic.id}/children", params={"tab": "archive"})
+        keys = sorted([n["key"] for n in resp_archive.json()])
+        assert keys == ["CHL-4"]
+
+        # Без tab — все дети
+        resp_all = client.get(f"/api/v1/issues/{epic.id}/children")
+        keys = sorted([n["key"] for n in resp_all.json()])
+        assert keys == ["CHL-2", "CHL-3", "CHL-4"]
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()

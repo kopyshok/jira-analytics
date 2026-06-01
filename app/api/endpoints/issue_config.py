@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Issue, Project
 from app.schemas.issue_context import (
-    IssueChildNode,
     IssueContextAncestor,
     IssueContextChild,
     IssueContextResponse,
@@ -836,35 +835,155 @@ def get_issue_context(
     )
 
 
-@router.get("/{parent_id}/children", response_model=List[IssueChildNode])
+@router.get("/{parent_id}/children", response_model=List[IssueTreeRootNode])
 def get_issue_children(
     parent_id: str,
+    tab: Optional[str] = None,
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    """Прямые дети задачи (без рекурсии). Используется для popover соседей."""
+    """Прямые + транзитивные дети, отфильтрованные по вкладке (если задана).
+
+    Без `tab` — только прямые дети (обратная совместимость с popover-соседями).
+    С `tab` — все потомки на любой глубине, матчащие вкладку.
+    """
     parent = db.get(Issue, parent_id)
     if not parent:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
-    children = (
-        db.query(Issue)
-        .filter(Issue.parent_id == parent_id)
-        .order_by(Issue.key)
-        .limit(limit)
-        .all()
-    )
+    rules = load_rules(db)
+
+    if not tab:
+        # Backward compatibility: прямые дети без фильтра
+        children = (
+            db.query(Issue)
+            .filter(Issue.parent_id == parent_id)
+            .order_by(Issue.key)
+            .limit(limit)
+            .all()
+        )
+        project_keys = {
+            p.id: p.key
+            for p in db.query(Project).filter(Project.id.in_({c.project_id for c in children if c.project_id})).all()
+        }
+        has_kids_set = {
+            cid for (cid,) in db.query(Issue.parent_id)
+            .filter(Issue.parent_id.in_({c.id for c in children}))
+            .distinct().all()
+        }
+        return [
+            IssueTreeRootNode(
+                id=ch.id,
+                key=ch.key,
+                summary=ch.summary,
+                issue_type=ch.issue_type,
+                status=ch.status,
+                status_category=ch.status_category,
+                project_key=project_keys.get(ch.project_id, ""),
+                parent_key=parent.key,
+                assigned_category=ch.assigned_category,
+                category=ch.category,
+                include_in_analysis=ch.include_in_analysis if ch.include_in_analysis is not None else True,
+                status_changed_at=ch.status_changed_at.isoformat() if ch.status_changed_at else None,
+                goals=ch.goals or None,
+                is_context=False,
+                is_container=classify(rules, EvaluationInput(
+                    project_key=project_keys.get(ch.project_id, ""),
+                    issue_type=ch.issue_type,
+                    has_parent=True,
+                )),
+                category_verified=ch.category_verified if ch.category_verified is not None else True,
+                require_child_verification=ch.require_child_verification if ch.require_child_verification is not None else False,
+                has_children=ch.id in has_kids_set,
+                descendant_count=0,
+                descendant_match_count=0,
+            )
+            for ch in children
+        ]
+
+    # С tab: BFS по поддереву, фильтр по эффективной категории
+    subtree: dict[str, Issue] = {}
+    frontier = [parent_id]
+    while frontier:
+        batch = db.query(Issue).filter(Issue.parent_id.in_(frontier)).limit(limit * 5).all()
+        next_f = []
+        for ch in batch:
+            if ch.id in subtree:
+                continue
+            subtree[ch.id] = ch
+            next_f.append(ch.id)
+        frontier = next_f
+
+    by_id_full = dict(subtree)
+    by_id_full[parent.id] = parent
+    # Дотащим предков parent для walk up effective
+    cur = parent
+    while cur.parent_id and cur.parent_id not in by_id_full:
+        anc = db.get(Issue, cur.parent_id)
+        if not anc:
+            break
+        by_id_full[anc.id] = anc
+        cur = anc
+
+    def effective(node: Issue) -> Optional[str]:
+        if not (node.category_verified or False):
+            return None
+        if node.assigned_category:
+            return node.assigned_category
+        cur_id = node.parent_id
+        for _ in range(20):
+            if not cur_id:
+                return None
+            par = by_id_full.get(cur_id)
+            if not par:
+                return None
+            if par.assigned_category:
+                return par.assigned_category
+            cur_id = par.parent_id
+        return None
+
+    matched = [
+        ch for ch in subtree.values()
+        if _node_matches_tab(effective(ch), ch.category_verified or False, tab)
+    ]
+    matched.sort(key=lambda c: c.key)
+    matched = matched[:limit]
+
+    project_keys = {
+        p.id: p.key
+        for p in db.query(Project).filter(Project.id.in_({c.project_id for c in matched if c.project_id})).all()
+    }
+    has_kids_set = {
+        cid for (cid,) in db.query(Issue.parent_id)
+        .filter(Issue.parent_id.in_({c.id for c in matched}))
+        .distinct().all()
+    }
     return [
-        IssueChildNode(
+        IssueTreeRootNode(
             id=ch.id,
             key=ch.key,
             summary=ch.summary,
+            issue_type=ch.issue_type,
             status=ch.status,
             status_category=ch.status_category,
-            issue_type=ch.issue_type,
-            category=ch.category,
+            project_key=project_keys.get(ch.project_id, ""),
+            parent_key=by_id_full[ch.parent_id].key if ch.parent_id in by_id_full else None,
             assigned_category=ch.assigned_category,
+            category=ch.category,
             include_in_analysis=ch.include_in_analysis if ch.include_in_analysis is not None else True,
+            status_changed_at=ch.status_changed_at.isoformat() if ch.status_changed_at else None,
+            goals=ch.goals or None,
+            is_context=False,
+            is_container=classify(rules, EvaluationInput(
+                project_key=project_keys.get(ch.project_id, ""),
+                issue_type=ch.issue_type,
+                has_parent=bool(ch.parent_id),
+            )),
+            category_verified=ch.category_verified if ch.category_verified is not None else True,
+            require_child_verification=ch.require_child_verification if ch.require_child_verification is not None else False,
+            has_children=any(c.parent_id == ch.id for c in subtree.values()),
+            descendant_count=0,
+            descendant_match_count=0,
         )
-        for ch in children
+        for ch in matched
     ]
