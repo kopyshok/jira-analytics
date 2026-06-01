@@ -9,6 +9,7 @@ import GlobalTeamFilterButton from './GlobalTeamFilterButton';
 import GlobalPeriodPicker from '../shared/GlobalPeriodPicker';
 import GlobalHelpButton from './GlobalHelpButton';
 import FeedbackButton from '../feedback/FeedbackButton';
+import WhatsNewGate from '../release-notes/WhatsNewGate';
 import { HelpProvider } from '../../contexts/HelpContext';
 import { DARK_THEME, APP_THEMES, type AppTheme } from '../../utils/constants';
 import { useEventStream } from '../../hooks/useEventStream';
@@ -145,6 +146,7 @@ export default function AppLayout() {
       </Layout>
       <FeedbackButton />
       {user && <UsageTracker />}
+      {user && <WhatsNewGate />}
     </Layout>
     </HelpProvider>
   );

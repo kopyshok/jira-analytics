@@ -1,24 +1,38 @@
 import { useState } from 'react';
-import { Button } from 'antd';
+import { Badge, Button } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import HelpDrawer from '../shared/HelpDrawer';
 import { useHelpContext } from '../../contexts/HelpContext';
+import { useUnreadReleaseNotes } from '../../hooks/useReleaseNotes';
 
 export default function GlobalHelpButton() {
   const { current } = useHelpContext();
   const [open, setOpen] = useState(false);
-  const disabled = !current;
+  const { data: unread } = useUnreadReleaseNotes();
+  const hasUnread = (unread?.unread_versions.length ?? 0) > 0;
+  const disabled = !current && !hasUnread;
+
+  const title = hasUnread
+    ? 'Есть новые обновления — нажмите чтобы посмотреть «Что нового»'
+    : disabled
+    ? 'Для этого раздела справки пока нет'
+    : 'Справка по разделу';
+
   return (
     <>
-      <Button
-        type="text"
-        size="small"
-        icon={<QuestionCircleOutlined />}
-        onClick={() => setOpen(true)}
-        disabled={disabled}
-        title={disabled ? 'Для этого раздела справки пока нет' : 'Справка по разделу'}
-        style={{ color: disabled ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.55)' }}
-      />
+      <Badge dot={hasUnread} offset={[-4, 4]} color="red">
+        <Button
+          type="text"
+          size="small"
+          icon={<QuestionCircleOutlined />}
+          onClick={() => setOpen(true)}
+          disabled={disabled}
+          title={title}
+          style={{
+            color: disabled ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.55)',
+          }}
+        />
+      </Badge>
       {current && (
         <HelpDrawer
           open={open}
