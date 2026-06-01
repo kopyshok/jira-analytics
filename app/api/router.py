@@ -20,6 +20,7 @@ from app.api.endpoints import (
     exports,
     feedback as feedback_endpoints,
     hierarchy_rules as hierarchy_rules_endpoints,
+    issue_bulk,
     issue_config,
     mandatory_work_types,
     mapping,
@@ -118,6 +119,9 @@ api_router.include_router(
 )
 api_router.include_router(
     issue_config.router, prefix="/issues", tags=["issues"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    issue_bulk.router, prefix="/issues", tags=["issues"], dependencies=_auth_dep,
 )
 api_router.include_router(
     production_calendar.router,
