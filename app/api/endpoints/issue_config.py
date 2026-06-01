@@ -321,19 +321,22 @@ async def get_issue_tree(
 def get_tree_counts(
     project_keys: Optional[str] = None,
     teams: Optional[str] = None,
+    excluded_statuses: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Счётчики по вкладкам категоризации. Не учитывает pending-правки клиента —
     клиент знает свои pending и сам корректирует UI; при «Сохранить» делает refetch.
 
-    Использует ``primary_only=True`` — участвующие задачи (participating_teams)
-    не считаются: их разбирает продуктовая команда.
-
-    Дополнительно отсекает «in-team задачи под чужим эпиком» — задача
-    учитывается только если её цепочка предков целиком в команде (или она
-    верхнеуровневая). Это убирает потомков context-эпиков из подсчёта.
+    ``primary_only=True`` — участвующие задачи (participating_teams) не считаются.
+    Дополнительно отсекает «in-team задачи под чужим эпиком».
+    ``excluded_statuses`` — список статусов (CSV), которые UI скрывает; их не
+    учитываем чтобы счётчик совпадал с видимым списком.
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
+    if excluded_statuses:
+        ex_list = [s.strip() for s in excluded_statuses.split(",") if s.strip()]
+        if ex_list:
+            base = base.filter(~Issue.status.in_(ex_list))
     all_rows = base.all()
     by_id_full = {r.id: r for r in all_rows}
 
@@ -397,18 +400,22 @@ def get_tree_roots(
     teams: Optional[str] = None,
     tab: str = "stack",
     search: Optional[str] = None,
+    excluded_statuses: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Корневые узлы вкладки. «Корень» = верхнеуровневая задача (или эпик),
     которая сама матчит вкладку ИЛИ содержит матчащих потомков. Поиск
     применяется к key + summary (LIKE %q%).
 
-    Использует ``primary_only=True`` — participating-задачи не подтягиваются.
-    Дополнительно отсекает «in-team задачи под чужим эпиком»: задача попадает
-    в дерево только если её цепочка предков целиком в команде (context-эпики
-    и их subtree не показываются).
+    ``primary_only=True`` — participating-задачи не подтягиваются.
+    Owned-by-team — задачи под чужими эпиками скрыты.
+    ``excluded_statuses`` — CSV статусов, которые UI скрывает.
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
+    if excluded_statuses:
+        ex_list = [s.strip() for s in excluded_statuses.split(",") if s.strip()]
+        if ex_list:
+            base = base.filter(~Issue.status.in_(ex_list))
     all_rows = base.all()
     all_by_id = {r.id: r for r in all_rows}
 
@@ -499,21 +506,13 @@ def get_tree_roots(
     for r in by_id.values():
         compute_desc(r.id)
 
-    # На вкладке «К разбору» — плоский список всех stack-задач команды
-    # (без иерархии). PM разбирает задачи по одной, не нуждается в дереве
-    # эпиков для триажа. На других вкладках — обычная иерархия roots.
-    if tab == "stack":
-        candidate_iter = (r for r in by_id.values() if self_match.get(r.id))
-    else:
-        def is_root_candidate(r: Issue) -> bool:
-            is_top = (not r.parent_id) or (r.parent_id not in by_id)
-            if not is_top:
-                return False
-            return self_match.get(r.id, False) or desc_match.get(r.id, 0) > 0
-        candidate_iter = (r for r in by_id.values() if is_root_candidate(r))
-
     roots: list[IssueTreeRootNode] = []
-    for r in candidate_iter:
+    for r in by_id.values():
+        is_top = (not r.parent_id) or (r.parent_id not in by_id)
+        if not is_top:
+            continue
+        if not self_match.get(r.id) and desc_match.get(r.id, 0) == 0:
+            continue
         is_container = classify(rules, EvaluationInput(
             project_key=project_key_by_id.get(r.project_id, ""),
             issue_type=r.issue_type,
@@ -537,10 +536,9 @@ def get_tree_roots(
             is_container=is_container,
             category_verified=r.category_verified if r.category_verified is not None else True,
             require_child_verification=r.require_child_verification if r.require_child_verification is not None else False,
-            # На stack tab дети не раскрываются — плоский список
-            has_children=False if tab == "stack" else bool(children_by_parent.get(r.id)),
-            descendant_count=0 if tab == "stack" else desc_total.get(r.id, 0),
-            descendant_match_count=0 if tab == "stack" else desc_match.get(r.id, 0),
+            has_children=bool(children_by_parent.get(r.id)),
+            descendant_count=desc_total.get(r.id, 0),
+            descendant_match_count=desc_match.get(r.id, 0),
         ))
 
     roots.sort(key=lambda n: n.key)
