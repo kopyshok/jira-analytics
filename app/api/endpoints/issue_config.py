@@ -78,6 +78,36 @@ class VerifyRequest(BaseModel):
     require_child_verification: bool = False
 
 
+class TreeCountsResponse(BaseModel):
+    stack: int
+    active: int
+    initiatives: int
+    archive_target: int
+    archive: int
+
+
+INITIATIVES_CODE = "initiatives_rfa"
+
+
+def _filter_query_by_tree_params(query, project_keys, teams, db: Session):
+    """Общий фильтр project_keys + teams (как в существующем /tree)."""
+    query = query.join(Project, Issue.project_id == Project.id)
+    if project_keys:
+        scope_keys = [k.strip() for k in project_keys.split(",") if k.strip()]
+        if scope_keys:
+            query = query.filter(Project.key.in_(scope_keys))
+    if teams:
+        team_list = [t.strip() for t in teams.split(",") if t.strip()]
+        if team_list:
+            clauses = []
+            for t in team_list:
+                t_json = json.dumps(t, ensure_ascii=False)
+                clauses.append(Issue.team == t)
+                clauses.append(Issue.participating_teams.like(f"%{t_json}%"))
+            query = query.filter(or_(*clauses))
+    return query
+
+
 # --- Endpoints ---
 
 @router.get("/tree", response_model=List[IssueTreeNode])
@@ -232,6 +262,75 @@ async def get_issue_tree(
         roots_keep.append(ops_group)
 
     return roots_keep
+
+
+@router.get("/tree/counts", response_model=TreeCountsResponse)
+def get_tree_counts(
+    project_keys: Optional[str] = None,
+    teams: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Счётчики по вкладкам категоризации. Не учитывает pending-правки клиента —
+    клиент знает свои pending и сам корректирует UI; при «Сохранить» делает refetch.
+    """
+    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db)
+    rows = base.all()
+
+    # nodeById для walk up
+    by_id = {r.id: r for r in rows}
+    # Дотащим predков (вне scope) для walk up по inherited категории
+    parent_ids_outside = {
+        r.parent_id for r in rows
+        if r.parent_id and r.parent_id not in by_id
+    }
+    if parent_ids_outside:
+        # Подтянем предков до корня (без team-фильтра — нужны для inherited)
+        ancestors = db.query(Issue).filter(Issue.id.in_(parent_ids_outside)).all()
+        for a in ancestors:
+            by_id[a.id] = a
+        # Дотащить выше (parent of parent) — рекурсивно, но обычно 2-3 уровня
+        frontier = {a.parent_id for a in ancestors if a.parent_id and a.parent_id not in by_id}
+        while frontier:
+            batch = db.query(Issue).filter(Issue.id.in_(frontier)).all()
+            frontier = set()
+            for a in batch:
+                if a.id in by_id:
+                    continue
+                by_id[a.id] = a
+                if a.parent_id and a.parent_id not in by_id:
+                    frontier.add(a.parent_id)
+
+    def effective(node: Issue) -> Optional[str]:
+        if not (node.category_verified or False):
+            return None
+        if node.assigned_category:
+            return node.assigned_category
+        cur_id = node.parent_id
+        for _ in range(20):
+            if not cur_id:
+                return None
+            parent = by_id.get(cur_id)
+            if not parent:
+                return None
+            if parent.assigned_category:
+                return parent.assigned_category
+            cur_id = parent.parent_id
+        return None
+
+    counts = {"stack": 0, "active": 0, "initiatives": 0, "archive_target": 0, "archive": 0}
+    for r in rows:
+        eff = effective(r)
+        if eff is None:
+            counts["stack"] += 1
+        elif eff == INITIATIVES_CODE:
+            counts["initiatives"] += 1
+        elif eff == "archive_target":
+            counts["archive_target"] += 1
+        elif eff == "archive":
+            counts["archive"] += 1
+        else:
+            counts["active"] += 1
+    return TreeCountsResponse(**counts)
 
 
 def _issue_is_container(db: Session, issue: Issue) -> bool:
