@@ -199,6 +199,23 @@ def main() -> None:
     if result.returncode != 0:
         raise SystemExit(result.returncode)
 
+    # Привязать накопленные черновики release notes к новой версии.
+    print(f"\nПривязка черновиков release notes к {target}...")
+    bind = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "release_note.py"),
+         "bind", "--version", target],
+        cwd=REPO_ROOT, check=False,
+    )
+    if bind.returncode != 0:
+        sys.stderr.write(
+            "Не удалось привязать черновики. Запусти вручную: "
+            f"py -3.10 scripts/release_note.py bind --version {target}\n"
+        )
+    print(
+        "\nГотово. Открой /settings → «Что нового» — проверь записи "
+        "и опубликуй пользователям."
+    )
+
 
 if __name__ == "__main__":
     main()
