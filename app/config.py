@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "Jira Analytics"
-    app_version: str = "1.0.0"
+    app_version: str = "1.1.0"
     debug: bool = False
     log_level: str = "INFO"
 
