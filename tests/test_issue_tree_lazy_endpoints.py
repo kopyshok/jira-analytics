@@ -111,6 +111,29 @@ def test_tree_roots_supports_search(client, db):
         db.commit()
 
 
+def test_epic_candidates_returns_epics_with_assigned_and_children(client, db):
+    p = _mk_proj(db, "EPC")
+    e1 = _mk_issue(db, p, "EPC-1", issue_type="Epic", assigned_category="dev")
+    _mk_issue(db, p, "EPC-2", parent_id=e1.id, assigned_category=None, category_verified=False)
+    e2 = _mk_issue(db, p, "EPC-3", issue_type="Epic", assigned_category=None)
+    _mk_issue(db, p, "EPC-4", parent_id=e2.id)
+    _mk_issue(db, p, "EPC-5", issue_type="Epic", assigned_category="dev")
+    db.commit()
+    try:
+        resp = client.get("/api/v1/issues/tree/epic-candidates", params={"project_keys": "EPC"})
+        assert resp.status_code == 200
+        items = resp.json()
+        keys = sorted([n["key"] for n in items])
+        assert keys == ["EPC-1"]
+        cand = items[0]
+        assert cand["assigned_category"] == "dev"
+        assert cand["summary"] == "EPC-1"
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
 def test_children_endpoint_filters_by_tab(client, db):
     p = _mk_proj(db, "CHL")
     epic = _mk_issue(db, p, "CHL-1", issue_type="Epic", assigned_category="dev")

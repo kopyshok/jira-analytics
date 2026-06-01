@@ -835,6 +835,40 @@ def get_issue_context(
     )
 
 
+class EpicCandidateSchema(BaseModel):
+    id: str
+    key: str
+    summary: str
+    assigned_category: str
+
+
+@router.get("/tree/epic-candidates", response_model=List[EpicCandidateSchema])
+def get_epic_candidates(
+    project_keys: Optional[str] = None,
+    teams: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Задачи с assigned_category и хотя бы одним ребёнком — кандидаты на каскад
+    в bulk-drawer. Фильтр scope/teams тот же, что у tree/roots.
+    """
+    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db)
+    base = base.filter(Issue.assigned_category.isnot(None))
+    candidates = base.all()
+    # has_children check
+    ids_with_kids = {
+        cid for (cid,) in db.query(Issue.parent_id)
+        .filter(Issue.parent_id.in_({c.id for c in candidates}))
+        .distinct().all()
+    }
+    return [
+        EpicCandidateSchema(
+            id=c.id, key=c.key, summary=c.summary,
+            assigned_category=c.assigned_category,
+        )
+        for c in candidates if c.id in ids_with_kids
+    ]
+
+
 @router.get("/{parent_id}/children", response_model=List[IssueTreeRootNode])
 def get_issue_children(
     parent_id: str,
