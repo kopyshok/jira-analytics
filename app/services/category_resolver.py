@@ -181,3 +181,45 @@ class CategoryResolver:
             category_code=UNFILLED_WORKLOG_CODE,
             source=MappingSource.FALLBACK,
         )
+
+
+def effective_category_with_ancestors(
+    resolver: "CategoryResolver",
+    issue: "Issue",
+    pending: dict[str, str | None],
+) -> str | None:
+    """Вернуть эффективную категорию задачи: pending override → own assigned → ближайший
+    предок с assigned_category. Используется server-side для tab-routing задач.
+
+    pending — клиентский патч {issue_id: category_code | None}. Передаётся
+    фронтом в запрос tree/roots, чтобы клик «Сохранить» не требовал refetch.
+    """
+    from app.models import Issue
+    sess = resolver.db
+
+    if issue.id in pending:
+        own = pending[issue.id]
+        if own is not None:
+            return own
+
+    if not (issue.category_verified or False):
+        return None
+
+    if issue.assigned_category:
+        return issue.assigned_category
+
+    current_parent_id = issue.parent_id
+    for _ in range(20):
+        if not current_parent_id:
+            return None
+        if current_parent_id in pending:
+            pcode = pending[current_parent_id]
+            if pcode is not None:
+                return pcode
+        parent = sess.get(Issue, current_parent_id)
+        if not parent:
+            return None
+        if parent.assigned_category:
+            return parent.assigned_category
+        current_parent_id = parent.parent_id
+    return None
