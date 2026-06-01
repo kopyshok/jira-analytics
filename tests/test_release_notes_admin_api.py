@@ -213,3 +213,43 @@ def test_admin_delete_version_reverts_to_drafts(testclient_db_session: Session):
         assert all(n.version is None for n in notes)
     finally:
         _teardown()
+
+
+def test_admin_update_404_for_unknown_id(testclient_db_session: Session):
+    admin = _seed_user(testclient_db_session)
+    try:
+        r = _client_admin(testclient_db_session, admin).patch(
+            f"/api/v1/admin/release-notes/{uuid.uuid4()}",
+            json={"title": "New"},
+        )
+        assert r.status_code == 404
+    finally:
+        _teardown()
+
+
+def test_admin_delete_404_for_unknown_id(testclient_db_session: Session):
+    admin = _seed_user(testclient_db_session)
+    try:
+        r = _client_admin(testclient_db_session, admin).delete(
+            f"/api/v1/admin/release-notes/{uuid.uuid4()}"
+        )
+        assert r.status_code == 404
+    finally:
+        _teardown()
+
+
+def test_admin_versions_endpoint_returns_hidden(testclient_db_session: Session):
+    """Admin /versions/{v} must include hidden notes — иначе админ не сможет их разблокировать."""
+    admin = _seed_user(testclient_db_session)
+    _make_note(testclient_db_session, version="v1.5.0", is_hidden=True, title="Secret")
+    _make_note(testclient_db_session, version="v1.5.0", title="Visible")
+    try:
+        r = _client_admin(testclient_db_session, admin).get(
+            "/api/v1/admin/release-notes/versions/v1.5.0"
+        )
+        assert r.status_code == 200
+        titles = [n["title"] for n in r.json()]
+        assert "Secret" in titles
+        assert "Visible" in titles
+    finally:
+        _teardown()
