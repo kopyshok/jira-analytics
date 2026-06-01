@@ -187,18 +187,15 @@ export default function CategoriesEditorPage() {
   const scopeProjects = useScopeProjects();
   const scopeKeys = (scopeProjects.data ?? []).map(p => p.jira_project_key).join(',');
 
-  const excludedStatusesCsv = hiddenStatuses.length > 0 ? hiddenStatuses.join(',') : undefined;
   const rootsQuery = useIssueRoots({
     project_keys: scopeKeys || undefined,
     teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
     tab: innerTab,
     search: normalizedSearch || undefined,
-    excluded_statuses: excludedStatusesCsv,
   });
   const countsQuery = useIssueTreeCounts({
     project_keys: scopeKeys || undefined,
     teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
-    excluded_statuses: excludedStatusesCsv,
   });
 
   const jiraSettings = useJiraSettings();

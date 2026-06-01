@@ -13,7 +13,6 @@ type RootsParams = {
   teams?: string;
   tab: Tab;
   search?: string;
-  excluded_statuses?: string;
 };
 
 export function useIssueRoots(params: RootsParams) {
@@ -26,7 +25,7 @@ export function useIssueRoots(params: RootsParams) {
   });
 }
 
-type CountsParams = { project_keys?: string; teams?: string; excluded_statuses?: string };
+type CountsParams = { project_keys?: string; teams?: string };
 
 export function useIssueTreeCounts(params: CountsParams) {
   return useQuery({

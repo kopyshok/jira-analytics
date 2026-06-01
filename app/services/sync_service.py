@@ -656,6 +656,14 @@ class SyncService:
             # require_child_verification на родителе — только UI-подсказка при
             # верификации; не влияет на попадание в стек при синке.
             issue.category_verified = False
+        # Авто-архив: задачи в статусе «Отменено» без явной категории сразу
+        # уходят в архив. PM не разбирает их вручную. Если PM уже назначил
+        # категорию (например archive_target) — не трогаем.
+        if issue.status == "Отменено" and issue.assigned_category is None:
+            issue.assigned_category = "archive"
+            issue.category = "archive"
+            issue.include_in_analysis = False
+            issue.category_verified = True
         return issue, created
     
     async def sync_issues(
