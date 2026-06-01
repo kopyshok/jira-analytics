@@ -14,10 +14,15 @@ export default function GlobalHelpButton() {
   const disabled = !current && !hasUnread;
 
   const title = hasUnread
-    ? 'Есть новые обновления — нажмите чтобы посмотреть «Что нового»'
+    ? 'Справка по разделу — есть новые обновления во вкладке «Что нового»'
     : disabled
     ? 'Для этого раздела справки пока нет'
     : 'Справка по разделу';
+
+  // Дефолт всегда «Справка» (когда контент есть). Лента «Что нового» — вторая
+  // вкладка; красная точка на иконке подсказывает что там что-то новое, но
+  // переключается пользователем вручную.
+  const defaultTab = current ? 'help' : 'whats-new';
 
   return (
     <>
@@ -40,7 +45,7 @@ export default function GlobalHelpButton() {
         title={current?.title ?? 'Справка'}
         content={current?.content ?? ''}
         imageBase="/help-assets/"
-        defaultTab={hasUnread ? 'whats-new' : 'help'}
+        defaultTab={defaultTab}
       />
     </>
   );
