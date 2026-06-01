@@ -11,17 +11,15 @@ from app.schemas.release_note import (
     UnreadResponse,
     VersionFeed,
 )
-from app.services.release_note_service import ReleaseNoteService
-
-
-def _ver_key(v: str) -> tuple[int, ...]:
-    return tuple(int(p) for p in v.lstrip("v").split(".") if p.isdigit())
+from app.services.release_note_service import ReleaseNoteService, _ver_key
 
 
 router = APIRouter()
 
 
 def _build_feeds(svc: ReleaseNoteService, versions: list[str]) -> list[VersionFeed]:
+    if not versions:
+        return []
     notes = svc.notes_for_versions(versions)
     by_version: dict[str, list] = {v: [] for v in versions}
     for n in notes:
@@ -39,6 +37,8 @@ def get_unread(
 ) -> UnreadResponse:
     svc = ReleaseNoteService(db)
     unread = svc.unread_versions_for(user)
+    if not unread:
+        return UnreadResponse(unread_versions=[], feeds=[])
     return UnreadResponse(unread_versions=unread, feeds=_build_feeds(svc, unread))
 
 
