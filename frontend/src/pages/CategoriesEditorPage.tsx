@@ -26,6 +26,7 @@ import {
   useIssueTreeCounts,
   useLoadChildrenMutation,
 } from '../hooks/useIssueLazyTree';
+import { getIssueChildrenByTab } from '../api/issues';
 import type { IssueTreeRootNode } from '../types/api';
 import BulkTriageDrawer from '../components/categories/BulkTriageDrawer';
 
@@ -115,19 +116,21 @@ const CategoryCell = memo(function CategoryCell({
     ? (categoryLabels[placeholderCode] || placeholderCode)
     : 'Не назначена';
   return (
-    <Select
-      placeholder={placeholderLabel}
-      value={value}
-      onChange={(val) => onChange(issueId, val || null)}
-      allowClear
-      size="small"
-      style={{
-        width: '100%',
-        opacity: !value && placeholderCode ? 0.6 : 1,
-        boxShadow: hasPending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
-      }}
-      options={categoryOptions}
-    />
+    <div onClick={(e) => e.stopPropagation()}>
+      <Select
+        placeholder={placeholderLabel}
+        value={value}
+        onChange={(val) => onChange(issueId, val || null)}
+        allowClear
+        size="small"
+        style={{
+          width: '100%',
+          opacity: !value && placeholderCode ? 0.6 : 1,
+          boxShadow: hasPending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
+        }}
+        options={categoryOptions}
+      />
+    </div>
   );
 });
 
@@ -144,11 +147,13 @@ const IncludeCell = memo(function IncludeCell({
 }: IncludeCellProps) {
   if (isGroup) return null;
   return (
-    <Checkbox
-      checked={checked}
-      disabled={isContext}
-      onChange={(e) => onToggle(issueId, e.target.checked)}
-    />
+    <span onClick={(e) => e.stopPropagation()}>
+      <Checkbox
+        checked={checked}
+        disabled={isContext}
+        onChange={(e) => onToggle(issueId, e.target.checked)}
+      />
+    </span>
   );
 });
 
@@ -362,6 +367,26 @@ export default function CategoriesEditorPage() {
     setSelectedIds([]);
   };
 
+  // ─── Refresh loaded children after mutations ────────────────
+  // Server-side invalidation рефетчит только корни (useIssueRoots), а
+  // дети в loadedChildren остаются устаревшими — строки не уходят с
+  // вкладки «К разбору» пока пользователь не свернёт/раскроет родителя.
+  const refreshLoadedChildren = useCallback(async () => {
+    const parentIds = Array.from(loadedChildren.keys());
+    if (parentIds.length === 0) return;
+    const next = new Map<string, IssueTreeRootNode[]>();
+    await Promise.all(parentIds.map(async (pid) => {
+      try {
+        const kids = await getIssueChildrenByTab(pid, innerTab);
+        next.set(pid, kids);
+      } catch {
+        const stale = loadedChildren.get(pid);
+        if (stale) next.set(pid, stale);
+      }
+    }));
+    setLoadedChildren(next);
+  }, [loadedChildren, innerTab]);
+
   // ─── Mutations → invalidate tree ─────────────────────────────
 
   const toggleInclude = useCallback((issueId: string, hasChildren: boolean, checked: boolean) => {
@@ -382,11 +407,14 @@ export default function CategoriesEditorPage() {
     verifyMut.mutate(
       { issueId, cascade, requireChildVerification },
       {
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+          void refreshLoadedChildren();
+        },
         onError: (err) => notification.error({ title: 'Ошибка верификации', description: (err as Error).message }),
       },
     );
-  }, [pendingVerifyFlags, verifyMut, notification, qc]);
+  }, [pendingVerifyFlags, verifyMut, notification, qc, refreshLoadedChildren]);
 
   const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
@@ -417,6 +445,7 @@ export default function CategoriesEditorPage() {
       }
 
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+      void refreshLoadedChildren();
 
       const total = assignments.size;
       setPendingCats(new Map());
@@ -509,7 +538,7 @@ export default function CategoriesEditorPage() {
         key: 'summary',
         width: widths.summary,
         render: (s: string, record: TreeNodeWithChildren) => {
-          const count = record.descendant_count ?? 0;
+          const count = record.descendant_match_count ?? 0;
           return (
             <span>
               <Text>{s}</Text>
@@ -517,7 +546,7 @@ export default function CategoriesEditorPage() {
                 <Tag
                   color="default"
                   style={{ marginLeft: 6, fontSize: 11 }}
-                  title="Всего подчинённых задач в иерархии (без фильтров)"
+                  title="Подчинённых задач на этой вкладке"
                 >
                   {count}
                 </Tag>
@@ -640,17 +669,19 @@ export default function CategoriesEditorPage() {
         if (!hasChildren) return <span style={{ color: '#595959' }}>—</span>;
         const checked = pendingVerifyFlags.get(record.id) ?? record.require_child_verification ?? false;
         return (
-          <Switch
-            size="small"
-            checked={checked}
-            onChange={(val) => {
-              setPendingVerifyFlags(prev => {
-                const next = new Map(prev);
-                next.set(record.id, val);
-                return next;
-              });
-            }}
-          />
+          <span onClick={(e) => e.stopPropagation()}>
+            <Switch
+              size="small"
+              checked={checked}
+              onChange={(val) => {
+                setPendingVerifyFlags(prev => {
+                  const next = new Map(prev);
+                  next.set(record.id, val);
+                  return next;
+                });
+              }}
+            />
+          </span>
         );
       },
     },
@@ -669,7 +700,7 @@ export default function CategoriesEditorPage() {
               type="primary"
               size="small"
               loading={verifyMut.isPending}
-              onClick={() => handleVerify(record.id, true)}
+              onClick={(e) => { e.stopPropagation(); handleVerify(record.id, true); }}
             >
               Подтвердить{unverifiedBelow > 0 ? ` +${unverifiedBelow}` : ''}
             </Button>
@@ -679,7 +710,7 @@ export default function CategoriesEditorPage() {
           <Button
             size="small"
             loading={verifyMut.isPending}
-            onClick={() => handleVerify(record.id, false)}
+            onClick={(e) => { e.stopPropagation(); handleVerify(record.id, false); }}
           >
             Подтвердить
           </Button>

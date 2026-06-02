@@ -64,7 +64,7 @@ export default function WhatsNewModal({
       }
       footer={footer}
     >
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Space orientation="vertical" size={16} style={{ width: '100%' }}>
         {feeds.map((feed) => {
           const groups = groupByType(feed.notes);
           return (
