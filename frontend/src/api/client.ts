@@ -1,6 +1,6 @@
 import { pushError } from '../utils/errorStore';
 
-const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 export const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
 
 /** Эмитится при HTTP 401 от любого API-вызова. AuthProvider слушает и чистит сессию. */
