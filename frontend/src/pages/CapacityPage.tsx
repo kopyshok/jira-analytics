@@ -330,7 +330,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
     },
   ];
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
   const exportHref = `${apiBase}/exports/capacity.xlsx?year=${year}&quarter=${quarter}`;
 
   return (

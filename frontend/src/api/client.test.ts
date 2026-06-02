@@ -25,4 +25,23 @@ describe('api client', () => {
       expect.objectContaining({ method: 'POST', credentials: 'include' }),
     );
   });
+
+  it('defaults to same-origin API URL when base URL is not configured', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', '');
+    vi.stubGlobal('window', { location: new URL('http://jira-analytics2.api-n1.onyx.local/login') });
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { api } = await import('./client');
+
+    await api.get('/auth/me');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://jira-analytics2.api-n1.onyx.local/api/v1/auth/me',
+      expect.objectContaining({ method: 'GET', credentials: 'include' }),
+    );
+  });
 });
