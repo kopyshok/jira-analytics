@@ -95,3 +95,22 @@ export const getEpicCandidates = (
   params: { project_keys?: string; teams?: string },
   signal?: AbortSignal,
 ) => api.get<EpicCandidateApi[]>('/issues/tree/epic-candidates', params as Record<string, string | undefined>, signal);
+
+export interface HoursBreakdownData {
+  issue_id: string;
+  year: number;
+  quarter: number;
+  plan: Record<string, number>;
+  fact_past: Record<string, number>;
+  fact_current: Record<string, number>;
+  approved: Record<string, number>;
+  planable: Record<string, number>;
+  draft: Record<string, number>;
+  flags: { overrun: boolean; plan_missing: boolean; draft_exceeds_planable: boolean };
+}
+
+export const getHoursBreakdown = (issueId: string, year: number, quarter: number) =>
+  api.get<HoursBreakdownData>(`/issues/${issueId}/hours-breakdown`, {
+    year: String(year),
+    quarter: String(quarter),
+  });
