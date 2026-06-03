@@ -68,10 +68,36 @@ class Issue(Base, SyncedMixin):
     current_behavior: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Planned effort (from Jira «Плановые трудозатраты» tab — RFA/ITL)
-    planned_analyst_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    planned_dev_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    planned_qa_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    planned_opo_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # _jira — значение из Jira (пишет sync); _manual — ручной override через UI.
+    # property planned_<role>_hours: manual ?? jira (backward-compat для читателей).
+    planned_analyst_hours_jira: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_analyst_hours_manual: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_dev_hours_jira: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_dev_hours_manual: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_qa_hours_jira: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_qa_hours_manual: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_opo_hours_jira: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    planned_opo_hours_manual: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    @property
+    def planned_analyst_hours(self) -> Optional[float]:
+        """Ручной override имеет приоритет над значением из Jira."""
+        return self.planned_analyst_hours_manual if self.planned_analyst_hours_manual is not None else self.planned_analyst_hours_jira
+
+    @property
+    def planned_dev_hours(self) -> Optional[float]:
+        """Ручной override имеет приоритет над значением из Jira."""
+        return self.planned_dev_hours_manual if self.planned_dev_hours_manual is not None else self.planned_dev_hours_jira
+
+    @property
+    def planned_qa_hours(self) -> Optional[float]:
+        """Ручной override имеет приоритет над значением из Jira."""
+        return self.planned_qa_hours_manual if self.planned_qa_hours_manual is not None else self.planned_qa_hours_jira
+
+    @property
+    def planned_opo_hours(self) -> Optional[float]:
+        """Ручной override имеет приоритет над значением из Jira."""
+        return self.planned_opo_hours_manual if self.planned_opo_hours_manual is not None else self.planned_opo_hours_jira
 
     # Involvement fractions / durations — synced, reserved for future calendar planning.
     involvement_analyst: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

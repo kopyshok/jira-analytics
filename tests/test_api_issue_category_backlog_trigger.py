@@ -53,8 +53,8 @@ def test_set_single_issue_category_triggers_backlog_sync(db_session):
 
     issue = _seed_issue(
         db_session,
-        planned_analyst_hours=10,
-        planned_dev_hours=20,
+        planned_analyst_hours_jira=10,
+        planned_dev_hours_jira=20,
     )
 
     _override(db_session)
@@ -82,7 +82,7 @@ def test_set_single_issue_category_archives_backlog_item_when_away(db_session):
     from app.models import BacklogItem
     from app.services.backlog_service import BacklogService
 
-    issue = _seed_issue(db_session, category="initiatives_rfa", planned_dev_hours=8)
+    issue = _seed_issue(db_session, category="initiatives_rfa", planned_dev_hours_jira=8)
     # Pre-create backlog item через сервис.
     BacklogService(db_session).sync_from_issue(issue)
     db_session.commit()
@@ -146,7 +146,7 @@ def test_batch_set_category_triggers_backlog_sync(db_session):
             status="Open",
             project_id=proj.id,
             category="development",
-            planned_dev_hours=float(i),
+            planned_dev_hours_jira=float(i),
         )
         for i in range(1, 4)
     ]
@@ -212,7 +212,7 @@ def test_batch_set_category_creates_allocations_in_draft_scenarios(db_session):
             status="Open",
             project_id=proj.id,
             category="development",
-            planned_dev_hours=float(i),
+            planned_dev_hours_jira=float(i),
         )
         for i in range(1, 3)
     ]

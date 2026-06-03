@@ -47,10 +47,10 @@ def test_sync_creates_backlog_item_when_category_matches(db_session, proj):
         proj,
         "RFA-1",
         "initiatives_rfa",
-        planned_analyst_hours=40,
-        planned_dev_hours=40,
-        planned_qa_hours=20,
-        planned_opo_hours=20,
+        planned_analyst_hours_jira=40,
+        planned_dev_hours_jira=40,
+        planned_qa_hours_jira=20,
+        planned_opo_hours_jira=20,
         impact="high",
         risk="medium",
     )
@@ -80,17 +80,17 @@ def test_sync_updates_existing_backlog_item(db_session, proj):
         proj,
         "RFA-2",
         "initiatives_rfa",
-        planned_analyst_hours=10,
-        planned_dev_hours=10,
-        planned_qa_hours=0,
-        planned_opo_hours=0,
+        planned_analyst_hours_jira=10,
+        planned_dev_hours_jira=10,
+        planned_qa_hours_jira=0,
+        planned_opo_hours_jira=0,
     )
     svc = BacklogService(db_session)
     item = svc.sync_from_issue(issue)
     db_session.commit()
     assert item.estimate_hours == 20
 
-    issue.planned_dev_hours = 50
+    issue.planned_dev_hours_jira = 50
     db_session.commit()
     svc.sync_from_issue(issue)
     db_session.commit()
@@ -108,7 +108,7 @@ def test_sync_preserves_opo_analyst_ratio(db_session, proj):
         proj,
         "RFA-3",
         "initiatives_rfa",
-        planned_opo_hours=10,
+        planned_opo_hours_jira=10,
     )
     svc = BacklogService(db_session)
     item = svc.sync_from_issue(issue)
@@ -328,7 +328,7 @@ def test_sync_preserves_existing_allocation_values(db_session, proj):
     db_session.commit()
 
     # Повторный sync (например, обновление часов из Jira).
-    issue.planned_dev_hours = 99
+    issue.planned_dev_hours_jira = 99
     db_session.commit()
     svc.sync_from_issue(issue)
     db_session.commit()
@@ -384,7 +384,7 @@ def test_sync_creates_backlog_item_for_quarterly_tasks(db_session, proj):
     from app.services.backlog_service import BacklogService
 
     issue = _make_issue(db_session, proj, "ITL-1", "quarterly_tasks",
-                        planned_analyst_hours=40)
+                        planned_analyst_hours_jira=40)
     svc = BacklogService(db_session)
     item = svc.sync_from_issue(issue)
     db_session.commit()

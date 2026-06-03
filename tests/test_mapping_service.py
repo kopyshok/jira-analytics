@@ -252,7 +252,7 @@ class TestBacklogSyncTrigger:
             status="Open",
             project_id=project.id,
             assigned_category="initiatives_rfa",
-            planned_dev_hours=8.0,
+            planned_dev_hours_jira=8.0,
         )
         db_session.add(issue)
         db_session.flush()

@@ -610,10 +610,10 @@ class SyncService:
             if jira_issue.fields.assignee else None
         )
 
-        data["planned_analyst_hours"] = _fld_float("jira_planned_analyst_hours_field_id")
-        data["planned_dev_hours"] = _fld_float("jira_planned_dev_hours_field_id")
-        data["planned_qa_hours"] = _fld_float("jira_planned_qa_hours_field_id")
-        data["planned_opo_hours"] = _fld_float("jira_planned_opo_hours_field_id")
+        data["planned_analyst_hours_jira"] = _fld_float("jira_planned_analyst_hours_field_id")
+        data["planned_dev_hours_jira"] = _fld_float("jira_planned_dev_hours_field_id")
+        data["planned_qa_hours_jira"] = _fld_float("jira_planned_qa_hours_field_id")
+        data["planned_opo_hours_jira"] = _fld_float("jira_planned_opo_hours_field_id")
         data["involvement_analyst"] = _fld_float("jira_involvement_analyst_field_id")
         data["involvement_dev"] = _fld_float("jira_involvement_dev_field_id")
         data["involvement_qa"] = _fld_float("jira_involvement_qa_field_id")

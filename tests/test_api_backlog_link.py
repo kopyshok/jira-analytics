@@ -59,10 +59,10 @@ def test_link_jira_pulls_estimates_from_issue(db_session):
         status="Open",
         project_id=proj.id,
         category="initiatives_rfa",
-        planned_analyst_hours=8,
-        planned_dev_hours=16,
-        planned_qa_hours=4,
-        planned_opo_hours=2,
+        planned_analyst_hours_jira=8,
+        planned_dev_hours_jira=16,
+        planned_qa_hours_jira=4,
+        planned_opo_hours_jira=2,
     )
     manual = BacklogItem(
         id="m1",
@@ -226,7 +226,7 @@ def test_refresh_from_jira_pulls_all_matching(db_session):
                 project_id=proj.id,
                 assigned_category="initiatives_rfa",
                 category="initiatives_rfa",
-                planned_analyst_hours=h,
+                planned_analyst_hours_jira=h,
             )
         )
     db_session.commit()
@@ -318,7 +318,7 @@ def test_refresh_from_jira_heals_legacy_drift(db_session):
         project_id=proj.id,
         assigned_category="initiatives_rfa",
         category="unfilled_worklog",  # stale denormalized column
-        planned_analyst_hours=5,
+        planned_analyst_hours_jira=5,
     )
     db_session.add_all([cat, proj, issue])
     db_session.commit()
