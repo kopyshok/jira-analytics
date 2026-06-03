@@ -482,6 +482,11 @@ export interface BacklogItemResponse {
   parallel_count_analyst: number | null;
   parallel_count_dev: number | null;
   parallel_count_qa: number | null;
+  // Hierarchy flags for RFA-row expansion in UI.
+  planning_mode: 'whole' | 'by_epics';
+  included_in_planning: boolean;
+  has_parent_in_backlog: boolean;
+  has_children_in_backlog: boolean;
 }
 
 export interface BacklogRefreshResult {
