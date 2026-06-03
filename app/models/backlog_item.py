@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -69,6 +69,18 @@ class BacklogItem(Base, TimestampMixin):
 
     archived_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True, index=False
+    )
+
+    # Режим планирования группы RFA: 'whole' (RFA целиком в сценарии) | 'by_epics'
+    # (дочерние Эпики идут в сценарий, RFA-родитель — отдельной галочкой). Используется
+    # только для RFA с дочерними Эпиками; на одиночных задачах остаётся 'whole'.
+    planning_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="whole", server_default="whole",
+    )
+    # В режиме 'by_epics' — индивидуальный флаг участия в утверждаемом сценарии.
+    # В режиме 'whole' не используется (поведение по дефолту: всегда включён).
+    included_in_planning: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true(),
     )
 
     assignee_employee_id: Mapped[Optional[str]] = mapped_column(
