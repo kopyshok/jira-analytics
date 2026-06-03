@@ -80,6 +80,16 @@ class ScenarioRef(BaseModel):
     name: str
 
 
+class BacklogChildSchema(BaseModel):
+    id: str              # backlog_item.id (нужен для PATCH /included)
+    issue_id: str
+    key: str
+    title: str
+    issue_type: Optional[str] = None
+    status: Optional[str] = None
+    included_in_planning: bool = True
+
+
 class BacklogItemResponse(BaseModel):
     id: str
     title: str
@@ -135,6 +145,7 @@ class BacklogItemResponse(BaseModel):
     included_in_planning: bool = True
     has_parent_in_backlog: bool = False
     has_children_in_backlog: bool = False
+    children: List[BacklogChildSchema] = []
 
     class Config:
         from_attributes = True
@@ -247,6 +258,7 @@ def _to_response(
     quarter_label: Optional[str] = None,
     has_parent_in_backlog: bool = False,
     has_children_in_backlog: bool = False,
+    children: Optional[List[BacklogChildSchema]] = None,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
@@ -304,6 +316,7 @@ def _to_response(
         included_in_planning=item.included_in_planning,
         has_parent_in_backlog=has_parent_in_backlog,
         has_children_in_backlog=has_children_in_backlog,
+        children=children or [],
     )
 
 
@@ -470,8 +483,12 @@ async def list_backlog_items(
         )
     )
 
-    # Hierarchy flags: один запрос — множества для проверки parent/children.
-    backlog_issue_ids = {bi.issue_id for bi in items if bi.issue_id is not None}
+    # Hierarchy: build issue_id → parent_id map и issue_id → BacklogItem map.
+    issue_id_to_item: dict[str, BacklogItem] = {
+        bi.issue_id: bi for bi in items if bi.issue_id is not None
+    }
+    backlog_issue_ids = set(issue_id_to_item.keys())
+
     if backlog_issue_ids:
         issue_rows = db.query(Issue.id, Issue.parent_id).filter(Issue.id.in_(backlog_issue_ids)).all()
         parent_map = {iid: pid for iid, pid in issue_rows}
@@ -479,6 +496,33 @@ async def list_backlog_items(
     else:
         parent_map = {}
         parents_in_backlog = set()
+
+    # Дочерние issue_id (те, чей parent тоже в backlog) — скрываем из flat-списка.
+    child_issue_ids = {
+        iid for iid, pid in parent_map.items()
+        if pid is not None and pid in backlog_issue_ids
+    }
+
+    # Фильтруем: оставляем только корни (не дочки).
+    visible_items = [bi for bi in items if bi.issue_id not in child_issue_ids]
+
+    # Строим Map: parent_issue_id → List[BacklogChildSchema].
+    children_map: dict[str, list[BacklogChildSchema]] = {}
+    for iid, pid in parent_map.items():
+        if pid is None or pid not in backlog_issue_ids:
+            continue
+        child_bi = issue_id_to_item[iid]
+        child_issue = child_bi.issue
+        schema = BacklogChildSchema(
+            id=child_bi.id,
+            issue_id=iid,
+            key=child_issue.key if child_issue else iid,
+            title=child_bi.title,
+            issue_type=child_issue.issue_type if child_issue else None,
+            status=child_issue.status if child_issue else None,
+            included_in_planning=child_bi.included_in_planning,
+        )
+        children_map.setdefault(pid, []).append(schema)
 
     def _hierarchy_flags(item: BacklogItem):
         iid = item.issue_id
@@ -489,16 +533,21 @@ async def list_backlog_items(
         has_children = iid in parents_in_backlog
         return has_parent, has_children
 
+    def _children_for(item: BacklogItem) -> list[BacklogChildSchema]:
+        if item.issue_id is None:
+            return []
+        return children_map.get(item.issue_id, [])
+
     if view in ("in_work", "quarterly"):
-        labels = _quarter_labels_bulk(db, [i.id for i in items])
+        labels = _quarter_labels_bulk(db, [i.id for i in visible_items])
         return [
-            _to_response(i, _approved_scenarios_for(db, i.id), labels.get(i.id), *_hierarchy_flags(i))
-            for i in items
+            _to_response(i, _approved_scenarios_for(db, i.id), labels.get(i.id), *_hierarchy_flags(i), _children_for(i))
+            for i in visible_items
         ]
     if view == "archived":
-        labels = _quarter_labels_bulk(db, [i.id for i in items])
-        return [_to_response(i, None, labels.get(i.id), *_hierarchy_flags(i)) for i in items]
-    return [_to_response(i, None, None, *_hierarchy_flags(i)) for i in items]
+        labels = _quarter_labels_bulk(db, [i.id for i in visible_items])
+        return [_to_response(i, None, labels.get(i.id), *_hierarchy_flags(i), _children_for(i)) for i in visible_items]
+    return [_to_response(i, None, None, *_hierarchy_flags(i), _children_for(i)) for i in visible_items]
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)

@@ -624,7 +624,7 @@ export default function BacklogPage() {
         }}
         year={period.year}
         quarter={period.quarter}
-        children={[]}
+        children={row.children ?? []}
       />
     ),
     rowExpandable: (row: BacklogItemResponse) => !!row.issue_id,

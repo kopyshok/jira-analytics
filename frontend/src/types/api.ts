@@ -433,6 +433,16 @@ export interface BacklogItemScenarioRef {
   name: string;
 }
 
+export interface BacklogChild {
+  id: string;            // backlog_item.id (нужен для PATCH /included)
+  issue_id: string;
+  key: string;
+  title: string;
+  issue_type: string | null;
+  status: string | null;
+  included_in_planning: boolean;
+}
+
 export interface BacklogItemResponse {
   id: string;
   title: string;
@@ -487,6 +497,7 @@ export interface BacklogItemResponse {
   included_in_planning: boolean;
   has_parent_in_backlog: boolean;
   has_children_in_backlog: boolean;
+  children?: BacklogChild[];
 }
 
 export interface BacklogRefreshResult {

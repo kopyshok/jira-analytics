@@ -14,6 +14,8 @@ interface ChildItem {
   issue_id: string;
   key: string;
   title: string;
+  issue_type: string | null;
+  status: string | null;
   included_in_planning: boolean;
 }
 

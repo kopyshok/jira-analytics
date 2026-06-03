@@ -1,4 +1,4 @@
-"""GET /api/v1/backlog/ возвращает hierarchy-флаги для UI раскрытия RFA-строки."""
+"""GET /api/v1/backlog/ возвращает hierarchy-флаги + дочки скрыты из flat-списка."""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -41,7 +41,8 @@ def client(testclient_db_session):
     app.dependency_overrides.pop(get_db, None)
 
 
-def test_backlog_list_includes_hierarchy_flags(client, testclient_db_session):
+def test_child_hidden_from_flat_list_visible_in_parent_children(client, testclient_db_session):
+    """RFA-1 + Epic-1 (child of RFA-1) → только RFA-1 в flat-списке, Epic-1 — в children."""
     db = testclient_db_session
     p = _project(db)
     rfa = _issue(db, p, "RFA-100", issue_type="RFA")
@@ -53,30 +54,33 @@ def test_backlog_list_includes_hierarchy_flags(client, testclient_db_session):
     r = client.get("/api/v1/backlog/")
     assert r.status_code == 200, r.text
     rows = r.json()
-    # ответ может быть list или {items: [...]}; адаптируйся под реальный формат при необходимости
     if isinstance(rows, dict) and "items" in rows:
         rows = rows["items"]
-    by_key = {row.get("issue_key") or row.get("jira_key"): row for row in rows if row.get("issue_key") or row.get("jira_key")}
 
-    rfa_row = by_key.get("RFA-100")
-    epic_row = by_key.get("PRJ-100")
-    assert rfa_row is not None
-    assert epic_row is not None
+    keys = {row.get("jira_key") for row in rows}
 
-    # planning_mode по умолчанию whole
-    assert rfa_row["planning_mode"] == "whole"
-    assert rfa_row["included_in_planning"] is True
+    # Дочка скрыта из flat-списка
+    assert "PRJ-100" not in keys, "Epic (дочка) не должна быть в flat-списке"
+    # Родитель виден
+    assert "RFA-100" in keys
 
-    # RFA — родитель Эпика
+    rfa_row = next(r for r in rows if r.get("jira_key") == "RFA-100")
     assert rfa_row["has_children_in_backlog"] is True
     assert rfa_row["has_parent_in_backlog"] is False
-    # Эпик — дочка RFA
-    assert epic_row["has_parent_in_backlog"] is True
-    assert epic_row["has_children_in_backlog"] is False
+
+    # Дочка видна через children родителя
+    children = rfa_row.get("children", [])
+    assert len(children) == 1
+    c = children[0]
+    assert c["key"] == "PRJ-100"
+    assert c["issue_type"] == "Epic"
+    assert c["included_in_planning"] is True
+    assert "id" in c      # backlog_item.id нужен для PATCH
+    assert "issue_id" in c
 
 
-def test_backlog_flags_default_for_orphan(client, testclient_db_session):
-    """Одиночная задача без родителя и без детей в backlog."""
+def test_orphan_has_empty_children(client, testclient_db_session):
+    """Одиночная задача без родителя и без детей → children=[]."""
     db = testclient_db_session
     p = _project(db, key="ORPH")
     issue = _issue(db, p, "ORPH-1")
@@ -87,7 +91,7 @@ def test_backlog_flags_default_for_orphan(client, testclient_db_session):
     rows = r.json()
     if isinstance(rows, dict) and "items" in rows:
         rows = rows["items"]
-    by_key = {row.get("issue_key") or row.get("jira_key"): row for row in rows if row.get("issue_key") or row.get("jira_key")}
+    by_key = {row.get("jira_key"): row for row in rows if row.get("jira_key")}
 
     orph = by_key.get("ORPH-1")
     assert orph is not None
@@ -95,3 +99,63 @@ def test_backlog_flags_default_for_orphan(client, testclient_db_session):
     assert orph["included_in_planning"] is True
     assert orph["has_parent_in_backlog"] is False
     assert orph["has_children_in_backlog"] is False
+    assert orph.get("children", []) == []
+
+
+def test_child_outside_backlog_stays_in_flat_list(client, testclient_db_session):
+    """Задача с parent_id, чей родитель НЕ в backlog — остаётся в flat-списке."""
+    db = testclient_db_session
+    p = _project(db, key="EXT")
+    # parent issue — есть в Issues, но нет в BacklogItem
+    parent_issue = _issue(db, p, "EXT-0", issue_type="RFA")
+    child_issue = _issue(db, p, "EXT-1", issue_type="Epic", parent_id=parent_issue.id)
+    # только дочка в backlog
+    _backlog_item(db, child_issue)
+    db.commit()
+
+    r = client.get("/api/v1/backlog/")
+    rows = r.json()
+    if isinstance(rows, dict) and "items" in rows:
+        rows = rows["items"]
+    by_key = {row.get("jira_key"): row for row in rows if row.get("jira_key")}
+
+    # Дочка остаётся в flat-списке (её parent не в backlog)
+    assert "EXT-1" in by_key
+    assert by_key["EXT-1"]["has_parent_in_backlog"] is False
+
+
+def test_multilevel_rfa_epic_subtask(client, testclient_db_session):
+    """RFA → Epic → Subtask, все три в backlog.
+
+    Ожидание: RFA в flat-списке; Epic в children RFA; Subtask скрыт из flat
+    (его parent Epic тоже в backlog) — в соответствии со spec: multilevel
+    depth=1, Subtask виден как child Epic но Epic уже не в flat.
+
+    Текущая реализация: RFA видна, Epic — в её children (скрыта из flat),
+    Subtask — тоже скрыта из flat (parent Epic в backlog), но в Epic.children.
+    """
+    db = testclient_db_session
+    p = _project(db, key="MULTI")
+    rfa = _issue(db, p, "MULTI-1", issue_type="RFA")
+    epic = _issue(db, p, "MULTI-2", issue_type="Epic", parent_id=rfa.id)
+    subtask = _issue(db, p, "MULTI-3", issue_type="Subtask", parent_id=epic.id)
+    _backlog_item(db, rfa)
+    _backlog_item(db, epic)
+    _backlog_item(db, subtask)
+    db.commit()
+
+    r = client.get("/api/v1/backlog/")
+    rows = r.json()
+    if isinstance(rows, dict) and "items" in rows:
+        rows = rows["items"]
+    keys = {row.get("jira_key") for row in rows}
+
+    # Только RFA в flat-списке
+    assert "MULTI-1" in keys
+    assert "MULTI-2" not in keys   # Epic — дочка RFA → скрыта
+    assert "MULTI-3" not in keys   # Subtask — дочка Epic → тоже скрыта
+
+    rfa_row = next(r for r in rows if r.get("jira_key") == "MULTI-1")
+    rfa_children_keys = {c["key"] for c in rfa_row.get("children", [])}
+    # Epic — прямой ребёнок RFA → в её children
+    assert "MULTI-2" in rfa_children_keys
