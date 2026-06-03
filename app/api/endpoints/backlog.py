@@ -963,6 +963,46 @@ async def archive_backlog_item(
     return _to_response(item, _approved_scenarios_for(db, item.id))
 
 
+class PlanningModeRequest(BaseModel):
+    mode: str  # 'whole' | 'by_epics'
+
+
+class IncludedRequest(BaseModel):
+    included: bool
+
+
+@router.patch("/{item_id}/planning-mode")
+def set_planning_mode(
+    item_id: str,
+    payload: PlanningModeRequest,
+    db: Session = Depends(get_db),
+):
+    """Переключить режим планирования RFA: whole (целиком) или by_epics (по эпикам)."""
+    if payload.mode not in ("whole", "by_epics"):
+        raise HTTPException(422, "mode must be 'whole' or 'by_epics'")
+    bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
+    if bi is None:
+        raise HTTPException(404, "BacklogItem not found")
+    bi.planning_mode = payload.mode
+    db.commit()
+    return {"id": bi.id, "planning_mode": bi.planning_mode}
+
+
+@router.patch("/{item_id}/included")
+def set_included(
+    item_id: str,
+    payload: IncludedRequest,
+    db: Session = Depends(get_db),
+):
+    """Включить/исключить элемент бэклога из планирования."""
+    bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
+    if bi is None:
+        raise HTTPException(404, "BacklogItem not found")
+    bi.included_in_planning = payload.included
+    db.commit()
+    return {"id": bi.id, "included_in_planning": bi.included_in_planning}
+
+
 @router.post("/{item_id}/restore", response_model=BacklogItemResponse)
 async def restore_backlog_item(
     item_id: str,
