@@ -19,7 +19,7 @@
 ### Task 1: Миграция — переименование `planned_<role>_hours` + добавление `_manual`
 
 **Files:**
-- Create: `alembic/versions/057_plan_hours_versioning.py`
+- Create: `alembic/versions/058_plan_hours_versioning.py`
 - Modify: `app/models/issue.py` — добавить новые колонки, оставить `planned_<role>_hours` как `@property` для backward compat
 
 - [ ] **Step 1: Создать миграцию**
@@ -27,7 +27,7 @@
 ```python
 """plan hours versioning: rename + manual fields
 
-Revision ID: 057_plan_hours_versioning
+Revision ID: 058_plan_hours_versioning
 Revises: eff9e06ce1f5
 Create Date: 2026-06-03
 """
@@ -35,7 +35,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "057_plan_hours_versioning"
+revision: str = "058_plan_hours_versioning"
 down_revision: Union[str, None] = "eff9e06ce1f5"
 branch_labels = None
 depends_on = None
@@ -72,7 +72,7 @@ py -3.10 -m alembic upgrade head
 py -3.10 -m alembic current
 ```
 
-Expected: `057_plan_hours_versioning (head)`.
+Expected: `058_plan_hours_versioning (head)`.
 
 - [ ] **Step 3: Обновить `app/models/issue.py`**
 
@@ -130,7 +130,7 @@ Expected: PASS (property возвращает _manual ?? _jira; sync пишет 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add alembic/versions/057_plan_hours_versioning.py app/models/issue.py app/services/sync_service.py
+git add alembic/versions/058_plan_hours_versioning.py app/models/issue.py app/services/sync_service.py
 git commit -m "feat(plan-hours): split planned_<role>_hours into _jira + _manual
 
 Renames Issue.planned_<role>_hours → _jira; adds _manual override; property
@@ -144,7 +144,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ### Task 2: Миграция — таблица `plan_audit`
 
 **Files:**
-- Create: `alembic/versions/058_plan_audit.py`
+- Create: `alembic/versions/059_plan_audit.py`
 - Create: `app/models/plan_audit.py`
 - Modify: `app/models/__init__.py` — импорт `PlanAudit`
 
@@ -153,16 +153,16 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```python
 """plan_audit journal
 
-Revision ID: 058_plan_audit
-Revises: 057_plan_hours_versioning
+Revision ID: 059_plan_audit
+Revises: 058_plan_hours_versioning
 Create Date: 2026-06-03
 """
 from typing import Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "058_plan_audit"
-down_revision: Union[str, None] = "057_plan_hours_versioning"
+revision: str = "059_plan_audit"
+down_revision: Union[str, None] = "058_plan_hours_versioning"
 branch_labels = None
 depends_on = None
 
@@ -230,7 +230,7 @@ from app.models.plan_audit import PlanAudit  # noqa: F401
 py -3.10 -m alembic upgrade head
 ```
 
-Expected: `058_plan_audit (head)`.
+Expected: `059_plan_audit (head)`.
 
 - [ ] **Step 5: Написать smoke-test**
 
@@ -267,7 +267,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add alembic/versions/058_plan_audit.py app/models/plan_audit.py app/models/__init__.py tests/test_plan_audit_model.py
+git add alembic/versions/059_plan_audit.py app/models/plan_audit.py app/models/__init__.py tests/test_plan_audit_model.py
 git commit -m "feat(plan-audit): plan_audit journal table
 
 Tracks every change to Issue planned_<role>_hours (jira sync, manual edit,
@@ -281,7 +281,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ### Task 3: Миграция — `backlog_items.planning_mode` + `included_in_planning`
 
 **Files:**
-- Create: `alembic/versions/059_backlog_planning_mode.py`
+- Create: `alembic/versions/060_backlog_planning_mode.py`
 - Modify: `app/models/backlog_item.py` — добавить поля
 
 - [ ] **Step 1: Создать миграцию**
@@ -289,16 +289,16 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```python
 """backlog_items.planning_mode + included_in_planning
 
-Revision ID: 059_backlog_planning_mode
-Revises: 058_plan_audit
+Revision ID: 060_backlog_planning_mode
+Revises: 059_plan_audit
 Create Date: 2026-06-03
 """
 from typing import Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "059_backlog_planning_mode"
-down_revision: Union[str, None] = "058_plan_audit"
+revision: str = "060_backlog_planning_mode"
+down_revision: Union[str, None] = "059_plan_audit"
 branch_labels = None
 depends_on = None
 
