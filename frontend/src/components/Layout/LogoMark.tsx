@@ -47,15 +47,34 @@ export default function LogoMark({ collapsed = false }: Props) {
           </div>
           <div
             style={{
-              fontSize: 10,
-              textTransform: 'uppercase',
-              letterSpacing: '0.18em',
-              color: DARK_THEME.cyanPrimary,
-              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 6,
               marginTop: 1,
             }}
           >
-            Analytics
+            <span
+              style={{
+                fontSize: 10,
+                textTransform: 'uppercase',
+                letterSpacing: '0.18em',
+                color: DARK_THEME.cyanPrimary,
+                fontWeight: 600,
+              }}
+            >
+              Analytics
+            </span>
+            <span
+              title={`Версия ${__APP_VERSION__}`}
+              style={{
+                fontSize: 9,
+                color: DARK_THEME.textMuted,
+                fontWeight: 500,
+                letterSpacing: '0.04em',
+              }}
+            >
+              v{__APP_VERSION__}
+            </span>
           </div>
         </div>
       )}
