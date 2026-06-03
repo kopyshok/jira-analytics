@@ -295,6 +295,8 @@ class AllocationResponse(BaseModel):
     source_category: Optional[str] = None  # 'initiatives_rfa' | 'quarterly_tasks'
     status: Optional[str] = None
     status_category: Optional[str] = None
+    issue_id: Optional[str] = None
+    has_children_in_backlog: bool = False
 
 
 class AllocationAssigneePatch(BaseModel):
@@ -374,6 +376,7 @@ def _to_allocation_resp(
     alloc: ScenarioAllocation,
     item: BacklogItem,
     employee_role_by_name: dict | None = None,
+    parents_in_backlog: set | None = None,
 ) -> AllocationResponse:
     jira_assignee_name = item.issue.assignee_display_name if item.issue else None
     resolved_role = (
@@ -383,6 +386,9 @@ def _to_allocation_resp(
             if employee_role_by_name and jira_assignee_name
             else None
         )
+    )
+    has_children = bool(
+        parents_in_backlog and item.issue_id and item.issue_id in parents_in_backlog
     )
     return AllocationResponse(
         id=alloc.id,
@@ -416,6 +422,8 @@ def _to_allocation_resp(
         source_category=item.issue.category if item.issue else None,
         status=item.issue.status if item.issue else None,
         status_category=item.issue.status_category if item.issue else None,
+        issue_id=item.issue_id,
+        has_children_in_backlog=has_children,
     )
 
 
@@ -1336,7 +1344,18 @@ async def list_scenario_allocations(
     # assignee_employee_id не заполнен вручную.
     active_employees = db.query(Employee).filter(Employee.is_active == True).all()  # noqa: E712
     emp_role_by_name = {e.display_name: e.role for e in active_employees if e.role}
-    return [_to_allocation_resp(alloc, item, emp_role_by_name) for alloc, item in rows]
+
+    # Иерархия: выявить items, у которых есть дочерние задачи в этом же
+    # наборе (по цепочке parent_id Issue). Один запрос на все issue_id.
+    backlog_issue_ids = {item.issue_id for _, item in rows if item.issue_id is not None}
+    if backlog_issue_ids:
+        issue_rows = db.query(Issue.id, Issue.parent_id).filter(Issue.id.in_(backlog_issue_ids)).all()
+        parent_map = {iid: pid for iid, pid in issue_rows}
+        parents_in_backlog: set = {pid for pid in parent_map.values() if pid is not None and pid in backlog_issue_ids}
+    else:
+        parents_in_backlog = set()
+
+    return [_to_allocation_resp(alloc, item, emp_role_by_name, parents_in_backlog) for alloc, item in rows]
 
 
 @router.patch(

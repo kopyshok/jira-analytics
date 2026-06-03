@@ -594,6 +594,8 @@ export interface AllocationResponse {
   source_category: string | null;
   status: string | null;
   status_category: string | null;
+  issue_id: string | null;
+  has_children_in_backlog: boolean;
 }
 
 // === Scenario rules ===
