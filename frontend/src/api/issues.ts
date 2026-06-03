@@ -114,3 +114,47 @@ export const getHoursBreakdown = (issueId: string, year: number, quarter: number
     year: String(year),
     quarter: String(quarter),
   });
+
+export interface PlanAuditRow {
+  id: string;
+  role: string;
+  value_before: number | null;
+  value_after: number | null;
+  source: string;
+  user_id: string | null;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface PlanConflict {
+  role: string;
+  audit_id: string;
+  value_jira: number | null;
+  value_before: number | null;
+}
+
+export const patchPlan = (
+  issueId: string,
+  roleHours: Record<string, number | null>,
+  comment: string,
+): Promise<{ plan: Record<string, number | null> }> =>
+  api.patch(`/issues/${issueId}/plan`, { role_hours: roleHours, comment });
+
+export const revertPlan = (
+  issueId: string,
+  auditId?: string,
+): Promise<{ plan: Record<string, number | null> }> =>
+  api.post(`/issues/${issueId}/plan/revert`, { audit_id: auditId ?? null });
+
+export const getPlanHistory = (issueId: string): Promise<PlanAuditRow[]> =>
+  api.get<PlanAuditRow[]>(`/issues/${issueId}/plan-history`);
+
+export const resolvePlanConflict = (
+  issueId: string,
+  action: 'accept_jira' | 'ignore',
+  role: string,
+): Promise<{ ok: boolean }> =>
+  api.post(`/issues/${issueId}/plan/conflict-resolve`, { action, role });
+
+export const getPlanConflicts = (issueId: string): Promise<PlanConflict[]> =>
+  api.get<PlanConflict[]>(`/issues/${issueId}/plan-conflicts`);
