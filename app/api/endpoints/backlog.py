@@ -130,6 +130,11 @@ class BacklogItemResponse(BaseModel):
     duration_dev_days_jira: Optional[float] = None
     duration_qa_days_jira: Optional[float] = None
     duration_launch_days_jira: Optional[float] = None
+    # Hierarchy flags for RFA-row expansion in UI.
+    planning_mode: str = "whole"
+    included_in_planning: bool = True
+    has_parent_in_backlog: bool = False
+    has_children_in_backlog: bool = False
 
     class Config:
         from_attributes = True
@@ -240,6 +245,8 @@ def _to_response(
     item: BacklogItem,
     approved_scenarios: Optional[List[ScenarioRef]] = None,
     quarter_label: Optional[str] = None,
+    has_parent_in_backlog: bool = False,
+    has_children_in_backlog: bool = False,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
@@ -293,6 +300,10 @@ def _to_response(
         duration_dev_days_jira=issue.duration_dev_days if issue else None,
         duration_qa_days_jira=issue.duration_qa_days if issue else None,
         duration_launch_days_jira=issue.duration_launch_days if issue else None,
+        planning_mode=item.planning_mode,
+        included_in_planning=item.included_in_planning,
+        has_parent_in_backlog=has_parent_in_backlog,
+        has_children_in_backlog=has_children_in_backlog,
     )
 
 
@@ -459,16 +470,35 @@ async def list_backlog_items(
         )
     )
 
+    # Hierarchy flags: один запрос — множества для проверки parent/children.
+    backlog_issue_ids = {bi.issue_id for bi in items if bi.issue_id is not None}
+    if backlog_issue_ids:
+        issue_rows = db.query(Issue.id, Issue.parent_id).filter(Issue.id.in_(backlog_issue_ids)).all()
+        parent_map = {iid: pid for iid, pid in issue_rows}
+        parents_in_backlog = {pid for pid in parent_map.values() if pid is not None and pid in backlog_issue_ids}
+    else:
+        parent_map = {}
+        parents_in_backlog = set()
+
+    def _hierarchy_flags(item: BacklogItem):
+        iid = item.issue_id
+        if iid is None:
+            return False, False
+        parent_id = parent_map.get(iid)
+        has_parent = parent_id is not None and parent_id in backlog_issue_ids
+        has_children = iid in parents_in_backlog
+        return has_parent, has_children
+
     if view in ("in_work", "quarterly"):
         labels = _quarter_labels_bulk(db, [i.id for i in items])
         return [
-            _to_response(i, _approved_scenarios_for(db, i.id), labels.get(i.id))
+            _to_response(i, _approved_scenarios_for(db, i.id), labels.get(i.id), *_hierarchy_flags(i))
             for i in items
         ]
     if view == "archived":
         labels = _quarter_labels_bulk(db, [i.id for i in items])
-        return [_to_response(i, None, labels.get(i.id)) for i in items]
-    return [_to_response(i, None) for i in items]
+        return [_to_response(i, None, labels.get(i.id), *_hierarchy_flags(i)) for i in items]
+    return [_to_response(i, None, None, *_hierarchy_flags(i)) for i in items]
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)
