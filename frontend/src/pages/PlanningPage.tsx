@@ -10,8 +10,8 @@ import {
 } from 'antd';
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
-  DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined, HolderOutlined, PlusOutlined,
-  RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
+  DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined, HolderOutlined, InfoCircleOutlined,
+  PlusOutlined, RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import planningHelp from '../../../docs/help/planning.md?raw';
@@ -28,6 +28,7 @@ import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
 import ScenarioCompareDrawer from '../components/planning/ScenarioCompareDrawer';
 import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisionHistoryDrawer';
 import { AllocationOverridePopover } from '../components/planning/AllocationOverridePopover';
+import HoursBreakdownDrawer from '../components/hours/HoursBreakdownDrawer';
 import { useScenarioContinuationInfo } from '../hooks/useScenarioContinuationInfo';
 import {
   useScenarios,
@@ -48,6 +49,7 @@ import {
 } from '../hooks/usePlanning';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { downloadScenarioXlsx } from '../api/exports';
 import { trackAction } from '../lib/usage/track';
@@ -286,6 +288,10 @@ export default function PlanningPage() {
   const jiraSettings = useJiraSettings();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const { queryParams } = useGlobalTeamFilter();
+  const { period } = useGlobalPeriod();
+  const [breakdown, setBreakdown] = useState<{ open: boolean; issueId: string | null; issueKey: string }>({
+    open: false, issueId: null, issueKey: '',
+  });
   const { data: scenarios } = useScenarios(undefined, undefined, undefined, queryParams.teams);
   const { data: scenario } = useScenario(scenarioId);
   const { data: allocations, isLoading: allocLoading } =
@@ -924,6 +930,15 @@ export default function PlanningPage() {
                                 </span>
                               )
                           )}
+                          {a.has_children_in_backlog && a.issue_id && (
+                            <InfoCircleOutlined
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setBreakdown({ open: true, issueId: a.issue_id!, issueKey: a.jira_key ?? '' });
+                              }}
+                              style={{ marginLeft: 6, cursor: 'pointer', color: '#38bdf8', fontSize: 13 }}
+                            />
+                          )}
                           {a.cost_type && (
                             <Tag
                               color={a.cost_type.toLowerCase().includes('change') ? 'blue' : 'green'}
@@ -1089,6 +1104,14 @@ export default function PlanningPage() {
         scenarioId={scenarioId}
       />
       <ApproveCelebration visible={celebrate} />
+      <HoursBreakdownDrawer
+        open={breakdown.open}
+        onClose={() => setBreakdown((b) => ({ ...b, open: false }))}
+        issueId={breakdown.issueId}
+        issueKey={breakdown.issueKey}
+        year={period.year}
+        quarter={period.quarter}
+      />
     </Space>
   );
 }
