@@ -210,6 +210,40 @@ def _normalize_level(raw: Any) -> Optional[str]:
         return None
     return _LEVEL_MAP.get(value.strip().lower())
 
+
+def _record_plan_changes(db: Session, issue: "Issue", new_values: dict) -> None:
+    """Сравнивает каждое значение из new_values со старым _jira; обновляет _jira
+    и пишет audit-запись если значение изменилось.
+
+    new_values: {analyst|dev|qa|opo: Optional[float]} — из Jira.
+
+    Поведение:
+    - new == old _jira → no-op.
+    - new ≠ old _jira, _manual пуст → source='jira_sync', обновить _jira.
+    - new ≠ old _jira, _manual задан → source='jira_sync_conflict', обновить _jira
+      (PM решит конфликт через resolve-conflict endpoint).
+    """
+    from app.models import PlanAudit
+
+    for role in ("analyst", "dev", "qa", "opo"):
+        new = new_values.get(role)
+        field_jira = f"planned_{role}_hours_jira"
+        field_manual = f"planned_{role}_hours_manual"
+        old_jira = getattr(issue, field_jira)
+        if new == old_jira:
+            continue
+        has_manual = getattr(issue, field_manual) is not None
+        source = "jira_sync_conflict" if has_manual else "jira_sync"
+        db.add(PlanAudit(
+            issue_id=issue.id, role=role,
+            value_before=old_jira, value_after=new,
+            source=source, user_id=None,
+            comment=None,
+            created_at=datetime.utcnow(),
+        ))
+        setattr(issue, field_jira, new)
+
+
 # Sentinel, чтобы отличать «поле не передано» от «поле передано с пустым значением».
 # None как «пусто» теперь валидный сигнал «очистить в БД».
 _UNSET: Any = object()
@@ -610,10 +644,12 @@ class SyncService:
             if jira_issue.fields.assignee else None
         )
 
-        data["planned_analyst_hours_jira"] = _fld_float("jira_planned_analyst_hours_field_id")
-        data["planned_dev_hours_jira"] = _fld_float("jira_planned_dev_hours_field_id")
-        data["planned_qa_hours_jira"] = _fld_float("jira_planned_qa_hours_field_id")
-        data["planned_opo_hours_jira"] = _fld_float("jira_planned_opo_hours_field_id")
+        _new_plan_values = {
+            "analyst": _fld_float("jira_planned_analyst_hours_field_id"),
+            "dev": _fld_float("jira_planned_dev_hours_field_id"),
+            "qa": _fld_float("jira_planned_qa_hours_field_id"),
+            "opo": _fld_float("jira_planned_opo_hours_field_id"),
+        }
         data["involvement_analyst"] = _fld_float("jira_involvement_analyst_field_id")
         data["involvement_dev"] = _fld_float("jira_involvement_dev_field_id")
         data["involvement_qa"] = _fld_float("jira_involvement_qa_field_id")
@@ -651,6 +687,7 @@ class SyncService:
             jira_issue.id,
             data,
         )
+        _record_plan_changes(self.db, issue, _new_plan_values)
         if created:
             # Все новые задачи идут в «Стек задач к разбору».
             # require_child_verification на родителе — только UI-подсказка при
