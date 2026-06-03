@@ -963,6 +963,39 @@ def revert_plan(
     }
 
 
+class ConflictResolveRequest(BaseModel):
+    action: str  # 'accept_jira' | 'ignore'
+    role: str
+
+
+@router.post("/{issue_id}/plan/conflict-resolve")
+def resolve_plan_conflict(
+    issue_id: str,
+    payload: ConflictResolveRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
+    if issue is None:
+        raise HTTPException(404, "Issue not found")
+    try:
+        PlanEditService(db).resolve_conflict(
+            issue_id, payload.role, payload.action,
+            user_id=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {"ok": True}
+
+
+@router.get("/{issue_id}/plan-conflicts")
+def get_plan_conflicts(issue_id: str, db: Session = Depends(get_db)):
+    issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
+    if issue is None:
+        raise HTTPException(404, "Issue not found")
+    return PlanEditService(db).open_conflicts(issue_id)
+
+
 @router.get("/{issue_id}/plan-history")
 def plan_history(issue_id: str, db: Session = Depends(get_db)):
     issue = db.query(Issue).filter_by(id=issue_id).one_or_none()

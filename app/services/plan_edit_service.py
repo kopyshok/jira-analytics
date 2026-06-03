@@ -98,3 +98,74 @@ class PlanEditService:
             .order_by(PlanAudit.created_at.desc(), PlanAudit.id.desc())
             .all()
         )
+
+    def resolve_conflict(
+        self,
+        issue_id: str,
+        role: str,
+        action: str,
+        user_id: Optional[str] = None,
+    ) -> Issue:
+        """Разрешает конфликт sync-vs-ручная.
+
+        action='accept_jira' — _manual → None (принять Jira-значение).
+        action='ignore' — оставить _manual как есть, закрыть конфликт.
+        """
+        if role not in ROLES:
+            raise ValueError("Unknown role")
+        if action not in ("accept_jira", "ignore"):
+            raise ValueError("Unknown action")
+        issue = self.db.query(Issue).filter_by(id=issue_id).one()
+        field_jira = f"planned_{role}_hours_jira"
+        field_manual = f"planned_{role}_hours_manual"
+        jira_now = getattr(issue, field_jira)
+        before = getattr(issue, f"planned_{role}_hours")  # effective
+        if action == "accept_jira":
+            setattr(issue, field_manual, None)
+            self.db.add(PlanAudit(
+                issue_id=issue.id, role=role,
+                value_before=before, value_after=jira_now,
+                source="conflict_accepted", user_id=user_id,
+                comment="Принято Jira-значение",
+                created_at=datetime.utcnow(),
+            ))
+        else:  # ignore
+            self.db.add(PlanAudit(
+                issue_id=issue.id, role=role,
+                value_before=before, value_after=before,
+                source="conflict_ignored", user_id=user_id,
+                comment="Конфликт проигнорирован, ручная правка сохранена",
+                created_at=datetime.utcnow(),
+            ))
+        self.db.commit()
+        return issue
+
+    def open_conflicts(self, issue_id: str) -> list[dict]:
+        """Открытые (не разрешённые) конфликты per роль.
+
+        Для каждой роли смотрим самую свежую audit-запись:
+        - если source='jira_sync_conflict' и ниже неё нет 'conflict_accepted'/
+          'conflict_ignored'/'manual_edit'/'manual_revert' для той же роли —
+          конфликт открыт.
+        """
+        rows = (
+            self.db.query(PlanAudit)
+            .filter_by(issue_id=issue_id)
+            .order_by(PlanAudit.created_at.desc(), PlanAudit.id.desc())
+            .all()
+        )
+        seen_role: dict = {}
+        open_per_role: dict = {}
+        for r in rows:
+            if r.role in seen_role:
+                continue
+            seen_role[r.role] = True
+            if r.source == "jira_sync_conflict":
+                open_per_role[r.role] = r
+        return [
+            {
+                "role": role, "audit_id": audit.id,
+                "value_jira": audit.value_after, "value_before": audit.value_before,
+            }
+            for role, audit in open_per_role.items()
+        ]
