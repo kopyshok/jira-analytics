@@ -20,6 +20,7 @@ from app.services.backlog_service import BacklogService
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
+from app.services.hours_breakdown_service import HoursBreakdownService
 
 router = APIRouter()
 
@@ -754,6 +755,23 @@ def _subtree_count(db: Session, root_id: str) -> int:
                 frontier.append(child_id)
                 count += 1
     return count
+
+
+@router.get("/{issue_id}/hours-breakdown")
+def get_hours_breakdown(
+    issue_id: str,
+    year: int = Query(..., ge=2000, le=2100),
+    quarter: int = Query(..., ge=1, le=4),
+    db: Session = Depends(get_db),
+):
+    """6 колонок часов для длинной RFA.
+
+    См. spec: docs/superpowers/specs/2026-06-03-rfa-epic-hierarchy-design.md
+    """
+    issue = db.query(Issue).filter(Issue.id == issue_id).one_or_none()
+    if issue is None:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    return HoursBreakdownService(db).calculate(issue_id, year, quarter)
 
 
 @router.get("/{issue_id}/context", response_model=IssueContextResponse)
