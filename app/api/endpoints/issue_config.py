@@ -2,15 +2,15 @@
 
 import json
 from collections import deque
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Issue, Project
+from app.models import Issue, Project, PlanAudit
 from app.schemas.issue_context import (
     IssueContextAncestor,
     IssueContextChild,
@@ -21,6 +21,8 @@ from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 from app.services.hours_breakdown_service import HoursBreakdownService
+from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
+from app.core.auth_deps import get_current_user
 
 router = APIRouter()
 
@@ -906,6 +908,75 @@ def get_epic_candidates(
             assigned_category=c.assigned_category,
         )
         for c in candidates if c.id in ids_with_kids
+    ]
+
+
+class PlanEditRequest(BaseModel):
+    role_hours: Dict[str, Optional[float]]
+    comment: str = Field(..., min_length=1)
+
+
+class PlanRevertRequest(BaseModel):
+    audit_id: Optional[str] = None
+
+
+@router.patch("/{issue_id}/plan")
+def patch_plan(
+    issue_id: str,
+    payload: PlanEditRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
+    if issue is None:
+        raise HTTPException(404, "Issue not found")
+    try:
+        PlanEditService(db).edit(
+            issue_id, payload.role_hours, payload.comment,
+            user_id=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    db.refresh(issue)
+    return {
+        "plan": {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
+    }
+
+
+@router.post("/{issue_id}/plan/revert")
+def revert_plan(
+    issue_id: str,
+    payload: PlanRevertRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
+    if issue is None:
+        raise HTTPException(404, "Issue not found")
+    PlanEditService(db).revert(
+        issue_id, audit_id=payload.audit_id,
+        user_id=current_user.id,
+    )
+    db.refresh(issue)
+    return {
+        "plan": {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
+    }
+
+
+@router.get("/{issue_id}/plan-history")
+def plan_history(issue_id: str, db: Session = Depends(get_db)):
+    issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
+    if issue is None:
+        raise HTTPException(404, "Issue not found")
+    rows = PlanEditService(db).history(issue_id)
+    return [
+        {
+            "id": r.id, "role": r.role,
+            "value_before": r.value_before, "value_after": r.value_after,
+            "source": r.source, "user_id": r.user_id, "comment": r.comment,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
     ]
 
 
