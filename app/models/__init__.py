@@ -61,6 +61,7 @@ from app.models.user_rp_preferences import UserRpPreferences
 from app.models.feedback import FeedbackItem, FeedbackKind
 from app.models.usage_event import UsageEvent, UsageEventType
 from app.models.usage_daily import UsageDaily
+from app.models.plan_audit import PlanAudit  # noqa: F401
 
 __all__ = [
     "TimestampMixin",
@@ -129,4 +130,5 @@ __all__ = [
     "UsageEvent",
     "UsageEventType",
     "UsageDaily",
+    "PlanAudit",
 ]
