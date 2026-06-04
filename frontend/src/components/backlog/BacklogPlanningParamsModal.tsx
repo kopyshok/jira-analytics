@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App, Button, Checkbox, Divider, InputNumber, Modal, Radio, Space, Tag, Typography } from 'antd';
+import { App, Button, Checkbox, Col, Divider, InputNumber, Modal, Radio, Row, Space, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useUpdateBacklogItem } from '../../hooks/useBacklog';
@@ -96,6 +96,7 @@ function PhaseRow({
   const resetInv = () => setInv(inv.jira);
   const resetDur = () => setDur(dur.jira);
 
+  const labelStyle: React.CSSProperties = { width: 160, display: 'inline-block' };
   return (
     <div style={{ marginBottom: 16 }}>
       <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
@@ -103,14 +104,14 @@ function PhaseRow({
       </Typography.Title>
       <Space orientation="vertical" size={6} style={{ width: '100%' }}>
         <Space style={{ width: '100%' }}>
-          <span style={{ width: 200, display: 'inline-block' }}>Вовлечённость (0–1)</span>
+          <span style={labelStyle}>Вовлечённость (0–1)</span>
           <InputNumber
             value={inv.effective}
             onChange={setInv}
             min={0}
             max={1}
             step={0.05}
-            style={{ width: 120 }}
+            style={{ width: 100 }}
             placeholder={inv.jira != null ? String(inv.jira) : '—'}
           />
           <SourceBadge {...inv} />
@@ -121,13 +122,13 @@ function PhaseRow({
           )}
         </Space>
         <Space style={{ width: '100%' }}>
-          <span style={{ width: 200, display: 'inline-block' }}>Длительность (дней)</span>
+          <span style={labelStyle}>Длительность (дней)</span>
           <InputNumber
             value={dur.effective}
             onChange={setDur}
             min={0}
             step={1}
-            style={{ width: 120 }}
+            style={{ width: 100 }}
             placeholder={dur.jira != null ? String(dur.jira) : '—'}
           />
           <SourceBadge {...dur} />
@@ -139,14 +140,14 @@ function PhaseRow({
         </Space>
         {par && (
           <Space style={{ width: '100%' }}>
-            <span style={{ width: 200, display: 'inline-block' }}>Параллельность</span>
+            <span style={labelStyle}>Параллельность</span>
             <InputNumber
               value={par.effective}
               onChange={setPar}
               min={1}
               max={5}
               step={1}
-              style={{ width: 120 }}
+              style={{ width: 100 }}
               placeholder="1"
             />
           </Space>
@@ -237,7 +238,7 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
         cancelText="Отмена"
         confirmLoading={update.isPending}
         title={item ? `Параметры планирования — ${item.jira_key ?? ''} ${item.title}`.trim() : 'Параметры планирования'}
-        width={680}
+        width={900}
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
@@ -245,10 +246,16 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
           только пока оно пустое; если Jira потом получит значение, оно его перезапишет.
         </Typography.Paragraph>
         <Divider style={{ margin: '8px 0 16px' }} />
-        <PhaseRow phase="analyst" state={state} onChange={setState} />
-        <PhaseRow phase="dev" state={state} onChange={setState} />
-        <PhaseRow phase="qa" state={state} onChange={setState} />
-        <PhaseRow phase="launch" state={state} onChange={setState} />
+        <Row gutter={24}>
+          <Col xs={24} md={12}>
+            <PhaseRow phase="analyst" state={state} onChange={setState} />
+            <PhaseRow phase="dev" state={state} onChange={setState} />
+          </Col>
+          <Col xs={24} md={12}>
+            <PhaseRow phase="qa" state={state} onChange={setState} />
+            <PhaseRow phase="launch" state={state} onChange={setState} />
+          </Col>
+        </Row>
 
         {issueId && (
           <>
@@ -260,7 +267,7 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
             <PlanConflictBanner issueId={issueId} />
 
             {hasChildren && (
-              <Space direction="vertical" style={{ width: '100%', marginBottom: 12 }}>
+              <Space orientation="vertical" style={{ width: '100%', marginBottom: 12 }}>
                 <Radio.Group
                   value={planningMode}
                   onChange={(e) => modeMut.mutate(e.target.value as 'whole' | 'by_epics')}
