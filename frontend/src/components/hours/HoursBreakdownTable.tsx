@@ -1,5 +1,4 @@
-import { Table, Tag, Tooltip } from 'antd';
-import type { ColumnsType } from 'antd/es/table/interface';
+import { Tag, Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
 import type { HoursBreakdownData } from '../../api/issues';
 
@@ -27,6 +26,7 @@ interface Row {
   approved: number;
   planable: number;
   draft: number;
+  isTotal?: boolean;
 }
 
 interface Props {
@@ -69,6 +69,23 @@ function ProgressBar({ data }: { data: HoursBreakdownData }) {
   );
 }
 
+const thStyle: React.CSSProperties = {
+  padding: '6px 8px',
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#94a3b8',
+  borderBottom: '1px solid #1e3a5f',
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '6px 8px',
+  fontSize: 13,
+  borderBottom: '1px solid rgba(255,255,255,0.04)',
+  textAlign: 'right',
+};
+
 export default function HoursBreakdownTable({ data, loading }: Props) {
   const rows: Row[] = [
     ...ROLES.map(({ key, label }) => ({
@@ -90,64 +107,50 @@ export default function HoursBreakdownTable({ data, loading }: Props) {
       approved: data.approved.total ?? 0,
       planable: data.planable.total ?? 0,
       draft: data.draft.total ?? 0,
-    },
-  ];
-
-  const columns: ColumnsType<Row> = [
-    { title: 'Роль', dataIndex: 'role', width: 130 },
-    { title: 'План', dataIndex: 'plan', align: 'right', render: fmt },
-    {
-      title: 'Факт прошлых Q',
-      dataIndex: 'fact_past',
-      align: 'right',
-      render: (v: number) => <span style={{ color: COLOR.past }}>{fmt(v)}</span>,
-    },
-    {
-      title: 'Факт текущий',
-      dataIndex: 'fact_current',
-      align: 'right',
-      render: (v: number) => <span style={{ color: COLOR.current }}>{fmt(v)}</span>,
-    },
-    {
-      title: 'Утверждено',
-      dataIndex: 'approved',
-      align: 'right',
-      render: (v: number) => <span style={{ color: COLOR.approved }}>{fmt(v)}</span>,
-    },
-    {
-      title: 'Запланировать',
-      dataIndex: 'planable',
-      align: 'right',
-      render: (v: number) => (
-        <span
-          style={{
-            color: v < 0 ? DARK_THEME.danger : COLOR.planable,
-            fontWeight: 600,
-          }}
-        >
-          {fmt(v)}
-        </span>
-      ),
-    },
-    {
-      title: 'Черновик',
-      dataIndex: 'draft',
-      align: 'right',
-      render: (v: number) => <span style={{ color: COLOR.draft }}>{fmt(v)}</span>,
+      isTotal: true,
     },
   ];
 
   return (
-    <div>
+    <div style={{ opacity: loading ? 0.5 : 1 }}>
       <ProgressBar data={data} />
-      <Table<Row>
-        size="small"
-        loading={loading}
-        pagination={false}
-        rowKey="key"
-        dataSource={rows}
-        columns={columns}
-      />
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ ...thStyle, textAlign: 'left', width: 130 }}>Роль</th>
+            <th style={thStyle}>План</th>
+            <th style={thStyle}>Факт прошлых Q</th>
+            <th style={thStyle}>Факт текущий</th>
+            <th style={thStyle}>Утверждено</th>
+            <th style={thStyle}>Запланировать</th>
+            <th style={thStyle}>Черновик</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const baseTd = r.isTotal ? { ...tdStyle, fontWeight: 600 } : tdStyle;
+            return (
+              <tr key={r.key}>
+                <td style={{ ...baseTd, textAlign: 'left' }}>{r.role}</td>
+                <td style={baseTd}>{fmt(r.plan)}</td>
+                <td style={{ ...baseTd, color: COLOR.past }}>{fmt(r.fact_past)}</td>
+                <td style={{ ...baseTd, color: COLOR.current }}>{fmt(r.fact_current)}</td>
+                <td style={{ ...baseTd, color: COLOR.approved }}>{fmt(r.approved)}</td>
+                <td
+                  style={{
+                    ...baseTd,
+                    color: r.planable < 0 ? DARK_THEME.danger : COLOR.planable,
+                    fontWeight: 600,
+                  }}
+                >
+                  {fmt(r.planable)}
+                </td>
+                <td style={{ ...baseTd, color: COLOR.draft }}>{fmt(r.draft)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
       <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {data.flags.overrun && <Tag color="error">Перерасход</Tag>}
         {data.flags.plan_missing && <Tag color="warning">План не задан</Tag>}
