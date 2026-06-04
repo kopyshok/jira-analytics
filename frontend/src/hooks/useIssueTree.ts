@@ -73,10 +73,10 @@ export function useVerifyIssue() {
     }: {
       issueId: string;
       cascade: boolean;
-      requireChildVerification: boolean;
+      requireChildVerification?: boolean;
       categoryCode?: string | null;
       hasCategoryCode?: boolean;
-    }) => verifyIssue(issueId, cascade, requireChildVerification, categoryCode, hasCategoryCode ?? false),
+    }) => verifyIssue(issueId, cascade, requireChildVerification ?? false, categoryCode, hasCategoryCode ?? false),
     onSuccess: () => {
       invalidateCategoryDependents(qc);
     },

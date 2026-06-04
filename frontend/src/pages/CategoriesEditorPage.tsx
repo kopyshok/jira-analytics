@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import {
   Button, Space, Table, Tag, App,
-  Select, Typography, Modal, Checkbox, Switch,
+  Select, Typography, Modal, Checkbox,
   Empty, Input,
 } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
@@ -173,14 +173,13 @@ export default function CategoriesEditorPage() {
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 130, summary: 380, status: 140, statusChanged: 150, goals: 110,
     category: 260, include: 80,
-    requireChildVerification: 120, verify: 160,
+    verify: 160,
   });
   const [innerTab, setInnerTab] = useState<InnerTab>('stack');
   const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
-  const [pendingVerifyFlags, setPendingVerifyFlags] = useState<Map<string, boolean>>(new Map());
   const verifyMut = useVerifyIssue();
   useRegisterHelp('Категоризация задач', categoriesHelp);
 
@@ -387,11 +386,10 @@ export default function CategoriesEditorPage() {
     issueId: string,
     cascade: boolean,
   ) => {
-    const requireChildVerification = pendingVerifyFlags.get(issueId) ?? false;
     const hasCategoryCode = pendingCats.has(issueId);
     const categoryCode = hasCategoryCode ? (pendingCats.get(issueId) ?? null) : null;
     verifyMut.mutate(
-      { issueId, cascade, requireChildVerification, categoryCode, hasCategoryCode },
+      { issueId, cascade, categoryCode, hasCategoryCode },
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
@@ -408,7 +406,7 @@ export default function CategoriesEditorPage() {
         onError: (err) => notification.error({ title: 'Ошибка верификации', description: (err as Error).message }),
       },
     );
-  }, [pendingCats, pendingVerifyFlags, verifyMut, notification, qc, refreshLoadedChildren]);
+  }, [pendingCats, verifyMut, notification, qc, refreshLoadedChildren]);
 
   const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
@@ -609,33 +607,6 @@ export default function CategoriesEditorPage() {
 
   const stackExtraColumns = useMemo(() => [
     {
-      title: 'Верифиц. детей',
-      key: 'requireChildVerification',
-      width: widths.requireChildVerification,
-      onHeaderCell: () => ({ width: widths.requireChildVerification, onResize: handleResize('requireChildVerification') }),
-      render: (_: unknown, record: TreeNodeWithChildren) => {
-        if (record.issue_type === 'group' || record.is_context) return null;
-        const hasChildren = (record.children?.length ?? 0) > 0;
-        if (!hasChildren) return <span style={{ color: '#595959' }}>—</span>;
-        const checked = pendingVerifyFlags.get(record.id) ?? record.require_child_verification ?? false;
-        return (
-          <span onClick={(e) => e.stopPropagation()}>
-            <Switch
-              size="small"
-              checked={checked}
-              onChange={(val) => {
-                setPendingVerifyFlags(prev => {
-                  const next = new Map(prev);
-                  next.set(record.id, val);
-                  return next;
-                });
-              }}
-            />
-          </span>
-        );
-      },
-    },
-    {
       title: 'Действие',
       key: 'verify',
       width: widths.verify,
@@ -667,7 +638,7 @@ export default function CategoriesEditorPage() {
         );
       },
     },
-  ], [widths.requireChildVerification, widths.verify, pendingVerifyFlags, verifyMut.isPending, handleVerify, handleResize]);
+  ], [widths.verify, verifyMut.isPending, handleVerify, handleResize]);
 
   const columns = innerTab === 'stack'
     ? [...baseColumns, ...stackExtraColumns]
