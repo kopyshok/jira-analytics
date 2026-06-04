@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
@@ -554,8 +554,29 @@ export default function BacklogPage() {
     },
   ];
 
+  // Раскрытие дерева RFA → дочки. defaultExpandAllRows срабатывает только
+  // на mount; данные приходят async, поэтому удерживаем expandedRowKeys
+  // через useEffect — авто-раскрытие всех родителей при изменении data.
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  useEffect(() => {
+    const collect = (rows?: BacklogItemResponse[]) =>
+      (rows ?? [])
+        .filter((r) => Array.isArray(r.children) && r.children.length > 0)
+        .map((r) => r.id);
+    setExpandedKeys((prev) => {
+      const next = new Set<React.Key>(prev);
+      collect(activeRows).forEach((k) => next.add(k));
+      collect(quarterlyRows).forEach((k) => next.add(k));
+      collect(archivedRows).forEach((k) => next.add(k));
+      return Array.from(next);
+    });
+  }, [activeRows, quarterlyRows, archivedRows]);
+
   const nestedExpandable = {
-    defaultExpandAllRows: true,
+    expandedRowKeys: expandedKeys,
+    onExpandedRowsChange: (keys: readonly React.Key[]) => setExpandedKeys([...keys]),
+    columnWidth: 36,
+    fixed: 'left' as const,
   };
 
   const quarterlyTable = (
