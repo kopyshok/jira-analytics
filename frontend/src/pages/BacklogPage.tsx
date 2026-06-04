@@ -104,9 +104,28 @@ export default function BacklogPage() {
   const sortByPriority = (rows?: BacklogItemResponse[]) =>
     rows?.slice().sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
-  const activeRows = useMemo(() => sortByPriority(active.data), [active.data]);
-  const archivedRows = useMemo(() => sortByPriority(archived.data), [archived.data]);
-  const quarterlyRows = useMemo(() => sortByPriority(quarterly.data), [quarterly.data]);
+  // BacklogChild с бэка — узкая схема. Маппим в shape BacklogItemResponse,
+  // чтобы колонки таблицы (Идея с jira_key, Действия) рендерились так же,
+  // как для родительских строк.
+  const adaptChildren = (rows?: BacklogItemResponse[]): BacklogItemResponse[] | undefined =>
+    rows?.map((r) => ({
+      ...r,
+      children: (r.children ?? []).map((c) => ({
+        id: c.id,
+        title: c.title,
+        project_id: r.project_id,
+        issue_id: c.issue_id,
+        jira_key: c.key,
+        jira_status: c.status ?? null,
+        included_in_planning: c.included_in_planning,
+        has_parent_in_backlog: true,
+        has_children_in_backlog: false,
+      })) as unknown as BacklogItemResponse['children'],
+    }));
+
+  const activeRows = useMemo(() => adaptChildren(sortByPriority(active.data)), [active.data]);
+  const archivedRows = useMemo(() => adaptChildren(sortByPriority(archived.data)), [archived.data]);
+  const quarterlyRows = useMemo(() => adaptChildren(sortByPriority(quarterly.data)), [quarterly.data]);
 
   const { data: employees = [] } = useEmployees();
   const { data: roles = [] } = useRoles();
