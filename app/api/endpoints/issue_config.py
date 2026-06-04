@@ -323,6 +323,34 @@ async def get_issue_tree(
     return roots_keep
 
 
+def _load_context_ancestors(
+    db: Session, matched_ids: set[str], matched_by_id: dict[str, Issue]
+) -> dict[str, Issue]:
+    """Дотащить предков, не попавших под фильтр команды.
+
+    Для каждой matched-задачи с ``parent_id`` вне ``matched_ids`` поднимаемся
+    по цепочке до корня (или до встречи с уже известным узлом). Возвращает
+    словарь ``id -> Issue`` контекстных предков. UI рендерит их как
+    read-only якоря дерева (``is_context=True``).
+    """
+    context: dict[str, Issue] = {}
+    frontier: set[str] = {
+        i.parent_id for i in matched_by_id.values()
+        if i.parent_id and i.parent_id not in matched_ids
+    }
+    while frontier:
+        batch = db.query(Issue).filter(Issue.id.in_(frontier)).all()
+        next_frontier: set[str] = set()
+        for a in batch:
+            if a.id in context or a.id in matched_ids:
+                continue
+            context[a.id] = a
+            if a.parent_id and a.parent_id not in matched_ids and a.parent_id not in context:
+                next_frontier.add(a.parent_id)
+        frontier = next_frontier
+    return context
+
+
 @router.get("/tree/counts", response_model=TreeCountsResponse)
 def get_tree_counts(
     project_keys: Optional[str] = None,
@@ -333,32 +361,16 @@ def get_tree_counts(
     клиент знает свои pending и сам корректирует UI; при «Сохранить» делает refetch.
 
     ``primary_only=True`` — участвующие задачи (participating_teams) не считаются.
-    Дополнительно отсекает «in-team задачи под чужим эпиком».
+    Чужие предки (in-team задача под чужим эпиком) подтягиваются в
+    ``by_id_full`` для корректного walk-up через ``CategoryResolver``, но
+    САМИ В СЧЁТЧИКИ НЕ ИДУТ — считаются только продуктовые задачи команды.
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
-    all_rows = base.all()
-    by_id_full = {r.id: r for r in all_rows}
-
-    # Owned-by-team: parent chain до корня в команде ИЛИ нет parent.
-    owned_memo: dict[str, bool] = {}
-    def is_owned(r_id: str) -> bool:
-        if r_id in owned_memo:
-            return owned_memo[r_id]
-        r = by_id_full.get(r_id)
-        if not r:
-            owned_memo[r_id] = False
-            return False
-        if not r.parent_id:
-            owned_memo[r_id] = True
-            return True
-        if r.parent_id not in by_id_full:
-            owned_memo[r_id] = False
-            return False
-        owned_memo[r_id] = is_owned(r.parent_id)
-        return owned_memo[r_id]
-
-    rows = [r for r in all_rows if is_owned(r.id)]
+    rows = base.all()
     by_id = {r.id: r for r in rows}
+    # Чужие предки нужны только для разрешения эффективной категории.
+    context_ancestors = _load_context_ancestors(db, set(by_id.keys()), by_id)
+    by_id_full = {**by_id, **context_ancestors}
 
     def effective(node: Issue) -> Optional[str]:
         if not (node.category_verified or False):
@@ -369,7 +381,7 @@ def get_tree_counts(
         for _ in range(20):
             if not cur_id:
                 return None
-            parent = by_id.get(cur_id)
+            parent = by_id_full.get(cur_id)
             if not parent:
                 return None
             if parent.assigned_category:
@@ -406,32 +418,20 @@ def get_tree_roots(
     применяется к key + summary (LIKE %q%).
 
     ``primary_only=True`` — participating-задачи не подтягиваются.
-    Owned-by-team — задачи под чужими эпиками скрыты.
+
+    Чужие предки (in-team задача под чужим эпиком) показываются как
+    read-only якоря дерева с ``is_context=True``: PM видит контекст
+    (под каким эпиком висит задача), но править эпик не может —
+    он принадлежит другой команде.
     """
     base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
-    all_rows = base.all()
-    all_by_id = {r.id: r for r in all_rows}
+    matched_rows = base.all()
+    matched_by_id: dict[str, Issue] = {r.id: r for r in matched_rows}
 
-    owned_memo: dict[str, bool] = {}
-    def is_owned(r_id: str) -> bool:
-        if r_id in owned_memo:
-            return owned_memo[r_id]
-        r = all_by_id.get(r_id)
-        if not r:
-            owned_memo[r_id] = False
-            return False
-        if not r.parent_id:
-            owned_memo[r_id] = True
-            return True
-        if r.parent_id not in all_by_id:
-            owned_memo[r_id] = False
-            return False
-        owned_memo[r_id] = is_owned(r.parent_id)
-        return owned_memo[r_id]
-
-    rows = [r for r in all_rows if is_owned(r.id)]
-    by_id: dict[str, Issue] = {r.id: r for r in rows}
-    context_ids: set[str] = set()
+    # Дотащить чужих предков как read-only контекст.
+    context_ancestors = _load_context_ancestors(db, set(matched_by_id.keys()), matched_by_id)
+    context_ids: set[str] = set(context_ancestors.keys())
+    by_id: dict[str, Issue] = {**matched_by_id, **context_ancestors}
 
     project_key_by_id = {
         p.id: p.key
@@ -460,14 +460,26 @@ def get_tree_roots(
         return None
 
     search_lc = (search or "").strip().lower()
+    # Если строка поиска похожа на полный Jira-ключ (PROJ-123) — сравниваем
+    # ключи строго равенством. Иначе "ITL-57" подматчит и "ITL-571",
+    # "ITL-579" и т.п. — слишком шумно для PM.
+    import re as _re
+    key_search = bool(_re.fullmatch(r"[a-z][a-z0-9]*-\d+", search_lc))
 
     def text_matches(node: Issue) -> bool:
         if not search_lc:
             return True
+        if key_search:
+            return (node.key or "").lower() == search_lc
         return search_lc in (node.key or "").lower() or search_lc in (node.summary or "").lower()
 
     self_match: dict[str, bool] = {}
     for r in by_id.values():
+        if r.id in context_ids:
+            # Чужой предок никогда не считается self-match: он не относится
+            # к команде PM-а и не должен раздувать счётчики дочерних веток.
+            self_match[r.id] = False
+            continue
         self_match[r.id] = (
             _node_matches_tab(effective(r), r.category_verified or False, tab)
             and text_matches(r)
@@ -1044,6 +1056,9 @@ def plan_history(issue_id: str, db: Session = Depends(get_db)):
 def get_issue_children(
     parent_id: str,
     tab: Optional[str] = None,
+    teams: Optional[str] = None,
+    project_keys: Optional[str] = None,
+    search: Optional[str] = None,
     limit: int = Query(default=200, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
@@ -1051,12 +1066,28 @@ def get_issue_children(
 
     Без `tab` — только прямые дети (обратная совместимость с popover-соседями).
     С `tab` — все потомки на любой глубине, матчащие вкладку.
+
+    Если задан `teams` — применяется тот же ``primary_only=True`` фильтр,
+    что и на /tree/roots: чужие дети с in-team потомками возвращаются как
+    read-only контекст (``is_context=True``); чужие дети без in-team
+    потомков скрыты полностью.
     """
     parent = db.get(Issue, parent_id)
     if not parent:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     rules = load_rules(db)
+
+    team_list = [t.strip() for t in (teams or "").split(",") if t.strip()] if teams else []
+    project_key_list = [k.strip() for k in (project_keys or "").split(",") if k.strip()] if project_keys else []
+
+    def in_team(issue: Issue, proj_key: str) -> bool:
+        """Совпадает ли задача с фильтром (по команде и/или scope-проекту)."""
+        if project_key_list and proj_key not in project_key_list:
+            return False
+        if team_list and (issue.team or "") not in team_list:
+            return False
+        return True
 
     if not tab:
         # Backward compatibility: прямые дети без фильтра
@@ -1067,10 +1098,12 @@ def get_issue_children(
             .limit(limit)
             .all()
         )
-        project_keys = {
+        proj_keys_map = {
             p.id: p.key
             for p in db.query(Project).filter(Project.id.in_({c.project_id for c in children if c.project_id})).all()
         }
+        if team_list or project_key_list:
+            children = [ch for ch in children if in_team(ch, proj_keys_map.get(ch.project_id, ""))]
         has_kids_set = {
             cid for (cid,) in db.query(Issue.parent_id)
             .filter(Issue.parent_id.in_({c.id for c in children}))
@@ -1084,7 +1117,7 @@ def get_issue_children(
                 issue_type=ch.issue_type,
                 status=ch.status,
                 status_category=ch.status_category,
-                project_key=project_keys.get(ch.project_id, ""),
+                project_key=proj_keys_map.get(ch.project_id, ""),
                 parent_key=parent.key,
                 assigned_category=ch.assigned_category,
                 category=ch.category,
@@ -1093,7 +1126,7 @@ def get_issue_children(
                 goals=ch.goals or None,
                 is_context=False,
                 is_container=classify(rules, EvaluationInput(
-                    project_key=project_keys.get(ch.project_id, ""),
+                    project_key=proj_keys_map.get(ch.project_id, ""),
                     issue_type=ch.issue_type,
                     has_parent=True,
                 )),
@@ -1156,10 +1189,42 @@ def get_issue_children(
             cur_id = par.parent_id
         return None
 
+    # Карта project_key для всего subtree (нужна и для in_team, и для ответа).
+    proj_keys_map = {
+        p.id: p.key
+        for p in db.query(Project)
+        .filter(Project.id.in_({c.project_id for c in subtree.values() if c.project_id}))
+        .all()
+    }
+
+    def node_in_team(node: Issue) -> bool:
+        # Если фильтр не задан — все «свои».
+        if not team_list and not project_key_list:
+            return True
+        return in_team(node, proj_keys_map.get(node.project_id, ""))
+
     def matches_tab(node: Issue) -> bool:
         return _node_matches_tab(effective(node), node.category_verified or False, tab)
 
-    # BFS desc_match для каждого узла в subtree
+    search_lc = (search or "").strip().lower()
+    import re as _re
+    key_search = bool(_re.fullmatch(r"[a-z][a-z0-9]*-\d+", search_lc))
+
+    def text_matches(node: Issue) -> bool:
+        if not search_lc:
+            return True
+        if key_search:
+            return (node.key or "").lower() == search_lc
+        return search_lc in (node.key or "").lower() or search_lc in (node.summary or "").lower()
+
+    def in_team_match(node: Issue) -> bool:
+        # Чужой узел никогда не считается self-match: он не категоризуется
+        # для текущего PM и не должен раздувать счётчики. Поиск тоже учитывается:
+        # под раскрытым контекст-предком должны быть видны ТОЛЬКО задачи,
+        # которые совпали с поисковой строкой (или их прямые предки).
+        return node_in_team(node) and matches_tab(node) and text_matches(node)
+
+    # BFS desc_match для каждого узла в subtree (in-team matched only)
     children_by_parent: dict[str, list[Issue]] = {}
     for d in subtree.values():
         if d.parent_id:
@@ -1171,7 +1236,7 @@ def get_issue_children(
             return desc_match_cache[node_id]
         total = 0
         for ch in children_by_parent.get(node_id, []):
-            if matches_tab(ch):
+            if in_team_match(ch):
                 total += 1
             total += desc_match(ch.id)
         desc_match_cache[node_id] = total
@@ -1179,15 +1244,11 @@ def get_issue_children(
 
     matched = [
         c for c in direct_children
-        if matches_tab(c) or desc_match(c.id) > 0
+        if in_team_match(c) or desc_match(c.id) > 0
     ]
     matched.sort(key=lambda c: c.key)
     matched = matched[:limit]
 
-    project_keys = {
-        p.id: p.key
-        for p in db.query(Project).filter(Project.id.in_({c.project_id for c in matched if c.project_id})).all()
-    }
     has_kids_set = {c.id for c in matched if children_by_parent.get(c.id)}
     return [
         IssueTreeRootNode(
@@ -1197,16 +1258,19 @@ def get_issue_children(
             issue_type=ch.issue_type,
             status=ch.status,
             status_category=ch.status_category,
-            project_key=project_keys.get(ch.project_id, ""),
+            project_key=proj_keys_map.get(ch.project_id, ""),
             parent_key=by_id_full[ch.parent_id].key if ch.parent_id in by_id_full else None,
             assigned_category=ch.assigned_category,
             category=ch.category,
             include_in_analysis=ch.include_in_analysis if ch.include_in_analysis is not None else True,
             status_changed_at=ch.status_changed_at.isoformat() if ch.status_changed_at else None,
             goals=ch.goals or None,
-            is_context=not matches_tab(ch),
+            # is_context=True если узел чужой (foreign-team якорь), ИЛИ свой,
+            # но сам не матчит вкладку / поиск (попал как мост к совпавшим
+            # потомкам). UI рендерит как read-only.
+            is_context=(not node_in_team(ch)) or (not matches_tab(ch)) or (not text_matches(ch)),
             is_container=classify(rules, EvaluationInput(
-                project_key=project_keys.get(ch.project_id, ""),
+                project_key=proj_keys_map.get(ch.project_id, ""),
                 issue_type=ch.issue_type,
                 has_parent=bool(ch.parent_id),
             )),

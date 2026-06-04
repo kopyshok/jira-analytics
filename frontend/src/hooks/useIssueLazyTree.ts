@@ -49,7 +49,9 @@ export function useEpicCandidates(params: CountsParams) {
 
 export function useLoadChildrenMutation() {
   return useMutation({
-    mutationFn: ({ parentId, tab }: { parentId: string; tab: Tab }) =>
-      getIssueChildrenByTab(parentId, tab),
+    mutationFn: ({
+      parentId, tab, teams, project_keys, search,
+    }: { parentId: string; tab: Tab; teams?: string; project_keys?: string; search?: string }) =>
+      getIssueChildrenByTab(parentId, tab, { teams, project_keys, search }),
   });
 }

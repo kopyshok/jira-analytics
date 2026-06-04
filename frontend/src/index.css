@@ -121,6 +121,14 @@ kbd,
 .tree-row-has-children > td { font-weight: 600; }
 .tree-row-context > td { opacity: 0.55; font-style: italic; }
 
+@keyframes tree-row-search-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 9999px rgba(255, 217, 102, 0.05); }
+  50%      { box-shadow: inset 0 0 0 9999px rgba(255, 217, 102, 0.20); }
+}
+.tree-row-search-hit > td {
+  animation: tree-row-search-pulse 2.4s ease-in-out infinite;
+}
+
 /* ---------- Task categories triage workspace ---------- */
 .category-triage-shell {
   width: 100%;

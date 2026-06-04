@@ -219,13 +219,19 @@ export default function CategoriesEditorPage() {
     if (!expanded) return;
     if (loadedChildren.has(record.id)) return;
     if (!record.has_children) return;
-    const children = await loadChildrenMut.mutateAsync({ parentId: record.id, tab: innerTab });
+    const children = await loadChildrenMut.mutateAsync({
+      parentId: record.id,
+      tab: innerTab,
+      teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+      project_keys: scopeKeys || undefined,
+      search: normalizedSearch || undefined,
+    });
     setLoadedChildren(prev => {
       const next = new Map(prev);
       next.set(record.id, children);
       return next;
     });
-  }, [loadedChildren, loadChildrenMut, innerTab]);
+  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, normalizedSearch]);
 
   // ─── displayData from roots + loadedChildren ─────────────────
 
@@ -360,7 +366,11 @@ export default function CategoriesEditorPage() {
     const next = new Map<string, IssueTreeRootNode[]>();
     await Promise.all(parentIds.map(async (pid) => {
       try {
-        const kids = await getIssueChildrenByTab(pid, innerTab);
+        const kids = await getIssueChildrenByTab(pid, innerTab, {
+          teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+          project_keys: scopeKeys || undefined,
+          search: normalizedSearch || undefined,
+        });
         next.set(pid, kids);
       } catch {
         const stale = loadedChildren.get(pid);
@@ -368,7 +378,7 @@ export default function CategoriesEditorPage() {
       }
     }));
     setLoadedChildren(next);
-  }, [loadedChildren, innerTab]);
+  }, [loadedChildren, innerTab, selectedTeams, scopeKeys, normalizedSearch]);
 
   // ─── Mutations → invalidate tree ─────────────────────────────
 
@@ -444,7 +454,13 @@ export default function CategoriesEditorPage() {
       expandIds.add(node.id);
       let kids = newLoaded.get(node.id);
       if (!kids) {
-        kids = await loadChildrenMut.mutateAsync({ parentId: node.id, tab: innerTab });
+        kids = await loadChildrenMut.mutateAsync({
+          parentId: node.id,
+          tab: innerTab,
+          teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+          project_keys: scopeKeys || undefined,
+          search: normalizedSearch || undefined,
+        });
         newLoaded.set(node.id, kids);
       }
       queue.push(...kids);
@@ -454,7 +470,7 @@ export default function CategoriesEditorPage() {
     }
     setLoadedChildren(newLoaded);
     setExpandedRowKeys(Array.from(expandIds));
-  }, [rootsQuery.data, loadedChildren, expandedRowKeys, loadChildrenMut, innerTab, message]);
+  }, [rootsQuery.data, loadedChildren, expandedRowKeys, loadChildrenMut, innerTab, message, selectedTeams, scopeKeys, normalizedSearch]);
 
   const collapseAll = useCallback(() => {
     setExpandedRowKeys([]);
@@ -661,8 +677,11 @@ export default function CategoriesEditorPage() {
     const depth = Math.min(record.__depth ?? 0, 5);
     const hasKids = (record.children?.length ?? 0) > 0;
     const ctx = record.is_context ? ' tree-row-context' : '';
-    return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}${ctx}`;
-  }, []);
+    const hit = normalizedSearch && (record.key || '').toLowerCase() === normalizedSearch
+      ? ' tree-row-search-hit'
+      : '';
+    return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}${ctx}${hit}`;
+  }, [normalizedSearch]);
 
   const emptyText = (
     <Empty
