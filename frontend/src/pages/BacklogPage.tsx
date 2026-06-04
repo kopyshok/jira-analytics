@@ -4,8 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Popover, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
-import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
-import RfaExpandedRow from '../components/backlog/RfaExpandedRow';
 import {
   ArrowRightOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
   InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, SettingOutlined, UndoOutlined,
@@ -90,7 +88,6 @@ export default function BacklogPage() {
     rawView === 'archived' ? 'archived' : rawView === 'active' ? 'active' : 'quarterly';
 
   const { queryParams } = useGlobalTeamFilter();
-  const { period } = useGlobalPeriod();
   const active = useBacklogItems('active', queryParams.teams);
   const archived = useBacklogItems('archived', queryParams.teams);
   const quarterly = useBacklogItems('quarterly', queryParams.teams);
@@ -601,33 +598,8 @@ export default function BacklogPage() {
     },
   ];
 
-  const expandableConfig = {
-    expandedRowRender: (row: BacklogItemResponse) => (
-      <RfaExpandedRow
-        backlogItemId={row.id}
-        issueId={row.issue_id ?? ''}
-        issueKey={row.jira_key ?? row.title}
-        planningMode={row.planning_mode ?? 'whole'}
-        includedInPlanning={row.included_in_planning ?? true}
-        hasChildren={!!row.has_children_in_backlog}
-        jiraValues={{
-          analyst: row.estimate_analyst_hours ?? null,
-          dev: row.estimate_dev_hours ?? null,
-          qa: row.estimate_qa_hours ?? null,
-          opo: row.estimate_opo_hours ?? null,
-        }}
-        effectiveValues={{
-          analyst: row.estimate_analyst_hours ?? null,
-          dev: row.estimate_dev_hours ?? null,
-          qa: row.estimate_qa_hours ?? null,
-          opo: row.estimate_opo_hours ?? null,
-        }}
-        year={period.year}
-        quarter={period.quarter}
-        children={row.children ?? []}
-      />
-    ),
-    rowExpandable: (row: BacklogItemResponse) => !!row.issue_id,
+  const nestedExpandable = {
+    defaultExpandAllRows: true,
   };
 
   const quarterlyTable = (
@@ -662,7 +634,7 @@ export default function BacklogPage() {
               size="small"
               pagination={false}
               scroll={{ x: true }}
-              expandable={expandableConfig}
+              expandable={nestedExpandable}
             />
           </div>
         ))
@@ -675,7 +647,7 @@ export default function BacklogPage() {
           size="small"
           scroll={{ x: 1400 }}
           columns={quarterlyColumns}
-          expandable={expandableConfig}
+          expandable={nestedExpandable}
         />
       )}
     </div>
@@ -701,7 +673,7 @@ export default function BacklogPage() {
             ...baseColumns(true),
             { title: 'Действия', width: 210, fixed: 'right' as const, render: (_, r) => actionsActive(r) },
           ]}
-          expandable={expandableConfig}
+          expandable={nestedExpandable}
         />
       </SortableContext>
     </DndContext>
@@ -760,7 +732,7 @@ export default function BacklogPage() {
               size="small"
               pagination={false}
               scroll={{ x: true }}
-              expandable={expandableConfig}
+              expandable={nestedExpandable}
             />
           </div>
         ))
@@ -773,7 +745,7 @@ export default function BacklogPage() {
           size="small"
           scroll={{ x: 1400 }}
           columns={archiveColumns}
-          expandable={expandableConfig}
+          expandable={nestedExpandable}
         />
       )}
     </div>

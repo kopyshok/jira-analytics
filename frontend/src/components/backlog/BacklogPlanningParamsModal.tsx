@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App, Button, Divider, InputNumber, Modal, Space, Tag, Typography } from 'antd';
+import { App, Button, Checkbox, Divider, InputNumber, Modal, Radio, Space, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useUpdateBacklogItem } from '../../hooks/useBacklog';
+import { useHoursBreakdown } from '../../hooks/useHoursBreakdown';
+import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
+import { api } from '../../api/client';
+import HoursBreakdownTable from '../hours/HoursBreakdownTable';
+import PlanConflictBanner from '../hours/PlanConflictBanner';
+import PlanEditDrawer from '../hours/PlanEditDrawer';
 import type { BacklogItemResponse } from '../../types/api';
 
 interface Props {
@@ -154,10 +161,38 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
   const update = useUpdateBacklogItem();
   const initial = useMemo(() => buildState(item), [item]);
   const [state, setState] = useState<FormState>(initial);
+  const [editPlanOpen, setEditPlanOpen] = useState(false);
+
+  const qc = useQueryClient();
+  const { period } = useGlobalPeriod();
 
   useEffect(() => {
     setState(buildState(item));
   }, [item]);
+
+  const issueId = item?.issue_id ?? null;
+  const hasChildren = !!item?.has_children_in_backlog;
+  const planningMode = item?.planning_mode ?? 'whole';
+  const includedInPlanning = item?.included_in_planning ?? true;
+  const backlogItemId = item?.id ?? '';
+
+  const { data: hoursData, isLoading: hoursLoading } = useHoursBreakdown(
+    issueId,
+    period.year,
+    period.quarter,
+  );
+
+  const modeMut = useMutation({
+    mutationFn: (mode: 'whole' | 'by_epics') =>
+      api.patch(`/backlog/${backlogItemId}/planning-mode`, { mode }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['backlog'] }); },
+  });
+
+  const incMut = useMutation({
+    mutationFn: ({ id, included }: { id: string; included: boolean }) =>
+      api.patch(`/backlog/${id}/included`, { included }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['backlog'] }); },
+  });
 
   const handleSave = () => {
     if (!item) return;
@@ -193,26 +228,87 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
   };
 
   return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      onOk={handleSave}
-      okText="Сохранить"
-      cancelText="Отмена"
-      confirmLoading={update.isPending}
-      title={item ? `Параметры планирования — ${item.jira_key ?? ''} ${item.title}`.trim() : 'Параметры планирования'}
-      width={640}
-      destroyOnHidden
-    >
-      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        Если поле в Jira пустое — заполни вручную. Ручная правка перетирает Jira-значение
-        только пока оно пустое; если Jira потом получит значение, оно его перезапишет.
-      </Typography.Paragraph>
-      <Divider style={{ margin: '8px 0 16px' }} />
-      <PhaseRow phase="analyst" state={state} onChange={setState} />
-      <PhaseRow phase="dev" state={state} onChange={setState} />
-      <PhaseRow phase="qa" state={state} onChange={setState} />
-      <PhaseRow phase="launch" state={state} onChange={setState} />
-    </Modal>
+    <>
+      <Modal
+        open={open}
+        onCancel={onClose}
+        onOk={handleSave}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={update.isPending}
+        title={item ? `Параметры планирования — ${item.jira_key ?? ''} ${item.title}`.trim() : 'Параметры планирования'}
+        width={680}
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+          Если поле в Jira пустое — заполни вручную. Ручная правка перетирает Jira-значение
+          только пока оно пустое; если Jira потом получит значение, оно его перезапишет.
+        </Typography.Paragraph>
+        <Divider style={{ margin: '8px 0 16px' }} />
+        <PhaseRow phase="analyst" state={state} onChange={setState} />
+        <PhaseRow phase="dev" state={state} onChange={setState} />
+        <PhaseRow phase="qa" state={state} onChange={setState} />
+        <PhaseRow phase="launch" state={state} onChange={setState} />
+
+        {issueId && (
+          <>
+            <Divider style={{ margin: '20px 0 12px' }} />
+            <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 12 }}>
+              Часы и иерархия
+            </Typography.Title>
+
+            <PlanConflictBanner issueId={issueId} />
+
+            {hasChildren && (
+              <Space direction="vertical" style={{ width: '100%', marginBottom: 12 }}>
+                <Radio.Group
+                  value={planningMode}
+                  onChange={(e) => modeMut.mutate(e.target.value as 'whole' | 'by_epics')}
+                  optionType="button"
+                >
+                  <Radio.Button value="whole">RFA целиком</Radio.Button>
+                  <Radio.Button value="by_epics">По Эпикам</Radio.Button>
+                </Radio.Group>
+                {planningMode === 'by_epics' && (
+                  <Checkbox
+                    checked={includedInPlanning}
+                    onChange={(e) => incMut.mutate({ id: backlogItemId, included: e.target.checked })}
+                  >
+                    Включить саму RFA (для непокрытых кварталов)
+                  </Checkbox>
+                )}
+              </Space>
+            )}
+
+            {hoursData && <HoursBreakdownTable data={hoursData} loading={hoursLoading} />}
+
+            <Button style={{ marginTop: 12 }} onClick={() => setEditPlanOpen(true)}>
+              ✎ Редактировать план
+            </Button>
+          </>
+        )}
+      </Modal>
+
+      {issueId && (
+        <PlanEditDrawer
+          open={editPlanOpen}
+          onClose={() => setEditPlanOpen(false)}
+          issueId={issueId}
+          issueKey={item?.jira_key ?? item?.title ?? ''}
+          jiraValues={{
+            analyst: item?.estimate_analyst_hours ?? null,
+            dev: item?.estimate_dev_hours ?? null,
+            qa: item?.estimate_qa_hours ?? null,
+            opo: item?.estimate_opo_hours ?? null,
+          }}
+          effectiveValues={{
+            analyst: item?.estimate_analyst_hours ?? null,
+            dev: item?.estimate_dev_hours ?? null,
+            qa: item?.estimate_qa_hours ?? null,
+            opo: item?.estimate_opo_hours ?? null,
+          }}
+        />
+      )}
+    </>
   );
 }
