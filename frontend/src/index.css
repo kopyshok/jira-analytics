@@ -494,10 +494,3 @@ kbd,
   margin: 12px 0;
 }
 
-/* Иерархия RFA→Эпик в /backlog: дочерняя строка получает отступ +
-   вертикальную линию слева, чтобы визуально читалась как ветка. */
-.ant-table-row-level-1 > .ant-table-cell:nth-child(3) {
-  border-left: 2px solid var(--color-cyan);
-  padding-left: 20px !important;
-  position: relative;
-}

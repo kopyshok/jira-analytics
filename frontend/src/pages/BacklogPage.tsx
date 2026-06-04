@@ -188,7 +188,12 @@ export default function BacklogPage() {
       title: 'Идея', dataIndex: 'title',
       render: (v: string, r: BacklogItemResponse) => (
         <Space orientation="vertical" size={0}>
-          <Typography.Text strong>{v}</Typography.Text>
+          <Typography.Text strong>
+            {r.has_parent_in_backlog && (
+              <span style={{ color: '#64748b', marginRight: 6, fontFamily: 'monospace' }}>└─</span>
+            )}
+            {v}
+          </Typography.Text>
           {r.jira_key && (
             jiraBaseUrl
               ? (
