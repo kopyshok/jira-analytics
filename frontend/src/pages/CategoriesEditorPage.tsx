@@ -23,7 +23,7 @@ import {
   useIssueTreeCounts,
   useLoadChildrenMutation,
 } from '../hooks/useIssueLazyTree';
-import { getIssueChildrenByTab } from '../api/issues';
+import { getIssueChildrenByTab, locateIssue } from '../api/issues';
 import type { IssueTreeRootNode } from '../types/api';
 
 const { Text } = Typography;
@@ -169,6 +169,11 @@ export default function CategoriesEditorPage() {
   const [hiddenStatuses, setHiddenStatuses] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedSearch = searchQuery.trim().toLowerCase();
+  // Режим поведения поиска: 'filter' прячет несовпавшие ветки (старое),
+  // 'jump' оставляет полное дерево и по Enter раскрывает путь к найденной
+  // задаче + скроллит. Переключи константу чтобы откатить к старому.
+  const SEARCH_MODE: 'filter' | 'jump' = 'jump';
+  const [jumpedKey, setJumpedKey] = useState<string | null>(null);
 
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 130, summary: 380, status: 140, statusChanged: 150, goals: 110,
@@ -190,7 +195,7 @@ export default function CategoriesEditorPage() {
     project_keys: scopeKeys || undefined,
     teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
     tab: innerTab,
-    search: normalizedSearch || undefined,
+    search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
   });
   const countsQuery = useIssueTreeCounts({
     project_keys: scopeKeys || undefined,
@@ -208,12 +213,16 @@ export default function CategoriesEditorPage() {
   const [loadedChildren, setLoadedChildren] = useState<Map<string, IssueTreeRootNode[]>>(new Map());
   const loadChildrenMut = useLoadChildrenMutation();
 
-  // Reset loaded children and expanded keys on tab/scope/team/search change
+  // Reset loaded children and expanded keys on tab/scope/team change.
+  // В режиме 'filter' сброс также при изменении поиска (т.к. дерево
+  // перефильтровывается на сервере). В 'jump' дерево не зависит от
+  // поиска — не сбрасываем, чтобы раскрытый путь не схлопывался.
   useEffect(() => {
     setLoadedChildren(new Map());
     setExpandedRowKeys([]);
+    setJumpedKey(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [innerTab, selectedTeams.join(','), scopeKeys, normalizedSearch]);
+  }, [innerTab, selectedTeams.join(','), scopeKeys, ...(SEARCH_MODE === 'filter' ? [normalizedSearch] : [])]);
 
   const onExpand = useCallback(async (expanded: boolean, record: TreeNodeWithChildren) => {
     if (!expanded) return;
@@ -224,7 +233,7 @@ export default function CategoriesEditorPage() {
       tab: innerTab,
       teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
       project_keys: scopeKeys || undefined,
-      search: normalizedSearch || undefined,
+      search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
     });
     setLoadedChildren(prev => {
       const next = new Map(prev);
@@ -369,7 +378,7 @@ export default function CategoriesEditorPage() {
         const kids = await getIssueChildrenByTab(pid, innerTab, {
           teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
           project_keys: scopeKeys || undefined,
-          search: normalizedSearch || undefined,
+          search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
         });
         next.set(pid, kids);
       } catch {
@@ -459,7 +468,7 @@ export default function CategoriesEditorPage() {
           tab: innerTab,
           teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
           project_keys: scopeKeys || undefined,
-          search: normalizedSearch || undefined,
+          search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
         });
         newLoaded.set(node.id, kids);
       }
@@ -476,6 +485,50 @@ export default function CategoriesEditorPage() {
     setExpandedRowKeys([]);
     setLoadedChildren(new Map());
   }, []);
+
+  // ─── Jump-to flow (SEARCH_MODE === 'jump') ───────────────────
+  const jumpToSearch = useCallback(async (raw: string) => {
+    const key = raw.trim().toUpperCase();
+    if (!key) { setJumpedKey(null); return; }
+    let located: { found: boolean; id?: string; ancestor_ids: string[] };
+    try {
+      located = await locateIssue(key);
+    } catch (e) {
+      notification.error({ title: 'Не удалось найти задачу', description: (e as Error).message });
+      return;
+    }
+    if (!located.found || !located.id) {
+      message.warning(`Задача ${key} не найдена`);
+      return;
+    }
+    // Load every ancestor's children sequentially (path is short — typically ≤4 levels).
+    const newLoaded = new Map(loadedChildren);
+    for (const ancestorId of located.ancestor_ids) {
+      if (newLoaded.has(ancestorId)) continue;
+      try {
+        const kids = await loadChildrenMut.mutateAsync({
+          parentId: ancestorId,
+          tab: innerTab,
+          teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+          project_keys: scopeKeys || undefined,
+        });
+        newLoaded.set(ancestorId, kids);
+      } catch (e) {
+        notification.error({ title: 'Ошибка раскрытия пути', description: (e as Error).message });
+        return;
+      }
+    }
+    setLoadedChildren(newLoaded);
+    const expandSet = new Set<Key>(expandedRowKeys);
+    located.ancestor_ids.forEach(id => expandSet.add(id));
+    setExpandedRowKeys(Array.from(expandSet));
+    setJumpedKey(key);
+    // Дать AntD один тик перерисовать дерево, затем скроллим.
+    setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`tr[data-row-key="${located.id}"]`);
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, expandedRowKeys, notification, message]);
 
   // ─── Columns ──────────────────────────────────────────────────
 
@@ -677,11 +730,12 @@ export default function CategoriesEditorPage() {
     const depth = Math.min(record.__depth ?? 0, 5);
     const hasKids = (record.children?.length ?? 0) > 0;
     const ctx = record.is_context ? ' tree-row-context' : '';
-    const hit = normalizedSearch && (record.key || '').toLowerCase() === normalizedSearch
+    const hitKey = SEARCH_MODE === 'jump' ? jumpedKey : (normalizedSearch || null);
+    const hit = hitKey && (record.key || '').toLowerCase() === hitKey.toLowerCase()
       ? ' tree-row-search-hit'
       : '';
     return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}${ctx}${hit}`;
-  }, [normalizedSearch]);
+  }, [normalizedSearch, jumpedKey]);
 
   const emptyText = (
     <Empty
@@ -755,13 +809,21 @@ export default function CategoriesEditorPage() {
           <Button size="small" onClick={expandAll}>Развернуть всё</Button>
           <Button size="small" onClick={collapseAll}>Свернуть всё</Button>
           <Input.Search
-            placeholder="Поиск по ключу или названию"
+            placeholder={SEARCH_MODE === 'jump'
+              ? 'Введите ключ задачи и нажмите Enter'
+              : 'Поиск по ключу или названию'}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onSearch={(v) => setSearchQuery(v)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (SEARCH_MODE === 'jump' && !e.target.value.trim()) setJumpedKey(null);
+            }}
+            onSearch={(v) => {
+              if (SEARCH_MODE === 'jump') void jumpToSearch(v);
+              else setSearchQuery(v);
+            }}
             allowClear
             size="small"
-            style={{ width: 260 }}
+            style={{ width: 280 }}
           />
         </Space>
         <Space wrap>

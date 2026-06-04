@@ -110,6 +110,11 @@ export const getIssueChildrenByTab = (
     search: opts.search,
   });
 
+export const locateIssue = (key: string) =>
+  api.get<{ found: boolean; id?: string; key?: string; ancestor_ids: string[] }>(
+    '/issues/locate', { key },
+  );
+
 export const getEpicCandidates = (
   params: { project_keys?: string; teams?: string },
   signal?: AbortSignal,
