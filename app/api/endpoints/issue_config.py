@@ -73,11 +73,14 @@ class SetIncludeRequest(BaseModel):
 class BatchCategoryRequest(BaseModel):
     issue_ids: List[str]
     category_code: Optional[str] = None
+    verify: bool = False
 
 
 class VerifyRequest(BaseModel):
     cascade: bool = False
     require_child_verification: bool = False
+    category_code: Optional[str] = None
+    has_category_code: bool = False
 
 
 class TreeCountsResponse(BaseModel):
@@ -672,6 +675,8 @@ async def batch_set_category(
         if is_archive and issue.include_in_analysis:
             issue.include_in_analysis = False
             archived_ids.append(issue.id)
+        if body.verify:
+            issue.category_verified = True
         # Пересчитать denormalized category и синкнуть BacklogItem.
         issue.category = resolver.resolve_for_issue(issue).category_code
         backlog.sync_from_issue(issue)
@@ -717,6 +722,18 @@ async def verify_issue(
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
+    resolver = CategoryResolver(db)
+    backlog = BacklogService(db)
+    apply_code = body.has_category_code
+    is_archive = apply_code and body.category_code in ARCHIVE_CATEGORY_CODES
+
+    if apply_code:
+        issue.assigned_category = body.category_code
+        if is_archive and issue.include_in_analysis:
+            issue.include_in_analysis = False
+        issue.category = resolver.resolve_for_issue(issue).category_code
+        backlog.sync_from_issue(issue)
+
     verified_count = 0
     if not issue.category_verified:
         issue.category_verified = True
@@ -725,11 +742,17 @@ async def verify_issue(
 
     if body.cascade:
         for descendant in _collect_unverified_descendants(db, issue_id):
+            if apply_code:
+                descendant.assigned_category = body.category_code
+                if is_archive and descendant.include_in_analysis:
+                    descendant.include_in_analysis = False
+                descendant.category = resolver.resolve_for_issue(descendant).category_code
+                backlog.sync_from_issue(descendant)
             descendant.category_verified = True
             verified_count += 1
 
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["issues"]})
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {"ok": True, "verified_count": verified_count}
 
 

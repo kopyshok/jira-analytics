@@ -1,13 +1,10 @@
-import { useState, useMemo, useEffect, useCallback, useRef, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
 import {
   Button, Space, Table, Tag, App,
   Select, Typography, Modal, Checkbox, Switch,
   Empty, Input,
 } from 'antd';
-import {
-  CheckOutlined, CloseOutlined,
-  SaveOutlined, ToolOutlined,
-} from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import categoriesHelp from '../../../docs/help/categories.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -28,7 +25,6 @@ import {
 } from '../hooks/useIssueLazyTree';
 import { getIssueChildrenByTab } from '../api/issues';
 import type { IssueTreeRootNode } from '../types/api';
-import BulkTriageDrawer from '../components/categories/BulkTriageDrawer';
 
 const { Text } = Typography;
 
@@ -184,7 +180,6 @@ export default function CategoriesEditorPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
-  const [bulkDrawerOpen, setBulkDrawerOpen] = useState(false);
   const [pendingVerifyFlags, setPendingVerifyFlags] = useState<Map<string, boolean>>(new Map());
   const verifyMut = useVerifyIssue();
   useRegisterHelp('Категоризация задач', categoriesHelp);
@@ -295,51 +290,19 @@ export default function CategoriesEditorPage() {
     ...QUEUE_META[key],
   })), [counts]);
 
-  // ─── Cascade ref ──────────────────────────────────────────────
-
-  // Какие id поставлены каскадом (не вручную). Нужно чтобы смена кода на
-  // родителе протащила обновление по уже каскадно-проставленным потомкам, но
-  // не тронула ручной выбор PM, даже если он совпадает с прежним кодом
-  // родителя. Сбрасывается там же где pendingCats.
-  const cascadedIdsRef = useRef<Set<string>>(new Set());
-
-  // ─── setPendingCategory: cascade only through LOADED children ─
+  // ─── setPendingCategory: только этой строки ──────────────────
+  // Каскад на потомков делает бэкенд при verify cascade=true:
+  // /issues/{id}/verify с category_code применяет код к корню + всем
+  // невериф потомкам (уже верифицированные не трогаются). PM выбирает
+  // код в Select родителя → жмёт «Подтвердить +N» в той же строке.
 
   const setPendingCategory = useCallback((issueId: string, code: string | null) => {
     setPendingCats(prev => {
       const next = new Map(prev);
       next.set(issueId, code);
-      cascadedIdsRef.current.delete(issueId);
-
-      if (innerTab !== 'stack') return next;
-
-      const cascaded = cascadedIdsRef.current;
-      const visit = (parentId: string) => {
-        const kids = loadedChildren.get(parentId);
-        if (!kids) return;
-        for (const ch of kids) {
-          if (ch.issue_type === 'group') { visit(ch.id); continue; }
-          if (ch.is_context) continue;
-          if (ch.assigned_category) continue;
-          const hasPending = next.has(ch.id);
-          const isCascaded = cascaded.has(ch.id);
-          if (hasPending && !isCascaded) continue;
-          if (code === null) {
-            if (hasPending && isCascaded) {
-              next.delete(ch.id);
-              cascaded.delete(ch.id);
-            }
-          } else {
-            next.set(ch.id, code);
-            cascaded.add(ch.id);
-          }
-          visit(ch.id);
-        }
-      };
-      visit(issueId);
       return next;
     });
-  }, [innerTab, loadedChildren]);
+  }, []);
 
   // ─── Context rows set ─────────────────────────────────────────
 
@@ -355,16 +318,37 @@ export default function CategoriesEditorPage() {
     [selectedIds, contextIdSet],
   );
 
-  const applyBulkCategory = () => {
+  const applyBulkCategory = async () => {
     if (!bulkCategory || applicableSelectedIds.length === 0) return;
-    setPendingCats(prev => {
-      const next = new Map(prev);
-      applicableSelectedIds.forEach(id => next.set(id, bulkCategory));
-      return next;
-    });
-    setBulkModalOpen(false);
-    setBulkCategory(undefined);
-    setSelectedIds([]);
+    try {
+      const res = await batchCategoryMut.mutateAsync({
+        issueIds: applicableSelectedIds,
+        categoryCode: bulkCategory,
+        verify: true,
+      });
+      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+      void refreshLoadedChildren();
+      setPendingCats(prev => {
+        if (prev.size === 0) return prev;
+        const next = new Map(prev);
+        applicableSelectedIds.forEach(id => next.delete(id));
+        return next;
+      });
+      setBulkModalOpen(false);
+      setBulkCategory(undefined);
+      setSelectedIds([]);
+      const archived = res.archived_ids.length;
+      if (archived > 0) {
+        notification.success({
+          title: `Применено категорий: ${applicableSelectedIds.length}`,
+          description: `В архив: ${archived}`,
+        });
+      } else {
+        message.success(`Применено категорий: ${applicableSelectedIds.length}`);
+      }
+    } catch (e) {
+      notification.error({ title: 'Ошибка применения категории', description: (e as Error).message });
+    }
   };
 
   // ─── Refresh loaded children after mutations ────────────────
@@ -404,67 +388,33 @@ export default function CategoriesEditorPage() {
     cascade: boolean,
   ) => {
     const requireChildVerification = pendingVerifyFlags.get(issueId) ?? false;
+    const hasCategoryCode = pendingCats.has(issueId);
+    const categoryCode = hasCategoryCode ? (pendingCats.get(issueId) ?? null) : null;
     verifyMut.mutate(
-      { issueId, cascade, requireChildVerification },
+      { issueId, cascade, requireChildVerification, categoryCode, hasCategoryCode },
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
           void refreshLoadedChildren();
+          if (hasCategoryCode) {
+            setPendingCats(prev => {
+              if (!prev.has(issueId)) return prev;
+              const next = new Map(prev);
+              next.delete(issueId);
+              return next;
+            });
+          }
         },
         onError: (err) => notification.error({ title: 'Ошибка верификации', description: (err as Error).message }),
       },
     );
-  }, [pendingVerifyFlags, verifyMut, notification, qc, refreshLoadedChildren]);
+  }, [pendingCats, pendingVerifyFlags, verifyMut, notification, qc, refreshLoadedChildren]);
 
   const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
       setWidths(w => ({ ...w, [colKey]: size.width }));
     },
   []);
-
-  const savePending = async () => {
-    // Group by category code
-    const groups = new Map<string | null, string[]>();
-    pendingCats.forEach((code, id) => {
-      const arr = groups.get(code) ?? [];
-      arr.push(id);
-      groups.set(code, arr);
-    });
-    try {
-      const archivedIds = new Set<string>();
-      const skippedContainers = new Set<string>();
-      const assignments = new Map<string, string | null>();
-      for (const [code, ids] of groups) {
-        const res = await batchCategoryMut.mutateAsync({ issueIds: ids, categoryCode: code });
-        const skippedForGroup = new Set(res.skipped_containers ?? []);
-        skippedForGroup.forEach(id => skippedContainers.add(id));
-        ids.forEach(id => {
-          if (!skippedForGroup.has(id)) assignments.set(id, code);
-        });
-        res.archived_ids.forEach(id => archivedIds.add(id));
-      }
-
-      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
-      void refreshLoadedChildren();
-
-      const total = assignments.size;
-      setPendingCats(new Map());
-      cascadedIdsRef.current = new Set();
-      const parts: string[] = [];
-      if (archivedIds.size > 0) parts.push(`в архив: ${archivedIds.size}`);
-      if (skippedContainers.size > 0) parts.push(`пропущено родителей: ${skippedContainers.size}`);
-      if (parts.length > 0) {
-        notification.success({
-          title: `Сохранено категорий: ${total}`,
-          description: parts.join(' · '),
-        });
-      } else {
-        message.success(`Сохранено категорий: ${total}`);
-      }
-    } catch (e) {
-      notification.error({ title: 'Ошибка сохранения', description: (e as Error).message });
-    }
-  };
 
   // ─── Expand/collapse ─────────────────────────────────────────
 
@@ -743,7 +693,6 @@ export default function CategoriesEditorPage() {
     return `tree-row-depth-${depth}${hasKids ? ' tree-row-has-children' : ''}${ctx}`;
   }, []);
 
-  const hasPending = pendingCats.size > 0;
   const emptyText = (
     <Empty
       image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -836,12 +785,6 @@ export default function CategoriesEditorPage() {
             </Button>
           )}
           <Button
-            icon={<ToolOutlined />}
-            onClick={() => setBulkDrawerOpen(true)}
-          >
-            Массовые операции
-          </Button>
-          <Button
             icon={<CheckOutlined />}
             disabled={applicableSelectedIds.length === 0}
             onClick={() => setBulkModalOpen(true)}
@@ -867,30 +810,6 @@ export default function CategoriesEditorPage() {
           locale={{ emptyText }}
         />
       </div>
-      {hasPending && (
-        <div className="category-draft-bar" role="status">
-          <Space orientation="vertical" size={0}>
-            <Text strong>{pendingCats.size} изменений в черновике</Text>
-            <Text type="secondary">Можно продолжить разбор или сохранить изменения сейчас.</Text>
-          </Space>
-          <Space wrap>
-            <Button
-              icon={<CloseOutlined />}
-              onClick={() => { setPendingCats(new Map()); cascadedIdsRef.current = new Set(); }}
-            >
-              Отменить
-            </Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={batchCategoryMut.isPending}
-              onClick={savePending}
-            >
-              Сохранить изменения
-            </Button>
-          </Space>
-        </div>
-      )}
       <Modal
         title={`Установить категорию для ${applicableSelectedIds.length} задач`}
         open={bulkModalOpen}
@@ -898,10 +817,11 @@ export default function CategoriesEditorPage() {
         onOk={applyBulkCategory}
         okText="Применить"
         cancelText="Отмена"
+        confirmLoading={batchCategoryMut.isPending}
         okButtonProps={{ disabled: !bulkCategory }}
       >
         <Text type="secondary">
-          Категория будет отмечена как «к сохранению». Для применения нажмите «Сохранить».
+          Категория будет применена и сразу подтверждена.
           {selectedIds.length > applicableSelectedIds.length && (
             <>
               <br />
@@ -922,12 +842,6 @@ export default function CategoriesEditorPage() {
           />
         </div>
       </Modal>
-      <BulkTriageDrawer
-        open={bulkDrawerOpen}
-        onClose={() => setBulkDrawerOpen(false)}
-        selectedTeams={selectedTeams}
-        scopeProjectKeys={(scopeProjects.data ?? []).map(p => p.jira_project_key)}
-      />
     </Space>
   );
 }

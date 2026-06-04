@@ -573,3 +573,144 @@ class TestTreeWithHierarchyRules:
         data = resp.json()
         ops = next(n for n in data if n["id"] == "__operations__")
         assert any(c_node["key"] == "ITL-2" for c_node in ops["children"])
+
+
+def test_batch_category_with_verify_flag_marks_verified(client, project_and_issues, db_session):
+    """batch-category с verify=true помечает category_verified=True у всех ids."""
+    _, issues = project_and_issues
+    ids = [issues[0].id, issues[1].id]
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={
+            "issue_ids": ids,
+            "category_code": "development",
+            "verify": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["updated"] == 2
+
+    for issue_id in ids:
+        issue = db_session.get(Issue, issue_id)
+        assert issue.assigned_category == "development"
+        assert issue.category_verified is True
+
+
+def test_batch_category_without_verify_flag_keeps_unverified(client, project_and_issues, db_session):
+    """batch-category без verify не трогает category_verified."""
+    _, issues = project_and_issues
+    target = issues[0]
+    target.category_verified = False
+    db_session.flush()
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={"issue_ids": [target.id], "category_code": "development"},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    issue = db_session.get(Issue, target.id)
+    assert issue.assigned_category == "development"
+    assert issue.category_verified is False
+
+
+def test_verify_with_category_code_applies_to_root(client, project_and_issues, db_session):
+    """verify с has_category_code=True проставляет код на саму задачу + verified."""
+    _, issues = project_and_issues
+    target = issues[0]
+    target.category_verified = False
+    db_session.flush()
+
+    response = client.post(
+        f"/api/v1/issues/{target.id}/verify",
+        json={
+            "cascade": False,
+            "require_child_verification": False,
+            "has_category_code": True,
+            "category_code": "development",
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    issue = db_session.get(Issue, target.id)
+    assert issue.assigned_category == "development"
+    assert issue.category_verified is True
+
+
+def test_verify_cascade_applies_code_to_unverified_descendants_only(client, db_session):
+    """verify cascade с category_code: невериф потомки получают код, вериф — не трогаются."""
+    project = Project(jira_project_id="90001", key="VC", name="Verify cascade", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    parent = Issue(
+        jira_issue_id="90001-1", key="VC-1",
+        summary="Parent", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+        category_verified=False,
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    unverified_kid = Issue(
+        jira_issue_id="90001-2", key="VC-2",
+        summary="Unverified kid", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=parent.id, include_in_analysis=True,
+        category_verified=False,
+    )
+    verified_kid = Issue(
+        jira_issue_id="90001-3", key="VC-3",
+        summary="Verified kid (own category)", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=parent.id, include_in_analysis=True,
+        category_verified=True, assigned_category="qa",
+    )
+    db_session.add_all([unverified_kid, verified_kid])
+    db_session.flush()
+
+    response = client.post(
+        f"/api/v1/issues/{parent.id}/verify",
+        json={
+            "cascade": True,
+            "require_child_verification": False,
+            "has_category_code": True,
+            "category_code": "development",
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+
+    assert db_session.get(Issue, parent.id).assigned_category == "development"
+    assert db_session.get(Issue, parent.id).category_verified is True
+
+    assert db_session.get(Issue, unverified_kid.id).assigned_category == "development"
+    assert db_session.get(Issue, unverified_kid.id).category_verified is True
+
+    # Уже верифицированная задача с собственной категорией — не тронута
+    assert db_session.get(Issue, verified_kid.id).assigned_category == "qa"
+    assert db_session.get(Issue, verified_kid.id).category_verified is True
+
+
+def test_verify_without_category_code_keeps_existing_category(client, project_and_issues, db_session):
+    """verify без has_category_code не меняет assigned_category — back-compat."""
+    _, issues = project_and_issues
+    target = issues[0]
+    target.assigned_category = "qa"
+    target.category_verified = False
+    db_session.flush()
+
+    response = client.post(
+        f"/api/v1/issues/{target.id}/verify",
+        json={"cascade": False, "require_child_verification": False},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    issue = db_session.get(Issue, target.id)
+    assert issue.assigned_category == "qa"
+    assert issue.category_verified is True

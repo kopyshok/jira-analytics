@@ -45,8 +45,15 @@ export function useSetIssueInclude() {
 export function useBatchSetCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ issueIds, categoryCode }: { issueIds: string[]; categoryCode: string | null }) =>
-      batchSetCategory(issueIds, categoryCode),
+    mutationFn: ({
+      issueIds,
+      categoryCode,
+      verify,
+    }: {
+      issueIds: string[];
+      categoryCode: string | null;
+      verify?: boolean;
+    }) => batchSetCategory(issueIds, categoryCode, verify ?? false),
     onSuccess: (_data, { issueIds }) => {
       invalidateCategoryDependents(qc);
       trackAction('category_changed', issueIds[0]);
@@ -55,15 +62,23 @@ export function useBatchSetCategory() {
 }
 
 export function useVerifyIssue() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({
       issueId,
       cascade,
       requireChildVerification,
+      categoryCode,
+      hasCategoryCode,
     }: {
       issueId: string;
       cascade: boolean;
       requireChildVerification: boolean;
-    }) => verifyIssue(issueId, cascade, requireChildVerification),
+      categoryCode?: string | null;
+      hasCategoryCode?: boolean;
+    }) => verifyIssue(issueId, cascade, requireChildVerification, categoryCode, hasCategoryCode ?? false),
+    onSuccess: () => {
+      invalidateCategoryDependents(qc);
+    },
   });
 }

@@ -39,10 +39,15 @@ export interface BatchCategoryResponse {
   skipped_containers: string[];
 }
 
-export const batchSetCategory = (issueIds: string[], categoryCode: string | null) =>
+export const batchSetCategory = (
+  issueIds: string[],
+  categoryCode: string | null,
+  verify: boolean = false,
+) =>
   api.put<BatchCategoryResponse>('/issues/batch-category', {
     issue_ids: issueIds,
     category_code: categoryCode,
+    verify,
   });
 
 export interface VerifyIssueResponse {
@@ -54,10 +59,14 @@ export const verifyIssue = (
   issueId: string,
   cascade: boolean,
   requireChildVerification: boolean,
+  categoryCode?: string | null,
+  hasCategoryCode: boolean = false,
 ) =>
   api.post<VerifyIssueResponse>(`/issues/${issueId}/verify`, {
     cascade,
     require_child_verification: requireChildVerification,
+    category_code: categoryCode ?? null,
+    has_category_code: hasCategoryCode,
   });
 
 export const getIssueContext = (issueId: string) =>
