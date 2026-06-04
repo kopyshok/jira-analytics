@@ -554,6 +554,41 @@ def get_tree_roots(
     return roots
 
 
+class LocateResponse(BaseModel):
+    found: bool
+    id: Optional[str] = None
+    key: Optional[str] = None
+    ancestor_ids: List[str] = []
+
+
+@router.get("/locate", response_model=LocateResponse)
+def locate_issue(key: str, db: Session = Depends(get_db)):
+    """Найти задачу по ключу + вернуть цепочку предков (root → parent).
+
+    Для UI «прыжка к найденной задаче» в /categories: фронт раскрывает
+    каждого предка через /children и скроллит к задаче.
+    """
+    key_norm = key.strip().upper()
+    if not key_norm:
+        return LocateResponse(found=False)
+    issue = db.query(Issue).filter(Issue.key == key_norm).first()
+    if not issue:
+        return LocateResponse(found=False)
+    ancestors: list[str] = []
+    cur = issue
+    seen: set[str] = {issue.id}
+    for _ in range(30):
+        if not cur.parent_id or cur.parent_id in seen:
+            break
+        parent = db.get(Issue, cur.parent_id)
+        if not parent:
+            break
+        ancestors.insert(0, parent.id)
+        seen.add(parent.id)
+        cur = parent
+    return LocateResponse(found=True, id=issue.id, key=issue.key, ancestor_ids=ancestors)
+
+
 def _issue_is_container(db: Session, issue: Issue) -> bool:
     """True если issue совпал с контейнерным правилом (Эпик, Main box и т.п.).
 
