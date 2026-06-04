@@ -352,13 +352,18 @@ export default function CategoriesEditorPage() {
       setBulkCategory(undefined);
       setSelectedIds([]);
       const archived = res.archived_ids.length;
-      if (archived > 0) {
+      const cascaded = res.cascaded_ids?.length ?? 0;
+      const totalApplied = applicableSelectedIds.length + cascaded;
+      const parts: string[] = [];
+      if (cascaded > 0) parts.push(`включая потомков без своей категории: ${cascaded}`);
+      if (archived > 0) parts.push(`в архив: ${archived}`);
+      if (parts.length > 0) {
         notification.success({
-          title: `Применено категорий: ${applicableSelectedIds.length}`,
-          description: `В архив: ${archived}`,
+          title: `Применено категорий: ${totalApplied}`,
+          description: parts.join(' · '),
         });
       } else {
-        message.success(`Применено категорий: ${applicableSelectedIds.length}`);
+        message.success(`Применено категорий: ${totalApplied}`);
       }
     } catch (e) {
       notification.error({ title: 'Ошибка применения категории', description: (e as Error).message });

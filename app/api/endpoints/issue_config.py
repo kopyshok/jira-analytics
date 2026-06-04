@@ -693,6 +693,28 @@ def _set_include_recursive(db: Session, parent_id: str, include: bool) -> None:
         _set_include_recursive(db, child.id, include)
 
 
+def _walk_subtree_no_assigned(db: Session, root_id: str) -> list[Issue]:
+    """BFS вниз от root_id, стоп на потомках с собственной assigned_category
+    (граница ручного решения PM). Сам root в результат не входит.
+    """
+    out: list[Issue] = []
+    frontier: list[str] = [root_id]
+    visited: set[str] = {root_id}
+    while frontier:
+        children = db.query(Issue).filter(Issue.parent_id.in_(frontier)).all()
+        next_frontier: list[str] = []
+        for ch in children:
+            if ch.id in visited:
+                continue
+            visited.add(ch.id)
+            if ch.assigned_category is not None:
+                continue
+            out.append(ch)
+            next_frontier.append(ch.id)
+        frontier = next_frontier
+    return out
+
+
 @router.put("/batch-category")
 async def batch_set_category(
     body: BatchCategoryRequest,
@@ -705,19 +727,21 @@ async def batch_set_category(
     возвращает ``archived_ids`` — список задач, у которых одновременно
     снялся ``include_in_analysis``.
 
-    Контейнерные задачи (Эпик, Main box, RFA-инициативы) больше не
-    пропускаются: потомки унаследуют категорию через ``CategoryResolver``
-    walk-up, так что установка категории на эпике = вся подветка уходит
-    в ту же категорию.
+    Каскадирует вниз по поддереву: для каждой задачи в ``issue_ids`` все
+    потомки без собственной ``assigned_category`` тоже получают категорию.
+    Граница — потомок с уже выставленным ручным решением PM (его поддерево
+    не трогается). ID протянутых потомков возвращаются в ``cascaded_ids``.
 
     ``skipped_containers`` остаётся в ответе (всегда пустой) для обратной
     совместимости с фронтом.
     """
     updated = 0
     archived_ids: list[str] = []
+    cascaded_ids: list[str] = []
     is_archive = body.category_code in ARCHIVE_CATEGORY_CODES
     resolver = CategoryResolver(db)
     backlog = BacklogService(db)
+    seen_targets: set[str] = set()
     for issue_id in body.issue_ids:
         issue = db.get(Issue, issue_id)
         if not issue:
@@ -732,12 +756,30 @@ async def batch_set_category(
         issue.category = resolver.resolve_for_issue(issue).category_code
         backlog.sync_from_issue(issue)
         updated += 1
+        seen_targets.add(issue.id)
+
+        # Каскад: потомки без своей категории получают тот же код.
+        # Останавливаемся на ручных решениях PM (assigned_category != None).
+        for d in _walk_subtree_no_assigned(db, issue.id):
+            if d.id in seen_targets:
+                continue
+            d.assigned_category = body.category_code
+            if is_archive and d.include_in_analysis:
+                d.include_in_analysis = False
+                archived_ids.append(d.id)
+            if body.verify:
+                d.category_verified = True
+            d.category = resolver.resolve_for_issue(d).category_code
+            backlog.sync_from_issue(d)
+            cascaded_ids.append(d.id)
+            seen_targets.add(d.id)
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {
         "ok": True,
         "updated": updated,
         "archived_ids": archived_ids,
+        "cascaded_ids": cascaded_ids,
         "skipped_containers": [],
     }
 

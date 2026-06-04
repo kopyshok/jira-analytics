@@ -333,6 +333,142 @@ def test_batch_category_applies_to_containers_and_leaves(client, db_session):
     assert db_session.get(Issue, leaf.id).assigned_category == "development"
 
 
+def test_batch_category_cascades_to_descendants_without_own_category(client, db_session):
+    """Назначение категории родителю каскадно протягивается на потомков
+    без своей assigned_category; потомки с другой категорией не трогаются.
+    """
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80010", key="CC", name="Cascade", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    epic = Issue(
+        jira_issue_id="80010-1", key="CC-1",
+        summary="Epic parent", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+    )
+    db_session.add(epic)
+    db_session.flush()
+    blank_children = [
+        Issue(
+            jira_issue_id=f"80010-blank-{i}", key=f"CC-blank-{i}",
+            summary=f"Blank child {i}", issue_type="Task", status="Open",
+            project_id=project.id, parent_id=epic.id, include_in_analysis=True,
+        ) for i in range(5)
+    ]
+    owned_children = [
+        Issue(
+            jira_issue_id=f"80010-owned-{i}", key=f"CC-owned-{i}",
+            summary=f"Owned child {i}", issue_type="Task", status="Open",
+            project_id=project.id, parent_id=epic.id,
+            include_in_analysis=True,
+            assigned_category="archive",
+        ) for i in range(5)
+    ]
+    db_session.add_all(blank_children + owned_children)
+    db_session.flush()
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={"issue_ids": [epic.id], "category_code": "development", "verify": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["updated"] == 1
+    assert sorted(body["cascaded_ids"]) == sorted([c.id for c in blank_children])
+    assert body["archived_ids"] == []
+
+    db_session.expire_all()
+    assert db_session.get(Issue, epic.id).assigned_category == "development"
+    for c in blank_children:
+        persisted = db_session.get(Issue, c.id)
+        assert persisted.assigned_category == "development"
+        assert persisted.category_verified is True
+    for c in owned_children:
+        persisted = db_session.get(Issue, c.id)
+        assert persisted.assigned_category == "archive"
+
+
+def test_batch_category_cascade_stops_at_owned_descendant_subtree(client, db_session):
+    """Каскад останавливается на потомке с собственной категорией —
+    его поддерево не получает родительскую категорию.
+    """
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80011", key="CB", name="Cascade boundary", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    epic = Issue(
+        jira_issue_id="80011-1", key="CB-1", summary="Epic",
+        issue_type="Эпик", status="Open", project_id=project.id,
+        include_in_analysis=True,
+    )
+    db_session.add(epic)
+    db_session.flush()
+    owned_mid = Issue(
+        jira_issue_id="80011-2", key="CB-2", summary="Owned mid",
+        issue_type="Task", status="Open", project_id=project.id,
+        parent_id=epic.id, include_in_analysis=True,
+        assigned_category="archive",
+    )
+    db_session.add(owned_mid)
+    db_session.flush()
+    grandchild = Issue(
+        jira_issue_id="80011-3", key="CB-3", summary="Grandchild",
+        issue_type="Task", status="Open", project_id=project.id,
+        parent_id=owned_mid.id, include_in_analysis=True,
+    )
+    db_session.add(grandchild)
+    db_session.flush()
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={"issue_ids": [epic.id], "category_code": "development"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cascaded_ids"] == []
+
+    db_session.expire_all()
+    assert db_session.get(Issue, owned_mid.id).assigned_category == "archive"
+    assert db_session.get(Issue, grandchild.id).assigned_category is None
+
+
+def test_batch_category_cascade_propagates_archive_to_descendants(client, db_session):
+    """Каскад с архивной категорией снимает include_in_analysis у потомков
+    без своей категории и добавляет их в archived_ids.
+    """
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80012", key="CA", name="Cascade arch", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    epic = Issue(
+        jira_issue_id="80012-1", key="CA-1", summary="Epic",
+        issue_type="Эпик", status="Open", project_id=project.id,
+        include_in_analysis=True,
+    )
+    db_session.add(epic)
+    db_session.flush()
+    child = Issue(
+        jira_issue_id="80012-2", key="CA-2", summary="Child",
+        issue_type="Task", status="Open", project_id=project.id,
+        parent_id=epic.id, include_in_analysis=True,
+    )
+    db_session.add(child)
+    db_session.flush()
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={"issue_ids": [epic.id], "category_code": "archive"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert sorted(body["archived_ids"]) == sorted([epic.id, child.id])
+    assert body["cascaded_ids"] == [child.id]
+
+    db_session.expire_all()
+    assert db_session.get(Issue, epic.id).include_in_analysis is False
+    assert db_session.get(Issue, child.id).include_in_analysis is False
+
+
 def test_tree_response_includes_is_container_flag(client, db_session):
     """IssueTreeNode.is_container = True для Эпика / Main box."""
     _seed_hierarchy_rules(db_session)

@@ -52,7 +52,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 - `POST /capacity/absences/batch` — one record per `employee_id`
 - `PUT /capacity/role-rules/batch?year&quarter` — атомарная замена + 422 если Σ ≠ 100% по роли
 - `PUT /capacity/employee-overrides/batch?year&quarter` — partial (только упомянутые)
-- `PUT /issues/batch-category` — массовая смена категории по группам кодов; archive codes auto-drop `include_in_analysis`, returned in `archived_ids`
+- `PUT /issues/batch-category` — массовая смена категории по группам кодов; archive codes auto-drop `include_in_analysis`, returned in `archived_ids`; каскадно протягивает категорию вниз по поддереву до границы «потомок со своей `assigned_category`», ID протянутых потомков — в `cascaded_ids`
 
 **SSE-стримы прогресса** (events `progress` / `done` / `error` / `cancelled`, cancel через `request.is_disconnected()`):
 - `POST /sync/worklogs/update/stream` — upsert-only, безопасен в повседневке. Принимает `{since, teams?}`. Bucket A всегда + Bucket B если teams указан

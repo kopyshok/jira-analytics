@@ -36,6 +36,7 @@ export interface BatchCategoryResponse {
   ok: boolean;
   updated: number;
   archived_ids: string[];
+  cascaded_ids: string[];
   skipped_containers: string[];
 }
 
