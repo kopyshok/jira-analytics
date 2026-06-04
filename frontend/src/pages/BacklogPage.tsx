@@ -145,7 +145,7 @@ export default function BacklogPage() {
 
   const baseColumns = (editable: boolean) => [
     {
-      title: 'Prio', dataIndex: 'priority', width: 70, fixed: 'left' as const,
+      title: 'Prio', dataIndex: 'priority', width: 110, fixed: 'left' as const,
       render: (v: number | null, r: BacklogItemResponse) =>
         editable ? (
           <InputNumber
@@ -153,7 +153,7 @@ export default function BacklogPage() {
             min={1}
             value={v ?? undefined}
             variant="borderless"
-            style={{ width: 55 }}
+            style={{ width: 50 }}
             onBlur={(e) => {
               const raw = e.currentTarget.value.trim();
               const next = raw === '' ? null : Number(raw);
