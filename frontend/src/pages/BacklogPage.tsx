@@ -1,19 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Popover, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
-  ArrowRightOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined, HolderOutlined,
+  ArrowRightOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined,
   InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, SettingOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import backlogHelp from '../../../docs/help/backlog.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
-import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import PageHeader from '../components/shared/PageHeader';
 import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
@@ -35,34 +31,6 @@ import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import type {
   BacklogItemResponse, BacklogView,
 } from '../types/api';
-
-function DragHandle({ id }: { id: string }) {
-  const { attributes, listeners } = useSortable({ id });
-  return (
-    <HolderOutlined
-      style={{ cursor: 'grab', color: '#8faec8' }}
-      {...attributes}
-      {...listeners}
-    />
-  );
-}
-
-function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-row-key'?: string }) {
-  const id = props['data-row-key'] ?? '';
-  const { setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  return (
-    <tr
-      {...props}
-      ref={setNodeRef}
-      style={{
-        ...props.style,
-        transform: CSS.Translate.toString(transform),
-        transition,
-        opacity: isDragging ? 0.5 : 1,
-      }}
-    />
-  );
-}
 
 function groupByQuarterLabel(items: BacklogItemResponse[]): [string, BacklogItemResponse[]][] {
   const groups = new Map<string, BacklogItemResponse[]>();
@@ -156,18 +124,6 @@ export default function BacklogPage() {
       return sum + (r.estimate_hours ?? an + de + qa + op);
     }, 0),
     [activeRows],
-  );
-
-  const handleDragEnd = useCallback(
-    ({ active: draggingActive, over }: DragEndEvent) => {
-      if (!over || draggingActive.id === over.id || !activeRows) return;
-      const oldIndex = activeRows.findIndex((i) => i.id === draggingActive.id);
-      const newIndex = activeRows.findIndex((i) => i.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return;
-      const newPriority = newIndex + 1;
-      update.mutate({ id: String(draggingActive.id), data: { priority: newPriority } });
-    },
-    [activeRows, update],
   );
 
   const openCreate = () => { setEditing(null); setManualOpen(true); };
@@ -654,29 +610,19 @@ export default function BacklogPage() {
   );
 
   const activeTable = (
-    <DndContext
-      collisionDetection={closestCenter}
-      modifiers={[restrictToVerticalAxis]}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext items={activeRows?.map((i) => i.id) ?? []} strategy={verticalListSortingStrategy}>
-        <Table<BacklogItemResponse>
-          dataSource={activeRows}
-          rowKey="id"
-          loading={active.isLoading}
-          pagination={false}
-          size="small"
-          scroll={{ x: 1400 }}
-          components={{ body: { row: SortableRow } }}
-          columns={[
-            { title: '', width: 32, fixed: 'left' as const, render: (_, r) => <DragHandle id={r.id} /> },
-            ...baseColumns(true),
-            { title: 'Действия', width: 210, fixed: 'right' as const, render: (_, r) => actionsActive(r) },
-          ]}
-          expandable={nestedExpandable}
-        />
-      </SortableContext>
-    </DndContext>
+    <Table<BacklogItemResponse>
+      dataSource={activeRows}
+      rowKey="id"
+      loading={active.isLoading}
+      pagination={false}
+      size="small"
+      scroll={{ x: 1400 }}
+      columns={[
+        ...baseColumns(true),
+        { title: 'Действия', width: 210, fixed: 'right' as const, render: (_, r) => actionsActive(r) },
+      ]}
+      expandable={nestedExpandable}
+    />
   );
 
   const archiveColumns = [
