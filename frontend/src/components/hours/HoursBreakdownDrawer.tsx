@@ -19,7 +19,7 @@ export default function HoursBreakdownDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      width={720}
+      size={720}
       title={`Разбивка часов · ${issueKey ?? ''} · Q${quarter} ${year}`}
     >
       {data && <HoursBreakdownTable data={data} loading={isLoading} />}
