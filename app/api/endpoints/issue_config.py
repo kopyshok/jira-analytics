@@ -504,13 +504,17 @@ def get_tree_roots(
         is_top = (not r.parent_id) or (r.parent_id not in by_id)
         if not is_top:
             continue
-        if not self_match.get(r.id) and desc_match.get(r.id, 0) == 0:
+        node_self_match = self_match.get(r.id, False)
+        if not node_self_match and desc_match.get(r.id, 0) == 0:
             continue
         is_container = classify(rules, EvaluationInput(
             project_key=project_key_by_id.get(r.project_id, ""),
             issue_type=r.issue_type,
             has_parent=bool(r.parent_id),
         ))
+        # tab context: root попал из-за совпавшего потомка, сам не матчит.
+        # Помечаем is_context=true → фронт рендерит как read-only.
+        is_tab_context = (not node_self_match) or (r.id in context_ids)
         roots.append(IssueTreeRootNode(
             id=r.id,
             key=r.key,
@@ -525,7 +529,7 @@ def get_tree_roots(
             include_in_analysis=r.include_in_analysis if r.include_in_analysis is not None else True,
             status_changed_at=r.status_changed_at.isoformat() if r.status_changed_at else None,
             goals=r.goals or None,
-            is_context=r.id in context_ids,
+            is_context=is_tab_context,
             is_container=is_container,
             category_verified=r.category_verified if r.category_verified is not None else True,
             require_child_verification=r.require_child_verification if r.require_child_verification is not None else False,
@@ -1200,7 +1204,7 @@ def get_issue_children(
             include_in_analysis=ch.include_in_analysis if ch.include_in_analysis is not None else True,
             status_changed_at=ch.status_changed_at.isoformat() if ch.status_changed_at else None,
             goals=ch.goals or None,
-            is_context=False,
+            is_context=not matches_tab(ch),
             is_container=classify(rules, EvaluationInput(
                 project_key=project_keys.get(ch.project_id, ""),
                 issue_type=ch.issue_type,

@@ -696,6 +696,56 @@ def test_verify_cascade_applies_code_to_unverified_descendants_only(client, db_s
     assert db_session.get(Issue, verified_kid.id).category_verified is True
 
 
+def test_tree_roots_marks_context_ancestor_for_tab(client, db_session):
+    """Родитель без своей категории, но с потомком в архиве — is_context=true."""
+    project = Project(jira_project_id="ctx-1", key="CTX", name="Context", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    parent = Issue(
+        jira_issue_id="ctx-1-1", key="CTX-1",
+        summary="Parent w/o cat", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+        assigned_category=None, category_verified=True,
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    archived_kid = Issue(
+        jira_issue_id="ctx-1-2", key="CTX-2",
+        summary="Archived kid", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=parent.id, include_in_analysis=True,
+        assigned_category="archive", category="archive", category_verified=True,
+    )
+    db_session.add(archived_kid)
+    db_session.flush()
+
+    response = client.get("/api/v1/issues/tree/roots?project_keys=CTX&tab=archive")
+    assert response.status_code == 200
+    roots = response.json()
+    keys = [r["key"] for r in roots]
+    assert "CTX-1" in keys  # подтянут как контекст для архивного потомка
+    parent_row = next(r for r in roots if r["key"] == "CTX-1")
+    assert parent_row["is_context"] is True  # сам не матчит, помечен контекстом
+    assert parent_row["descendant_match_count"] == 1
+
+
+def test_tree_roots_self_match_not_marked_context(client, project_and_issues, db_session):
+    """Сам матчит вкладку → is_context=false."""
+    _, issues = project_and_issues
+    target = issues[0]
+    target.assigned_category = "archive"
+    target.category = "archive"
+    target.category_verified = True
+    db_session.flush()
+
+    response = client.get("/api/v1/issues/tree/roots?project_keys=TEST&tab=archive")
+    assert response.status_code == 200
+    roots = response.json()
+    self_row = next(r for r in roots if r["id"] == target.id)
+    assert self_row["is_context"] is False
+
+
 def test_verify_without_category_code_keeps_existing_category(client, project_and_issues, db_session):
     """verify без has_category_code не меняет assigned_category — back-compat."""
     _, issues = project_and_issues

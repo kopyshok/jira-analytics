@@ -166,7 +166,7 @@ export default function CategoriesEditorPage() {
     () => (globalQueryParams.teams ? globalQueryParams.teams.split(',').filter(Boolean) : []),
     [globalQueryParams.teams],
   );
-  const [hiddenStatuses, setHiddenStatuses] = useState<string[]>(['Отменено']);
+  const [hiddenStatuses, setHiddenStatuses] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const normalizedSearch = searchQuery.trim().toLowerCase();
 
