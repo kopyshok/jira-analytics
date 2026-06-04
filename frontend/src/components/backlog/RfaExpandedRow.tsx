@@ -55,7 +55,7 @@ export default function RfaExpandedRow(p: Props) {
       <PlanConflictBanner issueId={p.issueId} />
 
       {p.hasChildren && (
-        <Space direction="vertical" style={{ width: '100%', marginBottom: 12 }}>
+        <Space orientation="vertical" style={{ width: '100%', marginBottom: 12 }}>
           <Radio.Group
             value={p.planningMode}
             onChange={(e) => modeMut.mutate(e.target.value as 'whole' | 'by_epics')}
