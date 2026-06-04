@@ -39,15 +39,17 @@ def _mk_issue(db, proj, key, **overrides):
     return i
 
 
-def test_tree_roots_skips_in_team_tasks_under_foreign_parent(client, db):
-    """owned-by-team: in-team задача под чужим эпиком не показывается."""
+def test_tree_roots_shows_foreign_parent_as_context_anchor(client, db):
+    """Чужой эпик показывается как read-only якорь (is_context=True),
+    in-team задача под ним видна при раскрытии."""
     p = _mk_proj(db, "OWN")
-    # Чужой эпик (другая команда) — не попадёт в primary_only выборку для A
-    _mk_issue(db, p, "OWN-1", team="B", assigned_category="dev")
-    # In-team задача с parent=чужой эпик — должна быть скрыта
+    # Чужой эпик (команда B) — должен попасть в roots как контекст
+    _mk_issue(db, p, "OWN-1", team="B", assigned_category=None,
+              category_verified=False)
+    # In-team задача с parent=чужой эпик — должна быть включена в счётчик
     _mk_issue(db, p, "OWN-2", team="A", parent_id="i-OWN-1",
               assigned_category=None, category_verified=False)
-    # In-team root — единственная в дереве
+    # In-team root — самостоятельный
     _mk_issue(db, p, "OWN-3", team="A",
               assigned_category=None, category_verified=False)
     db.commit()
@@ -56,13 +58,29 @@ def test_tree_roots_skips_in_team_tasks_under_foreign_parent(client, db):
             "project_keys": "OWN", "teams": "A", "tab": "stack",
         })
         assert resp.status_code == 200
-        keys = sorted([n["key"] for n in resp.json()])
-        assert keys == ["OWN-3"], f"Ожидалось только OWN-3, получено {keys}"
+        items = resp.json()
+        keys = sorted([n["key"] for n in items])
+        assert keys == ["OWN-1", "OWN-3"], f"Ожидалось OWN-1+OWN-3, получено {keys}"
+        foreign = next(n for n in items if n["key"] == "OWN-1")
+        assert foreign["is_context"] is True, "Чужой эпик должен быть read-only"
+        assert foreign["has_children"] is True
+        assert foreign["descendant_match_count"] == 1
+        own_root = next(n for n in items if n["key"] == "OWN-3")
+        assert own_root["is_context"] is False
 
         counts = client.get("/api/v1/issues/tree/counts", params={
             "project_keys": "OWN", "teams": "A",
         }).json()
-        assert counts["stack"] == 1
+        # OWN-2 и OWN-3 — обе in-team в stack; OWN-1 чужой и не считается.
+        assert counts["stack"] == 2
+
+        # Раскрытие чужого якоря — внутри только in-team дети
+        ch_resp = client.get("/api/v1/issues/i-OWN-1/children", params={
+            "tab": "stack", "teams": "A", "project_keys": "OWN",
+        })
+        assert ch_resp.status_code == 200
+        ch_keys = sorted([n["key"] for n in ch_resp.json()])
+        assert ch_keys == ["OWN-2"], f"Под чужим эпиком должен быть только OWN-2, получено {ch_keys}"
     finally:
         db.query(Issue).filter(Issue.project_id == p.id).delete()
         db.query(Project).filter(Project.id == p.id).delete()
@@ -146,6 +164,50 @@ def test_tree_roots_returns_matching_for_stack_tab(client, db):
         assert epic_node["descendant_match_count"] >= 1
         single = next(n for n in items if n["key"] == "RTS-3")
         assert single["has_children"] is False
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
+def test_children_endpoint_filters_by_search(client, db):
+    """Поиск пробрасывается в /children: под раскрытым контекст-предком
+    видны только задачи, попавшие в поиск."""
+    p = _mk_proj(db, "SCH")
+    parent_issue = _mk_issue(db, p, "SCH-1", issue_type="Epic", assigned_category="archive")
+    _mk_issue(db, p, "SCH-2", parent_id=parent_issue.id, assigned_category="archive")
+    _mk_issue(db, p, "SCH-3", parent_id=parent_issue.id, assigned_category="archive")
+    _mk_issue(db, p, "SCH-4", parent_id=parent_issue.id, assigned_category="archive")
+    db.commit()
+    try:
+        resp = client.get(f"/api/v1/issues/{parent_issue.id}/children", params={
+            "tab": "archive", "search": "SCH-3",
+        })
+        assert resp.status_code == 200
+        items = resp.json()
+        keys = sorted([n["key"] for n in items])
+        assert keys == ["SCH-3"], f"Должен остаться только SCH-3, получено {keys}"
+    finally:
+        db.query(Issue).filter(Issue.project_id == p.id).delete()
+        db.query(Project).filter(Project.id == p.id).delete()
+        db.commit()
+
+
+def test_tree_roots_search_by_key_is_strict(client, db):
+    """Поиск ITL-57 не должен подмачивать ITL-571/ITL-579/etc."""
+    p = _mk_proj(db, "STR")
+    _mk_issue(db, p, "STR-57", assigned_category="archive")
+    _mk_issue(db, p, "STR-571", assigned_category="archive")
+    _mk_issue(db, p, "STR-579", assigned_category="archive")
+    _mk_issue(db, p, "STR-5", assigned_category="archive")
+    db.commit()
+    try:
+        resp = client.get("/api/v1/issues/tree/roots", params={
+            "project_keys": "STR", "tab": "archive", "search": "STR-57",
+        })
+        assert resp.status_code == 200
+        keys = sorted([n["key"] for n in resp.json()])
+        assert keys == ["STR-57"], f"Точный ключ-поиск, получено {keys}"
     finally:
         db.query(Issue).filter(Issue.project_id == p.id).delete()
         db.query(Project).filter(Project.id == p.id).delete()

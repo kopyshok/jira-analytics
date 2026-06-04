@@ -97,8 +97,18 @@ export const getTreeCounts = (
   signal?: AbortSignal,
 ) => api.get<IssueTreeCounts>('/issues/tree/counts', params as Record<string, string | undefined>, signal);
 
-export const getIssueChildrenByTab = (parentId: string, tab: string, limit = 200) =>
-  api.get<IssueTreeRootNode[]>(`/issues/${parentId}/children`, { tab, limit: String(limit) });
+export const getIssueChildrenByTab = (
+  parentId: string,
+  tab: string,
+  opts: { teams?: string; project_keys?: string; search?: string; limit?: number } = {},
+) =>
+  api.get<IssueTreeRootNode[]>(`/issues/${parentId}/children`, {
+    tab,
+    limit: String(opts.limit ?? 200),
+    teams: opts.teams,
+    project_keys: opts.project_keys,
+    search: opts.search,
+  });
 
 export const getEpicCandidates = (
   params: { project_keys?: string; teams?: string },
