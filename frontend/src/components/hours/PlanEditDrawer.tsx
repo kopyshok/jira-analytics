@@ -105,7 +105,7 @@ export default function PlanEditDrawer({
       open={open}
       onClose={onClose}
       title={`Редактирование плана · ${issueKey}`}
-      width={520}
+      size={520}
     >
       <Form form={form} layout="vertical" onFinish={(vals) => editMut.mutate(vals)}>
         <Table
