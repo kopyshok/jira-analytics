@@ -807,7 +807,11 @@ async def verify_issue(
 ):
     """Подтвердить категорию задачи (переводит из «Стека к разбору» в нужную вкладку).
 
-    cascade=True — рекурсивно подтверждает всех непроверенных потомков.
+    cascade=True — поведение зависит от наличия category_code:
+    - с кодом: каскадно проставляет код всем потомкам без своей assigned_category
+      (граница — ручное решение PM), включая уже-верифицированных «пустых».
+    - без кода: просто подтверждает невериф потомков, категорию не меняет.
+
     require_child_verification сохраняется на задаче и управляет тем,
     попадут ли будущие новые дочерние задачи в стек автоматически.
     """
@@ -834,15 +838,25 @@ async def verify_issue(
     issue.require_child_verification = body.require_child_verification
 
     if body.cascade:
-        for descendant in _collect_unverified_descendants(db, issue_id):
-            if apply_code:
+        if apply_code:
+            # С кодом: каскад покрывает всех потомков без своей assigned_category,
+            # независимо от verified — иначе ранее верифицированные пустые потомки
+            # остаются мёртвой зоной. Граница каскада — потомок с ручной категорией.
+            for descendant in _walk_subtree_no_assigned(db, issue_id):
                 descendant.assigned_category = body.category_code
                 if is_archive and descendant.include_in_analysis:
                     descendant.include_in_analysis = False
                 descendant.category = resolver.resolve_for_issue(descendant).category_code
                 backlog.sync_from_issue(descendant)
-            descendant.category_verified = True
-            verified_count += 1
+                if not descendant.category_verified:
+                    descendant.category_verified = True
+                    verified_count += 1
+        else:
+            # Без кода: просто проверочный каскад — пометить невериф потомков как
+            # verified, категорию не трогать.
+            for descendant in _collect_unverified_descendants(db, issue_id):
+                descendant.category_verified = True
+                verified_count += 1
 
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})

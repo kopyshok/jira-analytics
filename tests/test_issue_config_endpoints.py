@@ -832,6 +832,103 @@ def test_verify_cascade_applies_code_to_unverified_descendants_only(client, db_s
     assert db_session.get(Issue, verified_kid.id).category_verified is True
 
 
+def test_verify_cascade_with_code_overrides_verified_descendants_without_own_category(client, db_session):
+    """verify cascade с category_code: уже верифицированные потомки БЕЗ своей
+    assigned_category получают код. Граница — только ручное решение PM
+    (assigned_category != None). Регрессия для AD-4302-подобных случаев.
+    """
+    project = Project(jira_project_id="90100", key="VR", name="Verified regression", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    parent = Issue(
+        jira_issue_id="90100-1", key="VR-1",
+        summary="Parent", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+        category_verified=False,
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    # Потомок — уже verified, но БЕЗ своей категории (типичный случай: после
+    # старого MappingService / автоверификации). Должен подхватить родительскую.
+    verified_blank = Issue(
+        jira_issue_id="90100-2", key="VR-2",
+        summary="Verified blank", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=parent.id, include_in_analysis=True,
+        category_verified=True, assigned_category=None,
+    )
+    db_session.add(verified_blank)
+    db_session.flush()
+
+    response = client.post(
+        f"/api/v1/issues/{parent.id}/verify",
+        json={
+            "cascade": True,
+            "require_child_verification": False,
+            "has_category_code": True,
+            "category_code": "development",
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(Issue, parent.id).assigned_category == "development"
+    assert db_session.get(Issue, verified_blank.id).assigned_category == "development"
+
+
+def test_verify_cascade_without_code_keeps_old_unverified_only_semantics(client, db_session):
+    """verify cascade БЕЗ category_code: трогает только невериф потомков,
+    верифицированных не трогает (старое поведение для проверочного каскада).
+    """
+    project = Project(jira_project_id="90200", key="VO", name="Verify only", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    parent = Issue(
+        jira_issue_id="90200-1", key="VO-1",
+        summary="Parent", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+        category_verified=False, assigned_category="development",
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    verified_blank = Issue(
+        jira_issue_id="90200-2", key="VO-2",
+        summary="Verified blank", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=parent.id, include_in_analysis=True,
+        category_verified=True, assigned_category=None,
+    )
+    unverified_blank = Issue(
+        jira_issue_id="90200-3", key="VO-3",
+        summary="Unverified blank", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=parent.id, include_in_analysis=True,
+        category_verified=False, assigned_category=None,
+    )
+    db_session.add_all([verified_blank, unverified_blank])
+    db_session.flush()
+
+    response = client.post(
+        f"/api/v1/issues/{parent.id}/verify",
+        json={
+            "cascade": True,
+            "require_child_verification": False,
+            "has_category_code": False,
+            "category_code": None,
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    # Категории нигде не меняются
+    assert db_session.get(Issue, verified_blank.id).assigned_category is None
+    assert db_session.get(Issue, unverified_blank.id).assigned_category is None
+    # Невериф подтверждён, ранее верифицированный не трогается (уже True)
+    assert db_session.get(Issue, unverified_blank.id).category_verified is True
+    assert db_session.get(Issue, verified_blank.id).category_verified is True
+
+
 def test_tree_roots_marks_context_ancestor_for_tab(client, db_session):
     """Родитель без своей категории, но с потомком в архиве — is_context=true."""
     project = Project(jira_project_id="ctx-1", key="CTX", name="Context", is_active=True)
