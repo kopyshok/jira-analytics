@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Issue, Worklog, Employee, BacklogItem, ScenarioAllocation, PlanningScenario,
 )
+from app.services.backlog_service import CANCEL_STATUSES
 
 ROLES = ("analyst", "dev", "qa", "opo")
 QUARTER_MONTHS = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
@@ -136,9 +137,20 @@ class HoursBreakdownService:
         fact_current = self._aggregate_worklog(approved_ids, q_start, q_end)
         approved = self._aggregate_plan(approved_ids)
 
+        cancelled_ids: Set[str] = set()
+        if descendants:
+            rows = (
+                self.db.query(Issue.id, Issue.status)
+                .filter(Issue.id.in_(descendants))
+                .all()
+            )
+            cancelled_ids = {iid for iid, status in rows if status in CANCEL_STATUSES}
+
         draft_ids: Set[str] = set()
         for iid in descendants:
             if iid in approved_ids:
+                continue
+            if iid in cancelled_ids:
                 continue
             if self._issue_has_worklog(iid):
                 continue
