@@ -181,6 +181,27 @@ def test_planable_negative_marked(db_session):
     assert result["flags"]["overrun"] is True
 
 
+def test_cancelled_descendants_excluded_from_draft(db_session):
+    """Отменённые потомки (Эпик/ITL в статусе «Отменено») не должны падать в Черновик."""
+    p = _project(db_session)
+    rfa = _issue(db_session, p, "RFA-6C", "RFA", d_jira=500)
+    cancelled_epic = _issue(
+        db_session, p, "PRJ-6C", "Epic", parent_id=rfa.id, d_jira=100
+    )
+    cancelled_epic.status = "Отменено"
+    cancelled_itl = _issue(
+        db_session, p, "PRJ-6D", "ITL", parent_id=rfa.id, d_jira=50, a_jira=20
+    )
+    cancelled_itl.status = "Rejected"
+    db_session.commit()
+
+    svc = HoursBreakdownService(db_session)
+    result = svc.calculate(rfa.id, year=2026, quarter=2)
+    assert result["draft"]["dev"] == 0
+    assert result["draft"]["analyst"] == 0
+    assert result["draft"]["total"] == 0
+
+
 def test_current_fact_only_in_approved_epics(db_session):
     """Факт текущий считает worklog ТОЛЬКО для утв. эпиков, не для всего поддерева."""
     p = _project(db_session)
