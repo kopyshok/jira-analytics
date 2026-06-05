@@ -2,6 +2,7 @@ import { Row, Col } from 'antd';
 import ProjectsWidget from '../components/dashboard/ProjectsWidget';
 import NormWorkWidget from '../components/dashboard/NormWorkWidget';
 import CategoryWidget from '../components/dashboard/CategoryWidget';
+import HoursBalanceWidget from '../components/dashboard/HoursBalanceWidget';
 import dashboardHelp from '../../../docs/help/dashboard.md?raw';
 import { useDashboardProjects, useDashboardNormWork, useDashboardCategories } from '../hooks/useAnalytics';
 import type { QuarterPeriod } from '../types/api';
@@ -40,6 +41,12 @@ export default function DashboardPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24}>
           <CategoryWidget data={categories} loading={catLoading} />
+        </Col>
+      </Row>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24}>
+          <HoursBalanceWidget />
         </Col>
       </Row>
 
