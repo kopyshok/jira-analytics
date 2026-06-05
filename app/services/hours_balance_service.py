@@ -361,11 +361,7 @@ class HoursBalanceService:
                 cur += timedelta(days=1)
                 continue
 
-            # Regular workday — only process if there's an actual worklog
-            if fact == 0:
-                cur += timedelta(days=1)
-                continue
-
+            # Regular workday — always process (fact=0 → auto-skip detection)
             delta = fact - base_norm
             balance += delta
             month_key = (cur.year, cur.month)

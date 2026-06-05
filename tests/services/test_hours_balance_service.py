@@ -264,15 +264,20 @@ def test_sparkline_is_cumulative(db_session, emp, issue):
 
 
 def test_compute_employee_returns_days_and_monthly(db_session, emp, issue):
-    """Drill-in возвращает посуточный массив + месячные сводки."""
+    """Drill-in возвращает посуточный массив + помесячные сводки.
+
+    Период — 4 рабочих дня (12-15 янв 2026 = пн-чт). Каждый день
+    отрабатывает явно: 12 янв = 11ч (+3 переработка), 13 янв = 5ч (-3 отгул),
+    14 янв и 15 янв по 8ч (норма). Итог: balance = 0, 1 переработка, 1 отгул.
+    """
     db_session.add(Worklog(
         id="wl-1",
         jira_worklog_id="j-1",
         issue_id=issue.id,
         employee_id=emp.id,
         hours=11.0,
-        time_spent_seconds=int(11.0 * 3600),
-        started_at=datetime(2026, 1, 13, 10, 0),  # вт +3ч
+        time_spent_seconds=int(11 * 3600),
+        started_at=datetime(2026, 1, 12, 10, 0),  # пн +3
     ))
     db_session.add(Worklog(
         id="wl-2",
@@ -280,29 +285,49 @@ def test_compute_employee_returns_days_and_monthly(db_session, emp, issue):
         issue_id=issue.id,
         employee_id=emp.id,
         hours=5.0,
-        time_spent_seconds=int(5.0 * 3600),
-        started_at=datetime(2026, 2, 3, 10, 0),  # вт -3ч
+        time_spent_seconds=int(5 * 3600),
+        started_at=datetime(2026, 1, 13, 10, 0),  # вт -3
+    ))
+    db_session.add(Worklog(
+        id="wl-3",
+        jira_worklog_id="j-3",
+        issue_id=issue.id,
+        employee_id=emp.id,
+        hours=8.0,
+        time_spent_seconds=int(8 * 3600),
+        started_at=datetime(2026, 1, 14, 10, 0),  # ср norm
+    ))
+    db_session.add(Worklog(
+        id="wl-4",
+        jira_worklog_id="j-4",
+        issue_id=issue.id,
+        employee_id=emp.id,
+        hours=8.0,
+        time_spent_seconds=int(8 * 3600),
+        started_at=datetime(2026, 1, 15, 10, 0),  # чт norm
     ))
     db_session.commit()
 
     svc = HoursBalanceService(db_session)
     detail = svc.compute_employee(
         employee_id=emp.id,
-        from_=date(2026, 1, 1),
-        to_=date(2026, 2, 28),
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 15),
     )
     assert detail.employee_id == emp.id
-    assert detail.balance_hours == pytest.approx(0.0, abs=0.1)  # +3 -3
+    assert detail.balance_hours == pytest.approx(0.0, abs=0.1)
     assert detail.overtime_days == 1
     assert detail.skip_days == 1
-    assert len(detail.monthly) == 2
-    jan = next(m for m in detail.monthly if m.month == 1)
-    assert jan.balance == pytest.approx(3.0)
+    assert len(detail.monthly) == 1
+    jan = detail.monthly[0]
+    assert jan.month == 1
+    assert jan.balance == pytest.approx(0.0, abs=0.1)
     assert jan.overtime_days == 1
-    feb = next(m for m in detail.monthly if m.month == 2)
-    assert feb.balance == pytest.approx(-3.0)
-    assert feb.skip_days == 1
-    # Найти день с переработкой
-    overtime_day = next(d for d in detail.days if d.day == date(2026, 1, 13))
+    assert jan.skip_days == 1
+    # days
+    overtime_day = next(d for d in detail.days if d.day == date(2026, 1, 12))
     assert overtime_day.kind == "overtime"
     assert overtime_day.delta == pytest.approx(3.0)
+    skip_day = next(d for d in detail.days if d.day == date(2026, 1, 13))
+    assert skip_day.kind == "skip"
+    assert skip_day.delta == pytest.approx(-3.0)
