@@ -17,8 +17,22 @@ from app.schemas.dashboard import (
     DashboardCategoriesResponse,
 )
 from app.schemas.analytics_report import AnalyticsReportResponse, IssueWorklogItem
+from app.schemas.hours_balance import (
+    HoursBalanceResponse,
+    PeriodInfo,
+    TeamSummary,
+    EmployeeBalance,
+    EmployeeBalanceDetail,
+    EmployeeInfo,
+    EmployeeKpi,
+    MonthlySummary,
+    DailyEntry,
+)
 from app.services.analytics_service import AnalyticsService, parse_teams_csv
 from app.services.export_service import ExportService
+from app.services.hours_balance_service import HoursBalanceService
+from app.models.employee import Employee
+from app.models.employee_team import EmployeeTeam
 
 
 router = APIRouter()
@@ -146,5 +160,142 @@ def get_issue_worklogs_endpoint(
 ):
     """Плоский список ворклогов по задаче за период."""
     return AnalyticsService(db).get_issue_worklogs(issue_id, start, end)
+
+
+# === Hours balance endpoints ===
+
+
+@router.get("/dashboard/hours-balance", response_model=HoursBalanceResponse)
+def dashboard_hours_balance(
+    from_: Optional[date] = Query(None, alias="from"),
+    to: Optional[date] = Query(None),
+    teams: Optional[str] = Query(None, description="Команды CSV"),
+    db: Session = Depends(get_db),
+):
+    """Виджет баланс часов команды: переработки/автоотгулы по сотрудникам."""
+    today = date.today()
+    resolved_from = from_ or date(today.year, 1, 1)
+    resolved_to = to or today
+
+    team_ids = parse_teams_csv(teams)
+
+    if team_ids:
+        employee_ids = (
+            db.query(EmployeeTeam.employee_id)
+            .filter(EmployeeTeam.team.in_(team_ids))
+            .distinct()
+            .all()
+        )
+        employee_ids = [row[0] for row in employee_ids]
+    else:
+        employee_ids = [
+            row[0]
+            for row in db.query(Employee.id).filter(Employee.is_active == True).all()  # noqa: E712
+        ]
+
+    svc = HoursBalanceService(db)
+    result = svc.compute_team(
+        employee_ids=employee_ids,
+        from_=resolved_from,
+        to_=resolved_to,
+    )
+
+    return HoursBalanceResponse(
+        period=PeriodInfo(
+            from_=result.period_from,
+            to=result.period_to,
+            working_days=result.working_days,
+        ),
+        team_summary=TeamSummary(
+            employees_count=result.team_summary_employees_count,
+            overtime_hours=result.team_summary_overtime_hours,
+            skip_hours=result.team_summary_skip_hours,
+            net_balance=result.team_summary_net_balance,
+        ),
+        employees=[
+            EmployeeBalance(
+                id=e.id,
+                full_name=e.full_name,
+                role_label=e.role_label,
+                avatar_url=e.avatar_url,
+                initials=e.initials,
+                balance_hours=e.balance_hours,
+                overtime_days=e.overtime_days,
+                overtime_hours=e.overtime_hours,
+                skip_days=e.skip_days,
+                skip_hours=e.skip_hours,
+                sparkline=e.sparkline,
+            )
+            for e in result.employees
+        ],
+    )
+
+
+@router.get("/dashboard/hours-balance/{employee_id}", response_model=EmployeeBalanceDetail)
+def dashboard_hours_balance_employee(
+    employee_id: str,
+    from_: Optional[date] = Query(None, alias="from"),
+    to: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Drill-in: посуточный баланс часов одного сотрудника."""
+    today = date.today()
+    resolved_from = from_ or date(today.year, 1, 1)
+    resolved_to = to or today
+
+    svc = HoursBalanceService(db)
+    try:
+        result = svc.compute_employee(
+            employee_id=employee_id,
+            from_=resolved_from,
+            to_=resolved_to,
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    return EmployeeBalanceDetail(
+        employee=EmployeeInfo(
+            id=result.employee_id,
+            full_name=result.full_name,
+            role_label=result.role_label,
+            team_label=result.team_label,
+            avatar_url=result.avatar_url,
+            initials=result.initials,
+        ),
+        period=PeriodInfo(
+            from_=result.period_from,
+            to=result.period_to,
+            working_days=0,  # drill-in doesn't need working_days count
+        ),
+        kpi=EmployeeKpi(
+            balance_hours=result.balance_hours,
+            overtime_days=result.overtime_days,
+            overtime_hours=result.overtime_hours,
+            skip_days=result.skip_days,
+            skip_hours=result.skip_hours,
+        ),
+        monthly=[
+            MonthlySummary(
+                year=m.year,
+                month=m.month,
+                label=m.label,
+                balance=m.balance,
+                overtime_days=m.overtime_days,
+                skip_days=m.skip_days,
+            )
+            for m in result.monthly
+        ],
+        days=[
+            DailyEntry(
+                day=d.day,
+                norm=d.norm,
+                fact=d.fact,
+                delta=d.delta,
+                kind=d.kind,
+                absence_label=d.absence_label,
+            )
+            for d in result.days
+        ],
+    )
 
 
