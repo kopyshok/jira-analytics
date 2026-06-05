@@ -1083,3 +1083,83 @@ export type BulkPreviewResponse = {
 export type BulkApplyResponse = { updated: number; archived_ids: string[] };
 export type BulkAcceptResponse = { applied: number; skipped_no_suggestion: number };
 export type BulkCascadeResponse = { applied: number; skipped_ancestors: number };
+
+// === Dashboard Hours Balance ===
+
+export type DayKind = 'norm' | 'overtime' | 'skip' | 'absence' | 'holiday';
+
+export interface HoursBalancePeriod {
+  from: string;
+  to: string;
+  working_days: number;
+}
+
+export interface HoursBalanceTeamSummary {
+  employees_count: number;
+  overtime_hours: number;
+  skip_hours: number;
+  net_balance: number;
+}
+
+export interface HoursBalanceEmployee {
+  id: string;
+  full_name: string;
+  role_label: string | null;
+  avatar_url: string | null;
+  initials: string;
+  balance_hours: number;
+  overtime_days: number;
+  overtime_hours: number;
+  skip_days: number;
+  skip_hours: number;
+  sparkline: number[];
+}
+
+export interface HoursBalanceResponse {
+  period: HoursBalancePeriod;
+  team_summary: HoursBalanceTeamSummary;
+  employees: HoursBalanceEmployee[];
+}
+
+export interface HoursBalanceMonthlySummary {
+  year: number;
+  month: number;
+  label: string;
+  balance: number;
+  overtime_days: number;
+  skip_days: number;
+}
+
+export interface HoursBalanceDailyEntry {
+  day: string;
+  norm: number;
+  fact: number;
+  delta: number;
+  kind: DayKind;
+  absence_label: string | null;
+}
+
+export interface HoursBalanceEmployeeInfo {
+  id: string;
+  full_name: string;
+  role_label: string | null;
+  team_label: string | null;
+  avatar_url: string | null;
+  initials: string;
+}
+
+export interface HoursBalanceEmployeeKpi {
+  balance_hours: number;
+  overtime_days: number;
+  overtime_hours: number;
+  skip_days: number;
+  skip_hours: number;
+}
+
+export interface HoursBalanceDetailResponse {
+  employee: HoursBalanceEmployeeInfo;
+  period: HoursBalancePeriod;
+  kpi: HoursBalanceEmployeeKpi;
+  monthly: HoursBalanceMonthlySummary[];
+  days: HoursBalanceDailyEntry[];
+}
