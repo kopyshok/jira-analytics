@@ -1,10 +1,19 @@
 """Сервис ленты «Что нового»."""
 import re
 
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.models.release_note import NOTE_TYPES, SECTIONS, ReleaseNote
 from app.models.user import User
+
+
+# Порядок категорий в ленте: Новое → Улучшение → Исправление.
+_NOTE_TYPE_ORDER = case(
+    {"new": 0, "improvement": 1, "fix": 2},
+    value=ReleaseNote.note_type,
+    else_=99,
+)
 
 
 # SemVer-ish сравнение: "v1.10.0" > "v1.2.0".
@@ -107,7 +116,12 @@ class ReleaseNoteService:
         q = self.db.query(ReleaseNote).filter(ReleaseNote.version.in_(versions))
         if not include_hidden:
             q = q.filter(ReleaseNote.is_hidden.is_(False))
-        return q.order_by(ReleaseNote.version, ReleaseNote.sort_order, ReleaseNote.created_at).all()
+        return q.order_by(
+            ReleaseNote.version,
+            _NOTE_TYPE_ORDER,
+            ReleaseNote.sort_order,
+            ReleaseNote.created_at,
+        ).all()
 
     def list_drafts(self) -> list[ReleaseNote]:
         return (
