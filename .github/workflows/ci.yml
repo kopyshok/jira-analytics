@@ -118,6 +118,10 @@ jobs:
         working-directory: frontend
       - run: npm run lint:design
         working-directory: frontend
+      # Drop TS incremental cache — иначе tsc -b может пропустить файлы
+      # из-за кэша tsbuildinfo и упустить ошибки типизации (например, TS2367
+      # narrowing на const literal union'ах). См. инцидент v1.2.1.
+      - run: rm -rf frontend/node_modules/.tmp
       - run: npm run build
         working-directory: frontend
 

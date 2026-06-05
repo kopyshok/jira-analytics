@@ -120,6 +120,30 @@ def ensure_clean_tree() -> None:
         raise SystemExit(1)
 
 
+def ensure_docker_build() -> None:
+    """Прогнать полную docker сборку. Ловит TS-ошибки и build-фейлы ДО тэга.
+
+    Раньше: TS-ошибка в фронте проскочила CI (incremental cache) → упала на проде.
+    Теперь: каждый релиз гоняет `docker build` локально как пред-тэговый гейт.
+    Пропустить можно `--skip-docker-build` для исключительных случаев.
+    """
+    print("\n[release] docker build (pre-tag gate)...")
+    result = subprocess.run(
+        ["docker", "build", "--build-arg", "VITE_API_BASE_URL=/api/v1",
+         "-t", "jira-analytics:pre-release-check", "."],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(
+            "\n[release] docker build УПАЛ. Тэг не создан.\n"
+            "Исправь ошибку и перезапусти. "
+            "Чтобы пропустить (на свой риск) — --skip-docker-build.\n"
+        )
+        raise SystemExit(result.returncode)
+    print("[release] docker build OK.\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Semi-automatic release tagger")
     parser.add_argument(
@@ -133,6 +157,11 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         help="показать предложение, ничего не менять",
+    )
+    parser.add_argument(
+        "--skip-docker-build",
+        action="store_true",
+        help="пропустить пред-тэговую docker сборку (на свой риск)",
     )
     args = parser.parse_args()
 
@@ -191,6 +220,9 @@ def main() -> None:
         else:
             print(f"Не понял ответ: {ans!r}. Отменено.")
             return
+
+    if not args.skip_docker_build:
+        ensure_docker_build()
 
     print(f"\nЗапуск: make release VERSION={target}")
     result = subprocess.run(
