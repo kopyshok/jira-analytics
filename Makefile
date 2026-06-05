@@ -63,11 +63,11 @@ release-auto:
 release:
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=v1.2.3"; exit 1; fi
 	@echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "VERSION must match vMAJOR.MINOR.PATCH"; exit 1; }
-	@if ! git diff --quiet || ! git diff --cached --quiet; then echo "Working tree dirty — commit or stash first."; exit 1; fi
+	@if ! git diff --quiet; then echo "Working tree dirty (unstaged changes) — commit or stash first."; exit 1; fi
 	@PLAIN=$$(echo "$(VERSION)" | sed 's/^v//'); \
 	python -c "import re,pathlib; p=pathlib.Path('app/config.py'); s=p.read_text(); s=re.sub(r'app_version: str = \"[^\"]*\"', f'app_version: str = \"$$PLAIN\"', s); p.write_text(s)"; \
 	python -c "import json,pathlib; p=pathlib.Path('frontend/package.json'); d=json.loads(p.read_text()); d['version']='$$PLAIN'; p.write_text(json.dumps(d, indent=2)+'\n')"
-	git add app/config.py frontend/package.json
+	git add app/config.py frontend/package.json release_notes
 	git commit -m "chore(release): $(VERSION)"
 	git tag -a $(VERSION) -m "Release $(VERSION)"
 	@echo ""

@@ -163,6 +163,11 @@ def main() -> None:
         action="store_true",
         help="пропустить пред-тэговую docker сборку (на свой риск)",
     )
+    parser.add_argument(
+        "--skip-notes-check",
+        action="store_true",
+        help="разрешить релиз без файла release_notes/<version>.json (на свой риск)",
+    )
     args = parser.parse_args()
 
     ensure_clean_tree()
@@ -221,8 +226,46 @@ def main() -> None:
             print(f"Не понял ответ: {ans!r}. Отменено.")
             return
 
+    # Пред-проверка: release notes должны быть либо в drafts.json (привяжем),
+    # либо уже в файле release_notes/<target>.json (ретро/повторный релиз).
+    drafts_file = REPO_ROOT / "release_notes" / "drafts.json"
+    target_notes = REPO_ROOT / "release_notes" / f"{target}.json"
+    if (
+        not drafts_file.exists()
+        and not target_notes.exists()
+        and not args.skip_notes_check
+    ):
+        sys.stderr.write(
+            f"\n[release] Нет release-notes для {target}.\n"
+            f"  Ожидался файл: {target_notes.relative_to(REPO_ROOT)} "
+            "(или черновики release_notes/drafts.json).\n"
+            "  Добавь через: py -3.10 scripts/release_note.py add ...\n"
+            "  Или пропусти проверку: --skip-notes-check.\n"
+        )
+        raise SystemExit(1)
+
     if not args.skip_docker_build:
         ensure_docker_build()
+
+    # После docker-build (если упал — bind не делаем, дерево чистое).
+    if drafts_file.exists():
+        print(f"\nПривязка черновиков release notes к {target}...")
+        bind = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "release_note.py"),
+             "bind", "--version", target],
+            cwd=REPO_ROOT, check=False,
+        )
+        if bind.returncode != 0:
+            sys.stderr.write(
+                "Не удалось привязать черновики. Запусти вручную: "
+                f"py -3.10 scripts/release_note.py bind --version {target}\n"
+            )
+            raise SystemExit(bind.returncode)
+
+    # Stage release_notes — Makefile проверяет только unstaged.
+    subprocess.run(
+        ["git", "add", "release_notes"], cwd=REPO_ROOT, check=False,
+    )
 
     print(f"\nЗапуск: make release VERSION={target}")
     result = subprocess.run(
@@ -231,21 +274,9 @@ def main() -> None:
     if result.returncode != 0:
         raise SystemExit(result.returncode)
 
-    # Привязать накопленные черновики release notes к новой версии.
-    print(f"\nПривязка черновиков release notes к {target}...")
-    bind = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "scripts" / "release_note.py"),
-         "bind", "--version", target],
-        cwd=REPO_ROOT, check=False,
-    )
-    if bind.returncode != 0:
-        sys.stderr.write(
-            "Не удалось привязать черновики. Запусти вручную: "
-            f"py -3.10 scripts/release_note.py bind --version {target}\n"
-        )
     print(
-        "\nГотово. Открой /settings → «Что нового» — проверь записи "
-        "и опубликуй пользователям."
+        "\nГотово. После push релиз-заметки попадут на прод автоматически "
+        "(сидер на старте контейнера прочитает release_notes/*.json)."
     )
 
 
