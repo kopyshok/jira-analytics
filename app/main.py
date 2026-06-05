@@ -37,6 +37,17 @@ async def lifespan(app: FastAPI):
     logger.info("Debug mode: %s", settings.debug)
     logger.info("Database: %s", settings.database_url)
 
+    # --- Release notes seed from release_notes/*.json ---
+    db = SessionLocal()
+    try:
+        from app.services.release_note_seed import seed_from_files
+        try:
+            seed_from_files(db)
+        except Exception as e:
+            logger.warning("release_notes seed failed (non-fatal): %s", e)
+    finally:
+        db.close()
+
     # --- Scheduler ---
     db = SessionLocal()
     try:
