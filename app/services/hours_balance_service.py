@@ -356,7 +356,13 @@ class HoursBalanceService:
                     monthly_acc[(cur.year, cur.month)]["overtime_days"] += 1
                     days.append(DayCalc(cur, 0.0, fact, delta, "overtime"))
                 else:
-                    days.append(DayCalc(cur, 0.0, 0.0, 0.0, "holiday"))
+                    # Weekend / holiday with no work — skip (don't include in days list)
+                    pass
+                cur += timedelta(days=1)
+                continue
+
+            # Regular workday — only process if there's an actual worklog
+            if fact == 0:
                 cur += timedelta(days=1)
                 continue
 
