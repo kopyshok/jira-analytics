@@ -61,6 +61,7 @@ type TreeNodeWithChildren = IssueTreeRootNode & {
 };
 
 type InnerTab = 'stack' | 'active' | 'initiatives' | 'archive_target' | 'archive';
+type SearchMode = 'filter' | 'jump';
 const QUEUE_ORDER: InnerTab[] = ['stack', 'active', 'initiatives', 'archive_target', 'archive'];
 const QUEUE_META: Record<InnerTab, { title: string; hint: string; tone: string }> = {
   stack: { title: 'К разбору', hint: 'без решения', tone: 'attention' },
@@ -172,7 +173,7 @@ export default function CategoriesEditorPage() {
   // Режим поведения поиска: 'filter' прячет несовпавшие ветки (старое),
   // 'jump' оставляет полное дерево и по Enter раскрывает путь к найденной
   // задаче + скроллит. Переключи константу чтобы откатить к старому.
-  const SEARCH_MODE: 'filter' | 'jump' = 'jump';
+  const SEARCH_MODE: SearchMode = (import.meta.env.VITE_CATEGORIES_SEARCH_MODE === 'filter') ? 'filter' : 'jump';
   const [jumpedKey, setJumpedKey] = useState<string | null>(null);
 
   const [widths, setWidths] = useState<Record<string, number>>({
