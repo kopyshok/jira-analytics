@@ -3,24 +3,18 @@
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 DayKind = Literal["norm", "overtime", "skip", "absence", "holiday"]
 
 
 class PeriodInfo(BaseModel):
-    from_: date
+    from_: date = Field(serialization_alias="from")
     to: date
     working_days: int
 
-    model_config = ConfigDict(populate_by_name=True)
-
-    def model_dump(self, **kwargs):  # alias from_ → from in output
-        d = super().model_dump(**kwargs)
-        if "from_" in d:
-            d["from"] = d.pop("from_")
-        return d
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
 
 class TeamSummary(BaseModel):
