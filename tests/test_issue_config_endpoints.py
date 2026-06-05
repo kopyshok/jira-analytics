@@ -979,6 +979,95 @@ def test_tree_roots_self_match_not_marked_context(client, project_and_issues, db
     assert self_row["is_context"] is False
 
 
+def test_tree_roots_stack_categorized_parent_not_marked_context(client, db_session):
+    """Разобранный родитель с неразобранными потомками на «К разбору» — НЕ context.
+
+    Регрессия 90fd6d0: PM терял кнопку «Подтвердить N» у разобранного родителя
+    на stack-вкладке — фронт рендерил его как read-only якорь. Контекст-метку
+    оставляем только архив-вкладкам, где она и задумывалась.
+    """
+    project = Project(jira_project_id="stk-1", key="STK", name="Stack", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    parent = Issue(
+        jira_issue_id="stk-1-1", key="STK-1",
+        summary="Categorized parent", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+        team="Team A",
+        assigned_category="support_consultation",
+        category="support_consultation",
+        category_verified=True,
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    unsorted_kid = Issue(
+        jira_issue_id="stk-1-2", key="STK-2",
+        summary="Unsorted kid", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=parent.id, include_in_analysis=True,
+        team="Team A",
+        assigned_category=None, category=None, category_verified=False,
+    )
+    db_session.add(unsorted_kid)
+    db_session.flush()
+
+    response = client.get("/api/v1/issues/tree/roots?project_keys=STK&teams=Team A&tab=stack")
+    assert response.status_code == 200
+    roots = response.json()
+    parent_row = next(r for r in roots if r["key"] == "STK-1")
+    assert parent_row["is_context"] is False
+    assert parent_row["descendant_match_count"] == 1
+    assert parent_row["assigned_category"] == "support_consultation"
+
+
+def test_children_stack_categorized_parent_not_marked_context(client, db_session):
+    """То же для /issues/{id}/children?tab=stack — мост-родитель остаётся редактируемым."""
+    project = Project(jira_project_id="stk-2", key="STC", name="Stack children", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    root = Issue(
+        jira_issue_id="stc-1", key="STC-1",
+        summary="Root", issue_type="Эпик", status="Open",
+        project_id=project.id, include_in_analysis=True,
+        team="Team A",
+        assigned_category="support_consultation",
+        category_verified=True,
+    )
+    db_session.add(root)
+    db_session.flush()
+
+    bridge = Issue(
+        jira_issue_id="stc-2", key="STC-2",
+        summary="Categorized bridge", issue_type="Эпик", status="Open",
+        project_id=project.id, parent_id=root.id, include_in_analysis=True,
+        team="Team A",
+        assigned_category="support_consultation",
+        category_verified=True,
+    )
+    db_session.add(bridge)
+    db_session.flush()
+
+    leaf = Issue(
+        jira_issue_id="stc-3", key="STC-3",
+        summary="Unsorted leaf", issue_type="Task", status="Open",
+        project_id=project.id, parent_id=bridge.id, include_in_analysis=True,
+        team="Team A",
+        assigned_category=None, category_verified=False,
+    )
+    db_session.add(leaf)
+    db_session.flush()
+
+    response = client.get(
+        f"/api/v1/issues/{root.id}/children?teams=Team A&tab=stack"
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    bridge_row = next(r for r in rows if r["key"] == "STC-2")
+    assert bridge_row["is_context"] is False
+
+
 def test_verify_without_category_code_keeps_existing_category(client, project_and_issues, db_session):
     """verify без has_category_code не меняет assigned_category — back-compat."""
     _, issues = project_and_issues

@@ -524,9 +524,14 @@ def get_tree_roots(
             issue_type=r.issue_type,
             has_parent=bool(r.parent_id),
         ))
-        # tab context: root попал из-за совпавшего потомка, сам не матчит.
-        # Помечаем is_context=true → фронт рендерит как read-only.
-        is_tab_context = (not node_self_match) or (r.id in context_ids)
+        # tab context: на архив-вкладках разобранный родитель без архивной
+        # категории попадает как мост к архивным потомкам — помечаем
+        # is_context=true, фронт рендерит read-only. На «stack»/«active»/
+        # «initiatives» — наоборот: разобранный родитель с неразобранными
+        # потомками должен оставаться полноценной строкой, чтобы PM мог
+        # каскадно протянуть свою категорию на детей кнопкой «Подтвердить N».
+        is_archive_tab = tab in ARCHIVE_CATEGORY_CODES
+        is_tab_context = (r.id in context_ids) or (is_archive_tab and not node_self_match)
         roots.append(IssueTreeRootNode(
             id=r.id,
             key=r.key,
@@ -1356,10 +1361,13 @@ def get_issue_children(
             include_in_analysis=ch.include_in_analysis if ch.include_in_analysis is not None else True,
             status_changed_at=ch.status_changed_at.isoformat() if ch.status_changed_at else None,
             goals=ch.goals or None,
-            # is_context=True если узел чужой (foreign-team якорь), ИЛИ свой,
-            # но сам не матчит вкладку / поиск (попал как мост к совпавшим
-            # потомкам). UI рендерит как read-only.
-            is_context=(not node_in_team(ch)) or (not matches_tab(ch)) or (not text_matches(ch)),
+            # is_context=True если узел чужой (foreign-team якорь) или мост
+            # к совпавшим потомкам в архив-вкладках. На stack/active/initiatives
+            # разобранный родитель остаётся редактируемой строкой — иначе PM
+            # теряет кнопку «Подтвердить N» для каскадирования категории детям.
+            is_context=(not node_in_team(ch))
+                       or (not text_matches(ch))
+                       or ((tab in ARCHIVE_CATEGORY_CODES) and not matches_tab(ch)),
             is_container=classify(rules, EvaluationInput(
                 project_key=proj_keys_map.get(ch.project_id, ""),
                 issue_type=ch.issue_type,
