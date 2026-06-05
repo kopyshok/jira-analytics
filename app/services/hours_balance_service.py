@@ -41,6 +41,62 @@ class DayCalc:
     absence_label: Optional[str] = None
 
 
+@dataclass
+class EmployeeBalanceResult:
+    id: str
+    full_name: str
+    role_label: Optional[str]
+    avatar_url: Optional[str]
+    initials: str
+    balance_hours: float
+    overtime_days: int
+    overtime_hours: float
+    skip_days: int
+    skip_hours: float
+    sparkline: list
+
+
+@dataclass
+class TeamBalanceResult:
+    period_from: date
+    period_to: date
+    working_days: int
+    team_summary_employees_count: int
+    team_summary_overtime_hours: float
+    team_summary_skip_hours: float
+    team_summary_net_balance: float
+    employees: list
+
+
+@dataclass
+class MonthlySummaryResult:
+    year: int
+    month: int
+    label: str
+    balance: float
+    overtime_days: int
+    skip_days: int
+
+
+@dataclass
+class EmployeeDetailResult:
+    employee_id: str
+    full_name: str
+    role_label: Optional[str]
+    team_label: Optional[str]
+    initials: str
+    avatar_url: Optional[str]
+    period_from: date
+    period_to: date
+    balance_hours: float
+    overtime_days: int
+    overtime_hours: float
+    skip_days: int
+    skip_hours: float
+    monthly: list
+    days: list
+
+
 class HoursBalanceService:
     def __init__(
         self,
@@ -124,3 +180,231 @@ class HoursBalanceService:
                 day_val = date.fromisoformat(day_val)
             result[(emp_id, day_val)] = float(hours or 0)
         return result
+
+    def compute_team(
+        self,
+        employee_ids: list,
+        from_: date,
+        to_: date,
+    ) -> TeamBalanceResult:
+        """Считает баланс часов по команде за период."""
+        if not employee_ids:
+            return TeamBalanceResult(
+                period_from=from_,
+                period_to=to_,
+                working_days=0,
+                team_summary_employees_count=0,
+                team_summary_overtime_hours=0.0,
+                team_summary_skip_hours=0.0,
+                team_summary_net_balance=0.0,
+                employees=[],
+            )
+
+        employees = (
+            self.db.query(Employee)
+            .filter(Employee.id.in_(employee_ids))
+            .all()
+        )
+        if not employees:
+            return TeamBalanceResult(
+                period_from=from_,
+                period_to=to_,
+                working_days=0,
+                team_summary_employees_count=0,
+                team_summary_overtime_hours=0.0,
+                team_summary_skip_hours=0.0,
+                team_summary_net_balance=0.0,
+                employees=[],
+            )
+
+        cal_hours = self.production_calendar.hours_in_range_map(from_, to_)
+        absences = self._absence_map(employee_ids, from_, to_)
+        worklogs = self._worklog_map(employee_ids, from_, to_)
+
+        # Build list of working days + ALL days that have worklog activity
+        working_days = 0
+        days_iter: list[date] = []
+        cur = from_
+        while cur <= to_:
+            ch = cal_hours.get(cur)
+            if ch is not None:
+                is_workday = ch > 0
+            else:
+                is_workday = cur.weekday() < 5
+            if is_workday:
+                working_days += 1
+                days_iter.append(cur)
+            else:
+                # Include weekend/holiday days only if someone logged work there
+                for emp in employees:
+                    if worklogs.get((emp.id, cur), 0.0) > 0:
+                        days_iter.append(cur)
+                        break
+            cur += timedelta(days=1)
+        # Deduplicate and sort
+        days_iter = sorted(set(days_iter))
+
+        emp_results: list[EmployeeBalanceResult] = []
+        team_overtime = 0.0
+        team_skip = 0.0
+        for e in employees:
+            balance = 0.0
+            overtime_days = 0
+            overtime_hours = 0.0
+            skip_days = 0
+            skip_hours = 0.0
+            sparkline: list[float] = []
+            for d in days_iter:
+                ch = cal_hours.get(d)
+                if ch is not None:
+                    base_norm = ch
+                else:
+                    base_norm = 8.0 if d.weekday() < 5 else 0.0
+                absence_label = absences.get((e.id, d))
+                # absence (not day_off) zeros the norm
+                norm_eff = 0.0 if absence_label else max(0.0, base_norm)
+                fact = worklogs.get((e.id, d), 0.0)
+                if norm_eff == 0 and fact == 0:
+                    sparkline.append(balance)
+                    continue
+                delta = fact - norm_eff
+                balance += delta
+                if delta > 0 and (norm_eff == 0 or delta > norm_eff * CLASS_THRESHOLD_PCT):
+                    overtime_days += 1
+                    overtime_hours += delta
+                elif delta < 0 and abs(delta) > norm_eff * CLASS_THRESHOLD_PCT:
+                    skip_days += 1
+                    skip_hours += delta  # negative
+                sparkline.append(balance)
+
+            initials = "".join(p[0] for p in e.display_name.split()[:2]).upper() if e.display_name else "?"
+            emp_results.append(EmployeeBalanceResult(
+                id=e.id,
+                full_name=e.display_name,
+                role_label=getattr(getattr(e, "role", None), "label", None),
+                avatar_url=getattr(e, "avatar_url", None),
+                initials=initials,
+                balance_hours=round(balance, 1),
+                overtime_days=overtime_days,
+                overtime_hours=round(overtime_hours, 1),
+                skip_days=skip_days,
+                skip_hours=round(skip_hours, 1),
+                sparkline=[round(v, 1) for v in sparkline],
+            ))
+            team_overtime += overtime_hours
+            team_skip += skip_hours
+
+        return TeamBalanceResult(
+            period_from=from_,
+            period_to=to_,
+            working_days=working_days,
+            team_summary_employees_count=len(emp_results),
+            team_summary_overtime_hours=round(team_overtime, 1),
+            team_summary_skip_hours=round(team_skip, 1),
+            team_summary_net_balance=round(team_overtime + team_skip, 1),
+            employees=emp_results,
+        )
+
+    def compute_employee(
+        self,
+        employee_id: str,
+        from_: date,
+        to_: date,
+    ) -> EmployeeDetailResult:
+        """Посуточный drill-in по одному сотруднику за период."""
+        e = self.db.get(Employee, employee_id)
+        if e is None:
+            raise ValueError(f"Employee {employee_id} not found")
+
+        cal_hours = self.production_calendar.hours_in_range_map(from_, to_)
+        absences = self._absence_map([employee_id], from_, to_)
+        worklogs = self._worklog_map([employee_id], from_, to_)
+
+        days: list[DayCalc] = []
+        balance = 0.0
+        overtime_days = 0
+        overtime_hours = 0.0
+        skip_days = 0
+        skip_hours = 0.0
+        monthly_acc: dict[tuple[int, int], dict] = defaultdict(
+            lambda: {"balance": 0.0, "overtime_days": 0, "skip_days": 0}
+        )
+
+        cur = from_
+        while cur <= to_:
+            ch = cal_hours.get(cur)
+            if ch is not None:
+                base_norm = ch
+            else:
+                base_norm = 8.0 if cur.weekday() < 5 else 0.0
+            absence_label = absences.get((employee_id, cur))
+            fact = worklogs.get((employee_id, cur), 0.0)
+
+            if absence_label:
+                kind = "absence"
+                days.append(DayCalc(cur, 0.0, fact, 0.0, kind, absence_label))
+                cur += timedelta(days=1)
+                continue
+
+            if base_norm == 0:
+                if fact > 0:
+                    delta = fact
+                    balance += delta
+                    overtime_days += 1
+                    overtime_hours += delta
+                    monthly_acc[(cur.year, cur.month)]["balance"] += delta
+                    monthly_acc[(cur.year, cur.month)]["overtime_days"] += 1
+                    days.append(DayCalc(cur, 0.0, fact, delta, "overtime"))
+                else:
+                    days.append(DayCalc(cur, 0.0, 0.0, 0.0, "holiday"))
+                cur += timedelta(days=1)
+                continue
+
+            delta = fact - base_norm
+            balance += delta
+            month_key = (cur.year, cur.month)
+            monthly_acc[month_key]["balance"] += delta
+            if delta > base_norm * CLASS_THRESHOLD_PCT:
+                kind = "overtime"
+                overtime_days += 1
+                overtime_hours += delta
+                monthly_acc[month_key]["overtime_days"] += 1
+            elif -delta > base_norm * CLASS_THRESHOLD_PCT:
+                kind = "skip"
+                skip_days += 1
+                skip_hours += delta
+                monthly_acc[month_key]["skip_days"] += 1
+            else:
+                kind = "norm"
+            days.append(DayCalc(cur, base_norm, fact, delta, kind))
+            cur += timedelta(days=1)
+
+        monthly = []
+        for (y, m), acc in sorted(monthly_acc.items()):
+            monthly.append(MonthlySummaryResult(
+                year=y,
+                month=m,
+                label=MONTH_LABELS_RU[m - 1],
+                balance=round(acc["balance"], 1),
+                overtime_days=acc["overtime_days"],
+                skip_days=acc["skip_days"],
+            ))
+
+        initials = "".join(p[0] for p in e.display_name.split()[:2]).upper() if e.display_name else "?"
+        return EmployeeDetailResult(
+            employee_id=e.id,
+            full_name=e.display_name,
+            role_label=getattr(getattr(e, "role", None), "label", None),
+            team_label=getattr(e, "team", None),
+            initials=initials,
+            avatar_url=getattr(e, "avatar_url", None),
+            period_from=from_,
+            period_to=to_,
+            balance_hours=round(balance, 1),
+            overtime_days=overtime_days,
+            overtime_hours=round(overtime_hours, 1),
+            skip_days=skip_days,
+            skip_hours=round(skip_hours, 1),
+            monthly=monthly,
+            days=days,
+        )
