@@ -123,3 +123,136 @@ def test_employee_full_norm_balance_zero(db_session, emp, issue):
     assert bal.balance_hours == pytest.approx(0, abs=0.01)
     assert bal.overtime_days == 0
     assert bal.skip_days == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 4: edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_vacation_not_counted_as_skip(db_session, emp, vacation_reason):
+    """Сотрудник в отпуске 12-16 января → ни отгулов, ни переработок."""
+    db_session.add(Absence(
+        id="a-1",
+        employee_id=emp.id,
+        start_date=date(2026, 1, 12),
+        end_date=date(2026, 1, 16),
+        reason_id=vacation_reason.id,
+    ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 16),
+    )
+    bal = result.employees[0]
+    assert bal.skip_days == 0
+    assert bal.overtime_days == 0
+    assert bal.balance_hours == 0
+
+
+def test_day_off_reason_does_not_zero_norm(db_session, emp, day_off_reason, issue):
+    """Absence с причиной day_off не обнуляет норму → отсутствие ворклога = скип."""
+    db_session.add(Absence(
+        id="a-d",
+        employee_id=emp.id,
+        start_date=date(2026, 1, 13),
+        end_date=date(2026, 1, 13),
+        reason_id=day_off_reason.id,
+    ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 13),
+        to_=date(2026, 1, 13),
+    )
+    bal = result.employees[0]
+    # 13 янв 2026 — вторник, норма 8ч, факт 0 → -8ч скип
+    assert bal.skip_days == 1
+    assert bal.skip_hours == pytest.approx(-8.0)
+
+
+def test_weekend_work_counted_as_overtime(db_session, emp, issue):
+    """Работа в субботу (норма 0) → +часы переработки."""
+    db_session.add(Worklog(
+        id="wl-sat",
+        jira_worklog_id="j-sat",
+        issue_id=issue.id,
+        employee_id=emp.id,
+        hours=4.0,
+        time_spent_seconds=int(4.0 * 3600),
+        started_at=datetime(2026, 1, 17, 12, 0),  # суббота
+    ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 17),
+        to_=date(2026, 1, 17),
+    )
+    bal = result.employees[0]
+    assert bal.overtime_days == 1
+    assert bal.overtime_hours == pytest.approx(4.0)
+    assert bal.balance_hours == pytest.approx(4.0)
+
+
+def test_small_deviation_within_threshold_is_norm(db_session, emp, issue):
+    """Норма 8ч, факт 7.5ч → недодельта 0.5ч (6.25% < 10%) → не скип."""
+    db_session.add(Worklog(
+        id="wl-1",
+        jira_worklog_id="j-1",
+        issue_id=issue.id,
+        employee_id=emp.id,
+        hours=7.5,
+        time_spent_seconds=int(7.5 * 3600),
+        started_at=datetime(2026, 1, 13, 10, 0),
+    ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 13),
+        to_=date(2026, 1, 13),
+    )
+    bal = result.employees[0]
+    assert bal.skip_days == 0
+    assert bal.overtime_days == 0
+    # balance считается всё равно (это для KPI)
+    assert bal.balance_hours == pytest.approx(-0.5)
+
+
+def test_sparkline_is_cumulative(db_session, emp, issue):
+    """Каждый рабочий день +1ч → спарклайн монотонно растёт."""
+    for day_num in range(12, 17):
+        d = date(2026, 1, day_num)
+        if d.weekday() >= 5:
+            continue
+        db_session.add(Worklog(
+            id=f"wl-{day_num}",
+            jira_worklog_id=f"j-{day_num}",
+            issue_id=issue.id,
+            employee_id=emp.id,
+            hours=9.0,  # +1ч сверх нормы
+            time_spent_seconds=int(9.0 * 3600),
+            started_at=datetime(2026, 1, day_num, 10, 0),
+        ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 16),
+    )
+    sp = result.employees[0].sparkline
+    # 12-16 янв 2026 = пн-пт = 5 рабочих дней
+    assert len(sp) == 5
+    for i in range(1, len(sp)):
+        assert sp[i] >= sp[i - 1]  # монотонность
+    assert sp[-1] == pytest.approx(5.0)
