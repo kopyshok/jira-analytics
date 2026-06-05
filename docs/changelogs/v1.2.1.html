@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v1.2.1 · Что нового</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f2329;
+    background: #f5f7fa;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 48px 32px 80px; }
+  .hero {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5085 100%);
+    color: #fff;
+    padding: 40px 32px;
+    border-radius: 16px;
+    margin-bottom: 32px;
+    box-shadow: 0 8px 24px rgba(30, 58, 95, 0.15);
+  }
+  .hero .label { font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.75; }
+  .hero h1 { margin: 4px 0 12px; font-size: 38px; font-weight: 700; }
+  .hero .sub { font-size: 16px; opacity: 0.9; }
+  .summary { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .type-block { margin-bottom: 40px; }
+  .type-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .count { color: #6b7280; font-size: 14px; }
+  .section { margin: 24px 0; }
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #6b7280;
+    margin: 0 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .card {
+    background: #fff;
+    padding: 20px 24px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+    border-left: 3px solid #e5e7eb;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 17px; font-weight: 600; color: #1f2329; }
+  .card p { margin: 0; color: #4b5563; font-size: 15px; }
+  .print-hint {
+    margin-top: 48px;
+    padding: 16px 20px;
+    background: #fff;
+    border-radius: 8px;
+    color: #6b7280;
+    font-size: 13px;
+    text-align: center;
+  }
+  @media print {
+    body { background: #fff; }
+    .wrap { padding: 0; max-width: none; }
+    .hero { box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .card, .badge, .chip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .print-hint { display: none; }
+    .type-block { break-inside: avoid; }
+    .card { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="label">Релиз</div>
+    <h1>v1.2.1</h1>
+    <div class="sub">Что нового — 15 записей</div>
+    <div class="summary"><span class="chip" style="color:#0f5132;background:#d1e7dd">Новое · 5</span><span class="chip" style="color:#055160;background:#cff4fc">Улучшения · 3</span><span class="chip" style="color:#664d03;background:#fff3cd">Исправления · 7</span></div>
+  </div>
+  <section class="type-block">
+  <header class="type-header">
+    <span class="badge" style="color:#0f5132;background:#d1e7dd">
+      Новое
+    </span>
+    <span class="count">5</span>
+  </header>
+  <div class="section">
+  <h2 class="section-title">Бэклог</h2>
+  <article class="card">
+  <h3>Длинная RFA: остаток часов по ролям и кварталам</h3>
+  <p>У RFA с дочерними Эпиками появилось раскрытие строки в бэклоге. Внутри — таблица по ролям (Аналитик / Разработка / Тестирование / ОПЭ) с шестью колонками: План, Факт прошлых кварталов, Факт текущий, Утверждено, Запланировать, Черновик. Период текущего квартала берётся из глобального фильтра сверху страницы.</p>
+</article><article class="card">
+  <h3>Режим планирования группы RFA</h3>
+  <p>В раскрытой строке RFA — переключатель «RFA целиком / По Эпикам». В режиме «По Эпикам» вы отмечаете отдельные дочерние Эпики; RFA-родитель остаётся доступным как опциональная галочка для непокрытых кварталов. Пересечение «RFA + дочка в одном квартале» подсвечивается оранжевым.</p>
+</article><article class="card">
+  <h3>Ручная правка плановых часов с историей</h3>
+  <p>Кнопка «Редактировать план» в раскрытой RFA или у любой задачи открывает drawer: вводите часы по ролям, обязательный комментарий — и план обновляется без обхода через Jira. История всех правок (кто, когда, что) хранится и доступна по ссылке «Показать историю». Если в Jira план потом изменили — появится баннер «Принять Jira / Игнорировать», ваша правка не теряется автоматически.</p>
+</article>
+</div><div class="section">
+  <h2 class="section-title">Сценарии</h2>
+  <article class="card">
+  <h3>Разбивка часов RFA в сценарии</h3>
+  <p>Рядом с ключом длинной RFA в сценарии появилась иконка ℹ. Клик — drawer с таблицей часов (План / Факт прошлых Q / Факт текущий / Утверждено / Запланировать / Черновик per роль) для выбранного квартала.</p>
+</article>
+</div><div class="section">
+  <h2 class="section-title">Категоризация задач</h2>
+  <article class="card">
+  <h3>Прыжок к задаче по Jira-ключу (β)</h3>
+  <p>Введите ключ задачи в поле поиска на странице «Категоризация задач» и нажмите Enter — дерево автоматически раскроет путь от корня до найденной задачи, проскроллит к ней и подсветит жёлтым мерцанием. Дерево больше не фильтруется — соседние ветки остаются видны для сравнения. Режим включён по умолчанию.</p>
+</article>
+</div>
+</section><section class="type-block">
+  <header class="type-header">
+    <span class="badge" style="color:#055160;background:#cff4fc">
+      Улучшения
+    </span>
+    <span class="count">3</span>
+  </header>
+  <div class="section">
+  <h2 class="section-title">Бэклог</h2>
+  <article class="card">
+  <h3>Параметры планирования — 2 колонки</h3>
+  <p>Окно «Параметры планирования» для RFA-задачи теперь раскладывает Анализ/Разработку слева, Тестирование/ОПЭ справа. Скролл вниз сократился примерно вдвое.</p>
+</article>
+</div><div class="section">
+  <h2 class="section-title">Категоризация задач</h2>
+  <article class="card">
+  <h3>«Применить» теперь каскадно проставляет категорию потомкам</h3>
+  <p>При назначении категории родителю через «Применить» все потомки без своей категории получают ту же категорию. Если у потомка стоит другая категория, его поддерево не трогается — ручные решения сохраняются. В уведомлении после применения видно, сколько потомков унаследовало категорию.</p>
+</article>
+</div><div class="section">
+  <h2 class="section-title">Общее</h2>
+  <article class="card">
+  <h3>Справка обновлена под изменения RFA+эпиков и категорий</h3>
+  <p>Разделы «Бэклог», «Категоризация задач» и «Планирование сценариев» приведены к актуальному виду: переименование кнопки «Обновить с Jira», переезд таблицы часов в модалку «Параметры планирования», отказ от перетаскивания в Бэклоге, описание каскадного применения категорий, кнопки «Подтвердить» (категория + verify за один шаг) и режима поиска-прыжка по Jira-ключу. Удалены упоминания убранных элементов («Верифиц. детей», полоса черновика, «Массовые операции»).</p>
+</article>
+</div>
+</section><section class="type-block">
+  <header class="type-header">
+    <span class="badge" style="color:#664d03;background:#fff3cd">
+      Исправления
+    </span>
+    <span class="count">7</span>
+  </header>
+  <div class="section">
+  <h2 class="section-title">Общее</h2>
+  <article class="card">
+  <h3>Фильтр команд в шапке стал удобнее</h3>
+  <p>Список команд переделан: добавлен поиск, чек-лист с подсветкой выбранных и переключатель «выбрать все / найденные». Кнопка «Применить» больше не перекрывается выпадающим списком.</p>
+</article>
+</div><div class="section">
+  <h2 class="section-title">Бэклог</h2>
+  <article class="card">
+  <h3>Раскрытие RFA: убраны три предупреждения в консоли</h3>
+  <p>На вкладке «Активные» при раскрытии RFA-строки в консоли больше не сыпятся предупреждения AntD 6 о вертикальной компоновке кнопок режима и вложенной таблице часов.</p>
+</article><article class="card">
+  <h3>Кнопка «Обновить с Jira» теперь реально ходит в Jira</h3>
+  <p>Раньше кнопка лишь перечитывала локальную базу и показывала «Данные обновлены», но не подтягивала свежие значения полей задач (Заказчик, Тип затрат, Исполнитель). Теперь нажатие действительно тянет эти поля из Jira для всех связанных задач бэклога и обновляет их в карточках. Кнопка переименована в «Обновить с Jira» и показывает индикатор загрузки во время запроса.</p>
+</article><article class="card">
+  <h3>Отменённые задачи больше не считаются в «Черновике» длинной RFA</h3>
+  <p>В разделе «Целевые задачи» → «Параметры планирования» колонка «Черновик» больше не включает потомков в статусе «Отменено» / «Rejected» / «Won't Do». Раньше отменённый Эпик или ITL без ворклога подмешивал свои плановые часы в Черновик.</p>
+</article>
+</div><div class="section">
+  <h2 class="section-title">Категоризация задач</h2>
+  <article class="card">
+  <h3>«Подтвердить» применяет категорию и сразу убирает задачу со стека</h3>
+  <p>Раньше после выбора категории в выпадайке и нажатия «Сохранить изменения» задача оставалась в «К разбору» — приходилось отдельно жать «Подтвердить» в строке. Теперь шагов один: выбрать категорию в Select родителя → нажать «Подтвердить +N» в той же строке. Категория проставляется родителю + автоматически наследуется невериф потомкам (уже разобранные задачи с собственной категорией не меняются). Кнопка «Сохранить изменения» внизу больше не нужна и удалена. Bulk-модалка «Категория для отмеченных» тоже применяет + подтверждает сразу. Кнопка «Массовые операции» убрана.</p>
+</article><article class="card">
+  <h3>Чужие эпики на /categories теперь видно как контекст + умный поиск</h3>
+  <p>Раньше задачи под чужим эпиком (где родитель — другой команды) на /categories пропадали полностью из дерева — PM их не находил. Теперь чужой эпик подтягивается как серый read-only якорь («контекст»): PM видит в какой ветке висит задача, может работать со своими дочками, но сам чужой эпик править нельзя — он принадлежит другой команде. Та же логика для всех вкладок: К разбору, Активные, Архивы. Поиск по Jira-ключу стал строгим: «ITL-57» теперь матчит ровно «ITL-57» — раньше выводил всё подряд (ITL-571, ITL-579 и т.д.). Текстовый поиск по названию работает как раньше. Найденная строка пульсирует жёлтой подсветкой.</p>
+</article><article class="card">
+  <h3>«Подтвердить» в стеке: каскад добивает уже-проверенных потомков без своей категории</h3>
+  <p>Если у потомков в подветке нет своей категории, но они когда-то были помечены как «проверенные» (например, после старого пересчёта), кнопка «Подтвердить +N» больше не пропускает их — родительская категория проставляется и им. Граница каскада не менялась: задача с ручной категорией остаётся со своей.</p>
+</article>
+</div>
+</section>
+  <div class="print-hint">Сохранить в PDF: Ctrl/⌘+P → «Сохранить как PDF»</div>
+</div>
+</body>
+</html>
