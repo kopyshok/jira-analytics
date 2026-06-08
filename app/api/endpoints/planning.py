@@ -1103,34 +1103,49 @@ async def replace_scenario_rules(
 
 
 @router.post(
-    "/scenarios/{scenario_id}/copy-rules-from-template",
+    "/scenarios/{scenario_id}/copy-rules-from-scenario",
     response_model=List[ScenarioRuleOut],
 )
-async def copy_rules_from_template(
+async def copy_rules_from_scenario(
     scenario_id: str,
-    year: int = Query(..., description="Год шаблона"),
-    quarter: int = Query(..., ge=1, le=4, description="Квартал шаблона"),
+    source_scenario_id: str = Query(..., description="ID сценария-источника правил"),
     db: Session = Depends(get_db),
 ):
-    """Заменить правила сценария шаблонными правилами role_capacity_rules за год/квартал."""
+    """Заменить правила сценария правилами другого (утверждённого) сценария."""
     sc = db.get(PlanningScenario, scenario_id)
     if not sc:
         raise HTTPException(status_code=404, detail="Сценарий не найден")
     _require_draft(sc)
 
-    template_rules = (
-        db.query(RoleCapacityRule)
-        .filter(RoleCapacityRule.year == year, RoleCapacityRule.quarter == quarter)
+    if source_scenario_id == scenario_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Источник и приёмник — один и тот же сценарий",
+        )
+
+    source = db.get(PlanningScenario, source_scenario_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Сценарий-источник не найден")
+
+    source_rules = (
+        db.query(ScenarioRule)
+        .filter(ScenarioRule.scenario_id == source_scenario_id)
         .all()
     )
+    if not source_rules:
+        raise HTTPException(
+            status_code=404,
+            detail=f"В сценарии «{source.name}» нет правил для копирования",
+        )
+
     db.query(ScenarioRule).filter(ScenarioRule.scenario_id == scenario_id).delete()
-    for rcr in template_rules:
+    for r in source_rules:
         db.add(
             ScenarioRule(
                 scenario_id=scenario_id,
-                role=rcr.role,
-                work_type_id=rcr.work_type_id,
-                percent_of_norm=rcr.percent_of_norm,
+                role=r.role,
+                work_type_id=r.work_type_id,
+                percent_of_norm=r.percent_of_norm,
             )
         )
     db.commit()

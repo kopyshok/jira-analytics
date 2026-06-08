@@ -194,20 +194,18 @@ export function useScenarioResourceSummary(
   });
 }
 
-export function useCopyRulesFromTemplate() {
+export function useCopyRulesFromScenario() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({
       scenarioId,
-      year,
-      quarter,
+      sourceScenarioId,
     }: {
       scenarioId: string;
-      year: number;
-      quarter: number;
+      sourceScenarioId: string;
     }) =>
-      api.post(
-        `/planning/scenarios/${scenarioId}/copy-rules-from-template?year=${year}&quarter=${quarter}`,
+      api.post<ScenarioRuleOut[]>(
+        `/planning/scenarios/${scenarioId}/copy-rules-from-scenario?source_scenario_id=${sourceScenarioId}`,
         {},
       ),
     onSuccess: (_data, { scenarioId }) => {

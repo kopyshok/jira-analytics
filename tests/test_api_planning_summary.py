@@ -1,4 +1,4 @@
-"""Tests for /scenarios/{id}/resource-summary and copy-rules-from-template."""
+"""Tests for /scenarios/{id}/resource-summary and copy-rules-from-scenario."""
 import uuid
 
 import pytest
@@ -14,7 +14,6 @@ from app.models import (
     EmployeeTeam,
     MandatoryWorkType,
     PlanningScenario,
-    RoleCapacityRule,
     ScenarioRule,
 )
 
@@ -113,33 +112,89 @@ def test_resource_summary_basic(client, db_session):
     assert abs(data["available_for_backlog_by_role"]["analyst"] - expected_avail) < 0.01
 
 
-def test_copy_rules_from_template(client, db_session):
+def test_copy_rules_from_scenario(client, db_session):
     wt = _wt(db_session, "Орг. работы", "org2")
-    sc = PlanningScenario(
+    source = PlanningScenario(
         id=str(uuid.uuid4()),
-        name="Copy test",
+        name="Source approved",
+        year=2026,
+        quarter="Q1",
+        status="approved",
+        team=TEAM,
+    )
+    target = PlanningScenario(
+        id=str(uuid.uuid4()),
+        name="Target draft",
         year=2026,
         quarter="Q2",
         status="draft",
         team=TEAM,
     )
-    db_session.add(sc)
-    rcr = RoleCapacityRule(
-        id=str(uuid.uuid4()),
-        year=2026,
-        quarter=1,
-        role="analyst",
-        work_type_id=wt.id,
-        percent_of_norm=20.0,
+    db_session.add_all([source, target])
+    db_session.add(
+        ScenarioRule(
+            id=str(uuid.uuid4()),
+            scenario_id=source.id,
+            role="analyst",
+            work_type_id=wt.id,
+            percent_of_norm=20.0,
+        )
     )
-    db_session.add(rcr)
     db_session.commit()
 
     resp = client.post(
-        f"/api/v1/planning/scenarios/{sc.id}/copy-rules-from-template?year=2026&quarter=1"
+        f"/api/v1/planning/scenarios/{target.id}/copy-rules-from-scenario"
+        f"?source_scenario_id={source.id}"
     )
     assert resp.status_code == 200
     rules = resp.json()
     assert len(rules) == 1
     assert rules[0]["role"] == "analyst"
     assert rules[0]["percent_of_norm"] == 20.0
+
+
+def test_copy_rules_from_scenario_empty_source_returns_404(client, db_session):
+    source = PlanningScenario(
+        id=str(uuid.uuid4()),
+        name="Empty source",
+        year=2026,
+        quarter="Q1",
+        status="approved",
+        team=TEAM,
+    )
+    target = PlanningScenario(
+        id=str(uuid.uuid4()),
+        name="Target draft",
+        year=2026,
+        quarter="Q3",
+        status="draft",
+        team=TEAM,
+    )
+    db_session.add_all([source, target])
+    db_session.commit()
+
+    resp = client.post(
+        f"/api/v1/planning/scenarios/{target.id}/copy-rules-from-scenario"
+        f"?source_scenario_id={source.id}"
+    )
+    assert resp.status_code == 404
+    assert "нет правил" in resp.json()["detail"].lower()
+
+
+def test_copy_rules_from_scenario_self_returns_400(client, db_session):
+    target = PlanningScenario(
+        id=str(uuid.uuid4()),
+        name="Self ref",
+        year=2026,
+        quarter="Q3",
+        status="draft",
+        team=TEAM,
+    )
+    db_session.add(target)
+    db_session.commit()
+
+    resp = client.post(
+        f"/api/v1/planning/scenarios/{target.id}/copy-rules-from-scenario"
+        f"?source_scenario_id={target.id}"
+    )
+    assert resp.status_code == 400

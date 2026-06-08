@@ -3,7 +3,7 @@ import {
   App, Button, InputNumber, Popover, Select, Space, Table, Tooltip,
 } from 'antd';
 import { CopyOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
-import { useScenarioRules, usePutScenarioRules, useCopyRulesFromTemplate } from '../../hooks/usePlanning';
+import { useScenarioRules, usePutScenarioRules, useCopyRulesFromScenario, useScenarios } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
 import { useMandatoryWorkTypes } from '../../hooks/useCapacity';
 import { uid } from '../../utils/uid';
@@ -29,10 +29,10 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
   const { data: roles = [] } = useRoles();
   const { data: workTypes = [] } = useMandatoryWorkTypes({ isActive: true });
   const put = usePutScenarioRules();
-  const copy = useCopyRulesFromTemplate();
+  const copy = useCopyRulesFromScenario();
+  const { data: approvedScenarios = [] } = useScenarios(undefined, undefined, 'approved');
   const [copyOpen, setCopyOpen] = useState(false);
-  const [copyYear, setCopyYear] = useState<number>(new Date().getFullYear());
-  const [copyQuarter, setCopyQuarter] = useState<number>(1);
+  const [copySourceId, setCopySourceId] = useState<string | undefined>(undefined);
 
   const [drafts, setDrafts] = useState<RuleDraft[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -203,45 +203,60 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
   const saveDisabled = !dirty || hasDuplicates || put.isPending;
 
   const handleCopy = () => {
+    if (!copySourceId) return;
+    const source = approvedScenarios.find((s) => s.id === copySourceId);
     copy.mutate(
-      { scenarioId, year: copyYear, quarter: copyQuarter },
+      { scenarioId, sourceScenarioId: copySourceId },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
           setCopyOpen(false);
           setDirty(false);
-          notification.success({ title: `Правила скопированы из Q${copyQuarter} ${copyYear}` });
+          const count = Array.isArray(data) ? data.length : 0;
+          notification.success({
+            title: `Скопировано правил: ${count}`,
+            description: source ? `Из сценария «${source.name}»` : undefined,
+          });
         },
-        onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+        onError: (e) => notification.error({ title: 'Не удалось скопировать', description: (e as Error).message }),
       },
     );
   };
 
-  const yearOptions = [2024, 2025, 2026, 2027].map((y) => ({ value: y, label: String(y) }));
-  const quarterOptions = [1, 2, 3, 4].map((q) => ({ value: q, label: `Q${q}` }));
+  const scenarioOptions = useMemo(
+    () =>
+      approvedScenarios
+        .filter((s) => s.id !== scenarioId)
+        .map((s) => {
+          const q = s.quarter ?? '';
+          const y = s.year ?? '';
+          const team = s.team ? ` · ${s.team}` : '';
+          return {
+            value: s.id,
+            label: `${s.name} (${q} ${y}${team})`.trim(),
+          };
+        }),
+    [approvedScenarios, scenarioId],
+  );
 
   const copyContent = (
-    <Space orientation="vertical" size={8} style={{ width: 200 }}>
-      <Space>
-        <Select
-          size="small"
-          value={copyYear}
-          options={yearOptions}
-          onChange={setCopyYear}
-          style={{ width: 80 }}
-        />
-        <Select
-          size="small"
-          value={copyQuarter}
-          options={quarterOptions}
-          onChange={setCopyQuarter}
-          style={{ width: 70 }}
-        />
-      </Space>
+    <Space orientation="vertical" size={8} style={{ width: 320 }}>
+      <Select
+        size="small"
+        value={copySourceId}
+        options={scenarioOptions}
+        onChange={setCopySourceId}
+        placeholder="Выберите сценарий"
+        style={{ width: '100%' }}
+        showSearch
+        optionFilterProp="label"
+        notFoundContent="Нет утверждённых сценариев"
+      />
       <Button
         size="small"
         type="primary"
         block
         loading={copy.isPending}
+        disabled={!copySourceId}
         onClick={handleCopy}
       >
         Скопировать
@@ -267,11 +282,11 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
           open={copyOpen}
           onOpenChange={setCopyOpen}
           content={copyContent}
-          title="Скопировать из шаблона квартала"
+          title="Скопировать правила из сценария"
           trigger="click"
         >
           <Button size="small" icon={<CopyOutlined />}>
-            Из квартала
+            Из сценария
           </Button>
         </Popover>
         <Tooltip title={hasDuplicates ? 'Есть дубликаты — исправьте перед сохранением' : undefined}>
