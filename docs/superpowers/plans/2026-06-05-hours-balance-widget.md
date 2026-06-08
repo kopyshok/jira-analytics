@@ -4,7 +4,7 @@
 
 **Goal:** Дашборд-виджет накопительного баланса часов (переработки/автоотгулы) по сотрудникам команды с 1 января текущего года + drill-in модалка с календарём по дням.
 
-**Architecture:** Тонкий REST: `GET /api/v1/dashboard/hours-balance` (сводка по команде) + `GET /api/v1/dashboard/hours-balance/{employee_id}` (детализация). Сервис `HoursBalanceService` делает bulk-загрузку worklogs/absences + использует `ProductionCalendarService`. На фронте — карточный виджет + AntD Modal с 6 мини-календарями.
+**Architecture:** Тонкий REST: `GET /api/v1/analytics/dashboard/hours-balance` (сводка по команде) + `GET /api/v1/analytics/dashboard/hours-balance/{employee_id}` (детализация). Сервис `HoursBalanceService` делает bulk-загрузку worklogs/absences + использует `ProductionCalendarService`. На фронте — карточный виджет + AntD Modal с 6 мини-календарями.
 
 **Tech Stack:** FastAPI + SQLAlchemy 2.0 + Pydantic v2 на бэке. React 19 + TS + AntD 6 + TanStack Query на фронте. Тесты — pytest + Playwright.
 
@@ -269,17 +269,17 @@ class HoursBalanceService:
         if not employee_ids:
             return {}
         from app.models.worklog import Worklog as W
-        day_col = func.date(W.date_started).label("day")
+        day_col = func.date(W.started_at).label("day")
         rows = (
             self.db.query(
                 W.employee_id,
                 day_col,
-                func.sum(W.time_spent_hours).label("hours"),
+                func.sum(W.hours).label("hours"),
             )
             .filter(
                 W.employee_id.in_(employee_ids),
-                W.date_started >= from_,
-                W.date_started < to_ + timedelta(days=1),
+                W.started_at >= from_,
+                W.started_at < to_ + timedelta(days=1),
             )
             .group_by(W.employee_id, day_col)
             .all()
@@ -402,8 +402,8 @@ def test_employee_full_norm_balance_zero(db_session, emp):
             jira_worklog_id=f"j-{day_num}",
             issue_id=None,
             employee_id=emp.id,
-            time_spent_hours=8.0,
-            date_started=datetime(2026, 1, day_num, 10, 0),
+            hours=8.0,
+            started_at=datetime(2026, 1, day_num, 10, 0),
         )
         db_session.add(wl)
     db_session.commit()
@@ -654,8 +654,8 @@ def test_weekend_work_counted_as_overtime(db_session, emp):
         jira_worklog_id="j-sat",
         issue_id=None,
         employee_id=emp.id,
-        time_spent_hours=4.0,
-        date_started=datetime(2026, 1, 17, 12, 0),  # суббота
+        hours=4.0,
+        started_at=datetime(2026, 1, 17, 12, 0),  # суббота
     ))
     db_session.commit()
 
@@ -681,8 +681,8 @@ def test_small_deviation_within_threshold_is_norm(db_session, emp):
         jira_worklog_id="j-1",
         issue_id=None,
         employee_id=emp.id,
-        time_spent_hours=7.5,
-        date_started=datetime(2026, 1, 13, 10, 0),
+        hours=7.5,
+        started_at=datetime(2026, 1, 13, 10, 0),
     ))
     db_session.commit()
 
@@ -713,8 +713,8 @@ def test_sparkline_is_cumulative(db_session, emp):
             jira_worklog_id=f"j-{day_num}",
             issue_id=None,
             employee_id=emp.id,
-            time_spent_hours=9.0,  # +1ч сверх нормы
-            date_started=datetime(2026, 1, day_num, 10, 0),
+            hours=9.0,  # +1ч сверх нормы
+            started_at=datetime(2026, 1, day_num, 10, 0),
         ))
     db_session.commit()
 
@@ -764,16 +764,16 @@ def test_compute_employee_returns_days_and_monthly(db_session, emp):
         jira_worklog_id="j-1",
         issue_id=None,
         employee_id=emp.id,
-        time_spent_hours=11.0,
-        date_started=datetime(2026, 1, 13, 10, 0),  # вт +3ч
+        hours=11.0,
+        started_at=datetime(2026, 1, 13, 10, 0),  # вт +3ч
     ))
     db_session.add(Worklog(
         id="wl-2",
         jira_worklog_id="j-2",
         issue_id=None,
         employee_id=emp.id,
-        time_spent_hours=5.0,
-        date_started=datetime(2026, 2, 3, 10, 0),  # вт -3ч
+        hours=5.0,
+        started_at=datetime(2026, 2, 3, 10, 0),  # вт -3ч
     ))
     db_session.commit()
 
@@ -965,7 +965,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 Содержимое `tests/api/test_dashboard_hours_balance.py`:
 
 ```python
-"""Integration: /api/v1/dashboard/hours-balance."""
+"""Integration: /api/v1/analytics/dashboard/hours-balance."""
 
 from datetime import date, datetime
 
@@ -975,7 +975,7 @@ from fastapi.testclient import TestClient
 def test_hours_balance_returns_200_on_empty(client: TestClient, auth_headers):
     """Empty teams + no employees → 200 с пустым массивом."""
     resp = client.get(
-        "/api/v1/dashboard/hours-balance",
+        "/api/v1/analytics/dashboard/hours-balance",
         headers=auth_headers,
     )
     assert resp.status_code == 200
@@ -988,7 +988,7 @@ def test_hours_balance_returns_200_on_empty(client: TestClient, auth_headers):
 def test_hours_balance_default_period_from_jan_1(client: TestClient, auth_headers):
     """Без query period начинается с 1 января текущего года."""
     resp = client.get(
-        "/api/v1/dashboard/hours-balance",
+        "/api/v1/analytics/dashboard/hours-balance",
         headers=auth_headers,
     )
     assert resp.status_code == 200
@@ -1092,7 +1092,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ```python
 def test_drill_in_404_on_missing_employee(client: TestClient, auth_headers):
     resp = client.get(
-        "/api/v1/dashboard/hours-balance/no-such-id",
+        "/api/v1/analytics/dashboard/hours-balance/no-such-id",
         headers=auth_headers,
     )
     assert resp.status_code == 404
@@ -1112,13 +1112,13 @@ def test_drill_in_returns_kpi_monthly_days(
         jira_worklog_id="j-d",
         issue_id=None,
         employee_id="emp-drill",
-        time_spent_hours=10.0,
-        date_started=datetime(2026, 2, 3, 10, 0),
+        hours=10.0,
+        started_at=datetime(2026, 2, 3, 10, 0),
     ))
     db_session.commit()
 
     resp = client.get(
-        "/api/v1/dashboard/hours-balance/emp-drill",
+        "/api/v1/analytics/dashboard/hours-balance/emp-drill",
         params={"from": "2026-01-01", "to": "2026-02-28"},
         headers=auth_headers,
     )
@@ -1346,7 +1346,7 @@ export function useHoursBalance() {
     queryKey: ['dashboard', 'hours-balance', selectedTeams],
     queryFn: ({ signal }) =>
       api.get<HoursBalanceResponse>(
-        '/dashboard/hours-balance',
+        '/analytics/dashboard/hours-balance',
         selectedTeams.length > 0 ? { teams: selectedTeams.join(',') } : {},
         signal,
       ),
@@ -1362,7 +1362,7 @@ export function useHoursBalanceDetail(
     queryKey: ['dashboard', 'hours-balance', 'detail', employeeId],
     queryFn: ({ signal }) =>
       api.get<HoursBalanceDetailResponse>(
-        `/dashboard/hours-balance/${employeeId}`,
+        `/analytics/dashboard/hours-balance/${employeeId}`,
         {},
         signal,
       ),

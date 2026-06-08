@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useGlobalTeamFilter } from './useGlobalTeamFilter';
+import { useAppearanceSettings } from '../contexts/AppearanceContext';
 import type {
   HoursBalanceResponse,
   HoursBalanceDetailResponse,
@@ -8,14 +9,19 @@ import type {
 
 export function useHoursBalance() {
   const { selectedTeams } = useGlobalTeamFilter();
+  const appearance = useAppearanceSettings();
+  const lagDays = appearance.hours_balance_lag_days;
   return useQuery<HoursBalanceResponse>({
-    queryKey: ['dashboard', 'hours-balance', selectedTeams],
-    queryFn: ({ signal }) =>
-      api.get<HoursBalanceResponse>(
+    queryKey: ['dashboard', 'hours-balance', selectedTeams, lagDays],
+    queryFn: ({ signal }) => {
+      const params: Record<string, string> = { lag_days: String(lagDays) };
+      if (selectedTeams.length > 0) params.teams = selectedTeams.join(',');
+      return api.get<HoursBalanceResponse>(
         '/analytics/dashboard/hours-balance',
-        selectedTeams.length > 0 ? { teams: selectedTeams.join(',') } : {},
+        params,
         signal,
-      ),
+      );
+    },
     staleTime: 60_000,
     retry: 1,
   });
@@ -24,12 +30,14 @@ export function useHoursBalance() {
 export function useHoursBalanceDetail(
   employeeId: string | null,
 ) {
+  const appearance = useAppearanceSettings();
+  const lagDays = appearance.hours_balance_lag_days;
   return useQuery<HoursBalanceDetailResponse>({
-    queryKey: ['dashboard', 'hours-balance', 'detail', employeeId],
+    queryKey: ['dashboard', 'hours-balance', 'detail', employeeId, lagDays],
     queryFn: ({ signal }) =>
       api.get<HoursBalanceDetailResponse>(
         `/analytics/dashboard/hours-balance/${employeeId}`,
-        {},
+        { lag_days: String(lagDays) },
         signal,
       ),
     enabled: employeeId !== null,

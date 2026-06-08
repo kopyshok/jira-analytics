@@ -74,14 +74,35 @@ def test_hours_balance_returns_200_on_empty(test_client):
 
 
 def test_hours_balance_default_period_from_jan_1(test_client):
-    """Default period: from = current year Jan 1, to = today."""
-    r = test_client.get("/api/v1/analytics/dashboard/hours-balance")
+    """Default period: from = current year Jan 1, to = today − default lag (2 раб дня)."""
+    r = test_client.get("/api/v1/analytics/dashboard/hours-balance?lag_days=0")
     assert r.status_code == 200
     body = r.json()
     today = date.today()
     period = body["period"]
     assert period["from"] == f"{today.year}-01-01"
     assert period["to"] == today.isoformat()
+
+
+def test_hours_balance_default_lag_shifts_to(test_client):
+    """Дефолтный лаг 2 рабочих дня смещает правую границу окна назад."""
+    r = test_client.get("/api/v1/analytics/dashboard/hours-balance")
+    assert r.status_code == 200
+    body = r.json()
+    today = date.today()
+    to_date = date.fromisoformat(body["period"]["to"])
+    assert to_date < today
+    # Сдвиг минимум 2 календарных дня (т.к. 2 рабочих дня всегда ≥ 2 календарных)
+    assert (today - to_date).days >= 2
+
+
+def test_hours_balance_explicit_to_ignores_lag(test_client):
+    """Явный to= игнорирует lag_days."""
+    r = test_client.get(
+        "/api/v1/analytics/dashboard/hours-balance?to=2026-05-31&lag_days=5"
+    )
+    assert r.status_code == 200
+    assert r.json()["period"]["to"] == "2026-05-31"
 
 
 # ---------------------------------------------------------------------------

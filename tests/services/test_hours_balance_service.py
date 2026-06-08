@@ -54,6 +54,30 @@ def day_off_reason(db_session):
     return r
 
 
+def test_subtract_workdays_skips_weekend(db_session):
+    """8 июня 2026 (пн) − 2 рабочих дня = 4 июня 2026 (чт).
+
+    Пропуск выходных 7 (вс) и 6 (сб).
+    """
+    svc = HoursBalanceService(db_session)
+    result = svc.subtract_workdays(date(2026, 6, 8), 2)
+    assert result == date(2026, 6, 4)
+
+
+def test_subtract_workdays_zero_returns_same(db_session):
+    """Лаг 0 → дата без изменения."""
+    svc = HoursBalanceService(db_session)
+    today = date(2026, 6, 8)
+    assert svc.subtract_workdays(today, 0) == today
+
+
+def test_subtract_workdays_one_step(db_session):
+    """Понедельник − 1 рабочий день = предыдущая пятница."""
+    svc = HoursBalanceService(db_session)
+    # 8 июня 2026 — понедельник
+    assert svc.subtract_workdays(date(2026, 6, 8), 1) == date(2026, 6, 5)
+
+
 @pytest.fixture
 def issue(db_session):
     """Минимальный Issue для привязки Worklog."""

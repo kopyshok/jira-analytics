@@ -1,7 +1,10 @@
 import { useState, useMemo } from 'react';
-import { Card, Spin, Empty, Select } from 'antd';
+import { Card, Spin, Empty, Select, Modal, InputNumber, Form, Button, Tooltip, message } from 'antd';
+import { SettingOutlined } from '@ant-design/icons';
 import { DARK_THEME } from '../../utils/constants';
 import { useHoursBalance } from '../../hooks/useHoursBalance';
+import { useAppearanceSettings } from '../../contexts/AppearanceContext';
+import { useUpdateAppearance } from '../../api/appearance';
 import type { HoursBalanceEmployee } from '../../types/api';
 import HoursBalanceModal from './HoursBalanceModal';
 
@@ -126,10 +129,61 @@ function EmployeeCard({
   );
 }
 
+function LagSettingsModal({
+  open,
+  current,
+  onClose,
+}: {
+  open: boolean;
+  current: number;
+  onClose: () => void;
+}) {
+  const [form] = Form.useForm<{ lag_days: number }>();
+  const appearance = useAppearanceSettings();
+  const updater = useUpdateAppearance();
+  const handleSave = async () => {
+    const values = await form.validateFields();
+    try {
+      await updater.mutateAsync({ ...appearance, hours_balance_lag_days: values.lag_days });
+      message.success('Настройка сохранена');
+      onClose();
+    } catch {
+      message.error('Не удалось сохранить настройку');
+    }
+  };
+  return (
+    <Modal
+      open={open}
+      onCancel={onClose}
+      onOk={handleSave}
+      confirmLoading={updater.isPending}
+      title="Лаг рабочих дней"
+      okText="Сохранить"
+      cancelText="Отмена"
+    >
+      <p style={{ color: DARK_THEME.textMuted, fontSize: 13, marginBottom: 16 }}>
+        Сдвиг правой границы окна назад на N рабочих дней. Учитывает что сотрудники
+        списывают часы с задержкой. По умолчанию — 2 рабочих дня.
+      </p>
+      <Form form={form} layout="vertical" initialValues={{ lag_days: current }}>
+        <Form.Item
+          label="Лаг (рабочих дней)"
+          name="lag_days"
+          rules={[{ required: true, type: 'number', min: 0, max: 10 }]}
+        >
+          <InputNumber min={0} max={10} style={{ width: 120 }} />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+}
+
 export default function HoursBalanceWidget() {
   const { data, isLoading } = useHoursBalance();
+  const appearance = useAppearanceSettings();
   const [sortKey, setSortKey] = useState<SortKey>('abs_desc');
   const [openId, setOpenId] = useState<string | null>(null);
+  const [lagModalOpen, setLagModalOpen] = useState(false);
 
   const sorted = useMemo(() => {
     if (!data) return [];
@@ -184,24 +238,38 @@ export default function HoursBalanceWidget() {
             Баланс часов команды
           </div>
           <div style={{ color: DARK_THEME.textMuted, fontSize: 12, fontWeight: 400, marginTop: 2 }}>
-            С {data.period.from.split('-').reverse().join('.')} · {data.period.working_days} рабочих дней · норма с учётом отпусков
+            С {data.period.from.split('-').reverse().join('.')} по {data.period.to.split('-').reverse().join('.')} · {data.period.working_days} рабочих дней · норма с учётом отпусков
+            {appearance.hours_balance_lag_days > 0 && (
+              <> · лаг {appearance.hours_balance_lag_days} раб. дн.</>
+            )}
           </div>
         </div>
       }
       extra={
-        <Select
-          value={sortKey}
-          onChange={(v) => setSortKey(v as SortKey)}
-          size="small"
-          style={{ width: 220 }}
-          options={[
-            { value: 'abs_desc', label: 'По отклонению' },
-            { value: 'balance_desc', label: 'Больше переработали' },
-            { value: 'balance_asc', label: 'Больше недоработали' },
-            { value: 'name', label: 'По имени' },
-            { value: 'role', label: 'По роли' },
-          ]}
-        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Select
+            value={sortKey}
+            onChange={(v) => setSortKey(v as SortKey)}
+            size="small"
+            style={{ width: 220 }}
+            options={[
+              { value: 'abs_desc', label: 'По отклонению' },
+              { value: 'balance_desc', label: 'Больше переработали' },
+              { value: 'balance_asc', label: 'Больше недоработали' },
+              { value: 'name', label: 'По имени' },
+              { value: 'role', label: 'По роли' },
+            ]}
+          />
+          <Tooltip title="Настроить лаг рабочих дней">
+            <Button
+              type="text"
+              size="small"
+              icon={<SettingOutlined />}
+              onClick={() => setLagModalOpen(true)}
+              style={{ color: DARK_THEME.textMuted }}
+            />
+          </Tooltip>
+        </div>
       }
       style={{ background: '#0f2340', border: '1px solid #1d3a66' }}
     >
@@ -238,6 +306,11 @@ export default function HoursBalanceWidget() {
       <HoursBalanceModal
         employeeId={openId}
         onClose={() => setOpenId(null)}
+      />
+      <LagSettingsModal
+        open={lagModalOpen}
+        current={appearance.hours_balance_lag_days}
+        onClose={() => setLagModalOpen(false)}
       />
     </Card>
   );

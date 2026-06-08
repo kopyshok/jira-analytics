@@ -6,6 +6,7 @@ export interface AppearanceSettings {
   initiative_bracket_color: string;
   initiative_fill_intensity: 'soft' | 'medium' | 'dense';
   animation_speed_seconds: number;
+  hours_balance_lag_days: number;
 }
 
 export const APPEARANCE_QUERY_KEY = ['appearance'] as const;

@@ -170,12 +170,17 @@ def dashboard_hours_balance(
     from_: Optional[date] = Query(None, alias="from"),
     to: Optional[date] = Query(None),
     teams: Optional[str] = Query(None, description="Команды CSV"),
+    lag_days: int = Query(
+        2, ge=0, le=10,
+        description="Лаг в рабочих днях для правой границы окна (если to не задан)",
+    ),
     db: Session = Depends(get_db),
 ):
     """Виджет баланс часов команды: переработки/автоотгулы по сотрудникам."""
     today = date.today()
     resolved_from = from_ or date(today.year, 1, 1)
-    resolved_to = to or today
+    svc = HoursBalanceService(db)
+    resolved_to = to or svc.subtract_workdays(today, lag_days)
 
     team_ids = parse_teams_csv(teams)
 
@@ -193,7 +198,6 @@ def dashboard_hours_balance(
             for row in db.query(Employee.id).filter(Employee.is_active == True).all()  # noqa: E712
         ]
 
-    svc = HoursBalanceService(db)
     result = svc.compute_team(
         employee_ids=employee_ids,
         from_=resolved_from,
@@ -236,14 +240,17 @@ def dashboard_hours_balance_employee(
     employee_id: str,
     from_: Optional[date] = Query(None, alias="from"),
     to: Optional[date] = Query(None),
+    lag_days: int = Query(
+        2, ge=0, le=10,
+        description="Лаг в рабочих днях для правой границы окна (если to не задан)",
+    ),
     db: Session = Depends(get_db),
 ):
     """Drill-in: посуточный баланс часов одного сотрудника."""
     today = date.today()
     resolved_from = from_ or date(today.year, 1, 1)
-    resolved_to = to or today
-
     svc = HoursBalanceService(db)
+    resolved_to = to or svc.subtract_workdays(today, lag_days)
     try:
         result = svc.compute_employee(
             employee_id=employee_id,

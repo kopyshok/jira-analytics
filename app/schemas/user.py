@@ -24,6 +24,7 @@ class AppearanceSettings(BaseModel):
     initiative_bracket_color: str = "#b8c9e0"
     initiative_fill_intensity: Literal["soft", "medium", "dense"] = "medium"
     animation_speed_seconds: float = Field(default=4.0, ge=0.5, le=20.0)
+    hours_balance_lag_days: int = Field(default=2, ge=0, le=10)
 
     @field_validator("phase_colors")
     @classmethod

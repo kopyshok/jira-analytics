@@ -10,4 +10,5 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   initiative_bracket_color: '#b8c9e0',
   initiative_fill_intensity: 'medium',
   animation_speed_seconds: 4,
+  hours_balance_lag_days: 2,
 };

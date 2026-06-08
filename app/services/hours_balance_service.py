@@ -107,6 +107,27 @@ class HoursBalanceService:
         self.production_calendar = production_calendar or ProductionCalendarService(db)
         self._warn_if_day_off_missing()
 
+    def subtract_workdays(self, end: date, n: int) -> date:
+        """Сдвинуть дату назад на ``n`` рабочих дней (без учёта самого ``end``).
+
+        Используется виджетом баланса часов: при настройке «лаг N рабочих дней»
+        правая граница окна = ``today − N рабочих дней``. Выходные и праздники
+        пропускаются согласно ``production_calendar_day``; без записи — fallback
+        Пн–Пт. При ``n <= 0`` возвращается исходный ``end``.
+        """
+        if n <= 0:
+            return end
+        cur = end
+        shift = 0
+        # Защита от бесконечного цикла на случай аномального production calendar
+        for _ in range(n * 7 + 30):
+            cur -= timedelta(days=1)
+            if self.production_calendar.is_workday(cur):
+                shift += 1
+                if shift >= n:
+                    return cur
+        return cur
+
     def _warn_if_day_off_missing(self) -> None:
         exists = (
             self.db.query(AbsenceReason)
