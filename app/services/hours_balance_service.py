@@ -327,8 +327,12 @@ class HoursBalanceService:
                 else:
                     base_norm = 8.0 if d.weekday() < 5 else 0.0
                 absence_label = absences.get((e.id, d))
-                # absence (not day_off) zeros the norm
-                norm_eff = 0.0 if absence_label else max(0.0, base_norm)
+                # Официальное отсутствие (кроме day_off) — день не считается ни
+                # переработкой, ни отгулом, даже при наличии ворклога.
+                if absence_label:
+                    sparkline.append(balance)
+                    continue
+                norm_eff = max(0.0, base_norm)
                 fact = worklogs.get((e.id, d), 0.0)
                 if norm_eff == 0 and fact == 0:
                     sparkline.append(balance)

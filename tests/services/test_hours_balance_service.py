@@ -178,6 +178,42 @@ def test_vacation_not_counted_as_skip(db_session, emp, vacation_reason):
     assert bal.balance_hours == 0
 
 
+def test_worklog_during_vacation_not_counted_as_overtime(db_session, emp, vacation_reason, issue):
+    """Если сотрудник в отпуске случайно списал ворклог — НЕ переработка.
+
+    Виджет и drill-in должны быть согласованы: официальные отсутствия
+    исключают день из переработок/отгулов даже при наличии ворклога.
+    """
+    db_session.add(Absence(
+        id="a-vac",
+        employee_id=emp.id,
+        start_date=date(2026, 1, 12),
+        end_date=date(2026, 1, 16),
+        reason_id=vacation_reason.id,
+    ))
+    db_session.add(Worklog(
+        id="wl-vac",
+        jira_worklog_id="j-vac",
+        issue_id=issue.id,
+        employee_id=emp.id,
+        hours=4.0,
+        time_spent_seconds=int(4.0 * 3600),
+        started_at=datetime(2026, 1, 13, 10, 0),
+    ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 16),
+    )
+    bal = result.employees[0]
+    assert bal.overtime_days == 0
+    assert bal.overtime_hours == pytest.approx(0.0)
+    assert bal.balance_hours == pytest.approx(0.0)
+
+
 def test_day_off_reason_does_not_zero_norm(db_session, emp, day_off_reason, issue):
     """Absence с причиной day_off не обнуляет норму → отсутствие ворклога = скип."""
     db_session.add(Absence(
