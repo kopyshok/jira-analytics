@@ -26,6 +26,22 @@
   box-shadow: 0 0 0 3px var(--accent-glow) !important;
 }
 
+:where([data-theme="aurora"]) .ant-select-selection-item,
+:where([data-theme="aurora"]) .ant-select-selection-placeholder,
+:where([data-theme="aurora"]) .ant-picker-input > input {
+  color: var(--text) !important;
+}
+
+:where([data-theme="aurora"]) .ant-select-arrow,
+:where([data-theme="aurora"]) .ant-picker-suffix,
+:where([data-theme="aurora"]) .ant-picker-clear {
+  color: var(--text-muted) !important;
+}
+
+:where([data-theme="aurora"]) .ant-select-item-option-content {
+  color: var(--text);
+}
+
 :where([data-theme="aurora"]) .ant-btn {
   border-radius: var(--radius-pill);
   font-family: var(--font-body);
