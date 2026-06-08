@@ -3,7 +3,7 @@
 Список сотрудников для использования во фронтенде (выпадающие списки и т.п.).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 import uuid
 from typing import List, Optional
 
@@ -22,6 +22,7 @@ router = APIRouter()
 class EmployeeTeamItem(BaseModel):
     team: str
     is_primary: bool
+    joined_at: Optional[date] = None
 
     model_config = {"from_attributes": True}
 
@@ -314,3 +315,22 @@ def delete_team(
         raise HTTPException(status_code=404, detail="Employee not found")
     EmployeeTeamService(db).remove_team(employee_id, team)
     return Response(status_code=204)
+
+
+class JoinedAtPayload(BaseModel):
+    joined_at: Optional[date] = None
+
+
+@router.patch("/{employee_id}/teams/{team}/joined-at", response_model=EmployeeTeamItem)
+def patch_joined_at(
+    employee_id: str,
+    team: str,
+    payload: JoinedAtPayload,
+    db: Session = Depends(get_db),
+):
+    """Установить дату вступления сотрудника в команду."""
+    try:
+        row = EmployeeTeamService(db).set_joined_at(employee_id, team, payload.joined_at)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return EmployeeTeamItem.model_validate(row)

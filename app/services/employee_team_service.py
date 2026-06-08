@@ -6,7 +6,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import func
@@ -202,6 +202,19 @@ class EmployeeTeamService:
         self.db.flush()
         self._recompute_legacy_team(employee_id)
         self.db.commit()
+
+    def set_joined_at(self, employee_id: str, team: str, joined_at: date | None) -> EmployeeTeam:
+        """Установить дату вступления сотрудника в команду."""
+        row = (
+            self.db.query(EmployeeTeam)
+            .filter_by(employee_id=employee_id, team=team)
+            .first()
+        )
+        if row is None:
+            raise ValueError(f"Membership {employee_id}/{team} not found")
+        row.joined_at = joined_at
+        self.db.commit()
+        return row
 
     def replace_teams(
         self,
