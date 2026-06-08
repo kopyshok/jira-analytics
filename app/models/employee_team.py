@@ -1,9 +1,10 @@
 """EmployeeTeam model - M:N employee ↔ team membership."""
 
+from datetime import date as _date
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import generate_uuid
@@ -39,6 +40,7 @@ class EmployeeTeam(Base):
     )
     team: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    joined_at: Mapped[_date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
