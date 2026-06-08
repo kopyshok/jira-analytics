@@ -120,7 +120,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
       style={{
         padding: '16px 20px 14px',
         borderBottom: '1px solid rgba(255,255,255,0.1)',
-        background: '#0d1c33',
+        background: 'var(--bg, #0d1c33)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -249,10 +249,10 @@ export default function AnalyticsIssueDrawer({
       closable={false}
       styles={{
         header: { display: 'none' },
-        body: { padding: 0, background: '#0f2340', display: 'flex', flexDirection: 'column' },
-        wrapper: { width: 720, background: '#0f2340' },
+        body: { padding: 0, background: 'var(--glass-bg, #0f2340)', display: 'flex', flexDirection: 'column' },
+        wrapper: { width: 720, background: 'var(--glass-bg, #0f2340)' },
       }}
-      style={{ background: '#0f2340' }}
+      style={{ background: 'var(--glass-bg, #0f2340)' }}
     >
       {currentEntry && (
         <>
@@ -263,7 +263,7 @@ export default function AnalyticsIssueDrawer({
             onBack={handleBack}
             onClose={handleClose}
           />
-          <div style={{ flex: 1, overflowY: 'auto', background: '#0f2340' }}>
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--glass-bg, #0f2340)' }}>
             <DrawerContent
               key={currentEntry.id}
               issueId={currentEntry.id}

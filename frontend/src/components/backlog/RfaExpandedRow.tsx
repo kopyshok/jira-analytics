@@ -51,7 +51,7 @@ export default function RfaExpandedRow(p: Props) {
   });
 
   return (
-    <Card size="small" style={{ background: '#0f2340', border: '1px solid #1e3a5f' }}>
+    <Card size="small" style={{ background: 'var(--glass-bg, #0f2340)', border: '1px solid var(--glass-border, #1e3a5f)' }}>
       <PlanConflictBanner issueId={p.issueId} />
 
       {p.hasChildren && (

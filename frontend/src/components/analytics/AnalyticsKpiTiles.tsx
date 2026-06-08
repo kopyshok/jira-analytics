@@ -6,19 +6,19 @@ interface Props {
 }
 
 const TILE: React.CSSProperties = {
-  background: '#0f2340',
+  background: 'var(--glass-bg, #0f2340)',
   borderRadius: 8,
   padding: '14px 18px',
   flex: '1 1 0',
   minWidth: 0,
-  border: '1px solid rgba(255,255,255,0.04)',
+  border: '1px solid var(--glass-border, rgba(255,255,255,0.04))',
 };
 
 const LABEL: React.CSSProperties = {
   fontSize: 11,
   letterSpacing: 0.5,
   textTransform: 'uppercase',
-  color: '#7e94b8',
+  color: 'var(--text-muted, #7e94b8)',
   marginBottom: 4,
 };
 

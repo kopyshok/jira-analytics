@@ -110,7 +110,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
         position: 'sticky',
         top: 0,
         zIndex: 5,
-        background: '#0d1c33',
+        background: 'var(--bg, #0d1c33)',
         padding: '12px 20px',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         display: 'flex',
@@ -183,7 +183,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
             size="small"
             type={view === 'analysis' ? 'primary' : 'default'}
             onClick={() => onViewChange('analysis')}
-            style={view === 'analysis' ? { background: '#00c9c8', borderColor: '#00c9c8', color: '#0d1c33' } : { color: '#7e94b8' }}
+            style={view === 'analysis' ? { background: 'var(--accent-1, #00c9c8)', borderColor: 'var(--accent-1, #00c9c8)', color: 'var(--on-accent, #0d1c33)' } : { color: 'var(--text-muted, #7e94b8)' }}
           >
             Анализ
           </Button>

@@ -71,7 +71,7 @@ function MonthCalendar({
   const balance = monthDays.reduce((s, x) => s + x.delta, 0);
 
   return (
-    <div style={{ background: '#0d1c33', padding: 12, borderRadius: 8 }}>
+    <div style={{ background: DARK_THEME.pageBg, padding: 12, borderRadius: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ color: DARK_THEME.textPrimary, fontSize: 13, fontWeight: 600 }}>
           {MONTH_NAMES_RU[month - 1]}
@@ -142,7 +142,7 @@ function KpiTile({
 }) {
   return (
     <div style={{
-      background: '#143258', border: '1px solid #1d3a66', borderRadius: 10, padding: 16,
+      background: DARK_THEME.darkAccent, border: `1px solid ${DARK_THEME.border}`, borderRadius: 10, padding: 16,
     }}>
       <div style={{ fontSize: 12, color: DARK_THEME.textMuted, marginBottom: 4 }}>
         {label}
@@ -166,7 +166,7 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
       onCancel={onClose}
       width={920}
       footer={null}
-      styles={{ body: { background: '#0f2340', padding: 24 } }}
+      styles={{ body: { background: DARK_THEME.cardBg, padding: 24 } }}
       title={
         data ? (
           <div>
@@ -211,7 +211,7 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
             {data.monthly.map((m) => (
               <div key={`${m.year}-${m.month}`} style={{
-                flex: '0 0 130px', background: '#0d1c33', padding: 10, borderRadius: 6,
+                flex: '0 0 130px', background: DARK_THEME.pageBg, padding: 10, borderRadius: 6,
               }}>
                 <div style={{
                   fontSize: 10, textTransform: 'uppercase',
