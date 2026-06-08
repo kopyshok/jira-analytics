@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { Layout, Button, Select } from 'antd';
-import { LogoutOutlined } from '@ant-design/icons';
+import { LogoutOutlined, BgColorsOutlined } from '@ant-design/icons';
 import SideMenu from './SideMenu';
 import LogoMark from './LogoMark';
 import SyncIndicator from './SyncIndicator';
@@ -116,9 +116,18 @@ export default function ClassicShell() {
                   onChange={(v) => saveTheme(v as AppTheme)}
                   size="small"
                   variant="borderless"
-                  style={{ width: 130, color: 'rgba(255,255,255,0.55)' }}
+                  style={{ width: 150, color: 'rgba(255,255,255,0.55)' }}
                   popupMatchSelectWidth={false}
                 />
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<BgColorsOutlined />}
+                  onClick={() => saveTheme('aurora-dark')}
+                  title="Включить Aurora"
+                >
+                  Aurora
+                </Button>
                 <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>
                   {user.display_name}
                 </span>
