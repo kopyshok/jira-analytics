@@ -89,10 +89,13 @@
   background: transparent !important;
 }
 
-/* Backdrop / mask — strong dark overlay */
-:where([data-theme="aurora"]) .ant-modal-mask,
-:where([data-theme="aurora"]) .ant-drawer-mask {
-  background: rgba(0, 0, 0, 0.7) !important;
+/* Backdrop / mask — near-solid overlay, page should not bleed through */
+[data-theme="aurora"] .ant-modal-mask,
+[data-theme="aurora"] .ant-drawer-mask,
+[data-theme="aurora"] .ant-modal-wrap > .ant-modal-mask,
+[data-theme="aurora"] .ant-image-preview-mask {
+  background: rgba(5, 8, 16, 0.92) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 :where([data-theme="aurora"]) .ant-table,
