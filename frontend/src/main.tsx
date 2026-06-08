@@ -20,6 +20,7 @@ dayjs.extend(localeData);
 dayjs.locale('ru');
 import { APP_THEMES, FONTS } from './utils/constants';
 import { ThemeProvider, useAppTheme } from './contexts/ThemeContext';
+import { buildAuroraAntdConfig } from './aurora/theme/auroraAntdTokens';
 import { installConsoleCapture } from './utils/consoleCapture';
 import './index.css';
 import './styles/print.css';
@@ -34,75 +35,59 @@ const queryClient = new QueryClient({
 });
 
 function ThemedApp() {
-  const { theme: themeName } = useAppTheme();
+  const { theme: themeName, isAurora, mode } = useAppTheme();
   const t = APP_THEMES[themeName].tokens;
+
+  const classicConfig = {
+    algorithm: theme.darkAlgorithm,
+    token: {
+      colorPrimary: t.primary,
+      colorBgContainer: t.cardBg,
+      colorBgElevated: t.cardBg,
+      colorBgLayout: t.pageBg,
+      colorBorderSecondary: t.border,
+      colorText: t.textPrimary,
+      colorTextSecondary: t.textSecondary,
+      colorTextTertiary: t.textMuted,
+      colorTextQuaternary: t.textHint,
+      borderRadius: 8,
+      colorLink: t.primarySecondary,
+      fontFamily: FONTS.body,
+      fontFamilyCode: FONTS.mono,
+      fontSize: 14,
+    },
+    components: {
+      Layout: { siderBg: t.sidebarBg, headerBg: t.sidebarBg, bodyBg: t.pageBg },
+      Menu: {
+        darkItemBg: t.sidebarBg,
+        darkItemSelectedBg: t.darkAccent,
+        darkItemColor: t.textMuted,
+        darkItemSelectedColor: t.primary,
+        darkItemHoverColor: t.primarySecondary,
+      },
+      Card: { colorBgContainer: t.cardBg, colorBorderSecondary: t.border },
+      Table: {
+        colorBgContainer: t.cardBg,
+        headerBg: t.darkAccent,
+        rowHoverBg: t.darkRows,
+        borderColor: t.border,
+      },
+      Modal: { contentBg: t.cardBg, headerBg: t.cardBg },
+      Statistic: { colorTextDescription: t.textMuted, contentFontSize: 32 },
+      Typography: { fontWeightStrong: 700 },
+      Tabs: {
+        inkBarColor: t.primary,
+        itemActiveColor: t.primary,
+        itemSelectedColor: t.primary,
+      },
+      Collapse: { headerBg: t.darkAccent, contentBg: t.cardBg },
+    },
+  };
+
+  const antdConfig = isAurora && mode ? buildAuroraAntdConfig(mode) : classicConfig;
+
   return (
-    <ConfigProvider
-      locale={ruRU}
-      theme={{
-        algorithm: theme.darkAlgorithm,
-        token: {
-          colorPrimary: t.primary,
-          colorBgContainer: t.cardBg,
-          colorBgElevated: t.cardBg,
-          colorBgLayout: t.pageBg,
-          colorBorderSecondary: t.border,
-          colorText: t.textPrimary,
-          colorTextSecondary: t.textSecondary,
-          colorTextTertiary: t.textMuted,
-          colorTextQuaternary: t.textHint,
-          borderRadius: 8,
-          colorLink: t.primarySecondary,
-          fontFamily: FONTS.body,
-          fontFamilyCode: FONTS.mono,
-          fontSize: 14,
-        },
-        components: {
-          Layout: {
-            siderBg: t.sidebarBg,
-            headerBg: t.sidebarBg,
-            bodyBg: t.pageBg,
-          },
-          Menu: {
-            darkItemBg: t.sidebarBg,
-            darkItemSelectedBg: t.darkAccent,
-            darkItemColor: t.textMuted,
-            darkItemSelectedColor: t.primary,
-            darkItemHoverColor: t.primarySecondary,
-          },
-          Card: {
-            colorBgContainer: t.cardBg,
-            colorBorderSecondary: t.border,
-          },
-          Table: {
-            colorBgContainer: t.cardBg,
-            headerBg: t.darkAccent,
-            rowHoverBg: t.darkRows,
-            borderColor: t.border,
-          },
-          Modal: {
-            contentBg: t.cardBg,
-            headerBg: t.cardBg,
-          },
-          Statistic: {
-            colorTextDescription: t.textMuted,
-            contentFontSize: 32,
-          },
-          Typography: {
-            fontWeightStrong: 700,
-          },
-          Tabs: {
-            inkBarColor: t.primary,
-            itemActiveColor: t.primary,
-            itemSelectedColor: t.primary,
-          },
-          Collapse: {
-            headerBg: t.darkAccent,
-            contentBg: t.cardBg,
-          },
-        },
-      }}
-    >
+    <ConfigProvider locale={ruRU} theme={antdConfig}>
       <AntApp>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />
