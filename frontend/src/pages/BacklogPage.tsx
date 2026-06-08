@@ -616,30 +616,51 @@ export default function BacklogPage() {
         {groupActiveByQuarter ? 'Сгруппировано по кварталам' : 'Группировать по кварталам'}
       </Button>
       {groupActiveByQuarter ? (
-        groupByQuarterLabel(quarterlyRows ?? []).map(([key, rows]) => (
-          <div key={key} style={{ marginBottom: 16 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-              padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)',
-            }}>
-              {key === '__none__'
-                ? <span style={{ color: '#4a6a80', fontWeight: 600 }}>Без квартала</span>
-                : <Tag color="purple">{key}</Tag>
-              }
-              <span style={{ fontSize: 12, color: '#4a6a80' }}>{rows.length} {rows.length === 1 ? 'задача' : 'задач'}</span>
-            </div>
-            <Table<BacklogItemResponse>
-              dataSource={rows}
-              columns={quarterlyColumns}
-              rowKey="id"
-              loading={quarterly.isLoading}
+        (() => {
+          const groups = groupByQuarterLabel(quarterlyRows ?? []);
+          if (groups.length === 0) {
+            return (
+              <Table<BacklogItemResponse>
+                dataSource={[]}
+                columns={quarterlyColumns}
+                rowKey="id"
+                loading={quarterly.isLoading}
+                size="small"
+                pagination={false}
+                scroll={{ x: true }}
+              />
+            );
+          }
+          return (
+            <Tabs
               size="small"
-              pagination={false}
-              scroll={{ x: true }}
-              expandable={nestedExpandable}
+              items={groups.map(([key, rows]) => ({
+                key,
+                label: (
+                  <Space size={6}>
+                    {key === '__none__'
+                      ? <span style={{ color: '#4a6a80' }}>Без квартала</span>
+                      : <Tag color="purple" style={{ marginInlineEnd: 0 }}>{key}</Tag>
+                    }
+                    <span style={{ fontSize: 12, color: '#4a6a80' }}>{rows.length}</span>
+                  </Space>
+                ),
+                children: (
+                  <Table<BacklogItemResponse>
+                    dataSource={rows}
+                    columns={quarterlyColumns}
+                    rowKey="id"
+                    loading={quarterly.isLoading}
+                    size="small"
+                    pagination={false}
+                    scroll={{ x: true }}
+                    expandable={nestedExpandable}
+                  />
+                ),
+              }))}
             />
-          </div>
-        ))
+          );
+        })()
       ) : (
         <Table<BacklogItemResponse>
           dataSource={quarterlyRows}
