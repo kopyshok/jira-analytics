@@ -105,7 +105,7 @@ frontend/src/aurora/
    - В классике: одна иконка «луна-палитра» с подписью «Aurora». Клик → `aurora-dark`.
    - В Aurora: цикл `aurora-dark → aurora-light → classic → aurora-dark`. Доступна также pill «классика» для прямого возврата.
 5. Мутация `PUT /users/me/preferences { theme_preference }` через TanStack mutation; optimistic update DOM-атрибутов до подтверждения.
-6. Anonymous (страница `/login`): только классика (нет user → нет preference). Aurora не применяется.
+6. Anonymous (страница `/login`): значение берётся из `localStorage.theme_preference`. Default `aurora-dark` (после первого открытия). После успешного логина — перезаписывается серверным `User.theme_preference`.
 
 ## 5. Дизайн-система Aurora
 
@@ -166,7 +166,7 @@ frontend/src/aurora/
 ### 6.2 Перерисовка по страницам
 
 **Обычные (форма + таблица, низкий риск):**
-- `/login` — Aurora не применяется (anonymous), остаётся классика.
+- `/login` — Aurora применяется. Anonymous-режим берёт значение из `localStorage.theme_preference` (после первого входа), default `aurora-dark`. Glass-карточка по центру с формой логина (AntD inputs + GlassButton submit), Aurora-фон с радиальными градиентами.
 - `/settings` (11 вкладок) — каждая вкладка обёрнута в `GlassCard`. `GlassTabs` поверх AntD `Tabs` (controlled). Формы — нативные AntD с overlay-стилями (поля `.ant-input`, `.ant-select-selector` в стекле).
 - `/sync` (3 вкладки) — `GlassCard` хост; PipelineRunner перерисован: большие glass-кнопки режимов, neon-track прогресса, лента истории с pill-статусами.
 - `/feedback` (общедоступная) — список, фильтры, drawer; форма в `GlassCard`.
@@ -297,9 +297,9 @@ Aurora-палитра для Recharts:
 8. **E2E + smoke:** добавить fixture для force-aurora-mode, прогнать в обоих режимах.
 9. **Polish:** визуальный pass от PM, точечные фиксы.
 
-## 13. Open questions
+## 13. Решения по open questions (после ревью PM)
 
-- Анимация переключения темы: instant vs 200ms fade? **Предложение:** instant в первой итерации (no FOUC), fade — follow-up.
-- Aurora-light в принципе нужен? **Предложение:** да — это два клика, токены и шрифты общие, ценность для пользователей у которых тёмная тема вызывает усталость глаз.
-- Login page включить в Aurora? **Предложение:** нет — anonymous, theme preference недоступен.
-- Версия в sidebar: оставить старый компонент или Aurora-pill? **Предложение:** Aurora-pill в обоих режимах sidebar (унификация).
+- **Aurora-light:** включён в скоуп с первой итерации (тумблер циклит dark → light → classic).
+- **Login page:** Aurora применяется. Для anonymous режим выбирается из `localStorage.theme_preference` (запоминается после первого входа в Aurora), по умолчанию `aurora-dark`. После логина перезаписывается серверным значением.
+- **Анимация переключения темы:** instant в первой итерации (no FOUC).
+- **Версия в sidebar:** Aurora-pill в обоих режимах sidebar.
