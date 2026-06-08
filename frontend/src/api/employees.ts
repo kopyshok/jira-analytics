@@ -30,3 +30,13 @@ export const recalcActiveEmployees = () =>
 
 export const addEmployeeFromJira = (req: EmployeeFromJiraRequest) =>
   api.post<EmployeeResponse>('/employees/from-jira', req);
+
+export const updateMembershipJoinedAt = (
+  employeeId: string,
+  team: string,
+  joined_at: string | null,
+) =>
+  api.patch<{ employee_id: string; team: string; is_primary: boolean; joined_at: string | null }>(
+    `/employees/${employeeId}/teams/${encodeURIComponent(team)}/joined-at`,
+    { joined_at },
+  );

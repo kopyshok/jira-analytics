@@ -3,6 +3,7 @@
 export interface EmployeeTeamItem {
   team: string;
   is_primary: boolean;
+  joined_at?: string | null;
 }
 
 export type EmployeeRole = string;  // now driven by roles registry
