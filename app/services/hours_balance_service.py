@@ -17,6 +17,7 @@ from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
 from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
+from app.models.issue import Issue
 from app.models.worklog import Worklog
 from app.services.production_calendar_service import ProductionCalendarService
 
@@ -202,11 +203,50 @@ class HoursBalanceService:
             result[(emp_id, day_val)] = float(hours or 0)
         return result
 
+    def team_start(
+        self,
+        employee_id: str,
+        teams_filter: list[str] | None,
+        period_from: date,
+    ) -> date:
+        """Эффективная дата старта сотрудника в выбранных командах.
+
+        1) Минимальный joined_at среди membership в teams_filter (или всех если фильтр пуст);
+        2) Если нет — первый worklog на задачах с Issue.team в teams_filter;
+        3) Иначе — period_from.
+
+        Результат — max(period_from, найденная_дата).
+        """
+        q = self.db.query(EmployeeTeam).filter(
+            EmployeeTeam.employee_id == employee_id,
+            EmployeeTeam.joined_at.is_not(None),
+        )
+        if teams_filter:
+            q = q.filter(EmployeeTeam.team.in_(teams_filter))
+        explicit_dates = [r.joined_at for r in q.all() if r.joined_at]
+        if explicit_dates:
+            return max(period_from, min(explicit_dates))
+
+        # Fallback β: first worklog on Issue.team in filter
+        q2 = (
+            self.db.query(func.min(Worklog.started_at))
+            .join(Issue, Worklog.issue_id == Issue.id)
+            .filter(Worklog.employee_id == employee_id)
+        )
+        if teams_filter:
+            q2 = q2.filter(Issue.team.in_(teams_filter))
+        first_wl = q2.scalar()
+        if first_wl:
+            first_d = first_wl.date() if hasattr(first_wl, "date") else first_wl
+            return max(period_from, first_d)
+        return period_from
+
     def compute_team(
         self,
         employee_ids: list,
         from_: date,
         to_: date,
+        teams_filter: list[str] | None = None,
     ) -> TeamBalanceResult:
         """Считает баланс часов по команде за период."""
         if not employee_ids:
@@ -275,7 +315,12 @@ class HoursBalanceService:
             skip_days = 0
             skip_hours = 0.0
             sparkline: list[float] = []
+            eff_from = self.team_start(e.id, teams_filter, from_)
             for d in days_iter:
+                # Дни до даты вступления — пропускаем (нулевая точка в спарклайне)
+                if d < eff_from:
+                    sparkline.append(balance)
+                    continue
                 ch = cal_hours.get(d)
                 if ch is not None:
                     base_norm = ch
@@ -331,6 +376,7 @@ class HoursBalanceService:
         employee_id: str,
         from_: date,
         to_: date,
+        teams_filter: list[str] | None = None,
     ) -> EmployeeDetailResult:
         """Посуточный drill-in по одному сотруднику за период."""
         e = self.db.get(Employee, employee_id)
@@ -350,9 +396,15 @@ class HoursBalanceService:
         monthly_acc: dict[tuple[int, int], dict] = defaultdict(
             lambda: {"balance": 0.0, "overtime_days": 0, "skip_days": 0}
         )
+        eff_from = self.team_start(employee_id, teams_filter, from_)
 
         cur = from_
         while cur <= to_:
+            # Дни до даты вступления — пропускаем как holiday
+            if cur < eff_from:
+                days.append(DayCalc(cur, 0.0, 0.0, 0.0, "holiday"))
+                cur += timedelta(days=1)
+                continue
             ch = cal_hours.get(cur)
             if ch is not None:
                 base_norm = ch

@@ -123,7 +123,8 @@ def test_list_employees_with_teams(client, emp):
     resp = client.get("/api/v1/employees?with_teams=true")
     assert resp.status_code == 200
     body = resp.json()
-    assert body[0]["teams"] == [
+    teams_body = body[0]["teams"]
+    assert [{"team": t["team"], "is_primary": t["is_primary"]} for t in teams_body] == [
         {"team": "B", "is_primary": True},
         {"team": "A", "is_primary": False},
     ]
@@ -137,7 +138,9 @@ def test_legacy_put_team_still_works(client, emp):
     body = resp.json()
     assert body["team"] == "Legacy"
     teams = client.get(f"/api/v1/employees/{emp.id}/teams").json()
-    assert teams == [{"team": "Legacy", "is_primary": True}]
+    assert [{"team": t["team"], "is_primary": t["is_primary"]} for t in teams] == [
+        {"team": "Legacy", "is_primary": True}
+    ]
     assert body.get("teams") is None
 
 

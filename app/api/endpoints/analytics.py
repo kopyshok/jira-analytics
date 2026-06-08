@@ -202,6 +202,7 @@ def dashboard_hours_balance(
         employee_ids=employee_ids,
         from_=resolved_from,
         to_=resolved_to,
+        teams_filter=team_ids if team_ids else None,
     )
 
     return HoursBalanceResponse(
@@ -240,6 +241,7 @@ def dashboard_hours_balance_employee(
     employee_id: str,
     from_: Optional[date] = Query(None, alias="from"),
     to: Optional[date] = Query(None),
+    teams: Optional[str] = Query(None, description="Команды CSV"),
     lag_days: int = Query(
         2, ge=0, le=10,
         description="Лаг в рабочих днях для правой границы окна (если to не задан)",
@@ -251,11 +253,13 @@ def dashboard_hours_balance_employee(
     resolved_from = from_ or date(today.year, 1, 1)
     svc = HoursBalanceService(db)
     resolved_to = to or svc.subtract_workdays(today, lag_days)
+    team_ids = parse_teams_csv(teams)
     try:
         result = svc.compute_employee(
             employee_id=employee_id,
             from_=resolved_from,
             to_=resolved_to,
+            teams_filter=team_ids if team_ids else None,
         )
     except ValueError:
         raise HTTPException(status_code=404, detail="Employee not found")

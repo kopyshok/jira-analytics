@@ -7,6 +7,7 @@ import pytest
 from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
 from app.models.employee import Employee
+from app.models.employee_team import EmployeeTeam
 from app.models.issue import Issue
 from app.models.project import Project
 from app.models.worklog import Worklog
@@ -355,3 +356,108 @@ def test_compute_employee_returns_days_and_monthly(db_session, emp, issue):
     skip_day = next(d for d in detail.days if d.day == date(2026, 1, 13))
     assert skip_day.kind == "skip"
     assert skip_day.delta == pytest.approx(-3.0)
+
+
+# ---------------------------------------------------------------------------
+# Task C: team_start + joined_at integration
+# ---------------------------------------------------------------------------
+
+
+def test_team_start_with_joined_at_skips_prejoin_days(db_session, emp, issue):
+    """Сотрудник с joined_at=2026-01-21 в команде T1.
+
+    Ворклоги только после 21.01 (рабочие дни 21-30), каждый по 8ч (норма).
+    Период 01.01-31.01 с teams_filter=["T1"].
+    Ожидаем: skip_days=0, overtime_days=0, balance≈0.
+    Дни до 21.01 должны быть пропущены (без автоотгулов).
+    """
+    et = EmployeeTeam(
+        employee_id=emp.id,
+        team="T1",
+        is_primary=True,
+        joined_at=date(2026, 1, 21),
+    )
+    db_session.add(et)
+    # 21-30 янв — добавляем 8ч для каждого рабочего дня
+    for d in range(21, 31):
+        dt = date(2026, 1, d)
+        if dt.weekday() >= 5:
+            continue
+        db_session.add(Worklog(
+            jira_worklog_id=f"jw-{d}",
+            issue_id=issue.id,
+            employee_id=emp.id,
+            hours=8.0,
+            time_spent_seconds=8 * 3600,
+            started_at=datetime(2026, 1, d, 10, 0),
+        ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 1),
+        to_=date(2026, 1, 31),
+        teams_filter=["T1"],
+    )
+    bal = result.employees[0]
+    assert bal.skip_days == 0, "Дни до joined_at не должны считаться автоотгулами"
+    assert bal.overtime_days == 0
+    assert bal.balance_hours == pytest.approx(0.0, abs=0.5)
+
+
+def test_team_start_fallback_first_worklog(db_session, emp, issue):
+    """Без joined_at: team_start должен вернуть дату первого ворклога по задаче команды."""
+    # Issue в команде T1
+    issue.team = "T1"
+    db_session.commit()
+
+    db_session.add(Worklog(
+        jira_worklog_id="jw-x",
+        issue_id=issue.id,
+        employee_id=emp.id,
+        hours=8.0,
+        time_spent_seconds=8 * 3600,
+        started_at=datetime(2026, 1, 21, 10, 0),
+    ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    eff = svc.team_start(emp.id, ["T1"], date(2026, 1, 1))
+    assert eff == date(2026, 1, 21)
+
+
+def test_team_start_no_data_returns_period_from(db_session, emp):
+    """Без joined_at и без ворклогов: team_start возвращает period_from."""
+    svc = HoursBalanceService(db_session)
+    period_from = date(2026, 1, 1)
+    eff = svc.team_start(emp.id, ["T1"], period_from)
+    assert eff == period_from
+
+
+def test_team_start_explicit_date_wins_over_fallback(db_session, emp, issue):
+    """joined_at приоритетнее даты первого ворклога."""
+    # Явная дата 21.01
+    et = EmployeeTeam(
+        employee_id=emp.id,
+        team="T1",
+        is_primary=True,
+        joined_at=date(2026, 1, 21),
+    )
+    db_session.add(et)
+    # Ворклог от 05.01 — без joined_at он был бы fallback
+    issue.team = "T1"
+    db_session.add(Worklog(
+        jira_worklog_id="jw-early",
+        issue_id=issue.id,
+        employee_id=emp.id,
+        hours=8.0,
+        time_spent_seconds=8 * 3600,
+        started_at=datetime(2026, 1, 5, 10, 0),
+    ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    eff = svc.team_start(emp.id, ["T1"], date(2026, 1, 1))
+    # Должна победить joined_at (21.01), не ворклог (05.01)
+    assert eff == date(2026, 1, 21)
