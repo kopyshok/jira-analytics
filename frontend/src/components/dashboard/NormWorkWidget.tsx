@@ -225,7 +225,7 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
 
 function RoleColumn({ role, t }: { role: NormWorkRoleGroup; t: Thresholds }) {
   return (
-    <div style={{ background: '#0a1d3a', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ background: DARK_THEME.cardBg, borderRadius: 8, overflow: 'hidden' }}>
       <div style={{ padding: 12, borderBottom: `2px solid ${role.role_color}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 10, height: 10, borderRadius: '50%', background: role.role_color }} />

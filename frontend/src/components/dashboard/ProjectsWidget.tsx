@@ -409,7 +409,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
         const isHelp = t.label === 'ПОМОЩЬ ИЗВНЕ' && data.total_alien_fact_hours > 0;
         return (
           <div key={t.label} style={{
-            background: isHelp ? 'rgba(132,204,22,0.06)' : '#0a1d3a',
+            background: isHelp ? 'rgba(132,204,22,0.06)' : DARK_THEME.cardBg,
             border: isHelp ? '1px solid rgba(132,204,22,0.25)' : `1px solid ${DARK_THEME.darkRows}`,
             borderRadius: 8,
             padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
@@ -428,7 +428,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
 function Sparklines({ projects }: { projects: ProjectItem[] }) {
   const visible = [...projects].sort((a, b) => b.team_fact_hours - a.team_fact_hours).slice(0, 6);
   return (
-    <div style={{ background: '#0a1d3a', border: `1px solid ${DARK_THEME.darkRows}`, borderRadius: 8, padding: 14 }}>
+    <div style={{ background: DARK_THEME.cardBg, border: `1px solid ${DARK_THEME.darkRows}`, borderRadius: 8, padding: 14 }}>
       <div style={{
         fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase',
         letterSpacing: '0.06em', marginBottom: 10,

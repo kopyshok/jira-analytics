@@ -131,14 +131,23 @@
 }
 
 :where([data-theme="aurora"]) .ant-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius);
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius) !important;
   backdrop-filter: blur(var(--blur)) saturate(1.25);
 }
 
+:where([data-theme="aurora"]) .ant-card-body,
 :where([data-theme="aurora"]) .ant-card-head {
-  border-bottom-color: var(--glass-border);
+  background: transparent !important;
+}
+
+:where([data-theme="aurora"]) .ant-card-head {
+  border-bottom-color: var(--glass-border) !important;
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-card-head-title {
   color: var(--text);
 }
 
