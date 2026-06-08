@@ -467,7 +467,7 @@ async def reload_worklogs(
     try:
         async with JiraClient.from_db(db) as jira:
             service = SyncService(db, jira, cancel_check=_disconnect_checker(http_request))
-            stats = await service.reload_worklogs_since(req.since)
+            stats = await service.reload_worklogs_v2_bulk(req.since)
     except asyncio.CancelledError:
         raise HTTPException(status_code=CLIENT_CLOSED_REQUEST, detail="Sync cancelled by client")
     except JiraClientError as e:
@@ -524,7 +524,7 @@ async def reload_worklogs_stream(
                         db, jira,
                         cancel_check=_disconnect_checker(http_request),
                     )
-                    stats = await service.reload_worklogs_since(
+                    stats = await service.reload_worklogs_v2_bulk(
                         req.since, on_progress=on_progress,
                     )
                 _set_setting(db, "worklog_reload_since_date", req.since.isoformat())
