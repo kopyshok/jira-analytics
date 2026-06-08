@@ -1,0 +1,138 @@
+/* ============================================================
+   Aurora glass kit — Jira Analytics
+   Driven entirely by CSS vars.
+   Activated when <html data-theme="aurora" data-mode="dark|light">.
+   ============================================================ */
+
+[data-theme="aurora"] {
+  /* shared structural defaults (overridden per mode below) */
+  --radius: 20px;
+  --radius-sm: 12px;
+  --radius-pill: 999px;
+  --blur: 18px;
+  --grain: 0.04;
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Manrope', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  font-family: var(--font-body);
+  color: var(--text);
+  background: var(--bg);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* deep solid bg + faint accent wash + grain — applied to body in Aurora mode */
+[data-theme="aurora"] body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 82% -8%, var(--wash-1), transparent 70%),
+    radial-gradient(55% 45% at -5% 105%, var(--wash-2), transparent 70%),
+    var(--bg);
+}
+[data-theme="aurora"] body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  opacity: var(--grain); mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* ---------------- Glass surfaces ---------------- */
+[data-theme="aurora"] .glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(var(--blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.25);
+  box-shadow: var(--glass-shadow);
+  position: relative;
+  overflow: hidden;
+}
+[data-theme="aurora"] .glass::before {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 42%);
+  opacity: 0.9;
+}
+[data-theme="aurora"] .glass-hover { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; cursor: pointer; }
+[data-theme="aurora"] .glass-hover:hover { transform: translateY(-3px); border-color: var(--accent-border); box-shadow: var(--glass-shadow), 0 0 0 1px var(--accent-border), 0 12px 40px var(--accent-glow); }
+
+/* ---------------- Accent text / gradient ---------------- */
+[data-theme="aurora"] .accent-grad {
+  background: linear-gradient(110deg, var(--accent-1), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+[data-theme="aurora"] .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+[data-theme="aurora"] .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-muted); font-weight: 600; }
+[data-theme="aurora"] .serif { font-family: var(--font-display); }
+
+/* ---------------- Buttons ---------------- */
+[data-theme="aurora"] .gbtn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 20px; border-radius: var(--radius-pill);
+  font-family: var(--font-body); font-size: 14px; font-weight: 600; cursor: pointer;
+  border: 1px solid transparent; transition: all .16s ease; white-space: nowrap;
+}
+[data-theme="aurora"] .gbtn-primary {
+  color: var(--on-accent);
+  background: linear-gradient(110deg, var(--accent-1), var(--accent-2));
+  box-shadow: 0 6px 22px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.35);
+}
+[data-theme="aurora"] .gbtn-primary:hover { filter: brightness(1.08); box-shadow: 0 8px 30px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.45); }
+[data-theme="aurora"] .gbtn-ghost {
+  color: var(--text); background: var(--glass-bg);
+  border-color: var(--glass-border); backdrop-filter: blur(var(--blur));
+}
+[data-theme="aurora"] .gbtn-ghost:hover { border-color: var(--accent-border); color: var(--accent-1); }
+
+/* ---------------- Pills / tags ---------------- */
+[data-theme="aurora"] .pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+  border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; line-height: 1;
+  border: 1px solid var(--pill-border); background: var(--pill-bg); color: var(--text-2);
+}
+
+/* ---------------- Load status ---------------- */
+[data-theme="aurora"] .s-good { color: var(--good); }
+[data-theme="aurora"] .s-warn { color: var(--warn); }
+[data-theme="aurora"] .s-bad  { color: var(--bad); }
+
+/* progress track + neon fill */
+[data-theme="aurora"] .track { height: 8px; border-radius: 999px; background: var(--track-bg); overflow: hidden; }
+[data-theme="aurora"] .track > i { display: block; height: 100%; border-radius: 999px; }
+
+/* ============================================================
+   Aurora dark mode
+   ============================================================ */
+[data-theme="aurora"][data-mode="dark"] {
+  --bg: #080b16;
+  --wash-1: rgba(56,189,248,0.14); --wash-2: rgba(167,139,250,0.13);
+  --text: #eaf0fb; --text-2: #b8c6e0; --text-muted: #7f90b0;
+  --accent-1: #38bdf8; --accent-2: #a78bfa; --on-accent: #07101f;
+  --accent-border: rgba(120,170,250,0.55); --accent-glow: rgba(80,140,250,0.28);
+  --glass-bg: rgba(255,255,255,0.045); --glass-border: rgba(255,255,255,0.10);
+  --glass-sheen: rgba(255,255,255,0.10);
+  --glass-shadow: 0 16px 48px rgba(0,0,0,0.45);
+  --pill-bg: rgba(255,255,255,0.05); --pill-border: rgba(255,255,255,0.12);
+  --track-bg: rgba(255,255,255,0.08);
+  --good: #34d399; --warn: #fbbf24; --bad: #fb7185;
+}
+
+/* ============================================================
+   Aurora light mode
+   ============================================================ */
+[data-theme="aurora"][data-mode="light"] {
+  --bg: #eef2fb;
+  --wash-1: rgba(56,189,248,0.20); --wash-2: rgba(167,139,250,0.18);
+  --text: #16203a; --text-2: #3f4d6e; --text-muted: #707f9e;
+  --accent-1: #0ea5e9; --accent-2: #7c5cf6; --on-accent: #ffffff;
+  --accent-border: rgba(60,120,230,0.45); --accent-glow: rgba(80,140,250,0.22);
+  --glass-bg: rgba(255,255,255,0.55); --glass-border: rgba(255,255,255,0.85);
+  --glass-sheen: rgba(255,255,255,0.65);
+  --glass-shadow: 0 16px 40px rgba(60,90,160,0.16);
+  --pill-bg: rgba(255,255,255,0.6); --pill-border: rgba(120,140,190,0.3);
+  --track-bg: rgba(40,60,110,0.10); --grain: 0.02;
+  --good: #059669; --warn: #d97706; --bad: #e11d48;
+}

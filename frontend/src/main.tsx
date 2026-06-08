@@ -23,6 +23,7 @@ import { ThemeProvider, useAppTheme } from './contexts/ThemeContext';
 import { installConsoleCapture } from './utils/consoleCapture';
 import './index.css';
 import './styles/print.css';
+import './aurora/styles/aurora.css';
 
 installConsoleCapture();
 

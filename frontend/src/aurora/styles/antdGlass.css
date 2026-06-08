@@ -1,0 +1,158 @@
+/* Overlay на нативные AntD-компоненты в Aurora-режиме.
+   Все правила обёрнуты в :where([data-theme="aurora"]) — нулевая специфичность для классики. */
+
+:where([data-theme="aurora"]) .ant-form-item-label > label {
+  color: var(--text-2);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+:where([data-theme="aurora"]) .ant-input,
+:where([data-theme="aurora"]) .ant-input-password,
+:where([data-theme="aurora"]) .ant-input-number,
+:where([data-theme="aurora"]) .ant-select-selector,
+:where([data-theme="aurora"]) .ant-picker {
+  background: var(--glass-bg) !important;
+  border-color: var(--glass-border) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text) !important;
+}
+
+:where([data-theme="aurora"]) .ant-input:focus,
+:where([data-theme="aurora"]) .ant-input-focused,
+:where([data-theme="aurora"]) .ant-select-focused .ant-select-selector,
+:where([data-theme="aurora"]) .ant-picker-focused {
+  border-color: var(--accent-border) !important;
+  box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
+:where([data-theme="aurora"]) .ant-btn {
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+:where([data-theme="aurora"]) .ant-btn-primary {
+  background: linear-gradient(110deg, var(--accent-1), var(--accent-2));
+  border-color: transparent;
+  box-shadow: 0 6px 22px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.35);
+}
+
+:where([data-theme="aurora"]) .ant-btn-default {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-modal-content,
+:where([data-theme="aurora"]) .ant-drawer-content {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(var(--blur)) saturate(1.25);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+}
+
+:where([data-theme="aurora"]) .ant-modal-header,
+:where([data-theme="aurora"]) .ant-drawer-header {
+  background: transparent !important;
+  border-bottom-color: var(--glass-border);
+}
+
+:where([data-theme="aurora"]) .ant-table,
+:where([data-theme="aurora"]) .ant-table-thead > tr > th,
+:where([data-theme="aurora"]) .ant-table-tbody > tr > td {
+  background: transparent !important;
+  border-bottom-color: var(--glass-border) !important;
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-table-thead > tr > th {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+:where([data-theme="aurora"]) .ant-table-tbody > tr:hover > td {
+  background: var(--glass-bg) !important;
+}
+
+:where([data-theme="aurora"]) .ant-tabs-nav::before {
+  border-bottom-color: var(--glass-border) !important;
+}
+
+:where([data-theme="aurora"]) .ant-tabs-tab-btn {
+  color: var(--text-muted);
+}
+
+:where([data-theme="aurora"]) .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-1) !important;
+}
+
+:where([data-theme="aurora"]) .ant-tabs-ink-bar {
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2)) !important;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+:where([data-theme="aurora"]) .ant-tag {
+  background: var(--pill-bg);
+  border-color: var(--pill-border);
+  color: var(--text-2);
+  border-radius: var(--radius-pill);
+}
+
+:where([data-theme="aurora"]) .ant-tree {
+  background: transparent;
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-tree-node-content-wrapper:hover {
+  background: var(--glass-bg);
+}
+
+:where([data-theme="aurora"]) .ant-tree-node-selected {
+  background: color-mix(in srgb, var(--accent-1) 12%, transparent) !important;
+}
+
+:where([data-theme="aurora"]) .ant-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(var(--blur)) saturate(1.25);
+}
+
+:where([data-theme="aurora"]) .ant-card-head {
+  border-bottom-color: var(--glass-border);
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-notification-notice {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--blur));
+}
+
+:where([data-theme="aurora"]) .ant-dropdown-menu,
+:where([data-theme="aurora"]) .ant-select-dropdown,
+:where([data-theme="aurora"]) .ant-picker-dropdown {
+  background: rgba(20, 25, 40, 0.95) !important;
+  backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+
+:where([data-theme="aurora"][data-mode="light"]) .ant-dropdown-menu,
+:where([data-theme="aurora"][data-mode="light"]) .ant-select-dropdown,
+:where([data-theme="aurora"][data-mode="light"]) .ant-picker-dropdown {
+  background: rgba(255, 255, 255, 0.95) !important;
+}
+
+:where([data-theme="aurora"]) .ant-segmented {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+:where([data-theme="aurora"]) .ant-segmented-item-selected {
+  background: linear-gradient(110deg, var(--accent-1), var(--accent-2)) !important;
+  color: var(--on-accent);
+}
