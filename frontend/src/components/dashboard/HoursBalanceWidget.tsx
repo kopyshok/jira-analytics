@@ -301,7 +301,7 @@ export default function HoursBalanceWidget() {
         marginTop: 12, textAlign: 'center', fontSize: 11,
         color: DARK_THEME.textMuted, fontStyle: 'italic',
       }}>
-        Отпуск, больничный и другие официальные отсутствия не считаются переработкой/отгулом.
+        Работа в выходные, праздники, отпуск или больничный засчитывается переработкой.
       </div>
       <HoursBalanceModal
         employeeId={openId}

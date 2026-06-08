@@ -178,11 +178,11 @@ def test_vacation_not_counted_as_skip(db_session, emp, vacation_reason):
     assert bal.balance_hours == 0
 
 
-def test_worklog_during_vacation_not_counted_as_overtime(db_session, emp, vacation_reason, issue):
-    """Если сотрудник в отпуске случайно списал ворклог — НЕ переработка.
+def test_worklog_during_vacation_counted_as_overtime(db_session, emp, vacation_reason, issue):
+    """Работа в отпуск/больничный → переработка +fact.
 
-    Виджет и drill-in должны быть согласованы: официальные отсутствия
-    исключают день из переработок/отгулов даже при наличии ворклога.
+    Виджет и drill-in согласованы: absence обнуляет норму, ворклог сверху
+    учитывается как переработка.
     """
     db_session.add(Absence(
         id="a-vac",
@@ -203,15 +203,29 @@ def test_worklog_during_vacation_not_counted_as_overtime(db_session, emp, vacati
     db_session.commit()
 
     svc = HoursBalanceService(db_session)
+    # compute_team
     result = svc.compute_team(
         employee_ids=[emp.id],
         from_=date(2026, 1, 12),
         to_=date(2026, 1, 16),
     )
     bal = result.employees[0]
-    assert bal.overtime_days == 0
-    assert bal.overtime_hours == pytest.approx(0.0)
-    assert bal.balance_hours == pytest.approx(0.0)
+    assert bal.overtime_days == 1
+    assert bal.overtime_hours == pytest.approx(4.0)
+    assert bal.balance_hours == pytest.approx(4.0)
+    # compute_employee — те же KPI + день виден как overtime в days[]
+    detail = svc.compute_employee(
+        employee_id=emp.id,
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 16),
+    )
+    assert detail.overtime_days == 1
+    assert detail.overtime_hours == pytest.approx(4.0)
+    assert detail.balance_hours == pytest.approx(4.0)
+    work_day = next(d for d in detail.days if d.day == date(2026, 1, 13))
+    assert work_day.kind == "overtime"
+    assert work_day.delta == pytest.approx(4.0)
+    assert work_day.absence_label == "Отпуск"
 
 
 def test_day_off_reason_does_not_zero_norm(db_session, emp, day_off_reason, issue):

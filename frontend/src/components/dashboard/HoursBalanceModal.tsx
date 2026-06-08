@@ -91,9 +91,12 @@ function MonthCalendar({
         {cells.map((c, i) => {
           if (!c) return <div key={i} style={{ height: 24 }} />;
           const { bg, border, tone } = dayBg(c.kind);
-          const tip = c.kind === 'absence'
+          const base = c.kind === 'absence'
             ? c.absence_label ?? 'Отсутствие'
             : `Норма ${c.norm}ч / Факт ${c.fact}ч / ${c.delta > 0 ? '+' : ''}${c.delta}ч`;
+          const tip = c.kind === 'overtime' && c.absence_label
+            ? `${c.absence_label} · работал ${c.fact}ч / +${c.delta}ч`
+            : base;
           return (
             <Tooltip key={i} title={tip}>
               <div style={{

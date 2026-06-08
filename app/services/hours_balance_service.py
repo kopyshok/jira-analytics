@@ -327,12 +327,10 @@ class HoursBalanceService:
                 else:
                     base_norm = 8.0 if d.weekday() < 5 else 0.0
                 absence_label = absences.get((e.id, d))
-                # Официальное отсутствие (кроме day_off) — день не считается ни
-                # переработкой, ни отгулом, даже при наличии ворклога.
-                if absence_label:
-                    sparkline.append(balance)
-                    continue
-                norm_eff = max(0.0, base_norm)
+                # Официальное отсутствие (кроме day_off) обнуляет норму.
+                # Если сотрудник всё равно работал в отпуск/больничный — это
+                # переработка (norm=0, fact>0 → +fact).
+                norm_eff = 0.0 if absence_label else max(0.0, base_norm)
                 fact = worklogs.get((e.id, d), 0.0)
                 if norm_eff == 0 and fact == 0:
                     sparkline.append(balance)
@@ -418,8 +416,17 @@ class HoursBalanceService:
             fact = worklogs.get((employee_id, cur), 0.0)
 
             if absence_label:
-                kind = "absence"
-                days.append(DayCalc(cur, 0.0, fact, 0.0, kind, absence_label))
+                if fact > 0:
+                    # Сотрудник работал в отпуск/больничный → переработка +fact.
+                    delta = fact
+                    balance += delta
+                    overtime_days += 1
+                    overtime_hours += delta
+                    monthly_acc[(cur.year, cur.month)]["balance"] += delta
+                    monthly_acc[(cur.year, cur.month)]["overtime_days"] += 1
+                    days.append(DayCalc(cur, 0.0, fact, delta, "overtime", absence_label))
+                else:
+                    days.append(DayCalc(cur, 0.0, 0.0, 0.0, "absence", absence_label))
                 cur += timedelta(days=1)
                 continue
 
