@@ -40,9 +40,9 @@ function saveThresholds(t: Thresholds) {
 function statusColor(pct: number, t: Thresholds): string {
   // pct > warnAbove → перегруз (красный); underBelow ≤ pct ≤ warnAbove → норма (жёлтый);
   // pct < underBelow → недогрузка (зелёный, есть запас).
-  if (pct > t.warnAbove) return '#ff4d4f';
-  if (pct >= t.underBelow) return '#faad14';
-  return '#52c41a';
+  if (pct > t.warnAbove) return 'var(--bad, #ff4d4f)';
+  if (pct >= t.underBelow) return 'var(--warn, #faad14)';
+  return 'var(--good, #52c41a)';
 }
 
 function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: string }) {
@@ -59,7 +59,7 @@ function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: s
         <div style={{
           position: 'absolute', top: 0, left: `${targetPct}%`,
           height: '100%', width: `${overrunW}%`,
-          background: '#ff4d4f', borderRadius: '0 7px 7px 0',
+          background: 'var(--bad, #ff4d4f)', borderRadius: '0 7px 7px 0',
         }} />
       )}
       <div style={{

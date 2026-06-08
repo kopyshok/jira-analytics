@@ -7,10 +7,10 @@ import { statusTagColor } from '../../utils/status';
 import { DARK_THEME, CHART_COLORS } from '../../utils/constants';
 
 const STATUS_COLORS = {
-  done: '#67d68d',
-  indeterminate: CHART_COLORS.cyan,
-  new: DARK_THEME.textMuted,
-  overdue: '#ff4d4f',
+  done: 'var(--good, #67d68d)',
+  indeterminate: 'var(--accent-1, #00c9c8)',
+  new: 'var(--text-muted, #8faec8)',
+  overdue: 'var(--bad, #ff4d4f)',
 };
 
 const SILENCE_THRESHOLD = 14;
@@ -73,21 +73,21 @@ function savePrefs(prefs: Prefs) {
 }
 
 function loadColor(pct: number): string {
-  if (pct > 110) return '#ff4d4f';
-  if (pct >= 70) return '#67d68d';
-  return '#faad14';
+  if (pct > 110) return 'var(--bad, #ff4d4f)';
+  if (pct >= 70) return 'var(--good, #67d68d)';
+  return 'var(--warn, #faad14)';
 }
 
 function dueColor(days: number | null): string {
   if (days == null) return DARK_THEME.textMuted;
-  if (days < 0) return '#ff4d4f';
-  if (days <= DUE_SOON_THRESHOLD) return '#faad14';
-  return '#67d68d';
+  if (days < 0) return 'var(--bad, #ff4d4f)';
+  if (days <= DUE_SOON_THRESHOLD) return 'var(--warn, #faad14)';
+  return 'var(--good, #67d68d)';
 }
 
 function trendArrow(dir: 'up' | 'down' | 'flat'): { glyph: string; color: string } {
-  if (dir === 'up') return { glyph: '↑', color: '#67d68d' };
-  if (dir === 'down') return { glyph: '↓', color: '#faad14' };
+  if (dir === 'up') return { glyph: '↑', color: 'var(--good, #67d68d)' };
+  if (dir === 'down') return { glyph: '↓', color: 'var(--warn, #faad14)' };
   return { glyph: '·', color: DARK_THEME.textMuted };
 }
 

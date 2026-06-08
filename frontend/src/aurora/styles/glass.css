@@ -108,14 +108,14 @@
    ============================================================ */
 [data-theme="aurora"][data-mode="dark"] {
   --bg: #080b16;
-  --wash-1: rgba(56,189,248,0.14); --wash-2: rgba(167,139,250,0.13);
+  --wash-1: rgba(56,189,248,0.22); --wash-2: rgba(167,139,250,0.20);
   --text: #eaf0fb; --text-2: #b8c6e0; --text-muted: #7f90b0;
   --accent-1: #38bdf8; --accent-2: #a78bfa; --on-accent: #07101f;
   --accent-border: rgba(120,170,250,0.55); --accent-glow: rgba(80,140,250,0.28);
-  --glass-bg: rgba(255,255,255,0.045); --glass-border: rgba(255,255,255,0.10);
-  --glass-sheen: rgba(255,255,255,0.10);
-  --glass-shadow: 0 16px 48px rgba(0,0,0,0.45);
-  --pill-bg: rgba(255,255,255,0.05); --pill-border: rgba(255,255,255,0.12);
+  --glass-bg: rgba(255,255,255,0.06); --glass-border: rgba(120,170,250,0.18);
+  --glass-sheen: rgba(255,255,255,0.14);
+  --glass-shadow: 0 16px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
+  --pill-bg: rgba(255,255,255,0.06); --pill-border: rgba(120,170,250,0.22);
   --track-bg: rgba(255,255,255,0.08);
   --good: #34d399; --warn: #fbbf24; --bad: #fb7185;
 }

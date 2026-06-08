@@ -135,20 +135,44 @@
   border: 1px solid var(--glass-border) !important;
   border-radius: var(--radius) !important;
   backdrop-filter: blur(var(--blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.25);
+  box-shadow: var(--glass-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Top-edge sheen — same as .glass primitive */
+:where([data-theme="aurora"]) .ant-card::before {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 42%);
+  opacity: 0.9;
+  z-index: 0;
 }
 
 :where([data-theme="aurora"]) .ant-card-body,
 :where([data-theme="aurora"]) .ant-card-head {
   background: transparent !important;
+  position: relative;
+  z-index: 1;
 }
 
 :where([data-theme="aurora"]) .ant-card-head {
   border-bottom-color: var(--glass-border) !important;
   color: var(--text);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 :where([data-theme="aurora"]) .ant-card-head-title {
   color: var(--text);
+  font-family: var(--font-display);
+}
+
+/* Card hover lift effect */
+:where([data-theme="aurora"]) .ant-card:hover {
+  border-color: var(--accent-border) !important;
 }
 
 :where([data-theme="aurora"]) .ant-notification-notice {
