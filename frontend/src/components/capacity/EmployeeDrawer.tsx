@@ -52,7 +52,7 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
     <Drawer
       open={!!employeeId}
       onClose={onClose}
-      width={480}
+      size={480}
       title="Карточка сотрудника"
       destroyOnHidden
       styles={{
