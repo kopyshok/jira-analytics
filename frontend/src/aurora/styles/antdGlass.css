@@ -89,13 +89,13 @@
   background: transparent !important;
 }
 
-/* Backdrop / mask — near-solid overlay, page should not bleed through */
+/* Backdrop / mask — comfortable dim (not pitch black, not see-through) */
 [data-theme="aurora"] .ant-modal-mask,
 [data-theme="aurora"] .ant-drawer-mask,
 [data-theme="aurora"] .ant-modal-wrap > .ant-modal-mask,
 [data-theme="aurora"] .ant-image-preview-mask {
-  background: rgba(5, 8, 16, 0.92) !important;
-  backdrop-filter: blur(6px) !important;
+  background: rgba(5, 8, 16, 0.65) !important;
+  backdrop-filter: blur(3px) !important;
 }
 
 :where([data-theme="aurora"]) .ant-table,
