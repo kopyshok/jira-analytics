@@ -362,6 +362,11 @@ class HoursBalanceService:
             team_overtime += overtime_hours
             team_skip += skip_hours
 
+        # Нетто-баланс команды = сумма индивидуальных балансов сотрудников.
+        # team_overtime / team_skip считают только дни с переработкой/отгулом
+        # (за порогом ±10%), но balance включает ВСЕ дни (в т.ч. дрейф на
+        # нормированных) — поэтому overtime+skip ≠ нетто.
+        team_balance = sum(r.balance_hours for r in emp_results)
         return TeamBalanceResult(
             period_from=from_,
             period_to=to_,
@@ -369,7 +374,7 @@ class HoursBalanceService:
             team_summary_employees_count=len(emp_results),
             team_summary_overtime_hours=round(team_overtime, 1),
             team_summary_skip_hours=round(team_skip, 1),
-            team_summary_net_balance=round(team_overtime + team_skip, 1),
+            team_summary_net_balance=round(team_balance, 1),
             employees=emp_results,
         )
 
