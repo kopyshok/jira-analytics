@@ -60,9 +60,19 @@
   color: var(--text);
 }
 
-:where([data-theme="aurora"]) .ant-modal-content,
-:where([data-theme="aurora"]) .ant-drawer-content {
-  background: var(--glass-bg) !important;
+/* Modals & Drawers — solid backdrop in dark mode (glass would let page bleed through).
+ * Aurora-dark: deep navy with subtle accent tint. Aurora-light: near-white. */
+:where([data-theme="aurora"][data-mode="dark"]) .ant-modal-content,
+:where([data-theme="aurora"][data-mode="dark"]) .ant-drawer-content {
+  background: rgba(15, 20, 38, 0.96) !important;
+  backdrop-filter: blur(var(--blur)) saturate(1.25);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+}
+
+:where([data-theme="aurora"][data-mode="light"]) .ant-modal-content,
+:where([data-theme="aurora"][data-mode="light"]) .ant-drawer-content {
+  background: rgba(240, 244, 252, 0.96) !important;
   backdrop-filter: blur(var(--blur)) saturate(1.25);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
@@ -72,6 +82,18 @@
 :where([data-theme="aurora"]) .ant-drawer-header {
   background: transparent !important;
   border-bottom-color: var(--glass-border);
+}
+
+:where([data-theme="aurora"]) .ant-modal-body,
+:where([data-theme="aurora"]) .ant-drawer-body {
+  background: transparent !important;
+}
+
+/* Backdrop / mask — darker overlay so modal content stands out */
+:where([data-theme="aurora"]) .ant-modal-mask,
+:where([data-theme="aurora"]) .ant-drawer-mask {
+  background: rgba(0, 0, 0, 0.55) !important;
+  backdrop-filter: blur(4px);
 }
 
 :where([data-theme="aurora"]) .ant-table,
