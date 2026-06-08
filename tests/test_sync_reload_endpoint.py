@@ -45,7 +45,7 @@ def test_post_reload_persists_since_and_returns_stats(client, db_session):
         "app.api.endpoints.sync.JiraClient.from_db",
         return_value=_fake_jira_ctx(),
     ), patch(
-        "app.services.sync_service.SyncService.reload_worklogs_since",
+        "app.services.sync_service.SyncService.reload_worklogs_v2_bulk",
         new=AsyncMock(return_value=stats),
     ):
         resp = client.post(
@@ -107,7 +107,7 @@ def test_post_reload_stream_emits_progress_and_done(client, db_session):
         "app.api.endpoints.sync.JiraClient.from_db",
         return_value=_fake_jira_ctx(),
     ), patch(
-        "app.services.sync_service.SyncService.reload_worklogs_since",
+        "app.services.sync_service.SyncService.reload_worklogs_v2_bulk",
         new=fake_reload,
     ):
         with client.stream(
