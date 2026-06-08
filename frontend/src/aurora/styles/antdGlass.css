@@ -197,6 +197,34 @@
   border-color: var(--accent-border) !important;
 }
 
+/* Nested cards inside modals/drawers — quieter glass treatment.
+ * Full sheen + blur + glow on already-glassy modal looks busy. */
+:where([data-theme="aurora"][data-mode="dark"]) .ant-modal-content .ant-card,
+:where([data-theme="aurora"][data-mode="dark"]) .ant-drawer-content .ant-card {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+:where([data-theme="aurora"][data-mode="light"]) .ant-modal-content .ant-card,
+:where([data-theme="aurora"][data-mode="light"]) .ant-drawer-content .ant-card {
+  background: rgba(0, 0, 0, 0.03) !important;
+  border-color: rgba(0, 0, 0, 0.07) !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+:where([data-theme="aurora"]) .ant-modal-content .ant-card::before,
+:where([data-theme="aurora"]) .ant-drawer-content .ant-card::before {
+  display: none !important;
+}
+
+:where([data-theme="aurora"]) .ant-modal-content .ant-card:hover,
+:where([data-theme="aurora"]) .ant-drawer-content .ant-card:hover {
+  border-color: var(--glass-border) !important;
+}
+
 :where([data-theme="aurora"]) .ant-notification-notice {
   background: var(--glass-bg) !important;
   border: 1px solid var(--glass-border);
