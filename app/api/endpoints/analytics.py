@@ -276,7 +276,10 @@ def dashboard_hours_balance_employee(
         period=PeriodInfo(
             from_=result.period_from,
             to=result.period_to,
-            working_days=0,  # drill-in doesn't need working_days count
+            working_days=sum(
+                1 for d in result.days
+                if d.kind in ("norm", "overtime", "skip")
+            ),
         ),
         kpi=EmployeeKpi(
             balance_hours=result.balance_hours,
