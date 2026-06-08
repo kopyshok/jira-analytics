@@ -12,6 +12,7 @@ import { useAbsences, useAddAbsence, useAddAbsencesBatch, useRemoveAbsence } fro
 import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import RolesTab from '../components/capacity/RolesTab';
+import EmployeeDrawer from '../components/capacity/EmployeeDrawer';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
@@ -61,6 +62,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
+  const [drawerEmployeeId, setDrawerEmployeeId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -239,7 +241,9 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
       const role = roleByEmpId.get(r.employee_id) ?? null;
       return (
         <Space>
-          <span>{r.employee_name}</span>
+          <span style={{ cursor: 'pointer' }}>{r.employee_name}</span>
+          <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <Space>
           <Select
             allowClear
             size="small"
@@ -305,6 +309,8 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
               );
             }}
           />
+          </Space>
+          </div>
         </Space>
       );
     },
@@ -393,7 +399,14 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
             });
           },
         }}
-        rowClassName={(r: TreeRow) => 'isTeam' in r ? 'capacity-team-row' : ''}
+        rowClassName={(r: TreeRow) => 'isTeam' in r ? 'capacity-team-row' : 'capacity-emp-row'}
+        onRow={(record: TreeRow) => {
+          if ('isTeam' in record) return {};
+          return {
+            onClick: () => setDrawerEmployeeId(record.employee_id),
+            style: { cursor: 'pointer' },
+          };
+        }}
       />
       <Modal
         title="Добавить сотрудника из Jira"
@@ -415,6 +428,10 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
         />
         {searchRes.isFetching && <Text type="secondary">Ищу…</Text>}
       </Modal>
+      <EmployeeDrawer
+        employeeId={drawerEmployeeId}
+        onClose={() => setDrawerEmployeeId(null)}
+      />
     </Space>
   );
 }
