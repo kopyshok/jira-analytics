@@ -21,6 +21,13 @@ function balanceColor(b: number): string {
   return '#8aa0c0';
 }
 
+// Часы в overlay ячейки: с 1 знаком после запятой если есть дробь, иначе целое.
+// Сумма округлений ≠ округление суммы — поэтому overlay должен отражать точную величину.
+function formatDelta(d: number): string {
+  const rounded = Math.round(d * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 function dayBg(kind: string): { bg: string; border: string; tone: string } {
   switch (kind) {
     case 'overtime':
@@ -111,13 +118,13 @@ function MonthCalendar({
                   <span style={{
                     position: 'absolute', bottom: 1, right: 2,
                     fontSize: 7, color: '#fff', fontWeight: 700,
-                  }}>+{Math.round(c.delta)}</span>
+                  }}>+{formatDelta(c.delta)}</span>
                 )}
                 {c.kind === 'skip' && (
                   <span style={{
                     position: 'absolute', bottom: 1, right: 2,
                     fontSize: 7, color: '#fff', fontWeight: 700,
-                  }}>{Math.round(c.delta)}</span>
+                  }}>{formatDelta(c.delta)}</span>
                 )}
               </div>
             </Tooltip>
