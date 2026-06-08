@@ -56,7 +56,7 @@ export const DARK_THEME = {
   textDim: '#4a6a8a',
 } as const;
 
-export type AppTheme = 'dark' | 'dark-blue' | 'dark-slate' | 'dark-charcoal';
+export type AppTheme = 'dark' | 'dark-blue' | 'dark-slate' | 'dark-charcoal' | 'aurora-dark' | 'aurora-light';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -140,6 +140,40 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
       textSecondary: '#d4c9bb',
       textMuted: '#9d8f80',
       textHint: '#7d6f62',
+    },
+  },
+  'aurora-dark': {
+    label: 'Aurora тёмная',
+    tokens: {
+      pageBg: '#080b16',
+      sidebarBg: '#0d1226',
+      cardBg: 'rgba(255,255,255,0.045)',
+      darkAccent: 'rgba(255,255,255,0.06)',
+      border: 'rgba(255,255,255,0.10)',
+      darkRows: 'rgba(255,255,255,0.025)',
+      primary: '#38bdf8',
+      primarySecondary: '#a78bfa',
+      textPrimary: '#eaf0fb',
+      textSecondary: '#b8c6e0',
+      textMuted: '#7f90b0',
+      textHint: '#5a6a85',
+    },
+  },
+  'aurora-light': {
+    label: 'Aurora светлая',
+    tokens: {
+      pageBg: '#eef2fb',
+      sidebarBg: 'rgba(255,255,255,0.55)',
+      cardBg: 'rgba(255,255,255,0.55)',
+      darkAccent: 'rgba(255,255,255,0.75)',
+      border: 'rgba(255,255,255,0.85)',
+      darkRows: 'rgba(255,255,255,0.4)',
+      primary: '#0ea5e9',
+      primarySecondary: '#7c5cf6',
+      textPrimary: '#16203a',
+      textSecondary: '#3f4d6e',
+      textMuted: '#707f9e',
+      textHint: '#8b97b3',
     },
   },
 };

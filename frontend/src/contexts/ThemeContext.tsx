@@ -14,11 +14,14 @@ export const ThemeContext = createContext<ThemeContextValue>({
 function readStoredTheme(): AppTheme {
   try {
     const v = localStorage.getItem('app_theme');
-    if (v === 'dark-blue' || v === 'dark-slate' || v === 'dark-charcoal') return v;
+    if (
+      v === 'dark' || v === 'dark-blue' || v === 'dark-slate' || v === 'dark-charcoal' ||
+      v === 'aurora-dark' || v === 'aurora-light'
+    ) return v;
   } catch {
     // localStorage unavailable
   }
-  return 'dark-blue';
+  return 'aurora-dark';
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
