@@ -60,22 +60,22 @@
   color: var(--text);
 }
 
-/* Modals & Drawers — solid backdrop in dark mode (glass would let page bleed through).
- * Aurora-dark: deep navy with subtle accent tint. Aurora-light: near-white. */
+/* Modals & Drawers — FULLY SOLID (no transparency) in Aurora.
+ * Aurora-dark: opaque deep navy. Aurora-light: opaque near-white. */
 :where([data-theme="aurora"][data-mode="dark"]) .ant-modal-content,
 :where([data-theme="aurora"][data-mode="dark"]) .ant-drawer-content {
-  background: rgba(15, 20, 38, 0.96) !important;
-  backdrop-filter: blur(var(--blur)) saturate(1.25);
+  background: #0f1426 !important;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
+  backdrop-filter: none !important;
 }
 
 :where([data-theme="aurora"][data-mode="light"]) .ant-modal-content,
 :where([data-theme="aurora"][data-mode="light"]) .ant-drawer-content {
-  background: rgba(240, 244, 252, 0.96) !important;
-  backdrop-filter: blur(var(--blur)) saturate(1.25);
+  background: #f0f4fc !important;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
+  backdrop-filter: none !important;
 }
 
 :where([data-theme="aurora"]) .ant-modal-header,
@@ -89,11 +89,10 @@
   background: transparent !important;
 }
 
-/* Backdrop / mask — darker overlay so modal content stands out */
+/* Backdrop / mask — strong dark overlay */
 :where([data-theme="aurora"]) .ant-modal-mask,
 :where([data-theme="aurora"]) .ant-drawer-mask {
-  background: rgba(0, 0, 0, 0.55) !important;
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.7) !important;
 }
 
 :where([data-theme="aurora"]) .ant-table,
@@ -197,20 +196,19 @@
   border-color: var(--accent-border) !important;
 }
 
-/* Nested cards inside modals/drawers — quieter glass treatment.
- * Full sheen + blur + glow on already-glassy modal looks busy. */
+/* Nested cards inside modals/drawers — solid sub-tile bg (modal stays opaque). */
 :where([data-theme="aurora"][data-mode="dark"]) .ant-modal-content .ant-card,
 :where([data-theme="aurora"][data-mode="dark"]) .ant-drawer-content .ant-card {
-  background: rgba(255, 255, 255, 0.03) !important;
-  border-color: rgba(255, 255, 255, 0.07) !important;
+  background: #161b30 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
 }
 
 :where([data-theme="aurora"][data-mode="light"]) .ant-modal-content .ant-card,
 :where([data-theme="aurora"][data-mode="light"]) .ant-drawer-content .ant-card {
-  background: rgba(0, 0, 0, 0.03) !important;
-  border-color: rgba(0, 0, 0, 0.07) !important;
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
 }
