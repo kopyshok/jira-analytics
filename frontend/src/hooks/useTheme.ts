@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { useAuth } from './useAuth';
 import { api } from '../api/client';
-import type { AppTheme } from '../utils/constants';
+import { APP_THEMES, type AppTheme } from '../utils/constants';
+
+function normalizeTheme(v: string | null | undefined): AppTheme {
+  if (v && (v in APP_THEMES)) return v as AppTheme;
+  // Legacy / removed темы (dark, dark-slate, dark-charcoal) → aurora-dark
+  return 'aurora-dark';
+}
 
 export function useThemeSync() {
   const { user } = useAuth();
@@ -17,7 +23,7 @@ export function useThemeSync() {
     if (user?.id && user.id !== lastSyncedUserId.current) {
       lastSyncedUserId.current = user.id;
       if (user.selected_theme) {
-        setTheme(user.selected_theme as AppTheme);
+        setTheme(normalizeTheme(user.selected_theme));
       }
     } else if (!user) {
       lastSyncedUserId.current = null;

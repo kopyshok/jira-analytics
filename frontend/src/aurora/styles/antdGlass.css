@@ -327,6 +327,18 @@ html[data-theme="aurora"][data-mode="light"] .ant-picker {
   box-shadow: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff !important;
   color: var(--text) !important;
 }
+/* InputNumber wraps an inner .ant-input-number-input — без него поле смотрится
+ * как пустое место (внутренний input наследует cardBg = pageBg = #e6ebf2).
+ * Здесь усиливаем границу полю чтобы было видно. */
+html[data-theme="aurora"][data-mode="light"] .ant-input-number-input,
+html[data-theme="aurora"][data-mode="light"] .ant-input-number-input-wrap {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-input-number .ant-input-number-handler-wrap {
+  background: #e6ebf2 !important;
+  border-left: 1px solid rgba(195,203,217,0.6) !important;
+}
 html[data-theme="aurora"][data-mode="light"] .ant-input:focus,
 html[data-theme="aurora"][data-mode="light"] .ant-input-focused,
 html[data-theme="aurora"][data-mode="light"] .ant-select-focused .ant-select-selector,

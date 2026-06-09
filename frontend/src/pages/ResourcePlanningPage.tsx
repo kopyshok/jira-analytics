@@ -3,14 +3,12 @@ import { useSearchParams, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import '../utils/gantt.css';
 import { App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
+// Скрытые режимы Портфель/Ресурсы/Plane остаются в коде (PlaneGantt, GanttRows viewMode union)
+// PM хочет вернуться к ним после доработки; см. project_resource_planning_modes_hidden.md.
 import {
-  BarChartOutlined,
   BgColorsOutlined,
   CalculatorOutlined,
-  ExperimentOutlined,
-  ScheduleOutlined,
   SettingOutlined,
-  TeamOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
 import resourcePlanningHelp from '../../../docs/help/resource-planning.md?raw';
@@ -49,11 +47,11 @@ function ResourcePlanningPageInner() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [planId, setPlanId] = usePersistedSearchParam('plan_id', 'resource_planning_plan_id');
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const saved = localStorage.getItem('rp_view_mode');
-    const allowed: ViewMode[] = ['portfolio', 'two-level', 'resource-track', 'plane'];
-    return (allowed.includes(saved as ViewMode) ? saved as ViewMode : 'two-level');
-  });
+  // Режимы Портфель / Ресурсы / Plane временно скрыты (см. комментарий в шапке файла).
+  // Код PlaneGantt и ViewMode union сохранены — переключение вернётся после доработки.
+  // Тип расширен до ViewMode чтобы TS не сузил literal — иначе сломаются ветки
+  // `viewMode === 'plane'` etc., которые активируются обратно когда переключатель вернётся.
+  const viewMode = 'two-level' as ViewMode;
   const [scale, setScale] = useState<TimelineScale>('week');
   const [depDrawMode, setDepDrawMode] = useState(false);
   const [blocksOpen, setBlocksOpen] = useState(false);
@@ -94,10 +92,6 @@ function ResourcePlanningPageInner() {
   const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
-
-  useEffect(() => {
-    localStorage.setItem('rp_view_mode', viewMode);
-  }, [viewMode]);
 
   useEffect(() => {
     if (!scenarioId || plansLoading || createPlan.isPending) return;
@@ -336,16 +330,6 @@ function ResourcePlanningPageInner() {
               {(prefs.collapsed_initiative_ids ?? []).length > 0 ? '↥ Развернуть все' : '↧ Свернуть все'}
             </Button>
           )}
-          <Segmented
-            value={viewMode}
-            onChange={v => setViewMode(v as ViewMode)}
-            options={[
-              { label: 'Портфель', value: 'portfolio', icon: <BarChartOutlined /> },
-              { label: 'Фазы', value: 'two-level', icon: <ScheduleOutlined /> },
-              { label: 'Ресурсы', value: 'resource-track', icon: <TeamOutlined /> },
-              { label: 'Plane', value: 'plane', icon: <ExperimentOutlined /> },
-            ]}
-          />
         </Space>
         </div>
       </div>

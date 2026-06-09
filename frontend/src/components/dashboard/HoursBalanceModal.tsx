@@ -1,5 +1,6 @@
 import { Modal, Spin, Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
+import { useAppTheme } from '../../contexts/ThemeContext';
 import { useHoursBalanceDetail } from '../../hooks/useHoursBalance';
 import type { HoursBalanceDailyEntry } from '../../types/api';
 
@@ -28,30 +29,39 @@ function formatDelta(d: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-function dayBg(kind: string): { bg: string; border: string; tone: string } {
-  switch (kind) {
-    case 'overtime':
-      return { bg: '#3d1b1d', border: '#ff4d4f', tone: '#ff7875' };
-    case 'skip':
-      return { bg: '#2a2f42', border: '#6e7a99', tone: 'var(--text-muted, #a4b8d8)' };
-    case 'norm':
-      return { bg: '#1d3d22', border: '#52c41a', tone: '#52c41a' };
-    case 'absence':
-      return { bg: '#3b3155', border: '#6e5fb0', tone: '#b39ddb' };
-    case 'holiday':
-    default:
-      return { bg: '#162a4a', border: 'transparent', tone: DARK_THEME.textMuted };
-  }
+type DayStyle = { bg: string; border: string; tone: string };
+
+const DAY_PALETTE_DARK: Record<string, DayStyle> = {
+  overtime: { bg: '#3d1b1d', border: '#ff4d4f', tone: '#ff7875' },
+  skip:     { bg: '#2a2f42', border: '#6e7a99', tone: 'var(--text-muted, #a4b8d8)' },
+  norm:     { bg: '#1d3d22', border: '#52c41a', tone: '#52c41a' },
+  absence:  { bg: '#3b3155', border: '#6e5fb0', tone: '#b39ddb' },
+  holiday:  { bg: '#162a4a', border: 'transparent', tone: '#8faec8' },
+};
+
+const DAY_PALETTE_LIGHT: Record<string, DayStyle> = {
+  overtime: { bg: '#fbd5d3', border: '#e05647', tone: '#a8281d' },
+  skip:     { bg: '#dde3ee', border: '#7a8298', tone: '#3f4860' },
+  norm:     { bg: '#d3eed7', border: '#1f9e6f', tone: '#0e6646' },
+  absence:  { bg: '#e8dcf2', border: '#7c5db0', tone: '#4c3074' },
+  holiday:  { bg: '#c8d2e0', border: 'transparent', tone: '#3f4860' },
+};
+
+function dayBg(kind: string, isLight: boolean): DayStyle {
+  const pool = isLight ? DAY_PALETTE_LIGHT : DAY_PALETTE_DARK;
+  return pool[kind] ?? pool.holiday;
 }
 
 function MonthCalendar({
   year,
   month,
   days,
+  isLight,
 }: {
   year: number;
   month: number;
   days: HoursBalanceDailyEntry[];
+  isLight: boolean;
 }) {
   const monthDays = days.filter((d) => {
     const dt = new Date(d.day);
@@ -97,7 +107,8 @@ function MonthCalendar({
       }}>
         {cells.map((c, i) => {
           if (!c) return <div key={i} style={{ height: 24 }} />;
-          const { bg, border, tone } = dayBg(c.kind);
+          const { bg, border, tone } = dayBg(c.kind, isLight);
+          const overlayColor = isLight ? '#1a1f2c' : '#fff';
           const base = c.kind === 'absence'
             ? c.absence_label ?? 'Отсутствие'
             : `Норма ${c.norm}ч / Факт ${c.fact}ч / ${c.delta > 0 ? '+' : ''}${c.delta}ч`;
@@ -117,13 +128,13 @@ function MonthCalendar({
                 {c.kind === 'overtime' && (
                   <span style={{
                     position: 'absolute', bottom: 1, right: 2,
-                    fontSize: 7, color: '#fff', fontWeight: 700,
+                    fontSize: 7, color: overlayColor, fontWeight: 700,
                   }}>+{formatDelta(c.delta)}</span>
                 )}
                 {c.kind === 'skip' && (
                   <span style={{
                     position: 'absolute', bottom: 1, right: 2,
-                    fontSize: 7, color: '#fff', fontWeight: 700,
+                    fontSize: 7, color: overlayColor, fontWeight: 700,
                   }}>{formatDelta(c.delta)}</span>
                 )}
               </div>
@@ -159,6 +170,8 @@ function KpiTile({
 
 export default function HoursBalanceModal({ employeeId, onClose }: Props) {
   const { data, isLoading } = useHoursBalanceDetail(employeeId);
+  const { mode } = useAppTheme();
+  const isLight = mode === 'light';
 
   return (
     <Modal
@@ -207,11 +220,13 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
               color="#a4b8d8"
             />
           </div>
-          {/* Monthly strip */}
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+          {/* Monthly strip — wrap, без горизонтального scroll'а */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {data.monthly.map((m) => (
               <div key={`${m.year}-${m.month}`} style={{
-                flex: '0 0 130px', background: 'var(--mini-tile-bg, #143258)', padding: 10, borderRadius: 6,
+                flex: '1 1 130px', minWidth: 110, background: 'var(--mini-tile-bg, #143258)',
+                padding: 10, borderRadius: 6,
+                border: `1px solid ${DARK_THEME.border}`,
               }}>
                 <div style={{
                   fontSize: 10, textTransform: 'uppercase',
@@ -238,6 +253,7 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
                 year={m.year}
                 month={m.month}
                 days={data.days}
+                isLight={isLight}
               />
             ))}
           </div>
@@ -246,21 +262,25 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
             display: 'flex', gap: 16, fontSize: 11, color: DARK_THEME.textMuted,
             flexWrap: 'wrap',
           }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 2, background: '#1d3d22', border: '1px solid #52c41a' }} /> норма
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 2, background: '#3d1b1d', border: '1px solid #ff4d4f' }} /> переработка
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 2, background: '#2a2f42', border: '1px solid #6e7a99' }} /> автоотгул
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 2, background: '#3b3155', border: '1px solid #6e5fb0' }} /> отпуск/больничный
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 2, background: '#162a4a' }} /> выходной/праздник
-            </span>
+            {(['norm', 'overtime', 'skip', 'absence', 'holiday'] as const).map((k) => {
+              const { bg, border } = dayBg(k, isLight);
+              const labels: Record<string, string> = {
+                norm: 'норма',
+                overtime: 'переработка',
+                skip: 'автоотгул',
+                absence: 'отпуск/больничный',
+                holiday: 'выходной/праздник',
+              };
+              return (
+                <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{
+                    display: 'inline-block', width: 12, height: 12, borderRadius: 2,
+                    background: bg,
+                    border: border === 'transparent' ? '1px solid rgba(0,0,0,0.08)' : `1px solid ${border}`,
+                  }} /> {labels[k]}
+                </span>
+              );
+            })}
           </div>
           <div style={{ fontSize: 11, color: DARK_THEME.textMuted, fontStyle: 'italic' }}>
             Детали задач — в Jira.

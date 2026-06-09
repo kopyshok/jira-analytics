@@ -7,7 +7,7 @@ import {
   Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Tooltip,
 } from 'antd';
 import {
-  BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
+  BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined,
   DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
   PlusOutlined, RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
@@ -191,16 +191,8 @@ export default function PlanningPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   useRegisterHelp('Планирование сценариев', planningHelp);
-  const [compact, setCompact] = useState<boolean>(
-    () => localStorage.getItem('planning_backlog_compact') === 'true',
-  );
-  const toggleCompact = () => {
-    setCompact((prev) => {
-      const next = !prev;
-      localStorage.setItem('planning_backlog_compact', String(next));
-      return next;
-    });
-  };
+  // Компактный режим — всегда включён; тумблер выпилен по запросу PM.
+  const compact = true;
 
   const [flashingIds, setFlashingIds] = useState<Set<string>>(() => new Set());
 
@@ -658,22 +650,11 @@ export default function PlanningPage() {
                 style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
                 loading={allocLoading}
                 extra={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>
-                      {isApproved
-                        ? 'сценарий утверждён — отметки заблокированы'
-                        : 'клик по строке переключает включение'}
-                    </span>
-                    <Button
-                      size="small"
-                      type={compact ? 'primary' : 'default'}
-                      icon={<CompressOutlined />}
-                      onClick={toggleCompact}
-                      title={compact ? 'Обычный режим' : 'Компактный режим'}
-                    >
-                      {compact ? 'Компактный' : 'Обычный'}
-                    </Button>
-                  </div>
+                  <span style={{ fontSize: 11, color: DARK_THEME.textMuted }}>
+                    {isApproved
+                      ? 'сценарий утверждён — отметки заблокированы'
+                      : 'клик по строке переключает включение'}
+                  </span>
                 }
               >
                 <div
