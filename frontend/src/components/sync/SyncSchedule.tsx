@@ -1,19 +1,15 @@
 import { useState } from 'react';
 import {
-  Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, App,
+  Button, Card, Popconfirm, Space, Switch, Table, Tag, Tooltip, App,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getSchedules,
-  createSchedule,
-  updateSchedule,
-  deleteSchedule,
-  runScheduleNow,
+  getSchedules, updateSchedule, deleteSchedule, runScheduleNow,
   type SyncScheduleOut,
-  type SyncScheduleCreate,
 } from '../../api/syncSchedule';
 import type { PipelineMode } from '../../api/syncRuns';
+import ScheduleEditorModal from './ScheduleEditorModal';
 
 const MODE_LABELS: Record<PipelineMode, string> = {
   quick: 'Быстрый',
@@ -29,6 +25,19 @@ export default function SyncSchedule() {
     queryKey: ['sync', 'schedule'],
     queryFn: getSchedules,
   });
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState<SyncScheduleOut | null>(null);
+
+  const openCreate = () => { setEditing(null); setEditorOpen(true); };
+  const openEdit = (row: SyncScheduleOut) => { setEditing(row); setEditorOpen(true); };
+  const closeEditor = () => setEditorOpen(false);
+  const onSaved = () => {
+    qc.invalidateQueries({ queryKey: ['sync', 'schedule'] });
+    notification.success({
+      title: editing ? 'Расписание обновлено' : 'Расписание создано',
+    });
+  };
 
   const toggleMut = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
@@ -55,20 +64,7 @@ export default function SyncSchedule() {
       notification.error({ title: 'Ошибка запуска', description: (e as Error).message }),
   });
 
-  const [addOpen, setAddOpen] = useState(false);
-  const [form] = Form.useForm<SyncScheduleCreate>();
-
-  const createMut = useMutation({
-    mutationFn: (body: SyncScheduleCreate) => createSchedule(body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sync', 'schedule'] });
-      setAddOpen(false);
-      form.resetFields();
-      notification.success({ title: 'Расписание создано' });
-    },
-    onError: (e) =>
-      notification.error({ title: 'Ошибка создания', description: (e as Error).message }),
-  });
+  const stop = (e: React.MouseEvent | React.SyntheticEvent) => e.stopPropagation();
 
   const columns = [
     {
@@ -77,10 +73,14 @@ export default function SyncSchedule() {
       key: 'name',
     },
     {
-      title: 'Cron',
-      dataIndex: 'cron_expr',
-      key: 'cron_expr',
-      render: (v: string) => <code style={{ fontSize: 12 }}>{v}</code>,
+      title: 'Расписание',
+      dataIndex: 'description',
+      key: 'description',
+      render: (desc: string, r: SyncScheduleOut) => (
+        <Tooltip title={r.cron_expr}>
+          <span>{desc}</span>
+        </Tooltip>
+      ),
     },
     {
       title: 'Режим',
@@ -99,19 +99,21 @@ export default function SyncSchedule() {
       dataIndex: 'enabled',
       key: 'enabled',
       render: (v: boolean, r: SyncScheduleOut) => (
-        <Switch
-          checked={v}
-          size="small"
-          loading={toggleMut.isPending}
-          onChange={(checked) => toggleMut.mutate({ id: r.id, enabled: checked })}
-        />
+        <span onClick={stop}>
+          <Switch
+            checked={v}
+            size="small"
+            loading={toggleMut.isPending}
+            onChange={(checked) => toggleMut.mutate({ id: r.id, enabled: checked })}
+          />
+        </span>
       ),
     },
     {
       title: '',
       key: 'actions',
       render: (_: unknown, r: SyncScheduleOut) => (
-        <Space size={4}>
+        <Space size={4} onClick={stop}>
           <Button
             size="small"
             icon={<PlayCircleOutlined />}
@@ -141,7 +143,7 @@ export default function SyncSchedule() {
         <Button
           size="small"
           icon={<PlusOutlined />}
-          onClick={() => setAddOpen(true)}
+          onClick={openCreate}
         >
           Добавить
         </Button>
@@ -154,47 +156,18 @@ export default function SyncSchedule() {
         loading={isLoading}
         pagination={false}
         size="small"
+        onRow={(row) => ({
+          onClick: () => openEdit(row),
+          style: { cursor: 'pointer' },
+        })}
       />
 
-      <Modal
-        title="Новое расписание"
-        open={addOpen}
-        onCancel={() => { setAddOpen(false); form.resetFields(); }}
-        onOk={() => form.submit()}
-        confirmLoading={createMut.isPending}
-        okText="Создать"
-        cancelText="Отмена"
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(values) => createMut.mutate(values)}
-          initialValues={{ mode: 'normal', enabled: true }}
-        >
-          <Form.Item name="name" label="Название" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="cron_expr"
-            label="Cron-выражение"
-            rules={[{ required: true }]}
-            extra="Пример: 0 6 * * * (каждый день в 06:00)"
-          >
-            <Input placeholder="0 6 * * *" />
-          </Form.Item>
-          <Form.Item name="mode" label="Режим" rules={[{ required: true }]}>
-            <Select
-              options={Object.entries(MODE_LABELS).map(([value, label]) => ({ value, label }))}
-            />
-          </Form.Item>
-          <Form.Item name="team" label="Команда (для режима «По команде»)">
-            <Input placeholder="Оставьте пустым для других режимов" />
-          </Form.Item>
-          <Form.Item name="enabled" label="Включено" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-        </Form>
-      </Modal>
+      <ScheduleEditorModal
+        open={editorOpen}
+        schedule={editing}
+        onClose={closeEditor}
+        onSaved={onSaved}
+      />
     </Card>
   );
 }
