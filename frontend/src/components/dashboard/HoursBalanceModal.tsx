@@ -33,7 +33,7 @@ function dayBg(kind: string): { bg: string; border: string; tone: string } {
     case 'overtime':
       return { bg: '#3d1b1d', border: '#ff4d4f', tone: '#ff7875' };
     case 'skip':
-      return { bg: '#2a2f42', border: '#6e7a99', tone: '#a4b8d8' };
+      return { bg: '#2a2f42', border: '#6e7a99', tone: 'var(--text-muted, #a4b8d8)' };
     case 'norm':
       return { bg: '#1d3d22', border: '#52c41a', tone: '#52c41a' };
     case 'absence':

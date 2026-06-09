@@ -15,7 +15,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
   return (
     <Card
       size="small"
-      title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Основной результат</span>}
+      title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Основной результат</span>}
       style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
@@ -37,7 +37,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
                       flexShrink: 0,
                     }}
                   />
-                  <span style={{ color: item.done ? '#cfd8e5' : DARK_THEME.textMuted, fontSize: 13 }}>{item.label}</span>
+                  <span style={{ color: item.done ? 'var(--text-2, #cfd8e5)' : DARK_THEME.textMuted, fontSize: 13 }}>{item.label}</span>
                 </div>
               ))}
             </div>
@@ -48,7 +48,7 @@ export const ProjectResultCard: React.FC<Props> = ({ summary }) => {
                 marginTop: 4,
                 paddingTop: 8,
                 borderTop: '1px solid rgba(255,255,255,0.06)',
-                color: '#cfd8e5',
+                color: 'var(--text-2, #cfd8e5)',
                 fontSize: 12,
                 lineHeight: 1.5,
               }}

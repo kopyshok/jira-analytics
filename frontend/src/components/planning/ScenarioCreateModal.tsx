@@ -119,7 +119,7 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
         >
           <TeamSelectorFormItem style={{ width: '100%' }} />
         </Form.Item>
-        <div style={{ fontSize: 12, color: '#8faec8' }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted, #8faec8)' }}>
           В сценарий попадут все текущие элементы бэклога. Отметьте галочками
           задачи, которые планируете взять в квартал.
         </div>

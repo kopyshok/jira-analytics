@@ -9,7 +9,7 @@ interface Props {
   projectKey: string;
 }
 
-const AVATAR_COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#7e94b8', '#7e94b8', '#7e94b8'];
+const AVATAR_COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', 'var(--text-muted, #7e94b8)', 'var(--text-muted, #7e94b8)', 'var(--text-muted, #7e94b8)'];
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -25,7 +25,7 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
     return (
       <Card
         size="small"
-        title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Участники</span>}
+        title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Участники</span>}
         style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
         styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
       >
@@ -39,7 +39,7 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
   return (
     <Card
       size="small"
-      title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Участники</span>}
+      title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Участники</span>}
       style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
@@ -80,7 +80,7 @@ export const ProjectEmployeesCard: React.FC<Props> = ({ employees, projectKey })
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span style={{ color: '#cfd8e5', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {emp.name}
                   </span>
                   <span style={{ color: DARK_THEME.textMuted, fontSize: 11, whiteSpace: 'nowrap', marginLeft: 8 }}>

@@ -85,7 +85,7 @@ const TEAM_COLOR_PALETTE = [
 ];
 
 function teamColor(name: string | null | undefined): string {
-  if (!name) return '#7e94b8';
+  if (!name) return 'var(--text-muted, #7e94b8)';
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
   return TEAM_COLOR_PALETTE[Math.abs(h) % TEAM_COLOR_PALETTE.length];
@@ -152,7 +152,7 @@ function buildIssueNode(
           )}
           <span
             style={{
-              color: '#e6edf7',
+              color: 'var(--text, #e6edf7)',
               whiteSpace: 'normal',
               wordBreak: 'break-word',
               minWidth: 0,
@@ -182,7 +182,7 @@ function buildIssueNode(
               alignItems: 'center',
               gap: 6,
               fontSize: 11,
-              color: '#7e94b8',
+              color: 'var(--text-muted, #7e94b8)',
               paddingLeft: 2,
             }}
           >
@@ -443,7 +443,7 @@ function buildTreeFromLayout(
             >
               {initials}
             </span>
-            <span style={{ color: '#e6edf7' }}>{row.employee_name}</span>
+            <span style={{ color: 'var(--text, #e6edf7)' }}>{row.employee_name}</span>
           </span>,
         );
       }
@@ -463,7 +463,7 @@ function buildTreeFromLayout(
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: '#7e94b8',
+                background: 'var(--text-muted, #7e94b8)',
                 flexShrink: 0,
               }}
             />

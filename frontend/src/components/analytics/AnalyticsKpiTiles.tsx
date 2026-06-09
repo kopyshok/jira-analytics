@@ -25,7 +25,7 @@ const LABEL: React.CSSProperties = {
 const VALUE: React.CSSProperties = {
   fontSize: 24,
   fontWeight: 600,
-  color: '#e6edf7',
+  color: 'var(--text, #e6edf7)',
   lineHeight: 1.1,
 };
 
@@ -47,7 +47,7 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
       </div>
       <div style={TILE}>
         <div style={LABEL}>% Выполнения</div>
-        <div style={{ ...VALUE, color: pct == null ? '#e6edf7' : pct > 110 ? '#ff4d4f' : pct >= 70 ? '#faad14' : '#67d68d' }}>
+        <div style={{ ...VALUE, color: pct == null ? 'var(--text, #e6edf7)' : pct > 110 ? '#ff4d4f' : pct >= 70 ? '#faad14' : '#67d68d' }}>
           {pct == null ? '—' : `${pct.toFixed(0)}%`}
         </div>
       </div>
@@ -57,7 +57,7 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
       </div>
       <div style={TILE}>
         <div style={LABEL}>Чужих часов</div>
-        <div style={{ ...VALUE, color: totals.foreign_hours > 0 ? '#ff9c4a' : '#e6edf7' }}>
+        <div style={{ ...VALUE, color: totals.foreign_hours > 0 ? '#ff9c4a' : 'var(--text, #e6edf7)' }}>
           {totals.foreign_hours.toFixed(1)}
           {totals.foreign_hours > 0 && (
             <span style={{ fontSize: 13, marginLeft: 6, color: '#ff9c4a', fontWeight: 500 }}>

@@ -41,7 +41,7 @@ function TopThemeBlock({ theme, rank }: { theme: Theme; rank: number }) {
         >
           {rank}. {theme.name}
         </span>
-        <span style={{ fontSize: 12, color: '#6b8aaa', marginLeft: 8 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted, #6b8aaa)', marginLeft: 8 }}>
           {Math.round(theme.totals.hours)} ч · {theme.totals.pct.toFixed(1)}%
         </span>
       </div>
@@ -147,7 +147,7 @@ export default function PrintView() {
 
       {/* ── Section 1: Title block ── */}
       <div className="work-type-print-section" style={{ marginBottom: 28, paddingBottom: 16, borderBottom: '2px solid #00c9c8' }}>
-        <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6b8aaa', marginBottom: 4 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted, #6b8aaa)', marginBottom: 4 }}>
           Тематический отчёт
         </div>
         <h1 style={{ fontFamily: FONTS.display, fontSize: 28, fontWeight: 700, color: '#1a1a1a', margin: '0 0 6px 0' }}>
@@ -189,7 +189,7 @@ export default function PrintView() {
         >
           {headline || 'AI-сводка недоступна'}
         </div>
-        <div style={{ fontSize: 11, color: '#6b8aaa', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted, #6b8aaa)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {is_fallback_narrative && (
             <span style={{ color: '#b45309', fontWeight: 600 }}>Шаблонный нарратив (AI недоступен)</span>
           )}
@@ -228,7 +228,7 @@ export default function PrintView() {
             }}
           >
             <div style={{ fontSize: 24, fontWeight: 700, color: '#1a1a1a' }}>{kpi.value}</div>
-            <div style={{ fontSize: 11, color: '#6b8aaa' }}>{kpi.label}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted, #6b8aaa)' }}>{kpi.label}</div>
           </div>
         ))}
       </div>
@@ -277,7 +277,7 @@ export default function PrintView() {
 
           {/* Bars */}
           <div style={{ flex: 1, minWidth: 120 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#6b8aaa', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted, #6b8aaa)', marginBottom: 10 }}>
               Распределение тем
             </div>
             {slices.map((s, i) => (
@@ -286,7 +286,7 @@ export default function PrintView() {
                   <span style={{ color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }} title={s.name}>
                     {s.name}
                   </span>
-                  <span style={{ color: '#6b8aaa', flexShrink: 0 }}>
+                  <span style={{ color: 'var(--text-muted, #6b8aaa)', flexShrink: 0 }}>
                     {Math.round(s.hours)} ч ({s.pct.toFixed(1)}%)
                   </span>
                 </div>
@@ -330,7 +330,7 @@ export default function PrintView() {
             {recommendation.text}
           </div>
           {recommendation.expected_impact && (
-            <div style={{ fontSize: 12, color: '#6b8aaa' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted, #6b8aaa)' }}>
               Ожидаемый эффект: <span style={{ color: '#374151' }}>{recommendation.expected_impact}</span>
             </div>
           )}

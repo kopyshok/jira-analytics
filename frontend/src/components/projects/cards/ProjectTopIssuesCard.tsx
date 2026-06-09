@@ -16,7 +16,7 @@ export const ProjectTopIssuesCard: React.FC<Props> = ({ topIssues }) => {
   return (
     <Card
       size="small"
-      title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Топ-3 задачи по трудозатратам</span>}
+      title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Топ-3 задачи по трудозатратам</span>}
       style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
@@ -54,7 +54,7 @@ export const ProjectTopIssuesCard: React.FC<Props> = ({ topIssues }) => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ color: DARK_THEME.cyanPrimary, fontSize: 12, fontWeight: 600 }}>{issue.key}</span>
                   {' '}
-                  <span style={{ color: '#cfd8e5', fontSize: 12 }}>{issue.summary}</span>
+                  <span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 12 }}>{issue.summary}</span>
                 </div>
                 <span style={{ color: DARK_THEME.textMuted, fontSize: 11, whiteSpace: 'nowrap', marginLeft: 4 }}>
                   {Math.round(issue.hours)} ч

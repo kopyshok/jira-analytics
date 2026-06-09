@@ -92,7 +92,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
           fontWeight: 700,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: '#64748b',
+          color: 'var(--text-muted, #64748b)',
           padding: '10px 14px 8px',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}
@@ -136,7 +136,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
                 padding: '3px 9px',
                 borderRadius: 10,
                 background: isInherited ? 'rgba(34,211,238,0.08)' : 'rgba(100,116,139,0.12)',
-                color: isInherited ? '#67e8f9' : '#94a3b8',
+                color: isInherited ? '#67e8f9' : 'var(--text-muted, #94a3b8)',
                 border: isInherited
                   ? '1px solid rgba(34,211,238,0.25)'
                   : '1px solid rgba(100,116,139,0.2)',
@@ -161,7 +161,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
               )}
             </span>
           </Tooltip>
-          <span style={{ color: '#475569', fontSize: 13 }}>→</span>
+          <span style={{ color: 'var(--text-muted, #475569)', fontSize: 13 }}>→</span>
           <Select
             disabled={context.is_container}
             value={selectedCategory}
@@ -183,7 +183,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
                       width: 8,
                       height: 8,
                       borderRadius: '50%',
-                      background: c.color ?? '#64748b',
+                      background: c.color ?? 'var(--text-muted, #64748b)',
                       flexShrink: 0,
                       display: 'inline-block',
                     }}
@@ -205,7 +205,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
               checked={includeInAnalysis}
               onChange={e => setIncludeInAnalysis(e.target.checked)}
             >
-              <span style={{ fontSize: 12, color: isArchive ? '#475569' : '#cbd5e1' }}>
+              <span style={{ fontSize: 12, color: isArchive ? 'var(--text-muted, #475569)' : '#cbd5e1' }}>
                 Учитывать в анализе
               </span>
               {isArchive && (
@@ -215,7 +215,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
                     alignItems: 'center',
                     gap: 5,
                     fontSize: 11,
-                    color: '#475569',
+                    color: 'var(--text-muted, #475569)',
                     background: 'rgba(100,116,139,0.08)',
                     border: '1px solid rgba(100,116,139,0.15)',
                     borderRadius: 5,
@@ -240,11 +240,11 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
               style={{ marginTop: 2, flexShrink: 0 }}
             />
             <div>
-              <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.4 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted, #94a3b8)', lineHeight: 1.4 }}>
                 Применить ко всему поддереву{' '}
-                <span style={{ color: '#64748b' }}>({subtreeN} {subtreeN === 1 ? 'задача' : subtreeN < 5 ? 'задачи' : 'задач'})</span>
+                <span style={{ color: 'var(--text-muted, #64748b)' }}>({subtreeN} {subtreeN === 1 ? 'задача' : subtreeN < 5 ? 'задачи' : 'задач'})</span>
               </div>
-              <div style={{ fontSize: 11, color: '#475569', fontStyle: 'italic', marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted, #475569)', fontStyle: 'italic', marginTop: 2 }}>
                 Категория поставится на эту задачу + всех детей рекурсивно
               </div>
             </div>
@@ -260,7 +260,7 @@ export default function IssueCategorizer({ context, categories, onSaved }: Props
             style={{
               background: 'rgba(255,255,255,0.05)',
               border: '1px solid rgba(255,255,255,0.1)',
-              color: '#94a3b8',
+              color: 'var(--text-muted, #94a3b8)',
             }}
           >
             Отмена

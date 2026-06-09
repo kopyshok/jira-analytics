@@ -45,12 +45,12 @@ export default function AnalyticsReportSettings({ open, onClose }: Props) {
       onCancel={onClose}
       footer={null}
     >
-      <h4 style={{ marginTop: 0, color: '#e6edf7' }}>Группировка</h4>
+      <h4 style={{ marginTop: 0, color: 'var(--text, #e6edf7)' }}>Группировка</h4>
       <GroupingEditor />
 
       <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
 
-      <h4 style={{ color: '#e6edf7' }}>Столбцы</h4>
+      <h4 style={{ color: 'var(--text, #e6edf7)' }}>Столбцы</h4>
       <Checkbox.Group
         options={options}
         value={currentChecked}
@@ -60,7 +60,7 @@ export default function AnalyticsReportSettings({ open, onClose }: Props) {
 
       <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '20px 0' }} />
 
-      <h4 style={{ color: '#e6edf7' }}>Визуализация</h4>
+      <h4 style={{ color: 'var(--text, #e6edf7)' }}>Визуализация</h4>
       <Checkbox
         checked={resolved.showFactBar}
         disabled={isSaving}

@@ -116,7 +116,7 @@ function EmployeeCard({
         </span>
         <span style={{
           fontSize: 11, padding: '2px 8px', borderRadius: 4,
-          background: 'rgba(110,122,153,.18)', color: '#a4b8d8',
+          background: 'rgba(110,122,153,.18)', color: 'var(--text-muted, #a4b8d8)',
         }}>
           Отгулов: {emp.skip_days} дн · {Math.round(emp.skip_hours)}ч
         </span>
@@ -279,7 +279,7 @@ export default function HoursBalanceWidget() {
       }}>
         Команда: {t.employees_count} чел ·
         переработки <span style={{ color: '#ff7875' }}>+{Math.round(t.overtime_hours)}ч</span> ·
-        автоотгулы <span style={{ color: '#a4b8d8' }}>{Math.round(t.skip_hours)}ч</span> ·
+        автоотгулы <span style={{ color: 'var(--text-muted, #a4b8d8)' }}>{Math.round(t.skip_hours)}ч</span> ·
         нетто <span style={{ color: balanceColor(t.net_balance), fontWeight: 600 }}>
           {t.net_balance > 0 ? '+' : ''}{Math.round(t.net_balance)}ч
         </span>

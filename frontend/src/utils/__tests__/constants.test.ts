@@ -12,9 +12,9 @@ describe('APP_THEMES Aurora', () => {
     expect(APP_THEMES['aurora-dark'].tokens.primarySecondary).toBe('#a78bfa');
   });
 
-  it('aurora-light is the inverted variant', () => {
-    expect(APP_THEMES['aurora-light'].tokens.pageBg).toBe('#eef2fb');
-    expect(APP_THEMES['aurora-light'].tokens.primary).toBe('#0ea5e9');
+  it('aurora-light is the porcelain (neumorphic) variant', () => {
+    expect(APP_THEMES['aurora-light'].tokens.pageBg).toBe('#e6ebf2');
+    expect(APP_THEMES['aurora-light'].tokens.primary).toBe('#3b6ef5');
   });
 
   it('AppTheme union includes both Aurora values', () => {

@@ -31,6 +31,7 @@ import {
   useCreateDependency, useDeleteDependency,
 } from '../hooks/useResourcePlanning';
 import { useRpPreferences } from '../hooks/useRpPreferences';
+import { useScenarios } from '../hooks/usePlanning';
 import type { TimelineScale } from '../utils/gantt';
 import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -86,6 +87,7 @@ function ResourcePlanningPageInner() {
 
   const scenarioId = searchParams.get('scenario_id');
   const { data: plans = [], isLoading: plansLoading } = useResourcePlans(team || undefined);
+  const { data: approvedScenarios = [] } = useScenarios(undefined, undefined, 'approved', team || undefined);
   const { data: gantt, isLoading: ganttLoading } = useGanttProjection(planId);
   const { data: blocks = [] } = useScheduledBlocks(team || undefined);
   const { data: allEmployees = [] } = useEmployees({ isActive: true });
@@ -98,21 +100,22 @@ function ResourcePlanningPageInner() {
   }, [viewMode]);
 
   useEffect(() => {
-    if (scenarioId && !planId && !plansLoading && !createPlan.isPending) {
-      const existing = plans.find(p => p.scenario_id === scenarioId);
-      if (existing) {
-        setPlanId(existing.id);
-      } else if (plans.length === 0) {
-        createPlan.mutateAsync({
-          scenario_id: scenarioId,
-          team,
-          quarter: searchParams.get('quarter') ?? 'Q2',
-          year: parseInt(searchParams.get('year') ?? String(new Date().getFullYear())),
-        }).then(plan => {
-          setPlanId(plan.id);
-        }).catch(() => message.error('Ошибка создания плана'));
-      }
+    if (!scenarioId || plansLoading || createPlan.isPending) return;
+    const currentPlan = planId ? plans.find(p => p.id === planId) : null;
+    if (currentPlan && currentPlan.scenario_id === scenarioId) return;
+    const existing = plans.find(p => p.scenario_id === scenarioId);
+    if (existing) {
+      setPlanId(existing.id);
+      return;
     }
+    createPlan.mutateAsync({
+      scenario_id: scenarioId,
+      team,
+      quarter: searchParams.get('quarter') ?? 'Q2',
+      year: parseInt(searchParams.get('year') ?? String(new Date().getFullYear())),
+    }).then(plan => {
+      setPlanId(plan.id);
+    }).catch(() => message.error('Ошибка создания плана'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenarioId, planId, plansLoading, plans.length, createPlan.isPending]);
 
@@ -123,6 +126,34 @@ function ResourcePlanningPageInner() {
       message.success('Расписание рассчитано');
     } catch {
       message.error('Ошибка расчёта');
+    }
+  };
+
+  const handlePickScenario = async (sid: string | null) => {
+    if (!sid) {
+      setPlanId(null);
+      return;
+    }
+    const existing = plans.find(p => p.scenario_id === sid);
+    if (existing) {
+      setPlanId(existing.id);
+      return;
+    }
+    const sc = approvedScenarios.find(s => s.id === sid);
+    if (!sc || !sc.quarter || !sc.year) {
+      message.error('У сценария не задан квартал/год');
+      return;
+    }
+    try {
+      const plan = await createPlan.mutateAsync({
+        scenario_id: sid,
+        team,
+        quarter: sc.quarter,
+        year: sc.year,
+      });
+      setPlanId(plan.id);
+    } catch {
+      message.error('Ошибка создания плана');
     }
   };
 
@@ -149,15 +180,14 @@ function ResourcePlanningPageInner() {
     patchPrefs({ collapsed_initiative_ids: next });
   };
 
-  const planOptions = plans.map(p => {
-    const isCopy = !!p.parent_plan_id;
-    const labelText = p.label ? ` · ${p.label}` : '';
-    const copyMark = isCopy ? ' (копия)' : '';
-    return {
-      label: `${p.quarter} ${p.year} — ${p.team ?? '—'}${copyMark}${labelText} [${p.status}]`,
-      value: p.id,
-    };
-  });
+  const currentScenarioId = planId
+    ? plans.find(p => p.id === planId)?.scenario_id ?? null
+    : null;
+
+  const scenarioOptions = approvedScenarios.map(s => ({
+    label: `${s.quarter ?? '—'} ${s.year ?? ''} — ${s.name}`,
+    value: s.id,
+  }));
 
   return (
     <div ref={pageRef} style={{ padding: '16px 24px', '--rp-anim-speed': `${appearanceSettings.animation_speed_seconds}s` } as React.CSSProperties}>
@@ -190,13 +220,16 @@ function ResourcePlanningPageInner() {
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <Select
-          loading={plansLoading}
-          placeholder="Выберите план"
-          value={planId}
-          onChange={id => setPlanId(id)}
-          options={planOptions}
-          style={{ minWidth: 320 }}
+          loading={plansLoading || createPlan.isPending}
+          placeholder="Выберите утверждённый сценарий"
+          value={currentScenarioId}
+          onChange={handlePickScenario}
+          options={scenarioOptions}
+          style={{ minWidth: 360 }}
+          showSearch
+          optionFilterProp="label"
           allowClear
+          onClear={() => setPlanId(null)}
         />
         {planId && (
           <Button
@@ -271,7 +304,7 @@ function ResourcePlanningPageInner() {
                 onChange={setShowRelayArrows}
                 size="small"
               />
-              <span style={{ fontSize: 12, color: '#8ab0d8' }}>Эстафета</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>Эстафета</span>
             </Space>
           )}
           {viewMode === 'two-level' && (
@@ -281,7 +314,7 @@ function ResourcePlanningPageInner() {
                 onChange={(v) => patchPrefs({ hide_weekends: v })}
                 size="small"
               />
-              <span style={{ fontSize: 12, color: '#8ab0d8' }}>Только рабочие</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>Только рабочие</span>
             </Space>
           )}
           <Button

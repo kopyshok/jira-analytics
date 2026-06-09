@@ -88,7 +88,7 @@ function ItemTitleCell({
     >
       {title}
       {hours && (
-        <span style={{ color: '#8ab0d8', fontWeight: 400, marginLeft: 6, fontSize: 11 }}>
+        <span style={{ color: 'var(--text-muted, #8ab0d8)', fontWeight: 400, marginLeft: 6, fontSize: 11 }}>
           · {hours}
         </span>
       )}
@@ -143,7 +143,7 @@ function ItemTitleCell({
               target="_blank"
               rel="noreferrer"
               onClick={e => e.stopPropagation()}
-              style={{ fontSize: 10, color: '#7a9ab8', textDecoration: 'none', letterSpacing: 0.3 }}
+              style={{ fontSize: 10, color: 'var(--text-muted, #7a9ab8)', textDecoration: 'none', letterSpacing: 0.3 }}
             >
               {jiraKey}
             </a>
@@ -165,7 +165,7 @@ function ItemTitleCell({
           {titleNode}
         </div>
       </div>
-      <div style={{ fontSize: 11, color: '#8ab0d8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted, #8ab0d8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {assignee ?? ''}
       </div>
     </div>
@@ -747,7 +747,7 @@ function TwoLevelRows({
                     width: 24,
                     background: 'none',
                     border: 0,
-                    color: '#7a9ab8',
+                    color: 'var(--text-muted, #7a9ab8)',
                     cursor: 'pointer',
                     fontSize: 11,
                     padding: 0,

@@ -36,7 +36,7 @@ export default function AbsencesSection({ items, collapsed, onToggleCollapse }: 
                   key={`${item.date_start}-${item.date_end}-${idx}`}
                   style={{ padding: '4px 0', display: 'flex', alignItems: 'center' }}
                 >
-                  <span style={{ fontSize: 12, color: '#cfe1f5' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-2, #cfe1f5)' }}>
                     {formatRange(item)} — {item.reason_label}
                   </span>
                   <Tag

@@ -75,10 +75,10 @@ function SortableLevel({ level, hidden, onToggleVisible }: SortableLevelProps) {
   };
   return (
     <div ref={setNodeRef} style={style}>
-      <span {...attributes} {...listeners} style={{ cursor: 'grab', color: '#7e94b8' }}>
+      <span {...attributes} {...listeners} style={{ cursor: 'grab', color: 'var(--text-muted, #7e94b8)' }}>
         <DragOutlined />
       </span>
-      <span style={{ flex: 1, color: '#e6edf7' }}>{LEVEL_LABELS[level]}</span>
+      <span style={{ flex: 1, color: 'var(--text, #e6edf7)' }}>{LEVEL_LABELS[level]}</span>
       <Tooltip title={hidden ? 'Показать уровень' : 'Скрыть уровень'}>
         <Button
           type="text"
@@ -144,7 +144,7 @@ export default function GroupingEditor() {
         ))}
       </div>
 
-      <div style={{ fontSize: 11, color: '#7e94b8', textTransform: 'uppercase', marginBottom: 6 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted, #7e94b8)', textTransform: 'uppercase', marginBottom: 6 }}>
         Активные уровни
       </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -157,7 +157,7 @@ export default function GroupingEditor() {
 
       {hiddenOrder.length > 0 && (
         <>
-          <div style={{ fontSize: 11, color: '#7e94b8', textTransform: 'uppercase', marginTop: 16, marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted, #7e94b8)', textTransform: 'uppercase', marginTop: 16, marginBottom: 6 }}>
             Скрытые
           </div>
           {hiddenOrder.map((l) => (

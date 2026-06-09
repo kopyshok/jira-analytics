@@ -11,7 +11,7 @@ interface Props {
   summary: ProjectSummary | null | undefined;
 }
 
-const COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#7e94b8', '#7e94b8', '#7e94b8'];
+const COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', 'var(--text-muted, #7e94b8)', 'var(--text-muted, #7e94b8)', 'var(--text-muted, #7e94b8)'];
 const AI_PALETTE = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD', '#ff4d4f', '#67d68d'];
 
 function initials(name: string): string {
@@ -51,7 +51,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
         {summary && summary.goals.length > 0 ? (
           <ol style={{ paddingLeft: 0, listStyle: 'none', margin: 0 }}>
             {summary.goals.map((g, i) => (
-              <li key={i} style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 16, color: '#cfd8e5' }}>
+              <li key={i} style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 16, color: 'var(--text-2, #cfd8e5)' }}>
                 <span style={{ flexShrink: 0, fontSize: 28, fontWeight: 700, color: DARK_THEME.cyanPrimary, lineHeight: 1, width: 32 }}>{i + 1}</span>
                 <span>{g}</span>
               </li>
@@ -91,7 +91,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
               </div>
             )}
             {summary.status_text && (
-              <p style={{ marginTop: 24, fontSize: 14, color: '#cfd8e5', fontStyle: 'italic', lineHeight: 1.6 }}>
+              <p style={{ marginTop: 24, fontSize: 14, color: 'var(--text-2, #cfd8e5)', fontStyle: 'italic', lineHeight: 1.6 }}>
                 {summary.status_text}
               </p>
             )}
@@ -115,13 +115,13 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                 }}>
                   {initials(e.name)}
                 </div>
-                <div style={{ flex: 1, fontSize: 14, color: i < 2 ? DARK_THEME.textPrimary : '#cfd8e5', fontWeight: i < 2 ? 600 : 400 }}>
+                <div style={{ flex: 1, fontSize: 14, color: i < 2 ? DARK_THEME.textPrimary : 'var(--text-2, #cfd8e5)', fontWeight: i < 2 ? 600 : 400 }}>
                   {e.name}
                 </div>
                 <div style={{ flex: 2, height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4 }}>
                   <div style={{ width: `${(e.hours / empMax) * 100}%`, height: '100%', background: color, borderRadius: 4 }} />
                 </div>
-                <div style={{ width: 110, textAlign: 'right', fontSize: 14, color: '#cfd8e5' }}>
+                <div style={{ width: 110, textAlign: 'right', fontSize: 14, color: 'var(--text-2, #cfd8e5)' }}>
                   <b style={{ color: DARK_THEME.textPrimary }}>{e.hours}</b> ч ({e.pct}%)
                 </div>
               </div>
@@ -163,7 +163,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
                 {timeSlices.map((s) => (
                   <div key={s.code} style={{ marginBottom: 12 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                      <span style={{ color: '#cfd8e5' }}>{s.label}</span>
+                      <span style={{ color: 'var(--text-2, #cfd8e5)' }}>{s.label}</span>
                       <span style={{ color: DARK_THEME.textPrimary }}>
                         <b>{s.hours}</b> ч ({s.pct}%)
                       </span>
@@ -185,7 +185,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
             <h3 style={{ marginTop: 32, fontSize: 18, color: DARK_THEME.textPrimary, fontWeight: 600 }}>Топ-3 задачи</h3>
             {detail.top_issues.slice(0, 3).map((t, i) => (
               <div key={t.key} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 14 }}>
-                <span style={{ color: '#cfd8e5' }}>
+                <span style={{ color: 'var(--text-2, #cfd8e5)' }}>
                   <span style={{ color: DARK_THEME.textMuted, marginRight: 8 }}>{i + 1}.</span>
                   <span style={{ color: DARK_THEME.cyanPrimary, marginRight: 8 }}>{t.key}</span>
                   {t.summary}
@@ -221,7 +221,7 @@ export const ProjectPresentationView: React.FC<Props> = ({ detail, summary }) =>
           </div>
         )}
         {summary?.workload_summary && (
-          <p style={{ marginTop: 24, fontSize: 14, color: '#cfd8e5', textAlign: 'center', fontStyle: 'italic' }}>
+          <p style={{ marginTop: 24, fontSize: 14, color: 'var(--text-2, #cfd8e5)', textAlign: 'center', fontStyle: 'italic' }}>
             {summary.workload_summary}
           </p>
         )}

@@ -150,7 +150,9 @@
   --bg: #e6ebf2;
   --neu-d: #c3cbd9; --neu-l: #ffffff;
   --wash-1: rgba(59,110,245,0.07); --wash-2: rgba(47,141,232,0.06);
-  --text: #2a3142; --text-2: #4c566b; --text-muted: #8089a0;
+  /* Contrast against #e6ebf2: text 12:1, text-2 7:1, text-muted 4.7:1 (WCAG AA body).
+     Original porcelain spec had #8089a0 (3.6:1) — too light for production data. */
+  --text: #2a3142; --text-2: #3f4860; --text-muted: #5d6680;
   --accent-1: #3b6ef5; --accent-2: #2f8de8; --on-accent: #ffffff;
   --accent-border: rgba(59,110,245,0.5); --accent-glow: rgba(59,110,245,0.30);
 

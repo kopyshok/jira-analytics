@@ -121,7 +121,7 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
         <span style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>
           Доступность изменилась ({diff.changed_employees.length} чел.)
         </span>
-        <span style={{ color: '#64748b', fontSize: 11, marginLeft: 'auto' }}>
+        <span style={{ color: 'var(--text-muted, #64748b)', fontSize: 11, marginLeft: 'auto' }}>
           {expanded ? '▲' : '▼'}
         </span>
       </div>
@@ -139,14 +139,14 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
                   <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
                     {emp.employee_name}
                   </span>
-                  <span style={{ color: '#94a3b8' }}>
+                  <span style={{ color: 'var(--text-muted, #94a3b8)' }}>
                     {MONTH_NAMES[m.month]}: {Math.round(m.snapshot_available_hours)} → {Math.round(m.current_available_hours)} ч
                   </span>
                   <span style={{ fontWeight: 700, color: m.delta_hours > 0 ? '#22c55e' : '#f87171' }}>
                     {m.delta_hours > 0 ? '+' : ''}{Math.round(m.delta_hours)} ч
                   </span>
                   {m.absence_changes.map((ac, i) => (
-                    <span key={i} style={{ color: '#64748b', fontSize: 11 }}>
+                    <span key={i} style={{ color: 'var(--text-muted, #64748b)', fontSize: 11 }}>
                       {ac.type === 'removed' ? 'Удалено' : 'Добавлено'}:{' '}
                       {ac.reason ?? 'отсутствие'} {ac.start_date}–{ac.end_date}{' '}
                       ({Math.round(ac.hours)} ч)
@@ -167,7 +167,7 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
             </Button>
             <Button
               size="small"
-              style={{ color: '#64748b' }}
+              style={{ color: 'var(--text-muted, #64748b)' }}
               loading={acknowledge.isPending}
               onClick={() => acknowledge.mutate(scenarioId)}
             >
@@ -447,7 +447,7 @@ export default function PlanningPage() {
 
   return (
     <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-      <div style={{ marginBottom: -36 }}>
+      <div>
       <PageHeader
         eyebrow="Планирование"
         title="Сценарии"

@@ -18,7 +18,7 @@ const RatingRow: React.FC<RatingRowProps> = ({ label, value }) => {
   if (value === null) return null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-      <span style={{ color: '#cfd8e5', fontSize: 13 }}>{label}</span>
+      <span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>{label}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <StarRating value={value} size={18} />
         <span style={{ color: DARK_THEME.textMuted, fontSize: 12, minWidth: 28 }}>{value}/5</span>
@@ -34,7 +34,7 @@ export const ProjectRatingsCard: React.FC<Props> = ({ detail, summary }) => {
   return (
     <Card
       size="small"
-      title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Оценка заказчика</span>}
+      title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Оценка заказчика</span>}
       style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >

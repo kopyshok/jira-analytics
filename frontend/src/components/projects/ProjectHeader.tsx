@@ -23,7 +23,7 @@ interface Props {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  new: '#7e94b8',
+  new: 'var(--text-muted, #7e94b8)',
   indeterminate: '#00c9c8',
   done: '#67d68d',
 };
@@ -98,7 +98,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
   };
 
   const statusCategory = detail?.status_category ?? 'new';
-  const statusColor = STATUS_COLOR[statusCategory] ?? '#7e94b8';
+  const statusColor = STATUS_COLOR[statusCategory] ?? 'var(--text-muted, #7e94b8)';
 
   const moreItems = [
     { key: 'copy-link', label: 'Копировать ссылку' },
@@ -125,7 +125,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
           style={{
             fontSize: 20,
             fontWeight: 700,
-            color: '#fff',
+            color: 'var(--text, #fff)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -140,20 +140,20 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
               href={`https://itgri.atlassian.net/browse/${detail.key}`}
               target="_blank"
               rel="noreferrer"
-              style={{ color: '#00c9c8', fontSize: 12, textDecoration: 'none' }}
+              style={{ color: 'var(--accent-1, #00c9c8)', fontSize: 12, textDecoration: 'none' }}
             >
               {detail.key}
             </a>
           )}
-          {detail?.key && <span style={{ color: '#7e94b8', fontSize: 12 }}>·</span>}
+          {detail?.key && <span style={{ color: 'var(--text-muted, #7e94b8)', fontSize: 12 }}>·</span>}
           {(detail?.period_start || detail?.period_end) && (
-            <span style={{ color: '#7e94b8', fontSize: 12 }}>
+            <span style={{ color: 'var(--text-muted, #7e94b8)', fontSize: 12 }}>
               {formatDate(detail?.period_start ?? null)} — {formatDate(detail?.period_end ?? null)}
             </span>
           )}
           {detail?.status && (
             <>
-              <span style={{ color: '#7e94b8', fontSize: 12 }}>·</span>
+              <span style={{ color: 'var(--text-muted, #7e94b8)', fontSize: 12 }}>·</span>
               <Tag
                 style={{
                   background: 'transparent',
@@ -170,7 +170,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
           )}
         </div>
         {summary?.generated_at && (
-          <div style={{ fontSize: 11, color: '#7e94b8', marginTop: 3 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted, #7e94b8)', marginTop: 3 }}>
             AI-резюме обновлено {formatDateTime(summary.generated_at)}
           </div>
         )}
@@ -191,7 +191,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
             size="small"
             type={view === 'presentation' ? 'primary' : 'default'}
             onClick={() => onViewChange('presentation')}
-            style={view === 'presentation' ? { background: '#00c9c8', borderColor: '#00c9c8', color: '#0d1c33' } : { color: '#7e94b8' }}
+            style={view === 'presentation' ? { background: '#00c9c8', borderColor: '#00c9c8', color: '#0d1c33' } : { color: 'var(--text-muted, #7e94b8)' }}
           >
             Презентация
           </Button>
@@ -204,7 +204,7 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
             loading={regen.isPending}
             onClick={handleRegen}
             disabled={!detail}
-            style={{ color: '#7e94b8' }}
+            style={{ color: 'var(--text-muted, #7e94b8)' }}
           >
             Обновить AI
           </Button>
@@ -216,13 +216,13 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
           onClick={handlePng}
           loading={exporting}
           disabled={!detail}
-          style={{ color: '#7e94b8' }}
+          style={{ color: 'var(--text-muted, #7e94b8)' }}
         >
           PNG
         </Button>
 
         <Dropdown menu={{ items: moreItems }} trigger={['click']}>
-          <Button size="small" icon={<MoreOutlined />} style={{ color: '#7e94b8' }} />
+          <Button size="small" icon={<MoreOutlined />} style={{ color: 'var(--text-muted, #7e94b8)' }} />
         </Dropdown>
       </div>
     </div>

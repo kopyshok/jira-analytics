@@ -169,7 +169,7 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
         <div style={{
           width: 24, height: 24, borderRadius: '50%',
           border: `2px solid ${DARK_THEME.cardBg}`, background: DARK_THEME.darkRows,
-          color: '#a4b8d8', fontSize: 10, fontWeight: 700,
+          color: 'var(--text-muted, #a4b8d8)', fontSize: 10, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           marginLeft: -8,
         }}>+{extra}</div>
@@ -246,7 +246,7 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
     case 'subtasks':
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-          <span style={{ color: '#a4b8d8' }}>{project.subtasks_done}/{project.subtasks_total}</span>
+          <span style={{ color: 'var(--text-muted, #a4b8d8)' }}>{project.subtasks_done}/{project.subtasks_total}</span>
           <div style={{ height: 5, background: DARK_THEME.darkRows, borderRadius: 2, overflow: 'hidden' }}>
             <div style={{
               height: '100%',
@@ -295,7 +295,7 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
     }
     case 'factplan':
       return (
-        <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#a4b8d8' }}>
+        <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: 'var(--text-muted, #a4b8d8)' }}>
           {Math.round(project.team_fact_hours)} / {Math.round(project.plan_hours)} ч
         </div>
       );
@@ -447,7 +447,7 @@ function Sparklines({ projects }: { projects: ProjectItem[] }) {
         return (
           <div key={p.issue_key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
             <div style={{
-              width: 110, fontSize: 14, color: isActive ? '#e6edf7' : DARK_THEME.textMuted,
+              width: 110, fontSize: 14, color: isActive ? 'var(--text, #e6edf7)' : DARK_THEME.textMuted,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {p.title.split(' ').slice(0, 2).join(' ')}

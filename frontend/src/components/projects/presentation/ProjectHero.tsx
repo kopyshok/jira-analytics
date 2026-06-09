@@ -11,7 +11,7 @@ export const ProjectHero: React.FC<{ detail: ProjectDetail }> = ({ detail }) => 
     <h1 style={{ margin: '8px 0 16px', fontSize: 36, fontWeight: 700, color: DARK_THEME.textPrimary }}>
       {detail.summary}
     </h1>
-    <div style={{ fontSize: 13, color: '#cfd8e5', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ fontSize: 13, color: 'var(--text-2, #cfd8e5)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
       <span>{formatPeriod(detail.period_start, detail.period_end)}</span>
       <Tag color={statusTagColor(detail.status_category)}>{detail.status}</Tag>
     </div>
