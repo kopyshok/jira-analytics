@@ -149,3 +149,53 @@ def test_patch_404_for_unknown(client):
 def test_delete_404_for_unknown(client):
     resp = client.delete("/api/v1/sync/schedule/does-not-exist")
     assert resp.status_code == 404
+
+
+# ------------------------------------------------------------------
+# Preview endpoint
+# ------------------------------------------------------------------
+
+def test_preview_valid_cron_returns_description_and_runs(client):
+    resp = client.post(
+        "/api/v1/sync/schedule/preview",
+        json={"cron_expr": "0 6 * * *"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["description"] == "Каждый день в 06:00"
+    assert len(body["next_runs"]) == 3
+    assert body["error"] is None
+
+
+def test_preview_invalid_cron_returns_valid_false(client):
+    resp = client.post(
+        "/api/v1/sync/schedule/preview",
+        json={"cron_expr": "not a cron"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert body["next_runs"] == []
+    assert body["error"]
+
+
+def test_preview_every_5_minutes(client):
+    resp = client.post(
+        "/api/v1/sync/schedule/preview",
+        json={"cron_expr": "*/5 * * * *"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["description"] == "Каждые 5 минут"
+
+
+def test_list_response_includes_description(client, schedule_db):
+    _seed_schedules(schedule_db)
+    resp = client.get("/api/v1/sync/schedule")
+    assert resp.status_code == 200
+    body = resp.json()
+    by_name = {s["name"]: s for s in body}
+    assert by_name["daily_incremental"]["description"] == "Каждый день в 06:00"
+    assert "description" in by_name["weekly_full"]
