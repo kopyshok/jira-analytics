@@ -129,6 +129,9 @@
   /* Solid surface inside modals/drawers for sub-tiles */
   --modal-tile-bg: #161b30;
   --mini-tile-bg: #1a2238;
+  /* Chip фон ключей задач в инспекторе */
+  --key-chip-bg: rgba(56,189,248,0.10);
+  --key-chip-border: rgba(56,189,248,0.30);
 }
 
 /* Kill backdrop-filter в dark mode — оставлен только на light (там уже none).
@@ -178,6 +181,10 @@
   /* Маркер issue в аналитике — на светлом фоне нужен заметный синий чип */
   --marker-issue-bg: #dde7f5;
   --marker-issue-fg: #1d4ed8;
+
+  /* Chip фон ключей задач — на белом нужен заметный голубой */
+  --key-chip-bg: #dde7f5;
+  --key-chip-border: #aac4ec;
 }
 
 /* ---------- Фарфор neu overrides ----------

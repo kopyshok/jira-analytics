@@ -7,8 +7,8 @@ import { setIssueCategory, setIssueInclude } from '../../api/issues';
 import { useQueryClient } from '@tanstack/react-query';
 import { statusTagColor } from '../../utils/status';
 
-const CARD_BG = 'rgba(255,255,255,0.03)';
-const CARD_BORDER = '1px solid rgba(255,255,255,0.08)';
+const CARD_BG = 'var(--mini-tile-bg, rgba(255,255,255,0.03))';
+const CARD_BORDER = '1px solid var(--glass-border, rgba(255,255,255,0.08))';
 
 interface BreadcrumbsProps {
   ancestors: IssueContextAncestor[];
@@ -43,7 +43,7 @@ function SiblingPopover({
             alignItems: 'center',
             gap: 8,
             padding: '5px 0',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid var(--glass-border, rgba(255,255,255,0.05))',
             cursor: 'pointer',
           }}
           onClick={() => { setOpen(false); onDrillDown(sib.id); }}
@@ -52,9 +52,9 @@ function SiblingPopover({
             style={{
               fontFamily: 'monospace',
               fontSize: 11,
-              color: '#00c9c8',
-              background: 'rgba(0,201,200,0.08)',
-              border: '1px solid rgba(0,201,200,0.18)',
+              color: 'var(--accent-1, #00c9c8)',
+              background: 'var(--key-chip-bg, rgba(0,201,200,0.08))',
+              border: '1px solid var(--key-chip-border, rgba(0,201,200,0.18))',
               borderRadius: 4,
               padding: '1px 5px',
               whiteSpace: 'nowrap',
@@ -130,9 +130,9 @@ function TreeRow({
         paddingLeft: 6 + level * 18,
         borderRadius: 4,
         cursor: onClick ? 'pointer' : 'default',
-        background: isCurrent ? 'rgba(0,201,200,0.06)' : 'transparent',
+        background: isCurrent ? 'var(--key-chip-bg, rgba(0,201,200,0.06))' : 'transparent',
         border: isCurrent
-          ? '1px solid rgba(0,201,200,0.2)'
+          ? '1px solid var(--key-chip-border, rgba(0,201,200,0.2))'
           : '1px solid transparent',
       }}
       onClick={onClick}
@@ -154,9 +154,9 @@ function TreeRow({
         style={{
           fontFamily: 'monospace',
           fontSize: 11,
-          color: '#00c9c8',
-          background: 'rgba(0,201,200,0.08)',
-          border: '1px solid rgba(0,201,200,0.18)',
+          color: 'var(--accent-1, #00c9c8)',
+          background: 'var(--key-chip-bg, rgba(0,201,200,0.08))',
+          border: '1px solid var(--key-chip-border, rgba(0,201,200,0.18))',
           borderRadius: 4,
           padding: '1px 5px',
           whiteSpace: 'nowrap',
