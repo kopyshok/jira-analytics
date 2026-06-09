@@ -107,7 +107,6 @@ export const useRevertScenario = () => {
     mutationFn: revertScenario,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['planning'] });
-      // Drop cached diff without refetch — backend returns 404 for draft scenarios.
       qc.removeQueries({ queryKey: ['capacity-diff'] });
     },
   });
