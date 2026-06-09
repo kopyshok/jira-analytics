@@ -82,3 +82,41 @@ class TestNextRuns:
 
     def test_invalid_cron_returns_empty(self):
         assert SchedulerService.next_runs("not a cron", count=3) == []
+
+
+class TestScheduleOutDescription:
+    def test_description_computed_from_cron(self):
+        from app.schemas.sync_pipeline import SyncScheduleOut
+
+        now = datetime.now()
+        data = {
+            "id": "abc-123",
+            "name": "Утренний синк",
+            "cron_expr": "0 6 * * *",
+            "mode": "normal",
+            "team": None,
+            "enabled": True,
+            "last_run_id": None,
+            "next_run_at": None,
+        }
+        out = SyncScheduleOut.model_validate(data)
+        assert out.description == "Каждый день в 06:00"
+        # Сериализация включает поле
+        dumped = out.model_dump()
+        assert dumped["description"] == "Каждый день в 06:00"
+
+    def test_description_unparseable_cron(self):
+        from app.schemas.sync_pipeline import SyncScheduleOut
+
+        data = {
+            "id": "abc-2",
+            "name": "Хитрое",
+            "cron_expr": "15,45 8-17 * * *",
+            "mode": "quick",
+            "team": None,
+            "enabled": True,
+            "last_run_id": None,
+            "next_run_at": None,
+        }
+        out = SyncScheduleOut.model_validate(data)
+        assert out.description.startswith("По cron-выражению:")
