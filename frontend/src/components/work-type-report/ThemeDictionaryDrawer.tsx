@@ -625,8 +625,8 @@ export default function ThemeDictionaryDrawer({
       onClose={onClose}
       destroyOnHidden
       styles={{
-        body: { padding: '12px 16px', background: DARK_THEME.pageBg },
-        header: { background: DARK_THEME.cardBg, borderBottom: `1px solid ${DARK_THEME.border}` },
+        body: { padding: '12px 16px' },
+        header: { borderBottom: `1px solid ${DARK_THEME.border}` },
         wrapper: { width: 720 },
       }}
     >

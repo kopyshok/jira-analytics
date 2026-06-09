@@ -166,7 +166,7 @@ export default function HoursBalanceModal({ employeeId, onClose }: Props) {
       onCancel={onClose}
       width={920}
       footer={null}
-      styles={{ body: { background: DARK_THEME.cardBg, padding: 24 } }}
+      styles={{ body: { padding: 24 } }}
       title={
         data ? (
           <div>

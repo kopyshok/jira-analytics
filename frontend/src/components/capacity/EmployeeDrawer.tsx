@@ -56,9 +56,8 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
       title="Карточка сотрудника"
       destroyOnHidden
       styles={{
-        body: { background: DARK_THEME.cardBg, padding: 24 },
+        body: { padding: 24 },
         header: {
-          background: DARK_THEME.cardBg,
           borderBottom: `1px solid ${DARK_THEME.border}`,
         },
       }}

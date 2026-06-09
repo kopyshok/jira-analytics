@@ -249,10 +249,9 @@ export default function AnalyticsIssueDrawer({
       closable={false}
       styles={{
         header: { display: 'none' },
-        body: { padding: 0, background: 'var(--bg, #0f2340)', display: 'flex', flexDirection: 'column' },
-        wrapper: { width: 720, background: 'var(--bg, #0f2340)' },
+        body: { padding: 0, display: 'flex', flexDirection: 'column' },
+        wrapper: { width: 720 },
       }}
-      style={{ background: 'var(--bg, #0f2340)' }}
     >
       {currentEntry && (
         <>

@@ -356,9 +356,9 @@ export default function IssueDrillDownDrawer({
         )
       }
       styles={{
-        body: { padding: 0, background: DARK_THEME.cardBg },
-        header: { background: DARK_THEME.cardBg, borderBottom: `1px solid ${DARK_THEME.border}` },
-        wrapper: { width: 600, background: DARK_THEME.cardBg },
+        body: { padding: 0 },
+        header: { borderBottom: `1px solid ${DARK_THEME.border}` },
+        wrapper: { width: 600 },
       }}
     >
       {open && issueId && issueKey && (
