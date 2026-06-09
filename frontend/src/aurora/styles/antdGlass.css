@@ -61,32 +61,39 @@
 }
 
 /* Modals & Drawers — FULLY SOLID (no transparency) in Aurora.
- * Aurora-dark: opaque deep navy. Aurora-light: opaque near-white. */
-:where([data-theme="aurora"][data-mode="dark"]) .ant-modal-content,
-:where([data-theme="aurora"][data-mode="dark"]) .ant-drawer-content {
-  background: #0f1426 !important;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius);
+ * Aurora-dark: opaque deep navy. Aurora-light: opaque near-white.
+ * Specificity: html[data-theme][data-mode] = 1 + 2 = 3 classes equiv. */
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-body,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-content,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-body,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-header {
+  background-color: #0f1426 !important;
+  background-image: none !important;
   backdrop-filter: none !important;
 }
 
-:where([data-theme="aurora"][data-mode="light"]) .ant-modal-content,
-:where([data-theme="aurora"][data-mode="light"]) .ant-drawer-content {
-  background: #f0f4fc !important;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius);
+html[data-theme="aurora"][data-mode="light"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-body,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-content,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-body,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-header {
+  background-color: #f0f4fc !important;
+  background-image: none !important;
   backdrop-filter: none !important;
 }
 
-:where([data-theme="aurora"]) .ant-modal-header,
-:where([data-theme="aurora"]) .ant-drawer-header {
-  background: transparent !important;
-  border-bottom-color: var(--glass-border);
+html[data-theme="aurora"] .ant-modal-content,
+html[data-theme="aurora"] .ant-drawer-content {
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius) !important;
 }
 
-:where([data-theme="aurora"]) .ant-modal-body,
-:where([data-theme="aurora"]) .ant-drawer-body {
-  background: transparent !important;
+html[data-theme="aurora"] .ant-modal-header,
+html[data-theme="aurora"] .ant-drawer-header {
+  border-bottom: 1px solid var(--glass-border) !important;
 }
 
 /* Backdrop / mask — comfortable dim (not pitch black, not see-through) */
