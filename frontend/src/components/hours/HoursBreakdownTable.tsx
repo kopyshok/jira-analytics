@@ -10,7 +10,7 @@ const ROLES: Array<{ key: 'analyst' | 'dev' | 'qa' | 'opo'; label: string }> = [
 ];
 
 const COLOR = {
-  past: '#94a3b8',
+  past: 'var(--text-muted, #94a3b8)',
   current: '#fb923c',
   approved: '#38bdf8',
   planable: '#22c55e',
@@ -73,7 +73,7 @@ const thStyle: React.CSSProperties = {
   padding: '6px 8px',
   fontSize: 12,
   fontWeight: 600,
-  color: '#94a3b8',
+  color: 'var(--text-muted, #94a3b8)',
   borderBottom: '1px solid #1e3a5f',
   textAlign: 'right',
   whiteSpace: 'nowrap',

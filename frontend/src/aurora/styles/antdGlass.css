@@ -352,7 +352,11 @@ html[data-theme="aurora"][data-mode="light"] .ant-btn-primary {
   box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff, inset 0 1px 0 rgba(255,255,255,0.4) !important;
 }
 
-html[data-theme="aurora"][data-mode="light"] .ant-tag {
+/* Plain default tag — neu-pill. Colored tags (success/warning/error/processing)
+ * keep their AntD background; we only neutralise the default case. */
+html[data-theme="aurora"][data-mode="light"] .ant-tag:not([class*="ant-tag-"]),
+html[data-theme="aurora"][data-mode="light"] .ant-tag.ant-tag-default,
+html[data-theme="aurora"][data-mode="light"] .ant-tag-has-color.ant-tag-default {
   background: #e6ebf2 !important;
   border: none !important;
   box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff !important;
@@ -442,6 +446,63 @@ html[data-theme="aurora"][data-mode="light"] .ant-card-head-title {
   font-family: var(--font-body) !important;
   font-weight: 600;
 }
+
+/* Categories triage header + queue cards — base CSS uses dark-blue rgba.
+ * In Aurora-light we re-skin them as neu surfaces. */
+html[data-theme="aurora"][data-mode="light"] .category-triage-header {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+}
+html[data-theme="aurora"][data-mode="light"] .category-queue-card {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .category-queue-card:hover,
+html[data-theme="aurora"][data-mode="light"] .category-queue-card.is-active {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff !important;
+  transform: none !important;
+}
+html[data-theme="aurora"][data-mode="light"] .recharts-default-tooltip {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+  backdrop-filter: none !important;
+  color: var(--text) !important;
+}
+
+/* Aurora-dark variant — solid dark surface, no rgba transparency */
+html[data-theme="aurora"][data-mode="dark"] .category-triage-header {
+  background: #141a2e !important;
+  border-color: rgba(120,170,250,0.18) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .category-queue-card {
+  background: #141a2e !important;
+  border-color: rgba(120,170,250,0.18) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .category-queue-card:hover,
+html[data-theme="aurora"][data-mode="dark"] .category-queue-card.is-active {
+  background: rgba(56,189,248,0.10) !important;
+  border-color: var(--accent-border) !important;
+}
+
+/* Tree row depth tints — base palette uses cyan (#00c9c8) which doesn't match Aurora.
+ * Re-tint via Aurora accent for visual consistency. */
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-1 > td { background-color: rgba(59,110,245,0.04) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-2 > td { background-color: rgba(59,110,245,0.07) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-3 > td { background-color: rgba(59,110,245,0.10) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-4 > td { background-color: rgba(59,110,245,0.13) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-5 > td { background-color: rgba(59,110,245,0.16) !important; }
+
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-1 > td { background-color: rgba(56,189,248,0.04) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-2 > td { background-color: rgba(56,189,248,0.08) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-3 > td { background-color: rgba(56,189,248,0.12) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-4 > td { background-color: rgba(56,189,248,0.16) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-5 > td { background-color: rgba(56,189,248,0.20) !important; }
 
 /* ============================================================
    FPS fix для dark mode: убираем все backdrop-filter blur.

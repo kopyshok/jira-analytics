@@ -56,15 +56,15 @@ const CHART_COLORS_AURORA_DARK_OVERRIDES: ChartColorsShape = {
 };
 
 const CHART_COLORS_AURORA_LIGHT_OVERRIDES: ChartColorsShape = {
-  blue: '#0ea5e9',
-  green: '#059669',
-  orange: '#ea580c',
-  red: '#dc2626',
-  purple: '#7c5cf6',
-  cyan: '#0891b2',
-  cyanSecondary: '#06b6d4',
-  yellow: '#d97706',
-  neutral: '#707f9e',
+  blue: '#3b6ef5',
+  green: '#1f9e6f',
+  orange: '#d98a2b',
+  red: '#e05647',
+  purple: '#6d6eef',
+  cyan: '#2f8de8',
+  cyanSecondary: '#5fa3ec',
+  yellow: '#d98a2b',
+  neutral: '#8089a0',
 };
 
 /** Runtime-aware chart colors. Mirrors DARK_THEME Proxy strategy. */
@@ -146,25 +146,28 @@ const AURORA_DARK_TOKENS: DarkThemeShape = {
   textDim: '#5a6a85',
 };
 
+/* Aurora light — «Фарфор» (porcelain neumorphism).
+ * Solid surfaces (rgba не работает на inline-style без backdrop-blur).
+ * cardBg = page bg = #e6ebf2: глубина задаётся neu-тенями в CSS, не разностью цвета. */
 const AURORA_LIGHT_TOKENS: DarkThemeShape = {
-  pageBg: '#eef2fb',
-  sidebarBg: 'rgba(255,255,255,0.55)',
-  cardBg: 'rgba(255,255,255,0.55)',
-  darkAccent: 'rgba(255,255,255,0.75)',
-  border: 'rgba(60,90,160,0.18)',
-  darkRows: 'rgba(255,255,255,0.4)',
-  cyanPrimary: '#0ea5e9',
-  cyanSecondary: '#7c5cf6',
-  yellow: '#d97706',
-  amber: '#d97706',
-  amberDim: '#b45309',
-  danger: '#e11d48',
-  success: '#059669',
-  textPrimary: '#16203a',
-  textSecondary: '#3f4d6e',
-  textMuted: '#707f9e',
-  textHint: '#8b97b3',
-  textDim: '#8b97b3',
+  pageBg: '#e6ebf2',
+  sidebarBg: '#e6ebf2',
+  cardBg: '#e6ebf2',
+  darkAccent: '#eef2f7',
+  border: 'rgba(195,203,217,0.7)',
+  darkRows: '#eef2f7',
+  cyanPrimary: '#3b6ef5',
+  cyanSecondary: '#2f8de8',
+  yellow: '#d98a2b',
+  amber: '#d98a2b',
+  amberDim: '#b35e0c',
+  danger: '#e05647',
+  success: '#1f9e6f',
+  textPrimary: '#2a3142',
+  textSecondary: '#3f4860',
+  textMuted: '#5d6680',
+  textHint: '#7a8298',
+  textDim: '#7a8298',
 };
 
 /** Runtime-aware Dark theme tokens.
@@ -255,8 +258,8 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
       primarySecondary: '#60a5fa',
       textPrimary: '#e2e8f0',
       textSecondary: '#cbd5e1',
-      textMuted: '#94a3b8',
-      textHint: '#64748b',
+      textMuted: 'var(--text-muted, #94a3b8)',
+      textHint: 'var(--text-muted, #64748b)',
     },
   },
   'dark-charcoal': {
@@ -294,20 +297,20 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
     },
   },
   'aurora-light': {
-    label: 'Aurora светлая',
+    label: 'Фарфор',
     tokens: {
-      pageBg: '#eef2fb',
-      sidebarBg: 'rgba(255,255,255,0.55)',
-      cardBg: 'rgba(255,255,255,0.55)',
-      darkAccent: 'rgba(255,255,255,0.75)',
-      border: 'rgba(255,255,255,0.85)',
-      darkRows: 'rgba(255,255,255,0.4)',
-      primary: '#0ea5e9',
-      primarySecondary: '#7c5cf6',
-      textPrimary: '#16203a',
-      textSecondary: '#3f4d6e',
-      textMuted: '#707f9e',
-      textHint: '#8b97b3',
+      pageBg: '#e6ebf2',
+      sidebarBg: '#e6ebf2',
+      cardBg: '#e6ebf2',
+      darkAccent: '#eef2f7',
+      border: 'rgba(195,203,217,0.7)',
+      darkRows: '#eef2f7',
+      primary: '#3b6ef5',
+      primarySecondary: '#2f8de8',
+      textPrimary: '#2a3142',
+      textSecondary: '#3f4860',
+      textMuted: '#5d6680',
+      textHint: '#7a8298',
     },
   },
 };

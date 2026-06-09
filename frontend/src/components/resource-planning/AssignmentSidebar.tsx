@@ -219,7 +219,7 @@ export default function AssignmentSidebar({
           {assignment.employee_name && (
             <Space style={{ marginTop: 6 }}>
               <EmployeeAvatar name={assignment.employee_name} role={assignment.employee_role} size={20} />
-              <span style={{ fontSize: 12, color: '#8ab0d8' }}>{assignment.employee_name}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>{assignment.employee_name}</span>
             </Space>
           )}
         </Descriptions.Item>
@@ -461,7 +461,7 @@ function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
           <div style={{ marginBottom: 6 }}>{c.message}</div>
           {isOverload && (
             <>
-              <div style={{ marginBottom: 6, color: '#cfe1f5' }}>
+              <div style={{ marginBottom: 6, color: 'var(--text-2, #cfe1f5)' }}>
                 День <b>{c.date}</b> · Доступно <b>{(c.available_hours ?? 0).toFixed(1)} ч</b> ·
                 Назначено <b>{(c.demand_hours ?? 0).toFixed(1)} ч</b> ·
                 <span style={{ color: (c.overload_pct ?? 0) > 110 ? '#ef4444' : '#ffb432', fontWeight: 700, marginLeft: 4 }}>
@@ -470,7 +470,7 @@ function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
               </div>
               {c.contributors.length > 0 && (
                 <>
-                  <div style={{ color: '#8ab0d8', fontSize: 11, marginBottom: 4 }}>
+                  <div style={{ color: 'var(--text-muted, #8ab0d8)', fontSize: 11, marginBottom: 4 }}>
                     Перекрывают день ({c.contributors.length}):
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -486,12 +486,12 @@ function ConflictBlock({ c }: { c: AssignmentExplainConflict }) {
                           borderBottom: '1px dashed rgba(120,150,180,0.15)',
                         }}
                       >
-                        <span style={{ color: '#7a9ab8' }}>{co.item_key ?? '—'}</span>
-                        <span style={{ color: '#8ab0d8' }}>{co.phase_label}</span>
+                        <span style={{ color: 'var(--text-muted, #7a9ab8)' }}>{co.item_key ?? '—'}</span>
+                        <span style={{ color: 'var(--text-muted, #8ab0d8)' }}>{co.phase_label}</span>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {co.item_title}
                         </span>
-                        <span style={{ textAlign: 'right', color: '#cfe1f5' }}>
+                        <span style={{ textAlign: 'right', color: 'var(--text-2, #cfe1f5)' }}>
                           {co.hours_per_day.toFixed(2)} ч/день
                         </span>
                       </div>

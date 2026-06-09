@@ -58,7 +58,7 @@ export const ProjectCategoriesCard: React.FC<Props> = ({
     return (
       <Card
         size="small"
-        title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Структура трудозатрат</span>}
+        title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Структура трудозатрат</span>}
         style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
         styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
       >
@@ -76,7 +76,7 @@ export const ProjectCategoriesCard: React.FC<Props> = ({
   return (
     <Card
       size="small"
-      title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Структура трудозатрат</span>}
+      title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Структура трудозатрат</span>}
       style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >
@@ -128,7 +128,7 @@ export const ProjectCategoriesCard: React.FC<Props> = ({
                 <span
                   style={{
                     flex: 1,
-                    color: '#cfd8e5',
+                    color: 'var(--text-2, #cfd8e5)',
                     fontSize: 12,
                     minWidth: 0,
                     overflow: 'hidden',

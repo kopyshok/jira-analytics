@@ -101,3 +101,62 @@
 [data-theme="aurora"] .scroll-y::-webkit-scrollbar { width: 8px; }
 [data-theme="aurora"] .scroll-y::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 8px; }
 [data-theme="aurora"] .scroll-y::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+ * Aurora-LIGHT («Фарфор») — shell-level neumorphic overrides
+ * for sidebar item active state, icon buttons, tabs, badges.
+ * ============================================================ */
+[data-theme="aurora"][data-mode="light"] .side-item:hover {
+  color: var(--accent-1);
+  background: transparent;
+  box-shadow: var(--neu-sm);
+}
+[data-theme="aurora"][data-mode="light"] .side-item.active {
+  background: var(--bg);
+  border: none;
+  color: var(--accent-1);
+  box-shadow: var(--neu-inset);
+}
+[data-theme="aurora"][data-mode="light"] .side-item.active .side-ico { color: var(--accent-1); }
+
+[data-theme="aurora"][data-mode="light"] .icon-btn {
+  background: var(--bg);
+  border: none;
+  box-shadow: var(--neu-sm);
+}
+[data-theme="aurora"][data-mode="light"] .icon-btn:hover {
+  color: var(--accent-1);
+  box-shadow: var(--neu-raised);
+  border: none;
+}
+
+[data-theme="aurora"][data-mode="light"] .gtabs {
+  border-bottom: 1px solid rgba(195,203,217,0.6);
+}
+
+[data-theme="aurora"][data-mode="light"] .gtable th {
+  border-bottom: 1px solid rgba(195,203,217,0.7);
+}
+[data-theme="aurora"][data-mode="light"] .gtable td {
+  border-bottom: 1px solid rgba(195,203,217,0.4);
+}
+[data-theme="aurora"][data-mode="light"] .gtable tbody tr:hover {
+  background: rgba(195,203,217,0.22);
+}
+
+[data-theme="aurora"][data-mode="light"] .ginput {
+  background: var(--bg);
+  border: none;
+  box-shadow: var(--neu-inset);
+}
+[data-theme="aurora"][data-mode="light"] .ginput:focus-within {
+  border: none;
+  box-shadow: var(--neu-inset), 0 0 0 2px var(--accent-border);
+}
+
+[data-theme="aurora"][data-mode="light"] .divider {
+  background: rgba(195,203,217,0.6);
+}
+[data-theme="aurora"][data-mode="light"] .scroll-y::-webkit-scrollbar-thumb {
+  background: #c3cbd9;
+}

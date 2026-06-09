@@ -182,7 +182,7 @@ export default function BacklogPage() {
             }}
           />
         ) : (
-          <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>
+          <span style={{ color: 'var(--text-muted, #8faec8)' }}>{v ?? '—'}</span>
         ),
     },
     {
@@ -191,7 +191,7 @@ export default function BacklogPage() {
         <Space orientation="vertical" size={0}>
           <Typography.Text strong>
             {r.has_parent_in_backlog && (
-              <span style={{ color: '#64748b', marginRight: 6, fontFamily: 'monospace' }}>└─</span>
+              <span style={{ color: 'var(--text-muted, #64748b)', marginRight: 6, fontFamily: 'monospace' }}>└─</span>
             )}
             {v}
           </Typography.Text>
@@ -218,7 +218,7 @@ export default function BacklogPage() {
       width: 140,
       render: (_: unknown, r: BacklogItemResponse) => {
         if (r.issue_id) {
-          return <span style={{ fontSize: 12, color: '#8faec8' }}>{r.assignee_display_name ?? '—'}</span>;
+          return <span style={{ fontSize: 12, color: 'var(--text-muted, #8faec8)' }}>{r.assignee_display_name ?? '—'}</span>;
         }
         return (
           <Select
@@ -247,7 +247,7 @@ export default function BacklogPage() {
               background: 'transparent',
               border: 'none',
               borderBottom: '1px dashed #1e3a5f',
-              color: '#8faec8',
+              color: 'var(--text-muted, #8faec8)',
               fontSize: 12,
               padding: '2px 4px',
               width: '100%',
@@ -273,7 +273,7 @@ export default function BacklogPage() {
         return ta - tb;
       },
       render: (_: unknown, r: BacklogItemResponse) => {
-        if (!r.jira_status) return <span style={{ color: '#8faec8' }}>—</span>;
+        if (!r.jira_status) return <span style={{ color: 'var(--text-muted, #8faec8)' }}>—</span>;
         const days = daysSince(r.jira_status_changed_at);
         let ageColor: string = DARK_THEME.textMuted;
         if (days !== null) {
@@ -365,7 +365,7 @@ export default function BacklogPage() {
       title: 'ОПЭ→АН', dataIndex: 'opo_analyst_ratio', width: 90,
       render: (v: number | null, r: BacklogItemResponse) => {
         if (!editable) {
-          return <span style={{ color: '#8faec8' }}>{v ?? '—'}</span>;
+          return <span style={{ color: 'var(--text-muted, #8faec8)' }}>{v ?? '—'}</span>;
         }
         return (
           <Tooltip title="Какая часть часов ОПЭ идёт на аналитика (остальное — на ПР)">
@@ -406,7 +406,7 @@ export default function BacklogPage() {
               {Math.round(total)} ч
             </span>
             {totalHoursAll > 0 && (
-              <div style={{ fontSize: 10, color: '#4a6a80', marginTop: 1 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted, #4a6a80)', marginTop: 1 }}>
                 {pct}% ресурса
               </div>
             )}
@@ -538,7 +538,7 @@ export default function BacklogPage() {
       sorter: (a: BacklogItemResponse, b: BacklogItemResponse) =>
         (a.goals ?? '').localeCompare(b.goals ?? ''),
       render: (v: string | null) => {
-        if (!v) return <span style={{ color: '#4a6a80' }}>—</span>;
+        if (!v) return <span style={{ color: 'var(--text-muted, #4a6a80)' }}>—</span>;
         return (
           <Space size={4} wrap>
             {v.split(',').map((s) => s.trim()).filter(Boolean).map((tag) => (
@@ -554,7 +554,7 @@ export default function BacklogPage() {
       width: 180,
       render: (_: unknown, r: BacklogItemResponse) => {
         if (!r.approved_scenarios?.length)
-          return <span style={{ color: '#8faec8' }}>—</span>;
+          return <span style={{ color: 'var(--text-muted, #8faec8)' }}>—</span>;
         return (
           <Space orientation="vertical" size={2}>
             {r.approved_scenarios.map((s) => (
@@ -639,10 +639,10 @@ export default function BacklogPage() {
                 label: (
                   <Space size={6}>
                     {key === '__none__'
-                      ? <span style={{ color: '#4a6a80' }}>Без квартала</span>
+                      ? <span style={{ color: 'var(--text-muted, #4a6a80)' }}>Без квартала</span>
                       : <Tag color="purple" style={{ marginInlineEnd: 0 }}>{key}</Tag>
                     }
-                    <span style={{ fontSize: 12, color: '#4a6a80' }}>{rows.length}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted, #4a6a80)' }}>{rows.length}</span>
                   </Space>
                 ),
                 children: (
@@ -708,7 +708,7 @@ export default function BacklogPage() {
       render: (_: unknown, r: BacklogItemResponse) =>
         r.quarter_label
           ? <Tag color="purple" style={{ marginInlineEnd: 0 }}>{r.quarter_label}</Tag>
-          : <span style={{ color: '#4a6a80' }}>—</span>,
+          : <span style={{ color: 'var(--text-muted, #4a6a80)' }}>—</span>,
     },
     { title: 'Действия', width: 160, fixed: 'right' as const, render: (_: unknown, r: BacklogItemResponse) => actionsArchived(r) },
   ];
@@ -732,10 +732,10 @@ export default function BacklogPage() {
               padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)',
             }}>
               {key === '__none__'
-                ? <span style={{ color: '#4a6a80', fontWeight: 600 }}>Без квартала</span>
+                ? <span style={{ color: 'var(--text-muted, #4a6a80)', fontWeight: 600 }}>Без квартала</span>
                 : <Tag color="purple">{key}</Tag>
               }
-              <span style={{ fontSize: 12, color: '#4a6a80' }}>{rows.length} {rows.length === 1 ? 'задача' : 'задач'}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted, #4a6a80)' }}>{rows.length} {rows.length === 1 ? 'задача' : 'задач'}</span>
             </div>
             <Table<BacklogItemResponse>
               dataSource={rows}

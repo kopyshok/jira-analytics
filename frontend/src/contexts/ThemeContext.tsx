@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useLayoutEffect, type ReactNode } from 'react';
 import type { AppTheme } from '../utils/constants';
 
 interface ThemeContextValue {
@@ -42,13 +42,24 @@ function applyDomAttrs(t: AppTheme): void {
   }
 }
 
+// Apply DOM attrs eagerly on module load — before any React render reads the Proxy.
+// Otherwise inline `style={{ color: DARK_THEME.textPrimary }}` snapshots the wrong
+// branch (Proxy sees no data-mode attr yet) and stays in classic colors until next
+// rerender, producing white-on-white in Aurora-light.
+if (typeof document !== 'undefined') {
+  applyDomAttrs(readStoredTheme());
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<AppTheme>(readStoredTheme);
 
-  useEffect(() => { applyDomAttrs(theme); }, [theme]);
+  // useLayoutEffect (sync) instead of useEffect (async) — flush DOM attrs
+  // before browser paints; pairs with the eager module-load apply above.
+  useLayoutEffect(() => { applyDomAttrs(theme); }, [theme]);
 
   const setTheme = useCallback((t: AppTheme) => {
     try { localStorage.setItem('app_theme', t); } catch { /* ignore */ }
+    applyDomAttrs(t);
     setThemeState(t);
   }, []);
 

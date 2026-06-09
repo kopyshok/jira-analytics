@@ -110,7 +110,7 @@ function ChildrenList({
 }) {
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>Дочерние Эпики</div>
+      <div style={{ color: 'var(--text-muted, #94a3b8)', fontSize: 12, marginBottom: 4 }}>Дочерние Эпики</div>
       {items.map((c) => (
         <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
           {mode === 'by_epics' && (

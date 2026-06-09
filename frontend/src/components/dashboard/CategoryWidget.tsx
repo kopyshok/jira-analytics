@@ -146,14 +146,14 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
             >
               <div style={{
                 width: 28, height: 28, borderRadius: '50%',
-                background: DARK_THEME.darkRows, color: '#a4b8d8',
+                background: DARK_THEME.darkRows, color: 'var(--text-muted, #a4b8d8)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 700, flexShrink: 0,
               }}>{emp.initials}</div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 6,
-                  color: '#e6edf7', fontSize: 13,
+                  color: 'var(--text, #e6edf7)', fontSize: 13,
                 }}>
                   <span style={{
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -228,7 +228,7 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
                 justifyContent: 'space-between',
               }}
             >
-              <div style={{ fontSize: 12, color: '#a4b8d8' }}>+ ещё {c.count}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted, #a4b8d8)' }}>+ ещё {c.count}</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: DARK_THEME.textPrimary }}>{Math.round(c.hours)} ч</div>
             </div>
           );
@@ -259,7 +259,7 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
               <div style={{
                 fontSize: 12,
-                color: '#a4b8d8',
+                color: 'var(--text-muted, #a4b8d8)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -346,22 +346,22 @@ function MetaTable({ items }: { items: CategoryMetaItem[] }) {
               <td style={{ padding: '5px 8px' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: item.color, flexShrink: 0, display: 'inline-block' }} />
-                  <span style={{ color: '#e6edf7' }}>{item.label}</span>
+                  <span style={{ color: 'var(--text, #e6edf7)' }}>{item.label}</span>
                 </span>
               </td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: DARK_THEME.textPrimary, fontWeight: 600 }}>{Math.round(item.hours)}</td>
-              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.worklog_count}</td>
-              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.issue_count}</td>
-              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.employee_count}</td>
-              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{item.avg_worklog_minutes.toFixed(0)}</td>
+              <td style={{ textAlign: 'right', padding: '5px 8px', color: 'var(--text-muted, #a4b8d8)' }}>{item.worklog_count}</td>
+              <td style={{ textAlign: 'right', padding: '5px 8px', color: 'var(--text-muted, #a4b8d8)' }}>{item.issue_count}</td>
+              <td style={{ textAlign: 'right', padding: '5px 8px', color: 'var(--text-muted, #a4b8d8)' }}>{item.employee_count}</td>
+              <td style={{ textAlign: 'right', padding: '5px 8px', color: 'var(--text-muted, #a4b8d8)' }}>{item.avg_worklog_minutes.toFixed(0)}</td>
               <td style={{ textAlign: 'right', padding: '5px 8px', color: DARK_THEME.textMuted }}>{item.pct.toFixed(1)}%</td>
             </tr>
           ))}
           <tr style={{ borderTop: `2px solid ${DARK_THEME.darkRows}`, fontWeight: 600, color: DARK_THEME.textPrimary, fontSize: 11 }}>
             <td style={{ padding: '5px 8px' }}>Итого</td>
             <td style={{ textAlign: 'right', padding: '5px 8px' }}>{Math.round(totalHours)}</td>
-            <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{totalWl}</td>
-            <td style={{ textAlign: 'right', padding: '5px 8px', color: '#a4b8d8' }}>{totalIssues}</td>
+            <td style={{ textAlign: 'right', padding: '5px 8px', color: 'var(--text-muted, #a4b8d8)' }}>{totalWl}</td>
+            <td style={{ textAlign: 'right', padding: '5px 8px', color: 'var(--text-muted, #a4b8d8)' }}>{totalIssues}</td>
             <td colSpan={3} />
           </tr>
         </tbody>
