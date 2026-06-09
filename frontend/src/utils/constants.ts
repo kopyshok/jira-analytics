@@ -193,7 +193,7 @@ export const DARK_THEME: DarkThemeShape = new Proxy(DARK_THEME_CLASSIC, {
   },
 });
 
-export type AppTheme = 'dark' | 'dark-blue' | 'dark-slate' | 'dark-charcoal' | 'aurora-dark' | 'aurora-light';
+export type AppTheme = 'dark-blue' | 'aurora-dark' | 'aurora-light';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -210,24 +210,7 @@ export interface ThemeTokens {
   textHint: string;
 }
 
-export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
-  'dark': {
-    label: 'Тёмный',
-    tokens: {
-      pageBg: '#141414',
-      sidebarBg: '#0a0a0a',
-      cardBg: '#1f1f1f',
-      darkAccent: '#262626',
-      border: '#303030',
-      darkRows: '#242424',
-      primary: '#177ddc',
-      primarySecondary: '#4096ff',
-      textPrimary: '#e8e8e8',
-      textSecondary: '#bfbfbf',
-      textMuted: '#8c8c8c',
-      textHint: '#595959',
-    },
-  },
+export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens; isNew?: boolean }> = {
   'dark-blue': {
     label: 'Тёмно-синий',
     tokens: {
@@ -245,42 +228,9 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
       textHint: '#6b8aaa',
     },
   },
-  'dark-slate': {
-    label: 'Серо-синий',
-    tokens: {
-      pageBg: '#0f172a',
-      sidebarBg: '#0a111f',
-      cardBg: '#1e293b',
-      darkAccent: '#172034',
-      border: '#334155',
-      darkRows: '#1a2c42',
-      primary: '#3b82f6',
-      primarySecondary: '#60a5fa',
-      textPrimary: '#e2e8f0',
-      textSecondary: '#cbd5e1',
-      textMuted: 'var(--text-muted, #94a3b8)',
-      textHint: 'var(--text-muted, #64748b)',
-    },
-  },
-  'dark-charcoal': {
-    label: 'Тёплый',
-    tokens: {
-      pageBg: '#1a1714',
-      sidebarBg: '#141210',
-      cardBg: '#201d19',
-      darkAccent: '#252219',
-      border: '#2d2922',
-      darkRows: '#1e1b17',
-      primary: '#d97706',
-      primarySecondary: '#f59e0b',
-      textPrimary: '#e8e0d5',
-      textSecondary: '#d4c9bb',
-      textMuted: '#9d8f80',
-      textHint: '#7d6f62',
-    },
-  },
   'aurora-dark': {
     label: 'Aurora тёмная',
+    isNew: true,
     tokens: {
       pageBg: '#080b16',
       sidebarBg: '#0d1226',
@@ -297,7 +247,8 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }
     },
   },
   'aurora-light': {
-    label: 'Фарфор',
+    label: 'Aurora светлая',
+    isNew: true,
     tokens: {
       pageBg: '#e6ebf2',
       sidebarBg: '#e6ebf2',

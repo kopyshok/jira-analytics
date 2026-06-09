@@ -137,7 +137,7 @@ function EmployeesActivity({ items, thresholds }: { items: EmployeeWorklogActivi
                 alignItems: 'center',
                 gap: 10,
                 background: DARK_THEME.cardBg,
-                border: `1px solid ${DARK_THEME.darkRows}`,
+                border: `1px solid ${DARK_THEME.border}`,
                 borderRadius: 8,
                 padding: '8px 12px',
                 opacity: emp.is_absent ? 0.75 : 1,

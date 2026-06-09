@@ -202,8 +202,8 @@
 }
 
 .analytics-detail-marker.issue {
-  background: #1c3358;
-  color: #7ee7f1;
+  background: var(--marker-issue-bg, #1c3358);
+  color: var(--marker-issue-fg, #7ee7f1);
 }
 
 .analytics-detail-label-main {
@@ -215,7 +215,7 @@
 }
 
 .analytics-detail-label-key {
-  color: #00c9c8;
+  color: var(--accent-1, #00c9c8);
   font-weight: 800;
   white-space: nowrap;
 }
@@ -232,7 +232,7 @@
 }
 
 .analytics-detail-number.fact {
-  color: #ffffff;
+  color: var(--text, #ffffff);
   font-weight: 800;
 }
 
@@ -290,7 +290,7 @@
 }
 
 .analytics-detail-inspector-key {
-  color: #00c9c8;
+  color: var(--accent-1, #00c9c8);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   font-weight: 800;
@@ -314,9 +314,9 @@
 .analytics-detail-section {
   margin-top: 14px;
   overflow: hidden;
-  border: 1px solid rgba(126, 148, 184, 0.18);
+  border: 1px solid var(--glass-border, rgba(126, 148, 184, 0.18));
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--mini-tile-bg, rgba(255, 255, 255, 0.03));
 }
 
 .analytics-detail-section-head {
@@ -334,7 +334,7 @@
 
 .analytics-detail-section-body {
   padding: 12px;
-  color: #b9c7dc;
+  color: var(--text-2, #b9c7dc);
   font-size: 13px;
   line-height: 1.45;
 }

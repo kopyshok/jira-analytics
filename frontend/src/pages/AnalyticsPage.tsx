@@ -1,17 +1,13 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { Space, DatePicker, Switch, Empty, Spin, Button, Segmented } from 'antd';
+import { Space, DatePicker, Empty, Spin, Button } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../components/shared/PageHeader';
 import analyticsHelp from '../../../docs/help/analytics.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
-import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
-import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
-import AnalyticsTable from '../components/analytics/AnalyticsTable';
 import AnalyticsReportSettings from '../components/analytics/AnalyticsReportSettings';
 import AnalyticsDetailWorkspace from '../components/analytics/AnalyticsDetailWorkspace';
-import AnalyticsKpiTiles from '../components/analytics/AnalyticsKpiTiles';
 import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
 import { useAnalyticsColumns } from '../hooks/useAnalyticsColumns';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
@@ -33,10 +29,6 @@ function periodBounds(year: number, quarter: number, month?: number): { start: s
   };
 }
 
-type AnalyticsViewMode = 'classic' | 'detail';
-
-const VIEW_MODE_STORAGE_KEY = 'analytics:view-mode';
-
 export default function AnalyticsPage() {
   const [params, setParams] = useSearchParams();
   const { period } = useGlobalPeriod();
@@ -53,24 +45,8 @@ export default function AnalyticsPage() {
   const taskQ = params.get('task') || undefined;
 
   const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('drawer');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
   useRegisterHelp('Аналитика трудозатрат', analyticsHelp);
-  const [viewMode, setViewMode] = useState<AnalyticsViewMode>(() => {
-    try {
-      return localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'detail' ? 'detail' : 'classic';
-    } catch {
-      return 'classic';
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
-    } catch {
-      /* localStorage may be unavailable */
-    }
-  }, [viewMode]);
 
   const queryParams = useMemo(() => ({
     year: period.year,
@@ -131,31 +107,12 @@ export default function AnalyticsPage() {
 
   const headerActions = (
     <Space wrap>
-      <Segmented
-        value={viewMode}
-        onChange={(value) => setViewMode(value as AnalyticsViewMode)}
-        options={[
-          { label: 'Текущий вид', value: 'classic' },
-          { label: 'Новый вид', value: 'detail' },
-        ]}
-      />
       <DatePicker.RangePicker
         value={localRange}
         onChange={setLocalRange}
         placeholder={['Уточнить с', 'по']}
         allowClear
       />
-      {viewMode === 'classic' && (
-        <>
-          <span>Ворклоги:</span>
-          <Switch
-            checkedChildren="inline"
-            unCheckedChildren="drawer"
-            checked={worklogMode === 'inline'}
-            onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
-          />
-        </>
-      )}
       <Button
         icon={<SettingOutlined />}
         onClick={() => setColumnSettingsOpen(true)}
@@ -208,7 +165,7 @@ export default function AnalyticsPage() {
             </Button>
           )}
         </Empty>
-      ) : viewMode === 'detail' ? (
+      ) : (
         <AnalyticsDetailWorkspace
           data={data}
           selectedTeam={selectedTeam}
@@ -219,30 +176,6 @@ export default function AnalyticsPage() {
           periodEnd={periodEnd}
           onOpenColumnSettings={() => setColumnSettingsOpen(true)}
         />
-      ) : (
-        <>
-          <AnalyticsKpiTiles totals={data.grand_totals} />
-          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
-          <AnalyticsTeamList
-            data={data}
-            selected={selectedTeam}
-            onSelect={setSelectedTeam}
-          />
-          <div>
-            <AnalyticsFilters
-              urlParams={{ employeeId, workType, category, taskQ }}
-              onChange={handleFilterChange}
-            />
-            <AnalyticsTable
-              data={data}
-              selectedTeam={selectedTeam}
-              worklogMode={worklogMode}
-              periodStart={periodStart}
-              periodEnd={periodEnd}
-            />
-          </div>
-        </div>
-        </>
       )}
     </Space>
   );

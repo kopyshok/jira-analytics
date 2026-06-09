@@ -8,7 +8,7 @@ import GlobalPeriodPicker from '../../components/shared/GlobalPeriodPicker';
 import GlobalHelpButton from '../../components/Layout/GlobalHelpButton';
 import SyncIndicator from '../../components/Layout/SyncIndicator';
 import { Avatar } from '../primitives/Avatar';
-import { ThemeToggle } from './ThemeToggle';
+import ThemeSelect from '../../components/Layout/ThemeSelect';
 
 export function AuroraTopbar() {
   const { user, logout } = useAuth();
@@ -30,7 +30,7 @@ export function AuroraTopbar() {
             <GlobalTeamFilterButton />
             <GlobalPeriodPicker />
             <GlobalHelpButton />
-            <ThemeToggle />
+            <ThemeSelect width={170} />
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Avatar name={user.display_name} size={30} />
               <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{user.display_name}</span>
