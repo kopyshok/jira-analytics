@@ -188,8 +188,8 @@
   /* Chip фон ключей задач — на белом нужен заметный голубой */
   --key-chip-bg: #dde7f5;
   --key-chip-border: #aac4ec;
-  /* Backlog allocation rows — на светлом мягкий тон, акцент даёт полоса слева */
-  --row-included-bg: #eaf1fc;
+  /* Backlog allocation rows — на светлом полупрозрачный голубой, акцент даёт полоса слева */
+  --row-included-bg: rgba(59,110,245,0.07);
   --row-excluded-bg: transparent;
 }
 
