@@ -17,6 +17,28 @@
   border-radius: var(--radius-sm) !important;
   color: var(--text) !important;
 }
+/* Высокая specificity для Aurora dark — иначе AntD cssinjs (2 classes) побеждает
+ * и InputNumber выглядит без рамки на тёмно-синей карточке (фон сливается). */
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number,
+html[data-theme="aurora"][data-mode="dark"] .ant-input,
+html[data-theme="aurora"][data-mode="dark"] .ant-input-affix-wrapper {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(120,170,250,0.30) !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number .ant-input-number-input,
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number-input-wrap {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number-handler-wrap {
+  background: rgba(255,255,255,0.06) !important;
+  border-left: 1px solid rgba(120,170,250,0.20) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number:hover,
+html[data-theme="aurora"][data-mode="dark"] .ant-input:hover {
+  border-color: var(--accent-border) !important;
+}
 
 :where([data-theme="aurora"]) .ant-input:focus,
 :where([data-theme="aurora"]) .ant-input-focused,
