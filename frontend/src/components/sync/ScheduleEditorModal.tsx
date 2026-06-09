@@ -173,7 +173,7 @@ export default function ScheduleEditorModal({ open, schedule, onClose, onSaved }
         <Alert
           type="error"
           showIcon
-          message={preview.error ?? 'Невалидное расписание'}
+          title={preview.error ?? 'Невалидное расписание'}
         />
       );
     }
@@ -184,7 +184,7 @@ export default function ScheduleEditorModal({ open, schedule, onClose, onSaved }
       <Alert
         type="info"
         showIcon
-        message={preview.description}
+        title={preview.description}
         description={`Следующие запуски: ${runs}`}
       />
     );
