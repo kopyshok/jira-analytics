@@ -69,6 +69,25 @@ def _jira_priority_to_int(raw: Optional[str]) -> Optional[int]:
     return JIRA_PRIORITY_MAP.get(raw.strip().lower())
 
 
+def approved_included_backlog_ids(db: Session) -> set[str]:
+    """BacklogItem.id, уже включённые (included_flag=True) в утверждённый сценарий.
+
+    Используется чтобы не предлагать эти инициативы в новых/черновых сценариях:
+    они уже зафиксированы в утверждённом квартальном плане.
+    """
+    return {
+        bid
+        for (bid,) in db.query(ScenarioAllocation.backlog_item_id)
+        .join(PlanningScenario, PlanningScenario.id == ScenarioAllocation.scenario_id)
+        .filter(
+            PlanningScenario.status == "approved",
+            ScenarioAllocation.included_flag == True,  # noqa: E712
+        )
+        .distinct()
+        .all()
+    }
+
+
 def descendant_backlog_ids_of_included_ancestors(db: Session) -> set[str]:
     """BacklogItem.id, чьи задачи имеют предка (любой глубины), уже включённого
     в утверждённый сценарий.
@@ -255,6 +274,10 @@ class BacklogService:
         включённый в утверждённый сценарий: ребёнок утверждённой инициативы
         не должен повторно предлагаться к выбору.
         """
+        # Skip if already included in approved scenario — нет смысла предлагать
+        # уже зафиксированную в утверждённом плане инициативу повторно.
+        if item_id in approved_included_backlog_ids(self.db):
+            return
         # Skip descendants of approved-included ancestors.
         item = self.db.query(BacklogItem).filter_by(id=item_id).one_or_none()
         if item is not None and item.issue_id is not None:

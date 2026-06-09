@@ -402,7 +402,7 @@ export default function BacklogPage() {
         const pct = totalHoursAll > 0 ? Math.round((total / totalHoursAll) * 100) : 0;
         return (
           <div style={{ textAlign: 'right' }}>
-            <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: '#e8f4f8' }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: 'var(--text, #e8f4f8)' }}>
               {Math.round(total)} ч
             </span>
             {totalHoursAll > 0 && (
