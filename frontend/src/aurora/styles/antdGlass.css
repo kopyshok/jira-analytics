@@ -239,19 +239,41 @@ html[data-theme="aurora"] .ant-drawer-header {
   backdrop-filter: blur(var(--blur));
 }
 
-:where([data-theme="aurora"]) .ant-dropdown-menu,
-:where([data-theme="aurora"]) .ant-select-dropdown,
-:where([data-theme="aurora"]) .ant-picker-dropdown {
-  background: rgba(20, 25, 40, 0.95) !important;
-  backdrop-filter: blur(var(--blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
+html[data-theme="aurora"][data-mode="dark"] .ant-dropdown-menu,
+html[data-theme="aurora"][data-mode="dark"] .ant-select-dropdown,
+html[data-theme="aurora"][data-mode="dark"] .ant-picker-dropdown,
+html[data-theme="aurora"][data-mode="dark"] .ant-picker-panel-container,
+html[data-theme="aurora"][data-mode="dark"] .ant-popover-inner,
+html[data-theme="aurora"][data-mode="dark"] .ant-tooltip-inner {
+  background-color: #161b30 !important;
+  backdrop-filter: none !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius-sm) !important;
 }
 
-:where([data-theme="aurora"][data-mode="light"]) .ant-dropdown-menu,
-:where([data-theme="aurora"][data-mode="light"]) .ant-select-dropdown,
-:where([data-theme="aurora"][data-mode="light"]) .ant-picker-dropdown {
-  background: rgba(255, 255, 255, 0.95) !important;
+html[data-theme="aurora"][data-mode="light"] .ant-dropdown-menu,
+html[data-theme="aurora"][data-mode="light"] .ant-select-dropdown,
+html[data-theme="aurora"][data-mode="light"] .ant-picker-dropdown,
+html[data-theme="aurora"][data-mode="light"] .ant-picker-panel-container,
+html[data-theme="aurora"][data-mode="light"] .ant-popover-inner,
+html[data-theme="aurora"][data-mode="light"] .ant-tooltip-inner {
+  background-color: #ffffff !important;
+  backdrop-filter: none !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+/* Modal/Drawer footer — solid too */
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-footer,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-footer {
+  background-color: #0f1426 !important;
+  border-top-color: var(--glass-border) !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-modal-footer,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-footer {
+  background-color: #f0f4fc !important;
+  border-top-color: var(--glass-border) !important;
 }
 
 :where([data-theme="aurora"]) .ant-segmented {
