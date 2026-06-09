@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Card, Select, Skeleton, Tag } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
@@ -42,7 +42,7 @@ function getRoleShort(role: string): string {
 }
 
 
-export default function PlanningCapacityPanel({ resourceBase, summary, allocations, quarter, scenarioId }: Props) {
+function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter, scenarioId }: Props) {
   const { data: roles = [] } = useRoles();
   const qc = useQueryClient();
   const setRoleMutation = useMutation({
@@ -338,3 +338,6 @@ export default function PlanningCapacityPanel({ resourceBase, summary, allocatio
     </div>
   );
 }
+
+const PlanningCapacityPanel = memo(PlanningCapacityPanelBase);
+export default PlanningCapacityPanel;
