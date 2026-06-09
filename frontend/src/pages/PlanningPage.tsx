@@ -1,18 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
-  Alert, App, Badge, Button, Card, Checkbox, InputNumber, Popconfirm, Select, Space, Tag, Tooltip,
+  Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Tooltip,
 } from 'antd';
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined, CompressOutlined,
-  DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined, HolderOutlined, InfoCircleOutlined,
+  DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
   PlusOutlined, RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
+import BacklogAllocRow from '../components/planning/BacklogAllocRow';
 import PageHeader from '../components/shared/PageHeader';
 import planningHelp from '../../../docs/help/planning.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -21,13 +20,11 @@ import ScenarioCreateModal from '../components/planning/ScenarioCreateModal';
 import ScenarioRulesEditor from '../components/planning/ScenarioRulesEditor';
 import ExternalQaInput from '../components/planning/ExternalQaInput';
 import ScenarioResourceSummary from '../components/planning/ScenarioResourceSummary';
-import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import ApproveCelebration from '../components/planning/ApproveCelebration';
 import ScenarioDeficitBadge from '../components/planning/ScenarioDeficitBadge';
 import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
 import ScenarioCompareDrawer from '../components/planning/ScenarioCompareDrawer';
 import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisionHistoryDrawer';
-import { AllocationOverridePopover } from '../components/planning/AllocationOverridePopover';
 import HoursBreakdownDrawer from '../components/hours/HoursBreakdownDrawer';
 import { useScenarioContinuationInfo } from '../hooks/useScenarioContinuationInfo';
 import {
@@ -54,11 +51,8 @@ import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { downloadScenarioXlsx } from '../api/exports';
 import { trackAction } from '../lib/usage/track';
 import { DARK_THEME, FONTS } from '../utils/constants';
-import { statusTagColor } from '../utils/status';
 import { useRoles } from '../hooks/useRoles';
 import { useJiraSettings } from '../hooks/useSettings';
-import { getRoleColor } from '../utils/roles';
-import { OPO_COLOR } from '../utils/opo';
 import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../utils/planning';
 import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
@@ -66,47 +60,6 @@ import type { AllocationResponse } from '../types/api';
 const GRID = '24px 36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
 const GRID_GAP = 8;
 
-
-type DragHandleProps = {
-  attributes: ReturnType<typeof useSortable>['attributes'];
-  listeners: ReturnType<typeof useSortable>['listeners'];
-};
-
-function SortableAllocRow({
-  id,
-  registerRef,
-  onClick,
-  className,
-  style,
-  children,
-}: {
-  id: string;
-  registerRef: (el: HTMLDivElement | null) => void;
-  onClick?: () => void;
-  className?: string;
-  style?: CSSProperties;
-  children: (handle: DragHandleProps) => ReactNode;
-}) {
-  const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id });
-  return (
-    <div
-      ref={(el) => {
-        setNodeRef(el);
-        registerRef(el);
-      }}
-      onClick={onClick}
-      className={className}
-      style={{
-        ...style,
-        transform: CSS.Translate.toString(transform),
-        transition,
-        opacity: isDragging ? 0.5 : 1,
-      }}
-    >
-      {children({ attributes, listeners })}
-    </div>
-  );
-}
 
 function rolesAffectedByAllocation(
   a: AllocationResponse,
@@ -335,8 +288,6 @@ export default function PlanningPage() {
   // наверх, снятие — оставляет на месте, drag&drop переписывает порядок.
   const orderedAllocations = allocations ?? [];
 
-  const [listRef] = useAutoAnimate<HTMLDivElement>({ duration: 280, easing: 'ease-in-out' });
-
   const reorderAllocs = useReorderAllocations();
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
     if (!scenarioId || !isDraft) return;
@@ -402,16 +353,43 @@ export default function PlanningPage() {
     }
   };
 
-  const toggleAllocation = (alloc: AllocationResponse) => {
-    if (!scenarioId || !isDraft) return;
-    flashRow(alloc.id);
-    pulseRoles(rolesAffectedByAllocation(alloc, resourceBase?.employees));
-    scrollRowIntoView(alloc.id);
-    patchAlloc.mutate(
-      { scenarioId, allocId: alloc.id, data: { included: !alloc.included } },
-      { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
-    );
-  };
+  const toggleAllocation = useCallback(
+    (alloc: AllocationResponse) => {
+      if (!scenarioId || !isDraft) return;
+      flashRow(alloc.id);
+      pulseRoles(rolesAffectedByAllocation(alloc, resourceBase?.employees));
+      scrollRowIntoView(alloc.id);
+      patchAlloc.mutate(
+        { scenarioId, allocId: alloc.id, data: { included: !alloc.included } },
+        { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
+      );
+    },
+    [scenarioId, isDraft, resourceBase?.employees, patchAlloc, notification],
+  );
+
+  const registerRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
+  }, []);
+
+  const handlePriorityChange = useCallback(
+    (backlogItemId: string, priority: number | null) => {
+      patchBacklogPriority.mutate({ backlogItemId, priority });
+    },
+    [patchBacklogPriority],
+  );
+
+  const handleAssigneeChange = useCallback(
+    (allocId: string, employeeId: string | null) => {
+      if (!scenarioId) return;
+      patchAssignee.mutate({ scenarioId, allocId, assigneeEmployeeId: employeeId });
+    },
+    [patchAssignee, scenarioId],
+  );
+
+  const handleOpenBreakdown = useCallback((issueId: string, issueKey: string) => {
+    setBreakdown({ open: true, issueId, issueKey });
+  }, []);
 
   const handleApprove = () => {
     if (!scenarioId) return;
@@ -752,285 +730,31 @@ export default function PlanningPage() {
                     items={orderedAllocations.map((a) => a.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div style={{ overflowY: 'auto', flex: 1 }} ref={listRef}>
-                  {orderedAllocations.map((a) => {
-                    const eff = effectiveEstimate(a);
-                    const an = eff.analyst;
-                    const de = eff.dev;
-                    const qa = eff.qa;
-                    const op = eff.opo;
-                    const total = an + de + qa + op;
-                    const priorityCyan = a.priority != null && a.priority <= 3;
-                    const contInfo = continuation?.info_by_allocation_id?.[a.id];
-                    const hasOverride =
-                      a.override_estimate_analyst_hours !== null ||
-                      a.override_estimate_dev_hours !== null ||
-                      a.override_estimate_qa_hours !== null ||
-                      a.override_estimate_opo_hours !== null;
-                    const isPendingContinuation =
-                      !!contInfo?.is_continuation && !hasOverride;
-                    return (
-                      <SortableAllocRow
-                        key={a.id}
-                        id={a.id}
-                        registerRef={(el) => {
-                          if (el) rowRefs.current.set(a.id, el);
-                          else rowRefs.current.delete(a.id);
-                        }}
-                        className={[
-                          'backlog-row',
-                          flashingIds.has(a.id) ? 'cyan-flash' : '',
-                          rowStateClass(a),
-                        ].filter(Boolean).join(' ')}
-                        onClick={() => toggleAllocation(a)}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: GRID,
-                          columnGap: GRID_GAP,
-                          padding: compact ? '4px 14px' : '12px 14px',
-                          fontSize: compact ? 13 : 14,
-                          borderBottom: `1px solid ${DARK_THEME.border}`,
-                          alignItems: 'center',
-                          cursor: isDraft ? 'pointer' : 'default',
-                          background: a.included ? 'rgba(0,201,200,0.06)' : 'transparent',
-                          opacity: a.included ? 1 : 0.7,
-                        }}
-                      >
-                        {({ attributes, listeners }) => (
-                          <>
-                        <span
-                          {...(isDraft ? attributes : {})}
-                          {...(isDraft ? listeners : {})}
-                          onClick={(e) => e.stopPropagation()}
-                          title={isDraft ? 'Перетащить' : ''}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: isDraft ? 'grab' : 'default',
-                            color: DARK_THEME.textMuted,
-                            opacity: isDraft ? 1 : 0.3,
-                            touchAction: 'none',
-                          }}
-                        >
-                          <HolderOutlined />
-                        </span>
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <Checkbox
-                            checked={a.included}
-                            disabled={!isDraft}
-                            onChange={() => toggleAllocation(a)}
-                          />
-                        </div>
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <InputNumber
-                            min={1}
-                            max={10}
-                            value={a.priority}
-                            variant="borderless"
-                            size="small"
-                            controls={false}
-                            style={{
-                              width: 36,
-                              height: 24,
-                              borderRadius: 4,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              fontFamily: FONTS.mono,
-                              color: priorityCyan ? '#003a3a' : DARK_THEME.textMuted,
-                              background: priorityCyan ? DARK_THEME.cyanPrimary : DARK_THEME.darkAccent,
-                              padding: 0,
-                              textAlign: 'center',
-                            }}
-                            className="backlog-priority-input"
-                            placeholder="—"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Escape') {
-                                (e.target as HTMLInputElement).blur();
-                              }
-                            }}
-                            onBlur={(e) => {
-                              const raw = e.target.value;
-                              const parsed = raw === '' ? null : parseInt(raw, 10);
-                              const next = parsed === null || isNaN(parsed) ? null : Math.min(10, Math.max(1, parsed));
-                              if (next !== a.priority) {
-                                patchBacklogPriority.mutate({ backlogItemId: a.backlog_item_id, priority: next });
-                              }
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              color: DARK_THEME.textPrimary,
-                              fontSize: 14,
-                              marginBottom: 3,
-                            }}
-                          >
-                            <span style={{ flex: '1 1 auto', minWidth: 0 }}>{a.title}</span>
-                            {hasOverride && (
-                              <Tag color="gold" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
-                                переоценка
-                              </Tag>
-                            )}
-                            {isPendingContinuation && (
-                              <Tag color="red" style={{ fontSize: 10, margin: 0, padding: '0 4px' }}>
-                                ⚠ продолжение
-                              </Tag>
-                            )}
-                            {scenarioId && scenario && (
-                              <AllocationOverridePopover
-                                scenarioId={scenarioId}
-                                allocationId={a.id}
-                                scenarioStatus={scenario.status as 'draft' | 'approved'}
-                                currentOverride={{
-                                  analyst: a.override_estimate_analyst_hours,
-                                  dev: a.override_estimate_dev_hours,
-                                  qa: a.override_estimate_qa_hours,
-                                  opo: a.override_estimate_opo_hours,
-                                }}
-                                continuation={contInfo}
-                              />
-                            )}
-                          </div>
-                          {a.status && (
-                            <Tag
-                              color={statusTagColor(a.status, a.status_category)}
-                              style={{ fontSize: 10, margin: '2px 4px 0 0', padding: '0 4px' }}
-                            >
-                              {a.status}
-                            </Tag>
-                          )}
-                          {a.jira_key && (
-                            jiraBaseUrl
-                              ? (
-                                <a
-                                  href={`${jiraBaseUrl}/browse/${a.jira_key}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}
-                                >
-                                  {a.jira_key}
-                                </a>
-                              )
-                              : (
-                                <span style={{ fontFamily: FONTS.mono, fontSize: 11, color: DARK_THEME.cyanSecondary }}>
-                                  {a.jira_key}
-                                </span>
-                              )
-                          )}
-                          {a.has_children_in_backlog && a.issue_id && (
-                            <InfoCircleOutlined
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setBreakdown({ open: true, issueId: a.issue_id!, issueKey: a.jira_key ?? '' });
-                              }}
-                              style={{ marginLeft: 6, cursor: 'pointer', color: '#38bdf8', fontSize: 13 }}
-                            />
-                          )}
-                          {a.cost_type && (
-                            <Tag
-                              color={a.cost_type.toLowerCase().includes('change') ? 'blue' : 'green'}
-                              style={{ fontSize: 10, padding: '0 4px', marginLeft: 4 }}
-                            >
-                              {a.cost_type}
-                            </Tag>
-                          )}
-                        </div>
-                        {/* Исполнитель */}
-                        <div onClick={(e) => e.stopPropagation()}>
-                          {!isDraft && !a.assignee_employee_id ? (
-                            <span style={{ fontSize: 12, color: DARK_THEME.textMuted }}>
-                              {a.assignee_display_name ?? '—'}
-                            </span>
-                          ) : (
-                            <Select
-                              size="small"
-                              value={a.assignee_employee_id ?? undefined}
-                              placeholder={a.assignee_display_name ?? '—'}
-                              allowClear
-                              disabled={!isDraft}
-                              style={{ width: '100%', fontSize: 12 }}
-                              options={
-                                resourceBase?.employees.map((emp) => ({
-                                  label: emp.display_name,
-                                  value: emp.employee_id,
-                                })) ?? []
-                              }
-                              onChange={(value: string | undefined) =>
-                                patchAssignee.mutate({
-                                  scenarioId: scenarioId!,
-                                  allocId: a.id,
-                                  assigneeEmployeeId: value ?? null,
-                                })
-                              }
-                            />
-                          )}
-                        </div>
-                        {/* Заказчик */}
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: DARK_THEME.textMuted,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {a.customer ?? '—'}
-                        </div>
-                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                          <BacklogRoleCell
-                            label="АН"
-                            hours={an}
-                            total={total}
-                            color={getRoleColor(roles, 'analyst')}
-                          />
-                          <BacklogRoleCell
-                            label="ПР"
-                            hours={de}
-                            total={total}
-                            color={getRoleColor(roles, 'dev')}
-                          />
-                          <BacklogRoleCell
-                            label="ТС"
-                            hours={qa}
-                            total={total}
-                            color={getRoleColor(roles, 'qa')}
-                          />
-                          <BacklogRoleCell
-                            label="ОПЭ"
-                            hours={op}
-                            total={total}
-                            color={OPO_COLOR}
-                          />
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>
-                            {Math.round(total)} ч
-                          </span>
-                          {resourceSummary && resourceSummary.available_for_backlog_total > 0 && (
-                            <div style={{ fontSize: 10, color: DARK_THEME.textHint, marginTop: 1 }}>
-                              {Math.round((total / resourceSummary.available_for_backlog_total) * 100)}% ресурса
-                            </div>
-                          )}
-                        </div>
-                          </>
-                        )}
-                      </SortableAllocRow>
-                    );
-                  })}
+                    <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {orderedAllocations.map((a) => (
+                    <BacklogAllocRow
+                      key={a.id}
+                      alloc={a}
+                      scenarioId={scenarioId!}
+                      scenarioStatus={(scenario?.status ?? 'draft') as 'draft' | 'approved'}
+                      isDraft={isDraft}
+                      compact={compact}
+                      flashing={flashingIds.has(a.id)}
+                      rowStateClass={rowStateClass(a)}
+                      gridTemplate={GRID}
+                      gridGap={GRID_GAP}
+                      continuationInfo={continuation?.info_by_allocation_id?.[a.id]}
+                      employees={resourceBase?.employees}
+                      roles={roles}
+                      jiraBaseUrl={jiraBaseUrl}
+                      resourceTotalForBacklog={resourceSummary?.available_for_backlog_total ?? 0}
+                      registerRef={(el) => registerRowRef(a.id, el)}
+                      onToggle={toggleAllocation}
+                      onPriorityChange={handlePriorityChange}
+                      onAssigneeChange={handleAssigneeChange}
+                      onOpenBreakdown={handleOpenBreakdown}
+                    />
+                  ))}
                   {(allocations ?? []).length === 0 && !allocLoading && (
                     <div style={{ padding: 24, textAlign: 'center', color: DARK_THEME.textMuted, fontSize: 13 }}>
                       В сценарии нет элементов. Добавьте задачи в бэклог — они появятся автоматически.
