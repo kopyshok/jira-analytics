@@ -730,7 +730,7 @@ export default function PlanningPage() {
                     items={orderedAllocations.map((a) => a.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div style={{ overflowY: 'auto', flex: 1 }}>
+                    <div>
                   {orderedAllocations.map((a) => (
                     <BacklogAllocRow
                       key={a.id}
@@ -789,6 +789,8 @@ export default function PlanningPage() {
                 gap: 12,
                 maxHeight: 'calc(100vh - 72px)',
                 overflowY: 'auto',
+                contain: 'layout paint',
+                willChange: 'transform',
               }}
             >
               <PlanningCapacityPanel

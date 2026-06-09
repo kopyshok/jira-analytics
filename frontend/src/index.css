@@ -393,7 +393,10 @@ kbd,
 .backlog-row {
   border-left: 3px solid transparent;
   transition: border-left-color 0.15s ease, background-color 0.15s ease;
-  contain: layout paint;
+  contain: layout paint style;
+  /* Вне viewport браузер не считает layout/paint строки */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 56px;
 }
 .backlog-row:hover {
   border-left-color: #00c9c8;
