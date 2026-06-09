@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { Space, DatePicker, Empty, Spin, Button } from 'antd';
+import { Space, DatePicker, Switch, Empty, Spin, Button } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../components/shared/PageHeader';
 import analyticsHelp from '../../../docs/help/analytics.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
+import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
+import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
+import AnalyticsTable from '../components/analytics/AnalyticsTable';
 import AnalyticsReportSettings from '../components/analytics/AnalyticsReportSettings';
-import AnalyticsDetailWorkspace from '../components/analytics/AnalyticsDetailWorkspace';
+import AnalyticsKpiTiles from '../components/analytics/AnalyticsKpiTiles';
 import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
 import { useAnalyticsColumns } from '../hooks/useAnalyticsColumns';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
@@ -45,6 +48,7 @@ export default function AnalyticsPage() {
   const taskQ = params.get('task') || undefined;
 
   const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('drawer');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
   useRegisterHelp('Аналитика трудозатрат', analyticsHelp);
 
@@ -113,6 +117,13 @@ export default function AnalyticsPage() {
         placeholder={['Уточнить с', 'по']}
         allowClear
       />
+      <span>Ворклоги:</span>
+      <Switch
+        checkedChildren="inline"
+        unCheckedChildren="drawer"
+        checked={worklogMode === 'inline'}
+        onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
+      />
       <Button
         icon={<SettingOutlined />}
         onClick={() => setColumnSettingsOpen(true)}
@@ -166,16 +177,29 @@ export default function AnalyticsPage() {
           )}
         </Empty>
       ) : (
-        <AnalyticsDetailWorkspace
-          data={data}
-          selectedTeam={selectedTeam}
-          onSelectTeam={setSelectedTeam}
-          urlParams={{ employeeId, workType, category, taskQ }}
-          onFilterChange={handleFilterChange}
-          periodStart={periodStart}
-          periodEnd={periodEnd}
-          onOpenColumnSettings={() => setColumnSettingsOpen(true)}
-        />
+        <>
+          <AnalyticsKpiTiles totals={data.grand_totals} />
+          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
+            <AnalyticsTeamList
+              data={data}
+              selected={selectedTeam}
+              onSelect={setSelectedTeam}
+            />
+            <div>
+              <AnalyticsFilters
+                urlParams={{ employeeId, workType, category, taskQ }}
+                onChange={handleFilterChange}
+              />
+              <AnalyticsTable
+                data={data}
+                selectedTeam={selectedTeam}
+                worklogMode={worklogMode}
+                periodStart={periodStart}
+                periodEnd={periodEnd}
+              />
+            </div>
+          </div>
+        </>
       )}
     </Space>
   );
