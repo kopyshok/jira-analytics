@@ -302,45 +302,23 @@ kbd,
   background: rgba(250, 140, 22, 0.06);
 }
 
+/* Header icon animations: hover-only — бесконечные анимации жгут GPU при скролле */
 @keyframes flag-wave {
   0%, 100% { transform: rotate(-8deg); }
   50%      { transform: rotate(8deg); }
 }
-.flag-wave {
-  display: inline-block;
-  transform-origin: bottom left;
-  animation: flag-wave 1.6s ease-in-out infinite;
-}
-
-/* Header icon animations for the backlog table */
 @keyframes icon-pulse {
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.18); }
 }
-.icon-pulse {
-  display: inline-block;
-  animation: icon-pulse 1.8s ease-in-out infinite;
-}
-
 @keyframes icon-bob {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-3px); }
 }
-.icon-bob {
-  display: inline-block;
-  animation: icon-bob 2.2s ease-in-out infinite;
-}
-
 @keyframes icon-spin-slow {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
-.icon-spin-slow {
-  display: inline-block;
-  animation: icon-spin-slow 8s linear infinite;
-  transform-origin: center;
-}
-
 @keyframes icon-tick {
   0%, 60%, 100% { transform: scale(1) rotate(0); }
   10%           { transform: scale(1.25) rotate(-10deg); }
@@ -348,21 +326,23 @@ kbd,
   30%           { transform: scale(1.18) rotate(-4deg); }
   40%           { transform: scale(1.05) rotate(2deg); }
 }
-.icon-tick {
-  display: inline-block;
-  transform-origin: center;
-  animation: icon-tick 2.6s ease-in-out infinite;
-}
-
 @keyframes icon-wiggle {
   0%, 100% { transform: rotate(-4deg); }
   50%      { transform: rotate(4deg); }
 }
-.icon-wiggle {
+.flag-wave, .icon-pulse, .icon-bob, .icon-spin-slow, .icon-tick, .icon-wiggle {
   display: inline-block;
-  transform-origin: center bottom;
-  animation: icon-wiggle 2.4s ease-in-out infinite;
+  transform-origin: center;
 }
+.flag-wave { transform-origin: bottom left; }
+.icon-wiggle { transform-origin: center bottom; }
+/* Анимация только при hover на родительской ячейке-заголовке */
+*:hover > .flag-wave    { animation: flag-wave    1.6s ease-in-out infinite; }
+*:hover > .icon-pulse   { animation: icon-pulse   1.8s ease-in-out infinite; }
+*:hover > .icon-bob     { animation: icon-bob     2.2s ease-in-out infinite; }
+*:hover > .icon-spin-slow { animation: icon-spin-slow 8s linear infinite; }
+*:hover > .icon-tick    { animation: icon-tick    2.6s ease-in-out infinite; }
+*:hover > .icon-wiggle  { animation: icon-wiggle  2.4s ease-in-out infinite; }
 
 /* Backlog row toggle highlight */
 @keyframes cyan-flash {
@@ -404,17 +384,18 @@ kbd,
   0%, 100% { box-shadow: 0 0 0 0 rgba(250, 140, 22, 0.0); }
   50%      { box-shadow: 0 0 0 4px rgba(250, 140, 22, 0.15); }
 }
-.deficit-pulse {
+/* Только при hover, чтобы не дёргать compositor каждый кадр */
+.deficit-pulse:hover {
   animation: deficit-pulse 2.4s ease-in-out infinite;
 }
 
-/* Hover effect on backlog rows: nudge right + cyan border */
+/* Hover effect on backlog rows: cyan border (translateX убран — лишний reflow при скролле) */
 .backlog-row {
   border-left: 3px solid transparent;
-  transition: transform 0.15s ease, border-left-color 0.15s ease, background-color 0.15s ease;
+  transition: border-left-color 0.15s ease, background-color 0.15s ease;
+  contain: layout paint;
 }
 .backlog-row:hover {
-  transform: translateX(2px);
   border-left-color: #00c9c8;
 }
 /* Color coding overrides border-left when row is in a special state */
