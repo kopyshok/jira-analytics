@@ -19,6 +19,7 @@ from app.models import (
 )
 from app.services.backlog_service import (
     BacklogService,
+    approved_included_backlog_ids,
     descendant_backlog_ids_of_included_ancestors,
     has_included_ancestor,
 )
@@ -210,3 +211,74 @@ def test_no_approved_no_descendants(db_session, proj):
     db_session.add_all([bi_p, bi_c])
     db_session.commit()
     assert descendant_backlog_ids_of_included_ancestors(db_session) == set()
+
+
+def test_approved_included_set_returns_only_included_in_approved(
+    db_session, proj, approved_scenario
+):
+    """approved_included_backlog_ids возвращает только items с
+    included_flag=True в approved-сценарии. Draft и included=False — мимо.
+    """
+    a = _make_issue(db_session, proj, "AA-A")
+    b = _make_issue(db_session, proj, "AA-B")
+    c = _make_issue(db_session, proj, "AA-C")
+    bi_a = _approve_with_included(db_session, approved_scenario.id, a)
+
+    bi_b = BacklogItem(id="bi-b", title="b", issue_id=b.id)
+    db_session.add(bi_b)
+    db_session.add(
+        ScenarioAllocation(
+            scenario_id=approved_scenario.id,
+            backlog_item_id=bi_b.id,
+            included_flag=False,
+            planned_hours=0,
+        )
+    )
+
+    draft = PlanningScenario(
+        id="aa-draft-z", name="Draft", year=2026, quarter=3, status="draft"
+    )
+    db_session.add(draft)
+    bi_c = BacklogItem(id="bi-c", title="c", issue_id=c.id)
+    db_session.add(bi_c)
+    db_session.add(
+        ScenarioAllocation(
+            scenario_id=draft.id,
+            backlog_item_id=bi_c.id,
+            included_flag=True,
+            planned_hours=10,
+        )
+    )
+    db_session.commit()
+
+    result = approved_included_backlog_ids(db_session)
+    assert result == {bi_a.id}
+
+
+def test_sync_skips_alloc_for_already_approved_included(
+    db_session, proj, approved_scenario
+):
+    """sync_from_issue не доливает allocation в draft-сценарий, если у
+    инициативы уже есть включённая allocation в утверждённом сценарии.
+    """
+    issue = _make_issue(db_session, proj, "AA-DUP")
+    _approve_with_included(db_session, approved_scenario.id, issue)
+
+    draft = PlanningScenario(
+        id="aa-draft-dup", name="Draft Q3", year=2026, quarter=3, status="draft"
+    )
+    db_session.add(draft)
+    db_session.commit()
+
+    # Повторный sync (например после refresh-from-jira) не должен добивать
+    # allocation в новый черновик.
+    BacklogService(db_session).sync_from_issue(issue)
+    db_session.commit()
+
+    bi = db_session.query(BacklogItem).filter_by(issue_id=issue.id).one()
+    draft_allocs = (
+        db_session.query(ScenarioAllocation)
+        .filter_by(backlog_item_id=bi.id, scenario_id=draft.id)
+        .all()
+    )
+    assert draft_allocs == []

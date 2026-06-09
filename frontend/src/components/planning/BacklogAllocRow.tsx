@@ -76,9 +76,9 @@ function BacklogAllocRowBase({
     .filter(Boolean)
     .join(' ');
 
-  // Подсветка отмеченных/неотмеченных. Раньше: 6% cyan + opacity 0.7 — на белом
-  // неотмеченные блёкли при демо. Сейчас: solid 4-tone fill для included, рамка
-  // слева 3px у included, opacity 1 везде, муту-палитра у неотмеченных через text-2.
+  // Мягкая подсветка отмеченных: лёгкий cyan-фон + 3px акцентная полоса слева.
+  // Неотмеченные — прозрачный фон, opacity 0.85 (чуть выше чем было 0.7 — для
+  // читаемости при демо без визуального шума).
   const style: CSSProperties = {
     display: 'grid',
     gridTemplateColumns: gridTemplate,
@@ -89,15 +89,12 @@ function BacklogAllocRowBase({
     alignItems: 'center',
     cursor: isDraft ? 'pointer' : 'default',
     background: a.included
-      ? 'var(--row-included-bg, rgba(0,201,200,0.16))'
-      : 'var(--row-excluded-bg, transparent)',
+      ? 'var(--row-included-bg, rgba(0,201,200,0.06))'
+      : 'transparent',
     borderLeft: a.included
       ? '3px solid var(--accent-1, #00c9c8)'
       : '3px solid transparent',
-    color: a.included
-      ? 'var(--text, inherit)'
-      : 'var(--text-muted, rgba(255,255,255,0.55))',
-    opacity: 1,
+    opacity: a.included ? 1 : 0.85,
     transform: CSS.Translate.toString(transform),
     transition,
     ...(isDragging ? { opacity: 0.5 } : null),
