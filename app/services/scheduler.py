@@ -49,6 +49,93 @@ class SchedulerService:
         except Exception:
             return None
 
+    @staticmethod
+    def next_runs(expr: str, count: int = 3) -> list[datetime]:
+        """Получить ``count`` ближайших времён срабатывания cron в локальной таймзоне.
+
+        Возвращает пустой список если выражение невалидно. Datetime'ы tz-aware.
+        Используется фронтом для preview расписания.
+        """
+        if not SchedulerService.is_valid_cron(expr):
+            return []
+        try:
+            now_local = datetime.now(tz=timezone.utc).astimezone()
+            itr = croniter(expr, now_local)
+            return [itr.get_next(datetime) for _ in range(count)]
+        except Exception:
+            return []
+
+    @staticmethod
+    def humanize_cron(cron_expr: str) -> str:
+        """Преобразовать cron-выражение в человекочитаемое описание на русском.
+
+        Поддерживает шаблоны: ``*/N * * * *`` (минуты), ``0 */N * * *`` (часы),
+        ``M H * * *`` (ежедневно), ``M H * * 1-5`` или ``M H * * 1,2,3,4,5``
+        (будни), ``M H * * 0,6`` (выходные), ``M H * * D1,D2,...`` (дни),
+        ``M H * * D`` (еженедельно). Для не распознанных выражений возвращает
+        ``По cron-выражению: <expr>``.
+        """
+        import re
+
+        DAY_NAMES = {0: "вс", 1: "пн", 2: "вт", 3: "ср", 4: "чт", 5: "пт", 6: "сб"}
+        DAY_NOMINATIVE = {
+            0: "воскресенье",
+            1: "понедельник",
+            2: "вторник",
+            3: "среду",
+            4: "четверг",
+            5: "пятницу",
+            6: "субботу",
+        }
+
+        parts = cron_expr.strip().split()
+        if len(parts) != 5:
+            return f"По cron-выражению: {cron_expr}"
+        minute, hour, dom, month, dow = parts
+
+        # Каждые N минут: */N * * * *
+        if month == "*" and dom == "*" and dow == "*" and hour == "*":
+            m = re.fullmatch(r"\*/(\d+)", minute)
+            if m:
+                n = int(m.group(1))
+                if n == 1:
+                    return "Каждую минуту"
+                return f"Каждые {n} минут"
+
+        # Каждые N часов: 0 */N * * *
+        if month == "*" and dom == "*" and dow == "*" and minute == "0":
+            m = re.fullmatch(r"\*/(\d+)", hour)
+            if m:
+                n = int(m.group(1))
+                if n == 1:
+                    return "Каждый час"
+                if 2 <= n <= 4:
+                    return f"Каждые {n} часа"
+                return f"Каждые {n} часов"
+
+        # Точное время M H ... — ежедневно или по дням недели
+        if minute.isdigit() and hour.isdigit() and month == "*" and dom == "*":
+            time_str = f"{int(hour):02d}:{int(minute):02d}"
+            if dow == "*":
+                return f"Каждый день в {time_str}"
+
+            days = _parse_dow(dow)
+            if days is None:
+                return f"По cron-выражению: {cron_expr}"
+
+            if days == {1, 2, 3, 4, 5}:
+                return f"По будням (пн-пт) в {time_str}"
+            if days == {0, 6}:
+                return f"По выходным (сб-вс) в {time_str}"
+            if len(days) == 1:
+                d = next(iter(days))
+                return f"Каждую {DAY_NOMINATIVE[d]} в {time_str}"
+
+            names = ", ".join(DAY_NAMES[d] for d in sorted(days))
+            return f"По дням: {names} в {time_str}"
+
+        return f"По cron-выражению: {cron_expr}"
+
     # ------------------------------------------------------------------
     # Job-management
     # ------------------------------------------------------------------
@@ -91,6 +178,36 @@ class SchedulerService:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+def _parse_dow(dow: str) -> Optional[set]:
+    """Распарсить day-of-week часть cron в множество 0-6 (0=вс..6=сб).
+
+    Поддерживает: ``*`` → все, ``1-5`` → диапазон, ``0,6`` → перечисление,
+    ``3`` → один день. Возвращает ``None`` если формат не распознан.
+    """
+    if dow == "*":
+        return set(range(7))
+    if "-" in dow:
+        bounds = dow.split("-")
+        if len(bounds) == 2 and bounds[0].isdigit() and bounds[1].isdigit():
+            start, end = int(bounds[0]), int(bounds[1])
+            if 0 <= start <= 6 and 0 <= end <= 6 and start <= end:
+                return set(range(start, end + 1))
+        return None
+    if "," in dow:
+        try:
+            days = {int(x) for x in dow.split(",")}
+        except ValueError:
+            return None
+        if all(0 <= d <= 6 for d in days):
+            return days
+        return None
+    if dow.isdigit():
+        d = int(dow)
+        if 0 <= d <= 6:
+            return {d}
+    return None
+
 
 def _parse_cron(expr: str) -> dict:
     """Преобразовать 5-польное cron-выражение в kwargs для APScheduler CronTrigger."""
