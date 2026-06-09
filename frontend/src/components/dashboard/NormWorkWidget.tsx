@@ -40,9 +40,9 @@ function saveThresholds(t: Thresholds) {
 function statusColor(pct: number, t: Thresholds): string {
   // pct > warnAbove → перегруз (красный); underBelow ≤ pct ≤ warnAbove → норма (жёлтый);
   // pct < underBelow → недогрузка (зелёный, есть запас).
-  if (pct > t.warnAbove) return '#ff4d4f';
-  if (pct >= t.underBelow) return '#faad14';
-  return '#52c41a';
+  if (pct > t.warnAbove) return 'var(--bad, #ff4d4f)';
+  if (pct >= t.underBelow) return 'var(--warn, #faad14)';
+  return 'var(--good, #52c41a)';
 }
 
 function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: string }) {
@@ -59,7 +59,7 @@ function BulletBar({ plan, fact, color }: { plan: number; fact: number; color: s
         <div style={{
           position: 'absolute', top: 0, left: `${targetPct}%`,
           height: '100%', width: `${overrunW}%`,
-          background: '#ff4d4f', borderRadius: '0 7px 7px 0',
+          background: 'var(--bad, #ff4d4f)', borderRadius: '0 7px 7px 0',
         }} />
       )}
       <div style={{
@@ -102,7 +102,7 @@ function WorkTypeRow({
     }}>
       <span style={{
         fontSize: 12,
-        color: overflowZeroPlan ? '#ff4d4f' : '#a4b8d8',
+        color: overflowZeroPlan ? '#ff4d4f' : 'var(--text-muted, #a4b8d8)',
         fontWeight: overflowZeroPlan ? 600 : 400,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
@@ -196,7 +196,7 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
           color: DARK_THEME.textPrimary, fontSize: 11, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>{emp.initials}</div>
-        <div style={{ fontSize: 14, color: '#e6edf7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 14, color: 'var(--text, #e6edf7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {emp.name}
         </div>
         {showForeignBadge ? <ForeignBadge hours={emp.foreign_hours} pct={emp.foreign_pct} compact /> : <span />}
@@ -225,11 +225,11 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
 
 function RoleColumn({ role, t }: { role: NormWorkRoleGroup; t: Thresholds }) {
   return (
-    <div style={{ background: '#0a1d3a', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ background: DARK_THEME.cardBg, borderRadius: 8, overflow: 'hidden' }}>
       <div style={{ padding: 12, borderBottom: `2px solid ${role.role_color}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 10, height: 10, borderRadius: '50%', background: role.role_color }} />
-          <span style={{ fontSize: 16, fontWeight: 600, color: '#e6edf7' }}>{role.role_label}</span>
+          <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text, #e6edf7)' }}>{role.role_label}</span>
           <span style={{ fontSize: 13, color: DARK_THEME.textMuted }}>{role.employees_count} чел.</span>
         </div>
         <div style={{ fontSize: 13, color: DARK_THEME.textMuted, marginTop: 4 }}>
@@ -281,7 +281,7 @@ export default function NormWorkWidget({ data, loading }: Props) {
 
   const title = (
     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 16 }}>
-      <span style={{ fontSize: 15, fontWeight: 600, color: '#e6edf7' }}>Нормированные работы</span>
+      <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text, #e6edf7)' }}>Нормированные работы</span>
       {data && !loading && (
         <span style={{ fontSize: 14, color: DARK_THEME.textMuted, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span>

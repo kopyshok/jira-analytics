@@ -1,5 +1,6 @@
 import { Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 interface BacklogRoleCellProps {
   label: string;       // 'АН' | 'ПР' | 'ТС' | 'ОПЭ'
@@ -14,6 +15,13 @@ interface BacklogRoleCellProps {
 export default function BacklogRoleCell({ label, hours, total, color, involvement, durationDays }: BacklogRoleCellProps) {
   const pct = total > 0 ? Math.round((hours / total) * 100) : 0;
   const empty = hours === 0;
+  // На светлой теме classic-градиент color×aa→color×44 даёт пастельный фон,
+  // на нём белый текст не читается. Оставляем тот же градиент (мягкая прозрачность),
+  // но текст переключаем на тёмный для light.
+  const { mode } = useAppTheme();
+  const isLight = mode === 'light';
+  const fillText = isLight ? '#1a1f2c' : '#ffffff';
+  const filledBg = `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`;
 
   const hasJiraData = (involvement != null) || (durationDays != null);
   const tooltipLines: string[] = [];
@@ -31,7 +39,7 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
         textAlign: 'center',
         background: empty
           ? `${color}1a`
-          : `linear-gradient(180deg, ${color}aa 0%, ${color}44 100%)`,
+          : filledBg,
         border: empty ? `1px solid ${color}55` : `1px solid ${color}cc`,
         borderBottom: empty ? `2px solid ${color}77` : `2px solid ${color}`,
         userSelect: 'none',
@@ -43,7 +51,7 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
           fontWeight: 800,
           letterSpacing: '0.07em',
           textTransform: 'uppercase',
-          color: empty ? `${color}` : '#ffffff',
+          color: empty ? `${color}` : fillText,
           opacity: empty ? 0.6 : 1,
           marginBottom: 2,
         }}
@@ -55,7 +63,7 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
           style={{
             fontSize: 16,
             fontWeight: 800,
-            color: empty ? DARK_THEME.textDim : '#ffffff',
+            color: empty ? DARK_THEME.textDim : fillText,
           }}
         >
           {empty ? '—' : hours}
@@ -65,7 +73,7 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
             style={{
               fontSize: 10,
               fontWeight: 500,
-              color: '#ffffff',
+              color: fillText,
               opacity: 0.85,
               marginLeft: 3,
             }}
@@ -77,8 +85,8 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
       <div
         style={{
           fontSize: 10,
-          color: DARK_THEME.textMuted,
-          opacity: 0.6,
+          color: empty ? DARK_THEME.textMuted : fillText,
+          opacity: empty ? 0.6 : 0.7,
         }}
       >
         {empty ? '0%' : `${pct}%`}

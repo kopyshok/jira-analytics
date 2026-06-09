@@ -79,7 +79,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
             fontWeight: 700,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            color: '#64748b',
+            color: 'var(--text-muted, #64748b)',
             padding: '10px 14px 8px',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
             display: 'flex',
@@ -88,7 +88,7 @@ function DrawerContent({ issueId, periodStart, periodEnd, onDrillDown, onSaved }
           }}
         >
           <span>Ворклоги за период</span>
-          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: '#64748b' }}>
+          <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--text-muted, #64748b)' }}>
             {periodStart} – {periodEnd}
           </span>
         </div>
@@ -120,7 +120,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
       style={{
         padding: '16px 20px 14px',
         borderBottom: '1px solid rgba(255,255,255,0.1)',
-        background: '#0d1c33',
+        background: 'var(--bg, #0d1c33)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -129,7 +129,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
             size="small"
             type="text"
             onClick={onBack}
-            style={{ color: '#94a3b8', padding: '0 6px', marginRight: 2 }}
+            style={{ color: 'var(--text-muted, #94a3b8)', padding: '0 6px', marginRight: 2 }}
           >
             ← назад
           </Button>
@@ -171,7 +171,7 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: 6,
-            color: '#64748b',
+            color: 'var(--text-muted, #64748b)',
             fontSize: 18,
             cursor: 'pointer',
             flexShrink: 0,
@@ -183,11 +183,11 @@ function DrawerHeader({ issueId, issueKey, canGoBack, onBack, onClose }: DrawerH
       {isLoading ? (
         <Skeleton active title={{ width: 300 }} paragraph={false} />
       ) : context ? (
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#e6edf7', lineHeight: 1.4 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text, #e6edf7)', lineHeight: 1.4 }}>
           {context.summary}
         </div>
       ) : (
-        <div style={{ fontSize: 13, color: '#94a3b8' }}>{issueKey}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted, #94a3b8)' }}>{issueKey}</div>
       )}
     </div>
   );
@@ -249,10 +249,9 @@ export default function AnalyticsIssueDrawer({
       closable={false}
       styles={{
         header: { display: 'none' },
-        body: { padding: 0, background: '#0f2340', display: 'flex', flexDirection: 'column' },
-        wrapper: { width: 720, background: '#0f2340' },
+        body: { padding: 0, display: 'flex', flexDirection: 'column' },
+        wrapper: { width: 720 },
       }}
-      style={{ background: '#0f2340' }}
     >
       {currentEntry && (
         <>
@@ -263,7 +262,7 @@ export default function AnalyticsIssueDrawer({
             onBack={handleBack}
             onClose={handleClose}
           />
-          <div style={{ flex: 1, overflowY: 'auto', background: '#0f2340' }}>
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg, #0f2340)' }}>
             <DrawerContent
               key={currentEntry.id}
               issueId={currentEntry.id}

@@ -42,7 +42,7 @@ export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
               >
                 {i + 1}
               </div>
-              <span style={{ color: '#cfd8e5', fontSize: 13, lineHeight: 1.5 }}>{goal}</span>
+              <span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13, lineHeight: 1.5 }}>{goal}</span>
             </li>
           ))}
         </ol>
@@ -61,7 +61,7 @@ export const ProjectGoalsCard: React.FC<Props> = ({ summary, description }) => {
   return (
     <Card
       size="small"
-      title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Цели проекта</span>}
+      title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Цели проекта</span>}
       style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >

@@ -132,7 +132,7 @@ function ExplainBreakdown({
   const demand = data.demand_hours ?? 0;
   const pct = data.overload_pct ?? 0;
   return (
-    <div style={{ fontSize: 12, color: '#cfe1f5' }}>
+    <div style={{ fontSize: 12, color: 'var(--text-2, #cfe1f5)' }}>
       <div style={{ marginBottom: 6 }}>
         <b>{data.employee_name ?? 'Сотрудник'}</b>
         {data.date && <> · день <b>{data.date}</b></>}
@@ -144,10 +144,10 @@ function ExplainBreakdown({
         </span>
       </div>
       {data.contributors.length === 0 ? (
-        <div style={{ color: '#7a9ab8' }}>Нет перекрывающих назначений</div>
+        <div style={{ color: 'var(--text-muted, #7a9ab8)' }}>Нет перекрывающих назначений</div>
       ) : (
         <>
-          <div style={{ color: '#8ab0d8', fontSize: 11, marginBottom: 4 }}>
+          <div style={{ color: 'var(--text-muted, #8ab0d8)', fontSize: 11, marginBottom: 4 }}>
             Перекрывают день ({data.contributors.length}):
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -165,12 +165,12 @@ function ExplainBreakdown({
                 }}
                 onClick={() => onSelectAssignment?.(co.assignment_id)}
               >
-                <span style={{ color: '#7a9ab8' }}>{co.item_key ?? '—'}</span>
-                <span style={{ color: '#8ab0d8' }}>{co.phase_label}</span>
+                <span style={{ color: 'var(--text-muted, #7a9ab8)' }}>{co.item_key ?? '—'}</span>
+                <span style={{ color: 'var(--text-muted, #8ab0d8)' }}>{co.phase_label}</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {co.item_title}
                 </span>
-                <span style={{ textAlign: 'right', color: '#cfe1f5' }}>
+                <span style={{ textAlign: 'right', color: 'var(--text-2, #cfe1f5)' }}>
                   {co.hours_per_day.toFixed(2)} ч/день
                 </span>
               </div>
@@ -282,7 +282,7 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
             </Space>
             {groups.map(g => (
               <div key={g.key} style={{ borderTop: '1px solid #1e3a5f', paddingTop: 6 }}>
-                <div style={{ fontSize: 12, color: '#8ab0d8', fontWeight: 600, marginBottom: 4 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)', fontWeight: 600, marginBottom: 4 }}>
                   {g.label}{' '}
                   <Tag>{g.items.length}</Tag>
                 </div>

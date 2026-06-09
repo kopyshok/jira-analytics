@@ -136,3 +136,28 @@ def test_period_requires_auth(testclient_db_session):
         assert resp.status_code == 401
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("theme", ["aurora-dark", "aurora-light"])
+def test_can_set_aurora_theme(testclient_db_session, theme):
+    _seed_user(testclient_db_session, "ep_test@example.com")
+    client, headers = _make_authed_client(testclient_db_session)
+    try:
+        resp = client.put("/api/v1/users/me/theme", json={"theme": theme}, headers=headers)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["theme"] == theme
+
+        resp = client.get("/api/v1/users/me/theme", headers=headers)
+        assert resp.json() == {"theme": theme}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_rejects_unknown_theme(testclient_db_session):
+    _seed_user(testclient_db_session, "ep_test@example.com")
+    client, headers = _make_authed_client(testclient_db_session)
+    try:
+        resp = client.put("/api/v1/users/me/theme", json={"theme": "neon-pink"}, headers=headers)
+        assert resp.status_code == 422
+    finally:
+        app.dependency_overrides.clear()

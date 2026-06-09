@@ -160,7 +160,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
 
   const row = (rowKey: string, label: string, picker: React.ReactNode) => (
     <div key={rowKey} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-      <Text style={{ color: '#8ab0d8', minWidth: 130 }}>{label}</Text>
+      <Text style={{ color: 'var(--text-muted, #8ab0d8)', minWidth: 130 }}>{label}</Text>
       {picker}
     </div>
   );
@@ -191,7 +191,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
       )}
 
       <div style={{ marginBottom: 12 }}>
-        <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 4 }}>
+        <Text style={{ color: 'var(--text-muted, #8ab0d8)', display: 'block', marginBottom: 4 }}>
           Интенсивность заливки инициативы: {intensityPct}%
         </Text>
         <Slider
@@ -205,7 +205,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 4 }}>
+        <Text style={{ color: 'var(--text-muted, #8ab0d8)', display: 'block', marginBottom: 4 }}>
           Контраст градиента: {contrastPct}%
         </Text>
         <Slider
@@ -219,7 +219,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 4 }}>
+        <Text style={{ color: 'var(--text-muted, #8ab0d8)', display: 'block', marginBottom: 4 }}>
           Скорость бегущей рамки: {draft.animation_speed_seconds.toFixed(1)} с
         </Text>
         <Slider
@@ -250,7 +250,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <Text style={{ color: '#8ab0d8', display: 'block', marginBottom: 6 }}>Предпросмотр</Text>
+        <Text style={{ color: 'var(--text-muted, #8ab0d8)', display: 'block', marginBottom: 6 }}>Предпросмотр</Text>
         <InitiativeBarPreview
           bracketColor={draft.initiative_bracket_color}
           intensityPct={intensityPct}

@@ -70,8 +70,8 @@ function EmployeeCard({
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
       style={{
-        background: '#143258',
-        border: '1px solid #1d3a66',
+        background: DARK_THEME.darkAccent,
+        border: `1px solid ${DARK_THEME.border}`,
         borderRadius: 10,
         padding: 16,
         cursor: 'pointer',
@@ -82,7 +82,7 @@ function EmployeeCard({
         e.currentTarget.style.transform = 'scale(1.015)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = '#1d3a66';
+        e.currentTarget.style.borderColor = DARK_THEME.border;
         e.currentTarget.style.transform = 'scale(1)';
       }}
     >
@@ -116,7 +116,7 @@ function EmployeeCard({
         </span>
         <span style={{
           fontSize: 11, padding: '2px 8px', borderRadius: 4,
-          background: 'rgba(110,122,153,.18)', color: '#a4b8d8',
+          background: 'rgba(110,122,153,.18)', color: 'var(--text-muted, #a4b8d8)',
         }}>
           Отгулов: {emp.skip_days} дн · {Math.round(emp.skip_hours)}ч
         </span>
@@ -213,7 +213,7 @@ export default function HoursBalanceWidget() {
 
   if (isLoading) {
     return (
-      <Card style={{ background: '#0f2340', border: '1px solid #1d3a66' }}>
+      <Card style={{ background: DARK_THEME.cardBg, border: `1px solid ${DARK_THEME.border}` }}>
         <Spin />
       </Card>
     );
@@ -222,7 +222,7 @@ export default function HoursBalanceWidget() {
     return (
       <Card
         title={<span style={{ color: DARK_THEME.textPrimary }}>Баланс часов команды</span>}
-        style={{ background: '#0f2340', border: '1px solid #1d3a66' }}
+        style={{ background: DARK_THEME.cardBg, border: `1px solid ${DARK_THEME.border}` }}
       >
         <Empty description="Нет активных сотрудников в выбранных командах" />
       </Card>
@@ -271,15 +271,15 @@ export default function HoursBalanceWidget() {
           </Tooltip>
         </div>
       }
-      style={{ background: '#0f2340', border: '1px solid #1d3a66' }}
+      style={{ background: DARK_THEME.cardBg, border: `1px solid ${DARK_THEME.border}` }}
     >
       <div style={{
-        background: '#143258', borderRadius: 6, padding: '8px 12px',
+        background: DARK_THEME.darkAccent, borderRadius: 6, padding: '8px 12px',
         marginBottom: 16, fontSize: 13, color: DARK_THEME.textMuted,
       }}>
         Команда: {t.employees_count} чел ·
         переработки <span style={{ color: '#ff7875' }}>+{Math.round(t.overtime_hours)}ч</span> ·
-        автоотгулы <span style={{ color: '#a4b8d8' }}>{Math.round(t.skip_hours)}ч</span> ·
+        автоотгулы <span style={{ color: 'var(--text-muted, #a4b8d8)' }}>{Math.round(t.skip_hours)}ч</span> ·
         нетто <span style={{ color: balanceColor(t.net_balance), fontWeight: 600 }}>
           {t.net_balance > 0 ? '+' : ''}{Math.round(t.net_balance)}ч
         </span>

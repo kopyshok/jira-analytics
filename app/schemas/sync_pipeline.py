@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 PipelineMode = Literal["quick", "normal", "full", "team"]
@@ -56,6 +56,29 @@ class SyncScheduleOut(BaseModel):
     next_run_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def description(self) -> str:
+        """Человекочитаемое описание расписания (например, ``Каждый день в 06:00``)."""
+        from app.services.scheduler import SchedulerService
+
+        return SchedulerService.humanize_cron(self.cron_expr)
+
+
+class SchedulePreviewRequest(BaseModel):
+    """Запрос preview расписания: cron → описание + ближайшие запуски."""
+
+    cron_expr: str
+
+
+class SchedulePreviewResponse(BaseModel):
+    """Ответ preview: флаг валидности, описание, до 3 ближайших запусков."""
+
+    valid: bool
+    description: Optional[str] = None
+    next_runs: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
 
 
 class SyncScheduleUpdate(BaseModel):

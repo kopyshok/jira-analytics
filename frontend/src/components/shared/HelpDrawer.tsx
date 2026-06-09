@@ -93,8 +93,8 @@ export default function HelpDrawer({
       placement="right"
       destroyOnClose
       styles={{
-        body: { padding: '20px 28px', background: DARK_THEME.cardBg },
-        header: { background: DARK_THEME.cardBg, borderBottom: `1px solid ${DARK_THEME.border}` },
+        body: { padding: '20px 28px' },
+        header: { borderBottom: `1px solid ${DARK_THEME.border}` },
         wrapper: { width: 'min(960px, 70vw)' },
       }}
     >

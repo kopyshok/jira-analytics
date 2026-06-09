@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
@@ -30,7 +30,7 @@ const CELL_LABEL: React.CSSProperties = {
 
 const ROW_DIVIDER = `1px solid rgba(255,255,255,0.06)`;
 
-export default function ScenarioResourceSummary({ scenarioId, enabled, allocations, employees, pulsedRoles }: Props) {
+function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employees, pulsedRoles }: Props) {
   const { data: summary, isLoading } = useScenarioResourceSummary(scenarioId, enabled);
   const { data: roles = [] } = useRoles();
 
@@ -784,3 +784,6 @@ export default function ScenarioResourceSummary({ scenarioId, enabled, allocatio
     </>
   );
 }
+
+const ScenarioResourceSummary = memo(ScenarioResourceSummaryBase);
+export default ScenarioResourceSummary;

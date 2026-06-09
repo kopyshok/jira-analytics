@@ -1,0 +1,560 @@
+/* Overlay на нативные AntD-компоненты в Aurora-режиме.
+   Все правила обёрнуты в :where([data-theme="aurora"]) — нулевая специфичность для классики. */
+
+:where([data-theme="aurora"]) .ant-form-item-label > label {
+  color: var(--text-2);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+:where([data-theme="aurora"]) .ant-input,
+:where([data-theme="aurora"]) .ant-input-password,
+:where([data-theme="aurora"]) .ant-input-number,
+:where([data-theme="aurora"]) .ant-select-selector,
+:where([data-theme="aurora"]) .ant-picker {
+  background: var(--glass-bg) !important;
+  border-color: var(--glass-border) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text) !important;
+}
+/* Высокая specificity для Aurora dark — иначе AntD cssinjs (2 classes) побеждает
+ * и InputNumber выглядит без рамки на тёмно-синей карточке (фон сливается). */
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number,
+html[data-theme="aurora"][data-mode="dark"] .ant-input,
+html[data-theme="aurora"][data-mode="dark"] .ant-input-affix-wrapper {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(120,170,250,0.30) !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number .ant-input-number-input,
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number-input-wrap {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number-handler-wrap {
+  background: rgba(255,255,255,0.06) !important;
+  border-left: 1px solid rgba(120,170,250,0.20) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .ant-input-number:hover,
+html[data-theme="aurora"][data-mode="dark"] .ant-input:hover {
+  border-color: var(--accent-border) !important;
+}
+
+:where([data-theme="aurora"]) .ant-input:focus,
+:where([data-theme="aurora"]) .ant-input-focused,
+:where([data-theme="aurora"]) .ant-select-focused .ant-select-selector,
+:where([data-theme="aurora"]) .ant-picker-focused {
+  border-color: var(--accent-border) !important;
+  box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
+:where([data-theme="aurora"]) .ant-select-selection-item,
+:where([data-theme="aurora"]) .ant-select-selection-placeholder,
+:where([data-theme="aurora"]) .ant-picker-input > input {
+  color: var(--text) !important;
+}
+
+:where([data-theme="aurora"]) .ant-select-arrow,
+:where([data-theme="aurora"]) .ant-picker-suffix,
+:where([data-theme="aurora"]) .ant-picker-clear {
+  color: var(--text-muted) !important;
+}
+
+:where([data-theme="aurora"]) .ant-select-item-option-content {
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-btn {
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+:where([data-theme="aurora"]) .ant-btn-primary {
+  background: linear-gradient(110deg, var(--accent-1), var(--accent-2));
+  border-color: transparent;
+  box-shadow: 0 6px 22px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.35);
+}
+
+:where([data-theme="aurora"]) .ant-btn-default {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  color: var(--text);
+}
+
+/* Modals & Drawers — FULLY SOLID (no transparency) in Aurora.
+ * Aurora-dark: opaque deep navy. Aurora-light: opaque near-white.
+ * Wildcard covers ALL inner slots regardless of AntD version-specific class names. */
+html[data-theme="aurora"][data-mode="dark"] .ant-modal,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-content > *,
+html[data-theme="aurora"][data-mode="dark"] [class*="ant-modal-section"],
+html[data-theme="aurora"][data-mode="dark"] [class*="ant-modal-confirm"],
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-body,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-title,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-content,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-content > *,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-body,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-header {
+  background-color: #0f1426 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-modal,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-content > *,
+html[data-theme="aurora"][data-mode="light"] [class*="ant-modal-section"],
+html[data-theme="aurora"][data-mode="light"] [class*="ant-modal-confirm"],
+html[data-theme="aurora"][data-mode="light"] .ant-modal-body,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-title,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-content,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-content > *,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-body,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-header {
+  background-color: #e6ebf2 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-theme="aurora"] .ant-modal-content,
+html[data-theme="aurora"] .ant-drawer-content {
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius) !important;
+}
+
+html[data-theme="aurora"] .ant-modal-header,
+html[data-theme="aurora"] .ant-drawer-header {
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+/* Backdrop / mask — comfortable dim (not pitch black, not see-through) */
+[data-theme="aurora"] .ant-modal-mask,
+[data-theme="aurora"] .ant-drawer-mask,
+[data-theme="aurora"] .ant-modal-wrap > .ant-modal-mask,
+[data-theme="aurora"] .ant-image-preview-mask {
+  background: rgba(5, 8, 16, 0.65) !important;
+  backdrop-filter: blur(3px) !important;
+}
+
+:where([data-theme="aurora"]) .ant-table,
+:where([data-theme="aurora"]) .ant-table-thead > tr > th,
+:where([data-theme="aurora"]) .ant-table-tbody > tr > td {
+  background: transparent !important;
+  border-bottom-color: var(--glass-border) !important;
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-table-thead > tr > th {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+:where([data-theme="aurora"]) .ant-table-tbody > tr:hover > td {
+  background: var(--glass-bg) !important;
+}
+
+:where([data-theme="aurora"]) .ant-tabs-nav::before {
+  border-bottom-color: var(--glass-border) !important;
+}
+
+:where([data-theme="aurora"]) .ant-tabs-tab-btn {
+  color: var(--text-muted);
+}
+
+:where([data-theme="aurora"]) .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-1) !important;
+}
+
+:where([data-theme="aurora"]) .ant-tabs-ink-bar {
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2)) !important;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+:where([data-theme="aurora"]) .ant-tag {
+  background: var(--pill-bg);
+  border-color: var(--pill-border);
+  color: var(--text-2);
+  border-radius: var(--radius-pill);
+}
+
+:where([data-theme="aurora"]) .ant-tree {
+  background: transparent;
+  color: var(--text);
+}
+
+:where([data-theme="aurora"]) .ant-tree-node-content-wrapper:hover {
+  background: var(--glass-bg);
+}
+
+:where([data-theme="aurora"]) .ant-tree-node-selected {
+  background: color-mix(in srgb, var(--accent-1) 12%, transparent) !important;
+}
+
+:where([data-theme="aurora"]) .ant-card {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius) !important;
+  backdrop-filter: blur(var(--blur)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.25);
+  box-shadow: var(--glass-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Top-edge sheen — same as .glass primitive */
+:where([data-theme="aurora"]) .ant-card::before {
+  content: '';
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 42%);
+  opacity: 0.9;
+  z-index: 0;
+}
+
+:where([data-theme="aurora"]) .ant-card-body,
+:where([data-theme="aurora"]) .ant-card-head {
+  background: transparent !important;
+  position: relative;
+  z-index: 1;
+}
+
+:where([data-theme="aurora"]) .ant-card-head {
+  border-bottom-color: var(--glass-border) !important;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+:where([data-theme="aurora"]) .ant-card-head-title {
+  color: var(--text);
+  font-family: var(--font-display);
+}
+
+/* Card hover lift effect */
+:where([data-theme="aurora"]) .ant-card:hover {
+  border-color: var(--accent-border) !important;
+}
+
+/* Nested cards inside modals/drawers — solid sub-tile bg (modal stays opaque). */
+:where([data-theme="aurora"][data-mode="dark"]) .ant-modal-content .ant-card,
+:where([data-theme="aurora"][data-mode="dark"]) .ant-drawer-content .ant-card {
+  background: #161b30 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+:where([data-theme="aurora"][data-mode="light"]) .ant-modal-content .ant-card,
+:where([data-theme="aurora"][data-mode="light"]) .ant-drawer-content .ant-card {
+  background: #e6ebf2 !important;
+  border: none !important;
+  backdrop-filter: none !important;
+  box-shadow: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff !important;
+}
+
+:where([data-theme="aurora"]) .ant-modal-content .ant-card::before,
+:where([data-theme="aurora"]) .ant-drawer-content .ant-card::before {
+  display: none !important;
+}
+
+:where([data-theme="aurora"]) .ant-modal-content .ant-card:hover,
+:where([data-theme="aurora"]) .ant-drawer-content .ant-card:hover {
+  border-color: var(--glass-border) !important;
+}
+
+:where([data-theme="aurora"]) .ant-notification-notice {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--blur));
+}
+
+html[data-theme="aurora"][data-mode="dark"] .ant-dropdown-menu,
+html[data-theme="aurora"][data-mode="dark"] .ant-select-dropdown,
+html[data-theme="aurora"][data-mode="dark"] .ant-picker-dropdown,
+html[data-theme="aurora"][data-mode="dark"] .ant-picker-panel-container,
+html[data-theme="aurora"][data-mode="dark"] .ant-popover-inner,
+html[data-theme="aurora"][data-mode="dark"] .ant-tooltip-inner {
+  background-color: #161b30 !important;
+  backdrop-filter: none !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-dropdown-menu,
+html[data-theme="aurora"][data-mode="light"] .ant-select-dropdown,
+html[data-theme="aurora"][data-mode="light"] .ant-picker-dropdown,
+html[data-theme="aurora"][data-mode="light"] .ant-picker-panel-container,
+html[data-theme="aurora"][data-mode="light"] .ant-popover-inner,
+html[data-theme="aurora"][data-mode="light"] .ant-tooltip-inner {
+  background-color: #e6ebf2 !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+}
+
+/* Modal/Drawer footer — solid too */
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-footer,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-footer {
+  background-color: #0f1426 !important;
+  border-top-color: var(--glass-border) !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-modal-footer,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-footer {
+  background-color: #e6ebf2 !important;
+  border-top-color: var(--glass-border) !important;
+}
+
+:where([data-theme="aurora"]) .ant-segmented {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+:where([data-theme="aurora"]) .ant-segmented-item-selected {
+  background: linear-gradient(110deg, var(--accent-1), var(--accent-2)) !important;
+  color: var(--on-accent);
+}
+
+/* ============================================================
+ * Aurora-LIGHT («Фарфор») — neumorphic overrides on AntD widgets.
+ * Win over the generic Aurora overlay above via html-prefix specificity.
+ * Cards/inputs/selects → solid bg + dual neu shadow, no blur/border.
+ * ============================================================ */
+html[data-theme="aurora"][data-mode="light"] .ant-card {
+  background: #e6ebf2 !important;
+  border: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-card::before { display: none !important; }
+html[data-theme="aurora"][data-mode="light"] .ant-card:hover {
+  border: none !important;
+  box-shadow: 9px 9px 24px #c3cbd9, -8px -8px 20px #ffffff !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-input,
+html[data-theme="aurora"][data-mode="light"] .ant-input-password,
+html[data-theme="aurora"][data-mode="light"] .ant-input-number,
+html[data-theme="aurora"][data-mode="light"] .ant-select-selector,
+html[data-theme="aurora"][data-mode="light"] .ant-picker {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff !important;
+  color: var(--text) !important;
+}
+/* InputNumber wraps an inner .ant-input-number-input — без него поле смотрится
+ * как пустое место (внутренний input наследует cardBg = pageBg = #e6ebf2).
+ * Здесь усиливаем границу полю чтобы было видно. */
+html[data-theme="aurora"][data-mode="light"] .ant-input-number-input,
+html[data-theme="aurora"][data-mode="light"] .ant-input-number-input-wrap {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-input-number .ant-input-number-handler-wrap {
+  background: #e6ebf2 !important;
+  border-left: 1px solid rgba(195,203,217,0.6) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-input:focus,
+html[data-theme="aurora"][data-mode="light"] .ant-input-focused,
+html[data-theme="aurora"][data-mode="light"] .ant-select-focused .ant-select-selector,
+html[data-theme="aurora"][data-mode="light"] .ant-picker-focused {
+  border: none !important;
+  box-shadow: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff, 0 0 0 2px var(--accent-border) !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-btn-default {
+  background: #e6ebf2 !important;
+  border: none !important;
+  color: var(--text) !important;
+  box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-btn-default:hover {
+  color: var(--accent-1) !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-btn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, #3b6ef5 88%, #fff), #3b6ef5) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff, inset 0 1px 0 rgba(255,255,255,0.4) !important;
+}
+
+/* Plain default tag — neu-pill. Colored tags (success/warning/error/processing)
+ * keep their AntD background; we only neutralise the default case. */
+html[data-theme="aurora"][data-mode="light"] .ant-tag:not([class*="ant-tag-"]),
+html[data-theme="aurora"][data-mode="light"] .ant-tag.ant-tag-default,
+html[data-theme="aurora"][data-mode="light"] .ant-tag-has-color.ant-tag-default {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff !important;
+  color: var(--text-2) !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-segmented {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-segmented-item-selected {
+  background: linear-gradient(180deg, color-mix(in srgb, #3b6ef5 88%, #fff), #3b6ef5) !important;
+  box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff !important;
+  color: #fff !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-notification-notice {
+  background: #e6ebf2 !important;
+  border: none !important;
+  backdrop-filter: none !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+}
+
+/* Modal/Drawer outer shape — neu raised wrapper */
+html[data-theme="aurora"][data-mode="light"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-content {
+  border: none !important;
+  box-shadow: 9px 9px 24px #c3cbd9, -8px -8px 20px #ffffff !important;
+}
+
+/* Softer mask for light theme */
+html[data-theme="aurora"][data-mode="light"] .ant-modal-mask,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-mask,
+html[data-theme="aurora"][data-mode="light"] .ant-image-preview-mask {
+  background: rgba(42, 49, 66, 0.32) !important;
+  backdrop-filter: blur(2px) !important;
+}
+
+/* Table — subtle borders against the solid bg */
+html[data-theme="aurora"][data-mode="light"] .ant-table-thead > tr > th,
+html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr > td {
+  border-bottom-color: rgba(195,203,217,0.7) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-table-tbody > tr:hover > td {
+  background: rgba(195,203,217,0.25) !important;
+}
+
+/* Tree node hover */
+html[data-theme="aurora"][data-mode="light"] .ant-tree-node-content-wrapper:hover {
+  background: rgba(195,203,217,0.3) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .ant-tree-node-selected {
+  background: color-mix(in srgb, #3b6ef5 14%, transparent) !important;
+}
+
+/* Force text color through AntD's cssinjs default (which uses colorText from algorithm).
+ * Aurora-light needs dark text on light bg — but `:where()` rules have 0 specificity
+ * and lose to `.css-dev-only-xxx.ant-typography` (2 classes). */
+html[data-theme="aurora"][data-mode="light"] .ant-card-head,
+html[data-theme="aurora"][data-mode="light"] .ant-card-head-title,
+html[data-theme="aurora"][data-mode="light"] .ant-card-head-wrapper,
+html[data-theme="aurora"][data-mode="light"] .ant-card-extra,
+html[data-theme="aurora"][data-mode="light"] .ant-card-body,
+html[data-theme="aurora"][data-mode="light"] .ant-typography,
+html[data-theme="aurora"][data-mode="light"] .ant-list-item,
+html[data-theme="aurora"][data-mode="light"] .ant-list-item-meta-title,
+html[data-theme="aurora"][data-mode="light"] .ant-list-item-meta-description,
+html[data-theme="aurora"][data-mode="light"] .ant-statistic-title,
+html[data-theme="aurora"][data-mode="light"] .ant-statistic-content,
+html[data-theme="aurora"][data-mode="light"] .ant-descriptions-item-label,
+html[data-theme="aurora"][data-mode="light"] .ant-descriptions-item-content,
+html[data-theme="aurora"][data-mode="light"] .ant-collapse-header,
+html[data-theme="aurora"][data-mode="light"] .ant-collapse-content,
+html[data-theme="aurora"][data-mode="light"] .ant-checkbox-wrapper,
+html[data-theme="aurora"][data-mode="light"] .ant-radio-wrapper {
+  color: var(--text) !important;
+}
+
+html[data-theme="aurora"][data-mode="light"] .ant-typography.ant-typography-secondary,
+html[data-theme="aurora"][data-mode="light"] .ant-card-head .ant-typography-secondary {
+  color: var(--text-muted) !important;
+}
+
+/* Card-head title in light: serif стиль для крупных, но не белый */
+html[data-theme="aurora"][data-mode="light"] .ant-card-head-title {
+  font-family: var(--font-body) !important;
+  font-weight: 600;
+}
+
+/* Categories triage header + queue cards — base CSS uses dark-blue rgba.
+ * In Aurora-light we re-skin them as neu surfaces. */
+html[data-theme="aurora"][data-mode="light"] .category-triage-header {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+}
+html[data-theme="aurora"][data-mode="light"] .category-queue-card {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff !important;
+  color: var(--text) !important;
+}
+html[data-theme="aurora"][data-mode="light"] .category-queue-card:hover,
+html[data-theme="aurora"][data-mode="light"] .category-queue-card.is-active {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff !important;
+  transform: none !important;
+}
+html[data-theme="aurora"][data-mode="light"] .recharts-default-tooltip {
+  background: #e6ebf2 !important;
+  border: none !important;
+  box-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff !important;
+  backdrop-filter: none !important;
+  color: var(--text) !important;
+}
+
+/* Aurora-dark variant — solid dark surface, no rgba transparency */
+html[data-theme="aurora"][data-mode="dark"] .category-triage-header {
+  background: #141a2e !important;
+  border-color: rgba(120,170,250,0.18) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .category-queue-card {
+  background: #141a2e !important;
+  border-color: rgba(120,170,250,0.18) !important;
+}
+html[data-theme="aurora"][data-mode="dark"] .category-queue-card:hover,
+html[data-theme="aurora"][data-mode="dark"] .category-queue-card.is-active {
+  background: rgba(56,189,248,0.10) !important;
+  border-color: var(--accent-border) !important;
+}
+
+/* Tree row depth tints — base palette uses cyan (#00c9c8) which doesn't match Aurora.
+ * Re-tint via Aurora accent for visual consistency. */
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-1 > td { background-color: rgba(59,110,245,0.04) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-2 > td { background-color: rgba(59,110,245,0.07) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-3 > td { background-color: rgba(59,110,245,0.10) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-4 > td { background-color: rgba(59,110,245,0.13) !important; }
+html[data-theme="aurora"][data-mode="light"] .tree-row-depth-5 > td { background-color: rgba(59,110,245,0.16) !important; }
+
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-1 > td { background-color: rgba(56,189,248,0.04) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-2 > td { background-color: rgba(56,189,248,0.08) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-3 > td { background-color: rgba(56,189,248,0.12) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-4 > td { background-color: rgba(56,189,248,0.16) !important; }
+html[data-theme="aurora"][data-mode="dark"] .tree-row-depth-5 > td { background-color: rgba(56,189,248,0.20) !important; }
+
+/* ============================================================
+   FPS fix для dark mode: убираем все backdrop-filter blur.
+   На каждом кадре скролла blur пересчитывает весь pixel-stack
+   под прозрачным элементом — главный убийца плавности.
+   Solid --glass-bg (#141a2e) визуально заменяет blur.
+   ============================================================ */
+html[data-theme="aurora"][data-mode="dark"] .ant-card,
+html[data-theme="aurora"][data-mode="dark"] .ant-notification-notice,
+html[data-theme="aurora"][data-mode="dark"] .ant-tabs-nav::before {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Mask тоже без blur — площадь большая, blur(3px) тоже стоит дорого
+   при анимации открытия/закрытия модалки */
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-mask,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-mask,
+html[data-theme="aurora"][data-mode="dark"] .ant-image-preview-mask {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

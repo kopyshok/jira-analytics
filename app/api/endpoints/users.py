@@ -56,7 +56,14 @@ def set_my_columns(
     return {"ok": True}
 
 
-VALID_THEMES = {"dark", "dark-blue", "dark-slate", "dark-charcoal"}
+VALID_THEMES = {
+    "dark",
+    "dark-blue",
+    "dark-slate",
+    "dark-charcoal",
+    "aurora-dark",
+    "aurora-light",
+}
 
 
 @router.get("/me/theme")

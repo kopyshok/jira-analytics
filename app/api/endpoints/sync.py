@@ -919,7 +919,14 @@ class JiraUserResponse(BaseModel):
 
 
 from app.repositories.sync_schedule import SyncScheduleRepository
-from app.schemas.sync_pipeline import SyncRunOut, SyncScheduleOut, SyncScheduleCreate, SyncScheduleUpdate
+from app.schemas.sync_pipeline import (
+    SchedulePreviewRequest,
+    SchedulePreviewResponse,
+    SyncRunOut,
+    SyncScheduleCreate,
+    SyncScheduleOut,
+    SyncScheduleUpdate,
+)
 
 
 @router.get("/runs", response_model=list[SyncRunOut])
@@ -1019,6 +1026,34 @@ def delete_schedule(
     if not deleted:
         raise HTTPException(status_code=404, detail="Schedule not found")
     _refresh_app_scheduler(db, request)
+
+
+@router.post("/schedule/preview", response_model=SchedulePreviewResponse)
+def preview_schedule(body: SchedulePreviewRequest) -> SchedulePreviewResponse:
+    """Preview расписания: описание + 3 ближайших запуска.
+
+    Используется фронтом при редактировании, чтобы пользователь видел, как
+    cron-выражение интерпретируется и когда сработает следующий раз. На
+    невалидное выражение возвращает ``valid=false`` (не ошибка — состояние
+    превью).
+    """
+    from app.services.scheduler import SchedulerService
+
+    if not SchedulerService.is_valid_cron(body.cron_expr):
+        return SchedulePreviewResponse(
+            valid=False,
+            description=None,
+            next_runs=[],
+            error="Невалидное cron-выражение",
+        )
+    description = SchedulerService.humanize_cron(body.cron_expr)
+    runs = SchedulerService.next_runs(body.cron_expr, count=3)
+    return SchedulePreviewResponse(
+        valid=True,
+        description=description,
+        next_runs=[r.isoformat() for r in runs],
+        error=None,
+    )
 
 
 @router.post("/schedule/{schedule_id}/run-now")

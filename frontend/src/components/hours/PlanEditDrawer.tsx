@@ -120,7 +120,7 @@ export default function PlanEditDrawer({
               dataIndex: 'key',
               align: 'right',
               render: (k: RoleKey) => (
-                <span style={{ color: '#94a3b8' }}>{jiraValues[k] ?? '—'}</span>
+                <span style={{ color: 'var(--text-muted, #94a3b8)' }}>{jiraValues[k] ?? '—'}</span>
               ),
             },
             {

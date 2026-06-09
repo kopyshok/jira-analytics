@@ -7,8 +7,8 @@ import { setIssueCategory, setIssueInclude } from '../../api/issues';
 import { useQueryClient } from '@tanstack/react-query';
 import { statusTagColor } from '../../utils/status';
 
-const CARD_BG = 'rgba(255,255,255,0.03)';
-const CARD_BORDER = '1px solid rgba(255,255,255,0.08)';
+const CARD_BG = 'var(--mini-tile-bg, rgba(255,255,255,0.03))';
+const CARD_BORDER = '1px solid var(--glass-border, rgba(255,255,255,0.08))';
 
 interface BreadcrumbsProps {
   ancestors: IssueContextAncestor[];
@@ -43,7 +43,7 @@ function SiblingPopover({
             alignItems: 'center',
             gap: 8,
             padding: '5px 0',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid var(--glass-border, rgba(255,255,255,0.05))',
             cursor: 'pointer',
           }}
           onClick={() => { setOpen(false); onDrillDown(sib.id); }}
@@ -52,9 +52,9 @@ function SiblingPopover({
             style={{
               fontFamily: 'monospace',
               fontSize: 11,
-              color: '#00c9c8',
-              background: 'rgba(0,201,200,0.08)',
-              border: '1px solid rgba(0,201,200,0.18)',
+              color: 'var(--accent-1, #00c9c8)',
+              background: 'var(--key-chip-bg, rgba(0,201,200,0.08))',
+              border: '1px solid var(--key-chip-border, rgba(0,201,200,0.18))',
               borderRadius: 4,
               padding: '1px 5px',
               whiteSpace: 'nowrap',
@@ -62,7 +62,7 @@ function SiblingPopover({
           >
             {sib.key}
           </span>
-          <span style={{ color: '#94a3b8', fontSize: 12, flex: 1 }}>{sib.summary}</span>
+          <span style={{ color: 'var(--text-muted, #94a3b8)', fontSize: 12, flex: 1 }}>{sib.summary}</span>
         </div>
       ))}
     </div>
@@ -83,7 +83,7 @@ function SiblingPopover({
           alignItems: 'center',
           gap: 3,
           fontSize: 10,
-          color: '#64748b',
+          color: 'var(--text-muted, #64748b)',
           background: 'rgba(100,116,139,0.1)',
           border: '1px solid rgba(100,116,139,0.15)',
           borderRadius: 10,
@@ -130,9 +130,9 @@ function TreeRow({
         paddingLeft: 6 + level * 18,
         borderRadius: 4,
         cursor: onClick ? 'pointer' : 'default',
-        background: isCurrent ? 'rgba(0,201,200,0.06)' : 'transparent',
+        background: isCurrent ? 'var(--key-chip-bg, rgba(0,201,200,0.06))' : 'transparent',
         border: isCurrent
-          ? '1px solid rgba(0,201,200,0.2)'
+          ? '1px solid var(--key-chip-border, rgba(0,201,200,0.2))'
           : '1px solid transparent',
       }}
       onClick={onClick}
@@ -154,9 +154,9 @@ function TreeRow({
         style={{
           fontFamily: 'monospace',
           fontSize: 11,
-          color: '#00c9c8',
-          background: 'rgba(0,201,200,0.08)',
-          border: '1px solid rgba(0,201,200,0.18)',
+          color: 'var(--accent-1, #00c9c8)',
+          background: 'var(--key-chip-bg, rgba(0,201,200,0.08))',
+          border: '1px solid var(--key-chip-border, rgba(0,201,200,0.18))',
           borderRadius: 4,
           padding: '1px 5px',
           whiteSpace: 'nowrap',
@@ -169,7 +169,7 @@ function TreeRow({
       <span
         style={{
           fontSize: 10,
-          color: '#475569',
+          color: 'var(--text-muted, #475569)',
           fontStyle: 'italic',
           flexShrink: 0,
           lineHeight: '18px',
@@ -180,7 +180,7 @@ function TreeRow({
       <span
         style={{
           fontSize: 12,
-          color: isCurrent ? '#e6edf7' : '#cbd5e1',
+          color: isCurrent ? 'var(--text, #e6edf7)' : '#cbd5e1',
           fontWeight: isCurrent ? 600 : 400,
           flex: '1 1 auto',
           minWidth: 0,
@@ -364,7 +364,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
           fontWeight: 700,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: '#64748b',
+          color: 'var(--text-muted, #64748b)',
           padding: '10px 14px 8px',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}
@@ -385,7 +385,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
 
         {/* Children table */}
         {context.children.length === 0 ? (
-          <p style={{ fontSize: 12, color: '#475569', fontStyle: 'italic', padding: '8px 0 2px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-muted, #475569)', fontStyle: 'italic', padding: '8px 0 2px' }}>
             У задачи нет подзадач
           </p>
         ) : (
@@ -393,7 +393,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
             <div style={{
               fontSize: 11,
               fontWeight: 600,
-              color: '#64748b',
+              color: 'var(--text-muted, #64748b)',
               letterSpacing: '0.04em',
               textTransform: 'uppercase',
               marginBottom: 6,
@@ -407,7 +407,7 @@ export default function IssueContextBlock({ context, categories, onDrillDown, on
                     <th
                       key={h}
                       style={{
-                        color: '#475569',
+                        color: 'var(--text-muted, #475569)',
                         fontWeight: 500,
                         textAlign: h === 'В анализ' ? 'center' : 'left',
                         padding: '5px 8px',

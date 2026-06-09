@@ -7,10 +7,10 @@ import { statusTagColor } from '../../utils/status';
 import { DARK_THEME, CHART_COLORS } from '../../utils/constants';
 
 const STATUS_COLORS = {
-  done: '#67d68d',
-  indeterminate: CHART_COLORS.cyan,
-  new: DARK_THEME.textMuted,
-  overdue: '#ff4d4f',
+  done: 'var(--good, #67d68d)',
+  indeterminate: 'var(--accent-1, #00c9c8)',
+  new: 'var(--text-muted, #8faec8)',
+  overdue: 'var(--bad, #ff4d4f)',
 };
 
 const SILENCE_THRESHOLD = 14;
@@ -73,21 +73,21 @@ function savePrefs(prefs: Prefs) {
 }
 
 function loadColor(pct: number): string {
-  if (pct > 110) return '#ff4d4f';
-  if (pct >= 70) return '#67d68d';
-  return '#faad14';
+  if (pct > 110) return 'var(--bad, #ff4d4f)';
+  if (pct >= 70) return 'var(--good, #67d68d)';
+  return 'var(--warn, #faad14)';
 }
 
 function dueColor(days: number | null): string {
   if (days == null) return DARK_THEME.textMuted;
-  if (days < 0) return '#ff4d4f';
-  if (days <= DUE_SOON_THRESHOLD) return '#faad14';
-  return '#67d68d';
+  if (days < 0) return 'var(--bad, #ff4d4f)';
+  if (days <= DUE_SOON_THRESHOLD) return 'var(--warn, #faad14)';
+  return 'var(--good, #67d68d)';
 }
 
 function trendArrow(dir: 'up' | 'down' | 'flat'): { glyph: string; color: string } {
-  if (dir === 'up') return { glyph: '↑', color: '#67d68d' };
-  if (dir === 'down') return { glyph: '↓', color: '#faad14' };
+  if (dir === 'up') return { glyph: '↑', color: 'var(--good, #67d68d)' };
+  if (dir === 'down') return { glyph: '↓', color: 'var(--warn, #faad14)' };
   return { glyph: '·', color: DARK_THEME.textMuted };
 }
 
@@ -169,7 +169,7 @@ function AssigneeStack({ project }: { project: ProjectItem }) {
         <div style={{
           width: 24, height: 24, borderRadius: '50%',
           border: `2px solid ${DARK_THEME.cardBg}`, background: DARK_THEME.darkRows,
-          color: '#a4b8d8', fontSize: 10, fontWeight: 700,
+          color: 'var(--text-muted, #a4b8d8)', fontSize: 10, fontWeight: 700,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           marginLeft: -8,
         }}>+{extra}</div>
@@ -246,7 +246,7 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
     case 'subtasks':
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-          <span style={{ color: '#a4b8d8' }}>{project.subtasks_done}/{project.subtasks_total}</span>
+          <span style={{ color: 'var(--text-muted, #a4b8d8)' }}>{project.subtasks_done}/{project.subtasks_total}</span>
           <div style={{ height: 5, background: DARK_THEME.darkRows, borderRadius: 2, overflow: 'hidden' }}>
             <div style={{
               height: '100%',
@@ -295,7 +295,7 @@ function renderCell(key: ColKey, project: ProjectItem, ctx: { isDone: boolean; p
     }
     case 'factplan':
       return (
-        <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#a4b8d8' }}>
+        <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: 'var(--text-muted, #a4b8d8)' }}>
           {Math.round(project.team_fact_hours)} / {Math.round(project.plan_hours)} ч
         </div>
       );
@@ -409,8 +409,8 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
         const isHelp = t.label === 'ПОМОЩЬ ИЗВНЕ' && data.total_alien_fact_hours > 0;
         return (
           <div key={t.label} style={{
-            background: isHelp ? 'rgba(132,204,22,0.06)' : '#0a1d3a',
-            border: isHelp ? '1px solid rgba(132,204,22,0.25)' : `1px solid ${DARK_THEME.darkRows}`,
+            background: isHelp ? 'rgba(132,204,22,0.06)' : DARK_THEME.cardBg,
+            border: isHelp ? '1px solid rgba(132,204,22,0.25)' : `1px solid ${DARK_THEME.border}`,
             borderRadius: 8,
             padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
             gridColumn: idx === tiles.length - 1 && tiles.length % 2 === 1 ? '1 / -1' : undefined,
@@ -428,7 +428,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
 function Sparklines({ projects }: { projects: ProjectItem[] }) {
   const visible = [...projects].sort((a, b) => b.team_fact_hours - a.team_fact_hours).slice(0, 6);
   return (
-    <div style={{ background: '#0a1d3a', border: `1px solid ${DARK_THEME.darkRows}`, borderRadius: 8, padding: 14 }}>
+    <div style={{ background: DARK_THEME.cardBg, border: `1px solid ${DARK_THEME.border}`, borderRadius: 8, padding: 14 }}>
       <div style={{
         fontSize: 12, color: DARK_THEME.textMuted, textTransform: 'uppercase',
         letterSpacing: '0.06em', marginBottom: 10,
@@ -447,7 +447,7 @@ function Sparklines({ projects }: { projects: ProjectItem[] }) {
         return (
           <div key={p.issue_key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
             <div style={{
-              width: 110, fontSize: 14, color: isActive ? '#e6edf7' : DARK_THEME.textMuted,
+              width: 110, fontSize: 14, color: isActive ? 'var(--text, #e6edf7)' : DARK_THEME.textMuted,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {p.title.split(' ').slice(0, 2).join(' ')}

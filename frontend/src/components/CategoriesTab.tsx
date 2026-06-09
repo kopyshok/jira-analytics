@@ -22,7 +22,7 @@ function DragHandle({ id }: { id: string }) {
   const { attributes, listeners } = useSortable({ id });
   return (
     <HolderOutlined
-      style={{ cursor: 'grab', color: '#8faec8' }}
+      style={{ cursor: 'grab', color: 'var(--text-muted, #8faec8)' }}
       {...attributes}
       {...listeners}
     />
@@ -208,7 +208,7 @@ export default function CategoriesTab() {
                 width: 50,
                 render: (_: unknown, r: CategoryResponse) =>
                   r.is_system ? (
-                    <LockOutlined style={{ color: '#8faec8' }} />
+                    <LockOutlined style={{ color: 'var(--text-muted, #8faec8)' }} />
                   ) : (
                     <Popconfirm
                       title="Удалить категорию?"

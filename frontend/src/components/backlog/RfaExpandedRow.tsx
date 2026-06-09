@@ -51,7 +51,7 @@ export default function RfaExpandedRow(p: Props) {
   });
 
   return (
-    <Card size="small" style={{ background: '#0f2340', border: '1px solid #1e3a5f' }}>
+    <Card size="small" style={{ background: 'var(--glass-bg, #0f2340)', border: '1px solid var(--glass-border, #1e3a5f)' }}>
       <PlanConflictBanner issueId={p.issueId} />
 
       {p.hasChildren && (
@@ -110,7 +110,7 @@ function ChildrenList({
 }) {
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>Дочерние Эпики</div>
+      <div style={{ color: 'var(--text-muted, #94a3b8)', fontSize: 12, marginBottom: 4 }}>Дочерние Эпики</div>
       {items.map((c) => (
         <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
           {mode === 'by_epics' && (

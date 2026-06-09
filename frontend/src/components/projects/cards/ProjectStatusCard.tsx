@@ -36,7 +36,7 @@ export const ProjectStatusCard: React.FC<Props> = ({ summary, detail }) => {
   return (
     <Card
       size="small"
-      title={<span style={{ color: '#cfd8e5', fontSize: 13 }}>Статус проекта</span>}
+      title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Статус проекта</span>}
       style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
       styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 12 } }}
     >

@@ -94,7 +94,7 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
         <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
           Загрузка сотрудников по неделям
         </div>
-        <div style={{ fontSize: 11, color: '#7a9ab8' }}>{data.periodLabel}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{data.periodLabel}</div>
       </div>
       <svg
         width="100%"

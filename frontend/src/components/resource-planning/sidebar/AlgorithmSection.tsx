@@ -21,7 +21,7 @@ function renderLog(log: string[]) {
           key={`s-${i}`}
           style={{
             fontSize: 12,
-            color: '#8ab0d8',
+            color: 'var(--text-muted, #8ab0d8)',
             marginLeft: 16,
             marginBottom: 2,
             lineHeight: 1.45,
@@ -36,12 +36,12 @@ function renderLog(log: string[]) {
           key={`n-${i}`}
           style={{
             fontSize: 12,
-            color: '#cfe1f5',
+            color: 'var(--text-2, #cfe1f5)',
             marginBottom: 2,
             lineHeight: 1.45,
           }}
         >
-          <span style={{ color: '#7a9ab8', marginRight: 6 }}>{idx}.</span>
+          <span style={{ color: 'var(--text-muted, #7a9ab8)', marginRight: 6 }}>{idx}.</span>
           {line}
         </div>
       );

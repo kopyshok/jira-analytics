@@ -79,13 +79,15 @@ function stripKeyPrefix(summary: string, key: string): string {
   return trimmed;
 }
 
+// Палитра с контрастом ≥4.5 на обоих фонах (white + #0d1c33).
+// Старые #22d3ee/#10b981 не проходили на белом — буквы команд сливались с фоном.
 const TEAM_COLOR_PALETTE = [
-  '#9c6bff', '#22d3ee', '#f97316', '#10b981',
-  '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4',
+  '#7c3aed', '#0891b2', '#ea580c', '#047857',
+  '#b45309', '#dc2626', '#6d28d9', '#0e7490',
 ];
 
 function teamColor(name: string | null | undefined): string {
-  if (!name) return '#7e94b8';
+  if (!name) return 'var(--text-muted, #7e94b8)';
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
   return TEAM_COLOR_PALETTE[Math.abs(h) % TEAM_COLOR_PALETTE.length];
@@ -126,7 +128,7 @@ function buildIssueNode(
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
             style={{
-              color: '#22d3ee',
+              color: 'var(--accent-1, #22d3ee)',
               textDecoration: 'underline',
               fontWeight: 600,
               flexShrink: 0,
@@ -152,7 +154,7 @@ function buildIssueNode(
           )}
           <span
             style={{
-              color: '#e6edf7',
+              color: 'var(--text, #e6edf7)',
               whiteSpace: 'normal',
               wordBreak: 'break-word',
               minWidth: 0,
@@ -182,7 +184,7 @@ function buildIssueNode(
               alignItems: 'center',
               gap: 6,
               fontSize: 11,
-              color: '#7e94b8',
+              color: 'var(--text-muted, #7e94b8)',
               paddingLeft: 2,
             }}
           >
@@ -443,7 +445,7 @@ function buildTreeFromLayout(
             >
               {initials}
             </span>
-            <span style={{ color: '#e6edf7' }}>{row.employee_name}</span>
+            <span style={{ color: 'var(--text, #e6edf7)' }}>{row.employee_name}</span>
           </span>,
         );
       }
@@ -463,7 +465,7 @@ function buildTreeFromLayout(
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: '#7e94b8',
+                background: 'var(--text-muted, #7e94b8)',
                 flexShrink: 0,
               }}
             />
@@ -474,7 +476,7 @@ function buildTreeFromLayout(
                   type="link"
                   size="small"
                   icon={<ArrowRightOutlined />}
-                  style={{ padding: '0 2px', height: 'auto', color: '#00c9c8', marginLeft: 2 }}
+                  style={{ padding: '0 2px', height: 'auto', color: 'var(--accent-1, #00c9c8)', marginLeft: 2 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(thematicUrl);
@@ -715,7 +717,7 @@ export default function AnalyticsTable({
                   style={{
                     width: `${barWidth}%`,
                     height: '100%',
-                    background: '#00c9c8',
+                    background: 'var(--accent-1, #00c9c8)',
                     opacity: 0.85,
                   }}
                 />
