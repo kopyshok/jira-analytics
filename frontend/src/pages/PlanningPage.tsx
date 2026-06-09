@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -279,10 +279,65 @@ export default function PlanningPage() {
   // Порядок строк — целиком с бэка (sort_order). Чек поднимает строку
   // наверх, снятие — оставляет на месте, drag&drop переписывает порядок.
   const orderedAllocations = allocations ?? [];
-  // FLIP-анимация перестановок живёт внутри BacklogAllocRow (useLayoutEffect
-  // запоминает top и анимирует transform 700ms при изменении позиции).
-  // auto-animate не работал — MutationObserver не триггерится на чистый
-  // reorder одинаковых key'ев в React reconciler.
+
+  // FLIP-анимация перестановок: меряем top всех строк по data-alloc-id
+  // ДО render'а (useLayoutEffect возвращает функцию, она НЕ для cleanup —
+  // она вызывается перед следующим эффектом). Лучше: ref хранит prev positions,
+  // обновляем после применения инверсии.
+  const flipPrevTopsRef = useRef<Map<string, number>>(new Map());
+  const allocIdsKey = orderedAllocations.map((a) => a.id).join(',');
+
+  // Шаг 1 (useLayoutEffect): СРАВНИВАЕМ текущий top с сохранённым prev,
+  // если есть строка с большой delta — анимируем её FLIP-инверсией.
+  // Шаг 2 (useEffect): после paint обновляем prev на текущие top'ы.
+  // Этот двух-фазный паттерн нужен потому что useLayoutEffect срабатывает
+  // ПОСЛЕ commit'а DOM с новым порядком — top уже новый, prev должен быть старым.
+  useLayoutEffect(() => {
+    const rows = document.querySelectorAll<HTMLElement>('[data-flip-wrapper]');
+    const prev = flipPrevTopsRef.current;
+    let maxDelta = 0;
+    let mainId: string | null = null;
+    const nextTops = new Map<string, number>();
+    rows.forEach((el) => {
+      const id = el.dataset.allocId!;
+      const cur = el.getBoundingClientRect().top;
+      nextTops.set(id, cur);
+      const prevTop = prev.get(id);
+      if (prevTop !== undefined) {
+        const abs = Math.abs(prevTop - cur);
+        if (abs > maxDelta) { maxDelta = abs; mainId = id; }
+      }
+    });
+    if (mainId && maxDelta > 5) {
+      const el = document.querySelector<HTMLElement>(`[data-flip-wrapper][data-alloc-id="${mainId}"]`);
+      if (el) {
+        const prevTop = prev.get(mainId)!;
+        const cur = nextTops.get(mainId)!;
+        const delta = prevTop - cur;
+        // Ставим инверсию без transition.
+        el.style.transition = 'none';
+        el.style.transform = `translate3d(0, ${delta}px, 0)`;
+        // Ждём ДВА rAF (один для применения inversion, второй для гарантии браузерного paint).
+        // void offsetHeight (force reflow) недостаточно — браузер всё равно
+        // объединит установку инверсии и установку 0 в один paint, если они в одном тике.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            el.style.transition = 'transform 700ms cubic-bezier(0.22, 1, 0.36, 1)';
+            el.style.transform = 'translate3d(0, 0, 0)';
+            const cleanup = () => {
+              el.style.transition = '';
+              el.style.transform = '';
+              el.removeEventListener('transitionend', cleanup);
+            };
+            el.addEventListener('transitionend', cleanup);
+          });
+        });
+      }
+    }
+    // Обновляем prev ТОЛЬКО ПОСЛЕ анимации (или сразу если ничего не анимировали),
+    // чтобы следующий reorder сравнивался с актуальными «до» позициями.
+    flipPrevTopsRef.current = nextTops;
+  }, [allocIdsKey]);
 
   const reorderAllocs = useReorderAllocations();
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {

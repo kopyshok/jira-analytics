@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, type CSSProperties } from 'react';
+import { memo, type CSSProperties } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Checkbox, InputNumber, Select, Tag } from 'antd';
@@ -57,28 +57,6 @@ function BacklogAllocRowBase({
   onOpenBreakdown,
 }: BacklogAllocRowProps) {
   const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id: a.id });
-  // FLIP: запоминаем top строки до paint, после paint сравниваем,
-  // если top изменился — ставим обратный transform мгновенно, затем анимируем к 0.
-  const innerRef = useRef<HTMLDivElement | null>(null);
-  const prevTopRef = useRef<number | null>(null);
-
-  useLayoutEffect(() => {
-    const el = innerRef.current;
-    if (!el) return;
-    const cur = el.getBoundingClientRect().top;
-    const prev = prevTopRef.current;
-    if (prev !== null && Math.abs(prev - cur) > 0.5 && !isDragging) {
-      const delta = prev - cur;
-      // Снимаем dnd-kit transition на время FLIP, ставим инверсию и в next frame убираем.
-      el.style.transition = 'none';
-      el.style.transform = `translate3d(0, ${delta}px, 0)`;
-      // Force reflow
-      void el.offsetHeight;
-      el.style.transition = 'transform 700ms cubic-bezier(0.22, 1, 0.36, 1)';
-      el.style.transform = 'translate3d(0, 0, 0)';
-    }
-    prevTopRef.current = cur;
-  });
 
   const eff = effectiveEstimate(a);
   const an = eff.analyst;
@@ -123,11 +101,11 @@ function BacklogAllocRowBase({
   };
 
   return (
+    <div data-flip-wrapper="" data-alloc-id={a.id}>
     <div
       ref={(el) => {
         setNodeRef(el);
         registerRef(el);
-        innerRef.current = el;
       }}
       onClick={() => onToggle(a)}
       className={className}
@@ -316,6 +294,7 @@ function BacklogAllocRowBase({
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }
