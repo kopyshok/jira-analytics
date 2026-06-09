@@ -146,10 +146,21 @@ export const usePatchAllocation = () => {
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<AllocationResponse[]>(key);
       if (prev && data.included !== undefined) {
-        qc.setQueryData<AllocationResponse[]>(
-          key,
-          prev.map((a) => (a.id === allocId ? { ...a, included: data.included! } : a)),
+        const updated = prev.map((a) =>
+          a.id === allocId ? { ...a, included: data.included! } : a,
         );
+        // При включении (False → True) поднимаем строку в начало списка — backend
+        // делает то же через sort_order = min−1, но optimistic update должен
+        // отразить это мгновенно, иначе строка остаётся на месте до refetch'а.
+        const wasIncluded = prev.find((a) => a.id === allocId)?.included ?? false;
+        if (data.included === true && !wasIncluded) {
+          const idx = updated.findIndex((a) => a.id === allocId);
+          if (idx > 0) {
+            const [row] = updated.splice(idx, 1);
+            updated.unshift(row);
+          }
+        }
+        qc.setQueryData<AllocationResponse[]>(key, updated);
       }
       return { prev };
     },
