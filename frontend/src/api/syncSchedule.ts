@@ -10,6 +10,14 @@ export type SyncScheduleOut = {
   enabled: boolean;
   last_run_id: string | null;
   next_run_at: string | null;
+  description: string;
+};
+
+export type SchedulePreviewResponse = {
+  valid: boolean;
+  description: string | null;
+  next_runs: string[];
+  error: string | null;
 };
 
 export type SyncScheduleCreate = {
@@ -41,3 +49,6 @@ export const deleteSchedule = (id: string) =>
 
 export const runScheduleNow = (id: string) =>
   api.post<void>(`/sync/schedule/${id}/run-now`);
+
+export const previewSchedule = (cron_expr: string) =>
+  api.post<SchedulePreviewResponse>('/sync/schedule/preview', { cron_expr });
