@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
   Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Tooltip,
 } from 'antd';
@@ -280,13 +279,10 @@ export default function PlanningPage() {
   // Порядок строк — целиком с бэка (sort_order). Чек поднимает строку
   // наверх, снятие — оставляет на месте, drag&drop переписывает порядок.
   const orderedAllocations = allocations ?? [];
-  // FLIP-анимация перестановок (включение строки → переезд наверх).
-  // ref ставится на родителя списка <div> внутри SortableContext.
-  // 700ms ease-out — медленнее предыдущих 320ms, PM хочет явно видеть переезд.
-  const [animatedListRef] = useAutoAnimate<HTMLDivElement>({
-    duration: 700,
-    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-  });
+  // FLIP-анимация перестановок живёт внутри BacklogAllocRow (useLayoutEffect
+  // запоминает top и анимирует transform 700ms при изменении позиции).
+  // auto-animate не работал — MutationObserver не триггерится на чистый
+  // reorder одинаковых key'ев в React reconciler.
 
   const reorderAllocs = useReorderAllocations();
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
@@ -719,7 +715,7 @@ export default function PlanningPage() {
                     items={orderedAllocations.map((a) => a.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div ref={animatedListRef}>
+                    <div>
                   {orderedAllocations.map((a) => (
                     <BacklogAllocRow
                       key={a.id}
@@ -778,7 +774,6 @@ export default function PlanningPage() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 12,
-                contain: 'layout paint',
               }}
             >
               <PlanningCapacityPanel
