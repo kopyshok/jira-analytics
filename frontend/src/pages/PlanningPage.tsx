@@ -755,11 +755,13 @@ export default function PlanningPage() {
               </Card>
             )}
 
-            {/* Правая колонка — sticky, чтобы при скролле длинного бэклога
-                «Ресурс команды» / «По сотрудникам» / внешний QA оставались
-                видимыми. Высота ограничена viewport'ом за вычетом sticky-strip
-                (≈44px) и буфера; внутри панели — собственный скролл, если
-                содержимое не влезает. */}
+            {/* Правая колонка — sticky сверху, ниже свободно расширяется.
+                Раньше: maxHeight + overflowY:auto — обрезало карточку «Часы
+                тестировщика» в Aurora, потому что AuroraShell использует
+                собственный scroll-viewport (.scroll-y), а 100vh ссылается на
+                window. Сейчас высота не ограничена — блок встаёт sticky-only
+                верхним краем и при коротком вьюпорте уезжает вниз вместе со
+                скроллом страницы. Это работает одинаково в classic и Aurora. */}
             <div
               style={{
                 position: 'sticky',
@@ -768,10 +770,7 @@ export default function PlanningPage() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 12,
-                maxHeight: 'calc(100vh - 72px)',
-                overflowY: 'auto',
                 contain: 'layout paint',
-                willChange: 'transform',
               }}
             >
               <PlanningCapacityPanel
