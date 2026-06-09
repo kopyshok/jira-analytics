@@ -62,11 +62,17 @@
 
 /* Modals & Drawers — FULLY SOLID (no transparency) in Aurora.
  * Aurora-dark: opaque deep navy. Aurora-light: opaque near-white.
- * Specificity: html[data-theme][data-mode] = 1 + 2 = 3 classes equiv. */
+ * Wildcard covers ALL inner slots regardless of AntD version-specific class names. */
+html[data-theme="aurora"][data-mode="dark"] .ant-modal,
 html[data-theme="aurora"][data-mode="dark"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-content > *,
+html[data-theme="aurora"][data-mode="dark"] [class*="ant-modal-section"],
+html[data-theme="aurora"][data-mode="dark"] [class*="ant-modal-confirm"],
 html[data-theme="aurora"][data-mode="dark"] .ant-modal-body,
 html[data-theme="aurora"][data-mode="dark"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="dark"] .ant-modal-title,
 html[data-theme="aurora"][data-mode="dark"] .ant-drawer-content,
+html[data-theme="aurora"][data-mode="dark"] .ant-drawer-content > *,
 html[data-theme="aurora"][data-mode="dark"] .ant-drawer-body,
 html[data-theme="aurora"][data-mode="dark"] .ant-drawer-header {
   background-color: #0f1426 !important;
@@ -74,10 +80,16 @@ html[data-theme="aurora"][data-mode="dark"] .ant-drawer-header {
   backdrop-filter: none !important;
 }
 
+html[data-theme="aurora"][data-mode="light"] .ant-modal,
 html[data-theme="aurora"][data-mode="light"] .ant-modal-content,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-content > *,
+html[data-theme="aurora"][data-mode="light"] [class*="ant-modal-section"],
+html[data-theme="aurora"][data-mode="light"] [class*="ant-modal-confirm"],
 html[data-theme="aurora"][data-mode="light"] .ant-modal-body,
 html[data-theme="aurora"][data-mode="light"] .ant-modal-header,
+html[data-theme="aurora"][data-mode="light"] .ant-modal-title,
 html[data-theme="aurora"][data-mode="light"] .ant-drawer-content,
+html[data-theme="aurora"][data-mode="light"] .ant-drawer-content > *,
 html[data-theme="aurora"][data-mode="light"] .ant-drawer-body,
 html[data-theme="aurora"][data-mode="light"] .ant-drawer-header {
   background-color: #f0f4fc !important;
