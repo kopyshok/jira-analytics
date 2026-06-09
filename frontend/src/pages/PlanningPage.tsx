@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import { useAutoAnimate } from '@formkit/auto-animate/react';
 import {
   Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Tooltip,
 } from 'antd';
@@ -279,6 +280,9 @@ export default function PlanningPage() {
   // Порядок строк — целиком с бэка (sort_order). Чек поднимает строку
   // наверх, снятие — оставляет на месте, drag&drop переписывает порядок.
   const orderedAllocations = allocations ?? [];
+  // FLIP-анимация перестановок (включение строки → переезд наверх).
+  // ref ставится на родителя списка <div> внутри SortableContext.
+  const [animatedListRef] = useAutoAnimate<HTMLDivElement>({ duration: 320, easing: 'ease-in-out' });
 
   const reorderAllocs = useReorderAllocations();
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
@@ -711,7 +715,7 @@ export default function PlanningPage() {
                     items={orderedAllocations.map((a) => a.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div>
+                    <div ref={animatedListRef}>
                   {orderedAllocations.map((a) => (
                     <BacklogAllocRow
                       key={a.id}
