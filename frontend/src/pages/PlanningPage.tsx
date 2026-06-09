@@ -322,9 +322,12 @@ export default function PlanningPage() {
         // объединит установку инверсии и установку 0 в один paint, если они в одном тике.
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            el.style.transition = 'transform 2100ms cubic-bezier(0.22, 1, 0.36, 1)';
+            el.style.transition = 'transform 1500ms cubic-bezier(0.22, 1, 0.36, 1)';
             el.style.transform = 'translate3d(0, 0, 0)';
-            const cleanup = () => {
+            // transitionend bubbles up от child'ов (AntD checkbox/tag и т.д.)
+            // — фильтруем по target и propertyName, иначе cleanup стрельнёт раньше.
+            const cleanup = (ev: TransitionEvent) => {
+              if (ev.target !== el || ev.propertyName !== 'transform') return;
               el.style.transition = '';
               el.style.transform = '';
               el.removeEventListener('transitionend', cleanup);
