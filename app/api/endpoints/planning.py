@@ -1278,12 +1278,16 @@ async def list_scenario_allocations(
         leaf_ids = _filter_leaf_backlog_ids(db, current_ids | existing_ids)
         # Дети утверждённых инициатив тоже выкидываем из черновых allocations.
         descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
-        missing = ((current_ids - existing_ids) - leaf_ids) - descendant_ids
+        # Инициативы, уже включённые в утверждённый сценарий — не предлагаем.
+        approved_included_ids = approved_included_backlog_ids(db)
+        missing = (((current_ids - existing_ids) - leaf_ids) - descendant_ids) - approved_included_ids
         # Безусловный stale: leaf-типы и потомки утверждённых инициатив.
         stale_unconditional = existing_ids & (leaf_ids | descendant_ids)
         # Опциональный stale (только если PM не включил вручную):
-        # архивированные BacklogItem и задачи чужой команды.
-        stale_if_unincluded = (existing_ids - current_ids) - stale_unconditional
+        # архивированные BacklogItem, задачи чужой команды, инициативы
+        # уже включённые в утверждённый сценарий (PM мог намеренно
+        # держать галочку — оставляем при included=True).
+        stale_if_unincluded = ((existing_ids - current_ids) | (existing_ids & approved_included_ids)) - stale_unconditional
         changed = False
         if missing:
             next_order = (

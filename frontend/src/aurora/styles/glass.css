@@ -132,9 +132,9 @@
   /* Chip фон ключей задач в инспекторе */
   --key-chip-bg: rgba(56,189,248,0.10);
   --key-chip-border: rgba(56,189,248,0.30);
-  /* Backlog allocation rows */
-  --row-included-bg: rgba(56,189,248,0.14);
-  --row-excluded-bg: rgba(255,255,255,0.02);
+  /* Backlog allocation rows — мягкая заливка, акцент даёт полоса слева */
+  --row-included-bg: rgba(56,189,248,0.06);
+  --row-excluded-bg: transparent;
 }
 
 /* Kill backdrop-filter в dark mode — оставлен только на light (там уже none).
@@ -188,9 +188,9 @@
   /* Chip фон ключей задач — на белом нужен заметный голубой */
   --key-chip-bg: #dde7f5;
   --key-chip-border: #aac4ec;
-  /* Backlog allocation rows — на белом нужна более заметная заливка */
-  --row-included-bg: #d4e3fa;
-  --row-excluded-bg: #f0f3f8;
+  /* Backlog allocation rows — на светлом мягкий тон, акцент даёт полоса слева */
+  --row-included-bg: #eaf1fc;
+  --row-excluded-bg: transparent;
 }
 
 /* ---------- Фарфор neu overrides ----------
