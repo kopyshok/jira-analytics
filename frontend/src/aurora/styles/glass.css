@@ -23,6 +23,12 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* body bg follows the theme var, defeating AntD's cssinjs default (#0d1c33 etc.) */
+[data-theme="aurora"] body {
+  background: var(--bg) !important;
+  color: var(--text);
+}
+
 /* deep solid bg + faint accent wash + grain — applied to body in Aurora mode */
 [data-theme="aurora"] body::before {
   content: '';
@@ -112,7 +118,9 @@
   --text: #eaf0fb; --text-2: #b8c6e0; --text-muted: #7f90b0;
   --accent-1: #38bdf8; --accent-2: #a78bfa; --on-accent: #07101f;
   --accent-border: rgba(120,170,250,0.55); --accent-glow: rgba(80,140,250,0.28);
-  --glass-bg: rgba(255,255,255,0.06); --glass-border: rgba(120,170,250,0.18);
+  /* solid bg вместо полупрозрачного — backdrop-filter blur(18px) killer FPS при скролле.
+     0.92 на dark wash даёт визуально тот же glass-эффект без GPU-композита. */
+  --glass-bg: #141a2e; --glass-border: rgba(120,170,250,0.18);
   --glass-sheen: rgba(255,255,255,0.14);
   --glass-shadow: 0 16px 48px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
   --pill-bg: rgba(255,255,255,0.06); --pill-border: rgba(120,170,250,0.22);
@@ -123,21 +131,137 @@
   --mini-tile-bg: #1a2238;
 }
 
+/* Kill backdrop-filter в dark mode — оставлен только на light (там уже none).
+   Solid --glass-bg сохраняет визуал, GPU больше не пересчитывает blur каждый кадр. */
+[data-theme="aurora"][data-mode="dark"] .glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-theme="aurora"][data-mode="dark"] .gbtn-ghost {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 /* ============================================================
-   Aurora light mode
+   Aurora light mode — «Фарфор» (porcelain neumorphism)
+   Solid bg + soft dual shadows, no backdrop-blur, glossy blue accent.
    ============================================================ */
 [data-theme="aurora"][data-mode="light"] {
-  --bg: #eef2fb;
-  --wash-1: rgba(56,189,248,0.20); --wash-2: rgba(167,139,250,0.18);
-  --text: #16203a; --text-2: #3f4d6e; --text-muted: #707f9e;
-  --accent-1: #0ea5e9; --accent-2: #7c5cf6; --on-accent: #ffffff;
-  --accent-border: rgba(60,120,230,0.45); --accent-glow: rgba(80,140,250,0.22);
-  --glass-bg: rgba(255,255,255,0.55); --glass-border: rgba(255,255,255,0.85);
-  --glass-sheen: rgba(255,255,255,0.65);
-  --glass-shadow: 0 16px 40px rgba(60,90,160,0.16);
-  --pill-bg: rgba(255,255,255,0.6); --pill-border: rgba(120,140,190,0.3);
-  --track-bg: rgba(40,60,110,0.10); --grain: 0.02;
-  --good: #059669; --warn: #d97706; --bad: #e11d48;
-  --modal-tile-bg: #ffffff;
-  --mini-tile-bg: #e6ebf5;
+  --bg: #e6ebf2;
+  --neu-d: #c3cbd9; --neu-l: #ffffff;
+  --wash-1: rgba(59,110,245,0.07); --wash-2: rgba(47,141,232,0.06);
+  --text: #2a3142; --text-2: #4c566b; --text-muted: #8089a0;
+  --accent-1: #3b6ef5; --accent-2: #2f8de8; --on-accent: #ffffff;
+  --accent-border: rgba(59,110,245,0.5); --accent-glow: rgba(59,110,245,0.30);
+
+  /* glass-vars made compatible — surfaces use solid bg + neu shadows instead */
+  --glass-bg: #e6ebf2;
+  --glass-border: rgba(195,203,217,0.7);
+  --glass-sheen: transparent;
+  --glass-shadow: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff;
+  --pill-bg: #e6ebf2; --pill-border: rgba(195,203,217,0.5);
+  --track-bg: #e6ebf2; --grain: 0.015;
+  --good: #1f9e6f; --warn: #d98a2b; --bad: #e05647;
+  --radius: 22px; --radius-sm: 14px;
+
+  /* neu shadow recipes */
+  --neu-raised: 6px 6px 14px #c3cbd9, -6px -6px 14px #ffffff;
+  --neu-raised-lg: 9px 9px 24px #c3cbd9, -8px -8px 20px #ffffff;
+  --neu-inset: inset 4px 4px 9px #c3cbd9, inset -4px -4px 9px #ffffff;
+  --neu-sm: 3px 3px 7px #c3cbd9, -3px -3px 7px #ffffff;
+
+  --modal-tile-bg: #e6ebf2;
+  --mini-tile-bg: #eef2f7;
+}
+
+/* ---------- Фарфор neu overrides ----------
+   Kill glass-blur + glass-sheen, swap to solid bg + neu shadow.
+   Applied AFTER the generic Aurora rules so it wins by source order. */
+[data-theme="aurora"][data-mode="light"] body::before { opacity: 0.6; }
+[data-theme="aurora"][data-mode="light"] body::after { opacity: 0.015; }
+
+[data-theme="aurora"][data-mode="light"] .glass {
+  background: var(--bg);
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: var(--neu-raised);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+[data-theme="aurora"][data-mode="light"] .glass::before { display: none; }
+[data-theme="aurora"][data-mode="light"] .glass-hover:hover {
+  transform: translateY(-2px);
+  border: none;
+  box-shadow: var(--neu-raised-lg);
+}
+/* nested glass = pressed-in well */
+[data-theme="aurora"][data-mode="light"] .glass .glass {
+  box-shadow: var(--neu-inset);
+  background: var(--bg);
+}
+
+/* Buttons */
+[data-theme="aurora"][data-mode="light"] .gbtn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-1) 88%, #fff), var(--accent-1));
+  color: var(--on-accent);
+  box-shadow: var(--neu-sm), inset 0 1px 0 rgba(255,255,255,0.4);
+  border: none;
+}
+[data-theme="aurora"][data-mode="light"] .gbtn-primary:hover {
+  filter: brightness(1.04);
+  box-shadow: var(--neu-raised), inset 0 1px 0 rgba(255,255,255,0.5);
+}
+[data-theme="aurora"][data-mode="light"] .gbtn-primary:active {
+  box-shadow: var(--neu-inset);
+  filter: brightness(0.98);
+}
+[data-theme="aurora"][data-mode="light"] .gbtn-ghost {
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  box-shadow: var(--neu-sm);
+  backdrop-filter: none;
+}
+[data-theme="aurora"][data-mode="light"] .gbtn-ghost:hover {
+  box-shadow: var(--neu-raised);
+  color: var(--accent-1);
+  border: none;
+}
+[data-theme="aurora"][data-mode="light"] .gbtn-ghost:active {
+  box-shadow: var(--neu-inset);
+}
+
+/* Pills + badges */
+[data-theme="aurora"][data-mode="light"] .pill {
+  background: var(--bg);
+  border: none;
+  box-shadow: var(--neu-sm);
+  color: var(--text-2);
+}
+
+/* Inputs: pressed-in wells */
+[data-theme="aurora"][data-mode="light"] .ginput {
+  background: var(--bg);
+  border: none;
+  box-shadow: var(--neu-inset);
+}
+[data-theme="aurora"][data-mode="light"] .ginput:focus-within {
+  box-shadow: var(--neu-inset), 0 0 0 2px var(--accent-border);
+}
+
+/* Progress track */
+[data-theme="aurora"][data-mode="light"] .track {
+  background: var(--bg);
+  box-shadow: var(--neu-inset);
+}
+
+/* Segmented */
+[data-theme="aurora"][data-mode="light"] .seg {
+  background: var(--bg);
+  border: none;
+  box-shadow: var(--neu-inset);
+}
+[data-theme="aurora"][data-mode="light"] .seg button.active {
+  color: var(--on-accent);
+  box-shadow: var(--neu-sm);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-1) 88%, #fff), var(--accent-1));
 }
