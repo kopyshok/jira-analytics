@@ -282,7 +282,11 @@ export default function PlanningPage() {
   const orderedAllocations = allocations ?? [];
   // FLIP-анимация перестановок (включение строки → переезд наверх).
   // ref ставится на родителя списка <div> внутри SortableContext.
-  const [animatedListRef] = useAutoAnimate<HTMLDivElement>({ duration: 320, easing: 'ease-in-out' });
+  // 700ms ease-out — медленнее предыдущих 320ms, PM хочет явно видеть переезд.
+  const [animatedListRef] = useAutoAnimate<HTMLDivElement>({
+    duration: 700,
+    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  });
 
   const reorderAllocs = useReorderAllocations();
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
