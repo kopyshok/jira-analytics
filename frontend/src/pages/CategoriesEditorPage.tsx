@@ -10,7 +10,7 @@ import { useRegisterHelp } from '../contexts/HelpContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
-import { useJiraSettings } from '../hooks/useSettings';
+import { useJiraBaseUrl } from '../hooks/useSettings';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useScopeProjects } from '../hooks/useScope';
 import { formatDateOnly, daysSince } from '../utils/format';
@@ -203,7 +203,7 @@ export default function CategoriesEditorPage() {
     teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
   });
 
-  const jiraSettings = useJiraSettings();
+  const jiraSettings = useJiraBaseUrl();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const setIncludeMut = useSetIssueInclude();
   const batchCategoryMut = useBatchSetCategory();

@@ -21,7 +21,7 @@ import {
   useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem, useRefreshFromJira,
 } from '../hooks/useBacklog';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
-import { useJiraSettings } from '../hooks/useSettings';
+import { useJiraBaseUrl } from '../hooks/useSettings';
 import { useEmployees } from '../hooks/useCapacity';
 import { useRoles } from '../hooks/useRoles';
 import { getRoleColor } from '../utils/roles';
@@ -59,7 +59,7 @@ export default function BacklogPage() {
   const quarterly = useBacklogItems('quarterly', queryParams.teams);
 
   const { data: projects } = useProjects();
-  const jiraSettings = useJiraSettings();
+  const jiraSettings = useJiraBaseUrl();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
 
   const update = useUpdateBacklogItem();

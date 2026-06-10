@@ -52,7 +52,7 @@ import { downloadScenarioXlsx } from '../api/exports';
 import { trackAction } from '../lib/usage/track';
 import { DARK_THEME, FONTS } from '../utils/constants';
 import { useRoles } from '../hooks/useRoles';
-import { useJiraSettings } from '../hooks/useSettings';
+import { useJiraBaseUrl } from '../hooks/useSettings';
 import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../utils/planning';
 import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
@@ -230,7 +230,7 @@ export default function PlanningPage() {
   };
 
   const { data: roles = [] } = useRoles();
-  const jiraSettings = useJiraSettings();
+  const jiraSettings = useJiraBaseUrl();
   const jiraBaseUrl = jiraSettings.data?.base_url ?? '';
   const { queryParams } = useGlobalTeamFilter();
   const { period } = useGlobalPeriod();

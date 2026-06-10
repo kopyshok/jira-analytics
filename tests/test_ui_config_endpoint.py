@@ -67,3 +67,28 @@ def test_get_after_put_persists(testclient_db_session):
         assert r.json()["keys"] == ["/executive"]
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_jira_base_url_returns_null_when_unset(testclient_db_session):
+    client = _make_client(testclient_db_session)
+    try:
+        r = client.get("/api/v1/ui-config/jira-base-url")
+        assert r.status_code == 200, r.text
+        assert r.json() == {"base_url": None}
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_jira_base_url_returns_stored_value(testclient_db_session):
+    client = _make_client(testclient_db_session)
+    try:
+        testclient_db_session.add(AppSetting(
+            key="jira_base_url",
+            value="https://example.atlassian.net",
+        ))
+        testclient_db_session.commit()
+        r = client.get("/api/v1/ui-config/jira-base-url")
+        assert r.status_code == 200, r.text
+        assert r.json() == {"base_url": "https://example.atlassian.net"}
+    finally:
+        app.dependency_overrides.pop(get_db, None)

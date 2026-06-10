@@ -107,6 +107,10 @@ async function request<T>(
     // и ProtectedRoute перенаправит на /login. В errorStore не льём.
     if (res.status === 401) {
       window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+    } else if (res.status === 403) {
+      // 403 = отказ авторизации (например, admin-only эндпоинт у обычного
+      // пользователя). Это штатный контроль доступа, а не баг — в errorStore
+      // не льём, иначе badge баг-репорта засоряется ложными «ошибками».
     } else if (!isSuppressed404(method, res.status, url.toString())) {
       pushError({
         ts: new Date().toISOString(), method, url: url.toString(),

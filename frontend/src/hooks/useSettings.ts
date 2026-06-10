@@ -1,10 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getJiraSettings, saveJiraSettings, testJiraCredentials, saveGenericSetting, getGenericSetting } from '../api/settings';
+import { getJiraBaseUrl } from '../api/uiConfig';
 
 export function useJiraSettings() {
   return useQuery({
     queryKey: ['settings', 'jira'],
     queryFn: getJiraSettings,
+  });
+}
+
+/** Базовый URL Jira для deep-link'ов — доступен всем залогиненным (не только админу). */
+export function useJiraBaseUrl() {
+  return useQuery({
+    queryKey: ['ui-config', 'jira-base-url'],
+    queryFn: getJiraBaseUrl,
+    staleTime: 5 * 60_000,
   });
 }
 

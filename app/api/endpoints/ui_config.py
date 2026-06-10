@@ -26,6 +26,10 @@ class HiddenSectionsResponse(BaseModel):
     keys: list[str]
 
 
+class JiraBaseUrlResponse(BaseModel):
+    base_url: Optional[str] = None
+
+
 class HiddenSectionsUpdate(BaseModel):
     keys: list[str]
 
@@ -58,6 +62,20 @@ def get_hidden_sections(
 ):
     """Прочитать список скрытых маршрутов (любой залогиненный)."""
     return HiddenSectionsResponse(keys=_read(db))
+
+
+@router.get("/jira-base-url", response_model=JiraBaseUrlResponse)
+def get_jira_base_url(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Базовый URL Jira для построения ссылок на задачи (любой залогиненный).
+
+    Полные Jira-настройки (email, наличие токена) остаются admin-only в /settings;
+    здесь отдаётся только несекретный base_url, нужный для deep-link'ов /browse/KEY.
+    """
+    row = db.query(AppSetting).filter(AppSetting.key == "jira_base_url").first()
+    return JiraBaseUrlResponse(base_url=row.value if row else None)
 
 
 @router.put("/hidden-sections", response_model=HiddenSectionsResponse)
