@@ -73,6 +73,8 @@ COPY app/ ./app/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY scripts/ ./scripts/
+# Release notes — читается сидером при старте через Path(__file__).parents[2]/"release_notes"
+COPY release_notes/ ./release_notes/
 RUN chmod +x /app/scripts/entrypoint.sh
 
 # Built frontend
