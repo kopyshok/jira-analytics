@@ -75,6 +75,13 @@ html[data-theme="aurora"][data-mode="dark"] .ant-input:hover {
   border-color: transparent;
   box-shadow: 0 6px 22px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.35);
 }
+/* Градиент в тёмной теме — светлый пастель; белый системный текст на нём не читается.
+ * --on-accent = контрастный к акценту (тёмный в dark, белый в light). */
+html[data-theme="aurora"] .ant-btn-primary,
+html[data-theme="aurora"] .ant-btn-primary:hover,
+html[data-theme="aurora"] .ant-btn-primary:focus {
+  color: var(--on-accent) !important;
+}
 
 :where([data-theme="aurora"]) .ant-btn-default {
   background: var(--glass-bg);
