@@ -442,6 +442,11 @@ export interface BacklogChild {
   issue_type: string | null;
   status: string | null;
   included_in_planning: boolean;
+  estimate_hours: number | null;
+  estimate_analyst_hours: number | null;
+  estimate_dev_hours: number | null;
+  estimate_qa_hours: number | null;
+  estimate_opo_hours: number | null;
 }
 
 export interface BacklogItemResponse {

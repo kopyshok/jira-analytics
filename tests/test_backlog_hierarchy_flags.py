@@ -79,6 +79,33 @@ def test_child_hidden_from_flat_list_visible_in_parent_children(client, testclie
     assert "issue_id" in c
 
 
+def test_child_carries_estimate_hours(client, testclient_db_session):
+    """Дочерний Эпик в children родителя несёт свои плановые часы (АН/ПР/ТС/ОПЭ)."""
+    db = testclient_db_session
+    p = _project(db, key="EST")
+    rfa = _issue(db, p, "RFA-200", issue_type="RFA")
+    epic = _issue(db, p, "PRJ-200", issue_type="Epic", parent_id=rfa.id)
+    _backlog_item(db, rfa, planning_mode="by_epics")
+    _backlog_item(
+        db, epic,
+        estimate_analyst_hours=30, estimate_dev_hours=24,
+        estimate_qa_hours=16, estimate_opo_hours=0, estimate_hours=70,
+    )
+    db.commit()
+
+    r = client.get("/api/v1/backlog/")
+    rows = r.json()
+    if isinstance(rows, dict) and "items" in rows:
+        rows = rows["items"]
+    rfa_row = next(r for r in rows if r.get("jira_key") == "RFA-200")
+    c = rfa_row["children"][0]
+    assert c["key"] == "PRJ-200"
+    assert c["estimate_analyst_hours"] == 30
+    assert c["estimate_dev_hours"] == 24
+    assert c["estimate_qa_hours"] == 16
+    assert c["estimate_hours"] == 70
+
+
 def test_orphan_has_empty_children(client, testclient_db_session):
     """Одиночная задача без родителя и без детей → children=[]."""
     db = testclient_db_session

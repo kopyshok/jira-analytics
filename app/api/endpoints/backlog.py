@@ -89,6 +89,13 @@ class BacklogChildSchema(BaseModel):
     issue_type: Optional[str] = None
     status: Optional[str] = None
     included_in_planning: bool = True
+    # Плановые часы дочернего Эпика — чтобы строка-ребёнок в таблице показывала
+    # свои АН/ПР/ТС/ОПЭ, а не нули.
+    estimate_hours: Optional[float] = None
+    estimate_analyst_hours: Optional[float] = None
+    estimate_dev_hours: Optional[float] = None
+    estimate_qa_hours: Optional[float] = None
+    estimate_opo_hours: Optional[float] = None
 
 
 class BacklogItemResponse(BaseModel):
@@ -522,6 +529,11 @@ async def list_backlog_items(
             issue_type=child_issue.issue_type if child_issue else None,
             status=child_issue.status if child_issue else None,
             included_in_planning=child_bi.included_in_planning,
+            estimate_hours=child_bi.estimate_hours,
+            estimate_analyst_hours=child_bi.estimate_analyst_hours,
+            estimate_dev_hours=child_bi.estimate_dev_hours,
+            estimate_qa_hours=child_bi.estimate_qa_hours,
+            estimate_opo_hours=child_bi.estimate_opo_hours,
         )
         children_map.setdefault(pid, []).append(schema)
 
