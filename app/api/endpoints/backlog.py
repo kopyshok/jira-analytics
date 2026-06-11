@@ -23,6 +23,7 @@ from app.services.backlog_service import (
     TRACKED_CATEGORIES,
     BacklogService,
     is_cancel_like,
+    mode_excluded_backlog_ids,
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
@@ -1050,36 +1051,68 @@ class IncludedRequest(BaseModel):
     included: bool
 
 
+def _reconcile_mode(db: Session, item_id: str) -> None:
+    """Синхронизировать draft-allocations элемента с его режимом планирования.
+
+    RFA-родитель «по эпикам» (контекст) — снять его allocations из черновиков;
+    иначе — добить (идемпотентно). Выравнивает уже существующие сценарии сразу
+    после смены режима, не дожидаясь self-heal при следующем открытии.
+    """
+    svc = BacklogService(db)
+    if item_id in mode_excluded_backlog_ids(db):
+        svc._remove_draft_allocations(item_id)
+    else:
+        svc._ensure_draft_allocations(item_id)
+
+
 @router.patch("/{item_id}/planning-mode")
-def set_planning_mode(
+async def set_planning_mode(
     item_id: str,
     payload: PlanningModeRequest,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    """Переключить режим планирования RFA: whole (целиком) или by_epics (по эпикам)."""
+    """Переключить режим планирования RFA: whole (целиком) или by_epics (по эпикам).
+
+    При переходе в «по эпикам» сам RFA-родитель по умолчанию становится
+    контекстом (исчезает из сценариев) — в план идут дочерние Эпики. Вернуть
+    родителя можно галочкой «Включить саму RFA» (для непокрытых кварталов).
+    """
     if payload.mode not in ("whole", "by_epics"):
         raise HTTPException(422, "mode must be 'whole' or 'by_epics'")
     bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
     if bi is None:
         raise HTTPException(404, "BacklogItem not found")
     bi.planning_mode = payload.mode
+    # by_epics → родитель по умолчанию контекст; whole → флаг участия не нужен.
+    bi.included_in_planning = payload.mode != "by_epics"
+    db.flush()
+    _reconcile_mode(db, item_id)
+    result_mode = bi.planning_mode
+    result_included = bi.included_in_planning
     db.commit()
-    return {"id": bi.id, "planning_mode": bi.planning_mode}
+    await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
+    return {"id": item_id, "planning_mode": result_mode, "included_in_planning": result_included}
 
 
 @router.patch("/{item_id}/included")
-def set_included(
+async def set_included(
     item_id: str,
     payload: IncludedRequest,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    """Включить/исключить элемент бэклога из планирования."""
+    """Включить/исключить RFA-родитель из планирования (режим «по эпикам»)."""
     bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
     if bi is None:
         raise HTTPException(404, "BacklogItem not found")
     bi.included_in_planning = payload.included
+    db.flush()
+    _reconcile_mode(db, item_id)
+    result_included = bi.included_in_planning
     db.commit()
-    return {"id": bi.id, "included_in_planning": bi.included_in_planning}
+    await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
+    return {"id": item_id, "included_in_planning": result_included}
 
 
 @router.post("/{item_id}/restore", response_model=BacklogItemResponse)

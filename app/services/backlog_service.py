@@ -136,6 +136,46 @@ def descendant_backlog_ids_of_included_ancestors(db: Session) -> set[str]:
     return descendants
 
 
+def mode_excluded_backlog_ids(db: Session) -> set[str]:
+    """BacklogItem.id RFA-родителей, планируемых «по эпикам» и НЕ включённых
+    отдельной галочкой (``planning_mode='by_epics'`` И ``included_in_planning=False``).
+
+    В режиме «по эпикам» сам RFA-родитель — контекст: в сценарий идут его
+    дочерние Эпики, а не он. Возвращается только если у родителя реально есть
+    прямой ребёнок в активном бэклоге (тот же признак, что ``has_children_in_backlog``)
+    — одиночная задача, помеченная «по эпикам», из планирования не пропадает.
+    Вернуть родителя в кандидаты можно галочкой «Включить саму RFA»
+    (``included_in_planning=True``).
+    """
+    rows = (
+        db.query(BacklogItem.id, BacklogItem.issue_id)
+        .filter(
+            BacklogItem.planning_mode == "by_epics",
+            BacklogItem.included_in_planning == False,  # noqa: E712
+            BacklogItem.issue_id.isnot(None),
+            BacklogItem.archived_at.is_(None),
+        )
+        .all()
+    )
+    if not rows:
+        return set()
+    bid_by_issue = {iid: bid for bid, iid in rows}
+    parent_issue_ids_with_children = {
+        pid
+        for (pid,) in db.query(Issue.parent_id)
+        .join(BacklogItem, BacklogItem.issue_id == Issue.id)
+        .filter(
+            Issue.parent_id.in_(list(bid_by_issue.keys())),
+            BacklogItem.archived_at.is_(None),
+        )
+        .distinct()
+        .all()
+    }
+    return {
+        bid for iid, bid in bid_by_issue.items() if iid in parent_issue_ids_with_children
+    }
+
+
 def has_included_ancestor(db: Session, issue: Issue) -> bool:
     """True если у задачи есть предок (любой глубины), чей BacklogItem уже
     включён в утверждённый сценарий. Сам issue не считается."""
@@ -277,6 +317,9 @@ class BacklogService:
         # Skip if already included in approved scenario — нет смысла предлагать
         # уже зафиксированную в утверждённом плане инициативу повторно.
         if item_id in approved_included_backlog_ids(self.db):
+            return
+        # Skip RFA-родителей в режиме «по эпикам» (контекст, не кандидат).
+        if item_id in mode_excluded_backlog_ids(self.db):
             return
         # Skip descendants of approved-included ancestors.
         item = self.db.query(BacklogItem).filter_by(id=item_id).one_or_none()

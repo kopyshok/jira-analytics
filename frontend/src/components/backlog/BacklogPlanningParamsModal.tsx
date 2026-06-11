@@ -163,6 +163,12 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
   const initial = useMemo(() => buildState(item), [item]);
   const [state, setState] = useState<FormState>(initial);
   const [editPlanOpen, setEditPlanOpen] = useState(false);
+  // Локальное (оптимистичное) состояние переключателя — Radio.Group контролируемый,
+  // а item-проп приходит снимком и не обновляется пока модалка открыта. Без этого
+  // выбор визуально «не нажимается» до перезагрузки списка.
+  const [mode, setMode] = useState<'whole' | 'by_epics'>('whole');
+  const [included, setIncluded] = useState(true);
+  const [seededItemId, setSeededItemId] = useState<string | undefined>(undefined);
 
   const qc = useQueryClient();
   const { period } = useGlobalPeriod();
@@ -171,10 +177,16 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
     setState(buildState(item));
   }, [item]);
 
+  // Пересеять оптимистичное состояние переключателя при смене задачи
+  // (adjust-during-render — рекомендация React вместо setState внутри effect).
+  if (item?.id !== seededItemId) {
+    setSeededItemId(item?.id);
+    setMode((item?.planning_mode as 'whole' | 'by_epics') ?? 'whole');
+    setIncluded(item?.included_in_planning ?? true);
+  }
+
   const issueId = item?.issue_id ?? null;
   const hasChildren = !!item?.has_children_in_backlog;
-  const planningMode = item?.planning_mode ?? 'whole';
-  const includedInPlanning = item?.included_in_planning ?? true;
   const backlogItemId = item?.id ?? '';
 
   const { data: hoursData, isLoading: hoursLoading } = useHoursBreakdown(
@@ -184,16 +196,36 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
   );
 
   const modeMut = useMutation({
-    mutationFn: (mode: 'whole' | 'by_epics') =>
-      api.patch(`/backlog/${backlogItemId}/planning-mode`, { mode }),
+    mutationFn: (next: 'whole' | 'by_epics') =>
+      api.patch(`/backlog/${backlogItemId}/planning-mode`, { mode: next }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['backlog'] }); },
+    onError: (e) => {
+      setMode((item?.planning_mode as 'whole' | 'by_epics') ?? 'whole');
+      setIncluded(item?.included_in_planning ?? true);
+      notification.error({ title: 'Ошибка', description: (e as Error).message });
+    },
   });
 
   const incMut = useMutation({
-    mutationFn: ({ id, included }: { id: string; included: boolean }) =>
-      api.patch(`/backlog/${id}/included`, { included }),
+    mutationFn: (val: boolean) =>
+      api.patch(`/backlog/${backlogItemId}/included`, { included: val }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['backlog'] }); },
+    onError: (e) => {
+      setIncluded(item?.included_in_planning ?? true);
+      notification.error({ title: 'Ошибка', description: (e as Error).message });
+    },
   });
+
+  const changeMode = (next: 'whole' | 'by_epics') => {
+    setMode(next);
+    setIncluded(next !== 'by_epics'); // совпадает с дефолтом на бэке
+    modeMut.mutate(next);
+  };
+
+  const changeIncluded = (val: boolean) => {
+    setIncluded(val);
+    incMut.mutate(val);
+  };
 
   const handleSave = () => {
     if (!item) return;
@@ -269,17 +301,17 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
             {hasChildren && (
               <Space orientation="vertical" style={{ width: '100%', marginBottom: 12 }}>
                 <Radio.Group
-                  value={planningMode}
-                  onChange={(e) => modeMut.mutate(e.target.value as 'whole' | 'by_epics')}
+                  value={mode}
+                  onChange={(e) => changeMode(e.target.value as 'whole' | 'by_epics')}
                   optionType="button"
                 >
                   <Radio.Button value="whole">RFA целиком</Radio.Button>
                   <Radio.Button value="by_epics">По Эпикам</Radio.Button>
                 </Radio.Group>
-                {planningMode === 'by_epics' && (
+                {mode === 'by_epics' && (
                   <Checkbox
-                    checked={includedInPlanning}
-                    onChange={(e) => incMut.mutate({ id: backlogItemId, included: e.target.checked })}
+                    checked={included}
+                    onChange={(e) => changeIncluded(e.target.checked)}
                   >
                     Включить саму RFA (для непокрытых кварталов)
                   </Checkbox>
