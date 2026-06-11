@@ -609,7 +609,6 @@ export default function BacklogPage() {
       <Button
         size="small"
         type={groupActiveByQuarter ? 'primary' : 'default'}
-        ghost={groupActiveByQuarter}
         onClick={() => toggleGroupActiveByQuarter(!groupActiveByQuarter)}
         style={{ marginBottom: 8 }}
       >
@@ -718,7 +717,6 @@ export default function BacklogPage() {
       <Button
         size="small"
         type={groupByQuarter ? 'primary' : 'default'}
-        ghost={groupByQuarter}
         onClick={() => toggleGroupByQuarter(!groupByQuarter)}
         style={{ marginBottom: 8 }}
       >
