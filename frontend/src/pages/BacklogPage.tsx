@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
-  App, Button, InputNumber, Popconfirm, Popover, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
+  App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
-  ArrowRightOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined,
+  ArrowRightOutlined, CloseOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined,
   InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, SettingOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import backlogHelp from '../../../docs/help/backlog.md?raw';
@@ -20,6 +20,7 @@ import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
   useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem, useRefreshFromJira,
 } from '../hooks/useBacklog';
+import type { BacklogRefreshProgress } from '../api/backlog';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useJiraBaseUrl } from '../hooks/useSettings';
 import { useEmployees } from '../hooks/useCapacity';
@@ -68,6 +69,8 @@ export default function BacklogPage() {
   const archive = useArchiveBacklogItem();
   const restore = useRestoreBacklogItem();
   const refreshFromJiraMut = useRefreshFromJira();
+  const refreshAbortRef = useRef<AbortController | null>(null);
+  const [refreshProgress, setRefreshProgress] = useState<BacklogRefreshProgress | null>(null);
 
   const [manualOpen, setManualOpen] = useState(false);
   const [editing, setEditing] = useState<BacklogItemResponse | null>(null);
@@ -162,11 +165,26 @@ export default function BacklogPage() {
   };
 
   const handleRefreshFromJira = () => {
-    refreshFromJiraMut.mutate(undefined, {
-      onSuccess: () => notification.success({ title: 'Данные обновлены из Jira' }),
-      onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
-    });
+    const ctl = new AbortController();
+    refreshAbortRef.current = ctl;
+    setRefreshProgress(null);
+    refreshFromJiraMut.mutate(
+      { onProgress: (e) => setRefreshProgress(e), signal: ctl.signal },
+      {
+        onSuccess: () => notification.success({ title: 'Данные обновлены из Jira' }),
+        onError: (e) => {
+          if ((e as Error).name === 'AbortError') return;
+          notification.error({ title: 'Ошибка', description: (e as Error).message });
+        },
+        onSettled: () => {
+          refreshAbortRef.current = null;
+          setRefreshProgress(null);
+        },
+      },
+    );
   };
+
+  const cancelRefresh = () => refreshAbortRef.current?.abort();
 
   const baseColumns = (editable: boolean) => [
     {
@@ -775,14 +793,35 @@ export default function BacklogPage() {
         subtitle='Активные задачи текущего квартала и бэклог инициатив'
         actions={
           <Space>
+            {refreshFromJiraMut.isPending ? (
+              <Space size="small">
+                {refreshProgress && refreshProgress.total > 0 && (
+                  <Progress
+                    type="circle"
+                    size={28}
+                    percent={Math.round((refreshProgress.matched / refreshProgress.total) * 100)}
+                  />
+                )}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {refreshProgress
+                    ? `Jira: ${refreshProgress.matched}/${refreshProgress.total}`
+                    : 'Обновление…'}
+                </Typography.Text>
+                <Button danger icon={<CloseOutlined />} onClick={cancelRefresh}>
+                  Прервать
+                </Button>
+              </Space>
+            ) : (
+              <Button icon={<ReloadOutlined />} onClick={handleRefreshFromJira}>
+                Обновить с Jira
+              </Button>
+            )}
             <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefreshFromJira}
-              loading={refreshFromJiraMut.isPending}
+              icon={<PlusOutlined />}
+              type="primary"
+              onClick={openCreate}
+              disabled={refreshFromJiraMut.isPending}
             >
-              Обновить с Jira
-            </Button>
-            <Button icon={<PlusOutlined />} type="primary" onClick={openCreate}>
               Идея вручную
             </Button>
           </Space>

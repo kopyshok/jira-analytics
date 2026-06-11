@@ -1,4 +1,5 @@
-import { api } from './client';
+import { api, BASE_URL } from './client';
+import { pushError } from '../utils/errorStore';
 import type {
   BacklogItemResponse,
   BacklogImpactRisk,
@@ -71,8 +72,86 @@ export const linkJira = (id: string, jira_key: string) =>
 export const unlinkJira = (id: string) =>
   api.post<BacklogItemResponse>(`/backlog/${id}/unlink-jira`);
 
-export const refreshFromJira = () =>
-  api.post<BacklogRefreshResult>(`/backlog/refresh-from-jira`);
+// ─── SSE-стрим прогресса «Обновить с Jira» ───────────────────────
+// ``progress`` прилетает по ходу похода в Jira (matched / total + ключ
+// текущей задачи). ``done`` — финальные счётчики. Кнопка «Прервать» рвёт
+// соединение через AbortSignal → backend шлёт ``cancelled``.
+
+export type BacklogRefreshProgress = {
+  type: 'progress';
+  matched: number;
+  total: number;
+  current_key: string | null;
+};
+
+export type BacklogRefreshDone = { type: 'done' } & BacklogRefreshResult;
+
+type BacklogRefreshEvent =
+  | BacklogRefreshProgress
+  | BacklogRefreshDone
+  | { type: 'error'; detail: string }
+  | { type: 'cancelled' };
+
+export async function refreshFromJiraStream(
+  onProgress: (e: BacklogRefreshProgress) => void,
+  signal?: AbortSignal,
+): Promise<BacklogRefreshDone> {
+  const url = `${BASE_URL}/backlog/refresh-from-jira/stream`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      signal,
+      credentials: 'include',
+    });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
+    pushError({
+      ts: new Date().toISOString(), method: 'POST', url,
+      status: null, detail: (e as Error).message,
+    });
+    throw e;
+  }
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = err.detail || res.statusText;
+    pushError({
+      ts: new Date().toISOString(), method: 'POST', url,
+      status: res.status, detail,
+    });
+    throw new Error(detail);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let final: BacklogRefreshDone | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep = buffer.indexOf('\n\n');
+    while (sep !== -1) {
+      const raw = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      sep = buffer.indexOf('\n\n');
+      for (const line of raw.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const payload = JSON.parse(line.slice(5).trim()) as BacklogRefreshEvent;
+        if (payload.type === 'progress') onProgress(payload);
+        else if (payload.type === 'done') final = payload;
+        else if (payload.type === 'error') throw new Error(payload.detail);
+        else if (payload.type === 'cancelled') {
+          const err = new Error('Refresh cancelled by client');
+          err.name = 'AbortError';
+          throw err;
+        }
+      }
+    }
+  }
+  if (!final) throw new Error('Stream ended without done event');
+  return final;
+}
 
 export const archiveBacklogItem = (id: string) =>
   api.post<BacklogItemResponse>(`/backlog/${id}/archive`);

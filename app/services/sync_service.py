@@ -905,13 +905,31 @@ class SyncService:
         logger.info(f"Issues sync complete: {count} synced, {self.stats.issues_created} created")
         return count
 
-    async def refresh_issues_by_keys(self, jira_keys: List[str]) -> Tuple[int, int]:
+    async def refresh_issues_by_keys(
+        self,
+        jira_keys: List[str],
+        *,
+        extra_field_ids: Optional[List[str]] = None,
+        on_issue: Optional[Callable[[JiraIssueSchema, Issue], None]] = None,
+        on_progress: Optional[Callable[[int, int, Optional[str]], Awaitable[None]]] = None,
+    ) -> Tuple[int, int]:
         """Точечная синхронизация: перечитать с Jira только переданные ключи.
 
         Полезно, когда нужно дотащить новое поле (например,
         ``status_changed_at``) по уже существующему набору задач без
         полной пересинхронизации. Новые задачи НЕ создаются — если
         ключа нет локально, он молча пропускается.
+
+        ``extra_field_ids`` — дополнительные кастомные поля, которые надо
+        дотащить в этом же запросе (попадают в ``fields.._extra``), чтобы
+        вызывающий мог обновить связанные данные без второго похода в Jira.
+
+        ``on_issue(jira_issue, issue_row)`` — коллбек после upsert каждой
+        задачи: вызывающий может обновить зависимые сущности (например,
+        BacklogItem) в той же сессии, используя уже загруженный ``jira_issue``.
+
+        ``on_progress(matched, total, current_key)`` — async-коллбек прогресса
+        после каждой обработанной задачи (для SSE-стрима).
 
         Returns ``(matched, total_requested)``.
         """
@@ -931,6 +949,9 @@ class SyncService:
         ]
         for fid in self._configured_planned_field_ids():
             if fid not in extra_fields:
+                extra_fields.append(fid)
+        for fid in (extra_field_ids or []):
+            if fid and fid not in extra_fields:
                 extra_fields.append(fid)
         planned_field_ids = self._resolve_planned_field_ids()
         base_fields = [
@@ -993,12 +1014,16 @@ class SyncService:
                     if behavior_field_id:
                         extra_kwargs["current_behavior"] = _extract_text_field(extra, behavior_field_id)
 
-                self._upsert_issue(
+                issue_row, _ = self._upsert_issue(
                     jira_issue, project.id, parent_id,
                     planned_field_ids=planned_field_ids,
                     **extra_kwargs,
                 )
+                if on_issue is not None:
+                    on_issue(jira_issue, issue_row)
                 matched += 1
+                if on_progress is not None:
+                    await on_progress(matched, total, jira_issue.key)
 
             self.db.commit()
             logger.debug(f"Refreshed {matched} issues so far ({i + len(batch)}/{total} keys processed)")

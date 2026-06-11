@@ -6,7 +6,9 @@ import {
   deleteBacklogItem,
   linkJira,
   unlinkJira,
-  refreshFromJira,
+  refreshFromJiraStream,
+  type BacklogRefreshProgress,
+  type BacklogRefreshDone,
   archiveBacklogItem,
   restoreBacklogItem,
 } from '../api/backlog';
@@ -71,11 +73,19 @@ export const useUnlinkJira = () => {
   });
 };
 
+type RefreshInput = {
+  onProgress?: (e: BacklogRefreshProgress) => void;
+  signal?: AbortSignal;
+};
 export const useRefreshFromJira = () => {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: refreshFromJira,
-    onSuccess: () => invalidateAllBacklog(qc),
+  return useMutation<BacklogRefreshDone, Error, RefreshInput | void>({
+    mutationFn: (input) =>
+      refreshFromJiraStream(input?.onProgress ?? (() => {}), input?.signal),
+    onSuccess: () => {
+      invalidateAllBacklog(qc);
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
+    },
   });
 };
 

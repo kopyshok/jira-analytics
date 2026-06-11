@@ -5,10 +5,13 @@
 """
 
 import asyncio
+import json
+from contextlib import suppress
 from datetime import datetime
-from typing import List, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload
@@ -585,162 +588,134 @@ async def create_backlog_item(
     return _to_response(item)
 
 
-@router.post("/refresh-from-jira", response_model=RefreshResponse)
-async def refresh_from_jira(
-    http_request: Request,
-    db: Session = Depends(get_db),
-):
+def _backlog_candidate_filter():
+    """Фильтр задач-кандидатов в бэклог (целевые + инициативы)."""
+    return or_(
+        Issue.assigned_category == BACKLOG_CATEGORY,
+        Issue.category == BACKLOG_CATEGORY,
+        Issue.assigned_category == QUARTERLY_TASKS_CATEGORY,
+        Issue.category == QUARTERLY_TASKS_CATEGORY,
+    )
+
+
+async def _perform_refresh(
+    db: Session,
+    http_request: Optional[Request],
+    on_progress: Optional[Callable[[int, int, Optional[str]], Awaitable[None]]] = None,
+) -> RefreshResponse:
     """Перечитать с Jira задачи-кандидаты в бэклог и синкнуть BacklogItem.
 
     Шаги:
-      1) Собираем ключи всех кандидатов (``assigned_category`` или
-         денормализованный ``category`` равен ``initiatives_rfa``).
-      2) Тянем их свежие значения из Jira через
-         ``SyncService.refresh_issues_by_keys`` — это подтягивает актуальные
-         плановые часы / impact / risk / цели / команду с учётом текущих
-         настроек ID кастомных полей. Если связь с Jira не настроена,
-         шаг пропускается и работа продолжается на локальных данных.
+      1) Собираем ключи активных/новых кандидатов для похода в Jira
+         (архивные элементы бэклога не перечитываем — их поля в анализе не
+         участвуют, restore/archive решается локально по резолверу).
+      2) ОДИН поход в Jira: ``SyncService.refresh_issues_by_keys`` тянет
+         свежие плановые часы / impact / risk / цели / команду + исполнителя
+         + заказчика + тип затрат сразу (через ``extra_field_ids`` и коллбек
+         ``on_issue``, который обновляет BacklogItem на предзагруженных
+         справочниках — без N+1). Если связь с Jira не настроена, шаг
+         пропускается и работа продолжается на локальных данных.
       3) Резолвер выступает source of truth и по ходу лечит drift между
          ``assigned_category`` и денормализованным ``category``.
       4) Синк BacklogItem через ``BacklogService.sync_from_issue``.
 
-    Возвращает счётчики created / updated / removed / jira_refreshed.
+    ``on_progress(matched, total, current_key)`` — async-коллбек для SSE.
+
+    Возвращает счётчики created / updated / archived / restored / jira_refreshed.
+    Исключения (``CancelledError`` / ``JiraClientError``) пробрасываются —
+    их разбирает вызывающий эндпоинт.
     """
     resolver = CategoryResolver(db)
     svc = BacklogService(db)
     jira_refreshed = 0
 
-    # 1) Ключи кандидатов — для похода в Jira.
-    candidate_keys = [
-        key for (key,) in db.query(Issue.key)
-        .filter(
-            or_(
-                Issue.assigned_category == BACKLOG_CATEGORY,
-                Issue.category == BACKLOG_CATEGORY,
-                Issue.assigned_category == QUARTERLY_TASKS_CATEGORY,
-                Issue.category == QUARTERLY_TASKS_CATEGORY,
-            )
-        )
-        .all()
-    ]
-
-    # 2) Сходить в Jira за свежими значениями кастомных полей. Если Jira
-    #    не настроена — продолжаем на локальных данных, чтобы ручной бэклог
-    #    всё равно можно было пересобрать.
     jira_configured = all(
         _get_setting_value(db, key)
         for key in ("jira_base_url", "jira_email", "jira_api_token")
     )
-    if candidate_keys and jira_configured:
-        try:
-            async with JiraClient.from_db(db) as jira:
-                service = SyncService(
-                    db, jira,
-                    cancel_check=(
-                        (lambda: http_request.is_disconnected())
-                        if http_request is not None else None
-                    ),
-                )
-                matched, _total = await service.refresh_issues_by_keys(candidate_keys)
-                jira_refreshed = matched
-        except asyncio.CancelledError:
-            raise HTTPException(status_code=499, detail="Refresh cancelled by client")
-        except JiraClientError as e:
-            raise HTTPException(status_code=502, detail=f"Jira error: {e}")
 
-    # Sync assignee / customer / cost_type from Jira
-    if candidate_keys and jira_configured:
-        try:
-            async with JiraClient.from_db(db) as jira:
-                customer_field_id = await _discover_field_id(
-                    jira, db, "jira_customer_field_id", "Заказчик (user)"
-                )
-                cost_type_field_id = await _discover_field_id(
-                    jira, db, "jira_cost_type_field_id", "Тип затрат"
-                )
-                extra_fields = ["summary", "issuetype", "status", "project", "assignee"]
+    # 1) Ключи для Jira — кандидаты, кроме архивных элементов бэклога.
+    archived_issue_ids = {
+        iid for (iid,) in db.query(BacklogItem.issue_id)
+        .filter(BacklogItem.issue_id.isnot(None), BacklogItem.archived_at.isnot(None))
+        .all()
+    }
+    fetch_keys = [
+        key for (iid, key) in db.query(Issue.id, Issue.key)
+        .filter(_backlog_candidate_filter()).all()
+        if iid not in archived_issue_ids
+    ]
+
+    # 2) Один поход в Jira за всеми нужными полями сразу.
+    if fetch_keys and jira_configured:
+        async with JiraClient.from_db(db) as jira:
+            customer_field_id = await _discover_field_id(
+                jira, db, "jira_customer_field_id", "Заказчик (user)"
+            )
+            cost_type_field_id = await _discover_field_id(
+                jira, db, "jira_cost_type_field_id", "Тип затрат"
+            )
+
+            # Предзагрузка справочников одним запросом каждый (без N+1).
+            backlog_by_issue = {
+                bi.issue_id: bi
+                for bi in db.query(BacklogItem)
+                .filter(BacklogItem.issue_id.isnot(None)).all()
+            }
+            emp_by_account = {
+                e.jira_account_id: e
+                for e in db.query(Employee)
+                .filter(Employee.jira_account_id.isnot(None)).all()
+            }
+
+            def on_issue(jira_issue, issue_row: Issue) -> None:
+                item = backlog_by_issue.get(issue_row.id)
+                if item is None:
+                    return
+                # Исполнитель
+                assignee = getattr(jira_issue.fields, "assignee", None)
+                account_id = getattr(assignee, "accountId", None) if assignee else None
+                if account_id:
+                    emp = emp_by_account.get(account_id)
+                    item.assignee_employee_id = emp.id if emp else None
+                else:
+                    item.assignee_employee_id = None
+                # Заказчик
                 if customer_field_id:
-                    extra_fields.append(customer_field_id)
+                    raw = (jira_issue.fields._extra or {}).get(customer_field_id)
+                    item.customer = (
+                        (raw.get("displayName") or raw.get("name"))
+                        if isinstance(raw, dict) else None
+                    )
+                # Тип затрат
                 if cost_type_field_id:
-                    extra_fields.append(cost_type_field_id)
+                    raw = (jira_issue.fields._extra or {}).get(cost_type_field_id)
+                    if isinstance(raw, dict):
+                        item.cost_type = raw.get("value") or raw.get("name")
+                    elif isinstance(raw, str):
+                        item.cost_type = raw
+                    else:
+                        item.cost_type = None
 
-                BATCH = 100
-                for i in range(0, len(candidate_keys), BATCH):
-                    batch = candidate_keys[i : i + BATCH]
-                    keys_jql = ", ".join(f'"{k}"' for k in batch)
-                    jql = f"key in ({keys_jql})"
+            checker = None
+            if http_request is not None:
+                async def checker():
+                    return await http_request.is_disconnected()
 
-                    async for jira_issue in jira.iter_issues(
-                        jql=jql,
-                        max_results=BATCH,
-                        fields=extra_fields,
-                    ):
-                        issue_row = (
-                            db.query(Issue)
-                            .filter(Issue.key == jira_issue.key)
-                            .one_or_none()
-                        )
-                        if not issue_row:
-                            continue
-                        backlog_item = (
-                            db.query(BacklogItem)
-                            .filter(BacklogItem.issue_id == issue_row.id)
-                            .one_or_none()
-                        )
-                        if not backlog_item:
-                            continue
-
-                        # Assignee
-                        assignee_data = getattr(jira_issue.fields, "assignee", None)
-                        if assignee_data and hasattr(assignee_data, "accountId"):
-                            emp = (
-                                db.query(Employee)
-                                .filter(Employee.jira_account_id == assignee_data.accountId)
-                                .one_or_none()
-                            )
-                            backlog_item.assignee_employee_id = emp.id if emp else None
-                        else:
-                            backlog_item.assignee_employee_id = None
-
-                        # Customer
-                        if customer_field_id:
-                            raw = (jira_issue.fields._extra or {}).get(customer_field_id)
-                            if raw and isinstance(raw, dict):
-                                backlog_item.customer = raw.get("displayName") or raw.get("name")
-                            else:
-                                backlog_item.customer = None
-
-                        # Cost type
-                        if cost_type_field_id:
-                            raw = (jira_issue.fields._extra or {}).get(cost_type_field_id)
-                            if raw and isinstance(raw, dict):
-                                backlog_item.cost_type = raw.get("value") or raw.get("name")
-                            elif isinstance(raw, str):
-                                backlog_item.cost_type = raw
-                            else:
-                                backlog_item.cost_type = None
-
-                db.commit()
-        except asyncio.CancelledError:
-            raise HTTPException(status_code=499, detail="Refresh cancelled by client")
-        except Exception:
-            pass  # best-effort
+            service = SyncService(db, jira, cancel_check=checker)
+            extra_ids = [f for f in (customer_field_id, cost_type_field_id) if f]
+            matched, _total = await service.refresh_issues_by_keys(
+                fetch_keys,
+                extra_field_ids=extra_ids,
+                on_issue=on_issue,
+                on_progress=on_progress,
+            )
+            jira_refreshed = matched
+        db.commit()
 
     # 3) Перечитать кандидатов заново — их ``planned_*`` / impact / risk
-    #    теперь актуальны. ``category`` sync не трогает, так что набор тот же,
-    #    но перечитать надо: сессия могла истечь атрибуты после commit в шаге 2.
-    candidates = (
-        db.query(Issue)
-        .filter(
-            or_(
-                Issue.assigned_category == BACKLOG_CATEGORY,
-                Issue.category == BACKLOG_CATEGORY,
-                Issue.assigned_category == QUARTERLY_TASKS_CATEGORY,
-                Issue.category == QUARTERLY_TASKS_CATEGORY,
-            )
-        )
-        .all()
-    )
+    #    теперь актуальны. Сессия могла истечь атрибуты после commit в шаге 2.
+    candidates = db.query(Issue).filter(_backlog_candidate_filter()).all()
     created = 0
     updated = 0
     archived = 0
@@ -790,6 +765,77 @@ async def refresh_from_jira(
         restored=restored,
         jira_refreshed=jira_refreshed,
     )
+
+
+@router.post("/refresh-from-jira", response_model=RefreshResponse)
+async def refresh_from_jira(
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """Перечитать с Jira кандидатов в бэклог (блокирующий вариант)."""
+    try:
+        return await _perform_refresh(db, http_request)
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=499, detail="Refresh cancelled by client")
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Jira error: {e}")
+
+
+@router.post("/refresh-from-jira/stream")
+async def refresh_from_jira_stream(
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """SSE-стрим прогресса «Обновить с Jira».
+
+    События: ``progress`` (matched / total / current_key) по ходу похода в
+    Jira, ``done`` с финальными счётчиками, ``error`` — ошибка,
+    ``cancelled`` — клиент оборвал соединение (кнопка «Прервать»).
+    """
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(matched: int, total: int, current_key: Optional[str]) -> None:
+            await queue.put({
+                "type": "progress",
+                "matched": matched,
+                "total": total,
+                "current_key": current_key,
+            })
+
+        async def run() -> None:
+            try:
+                result = await _perform_refresh(db, http_request, on_progress=on_progress)
+                await queue.put({
+                    "type": "done",
+                    "created": result.created,
+                    "updated": result.updated,
+                    "archived": result.archived,
+                    "restored": result.restored,
+                    "jira_refreshed": result.jira_refreshed,
+                })
+            except asyncio.CancelledError:
+                await queue.put({"type": "cancelled"})
+                raise
+            except JiraClientError as e:
+                await queue.put({"type": "error", "detail": f"Jira error: {e}"})
+            except Exception as e:
+                await queue.put({"type": "error", "detail": str(e)})
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                if event["type"] in ("done", "error", "cancelled"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await task
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @router.get("/{item_id}", response_model=BacklogItemResponse)
