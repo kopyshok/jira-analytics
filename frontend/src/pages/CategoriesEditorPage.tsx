@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, t
 import {
   Button, Space, Table, Tag, App,
   Select, Typography, Modal, Checkbox,
-  Empty, Input,
+  Empty, Input, Popover,
 } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import categoriesHelp from '../../../docs/help/categories.md?raw';
@@ -89,21 +89,25 @@ type CategoryCellProps = {
   issueId: string;
   isGroup: boolean;
   isContext: boolean;
+  hasChildren: boolean;
   hasPending: boolean;
   pendingValue: string | undefined;
   assignedValue: string | undefined;
   derivedCategory: string | null;
   categoryOptions: { value: string; label: string }[];
   categoryLabels: Record<string, string>;
+  saving: boolean;
   onChange: (issueId: string, code: string | null) => void;
+  onSave: (issueId: string, cascade: boolean) => void;
 };
 
 const CategoryCell = memo(function CategoryCell({
-  issueId, isGroup, isContext,
+  issueId, isGroup, isContext, hasChildren,
   hasPending, pendingValue, assignedValue,
   derivedCategory,
-  categoryOptions, categoryLabels, onChange,
+  categoryOptions, categoryLabels, saving, onChange, onSave,
 }: CategoryCellProps) {
+  const [popOpen, setPopOpen] = useState(false);
   if (isGroup) return null;
   if (isContext) return <Text type="secondary" style={{ fontSize: 11 }}>контекст</Text>;
   const value = hasPending ? pendingValue : assignedValue;
@@ -112,8 +116,10 @@ const CategoryCell = memo(function CategoryCell({
   const placeholderLabel = placeholderCode
     ? (categoryLabels[placeholderCode] || placeholderCode)
     : 'Не назначена';
+  // Кнопка сохранения только когда выбранная категория отличается от сохранённой.
+  const hasChange = hasPending && (pendingValue ?? null) !== (assignedValue ?? null);
   return (
-    <div onClick={(e) => e.stopPropagation()}>
+    <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
       <Select
         placeholder={placeholderLabel}
         value={value}
@@ -121,12 +127,44 @@ const CategoryCell = memo(function CategoryCell({
         allowClear
         size="small"
         style={{
-          width: '100%',
+          flex: 1,
+          minWidth: 0,
           opacity: !value && placeholderCode ? 0.6 : 1,
           boxShadow: hasPending ? `0 0 4px ${DARK_THEME.cyanPrimary}` : undefined,
         }}
         options={categoryOptions}
       />
+      {hasChange && (
+        hasChildren ? (
+          <Popover
+            open={popOpen}
+            onOpenChange={setPopOpen}
+            trigger="click"
+            title="Сохранить категорию"
+            content={
+              <Space orientation="vertical" size={4}>
+                <Button size="small" block onClick={() => { setPopOpen(false); onSave(issueId, false); }}>
+                  Только эту задачу
+                </Button>
+                <Button size="small" block onClick={() => { setPopOpen(false); onSave(issueId, true); }}>
+                  И всё поддерево
+                </Button>
+              </Space>
+            }
+          >
+            <Button size="small" type="primary" icon={<CheckOutlined />} loading={saving} title="Сохранить категорию" />
+          </Popover>
+        ) : (
+          <Button
+            size="small"
+            type="primary"
+            icon={<CheckOutlined />}
+            loading={saving}
+            title="Сохранить категорию"
+            onClick={() => onSave(issueId, false)}
+          />
+        )
+      )}
     </div>
   );
 });
@@ -186,6 +224,7 @@ export default function CategoriesEditorPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
+  const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const verifyMut = useVerifyIssue();
   useRegisterHelp('Категоризация задач', categoriesHelp);
 
@@ -433,6 +472,33 @@ export default function CategoriesEditorPage() {
     );
   }, [pendingCats, verifyMut, notification, qc, refreshLoadedChildren]);
 
+  // ─── Точечное сохранение категории одной строки ───────────────
+  // cascade=false → только эта задача; cascade=true → и всё поддерево.
+  // Опирается на тот же verify-эндпоинт, что и «Подтвердить», но
+  // доступно на всех вкладках и показывается только при изменении.
+  const handleSaveRow = useCallback((issueId: string, cascade: boolean) => {
+    setSavingRowId(issueId);
+    const hasCategoryCode = pendingCats.has(issueId);
+    const categoryCode = hasCategoryCode ? (pendingCats.get(issueId) ?? null) : null;
+    verifyMut.mutate(
+      { issueId, cascade, categoryCode, hasCategoryCode },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+          void refreshLoadedChildren();
+          setPendingCats(prev => {
+            if (!prev.has(issueId)) return prev;
+            const next = new Map(prev);
+            next.delete(issueId);
+            return next;
+          });
+        },
+        onError: (err) => notification.error({ title: 'Ошибка сохранения', description: (err as Error).message }),
+        onSettled: () => setSavingRowId(null),
+      },
+    );
+  }, [pendingCats, verifyMut, qc, refreshLoadedChildren, notification]);
+
   const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
       setWidths(w => ({ ...w, [colKey]: size.width }));
@@ -588,13 +654,16 @@ export default function CategoriesEditorPage() {
             issueId={record.id}
             isGroup={record.issue_type === 'group'}
             isContext={!!record.is_context}
+            hasChildren={!!record.has_children || (record.children?.length ?? 0) > 0}
             hasPending={pendingCats.has(record.id)}
             pendingValue={pendingCats.get(record.id) ?? undefined}
             assignedValue={record.assigned_category || undefined}
             derivedCategory={record.category}
             categoryOptions={categoryOptions}
             categoryLabels={categoryLabels}
+            saving={savingRowId === record.id}
             onChange={setPendingCategory}
+            onSave={handleSaveRow}
           />
         ),
       },
@@ -676,8 +745,8 @@ export default function CategoriesEditorPage() {
     }));
   }, [
     widths, jiraBaseUrl,
-    pendingCats, categoryOptions, categoryLabels,
-    setPendingCategory, toggleInclude, handleResize,
+    pendingCats, categoryOptions, categoryLabels, savingRowId,
+    setPendingCategory, toggleInclude, handleResize, handleSaveRow,
   ]);
 
   const stackExtraColumns = useMemo(() => [
