@@ -41,6 +41,25 @@ class CategoryUpdate(BaseModel):
 
 # --- Endpoints ---
 
+# Палитра для автоназначения цвета категориям, созданным без явного цвета.
+# Подобраны различимые на тёмном фоне дашборда оттенки.
+_AUTO_COLOR_PALETTE = [
+    "#5b8ff9", "#5ad8a6", "#f6bd16", "#e8684a", "#6dc8ec",
+    "#9270ca", "#ff9d4d", "#269a99", "#ff99c3", "#5d7092",
+]
+
+
+def _pick_auto_color(db: Session) -> str:
+    """Подобрать цвет для новой категории: первый из палитры, ещё не занятый;
+    если все заняты — циклически по числу категорий."""
+    used = {row[0] for row in db.query(Category.color).all() if row[0]}
+    for color in _AUTO_COLOR_PALETTE:
+        if color not in used:
+            return color
+    total = db.query(Category).count()
+    return _AUTO_COLOR_PALETTE[total % len(_AUTO_COLOR_PALETTE)]
+
+
 def _validate_work_type_id(db: Session, work_type_id: Optional[str]) -> None:
     """Raise 422 if work_type_id is set but unknown or inactive."""
     if work_type_id is None:
@@ -83,7 +102,7 @@ async def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
     cat = Category(
         code=body.code,
         label=body.label,
-        color=body.color,
+        color=body.color or _pick_auto_color(db),
         sort_order=body.sort_order,
         work_type_id=body.work_type_id,
     )
