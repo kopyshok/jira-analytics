@@ -11,6 +11,7 @@ import {
   CapacityPage,
   CategoriesEditorPage,
   DashboardPage,
+  DeskPage,
   ExecutiveDashboardPage,
   FeedbackPage,
   PlanningPage,
@@ -93,5 +94,12 @@ export const router = createBrowserRouter([
         element: <LoginPage />,
       },
     ],
+  },
+  // Публичный рабочий стол аналитика — отдельный top-level роут вне AuthLayout
+  // и AppLayout: без авторизации, без шапки/сайдбара. Тема и react-query
+  // приходят из main.tsx (ConfigProvider + QueryClientProvider над роутером).
+  {
+    path: '/desk/:token',
+    element: page(<DeskPage />),
   },
 ]);
