@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import calendar as _cal
-import json
 from datetime import date, datetime, time, timedelta
 from typing import Callable, Dict, List, Optional
 
@@ -20,17 +19,13 @@ from app.models.work_desk import WorkDesk
 # Полный список ключей виджетов. Порядок — порядок отображения по умолчанию.
 WIDGET_KEYS: tuple[str, ...] = (
     "my_tasks",
-    "weekly_load",
-    "my_conflicts",
+    "my_timeline",
     "hours_balance",
-    "unlogged_days",
     "category_breakdown",
     "team_absences",
     "team_availability",
     "production_calendar",
-    "quarter_deadlines",
-    "external_help",
-    "recent_changes",
+    "awaiting_reaction",
 )
 
 _QUARTER_MONTHS: Dict[int, tuple[int, int, int]] = {
@@ -39,6 +34,8 @@ _QUARTER_MONTHS: Dict[int, tuple[int, int, int]] = {
     3: (7, 8, 9),
     4: (10, 11, 12),
 }
+
+_JIRA_BROWSE = "https://example.atlassian.net/browse/"
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -60,6 +57,10 @@ def _quarter_bounds(year: int, quarter: int) -> tuple[date, date]:
     last_month = months[-1]
     end = date(year, last_month, _cal.monthrange(year, last_month)[1])
     return start, end
+
+
+def _jira_url(key: Optional[str]) -> Optional[str]:
+    return f"{_JIRA_BROWSE}{key}" if key else None
 
 
 def _find_recent_plan(db: Session, teams: List[str], year: int, quarter: int):
@@ -92,122 +93,181 @@ def _find_recent_plan(db: Session, teams: List[str], year: int, quarter: int):
     return rows[0] if rows else None
 
 
-# ──────────────────────────────────────────────────────────────────────────
-# Адаптеры виджетов
-# ──────────────────────────────────────────────────────────────────────────
+def _worklog_fact_map(
+    db: Session,
+    pairs: List[tuple[str, str]],
+    q_start: date,
+    q_end: date,
+) -> Dict[tuple[str, str], float]:
+    """Сумма Worklog.hours по парам (employee_id, issue_id) за квартал.
+
+    Один сгруппированный запрос на все пары — без N+1. Окно конкретного
+    назначения сужается вызывающим кодом (он знает start/end ассайнмента).
+    """
+    if not pairs:
+        return {}
+    from app.models import Worklog
+
+    emp_ids = {p[0] for p in pairs}
+    issue_ids = {p[1] for p in pairs}
+    start_dt = datetime.combine(q_start, time.min)
+    end_dt = datetime.combine(q_end, time.max)
+    rows = (
+        db.query(
+            Worklog.employee_id,
+            Worklog.issue_id,
+            func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
+        )
+        .filter(
+            Worklog.employee_id.in_(emp_ids),
+            Worklog.issue_id.in_(issue_ids),
+            Worklog.started_at >= start_dt,
+            Worklog.started_at <= end_dt,
+        )
+        .group_by(Worklog.employee_id, Worklog.issue_id)
+        .all()
+    )
+    return {(r.employee_id, r.issue_id): float(r.hours or 0.0) for r in rows}
 
 
-def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
-    """Назначения текущего сотрудника в свежем ресурсном плане квартала."""
+def _assignment_projects(
+    db: Session,
+    plan_id: str,
+    employee_id: str,
+    q_start: date,
+    q_end: date,
+) -> List[dict]:
+    """Список проектов/назначений сотрудника в плане (контракт my_tasks).
+
+    Факт-часы берутся одним сгруппированным запросом по всем задачам
+    сотрудника, затем при необходимости пересчитываются по окну назначения.
+    """
     from app.models import ResourcePlanAssignment
-
-    teams = _desk_teams(desk)
-    plan = _find_recent_plan(db, teams, year, quarter)
-    if plan is None:
-        return {"tasks": []}
 
     rows = (
         db.execute(
             select(ResourcePlanAssignment)
             .where(
-                ResourcePlanAssignment.plan_id == plan.id,
-                ResourcePlanAssignment.employee_id == desk.employee_id,
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.employee_id == employee_id,
             )
             .order_by(ResourcePlanAssignment.start_date)
         )
         .scalars()
         .all()
     )
-    tasks: List[dict] = []
+    # Собираем (emp, issue) пары для квартального факта одним запросом.
+    pairs: List[tuple[str, str]] = []
+    issue_by_assignment: Dict[str, object] = {}
     for a in rows:
         item = a.backlog_item
         issue = item.issue if item is not None else None
+        issue_by_assignment[a.id] = issue
+        if issue is not None:
+            pairs.append((employee_id, issue.id))
+    quarter_fact = _worklog_fact_map(db, pairs, q_start, q_end)
+
+    projects: List[dict] = []
+    for a in rows:
+        issue = issue_by_assignment.get(a.id)
         key = getattr(issue, "key", None)
-        jira_url = None
-        if key:
-            jira_url = f"https://example.atlassian.net/browse/{key}"
-        tasks.append(
+        norm = float(a.hours_allocated or 0.0)
+
+        if issue is None:
+            fact = 0.0
+        elif a.start_date and a.end_date:
+            # Сужаем факт до окна назначения отдельным точечным запросом —
+            # назначений у одного сотрудника немного, N+1 здесь не критичен.
+            fact = _issue_fact_in_window(db, employee_id, issue.id, a.start_date, a.end_date)
+        else:
+            fact = quarter_fact.get((employee_id, issue.id), 0.0)
+
+        pct = round(fact / norm * 100) if norm > 0 else 0
+        projects.append(
             {
                 "key": key,
-                "title": item.title if item is not None else None,
-                "phase": a.phase,
+                "title": a.backlog_item.title if a.backlog_item is not None else None,
+                "jira_url": _jira_url(key),
+                "status": getattr(issue, "status", None),
                 "start_date": a.start_date.isoformat() if a.start_date else None,
                 "end_date": a.end_date.isoformat() if a.end_date else None,
-                "hours": float(a.hours_allocated or 0.0),
-                "jira_url": jira_url,
+                "norm_hours": round(norm, 1),
+                "fact_hours": round(fact, 1),
+                "pct": pct,
             }
         )
-    return {"tasks": tasks}
+    return projects
 
 
-def _adapter_weekly_load(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
-    """План/факт сотрудника по месяцам квартала (понедельная база отсутствует)."""
-    from app.services.capacity_service import CapacityService
+def _issue_fact_in_window(
+    db: Session, employee_id: str, issue_id: str, start: date, end: date
+) -> float:
+    from app.models import Worklog
 
-    try:
-        qc = CapacityService(db).quarter_capacity(desk.employee_id, year, quarter)
-    except ValueError:
-        return {"months": []}
-    months = [
-        {
-            "year": m.year,
-            "month": m.month,
-            "norm_hours": round(m.norm_hours, 1),
-            "fact_hours": round(m.fact_hours, 1),
-        }
-        for m in qc.months
-    ]
-    return {"months": months}
+    start_dt = datetime.combine(start, time.min)
+    end_dt = datetime.combine(end, time.max)
+    total = (
+        db.query(func.coalesce(func.sum(Worklog.hours), 0.0))
+        .filter(
+            Worklog.employee_id == employee_id,
+            Worklog.issue_id == issue_id,
+            Worklog.started_at >= start_dt,
+            Worklog.started_at <= end_dt,
+        )
+        .scalar()
+    )
+    return float(total or 0.0)
 
 
-def _adapter_my_conflicts(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
-    """Конфликты плана, относящиеся к сотруднику стола."""
-    from app.models import ResourcePlanAssignment
-    from app.models.plan_conflict import PlanConflict
+# ──────────────────────────────────────────────────────────────────────────
+# Адаптеры виджетов
+# ──────────────────────────────────────────────────────────────────────────
 
+
+def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
+    """Проекты текущего сотрудника в свежем ресурсном плане квартала."""
     teams = _desk_teams(desk)
     plan = _find_recent_plan(db, teams, year, quarter)
     if plan is None:
-        return {"conflicts": []}
+        return {"projects": []}
+    q_start, q_end = _quarter_bounds(year, quarter)
+    projects = _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
+    return {"projects": projects}
 
-    # Конфликты привязаны либо напрямую к employee_id, либо к assignment
-    # сотрудника (например QUARTER_OVERFLOW по его задаче).
-    own_assignment_ids = {
-        r[0]
-        for r in db.execute(
-            select(ResourcePlanAssignment.id).where(
-                ResourcePlanAssignment.plan_id == plan.id,
-                ResourcePlanAssignment.employee_id == desk.employee_id,
-            )
-        ).all()
+
+def _adapter_my_timeline(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
+    """Горизонтальная шкала проектов сотрудника по кварталу.
+
+    Только назначения с обеими датами — иначе их некуда поставить на шкале.
+    """
+    q_start, q_end = _quarter_bounds(year, quarter)
+    teams = _desk_teams(desk)
+    plan = _find_recent_plan(db, teams, year, quarter)
+    bars: List[dict] = []
+    if plan is not None:
+        for p in _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end):
+            if p["start_date"] and p["end_date"]:
+                bars.append(
+                    {
+                        "key": p["key"],
+                        "title": p["title"],
+                        "start_date": p["start_date"],
+                        "end_date": p["end_date"],
+                        "status": p["status"],
+                    }
+                )
+    return {
+        "quarter_start": q_start.isoformat(),
+        "quarter_end": q_end.isoformat(),
+        "bars": bars,
     }
-    rows = (
-        db.execute(select(PlanConflict).where(PlanConflict.plan_id == plan.id))
-        .scalars()
-        .all()
-    )
-    conflicts: List[dict] = []
-    for c in rows:
-        if c.employee_id != desk.employee_id and c.assignment_id not in own_assignment_ids:
-            continue
-        conflicts.append(
-            {
-                "type": c.type,
-                "window_start": c.window_start.isoformat() if c.window_start else None,
-                "window_end": c.window_end.isoformat() if c.window_end else None,
-                "metric_value": float(c.metric_value) if c.metric_value is not None else None,
-                "message": c.message,
-            }
-        )
-    return {"conflicts": conflicts}
 
 
 def _employee_balance(db: Session, desk: WorkDesk):
     """EmployeeDetailResult с 1 января по сегодня для сотрудника стола.
 
     None, если сотрудника нет (инвариант FK не должен это допускать, но
-    адаптеры баланса возвращают пустой результат вместо 500 — симметрично
-    weekly_load).
+    адаптеры баланса возвращают пустой результат вместо 500).
     """
     from app.services.hours_balance_service import HoursBalanceService
 
@@ -237,75 +297,65 @@ def _adapter_hours_balance(db: Session, desk: WorkDesk, year: int, quarter: int)
     return {"balance_hours": round(result.balance_hours, 1), "days": days}
 
 
-def _adapter_unlogged_days(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
-    """Рабочие дни без списанных часов (kind == 'skip')."""
-    result = _employee_balance(db, desk)
-    if result is None:
-        return {"days": []}
-    days = [
-        {
-            "date": d.day.isoformat(),
-            "expected_hours": round(d.norm, 1),
-        }
-        for d in result.days
-        if d.kind == "skip"
-    ]
-    return {"days": days}
-
-
 def _adapter_category_breakdown(
     db: Session, desk: WorkDesk, year: int, quarter: int
 ) -> dict:
-    """Часы сотрудника по категориям работ за квартал."""
-    from app.models import Category, Issue, Worklog
+    """План/факт сотрудника по видам работ (через сервис дашборда «Норма работ»).
 
-    q_start, q_end = _quarter_bounds(year, quarter)
-    start_dt = datetime.combine(q_start, time.min)
-    end_dt = datetime.combine(q_end, time.max)
+    Переиспользуем AnalyticsService.get_dashboard_norm_work, ограниченный
+    командами стола, и вынимаем строку конкретного сотрудника из
+    роль-групп. Это даёт настоящий план (approved сценарий → шаблонные
+    правила → ёмкость) и факт, идентичные дашборду.
+    """
+    from app.services.analytics_service import AnalyticsService
 
-    rows = (
-        db.query(
-            Issue.category.label("code"),
-            func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
+    teams = _desk_teams(desk)
+    try:
+        resp = AnalyticsService(db).get_dashboard_norm_work(
+            year=year, quarter=quarter, teams=teams or None
         )
-        .join(Issue, Worklog.issue_id == Issue.id)
-        .filter(
-            Worklog.employee_id == desk.employee_id,
-            Worklog.started_at >= start_dt,
-            Worklog.started_at <= end_dt,
-        )
-        .group_by(Issue.category)
-        .all()
-    )
-    if not rows:
-        return {"categories": []}
+    except ValueError:
+        return {"work_types": []}
 
-    labels = {
-        c.code: c.label
-        for c in db.query(Category.code, Category.label).all()
-    }
-    categories = [
-        {
-            "label": labels.get(r.code, r.code) if r.code else "Без категории",
-            "hours": round(float(r.hours or 0.0), 1),
-        }
-        for r in rows
-    ]
-    categories.sort(key=lambda x: x["hours"], reverse=True)
-    return {"categories": categories}
+    for role in resp.roles:
+        for emp in role.employees:
+            if emp.employee_id == desk.employee_id:
+                work_types = [
+                    {
+                        "label": wt.label,
+                        "plan_hours": wt.plan_hours,
+                        "fact_hours": wt.fact_hours,
+                        "pct": wt.pct,
+                    }
+                    for wt in emp.work_types
+                ]
+                return {"work_types": work_types}
+    return {"work_types": []}
 
 
 def _adapter_team_absences(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
-    """Отсутствия сотрудников команд стола, пересекающие квартал."""
+    """Отсутствия команд стола за квартал + строки-сотрудники для сетки-теплокарты."""
     from app.models import Absence, Employee
     from app.models.absence_reason import AbsenceReason
     from app.models.employee_team import EmployeeTeam
 
     teams = _desk_teams(desk)
     if not teams:
-        return {"absences": []}
+        return {"employees": [], "absences": [], "year": year, "quarter": quarter}
 
     q_start, q_end = _quarter_bounds(year, quarter)
+
+    # Все сотрудники команд — строки сетки даже без отсутствий.
+    emp_rows = (
+        db.query(Employee.id, Employee.display_name)
+        .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+        .filter(EmployeeTeam.team.in_(teams))
+        .distinct()
+        .order_by(Employee.display_name)
+        .all()
+    )
+    employees = [{"id": r.id, "display_name": r.display_name} for r in emp_rows]
+
     rows = (
         db.query(Absence, AbsenceReason, Employee)
         .join(AbsenceReason, Absence.reason_id == AbsenceReason.id)
@@ -321,31 +371,35 @@ def _adapter_team_absences(db: Session, desk: WorkDesk, year: int, quarter: int)
     )
     absences = [
         {
+            "employee_id": emp.id,
             "employee_name": emp.display_name,
             "start_date": ab.start_date.isoformat(),
             "end_date": ab.end_date.isoformat(),
             "reason_label": reason.label,
-            "color": reason.color,
+            "reason_color": reason.color,
         }
         for ab, reason, emp in rows
     ]
-    return {"absences": absences}
+    return {
+        "employees": employees,
+        "absences": absences,
+        "year": year,
+        "quarter": quarter,
+    }
 
 
 def _adapter_team_availability(
     db: Session, desk: WorkDesk, year: int, quarter: int
 ) -> dict:
-    """Кто в команде занят на этой неделе (по свежему ресурсному плану)."""
-    from app.models import ResourcePlanAssignment
-
-    today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=6)
+    """Занятость команды: проекты каждого коллеги в свежем плане квартала."""
+    from app.models import Employee, ResourcePlanAssignment
 
     teams = _desk_teams(desk)
     plan = _find_recent_plan(db, teams, year, quarter)
     if plan is None:
-        return {"week_start": week_start.isoformat(), "members": []}
+        return {"members": []}
+
+    q_start, q_end = _quarter_bounds(year, quarter)
 
     rows = (
         db.execute(
@@ -353,35 +407,73 @@ def _adapter_team_availability(
             .where(
                 ResourcePlanAssignment.plan_id == plan.id,
                 ResourcePlanAssignment.employee_id.is_not(None),
-                ResourcePlanAssignment.start_date <= week_end,
-                ResourcePlanAssignment.end_date >= week_start,
             )
             .order_by(ResourcePlanAssignment.start_date)
         )
         .scalars()
         .all()
     )
+
+    # Все пары (employee, issue) — один сгруппированный квартальный факт.
+    pairs: List[tuple[str, str]] = []
+    assignment_issue: Dict[str, object] = {}
+    for a in rows:
+        item = a.backlog_item
+        issue = item.issue if item is not None else None
+        assignment_issue[a.id] = issue
+        if issue is not None and a.employee_id:
+            pairs.append((a.employee_id, issue.id))
+    quarter_fact = _worklog_fact_map(db, pairs, q_start, q_end)
+
+    # Имена сотрудников плана.
+    emp_ids = {a.employee_id for a in rows if a.employee_id}
+    names: Dict[str, str] = {}
+    if emp_ids:
+        for eid, dname in (
+            db.query(Employee.id, Employee.display_name)
+            .filter(Employee.id.in_(emp_ids))
+            .all()
+        ):
+            names[eid] = dname
+
     by_emp: Dict[str, dict] = {}
     for a in rows:
-        emp = a.employee
-        name = emp.display_name if emp is not None else a.employee_id
-        item = a.backlog_item
-        label = item.title if item is not None else a.phase
-        entry = by_emp.setdefault(a.employee_id, {"name": name, "busy": []})
-        entry["busy"].append(
+        eid = a.employee_id
+        issue = assignment_issue.get(a.id)
+        key = getattr(issue, "key", None)
+        norm = float(a.hours_allocated or 0.0)
+        if issue is None:
+            fact = 0.0
+        elif a.start_date and a.end_date:
+            fact = _issue_fact_in_window(db, eid, issue.id, a.start_date, a.end_date)
+        else:
+            fact = quarter_fact.get((eid, issue.id), 0.0)
+        pct = round(fact / norm * 100) if norm > 0 else 0
+
+        entry = by_emp.setdefault(
+            eid,
+            {"id": eid, "display_name": names.get(eid, eid), "projects": []},
+        )
+        entry["projects"].append(
             {
-                "label": label,
-                "start": a.start_date.isoformat() if a.start_date else None,
-                "end": a.end_date.isoformat() if a.end_date else None,
+                "key": key,
+                "title": a.backlog_item.title if a.backlog_item is not None else None,
+                "jira_url": _jira_url(key),
+                "status": getattr(issue, "status", None),
+                "start_date": a.start_date.isoformat() if a.start_date else None,
+                "end_date": a.end_date.isoformat() if a.end_date else None,
+                "norm_hours": round(norm, 1),
+                "fact_hours": round(fact, 1),
+                "pct": pct,
             }
         )
-    return {"week_start": week_start.isoformat(), "members": list(by_emp.values())}
+    return {"members": list(by_emp.values())}
 
 
 def _adapter_production_calendar(
     db: Session, desk: WorkDesk, year: int, quarter: int
 ) -> dict:
-    """Производственный календарь квартала + остаток рабочих дней."""
+    """Производственный календарь всего квартала + счётчики рабочих дней."""
     from app.services.production_calendar_service import ProductionCalendarService
 
     svc = ProductionCalendarService(db)
@@ -389,9 +481,24 @@ def _adapter_production_calendar(
     hours_map = svc.hours_in_range_map(q_start, q_end)
     workdays_map = svc.workdays_in_range_map(q_start, q_end)
 
+    # Точные kind'ы из БД (sparse — только аномалии/синхронизированные дни).
+    from app.models import ProductionCalendarDay
+
+    kind_rows = (
+        db.query(ProductionCalendarDay.date, ProductionCalendarDay.kind)
+        .filter(
+            ProductionCalendarDay.date >= q_start,
+            ProductionCalendarDay.date <= q_end,
+        )
+        .all()
+    )
+    kind_map = {r.date: r.kind for r in kind_rows}
+
     today = date.today()
+    cur_month = today.month if today.year == year else None
+
     quarter_workdays = 0
-    remaining_workdays = 0
+    month_workdays = 0
     days: List[dict] = []
     cur = q_start
     while cur <= q_end:
@@ -399,159 +506,128 @@ def _adapter_production_calendar(
         h = hours_map.get(cur)
         if h is None:
             h = 8.0 if cur.weekday() < 5 else 0.0
+        kind = kind_map.get(cur)
+        if kind is None:
+            kind = "workday" if cur.weekday() < 5 else "weekend"
         if is_wd:
             quarter_workdays += 1
-            if cur >= today:
-                remaining_workdays += 1
-        kind = "workday" if is_wd else "weekend"
+            if cur_month is not None and cur.month == cur_month:
+                month_workdays += 1
         days.append({"date": cur.isoformat(), "kind": kind, "hours": float(h)})
         cur += timedelta(days=1)
     return {
         "quarter_workdays": quarter_workdays,
-        "remaining_workdays": remaining_workdays,
+        "month_workdays": month_workdays,
         "days": days,
     }
 
 
-def _adapter_quarter_deadlines(
+def _adapter_awaiting_reaction(
     db: Session, desk: WorkDesk, year: int, quarter: int
 ) -> dict:
-    """Инициативы бэклога команд стола со сроком (due_date) в квартале."""
-    from app.models import BacklogItem, Issue
+    """Ждут реакции: задачи, где сотрудник — исполнитель, не завершены,
+    а последний комментарий оставил кто-то другой (мяч на стороне сотрудника).
 
-    teams = _desk_teams(desk)
-    if not teams:
+    Сигнал исполнителя — только строка Issue.assignee_display_name (FK нет),
+    сравниваем с Employee.display_name без учёта регистра. Задачи без
+    комментариев исключаются — отвечать не на что.
+    """
+    from app.models import Comment, Employee, Issue
+
+    emp = db.get(Employee, desk.employee_id)
+    if emp is None or not emp.display_name:
         return {"items": []}
 
-    q_start, q_end = _quarter_bounds(year, quarter)
-    start_dt = datetime.combine(q_start, time.min)
-    end_dt = datetime.combine(q_end, time.max)
-
+    # SQLite lower() не трогает кириллицу — сравнение без учёта регистра делаем
+    # в Python (casefold). В БД отсекаем только завершённые и без исполнителя.
+    target = emp.display_name.strip().casefold()
     rows = (
-        db.query(BacklogItem, Issue)
-        .join(Issue, BacklogItem.issue_id == Issue.id)
+        db.query(Issue.id, Issue.key, Issue.summary, Issue.status, Issue.assignee_display_name)
         .filter(
-            Issue.team.in_(teams),
-            Issue.due_date.is_not(None),
-            Issue.due_date >= start_dt,
-            Issue.due_date <= end_dt,
-            BacklogItem.archived_at.is_(None),
+            Issue.assignee_display_name.is_not(None),
+            func.coalesce(Issue.status_category, "") != "done",
         )
-        .order_by(Issue.due_date)
         .all()
     )
-    items = [
-        {
-            "key": issue.key,
-            "title": item.title,
-            "due_date": issue.due_date.date().isoformat() if issue.due_date else None,
-            "status": issue.status,
-        }
-        for item, issue in rows
+    candidate_issues = [
+        r for r in rows if (r.assignee_display_name or "").strip().casefold() == target
     ]
-    return {"items": items}
+    if not candidate_issues:
+        return {"items": []}
 
+    issue_ids = [r.id for r in candidate_issues]
+    meta = {r.id: (r.key, r.summary, r.status) for r in candidate_issues}
 
-def _adapter_external_help(
-    db: Session, desk: WorkDesk, year: int, quarter: int
-) -> dict:
-    """Свои часы vs часы на задачах чужих команд для сотрудника стола."""
-    from app.models import Issue, Worklog
-
-    teams = set(_desk_teams(desk))
-    q_start, q_end = _quarter_bounds(year, quarter)
-    start_dt = datetime.combine(q_start, time.min)
-    end_dt = datetime.combine(q_end, time.max)
-
-    rows = (
+    # Последний комментарий на задачу — сгруппированный max(jira_created_at).
+    latest_sub = (
         db.query(
-            Issue.team.label("team"),
-            func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
+            Comment.issue_id.label("issue_id"),
+            func.max(Comment.jira_created_at).label("max_created"),
         )
-        .join(Issue, Worklog.issue_id == Issue.id)
         .filter(
-            Worklog.employee_id == desk.employee_id,
-            Worklog.started_at >= start_dt,
-            Worklog.started_at <= end_dt,
+            Comment.issue_id.in_(issue_ids),
+            Comment.jira_created_at.is_not(None),
         )
-        .group_by(Issue.team)
+        .group_by(Comment.issue_id)
+        .subquery()
+    )
+    latest_comments = (
+        db.query(Comment)
+        .join(
+            latest_sub,
+            (Comment.issue_id == latest_sub.c.issue_id)
+            & (Comment.jira_created_at == latest_sub.c.max_created),
+        )
         .all()
     )
-    own_hours = 0.0
-    alien_hours = 0.0
-    by_team: List[dict] = []
-    for r in rows:
-        h = round(float(r.hours or 0.0), 1)
-        if r.team and r.team in teams:
-            own_hours += h
-        else:
-            alien_hours += h
-            by_team.append({"team": r.team or "Без команды", "hours": h})
-    by_team.sort(key=lambda x: x["hours"], reverse=True)
-    return {
-        "own_hours": round(own_hours, 1),
-        "alien_hours": round(alien_hours, 1),
-        "by_team": by_team,
-    }
 
+    # Имена авторов последних комментариев.
+    author_ids = {c.author_id for c in latest_comments if c.author_id}
+    author_names: Dict[str, str] = {}
+    if author_ids:
+        for eid, dname in (
+            db.query(Employee.id, Employee.display_name)
+            .filter(Employee.id.in_(author_ids))
+            .all()
+        ):
+            author_names[eid] = dname
 
-def _adapter_recent_changes(
-    db: Session, desk: WorkDesk, year: int, quarter: int
-) -> dict:
-    """Назначения сотрудника, изменённые после последнего просмотра стола."""
-    from app.models import ResourcePlanAssignment
-
-    if desk.last_viewed_at is None:
-        return {"changes": []}
-
-    teams = _desk_teams(desk)
-    plan = _find_recent_plan(db, teams, year, quarter)
-    if plan is None:
-        return {"changes": []}
-
-    rows = (
-        db.execute(
-            select(ResourcePlanAssignment)
-            .where(
-                ResourcePlanAssignment.plan_id == plan.id,
-                ResourcePlanAssignment.employee_id == desk.employee_id,
-                ResourcePlanAssignment.updated_at > desk.last_viewed_at,
-            )
-            .order_by(ResourcePlanAssignment.updated_at.desc())
-        )
-        .scalars()
-        .all()
-    )
-    changes: List[dict] = []
-    for a in rows:
-        item = a.backlog_item
-        issue = item.issue if item is not None else None
-        changes.append(
+    items: List[dict] = []
+    seen: set[str] = set()
+    for c in latest_comments:
+        if c.issue_id in seen:
+            continue
+        # Последний комментарий от самого сотрудника → мяч не на его стороне.
+        if c.author_id == desk.employee_id:
+            continue
+        seen.add(c.issue_id)
+        key, summary, status = meta.get(c.issue_id, (None, None, None))
+        items.append(
             {
-                "key": getattr(issue, "key", None),
-                "title": item.title if item is not None else None,
-                "change": a.phase,
-                "start_date": a.start_date.isoformat() if a.start_date else None,
-                "end_date": a.end_date.isoformat() if a.end_date else None,
+                "key": key,
+                "title": summary,
+                "status": status,
+                "last_comment_at": c.jira_created_at.isoformat()
+                if c.jira_created_at
+                else None,
+                "last_comment_author": author_names.get(c.author_id) if c.author_id else None,
             }
         )
-    return {"changes": changes}
+
+    items.sort(key=lambda x: x["last_comment_at"] or "", reverse=True)
+    return {"items": items[:30]}
 
 
 # Реестр: ключ → адаптер.
 _REGISTRY: Dict[str, Callable[[Session, WorkDesk, int, int], dict]] = {
     "my_tasks": _adapter_my_tasks,
-    "weekly_load": _adapter_weekly_load,
-    "my_conflicts": _adapter_my_conflicts,
+    "my_timeline": _adapter_my_timeline,
     "hours_balance": _adapter_hours_balance,
-    "unlogged_days": _adapter_unlogged_days,
     "category_breakdown": _adapter_category_breakdown,
     "team_absences": _adapter_team_absences,
     "team_availability": _adapter_team_availability,
     "production_calendar": _adapter_production_calendar,
-    "quarter_deadlines": _adapter_quarter_deadlines,
-    "external_help": _adapter_external_help,
-    "recent_changes": _adapter_recent_changes,
+    "awaiting_reaction": _adapter_awaiting_reaction,
 }
 
 
