@@ -39,6 +39,7 @@ from app.api.endpoints import (
     themes as themes_endpoints,
     ui_config as ui_config_endpoints,
     usage as usage_endpoints,
+    work_desks as work_desks_endpoints,
     work_type_report as wtr_endpoints,
 )
 from app.core.auth_deps import get_current_user, require_admin
@@ -178,6 +179,9 @@ api_router.include_router(
 )
 api_router.include_router(
     themes_endpoints.router, prefix="/themes", tags=["themes"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    work_desks_endpoints.router, prefix="/work-desks", tags=["work-desks"], dependencies=_auth_dep,
 )
 api_router.include_router(
     wtr_endpoints.router, prefix="/work-type-report", tags=["work-type-report"], dependencies=_auth_dep,
