@@ -16,6 +16,7 @@ from app.api.endpoints import (
     capacity,
     capacity_rules,
     categories,
+    desk_public as desk_public_endpoints,
     employees,
     events as events_endpoints,
     executive as executive_endpoints,
@@ -78,6 +79,8 @@ async def root():
 # /auth/me itself depends on get_current_user inside its own handler.
 api_router.include_router(auth_endpoints.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users_endpoints.router, prefix="/users", tags=["users"])
+# Public desk monitor — access by token only, no JWT.
+api_router.include_router(desk_public_endpoints.router, prefix="/desk", tags=["desk"])
 
 # Authenticated business routers
 api_router.include_router(
