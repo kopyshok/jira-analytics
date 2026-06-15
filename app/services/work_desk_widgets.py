@@ -37,6 +37,14 @@ _QUARTER_MONTHS: Dict[int, tuple[int, int, int]] = {
 
 _JIRA_BROWSE = "https://example.atlassian.net/browse/"
 
+# Фаза назначения → поле плановой оценки на BacklogItem.
+_PHASE_ESTIMATE_FIELD: Dict[str, str] = {
+    "analyst": "estimate_analyst_hours",
+    "dev": "estimate_dev_hours",
+    "qa": "estimate_qa_hours",
+    "opo": "estimate_opo_hours",
+}
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # Вспомогательные функции
@@ -171,7 +179,7 @@ def _assignment_projects(
     for a in rows:
         issue = issue_by_assignment.get(a.id)
         key = getattr(issue, "key", None)
-        norm = float(a.hours_allocated or 0.0)
+        norm = _assignment_norm(a)
 
         if issue is None:
             fact = 0.0
@@ -197,6 +205,25 @@ def _assignment_projects(
             }
         )
     return projects
+
+
+def _assignment_norm(a) -> float:
+    """Плановые часы фазы: hours_allocated, иначе оценка роли на BacklogItem.
+
+    hours_allocated часто пустой/0 — тогда берём per-role оценку из связанной
+    инициативы (analyst/dev/qa/opo → estimate_*_hours). Если обоих нет — 0.0.
+    """
+    allocated = a.hours_allocated
+    if allocated is not None and allocated > 0:
+        return float(allocated)
+    item = a.backlog_item
+    if item is not None:
+        field = _PHASE_ESTIMATE_FIELD.get(a.phase)
+        if field is not None:
+            est = getattr(item, field, None)
+            if est is not None:
+                return float(est)
+    return 0.0
 
 
 def _issue_fact_in_window(
@@ -425,23 +452,31 @@ def _adapter_team_availability(
             pairs.append((a.employee_id, issue.id))
     quarter_fact = _worklog_fact_map(db, pairs, q_start, q_end)
 
-    # Имена сотрудников плана.
+    # Имена и роли сотрудников плана.
     emp_ids = {a.employee_id for a in rows if a.employee_id}
     names: Dict[str, str] = {}
+    dev_ids: set[str] = set()
     if emp_ids:
-        for eid, dname in (
-            db.query(Employee.id, Employee.display_name)
+        for eid, dname, role in (
+            db.query(Employee.id, Employee.display_name, Employee.role)
             .filter(Employee.id.in_(emp_ids))
             .all()
         ):
             names[eid] = dname
+            if (role or "").lower() in ("dev", "developer"):
+                dev_ids.add(eid)
+
+    # Исключаем самого сотрудника стола и разработчиков.
+    excluded = dev_ids | {desk.employee_id}
 
     by_emp: Dict[str, dict] = {}
     for a in rows:
         eid = a.employee_id
+        if eid in excluded:
+            continue
         issue = assignment_issue.get(a.id)
         key = getattr(issue, "key", None)
-        norm = float(a.hours_allocated or 0.0)
+        norm = _assignment_norm(a)
         if issue is None:
             fact = 0.0
         elif a.start_date and a.end_date:
@@ -499,6 +534,8 @@ def _adapter_production_calendar(
 
     quarter_workdays = 0
     month_workdays = 0
+    quarter_work_hours = 0.0
+    month_work_hours = 0.0
     days: List[dict] = []
     cur = q_start
     while cur <= q_end:
@@ -509,15 +546,20 @@ def _adapter_production_calendar(
         kind = kind_map.get(cur)
         if kind is None:
             kind = "workday" if cur.weekday() < 5 else "weekend"
+        quarter_work_hours += float(h)
         if is_wd:
             quarter_workdays += 1
             if cur_month is not None and cur.month == cur_month:
                 month_workdays += 1
+        if cur_month is not None and cur.month == cur_month:
+            month_work_hours += float(h)
         days.append({"date": cur.isoformat(), "kind": kind, "hours": float(h)})
         cur += timedelta(days=1)
     return {
         "quarter_workdays": quarter_workdays,
         "month_workdays": month_workdays,
+        "quarter_work_hours": round(quarter_work_hours, 1),
+        "month_work_hours": round(month_work_hours, 1),
         "days": days,
     }
 

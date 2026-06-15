@@ -14,7 +14,16 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Comment, Employee, EmployeeTeam, Issue, Project
+from app.models import (
+    BacklogItem,
+    Comment,
+    Employee,
+    EmployeeTeam,
+    Issue,
+    Project,
+    ResourcePlan,
+    ResourcePlanAssignment,
+)
 from app.services.work_desk_service import WorkDeskService
 from app.services.work_desk_widgets import WIDGET_KEYS, dispatch
 
@@ -285,3 +294,151 @@ def test_awaiting_reaction_excludes_own_last_comment(db_session, seed_employee):
     year, quarter = _current_quarter()
     out = dispatch(db_session, desk, "awaiting_reaction", year, quarter)
     assert out["items"] == []
+
+
+# ── my_tasks: норма из оценки инициативы при пустом hours_allocated ──────────
+
+
+def _seed_plan_with_assignment(
+    db_session,
+    *,
+    employee_id: str,
+    phase: str = "analyst",
+    hours_allocated=None,
+    estimate_analyst_hours=None,
+):
+    """Минимальный план команды Alpha за текущий квартал с одним назначением."""
+    year, quarter = _current_quarter()
+    plan = ResourcePlan(
+        id="plan-1",
+        team="Alpha",
+        year=year,
+        quarter=str(quarter),
+        status="ready",
+        computed_at=datetime.utcnow(),
+    )
+    item = BacklogItem(
+        id="bi-1",
+        title="Инициатива A",
+        estimate_analyst_hours=estimate_analyst_hours,
+    )
+    db_session.add_all([plan, item])
+    db_session.add(
+        ResourcePlanAssignment(
+            id="rpa-1",
+            plan_id=plan.id,
+            backlog_item_id=item.id,
+            phase=phase,
+            employee_id=employee_id,
+            hours_allocated=hours_allocated,
+        )
+    )
+    db_session.commit()
+    return plan
+
+
+def test_my_tasks_norm_falls_back_to_estimate(db_session, seed_employee):
+    """hours_allocated пустой → норма берётся из оценки роли на инициативе."""
+    _seed_plan_with_assignment(
+        db_session,
+        employee_id=seed_employee.id,
+        phase="analyst",
+        hours_allocated=None,
+        estimate_analyst_hours=40.0,
+    )
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "my_tasks")
+    assert len(out["projects"]) == 1
+    assert out["projects"][0]["norm_hours"] == 40.0
+
+
+def test_my_tasks_norm_prefers_allocated(db_session, seed_employee):
+    """hours_allocated задан → используется он, не оценка инициативы."""
+    _seed_plan_with_assignment(
+        db_session,
+        employee_id=seed_employee.id,
+        phase="analyst",
+        hours_allocated=25.0,
+        estimate_analyst_hours=40.0,
+    )
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "my_tasks")
+    assert out["projects"][0]["norm_hours"] == 25.0
+
+
+# ── team_availability: исключение разработчиков и сотрудника стола ───────────
+
+
+def test_team_availability_excludes_dev_and_desk_employee(db_session, seed_employee):
+    """В занятости команды нет ни самого сотрудника стола, ни разработчиков."""
+    year, quarter = _current_quarter()
+    dev = Employee(
+        id="emp-dev",
+        jira_account_id="acc-dev",
+        display_name="Разработчик",
+        is_active=True,
+        role="dev",
+        team="Alpha",
+        synced_at=datetime.utcnow(),
+    )
+    analyst = Employee(
+        id="emp-analyst",
+        jira_account_id="acc-analyst",
+        display_name="Аналитик-2",
+        is_active=True,
+        role="analyst",
+        team="Alpha",
+        synced_at=datetime.utcnow(),
+    )
+    db_session.add_all([dev, analyst])
+    db_session.add_all(
+        [
+            EmployeeTeam(id="et-dev", employee_id=dev.id, team="Alpha", is_primary=True),
+            EmployeeTeam(id="et-an", employee_id=analyst.id, team="Alpha", is_primary=True),
+        ]
+    )
+    plan = ResourcePlan(
+        id="plan-ta",
+        team="Alpha",
+        year=year,
+        quarter=str(quarter),
+        status="ready",
+        computed_at=datetime.utcnow(),
+    )
+    item = BacklogItem(id="bi-ta", title="Инициатива", estimate_analyst_hours=10.0)
+    db_session.add_all([plan, item])
+    db_session.add_all(
+        [
+            ResourcePlanAssignment(
+                id="rpa-desk", plan_id=plan.id, backlog_item_id=item.id,
+                phase="analyst", employee_id=seed_employee.id, hours_allocated=8.0,
+            ),
+            ResourcePlanAssignment(
+                id="rpa-dev", plan_id=plan.id, backlog_item_id=item.id,
+                phase="dev", employee_id=dev.id, hours_allocated=8.0,
+            ),
+            ResourcePlanAssignment(
+                id="rpa-an", plan_id=plan.id, backlog_item_id=item.id,
+                phase="analyst", employee_id=analyst.id, hours_allocated=8.0,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "team_availability")
+    member_ids = {m["id"] for m in out["members"]}
+    assert seed_employee.id not in member_ids
+    assert dev.id not in member_ids
+    assert analyst.id in member_ids
+
+
+# ── production_calendar: рабочие часы месяца и квартала ──────────────────────
+
+
+def test_production_calendar_work_hours(db_session, seed_employee):
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "production_calendar")
+    assert isinstance(out["month_work_hours"], float)
+    assert isinstance(out["quarter_work_hours"], float)
+    assert out["quarter_work_hours"] > 0
