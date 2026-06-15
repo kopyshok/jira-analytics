@@ -271,3 +271,33 @@ def test_external_qa_override_replaces_qa_sum_in_summary(db_session):
     # Без правил обязательных работ для qa — доступно всё 500.
     assert summary.available_by_role["qa"] == 500.0
     assert summary.external_qa_hours == 500.0
+
+
+def test_external_qa_not_reduced_by_mandatory_work(db_session):
+    """Внешний QA — «чистые» часы подрядчика: обяз. работы к ним не применяются.
+
+    Раньше правило обяз. работ для qa (например 50%) урезало введённое число
+    вдвое (500 → 250) в available_by_role — пользователь видел «деление пополам».
+    После фикса внешний QA доступен целиком, как задано командой.
+    """
+    _make_employee(db_session, eid="qa-emp", role="qa")
+    scenario = _make_scenario(db_session, sid="sc-qa-mand", external_qa=500.0)
+    _seed_calendar_mondays(db_session)
+    wt = _make_work_type(db_session, wid="wt-qa-mand", subtracts=True)
+
+    db_session.add(
+        ScenarioRule(
+            id="rule-qa-mand",
+            scenario_id=scenario.id,
+            role="qa",
+            work_type_id=wt.id,
+            percent_of_norm=50.0,
+        )
+    )
+    db_session.flush()
+
+    svc = ResourceBaseService(db_session)
+    summary = svc.compute_summary(scenario)
+
+    # Несмотря на правило 50% обяз. работ для qa — доступно всё 500, не 250.
+    assert summary.available_by_role["qa"] == 500.0

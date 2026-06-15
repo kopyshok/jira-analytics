@@ -480,6 +480,13 @@ class ResourceBaseService:
         available_by_role: dict[str, float] = {}
         for role in roles_ordered:
             gross = gross_by_role.get(role, 0.0)
+            # Внешний QA — это уже «чистые» часы подрядчика на квартал, заданные
+            # вручную командой. Обязательные работы (совещания и т.п.) к ним не
+            # применяются: команда сама закладывает нужное число. Иначе введённое
+            # значение урезалось на % обязательных работ (визуально «делилось»).
+            if role == "qa" and scenario.external_qa_hours is not None:
+                available_by_role[role] = round(gross, 2)
+                continue
             mandatory_total = sum(
                 row.hours_by_role.get(role, 0.0)
                 for row in wt_rows
