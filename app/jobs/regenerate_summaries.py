@@ -63,6 +63,17 @@ async def regenerate_outdated_summaries() -> dict:
         db.close()
 
 
+def regenerate_outdated_summaries_blocking() -> dict:
+    """Sync-обёртка для запуска прогона ВНЕ основного потока.
+
+    APScheduler (AsyncIOExecutor) и FastAPI BackgroundTasks уводят обычные
+    (не-корутинные) функции в пул потоков. Внутри поднимаем собственный
+    event loop через ``asyncio.run`` — так тяжёлая сборка данных и обращения
+    к LLM не занимают поток, обслуживающий веб-страницы.
+    """
+    return asyncio.run(regenerate_outdated_summaries())
+
+
 def _needs_regeneration(db: Session, epic: Issue, existing, prompt_ver: str) -> bool:
     """Проверить нужна ли регенерация для данного эпика."""
     if existing is None:

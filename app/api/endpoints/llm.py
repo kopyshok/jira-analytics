@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.ai_deps import require_ai_enabled
 from app.database import get_db
-from app.jobs.regenerate_summaries import regenerate_outdated_summaries
+from app.jobs.regenerate_summaries import regenerate_outdated_summaries_blocking
 from app.services.llm.base import ConfigurationError, get_llm_provider
 from app.services.llm.prompt import DEFAULT_SYSTEM_ROLE, FORMAT_SPEC
 from app.models.app_setting import AppSetting
@@ -29,7 +29,7 @@ async def test_connection(db: Session = Depends(get_db)):
 @router.post("/regenerate-all", dependencies=[Depends(require_ai_enabled)])
 async def regenerate_all(background: BackgroundTasks):
     """Запускает в background регенерацию всех устаревших AI-саммари."""
-    background.add_task(regenerate_outdated_summaries)
+    background.add_task(regenerate_outdated_summaries_blocking)
     return {"started": True}
 
 

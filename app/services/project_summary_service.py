@@ -1,4 +1,5 @@
 """ProjectSummaryService — оркестратор AI-саммари (cache + LLM)."""
+import asyncio
 import json
 from datetime import datetime
 from typing import Optional
@@ -6,6 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database import SessionLocal
 from app.models.app_setting import AppSetting
 from app.models.issue import Issue
 from app.models.project_ai_summary import ProjectAISummary
@@ -13,6 +15,20 @@ from app.services.confluence_service import ConfluenceService, extract_confluenc
 from app.services.llm.base import get_llm_provider
 from app.services.llm.prompt import build_prompt, current_prompt_version
 from app.services.projects_service import ProjectsService
+
+
+def regenerate_in_thread(key: str) -> None:
+    """Блокирующая регенерация одного проекта со своей сессией и event loop.
+
+    Запускается через ``asyncio.to_thread`` из эндпоинта, чтобы сборка данных
+    и вызов LLM шли в отдельном потоке и не тормозили остальные запросы.
+    Исключения (ValueError/ConfigurationError/LLM/HTTP) пробрасываются наверх.
+    """
+    db = SessionLocal()
+    try:
+        asyncio.run(ProjectSummaryService(db).regenerate(key))
+    finally:
+        db.close()
 
 
 class ProjectSummaryService:

@@ -218,11 +218,14 @@ async def get_summary(key: str, db: Session = Depends(get_db)):
     dependencies=[Depends(require_ai_enabled)],
 )
 async def regenerate_summary(key: str, db: Session = Depends(get_db)):
-    """Синхронная регенерация AI-саммари через LLM. Публикует SSE-событие после успеха."""
+    """Регенерация AI-саммари через LLM в отдельном потоке. Публикует SSE-событие после успеха."""
+    import asyncio
     import httpx
     from app.services.llm.openrouter import LLMResponseError
+    from app.services.project_summary_service import regenerate_in_thread
     try:
-        row = await ProjectSummaryService(db).regenerate(key)
+        await asyncio.to_thread(regenerate_in_thread, key)
+        row = await ProjectSummaryService(db).get_summary(key)
     except LLMResponseError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except ConfigurationError as e:
