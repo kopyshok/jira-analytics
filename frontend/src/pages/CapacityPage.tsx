@@ -12,6 +12,7 @@ import { useAbsences, useAddAbsence, useAddAbsencesBatch, useRemoveAbsence } fro
 import { useAbsenceReasons } from '../hooks/useAbsenceReasons';
 import AbsenceHeatmap from '../components/capacity/AbsenceHeatmap';
 import RolesTab from '../components/capacity/RolesTab';
+import WorkDesksTab from '../components/capacity/WorkDesksTab';
 import EmployeeDrawer from '../components/capacity/EmployeeDrawer';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -739,6 +740,7 @@ export default function CapacityPage() {
         { key: 'team', label: 'Команда', children: <TeamTab year={year} quarter={quarter} /> },
         { key: 'absences', label: 'Отсутствия', children: <AbsencesTab year={year} quarter={quarter} /> },
         { key: 'roles', label: 'Роли', children: <RolesTab /> },
+        { key: 'work-desks', label: 'Рабочие столы', children: <WorkDesksTab /> },
       ]} />
     </Space>
   );
