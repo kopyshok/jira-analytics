@@ -105,6 +105,8 @@ export interface CalendarDay {
 export interface ProductionCalendarData {
   quarter_workdays: number;
   month_workdays: number;
+  quarter_work_hours: number;
+  month_work_hours: number;
   days: CalendarDay[];
 }
 

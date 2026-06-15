@@ -44,6 +44,18 @@ export default function DeskPage() {
   const { employee, teams, enabled_widgets, period } = data;
   const widgets = enabled_widgets.filter((k) => WIDGET_REGISTRY[k]);
 
+  // Key-aware раскладка: «прочие» виджеты в обычной сетке, затем строка
+  // «Переработка + Производственный календарь», затем «Отсутствия команды» во всю ширину внизу.
+  const hasAbsences = widgets.includes('team_absences');
+  // Пара «Переработка + Производственный календарь» рядом — только когда включены оба.
+  const pairBothEnabled =
+    widgets.includes('hours_balance') && widgets.includes('production_calendar');
+  const pairKeys = pairBothEnabled ? ['hours_balance', 'production_calendar'] : [];
+  // Прочие виджеты сохраняют порядок enabled_widgets; пара (если оба) и отсутствия вынесены.
+  const others = widgets.filter(
+    (k) => k !== 'team_absences' && !pairKeys.includes(k),
+  );
+
   return (
     <div
       style={{
@@ -73,23 +85,53 @@ export default function DeskPage() {
       {widgets.length === 0 ? (
         <Typography.Text type="secondary">Виджеты не настроены.</Typography.Text>
       ) : (
-        <Row gutter={[16, 16]}>
-          {widgets.map((key) => {
-            const def = WIDGET_REGISTRY[key];
-            const W = def.component;
-            return (
-              <Col
-                key={key}
-                xs={24}
-                sm={24}
-                lg={def.wide ? 24 : 12}
-                xl={def.wide ? 12 : 8}
-              >
-                <W token={token} title={def.title} />
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          {others.length > 0 && (
+            <Row gutter={[16, 16]}>
+              {others.map((key) => {
+                const def = WIDGET_REGISTRY[key];
+                const W = def.component;
+                return (
+                  <Col
+                    key={key}
+                    xs={24}
+                    sm={24}
+                    lg={def.wide ? 24 : 12}
+                    xl={def.wide ? 12 : 8}
+                  >
+                    <W token={token} title={def.title} />
+                  </Col>
+                );
+              })}
+            </Row>
+          )}
+
+          {pairKeys.length > 0 && (
+            <Row gutter={[16, 16]}>
+              {pairKeys.map((key) => {
+                const def = WIDGET_REGISTRY[key];
+                const W = def.component;
+                return (
+                  <Col key={key} xs={24} lg={12}>
+                    <W token={token} title={def.title} />
+                  </Col>
+                );
+              })}
+            </Row>
+          )}
+
+          {hasAbsences && (
+            <Row gutter={[16, 16]}>
+              <Col xs={24} span={24}>
+                {(() => {
+                  const def = WIDGET_REGISTRY['team_absences'];
+                  const W = def.component;
+                  return <W token={token} title={def.title} />;
+                })()}
               </Col>
-            );
-          })}
-        </Row>
+            </Row>
+          )}
+        </Space>
       )}
     </div>
   );

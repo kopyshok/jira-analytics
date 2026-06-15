@@ -109,14 +109,26 @@ export default function ProductionCalendarWidget({ token, title }: { token: stri
   return (
     <WidgetShell title={title} isLoading={isLoading} isError={isError} isEmpty={days.length === 0}>
       <div style={{ marginBottom: 12, fontSize: 13, color: DARK_THEME.textSecondary }}>
-        Рабочих дней в квартале:{' '}
-        <Typography.Text strong style={{ color: CHART_COLORS.cyan }}>
-          {data?.quarter_workdays ?? 0}
-        </Typography.Text>
-        {' · '}в этом месяце:{' '}
-        <Typography.Text strong style={{ color: CHART_COLORS.cyan }}>
-          {data?.month_workdays ?? 0}
-        </Typography.Text>
+        <div>
+          Рабочих дней в квартале:{' '}
+          <Typography.Text strong style={{ color: CHART_COLORS.cyan }}>
+            {data?.quarter_workdays ?? 0}
+          </Typography.Text>
+          {' · '}в этом месяце:{' '}
+          <Typography.Text strong style={{ color: CHART_COLORS.cyan }}>
+            {data?.month_workdays ?? 0}
+          </Typography.Text>
+        </div>
+        <div style={{ marginTop: 4 }}>
+          Рабочих часов в квартале:{' '}
+          <Typography.Text strong style={{ color: CHART_COLORS.cyan }}>
+            {data?.quarter_work_hours ?? 0} ч
+          </Typography.Text>
+          {' · '}в этом месяце:{' '}
+          <Typography.Text strong style={{ color: CHART_COLORS.cyan }}>
+            {data?.month_work_hours ?? 0} ч
+          </Typography.Text>
+        </div>
       </div>
 
       <div style={{
