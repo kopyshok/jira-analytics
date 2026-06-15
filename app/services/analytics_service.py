@@ -260,23 +260,99 @@ class AnalyticsService:
         ]
         overdue = len(overdue_issues)
 
-        # Дети эпиков (для агрегаций)
+        # Полное дерево под инициативами (RFA). Команда ведёт работы в рамках
+        # своих эпиков (PRJ/ITL), а часы лежат на задачах/подзадачах на любой
+        # глубине. Спускаемся вниз обходом в ширину и оставляем только поддеревья
+        # эпиков выбранной команды (см. spec 2026-06-15-projects-widget-cascade).
         issue_id_set = set(issue_ids)
-        children = (
-            self.db.query(Issue.id, Issue.parent_id, Issue.status_category)
-            .filter(Issue.parent_id.in_(issue_id_set))
-            .all()
-        )
-        child_to_parent: dict[str, str] = {r[0]: r[1] for r in children}
+        team_set: set[str] | None = set(teams) if teams else None
+
+        def _belongs_to_selected(team_val: str | None, parts_json: str | None) -> bool:
+            """Принадлежит ли эпик выбранной команде (основная или участвующая)."""
+            if team_set is None:
+                return True
+            if team_val and team_val in team_set:
+                return True
+            if parts_json:
+                try:
+                    decoded = json.loads(parts_json)
+                    if isinstance(decoded, list):
+                        for p in decoded:
+                            if isinstance(p, str) and p in team_set:
+                                return True
+                except ValueError:
+                    pass
+            return False
+
+        # BFS вниз от инициатив, собираем атрибуты потомков
+        node_parent: dict[str, str] = {}
+        node_team: dict[str, tuple[str | None, str | None]] = {}
+        node_status: dict[str, str | None] = {}
+        seen_nodes: set[str] = set(issue_id_set)
+        frontier: set[str] = set(issue_id_set)
+        while frontier:
+            frontier_list = list(frontier)
+            next_frontier: set[str] = set()
+            for offset in range(0, len(frontier_list), 900):
+                chunk = frontier_list[offset:offset + 900]
+                rows = (
+                    self.db.query(
+                        Issue.id, Issue.parent_id, Issue.team,
+                        Issue.participating_teams, Issue.status_category,
+                    )
+                    .filter(Issue.parent_id.in_(chunk))
+                    .all()
+                )
+                for cid, pid, t, pt, st in rows:
+                    if cid in seen_nodes:
+                        continue
+                    node_parent[cid] = pid
+                    node_team[cid] = (t, pt)
+                    node_status[cid] = st
+                    seen_nodes.add(cid)
+                    next_frontier.add(cid)
+            frontier = next_frontier
+
+        # Привязка потомка к его инициативе с учётом владельца-эпика.
+        # Потомок входит в область, если ближайший родитель-контейнер с
+        # проставленной командой (включая сам узел) принадлежит выбранной команде.
+        descendant_to_rfa: dict[str, str] = {}
+        for nid in node_parent:
+            chain: list[str] = []
+            cur = nid
+            root: str | None = None
+            while cur in node_parent:
+                chain.append(cur)
+                parent = node_parent[cur]
+                if parent in issue_id_set:
+                    root = parent
+                    break
+                cur = parent
+            if root is None:
+                continue
+            if team_set is None:
+                descendant_to_rfa[nid] = root
+                continue
+            for cid in chain:
+                t, pt = node_team.get(cid, (None, None))
+                has_team = bool(t) or (pt not in (None, "", "[]"))
+                if has_team:
+                    if _belongs_to_selected(t, pt):
+                        descendant_to_rfa[nid] = root
+                    break
+
+        # Счётчик «сделано/всего» по узлам области
         subtasks_done_by_parent: dict[str, int] = {}
         subtasks_total_by_parent: dict[str, int] = {}
-        for child_id, parent_id, child_status in children:
-            subtasks_total_by_parent[parent_id] = subtasks_total_by_parent.get(parent_id, 0) + 1
-            if child_status == "done":
-                subtasks_done_by_parent[parent_id] = subtasks_done_by_parent.get(parent_id, 0) + 1
+        for nid, rfa_id in descendant_to_rfa.items():
+            subtasks_total_by_parent[rfa_id] = subtasks_total_by_parent.get(rfa_id, 0) + 1
+            if node_status.get(nid) == "done":
+                subtasks_done_by_parent[rfa_id] = subtasks_done_by_parent.get(rfa_id, 0) + 1
 
-        # Все ID для ворклог-агрегаций
-        all_wl_ids = issue_id_set | set(child_to_parent.keys())
+        # Часы на самой RFA не учитываем (логировать на RFA запрещено).
+        # Все ID для ворклог-агрегаций — только узлы области.
+        child_to_parent = descendant_to_rfa
+        all_wl_ids = set(descendant_to_rfa.keys())
 
         # Множество ID сотрудников команды — для split team vs alien (Task M11).
         # QA — общий ресурс компании, считается командным для всех команд.
