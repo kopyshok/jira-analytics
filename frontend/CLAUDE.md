@@ -25,6 +25,7 @@ Routable pages live in `pages/` and are lazy-loaded via [`lazyPages.tsx`](src/pa
 | `/planning` | `PlanningPage` | Сценарии |
 | `/resource-planning` (+ `/compare`) | `ResourcePlanningPage` / `ScenarioComparatorPage` | |
 | `/settings` | `SettingsPage` | admin-only |
+| `/desk/:token` | `DeskPage` | публичный рабочий стол аналитика — без авторизации и вне shell (отдельный top-level route) |
 | `/login` | `LoginPage` | |
 
 Source-of-truth для текущих роутов — [`routes.tsx`](src/routes.tsx); если что-то расходится с таблицей выше — фикси таблицу.

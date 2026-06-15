@@ -203,19 +203,29 @@ def _adapter_my_conflicts(db: Session, desk: WorkDesk, year: int, quarter: int) 
 
 
 def _employee_balance(db: Session, desk: WorkDesk):
-    """EmployeeDetailResult с 1 января по сегодня для сотрудника стола."""
+    """EmployeeDetailResult с 1 января по сегодня для сотрудника стола.
+
+    None, если сотрудника нет (инвариант FK не должен это допускать, но
+    адаптеры баланса возвращают пустой результат вместо 500 — симметрично
+    weekly_load).
+    """
     from app.services.hours_balance_service import HoursBalanceService
 
     today = date.today()
     from_ = date(today.year, 1, 1)
-    return HoursBalanceService(db).compute_employee(
-        desk.employee_id, from_, today, teams_filter=_desk_teams(desk) or None
-    )
+    try:
+        return HoursBalanceService(db).compute_employee(
+            desk.employee_id, from_, today, teams_filter=_desk_teams(desk) or None
+        )
+    except ValueError:
+        return None
 
 
 def _adapter_hours_balance(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
     """Накопительный баланс часов сотрудника с начала года."""
     result = _employee_balance(db, desk)
+    if result is None:
+        return {"balance_hours": 0.0, "days": []}
     days = [
         {
             "date": d.day.isoformat(),
@@ -230,6 +240,8 @@ def _adapter_hours_balance(db: Session, desk: WorkDesk, year: int, quarter: int)
 def _adapter_unlogged_days(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
     """Рабочие дни без списанных часов (kind == 'skip')."""
     result = _employee_balance(db, desk)
+    if result is None:
+        return {"days": []}
     days = [
         {
             "date": d.day.isoformat(),
