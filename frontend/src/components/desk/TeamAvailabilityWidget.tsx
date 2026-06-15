@@ -1,7 +1,7 @@
-import { List, Tag, Typography } from 'antd';
+import { Collapse, Table, Typography } from 'antd';
 import WidgetShell from './WidgetShell';
 import { useDeskWidget } from './useDeskWidget';
-import { fmtDate, fmtRange } from './format';
+import { projectColumns } from './projectColumns';
 import type { TeamAvailabilityData } from '../../types/desk';
 
 export default function TeamAvailabilityWidget({ token, title }: { token: string; title: string }) {
@@ -9,7 +9,26 @@ export default function TeamAvailabilityWidget({ token, title }: { token: string
     token,
     'team_availability',
   );
-  const members = data?.members ?? [];
+  const members = (data?.members ?? []).filter((m) => m.projects.length > 0);
+
+  const items = members.map((m) => ({
+    key: m.id,
+    label: (
+      <span>
+        {m.display_name}{' '}
+        <Typography.Text type="secondary">({m.projects.length})</Typography.Text>
+      </span>
+    ),
+    children: (
+      <Table
+        rowKey={(r) => `${m.id}-${r.key ?? ''}-${r.start_date ?? ''}`}
+        size="small"
+        columns={projectColumns()}
+        dataSource={m.projects}
+        pagination={false}
+      />
+    ),
+  }));
 
   return (
     <WidgetShell
@@ -17,30 +36,9 @@ export default function TeamAvailabilityWidget({ token, title }: { token: string
       isLoading={isLoading}
       isError={isError}
       isEmpty={members.length === 0}
-      emptyText="Нет занятости на этой неделе"
+      emptyText="Нет занятости команды"
     >
-      {data?.week_start && (
-        <Typography.Text type="secondary">
-          Неделя с {fmtDate(data.week_start)}
-        </Typography.Text>
-      )}
-      <List
-        size="small"
-        dataSource={members}
-        renderItem={(m) => (
-          <List.Item>
-            <List.Item.Meta
-              title={m.name}
-              description={m.busy.map((b, i) => (
-                <div key={i}>
-                  <Tag>{fmtRange(b.start, b.end)}</Tag>
-                  {b.label ?? ''}
-                </div>
-              ))}
-            />
-          </List.Item>
-        )}
-      />
+      <Collapse size="small" items={items} defaultActiveKey={members.slice(0, 1).map((m) => m.id)} />
     </WidgetShell>
   );
 }

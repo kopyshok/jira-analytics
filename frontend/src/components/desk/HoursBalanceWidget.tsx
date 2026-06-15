@@ -12,11 +12,12 @@ export default function HoursBalanceWidget({ token, title }: { token: string; ti
   const days = data?.days ?? [];
 
   // Накопительная дельта по дням для спарклайна.
-  let acc = 0;
-  const series = days.map((d) => {
-    acc += d.delta;
-    return { date: d.date, value: Math.round(acc * 10) / 10 };
-  });
+  const series: Array<{ date: string; value: number }> = [];
+  days.reduce((acc, d) => {
+    const next = acc + d.delta;
+    series.push({ date: d.date, value: Math.round(next * 10) / 10 });
+    return next;
+  }, 0);
 
   const positive = balance >= 0;
   const color = positive ? CHART_COLORS.green : CHART_COLORS.red;

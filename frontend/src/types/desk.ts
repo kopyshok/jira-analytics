@@ -19,38 +19,34 @@ export interface DeskMeta {
   period: DeskPeriod;
 }
 
-export interface MyTask {
+/** Проект/назначение сотрудника (общая форма для my_tasks и team_availability). */
+export interface DeskProject {
   key: string | null;
   title: string | null;
-  phase: string | null;
+  jira_url: string | null;
+  status: string | null;
   start_date: string | null;
   end_date: string | null;
-  hours: number;
-  jira_url: string | null;
-}
-export interface MyTasksData {
-  tasks: MyTask[];
-}
-
-export interface MonthLoad {
-  year: number;
-  month: number;
   norm_hours: number;
   fact_hours: number;
-}
-export interface WeeklyLoadData {
-  months: MonthLoad[];
+  pct: number;
 }
 
-export interface Conflict {
-  type: string;
-  window_start: string | null;
-  window_end: string | null;
-  metric_value: number | null;
-  message: string | null;
+export interface MyTasksData {
+  projects: DeskProject[];
 }
-export interface MyConflictsData {
-  conflicts: Conflict[];
+
+export interface TimelineBar {
+  key: string | null;
+  title: string | null;
+  start_date: string;
+  end_date: string;
+  status: string | null;
+}
+export interface MyTimelineData {
+  quarter_start: string;
+  quarter_end: string;
+  bars: TimelineBar[];
 }
 
 export interface BalanceDay {
@@ -63,44 +59,41 @@ export interface HoursBalanceData {
   days: BalanceDay[];
 }
 
-export interface UnloggedDay {
-  date: string;
-  expected_hours: number;
-}
-export interface UnloggedDaysData {
-  days: UnloggedDay[];
-}
-
-export interface CategorySlice {
+export interface WorkTypeSlice {
   label: string;
-  hours: number;
+  plan_hours: number;
+  fact_hours: number;
+  pct: number;
 }
 export interface CategoryBreakdownData {
-  categories: CategorySlice[];
+  work_types: WorkTypeSlice[];
 }
 
-export interface TeamAbsence {
+export interface DeskAbsenceEmployee {
+  id: string;
+  display_name: string;
+}
+export interface DeskAbsence {
+  employee_id: string;
   employee_name: string;
   start_date: string;
   end_date: string;
   reason_label: string;
-  color: string | null;
+  reason_color: string | null;
 }
 export interface TeamAbsencesData {
-  absences: TeamAbsence[];
+  employees: DeskAbsenceEmployee[];
+  absences: DeskAbsence[];
+  year: number;
+  quarter: number;
 }
 
-export interface BusyBlock {
-  label: string | null;
-  start: string | null;
-  end: string | null;
-}
 export interface AvailabilityMember {
-  name: string;
-  busy: BusyBlock[];
+  id: string;
+  display_name: string;
+  projects: DeskProject[];
 }
 export interface TeamAvailabilityData {
-  week_start: string;
   members: AvailabilityMember[];
 }
 
@@ -111,37 +104,17 @@ export interface CalendarDay {
 }
 export interface ProductionCalendarData {
   quarter_workdays: number;
-  remaining_workdays: number;
+  month_workdays: number;
   days: CalendarDay[];
 }
 
-export interface DeadlineItem {
-  key: string;
-  title: string;
-  due_date: string | null;
-  status: string | null;
-}
-export interface QuarterDeadlinesData {
-  items: DeadlineItem[];
-}
-
-export interface ExternalHelpTeam {
-  team: string;
-  hours: number;
-}
-export interface ExternalHelpData {
-  own_hours: number;
-  alien_hours: number;
-  by_team: ExternalHelpTeam[];
-}
-
-export interface RecentChange {
+export interface AwaitingItem {
   key: string | null;
   title: string | null;
-  change: string | null;
-  start_date: string | null;
-  end_date: string | null;
+  status: string | null;
+  last_comment_at: string | null;
+  last_comment_author: string | null;
 }
-export interface RecentChangesData {
-  changes: RecentChange[];
+export interface AwaitingReactionData {
+  items: AwaitingItem[];
 }
