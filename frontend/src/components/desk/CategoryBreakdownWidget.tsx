@@ -1,47 +1,42 @@
 import WidgetShell from './WidgetShell';
 import { useDeskWidget } from './useDeskWidget';
-import { CHART_COLORS, DARK_THEME } from '../../utils/constants';
 import type { CategoryBreakdownData, WorkTypeSlice } from '../../types/desk';
 
-/** Цвет по проценту: >110 перегруз (красный), 70–110 норма, <70 недогруз (приглушённый). */
-function barColor(wt: WorkTypeSlice): string {
-  const overflowZeroPlan = wt.plan_hours === 0 && wt.fact_hours > 0;
-  if (overflowZeroPlan || wt.pct > 110) return CHART_COLORS.red;
-  if (wt.pct >= 70) return CHART_COLORS.green;
-  return DARK_THEME.textMuted;
+/** Класс по нагрузке: >110 перегруз, 70–110 норма, <70 недогруз. */
+function loadClass(wt: WorkTypeSlice): { chip: string; fill: string } {
+  const overZeroPlan = wt.plan_hours === 0 && wt.fact_hours > 0;
+  if (overZeroPlan || wt.pct > 110) return { chip: 'desk-chip-over', fill: 'var(--red)' };
+  if (wt.pct >= 70) return { chip: 'desk-chip-ok', fill: 'var(--green)' };
+  return { chip: 'desk-chip-low', fill: 'var(--accent-dim)' };
 }
 
-function WorkTypeRow({ wt }: { wt: WorkTypeSlice }) {
-  const overflowZeroPlan = wt.plan_hours === 0 && wt.fact_hours > 0;
-  const color = barColor(wt);
-  const fillW = wt.plan_hours > 0
-    ? Math.min(100, (wt.fact_hours / wt.plan_hours) * 100)
-    : (overflowZeroPlan ? 100 : 0);
+function BulletRow({ wt }: { wt: WorkTypeSlice }) {
+  const overZeroPlan = wt.plan_hours === 0 && wt.fact_hours > 0;
+  const { chip, fill } = loadClass(wt);
+  // Шкала: максимум = max(план, факт), чтобы перегруз был виден за планом.
+  const scaleMax = Math.max(wt.plan_hours, wt.fact_hours, 1);
+  const fillW = Math.min(100, (wt.fact_hours / scaleMax) * 100);
+  const tickLeft = overZeroPlan ? 100 : Math.min(100, (wt.plan_hours / scaleMax) * 100);
+
   return (
-    <div style={{ padding: '4px 0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
-        <span style={{
-          fontSize: 12, color: DARK_THEME.textPrimary,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {wt.label}
-        </span>
-        <span style={{ fontSize: 12, color: DARK_THEME.textMuted, whiteSpace: 'nowrap' }}>
-          {Math.round(wt.fact_hours)}ч / {Math.round(wt.plan_hours)}ч
+    <div className="desk-bullet-item">
+      <div className="desk-bullet-header">
+        <span className="desk-bullet-label">{wt.label}</span>
+        <span className="desk-bullet-nums">
+          {Math.round(wt.fact_hours)} ч / {Math.round(wt.plan_hours)} ч
+          <span className={`desk-pct-chip ${chip}`}>{Math.round(wt.pct)}%</span>
         </span>
       </div>
-      <div style={{ height: 8, background: DARK_THEME.darkRows, borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${fillW}%`, background: color, borderRadius: 4 }} />
+      <div className="desk-bullet-track">
+        <div className="desk-bullet-fill" style={{ width: `${fillW}%`, background: fill }} />
+        <div className="desk-bullet-tick" style={{ left: `${tickLeft}%` }} />
       </div>
     </div>
   );
 }
 
 export default function CategoryBreakdownWidget({ token, title }: { token: string; title: string }) {
-  const { data, isLoading, isError } = useDeskWidget<CategoryBreakdownData>(
-    token,
-    'category_breakdown',
-  );
+  const { data, isLoading, isError } = useDeskWidget<CategoryBreakdownData>(token, 'category_breakdown');
   const workTypes = data?.work_types ?? [];
 
   return (
@@ -51,9 +46,9 @@ export default function CategoryBreakdownWidget({ token, title }: { token: strin
       isError={isError}
       isEmpty={workTypes.length === 0}
     >
-      <div>
+      <div className="desk-bullet-list">
         {workTypes.map((wt) => (
-          <WorkTypeRow key={wt.label} wt={wt} />
+          <BulletRow key={wt.label} wt={wt} />
         ))}
       </div>
     </WidgetShell>
