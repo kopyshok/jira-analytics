@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Рабочий стол аналитика — Макет v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — light Porcelain
+   ═══════════════════════════════════════════════════ */
+:root,
+[data-theme="light"] {
+  --page-bg:        oklch(0.975 0.007 220);
+  --bg-raised:      oklch(0.968 0.009 218);
+  --bg-sunken:      oklch(0.951 0.011 222);
+  --bg-muted:       oklch(0.940 0.014 224);
+  --surface:        oklch(0.992 0.004 215);
+  --surface-2:      oklch(0.984 0.006 218);
+
+  --ink:            oklch(0.22 0.024 242);
+  --ink-2:          oklch(0.38 0.020 237);
+  --ink-3:          oklch(0.56 0.014 232);
+  --ink-4:          oklch(0.70 0.009 227);
+
+  --accent:         oklch(0.72 0.13 195);
+  --accent-dim:     oklch(0.84 0.06 195);
+  --accent-bg:      oklch(0.945 0.028 195);
+  --accent-glow:    oklch(0.72 0.13 195 / 0.18);
+
+  --green:          oklch(0.68 0.13 152);
+  --green-bg:       oklch(0.948 0.042 152);
+  --green-ink:      oklch(0.44 0.13 150);
+
+  --amber:          oklch(0.76 0.13 78);
+  --amber-bg:       oklch(0.958 0.042 78);
+  --amber-ink:      oklch(0.50 0.14 74);
+
+  --red:            oklch(0.60 0.19 24);
+  --red-bg:         oklch(0.952 0.050 24);
+  --red-ink:        oklch(0.46 0.17 22);
+
+  --violet:         oklch(0.64 0.14 300);
+  --violet-bg:      oklch(0.948 0.040 300);
+
+  --hair:           oklch(0.900 0.011 225);
+  --hair-2:         oklch(0.872 0.014 222);
+  --hair-3:         oklch(0.848 0.016 220);
+
+  --neu-light:      oklch(1.00 0.003 210);
+  --neu-dark:       oklch(0.882 0.018 226);
+
+  /* Header aurora wash */
+  --aurora-wash:    radial-gradient(
+    ellipse 80% 120% at 50% -30%,
+    oklch(0.88 0.045 195 / 0.22) 0%,
+    transparent 70%
+  );
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+}
+
+/* ═══════════════════════════════════════════════════
+   DARK AURORA TOKENS
+   ═══════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --page-bg:        oklch(0.22 0.030 250);
+  --bg-raised:      oklch(0.25 0.032 250);
+  --bg-sunken:      oklch(0.195 0.026 252);
+  --bg-muted:       oklch(0.185 0.024 254);
+  --surface:        oklch(0.27 0.035 250);
+  --surface-2:      oklch(0.295 0.033 248);
+
+  --ink:            oklch(0.92 0.012 220);
+  --ink-2:          oklch(0.80 0.016 228);
+  --ink-3:          oklch(0.62 0.018 232);
+  --ink-4:          oklch(0.46 0.016 234);
+
+  --accent:         oklch(0.72 0.13 195);
+  --accent-dim:     oklch(0.58 0.08 195);
+  --accent-bg:      oklch(0.30 0.045 195);
+  --accent-glow:    oklch(0.72 0.13 195 / 0.25);
+
+  --green:          oklch(0.68 0.13 152);
+  --green-bg:       oklch(0.25 0.040 152);
+  --green-ink:      oklch(0.74 0.12 150);
+
+  --amber:          oklch(0.76 0.13 78);
+  --amber-bg:       oklch(0.26 0.040 78);
+  --amber-ink:      oklch(0.80 0.12 76);
+
+  --red:            oklch(0.62 0.18 24);
+  --red-bg:         oklch(0.25 0.048 24);
+  --red-ink:        oklch(0.70 0.16 24);
+
+  --violet:         oklch(0.68 0.14 300);
+  --violet-bg:      oklch(0.26 0.040 300);
+
+  --hair:           oklch(0.34 0.028 248);
+  --hair-2:         oklch(0.38 0.030 246);
+  --hair-3:         oklch(0.42 0.032 244);
+
+  --neu-light:      oklch(0.31 0.028 245);
+  --neu-dark:       oklch(0.17 0.022 254);
+
+  --aurora-wash:    radial-gradient(
+    ellipse 90% 140% at 50% -20%,
+    oklch(0.55 0.10 200 / 0.28) 0%,
+    oklch(0.40 0.08 240 / 0.12) 40%,
+    transparent 70%
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   BASE RESET
+   ═══════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--page-bg);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.2s, color 0.2s;
+}
+
+body {
+  background: var(--page-bg);
+  padding: 0 20px 56px;
+  transition: background 0.2s;
+}
+
+.layout { max-width: 1280px; margin: 0 auto; }
+
+/* ═══════════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════════ */
+.mono { font-variant-numeric: tabular-nums; }
+.label-micro {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.muted { color: var(--ink-3); }
+
+/* ═══════════════════════════════════════════════════
+   THEME TOGGLE
+   ═══════════════════════════════════════════════════ */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--hair);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  user-select: none;
+}
+.theme-toggle:hover { border-color: var(--hair-2); }
+.theme-toggle-knob {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: 1.5px solid var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  transition: background 0.2s;
+}
+.theme-toggle-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+}
+
+/* ═══════════════════════════════════════════════════
+   HEADER BAND
+   ═══════════════════════════════════════════════════ */
+.header-band-outer {
+  position: relative;
+  overflow: hidden;
+  margin: 0 -20px;
+  padding: 0 20px;
+}
+.header-band-outer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--aurora-wash);
+  pointer-events: none;
+  z-index: 0;
+}
+.header-band {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 0 24px;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.avatar {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: oklch(0.99 0.003 215);
+  font-size: 16px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow:
+    0 0 0 3px var(--accent-bg),
+    0 4px 14px oklch(0.72 0.13 195 / 0.30);
+}
+.user-info .name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.user-info .team-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--hair);
+  border-radius: 99px;
+  padding: 2px 9px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.date-block { text-align: right; }
+.date-block .date-main {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.date-block .quarter {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+/* Hero metrics — bigger, stronger */
+.hero-metrics {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.hero-metric {
+  text-align: center;
+  padding: 8px 20px;
+  position: relative;
+}
+.hero-metric + .hero-metric::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 1px;
+  background: var(--hair);
+}
+.hero-metric .val {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.hero-metric .val.positive { color: var(--green); }
+.hero-metric .val.negative { color: var(--red); }
+.hero-metric .val.neutral  { color: var(--ink); }
+.hero-metric .unit-label {
+  margin-top: 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+
+/* Live pulse dot */
+.updated-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--ink-4);
+  margin-top: 6px;
+  justify-content: center;
+}
+.pulse-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 var(--accent-glow);
+  animation: pulseRing 2.2s ease-out infinite;
+}
+@keyframes pulseRing {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+  60%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot { animation: none; }
+}
+
+.header-divider {
+  height: 1px;
+  background: var(--hair);
+  margin-bottom: 36px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════════
+   GRID ROWS
+   ═══════════════════════════════════════════════════ */
+.row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  align-items: flex-start;
+}
+
+/* ═══════════════════════════════════════════════════
+   ZONE CARD
+   ═══════════════════════════════════════════════════ */
+.zone {
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hair);
+  padding: 20px 22px 24px;
+  box-shadow:
+    2px 2px 5px var(--neu-dark),
+    -2px -2px 5px var(--neu-light);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.zone-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 18px;
+}
+.zone-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   ROW 1 SPLITS
+   ═══════════════════════════════════════════════════ */
+.zone-projects { flex: 0 0 59%; min-width: 0; }
+.zone-timeline { flex: 0 0 calc(41% - 20px); min-width: 0; }
+
+/* ═══════════════════════════════════════════════════
+   PROJECTS LIST — centerpiece
+   ═══════════════════════════════════════════════════ */
+.project-list { display: flex; flex-direction: column; }
+
+.project-row {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 10px;
+  border-radius: var(--radius);
+  border-bottom: 1px solid var(--hair);
+  transition: background 0.12s;
+}
+.project-row:last-child { border-bottom: none; }
+.project-row:first-child { padding-top: 2px; }
+.project-row:hover { background: var(--bg-raised); }
+
+/* Active project highlight */
+.project-row.active-now {
+  background: var(--accent-bg);
+  border-bottom-color: oklch(0.72 0.13 195 / 0.15);
+}
+[data-theme="dark"] .project-row.active-now {
+  background: oklch(0.28 0.048 200);
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+.dot-active   { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.dot-review   { background: var(--amber);  box-shadow: 0 0 0 3px var(--amber-bg); }
+.dot-done     { background: var(--green);  box-shadow: 0 0 0 3px var(--green-bg); }
+.dot-returned { background: var(--red);    box-shadow: 0 0 0 3px var(--red-bg); }
+
+.project-meta { min-width: 0; }
+.project-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+.project-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.jira-key {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+.project-dates {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.now-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: oklch(0.72 0.13 195 / 0.12);
+  border: 1px solid oklch(0.72 0.13 195 / 0.30);
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+
+.project-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.badge-active   { background: var(--accent-bg); color: var(--accent); }
+.badge-review   { background: var(--amber-bg);  color: var(--amber-ink); }
+.badge-done     { background: var(--green-bg);  color: var(--green-ink); }
+.badge-returned { background: var(--red-bg);    color: var(--red-ink); }
+
+.project-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  min-width: 130px;
+}
+.hours-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.hours-label .pct {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  margin-left: 5px;
+}
+.pct-ok   { background: var(--green-bg); color: var(--green-ink); }
+.pct-over { background: var(--red-bg);   color: var(--red-ink); }
+.pct-low  { background: var(--bg-sunken); color: var(--ink-4); }
+
+.progress-bar {
+  width: 130px;
+  height: 6px;
+  background: var(--bg-sunken);
+  border-radius: 99px;
+  position: relative;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  position: absolute;
+  top: 0; left: 0;
+  max-width: 100%;
+  transition: width 0.35s ease-out;
+}
+.fill-ok   { background: var(--green); }
+.fill-low  { background: var(--accent-dim); }
+.fill-over { background: var(--red); width: 100% !important; }
+
+/* ═══════════════════════════════════════════════════
+   TIMELINE (MINI GANTT)
+   ═══════════════════════════════════════════════════ */
+.timeline-wrap { position: relative; }
+
+.tl-header {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  margin-bottom: 10px;
+}
+.tl-months-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.tl-month-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  text-align: center;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.tl-rows { display: flex; flex-direction: column; gap: 9px; margin-top: 10px; }
+.tl-row {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: center;
+}
+.tl-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-2);
+  padding-right: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-track {
+  position: relative;
+  height: 28px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  overflow: visible;
+}
+
+/* Weekend shading bands */
+.tl-weekend-shade {
+  position: absolute;
+  top: 0; bottom: 0;
+  background: oklch(0.88 0.010 225 / 0.40);
+  pointer-events: none;
+  z-index: 0;
+}
+[data-theme="dark"] .tl-weekend-shade {
+  background: oklch(0.18 0.020 250 / 0.50);
+}
+
+.tl-gridline {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--hair);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.tl-bar {
+  position: absolute;
+  top: 5px;
+  height: 18px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: oklch(0.98 0.003 215);
+  white-space: nowrap;
+  overflow: hidden;
+  z-index: 2;
+  letter-spacing: 0.02em;
+}
+
+.bar-end-label {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%) translateX(calc(100% + 5px));
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--ink-4);
+  white-space: nowrap;
+  display: none;
+}
+
+/* Current week marker */
+.tl-now-line {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--accent);
+  z-index: 10;
+  pointer-events: none;
+  box-shadow: 0 0 8px 2px var(--accent-glow);
+}
+.tl-now-line::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2.5px var(--surface);
+}
+
+.tl-legend {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+.tl-legend-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 5px 2px var(--accent-glow);
+}
+
+/* Phase color legend */
+.tl-color-legend {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.tl-color-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  color: var(--ink-4);
+}
+.tl-color-swatch {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Bar colors */
+.bar-c1 { background: oklch(0.58 0.13 222); }
+.bar-c2 { background: oklch(0.66 0.12 168); }
+.bar-c3 { background: oklch(0.70 0.13 78); }
+.bar-c4 { background: oklch(0.62 0.14 302); }
+.bar-c5 { background: oklch(0.60 0.18 24); }
+
+/* ═══════════════════════════════════════════════════
+   ROW 2 SPLITS
+   ═══════════════════════════════════════════════════ */
+.zone-overwork { flex: 1 1 48%; }
+.zone-calendar { flex: 1 1 52%; }
+
+/* ═══════════════════════════════════════════════════
+   OVERWORK / ПЕРЕРАБОТКА
+   ═══════════════════════════════════════════════════ */
+.overwork-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.overwork-big {
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.overwork-big.positive { color: var(--green); }
+.overwork-big.negative { color: var(--red); }
+
+.overwork-desc {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-bottom: 12px;
+}
+
+.sparkline-svg-wrap {
+  width: 100%;
+  height: 56px;
+  margin: 2px 0 14px;
+}
+
+.overwork-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 12px 14px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius);
+  border: 1px solid var(--hair);
+  margin-bottom: 16px;
+}
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--hair);
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-row .label { color: var(--ink-2); }
+.detail-row .val-green { color: var(--green); font-weight: 700; }
+.detail-row .val-red   { color: var(--red);   font-weight: 700; }
+
+.recent-days .rd-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 9px;
+}
+.rd-list { display: flex; flex-direction: column; gap: 1px; }
+.rd-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.rd-item:last-child { border-bottom: none; }
+.rd-date { color: var(--ink-3); }
+.rd-plus  { color: var(--green); font-weight: 700; }
+.rd-minus { color: var(--red);   font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════
+   PRODUCTION CALENDAR
+   ═══════════════════════════════════════════════════ */
+.cal-months { display: flex; gap: 12px; flex-wrap: wrap; }
+.cal-month { flex: 1; min-width: 120px; }
+.cal-month-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 10px;
+  text-align: center;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.cal-dow {
+  text-align: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--ink-4);
+  letter-spacing: 0.05em;
+  padding-bottom: 4px;
+}
+.cal-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--ink-2);
+  border-radius: 5px;
+  position: relative;
+}
+.cal-day.empty { }
+.cal-day.weekend {
+  color: var(--ink-4);
+  background: var(--bg-muted);
+}
+.cal-day.holiday {
+  background: var(--red-bg);
+  color: var(--red-ink);
+  font-weight: 700;
+}
+.cal-day.holiday::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%; transform: translateX(-50%);
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: var(--red);
+  opacity: 0.6;
+}
+.cal-day.today {
+  background: var(--accent);
+  color: oklch(0.99 0.003 215);
+  font-weight: 700;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--accent-bg), 0 0 10px var(--accent-glow);
+}
+.cal-day.past { color: var(--ink-4); }
+
+.cal-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.cal-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--ink-4);
+}
+.cal-legend-swatch {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.sw-today { background: var(--accent); border-radius: 50%; }
+.sw-holiday { background: var(--red-bg); border: 1px solid var(--red-ink); }
+.sw-weekend { background: var(--bg-muted); border: 1px solid var(--hair); }
+
+.cal-footer {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius);
+  border: 1px solid var(--hair);
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.8;
+}
+.cal-footer strong { color: var(--ink-2); font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════
+   ROW 3 SPLITS
+   ═══════════════════════════════════════════════════ */
+.zone-hours-types { flex: 1 1 48%; }
+.zone-team-load   { flex: 1 1 52%; }
+
+/* ═══════════════════════════════════════════════════
+   BULLET BARS (work types)
+   ═══════════════════════════════════════════════════ */
+.bullet-list { display: flex; flex-direction: column; gap: 18px; }
+.bullet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 7px;
+}
+.bullet-label {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.bullet-nums {
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pct-chip {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+.chip-ok   { background: var(--green-bg); color: var(--green-ink); }
+.chip-over { background: var(--red-bg);   color: var(--red-ink); }
+.chip-low  { background: var(--bg-sunken); color: var(--ink-4); }
+
+.bullet-track {
+  position: relative;
+  height: 8px;
+  background: var(--bg-sunken);
+  border-radius: 99px;
+  overflow: visible;
+}
+.bullet-fill {
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  border-radius: 99px;
+}
+/* Plan tick = vertical marker */
+.bullet-tick {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--ink-3);
+  opacity: 0.5;
+}
+
+/* ═══════════════════════════════════════════════════
+   TEAM LOAD (denser, with status rings)
+   ═══════════════════════════════════════════════════ */
+.team-list { display: flex; flex-direction: column; gap: 14px; }
+
+.team-member-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.member-avatar-wrap { position: relative; }
+.member-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: oklch(0.99 0.003 215);
+  flex-shrink: 0;
+}
+/* Status ring around avatar */
+.member-avatar-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.av-online::after  { border-color: var(--green); }
+.av-busy::after    { border-color: var(--amber); }
+.av-away::after    { border-color: var(--ink-4); }
+.av-offline::after { border-color: transparent; }
+
+.av-1 { background: oklch(0.58 0.13 222); }
+.av-2 { background: oklch(0.66 0.12 168); }
+.av-3 { background: oklch(0.62 0.14 302); }
+.av-4 { background: oklch(0.70 0.13 78); }
+
+.member-info { min-width: 0; }
+.member-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.member-role {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  margin-bottom: 6px;
+}
+.member-projects { display: flex; flex-direction: column; gap: 3px; }
+.member-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.mpj-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Load bar per member */
+.member-load-bar {
+  width: 56px;
+  margin-top: 2px;
+}
+.member-load-track {
+  height: 4px;
+  background: var(--bg-sunken);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.member-load-fill {
+  height: 100%;
+  border-radius: 99px;
+}
+.member-load-pct {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--ink-4);
+  text-align: right;
+  margin-top: 2px;
+}
+
+/* ═══════════════════════════════════════════════════
+   ABSENCE HEATMAP
+   ═══════════════════════════════════════════════════ */
+.zone-absence { width: 100%; margin-bottom: 20px; }
+
+.absence-grid-wrap { overflow: hidden; }
+/* width:100% + table-layout:fixed → все дни делят ширину поровну и влезают
+   без скролла (ячейки одинаковые). Имя — фиксированная колонка. */
+.absence-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  table-layout: fixed;
+}
+.absence-table th {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  padding: 0 0 6px;
+  text-align: center;
+}
+.absence-table td {
+  height: 20px;
+  border-radius: 3px;
+}
+.day-cell { border-radius: 3px; }
+.name-cell {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  padding-right: 12px;
+  white-space: nowrap;
+  text-align: right !important;
+  width: 140px;
+}
+.day-cell { background: var(--bg-sunken); border-radius: 4px; }
+.day-cell.weekend {
+  background: var(--bg-muted);
+  opacity: 0.6;
+}
+.day-cell.vacation {
+  background: oklch(0.78 0.09 195 / 0.50);
+  border-radius: 4px;
+}
+.day-cell.sick {
+  background: oklch(0.75 0.12 24 / 0.50);
+  border-radius: 4px;
+}
+.day-cell.dayoff {
+  background: oklch(0.78 0.12 78 / 0.55);
+  border-radius: 4px;
+}
+.day-cell.holiday-h {
+  background: oklch(0.78 0.10 24 / 0.28);
+}
+
+/* Month group separators */
+.month-header-cell {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-align: center;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--hair-2);
+}
+
+.absence-legend {
+  display: flex;
+  gap: 20px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.legend-swatch {
+  width: 14px; height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.sw-vacation { background: oklch(0.78 0.09 195 / 0.50); border: 1px solid oklch(0.72 0.13 195 / 0.35); }
+.sw-sick     { background: oklch(0.75 0.12 24 / 0.50);  border: 1px solid oklch(0.60 0.18 24 / 0.30); }
+.sw-dayoff   { background: oklch(0.78 0.12 78 / 0.55);  border: 1px solid oklch(0.76 0.13 78 / 0.30); }
+
+/* ═══════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════ */
+footer {
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-4);
+  padding-top: 14px;
+  border-top: 1px solid var(--hair);
+  margin-top: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .row { flex-wrap: wrap; }
+  .zone-projects { flex: 0 0 100%; }
+  .zone-timeline { flex: 0 0 100%; }
+  .zone-overwork { flex: 0 0 100%; }
+  .zone-calendar { flex: 0 0 100%; }
+  .hero-metric .val { font-size: 34px; }
+}
+@media (max-width: 600px) {
+  body { padding: 0 12px 48px; }
+  .hero-metrics { gap: 0; }
+  .hero-metric { padding: 6px 14px; }
+  .hero-metric .val { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ═══ HEADER BAND ═══ -->
+<div class="header-band-outer">
+  <div class="header-band">
+    <div class="header-left">
+      <div class="avatar">ИП</div>
+      <div class="user-info">
+        <div class="name">Иван Петров</div>
+        <span class="team-tag">Команда Альфа</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="date-block">
+        <div class="date-main">16 июня 2026</div>
+        <div class="quarter">II квартал</div>
+        <div class="updated-line">
+          <span class="pulse-dot"></span>
+          обновлено только что
+        </div>
+      </div>
+
+      <div class="hero-metrics">
+        <div class="hero-metric">
+          <div class="val positive mono">+14 ч</div>
+          <div class="unit-label">Переработка</div>
+        </div>
+        <div class="hero-metric">
+          <div class="val neutral mono">11</div>
+          <div class="unit-label">Рабочих дней до конца месяца</div>
+        </div>
+        <div class="hero-metric">
+          <div class="val neutral mono">4</div>
+          <div class="unit-label">Проектов в работе</div>
+        </div>
+      </div>
+
+      <!-- Theme toggle -->
+      <div class="theme-toggle" id="themeToggle" role="button" aria-label="Переключить тему">
+        <div class="theme-toggle-knob" id="themeKnob">☀</div>
+        <span class="theme-toggle-label" id="themeLabel">Porcelain</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="header-divider"></div>
+
+<!-- ═══ ROW 1: Projects + Timeline ═══ -->
+<div class="row">
+  <!-- Мои проекты — centerpiece -->
+  <div class="zone zone-projects">
+    <div class="zone-title"><div class="zone-dot"></div>Мои проекты</div>
+    <div class="project-list">
+
+      <!-- Project 1 — ACTIVE, сейчас в работе -->
+      <div class="project-row active-now">
+        <div class="status-dot dot-active"></div>
+        <div class="project-meta">
+          <div class="project-name">Внедрение CRM для отдела продаж</div>
+          <div class="project-sub">
+            <span class="jira-key">ALP-1423</span>
+            <span class="project-dates">12.04 — 30.06</span>
+            <span class="project-status-badge badge-active">В работе</span>
+            <span class="now-pill">сейчас</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="hours-label mono">32 / 40 ч<span class="pct pct-ok">80%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill fill-ok" style="width:80%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project 2 -->
+      <div class="project-row">
+        <div class="status-dot dot-review"></div>
+        <div class="project-meta">
+          <div class="project-name">Аналитика оттока клиентов</div>
+          <div class="project-sub">
+            <span class="jira-key">ALP-1388</span>
+            <span class="project-dates">01.04 — 31.05</span>
+            <span class="project-status-badge badge-review">На ревью</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="hours-label mono">56 / 48 ч<span class="pct pct-over">117%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill fill-over" style="width:100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project 3 -->
+      <div class="project-row">
+        <div class="status-dot dot-active"></div>
+        <div class="project-meta">
+          <div class="project-name">Рефакторинг процесса онбординга</div>
+          <div class="project-sub">
+            <span class="jira-key">ALP-1501</span>
+            <span class="project-dates">19.05 — 15.07</span>
+            <span class="project-status-badge badge-active">В работе</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="hours-label mono">14 / 32 ч<span class="pct pct-low">44%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill fill-low" style="width:44%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project 4 -->
+      <div class="project-row">
+        <div class="status-dot dot-done"></div>
+        <div class="project-meta">
+          <div class="project-name">Аудит качества данных в BI</div>
+          <div class="project-sub">
+            <span class="jira-key">ALP-1350</span>
+            <span class="project-dates">03.03 — 30.04</span>
+            <span class="project-status-badge badge-done">Готово</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="hours-label mono">22 / 24 ч<span class="pct pct-ok">92%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill fill-ok" style="width:92%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project 5 -->
+      <div class="project-row">
+        <div class="status-dot dot-returned"></div>
+        <div class="project-meta">
+          <div class="project-name">Дашборд операционных метрик</div>
+          <div class="project-sub">
+            <span class="jira-key">ALP-1467</span>
+            <span class="project-dates">25.04 — 20.06</span>
+            <span class="project-status-badge badge-returned">Возвращена</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="hours-label mono">8 / 16 ч<span class="pct pct-low">50%</span></div>
+          <div class="progress-bar">
+            <div class="progress-fill fill-low" style="width:50%"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /zone-projects -->
+
+  <!-- Таймлайн -->
+  <div class="zone zone-timeline">
+    <div class="zone-title"><div class="zone-dot"></div>Таймлайн проектов</div>
+    <div class="timeline-wrap">
+      <div class="tl-header">
+        <div></div>
+        <div class="tl-months-row">
+          <div class="tl-month-label">Апр</div>
+          <div class="tl-month-label">Май</div>
+          <div class="tl-month-label">Июн</div>
+        </div>
+      </div>
+      <div class="tl-rows">
+
+        <!-- Row 1: Apr12–Jun30, now@82.5% -->
+        <div class="tl-row">
+          <div class="tl-label">Внедрение CRM</div>
+          <div class="tl-track">
+            <div class="tl-gridline" style="left:33.3%"></div>
+            <div class="tl-gridline" style="left:66.7%"></div>
+            <div class="tl-bar bar-c1" style="left:12%;width:88%">Внедрение CRM</div>
+            <div class="tl-now-line" style="left:82.5%"></div>
+          </div>
+        </div>
+
+        <!-- Row 2: Apr1–May31 -->
+        <div class="tl-row">
+          <div class="tl-label">Анализ оттока</div>
+          <div class="tl-track">
+            <div class="tl-gridline" style="left:33.3%"></div>
+            <div class="tl-gridline" style="left:66.7%"></div>
+            <div class="tl-bar bar-c2" style="left:0%;width:66.7%">Анализ оттока</div>
+            <div class="tl-now-line" style="left:82.5%"></div>
+          </div>
+        </div>
+
+        <!-- Row 3: May19–Jul15+ -->
+        <div class="tl-row">
+          <div class="tl-label">Онбординг</div>
+          <div class="tl-track">
+            <div class="tl-gridline" style="left:33.3%"></div>
+            <div class="tl-gridline" style="left:66.7%"></div>
+            <div class="tl-bar bar-c3" style="left:52.6%;width:47.4%">Онбординг</div>
+            <div class="tl-now-line" style="left:82.5%"></div>
+          </div>
+        </div>
+
+        <!-- Row 4: Mar3–Apr30 -->
+        <div class="tl-row">
+          <div class="tl-label">Аудит BI</div>
+          <div class="tl-track">
+            <div class="tl-gridline" style="left:33.3%"></div>
+            <div class="tl-gridline" style="left:66.7%"></div>
+            <div class="tl-bar bar-c4" style="left:0%;width:33.3%">Аудит BI</div>
+            <div class="tl-now-line" style="left:82.5%"></div>
+          </div>
+        </div>
+
+        <!-- Row 5: Apr25–Jun20 -->
+        <div class="tl-row">
+          <div class="tl-label">Дашборд метрик</div>
+          <div class="tl-track">
+            <div class="tl-gridline" style="left:33.3%"></div>
+            <div class="tl-gridline" style="left:66.7%"></div>
+            <div class="tl-bar bar-c5" style="left:26%;width:55.5%">Дашборд</div>
+            <div class="tl-now-line" style="left:82.5%"></div>
+          </div>
+        </div>
+
+      </div><!-- /tl-rows -->
+
+      <div class="tl-legend">
+        <div class="tl-legend-dot"></div>
+        Текущая неделя (16 июн)
+      </div>
+      <div class="tl-color-legend">
+        <div class="tl-color-item"><div class="tl-color-swatch" style="background:oklch(0.58 0.13 222)"></div>В работе</div>
+        <div class="tl-color-item"><div class="tl-color-swatch" style="background:oklch(0.66 0.12 168)"></div>На ревью</div>
+        <div class="tl-color-item"><div class="tl-color-swatch" style="background:oklch(0.62 0.14 302)"></div>Готово</div>
+        <div class="tl-color-item"><div class="tl-color-swatch" style="background:oklch(0.60 0.18 24)"></div>Возвращена</div>
+      </div>
+    </div>
+  </div><!-- /zone-timeline -->
+</div><!-- /row1 -->
+
+<!-- ═══ ROW 2: Overwork + Calendar ═══ -->
+<div class="row">
+  <!-- Переработка -->
+  <div class="zone zone-overwork">
+    <div class="zone-title"><div class="zone-dot"></div>Переработка</div>
+
+    <div class="overwork-hero">
+      <div class="overwork-big positive mono">+14 ч</div>
+    </div>
+    <div class="overwork-desc">наработано сверх нормы с 1 января</div>
+
+    <div class="sparkline-svg-wrap">
+      <svg viewBox="0 0 320 56" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="oklch(0.68 0.13 152)" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="oklch(0.68 0.13 152)" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="sparkGradDark" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="oklch(0.68 0.13 152)" stop-opacity="0.30"/>
+            <stop offset="100%" stop-color="oklch(0.68 0.13 152)" stop-opacity="0.03"/>
+          </linearGradient>
+        </defs>
+        <!-- zero line -->
+        <line x1="0" y1="36" x2="320" y2="36" stroke="var(--hair-2)" stroke-width="1"/>
+        <!-- area -->
+        <path d="M0,36 L18,34 L36,31 L54,37 L72,39 L90,37 L108,33 L126,30 L144,27 L162,29 L180,25 L198,22 L216,24 L234,20 L252,22 L270,19 L288,17 L306,19 L320,18 L320,36 L0,36 Z"
+              fill="url(#sparkGrad)"/>
+        <!-- line -->
+        <polyline
+          points="0,36 18,34 36,31 54,37 72,39 90,37 108,33 126,30 144,27 162,29 180,25 198,22 216,24 234,20 252,22 270,19 288,17 306,19 320,18"
+          fill="none"
+          stroke="var(--green)"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle cx="320" cy="18" r="3.5" fill="var(--green)"/>
+      </svg>
+    </div>
+
+    <div class="overwork-detail">
+      <div class="detail-row">
+        <span class="label">Дней переработки</span>
+        <span class="val-green mono">9 дней (+22 ч)</span>
+      </div>
+      <div class="detail-row">
+        <span class="label">Дней недоработки</span>
+        <span class="val-red mono">4 дня (−8 ч)</span>
+      </div>
+    </div>
+
+    <div class="recent-days">
+      <div class="rd-title">Последние дни</div>
+      <div class="rd-list">
+        <div class="rd-item">
+          <span class="rd-date">13 июня, сб</span>
+          <span class="rd-minus mono">−2 ч</span>
+        </div>
+        <div class="rd-item">
+          <span class="rd-date">12 июня, пт</span>
+          <span class="rd-plus mono">+3 ч</span>
+        </div>
+        <div class="rd-item">
+          <span class="rd-date">11 июня, чт</span>
+          <span class="rd-plus mono">+1 ч</span>
+        </div>
+        <div class="rd-item">
+          <span class="rd-date">10 июня, ср</span>
+          <span class="rd-minus mono">−1 ч</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Производственный календарь -->
+  <div class="zone zone-calendar">
+    <div class="zone-title"><div class="zone-dot"></div>Производственный календарь</div>
+
+    <div class="cal-months">
+      <!-- Апрель -->
+      <div class="cal-month">
+        <div class="cal-month-title">Апрель</div>
+        <div class="cal-grid">
+          <div class="cal-dow">Пн</div><div class="cal-dow">Вт</div><div class="cal-dow">Ср</div>
+          <div class="cal-dow">Чт</div><div class="cal-dow">Пт</div><div class="cal-dow">Сб</div><div class="cal-dow">Вс</div>
+          <div class="cal-day empty"></div><div class="cal-day empty"></div>
+          <div class="cal-day past">1</div><div class="cal-day past">2</div><div class="cal-day past">3</div>
+          <div class="cal-day weekend past">4</div><div class="cal-day weekend past">5</div>
+          <div class="cal-day past">6</div><div class="cal-day past">7</div><div class="cal-day past">8</div>
+          <div class="cal-day past">9</div><div class="cal-day past">10</div>
+          <div class="cal-day weekend past">11</div><div class="cal-day weekend past">12</div>
+          <div class="cal-day past">13</div><div class="cal-day past">14</div><div class="cal-day past">15</div>
+          <div class="cal-day past">16</div><div class="cal-day past">17</div>
+          <div class="cal-day weekend past">18</div><div class="cal-day weekend past">19</div>
+          <div class="cal-day past">20</div><div class="cal-day past">21</div><div class="cal-day past">22</div>
+          <div class="cal-day past">23</div><div class="cal-day past">24</div>
+          <div class="cal-day weekend past">25</div><div class="cal-day weekend past">26</div>
+          <div class="cal-day past">27</div><div class="cal-day past">28</div><div class="cal-day past">29</div>
+          <div class="cal-day past">30</div><div class="cal-day empty"></div>
+          <div class="cal-day empty"></div><div class="cal-day empty"></div>
+        </div>
+      </div>
+
+      <!-- Май -->
+      <div class="cal-month">
+        <div class="cal-month-title">Май</div>
+        <div class="cal-grid">
+          <div class="cal-dow">Пн</div><div class="cal-dow">Вт</div><div class="cal-dow">Ср</div>
+          <div class="cal-dow">Чт</div><div class="cal-dow">Пт</div><div class="cal-dow">Сб</div><div class="cal-dow">Вс</div>
+          <div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div>
+          <div class="cal-day empty"></div>
+          <div class="cal-day holiday past">1</div>
+          <div class="cal-day weekend past">2</div><div class="cal-day weekend past">3</div>
+          <div class="cal-day holiday past">4</div><div class="cal-day holiday past">5</div>
+          <div class="cal-day holiday past">6</div><div class="cal-day holiday past">7</div><div class="cal-day holiday past">8</div>
+          <div class="cal-day weekend past">9</div><div class="cal-day weekend past">10</div>
+          <div class="cal-day past">11</div><div class="cal-day past">12</div><div class="cal-day past">13</div>
+          <div class="cal-day past">14</div><div class="cal-day past">15</div>
+          <div class="cal-day weekend past">16</div><div class="cal-day weekend past">17</div>
+          <div class="cal-day past">18</div><div class="cal-day past">19</div><div class="cal-day past">20</div>
+          <div class="cal-day past">21</div><div class="cal-day past">22</div>
+          <div class="cal-day weekend past">23</div><div class="cal-day weekend past">24</div>
+          <div class="cal-day past">25</div><div class="cal-day past">26</div><div class="cal-day past">27</div>
+          <div class="cal-day past">28</div><div class="cal-day past">29</div>
+          <div class="cal-day weekend past">30</div><div class="cal-day weekend past">31</div>
+        </div>
+      </div>
+
+      <!-- Июнь -->
+      <div class="cal-month">
+        <div class="cal-month-title">Июнь</div>
+        <div class="cal-grid">
+          <div class="cal-dow">Пн</div><div class="cal-dow">Вт</div><div class="cal-dow">Ср</div>
+          <div class="cal-dow">Чт</div><div class="cal-dow">Пт</div><div class="cal-dow">Сб</div><div class="cal-dow">Вс</div>
+          <div class="cal-day past">1</div><div class="cal-day past">2</div><div class="cal-day past">3</div>
+          <div class="cal-day past">4</div><div class="cal-day past">5</div>
+          <div class="cal-day weekend past">6</div><div class="cal-day weekend past">7</div>
+          <div class="cal-day past">8</div><div class="cal-day past">9</div><div class="cal-day past">10</div>
+          <div class="cal-day past">11</div><div class="cal-day past">12</div>
+          <div class="cal-day weekend past">13</div><div class="cal-day weekend past">14</div>
+          <div class="cal-day past">15</div>
+          <div class="cal-day today">16</div>
+          <div class="cal-day">17</div><div class="cal-day">18</div><div class="cal-day">19</div>
+          <div class="cal-day weekend">20</div><div class="cal-day weekend">21</div>
+          <div class="cal-day">22</div><div class="cal-day">23</div><div class="cal-day">24</div>
+          <div class="cal-day">25</div><div class="cal-day">26</div>
+          <div class="cal-day weekend">27</div><div class="cal-day weekend">28</div>
+          <div class="cal-day">29</div><div class="cal-day">30</div>
+          <div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div>
+          <div class="cal-day empty"></div><div class="cal-day empty"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cal-legend">
+      <div class="cal-legend-item"><div class="cal-legend-swatch sw-today"></div>Сегодня</div>
+      <div class="cal-legend-item"><div class="cal-legend-swatch sw-holiday"></div>Праздник</div>
+      <div class="cal-legend-item"><div class="cal-legend-swatch sw-weekend"></div>Выходной</div>
+    </div>
+
+    <div class="cal-footer">
+      <strong>Рабочих дней в квартале: 61</strong> &middot; в этом месяце: 20<br>
+      <strong>Рабочих часов в квартале: 488 ч</strong> &middot; в этом месяце: 160 ч
+    </div>
+  </div>
+</div><!-- /row2 -->
+
+<!-- ═══ ROW 3: Hours by type + Team load ═══ -->
+<div class="row">
+  <!-- Часы по видам работ -->
+  <div class="zone zone-hours-types">
+    <div class="zone-title"><div class="zone-dot"></div>Часы по видам работ</div>
+    <div class="bullet-list">
+
+      <div class="bullet-item">
+        <div class="bullet-header">
+          <span class="bullet-label">Проектные работы</span>
+          <span class="bullet-nums mono">62 ч / 72 ч <span class="pct-chip chip-ok">86%</span></span>
+        </div>
+        <div class="bullet-track">
+          <div class="bullet-fill" style="width:86%;background:var(--green)"></div>
+          <div class="bullet-tick" style="left:100%"></div>
+        </div>
+      </div>
+
+      <div class="bullet-item">
+        <div class="bullet-header">
+          <span class="bullet-label">Организационные</span>
+          <span class="bullet-nums mono">18 ч / 16 ч <span class="pct-chip chip-over">113%</span></span>
+        </div>
+        <div class="bullet-track">
+          <div class="bullet-fill" style="width:100%;background:var(--red)"></div>
+          <div class="bullet-tick" style="left:88.8%;background:var(--red)"></div>
+        </div>
+      </div>
+
+      <div class="bullet-item">
+        <div class="bullet-header">
+          <span class="bullet-label">Поддержка и консультации</span>
+          <span class="bullet-nums mono">11 ч / 20 ч <span class="pct-chip chip-low">55%</span></span>
+        </div>
+        <div class="bullet-track">
+          <div class="bullet-fill" style="width:55%;background:var(--accent-dim)"></div>
+          <div class="bullet-tick" style="left:100%"></div>
+        </div>
+      </div>
+
+      <div class="bullet-item">
+        <div class="bullet-header">
+          <span class="bullet-label">Технический долг</span>
+          <span class="bullet-nums mono">7 ч / 12 ч <span class="pct-chip chip-low">58%</span></span>
+        </div>
+        <div class="bullet-track">
+          <div class="bullet-fill" style="width:58%;background:var(--accent-dim)"></div>
+          <div class="bullet-tick" style="left:100%"></div>
+        </div>
+      </div>
+
+      <div class="bullet-item">
+        <div class="bullet-header">
+          <span class="bullet-label">Технические задачи</span>
+          <span class="bullet-nums mono">4 ч / 8 ч <span class="pct-chip chip-low">50%</span></span>
+        </div>
+        <div class="bullet-track">
+          <div class="bullet-fill" style="width:50%;background:var(--accent-dim)"></div>
+          <div class="bullet-tick" style="left:100%"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Занятость команды -->
+  <div class="zone zone-team-load">
+    <div class="zone-title"><div class="zone-dot"></div>Занятость команды</div>
+    <div class="team-list">
+
+      <div class="team-member-row">
+        <div class="member-avatar-wrap av-online">
+          <div class="member-avatar av-1">МС</div>
+        </div>
+        <div class="member-info">
+          <div class="member-name">Мария Смирнова</div>
+          <div class="member-role">Старший аналитик</div>
+          <div class="member-projects">
+            <div class="member-project">
+              <div class="mpj-dot" style="background:var(--accent)"></div>
+              Внедрение CRM для отдела продаж
+            </div>
+            <div class="member-project">
+              <div class="mpj-dot" style="background:var(--amber)"></div>
+              Аналитика оттока клиентов
+            </div>
+          </div>
+        </div>
+        <div class="member-load-bar">
+          <div class="member-load-track">
+            <div class="member-load-fill" style="width:92%;background:var(--green)"></div>
+          </div>
+          <div class="member-load-pct">92%</div>
+        </div>
+      </div>
+
+      <div class="team-member-row">
+        <div class="member-avatar-wrap av-busy">
+          <div class="member-avatar av-2">АК</div>
+        </div>
+        <div class="member-info">
+          <div class="member-name">Алексей Козлов</div>
+          <div class="member-role">Аналитик данных</div>
+          <div class="member-projects">
+            <div class="member-project">
+              <div class="mpj-dot" style="background:var(--accent)"></div>
+              Рефакторинг процесса онбординга
+            </div>
+            <div class="member-project">
+              <div class="mpj-dot" style="background:var(--green)"></div>
+              Аудит качества данных в BI
+            </div>
+          </div>
+        </div>
+        <div class="member-load-bar">
+          <div class="member-load-track">
+            <div class="member-load-fill" style="width:115%;background:var(--red)"></div>
+          </div>
+          <div class="member-load-pct" style="color:var(--red)">115%</div>
+        </div>
+      </div>
+
+      <div class="team-member-row">
+        <div class="member-avatar-wrap av-online">
+          <div class="member-avatar av-3">ОН</div>
+        </div>
+        <div class="member-info">
+          <div class="member-name">Ольга Новикова</div>
+          <div class="member-role">Аналитик QA</div>
+          <div class="member-projects">
+            <div class="member-project">
+              <div class="mpj-dot" style="background:var(--red)"></div>
+              Дашборд операционных метрик
+            </div>
+            <div class="member-project">
+              <div class="mpj-dot" style="background:var(--accent)"></div>
+              Рефакторинг процесса онбординга
+            </div>
+          </div>
+        </div>
+        <div class="member-load-bar">
+          <div class="member-load-track">
+            <div class="member-load-fill" style="width:78%;background:var(--amber)"></div>
+          </div>
+          <div class="member-load-pct" style="color:var(--amber-ink)">78%</div>
+        </div>
+      </div>
+
+      <div class="team-member-row">
+        <div class="member-avatar-wrap av-away">
+          <div class="member-avatar av-4">ДВ</div>
+        </div>
+        <div class="member-info">
+          <div class="member-name">Дмитрий Волков</div>
+          <div class="member-role">Аналитик</div>
+          <div class="member-projects">
+            <div class="member-project">
+              <div class="mpj-dot" style="background:var(--amber)"></div>
+              Аналитика оттока клиентов
+            </div>
+          </div>
+        </div>
+        <div class="member-load-bar">
+          <div class="member-load-track">
+            <div class="member-load-fill" style="width:55%;background:var(--accent-dim)"></div>
+          </div>
+          <div class="member-load-pct">55%</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div><!-- /row3 -->
+
+<!-- ═══ BOTTOM: Absence heatmap ═══ -->
+<div class="zone zone-absence">
+  <div class="zone-title"><div class="zone-dot"></div>Отсутствия команды</div>
+  <div class="absence-grid-wrap">
+    <table class="absence-table">
+      <thead>
+        <tr id="monthRow"><td class="name-cell" style="width:140px"></td></tr>
+        <tr id="dayNumRow"><td></td></tr>
+      </thead>
+      <tbody id="absenceBody"></tbody>
+    </table>
+  </div>
+
+  <div class="absence-legend">
+    <div class="legend-item"><div class="legend-swatch sw-vacation"></div>Отпуск</div>
+    <div class="legend-item"><div class="legend-swatch sw-sick"></div>Больничный</div>
+    <div class="legend-item"><div class="legend-swatch sw-dayoff"></div>Отгул</div>
+  </div>
+</div>
+
+<footer>Макет. Данные демонстрационные.</footer>
+
+</div><!-- /layout -->
+
+<script>
+/* ─── Theme toggle ─── */
+(function () {
+  const root = document.documentElement;
+  const btn  = document.getElementById('themeToggle');
+  const knob = document.getElementById('themeKnob');
+  const lbl  = document.getElementById('themeLabel');
+
+  function applyTheme(t) {
+    root.setAttribute('data-theme', t);
+    knob.textContent = t === 'dark' ? '☽' : '☀';
+    lbl.textContent  = t === 'dark' ? 'Aurora' : 'Porcelain';
+    try { localStorage.setItem('desk-theme', t); } catch (_) {}
+  }
+
+  // Restore saved preference
+  let saved;
+  try { saved = localStorage.getItem('desk-theme'); } catch (_) {}
+  applyTheme(saved === 'dark' ? 'dark' : 'light');
+
+  btn.addEventListener('click', function () {
+    const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  });
+})();
+
+/* ─── Absence heatmap ─── */
+/* Полные месяцы 2026 с равной фиксированной шириной дня. */
+const months = [
+  { key:'apr', label:'Апрель 2026', gen:'апреля', days:30,
+    weekend:new Set([4,5,11,12,18,19,25,26]), holiday:new Set() },
+  { key:'may', label:'Май 2026', gen:'мая', days:31,
+    weekend:new Set([2,3,10,16,17,23,24,30,31]), holiday:new Set([1,9,11]) },
+  { key:'jun', label:'Июнь 2026', gen:'июня', days:30,
+    weekend:new Set([6,7,13,14,20,21,27,28]), holiday:new Set([12]) },
+];
+
+const REASON_LABEL = { vacation:'Отпуск', sick:'Больничный', dayoff:'Отгул' };
+function monthGen(key){ return (months.find(m=>m.key===key)||{}).gen || ''; }
+
+const people = [
+  { name: 'Мария Смирнова',    apr: [],                               may: [{type:'vacation',from:12,to:25}], jun: [] },
+  { name: 'Алексей Козлов',    apr: [{type:'sick',from:14,to:17}],    may: [],                                jun: [{type:'vacation',from:8,to:19}] },
+  { name: 'Ольга Новикова',    apr: [{type:'vacation',from:1,to:10}], may: [],                                jun: [] },
+  { name: 'Дмитрий Волков',    apr: [],                               may: [{type:'dayoff',from:18,to:19}],   jun: [{type:'vacation',from:1,to:9}] },
+  { name: 'Наталья Фёдорова',  apr: [{type:'vacation',from:7,to:15}], may: [],                                jun: [{type:'sick',from:10,to:12}] },
+  { name: 'Сергей Орлов',      apr: [],                               may: [{type:'vacation',from:5,to:14}],  jun: [{type:'dayoff',from:18,to:18}] }
+];
+
+function absType(ranges, d) {
+  for (const r of ranges) if (d >= r.from && d <= r.to) return r.type;
+  return null;
+}
+
+/* Заголовки: месяцы (colspan = число дней) + номера дней. */
+const monthRow = document.getElementById('monthRow');
+const dayNumRow = document.getElementById('dayNumRow');
+for (const m of months) {
+  const th = document.createElement('th');
+  th.className = 'month-header-cell';
+  th.colSpan = m.days;
+  th.textContent = m.label;
+  monthRow.appendChild(th);
+  for (let d = 1; d <= m.days; d++) {
+    const th2 = document.createElement('th');
+    th2.className = 'day-num';
+    // При плотной сетке подписываем только опорные дни.
+    th2.textContent = (d === 1 || d % 5 === 0) ? d : '';
+    dayNumRow.appendChild(th2);
+  }
+}
+
+const tbody = document.getElementById('absenceBody');
+for (const p of people) {
+  const tr = document.createElement('tr');
+  const td0 = document.createElement('td');
+  td0.className = 'name-cell';
+  td0.textContent = p.name;
+  tr.appendChild(td0);
+
+  for (const m of months) {
+    const ranges = p[m.key] || [];
+    for (let d = 1; d <= m.days; d++) {
+      const td = document.createElement('td');
+      const range = ranges.find(r => d >= r.from && d <= r.to) || null;
+      const abs = range ? range.type : null;
+      td.className = 'day-cell' + (
+        abs ? ' ' + abs
+        : m.holiday.has(d) ? ' holiday-h'
+        : m.weekend.has(d) ? ' weekend' : ''
+      );
+      // Подсказка при наведении: дата, а на отсутствии — причина и период.
+      const dateStr = `${d} ${m.gen} 2026`;
+      if (range) {
+        td.title = `${REASON_LABEL[range.type]}: ${range.from} ${m.gen} – ${range.to} ${m.gen} 2026 · ${p.name}`;
+      } else if (m.holiday.has(d)) {
+        td.title = `${dateStr} · праздничный день`;
+      } else {
+        td.title = dateStr;
+      }
+      tr.appendChild(td);
+    }
+  }
+  tbody.appendChild(tr);
+}
+</script>
+</body>
+</html>
