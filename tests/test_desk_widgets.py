@@ -25,7 +25,7 @@ from app.models import (
     ResourcePlanAssignment,
 )
 from app.services.work_desk_service import WorkDeskService
-from app.services.work_desk_widgets import WIDGET_KEYS, dispatch
+from app.services.work_desk_widgets import WIDGET_KEYS, desk_summary, dispatch
 
 
 @pytest.fixture
@@ -442,3 +442,25 @@ def test_production_calendar_work_hours(db_session, seed_employee):
     assert isinstance(out["month_work_hours"], float)
     assert isinstance(out["quarter_work_hours"], float)
     assert out["quarter_work_hours"] > 0
+
+
+# ── desk_summary: hero-числа без падений на пустом seed ──────────────────────
+
+
+def test_desk_summary_keys_no_plan(db_session, seed_employee):
+    """У сотрудника без плана сводка отдаёт 3 числовых ключа, не падая."""
+    desk = _make_desk(db_session, seed_employee.id)
+    year, quarter = _current_quarter()
+    out = desk_summary(db_session, desk, year, quarter)
+    assert set(out) == {
+        "overtime_hours",
+        "remaining_workdays_month",
+        "projects_in_progress",
+    }
+    assert isinstance(out["overtime_hours"], float)
+    assert isinstance(out["remaining_workdays_month"], int)
+    assert isinstance(out["projects_in_progress"], int)
+    # Без плана незавершённых проектов нет.
+    assert out["projects_in_progress"] == 0
+    # До конца месяца всегда есть хотя бы один день (тест считая сегодня).
+    assert out["remaining_workdays_month"] >= 0

@@ -679,3 +679,78 @@ def dispatch(db: Session, desk: WorkDesk, key: str, year: int, quarter: int) -> 
         raise ValueError(f"Unknown widget key: {key}")
     adapter = _REGISTRY[key]
     return adapter(db, desk, year, quarter)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Hero-сводка для шапки стола (независима от включённых виджетов)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _remaining_workdays_month(db: Session, today: date) -> int:
+    """Рабочих дней с сегодня (включительно) до конца текущего месяца."""
+    from app.services.production_calendar_service import ProductionCalendarService
+
+    last_day = date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
+    if last_day < today:
+        return 0
+    workdays_map = ProductionCalendarService(db).workdays_in_range_map(today, last_day)
+    count = 0
+    cur = today
+    while cur <= last_day:
+        if workdays_map.get(cur, cur.weekday() < 5):
+            count += 1
+        cur += timedelta(days=1)
+    return count
+
+
+def _projects_in_progress(db: Session, desk: WorkDesk, year: int, quarter: int) -> int:
+    """Проекты сотрудника в работе на свежем плане квартала.
+
+    Считаем уникальные задачи назначений сотрудника, чья связанная Issue
+    не завершена (status_category != 'done'). Без плана / без задач → 0.
+    """
+    from app.models import ResourcePlanAssignment
+
+    teams = _desk_teams(desk)
+    plan = _find_recent_plan(db, teams, year, quarter)
+    if plan is None:
+        return 0
+    rows = (
+        db.execute(
+            select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.plan_id == plan.id,
+                ResourcePlanAssignment.employee_id == desk.employee_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    in_progress: set[str] = set()
+    for a in rows:
+        item = a.backlog_item
+        issue = item.issue if item is not None else None
+        if issue is None:
+            continue
+        if (getattr(issue, "status_category", None) or "").lower() != "done":
+            in_progress.add(issue.id)
+    return len(in_progress)
+
+
+def desk_summary(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
+    """Три hero-числа шапки стола. Защищён от 500 — при ошибке часть → 0.
+
+    - overtime_hours: накопительный баланс факт−норма с 1 января
+      (тот же путь, что у виджета hours_balance).
+    - remaining_workdays_month: рабочих дней до конца текущего месяца включительно.
+    - projects_in_progress: незавершённые проекты сотрудника на свежем плане.
+    """
+    today = date.today()
+
+    balance = _employee_balance(db, desk)
+    overtime_hours = round(balance.balance_hours, 1) if balance is not None else 0.0
+
+    return {
+        "overtime_hours": overtime_hours,
+        "remaining_workdays_month": _remaining_workdays_month(db, today),
+        "projects_in_progress": _projects_in_progress(db, desk, year, quarter),
+    }

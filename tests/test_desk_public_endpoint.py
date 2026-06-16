@@ -69,6 +69,11 @@ def test_meta_valid_token(client, db_session, seed_employee):
     assert body["teams"] == ["Alpha"]
     assert body["period"]["year"] >= 2026
     assert 1 <= body["period"]["quarter"] <= 4
+    # Hero-сводка присутствует всегда, независимо от включённых виджетов.
+    summary = body["summary"]
+    assert isinstance(summary["overtime_hours"], (int, float))
+    assert isinstance(summary["remaining_workdays_month"], int)
+    assert isinstance(summary["projects_in_progress"], int)
 
 
 def test_meta_updates_last_viewed(client, db_session, seed_employee):

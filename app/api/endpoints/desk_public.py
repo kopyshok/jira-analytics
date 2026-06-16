@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.work_desk import WorkDesk
-from app.schemas.work_desk import DeskEmployee, DeskMeta, DeskPeriod
+from app.schemas.work_desk import DeskEmployee, DeskMeta, DeskPeriod, DeskSummary
 from app.services.work_desk_service import WorkDeskService
-from app.services.work_desk_widgets import WIDGET_KEYS, dispatch
+from app.services.work_desk_widgets import WIDGET_KEYS, desk_summary, dispatch
 
 router = APIRouter()
 
@@ -47,6 +47,9 @@ def get_desk_meta(
     year, quarter = _current_period()
     period = DeskPeriod(year=year, quarter=quarter)
 
+    # Считаем до commit — после commit сессия expire-ит атрибуты desk/employee.
+    summary = DeskSummary(**desk_summary(db, desk, year, quarter))
+
     desk.last_viewed_at = datetime.utcnow()
     db.commit()
 
@@ -55,6 +58,7 @@ def get_desk_meta(
         teams=teams,
         enabled_widgets=enabled_widgets,
         period=period,
+        summary=summary,
     )
 
 

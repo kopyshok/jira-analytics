@@ -14,11 +14,18 @@ class DeskPeriod(BaseModel):
     quarter: int
 
 
+class DeskSummary(BaseModel):
+    overtime_hours: float
+    remaining_workdays_month: int
+    projects_in_progress: int
+
+
 class DeskMeta(BaseModel):
     employee: DeskEmployee
     teams: list[str]
     enabled_widgets: list[str]
     period: DeskPeriod
+    summary: DeskSummary
 
 
 class WorkDeskCreate(BaseModel):
