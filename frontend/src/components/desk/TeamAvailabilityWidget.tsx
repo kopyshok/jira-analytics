@@ -1,34 +1,49 @@
-import { Collapse, Table, Typography } from 'antd';
 import WidgetShell from './WidgetShell';
 import { useDeskWidget } from './useDeskWidget';
-import { projectColumns } from './projectColumns';
-import type { TeamAvailabilityData } from '../../types/desk';
+import { initials } from './format';
+import { deskStatusKind } from './deskStatus';
+import type { AvailabilityMember, DeskProject, TeamAvailabilityData } from '../../types/desk';
+
+const DOT_VAR: Record<string, string> = {
+  active: 'var(--accent)',
+  review: 'var(--amber)',
+  done: 'var(--green)',
+  returned: 'var(--red)',
+  neutral: 'var(--ink-4)',
+};
+
+const AV_CLASSES = ['desk-av-1', 'desk-av-2', 'desk-av-3', 'desk-av-4'];
+
+function MemberRow({ m, avIdx }: { m: AvailabilityMember; avIdx: number }) {
+  const projects = m.projects.slice(0, 4);
+  return (
+    <div className="desk-member-row">
+      <div className={`desk-member-avatar ${AV_CLASSES[avIdx % AV_CLASSES.length]}`}>
+        {initials(m.display_name)}
+      </div>
+      <div className="desk-member-info">
+        <div className="desk-member-name">{m.display_name}</div>
+        <div className="desk-member-count">проектов: {m.projects.length}</div>
+        <div className="desk-member-projects">
+          {projects.map((p: DeskProject, i) => (
+            <div className="desk-member-project" key={`${p.key ?? ''}-${i}`}>
+              <span className="desk-mpj-dot" style={{ background: DOT_VAR[deskStatusKind(p.status)] }} />
+              {p.jira_url ? (
+                <a href={p.jira_url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+                  {p.title ?? p.key ?? '—'}
+                </a>
+              ) : (p.title ?? p.key ?? '—')}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function TeamAvailabilityWidget({ token, title }: { token: string; title: string }) {
-  const { data, isLoading, isError } = useDeskWidget<TeamAvailabilityData>(
-    token,
-    'team_availability',
-  );
+  const { data, isLoading, isError } = useDeskWidget<TeamAvailabilityData>(token, 'team_availability');
   const members = (data?.members ?? []).filter((m) => m.projects.length > 0);
-
-  const items = members.map((m) => ({
-    key: m.id,
-    label: (
-      <span>
-        {m.display_name}{' '}
-        <Typography.Text type="secondary">({m.projects.length})</Typography.Text>
-      </span>
-    ),
-    children: (
-      <Table
-        rowKey={(r) => `${m.id}-${r.key ?? ''}-${r.start_date ?? ''}`}
-        size="small"
-        columns={projectColumns()}
-        dataSource={m.projects}
-        pagination={false}
-      />
-    ),
-  }));
 
   return (
     <WidgetShell
@@ -38,7 +53,11 @@ export default function TeamAvailabilityWidget({ token, title }: { token: string
       isEmpty={members.length === 0}
       emptyText="Нет занятости команды"
     >
-      <Collapse size="small" items={items} defaultActiveKey={members.slice(0, 1).map((m) => m.id)} />
+      <div className="desk-team-list">
+        {members.map((m, i) => (
+          <MemberRow key={m.id} m={m} avIdx={i} />
+        ))}
+      </div>
     </WidgetShell>
   );
 }

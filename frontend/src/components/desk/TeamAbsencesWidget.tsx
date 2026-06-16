@@ -1,32 +1,27 @@
 import { Tooltip } from 'antd';
 import WidgetShell from './WidgetShell';
 import { useDeskWidget } from './useDeskWidget';
-import { fmtShortRange } from './format';
-import { DARK_THEME, MONTH_NAMES } from '../../utils/constants';
+import { MONTH_NAMES } from '../../utils/constants';
 import type { DeskAbsence, TeamAbsencesData } from '../../types/desk';
 
-const DEFAULT_REASON_COLOR = '#8c8c8c';
+const DEFAULT_REASON_COLOR = 'var(--ink-4)';
 const QUARTER_MONTHS: Record<number, number[]> = {
   1: [1, 2, 3], 2: [4, 5, 6], 3: [7, 8, 9], 4: [10, 11, 12],
 };
+const MONTH_GEN = [
+  '', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** Все дни квартала как ISO-строки YYYY-MM-DD. */
-function quarterDays(year: number, months: number[]): string[] {
-  const out: string[] = [];
-  for (const m of months) {
-    const last = new Date(year, m, 0).getDate();
-    for (let d = 1; d <= last; d += 1) out.push(`${year}-${pad(m)}-${pad(d)}`);
-  }
-  return out;
-}
-
-function isWeekend(iso: string): boolean {
-  const dow = new Date(iso).getDay();
-  return dow === 0 || dow === 6;
+interface DayCol {
+  iso: string;
+  month: number;
+  day: number;
+  weekend: boolean;
 }
 
 export default function TeamAbsencesWidget({ token, title }: { token: string; title: string }) {
@@ -37,9 +32,20 @@ export default function TeamAbsencesWidget({ token, title }: { token: string; ti
   const quarter = data?.quarter ?? 1;
   const months = QUARTER_MONTHS[quarter] ?? [];
 
-  const days = quarterDays(year, months);
-  const cell = 16;
-  const nameColWidth = 160;
+  // Колонки дней квартала.
+  const cols: DayCol[] = [];
+  for (const m of months) {
+    const last = new Date(year, m, 0).getDate();
+    for (let d = 1; d <= last; d += 1) {
+      const iso = `${year}-${pad(m)}-${pad(d)}`;
+      const dow = new Date(iso).getDay();
+      cols.push({ iso, month: m, day: d, weekend: dow === 0 || dow === 6 });
+    }
+  }
+  const monthSpans = months.map((m) => ({
+    month: m,
+    span: cols.filter((c) => c.month === m).length,
+  }));
 
   const byEmployee = new Map<string, DeskAbsence[]>();
   for (const a of absences) {
@@ -64,11 +70,6 @@ export default function TeamAbsencesWidget({ token, title }: { token: string; ti
     }
   }
 
-  const monthGroups = months.map((m) => ({
-    month: m,
-    days: days.filter((d) => Number(d.slice(5, 7)) === m),
-  }));
-
   return (
     <WidgetShell
       title={title}
@@ -77,112 +78,59 @@ export default function TeamAbsencesWidget({ token, title }: { token: string; ti
       isEmpty={employees.length === 0}
       emptyText="Нет сотрудников"
     >
-      <div style={{ overflowX: 'auto' }}>
-        {/* Заголовки месяцев */}
-        <div style={{ display: 'flex', marginLeft: nameColWidth, marginBottom: 4 }}>
-          {monthGroups.map((g, idx) => (
-            <div
-              key={`mh-${g.month}`}
-              style={{
-                width: g.days.length * (cell + 1),
-                fontSize: 11,
-                fontWeight: 600,
-                color: DARK_THEME.textSecondary,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                borderLeft: idx === 0 ? 'none' : `1px solid ${DARK_THEME.border}`,
-                paddingLeft: idx === 0 ? 0 : 4,
-              }}
-            >
-              {MONTH_NAMES[g.month]} {year}
-            </div>
-          ))}
-        </div>
-
-        {/* Сетка дней */}
-        <div style={{
-          display: 'inline-grid',
-          gridTemplateColumns: `${nameColWidth}px repeat(${days.length}, ${cell}px)`,
-          gap: 1,
-        }}>
-          <div />
-          {days.map((iso) => {
-            const day = Number(iso.slice(8, 10));
-            const monthStart = day === 1;
-            return (
-              <div
-                key={`h-${iso}`}
-                style={{
-                  fontSize: 9,
-                  textAlign: 'center',
-                  color: isWeekend(iso) ? DARK_THEME.textDim : DARK_THEME.textMuted,
-                  borderLeft: monthStart && Number(iso.slice(5, 7)) !== months[0]
-                    ? `1px solid ${DARK_THEME.border}` : 'none',
-                }}
-              >
-                {day === 1 || day % 5 === 0 ? day : ''}
-              </div>
-            );
-          })}
+      <table className="desk-absence-table">
+        <thead>
+          <tr>
+            <th className="name-cell" style={{ width: 140 }} />
+            {monthSpans.map((g) => (
+              <th key={`m-${g.month}`} className="month-header-cell" colSpan={g.span}>
+                {MONTH_NAMES[g.month]} {year}
+              </th>
+            ))}
+          </tr>
+          <tr>
+            <th />
+            {cols.map((c) => (
+              <th key={`d-${c.iso}`}>{c.day === 1 || c.day % 5 === 0 ? c.day : ''}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
           {employees.map((e) => {
             const list = byEmployee.get(e.id);
             return (
-              <div key={`row-${e.id}`} style={{ display: 'contents' }}>
-                <div style={{
-                  fontSize: 12, paddingRight: 8, color: DARK_THEME.textPrimary,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {e.display_name}
-                </div>
-                {days.map((iso) => {
-                  const a = absenceForDay(list, iso);
-                  const weekend = isWeekend(iso);
-                  const monthStart = Number(iso.slice(8, 10)) === 1;
-                  const bg = a
-                    ? (a.reason_color ?? DEFAULT_REASON_COLOR)
-                    : (weekend ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)');
-                  // Подсказка: причина и период разнесены для читаемости.
+              <tr key={e.id}>
+                <td className="name-cell">{e.display_name}</td>
+                {cols.map((c) => {
+                  const a = absenceForDay(list, c.iso);
+                  const classes = ['day-cell'];
+                  if (!a && c.weekend) classes.push('weekend');
+                  const style = a ? { background: a.reason_color ?? DEFAULT_REASON_COLOR } : undefined;
                   const tip = a
-                    ? `${a.reason_label}\n${fmtShortRange(a.start_date, a.end_date)}`
-                    : `${e.display_name} · ${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+                    ? `${a.reason_label}: ${Number(a.start_date.slice(8, 10))} ${MONTH_GEN[Number(a.start_date.slice(5, 7))]} – ${Number(a.end_date.slice(8, 10))} ${MONTH_GEN[Number(a.end_date.slice(5, 7))]} ${year} · ${e.display_name}`
+                    : `${c.day} ${MONTH_GEN[c.month]} ${year}`;
                   return (
-                    <Tooltip
-                      key={`${e.id}-${iso}`}
-                      title={<span style={{ whiteSpace: 'pre-line' }}>{tip}</span>}
-                      mouseEnterDelay={0.3}
-                    >
-                      <div style={{
-                        height: cell,
-                        background: bg,
-                        borderRadius: 2,
-                        borderLeft: monthStart && Number(iso.slice(5, 7)) !== months[0]
-                          ? `1px solid ${DARK_THEME.border}` : 'none',
-                      }} />
+                    <Tooltip key={`${e.id}-${c.iso}`} title={tip} mouseEnterDelay={0.25}>
+                      <td className={classes.join(' ')} style={style} />
                     </Tooltip>
                   );
                 })}
-              </div>
+              </tr>
             );
           })}
-        </div>
+        </tbody>
+      </table>
 
-        {/* Легенда */}
-        {uniqueReasons.size > 0 && (
-          <div style={{
-            marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 16,
-            fontSize: 11, color: DARK_THEME.textSecondary,
-          }}>
-            {[...uniqueReasons.entries()].map(([label, color]) => (
-              <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span style={{
-                  display: 'inline-block', width: 12, height: 12, borderRadius: 2, background: color,
-                }} />
-                {label}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      {uniqueReasons.size > 0 && (
+        <div className="desk-absence-legend">
+          {[...uniqueReasons.entries()].map(([label, color]) => (
+            <span key={label} className="desk-legend-item">
+              <span className="desk-legend-swatch" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
     </WidgetShell>
   );
 }
