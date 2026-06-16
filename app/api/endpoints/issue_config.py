@@ -58,6 +58,9 @@ class IssueTreeNode(BaseModel):
     is_container: bool = False
     category_verified: bool = True
     require_child_verification: bool = False
+    parent_changed: bool = False
+    category_context: Optional[str] = None
+    category_context_key: Optional[str] = None
     children: List["IssueTreeNode"] = []
 
 
@@ -109,6 +112,9 @@ class IssueTreeRootNode(BaseModel):
     is_container: bool = False
     category_verified: bool = True
     require_child_verification: bool = False
+    parent_changed: bool = False
+    category_context: Optional[str] = None
+    category_context_key: Optional[str] = None
     has_children: bool = False
     descendant_count: int = 0
     descendant_match_count: int = 0
@@ -267,6 +273,9 @@ async def get_issue_tree(
             is_container=is_container_node,
             category_verified=issue.category_verified if issue.category_verified is not None else True,
             require_child_verification=issue.require_child_verification if issue.require_child_verification is not None else False,
+            parent_changed=bool(getattr(issue, "parent_changed", False)),
+            category_context=getattr(issue, "category_context", None),
+            category_context_key=getattr(issue, "category_context_key", None),
         )
         node_map[issue.id] = node
 
@@ -550,6 +559,9 @@ def get_tree_roots(
             is_container=is_container,
             category_verified=r.category_verified if r.category_verified is not None else True,
             require_child_verification=r.require_child_verification if r.require_child_verification is not None else False,
+            parent_changed=bool(getattr(r, "parent_changed", False)),
+            category_context=getattr(r, "category_context", None),
+            category_context_key=getattr(r, "category_context_key", None),
             has_children=bool(children_by_parent.get(r.id)),
             descendant_count=desc_total.get(r.id, 0),
             descendant_match_count=desc_match.get(r.id, 0),
@@ -1234,6 +1246,9 @@ def get_issue_children(
                 )),
                 category_verified=ch.category_verified if ch.category_verified is not None else True,
                 require_child_verification=ch.require_child_verification if ch.require_child_verification is not None else False,
+                parent_changed=bool(getattr(ch, "parent_changed", False)),
+                category_context=getattr(ch, "category_context", None),
+                category_context_key=getattr(ch, "category_context_key", None),
                 has_children=ch.id in has_kids_set,
                 descendant_count=0,
                 descendant_match_count=0,
@@ -1381,6 +1396,9 @@ def get_issue_children(
             )),
             category_verified=ch.category_verified if ch.category_verified is not None else True,
             require_child_verification=ch.require_child_verification if ch.require_child_verification is not None else False,
+            parent_changed=bool(getattr(ch, "parent_changed", False)),
+            category_context=getattr(ch, "category_context", None),
+            category_context_key=getattr(ch, "category_context_key", None),
             has_children=ch.id in has_kids_set,
             descendant_count=0,
             descendant_match_count=desc_match(ch.id),

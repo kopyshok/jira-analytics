@@ -32,6 +32,7 @@ class BulkFilter(BaseModel):
     status_changed_before: Optional[datetime] = None
     only_unverified: bool = False
     only_no_assigned: bool = False
+    only_parent_changed: bool = False
 
 
 class BulkPreviewRequest(BaseModel):
@@ -48,6 +49,9 @@ class BulkPreviewItem(BaseModel):
     category: Optional[str] = None
     assigned_category: Optional[str] = None
     project_key: str
+    parent_changed: bool = False
+    category_context: Optional[str] = None
+    category_context_key: Optional[str] = None
 
 
 class BulkPreviewResponse(BaseModel):
@@ -85,6 +89,9 @@ def _apply_filters(query, filters: BulkFilter, db: Session):
     if filters.only_no_assigned:
         query = query.filter(Issue.assigned_category.is_(None))
 
+    if filters.only_parent_changed:
+        query = query.filter(Issue.parent_changed.is_(True))
+
     return query
 
 
@@ -114,6 +121,9 @@ def bulk_preview(
             category=r.category,
             assigned_category=r.assigned_category,
             project_key=pkey_by_id.get(r.project_id, ""),
+            parent_changed=bool(r.parent_changed),
+            category_context=r.category_context,
+            category_context_key=r.category_context_key,
         )
         for r in rows
     ]
