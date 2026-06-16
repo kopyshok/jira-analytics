@@ -17,7 +17,7 @@ from app.schemas.issue_context import (
     IssueContextResponse,
 )
 from app.services.backlog_service import BacklogService
-from app.services.category_resolver import CategoryResolver
+from app.services.category_resolver import CategoryResolver, reset_parent_context
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 from app.services.hours_breakdown_service import HoursBreakdownService
@@ -644,6 +644,7 @@ async def set_issue_category(
     # одной задачи, чтобы не гонять весь пересчёт на каждое клик PM-а.
     resolver = CategoryResolver(db)
     issue.category = resolver.resolve_for_issue(issue).category_code
+    reset_parent_context(db, issue, resolver)
 
     # Auto-sync BacklogItem (create/update/delete) по эффективной
     # категории. Flush внутри сервиса, commit здесь.
@@ -759,6 +760,7 @@ async def batch_set_category(
             issue.category_verified = True
         # Пересчитать denormalized category и синкнуть BacklogItem.
         issue.category = resolver.resolve_for_issue(issue).category_code
+        reset_parent_context(db, issue, resolver)
         backlog.sync_from_issue(issue)
         updated += 1
         seen_targets.add(issue.id)
@@ -775,6 +777,7 @@ async def batch_set_category(
             if body.verify:
                 d.category_verified = True
             d.category = resolver.resolve_for_issue(d).category_code
+            reset_parent_context(db, d, resolver)
             backlog.sync_from_issue(d)
             cascaded_ids.append(d.id)
             seen_targets.add(d.id)
@@ -841,6 +844,7 @@ async def verify_issue(
         issue.category_verified = True
         verified_count += 1
     issue.require_child_verification = body.require_child_verification
+    reset_parent_context(db, issue, resolver)
 
     if body.cascade:
         if apply_code:
@@ -852,6 +856,7 @@ async def verify_issue(
                 if is_archive and descendant.include_in_analysis:
                     descendant.include_in_analysis = False
                 descendant.category = resolver.resolve_for_issue(descendant).category_code
+                reset_parent_context(db, descendant, resolver)
                 backlog.sync_from_issue(descendant)
                 if not descendant.category_verified:
                     descendant.category_verified = True
@@ -862,6 +867,7 @@ async def verify_issue(
             for descendant in _collect_unverified_descendants(db, issue_id):
                 descendant.category_verified = True
                 verified_count += 1
+                reset_parent_context(db, descendant, resolver)
 
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
