@@ -120,6 +120,16 @@ class Issue(Base, SyncedMixin):
     require_child_verification: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false(), nullable=False
     )
+    # Переезд задачи к другому родителю со сменой наследуемой категории.
+    # parent_changed — пометка «сменился родитель» (значок + фильтр в стопке).
+    # category_context — категория от родителя, зафиксированная на момент
+    #   последнего подтверждения (точка отсчёта + значение «была» в подсказке).
+    # category_context_key — ключ родителя-источника на тот же момент («из X»).
+    parent_changed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False, index=True,
+    )
+    category_context: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    category_context_key: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     include_in_analysis: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=True)
     # Задача попала в БД только через worklog автора (Bucket B) — не входит в
     # основной scope проекта. Используется для фильтрации в аналитике.
