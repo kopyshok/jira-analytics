@@ -281,3 +281,58 @@ class TestResolveForWorklog:
 
         assert result.category_code == CategoryCode.TECH_DEBT
         assert result.source == MappingSource.SCOPE_ROOT
+
+
+def test_resolve_inherited_ignores_own_assigned(db_session):
+    from app.models import Project, Issue
+    from app.services.category_resolver import CategoryResolver
+
+    project = Project(jira_project_id="p-inh", key="INH", name="Inh")
+    db_session.add(project); db_session.flush()
+    parent = Issue(jira_issue_id="j-par", key="INH-1", summary="par",
+                   issue_type="Epic", status="Open", project_id=project.id,
+                   assigned_category="tech_debt")
+    db_session.add(parent); db_session.flush()
+    child = Issue(jira_issue_id="j-ch", key="INH-2", summary="ch",
+                  issue_type="Task", status="Open", project_id=project.id,
+                  parent_id=parent.id, assigned_category="meetings")
+    db_session.add(child); db_session.flush()
+    resolver = CategoryResolver(db_session)
+    assert resolver.resolve_inherited_for_issue(child).category_code == "tech_debt"
+
+
+def test_resolve_inherited_no_parent_is_fallback(db_session):
+    from app.models import Project, Issue
+    from app.services.category_resolver import CategoryResolver
+    from app.services.categories import UNFILLED_WORKLOG_CODE
+
+    project = Project(jira_project_id="p-nf", key="NF", name="NF")
+    db_session.add(project); db_session.flush()
+    orphan = Issue(jira_issue_id="j-or", key="NF-1", summary="or",
+                   issue_type="Task", status="Open", project_id=project.id,
+                   assigned_category="meetings")
+    db_session.add(orphan); db_session.flush()
+    resolver = CategoryResolver(db_session)
+    assert resolver.resolve_inherited_for_issue(orphan).category_code == UNFILLED_WORKLOG_CODE
+
+
+def test_reset_parent_context_sets_baseline_and_clears_flag(db_session):
+    from app.models import Project, Issue
+    from app.services.category_resolver import CategoryResolver, reset_parent_context
+
+    project = Project(jira_project_id="p-rs", key="RS", name="RS")
+    db_session.add(project); db_session.flush()
+    parent = Issue(jira_issue_id="j-rsp", key="RS-1", summary="p",
+                   issue_type="Epic", status="Open", project_id=project.id,
+                   assigned_category="tech_debt")
+    db_session.add(parent); db_session.flush()
+    child = Issue(jira_issue_id="j-rsc", key="RS-2", summary="c",
+                  issue_type="Task", status="Open", project_id=project.id,
+                  parent_id=parent.id, parent_changed=True,
+                  category_context="meetings", category_context_key="OLD-9")
+    db_session.add(child); db_session.flush()
+    resolver = CategoryResolver(db_session)
+    reset_parent_context(db_session, child, resolver)
+    assert child.parent_changed is False
+    assert child.category_context == "tech_debt"
+    assert child.category_context_key == "RS-1"

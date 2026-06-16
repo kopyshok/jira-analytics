@@ -142,6 +142,26 @@ class CategoryResolver:
             source=MappingSource.FALLBACK,
         )
 
+    def resolve_inherited_for_issue(self, issue: Issue) -> CategoryResolution:
+        """Категория, которую задача получает ОТ РОДИТЕЛЯ — без учёта своей
+        назначенной категории. Используется для детекта значимого переезда.
+
+        Если родителя нет — fallback-код (стабильная точка отсчёта).
+        """
+        self._load_caches()
+        if not issue.parent_id:
+            return CategoryResolution(
+                category_code=UNFILLED_WORKLOG_CODE,
+                source=MappingSource.FALLBACK,
+            )
+        parent = self.db.get(Issue, issue.parent_id)
+        if parent is None:
+            return CategoryResolution(
+                category_code=UNFILLED_WORKLOG_CODE,
+                source=MappingSource.FALLBACK,
+            )
+        return self.resolve_for_issue(parent)
+
     def resolve_for_worklog(
         self,
         worklog: Worklog,
@@ -181,6 +201,25 @@ class CategoryResolver:
             category_code=UNFILLED_WORKLOG_CODE,
             source=MappingSource.FALLBACK,
         )
+
+
+def reset_parent_context(
+    resolver_db,
+    issue: "Issue",
+    resolver: "CategoryResolver",
+) -> None:
+    """Сбросить пометку переезда и сдвинуть точку отсчёта на текущий контекст.
+
+    Вызывается из всех точек подтверждения категории: после подтверждения
+    «откуда / была» больше не актуально, новая база = текущая категория от
+    родителя.
+    """
+    from app.models import Issue as _Issue
+
+    issue.parent_changed = False
+    issue.category_context = resolver.resolve_inherited_for_issue(issue).category_code
+    parent = resolver_db.get(_Issue, issue.parent_id) if issue.parent_id else None
+    issue.category_context_key = parent.key if parent else None
 
 
 def effective_category_with_ancestors(
