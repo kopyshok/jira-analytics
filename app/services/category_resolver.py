@@ -204,7 +204,7 @@ class CategoryResolver:
 
 
 def reset_parent_context(
-    resolver_db,
+    resolver_db: Session,
     issue: "Issue",
     resolver: "CategoryResolver",
 ) -> None:

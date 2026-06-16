@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Issue, Project
 from app.services.backlog_service import BacklogService
-from app.services.category_resolver import CategoryResolver
+from app.services.category_resolver import CategoryResolver, reset_parent_context
 from app.services.event_bus import EventBroadcaster, get_event_bus
 
 router = APIRouter()
@@ -203,6 +203,7 @@ async def bulk_accept_suggestions(
     """
     rows = _apply_filters(db.query(Issue), body.filters, db).all()
     backlog = BacklogService(db)
+    resolver = CategoryResolver(db)
     applied = 0
     skipped = 0
     for issue in rows:
@@ -215,6 +216,7 @@ async def bulk_accept_suggestions(
         issue.category_verified = True
         if issue.category in ARCHIVE_CATEGORY_CODES and issue.include_in_analysis:
             issue.include_in_analysis = False
+        reset_parent_context(db, issue, resolver)
         backlog.sync_from_issue(issue)
         applied += 1
 
@@ -267,6 +269,7 @@ async def bulk_cascade_inherit(
     """
     ancestors = db.query(Issue).filter(Issue.id.in_(body.ancestor_ids)).all()
     backlog = BacklogService(db)
+    resolver = CategoryResolver(db)
     applied = 0
     skipped_ancestors = 0
     for anc in ancestors:
@@ -280,6 +283,7 @@ async def bulk_cascade_inherit(
             d.category_verified = True
             if anc.assigned_category in ARCHIVE_CATEGORY_CODES and d.include_in_analysis:
                 d.include_in_analysis = False
+            reset_parent_context(db, d, resolver)
             backlog.sync_from_issue(d)
             applied += 1
 
