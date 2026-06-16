@@ -1,60 +1,62 @@
-import { Tooltip, Typography } from 'antd';
+import { Tooltip } from 'antd';
 import WidgetShell from './WidgetShell';
 import { useDeskWidget } from './useDeskWidget';
 import { fmtShortRange } from './format';
-import { statusTagColor } from '../../utils/status';
-import { CHART_COLORS, DARK_THEME, MONTH_NAMES } from '../../utils/constants';
+import { deskStatusKind } from './deskStatus';
+import { MONTH_NAMES } from '../../utils/constants';
 import type { MyTimelineData, TimelineBar } from '../../types/desk';
-
-const BAR_PALETTE = [
-  CHART_COLORS.cyan,
-  CHART_COLORS.blue,
-  CHART_COLORS.green,
-  CHART_COLORS.orange,
-  CHART_COLORS.purple,
-];
 
 function toTime(iso: string): number {
   return new Date(iso.slice(0, 10)).getTime();
 }
 
-/** Границы месяцев внутри [start, end] — для вертикальных разделителей. */
-function monthTicks(startIso: string, endIso: string): Array<{ left: number; label: string }> {
+/** Метки месяцев внутри [start, end] — равные доли по числу месяцев. */
+function monthLabels(startIso: string, endIso: string): string[] {
   const start = new Date(startIso.slice(0, 10));
   const end = new Date(endIso.slice(0, 10));
-  const span = end.getTime() - start.getTime();
-  if (span <= 0) return [];
-  const ticks: Array<{ left: number; label: string }> = [];
-  let y = start.getFullYear();
-  let m = start.getMonth(); // 0-based
-  // Первый день каждого месяца начиная со следующего после start.
-  let cur = new Date(y, m + 1, 1);
-  while (cur.getTime() < end.getTime()) {
-    const left = ((cur.getTime() - start.getTime()) / span) * 100;
-    ticks.push({ left, label: MONTH_NAMES[cur.getMonth() + 1] ?? '' });
-    m = cur.getMonth();
-    y = cur.getFullYear();
-    cur = new Date(y, m + 1, 1);
+  const out: string[] = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (cur.getTime() <= end.getTime()) {
+    out.push((MONTH_NAMES[cur.getMonth() + 1] ?? '').slice(0, 3));
+    cur.setMonth(cur.getMonth() + 1);
   }
-  return ticks;
+  return out;
 }
 
-function BarRow({ bar, quarterStart, quarterEnd, color }: {
-  bar: TimelineBar; quarterStart: string; quarterEnd: string; color: string;
-}) {
-  const qStart = toTime(quarterStart);
-  const qEnd = toTime(quarterEnd);
-  const span = qEnd - qStart || 1;
-  const bStart = Math.max(toTime(bar.start_date), qStart);
-  const bEnd = Math.min(toTime(bar.end_date), qEnd);
-  const left = ((bStart - qStart) / span) * 100;
-  const width = Math.max(1, ((bEnd - bStart) / span) * 100);
+/** Позиции границ месяцев в процентах (для вертикальных разделителей). */
+function monthGridlines(startIso: string, endIso: string): number[] {
+  const start = toTime(startIso);
+  const end = toTime(endIso);
+  const span = end - start || 1;
+  const out: number[] = [];
+  const cur = new Date(startIso.slice(0, 10));
+  cur.setMonth(cur.getMonth() + 1, 1);
+  while (cur.getTime() < end) {
+    out.push(((cur.getTime() - start) / span) * 100);
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return out;
+}
 
-  const label = bar.key ? `${bar.key} · ${bar.title ?? ''}` : (bar.title ?? '—');
-  const jiraUrl = bar.key ? `https://itgri.atlassian.net/browse/${bar.key}` : null;
+type TimelineBarView = TimelineBar & { jira_url_safe: string | null };
+
+function BarRow({ bar, gridlines, nowLeft, qStart, qEnd }: {
+  bar: TimelineBarView; gridlines: number[]; nowLeft: number | null; qStart: string; qEnd: string;
+}) {
+  const qs = toTime(qStart);
+  const qe = toTime(qEnd);
+  const span = qe - qs || 1;
+  const bStart = Math.max(toTime(bar.start_date), qs);
+  const bEnd = Math.min(toTime(bar.end_date), qe);
+  const left = ((bStart - qs) / span) * 100;
+  const width = Math.max(2, ((bEnd - bStart) / span) * 100);
+  const kind = deskStatusKind(bar.status);
+  const label = bar.title ?? bar.key ?? '—';
+  const jiraUrl = bar.jira_url_safe;
+
   const tip = (
     <span>
-      {label}
+      {bar.key ? `${bar.key} · ` : ''}{label}
       <br />
       {fmtShortRange(bar.start_date, bar.end_date)}
       {bar.status ? ` · ${bar.status}` : ''}
@@ -62,26 +64,20 @@ function BarRow({ bar, quarterStart, quarterEnd, color }: {
   );
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 8, alignItems: 'center', padding: '3px 0' }}>
-      <div style={{
-        fontSize: 12, color: DARK_THEME.textPrimary,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {jiraUrl ? (
-          <Typography.Link href={jiraUrl} target="_blank" rel="noreferrer">
-            {label}
-          </Typography.Link>
-        ) : label}
+    <div className="desk-tl-row">
+      <div className="desk-tl-label">
+        {jiraUrl ? <a href={jiraUrl} target="_blank" rel="noreferrer">{label}</a> : label}
       </div>
-      <div style={{ position: 'relative', height: 16, background: DARK_THEME.darkRows, borderRadius: 4 }}>
+      <div className="desk-tl-track">
+        {gridlines.map((g, i) => (
+          <div key={i} className="desk-tl-gridline" style={{ left: `${g}%` }} />
+        ))}
         <Tooltip title={tip} mouseEnterDelay={0.2}>
-          <div style={{
-            position: 'absolute', top: 0, height: '100%',
-            left: `${left}%`, width: `${width}%`,
-            background: color, borderRadius: 4,
-            border: `1px solid ${statusTagColor(bar.status, null) === 'success' ? CHART_COLORS.green : 'transparent'}`,
-          }} />
+          <div className={`desk-tl-bar desk-bar-${kind}`} style={{ left: `${left}%`, width: `${width}%` }}>
+            {label}
+          </div>
         </Tooltip>
+        {nowLeft !== null && <div className="desk-tl-now" style={{ left: `${nowLeft}%` }} />}
       </div>
     </div>
   );
@@ -89,10 +85,26 @@ function BarRow({ bar, quarterStart, quarterEnd, color }: {
 
 export default function MyTimelineWidget({ token, title }: { token: string; title: string }) {
   const { data, isLoading, isError } = useDeskWidget<MyTimelineData>(token, 'my_timeline');
-  const bars = data?.bars ?? [];
+  const bars = (data?.bars ?? []).map((b) => ({
+    ...b,
+    jira_url_safe: b.key ? `https://itgri.atlassian.net/browse/${b.key}` : null,
+  }));
   const qStart = data?.quarter_start ?? '';
   const qEnd = data?.quarter_end ?? '';
-  const ticks = qStart && qEnd ? monthTicks(qStart, qEnd) : [];
+
+  const labels = qStart && qEnd ? monthLabels(qStart, qEnd) : [];
+  const gridlines = qStart && qEnd ? monthGridlines(qStart, qEnd) : [];
+
+  // Текущая неделя: позиция «сегодня» в процентах квартала (если внутри).
+  let nowLeft: number | null = null;
+  if (qStart && qEnd) {
+    const qs = toTime(qStart);
+    const qe = toTime(qEnd);
+    const now = new Date().getTime();
+    if (now >= qs && now <= qe) nowLeft = ((now - qs) / (qe - qs || 1)) * 100;
+  }
+
+  const todayLabel = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 
   return (
     <WidgetShell
@@ -102,27 +114,40 @@ export default function MyTimelineWidget({ token, title }: { token: string; titl
       isEmpty={bars.length === 0}
       emptyText="Нет проектов с датами"
     >
-      <div style={{ position: 'relative' }}>
-        {/* Шкала месяцев */}
-        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 8, marginBottom: 6 }}>
+      <div>
+        <div className="desk-tl-header">
           <div />
-          <div style={{ position: 'relative', height: 16, color: DARK_THEME.textMuted, fontSize: 10 }}>
-            {ticks.map((t, i) => (
-              <span key={i} style={{ position: 'absolute', left: `${t.left}%`, transform: 'translateX(-50%)' }}>
-                {t.label}
-              </span>
+          <div className="desk-tl-months" style={{ gridTemplateColumns: `repeat(${labels.length || 1}, 1fr)` }}>
+            {labels.map((m, i) => (
+              <div key={i} className="desk-tl-month-label">{m}</div>
             ))}
           </div>
         </div>
-        {bars.map((bar, i) => (
-          <BarRow
-            key={`${bar.key ?? ''}-${bar.start_date}-${i}`}
-            bar={bar}
-            quarterStart={qStart}
-            quarterEnd={qEnd}
-            color={BAR_PALETTE[i % BAR_PALETTE.length]}
-          />
-        ))}
+        <div className="desk-tl-rows">
+          {bars.map((bar, i) => (
+            <BarRow
+              key={`${bar.key ?? ''}-${bar.start_date}-${i}`}
+              bar={bar}
+              gridlines={gridlines}
+              nowLeft={nowLeft}
+              qStart={qStart}
+              qEnd={qEnd}
+            />
+          ))}
+        </div>
+
+        {nowLeft !== null && (
+          <div className="desk-tl-legend">
+            <span className="desk-tl-legend-dot" />
+            Текущая неделя ({todayLabel})
+          </div>
+        )}
+        <div className="desk-tl-color-legend">
+          <span className="desk-tl-color-item"><span className="desk-tl-color-swatch desk-bar-active" />В работе</span>
+          <span className="desk-tl-color-item"><span className="desk-tl-color-swatch desk-bar-review" />На ревью</span>
+          <span className="desk-tl-color-item"><span className="desk-tl-color-swatch desk-bar-done" />Готово</span>
+          <span className="desk-tl-color-item"><span className="desk-tl-color-swatch desk-bar-returned" />Возвращена</span>
+        </div>
       </div>
     </WidgetShell>
   );
