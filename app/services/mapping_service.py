@@ -120,6 +120,7 @@ class MappingService:
         logger.info("Recalculating categories for all issues...")
 
         issues = self.db.query(Issue).all()
+        key_by_id = {i.id: i.key for i in issues}
         # Bulk-prefetch existing mappings — устраняет N SELECT в _upsert_mapping
         # на 100k+ задач (главная причина 130s+ recalc на полном бэклоге).
         mapping_cache: dict = {
@@ -156,6 +157,25 @@ class MappingService:
             #    попадании в категорию.
             if category_changed or resolution.category_code in TRACKED_CATEGORIES:
                 backlog.sync_from_issue(issue)
+
+            # Детект значимого переезда к другому родителю (смена категории
+            # от родителя относительно зафиксированной точки отсчёта).
+            inherited = self.resolver.resolve_inherited_for_issue(issue).category_code
+            parent_key = key_by_id.get(issue.parent_id) if issue.parent_id else None
+            excluded = not bool(issue.include_in_analysis)
+            if excluded:
+                issue.category_context = inherited
+                issue.category_context_key = parent_key
+                if issue.parent_changed:
+                    issue.parent_changed = False
+            elif issue.category_context is None:
+                # Первая встреча — тихо инициализируем, без пометки.
+                issue.category_context = inherited
+                issue.category_context_key = parent_key
+            elif issue.category_verified and inherited != issue.category_context:
+                issue.parent_changed = True
+                issue.category_verified = False
+                # category_context / _key оставляем как «откуда / была».
 
             count += 1
             if count % 100 == 0:

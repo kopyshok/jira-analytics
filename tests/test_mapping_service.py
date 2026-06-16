@@ -327,3 +327,83 @@ class TestRecalculateForIssues:
         from app.services.mapping_service import MappingService
         svc = MappingService(db_session)
         assert svc.recalculate_for_issues([]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Детект переезда к другому родителю (parent_changed / category_context)
+# ---------------------------------------------------------------------------
+
+
+def test_parent_move_changes_inherited_flags_verified_issue(db_session, project):
+    from app.services.mapping_service import MappingService
+    old_parent = _issue(db_session, project, "MV-1"); old_parent.assigned_category = "tech_debt"
+    new_parent = _issue(db_session, project, "MV-2"); new_parent.assigned_category = "meetings"
+    child = _issue(db_session, project, "MV-3", parent=old_parent)
+    child.category_verified = True
+    db_session.flush()
+    svc = MappingService(db_session)
+    svc.recalculate_issues()
+    assert child.category_context == "tech_debt"
+    assert child.parent_changed is False
+    child.parent_id = new_parent.id
+    db_session.flush()
+    svc.recalculate_issues()
+    assert child.parent_changed is True
+    assert child.category_verified is False
+    assert child.category_context == "tech_debt"
+
+
+def test_parent_move_same_category_no_flag(db_session, project):
+    from app.services.mapping_service import MappingService
+    a = _issue(db_session, project, "SM-1"); a.assigned_category = "tech_debt"
+    b = _issue(db_session, project, "SM-2"); b.assigned_category = "tech_debt"
+    child = _issue(db_session, project, "SM-3", parent=a); child.category_verified = True
+    db_session.flush()
+    svc = MappingService(db_session)
+    svc.recalculate_issues()
+    child.parent_id = b.id; db_session.flush()
+    svc.recalculate_issues()
+    assert child.parent_changed is False
+    assert child.category_verified is True
+
+
+def test_parent_move_to_empty_category_flags(db_session, project):
+    from app.services.mapping_service import MappingService
+    a = _issue(db_session, project, "EM-1"); a.assigned_category = "tech_debt"
+    b = _issue(db_session, project, "EM-2")  # без категории
+    child = _issue(db_session, project, "EM-3", parent=a); child.category_verified = True
+    db_session.flush()
+    svc = MappingService(db_session)
+    svc.recalculate_issues()
+    child.parent_id = b.id; db_session.flush()
+    svc.recalculate_issues()
+    assert child.parent_changed is True
+
+
+def test_own_category_task_still_flagged(db_session, project):
+    from app.services.mapping_service import MappingService
+    a = _issue(db_session, project, "OW-1"); a.assigned_category = "tech_debt"
+    b = _issue(db_session, project, "OW-2"); b.assigned_category = "meetings"
+    child = _issue(db_session, project, "OW-3", parent=a)
+    child.assigned_category = "tech_debt"; child.category_verified = True
+    db_session.flush()
+    svc = MappingService(db_session)
+    svc.recalculate_issues()
+    child.parent_id = b.id; db_session.flush()
+    svc.recalculate_issues()
+    assert child.parent_changed is True
+    assert child.category_verified is False
+
+
+def test_excluded_issue_not_flagged(db_session, project):
+    from app.services.mapping_service import MappingService
+    a = _issue(db_session, project, "EX-1"); a.assigned_category = "tech_debt"
+    b = _issue(db_session, project, "EX-2"); b.assigned_category = "meetings"
+    child = _issue(db_session, project, "EX-3", parent=a)
+    child.category_verified = True; child.include_in_analysis = False
+    db_session.flush()
+    svc = MappingService(db_session)
+    svc.recalculate_issues()
+    child.parent_id = b.id; db_session.flush()
+    svc.recalculate_issues()
+    assert child.parent_changed is False
