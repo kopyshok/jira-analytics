@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     with op.batch_alter_table('issues', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('parent_changed', sa.Boolean(), server_default=sa.text('0'), nullable=False))
+        batch_op.add_column(sa.Column('parent_changed', sa.Boolean(), server_default=sa.false(), nullable=False))
         batch_op.add_column(sa.Column('category_context', sa.String(length=100), nullable=True))
         batch_op.add_column(sa.Column('category_context_key', sa.String(length=32), nullable=True))
         batch_op.create_index(batch_op.f('ix_issues_parent_changed'), ['parent_changed'], unique=False)
