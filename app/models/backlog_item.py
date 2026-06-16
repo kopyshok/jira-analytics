@@ -92,6 +92,11 @@ class BacklogItem(Base, TimestampMixin):
     customer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    # Команда для ручных идей (issue_id IS NULL). У привязанных к Jira элементов
+    # источник правды — Issue.team; здесь NULL. Нужно, чтобы глобальный фильтр
+    # по команде не прятал ручные идеи (у них нет задачи Jira => нет Issue.team).
+    team: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
+
     # Jira involvement (0.0..1.0) and calendar duration (days) — sourced from Issue.
     # NULL = not set in Jira; solver falls back to hours_allocated / 8.
     involvement_analyst: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

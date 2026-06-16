@@ -42,6 +42,7 @@ router = APIRouter()
 class BacklogItemCreate(BaseModel):
     title: str
     project_id: Optional[str] = None
+    team: Optional[str] = None
     priority: Optional[int] = None
     estimate_analyst_hours: Optional[float] = Field(default=None, ge=0)
     estimate_dev_hours: Optional[float] = Field(default=None, ge=0)
@@ -58,6 +59,7 @@ class BacklogItemCreate(BaseModel):
 class BacklogItemUpdate(BaseModel):
     title: Optional[str] = None
     project_id: Optional[str] = None
+    team: Optional[str] = None
     priority: Optional[int] = Field(default=None, ge=1, le=10)
     estimate_analyst_hours: Optional[float] = Field(default=None, ge=0)
     estimate_dev_hours: Optional[float] = Field(default=None, ge=0)
@@ -105,6 +107,7 @@ class BacklogItemResponse(BaseModel):
     id: str
     title: str
     project_id: Optional[str] = None
+    team: Optional[str] = None
     issue_id: Optional[str] = None
     jira_key: Optional[str] = None
     priority: Optional[int] = None
@@ -278,6 +281,7 @@ def _to_response(
         id=item.id,
         title=item.title,
         project_id=item.project_id,
+        team=(issue.team if issue else item.team),
         issue_id=item.issue_id,
         jira_key=issue.key if issue else None,
         priority=item.priority,
@@ -361,7 +365,21 @@ async def list_backlog_items(
 
     teams_list = [t.strip() for t in (teams or "").split(",") if t.strip()]
     if teams_list:
-        query = query.filter(Issue.team.in_(teams_list))
+        # Привязанные к Jira элементы фильтруем по команде задачи; ручные идеи
+        # (issue_id IS NULL) — по собственному полю team. Ручные идеи без команды
+        # (team IS NULL) показываем всегда, чтобы фильтр их не прятал.
+        query = query.filter(
+            or_(
+                Issue.team.in_(teams_list),
+                and_(
+                    BacklogItem.issue_id.is_(None),
+                    or_(
+                        BacklogItem.team.is_(None),
+                        BacklogItem.team.in_(teams_list),
+                    ),
+                ),
+            )
+        )
 
     # Cancel-like статусы (Отменено / Cancelled / Rejected) считаем «закрыты»
     # — Jira держит их в statusCategory != 'done', но для backlog'а они мусор.

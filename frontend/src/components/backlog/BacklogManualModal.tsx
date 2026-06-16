@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { App, Modal, Form, Input, InputNumber, Select } from 'antd';
 import { useCreateBacklogItem, useUpdateBacklogItem, useProjects } from '../../hooks/useBacklog';
+import { useTeams } from '../../hooks/useSync';
+import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import type { BacklogItemResponse, BacklogImpactRisk } from '../../types/api';
 
 interface Props {
@@ -12,6 +14,7 @@ interface Props {
 interface FormValues {
   title: string;
   project_id?: string;
+  team?: string;
   priority?: number;
   estimate_analyst_hours?: number;
   estimate_dev_hours?: number;
@@ -34,11 +37,16 @@ const IMPACT_RISK_OPTIONS = [
 export default function BacklogManualModal({ open, item, onClose }: Props) {
   const { notification } = App.useApp();
   const { data: projects } = useProjects();
+  const { data: teams } = useTeams();
+  const { selectedTeams } = useGlobalTeamFilter();
   const create = useCreateBacklogItem();
   const update = useUpdateBacklogItem();
   const [form] = Form.useForm<FormValues>();
 
   const isEdit = !!item;
+  // Поле команды нужно только ручным идеям. У привязанных к Jira элементов
+  // команда приходит из задачи — менять её здесь нельзя.
+  const isLinked = !!item?.issue_id;
 
   useEffect(() => {
     if (!open) return;
@@ -46,6 +54,7 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
       form.setFieldsValue({
         title: item.title,
         project_id: item.project_id ?? undefined,
+        team: item.team ?? undefined,
         priority: item.priority ?? undefined,
         estimate_analyst_hours: item.estimate_analyst_hours ?? undefined,
         estimate_dev_hours: item.estimate_dev_hours ?? undefined,
@@ -62,9 +71,12 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
       form.resetFields();
       form.setFieldsValue({
         opo_analyst_ratio: 0.5,
+        // Предзаполняем командой из активного фильтра, чтобы новая идея сразу
+        // попадала в текущий вид. Если выбрано несколько — берём первую.
+        team: selectedTeams.length > 0 ? selectedTeams[0] : undefined,
       });
     }
-  }, [open, item, form]);
+  }, [open, item, form, selectedTeams]);
 
   const handleSubmit = (values: FormValues) => {
     const payload = {
@@ -73,6 +85,8 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
       project_id: values.project_id || undefined,
       impact: values.impact || undefined,
       risk: values.risk || undefined,
+      // У привязанных к Jira элементов команду не трогаем — она из задачи.
+      team: isLinked ? undefined : (values.team || undefined),
     };
     if (isEdit && item) {
       update.mutate(
@@ -122,6 +136,22 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
             options={projects?.map((p) => ({ value: p.id, label: `${p.key} — ${p.name}` }))}
           />
         </Form.Item>
+
+        {!isLinked && (
+          <Form.Item
+            name="team"
+            label="Команда"
+            tooltip="Идея появится в списке у тех, у кого выбрана эта команда. Без команды — видна всем."
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Выберите команду"
+              options={(teams ?? []).map((t) => ({ value: t, label: t }))}
+            />
+          </Form.Item>
+        )}
 
         <Form.Item label="Оценка по ролям (часы)" style={{ marginBottom: 0 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>

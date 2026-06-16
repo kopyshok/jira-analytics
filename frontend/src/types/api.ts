@@ -453,6 +453,7 @@ export interface BacklogItemResponse {
   id: string;
   title: string;
   project_id: string | null;
+  team: string | null;
   issue_id: string | null;
   jira_key: string | null;
   priority: number | null;

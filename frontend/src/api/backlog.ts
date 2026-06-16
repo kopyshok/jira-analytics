@@ -17,6 +17,7 @@ export const getBacklogItems = (
 export const createBacklogItem = (data: {
   title: string;
   project_id?: string;
+  team?: string;
   priority?: number;
   estimate_analyst_hours?: number;
   estimate_dev_hours?: number;
@@ -33,6 +34,7 @@ export const createBacklogItem = (data: {
 export const updateBacklogItem = (id: string, data: Partial<{
   title: string;
   project_id: string;
+  team: string | null;
   priority: number;
   estimate_analyst_hours: number;
   estimate_dev_hours: number;
