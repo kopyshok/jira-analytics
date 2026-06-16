@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Card, Skeleton, Empty, Alert } from 'antd';
+import { Skeleton } from 'antd';
 
 interface WidgetShellProps {
   title: string;
@@ -10,7 +10,8 @@ interface WidgetShellProps {
   children: ReactNode;
 }
 
-/** Единая оболочка виджета стола: заголовок, скелетон, пусто, ошибка. */
+/** Единая оболочка виджета стола: тихий заголовок с cyan-точкой, мягкая
+ *  неоморфная подложка; состояния загрузки / пусто / ошибка. */
 export default function WidgetShell({
   title,
   isLoading,
@@ -20,16 +21,20 @@ export default function WidgetShell({
   children,
 }: WidgetShellProps) {
   return (
-    <Card title={title} size="small" style={{ height: '100%' }}>
+    <div className="desk-zone">
+      <div className="desk-zone-title">
+        <span className="desk-zone-dot" />
+        {title}
+      </div>
       {isLoading ? (
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : isError ? (
-        <Alert type="warning" showIcon message="Не удалось загрузить данные" />
+        <div className="desk-error">Не удалось загрузить данные</div>
       ) : isEmpty ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+        <div className="desk-empty">{emptyText}</div>
       ) : (
         children
       )}
-    </Card>
+    </div>
   );
 }

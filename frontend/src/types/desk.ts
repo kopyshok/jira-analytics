@@ -12,11 +12,21 @@ export interface DeskPeriod {
   quarter: number;
 }
 
+export interface DeskSummary {
+  /** Накопительный баланс факт−норма с 1 января (знаковый). */
+  overtime_hours: number;
+  /** Рабочих дней до конца текущего месяца включительно. */
+  remaining_workdays_month: number;
+  /** Незавершённых проектов сотрудника на свежем плане. */
+  projects_in_progress: number;
+}
+
 export interface DeskMeta {
   employee: DeskEmployee;
   teams: string[];
   enabled_widgets: string[];
   period: DeskPeriod;
+  summary: DeskSummary;
 }
 
 /** Проект/назначение сотрудника (общая форма для my_tasks и team_availability). */
