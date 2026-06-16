@@ -94,15 +94,34 @@ export function AuroraSidebar() {
           </div>
           <div
             style={{
-              fontSize: 9.5,
-              textTransform: 'uppercase',
-              letterSpacing: '0.18em',
-              color: 'var(--accent-1)',
-              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 6,
               marginTop: 1,
             }}
           >
-            Analytics
+            <span
+              style={{
+                fontSize: 9.5,
+                textTransform: 'uppercase',
+                letterSpacing: '0.18em',
+                color: 'var(--accent-1)',
+                fontWeight: 600,
+              }}
+            >
+              Analytics
+            </span>
+            <span
+              title={`Версия ${__APP_VERSION__}`}
+              style={{
+                fontSize: 9,
+                color: 'var(--text-muted)',
+                fontWeight: 500,
+                letterSpacing: '0.04em',
+              }}
+            >
+              v{__APP_VERSION__}
+            </span>
           </div>
         </div>
       </div>
