@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, t
 import {
   Button, Space, Table, Tag, App,
   Select, Typography, Modal, Checkbox,
-  Empty, Input, Popover,
+  Empty, Input, Popover, Tooltip, Switch,
 } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import categoriesHelp from '../../../docs/help/categories.md?raw';
@@ -220,6 +220,7 @@ export default function CategoriesEditorPage() {
     verify: 160,
   });
   const [innerTab, setInnerTab] = useState<InnerTab>('stack');
+  const [onlyMoved, setOnlyMoved] = useState(false);
   const [pendingCats, setPendingCats] = useState<Map<string, string | null>>(new Map());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
@@ -261,6 +262,7 @@ export default function CategoriesEditorPage() {
     setLoadedChildren(new Map());
     setExpandedRowKeys([]);
     setJumpedKey(null);
+    if (innerTab !== 'stack') setOnlyMoved(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [innerTab, selectedTeams.join(','), scopeKeys, ...(SEARCH_MODE === 'filter' ? [normalizedSearch] : [])]);
 
@@ -321,6 +323,24 @@ export default function CategoriesEditorPage() {
     };
     return (rootsQuery.data ?? []).filter(passesHiddenStatuses).map(r => attachChildren(r, 0));
   }, [rootsQuery.data, loadedChildren, passesHiddenStatuses]);
+
+  // «Только переехавшие»: оставляем строки со сменой родителя и их предков
+  // (чтобы отмеченный потомок не пропал под неотмеченным родителем).
+  const stackData = useMemo<TreeNodeWithChildren[]>(() => {
+    if (!onlyMoved || innerTab !== 'stack') return displayData;
+    const prune = (node: TreeNodeWithChildren): TreeNodeWithChildren | null => {
+      const keptKids = (node.children ?? [])
+        .map(prune)
+        .filter((c): c is TreeNodeWithChildren => c !== null);
+      if (node.parent_changed || keptKids.length > 0) {
+        return { ...node, children: keptKids.length > 0 ? keptKids : undefined };
+      }
+      return null;
+    };
+    return displayData
+      .map(prune)
+      .filter((n): n is TreeNodeWithChildren => n !== null);
+  }, [displayData, onlyMoved, innerTab]);
 
   // ─── Unique statuses from loaded data ────────────────────────
 
@@ -640,6 +660,15 @@ export default function CategoriesEditorPage() {
                   {count}
                 </Tag>
               )}
+              {record.parent_changed && (
+                <Tooltip
+                  title={`Задача переехала из ${record.category_context_key ?? '—'} (была ${categoryLabels[record.category_context ?? ''] ?? 'нет категории'}). Проверьте категорию.`}
+                >
+                  <Tag color="orange" style={{ marginLeft: 6, fontSize: 11 }}>
+                    сменился родитель
+                  </Tag>
+                </Tooltip>
+              )}
             </span>
           );
         },
@@ -900,6 +929,12 @@ export default function CategoriesEditorPage() {
             size="small"
             style={{ width: 280 }}
           />
+          {innerTab === 'stack' && (
+            <Space size={6}>
+              <Switch size="small" checked={onlyMoved} onChange={setOnlyMoved} />
+              <Text style={{ whiteSpace: 'nowrap' }}>Только переехавшие</Text>
+            </Space>
+          )}
         </Space>
         <Space wrap>
           {rootsQuery.isFetching && (
@@ -923,7 +958,7 @@ export default function CategoriesEditorPage() {
       <div className="category-table-wrap">
         <Table<TreeNodeWithChildren>
           className="category-issue-table"
-          dataSource={displayData}
+          dataSource={stackData}
           columns={columns as never}
           components={tableComponents}
           rowKey="id"

@@ -156,6 +156,9 @@ export interface IssueTreeNode {
   is_container: boolean;
   category_verified: boolean;
   require_child_verification: boolean;
+  parent_changed?: boolean;
+  category_context?: string | null;
+  category_context_key?: string | null;
   children: IssueTreeNode[];
 }
 
@@ -177,6 +180,9 @@ export interface IssueTreeRootNode {
   is_container: boolean;
   category_verified: boolean;
   require_child_verification: boolean;
+  parent_changed?: boolean;
+  category_context?: string | null;
+  category_context_key?: string | null;
   has_children: boolean;
   descendant_count: number;
   descendant_match_count: number;
