@@ -60,6 +60,22 @@ def _pick_auto_color(db: Session) -> str:
     return _AUTO_COLOR_PALETTE[total % len(_AUTO_COLOR_PALETTE)]
 
 
+def _normalize_color(color: Optional[str]) -> Optional[str]:
+    """Привести цвет к виду #RRGGBB.
+
+    Палитра ColorPicker при ненулевой прозрачности отдаёт 8-значный hex
+    (#RRGGBBAA). Колонка хранит только #RRGGBB; на Postgres лишние символы
+    приводят к ошибке длины (SQLite её игнорирует). Прозрачность приложению
+    не нужна — отбрасываем.
+    """
+    if not color:
+        return color
+    c = color.strip()
+    if c.startswith("#") and len(c) > 7:
+        c = c[:7]
+    return c
+
+
 def _validate_work_type_id(db: Session, work_type_id: Optional[str]) -> None:
     """Raise 422 if work_type_id is set but unknown or inactive."""
     if work_type_id is None:
@@ -102,7 +118,7 @@ async def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
     cat = Category(
         code=body.code,
         label=body.label,
-        color=body.color or _pick_auto_color(db),
+        color=_normalize_color(body.color) or _pick_auto_color(db),
         sort_order=body.sort_order,
         work_type_id=body.work_type_id,
     )
@@ -130,7 +146,7 @@ async def update_category(category_id: str, body: CategoryUpdate, db: Session = 
     if body.label is not None:
         cat.label = body.label
     if body.color is not None:
-        cat.color = body.color
+        cat.color = _normalize_color(body.color)
     if body.sort_order is not None:
         cat.sort_order = body.sort_order
     if "work_type_id" in data:

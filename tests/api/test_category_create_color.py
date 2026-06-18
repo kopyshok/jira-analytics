@@ -54,6 +54,29 @@ def test_create_with_explicit_color_keeps_it(client):
     assert resp.json()["color"] == "#123456"
 
 
+def test_create_strips_alpha_from_8digit_hex(client):
+    # ColorPicker отдаёт #RRGGBBAA при прозрачности < 1; колонка хранит #RRGGBB.
+    resp = client.post(
+        "/api/v1/categories",
+        json={"code": "c8", "label": "Cat 8", "color": "#12345680"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["color"] == "#123456"
+
+
+def test_update_strips_alpha_from_8digit_hex(client):
+    created = client.post(
+        "/api/v1/categories",
+        json={"code": "c9", "label": "Cat 9", "color": "#000000"},
+    )
+    cat_id = created.json()["id"]
+    resp = client.put(
+        f"/api/v1/categories/{cat_id}", json={"color": "#abcdefff"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["color"] == "#abcdef"
+
+
 def test_auto_colors_do_not_repeat_until_palette_exhausted(client):
     seen = []
     for i in range(len(_AUTO_COLOR_PALETTE)):

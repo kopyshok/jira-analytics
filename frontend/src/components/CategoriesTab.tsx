@@ -169,6 +169,7 @@ export default function CategoriesTab() {
                 render: (v: string | null, r: CategoryResponse) => (
                   <ColorPicker
                     size="small"
+                    disabledAlpha
                     value={v ?? '#ffffff'}
                     onChangeComplete={(color: AggregationColor) => {
                       const hex = color.toHexString();
@@ -272,7 +273,7 @@ export default function CategoriesTab() {
             <Input placeholder="авто из названия" />
           </Form.Item>
           <Form.Item name="color" label="Цвет" initialValue="#8c8c8c" getValueFromEvent={(_, hex: string) => hex}>
-            <ColorPicker />
+            <ColorPicker disabledAlpha />
           </Form.Item>
         </Form>
       </Modal>
