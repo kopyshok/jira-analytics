@@ -281,6 +281,7 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
                             style={{
                               width: CELL,
                               height: CELL,
+                              boxSizing: 'border-box',
                               marginRight: CELL_GAP,
                               borderRadius: 3,
                               background: bg,
