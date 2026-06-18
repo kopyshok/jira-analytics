@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Загрузка сотрудников по дням</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d1c33;
+    color: #ffffff;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    padding: 32px 24px 48px;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #ffffff;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: #7a9ab8;
+    margin-bottom: 24px;
+  }
+
+  /* ── panel ── */
+  .panel {
+    background: #0f2340;
+    border: 1px solid #1e3a5f;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  /* ── scroll container ── */
+  .scroll-wrap {
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  /* ── grid table ── */
+  .heatmap-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: max-content;
+  }
+
+  /* ── header rows ── */
+  .heatmap-table thead tr.month-row th,
+  .heatmap-table thead tr.daynum-row th {
+    padding: 0;
+    vertical-align: bottom;
+    background: #0f2340;
+  }
+
+  /* sticky label column */
+  .col-label {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: #0f2340;
+    min-width: 190px;
+    max-width: 190px;
+    width: 190px;
+  }
+
+  thead .col-label {
+    z-index: 20;
+  }
+
+  /* ── label header ── */
+  .label-header {
+    padding: 10px 12px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #7a9ab8;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border-bottom: 1px solid #1e3a5f;
+  }
+
+  /* ── month band ── */
+  .month-cell {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #7a9ab8;
+    text-transform: uppercase;
+    padding: 8px 4px 4px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid #1e3a5f;
+    vertical-align: bottom;
+  }
+
+  /* ── week gap header spacer ── */
+  .week-gap-th {
+    width: 4px;
+    min-width: 4px;
+    padding: 0;
+    background: transparent;
+  }
+
+  /* ── day header tick ── */
+  .day-th {
+    width: 14px;
+    min-width: 14px;
+    padding: 4px 0 3px;
+    text-align: center;
+    vertical-align: bottom;
+    border-bottom: 1px solid #1e3a5f;
+  }
+
+  .day-th-inner {
+    display: block;
+    width: 14px;
+  }
+
+  /* ── data rows ── */
+  .heatmap-table tbody tr {
+    height: 34px;
+  }
+
+  .heatmap-table tbody tr:nth-child(even) td.col-label {
+    background: color-mix(in srgb, #00c9c8 3%, #0f2340);
+  }
+
+  .heatmap-table tbody tr:nth-child(even) {
+    background: color-mix(in srgb, #00c9c8 2%, transparent);
+  }
+
+  /* ── row label cell ── */
+  .row-label {
+    padding: 0 12px;
+    border-right: 1px solid #1e3a5f;
+    vertical-align: middle;
+  }
+
+  .row-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #ffffff;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+
+  .row-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  .row-role {
+    font-size: 10px;
+    color: #7a9ab8;
+    white-space: nowrap;
+  }
+
+  .avg-chip {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+
+  /* ── empty row ── */
+  .empty-row-label {
+    padding: 0 12px;
+    border-right: 1px solid #1e3a5f;
+    vertical-align: middle;
+  }
+
+  .empty-span-cell {
+    vertical-align: middle;
+    padding: 0 12px;
+  }
+
+  .empty-text {
+    font-size: 11px;
+    color: #7a9ab8;
+    font-style: italic;
+    white-space: nowrap;
+  }
+
+  /* ── heat cells ── */
+  td.day-cell {
+    padding: 0;
+    vertical-align: middle;
+    text-align: center;
+    cursor: default;
+  }
+
+  td.week-gap {
+    width: 4px;
+    min-width: 4px;
+    padding: 0;
+    background: transparent !important;
+  }
+
+  .cell-inner {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    transition: filter 0.12s ease-out, transform 0.12s ease-out;
+  }
+
+  td.day-cell:hover .cell-inner {
+    filter: brightness(1.35);
+    transform: scale(1.15);
+  }
+
+  /* ── legend ── */
+  .legend-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px 16px;
+    border-top: 1px solid #1e3a5f;
+    flex-wrap: wrap;
+  }
+
+  .legend-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #7a9ab8;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+
+  .legend-items {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #7a9ab8;
+  }
+
+  .legend-swatch {
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── tooltip ── */
+  #tooltip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    background: #071527;
+    border: 1px solid #1e3a5f;
+    border-radius: 7px;
+    padding: 8px 11px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #ffffff;
+    max-width: 180px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
+    white-space: nowrap;
+  }
+
+  #tooltip.visible { opacity: 1; }
+
+  .tt-date { color: #7a9ab8; font-size: 11px; margin-bottom: 2px; }
+  .tt-pct  { font-weight: 700; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>Загрузка сотрудников по дням</h1>
+<p class="subtitle">1 июл - 30 сен 2025. Наведите на день, чтобы увидеть дату и загрузку.</p>
+
+<div class="panel">
+  <div class="scroll-wrap" id="scrollWrap">
+    <!-- built by JS -->
+  </div>
+  <div class="legend-bar">
+    <span class="legend-label">Загрузка:</span>
+    <div class="legend-items" id="legendItems"></div>
+  </div>
+</div>
+
+<div id="tooltip">
+  <div class="tt-date" id="tt-date"></div>
+  <div class="tt-pct"  id="tt-pct"></div>
+</div>
+
+<script>
+/* ────────────────────────────────────────────────────
+   1. DATE UTILITIES
+──────────────────────────────────────────────────── */
+const START = new Date(2025, 6, 1);   // Jul 1
+const END   = new Date(2025, 8, 30);  // Sep 30
+
+const RU_MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+const RU_FULL_MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const RU_WEEKDAYS_SHORT = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+const RU_WEEKDAYS_FULL  = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+const RU_WEEKDAYS_ABR   = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+
+function isWeekend(d) { const wd = d.getDay(); return wd === 0 || wd === 6; }
+
+function addDays(d, n) {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+
+// Build ordered array of all days
+const allDays = [];
+let cur = new Date(START);
+while (cur <= END) {
+  allDays.push(new Date(cur));
+  cur = addDays(cur, 1);
+}
+
+// ISO week number (Mon-based)
+function isoWeek(d) {
+  const tmp = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dayOfWeek = (tmp.getDay() + 6) % 7;
+  tmp.setDate(tmp.getDate() - dayOfWeek + 3);
+  const firstThursday = new Date(tmp.getFullYear(), 0, 4);
+  const diff = tmp - firstThursday;
+  return 1 + Math.round(diff / (7 * 24 * 3600 * 1000));
+}
+
+// Group days into visual "week columns" where each new Mon starts a new group
+// We treat week boundary as Monday (or the very first day if it falls mid-week)
+function weekKey(d) {
+  // Return the date of the Monday of that ISO week
+  const tmp = new Date(d);
+  const day = (tmp.getDay() + 6) % 7; // 0=Mon
+  tmp.setDate(tmp.getDate() - day);
+  return tmp.toISOString().slice(0,10);
+}
+
+// Build week groups (ordered)
+const weekGroups = []; // [{key, days:[]}]
+const weekMap = {};
+for (const d of allDays) {
+  const k = weekKey(d);
+  if (!weekMap[k]) { weekMap[k] = []; weekGroups.push({key: k, days: weekMap[k]}); }
+  weekMap[k].push(d);
+}
+
+/* ────────────────────────────────────────────────────
+   2. LOAD DATA SYNTHESIS
+   weeklyAnchors: 14 week anchors starting 30/6, 7/7, 14/7 ...
+   index 0 = week of 30 Jun (Mon), but we only show Jul 1+ so Mon 30 Jun
+   is included in weekGroup starting 30 Jun, days visible = Tue-Fri of that week
+──────────────────────────────────────────────────── */
+// Seed for deterministic pseudo-random variation
+function seededRand(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return ((s >>> 0) / 0xffffffff);
+  };
+}
+
+// The 14 anchor week start dates (Mondays): 30 Jun, 7 Jul, 14 Jul, 21 Jul, 28 Jul, 4 Aug, 11 Aug, 18 Aug, 25 Aug, 1 Sep, 8 Sep, 15 Sep, 22 Sep, 29 Sep
+const ANCHOR_WEEKS = [
+  new Date(2025, 5, 30),
+  new Date(2025, 6,  7),
+  new Date(2025, 6, 14),
+  new Date(2025, 6, 21),
+  new Date(2025, 6, 28),
+  new Date(2025, 7,  4),
+  new Date(2025, 7, 11),
+  new Date(2025, 7, 18),
+  new Date(2025, 7, 25),
+  new Date(2025, 8,  1),
+  new Date(2025, 8,  8),
+  new Date(2025, 8, 15),
+  new Date(2025, 8, 22),
+  new Date(2025, 8, 29),
+];
+
+const EMPLOYEES = [
+  {
+    name: 'Копышков Николай',
+    role: 'RP',
+    anchors: [68, 50, null, null, 29, 29, 81, null, null, null, null, null, null, null],
+  },
+  {
+    name: 'Фокеева Наталья',
+    role: 'аналитик',
+    anchors: [50, 59, 55, 54, 69, 50, null, null, 63, 25, null, null, null, null],
+  },
+  {
+    name: 'Шутов Сергей',
+    role: 'разработчик',
+    anchors: [null, null, 63, 67, 49, null, null, null, null, 71, 71, null, null, null],
+  },
+  {
+    name: 'Пак Илья',
+    role: 'разработчик',
+    anchors: [null, 66, 66, null, 50, 61, 53, 78, 53, null, null, 25, null, null],
+  },
+  {
+    name: 'Медведева Надежда Владимировна',
+    role: 'аналитик',
+    anchors: null, // special: all empty
+  },
+  {
+    name: 'Пряничников Алексей',
+    role: 'разработчик',
+    anchors: [58, 58, 58, null, null, null, 68, 68, null, null, null, null, null, null],
+  },
+  {
+    name: 'Соколов Дмитрий',
+    role: 'разработчик',
+    anchors: [90, 105, 118, 125, 80, 60, null, null, 95, 100, null, null, null, null],
+  },
+  {
+    name: 'Орлова Вера',
+    role: 'аналитик',
+    anchors: [null, 72, 88, 92, 110, 102, 70, null, null, null, 45, 45, null, null],
+  },
+];
+
+// Build per-day load map for each employee: dateISO -> pct
+function buildDayMap(emp) {
+  if (!emp.anchors) return null; // special empty row
+
+  const dayMap = {};
+  const rand = seededRand(emp.name.charCodeAt(0) * 7 + emp.name.length * 31);
+
+  for (let wi = 0; wi < ANCHOR_WEEKS.length; wi++) {
+    const weekStart = ANCHOR_WEEKS[wi];
+    const anchor = emp.anchors[wi];
+
+    // Generate 5 workdays Mon-Fri
+    for (let di = 0; di < 5; di++) {
+      const d = addDays(weekStart, di);
+      const iso = d.toISOString().slice(0, 10);
+      if (anchor === null || anchor === undefined) {
+        dayMap[iso] = 0;
+      } else {
+        // variation ±8 with natural feel
+        const variation = (rand() - 0.5) * 16;
+        const pct = Math.round(Math.max(5, anchor + variation));
+        dayMap[iso] = pct;
+      }
+    }
+    // weekends
+    for (let di = 5; di < 7; di++) {
+      const d = addDays(weekStart, di);
+      const iso = d.toISOString().slice(0, 10);
+      dayMap[iso] = 0;
+    }
+  }
+  return dayMap;
+}
+
+// Compute avg over workdays only (pct > 0 and not weekend)
+function computeAvg(dayMap) {
+  if (!dayMap) return null;
+  let sum = 0, cnt = 0;
+  for (const d of allDays) {
+    if (isWeekend(d)) continue;
+    const iso = d.toISOString().slice(0, 10);
+    const pct = dayMap[iso];
+    if (pct && pct > 0) { sum += pct; cnt++; }
+  }
+  return cnt > 0 ? Math.round(sum / cnt) : 0;
+}
+
+/* ────────────────────────────────────────────────────
+   3. COLOR RAMP
+──────────────────────────────────────────────────── */
+function loadColor(pct, isWknd) {
+  if (isWknd || pct === 0) {
+    // faint rest: barely visible outline-style
+    return { bg: 'rgba(122,154,184,0.08)', border: 'rgba(122,154,184,0.18)' };
+  }
+  if (pct < 20) {
+    // very dim, cool navy tint
+    return { bg: `hsl(210, 40%, ${8 + pct * 0.3}%)`, border: 'transparent' };
+  }
+  if (pct < 60) {
+    // dim cool blue-grey ramp  0→60
+    const t = (pct - 20) / 40;
+    const l = 14 + t * 8;
+    const s = 30 + t * 15;
+    return { bg: `hsl(210, ${s}%, ${l}%)`, border: 'transparent' };
+  }
+  if (pct < 90) {
+    // healthy green ramp 60→90
+    const t = (pct - 60) / 30;
+    const h = 160 - t * 20;
+    const s = 55 + t * 20;
+    const l = 24 + t * 14;
+    return { bg: `hsl(${h}, ${s}%, ${l}%)`, border: 'transparent' };
+  }
+  if (pct <= 110) {
+    // sweet spot bright green 90→110
+    const t = (pct - 90) / 20;
+    const l = 38 + t * 6;
+    return { bg: `hsl(145, 75%, ${l}%)`, border: 'transparent' };
+  }
+  // overload >110: amber→red
+  const t = Math.min((pct - 110) / 40, 1);
+  const h = 38 - t * 38; // 38 amber -> 0 red
+  const s = 85 + t * 10;
+  const l = 42 + t * 4;
+  return { bg: `hsl(${h}, ${s}%, ${l}%)`, border: 'transparent' };
+}
+
+function chipStyle(avg) {
+  if (avg === null) return 'background:rgba(122,154,184,0.12);color:#7a9ab8;';
+  const c = loadColor(avg, false);
+  // text: dark if bright bg
+  const textColor = avg >= 60 ? '#051020' : '#7a9ab8';
+  return `background:${c.bg};color:${textColor};`;
+}
+
+/* ────────────────────────────────────────────────────
+   4. BUILD TABLE HTML
+──────────────────────────────────────────────────── */
+// Precompute day data
+const empData = EMPLOYEES.map(emp => ({
+  ...emp,
+  dayMap: buildDayMap(emp),
+}));
+empData.forEach(emp => { emp.avg = computeAvg(emp.dayMap); });
+
+// Month spanning: figure out how many "columns" each month spans
+// Columns = day cells + week-gap cells
+// Each week group contributes days.length cells + 1 gap (except last group no trailing gap)
+
+function buildMonthSpans() {
+  // We need to know the column index sequence
+  // Structure: [weekGap?, day, day, ..., weekGap?, day, ...]
+  // Between consecutive week groups there's 1 gap column
+  const spans = {}; // month -> colCount
+  for (let gi = 0; gi < weekGroups.length; gi++) {
+    const group = weekGroups[gi];
+    for (const d of group.days) {
+      const m = d.getMonth();
+      spans[m] = (spans[m] || 0) + 1;
+    }
+    if (gi < weekGroups.length - 1) {
+      // gap column attributed to the month of the last day in this group
+      const lastDay = group.days[group.days.length - 1];
+      spans[lastDay.getMonth()] = (spans[lastDay.getMonth()] || 0) + 1;
+    }
+  }
+  // Build ordered list
+  const months = [];
+  for (const d of allDays) {
+    const m = d.getMonth();
+    if (!months.includes(m)) months.push(m);
+  }
+  return months.map(m => ({ month: m, cols: spans[m] }));
+}
+
+const monthSpans = buildMonthSpans();
+
+// Total column count
+const totalCols = weekGroups.reduce((sum, g, i) => {
+  return sum + g.days.length + (i < weekGroups.length - 1 ? 1 : 0);
+}, 0);
+
+function buildTable() {
+  let html = '<table class="heatmap-table">';
+
+  // ── THEAD ──
+  html += '<thead>';
+
+  // Month row
+  html += '<tr class="month-row">';
+  html += '<th class="col-label"><div class="label-header">Сотрудник</div></th>';
+  for (const ms of monthSpans) {
+    html += `<th class="month-cell" colspan="${ms.cols}">${RU_MONTHS[ms.month]}</th>`;
+  }
+  html += '</tr>';
+
+  // Day-number / weekday tick row (subtle)
+  html += '<tr class="daynum-row">';
+  html += '<th class="col-label" style="border-bottom:1px solid #1e3a5f;height:18px;"></th>';
+  for (let gi = 0; gi < weekGroups.length; gi++) {
+    const group = weekGroups[gi];
+    for (const d of group.days) {
+      const wd = d.getDay();
+      const isWknd = wd === 0 || wd === 6;
+      // Show day number every Monday and first day of month
+      const showNum = (wd === 1) || (d.getDate() === 1);
+      html += `<th class="day-th" style="${isWknd ? 'opacity:0.35;' : ''}">`;
+      if (showNum) {
+        html += `<span class="day-th-inner" style="font-size:9px;color:#7a9ab8;display:block;text-align:center;line-height:1;">${d.getDate()}</span>`;
+      } else {
+        html += `<span class="day-th-inner"></span>`;
+      }
+      html += '</th>';
+    }
+    if (gi < weekGroups.length - 1) {
+      html += '<th class="week-gap-th" style="border-bottom:1px solid #1e3a5f;"></th>';
+    }
+  }
+  html += '</tr>';
+  html += '</thead>';
+
+  // ── TBODY ──
+  html += '<tbody>';
+
+  for (const emp of empData) {
+    html += '<tr>';
+
+    // Label cell
+    const avgText = emp.avg !== null ? `${emp.avg}%` : 'н/д';
+    const chip = emp.avg !== null
+      ? `<span class="avg-chip" style="${chipStyle(emp.avg)}">${avgText}</span>`
+      : '';
+    html += `<td class="col-label row-label">
+      <div class="row-name">${emp.name}</div>
+      <div class="row-meta">
+        <span class="row-role">${emp.role}</span>
+        ${chip}
+      </div>
+    </td>`;
+
+    // Special empty employee
+    if (!emp.dayMap) {
+      html += `<td class="empty-span-cell" colspan="${totalCols}">
+        <span class="empty-text">нет загрузки в этом квартале</span>
+      </td>`;
+      html += '</tr>';
+      continue;
+    }
+
+    // Day cells
+    for (let gi = 0; gi < weekGroups.length; gi++) {
+      const group = weekGroups[gi];
+      for (const d of group.days) {
+        const iso = d.toISOString().slice(0, 10);
+        const wd  = d.getDay();
+        const isWknd = wd === 0 || wd === 6;
+        const pct = (emp.dayMap[iso] !== undefined) ? emp.dayMap[iso] : 0;
+        const col = loadColor(pct, isWknd);
+        const borderStyle = col.border !== 'transparent'
+          ? `border:1px solid ${col.border};`
+          : '';
+        const cellBg = col.bg;
+
+        const wdAbbr = RU_WEEKDAYS_ABR[wd];
+        const dateLabel = `${wdAbbr}, ${d.getDate()} ${RU_FULL_MONTHS[d.getMonth()]}`;
+        const pctLabel = isWknd ? 'выходной' : `${pct}%`;
+
+        html += `<td class="day-cell"
+          data-date="${dateLabel}"
+          data-pct="${pctLabel}"
+          data-is-wknd="${isWknd ? '1' : '0'}">
+          <span class="cell-inner"
+            style="background:${cellBg};${isWknd ? 'border:1px solid rgba(122,154,184,0.18);' : ''}">
+          </span>
+        </td>`;
+      }
+      if (gi < weekGroups.length - 1) {
+        html += '<td class="week-gap"></td>';
+      }
+    }
+
+    html += '</tr>';
+  }
+
+  html += '</tbody>';
+  html += '</table>';
+  return html;
+}
+
+document.getElementById('scrollWrap').innerHTML = buildTable();
+
+/* ────────────────────────────────────────────────────
+   5. LEGEND
+──────────────────────────────────────────────────── */
+const legendDefs = [
+  { label: 'Выходной', pct: 0,   wknd: true  },
+  { label: 'до 60%',   pct: 40,  wknd: false },
+  { label: '60–90%',   pct: 75,  wknd: false },
+  { label: '90–110%',  pct: 100, wknd: false },
+  { label: 'свыше 110%', pct: 130, wknd: false },
+];
+
+const legendEl = document.getElementById('legendItems');
+legendEl.innerHTML = legendDefs.map(l => {
+  const c = loadColor(l.pct, l.wknd);
+  const border = l.wknd ? `border:1px solid rgba(122,154,184,0.25);` : '';
+  return `<div class="legend-item">
+    <span class="legend-swatch" style="background:${c.bg};${border}"></span>
+    <span>${l.label}</span>
+  </div>`;
+}).join('');
+
+/* ────────────────────────────────────────────────────
+   6. TOOLTIP (delegated)
+──────────────────────────────────────────────────── */
+const tooltip = document.getElementById('tooltip');
+const ttDate  = document.getElementById('tt-date');
+const ttPct   = document.getElementById('tt-pct');
+
+let hideTimer = null;
+
+document.getElementById('scrollWrap').addEventListener('mouseover', e => {
+  const cell = e.target.closest('[data-date]');
+  if (!cell) return;
+
+  clearTimeout(hideTimer);
+
+  const dateStr = cell.dataset.date;
+  const pctStr  = cell.dataset.pct;
+  const isWknd  = cell.dataset.isWknd === '1';
+
+  ttDate.textContent = dateStr;
+  ttPct.textContent  = pctStr;
+  ttPct.style.color  = isWknd ? '#7a9ab8' : pctColor(parseInt(pctStr) || 0);
+
+  tooltip.classList.add('visible');
+});
+
+document.getElementById('scrollWrap').addEventListener('mousemove', e => {
+  const OFFSET_X = 14, OFFSET_Y = 16;
+  let x = e.clientX + OFFSET_X;
+  let y = e.clientY + OFFSET_Y;
+
+  // keep inside viewport
+  const tw = tooltip.offsetWidth  || 150;
+  const th = tooltip.offsetHeight || 60;
+  if (x + tw > window.innerWidth  - 8) x = e.clientX - tw - OFFSET_X;
+  if (y + th > window.innerHeight - 8) y = e.clientY - th - OFFSET_Y;
+
+  tooltip.style.left = x + 'px';
+  tooltip.style.top  = y + 'px';
+});
+
+document.getElementById('scrollWrap').addEventListener('mouseout', e => {
+  const cell = e.target.closest('[data-date]');
+  if (!cell) return;
+  const related = e.relatedTarget;
+  if (related && related.closest && related.closest('[data-date]')) return;
+  hideTimer = setTimeout(() => tooltip.classList.remove('visible'), 80);
+});
+
+function pctColor(pct) {
+  if (pct === 0) return '#7a9ab8';
+  if (pct < 60)  return '#7a9ab8';
+  if (pct < 90)  return '#4ade80';
+  if (pct <= 110) return '#00c9c8';
+  if (pct <= 130) return '#f59e0b';
+  return '#ef4444';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Загрузка сотрудников — 3 варианта дизайна</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1c33;
+    --card:      #0f2340;
+    --border:    #1e3a5f;
+    --muted:     #7a9ab8;
+    --white:     #ffffff;
+    --cyan:      #00c9c8;
+    --font:      system-ui, -apple-system, sans-serif;
+
+    /* load colors */
+    --c-empty:   rgba(255,255,255,0.04);
+    --c-low:     hsl(210 55% 28%);
+    --c-mid:     hsl(168 60% 32%);
+    --c-good:    hsl(150 65% 38%);
+    --c-full:    hsl(140 70% 44%);
+    --c-over1:   hsl(42  90% 52%);
+    --c-over2:   hsl(20  90% 52%);
+    --c-over3:   hsl(4   80% 52%);
+
+    --row-h-a:   36px;
+    --row-h-bc:  40px;
+    --name-w:    220px;
+    --cell-w:    58px;
+    --cell-gap:  4px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 32px 24px 64px;
+    min-width: 1100px;
+  }
+
+  h1.page-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 8px;
+  }
+  .page-sub {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 36px;
+  }
+
+  /* ── section card ── */
+  .section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 24px 28px;
+    margin-bottom: 28px;
+    overflow-x: auto;
+  }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .variant-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+  .variant-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--white);
+  }
+  .variant-desc {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+  .recommended-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  /* ── shared grid infra ── */
+  .hm-grid {
+    display: grid;
+    grid-template-columns: var(--name-w) repeat(14, var(--cell-w));
+    gap: var(--cell-gap);
+    min-width: fit-content;
+  }
+
+  /* header row */
+  .hm-header {
+    display: contents;
+  }
+  .hm-header-name {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    align-self: end;
+    padding-bottom: 4px;
+  }
+  .hm-header-week {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    padding-bottom: 4px;
+    white-space: nowrap;
+  }
+
+  /* data rows */
+  .hm-row {
+    display: contents;
+  }
+  .hm-row:nth-child(even) .name-cell,
+  .hm-row:nth-child(even) .cell-a,
+  .hm-row:nth-child(even) .cell-bc,
+  .hm-row:nth-child(even) .sparkline-cell {
+    background: rgba(0, 201, 200, 0.03);
+  }
+
+  /* name cell */
+  .name-cell {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    padding: 0 10px 0 4px;
+    border-radius: 6px;
+  }
+  .name-main {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--white);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+  .name-role {
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .avg-chip {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 0 5px;
+    line-height: 16px;
+    margin-top: 2px;
+    width: fit-content;
+  }
+
+  /* ────────────────────────────────────────────
+     VARIANT A — true heatmap
+  ──────────────────────────────────────────── */
+  .cell-a {
+    height: var(--row-h-a);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: default;
+    position: relative;
+    transition: filter .18s ease-out, transform .18s ease-out;
+    border: 1px solid transparent;
+  }
+  .cell-a.empty {
+    background: var(--c-empty);
+    border-color: rgba(255,255,255,0.06);
+  }
+  .cell-a:not(.empty):hover {
+    filter: brightness(1.25);
+    transform: scaleY(1.06);
+    z-index: 1;
+  }
+  .cell-a .pct-label {
+    opacity: .7;
+    color: rgba(0,0,0,.7);
+    mix-blend-mode: normal;
+    font-size: 10px;
+    pointer-events: none;
+  }
+  .cell-a.light-text .pct-label {
+    color: rgba(255,255,255,.85);
+  }
+
+  /* color legend */
+  .legend-a {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .legend-a-label { font-size: 10px; color: var(--muted); }
+  .legend-a-swatches {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .swatch {
+    width: 28px;
+    height: 12px;
+    border-radius: 3px;
+  }
+  .swatch-label {
+    font-size: 10px;
+    color: var(--muted);
+    padding: 0 4px;
+  }
+
+  /* no-load hint */
+  .no-load-hint {
+    font-size: 10px;
+    color: var(--muted);
+    font-style: italic;
+    opacity: .7;
+    text-align: center;
+    width: 100%;
+  }
+
+  /* ────────────────────────────────────────────
+     VARIANT B — sparkline
+  ──────────────────────────────────────────── */
+  .sparkline-grid {
+    display: grid;
+    grid-template-columns: var(--name-w) 1fr;
+    gap: var(--cell-gap) 0;
+    min-width: fit-content;
+  }
+  .sparkline-header-row {
+    display: contents;
+  }
+  .sparkline-header-weeks {
+    display: grid;
+    grid-template-columns: repeat(14, 1fr);
+    padding: 0 0 4px 0;
+  }
+  .sparkline-header-week {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .sparkline-row {
+    display: contents;
+  }
+  .sparkline-cell {
+    height: var(--row-h-bc);
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+  .sparkline-cell svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  /* name cell for B shares .name-cell above */
+
+  /* ────────────────────────────────────────────
+     VARIANT C — mini-bar
+  ──────────────────────────────────────────── */
+  .cell-bc {
+    height: var(--row-h-bc);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    cursor: default;
+    transition: filter .18s ease-out;
+    border: 1px solid transparent;
+  }
+  .cell-bc.empty {
+    background: var(--c-empty);
+    border-color: rgba(255,255,255,0.06);
+  }
+  .cell-bc:not(.empty):hover { filter: brightness(1.2); }
+  .mini-bar-wrap {
+    position: relative;
+    flex: 1;
+    height: 8px;
+    background: rgba(255,255,255,0.07);
+    border-radius: 4px;
+    overflow: visible;
+  }
+  .mini-bar-fill {
+    height: 100%;
+    border-radius: 4px 0 0 4px;
+    max-width: 100%;
+    position: relative;
+    overflow: visible;
+  }
+  .mini-bar-overload {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-radius: 0 4px 4px 0;
+    background: var(--c-over2);
+  }
+  /* 100% tick */
+  .tick-100 {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: rgba(255,255,255,0.3);
+    left: calc(100% * 100 / 130);
+  }
+  .mini-bar-pct {
+    font-size: 9px;
+    color: var(--muted);
+    margin-left: 5px;
+    white-space: nowrap;
+    min-width: 26px;
+    text-align: right;
+  }
+  .mini-bar-pct.over { color: #f87171; }
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Загрузка сотрудников по неделям — 3 варианта</h1>
+<p class="page-sub">Квартал: 1 июл — 30 сен 2026 (14 недель). Выберите вариант отображения.</p>
+
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────────────
+const WEEKS = ['29/6','6/7','13/7','20/7','27/7','3/8','10/8','17/8','24/8','31/8','7/9','14/9','21/9','28/9'];
+
+const EMPLOYEES = [
+  { name: 'Копышков Николай',              role: 'RP',      data: [68,50,null,null,29,29,81,null,null,null,null,null,null,null] },
+  { name: 'Фокеева Наталья',               role: 'аналитик',data: [50,59,55,54,69,50,null,null,63,25,null,null,null,null] },
+  { name: 'Шутов Сергей',                  role: 'разработчик', data: [null,null,63,67,49,null,null,null,null,71,71,null,null,null] },
+  { name: 'Пак Илья',                      role: 'разработчик', data: [null,66,66,null,50,61,53,78,53,null,null,25,null,null] },
+  { name: 'Медведева Надежда Владимировна',role: 'аналитик',data: [null,null,null,null,null,null,null,null,null,null,null,null,null,null] },
+  { name: 'Пряничников Алексей',           role: 'разработчик', data: [58,58,58,null,null,null,68,68,null,null,null,null,null,null] },
+  { name: 'Соколов Дмитрий',              role: 'разработчик', data: [90,105,118,125,80,60,null,null,95,100,null,null,null,null] },
+  { name: 'Орлова Вера',                   role: 'аналитик',data: [null,72,88,92,110,102,70,null,null,null,45,45,null,null] },
+];
+
+// ── UTILITIES ─────────────────────────────────────────────────────────────────
+function loadColor(v) {
+  if (v === null) return null;
+  if (v === 0)   return 'hsl(210 40% 22%)';
+  if (v <= 60)   return `hsl(${lerp(210,168,v/60)} ${lerp(55,60,v/60)}% ${lerp(28,32,v/60)}%)`;
+  if (v <= 90)   return `hsl(${lerp(168,148,( v-60)/30)} ${lerp(60,68,(v-60)/30)}% ${lerp(32,40,(v-60)/30)}%)`;
+  if (v <= 110)  return `hsl(${lerp(148,142,(v-90)/20)} ${lerp(68,72,(v-90)/20)}% ${lerp(40,46,(v-90)/20)}%)`;
+  if (v <= 120)  return `hsl(${lerp(42,20,(v-110)/10)} 90% ${lerp(52,48,(v-110)/10)}%)`;
+  return `hsl(${lerp(20,4,(v-120)/30)} 82% 50%)`;
+}
+
+function textColor(v) {
+  if (v === null) return 'transparent';
+  if (v <= 45) return 'rgba(255,255,255,.65)';
+  if (v <= 80) return 'rgba(255,255,255,.80)';
+  return 'rgba(255,255,255,.90)';
+}
+
+function lerp(a,b,t) { return a + (b-a)*Math.min(1,Math.max(0,t)); }
+
+function avg(arr) {
+  const vals = arr.filter(v => v !== null);
+  if (!vals.length) return null;
+  return Math.round(vals.reduce((s,v)=>s+v,0)/vals.length);
+}
+
+function chipStyle(v) {
+  if (v === null) return 'background:rgba(255,255,255,.06);color:#7a9ab8';
+  const bg = loadColor(v);
+  const tc = textColor(v);
+  return `background:${bg};color:${tc}`;
+}
+
+function nameCell(emp, rowH) {
+  const a = avg(emp.data);
+  const chipVal = a !== null ? a+'%' : '—';
+  return `<div class="name-cell" style="height:${rowH}px">
+    <span class="name-main" title="${emp.name}">${emp.name}</span>
+    <span class="name-role">${emp.role}</span>
+    <span class="avg-chip" style="${chipStyle(a)}">avg: ${chipVal}</span>
+  </div>`;
+}
+
+// ── VARIANT A ─────────────────────────────────────────────────────────────────
+function buildVariantA() {
+  const ROW_H = 36;
+  let html = `<div class="hm-grid">`;
+
+  // header
+  html += `<div class="hm-header-name">Сотрудник</div>`;
+  for (const w of WEEKS) {
+    html += `<div class="hm-header-week">${w}</div>`;
+  }
+
+  for (const emp of EMPLOYEES) {
+    const allNull = emp.data.every(v => v === null);
+    // name
+    html += nameCell(emp, ROW_H);
+
+    if (allNull) {
+      // span all 14 cols with hint
+      html += `<div style="grid-column:span 14;display:flex;align-items:center;height:${ROW_H}px;background:var(--c-empty);border-radius:6px;border:1px solid rgba(255,255,255,.06)">
+        <span class="no-load-hint">нет загрузки в этом квартале</span>
+      </div>`;
+    } else {
+      for (const v of emp.data) {
+        if (v === null) {
+          html += `<div class="cell-a empty"></div>`;
+        } else {
+          const bg = loadColor(v);
+          const tc = textColor(v);
+          const isLight = v > 30;
+          html += `<div class="cell-a ${isLight?'light-text':''}" style="background:${bg};height:${ROW_H}px">
+            <span class="pct-label" style="color:${tc}">${v}%</span>
+          </div>`;
+        }
+      }
+    }
+  }
+
+  html += `</div>`;
+
+  // legend
+  html += `<div class="legend-a" style="margin-top:16px">
+    <span class="legend-a-label">Загрузка:</span>
+    <div class="legend-a-swatches">
+      <span class="swatch" style="background:var(--c-empty);border:1px solid rgba(255,255,255,.08)"></span>
+      <span class="swatch-label">нет данных</span>
+      <span class="swatch" style="background:hsl(210 55% 28%)"></span>
+      <span class="swatch-label">до 60%</span>
+      <span class="swatch" style="background:hsl(168 62% 34%)"></span>
+      <span class="swatch" style="background:hsl(152 66% 40%)"></span>
+      <span class="swatch-label">60–90%</span>
+      <span class="swatch" style="background:hsl(142 70% 45%)"></span>
+      <span class="swatch-label">90–110%</span>
+      <span class="swatch" style="background:hsl(42 90% 52%)"></span>
+      <span class="swatch" style="background:hsl(12 84% 51%)"></span>
+      <span class="swatch-label">перегруз</span>
+    </div>
+  </div>`;
+
+  return html;
+}
+
+// ── VARIANT B ─────────────────────────────────────────────────────────────────
+function buildVariantB() {
+  const ROW_H = 52;
+  const YMAX = 130;
+  const PAD_T = 6, PAD_B = 6;
+  const plotH = ROW_H - PAD_T - PAD_B;
+
+  function yOf(v) {
+    return PAD_T + plotH * (1 - v / YMAX);
+  }
+
+  let html = `<div class="sparkline-grid">`;
+
+  // header
+  html += `<div class="hm-header-name" style="align-self:end;padding-bottom:4px">Сотрудник</div>`;
+  html += `<div class="sparkline-header-weeks">`;
+  for (const w of WEEKS) {
+    html += `<div class="sparkline-header-week">${w}</div>`;
+  }
+  html += `</div>`;
+
+  for (const emp of EMPLOYEES) {
+    const allNull = emp.data.every(v => v === null);
+    html += nameCell(emp, ROW_H);
+
+    // SVG sparkline cell
+    html += `<div class="sparkline-cell" style="height:${ROW_H}px;background:rgba(0,201,200,0.02);border-radius:6px;padding:0 8px">`;
+
+    if (allNull) {
+      html += `<div style="width:100%;text-align:center;font-size:11px;color:var(--muted);font-style:italic">нет загрузки в этом квартале</div>`;
+    } else {
+      // build SVG
+      // We draw one SVG with viewBox 0 0 W H
+      // W proportional to 14 segments
+      const W = 14 * 100;
+      const H = ROW_H;
+      const xOf = (i) => i * 100 + 50; // center of each week slot
+
+      // gather segments (contiguous non-null runs)
+      const segments = [];
+      let cur = null;
+      for (let i = 0; i < 14; i++) {
+        const v = emp.data[i];
+        if (v !== null) {
+          if (!cur) { cur = []; }
+          cur.push({ i, v });
+        } else {
+          if (cur && cur.length) { segments.push(cur); cur = null; }
+        }
+      }
+      if (cur && cur.length) segments.push(cur);
+
+      let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:${H}px">`;
+
+      // 100% dashed reference line
+      const y100 = yOf(100);
+      svg += `<line x1="0" y1="${y100}" x2="${W}" y2="${y100}" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="4 3"/>`;
+      svg += `<text x="4" y="${y100-3}" font-size="9" fill="rgba(255,255,255,0.3)" font-family="system-ui">100%</text>`;
+
+      // each segment: area fill + line
+      for (const seg of segments) {
+        if (seg.length < 1) continue;
+
+        // generate path points
+        const pts = seg.map(p => [xOf(p.i), yOf(p.v)]);
+
+        // area path
+        const x0 = pts[0][0], xN = pts[pts.length-1][0];
+        const baseY = yOf(0);
+
+        let areaPath = `M ${x0} ${baseY} L ${pts.map(p=>p[0]+' '+p[1]).join(' L ')} L ${xN} ${baseY} Z`;
+
+        // gradient id unique per employee+seg
+        const gid = `g_${emp.name.replace(/\s/g,'')}_${seg[0].i}`;
+
+        // build gradient stops based on values
+        svg += `<defs><linearGradient id="${gid}" x1="0" y1="1" x2="0" y2="0" gradientUnits="objectBoundingBox">
+          <stop offset="0%" stop-color="hsl(210 55% 28%)" stop-opacity="0.25"/>
+          <stop offset="60%" stop-color="hsl(152 66% 38%)" stop-opacity="0.35"/>
+          <stop offset="90%" stop-color="hsl(142 70% 44%)" stop-opacity="0.45"/>
+          <stop offset="100%" stop-color="hsl(4 80% 52%)" stop-opacity="0.4"/>
+        </linearGradient></defs>`;
+
+        svg += `<path d="${areaPath}" fill="url(#${gid})"/>`;
+
+        // line: color each segment by value
+        for (let k = 0; k < pts.length - 1; k++) {
+          const v1 = seg[k].v, v2 = seg[k+1].v;
+          const mid = (v1 + v2) / 2;
+          const stroke = loadColor(mid);
+          svg += `<line x1="${pts[k][0]}" y1="${pts[k][1]}" x2="${pts[k+1][0]}" y2="${pts[k+1][1]}" stroke="${stroke}" stroke-width="2" stroke-linecap="round"/>`;
+        }
+
+        // dots + labels
+        for (const p of seg) {
+          const cx = xOf(p.i), cy = yOf(p.v);
+          const dc = loadColor(p.v);
+          svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="${dc}" stroke="var(--card)" stroke-width="1.5"/>`;
+          // label above
+          const labelY = cy > PAD_T + 14 ? cy - 6 : cy + 14;
+          svg += `<text x="${cx}" y="${labelY}" text-anchor="middle" font-size="9" fill="rgba(255,255,255,0.6)" font-family="system-ui">${p.v}</text>`;
+        }
+      }
+
+      svg += `</svg>`;
+      html += svg;
+    }
+
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+
+  // legend
+  html += `<div style="margin-top:12px;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:12px">
+    <span>Легенда:</span>
+    <svg width="32" height="10"><line x1="0" y1="5" x2="32" y2="5" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 3" stroke-width="1"/></svg>
+    <span>100% норма</span>
+    <svg width="32" height="10"><line x1="0" y1="5" x2="32" y2="5" stroke="hsl(142 70% 44%)" stroke-width="2"/></svg>
+    <span>в норме</span>
+    <svg width="32" height="10"><line x1="0" y1="5" x2="32" y2="5" stroke="hsl(4 80% 52%)" stroke-width="2"/></svg>
+    <span>перегруз</span>
+    <span style="margin-left:4px">Пропуск линии = нет задач</span>
+  </div>`;
+
+  return html;
+}
+
+// ── VARIANT C ─────────────────────────────────────────────────────────────────
+function buildVariantC() {
+  const ROW_H = 40;
+  const MAX_VAL = 130; // display scale
+
+  let html = `<div class="hm-grid" style="--row-h-bc:${ROW_H}px">`;
+
+  // header
+  html += `<div class="hm-header-name">Сотрудник</div>`;
+  for (const w of WEEKS) {
+    html += `<div class="hm-header-week">${w}</div>`;
+  }
+
+  for (const emp of EMPLOYEES) {
+    const allNull = emp.data.every(v => v === null);
+    html += nameCell(emp, ROW_H);
+
+    if (allNull) {
+      html += `<div style="grid-column:span 14;display:flex;align-items:center;height:${ROW_H}px;background:var(--c-empty);border-radius:6px;border:1px solid rgba(255,255,255,.06)">
+        <span class="no-load-hint">нет загрузки в этом квартале</span>
+      </div>`;
+    } else {
+      for (const v of emp.data) {
+        if (v === null) {
+          html += `<div class="cell-bc empty" style="height:${ROW_H}px"></div>`;
+        } else {
+          const isOver = v > 100;
+          const normalPct = Math.min(100, v);
+          const overPct = isOver ? v - 100 : 0;
+
+          // Fill widths relative to MAX_VAL scale
+          const normalWidth = (normalPct / MAX_VAL) * 100;
+          const overWidth   = (overPct   / MAX_VAL) * 100;
+          const tick100Pct  = (100 / MAX_VAL) * 100;
+
+          const barColor = v > 100 ? 'hsl(150 62% 38%)' : loadColor(Math.min(v, 100));
+          const pctClass = v > 110 ? 'over' : '';
+
+          html += `<div class="cell-bc" style="height:${ROW_H}px">
+            <div class="mini-bar-wrap">
+              <div class="tick-100" style="left:${tick100Pct}%"></div>
+              <div class="mini-bar-fill" style="width:${normalWidth}%;background:${barColor};border-radius:${isOver?'4px 0 0 4px':'4px'}">
+                ${isOver ? `<div class="mini-bar-overload" style="left:100%;width:${(overWidth/normalWidth)*100}%"></div>` : ''}
+              </div>
+            </div>
+            <span class="mini-bar-pct ${pctClass}">${v}%</span>
+          </div>`;
+        }
+      }
+    }
+  }
+
+  html += `</div>`;
+
+  // legend
+  html += `<div style="margin-top:12px;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span>Легенда:</span>
+    <span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:20px;height:6px;background:hsl(152 66% 38%);border-radius:3px"></span> нормальная загрузка</span>
+    <span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:8px;height:6px;background:hsl(152 66% 38%);border-radius:2px 0 0 2px"></span><span style="display:inline-block;width:10px;height:6px;background:var(--c-over2);border-radius:0 2px 2px 0"></span> перегруз (красная часть сверх 100%)</span>
+    <span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:1px;height:12px;background:rgba(255,255,255,0.3)"></span> отметка 100%</span>
+  </div>`;
+
+  return html;
+}
+
+// ── RENDER ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('variant-a-body').innerHTML = buildVariantA();
+  document.getElementById('variant-b-body').innerHTML = buildVariantB();
+  document.getElementById('variant-c-body').innerHTML = buildVariantC();
+});
+</script>
+
+<!-- VARIANT A -->
+<div class="section">
+  <div class="section-head">
+    <span class="variant-label">Вариант A</span>
+    <span class="variant-name">Чистая тепловая карта<span class="recommended-badge">рекомендуется</span></span>
+  </div>
+  <p class="variant-desc">Каждая неделя — закрашенный прямоугольник. Цвет = уровень загрузки. Максимум информации при минимуме визуального шума. Число процентов внутри ячейки.</p>
+  <div id="variant-a-body"></div>
+</div>
+
+<!-- VARIANT B -->
+<div class="section">
+  <div class="section-head">
+    <span class="variant-label">Вариант B</span>
+    <span class="variant-name">Полоса-тренд</span>
+  </div>
+  <p class="variant-desc">Непрерывная линия+область на 14 недель. Перерывы в строке = нет задач (нет интерполяции). Пунктир = отметка 100%. Хорошо показывает динамику, но теряет точность на коротких диапазонах.</p>
+  <div id="variant-b-body"></div>
+</div>
+
+<!-- VARIANT C -->
+<div class="section">
+  <div class="section-head">
+    <span class="variant-label">Вариант C</span>
+    <span class="variant-name">Горизонтальный мини-бар</span>
+  </div>
+  <p class="variant-desc">Горизонтальная полоска в каждой ячейке пропорциональна загрузке. Перегруз виден как красный хвост за отметкой 100%. Привычная «таблица», просто читается.</p>
+  <div id="variant-c-body"></div>
+</div>
+
+</body>
+</html>
