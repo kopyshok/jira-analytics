@@ -97,6 +97,7 @@ function ItemTitleCell({
   return (
     <div style={{
       width: leftColWidth,
+      boxSizing: 'border-box',
       flexShrink: 0,
       borderRight: '1px solid #1e3a5f',
       display: 'grid',
@@ -1030,6 +1031,7 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
         >
           <div style={{
             width: leftColWidth,
+            boxSizing: 'border-box',
             flexShrink: 0,
             borderRight: '1px solid #1e3a5f',
             padding: '0 12px',
