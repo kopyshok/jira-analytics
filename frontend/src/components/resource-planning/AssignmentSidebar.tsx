@@ -352,7 +352,7 @@ export default function AssignmentSidebar({
                 <Table
                   size="small"
                   pagination={false}
-                  rowKey={(_, i) => `abs-${i}`}
+                  rowKey={(r) => `abs-${r.start_date}-${r.end_date}`}
                   dataSource={pendingEmpChange.preview.absences}
                   columns={[
                     { title: 'Начало', dataIndex: 'start_date', width: 110 },
@@ -369,7 +369,7 @@ export default function AssignmentSidebar({
                 <Table
                   size="small"
                   pagination={false}
-                  rowKey={(_, i) => `ovl-${i}`}
+                  rowKey={(r) => `ovl-${r.date}-${r.other_backlog_item_key ?? r.other_phase}`}
                   dataSource={pendingEmpChange.preview.overloads}
                   columns={[
                     { title: 'День', dataIndex: 'date', width: 110 },
