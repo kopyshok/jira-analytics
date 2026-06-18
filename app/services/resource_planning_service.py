@@ -1014,6 +1014,29 @@ class ResourcePlanningService:
                 involvement=split_inv,
                 parallel_count=split_parallel,
             )
+            # Вернуть в пул дни, которые ЭТА строка заняла на предыдущем шаге
+            # (_shift_to_obey_predecessors уже раскладывает pinned_split строки
+            # с предшественником и списывает их дни). Без refund повторная
+            # раскладка увидит эти дни занятыми СОБОЙ ЖЕ и сдвинет фазу вперёд
+            # на ложно «занятые» дни. Возвращаем ровно столько, сколько строка
+            # списала (из её daily_hours_json), capped на исходную ёмкость дня —
+            # чтобы не затереть consumption других фаз/инициатив на тех же днях.
+            emp_days_sp = remaining[a.employee_id]
+            orig_days_sp = (original_avail or {}).get(a.employee_id, {})
+            try:
+                old_daily_sp = json.loads(a.daily_hours_json) if a.daily_hours_json else {}
+            except json.JSONDecodeError:
+                old_daily_sp = {}
+            for k, h_used in old_daily_sp.items():
+                try:
+                    d_old = date.fromisoformat(k)
+                except ValueError:
+                    continue
+                if d_old not in orig_days_sp:
+                    continue
+                emp_days_sp[d_old] = min(
+                    orig_days_sp[d_old], emp_days_sp.get(d_old, 0.0) + float(h_used)
+                )
             segments, daily = self._allocate_hours_with_breakdown(
                 a.employee_id,
                 float(a.hours_allocated),
