@@ -11,42 +11,47 @@ const RU_WD = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 
 const CELL = 15; // ширина/высота клетки дня
 const CELL_GAP = 2; // зазор между днями внутри недели
-const WEEK_GAP = 6; // зазор между неделями
+const WEEK_GAP = 7; // зазор между неделями
 const LABEL_W = 210;
 const ROW_H = 26;
+
+// Штриховка отпуска (синеватая) и праздника (тусклая серая).
+const ABSENCE_FILL =
+  'repeating-linear-gradient(45deg, rgba(116,150,224,0.7) 0 3px, rgba(116,150,224,0.22) 3px 6px)';
+const HOLIDAY_FILL =
+  'repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 3px, rgba(255,255,255,0.04) 3px 6px)';
 
 function isoDate(s: string): Date {
   return new Date(s + 'T00:00:00');
 }
 
-/** Цвет клетки по загрузке. Тинтуем нейтрали к навигационному оттенку, без чистых тонов. */
+/** Цвет клетки рабочего дня по загрузке. */
 function loadColor(pct: number): { bg: string; border?: string } {
   if (pct <= 0) {
-    // «Отдыхающая» клетка: выходной или нулевой день. Не дыра, но и не цвет.
-    return { bg: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.05)' };
+    // Свободный рабочий день: чуть заметная заливка (есть ресурс, нет задач).
+    return { bg: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' };
   }
   if (pct > 110) {
-    // Перегруз: янтарь → красный.
     const t = Math.min((pct - 110) / 40, 1);
-    const h = 38 - 36 * t;
+    const h = 38 - 36 * t; // янтарь → красный
     return { bg: `hsl(${h} 82% 52%)` };
   }
-  // 1..110 — приглушённо-зелёный → насыщенный зелёный.
   const t = Math.min(pct, 110) / 110;
   const light = 24 + 26 * t;
   const sat = 28 + 46 * t;
   return { bg: `hsl(150 ${sat}% ${light}%)` };
 }
 
+type Off = 'weekend' | 'holiday' | 'absence' | null | undefined;
+
 interface Day {
   date: string;
-  pct: number;
   dow: number; // 0=Вс
 }
 
 interface Week {
   days: Day[];
-  monthLabel: string | null; // непустой на первой неделе месяца
+  monthLabel: string | null;
 }
 
 export default function EmployeeLoadHeatmap({ rows }: Props) {
@@ -54,54 +59,48 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
 
   const data = useMemo(() => {
     if (rows.length === 0) return null;
-    // Ось дней — объединение всех дат, по возрастанию.
-    const dateSet = new Set<string>();
-    for (const r of rows) for (const d of r.days) dateSet.add(d.date);
-    const dates = Array.from(dateSet).sort();
+
+    // Признак выходного — глобальный (из календаря, одинаков для всех).
+    const offByDate = new Map<string, Off>();
+    for (const d of rows[0].days) offByDate.set(d.date, d.off);
+
+    // Ось дней без выходных, по возрастанию.
+    const dates = Array.from(new Set(rows.flatMap((r) => r.days.map((d) => d.date))))
+      .filter((ds) => offByDate.get(ds) !== 'weekend')
+      .sort();
     if (dates.length === 0) return null;
 
-    // Разбиваем дни на недели (Пн–Вс) для зазоров и шапки-месяцев.
+    // Недели (по понедельникам) для зазоров и шапки-месяцев.
     const weeks: Week[] = [];
     let seenMonth = -1;
     for (const ds of dates) {
       const dt = isoDate(ds);
       const dow = dt.getDay();
-      const isMonday = dow === 1;
-      if (weeks.length === 0 || isMonday) {
-        const m = dt.getMonth();
+      const m = dt.getMonth();
+      if (weeks.length === 0 || dow === 1) {
         const monthLabel = m !== seenMonth ? RU_MONTHS_SHORT[m].toUpperCase() : null;
         if (m !== seenMonth) seenMonth = m;
         weeks.push({ days: [], monthLabel });
-      }
-      // Месяц мог смениться в середине недели — пометим первую неделю месяца.
-      const m = dt.getMonth();
-      if (m !== seenMonth && weeks[weeks.length - 1].monthLabel === null) {
+      } else if (m !== seenMonth && weeks[weeks.length - 1].monthLabel === null) {
         weeks[weeks.length - 1].monthLabel = RU_MONTHS_SHORT[m].toUpperCase();
         seenMonth = m;
       }
-      weeks[weeks.length - 1].days.push({ date: ds, pct: 0, dow });
+      weeks[weeks.length - 1].days.push({ date: ds, dow });
     }
 
-    // Загрузка по сотруднику: date -> pct + средняя по будням.
     const empRows = rows.map((r) => {
-      const byDate = new Map(r.days.map((d) => [d.date, d.pct] as const));
-      const empWeeks: Week[] = weeks.map((w) => ({
-        monthLabel: w.monthLabel,
-        days: w.days.map((d) => ({ ...d, pct: byDate.get(d.date) ?? 0 })),
-      }));
-      // Средняя только по будням с ненулевой загрузкой.
-      const workdayPcts: number[] = [];
+      const byDate = new Map(r.days.map((d) => [d.date, d] as const));
+      const workPcts: number[] = [];
       for (const ds of dates) {
-        const dow = isoDate(ds).getDay();
-        if (dow >= 1 && dow <= 5) {
-          const p = byDate.get(ds) ?? 0;
-          if (p > 0) workdayPcts.push(p);
-        }
+        const d = byDate.get(ds);
+        if (d && !d.off && d.pct > 0) workPcts.push(d.pct);
       }
-      const avg = workdayPcts.length
-        ? Math.round(workdayPcts.reduce((s, p) => s + p, 0) / workdayPcts.length)
-        : 0;
-      return { row: r, weeks: empWeeks, avg };
+      const avg = workPcts.length ? Math.round(workPcts.reduce((s, p) => s + p, 0) / workPcts.length) : 0;
+      const allEmpty = dates.every((ds) => {
+        const d = byDate.get(ds);
+        return !d || d.off || d.pct <= 0;
+      });
+      return { row: r, byDate, avg, allEmpty };
     });
 
     const first = isoDate(dates[0]);
@@ -112,10 +111,13 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
 
   if (!data) return null;
 
-  const onCellEnter = (e: React.MouseEvent, d: Day) => {
-    const dt = isoDate(d.date);
-    const head = `${RU_WD[d.dow]}, ${dt.getDate()} ${RU_MONTHS_SHORT[dt.getMonth()]}`;
-    const body = d.pct > 0 ? `${Math.round(d.pct)}%` : d.dow === 0 || d.dow === 6 ? 'выходной' : 'нет загрузки';
+  const showTip = (e: React.MouseEvent, date: string, off: Off, pct: number) => {
+    const dt = isoDate(date);
+    const head = `${RU_WD[dt.getDay()]}, ${dt.getDate()} ${RU_MONTHS_SHORT[dt.getMonth()]}`;
+    let body: string;
+    if (off === 'absence') body = 'отпуск / отсутствие';
+    else if (off === 'holiday') body = 'праздник';
+    else body = pct > 0 ? `${Math.round(pct)}%` : 'нет загрузки';
     setTip({ x: e.clientX, y: e.clientY, text: `${head} · ${body}` });
   };
 
@@ -130,19 +132,12 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
         position: 'relative',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 4,
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>Загрузка сотрудников по дням</div>
         <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{data.periodLabel}</div>
       </div>
       <div style={{ fontSize: 11, color: '#5a7a9a', marginBottom: 8 }}>
-        Наведите на день, чтобы увидеть дату и загрузку.
+        Только рабочие дни. Наведите на день, чтобы увидеть дату и загрузку.
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -166,14 +161,7 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
               СОТРУДНИК
             </div>
             {data.weeks.map((w, wi) => (
-              <div
-                key={wi}
-                style={{
-                  display: 'flex',
-                  marginLeft: wi === 0 ? 0 : WEEK_GAP,
-                  position: 'relative',
-                }}
-              >
+              <div key={wi} style={{ display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP, position: 'relative' }}>
                 {w.monthLabel && (
                   <div
                     style={{
@@ -198,8 +186,7 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
           </div>
 
           {/* Строки сотрудников */}
-          {data.empRows.map(({ row, weeks, avg }, ri) => {
-            const allEmpty = weeks.every((w) => w.days.every((d) => d.pct <= 0));
+          {data.empRows.map(({ row, byDate, avg, allEmpty }, ri) => {
             const avgColor = loadColor(avg);
             return (
               <div
@@ -265,30 +252,41 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
                     нет загрузки в этом квартале
                   </div>
                 ) : (
-                  weeks.map((w, wi) => (
+                  data.weeks.map((w, wi) => (
                     <div key={wi} style={{ display: 'flex', marginLeft: wi === 0 ? 0 : WEEK_GAP }}>
-                      {w.days.map((d) => {
-                        const c = loadColor(d.pct);
+                      {w.days.map((cell) => {
+                        const d = byDate.get(cell.date);
+                        const off = d?.off;
+                        const pct = d?.pct ?? 0;
+                        let bg: string;
+                        let border: string | undefined;
+                        if (off === 'absence') bg = ABSENCE_FILL;
+                        else if (off === 'holiday') bg = HOLIDAY_FILL;
+                        else {
+                          const c = loadColor(pct);
+                          bg = c.bg;
+                          border = c.border;
+                        }
                         return (
                           <div
-                            key={d.date}
-                            onMouseEnter={(e) => onCellEnter(e, d)}
+                            key={cell.date}
+                            onMouseEnter={(e) => showTip(e, cell.date, off, pct)}
                             onMouseLeave={() => setTip(null)}
-                            style={{
-                              width: CELL,
-                              height: CELL,
-                              marginRight: CELL_GAP,
-                              borderRadius: 3,
-                              background: c.bg,
-                              border: c.border,
-                              cursor: 'default',
-                              transition: 'filter 160ms cubic-bezier(0.22,1,0.36,1)',
-                            }}
                             onMouseOver={(e) => {
                               (e.currentTarget as HTMLDivElement).style.filter = 'brightness(1.25)';
                             }}
                             onMouseOut={(e) => {
                               (e.currentTarget as HTMLDivElement).style.filter = 'none';
+                            }}
+                            style={{
+                              width: CELL,
+                              height: CELL,
+                              marginRight: CELL_GAP,
+                              borderRadius: 3,
+                              background: bg,
+                              border,
+                              cursor: 'default',
+                              transition: 'filter 160ms cubic-bezier(0.22,1,0.36,1)',
                             }}
                           />
                         );
@@ -306,29 +304,21 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', color: '#7a9ab8' }}>ЗАГРУЗКА</span>
         {[
-          { label: 'выходной', pct: 0 },
-          { label: 'до 60%', pct: 45 },
-          { label: '60–90%', pct: 80 },
-          { label: '90–110%', pct: 100 },
-          { label: 'свыше 110%', pct: 125 },
-        ].map((it) => {
-          const c = loadColor(it.pct);
-          return (
-            <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 3,
-                  background: c.bg,
-                  border: c.border,
-                  display: 'inline-block',
-                }}
-              />
-              {it.label}
-            </span>
-          );
-        })}
+          { label: 'свободно', fill: loadColor(0).bg, border: loadColor(0).border },
+          { label: 'до 60%', fill: loadColor(45).bg },
+          { label: '60–90%', fill: loadColor(80).bg },
+          { label: '90–110%', fill: loadColor(100).bg },
+          { label: 'свыше 110%', fill: loadColor(125).bg },
+          { label: 'отпуск', fill: ABSENCE_FILL },
+          { label: 'праздник', fill: HOLIDAY_FILL },
+        ].map((it) => (
+          <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
+            <span
+              style={{ width: 12, height: 12, borderRadius: 3, background: it.fill, border: it.border, display: 'inline-block' }}
+            />
+            {it.label}
+          </span>
+        ))}
       </div>
 
       {tip && (
