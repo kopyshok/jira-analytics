@@ -32,7 +32,7 @@ export default function HoursSummarySection({ data, collapsed, onToggleCollapse 
                     title="Осталось ч"
                     value={data.remaining}
                     precision={1}
-                    valueStyle={data.remaining > 0 ? { color: '#ef4444' } : undefined}
+                    styles={data.remaining > 0 ? { content: { color: '#ef4444' } } : undefined}
                   />
                 </Col>
                 <Col span={6}>
