@@ -25,6 +25,7 @@ import ScenarioDeficitBadge from '../components/planning/ScenarioDeficitBadge';
 import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
 import ScenarioCompareDrawer from '../components/planning/ScenarioCompareDrawer';
 import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisionHistoryDrawer';
+import InvolvementDefaultsDrawer from '../components/planning/InvolvementDefaultsDrawer';
 import HoursBreakdownDrawer from '../components/hours/HoursBreakdownDrawer';
 import { useScenarioContinuationInfo } from '../hooks/useScenarioContinuationInfo';
 import {
@@ -190,6 +191,7 @@ export default function PlanningPage() {
   const [diffOpen, setDiffOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [involvementOpen, setInvolvementOpen] = useState(false);
   useRegisterHelp('Планирование сценариев', planningHelp);
   // Компактный режим — всегда включён; тумблер выпилен по запросу PM.
   const compact = true;
@@ -520,6 +522,11 @@ export default function PlanningPage() {
             <Tooltip title="Сравнить два сценария">
               <Button icon={<SwapOutlined />} onClick={() => setCompareOpen(true)}>
                 Сравнить
+              </Button>
+            </Tooltip>
+            <Tooltip title="Справочник вовлечённости по ролям">
+              <Button onClick={() => setInvolvementOpen(true)}>
+                Вовлечённость
               </Button>
             </Tooltip>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
@@ -869,6 +876,11 @@ export default function PlanningPage() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         scenarioId={scenarioId}
+      />
+      <InvolvementDefaultsDrawer
+        open={involvementOpen}
+        onClose={() => setInvolvementOpen(false)}
+        team={scenario?.team ?? null}
       />
       <ApproveCelebration visible={celebrate} />
       <HoursBreakdownDrawer

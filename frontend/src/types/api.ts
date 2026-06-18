@@ -1176,3 +1176,12 @@ export interface HoursBalanceDetailResponse {
   monthly: HoursBalanceMonthlySummary[];
   days: HoursBalanceDailyEntry[];
 }
+
+export interface InvolvementDefault {
+  id: string;
+  team: string;
+  role: string;
+  effective_year: number;
+  effective_quarter: number;
+  involvement: number;
+}
