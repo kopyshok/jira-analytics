@@ -132,6 +132,8 @@ export interface UnavailableDay {
 export interface EmployeeLoadDay {
   date: string;
   pct: number;
+  /** Нерабочий день: 'weekend' | 'holiday' | 'absence'. Отсутствует — рабочий. */
+  off?: 'weekend' | 'holiday' | 'absence' | null;
 }
 
 export interface EmployeeLoadOut {

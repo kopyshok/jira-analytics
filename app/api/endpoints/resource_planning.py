@@ -450,6 +450,8 @@ class DependencyOut(BaseModel):
 class EmployeeLoadDay(BaseModel):
     date: date
     pct: float
+    # Нерабочий день: 'weekend' | 'holiday' | 'absence'. None — рабочий день.
+    off: Optional[str] = None
 
 
 class EmployeeLoadOut(BaseModel):
@@ -1009,13 +1011,26 @@ def get_gantt(
                     used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + per_day
                     d += _td(days=1)
             for e in plan_employees:
+                emp_abs = absences_by_emp.get(e.id, [])
                 days_out: list[EmployeeLoadDay] = []
                 d = q_start
                 while d <= q_end:
                     av = avail.get(e.id, {}).get(d, 0.0)
                     u = used.get(e.id, {}).get(d, 0.0)
                     pct = (u / av * 100.0) if av > 0 else 0.0
-                    days_out.append(EmployeeLoadDay(date=d, pct=round(pct, 1)))
+                    # Признак нерабочего дня (календарь имеет приоритет над отпуском).
+                    cal_h = cal_map.get(d, None)
+                    if cal_h is None:
+                        is_working = d.weekday() < 5
+                    else:
+                        is_working = cal_h > 0
+                    if not is_working:
+                        off = "weekend" if d.weekday() >= 5 else "holiday"
+                    elif any(ab.start_date <= d <= ab.end_date for ab in emp_abs):
+                        off = "absence"
+                    else:
+                        off = None
+                    days_out.append(EmployeeLoadDay(date=d, pct=round(pct, 1), off=off))
                     d += _td(days=1)
                 employee_load.append(
                     EmployeeLoadOut(
