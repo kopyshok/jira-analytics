@@ -135,11 +135,11 @@ _PLANNED_NUMERIC_SETTING_KEYS = [
     "jira_involvement_analyst_field_id",
     "jira_involvement_dev_field_id",
     "jira_involvement_qa_field_id",
-    "jira_involvement_launch_field_id",
+    "jira_involvement_opo_field_id",
     "jira_duration_analyst_field_id",
     "jira_duration_dev_field_id",
     "jira_duration_qa_field_id",
-    "jira_duration_launch_field_id",
+    "jira_duration_opo_field_id",
 ]
 _PLANNED_STRING_SETTING_KEYS = [
     "jira_impact_field_id",
@@ -653,11 +653,11 @@ class SyncService:
         data["involvement_analyst"] = _fld_float("jira_involvement_analyst_field_id")
         data["involvement_dev"] = _fld_float("jira_involvement_dev_field_id")
         data["involvement_qa"] = _fld_float("jira_involvement_qa_field_id")
-        data["involvement_launch"] = _fld_float("jira_involvement_launch_field_id")
+        data["involvement_launch"] = _fld_float("jira_involvement_opo_field_id")
         data["duration_analyst_days"] = _fld_float("jira_duration_analyst_field_id")
         data["duration_dev_days"] = _fld_float("jira_duration_dev_field_id")
         data["duration_qa_days"] = _fld_float("jira_duration_qa_field_id")
-        data["duration_launch_days"] = _fld_float("jira_duration_launch_field_id")
+        data["duration_launch_days"] = _fld_float("jira_duration_opo_field_id")
         data["impact"] = _fld_level("jira_impact_field_id")
         data["risk"] = _fld_level("jira_risk_field_id")
 
