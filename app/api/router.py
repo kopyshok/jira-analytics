@@ -23,6 +23,7 @@ from app.api.endpoints import (
     exports,
     feedback as feedback_endpoints,
     hierarchy_rules as hierarchy_rules_endpoints,
+    involvement_defaults as involvement_defaults_endpoints,
     issue_bulk,
     issue_config,
     mandatory_work_types,
@@ -116,6 +117,12 @@ api_router.include_router(
 )
 api_router.include_router(
     planning.router, prefix="/planning", tags=["planning"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    involvement_defaults_endpoints.router,
+    prefix="/planning/involvement-defaults",
+    tags=["planning"],
+    dependencies=_auth_dep,
 )
 api_router.include_router(
     exports.router, prefix="/exports", tags=["exports"], dependencies=_auth_dep,

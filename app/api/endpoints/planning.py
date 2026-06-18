@@ -55,6 +55,7 @@ from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
 from app.services.resource_base_service import ResourceBaseService
 from app.services.snapshot_writer import SnapshotWriter
+from app.services.involvement_default_service import fill_empty_involvement
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.backlog_service import (
     BACKLOG_CATEGORY,
@@ -641,6 +642,17 @@ async def approve_scenario(
         alloc.backlog_item_id: item.title
         for alloc, item in included_rows
     }
+
+    # Заполнить пустую вовлечённость целевых задач из справочника
+    # (по команде и кварталу сценария). Непустые значения не трогаем.
+    if scenario.team and scenario.year and scenario.quarter:
+        fill_empty_involvement(
+            db,
+            [item for _alloc, item in included_rows],
+            scenario.team,
+            scenario.year,
+            int(str(scenario.quarter).replace("Q", "")),
+        )
     if prev_revision:
         prev_items = (
             db.query(ScenarioRevisionItem)
