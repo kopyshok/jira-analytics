@@ -71,7 +71,7 @@ export default function InvolvementDefaultsDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      width={560}
+      styles={{ wrapper: { width: 560 } }}
       title={`Справочник вовлечённости${team ? ` · ${team}` : ''}`}
     >
       {!team ? (
