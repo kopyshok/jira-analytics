@@ -117,7 +117,7 @@
   transition: background 0.2s, color 0.2s;
   padding: 0 clamp(16px, 4vw, 48px) 56px;
 }
-.desk-layout { max-width: 1280px; margin: 0 auto; }
+.desk-layout { width: 100%; margin: 0 auto; }
 
 .desk-root .mono { font-variant-numeric: tabular-nums; }
 .desk-root .muted { color: var(--ink-3); }
@@ -483,6 +483,50 @@
 .desk-tl-color-legend { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px; }
 .desk-tl-color-item { display: flex; align-items: center; gap: 5px; font-size: 9.5px; color: var(--ink-4); }
 .desk-tl-color-swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+/* ───────── My-tasks summary ───────── */
+.desk-tasks-summary {
+  display: flex;
+  gap: 28px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--hair);
+}
+.desk-tasks-summary-item { display: flex; flex-direction: column; gap: 2px; }
+.desk-tasks-summary-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.desk-tasks-summary-unit {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* ───────── Team availability timeline ───────── */
+.desk-av-header { display: grid; grid-template-columns: 210px 1fr; margin-bottom: 8px; }
+.desk-av-months { display: grid; }
+.desk-av-list { display: flex; flex-direction: column; gap: 12px; }
+.desk-av-row { display: grid; grid-template-columns: 210px 1fr; align-items: center; gap: 12px; }
+.desk-av-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.desk-av-who-text { min-width: 0; }
+.desk-av-who-text .desk-member-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-av-track {
+  position: relative;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  overflow: visible;
+}
+@media (max-width: 900px) {
+  .desk-av-header { grid-template-columns: 140px 1fr; }
+  .desk-av-row { grid-template-columns: 140px 1fr; }
+}
 
 /* Status bar colors */
 .desk-bar-active   { background: oklch(0.58 0.13 222); }
