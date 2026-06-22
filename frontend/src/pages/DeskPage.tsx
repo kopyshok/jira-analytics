@@ -246,17 +246,25 @@ function DeskLayout({ token, widgets }: { token: string; widgets: string[] }) {
   fullRow('my_tasks');
   fullRow('my_timeline');
   fullRow('team_availability');
-  fullRow('awaiting_reaction');
 
-  // Второстепенное — виды работ во всю ширину.
-  fullRow('category_breakdown');
+  // Виды работ + ждут реакции — пополам (заполняем пустоту справа у видов работ).
+  if (present.has('category_breakdown') || present.has('awaiting_reaction')) {
+    rows.push(
+      <div className="desk-row" key="row-cat">
+        {present.has('category_breakdown') && <div className="desk-col" style={{ flex: '1 1 52%' }}>{W('category_breakdown')}</div>}
+        {present.has('awaiting_reaction') && <div className="desk-col" style={{ flex: '1 1 48%' }}>{W('awaiting_reaction')}</div>}
+      </div>,
+    );
+    rendered.add('category_breakdown');
+    rendered.add('awaiting_reaction');
+  }
 
-  // Баланс часов + производственный календарь — пополам.
+  // Баланс часов + производственный календарь — компактно, пополам в одну линию.
   if (present.has('hours_balance') || present.has('production_calendar')) {
     rows.push(
-      <div className="desk-row" key="row-hours">
-        {present.has('hours_balance') && <div className="desk-col" style={{ flex: '1 1 48%' }}>{W('hours_balance')}</div>}
-        {present.has('production_calendar') && <div className="desk-col" style={{ flex: '1 1 52%' }}>{W('production_calendar')}</div>}
+      <div className="desk-row desk-row-nowrap" key="row-hours">
+        {present.has('hours_balance') && <div className="desk-col" style={{ flex: '1 1 50%' }}>{W('hours_balance')}</div>}
+        {present.has('production_calendar') && <div className="desk-col" style={{ flex: '1 1 50%' }}>{W('production_calendar')}</div>}
       </div>,
     );
     rendered.add('hours_balance');

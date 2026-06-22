@@ -181,15 +181,9 @@ def _assignment_projects(
         key = getattr(issue, "key", None)
         norm = _assignment_norm(a)
 
-        if issue is None:
-            fact = 0.0
-        elif a.start_date and a.end_date:
-            # Сужаем факт до окна назначения отдельным точечным запросом —
-            # назначений у одного сотрудника немного, N+1 здесь не критичен.
-            fact = _issue_fact_in_window(db, employee_id, issue.id, a.start_date, a.end_date)
-        else:
-            fact = quarter_fact.get((employee_id, issue.id), 0.0)
-
+        # Факт — квартальный по задаче (как в «Видах работ»). Окно назначения
+        # не сужаем: работа часто списана вне плановых дат, иначе факт = 0.
+        fact = quarter_fact.get((employee_id, issue.id), 0.0) if issue is not None else 0.0
         pct = round(fact / norm * 100) if norm > 0 else 0
         projects.append(
             {
@@ -307,7 +301,8 @@ def _merge_projects(projects: List[dict]) -> List[dict]:
             continue
         m = merged[key]
         m["norm_hours"] = round(m["norm_hours"] + p["norm_hours"], 1)
-        m["fact_hours"] = round(m["fact_hours"] + p["fact_hours"], 1)
+        # Факт квартальный по задаче — на отрезках одинаков, не суммируем.
+        m["fact_hours"] = round(max(m["fact_hours"], p["fact_hours"]), 1)
         if p["start_date"] and (not m["start_date"] or p["start_date"] < m["start_date"]):
             m["start_date"] = p["start_date"]
         if p["end_date"] and (not m["end_date"] or p["end_date"] > m["end_date"]):
@@ -335,26 +330,6 @@ def _assignment_norm(a) -> float:
             if est is not None:
                 return float(est)
     return 0.0
-
-
-def _issue_fact_in_window(
-    db: Session, employee_id: str, issue_id: str, start: date, end: date
-) -> float:
-    from app.models import Worklog
-
-    start_dt = datetime.combine(start, time.min)
-    end_dt = datetime.combine(end, time.max)
-    total = (
-        db.query(func.coalesce(func.sum(Worklog.hours), 0.0))
-        .filter(
-            Worklog.employee_id == employee_id,
-            Worklog.issue_id == issue_id,
-            Worklog.started_at >= start_dt,
-            Worklog.started_at <= end_dt,
-        )
-        .scalar()
-    )
-    return float(total or 0.0)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -658,12 +633,7 @@ def _adapter_team_availability(
         issue = assignment_issue.get(a.id)
         key = getattr(issue, "key", None)
         norm = _assignment_norm(a)
-        if issue is None:
-            fact = 0.0
-        elif a.start_date and a.end_date:
-            fact = _issue_fact_in_window(db, eid, issue.id, a.start_date, a.end_date)
-        else:
-            fact = quarter_fact.get((eid, issue.id), 0.0)
+        fact = quarter_fact.get((eid, issue.id), 0.0) if issue is not None else 0.0
         pct = round(fact / norm * 100) if norm > 0 else 0
 
         entry = by_emp.setdefault(
