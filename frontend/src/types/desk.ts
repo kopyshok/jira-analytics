@@ -69,11 +69,25 @@ export interface HoursBalanceData {
   days: BalanceDay[];
 }
 
+export interface WorkTypeIssue {
+  key: string | null;
+  title: string | null;
+  jira_url: string | null;
+  status: string | null;
+  fact_hours: number;
+}
+export interface WorkTypeCategory {
+  label: string;
+  color: string;
+  fact_hours: number;
+  issues: WorkTypeIssue[];
+}
 export interface WorkTypeSlice {
   label: string;
   plan_hours: number;
   fact_hours: number;
   pct: number;
+  categories: WorkTypeCategory[];
 }
 export interface CategoryBreakdownData {
   work_types: WorkTypeSlice[];

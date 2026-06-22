@@ -362,37 +362,81 @@ def _adapter_hours_balance(db: Session, desk: WorkDesk, year: int, quarter: int)
 def _adapter_category_breakdown(
     db: Session, desk: WorkDesk, year: int, quarter: int
 ) -> dict:
-    """План/факт сотрудника по видам работ (через сервис дашборда «Норма работ»).
+    """Разворачиваемая иерархия сотрудника: Вид работ → Категория → Задача.
 
-    Переиспользуем AnalyticsService.get_dashboard_norm_work, ограниченный
-    командами стола, и вынимаем строку конкретного сотрудника из
-    роль-групп. Это даёт настоящий план (approved сценарий → шаблонные
-    правила → ёмкость) и факт, идентичные дашборду.
+    Костяк — иерархический отчёт Аналитики (`get_hierarchical_report`),
+    ограниченный сотрудником стола: даёт факт-часы и вложенные категории с
+    задачами. Плановые часы видов работ накладываем из дашборда «Норма работ»
+    (тот же расчёт плана, что на дашборде), сматчив по названию вида.
     """
     from app.services.analytics_service import AnalyticsService
 
     teams = _desk_teams(desk)
+    svc = AnalyticsService(db)
+
+    # План по видам работ (по названию) — идентичен дашборду.
+    plan_by_label: Dict[str, float] = {}
     try:
-        resp = AnalyticsService(db).get_dashboard_norm_work(
-            year=year, quarter=quarter, teams=teams or None
+        norm = svc.get_dashboard_norm_work(year=year, quarter=quarter, teams=teams or None)
+        for role in norm.roles:
+            for emp in role.employees:
+                if emp.employee_id == desk.employee_id:
+                    for wt in emp.work_types:
+                        plan_by_label[wt.label] = wt.plan_hours
+    except ValueError:
+        pass
+
+    # Факт + иерархия категорий/задач конкретного сотрудника.
+    try:
+        report = svc.get_hierarchical_report(
+            year=year, quarter=quarter, teams=teams or None, employee_id=desk.employee_id
         )
     except ValueError:
         return {"work_types": []}
 
-    for role in resp.roles:
-        for emp in role.employees:
-            if emp.employee_id == desk.employee_id:
-                work_types = [
+    emp_node = None
+    for team_node in report.teams:
+        for role_node in team_node.roles:
+            for e in role_node.employees:
+                if e.employee_id == desk.employee_id:
+                    emp_node = e
+                    break
+    if emp_node is None:
+        return {"work_types": []}
+
+    work_types: List[dict] = []
+    for wt in emp_node.work_types:
+        plan = plan_by_label.get(wt.label)
+        fact = round(wt.totals.fact_hours, 1)
+        pct = round(fact / plan * 100) if plan else 0
+        categories = [
+            {
+                "label": cat.label,
+                "color": cat.color,
+                "fact_hours": round(cat.totals.fact_hours, 1),
+                "issues": [
                     {
-                        "label": wt.label,
-                        "plan_hours": wt.plan_hours,
-                        "fact_hours": wt.fact_hours,
-                        "pct": wt.pct,
+                        "key": iss.key,
+                        "title": iss.summary,
+                        "jira_url": _jira_url(iss.key),
+                        "status": iss.status,
+                        "fact_hours": round(iss.totals.fact_hours, 1),
                     }
-                    for wt in emp.work_types
-                ]
-                return {"work_types": work_types}
-    return {"work_types": []}
+                    for iss in cat.issues
+                ],
+            }
+            for cat in wt.categories
+        ]
+        work_types.append(
+            {
+                "label": wt.label,
+                "plan_hours": round(plan, 1) if plan else 0.0,
+                "fact_hours": fact,
+                "pct": pct,
+                "categories": categories,
+            }
+        )
+    return {"work_types": work_types}
 
 
 def _adapter_team_absences(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:

@@ -7,6 +7,7 @@ interface WidgetShellProps {
   isError: boolean;
   isEmpty: boolean;
   emptyText?: string;
+  badge?: ReactNode;
   children: ReactNode;
 }
 
@@ -18,6 +19,7 @@ export default function WidgetShell({
   isError,
   isEmpty,
   emptyText = 'Нет данных',
+  badge,
   children,
 }: WidgetShellProps) {
   return (
@@ -25,6 +27,7 @@ export default function WidgetShell({
       <div className="desk-zone-title">
         <span className="desk-zone-dot" />
         {title}
+        {badge && <span className="desk-zone-badge">{badge}</span>}
       </div>
       {isLoading ? (
         <Skeleton active paragraph={{ rows: 4 }} />

@@ -667,6 +667,93 @@
 .desk-bullet-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 99px; }
 .desk-bullet-tick { position: absolute; top: -4px; width: 2px; height: 16px; border-radius: 1px; background: var(--ink-3); opacity: 0.5; }
 
+/* ───────── Work-type drill-down tree ───────── */
+.desk-tree-chevron {
+  display: inline-flex;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--ink-4);
+  font-size: 9px;
+  transition: transform 0.15s;
+}
+.desk-tree-chevron.open { transform: rotate(90deg); }
+.desk-tree-chevron.hidden { visibility: hidden; }
+
+.desk-wt-head {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  align-items: center;
+}
+.desk-wt-head:disabled { cursor: default; }
+.desk-wt-head .desk-bullet-label { flex: 1 1 auto; }
+
+.desk-wt-cats {
+  margin: 8px 0 2px 16px;
+  padding-left: 8px;
+  border-left: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.desk-cat-block { display: flex; flex-direction: column; }
+.desk-cat-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  padding: 3px 0;
+  cursor: pointer;
+  color: var(--ink-2);
+  font: inherit;
+  text-align: left;
+}
+.desk-cat-head:disabled { cursor: default; }
+.desk-cat-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.desk-cat-label { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-cat-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-4);
+  background: var(--bg-sunken);
+  border-radius: 99px;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+.desk-cat-hrs { margin-left: auto; font-size: 11px; color: var(--ink-3); white-space: nowrap; flex-shrink: 0; }
+
+.desk-cat-issues {
+  margin: 2px 0 4px 19px;
+  padding-left: 8px;
+  border-left: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.desk-cat-issue { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; }
+.desk-cat-issue-name { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-cat-issue-hrs { margin-left: auto; color: var(--ink-4); white-space: nowrap; flex-shrink: 0; }
+
+.desk-zone-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--amber);
+  background: color-mix(in oklch, var(--amber) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--amber) 35%, transparent);
+  border-radius: 99px;
+  padding: 1px 8px;
+  margin-left: 4px;
+}
+
 /* ───────── Team availability ───────── */
 .desk-team-list { display: flex; flex-direction: column; gap: 14px; }
 .desk-member-row { display: grid; grid-template-columns: 36px 1fr; align-items: flex-start; gap: 10px; }

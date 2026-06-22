@@ -16,6 +16,7 @@ export default function AwaitingReactionWidget({ token, title }: { token: string
       isError={isError}
       isEmpty={items.length === 0}
       emptyText="Ничего не ждёт ответа"
+      badge="В разработке"
     >
       <div className="desk-await-hint">
         Задачи, где вы исполнитель и последним ответил кто-то другой.
