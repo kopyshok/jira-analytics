@@ -207,6 +207,39 @@ def _assignment_projects(
     return projects
 
 
+def _merge_projects(projects: List[dict]) -> List[dict]:
+    """Свернуть несколько отрезков одного проекта (одинаковый key) в одну строку.
+
+    Часы суммируются, период растягивается на самый ранний старт и самый
+    поздний финиш, % пересчитывается. Статус/название берутся из первого
+    отрезка (у назначений одной задачи они совпадают). Строки без key
+    (нераспознанные) остаются как есть — сворачивать их не по чему.
+    """
+    merged: Dict[str, dict] = {}
+    order: List[str] = []
+    extras: List[dict] = []
+    for p in projects:
+        key = p.get("key")
+        if not key:
+            extras.append(p)
+            continue
+        if key not in merged:
+            merged[key] = dict(p)
+            order.append(key)
+            continue
+        m = merged[key]
+        m["norm_hours"] = round(m["norm_hours"] + p["norm_hours"], 1)
+        m["fact_hours"] = round(m["fact_hours"] + p["fact_hours"], 1)
+        if p["start_date"] and (not m["start_date"] or p["start_date"] < m["start_date"]):
+            m["start_date"] = p["start_date"]
+        if p["end_date"] and (not m["end_date"] or p["end_date"] > m["end_date"]):
+            m["end_date"] = p["end_date"]
+    for key in order:
+        m = merged[key]
+        m["pct"] = round(m["fact_hours"] / m["norm_hours"] * 100) if m["norm_hours"] > 0 else 0
+    return [merged[k] for k in order] + extras
+
+
 def _assignment_norm(a) -> float:
     """Плановые часы фазы: hours_allocated, иначе оценка роли на BacklogItem.
 
@@ -258,7 +291,9 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
     if plan is None:
         return {"projects": []}
     q_start, q_end = _quarter_bounds(year, quarter)
-    projects = _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
+    projects = _merge_projects(
+        _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
+    )
     return {"projects": projects}
 
 
@@ -422,11 +457,14 @@ def _adapter_team_availability(
     from app.models import Employee, ResourcePlanAssignment
 
     teams = _desk_teams(desk)
+    q_start, q_end = _quarter_bounds(year, quarter)
     plan = _find_recent_plan(db, teams, year, quarter)
     if plan is None:
-        return {"members": []}
-
-    q_start, q_end = _quarter_bounds(year, quarter)
+        return {
+            "members": [],
+            "quarter_start": q_start.isoformat(),
+            "quarter_end": q_end.isoformat(),
+        }
 
     rows = (
         db.execute(
@@ -502,7 +540,13 @@ def _adapter_team_availability(
                 "pct": pct,
             }
         )
-    return {"members": list(by_emp.values())}
+    for entry in by_emp.values():
+        entry["projects"] = _merge_projects(entry["projects"])
+    return {
+        "members": list(by_emp.values()),
+        "quarter_start": q_start.isoformat(),
+        "quarter_end": q_end.isoformat(),
+    }
 
 
 def _adapter_production_calendar(

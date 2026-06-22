@@ -214,11 +214,10 @@ function DeskHeader({
 }
 
 /* ───────── Key-aware layout ─────────
- * - team_absences          → всегда во всю ширину и последним
- * - hours_balance + production_calendar → одна строка пополам (если оба)
- * - my_tasks (доминанта) + my_timeline  → строка ≈60/40 (если оба)
- * - category_breakdown + team_availability → строка пополам (если оба)
- * - awaiting_reaction и одиночные остатки → адаптивная сетка
+ * Приоритетные виджеты сотрудника — каждый во всю ширину, по порядку:
+ *   my_tasks → my_timeline → team_availability → awaiting_reaction.
+ * Второстепенное опускается вниз: виды работ, баланс+календарь (пополам),
+ * отсутствия команды (всегда последним и во всю ширину).
  */
 function DeskLayout({ token, widgets }: { token: string; widgets: string[] }) {
   const present = new Set(widgets);
@@ -233,28 +232,26 @@ function DeskLayout({ token, widgets }: { token: string; widgets: string[] }) {
 
   const rows: React.ReactNode[] = [];
 
-  // Row: my_tasks + my_timeline (≈60/40)
-  if (present.has('my_tasks') || present.has('my_timeline')) {
-    const both = present.has('my_tasks') && present.has('my_timeline');
+  const fullRow = (key: string) => {
+    if (!present.has(key)) return;
     rows.push(
-      <div className="desk-row" key="row-tasks">
-        {present.has('my_tasks') && (
-          <div className="desk-col" style={{ flex: both ? '1 1 59%' : '1 1 100%' }}>
-            {W('my_tasks')}
-          </div>
-        )}
-        {present.has('my_timeline') && (
-          <div className="desk-col" style={{ flex: both ? '1 1 38%' : '1 1 100%' }}>
-            {W('my_timeline')}
-          </div>
-        )}
+      <div className="desk-row" key={`row-${key}`}>
+        <div className="desk-col" style={{ flex: '1 1 100%' }}>{W(key)}</div>
       </div>,
     );
-    rendered.add('my_tasks');
-    rendered.add('my_timeline');
-  }
+    rendered.add(key);
+  };
 
-  // Row: hours_balance + production_calendar (half/half)
+  // Приоритетный блок — каждый виджет во всю ширину.
+  fullRow('my_tasks');
+  fullRow('my_timeline');
+  fullRow('team_availability');
+  fullRow('awaiting_reaction');
+
+  // Второстепенное — виды работ во всю ширину.
+  fullRow('category_breakdown');
+
+  // Баланс часов + производственный календарь — пополам.
   if (present.has('hours_balance') || present.has('production_calendar')) {
     rows.push(
       <div className="desk-row" key="row-hours">
@@ -266,40 +263,13 @@ function DeskLayout({ token, widgets }: { token: string; widgets: string[] }) {
     rendered.add('production_calendar');
   }
 
-  // Row: category_breakdown + team_availability (half/half)
-  if (present.has('category_breakdown') || present.has('team_availability')) {
-    rows.push(
-      <div className="desk-row" key="row-cat">
-        {present.has('category_breakdown') && <div className="desk-col" style={{ flex: '1 1 48%' }}>{W('category_breakdown')}</div>}
-        {present.has('team_availability') && <div className="desk-col" style={{ flex: '1 1 52%' }}>{W('team_availability')}</div>}
-      </div>,
-    );
-    rendered.add('category_breakdown');
-    rendered.add('team_availability');
-  }
-
-  // Прочие одиночные виджеты (включая awaiting_reaction) — по порядку, во всю ширину блоками.
-  const leftovers = widgets.filter((k) => !rendered.has(k) && k !== 'team_absences');
-  if (leftovers.length > 0) {
-    rows.push(
-      <div className="desk-row" key="row-rest">
-        {leftovers.map((k) => (
-          <div className="desk-col" style={{ flex: '1 1 48%' }} key={k}>
-            {W(k)}
-          </div>
-        ))}
-      </div>,
-    );
-  }
+  // Прочие нераспределённые виджеты (кроме отсутствий) — во всю ширину.
+  widgets
+    .filter((k) => !rendered.has(k) && k !== 'team_absences')
+    .forEach(fullRow);
 
   // team_absences — всегда во всю ширину и последним.
-  if (present.has('team_absences')) {
-    rows.push(
-      <div className="desk-row" key="row-absence">
-        <div className="desk-col" style={{ flex: '1 1 100%' }}>{W('team_absences')}</div>
-      </div>,
-    );
-  }
+  fullRow('team_absences');
 
   return <div className="desk-grid">{rows}</div>;
 }

@@ -105,6 +105,8 @@ export interface AvailabilityMember {
 }
 export interface TeamAvailabilityData {
   members: AvailabilityMember[];
+  quarter_start: string;
+  quarter_end: string;
 }
 
 export interface CalendarDay {

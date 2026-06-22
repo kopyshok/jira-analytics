@@ -55,6 +55,10 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
   // Подсветка «в работе сейчас» — первый проект с активным статусом.
   const activeIdx = projects.findIndex((p) => isInProgress(p.status));
 
+  const totalNorm = projects.reduce((s, p) => s + p.norm_hours, 0);
+  const totalFact = projects.reduce((s, p) => s + p.fact_hours, 0);
+  const totalPct = totalNorm > 0 ? Math.round((totalFact / totalNorm) * 100) : 0;
+
   return (
     <WidgetShell
       title={title}
@@ -63,6 +67,22 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
       isEmpty={projects.length === 0}
       emptyText="Нет проектов"
     >
+      <div className="desk-tasks-summary">
+        <div className="desk-tasks-summary-item">
+          <span className="desk-tasks-summary-val">{projects.length}</span>
+          <span className="desk-tasks-summary-unit">проектов</span>
+        </div>
+        <div className="desk-tasks-summary-item">
+          <span className="desk-tasks-summary-val">
+            {Math.round(totalFact)} / {Math.round(totalNorm)} ч
+          </span>
+          <span className="desk-tasks-summary-unit">факт / план</span>
+        </div>
+        <div className="desk-tasks-summary-item">
+          <span className="desk-tasks-summary-val">{totalPct}%</span>
+          <span className="desk-tasks-summary-unit">загрузка</span>
+        </div>
+      </div>
       <div className="desk-project-list">
         {projects.map((p, i) => (
           <ProjectRow
