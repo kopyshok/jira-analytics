@@ -245,6 +245,38 @@ def _project_children(
     return by_parent
 
 
+def _subtree_ids(db: Session, root_ids: List[str]) -> Dict[str, set]:
+    """Для каждой задачи-корня — множество id её поддерева (корень + потомки).
+
+    Списания часто висят на подзадачах, а не на задаче-инициативе. BFS по
+    Issue.parent_id уровнями (несколько запросов, ограничено глубиной дерева).
+    """
+    from app.models import Issue
+
+    roots = [r for r in dict.fromkeys(root_ids) if r]
+    result: Dict[str, set] = {r: {r} for r in roots}
+    if not roots:
+        return result
+    parent_root: Dict[str, str] = {r: r for r in roots}
+    current = list(roots)
+    while current:
+        rows = (
+            db.query(Issue.id, Issue.parent_id)
+            .filter(Issue.parent_id.in_(current))
+            .all()
+        )
+        nxt: List[str] = []
+        for cid, pid in rows:
+            root = parent_root.get(pid)
+            if root is None or cid in result[root]:
+                continue
+            result[root].add(cid)
+            parent_root[cid] = root
+            nxt.append(cid)
+        current = nxt
+    return result
+
+
 def _worklog_span_map(
     db: Session,
     pairs: List[tuple[str, str]],
@@ -347,15 +379,24 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
     projects = _merge_projects(
         _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
     )
-    children = _project_children(
-        db,
-        desk.employee_id,
-        [p.get("issue_id") for p in projects],
-        q_start,
-        q_end,
+    issue_ids = [p.get("issue_id") for p in projects if p.get("issue_id")]
+    children = _project_children(db, desk.employee_id, issue_ids, q_start, q_end)
+
+    # Факт проекта — по всему поддереву задачи (списания висят на подзадачах).
+    subtree = _subtree_ids(db, issue_ids)
+    all_ids = {i for ids in subtree.values() for i in ids}
+    fact_map = _worklog_fact_map(
+        db, [(desk.employee_id, i) for i in all_ids], q_start, q_end
     )
     for p in projects:
-        p["children"] = children.get(p.get("issue_id"), [])
+        iid = p.get("issue_id")
+        p["children"] = children.get(iid, [])
+        if iid in subtree:
+            fact = round(
+                sum(fact_map.get((desk.employee_id, i), 0.0) for i in subtree[iid]), 1
+            )
+            p["fact_hours"] = fact
+            p["pct"] = round(fact / p["norm_hours"] * 100) if p["norm_hours"] > 0 else 0
     return {"projects": projects}
 
 
@@ -371,16 +412,21 @@ def _adapter_my_timeline(db: Session, desk: WorkDesk, year: int, quarter: int) -
     if plan is not None:
         rows = _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
         dated = [p for p in rows if p["start_date"] and p["end_date"]]
+        subtree = _subtree_ids(db, [p["issue_id"] for p in dated if p.get("issue_id")])
+        all_ids = {i for ids in subtree.values() for i in ids}
         span = _worklog_span_map(
-            db,
-            [(desk.employee_id, p["issue_id"]) for p in dated if p.get("issue_id")],
-            q_start,
-            q_end,
+            db, [(desk.employee_id, i) for i in all_ids], q_start, q_end
         )
         for p in dated:
-            mn_mx = span.get((desk.employee_id, p.get("issue_id")))
-            fact_start = mn_mx[0].date().isoformat() if mn_mx and mn_mx[0] else None
-            fact_end = mn_mx[1].date().isoformat() if mn_mx and mn_mx[1] else None
+            mins, maxs = [], []
+            for i in subtree.get(p.get("issue_id"), ()):
+                mm = span.get((desk.employee_id, i))
+                if mm and mm[0]:
+                    mins.append(mm[0])
+                if mm and mm[1]:
+                    maxs.append(mm[1])
+            fact_start = min(mins).date().isoformat() if mins else None
+            fact_end = max(maxs).date().isoformat() if maxs else None
             bars.append(
                 {
                     "key": p["key"],

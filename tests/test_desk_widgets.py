@@ -23,6 +23,7 @@ from app.models import (
     Project,
     ResourcePlan,
     ResourcePlanAssignment,
+    Worklog,
 )
 from app.services.work_desk_service import WorkDeskService
 from app.services.work_desk_widgets import WIDGET_KEYS, desk_summary, dispatch
@@ -364,6 +365,47 @@ def test_my_tasks_norm_prefers_allocated(db_session, seed_employee):
     desk = _make_desk(db_session, seed_employee.id)
     out = _dispatch(db_session, desk, "my_tasks")
     assert out["projects"][0]["norm_hours"] == 25.0
+
+
+def test_my_tasks_fact_sums_subtree_worklogs(db_session, seed_employee):
+    """Факт проекта = списания по поддереву (на подзадаче, не на инициативе)."""
+    year, quarter = _current_quarter()
+    month = {1: 1, 2: 4, 3: 7, 4: 10}[quarter]
+    proj = Project(id="prj-1", jira_project_id="10000", key="ITL", name="ITL", is_active=True)
+    parent = Issue(
+        id="iss-P", jira_issue_id="ji-P", key="ITL-1", summary="Инициатива",
+        issue_type="Задача", status="In Progress", status_category="indeterminate",
+        project_id="prj-1", participating_teams="[]",
+    )
+    child = Issue(
+        id="iss-C", jira_issue_id="ji-C", key="ITL-2", summary="Подзадача",
+        issue_type="Sub-task", status="In Progress", status_category="indeterminate",
+        project_id="prj-1", parent_id="iss-P", participating_teams="[]",
+    )
+    item = BacklogItem(id="bi-1", title="Инициатива A", issue_id="iss-P")
+    plan = ResourcePlan(
+        id="plan-1", team="Alpha", year=year, quarter=str(quarter),
+        status="ready", computed_at=datetime.utcnow(),
+    )
+    db_session.add_all([proj, parent, child, item, plan])
+    db_session.add(
+        ResourcePlanAssignment(
+            id="rpa-1", plan_id="plan-1", backlog_item_id="bi-1",
+            phase="analyst", employee_id=seed_employee.id, hours_allocated=10.0,
+        )
+    )
+    db_session.add(
+        Worklog(
+            id="wl-1", jira_worklog_id="jwl-1", issue_id="iss-C",
+            employee_id=seed_employee.id, started_at=datetime(year, month, 15, 10),
+            time_spent_seconds=25200, hours=7.0,
+        )
+    )
+    db_session.commit()
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "my_tasks")
+    assert out["projects"][0]["fact_hours"] == 7.0
+    assert out["projects"][0]["children"][0]["fact_hours"] == 7.0
 
 
 # ── team_availability: исключение разработчиков и сотрудника стола ───────────
