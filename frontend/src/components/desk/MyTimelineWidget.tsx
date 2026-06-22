@@ -40,6 +40,27 @@ function monthGridlines(startIso: string, endIso: string): number[] {
 
 type TimelineBarView = TimelineBar & { jira_url_safe: string | null };
 
+const LANE_H = 22; // высота дорожки полос внутри строки проекта, px
+
+/** Разложить фазы по дорожкам, чтобы пересекающиеся полосы не накладывались. */
+function packLanes(segments: TimelineBarView[]): { laned: { seg: TimelineBarView; lane: number }[]; lanes: number } {
+  const sorted = [...segments].sort((a, b) => toTime(a.start_date) - toTime(b.start_date));
+  const laneEnds: number[] = [];
+  const laned = sorted.map((seg) => {
+    const s = toTime(seg.start_date);
+    const e = toTime(seg.end_date);
+    let lane = laneEnds.findIndex((end) => end <= s);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(e);
+    } else {
+      laneEnds[lane] = e;
+    }
+    return { seg, lane };
+  });
+  return { laned, lanes: Math.max(1, laneEnds.length) };
+}
+
 /** Одна строка — одна задача; несколько отрезков назначения как полосы. */
 function GroupRow({ segments, gridlines, nowLeft, qStart, qEnd }: {
   segments: TimelineBarView[]; gridlines: number[]; nowLeft: number | null; qStart: string; qEnd: string;
@@ -50,6 +71,7 @@ function GroupRow({ segments, gridlines, nowLeft, qStart, qEnd }: {
   const head = segments[0];
   const label = head.title ?? head.key ?? '—';
   const jiraUrl = head.jira_url_safe;
+  const { laned, lanes } = packLanes(segments);
 
   // Факт-полоса по задаче (одинакова на всех отрезках) — рисуем один раз.
   let fact: { left: number; width: number } | null = null;
@@ -88,20 +110,31 @@ function GroupRow({ segments, gridlines, nowLeft, qStart, qEnd }: {
           {jiraUrl ? <a href={jiraUrl} target="_blank" rel="noreferrer">{label}</a> : label}
         </span>
       </div>
-      <div className="desk-tl-track">
+      <div className="desk-tl-track" style={{ height: `${lanes * LANE_H + 6}px` }}>
         {gridlines.map((g, i) => (
           <div key={i} className="desk-tl-gridline" style={{ left: `${g}%` }} />
         ))}
-        {segments.map((seg, i) => {
+        {laned.map(({ seg, lane }, i) => {
           const bStart = Math.max(toTime(seg.start_date), qs);
           const bEnd = Math.min(toTime(seg.end_date), qe);
           const left = ((bStart - qs) / span) * 100;
           const width = Math.max(2, ((bEnd - bStart) / span) * 100);
           const kind = deskStatusKind(seg.status);
+          const segTip = (
+            <span>
+              {seg.key ? `${seg.key} · ` : ''}{seg.phase_label}
+              <br />
+              План: {fmtShortRange(seg.start_date, seg.end_date)}
+              {seg.status ? <><br />{seg.status}</> : null}
+            </span>
+          );
           return (
-            <Tooltip key={i} title={tip} mouseEnterDelay={0.2}>
-              <div className={`desk-tl-bar desk-bar-${kind}`} style={{ left: `${left}%`, width: `${width}%` }}>
-                {label}
+            <Tooltip key={i} title={segTip} mouseEnterDelay={0.2}>
+              <div
+                className={`desk-tl-bar desk-bar-${kind}`}
+                style={{ left: `${left}%`, width: `${width}%`, top: `${lane * LANE_H + 3}px` }}
+              >
+                {seg.phase_label}
               </div>
             </Tooltip>
           );

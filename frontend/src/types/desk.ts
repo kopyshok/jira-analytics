@@ -60,6 +60,8 @@ export interface MyTasksData {
 export interface TimelineBar {
   key: string | null;
   title: string | null;
+  phase: string | null;
+  phase_label: string;
   start_date: string;
   end_date: string;
   status: string | null;

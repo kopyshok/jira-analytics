@@ -45,6 +45,15 @@ _PHASE_ESTIMATE_FIELD: Dict[str, str] = {
     "opo": "estimate_opo_hours",
 }
 
+# Фаза назначения → человекочитаемое название (для подписи полос таймлайна).
+_PHASE_LABEL: Dict[str, str] = {
+    "analyst": "Анализ",
+    "cons": "Консультация",
+    "dev": "Разработка",
+    "qa": "Тестирование",
+    "opo": "ОПЭ",
+}
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # Вспомогательные функции
@@ -404,43 +413,89 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
 
 
 def _adapter_my_timeline(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
-    """Горизонтальная шкала проектов сотрудника по кварталу.
+    """Шкала проектов сотрудника: ВСЕ фазы каждого проекта по кварталу.
 
-    Только назначения с обеими датами — иначе их некуда поставить на шкале.
+    Берём проекты (backlog_item), где сотрудник назначен, и показываем все их
+    фазы (analyst/dev/qa/opo любого исполнителя). Подпись полосы — название
+    фазы (имя проекта видно в подписи строки слева). Факт-полоса — списания
+    сотрудника по поддереву задачи, одинакова для всех фаз проекта.
     """
+    from app.models import ResourcePlanAssignment
+
     q_start, q_end = _quarter_bounds(year, quarter)
     teams = _desk_teams(desk)
     plan = _find_recent_plan(db, teams, year, quarter)
     bars: List[dict] = []
     if plan is not None:
-        rows = _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
-        dated = [p for p in rows if p["start_date"] and p["end_date"]]
-        subtree = _subtree_ids(db, [p["issue_id"] for p in dated if p.get("issue_id")])
-        all_ids = {i for ids in subtree.values() for i in ids}
-        span = _worklog_span_map(
-            db, [(desk.employee_id, i) for i in all_ids], q_start, q_end
-        )
-        for p in dated:
-            mins, maxs = [], []
-            for i in subtree.get(p.get("issue_id"), ()):
-                mm = span.get((desk.employee_id, i))
-                if mm and mm[0]:
-                    mins.append(mm[0])
-                if mm and mm[1]:
-                    maxs.append(mm[1])
-            fact_start = min(mins).date().isoformat() if mins else None
-            fact_end = max(maxs).date().isoformat() if maxs else None
-            bars.append(
-                {
-                    "key": p["key"],
-                    "title": p["title"],
-                    "start_date": p["start_date"],
-                    "end_date": p["end_date"],
-                    "status": p["status"],
-                    "fact_start": fact_start,
-                    "fact_end": fact_end,
-                }
+        my_items = {
+            a.backlog_item_id
+            for a in db.execute(
+                select(ResourcePlanAssignment).where(
+                    ResourcePlanAssignment.plan_id == plan.id,
+                    ResourcePlanAssignment.employee_id == desk.employee_id,
+                )
             )
+            .scalars()
+            .all()
+            if a.backlog_item_id
+        }
+        if my_items:
+            rows = (
+                db.execute(
+                    select(ResourcePlanAssignment)
+                    .where(
+                        ResourcePlanAssignment.plan_id == plan.id,
+                        ResourcePlanAssignment.backlog_item_id.in_(my_items),
+                    )
+                    .order_by(ResourcePlanAssignment.start_date)
+                )
+                .scalars()
+                .all()
+            )
+            dated = [a for a in rows if a.start_date and a.end_date]
+
+            issue_by_item: Dict[str, object] = {}
+            for a in dated:
+                item = a.backlog_item
+                issue_by_item[a.backlog_item_id] = item.issue if item is not None else None
+
+            issue_ids = [getattr(i, "id", None) for i in issue_by_item.values() if i]
+            subtree = _subtree_ids(db, issue_ids)
+            all_ids = {i for ids in subtree.values() for i in ids}
+            span = _worklog_span_map(
+                db, [(desk.employee_id, i) for i in all_ids], q_start, q_end
+            )
+            fact_by_issue: Dict[str, tuple] = {}
+            for iid in set(issue_ids):
+                mins, maxs = [], []
+                for i in subtree.get(iid, ()):
+                    mm = span.get((desk.employee_id, i))
+                    if mm and mm[0]:
+                        mins.append(mm[0])
+                    if mm and mm[1]:
+                        maxs.append(mm[1])
+                fact_by_issue[iid] = (
+                    min(mins).date().isoformat() if mins else None,
+                    max(maxs).date().isoformat() if maxs else None,
+                )
+
+            for a in dated:
+                issue = issue_by_item.get(a.backlog_item_id)
+                iid = getattr(issue, "id", None)
+                fs, fe = fact_by_issue.get(iid, (None, None))
+                bars.append(
+                    {
+                        "key": getattr(issue, "key", None),
+                        "title": a.backlog_item.title if a.backlog_item is not None else None,
+                        "phase": a.phase,
+                        "phase_label": _PHASE_LABEL.get(a.phase, a.phase or "—"),
+                        "start_date": a.start_date.isoformat(),
+                        "end_date": a.end_date.isoformat(),
+                        "status": getattr(issue, "status", None),
+                        "fact_start": fs,
+                        "fact_end": fe,
+                    }
+                )
     return {
         "quarter_start": q_start.isoformat(),
         "quarter_end": q_end.isoformat(),
