@@ -250,7 +250,7 @@ function DeskLayout({ token, widgets }: { token: string; widgets: string[] }) {
   // Виды работ + ждут реакции — пополам (заполняем пустоту справа у видов работ).
   if (present.has('category_breakdown') || present.has('awaiting_reaction')) {
     rows.push(
-      <div className="desk-row" key="row-cat">
+      <div className="desk-row desk-row-nowrap" key="row-cat">
         {present.has('category_breakdown') && <div className="desk-col" style={{ flex: '1 1 52%' }}>{W('category_breakdown')}</div>}
         {present.has('awaiting_reaction') && <div className="desk-col" style={{ flex: '1 1 48%' }}>{W('awaiting_reaction')}</div>}
       </div>,

@@ -40,52 +40,49 @@ function monthGridlines(startIso: string, endIso: string): number[] {
 
 type TimelineBarView = TimelineBar & { jira_url_safe: string | null };
 
-function BarRow({ bar, gridlines, nowLeft, qStart, qEnd }: {
-  bar: TimelineBarView; gridlines: number[]; nowLeft: number | null; qStart: string; qEnd: string;
+/** Одна строка — одна задача; несколько отрезков назначения как полосы. */
+function GroupRow({ segments, gridlines, nowLeft, qStart, qEnd }: {
+  segments: TimelineBarView[]; gridlines: number[]; nowLeft: number | null; qStart: string; qEnd: string;
 }) {
   const qs = toTime(qStart);
   const qe = toTime(qEnd);
   const span = qe - qs || 1;
-  const bStart = Math.max(toTime(bar.start_date), qs);
-  const bEnd = Math.min(toTime(bar.end_date), qe);
-  const left = ((bStart - qs) / span) * 100;
-  const width = Math.max(2, ((bEnd - bStart) / span) * 100);
-  const kind = deskStatusKind(bar.status);
-  const label = bar.title ?? bar.key ?? '—';
-  const jiraUrl = bar.jira_url_safe;
+  const head = segments[0];
+  const label = head.title ?? head.key ?? '—';
+  const jiraUrl = head.jira_url_safe;
 
-  // Факт-полоса: диапазон дат ворклогов внутри квартала (если есть).
+  // Факт-полоса по задаче (одинакова на всех отрезках) — рисуем один раз.
   let fact: { left: number; width: number } | null = null;
-  if (bar.fact_start && bar.fact_end) {
-    const fs = Math.max(toTime(bar.fact_start), qs);
-    const fe = Math.min(toTime(bar.fact_end), qe);
+  if (head.fact_start && head.fact_end) {
+    const fs = Math.max(toTime(head.fact_start), qs);
+    const fe = Math.min(toTime(head.fact_end), qe);
     if (fe >= fs) {
       fact = { left: ((fs - qs) / span) * 100, width: Math.max(1, ((fe - fs) / span) * 100) };
     }
   }
 
+  const planRange = segments.length > 1
+    ? segments.map((s) => fmtShortRange(s.start_date, s.end_date)).join(', ')
+    : fmtShortRange(head.start_date, head.end_date);
   const tip = (
     <span>
-      {bar.key ? `${bar.key} · ` : ''}{label}
+      {head.key ? `${head.key} · ` : ''}{label}
       <br />
-      План: {fmtShortRange(bar.start_date, bar.end_date)}
-      {bar.fact_start && bar.fact_end && (
-        <>
-          <br />
-          Факт: {fmtShortRange(bar.fact_start, bar.fact_end)}
-        </>
+      План: {planRange}
+      {head.fact_start && head.fact_end && (
+        <><br />Факт: {fmtShortRange(head.fact_start, head.fact_end)}</>
       )}
-      {bar.status ? <><br />{bar.status}</> : null}
+      {head.status ? <><br />{head.status}</> : null}
     </span>
   );
 
   return (
     <div className="desk-tl-row">
-      <div className="desk-tl-label" title={`${bar.key ? `${bar.key} · ` : ''}${label}`}>
-        {bar.key && (
+      <div className="desk-tl-label" title={`${head.key ? `${head.key} · ` : ''}${label}`}>
+        {head.key && (
           jiraUrl
-            ? <a className="desk-jira-key desk-jira-key-link" href={jiraUrl} target="_blank" rel="noreferrer">{bar.key}</a>
-            : <span className="desk-jira-key">{bar.key}</span>
+            ? <a className="desk-jira-key desk-jira-key-link" href={jiraUrl} target="_blank" rel="noreferrer">{head.key}</a>
+            : <span className="desk-jira-key">{head.key}</span>
         )}
         <span className="desk-tl-label-text">
           {jiraUrl ? <a href={jiraUrl} target="_blank" rel="noreferrer">{label}</a> : label}
@@ -95,11 +92,20 @@ function BarRow({ bar, gridlines, nowLeft, qStart, qEnd }: {
         {gridlines.map((g, i) => (
           <div key={i} className="desk-tl-gridline" style={{ left: `${g}%` }} />
         ))}
-        <Tooltip title={tip} mouseEnterDelay={0.2}>
-          <div className={`desk-tl-bar desk-bar-${kind}`} style={{ left: `${left}%`, width: `${width}%` }}>
-            {label}
-          </div>
-        </Tooltip>
+        {segments.map((seg, i) => {
+          const bStart = Math.max(toTime(seg.start_date), qs);
+          const bEnd = Math.min(toTime(seg.end_date), qe);
+          const left = ((bStart - qs) / span) * 100;
+          const width = Math.max(2, ((bEnd - bStart) / span) * 100);
+          const kind = deskStatusKind(seg.status);
+          return (
+            <Tooltip key={i} title={tip} mouseEnterDelay={0.2}>
+              <div className={`desk-tl-bar desk-bar-${kind}`} style={{ left: `${left}%`, width: `${width}%` }}>
+                {label}
+              </div>
+            </Tooltip>
+          );
+        })}
         {fact && (
           <Tooltip title={tip} mouseEnterDelay={0.2}>
             <div className="desk-tl-fact" style={{ left: `${fact.left}%`, width: `${fact.width}%` }} />
@@ -109,6 +115,22 @@ function BarRow({ bar, gridlines, nowLeft, qStart, qEnd }: {
       </div>
     </div>
   );
+}
+
+/** Группировка полос по задаче (key), сохраняя порядок первого появления. */
+function groupByKey(bars: TimelineBarView[]): TimelineBarView[][] {
+  const groups: TimelineBarView[][] = [];
+  const idx = new Map<string, number>();
+  bars.forEach((b) => {
+    const k = b.key ?? `__${groups.length}`;
+    if (idx.has(k)) {
+      groups[idx.get(k)!].push(b);
+    } else {
+      idx.set(k, groups.length);
+      groups.push([b]);
+    }
+  });
+  return groups;
 }
 
 export default function MyTimelineWidget({ token, title }: { token: string; title: string }) {
@@ -152,10 +174,10 @@ export default function MyTimelineWidget({ token, title }: { token: string; titl
           </div>
         </div>
         <div className="desk-tl-rows">
-          {bars.map((bar, i) => (
-            <BarRow
-              key={`${bar.key ?? ''}-${bar.start_date}-${i}`}
-              bar={bar}
+          {groupByKey(bars).map((segments, i) => (
+            <GroupRow
+              key={`${segments[0].key ?? ''}-${i}`}
+              segments={segments}
               gridlines={gridlines}
               nowLeft={nowLeft}
               qStart={qStart}
