@@ -341,7 +341,7 @@
 .desk-project-list { display: flex; flex-direction: column; }
 .desk-project-row {
   display: grid;
-  grid-template-columns: 18px 1fr auto;
+  grid-template-columns: 14px 18px 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 12px 10px;
@@ -374,7 +374,44 @@
 .desk-project-name a { color: var(--ink); }
 .desk-project-name a:hover { color: var(--accent); }
 .desk-project-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
-.desk-jira-key { font-size: 10.5px; color: var(--ink-4); font-weight: 500; letter-spacing: 0.03em; }
+.desk-jira-key { font-size: 10.5px; color: var(--ink-4); font-weight: 500; letter-spacing: 0.03em; flex-shrink: 0; }
+.desk-jira-key-link {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
+  padding: 0 5px;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.desk-jira-key-link:hover { background: var(--accent-glow); text-decoration: underline; }
+
+/* ── Подзадачи проекта (разворот) ── */
+.desk-child-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+.desk-child-toggle:hover { text-decoration: underline; }
+.desk-child-list {
+  margin: 8px 0 2px;
+  padding-left: 6px;
+  border-left: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.desk-child-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.desk-child-row .desk-status-dot { width: 6px; height: 6px; margin: 0; }
+.desk-child-name { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-child-name a { color: var(--ink-2); }
+.desk-child-name a:hover { color: var(--accent); }
+.desk-child-hrs { margin-left: auto; color: var(--ink-4); white-space: nowrap; flex-shrink: 0; }
 .desk-project-dates { font-size: 11px; color: var(--ink-3); }
 
 .desk-now-pill {
@@ -418,7 +455,7 @@
 .desk-fill-over { background: var(--red); }
 
 /* ───────── Timeline ───────── */
-.desk-tl-header { display: grid; grid-template-columns: 120px 1fr; margin-bottom: 10px; }
+.desk-tl-header { display: grid; grid-template-columns: 210px 1fr; margin-bottom: 10px; }
 .desk-tl-months { display: grid; }
 .desk-tl-month-label {
   font-size: 10px;
@@ -431,15 +468,32 @@
   border-bottom: 1px solid var(--hair);
 }
 .desk-tl-rows { display: flex; flex-direction: column; gap: 9px; margin-top: 10px; }
-.desk-tl-row { display: grid; grid-template-columns: 120px 1fr; align-items: center; }
+.desk-tl-row { display: grid; grid-template-columns: 210px 1fr; align-items: center; }
 .desk-tl-label {
   font-size: 11px;
   font-weight: 500;
   color: var(--ink-2);
-  padding-right: 10px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding-right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.desk-tl-label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-tl-label-text a { color: var(--ink-2); }
+.desk-tl-label-text a:hover { color: var(--accent); }
+.desk-tl-fact {
+  position: absolute;
+  bottom: -3px;
+  height: 4px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, var(--ink-3) 0 4px, transparent 4px 7px);
+  z-index: 3;
+  pointer-events: auto;
+}
+.desk-tl-fact-swatch {
+  width: 14px; height: 4px; border-radius: 2px; flex-shrink: 0;
+  background: repeating-linear-gradient(90deg, var(--ink-3) 0 4px, transparent 4px 7px);
 }
 .desk-tl-track { position: relative; height: 28px; background: var(--bg-sunken); border-radius: var(--radius-sm); overflow: visible; }
 .desk-tl-gridline { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--hair); z-index: 1; pointer-events: none; }
@@ -592,8 +646,15 @@
 .desk-rd-minus { color: var(--red);   font-weight: 700; }
 
 /* ───────── Production calendar ───────── */
-.desk-cal-months { display: flex; gap: 12px; flex-wrap: wrap; }
-.desk-cal-month { flex: 1; min-width: 120px; }
+.desk-cal-months { display: flex; gap: 14px; flex-wrap: wrap; }
+.desk-cal-month {
+  flex: 1;
+  min-width: 150px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  padding: 10px 12px 12px;
+  background: var(--bg-sunken);
+}
 .desk-cal-month-title {
   font-size: 11px;
   font-weight: 700;

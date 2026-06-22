@@ -54,19 +54,42 @@ function BarRow({ bar, gridlines, nowLeft, qStart, qEnd }: {
   const label = bar.title ?? bar.key ?? '—';
   const jiraUrl = bar.jira_url_safe;
 
+  // Факт-полоса: диапазон дат ворклогов внутри квартала (если есть).
+  let fact: { left: number; width: number } | null = null;
+  if (bar.fact_start && bar.fact_end) {
+    const fs = Math.max(toTime(bar.fact_start), qs);
+    const fe = Math.min(toTime(bar.fact_end), qe);
+    if (fe >= fs) {
+      fact = { left: ((fs - qs) / span) * 100, width: Math.max(1, ((fe - fs) / span) * 100) };
+    }
+  }
+
   const tip = (
     <span>
       {bar.key ? `${bar.key} · ` : ''}{label}
       <br />
-      {fmtShortRange(bar.start_date, bar.end_date)}
-      {bar.status ? ` · ${bar.status}` : ''}
+      План: {fmtShortRange(bar.start_date, bar.end_date)}
+      {bar.fact_start && bar.fact_end && (
+        <>
+          <br />
+          Факт: {fmtShortRange(bar.fact_start, bar.fact_end)}
+        </>
+      )}
+      {bar.status ? <><br />{bar.status}</> : null}
     </span>
   );
 
   return (
     <div className="desk-tl-row">
-      <div className="desk-tl-label">
-        {jiraUrl ? <a href={jiraUrl} target="_blank" rel="noreferrer">{label}</a> : label}
+      <div className="desk-tl-label" title={`${bar.key ? `${bar.key} · ` : ''}${label}`}>
+        {bar.key && (
+          jiraUrl
+            ? <a className="desk-jira-key desk-jira-key-link" href={jiraUrl} target="_blank" rel="noreferrer">{bar.key}</a>
+            : <span className="desk-jira-key">{bar.key}</span>
+        )}
+        <span className="desk-tl-label-text">
+          {jiraUrl ? <a href={jiraUrl} target="_blank" rel="noreferrer">{label}</a> : label}
+        </span>
       </div>
       <div className="desk-tl-track">
         {gridlines.map((g, i) => (
@@ -77,6 +100,11 @@ function BarRow({ bar, gridlines, nowLeft, qStart, qEnd }: {
             {label}
           </div>
         </Tooltip>
+        {fact && (
+          <Tooltip title={tip} mouseEnterDelay={0.2}>
+            <div className="desk-tl-fact" style={{ left: `${fact.left}%`, width: `${fact.width}%` }} />
+          </Tooltip>
+        )}
         {nowLeft !== null && <div className="desk-tl-now" style={{ left: `${nowLeft}%` }} />}
       </div>
     </div>
@@ -143,6 +171,7 @@ export default function MyTimelineWidget({ token, title }: { token: string; titl
           </div>
         )}
         <div className="desk-tl-color-legend">
+          <span className="desk-tl-color-item"><span className="desk-tl-fact-swatch" />Факт (по списаниям)</span>
           <span className="desk-tl-color-item"><span className="desk-tl-color-swatch desk-bar-active" />В работе</span>
           <span className="desk-tl-color-item"><span className="desk-tl-color-swatch desk-bar-review" />На ревью</span>
           <span className="desk-tl-color-item"><span className="desk-tl-color-swatch desk-bar-done" />Готово</span>

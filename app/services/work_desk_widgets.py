@@ -194,6 +194,7 @@ def _assignment_projects(
         projects.append(
             {
                 "key": key,
+                "issue_id": getattr(issue, "id", None),
                 "title": a.backlog_item.title if a.backlog_item is not None else None,
                 "jira_url": _jira_url(key),
                 "status": getattr(issue, "status", None),
@@ -205,6 +206,83 @@ def _assignment_projects(
             }
         )
     return projects
+
+
+def _project_children(
+    db: Session,
+    employee_id: str,
+    issue_ids: List[str],
+    q_start: date,
+    q_end: date,
+) -> Dict[str, List[dict]]:
+    """Подчинённые задачи проектных задач + факт-часы сотрудника за квартал.
+
+    Один запрос на все дочерние Issue + один сгруппированный запрос факта.
+    Возвращает {parent_issue_id: [child dict, ...]} (без пустых родителей).
+    """
+    from app.models import Issue
+
+    ids = [i for i in issue_ids if i]
+    if not ids:
+        return {}
+    rows = (
+        db.query(Issue.id, Issue.key, Issue.summary, Issue.status, Issue.parent_id)
+        .filter(Issue.parent_id.in_(ids))
+        .all()
+    )
+    if not rows:
+        return {}
+    fact = _worklog_fact_map(
+        db, [(employee_id, r.id) for r in rows], q_start, q_end
+    )
+    by_parent: Dict[str, List[dict]] = {}
+    for r in rows:
+        by_parent.setdefault(r.parent_id, []).append(
+            {
+                "key": r.key,
+                "title": r.summary,
+                "jira_url": _jira_url(r.key),
+                "status": r.status,
+                "fact_hours": round(fact.get((employee_id, r.id), 0.0), 1),
+            }
+        )
+    for lst in by_parent.values():
+        lst.sort(key=lambda c: (-c["fact_hours"], c["key"] or ""))
+    return by_parent
+
+
+def _worklog_span_map(
+    db: Session,
+    pairs: List[tuple[str, str]],
+    q_start: date,
+    q_end: date,
+) -> Dict[tuple[str, str], tuple]:
+    """Мин/макс дата ворклога по парам (employee_id, issue_id) за квартал."""
+    if not pairs:
+        return {}
+    from app.models import Worklog
+
+    emp_ids = {p[0] for p in pairs}
+    issue_ids = {p[1] for p in pairs}
+    start_dt = datetime.combine(q_start, time.min)
+    end_dt = datetime.combine(q_end, time.max)
+    rows = (
+        db.query(
+            Worklog.employee_id,
+            Worklog.issue_id,
+            func.min(Worklog.started_at).label("mn"),
+            func.max(Worklog.started_at).label("mx"),
+        )
+        .filter(
+            Worklog.employee_id.in_(emp_ids),
+            Worklog.issue_id.in_(issue_ids),
+            Worklog.started_at >= start_dt,
+            Worklog.started_at <= end_dt,
+        )
+        .group_by(Worklog.employee_id, Worklog.issue_id)
+        .all()
+    )
+    return {(r.employee_id, r.issue_id): (r.mn, r.mx) for r in rows}
 
 
 def _merge_projects(projects: List[dict]) -> List[dict]:
@@ -294,6 +372,15 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
     projects = _merge_projects(
         _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
     )
+    children = _project_children(
+        db,
+        desk.employee_id,
+        [p.get("issue_id") for p in projects],
+        q_start,
+        q_end,
+    )
+    for p in projects:
+        p["children"] = children.get(p.get("issue_id"), [])
     return {"projects": projects}
 
 
@@ -307,17 +394,29 @@ def _adapter_my_timeline(db: Session, desk: WorkDesk, year: int, quarter: int) -
     plan = _find_recent_plan(db, teams, year, quarter)
     bars: List[dict] = []
     if plan is not None:
-        for p in _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end):
-            if p["start_date"] and p["end_date"]:
-                bars.append(
-                    {
-                        "key": p["key"],
-                        "title": p["title"],
-                        "start_date": p["start_date"],
-                        "end_date": p["end_date"],
-                        "status": p["status"],
-                    }
-                )
+        rows = _assignment_projects(db, plan.id, desk.employee_id, q_start, q_end)
+        dated = [p for p in rows if p["start_date"] and p["end_date"]]
+        span = _worklog_span_map(
+            db,
+            [(desk.employee_id, p["issue_id"]) for p in dated if p.get("issue_id")],
+            q_start,
+            q_end,
+        )
+        for p in dated:
+            mn_mx = span.get((desk.employee_id, p.get("issue_id")))
+            fact_start = mn_mx[0].date().isoformat() if mn_mx and mn_mx[0] else None
+            fact_end = mn_mx[1].date().isoformat() if mn_mx and mn_mx[1] else None
+            bars.append(
+                {
+                    "key": p["key"],
+                    "title": p["title"],
+                    "start_date": p["start_date"],
+                    "end_date": p["end_date"],
+                    "status": p["status"],
+                    "fact_start": fact_start,
+                    "fact_end": fact_end,
+                }
+            )
     return {
         "quarter_start": q_start.isoformat(),
         "quarter_end": q_end.isoformat(),

@@ -29,9 +29,18 @@ export interface DeskMeta {
   summary: DeskSummary;
 }
 
+export interface ProjectChild {
+  key: string | null;
+  title: string | null;
+  jira_url: string | null;
+  status: string | null;
+  fact_hours: number;
+}
+
 /** Проект/назначение сотрудника (общая форма для my_tasks и team_availability). */
 export interface DeskProject {
   key: string | null;
+  issue_id?: string | null;
   title: string | null;
   jira_url: string | null;
   status: string | null;
@@ -40,6 +49,7 @@ export interface DeskProject {
   norm_hours: number;
   fact_hours: number;
   pct: number;
+  children?: ProjectChild[];
 }
 
 export interface MyTasksData {
@@ -52,6 +62,8 @@ export interface TimelineBar {
   start_date: string;
   end_date: string;
   status: string | null;
+  fact_start: string | null;
+  fact_end: string | null;
 }
 export interface MyTimelineData {
   quarter_start: string;

@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import WidgetShell from './WidgetShell';
 import { useDeskWidget } from './useDeskWidget';
 import { fmtShortRange } from './format';
 import { deskStatusKind, isInProgress, STATUS_BADGE_LABEL } from './deskStatus';
-import type { DeskProject, MyTasksData } from '../../types/desk';
+import type { DeskProject, MyTasksData, ProjectChild } from '../../types/desk';
 
 function pctClass(p: DeskProject): { pct: string; fill: string } {
   const overZeroPlan = p.norm_hours === 0 && p.fact_hours > 0;
@@ -11,16 +12,48 @@ function pctClass(p: DeskProject): { pct: string; fill: string } {
   return { pct: 'desk-pct-low', fill: 'desk-fill-low' };
 }
 
+function JiraKey({ k, url }: { k: string; url: string | null }) {
+  return url ? (
+    <a className="desk-jira-key desk-jira-key-link" href={url} target="_blank" rel="noreferrer">{k}</a>
+  ) : (
+    <span className="desk-jira-key">{k}</span>
+  );
+}
+
+function ChildRow({ c }: { c: ProjectChild }) {
+  const kind = deskStatusKind(c.status);
+  return (
+    <div className="desk-child-row">
+      <span className={`desk-status-dot desk-dot-${kind}`} />
+      {c.key && <JiraKey k={c.key} url={c.jira_url} />}
+      <span className="desk-child-name">
+        {c.jira_url ? (
+          <a href={c.jira_url} target="_blank" rel="noreferrer">{c.title ?? c.key ?? '—'}</a>
+        ) : (c.title ?? c.key ?? '—')}
+      </span>
+      <span className="desk-child-hrs">{Math.round(c.fact_hours)} ч</span>
+    </div>
+  );
+}
+
 function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
+  const [open, setOpen] = useState(false);
   const kind = deskStatusKind(p.status);
   const { pct, fill } = pctClass(p);
   const fillW = p.norm_hours > 0
     ? Math.min(100, (p.fact_hours / p.norm_hours) * 100)
     : (p.fact_hours > 0 ? 100 : 0);
   const badgeLabel = p.status ?? STATUS_BADGE_LABEL[kind];
+  const children = p.children ?? [];
+  const hasChildren = children.length > 0;
 
   return (
     <div className={`desk-project-row${activeNow ? ' active-now' : ''}`}>
+      <span
+        className={`desk-tree-chevron${open ? ' open' : ''}${hasChildren ? '' : ' hidden'}`}
+        role={hasChildren ? 'button' : undefined}
+        onClick={() => hasChildren && setOpen((o) => !o)}
+      >▸</span>
       <span className={`desk-status-dot desk-dot-${kind}`} />
       <div className="desk-project-meta">
         <div className="desk-project-name">
@@ -29,11 +62,23 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
           ) : (p.title ?? p.key ?? '—')}
         </div>
         <div className="desk-project-sub">
-          {p.key && <span className="desk-jira-key">{p.key}</span>}
+          {p.key && <JiraKey k={p.key} url={p.jira_url} />}
           <span className="desk-project-dates">{fmtShortRange(p.start_date, p.end_date)}</span>
           {badgeLabel && <span className={`desk-status-badge desk-badge-${kind}`}>{badgeLabel}</span>}
+          {hasChildren && (
+            <button type="button" className="desk-child-toggle" onClick={() => setOpen((o) => !o)}>
+              {open ? 'скрыть' : 'подзадачи'} ({children.length})
+            </button>
+          )}
           {activeNow && <span className="desk-now-pill">сейчас</span>}
         </div>
+        {open && hasChildren && (
+          <div className="desk-child-list">
+            {children.map((c, i) => (
+              <ChildRow key={`${c.key ?? ''}-${i}`} c={c} />
+            ))}
+          </div>
+        )}
       </div>
       <div className="desk-project-right">
         <div className="desk-hours-label">
