@@ -41,6 +41,7 @@ export interface ProjectChild {
 export interface DeskProject {
   key: string | null;
   issue_id?: string | null;
+  priority?: number | null;
   title: string | null;
   jira_url: string | null;
   status: string | null;

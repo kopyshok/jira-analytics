@@ -377,6 +377,15 @@
 .desk-project-name a:hover { color: var(--accent); }
 .desk-project-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .desk-jira-key { font-size: 10.5px; color: var(--ink-4); font-weight: 500; letter-spacing: 0.03em; flex-shrink: 0; }
+.desk-prio-chip {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
+  flex-shrink: 0;
+}
 .desk-jira-key-link {
   color: var(--accent);
   background: var(--accent-bg);

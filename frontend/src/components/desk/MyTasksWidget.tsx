@@ -62,6 +62,9 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
           ) : (p.title ?? p.key ?? '—')}
         </div>
         <div className="desk-project-sub">
+          {p.priority != null && (
+            <span className="desk-prio-chip" title="Приоритет из сценария">P{p.priority}</span>
+          )}
           {p.key && <JiraKey k={p.key} url={p.jira_url} />}
           <span className="desk-project-dates">{fmtShortRange(p.start_date, p.end_date)}</span>
           {badgeLabel && <span className={`desk-status-badge desk-badge-${kind}`}>{badgeLabel}</span>}

@@ -189,6 +189,7 @@ def _assignment_projects(
             {
                 "key": key,
                 "issue_id": getattr(issue, "id", None),
+                "priority": getattr(a.backlog_item, "priority", None) if a.backlog_item is not None else None,
                 "title": a.backlog_item.title if a.backlog_item is not None else None,
                 "jira_url": _jira_url(key),
                 "status": getattr(issue, "status", None),
@@ -397,6 +398,8 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
             )
             p["fact_hours"] = fact
             p["pct"] = round(fact / p["norm_hours"] * 100) if p["norm_hours"] > 0 else 0
+    # Приоритет (из сценария): выше число — важнее, наверх; без приоритета — вниз.
+    projects.sort(key=lambda p: (p.get("priority") is None, -(p.get("priority") or 0)))
     return {"projects": projects}
 
 
