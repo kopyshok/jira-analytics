@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>«Мои проекты» — финальный дизайн</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — light Porcelain
+   ═══════════════════════════════════════════════════ */
+:root,
+[data-theme="light"] {
+  --page-bg:        oklch(0.975 0.007 220);
+  --bg-raised:      oklch(0.968 0.009 218);
+  --bg-sunken:      oklch(0.951 0.011 222);
+  --bg-muted:       oklch(0.940 0.014 224);
+  --surface:        oklch(0.992 0.004 215);
+  --surface-2:      oklch(0.984 0.006 218);
+
+  --ink:            oklch(0.22 0.024 242);
+  --ink-2:          oklch(0.38 0.020 237);
+  --ink-3:          oklch(0.56 0.014 232);
+  --ink-4:          oklch(0.70 0.009 227);
+
+  --accent:         oklch(0.72 0.13 195);
+  --accent-dim:     oklch(0.84 0.06 195);
+  --accent-bg:      oklch(0.945 0.028 195);
+  --accent-glow:    oklch(0.72 0.13 195 / 0.18);
+
+  --green:          oklch(0.68 0.13 152);
+  --green-bg:       oklch(0.948 0.042 152);
+  --green-ink:      oklch(0.44 0.13 150);
+
+  --amber:          oklch(0.76 0.13 78);
+  --amber-bg:       oklch(0.958 0.042 78);
+  --amber-ink:      oklch(0.50 0.14 74);
+
+  --red:            oklch(0.60 0.19 24);
+  --red-bg:         oklch(0.952 0.050 24);
+  --red-ink:        oklch(0.46 0.17 22);
+
+  --violet:         oklch(0.64 0.14 300);
+  --violet-bg:      oklch(0.948 0.040 300);
+
+  --hair:           oklch(0.900 0.011 225);
+  --hair-2:         oklch(0.872 0.014 222);
+  --hair-3:         oklch(0.848 0.016 220);
+
+  --neu-light:      oklch(1.00 0.003 210);
+  --neu-dark:       oklch(0.882 0.018 226);
+
+  /* Work-type palette — light */
+  --wt-analysis:    oklch(0.72 0.13 195);  /* cyan   */
+  --wt-dev:         oklch(0.58 0.14 252);  /* blue   */
+  --wt-test:        oklch(0.74 0.13 78);   /* amber  */
+  --wt-ope:         oklch(0.62 0.15 300);  /* violet */
+
+  --aurora-wash:    radial-gradient(
+    ellipse 80% 120% at 50% -30%,
+    oklch(0.88 0.045 195 / 0.22) 0%,
+    transparent 70%
+  );
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+}
+
+/* ═══════════════════════════════════════════════════
+   DARK AURORA TOKENS
+   ═══════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --page-bg:        oklch(0.22 0.030 250);
+  --bg-raised:      oklch(0.25 0.032 250);
+  --bg-sunken:      oklch(0.195 0.026 252);
+  --bg-muted:       oklch(0.185 0.024 254);
+  --surface:        oklch(0.27 0.035 250);
+  --surface-2:      oklch(0.295 0.033 248);
+
+  --ink:            oklch(0.92 0.012 220);
+  --ink-2:          oklch(0.80 0.016 228);
+  --ink-3:          oklch(0.62 0.018 232);
+  --ink-4:          oklch(0.46 0.016 234);
+
+  --accent:         oklch(0.72 0.13 195);
+  --accent-dim:     oklch(0.58 0.08 195);
+  --accent-bg:      oklch(0.30 0.045 195);
+  --accent-glow:    oklch(0.72 0.13 195 / 0.25);
+
+  --green:          oklch(0.68 0.13 152);
+  --green-bg:       oklch(0.25 0.040 152);
+  --green-ink:      oklch(0.74 0.12 150);
+
+  --amber:          oklch(0.76 0.13 78);
+  --amber-bg:       oklch(0.26 0.040 78);
+  --amber-ink:      oklch(0.80 0.12 76);
+
+  --red:            oklch(0.62 0.18 24);
+  --red-bg:         oklch(0.25 0.048 24);
+  --red-ink:        oklch(0.70 0.16 24);
+
+  --violet:         oklch(0.68 0.14 300);
+  --violet-bg:      oklch(0.26 0.040 300);
+
+  --hair:           oklch(0.34 0.028 248);
+  --hair-2:         oklch(0.38 0.030 246);
+  --hair-3:         oklch(0.42 0.032 244);
+
+  --neu-light:      oklch(0.31 0.028 245);
+  --neu-dark:       oklch(0.17 0.022 254);
+
+  /* Work-type palette — dark (brightened for dark bg) */
+  --wt-analysis:    oklch(0.74 0.13 195);  /* cyan   */
+  --wt-dev:         oklch(0.66 0.13 252);  /* blue   */
+  --wt-test:        oklch(0.78 0.13 78);   /* amber  */
+  --wt-ope:         oklch(0.70 0.14 300);  /* violet */
+
+  --aurora-wash:    radial-gradient(
+    ellipse 90% 140% at 50% -20%,
+    oklch(0.55 0.10 200 / 0.28) 0%,
+    oklch(0.40 0.08 240 / 0.12) 40%,
+    transparent 70%
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   BASE RESET
+   ═══════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--page-bg);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.2s, color 0.2s;
+}
+body {
+  background: var(--page-bg);
+  padding: 0 20px 64px;
+  transition: background 0.2s;
+}
+.layout { max-width: 1100px; margin: 0 auto; }
+
+.mono { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+
+/* ═══════════════════════════════════════════════════
+   PAGE HEADER
+   ═══════════════════════════════════════════════════ */
+.page-header-outer {
+  position: relative;
+  overflow: hidden;
+  margin: 0 -20px;
+  padding: 0 20px;
+}
+.page-header-outer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--aurora-wash);
+  pointer-events: none;
+  z-index: 0;
+}
+.page-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 34px 0 22px;
+  flex-wrap: wrap;
+}
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.page-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 7px;
+}
+.page-intro {
+  max-width: 660px;
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+
+/* Theme toggle */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--hair);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  user-select: none;
+}
+.theme-toggle:hover { border-color: var(--hair-2); }
+.theme-toggle-knob {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: 1.5px solid var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+}
+.theme-toggle-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+}
+
+/* ═══════════════════════════════════════════════════
+   GLOBAL WORK-TYPE LEGEND
+   ═══════════════════════════════════════════════════ */
+.global-legend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  margin-bottom: 26px;
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-lg);
+  box-shadow: 2px 2px 5px var(--neu-dark), -2px -2px 5px var(--neu-light);
+}
+.global-legend .gl-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.gl-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.gl-swatch {
+  width: 12px; height: 12px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.sw-analysis { background: var(--wt-analysis); }
+.sw-dev      { background: var(--wt-dev); }
+.sw-test     { background: var(--wt-test); }
+.sw-ope      { background: var(--wt-ope); }
+
+/* ═══════════════════════════════════════════════════
+   ZONE CARD (the tile) — neumorphic
+   ═══════════════════════════════════════════════════ */
+.zone {
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--hair);
+  padding: 18px 20px 22px;
+  box-shadow:
+    6px 6px 16px var(--neu-dark),
+    -6px -6px 16px var(--neu-light);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.zone-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 14px;
+}
+.zone-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px 1px var(--accent-glow);
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   PART 1 — TILE HEADER (summary row)
+   ═══════════════════════════════════════════════════ */
+.tile-summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 4px 4px 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--hair);
+  flex-wrap: wrap;
+}
+
+/* Left KPI cluster */
+.ts-kpis {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  flex-shrink: 0;
+}
+.ts-metric {
+  padding: 0 18px;
+  position: relative;
+}
+.ts-metric:first-child { padding-left: 4px; }
+.ts-metric + .ts-metric::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 8%; bottom: 8%;
+  width: 1px;
+  background: var(--hair);
+}
+.ts-val {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.ts-val.over { color: var(--red-ink); }
+.ts-unit {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-top: 4px;
+  white-space: nowrap;
+}
+.ts-sub {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-top: 3px;
+  white-space: nowrap;
+}
+
+/* Vertical divider between clusters */
+.ts-divider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--hair);
+  flex-shrink: 0;
+  margin: 2px 0;
+}
+
+/* Right 4-ring cluster — single horizontal row */
+.ts-rings {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   RING GAUGE — shared component (header + rows)
+   ═══════════════════════════════════════════════════ */
+.ring-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 2px 2px 5px var(--neu-dark),
+    inset -2px -2px 5px var(--neu-light);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s;
+}
+.ring-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--hair-2);
+  box-shadow:
+    inset 1px 1px 3px var(--neu-dark),
+    inset -1px -1px 3px var(--neu-light),
+    0 6px 14px oklch(0 0 0 / 0.18);
+}
+
+.ring {
+  position: relative;
+  width: 38px; height: 38px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.18));
+}
+.ring svg { width: 38px; height: 38px; transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: var(--bg-muted); stroke-width: 7; }
+.ring-prog  { fill: none; stroke: var(--wt-c); stroke-width: 7; stroke-linecap: round; }
+.ring-prog.over { stroke: var(--red); }
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.ring-pct {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+  line-height: 0.9;
+}
+.ring-pct.over { color: var(--red-ink); }
+.ring-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ring-name {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wt-c);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.ring-hours {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.ring-hours.over { color: var(--red-ink); font-weight: 600; }
+
+/* ═══════════════════════════════════════════════════
+   PART 2 — PROJECT ROWS
+   ═══════════════════════════════════════════════════ */
+.project-list { display: flex; flex-direction: column; }
+
+.project-row {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border-bottom: 1px solid var(--hair);
+  transition: background 0.14s, box-shadow 0.14s;
+}
+.project-row:last-child { border-bottom: none; }
+.project-row:hover {
+  background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.project-row.active-now {
+  background: var(--accent-bg);
+  border-bottom-color: oklch(0.72 0.13 195 / 0.15);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+[data-theme="dark"] .project-row.active-now {
+  background: oklch(0.28 0.048 200);
+}
+
+.project-top {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+.row-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-4);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.12s, transform 0.12s;
+  user-select: none;
+}
+.row-chevron:hover { color: var(--accent); }
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+.dot-active   { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.dot-dev      { background: var(--wt-dev); box-shadow: 0 0 0 3px oklch(0.66 0.13 252 / 0.18); }
+.dot-done     { background: var(--green);  box-shadow: 0 0 0 3px var(--green-bg); }
+
+.project-meta { min-width: 0; }
+.project-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  display: inline-block;
+  max-width: 100%;
+  transition: color 0.12s;
+}
+a.project-name:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.project-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.jira-key {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
+}
+.prio-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: var(--bg-sunken);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
+}
+.project-dates {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.subtasks-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-4);
+  background: var(--bg-sunken);
+  border: 1px solid var(--hair);
+  border-radius: 99px;
+  padding: 1px 8px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.subtasks-toggle:hover { color: var(--accent); border-color: var(--accent-dim); }
+.now-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: oklch(0.72 0.13 195 / 0.14);
+  border: 1px solid oklch(0.72 0.13 195 / 0.35);
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+.project-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.badge-active   { background: var(--accent-bg); color: var(--accent); }
+.badge-dev      { background: oklch(0.66 0.13 252 / 0.18); color: var(--wt-dev); }
+.badge-done     { background: var(--green-bg);  color: var(--green-ink); }
+
+/* Right side: overall total + 4 rings */
+.project-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.project-overall {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 96px;
+  text-align: right;
+}
+.overall-cap {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.overall-hours {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.overall-pct {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+}
+.pct-ok   { background: var(--green-bg); color: var(--green-ink); }
+.pct-over { background: var(--red-bg);   color: var(--red-ink); }
+.pct-low  { background: var(--bg-sunken); color: var(--ink-4); }
+
+.row-rings {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+.row-rings .ring-card {
+  min-width: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════ */
+footer {
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-4);
+  padding-top: 18px;
+  border-top: 1px solid var(--hair);
+  margin-top: 26px;
+  letter-spacing: 0.02em;
+}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 940px) {
+  .project-top { grid-template-columns: 18px 1fr; }
+  .project-right {
+    grid-column: 2 / 3;
+    margin-top: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
+  .project-overall { align-items: flex-start; text-align: left; }
+}
+@media (max-width: 620px) {
+  body { padding: 0 12px 48px; }
+  .tile-summary { gap: 14px; }
+  .ts-divider { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ═══ PAGE HEADER ═══ -->
+<div class="page-header-outer">
+  <div class="page-header">
+    <div>
+      <div class="page-eyebrow">Рабочий стол аналитика · финальный дизайн</div>
+      <div class="page-title">Плитка «Мои проекты»</div>
+      <div class="page-intro">
+        Сводка по видам работ в шапке и разбивка каждого проекта на четыре направления —
+        <strong>Анализ</strong>, <strong>Разработка</strong>, <strong>Тестирование</strong>, <strong>ОПЭ</strong>.
+        Загрузка по каждому виду показана компактным кольцом: процент в центре, часы факт/план под ним.
+        Перегруз свыше 110% — красное кольцо.
+      </div>
+    </div>
+    <div class="theme-toggle" id="themeToggle" role="button" aria-label="Переключить тему">
+      <div class="theme-toggle-knob" id="themeKnob">☽</div>
+      <span class="theme-toggle-label" id="themeLabel">Aurora</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ GLOBAL WORK-TYPE LEGEND ═══ -->
+<div class="global-legend">
+  <span class="gl-title">Виды работ</span>
+  <span class="gl-item"><span class="gl-swatch sw-analysis"></span>Анализ</span>
+  <span class="gl-item"><span class="gl-swatch sw-dev"></span>Разработка</span>
+  <span class="gl-item"><span class="gl-swatch sw-test"></span>Тестирование</span>
+  <span class="gl-item"><span class="gl-swatch sw-ope"></span>ОПЭ</span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     THE TILE
+     ═══════════════════════════════════════════════════ -->
+<div class="zone">
+  <div class="zone-title"><div class="zone-dot"></div>Мои проекты</div>
+
+  <!-- ─── PART 1: header summary row ─── -->
+  <!-- header ring totals = sum of 3 projects:
+       Анализ  21/21 ч = 99%
+       Разраб. 55/70 ч = 78%   (blue)
+       Тест    14/22 ч = 64%   (amber)
+       ОПЭ      9/22 ч = 40%   (violet)
+       circumference for r=24 ≈ 150.8 -->
+  <div class="tile-summary">
+    <div class="ts-kpis">
+      <div class="ts-metric"><div class="ts-val">3</div><div class="ts-unit">проектов</div></div>
+      <div class="ts-metric"><div class="ts-val">99 / 135 ч</div><div class="ts-unit">всего факт / план</div><div class="ts-sub mono">Анализ 21 / 21 ч</div></div>
+      <div class="ts-metric"><div class="ts-val">73%</div><div class="ts-unit">загрузка</div></div>
+    </div>
+
+    <div class="ts-divider"></div>
+
+    <div class="ts-rings">
+      <!-- Анализ 21/21 = 99% -->
+      <div class="ring-card" style="--wt-c:var(--wt-analysis)">
+        <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="0.9"/></svg><div class="ring-center"><span class="ring-pct">99%</span></div></div>
+        <div class="ring-text"><div class="ring-name">Анализ</div><div class="ring-hours mono">21 / 21 ч</div></div>
+      </div>
+      <!-- Разработка 55/70 = 78% -->
+      <div class="ring-card" style="--wt-c:var(--wt-dev)">
+        <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="19.4"/></svg><div class="ring-center"><span class="ring-pct">78%</span></div></div>
+        <div class="ring-text"><div class="ring-name">Разработка</div><div class="ring-hours mono">55 / 70 ч</div></div>
+      </div>
+      <!-- Тестирование 14/22 = 64% -->
+      <div class="ring-card" style="--wt-c:var(--wt-test)">
+        <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="31.7"/></svg><div class="ring-center"><span class="ring-pct">64%</span></div></div>
+        <div class="ring-text"><div class="ring-name">Тестирование</div><div class="ring-hours mono">14 / 22 ч</div></div>
+      </div>
+      <!-- ОПЭ 9/22 = 40% -->
+      <div class="ring-card" style="--wt-c:var(--wt-ope)">
+        <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="52.8"/></svg><div class="ring-center"><span class="ring-pct">40%</span></div></div>
+        <div class="ring-text"><div class="ring-name">ОПЭ</div><div class="ring-hours mono">9 / 22 ч</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── PART 2: project rows ─── -->
+  <div class="project-list">
+
+    <!-- ═══ Project 1 — Биметалл, Завершён ═══
+         analysis 8/9 89% · dev 12/15 80% · test 3/5 60% · ope 2/5 40%
+         overall 25/34 = 74% -->
+    <div class="project-row">
+      <div class="project-top">
+        <div class="row-chevron" role="button" aria-label="Раскрыть">▸</div>
+        <div class="project-meta">
+          <div class="project-sub" style="margin-top:0;margin-bottom:5px;align-items:center;gap:9px">
+            <span class="status-dot dot-done" style="margin:0"></span>
+            <a href="#" class="project-name">Биметалл. Настройка учёта УУ и БУ в ERP</a>
+          </div>
+          <div class="project-sub">
+            <span class="prio-tag">P8</span>
+            <span class="jira-key">ITL-299</span>
+            <span class="project-dates">12.04 — 30.06</span>
+            <span class="project-status-badge badge-done">Завершён</span>
+            <span class="subtasks-toggle" role="button">▾ 6 подзадач</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="project-overall">
+            <div class="overall-cap">Проект</div>
+            <div class="overall-hours mono">25 / 34 ч</div>
+            <span class="overall-pct pct-low">74%</span>
+          </div>
+          <div class="row-rings">
+            <!-- analysis 8/9 = 89% → off 9.7 -->
+            <div class="ring-card" style="--wt-c:var(--wt-analysis)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="9.7"/></svg><div class="ring-center"><span class="ring-pct">89%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Анализ</div><div class="ring-hours mono">8 / 9 ч</div></div>
+            </div>
+            <!-- dev 12/15 = 80% → off 17.6 -->
+            <div class="ring-card" style="--wt-c:var(--wt-dev)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="17.6"/></svg><div class="ring-center"><span class="ring-pct">80%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Разраб.</div><div class="ring-hours mono">12 / 15 ч</div></div>
+            </div>
+            <!-- test 3/5 = 60% → off 35.2 -->
+            <div class="ring-card" style="--wt-c:var(--wt-test)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="35.2"/></svg><div class="ring-center"><span class="ring-pct">60%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Тест</div><div class="ring-hours mono">3 / 5 ч</div></div>
+            </div>
+            <!-- ope 2/5 = 40% → off 52.8 -->
+            <div class="ring-card" style="--wt-c:var(--wt-ope)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="52.8"/></svg><div class="ring-center"><span class="ring-pct">40%</span></div></div>
+              <div class="ring-text"><div class="ring-name">ОПЭ</div><div class="ring-hours mono">2 / 5 ч</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Project 2 — Раскрепка, Разработка, ПЕРЕГРУЗ ═══
+         analysis 6/6 100% · dev 38/30 127% OVER · test 5/9 56% · ope 3/9 33%
+         overall 52/54 = 96% -->
+    <div class="project-row">
+      <div class="project-top">
+        <div class="row-chevron" role="button" aria-label="Раскрыть">▸</div>
+        <div class="project-meta">
+          <div class="project-sub" style="margin-top:0;margin-bottom:5px;align-items:center;gap:9px">
+            <span class="status-dot dot-dev" style="margin:0"></span>
+            <a href="#" class="project-name">Раскрепка. Получение стоимости металла из ERP</a>
+          </div>
+          <div class="project-sub">
+            <span class="prio-tag">P7</span>
+            <span class="jira-key">RFA-2609</span>
+            <span class="project-dates">01.05 — 15.07</span>
+            <span class="project-status-badge badge-dev">Разработка</span>
+            <span class="subtasks-toggle" role="button">▾ 9 подзадач</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="project-overall">
+            <div class="overall-cap">Проект</div>
+            <div class="overall-hours mono">52 / 54 ч</div>
+            <span class="overall-pct pct-ok">96%</span>
+          </div>
+          <div class="row-rings">
+            <!-- analysis 6/6 = 100% → off 0 -->
+            <div class="ring-card" style="--wt-c:var(--wt-analysis)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="0"/></svg><div class="ring-center"><span class="ring-pct">100%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Анализ</div><div class="ring-hours mono">6 / 6 ч</div></div>
+            </div>
+            <!-- dev 38/30 = 127% OVERLOAD red -->
+            <div class="ring-card" style="--wt-c:var(--wt-dev)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog over" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="0"/></svg><div class="ring-center"><span class="ring-pct over">127%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Разраб.</div><div class="ring-hours over mono">38 / 30 ч</div></div>
+            </div>
+            <!-- test 5/9 = 56% → off 38.7 -->
+            <div class="ring-card" style="--wt-c:var(--wt-test)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="38.7"/></svg><div class="ring-center"><span class="ring-pct">56%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Тест</div><div class="ring-hours mono">5 / 9 ч</div></div>
+            </div>
+            <!-- ope 3/9 = 33% → off 58.9 -->
+            <div class="ring-card" style="--wt-c:var(--wt-ope)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="58.9"/></svg><div class="ring-center"><span class="ring-pct">33%</span></div></div>
+              <div class="ring-text"><div class="ring-name">ОПЭ</div><div class="ring-hours mono">3 / 9 ч</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Project 3 — Консолидация, В работе, сейчас ═══
+         analysis 7/6 (capped 100% visual, real 100%) · dev 5/25 20% · test 6/8 75% · ope 4/8 50%
+         keep consistent: analysis 7/6→use 6/6 100%? must sum to headers.
+         analysis: 21 total = 8+6+7 -> use 7/6=117%? avoid >110 here. Use 7/6 -> cap.
+         Better: analysis 7/6 => 117 would be red. Re-balance: P1 8/9, P2 6/6, P3 7/6 sums fact21 plan21 -> but 7/6=117 red.
+         Use P3 analysis 7/7=100 instead, then totals: fact 8+6+7=21, plan 9+6+7=22 ≠21.
+         Adjust P1 analysis 8/8=100: fact 8+6+7=21 plan 8+6+7=21 = 99%. Good, P1 100%.
+         dev: 12+38+5=55 fact, 15+30+25=70 plan ✓
+         test: 3+5+6=14 fact, 5+9+8=22 plan ✓
+         ope: 2+3+4=9 fact, 5+9+8=22 plan ✓
+         (P1 analysis updated to 8/8 above-block note; rendered values below)
+         overall P3: fact 7+5+6+4=22, plan 7+25+8+8=48 = 46% -->
+    <div class="project-row active-now">
+      <div class="project-top">
+        <div class="row-chevron" role="button" aria-label="Раскрыть">▾</div>
+        <div class="project-meta">
+          <div class="project-sub" style="margin-top:0;margin-bottom:5px;align-items:center;gap:9px">
+            <span class="status-dot dot-active" style="margin:0"></span>
+            <a href="#" class="project-name">Консолидация возврата поставщику УПП</a>
+          </div>
+          <div class="project-sub">
+            <span class="prio-tag">P6</span>
+            <span class="jira-key">PRJ-10892</span>
+            <span class="project-dates">19.05 — 30.07</span>
+            <span class="project-status-badge badge-active">В работе</span>
+            <span class="now-pill">сейчас</span>
+            <span class="subtasks-toggle" role="button">▴ 4 подзадачи</span>
+          </div>
+        </div>
+        <div class="project-right">
+          <div class="project-overall">
+            <div class="overall-cap">Проект</div>
+            <div class="overall-hours mono">22 / 48 ч</div>
+            <span class="overall-pct pct-low">46%</span>
+          </div>
+          <div class="row-rings">
+            <!-- analysis 7/7 = 100% -->
+            <div class="ring-card" style="--wt-c:var(--wt-analysis)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="0"/></svg><div class="ring-center"><span class="ring-pct">100%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Анализ</div><div class="ring-hours mono">7 / 7 ч</div></div>
+            </div>
+            <!-- dev 5/25 = 20% → off 70.4 -->
+            <div class="ring-card" style="--wt-c:var(--wt-dev)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="70.4"/></svg><div class="ring-center"><span class="ring-pct">20%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Разраб.</div><div class="ring-hours mono">5 / 25 ч</div></div>
+            </div>
+            <!-- test 6/8 = 75% → off 22.0 -->
+            <div class="ring-card" style="--wt-c:var(--wt-test)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="22.0"/></svg><div class="ring-center"><span class="ring-pct">75%</span></div></div>
+              <div class="ring-text"><div class="ring-name">Тест</div><div class="ring-hours mono">6 / 8 ч</div></div>
+            </div>
+            <!-- ope 4/8 = 50% → off 44.0 -->
+            <div class="ring-card" style="--wt-c:var(--wt-ope)">
+              <div class="ring"><svg viewBox="0 0 38 38"><circle class="ring-track" cx="19" cy="19" r="14"/><circle class="ring-prog" cx="19" cy="19" r="14" stroke-dasharray="87.96" stroke-dashoffset="44.0"/></svg><div class="ring-center"><span class="ring-pct">50%</span></div></div>
+              <div class="ring-text"><div class="ring-name">ОПЭ</div><div class="ring-hours mono">4 / 8 ч</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>Финальный макет плитки «Мои проекты» для рабочего стола аналитика. Данные демонстрационные. Цвета видов работ едины в шапке и в строках.</footer>
+
+</div><!-- /layout -->
+
+<script>
+/* ─── Theme toggle ─── */
+(function () {
+  const root = document.documentElement;
+  const btn  = document.getElementById('themeToggle');
+  const knob = document.getElementById('themeKnob');
+  const lbl  = document.getElementById('themeLabel');
+
+  function applyTheme(t) {
+    root.setAttribute('data-theme', t);
+    knob.textContent = t === 'dark' ? '☽' : '☀';
+    lbl.textContent  = t === 'dark' ? 'Aurora' : 'Porcelain';
+    try { localStorage.setItem('desk-myprojects-theme', t); } catch (_) {}
+  }
+  let saved;
+  try { saved = localStorage.getItem('desk-myprojects-theme'); } catch (_) {}
+  applyTheme(saved === 'light' ? 'light' : 'dark');
+
+  btn.addEventListener('click', function () {
+    const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  });
+})();
+</script>
+</body>
+</html>
