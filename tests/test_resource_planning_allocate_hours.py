@@ -15,6 +15,10 @@ def test_allocate_preserves_last_day_leftover_for_spillover():
     доступным, чтобы фаза следующей по приоритету инициативы могла
     стартовать в тот же день. Приоритет сохраняется: items обрабатываются
     в порядке убывания priority.
+
+    Leftover ограничен потолком по вовлечённости (daily_capacity). Здесь фаза
+    на последнем дне взяла все 4 ч своего потолка (daily_cap=4) → доступного
+    остатка для другой фазы нет: 4 − 4 = 0.
     """
     db = MagicMock()
     svc = ResourcePlanningService(db)
@@ -38,8 +42,9 @@ def test_allocate_preserves_last_day_leftover_for_spillover():
     # сотрудника не может сесть.
     assert remaining[emp_id][date(2026, 4, 1)] == 0.0
     assert remaining[emp_id][date(2026, 4, 2)] == 0.0
-    # На последнем дне остаток (8 − 4 = 4ч) сохранён для spillover.
-    assert remaining[emp_id][date(2026, 4, 3)] == 4.0
+    # На последнем дне фаза взяла весь потолок (4ч из daily_cap=4) → остатка
+    # для другой фазы нет: 4 − 4 = 0.
+    assert remaining[emp_id][date(2026, 4, 3)] == 0.0
 
 
 # ── Task 3 ────────────────────────────────────────────────────────────────────
