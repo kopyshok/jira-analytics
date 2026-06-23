@@ -337,38 +337,38 @@ def test_stale_tasks_split_and_filters(db_session, seed_employee):
         db_session, id="i-my", jira_issue_id="ji-my", key="PMD-1", summary="Моя забытая",
         project_id="p-pmd", reporter_account_id=acct, reporter_display_name="Стол Аналитик",
         assignee_account_id="acc-o", assignee_display_name="Коллега",
-        jira_updated_at=datetime(2026, 1, 10, 9, 0),
+        status_changed_at=datetime(2026, 1, 10, 9, 0),
     )
     # «Задачи мне»: назначена аналитику, автор — другой, OS.
     _stale_issue(
         db_session, id="i-me", jira_issue_id="ji-me", key="OS-1", summary="Мне поручили",
         project_id="p-os", reporter_account_id="acc-o", reporter_display_name="Коллега",
         assignee_account_id=acct, assignee_display_name="Стол Аналитик",
-        jira_updated_at=datetime(2026, 2, 1, 9, 0),
+        status_changed_at=datetime(2026, 2, 1, 9, 0),
     )
     # Завершённая — отсекается.
     _stale_issue(
         db_session, id="i-done", jira_issue_id="ji-done", key="PMD-2", summary="Готово",
         project_id="p-pmd", status="Done", status_category="done",
         assignee_account_id=acct, assignee_display_name="Стол Аналитик",
-        jira_updated_at=datetime(2026, 1, 1, 9, 0),
+        status_changed_at=datetime(2026, 1, 1, 9, 0),
     )
     # Чужой проект ITL — отсекается.
     _stale_issue(
         db_session, id="i-itl", jira_issue_id="ji-itl", key="ITL-9", summary="Не наш проект",
         project_id="p-itl", assignee_account_id=acct, assignee_display_name="Стол Аналитик",
-        jira_updated_at=datetime(2026, 1, 1, 9, 0),
+        status_changed_at=datetime(2026, 1, 1, 9, 0),
     )
     # Родитель с ребёнком в PMD — родитель отсекается (не лист), ребёнок назначен другому.
     _stale_issue(
         db_session, id="i-parent", jira_issue_id="ji-parent", key="PMD-3", summary="Родитель",
         project_id="p-pmd", assignee_account_id=acct, assignee_display_name="Стол Аналитик",
-        jira_updated_at=datetime(2026, 1, 5, 9, 0),
+        status_changed_at=datetime(2026, 1, 5, 9, 0),
     )
     _stale_issue(
         db_session, id="i-child", jira_issue_id="ji-child", key="PMD-4", summary="Ребёнок",
         project_id="p-pmd", parent_id="i-parent", reporter_account_id="acc-o",
-        assignee_account_id="acc-o", jira_updated_at=datetime(2026, 1, 6, 9, 0),
+        assignee_account_id="acc-o", status_changed_at=datetime(2026, 1, 6, 9, 0),
     )
     db_session.commit()
 
@@ -400,7 +400,7 @@ def test_stale_tasks_sorted_oldest_first_and_top10(db_session, seed_employee):
             db_session, id=f"s-{n}", jira_issue_id=f"js-{n}", key=f"PMD-{100 + n}",
             summary=f"T{n}", project_id="p-pmd2", assignee_account_id=acct,
             assignee_display_name="Стол Аналитик",
-            jira_updated_at=datetime(2026, 1, 1) + timedelta(days=n),
+            status_changed_at=datetime(2026, 1, 1) + timedelta(days=n),
         )
     db_session.commit()
     desk = _make_desk(db_session, seed_employee.id)
@@ -411,6 +411,33 @@ def test_stale_tasks_sorted_oldest_first_and_top10(db_session, seed_employee):
     assert assigned[0]["key"] == "PMD-100"
     days = [t["days_idle"] for t in assigned]
     assert days == sorted(days, reverse=True)
+
+
+def test_stale_tasks_worklog_beats_old_status(db_session, seed_employee):
+    """Свежий ворклог считается касанием — задача не выглядит старой."""
+    proj = Project(id="p-pmd3", jira_project_id="11", key="PMD", name="PMD", synced_at=datetime.utcnow())
+    db_session.add(proj)
+    acct = seed_employee.jira_account_id
+    # Статус не менялся давно, но ворклог — вчера.
+    _stale_issue(
+        db_session, id="i-wl", jira_issue_id="ji-wl", key="PMD-200", summary="Свежий ворклог",
+        project_id="p-pmd3", assignee_account_id=acct, assignee_display_name="Стол Аналитик",
+        status_changed_at=datetime(2025, 1, 1, 9, 0),
+    )
+    yesterday = datetime.combine(date.today() - timedelta(days=1), datetime.min.time())
+    db_session.add(
+        Worklog(
+            id="wl-stale", jira_worklog_id="jwl-stale", issue_id="i-wl",
+            employee_id=seed_employee.id, started_at=yesterday,
+            time_spent_seconds=3600, hours=1.0,
+        )
+    )
+    db_session.commit()
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "stale_tasks")
+    row = next(t for t in out["assigned"] if t["key"] == "PMD-200")
+    # Касание — вчерашний ворклог, а не статус 2025 года.
+    assert row["days_idle"] <= 1
 
 
 # ── my_tasks: норма из оценки инициативы при пустом hours_allocated ──────────

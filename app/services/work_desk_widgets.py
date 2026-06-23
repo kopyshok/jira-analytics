@@ -926,16 +926,19 @@ _STALE_PROJECTS: tuple[str, ...] = ("PMD", "OS")
 
 
 def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
-    """Залежавшиеся задачи: дольше всего без касания в Jira.
+    """Залежавшиеся задачи: дольше всего без действий аналитика руками.
 
     Две колонки:
       • my_tasks — создал аналитик, висят на других (или ни на ком);
       • assigned — назначены аналитику.
     Отбор: проекты PMD/OS, не завершённые, листовые (без подзадач).
-    «Касание» — поле Jira ``updated`` (jira_updated_at): меняется при любом
-    действии. Сортировка по нему по возрастанию (самые давние сверху), ТОП-10.
+
+    «Касание» — позднее из двух человеческих действий: смена статуса
+    (status_changed_at) и ворклог (Worklog.started_at). Поле Jira ``updated``
+    не годится — его дёргают скрипты, смена родителя и тех-реквизиты.
+    Сортировка по этому «касанию» по возрастанию (самые давние сверху), ТОП-10.
     """
-    from app.models import Employee, Issue, Project
+    from app.models import Employee, Issue, Project, Worklog
 
     emp = desk.employee
     acct = getattr(emp, "jira_account_id", None) if emp else None
@@ -947,11 +950,12 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
 
     base = (
         select(
+            Issue.id,
             Issue.key,
             Issue.summary,
             Issue.status,
             Issue.status_category,
-            Issue.jira_updated_at,
+            Issue.status_changed_at,
             Issue.assignee_account_id,
             Issue.assignee_display_name,
             Issue.reporter_account_id,
@@ -961,7 +965,6 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
         .where(
             Project.key.in_(_STALE_PROJECTS),
             func.coalesce(Issue.status_category, "") != "done",
-            Issue.jira_updated_at.is_not(None),
             Issue.id.not_in(parent_ids),
         )
     )
@@ -971,18 +974,39 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
             Issue.reporter_account_id == acct,
             func.coalesce(Issue.assignee_account_id, "") != acct,
         )
-        .order_by(Issue.jira_updated_at.asc())
-        .limit(10)
     ).all()
     assigned_rows = db.execute(
         base.where(Issue.assignee_account_id == acct)
-        .order_by(Issue.jira_updated_at.asc())
-        .limit(10)
     ).all()
 
-    # Аватарки второго человека по accountId.
-    acct_ids = {r.assignee_account_id for r in my_rows if r.assignee_account_id}
-    acct_ids |= {r.reporter_account_id for r in assigned_rows if r.reporter_account_id}
+    # Последний ворклог по каждой задаче-кандидату (одним запросом).
+    all_ids = {r.id for r in my_rows} | {r.id for r in assigned_rows}
+    last_worklog: Dict[str, object] = {}
+    if all_ids:
+        for iid, mx in (
+            db.query(Worklog.issue_id, func.max(Worklog.started_at))
+            .filter(Worklog.issue_id.in_(all_ids))
+            .group_by(Worklog.issue_id)
+            .all()
+        ):
+            if mx:
+                last_worklog[iid] = mx
+
+    def _last_touch(r):
+        cands = [d for d in (r.status_changed_at, last_worklog.get(r.id)) if d]
+        return max(cands) if cands else None
+
+    def _top10(rows):
+        dated = [(la, r) for r in rows if (la := _last_touch(r)) is not None]
+        dated.sort(key=lambda t: t[0])  # самые давние — наверх
+        return dated[:10]
+
+    my_top = _top10(my_rows)
+    assigned_top = _top10(assigned_rows)
+
+    # Аватарки второго человека по accountId (только для попавших в ТОП-10).
+    acct_ids = {r.assignee_account_id for _, r in my_top if r.assignee_account_id}
+    acct_ids |= {r.reporter_account_id for _, r in assigned_top if r.reporter_account_id}
     avatars: Dict[str, Optional[str]] = {}
     if acct_ids:
         for aid, av in (
@@ -994,13 +1018,13 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
 
     today = date.today()
 
-    def _row(r, person_name, person_acct) -> dict:
+    def _row(last_touch, r, person_name, person_acct) -> dict:
         return {
             "key": r.key,
             "title": r.summary,
             "status": r.status,
             "status_category": r.status_category,
-            "days_idle": (today - r.jira_updated_at.date()).days,
+            "days_idle": (today - last_touch.date()).days,
             "url": _jira_url(r.key),
             "person": {
                 "name": person_name,
@@ -1010,11 +1034,12 @@ def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -
 
     return {
         "my_tasks": [
-            _row(r, r.assignee_display_name, r.assignee_account_id) for r in my_rows
+            _row(la, r, r.assignee_display_name, r.assignee_account_id)
+            for la, r in my_top
         ],
         "assigned": [
-            _row(r, r.reporter_display_name, r.reporter_account_id)
-            for r in assigned_rows
+            _row(la, r, r.reporter_display_name, r.reporter_account_id)
+            for la, r in assigned_top
         ],
     }
 
