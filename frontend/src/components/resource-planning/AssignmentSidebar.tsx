@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 
 import type {
@@ -14,6 +15,7 @@ import {
   mergeAssignment,
   patchAssignment,
   previewEmployeeChange,
+  setAssignmentInvolvement,
 } from '../../api/resourcePlanning';
 import { useExplainAssignment } from '../../hooks/useResourcePlanning';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
@@ -197,6 +199,9 @@ export default function AssignmentSidebar({
         </Descriptions.Item>
         <Descriptions.Item label="Часть">
           {assignment.part_number}
+        </Descriptions.Item>
+        <Descriptions.Item label="Вовлечённость">
+          <InvolvementEditor planId={planId} assignment={assignment} onChanged={onChanged} />
         </Descriptions.Item>
         <Descriptions.Item label="Сотрудник">
           {assignment.phase === 'qa' ? (
@@ -396,6 +401,63 @@ export default function AssignmentSidebar({
         )}
       </Modal>
     </Drawer>
+  );
+}
+
+function InvolvementEditor({
+  planId,
+  assignment,
+  onChanged,
+}: {
+  planId: string;
+  assignment: AssignmentOut;
+  onChanged?: () => void;
+}) {
+  const { message } = App.useApp();
+  const qc = useQueryClient();
+  const { data } = useExplainAssignment(planId, assignment.id, true);
+  const serverPct = data?.phase_calc?.involvement_pct ?? null;
+  const [pct, setPct] = useState<number | null>(serverPct);
+  const [saving, setSaving] = useState(false);
+
+  // Сбросить локальное значение при смене назначения / прихода данных с сервера.
+  useEffect(() => {
+    setPct(serverPct);
+  }, [serverPct, assignment.id]);
+
+  const dirty = pct != null && pct !== serverPct;
+
+  const save = async () => {
+    if (pct == null) return;
+    setSaving(true);
+    try {
+      await setAssignmentInvolvement(planId, assignment.id, pct);
+      await qc.invalidateQueries({ queryKey: ['assignment-explain', planId, assignment.id] });
+      message.success('Вовлечённость сохранена, план пересчитан');
+      onChanged?.();
+    } catch (e) {
+      message.error((e as Error).message || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Space>
+      <InputNumber
+        min={0}
+        max={100}
+        value={pct ?? undefined}
+        onChange={(v) => setPct(typeof v === 'number' ? v : null)}
+        addonAfter="%"
+        style={{ width: 110 }}
+        disabled={saving}
+        onPressEnter={save}
+      />
+      <Button type="primary" size="small" disabled={!dirty || saving} loading={saving} onClick={save}>
+        Сохранить
+      </Button>
+    </Space>
   );
 }
 

@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta as _timedelta, timezone
 from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -1281,6 +1281,59 @@ def preview_employee_change(
         overloads=overloads,
         has_conflicts=bool(absences) or bool(overloads),
     )
+
+
+class InvolvementUpdate(BaseModel):
+    """Новая вовлечённость фазы в процентах (0..100)."""
+
+    involvement_pct: int = Field(ge=0, le=100)
+
+
+_PHASE_INVOLVEMENT_FIELD = {
+    "analyst": "involvement_analyst",
+    "dev": "involvement_dev",
+    "qa": "involvement_qa",
+    "opo": "involvement_launch",
+}
+
+
+@router.put("/resource-plans/{plan_id}/assignments/{assignment_id}/involvement")
+def set_assignment_involvement(
+    plan_id: str,
+    assignment_id: str,
+    data: InvolvementUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Записать вовлечённость фазы на инициативу и пересчитать план.
+
+    Вовлечённость — свойство инициативы (BacklogItem) per-фаза, поэтому правка
+    влияет на все планы/сценарии, где задействована эта задача.
+    """
+    a = db.execute(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.id == assignment_id,
+            ResourcePlanAssignment.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+
+    field = _PHASE_INVOLVEMENT_FIELD.get(a.phase)
+    if not field:
+        raise HTTPException(400, f"Фаза {a.phase} не поддерживает вовлечённость")
+
+    bi = db.get(BacklogItem, a.backlog_item_id)
+    if not bi:
+        raise HTTPException(404, "Backlog item not found")
+
+    setattr(bi, field, data.involvement_pct / 100.0)
+    db.flush()
+    try:
+        ResourcePlanningService(db).compute_schedule(plan_id)
+    except ValueError as e:
+        raise HTTPException(409, f"reschedule_failed: {e}")
+    return {"ok": True}
 
 
 @router.patch(

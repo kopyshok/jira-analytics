@@ -443,6 +443,18 @@ export async function patchAssignment(
   );
 }
 
+/** Записать вовлечённость фазы (0..100%) на инициативу; сервер пересчитывает план. */
+export async function setAssignmentInvolvement(
+  planId: string,
+  assignmentId: string,
+  involvementPct: number,
+): Promise<void> {
+  await api.put(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/involvement`,
+    { involvement_pct: involvementPct },
+  );
+}
+
 export async function previewEmployeeChange(
   planId: string,
   assignmentId: string,
