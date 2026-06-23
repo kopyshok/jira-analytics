@@ -279,6 +279,39 @@ def test_new_user_inherits_latest_published_version(testclient_db_session: Sessi
         _teardown()
 
 
+def test_reseed_admin_only(testclient_db_session: Session):
+    manager = _seed_user(testclient_db_session, role=UserRole.manager)
+    try:
+        r = _client_as_manager(testclient_db_session, manager).post(
+            "/api/v1/release-notes/reseed"
+        )
+        assert r.status_code == 403
+    finally:
+        _teardown()
+
+
+def test_reseed_applies_files_from_disk(testclient_db_session: Session):
+    """Кнопка ручной загрузки прогоняет файловый сидер без рестарта сервиса."""
+    admin = _seed_user(testclient_db_session)
+    try:
+        r = _client_admin(testclient_db_session, admin).post(
+            "/api/v1/release-notes/reseed"
+        )
+        assert r.status_code == 200, r.text
+        stats = r.json()
+        assert stats["files"] >= 1
+        assert stats["created"] >= 1
+        # Записи реально попали в БД с привязкой к версии.
+        assert (
+            testclient_db_session.query(ReleaseNote)
+            .filter(ReleaseNote.version.isnot(None))
+            .count()
+            >= 1
+        )
+    finally:
+        _teardown()
+
+
 def test_new_user_no_versions_keeps_null(testclient_db_session: Session):
     """Если нет опубликованных версий — поле остаётся NULL."""
     admin = _seed_user(testclient_db_session)

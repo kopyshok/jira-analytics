@@ -6,11 +6,12 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, RocketOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import {
   useDraftReleaseNotes, useAllReleaseNotes,
   useCreateReleaseNote, useUpdateReleaseNote, useDeleteReleaseNote,
-  usePublishReleaseNotes, useDeleteVersion,
+  usePublishReleaseNotes, useDeleteVersion, useReseedReleaseNotes,
 } from '../../hooks/useReleaseNotes';
 import {
   NOTE_TYPE_LABELS, NOTE_TYPE_COLORS, SECTION_LABELS,
@@ -29,6 +30,23 @@ export default function ReleaseNotesAdminTab() {
   const deleteMut = useDeleteReleaseNote();
   const publishMut = usePublishReleaseNotes();
   const deleteVersionMut = useDeleteVersion();
+  const reseedMut = useReseedReleaseNotes();
+
+  const handleReseed = () => {
+    reseedMut.mutate(undefined, {
+      onSuccess: (s) => {
+        notification.success({
+          title: 'Заметки загружены в сервис',
+          description:
+            `Файлов: ${s.files}. Новых: ${s.created}, обновлено: ${s.updated}, ` +
+            `без изменений: ${s.unchanged}.`,
+        });
+      },
+      onError: () => {
+        notification.error({ title: 'Не удалось загрузить заметки' });
+      },
+    });
+  };
 
   const [editing, setEditing] = useState<ReleaseNote | null>(null);
   const [adding, setAdding] = useState(false);
@@ -96,6 +114,13 @@ export default function ReleaseNotesAdminTab() {
           disabled={!drafts.data || drafts.data.length === 0}
         >
           Выпустить под версию…
+        </Button>
+        <Button
+          icon={<ReloadOutlined />}
+          loading={reseedMut.isPending}
+          onClick={handleReseed}
+        >
+          Загрузить заметки в сервис
         </Button>
       </Space>
 
@@ -243,7 +268,7 @@ function NoteEditor({ open, initial, onSubmit, onCancel }: NoteEditorProps) {
         onSubmit(values);
       }}
       title={initial ? 'Редактировать запись' : 'Добавить запись'}
-      destroyOnClose
+      destroyOnHidden
       width={640}
     >
       <Form

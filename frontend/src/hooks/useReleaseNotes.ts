@@ -74,6 +74,14 @@ export function usePublishReleaseNotes() {
   });
 }
 
+export function useReseedReleaseNotes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => releaseNotesApi.reseed(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['release-notes'] }),
+  });
+}
+
 export function useDeleteVersion() {
   const qc = useQueryClient();
   return useMutation({
