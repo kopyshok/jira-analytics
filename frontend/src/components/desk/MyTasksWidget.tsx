@@ -3,13 +3,61 @@ import WidgetShell from './WidgetShell';
 import { useDeskWidget } from './useDeskWidget';
 import { fmtShortRange } from './format';
 import { deskStatusKind, isInProgress, STATUS_BADGE_LABEL } from './deskStatus';
-import type { DeskProject, MyTasksData, ProjectChild } from '../../types/desk';
+import type { DeskProject, DeskWorkType, MyTasksData, ProjectChild } from '../../types/desk';
 
-function pctClass(p: DeskProject): { pct: string; fill: string } {
-  const overZeroPlan = p.norm_hours === 0 && p.fact_hours > 0;
-  if (overZeroPlan || p.pct > 110) return { pct: 'desk-pct-over', fill: 'desk-fill-over' };
-  if (p.pct >= 70) return { pct: 'desk-pct-ok', fill: 'desk-fill-ok' };
-  return { pct: 'desk-pct-low', fill: 'desk-fill-low' };
+// Цвет вида работ по коду (analyst→cyan, dev→blue, qa→amber, opo→violet).
+const WT_COLOR: Record<string, string> = {
+  analyst: 'var(--wt-analysis)',
+  dev: 'var(--wt-dev)',
+  qa: 'var(--wt-test)',
+  opo: 'var(--wt-ope)',
+};
+
+// Длина окружности кольца (r=14): 2π·14.
+const RING_CIRC = 2 * Math.PI * 14;
+
+// Перегруз: план 0 при наличии факта, либо >110%.
+function isOver(plan: number, fact: number, pct: number): boolean {
+  return (plan === 0 && fact > 0) || pct > 110;
+}
+
+function overallPctClass(plan: number, fact: number, pct: number): string {
+  if (isOver(plan, fact, pct)) return 'desk-pct-over';
+  if (pct >= 70) return 'desk-pct-ok';
+  return 'desk-pct-low';
+}
+
+function WorkTypeGauge({ wt }: { wt: DeskWorkType }) {
+  const over = isOver(wt.plan_hours, wt.fact_hours, wt.pct);
+  const shown = Math.max(0, Math.min(100, wt.pct));
+  const offset = RING_CIRC * (1 - shown / 100);
+  const color = WT_COLOR[wt.code] ?? 'var(--accent)';
+  return (
+    <div className="desk-ring-card" style={{ ['--wt-c' as string]: color }}>
+      <div className="desk-ring">
+        <svg viewBox="0 0 38 38">
+          <circle className="desk-ring-track" cx="19" cy="19" r="14" />
+          <circle
+            className={`desk-ring-prog${over ? ' over' : ''}`}
+            cx="19"
+            cy="19"
+            r="14"
+            strokeDasharray={RING_CIRC.toFixed(2)}
+            strokeDashoffset={over ? 0 : offset.toFixed(2)}
+          />
+        </svg>
+        <div className="desk-ring-center">
+          <span className={`desk-ring-pct${over ? ' over' : ''}`}>{Math.round(wt.pct)}%</span>
+        </div>
+      </div>
+      <div className="desk-ring-text">
+        <div className="desk-ring-name">{wt.label}</div>
+        <div className={`desk-ring-hours mono${over ? ' over' : ''}`}>
+          {Math.round(wt.fact_hours)} / {Math.round(wt.plan_hours)} ч
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function JiraKey({ k, url }: { k: string; url: string | null }) {
@@ -39,13 +87,11 @@ function ChildRow({ c }: { c: ProjectChild }) {
 function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
   const [open, setOpen] = useState(false);
   const kind = deskStatusKind(p.status);
-  const { pct, fill } = pctClass(p);
-  const fillW = p.norm_hours > 0
-    ? Math.min(100, (p.fact_hours / p.norm_hours) * 100)
-    : (p.fact_hours > 0 ? 100 : 0);
+  const pct = overallPctClass(p.norm_hours, p.fact_hours, p.pct);
   const badgeLabel = p.status ?? STATUS_BADGE_LABEL[kind];
   const children = p.children ?? [];
   const hasChildren = children.length > 0;
+  const workTypes = p.work_types ?? [];
 
   return (
     <div className={`desk-project-row${activeNow ? ' active-now' : ''}`}>
@@ -84,13 +130,20 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
         )}
       </div>
       <div className="desk-project-right">
-        <div className="desk-hours-label">
-          {Math.round(p.fact_hours)} / {Math.round(p.norm_hours)} ч
-          <span className={`pct ${pct}`}>{Math.round(p.pct)}%</span>
+        <div className="desk-project-overall">
+          <div className="desk-overall-cap">Проект</div>
+          <div className="desk-overall-hours mono">
+            {Math.round(p.fact_hours)} / {Math.round(p.norm_hours)} ч
+          </div>
+          <span className={`desk-overall-pct ${pct}`}>{Math.round(p.pct)}%</span>
         </div>
-        <div className="desk-progress-bar">
-          <div className={`desk-progress-fill ${fill}`} style={{ width: `${fillW}%` }} />
-        </div>
+        {workTypes.length > 0 && (
+          <div className="desk-row-rings">
+            {workTypes.map((wt) => (
+              <WorkTypeGauge key={wt.code} wt={wt} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -106,6 +159,30 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
   const totalNorm = projects.reduce((s, p) => s + p.norm_hours, 0);
   const totalFact = projects.reduce((s, p) => s + p.fact_hours, 0);
   const totalPct = totalNorm > 0 ? Math.round((totalFact / totalNorm) * 100) : 0;
+  const overallOver = isOver(totalNorm, totalFact, totalPct);
+
+  // Итоги по 4 видам работ = сумма соответствующих долей по всем проектам.
+  // Берём шаблон порядка/меток из первого проекта с разбивкой.
+  const wtTemplate = projects.find((p) => (p.work_types?.length ?? 0) > 0)?.work_types ?? [];
+  const totalWorkTypes: DeskWorkType[] = wtTemplate.map((tpl, i) => {
+    let plan = 0;
+    let fact = 0;
+    for (const p of projects) {
+      const wt = p.work_types?.[i];
+      if (wt) {
+        plan += wt.plan_hours;
+        fact += wt.fact_hours;
+      }
+    }
+    return {
+      code: tpl.code,
+      label: tpl.label,
+      plan_hours: plan,
+      fact_hours: fact,
+      pct: plan > 0 ? (fact / plan) * 100 : (fact > 0 ? 100 : 0),
+    };
+  });
+  const analystTotal = totalWorkTypes.find((wt) => wt.code === 'analyst');
 
   return (
     <WidgetShell
@@ -116,20 +193,37 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
       emptyText="Нет проектов"
     >
       <div className="desk-tasks-summary">
-        <div className="desk-tasks-summary-item">
-          <span className="desk-tasks-summary-val">{projects.length}</span>
-          <span className="desk-tasks-summary-unit">проектов</span>
+        <div className="desk-tasks-summary-kpis">
+          <div className="desk-tasks-summary-item">
+            <span className="desk-tasks-summary-val">{projects.length}</span>
+            <span className="desk-tasks-summary-unit">проектов</span>
+          </div>
+          <div className="desk-tasks-summary-item">
+            <span className={`desk-tasks-summary-val${overallOver ? ' over' : ''}`}>
+              {Math.round(totalFact)} / {Math.round(totalNorm)} ч
+            </span>
+            <span className="desk-tasks-summary-unit">всего факт / план</span>
+            {analystTotal && (
+              <span className="desk-ts-sub mono">
+                Анализ {Math.round(analystTotal.fact_hours)} / {Math.round(analystTotal.plan_hours)} ч
+              </span>
+            )}
+          </div>
+          <div className="desk-tasks-summary-item">
+            <span className={`desk-tasks-summary-val${overallOver ? ' over' : ''}`}>{totalPct}%</span>
+            <span className="desk-tasks-summary-unit">загрузка</span>
+          </div>
         </div>
-        <div className="desk-tasks-summary-item">
-          <span className="desk-tasks-summary-val">
-            {Math.round(totalFact)} / {Math.round(totalNorm)} ч
-          </span>
-          <span className="desk-tasks-summary-unit">факт / план</span>
-        </div>
-        <div className="desk-tasks-summary-item">
-          <span className="desk-tasks-summary-val">{totalPct}%</span>
-          <span className="desk-tasks-summary-unit">загрузка</span>
-        </div>
+        {totalWorkTypes.length > 0 && (
+          <>
+            <div className="desk-ts-divider" />
+            <div className="desk-ts-rings">
+              {totalWorkTypes.map((wt) => (
+                <WorkTypeGauge key={wt.code} wt={wt} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
       <div className="desk-project-list">
         {projects.map((p, i) => (

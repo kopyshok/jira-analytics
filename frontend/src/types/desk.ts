@@ -37,6 +37,15 @@ export interface ProjectChild {
   fact_hours: number;
 }
 
+/** Разбивка проекта по виду работ (analyst, dev, qa, opo — всегда 4, в этом порядке). */
+export interface DeskWorkType {
+  code: string;
+  label: string;
+  plan_hours: number;
+  fact_hours: number;
+  pct: number;
+}
+
 /** Проект/назначение сотрудника (общая форма для my_tasks и team_availability). */
 export interface DeskProject {
   key: string | null;
@@ -47,9 +56,12 @@ export interface DeskProject {
   status: string | null;
   start_date: string | null;
   end_date: string | null;
+  /** Общий итог по всем видам работ. */
   norm_hours: number;
   fact_hours: number;
   pct: number;
+  /** 4 вида работ: analyst, dev, qa, opo. */
+  work_types?: DeskWorkType[];
   children?: ProjectChild[];
 }
 

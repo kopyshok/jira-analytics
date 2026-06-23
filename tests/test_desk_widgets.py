@@ -551,6 +551,65 @@ def test_my_tasks_fact_sums_subtree_worklogs(db_session, seed_employee):
     assert out["projects"][0]["children"][0]["fact_hours"] == 7.0
 
 
+def test_my_tasks_work_types_split_plan_and_fact_by_role(db_session, seed_employee):
+    """Разбивка по 4 видам: план из всех фаз, факт по роли автора, итог = сумма."""
+    year, quarter = _current_quarter()
+    month = {1: 1, 2: 4, 3: 7, 4: 10}[quarter]
+    dev = Employee(
+        id="emp-dev", jira_account_id="acc-dev", display_name="Разработчик",
+        is_active=True, role="dev", team="Alpha", synced_at=datetime.utcnow(),
+    )
+    proj = Project(id="prj-1", jira_project_id="10000", key="ITL", name="ITL", is_active=True)
+    parent = Issue(
+        id="iss-P", jira_issue_id="ji-P", key="ITL-1", summary="Инициатива",
+        issue_type="Задача", status="In Progress", status_category="indeterminate",
+        project_id="prj-1", participating_teams="[]",
+    )
+    item = BacklogItem(id="bi-1", title="Инициатива A", issue_id="iss-P")
+    plan = ResourcePlan(
+        id="plan-1", team="Alpha", year=year, quarter=str(quarter),
+        status="ready", computed_at=datetime.utcnow(),
+    )
+    db_session.add_all([dev, proj, parent, item, plan])
+    db_session.add_all([
+        ResourcePlanAssignment(
+            id="rpa-an", plan_id="plan-1", backlog_item_id="bi-1",
+            phase="analyst", employee_id=seed_employee.id, hours_allocated=10.0,
+        ),
+        ResourcePlanAssignment(
+            id="rpa-dev", plan_id="plan-1", backlog_item_id="bi-1",
+            phase="dev", employee_id=dev.id, hours_allocated=20.0,
+        ),
+        ResourcePlanAssignment(
+            id="rpa-opo", plan_id="plan-1", backlog_item_id="bi-1",
+            phase="opo", employee_id=seed_employee.id, hours_allocated=10.0,
+        ),
+    ])
+    db_session.add_all([
+        Worklog(
+            id="wl-an", jira_worklog_id="jwl-an", issue_id="iss-P",
+            employee_id=seed_employee.id, started_at=datetime(year, month, 15, 10),
+            time_spent_seconds=25200, hours=7.0,
+        ),
+        Worklog(
+            id="wl-dev", jira_worklog_id="jwl-dev", issue_id="iss-P",
+            employee_id=dev.id, started_at=datetime(year, month, 16, 10),
+            time_spent_seconds=18000, hours=5.0,
+        ),
+    ])
+    db_session.commit()
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "my_tasks")
+    wt = {w["code"]: w for w in out["projects"][0]["work_types"]}
+    # ОПЭ-плашки нет; её план (10ч) делится 50/50 на Анализ (+5) и Разработку (+5).
+    assert "opo" not in wt
+    assert wt["analyst"]["plan_hours"] == 15.0 and wt["analyst"]["fact_hours"] == 7.0
+    assert wt["dev"]["plan_hours"] == 25.0 and wt["dev"]["fact_hours"] == 5.0
+    assert wt["qa"]["plan_hours"] == 0.0
+    assert out["projects"][0]["norm_hours"] == 40.0
+    assert out["projects"][0]["fact_hours"] == 12.0
+
+
 # ── team_availability: исключение разработчиков и сотрудника стола ───────────
 
 

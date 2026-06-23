@@ -356,6 +356,104 @@ def _merge_projects(projects: List[dict]) -> List[dict]:
     return [merged[k] for k in order] + extras
 
 
+# Роли-фазы плана (включая ОПЭ — сворачивается в analyst/dev по коэффициенту).
+_ROLES: tuple[str, ...] = ("analyst", "dev", "qa", "opo")
+# Виды работ, показываемые в плитке (ОПЭ распределён, отдельной плашки нет).
+_DISPLAY_ROLES: tuple[str, ...] = ("analyst", "dev", "qa")
+
+
+def _role_breakdown(
+    db: Session,
+    plan_id: str,
+    root_ids: List[str],
+    subtree: Dict[str, set],
+    q_start: date,
+    q_end: date,
+) -> Dict[str, dict]:
+    """План/факт проекта по 4 видам работ (analyst/dev/qa/opo).
+
+    План — плановые часы всех фаз проекта в ресурсном плане
+    (`hours_allocated ?? оценка роли`, как у текущей строки Анализа), а не
+    только фазы аналитика. Факт — командный: ворклоги по всему поддереву
+    задачи, сгруппированные по роли автора (`Employee.role`). У ОПЭ нет
+    роли-сотрудника, поэтому факт ОПЭ ≈ 0.
+
+    Возвращает {root_issue_id: {"plan": {role: ч}, "fact": {role: ч}}}.
+    """
+    from app.models import BacklogItem, Employee, ResourcePlanAssignment, Worklog
+
+    ids = [i for i in root_ids if i]
+    out: Dict[str, dict] = {
+        i: {"plan": {r: 0.0 for r in _ROLES}, "fact": {r: 0.0 for r in _ROLES}}
+        for i in ids
+    }
+    if not ids:
+        return out
+
+    # План по ролям — все фазовые назначения проекта (любого исполнителя).
+    ratios: Dict[str, float] = {}
+    arows = (
+        db.query(
+            ResourcePlanAssignment,
+            BacklogItem.issue_id,
+            BacklogItem.opo_analyst_ratio,
+        )
+        .join(BacklogItem, BacklogItem.id == ResourcePlanAssignment.backlog_item_id)
+        .filter(
+            ResourcePlanAssignment.plan_id == plan_id,
+            BacklogItem.issue_id.in_(ids),
+        )
+        .all()
+    )
+    for a, issue_id, opo_ratio in arows:
+        if a.phase in _ROLES and issue_id in out:
+            out[issue_id]["plan"][a.phase] += _assignment_norm(a)
+            ratios[issue_id] = 0.5 if opo_ratio is None else float(opo_ratio)
+
+    # Факт по ролям — все авторы по всему поддереву, один запрос.
+    issue_to_root: Dict[str, str] = {}
+    for root, members in subtree.items():
+        for iid in members:
+            issue_to_root[iid] = root
+    all_ids = list(issue_to_root.keys())
+    if all_ids:
+        start_dt = datetime.combine(q_start, time.min)
+        end_dt = datetime.combine(q_end, time.max)
+        rows = (
+            db.query(
+                Worklog.issue_id,
+                Employee.role,
+                func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
+            )
+            .join(Employee, Employee.id == Worklog.employee_id)
+            .filter(
+                Worklog.issue_id.in_(all_ids),
+                Worklog.started_at >= start_dt,
+                Worklog.started_at <= end_dt,
+            )
+            .group_by(Worklog.issue_id, Employee.role)
+            .all()
+        )
+        for issue_id, role, hours in rows:
+            r = (role or "").lower()
+            if r not in _ROLES:
+                continue
+            root = issue_to_root.get(issue_id)
+            if root in out:
+                out[root]["fact"][r] += float(hours or 0.0)
+
+    # ОПЭ нельзя зафиксировать по факту отдельно — план ОПЭ распределяем на
+    # Анализ/Разработку по коэффициенту деления (opo_analyst_ratio), плашку ОПЭ
+    # убираем. Факт ОПЭ ≈ 0, но складываем тем же правилом для консистентности.
+    for iid, bd in out.items():
+        ratio = ratios.get(iid, 0.5)
+        for kind in ("plan", "fact"):
+            opo = bd[kind].pop("opo", 0.0)
+            bd[kind]["analyst"] += opo * ratio
+            bd[kind]["dev"] += opo * (1.0 - ratio)
+    return out
+
+
 def _assignment_norm(a) -> float:
     """Плановые часы фазы: hours_allocated, иначе оценка роли на BacklogItem.
 
@@ -395,19 +493,44 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
 
     # Факт проекта — по всему поддереву задачи (списания висят на подзадачах).
     subtree = _subtree_ids(db, issue_ids)
-    all_ids = {i for ids in subtree.values() for i in ids}
-    fact_map = _worklog_fact_map(
-        db, [(desk.employee_id, i) for i in all_ids], q_start, q_end
-    )
+    # План/факт по 4 видам работ (analyst/dev/qa/opo) — как в карточке проекта.
+    breakdown = _role_breakdown(db, plan.id, issue_ids, subtree, q_start, q_end)
     for p in projects:
         iid = p.get("issue_id")
         p["children"] = children.get(iid, [])
-        if iid in subtree:
-            fact = round(
-                sum(fact_map.get((desk.employee_id, i), 0.0) for i in subtree[iid]), 1
+        bd = breakdown.get(iid)
+        if bd is None:
+            # Нет связанной задачи — разбивку не построить, показываем только
+            # Анализ из существующего плана/факта строки.
+            p["work_types"] = [
+                {
+                    "code": role,
+                    "label": _PHASE_LABEL[role],
+                    "plan_hours": p["norm_hours"] if role == "analyst" else 0.0,
+                    "fact_hours": p["fact_hours"] if role == "analyst" else 0.0,
+                    "pct": p["pct"] if role == "analyst" else 0,
+                }
+                for role in _DISPLAY_ROLES
+            ]
+            continue
+        work_types: List[dict] = []
+        for role in _DISPLAY_ROLES:
+            plan = round(bd["plan"].get(role, 0.0), 1)
+            fact = round(bd["fact"].get(role, 0.0), 1)
+            work_types.append(
+                {
+                    "code": role,
+                    "label": _PHASE_LABEL[role],
+                    "plan_hours": plan,
+                    "fact_hours": fact,
+                    "pct": round(fact / plan * 100) if plan > 0 else 0,
+                }
             )
-            p["fact_hours"] = fact
-            p["pct"] = round(fact / p["norm_hours"] * 100) if p["norm_hours"] > 0 else 0
+        p["work_types"] = work_types
+        # Итог проекта — сумма по всем видам работ (а не только Анализ).
+        p["norm_hours"] = round(sum(w["plan_hours"] for w in work_types), 1)
+        p["fact_hours"] = round(sum(w["fact_hours"] for w in work_types), 1)
+        p["pct"] = round(p["fact_hours"] / p["norm_hours"] * 100) if p["norm_hours"] > 0 else 0
     # Приоритет (из сценария): выше число — важнее, наверх; без приоритета — вниз.
     projects.sort(key=lambda p: (p.get("priority") is None, -(p.get("priority") or 0)))
     return {"projects": projects}
