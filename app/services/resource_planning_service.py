@@ -1278,7 +1278,19 @@ class ResourcePlanningService:
                 daily_used[d] = used
                 seg_end = d
                 if remaining_h <= 0.01:
-                    emp_days[d] = max(0.0, avail_h - used)
+                    leftover = avail_h - used
+                    # Остаток последнего дня доступен следующей по приоритету
+                    # фазе того же сотрудника. Ограничиваем его потолком по
+                    # вовлечённости (daily_capacity = норма × involvement), а
+                    # не полной нормой дня — иначе две фазы разных задач за
+                    # день суммарно превышают involvement-ёмкость (5 + 3 = 8
+                    # при потолке 5.6). Связывающим оказывается потолок этой
+                    # фазы; фаза с меньшей вовлечённостью дополнительно урежет
+                    # себя сама (min с собственным daily_capacity) — так
+                    # эффективно действует минимальная вовлечённость дня.
+                    if daily_capacity is not None:
+                        leftover = min(leftover, daily_capacity - used)
+                    emp_days[d] = max(0.0, leftover)
             d += timedelta(days=1)
 
         if seg_start is not None and seg_end is not None and seg_hours > 0:
