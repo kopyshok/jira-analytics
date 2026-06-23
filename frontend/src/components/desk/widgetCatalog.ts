@@ -10,6 +10,7 @@ export interface WidgetCatalogItem {
 export const WIDGET_CATALOG: WidgetCatalogItem[] = [
   { key: 'my_tasks', label: 'Мои проекты' },
   { key: 'my_timeline', label: 'Таймлайн моих проектов' },
+  { key: 'stale_tasks', label: 'Залежавшиеся задачи' },
   { key: 'hours_balance', label: 'Переработка' },
   { key: 'category_breakdown', label: 'Часы по видам работ' },
   { key: 'team_absences', label: 'Отсутствия команды' },

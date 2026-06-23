@@ -139,9 +139,16 @@ class Issue(Base, SyncedMixin):
 
     # Jira assignee display name (denormalized from Jira, read-only).
     assignee_display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Jira assignee/creator как личности (accountId) + имя автора. Нужны для
+    # плитки «Залежавшиеся задачи» на рабочем столе (автор=аналитик / исполнитель=аналитик).
+    assignee_account_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    reporter_account_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    reporter_display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Jira metadata for triage (e.g. «какие Done висят давно — в архив»)
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    # Jira `updated` — дата последнего изменения задачи (любое касание).
+    jira_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Customer ratings (Jira custom fields, 1-5 шкала)

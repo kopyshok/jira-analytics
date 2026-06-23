@@ -918,6 +918,33 @@
 .desk-await-title a:hover { color: var(--accent); }
 .desk-await-sub { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
 
+/* ───────── Stale tasks (две колонки) ───────── */
+.desk-stale-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 860px) {
+  .desk-stale-grid { grid-template-columns: 1fr; }
+}
+.desk-stale-col-head { font-size: 13px; font-weight: 700; color: var(--ink); }
+.desk-stale-col-hint { font-size: 11.5px; color: var(--ink-4); margin: 2px 0 6px; }
+.desk-stale-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--hair);
+}
+.desk-stale-item:last-child { border-bottom: none; }
+.desk-stale-top { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.desk-stale-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.desk-stale-title a { color: var(--ink); }
+.desk-stale-title a:hover { color: var(--accent); }
+.desk-stale-age { font-size: 11.5px; font-weight: 700; color: var(--amber-ink); white-space: nowrap; }
+.desk-stale-sub { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
+.desk-stale-person { display: inline-flex; align-items: center; gap: 5px; }
+
 /* ───────── States ───────── */
 .desk-empty {
   text-align: center;

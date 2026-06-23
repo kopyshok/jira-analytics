@@ -161,3 +161,23 @@ export interface AwaitingItem {
 export interface AwaitingReactionData {
   items: AwaitingItem[];
 }
+
+export interface StalePerson {
+  name: string | null;
+  avatar_url: string | null;
+}
+export interface StaleTask {
+  key: string | null;
+  title: string | null;
+  status: string | null;
+  status_category: string | null;
+  days_idle: number;
+  url: string | null;
+  person: StalePerson;
+}
+export interface StaleTasksData {
+  /** Создал аналитик, висят на других (или ни на ком). */
+  my_tasks: StaleTask[];
+  /** Назначены аналитику. */
+  assigned: StaleTask[];
+}

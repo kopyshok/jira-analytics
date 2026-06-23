@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import MyTasksWidget from './MyTasksWidget';
 import MyTimelineWidget from './MyTimelineWidget';
+import StaleTasksWidget from './StaleTasksWidget';
 import HoursBalanceWidget from './HoursBalanceWidget';
 import CategoryBreakdownWidget from './CategoryBreakdownWidget';
 import TeamAbsencesWidget from './TeamAbsencesWidget';
@@ -24,6 +25,7 @@ interface WidgetDef {
 export const WIDGET_REGISTRY: Record<string, WidgetDef> = {
   my_tasks: { title: 'Мои проекты', component: MyTasksWidget, wide: true },
   my_timeline: { title: 'Таймлайн моих проектов', component: MyTimelineWidget, wide: true },
+  stale_tasks: { title: 'Залежавшиеся задачи', component: StaleTasksWidget, wide: true },
   hours_balance: { title: 'Переработка', component: HoursBalanceWidget },
   category_breakdown: { title: 'Часы по видам работ', component: CategoryBreakdownWidget },
   team_absences: { title: 'Отсутствия команды', component: TeamAbsencesWidget, wide: true },

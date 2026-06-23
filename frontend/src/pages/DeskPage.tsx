@@ -245,6 +245,7 @@ function DeskLayout({ token, widgets }: { token: string; widgets: string[] }) {
   // Приоритетный блок — каждый виджет во всю ширину.
   fullRow('my_tasks');
   fullRow('my_timeline');
+  fullRow('stale_tasks');
   fullRow('team_availability');
 
   // Виды работ + ждут реакции — пополам (заполняем пустоту справа у видов работ).

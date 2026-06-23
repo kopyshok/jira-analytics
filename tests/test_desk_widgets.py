@@ -4,7 +4,7 @@
 типы значений) должен соблюдаться, пустые данные → пустые списки, без 500.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,10 +109,11 @@ def test_dispatch_unknown_key_raises(db_session, seed_employee):
 
 
 def test_all_widget_keys_count():
-    assert len(WIDGET_KEYS) == 8
+    assert len(WIDGET_KEYS) == 9
     assert set(WIDGET_KEYS) == {
         "my_tasks",
         "my_timeline",
+        "stale_tasks",
         "hours_balance",
         "category_breakdown",
         "team_absences",
@@ -295,6 +296,121 @@ def test_awaiting_reaction_excludes_own_last_comment(db_session, seed_employee):
     year, quarter = _current_quarter()
     out = dispatch(db_session, desk, "awaiting_reaction", year, quarter)
     assert out["items"] == []
+
+
+# ── stale_tasks: залежавшиеся задачи (PMD/OS, листовые, не done) ─────────────
+
+
+def test_stale_tasks_empty(db_session, seed_employee):
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "stale_tasks")
+    assert out == {"my_tasks": [], "assigned": []}
+
+
+def _stale_issue(db_session, **kw):
+    defaults = dict(
+        issue_type="Task",
+        status="In Progress",
+        status_category="indeterminate",
+        participating_teams="[]",
+    )
+    defaults.update(kw)
+    issue = Issue(**defaults)
+    db_session.add(issue)
+    return issue
+
+
+def test_stale_tasks_split_and_filters(db_session, seed_employee):
+    """Две колонки + фильтры: проект PMD/OS, не done, только листья."""
+    other = Employee(
+        id="emp-o", jira_account_id="acc-o", display_name="Коллега",
+        is_active=True, synced_at=datetime.utcnow(),
+    )
+    pmd = Project(id="p-pmd", jira_project_id="1", key="PMD", name="PMD", synced_at=datetime.utcnow())
+    os_p = Project(id="p-os", jira_project_id="2", key="OS", name="OS", synced_at=datetime.utcnow())
+    itl = Project(id="p-itl", jira_project_id="3", key="ITL", name="ITL", synced_at=datetime.utcnow())
+    db_session.add_all([other, pmd, os_p, itl])
+
+    acct = seed_employee.jira_account_id
+    # «Мои»: создал аналитик, исполнитель — другой, PMD, давно.
+    _stale_issue(
+        db_session, id="i-my", jira_issue_id="ji-my", key="PMD-1", summary="Моя забытая",
+        project_id="p-pmd", reporter_account_id=acct, reporter_display_name="Стол Аналитик",
+        assignee_account_id="acc-o", assignee_display_name="Коллега",
+        jira_updated_at=datetime(2026, 1, 10, 9, 0),
+    )
+    # «Задачи мне»: назначена аналитику, автор — другой, OS.
+    _stale_issue(
+        db_session, id="i-me", jira_issue_id="ji-me", key="OS-1", summary="Мне поручили",
+        project_id="p-os", reporter_account_id="acc-o", reporter_display_name="Коллега",
+        assignee_account_id=acct, assignee_display_name="Стол Аналитик",
+        jira_updated_at=datetime(2026, 2, 1, 9, 0),
+    )
+    # Завершённая — отсекается.
+    _stale_issue(
+        db_session, id="i-done", jira_issue_id="ji-done", key="PMD-2", summary="Готово",
+        project_id="p-pmd", status="Done", status_category="done",
+        assignee_account_id=acct, assignee_display_name="Стол Аналитик",
+        jira_updated_at=datetime(2026, 1, 1, 9, 0),
+    )
+    # Чужой проект ITL — отсекается.
+    _stale_issue(
+        db_session, id="i-itl", jira_issue_id="ji-itl", key="ITL-9", summary="Не наш проект",
+        project_id="p-itl", assignee_account_id=acct, assignee_display_name="Стол Аналитик",
+        jira_updated_at=datetime(2026, 1, 1, 9, 0),
+    )
+    # Родитель с ребёнком в PMD — родитель отсекается (не лист), ребёнок назначен другому.
+    _stale_issue(
+        db_session, id="i-parent", jira_issue_id="ji-parent", key="PMD-3", summary="Родитель",
+        project_id="p-pmd", assignee_account_id=acct, assignee_display_name="Стол Аналитик",
+        jira_updated_at=datetime(2026, 1, 5, 9, 0),
+    )
+    _stale_issue(
+        db_session, id="i-child", jira_issue_id="ji-child", key="PMD-4", summary="Ребёнок",
+        project_id="p-pmd", parent_id="i-parent", reporter_account_id="acc-o",
+        assignee_account_id="acc-o", jira_updated_at=datetime(2026, 1, 6, 9, 0),
+    )
+    db_session.commit()
+
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "stale_tasks")
+
+    my_keys = [t["key"] for t in out["my_tasks"]]
+    assigned_keys = [t["key"] for t in out["assigned"]]
+    assert my_keys == ["PMD-1"]
+    assert assigned_keys == ["OS-1"]
+    # Завершённая, чужой проект и родитель — не попали никуда.
+    assert "PMD-2" not in my_keys + assigned_keys
+    assert "ITL-9" not in my_keys + assigned_keys
+    assert "PMD-3" not in my_keys + assigned_keys
+
+    row = out["my_tasks"][0]
+    assert row["person"]["name"] == "Коллега"
+    assert row["url"].endswith("/browse/PMD-1")
+    assert isinstance(row["days_idle"], int) and row["days_idle"] > 0
+
+
+def test_stale_tasks_sorted_oldest_first_and_top10(db_session, seed_employee):
+    """Сортировка по дате касания (старые сверху), не больше 10."""
+    proj = Project(id="p-pmd2", jira_project_id="9", key="PMD", name="PMD", synced_at=datetime.utcnow())
+    db_session.add(proj)
+    acct = seed_employee.jira_account_id
+    for n in range(12):
+        _stale_issue(
+            db_session, id=f"s-{n}", jira_issue_id=f"js-{n}", key=f"PMD-{100 + n}",
+            summary=f"T{n}", project_id="p-pmd2", assignee_account_id=acct,
+            assignee_display_name="Стол Аналитик",
+            jira_updated_at=datetime(2026, 1, 1) + timedelta(days=n),
+        )
+    db_session.commit()
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "stale_tasks")
+    assigned = out["assigned"]
+    assert len(assigned) == 10
+    # Самая старая (день 1) — первой.
+    assert assigned[0]["key"] == "PMD-100"
+    days = [t["days_idle"] for t in assigned]
+    assert days == sorted(days, reverse=True)
 
 
 # ── my_tasks: норма из оценки инициативы при пустом hours_allocated ──────────

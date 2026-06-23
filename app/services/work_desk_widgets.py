@@ -20,6 +20,7 @@ from app.models.work_desk import WorkDesk
 WIDGET_KEYS: tuple[str, ...] = (
     "my_tasks",
     "my_timeline",
+    "stale_tasks",
     "hours_balance",
     "category_breakdown",
     "team_absences",
@@ -921,10 +922,108 @@ def _adapter_awaiting_reaction(
     return {"items": items[:30]}
 
 
+_STALE_PROJECTS: tuple[str, ...] = ("PMD", "OS")
+
+
+def _adapter_stale_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
+    """Залежавшиеся задачи: дольше всего без касания в Jira.
+
+    Две колонки:
+      • my_tasks — создал аналитик, висят на других (или ни на ком);
+      • assigned — назначены аналитику.
+    Отбор: проекты PMD/OS, не завершённые, листовые (без подзадач).
+    «Касание» — поле Jira ``updated`` (jira_updated_at): меняется при любом
+    действии. Сортировка по нему по возрастанию (самые давние сверху), ТОП-10.
+    """
+    from app.models import Employee, Issue, Project
+
+    emp = desk.employee
+    acct = getattr(emp, "jira_account_id", None) if emp else None
+    if not acct:
+        return {"my_tasks": [], "assigned": []}
+
+    # parent_id задач с детьми — чтобы оставить только листья.
+    parent_ids = select(Issue.parent_id).where(Issue.parent_id.is_not(None)).distinct()
+
+    base = (
+        select(
+            Issue.key,
+            Issue.summary,
+            Issue.status,
+            Issue.status_category,
+            Issue.jira_updated_at,
+            Issue.assignee_account_id,
+            Issue.assignee_display_name,
+            Issue.reporter_account_id,
+            Issue.reporter_display_name,
+        )
+        .join(Project, Issue.project_id == Project.id)
+        .where(
+            Project.key.in_(_STALE_PROJECTS),
+            func.coalesce(Issue.status_category, "") != "done",
+            Issue.jira_updated_at.is_not(None),
+            Issue.id.not_in(parent_ids),
+        )
+    )
+
+    my_rows = db.execute(
+        base.where(
+            Issue.reporter_account_id == acct,
+            func.coalesce(Issue.assignee_account_id, "") != acct,
+        )
+        .order_by(Issue.jira_updated_at.asc())
+        .limit(10)
+    ).all()
+    assigned_rows = db.execute(
+        base.where(Issue.assignee_account_id == acct)
+        .order_by(Issue.jira_updated_at.asc())
+        .limit(10)
+    ).all()
+
+    # Аватарки второго человека по accountId.
+    acct_ids = {r.assignee_account_id for r in my_rows if r.assignee_account_id}
+    acct_ids |= {r.reporter_account_id for r in assigned_rows if r.reporter_account_id}
+    avatars: Dict[str, Optional[str]] = {}
+    if acct_ids:
+        for aid, av in (
+            db.query(Employee.jira_account_id, Employee.avatar_url)
+            .filter(Employee.jira_account_id.in_(acct_ids))
+            .all()
+        ):
+            avatars[aid] = av
+
+    today = date.today()
+
+    def _row(r, person_name, person_acct) -> dict:
+        return {
+            "key": r.key,
+            "title": r.summary,
+            "status": r.status,
+            "status_category": r.status_category,
+            "days_idle": (today - r.jira_updated_at.date()).days,
+            "url": _jira_url(r.key),
+            "person": {
+                "name": person_name,
+                "avatar_url": avatars.get(person_acct) if person_acct else None,
+            },
+        }
+
+    return {
+        "my_tasks": [
+            _row(r, r.assignee_display_name, r.assignee_account_id) for r in my_rows
+        ],
+        "assigned": [
+            _row(r, r.reporter_display_name, r.reporter_account_id)
+            for r in assigned_rows
+        ],
+    }
+
+
 # Реестр: ключ → адаптер.
 _REGISTRY: Dict[str, Callable[[Session, WorkDesk, int, int], dict]] = {
     "my_tasks": _adapter_my_tasks,
     "my_timeline": _adapter_my_timeline,
+    "stale_tasks": _adapter_stale_tasks,
     "hours_balance": _adapter_hours_balance,
     "category_breakdown": _adapter_category_breakdown,
     "team_absences": _adapter_team_absences,

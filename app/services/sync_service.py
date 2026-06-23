@@ -601,6 +601,7 @@ class SyncService:
             "project_id": project_id,
             "parent_id": parent_id,
             "status_changed_at": _parse_jira_datetime(jira_issue.fields.statuscategorychangedate),
+            "jira_updated_at": _parse_jira_datetime(jira_issue.fields.updated),
             "due_date": _parse_jira_date(jira_issue.fields.duedate),
             "synced_at": datetime.utcnow(),
         }
@@ -642,6 +643,18 @@ class SyncService:
         data["assignee_display_name"] = (
             jira_issue.fields.assignee.display_name
             if jira_issue.fields.assignee else None
+        )
+        data["assignee_account_id"] = (
+            jira_issue.fields.assignee.jira_account_id
+            if jira_issue.fields.assignee else None
+        )
+        data["reporter_account_id"] = (
+            jira_issue.fields.creator.jira_account_id
+            if jira_issue.fields.creator else None
+        )
+        data["reporter_display_name"] = (
+            jira_issue.fields.creator.display_name
+            if jira_issue.fields.creator else None
         )
 
         _new_plan_values = {
