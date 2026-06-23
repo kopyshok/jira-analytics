@@ -368,6 +368,13 @@ export interface DailyBreakdownItem {
   blocker_phase_label?: string | null;
   absence_reason?: string | null;
   is_pre_start?: boolean;
+  co_occupants?: DayCoOccupant[];
+}
+
+export interface DayCoOccupant {
+  item_key?: string | null;
+  phase_label: string;
+  hours: number;
 }
 
 export interface AbsenceWindowItem {

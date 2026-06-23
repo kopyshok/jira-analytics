@@ -106,6 +106,17 @@ export default function DailyBreakdownSection({
                     if (row.status === 'absence' && row.absence_reason) {
                       return row.absence_reason;
                     }
+                    if (row.status === 'work' && row.co_occupants && row.co_occupants.length > 0) {
+                      // Куда ушёл остаток дня: другие фазы этого сотрудника.
+                      return (
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          Остаток дня:{' '}
+                          {row.co_occupants
+                            .map((c) => `${c.item_key ?? '—'} · ${c.phase_label} (${c.hours.toFixed(1)} ч)`)
+                            .join(', ')}
+                        </Typography.Text>
+                      );
+                    }
                     if (row.is_pre_start && row.status === 'pre_start_idle') {
                       return 'до старта фазы';
                     }

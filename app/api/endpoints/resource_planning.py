@@ -363,6 +363,14 @@ class AssignmentOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DayCoOccupant(BaseModel):
+    """Другая фаза того же сотрудника, занявшая часть этого дня."""
+
+    item_key: Optional[str] = None
+    phase_label: str
+    hours: float
+
+
 class DailyBreakdownItem(BaseModel):
     date: date
     available_hours: float
@@ -380,6 +388,8 @@ class DailyBreakdownItem(BaseModel):
     blocker_phase_label: Optional[str] = None
     absence_reason: Optional[str] = None
     is_pre_start: bool = False
+    # Куда ушёл остаток дня: другие фазы того же сотрудника с часами в этот день.
+    co_occupants: List[DayCoOccupant] = []
 
 
 class AbsenceWindowItem(BaseModel):
@@ -2417,6 +2427,45 @@ def _build_algorithm_log(
     return log
 
 
+def _parse_daily_map(raw_json: Optional[str]) -> Dict[date, float]:
+    """daily_hours_json → {date: hours}; пустой/битый → {}."""
+    if not raw_json:
+        return {}
+    try:
+        raw = _json.loads(raw_json)
+        return {date.fromisoformat(k): float(v) for k, v in raw.items()}
+    except (_json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _day_co_occupants(
+    d: date,
+    employee_id: Optional[str],
+    others_parsed: List,
+    skip_assignment_id: Optional[str],
+) -> List[DayCoOccupant]:
+    """Другие фазы того же сотрудника, занявшие часы в день ``d``.
+
+    ``others_parsed`` — список ``(assignment, {date: hours})`` (часы уже
+    распарсены из daily_hours_json, чтобы не парсить json на каждый день).
+    """
+    out: List[DayCoOccupant] = []
+    for x, daily in others_parsed:
+        if x.id == skip_assignment_id:
+            continue
+        if employee_id is None or x.employee_id != employee_id:
+            continue
+        h = daily.get(d, 0.0)
+        if h > 0.01:
+            issue = x.backlog_item.issue if x.backlog_item else None
+            out.append(DayCoOccupant(
+                item_key=issue.key if issue else None,
+                phase_label=PHASE_RU.get(x.phase, x.phase),
+                hours=round(h, 2),
+            ))
+    return out
+
+
 def _build_daily_breakdown(
     a: "ResourcePlanAssignment",
     avail_map: Dict[date, float],
@@ -2433,13 +2482,11 @@ def _build_daily_breakdown(
     """
     if not a.start_date or not a.end_date:
         return []
-    daily_used: Dict[date, float] = {}
-    if a.daily_hours_json:
-        try:
-            raw = _json.loads(a.daily_hours_json)
-            daily_used = {date.fromisoformat(k): float(v) for k, v in raw.items()}
-        except (_json.JSONDecodeError, ValueError):
-            pass
+    daily_used = _parse_daily_map(a.daily_hours_json)
+    # Пред-парсим часы остальных назначений один раз — для co-occupant'ов.
+    others_parsed = [
+        (x, _parse_daily_map(x.daily_hours_json)) for x in other_assignments
+    ]
     items: List[DailyBreakdownItem] = []
     range_start = (
         expected_start
@@ -2462,6 +2509,14 @@ def _build_daily_breakdown(
             skip_assignment_id=a.id,
         )
         status = info["status"]
+        # На рабочем дне фаза могла взять лишь часть часов — остаток ушёл
+        # другим фазам этого сотрудника. Показываем их, чтобы было видно
+        # куда делось «Доступно − Потрачено».
+        co_occupants = (
+            _day_co_occupants(d, a.employee_id, others_parsed, a.id)
+            if status == "work"
+            else []
+        )
         items.append(DailyBreakdownItem(
             date=d,
             available_hours=avail_h,
@@ -2472,6 +2527,7 @@ def _build_daily_breakdown(
             blocker_phase_label=info.get("blocker_phase_label"),
             absence_reason=info.get("absence_reason"),
             is_pre_start=is_pre,
+            co_occupants=co_occupants,
         ))
         d += _timedelta(days=1)
     return items
