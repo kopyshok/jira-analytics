@@ -8,6 +8,10 @@ export const releaseNotesApi = {
   getAll: () => api.get<UnreadFeed>('/release-notes/all'),
   markSeen: (version: string) =>
     api.post<void>('/release-notes/mark-seen', { version }),
+  reseed: () =>
+    api.post<{ created: number; updated: number; unchanged: number; files: number }>(
+      '/release-notes/reseed', {}
+    ),
 
   // admin
   listDrafts: () => api.get<ReleaseNote[]>('/admin/release-notes/drafts'),

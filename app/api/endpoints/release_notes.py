@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.core.auth_deps import get_current_user
+from app.core.auth_deps import get_current_user, require_admin
 from app.database import get_db
 from app.models.user import User
 from app.schemas.release_note import (
@@ -11,6 +11,7 @@ from app.schemas.release_note import (
     UnreadResponse,
     VersionFeed,
 )
+from app.services.release_note_seed import seed_from_files
 from app.services.release_note_service import ReleaseNoteService, _ver_key
 
 
@@ -63,3 +64,16 @@ def mark_seen(
 ) -> None:
     svc = ReleaseNoteService(db)
     svc.mark_user_seen(user, body.version)
+
+
+@router.post("/reseed")
+def reseed(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    """Повторно применить release_notes/*.json к БД без перезапуска сервиса.
+
+    Тот же сидер, что и при старте (идемпотентен по version+title). Кнопка в
+    админке «Что нового» — страховка на случай, если деплой прошёл без рестарта.
+    """
+    return seed_from_files(db)

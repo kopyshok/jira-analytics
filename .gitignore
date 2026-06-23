@@ -82,3 +82,6 @@ design-reference/
 test.md
 .superpowers/
 tour/
+
+# graphify knowledge graph — локально, только для разработки
+graphify-out/
