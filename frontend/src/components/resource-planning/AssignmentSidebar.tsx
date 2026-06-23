@@ -449,7 +449,7 @@ function InvolvementEditor({
         max={100}
         value={pct ?? undefined}
         onChange={(v) => setPct(typeof v === 'number' ? v : null)}
-        addonAfter="%"
+        suffix="%"
         style={{ width: 110 }}
         disabled={saving}
         onPressEnter={save}
