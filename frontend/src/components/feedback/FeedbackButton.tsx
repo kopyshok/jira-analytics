@@ -9,6 +9,7 @@ import {
   type FeedbackContext,
 } from '../../utils/errorStore';
 import { feedbackApi } from '../../api/feedback';
+import { copyText } from '../../utils/clipboard';
 import FeedbackDrawer from './FeedbackDrawer';
 
 function buildQuickMarkdown(ctx: FeedbackContext): string {
@@ -56,11 +57,7 @@ export default function FeedbackButton() {
     try {
       const ctx = buildContext();
       const md = buildQuickMarkdown(ctx);
-      try {
-        await navigator.clipboard.writeText(md);
-      } catch {
-        // буфер недоступен (HTTP/iframe) — продолжаем серверную отправку
-      }
+      const copied = await copyText(md);
       await feedbackApi.createBug({
         title: 'Быстрый баг-репорт',
         body: '— быстрый репорт без описания, см. контекст',
@@ -70,7 +67,7 @@ export default function FeedbackButton() {
       clearErrors();
       notification.success({
         title: 'Баг отправлен',
-        description: 'Скопирован в буфер и ушёл админу',
+        description: copied ? 'Скопирован в буфер и ушёл админу' : 'Ушёл админу',
       });
     } catch (e) {
       notification.error({

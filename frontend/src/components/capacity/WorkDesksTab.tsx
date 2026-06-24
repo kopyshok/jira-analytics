@@ -9,6 +9,7 @@ import {
   useWorkDesks, useCreateDesk, useUpdateDeskWidgets, useRevokeDesk, useRegenerateDesk,
 } from '../../hooks/useWorkDesks';
 import { WIDGET_CATALOG } from '../desk/widgetCatalog';
+import { copyText } from '../../utils/clipboard';
 import type { WorkDeskListItem } from '../../api/workDesks';
 
 interface Row {
@@ -103,24 +104,9 @@ export default function WorkDesksTab() {
   const copyLink = async (desk: WorkDeskListItem) => {
     if (!desk.desk_url_path) return;
     const url = window.location.origin + desk.desk_url_path;
-    try {
-      // navigator.clipboard доступен только в secure context (HTTPS/localhost);
-      // на проде по HTTP его нет — fallback на execCommand через временный textarea
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = url;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (!ok) throw new Error('execCommand copy failed');
-      }
+    if (await copyText(url)) {
       message.success('Ссылка скопирована');
-    } catch {
+    } else {
       message.error('Не удалось скопировать ссылку');
     }
   };
