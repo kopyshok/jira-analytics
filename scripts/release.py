@@ -13,7 +13,7 @@
 
 Первый релиз (нет предыдущего тэга): по умолчанию `v1.0.0`.
 
-После подтверждения вызывает `make release VERSION=...`, который:
+После подтверждения (кросс-платформенно, без make):
     - бампит `app/config.py` и `frontend/package.json`
     - делает commit `chore(release): vX.Y.Z`
     - ставит annotated tag `vX.Y.Z`
@@ -108,6 +108,27 @@ def bump_version(version: str, kind: str) -> str:
     if kind == "minor":
         return f"{major}.{minor + 1}.0"
     return f"{major}.{minor}.{patch + 1}"
+
+
+def bump_version_files(plain: str) -> None:
+    """Прописать версию `plain` (без 'v') в app/config.py и frontend/package.json."""
+    import json
+
+    cfg = REPO_ROOT / "app" / "config.py"
+    s = cfg.read_text(encoding="utf-8")
+    s2 = re.sub(
+        r'app_version: str = "[^"]*"',
+        f'app_version: str = "{plain}"',
+        s,
+    )
+    if s == s2:
+        raise SystemExit("Не нашёл app_version в app/config.py — бамп не применён.")
+    cfg.write_text(s2, encoding="utf-8")
+
+    pkg = REPO_ROOT / "frontend" / "package.json"
+    data = json.loads(pkg.read_text(encoding="utf-8"))
+    data["version"] = plain
+    pkg.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 def ensure_clean_tree() -> None:
@@ -262,20 +283,18 @@ def main() -> None:
             )
             raise SystemExit(bind.returncode)
 
-    # Stage release_notes — Makefile проверяет только unstaged.
-    subprocess.run(
-        ["git", "add", "release_notes"], cwd=REPO_ROOT, check=False,
-    )
-
-    print(f"\nЗапуск: make release VERSION={target}")
-    result = subprocess.run(
-        ["make", "release", f"VERSION={target}"], cwd=REPO_ROOT, check=False
-    )
-    if result.returncode != 0:
-        raise SystemExit(result.returncode)
+    # Бамп версий + commit + tag — нативно на Python (раньше был `make release`,
+    # но POSIX-синтаксис Makefile падает под Windows cmd).
+    plain = target.lstrip("v")
+    bump_version_files(plain)
+    run(["git", "add", "app/config.py", "frontend/package.json", "release_notes"])
+    run(["git", "commit", "-m", f"chore(release): {target}"])
+    run(["git", "tag", "-a", target, "-m", f"Release {target}"])
 
     print(
-        "\nГотово. После push релиз-заметки попадут на прод автоматически "
+        f"\nЛокально создан commit + tag {target}. Чтобы запустить релизный пайплайн:\n"
+        f"  git push origin main && git push origin {target}\n"
+        "\nПосле push релиз-заметки попадут на прод автоматически "
         "(сидер на старте контейнера прочитает release_notes/*.json)."
     )
 
