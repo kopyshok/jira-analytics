@@ -71,7 +71,10 @@ def _normalize_color(color: Optional[str]) -> Optional[str]:
     if not color:
         return color
     c = color.strip()
-    if c.startswith("#") and len(c) > 7:
+    # Колонка хранит ровно #RRGGBB (7 символов). Любая более длинная строка
+    # (8-значный hex с альфой ИЛИ rgb()/hsb() при смене формата в ColorPicker)
+    # на Postgres даёт ошибку длины → 500. Обрезаем до лимита колонки.
+    if len(c) > 7:
         c = c[:7]
     return c
 

@@ -272,7 +272,7 @@ export default function CategoriesTab() {
           >
             <Input placeholder="авто из названия" />
           </Form.Item>
-          <Form.Item name="color" label="Цвет" initialValue="#8c8c8c" getValueFromEvent={(_, hex: string) => hex}>
+          <Form.Item name="color" label="Цвет" initialValue="#8c8c8c" getValueFromEvent={(value: AggregationColor) => value.toHexString()}>
             <ColorPicker disabledAlpha />
           </Form.Item>
         </Form>
