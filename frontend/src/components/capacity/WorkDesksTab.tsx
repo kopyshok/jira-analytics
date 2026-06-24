@@ -104,7 +104,21 @@ export default function WorkDesksTab() {
     if (!desk.desk_url_path) return;
     const url = window.location.origin + desk.desk_url_path;
     try {
-      await navigator.clipboard.writeText(url);
+      // navigator.clipboard доступен только в secure context (HTTPS/localhost);
+      // на проде по HTTP его нет — fallback на execCommand через временный textarea
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('execCommand copy failed');
+      }
       message.success('Ссылка скопирована');
     } catch {
       message.error('Не удалось скопировать ссылку');
