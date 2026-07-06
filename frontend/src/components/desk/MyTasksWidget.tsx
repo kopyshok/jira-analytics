@@ -60,6 +60,19 @@ function WorkTypeGauge({ wt }: { wt: DeskWorkType }) {
   );
 }
 
+// Внешний ресурс (не члены команды) — вне плана/факта, только часы.
+function ExternalPlaque({ hours }: { hours: number }) {
+  return (
+    <>
+      <div className="desk-ext-divider" />
+      <div className="desk-ext-card" title="Внешний ресурс (не члены команды) — вне плана/факта">
+        <div className="desk-ext-name">Внешние</div>
+        <div className="desk-ext-hours mono">{Math.round(hours)} ч</div>
+      </div>
+    </>
+  );
+}
+
 function JiraKey({ k, url }: { k: string; url: string | null }) {
   return url ? (
     <a className="desk-jira-key desk-jira-key-link" href={url} target="_blank" rel="noreferrer">{k}</a>
@@ -136,17 +149,15 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
             {Math.round(p.fact_hours)} / {Math.round(p.norm_hours)} ч
           </div>
           <span className={`desk-overall-pct ${pct}`}>{Math.round(p.pct)}%</span>
-          {p.info_hours != null && p.info_hours > 0 && (
-            <div className="desk-overall-info" title="Внешняя помощь и часы без роли — вне плана/факта">
-              +{Math.round(p.info_hours)} ч прочее
-            </div>
-          )}
         </div>
         {workTypes.length > 0 && (
           <div className="desk-row-rings">
             {workTypes.map((wt) => (
               <WorkTypeGauge key={wt.code} wt={wt} />
             ))}
+            {p.info_hours != null && p.info_hours > 0 && (
+              <ExternalPlaque hours={p.info_hours} />
+            )}
           </div>
         )}
       </div>
@@ -188,6 +199,7 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
     };
   });
   const analystTotal = totalWorkTypes.find((wt) => wt.code === 'analyst');
+  const totalInfo = projects.reduce((s, p) => s + (p.info_hours ?? 0), 0);
 
   return (
     <WidgetShell
@@ -226,6 +238,7 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
               {totalWorkTypes.map((wt) => (
                 <WorkTypeGauge key={wt.code} wt={wt} />
               ))}
+              {totalInfo > 0 && <ExternalPlaque hours={totalInfo} />}
             </div>
           </>
         )}
