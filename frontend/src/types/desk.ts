@@ -62,6 +62,8 @@ export interface DeskProject {
   pct: number;
   /** 4 вида работ: analyst, dev, qa, opo. */
   work_types?: DeskWorkType[];
+  /** Прочие часы (внешняя помощь / без роли) — вне план/факта, информационно. */
+  info_hours?: number;
   children?: ProjectChild[];
 }
 

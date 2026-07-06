@@ -369,22 +369,26 @@ def _role_breakdown(
     subtree: Dict[str, set],
     q_start: date,
     q_end: date,
+    team_ids: set[str],
 ) -> Dict[str, dict]:
     """План/факт проекта по 4 видам работ (analyst/dev/qa/opo).
 
     План — плановые часы всех фаз проекта в ресурсном плане
     (`hours_allocated ?? оценка роли`, как у текущей строки Анализа), а не
-    только фазы аналитика. Факт — командный: ворклоги по всему поддереву
-    задачи, сгруппированные по роли автора (`Employee.role`). У ОПЭ нет
-    роли-сотрудника, поэтому факт ОПЭ ≈ 0.
+    только фазы аналитика. Факт — по ролям авторов ворклогов всего поддерева:
+    роль РП засчитывается в Анализ; ОПЭ у авторов нет, поэтому факт ОПЭ ≈ 0.
 
-    Возвращает {root_issue_id: {"plan": {role: ч}, "fact": {role: ч}}}.
+    Часы авторов вне команды (внешняя помощь) и без плитки-роли идут в
+    «прочее» (`info`) — они не входят в план/факт, показываются информационно.
+
+    Возвращает {root_issue_id: {"plan": {role: ч}, "fact": {role: ч}, "info": ч}}.
     """
     from app.models import BacklogItem, Employee, ResourcePlanAssignment, Worklog
 
     ids = [i for i in root_ids if i]
     out: Dict[str, dict] = {
-        i: {"plan": {r: 0.0 for r in _ROLES}, "fact": {r: 0.0 for r in _ROLES}}
+        i: {"plan": {r: 0.0 for r in _ROLES}, "fact": {r: 0.0 for r in _ROLES},
+            "info": 0.0}
         for i in ids
     }
     if not ids:
@@ -423,6 +427,7 @@ def _role_breakdown(
         rows = (
             db.query(
                 Worklog.issue_id,
+                Worklog.employee_id,
                 Employee.role,
                 func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
             )
@@ -431,16 +436,21 @@ def _role_breakdown(
                 Worklog.issue_id.in_(all_ids),
                 Worklog.started_at <= end_dt,
             )
-            .group_by(Worklog.issue_id, Employee.role)
+            .group_by(Worklog.issue_id, Worklog.employee_id, Employee.role)
             .all()
         )
-        for issue_id, role, hours in rows:
-            r = (role or "").lower()
-            if r not in _ROLES:
-                continue
+        for issue_id, emp_id, role, hours in rows:
             root = issue_to_root.get(issue_id)
-            if root in out:
-                out[root]["fact"][r] += float(hours or 0.0)
+            if root not in out:
+                continue
+            h = float(hours or 0.0)
+            r = (role or "").lower()
+            if r == "rp":  # РП засчитываем в Анализ
+                r = "analyst"
+            if emp_id in team_ids and r in _ROLES:
+                out[root]["fact"][r] += h
+            else:  # внешняя помощь / роль без плитки — информационно
+                out[root]["info"] += h
 
     # ОПЭ нельзя зафиксировать по факту отдельно — план ОПЭ распределяем на
     # Анализ/Разработку по коэффициенту деления (opo_analyst_ratio), плашку ОПЭ
@@ -478,6 +488,20 @@ def _assignment_norm(a) -> float:
 # ──────────────────────────────────────────────────────────────────────────
 
 
+def _team_member_ids(db: Session, teams: List[str]) -> set[str]:
+    """ID сотрудников команд стола + QA (общий ресурс компании)."""
+    from app.models import Employee
+    from app.models.employee_team import EmployeeTeam
+
+    ids: set[str] = set()
+    if teams:
+        rows = db.query(EmployeeTeam.employee_id).filter(EmployeeTeam.team.in_(teams)).all()
+        ids = {r[0] for r in rows}
+    qa_rows = db.query(Employee.id).filter(Employee.role == "qa").all()
+    ids |= {r[0] for r in qa_rows}
+    return ids
+
+
 def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
     """Проекты текущего сотрудника в свежем ресурсном плане квартала."""
     teams = _desk_teams(desk)
@@ -491,10 +515,14 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
     issue_ids = [p.get("issue_id") for p in projects if p.get("issue_id")]
     children = _project_children(db, desk.employee_id, issue_ids, q_start, q_end)
 
+    # Члены команды стола (+ QA как общий ресурс) — их часы идут в план/факт,
+    # часы остальных авторов уходят в «прочее» (внешняя помощь, информационно).
+    team_ids = _team_member_ids(db, teams)
+
     # Факт проекта — по всему поддереву задачи (списания висят на подзадачах).
     subtree = _subtree_ids(db, issue_ids)
     # План/факт по 4 видам работ (analyst/dev/qa/opo) — как в карточке проекта.
-    breakdown = _role_breakdown(db, plan.id, issue_ids, subtree, q_start, q_end)
+    breakdown = _role_breakdown(db, plan.id, issue_ids, subtree, q_start, q_end, team_ids)
     for p in projects:
         iid = p.get("issue_id")
         p["children"] = children.get(iid, [])
@@ -502,6 +530,7 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
         if bd is None:
             # Нет связанной задачи — разбивку не построить, показываем только
             # Анализ из существующего плана/факта строки.
+            p["info_hours"] = 0.0
             p["work_types"] = [
                 {
                     "code": role,
@@ -531,6 +560,8 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
         p["norm_hours"] = round(sum(w["plan_hours"] for w in work_types), 1)
         p["fact_hours"] = round(sum(w["fact_hours"] for w in work_types), 1)
         p["pct"] = round(p["fact_hours"] / p["norm_hours"] * 100) if p["norm_hours"] > 0 else 0
+        # Прочие часы (внешняя помощь / без роли) — вне план/факта, информационно.
+        p["info_hours"] = round(bd["info"], 1)
     # Приоритет (из сценария): выше число — важнее, наверх; без приоритета — вниз.
     projects.sort(key=lambda p: (p.get("priority") is None, -(p.get("priority") or 0)))
     return {"projects": projects}
