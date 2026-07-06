@@ -1086,6 +1086,12 @@
   padding: 1px 7px;
   border-radius: var(--radius-sm);
 }
+.desk-overall-info {
+  font-size: 10px;
+  color: var(--ink-3, #8a94a6);
+  white-space: nowrap;
+  margin-top: 2px;
+}
 .desk-row-rings {
   display: flex;
   flex-direction: row;

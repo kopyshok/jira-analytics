@@ -571,6 +571,8 @@ def test_my_tasks_work_types_split_plan_and_fact_by_role(db_session, seed_employ
         status="ready", computed_at=datetime.utcnow(),
     )
     db_session.add_all([dev, proj, parent, item, plan])
+    db_session.add(EmployeeTeam(id="et-dev-split", employee_id=dev.id,
+                                team="Alpha", is_primary=True))
     db_session.add_all([
         ResourcePlanAssignment(
             id="rpa-an", plan_id="plan-1", backlog_item_id="bi-1",
@@ -608,6 +610,50 @@ def test_my_tasks_work_types_split_plan_and_fact_by_role(db_session, seed_employ
     assert wt["qa"]["plan_hours"] == 0.0
     assert out["projects"][0]["norm_hours"] == 40.0
     assert out["projects"][0]["fact_hours"] == 12.0
+
+
+def test_my_tasks_rp_counts_as_analyst_and_external_goes_to_info(db_session, seed_employee):
+    """РП засчитывается в Анализ; часы автора вне команды — в «прочее» (вне план/факта)."""
+    year, quarter = _current_quarter()
+    month = {1: 1, 2: 4, 3: 7, 4: 10}[quarter]
+    rp = Employee(id="emp-rp", jira_account_id="acc-rp", display_name="Руководитель",
+                  is_active=True, role="RP", team="Alpha", synced_at=datetime.utcnow())
+    ext = Employee(id="emp-ext", jira_account_id="acc-ext", display_name="Внешний Помощник",
+                   is_active=True, role="dev", team="Beta", synced_at=datetime.utcnow())
+    proj = Project(id="prj-2", jira_project_id="20000", key="ITL", name="ITL", is_active=True)
+    parent = Issue(id="iss-Q", jira_issue_id="ji-Q", key="ITL-9", summary="Инициатива",
+                   issue_type="Задача", status="In Progress", status_category="indeterminate",
+                   project_id="prj-2", participating_teams="[]")
+    item = BacklogItem(id="bi-2", title="Инициатива B", issue_id="iss-Q")
+    plan = ResourcePlan(id="plan-2", team="Alpha", year=year, quarter=str(quarter),
+                        status="ready", computed_at=datetime.utcnow())
+    db_session.add_all([rp, ext, proj, parent, item, plan])
+    # rp — член команды Alpha; ext — только Beta (для стола Alpha он внешний)
+    db_session.add_all([
+        EmployeeTeam(id="et-rp", employee_id=rp.id, team="Alpha", is_primary=True),
+        EmployeeTeam(id="et-ext", employee_id=ext.id, team="Beta", is_primary=True),
+    ])
+    db_session.add(ResourcePlanAssignment(
+        id="rpa-an2", plan_id="plan-2", backlog_item_id="bi-2",
+        phase="analyst", employee_id=seed_employee.id, hours_allocated=10.0,
+    ))
+    db_session.add_all([
+        Worklog(id="wl-rp", jira_worklog_id="jwl-rp", issue_id="iss-Q",
+                employee_id=rp.id, started_at=datetime(year, month, 15, 10),
+                time_spent_seconds=3600, hours=3.0),
+        Worklog(id="wl-ext", jira_worklog_id="jwl-ext", issue_id="iss-Q",
+                employee_id=ext.id, started_at=datetime(year, month, 16, 10),
+                time_spent_seconds=3600, hours=8.0),
+    ])
+    db_session.commit()
+    desk = _make_desk(db_session, seed_employee.id)
+    out = _dispatch(db_session, desk, "my_tasks")
+    row = out["projects"][0]
+    wt = {w["code"]: w for w in row["work_types"]}
+    assert wt["analyst"]["fact_hours"] == 3.0  # РП → Анализ
+    assert wt["dev"]["fact_hours"] == 0.0      # внешний dev не в факте
+    assert row["fact_hours"] == 3.0            # только командные часы
+    assert row["info_hours"] == 8.0            # внешняя помощь — информационно
 
 
 # ── team_availability: исключение разработчиков и сотрудника стола ───────────

@@ -136,6 +136,11 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
             {Math.round(p.fact_hours)} / {Math.round(p.norm_hours)} ч
           </div>
           <span className={`desk-overall-pct ${pct}`}>{Math.round(p.pct)}%</span>
+          {p.info_hours != null && p.info_hours > 0 && (
+            <div className="desk-overall-info" title="Внешняя помощь и часы без роли — вне плана/факта">
+              +{Math.round(p.info_hours)} ч прочее
+            </div>
+          )}
         </div>
         {workTypes.length > 0 && (
           <div className="desk-row-rings">
