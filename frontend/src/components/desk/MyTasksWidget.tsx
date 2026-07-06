@@ -61,15 +61,21 @@ function WorkTypeGauge({ wt }: { wt: DeskWorkType }) {
 }
 
 // Внешний ресурс (не члены команды) — вне плана/факта, только часы.
+// Карточка фиксированной ширины: держит колонку даже при нуле (пустая).
 function ExternalPlaque({ hours }: { hours: number }) {
+  const has = hours > 0;
   return (
-    <>
-      <div className="desk-ext-divider" />
-      <div className="desk-ext-card" title="Внешний ресурс (не члены команды) — вне плана/факта">
-        <div className="desk-ext-name">Внешние</div>
-        <div className="desk-ext-hours mono">{Math.round(hours)} ч</div>
-      </div>
-    </>
+    <div
+      className={`desk-ext-card${has ? '' : ' empty'}`}
+      title={has ? 'Внешний ресурс (не члены команды) — вне плана/факта' : undefined}
+    >
+      {has && (
+        <>
+          <div className="desk-ext-name">Внешние</div>
+          <div className="desk-ext-hours mono">{Math.round(hours)} ч</div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -155,9 +161,7 @@ function ProjectRow({ p, activeNow }: { p: DeskProject; activeNow: boolean }) {
             {workTypes.map((wt) => (
               <WorkTypeGauge key={wt.code} wt={wt} />
             ))}
-            {p.info_hours != null && p.info_hours > 0 && (
-              <ExternalPlaque hours={p.info_hours} />
-            )}
+            <ExternalPlaque hours={p.info_hours ?? 0} />
           </div>
         )}
       </div>
@@ -238,7 +242,7 @@ export default function MyTasksWidget({ token, title }: { token: string; title: 
               {totalWorkTypes.map((wt) => (
                 <WorkTypeGauge key={wt.code} wt={wt} />
               ))}
-              {totalInfo > 0 && <ExternalPlaque hours={totalInfo} />}
+              <ExternalPlaque hours={totalInfo} />
             </div>
           </>
         )}
