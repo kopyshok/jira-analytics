@@ -429,11 +429,13 @@
   flex-direction: column;
   gap: 4px;
 }
-.desk-child-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
-.desk-child-row .desk-status-dot { width: 6px; height: 6px; margin: 0; }
+.desk-child-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.desk-child-row .desk-status-dot { width: 7px; height: 7px; margin: 0; }
+.desk-child-row .desk-jira-key { font-size: 12px; }
 .desk-child-name { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-child-name a { color: var(--ink-2); }
 .desk-child-name a:hover { color: var(--accent); }
+.desk-child-status { flex-shrink: 0; font-size: 11px; }
 .desk-child-hrs { margin-left: auto; color: var(--ink-4); white-space: nowrap; flex-shrink: 0; }
 .desk-project-dates { font-size: 11px; color: var(--ink-3); }
 

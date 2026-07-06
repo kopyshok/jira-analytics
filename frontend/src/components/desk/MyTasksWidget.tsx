@@ -98,6 +98,9 @@ function ChildRow({ c }: { c: ProjectChild }) {
           <a href={c.jira_url} target="_blank" rel="noreferrer">{c.title ?? c.key ?? '—'}</a>
         ) : (c.title ?? c.key ?? '—')}
       </span>
+      {c.status && (
+        <span className={`desk-status-badge desk-badge-${kind} desk-child-status`}>{c.status}</span>
+      )}
       <span className="desk-child-hrs">{Math.round(c.fact_hours)} ч</span>
     </div>
   );
