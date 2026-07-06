@@ -117,10 +117,12 @@ def _worklog_fact_map(
     q_start: date,
     q_end: date,
 ) -> Dict[tuple[str, str], float]:
-    """Сумма Worklog.hours по парам (employee_id, issue_id) за квартал.
+    """Накопительная сумма Worklog.hours по парам (employee_id, issue_id).
 
-    Один сгруппированный запрос на все пары — без N+1. Окно конкретного
-    назначения сужается вызывающим кодом (он знает start/end ассайнмента).
+    Один сгруппированный запрос на все пары — без N+1. Факт считается от старта
+    инициативы до конца квартала (нижней границы нет): проекты часто начинаются
+    раньше квартала, а план остаётся квартальным. ``q_start`` сохранён в
+    сигнатуре для совместимости вызовов.
     """
     if not pairs:
         return {}
@@ -128,7 +130,6 @@ def _worklog_fact_map(
 
     emp_ids = {p[0] for p in pairs}
     issue_ids = {p[1] for p in pairs}
-    start_dt = datetime.combine(q_start, time.min)
     end_dt = datetime.combine(q_end, time.max)
     rows = (
         db.query(
@@ -139,7 +140,6 @@ def _worklog_fact_map(
         .filter(
             Worklog.employee_id.in_(emp_ids),
             Worklog.issue_id.in_(issue_ids),
-            Worklog.started_at >= start_dt,
             Worklog.started_at <= end_dt,
         )
         .group_by(Worklog.employee_id, Worklog.issue_id)
@@ -417,7 +417,8 @@ def _role_breakdown(
             issue_to_root[iid] = root
     all_ids = list(issue_to_root.keys())
     if all_ids:
-        start_dt = datetime.combine(q_start, time.min)
+        # Накопительный факт: от старта инициативы до конца квартала (без нижней
+        # границы) — проекты часто стартуют раньше квартала; план квартальный.
         end_dt = datetime.combine(q_end, time.max)
         rows = (
             db.query(
@@ -428,7 +429,6 @@ def _role_breakdown(
             .join(Employee, Employee.id == Worklog.employee_id)
             .filter(
                 Worklog.issue_id.in_(all_ids),
-                Worklog.started_at >= start_dt,
                 Worklog.started_at <= end_dt,
             )
             .group_by(Worklog.issue_id, Employee.role)

@@ -655,3 +655,57 @@ def test_dashboard_projects_qa_role_counts_as_team(testclient_db_session):
         assert data["alien_projects_count"] == 0
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_dashboard_projects_fact_is_cumulative_across_quarters(testclient_db_session):
+    """Часы, залогированные в прошлом квартале, входят в факт текущего квартала.
+
+    Инициатива стартует раньше квартала — план квартальный, факт накопительный.
+    """
+    from datetime import datetime
+    from uuid import uuid4
+    from app.database import get_db
+    from app.models import Issue, Worklog, Employee, EmployeeTeam
+
+    db = testclient_db_session
+    team = "Команда Сквозная"
+    rfa_id, scn, bi, project = _seed_rfa_with_tree(db, team=team)
+    # Сценарий утверждён на Q3, а работы начались ещё в Q2.
+    scn.name, scn.quarter = "Q3 2026", "Q3"
+
+    epic_id, task_id = str(uuid4()), str(uuid4())
+    db.add_all([
+        Issue(id=epic_id, jira_issue_id="e_cq", key="CQ-1", summary="Эпик",
+              issue_type="Epic", status="In Progress", status_category="indeterminate",
+              project_id=project.id, parent_id=rfa_id, team=team),
+        Issue(id=task_id, jira_issue_id="t_cq", key="CQ-2", summary="Задача",
+              issue_type="Task", status="In Progress", status_category="indeterminate",
+              project_id=project.id, parent_id=epic_id),
+    ])
+
+    own = Employee(id=str(uuid4()), jira_account_id="acc_cq",
+                   display_name="Свой Пётр", is_active=True)
+    db.add(own)
+    db.add(EmployeeTeam(id=str(uuid4()), employee_id=own.id, team=team, is_primary=True))
+
+    # 40ч в Q2 (апрель) + 10ч в Q3 (июль) — итого 50 в накопительном факте
+    db.add_all([
+        Worklog(id=str(uuid4()), jira_worklog_id="wl_q2", issue_id=task_id,
+                employee_id=own.id, started_at=datetime(2026, 4, 15, 10, 0, 0),
+                time_spent_seconds=40*3600, hours=40.0),
+        Worklog(id=str(uuid4()), jira_worklog_id="wl_q3", issue_id=task_id,
+                employee_id=own.id, started_at=datetime(2026, 7, 5, 10, 0, 0),
+                time_spent_seconds=10*3600, hours=10.0),
+    ])
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        c = TestClient(app)
+        resp = c.get(f"/api/v1/analytics/dashboard/projects?year=2026&quarter=3&teams={team}")
+        assert resp.status_code == 200, resp.text
+        item = resp.json()["projects"][0]
+        assert item["fact_hours"] == 50.0, item
+        assert item["team_fact_hours"] == 50.0, item
+    finally:
+        app.dependency_overrides.pop(get_db, None)

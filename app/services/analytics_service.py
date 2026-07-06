@@ -389,14 +389,15 @@ class AnalyticsService:
             candidates = [c for c in candidates if c is not None]
             return max(candidates) if candidates else None
 
-        # Суммарный факт по эпику (включая детей) в пределах периода
-        period_start_dt = datetime.combine(period_start, datetime.min.time())
+        # Накопительный факт по эпику (включая детей): от старта инициативы до
+        # конца выбранного периода. Инициативы часто стартуют раньше квартала —
+        # нижнюю границу не ставим, чтобы не терять часы прошлых кварталов.
+        # План при этом остаётся квартальным.
         period_end_dt = datetime.combine(period_end, datetime.max.time())
         fact_rows = (
             self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
             .filter(
                 Worklog.issue_id.in_(all_wl_ids),
-                Worklog.started_at >= period_start_dt,
                 Worklog.started_at <= period_end_dt,
             )
             .group_by(Worklog.issue_id)
@@ -413,7 +414,6 @@ class AnalyticsService:
                     self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
                     .filter(
                         Worklog.issue_id.in_(all_wl_ids),
-                        Worklog.started_at >= period_start_dt,
                         Worklog.started_at <= period_end_dt,
                         Worklog.employee_id.in_(team_employee_ids),
                     )
