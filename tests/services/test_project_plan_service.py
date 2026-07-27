@@ -1,6 +1,6 @@
 """ProjectPlanService: план/факт проекта по видам работ."""
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -284,6 +284,65 @@ def test_portfolio_sums_projects_and_keeps_external_apart(db_session):
     assert [r["key"] for r in pf["timeline"]["rows"]] == ["PP-1"]
 
 
+def test_portfolio_sums_across_projects_with_separate_team_per_project(db_session):
+    """Два проекта разных команд: план/факт суммируются, но состав команды —
+    и то, кто «свой», а кто «внешний» — считается отдельно для каждого
+    проекта, а не одним списком на весь портфель (спека §3.3).
+    """
+    db = db_session
+
+    db.add(Project(id="pa", jira_project_id="pa", key="PA", name="Project A"))
+    db.add(Issue(id="paroot", jira_issue_id="40", key="PA-1", summary="Проект A",
+                 issue_type="Epic", status="В работе", project_id="pa",
+                 category="quarterly_tasks", include_in_analysis=True, team="A"))
+    item_a = _uid()
+    db.add(BacklogItem(id=item_a, title="Проект A", issue_id="paroot"))
+    plan_a = _uid()
+    db.add(ResourcePlan(id=plan_a, team="A", year=2026, quarter="Q3",
+                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_a, backlog_item_id=item_a,
+                                  phase="analyst", hours_allocated=50.0,
+                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 31)))
+
+    db.add(Project(id="pb", jira_project_id="pb", key="PB", name="Project B"))
+    db.add(Issue(id="pbroot", jira_issue_id="41", key="PB-1", summary="Проект B",
+                 issue_type="Epic", status="В работе", project_id="pb",
+                 category="quarterly_tasks", include_in_analysis=True, team="B"))
+    item_b = _uid()
+    db.add(BacklogItem(id=item_b, title="Проект B", issue_id="pbroot"))
+    plan_b = _uid()
+    db.add(ResourcePlan(id=plan_b, team="B", year=2026, quarter="Q3",
+                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_b, backlog_item_id=item_b,
+                                  phase="dev", hours_allocated=30.0,
+                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 31)))
+
+    emp_a = _employee(db, "Сотрудник A", "analyst", "A")
+    emp_b = _employee(db, "Сотрудник B", "dev", "B")
+
+    # На проекте A свой аналитик работает как обычно, сотрудник команды B —
+    # гость (для проекта A он внешний).
+    _worklog(db, emp_a, "paroot", 10.0, datetime(2026, 7, 10))
+    _worklog(db, emp_b, "paroot", 4.0, datetime(2026, 7, 11))
+    # На проекте B — симметрично наоборот.
+    _worklog(db, emp_b, "pbroot", 6.0, datetime(2026, 7, 12))
+    _worklog(db, emp_a, "pbroot", 3.0, datetime(2026, 7, 13))
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["PA-1", "PB-1"], year=2026, quarter=3)
+
+    assert pf["project_count"] == 2
+    assert pf["total_plan"] == 80.0  # 50 (A) + 30 (B)
+    by_code = {w["code"]: w for w in pf["work_types"]}
+    # Только «свои» часы: аналитик A на своём проекте, разработчик B на своём.
+    assert by_code["analyst"]["fact_hours"] == 10.0
+    assert by_code["dev"]["fact_hours"] == 6.0
+    assert pf["total_fact"] == 16.0
+    # Гостевые часы (B на A и A на B) — во «Внешних», не должны схлопнуться
+    # в 0 или потеряться.
+    assert pf["external_hours"] == 7.0  # 4 (B на A) + 3 (A на B)
+
+
 def test_portfolio_signal_overload(db_session):
     db = db_session
     db.add(Project(id="ov", jira_project_id="ov", key="OV", name="Overload"))
@@ -318,7 +377,12 @@ def test_portfolio_empty_list(db_session):
 
 
 def test_portfolio_signal_silent(db_session):
-    """Последнее списание больше 14 дней до конца квартала — сигнал «молчит»."""
+    """Квартал уже завершился — «молчит» считается от конца квартала.
+
+    2020 Q1 гарантированно в прошлом на любой реальной дате прогона теста,
+    поэтому ``min(today, fact_until)`` берёт ``fact_until`` — это ветка
+    «квартал закрыт», где поведение после фикса не должно было измениться.
+    """
     db = db_session
     db.add(Project(id="sl", jira_project_id="sl", key="SL", name="Silent"))
     db.add(Issue(id="slroot", jira_issue_id="31", key="SL-1", summary="Молчит",
@@ -327,18 +391,18 @@ def test_portfolio_signal_silent(db_session):
     item_id = _uid()
     db.add(BacklogItem(id=item_id, title="Молчит", issue_id="slroot"))
     plan_id = _uid()
-    db.add(ResourcePlan(id=plan_id, team="T", year=2026, quarter="Q3",
-                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlan(id=plan_id, team="T", year=2020, quarter="Q1",
+                        computed_at=datetime(2020, 1, 20)))
     db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
                                   phase="analyst", hours_allocated=20.0,
-                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 30)))
+                                  start_date=date(2020, 1, 1), end_date=date(2020, 1, 30)))
     emp = _employee(db, "Аналитик", "analyst", "T")
-    # Последнее (и единственное) списание 1 августа — до конца квартала (30 сентября)
-    # больше 14 дней тишины.
-    _worklog(db, emp, "slroot", 10.0, datetime(2026, 8, 1))
+    # Последнее (и единственное) списание 5 января — квартал завершился 31 марта,
+    # больше 14 дней тишины до конца квартала.
+    _worklog(db, emp, "slroot", 10.0, datetime(2020, 1, 5))
     db.commit()
 
-    pf = ProjectPlanService(db).get_portfolio(["SL-1"], year=2026, quarter=3)
+    pf = ProjectPlanService(db).get_portfolio(["SL-1"], year=2020, quarter=1)
 
     assert pf["signals"] == [
         {"kind": "silent", "text": "1 проект без списаний 14+ дней", "severity": "warn"},
@@ -367,8 +431,46 @@ def test_portfolio_no_worklogs_is_not_silent(db_session):
     assert pf["signals"] == []
 
 
+def test_portfolio_recent_worklog_in_open_quarter_is_not_silent(db_session):
+    """Регрессионный тест на баг: квартал ещё не закончился, списание было
+    вчера — «молчит» не должен сработать просто потому, что до конца
+    квартала формально ещё больше 14 дней.
+
+    Квартал взят далеко в будущем (2030 Q4), чтобы его конец гарантированно
+    был позже реального «сегодня» на любой дате прогона теста — это и есть
+    ветка «квартал открыт», где ``min(today, fact_until)`` обязан взять
+    ``today``. На старом коде (cutoff = fact_until) этот тест падает.
+    """
+    db = db_session
+    db.add(Project(id="rc", jira_project_id="rc", key="RC", name="Recent"))
+    db.add(Issue(id="rcroot", jira_issue_id="34", key="RC-1", summary="Живой проект",
+                 issue_type="Epic", status="В работе", project_id="rc",
+                 category="quarterly_tasks", include_in_analysis=True, team="T"))
+    item_id = _uid()
+    db.add(BacklogItem(id=item_id, title="Живой проект", issue_id="rcroot"))
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2030, quarter="Q4",
+                        computed_at=datetime(2030, 10, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="analyst", hours_allocated=20.0,
+                                  start_date=date(2030, 10, 1), end_date=date(2030, 10, 30)))
+    emp = _employee(db, "Аналитик", "analyst", "T")
+    yesterday = datetime.combine(date.today() - timedelta(days=1), datetime.min.time())
+    _worklog(db, emp, "rcroot", 5.0, yesterday)
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["RC-1"], year=2030, quarter=4)
+
+    assert pf["signals"] == []
+
+
 def test_portfolio_signal_lagging(db_session):
-    """Вид работ, сильно отстающий от общего процента, — отдельный сигнал."""
+    """Вид работ, сильно отстающий от общего процента, — отдельный сигнал.
+
+    Списание сегодняшним днём + квартал далеко в будущем — чтобы «молчит»
+    гарантированно не сработал независимо от реальной даты прогона теста
+    (см. test_portfolio_recent_worklog_in_open_quarter_is_not_silent).
+    """
     db = db_session
     db.add(Project(id="lg", jira_project_id="lg", key="LG", name="Lagging"))
     db.add(Issue(id="lgroot", jira_issue_id="33", key="LG-1", summary="Разработка тормозит",
@@ -377,24 +479,95 @@ def test_portfolio_signal_lagging(db_session):
     item_id = _uid()
     db.add(BacklogItem(id=item_id, title="Разработка тормозит", issue_id="lgroot"))
     plan_id = _uid()
-    db.add(ResourcePlan(id=plan_id, team="T", year=2026, quarter="Q3",
-                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlan(id=plan_id, team="T", year=2030, quarter="Q4",
+                        computed_at=datetime(2030, 10, 20)))
     db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
                                   phase="analyst", hours_allocated=100.0,
-                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 31)))
+                                  start_date=date(2030, 10, 1), end_date=date(2030, 10, 31)))
     db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
                                   phase="dev", hours_allocated=100.0,
-                                  start_date=date(2026, 8, 1), end_date=date(2026, 8, 31)))
+                                  start_date=date(2030, 11, 1), end_date=date(2030, 11, 30)))
     analyst = _employee(db, "Аналитик", "analyst", "T")
-    # Аналитик всё сдал, разработка ещё не начата; списание близко к концу
-    # квартала — «молчит» сработать не должно.
-    _worklog(db, analyst, "lgroot", 100.0, datetime(2026, 9, 25))
+    # Аналитик всё сдал сегодня, разработка ещё не начата.
+    today = datetime.combine(date.today(), datetime.min.time())
+    _worklog(db, analyst, "lgroot", 100.0, today)
     db.commit()
 
-    pf = ProjectPlanService(db).get_portfolio(["LG-1"], year=2026, quarter=3)
+    pf = ProjectPlanService(db).get_portfolio(["LG-1"], year=2030, quarter=4)
 
     assert pf["signals"] == [
         {"kind": "lagging", "text": "Разработка отстаёт: 0% при 50% общей", "severity": "info"},
+    ]
+
+
+def test_portfolio_lagging_exact_threshold_does_not_trigger(db_session):
+    """Разрыв ровно 15 п.п. — граница строгая (``>``, не ``>=``), сигнал молчит."""
+    db = db_session
+    db.add(Project(id="bd", jira_project_id="bd", key="BD", name="Boundary"))
+    db.add(Issue(id="bdroot", jira_issue_id="42", key="BD-1", summary="На грани",
+                 issue_type="Epic", status="В работе", project_id="bd",
+                 category="quarterly_tasks", include_in_analysis=True, team="T"))
+    item_id = _uid()
+    db.add(BacklogItem(id=item_id, title="На грани", issue_id="bdroot"))
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2031, quarter="Q1",
+                        computed_at=datetime(2031, 1, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="analyst", hours_allocated=100.0,
+                                  start_date=date(2031, 1, 1), end_date=date(2031, 1, 15)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="dev", hours_allocated=100.0,
+                                  start_date=date(2031, 1, 16), end_date=date(2031, 1, 31)))
+    analyst = _employee(db, "Аналитик", "analyst", "T")
+    dev = _employee(db, "Разработчик", "dev", "T")
+    today = datetime.combine(date.today(), datetime.min.time())
+    # analyst pct=65, dev pct=35 → total_pct=50 → разрыв у dev ровно 15.
+    _worklog(db, analyst, "bdroot", 65.0, today)
+    _worklog(db, dev, "bdroot", 35.0, today)
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["BD-1"], year=2031, quarter=1)
+
+    assert pf["signals"] == []
+
+
+def test_portfolio_lagging_shows_only_the_worst_when_two_lag(db_session):
+    """Если отстают сразу два вида работ, сигнал показывает только худший —
+    второй молча опускается (осознанное решение: одна строка на вид работ).
+    """
+    db = db_session
+    db.add(Project(id="tw", jira_project_id="tw", key="TW", name="Two lagging"))
+    db.add(Issue(id="twroot", jira_issue_id="43", key="TW-1", summary="Всё сложно",
+                 issue_type="Epic", status="В работе", project_id="tw",
+                 category="quarterly_tasks", include_in_analysis=True, team="T"))
+    item_id = _uid()
+    db.add(BacklogItem(id=item_id, title="Всё сложно", issue_id="twroot"))
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2032, quarter="Q2",
+                        computed_at=datetime(2032, 4, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="analyst", hours_allocated=100.0,
+                                  start_date=date(2032, 4, 1), end_date=date(2032, 4, 10)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="dev", hours_allocated=100.0,
+                                  start_date=date(2032, 4, 11), end_date=date(2032, 4, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="qa", hours_allocated=100.0,
+                                  start_date=date(2032, 4, 21), end_date=date(2032, 4, 30)))
+    analyst = _employee(db, "Аналитик", "analyst", "T")
+    # QA — общий ресурс компании, командой можно не привязывать.
+    qa = _employee(db, "Тестировщик", "qa", None)
+    today = datetime.combine(date.today(), datetime.min.time())
+    # analyst pct=100, qa pct=20, dev pct=0 → total_pct=40.
+    # Разрыв: dev 40, qa 20 — оба лагают, но показать должны только dev (худший).
+    _worklog(db, analyst, "twroot", 100.0, today)
+    _worklog(db, qa, "twroot", 20.0, today)
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["TW-1"], year=2032, quarter=2)
+
+    assert pf["signals"] == [
+        {"kind": "lagging", "text": "Разработка отстаёт: 0% при 40% общей", "severity": "info"},
     ]
 
 

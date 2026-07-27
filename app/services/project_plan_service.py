@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -22,6 +22,9 @@ from app.services.plan_common import (
     subtree_ids,
     team_member_ids,
 )
+
+if TYPE_CHECKING:
+    from app.models.issue import Issue
 
 
 class ProjectPlanService:
@@ -156,7 +159,7 @@ class ProjectPlanService:
 
     def _signals(
         self,
-        roots,
+        roots: Sequence["Issue"],
         subtree: Dict[str, set],
         project_pcts: Dict[str, Optional[int]],
         work_types: List[dict],
@@ -184,7 +187,11 @@ class ProjectPlanService:
             .all()
         )
         last_by_issue = {r.issue_id: r.last for r in last_rows}
-        cutoff = datetime.combine(fact_until, time.max)
+        # Для текущего (незавершённого) квартала молчание меряем от сегодня,
+        # а не от конца квартала — иначе почти любой активный проект выглядел
+        # бы молчащим большую часть квартала. Для уже закрытого квартала
+        # today > fact_until, min() берёт fact_until — поведение не меняется.
+        cutoff = datetime.combine(min(date.today(), fact_until), time.max)
         silent = 0
         for root in roots:
             stamps = [last_by_issue[i] for i in subtree[root.id] if last_by_issue.get(i)]
