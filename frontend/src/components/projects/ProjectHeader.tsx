@@ -13,7 +13,7 @@ import { trackAction } from '../../lib/usage/track';
 import projectsHelp from '../../../../docs/help/projects.md?raw';
 import { useRegisterHelp } from '../../contexts/HelpContext';
 
-type ViewMode = 'analysis' | 'presentation';
+type ViewMode = 'analysis' | 'presentation' | 'plan';
 
 interface Props {
   detail: ProjectDetail | undefined;
@@ -194,6 +194,14 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
             style={view === 'presentation' ? { background: '#00c9c8', borderColor: '#00c9c8', color: '#0d1c33' } : { color: 'var(--text-muted, #7e94b8)' }}
           >
             Презентация
+          </Button>
+          <Button
+            size="small"
+            type={view === 'plan' ? 'primary' : 'default'}
+            onClick={() => onViewChange('plan')}
+            style={view === 'plan' ? { background: '#00c9c8', borderColor: '#00c9c8', color: '#0d1c33' } : { color: 'var(--text-muted, #7e94b8)' }}
+          >
+            План и сроки
           </Button>
         </Space.Compact>
 

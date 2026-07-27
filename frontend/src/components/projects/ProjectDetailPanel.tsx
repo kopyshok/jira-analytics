@@ -6,15 +6,18 @@ import { useProjectSummary } from '../../hooks/useProjectSummary';
 import { ProjectHeader } from './ProjectHeader';
 import { ProjectAnalysisView } from './ProjectAnalysisView';
 import { ProjectPresentationView } from './ProjectPresentationView';
+import { ProjectPlanView } from './ProjectPlanView';
 import { DARK_THEME } from '../../utils/constants';
 
-type ViewMode = 'analysis' | 'presentation';
+type ViewMode = 'analysis' | 'presentation' | 'plan';
 
 interface Props {
   projectKey: string;
+  year: number;
+  quarter: number;
 }
 
-export const ProjectDetailPanel: React.FC<Props> = ({ projectKey }) => {
+export const ProjectDetailPanel: React.FC<Props> = ({ projectKey, year, quarter }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = (searchParams.get('view') as ViewMode) ?? 'analysis';
 
@@ -54,16 +57,20 @@ export const ProjectDetailPanel: React.FC<Props> = ({ projectKey }) => {
         onViewChange={handleViewChange}
       />
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {view === 'analysis' ? (
+        {view === 'analysis' && (
           <ProjectAnalysisView
             detail={detail}
             summary={summaryLoading ? undefined : summary}
           />
-        ) : (
+        )}
+        {view === 'presentation' && (
           <ProjectPresentationView
             detail={detail}
             summary={summaryLoading ? undefined : summary}
           />
+        )}
+        {view === 'plan' && (
+          <ProjectPlanView projectKey={projectKey} year={year} quarter={quarter} />
         )}
       </div>
     </div>
