@@ -109,14 +109,12 @@ class ProjectPlanService:
 
         # Состав команды считаем по каждому проекту отдельно: аналитик чужой
         # команды на одном проекте не должен портить цифры остальным (спека
-        # §3.3). Но role_breakdown теперь умеет принимать словарь «корень →
-        # свой набор» и посчитать все проекты за один проход — без этого тут
-        # был цикл с отдельным запросом назначений и ворклогов на каждый
-        # проект (примерно 4×N лишних запросов на N проектов).
-        team_ids_by_root: Dict[str, set] = {
-            root.id: self._team_ids_for_project(self._project_teams(root, plan_ids))
-            for root in roots
-        }
+        # §3.3). role_breakdown принимает словарь «корень → свой набор» и
+        # считает все проекты за один проход (без цикла с отдельным запросом
+        # назначений и ворклогов на каждый проект), а сам состав команды
+        # каждого проекта собирается батчем в _team_ids_by_root — без цикла
+        # запросов членства/QA на каждый проект.
+        team_ids_by_root = self._team_ids_by_root(roots, plan_ids)
         per_project = role_breakdown(
             self._db, plan_ids, root_ids, subtree, q_end, team_ids_by_root
         )
@@ -264,6 +262,78 @@ class ProjectPlanService:
         from app.models import Employee
 
         return {r[0] for r in self._db.query(Employee.id).all()}
+
+    def _team_ids_by_root(
+        self, roots: Sequence["Issue"], plan_ids: Sequence[str]
+    ) -> Dict[str, set]:
+        """Состав «своей» команды для каждого проекта портфеля — без цикла запросов.
+
+        Семантически то же самое, что вызвать
+        ``_team_ids_for_project(_project_teams(root, plan_ids))`` на каждый
+        root по отдельности (см. ``get_plan`` — там ровно так, но для одного
+        проекта запросов и не нужно экономить). Для портфеля из N проектов
+        по кругу такой цикл стоил бы до 2×N запросов (членство в командах +
+        QA — оба одинаковые для любого проекта той же команды, а QA вообще
+        не зависит от команды). Тут все походы в БД вынесены за пределы
+        цикла по проектам:
+
+        - ``_project_teams`` при пустом ``Issue.team`` шлёт запрос по
+          ``plan_ids`` — а ``plan_ids`` общий на весь портфель, значит и
+          результат одинаков для всех таких проектов; считаем один раз;
+        - членство в командах — один запрос по объединению команд всех
+          проектов, дальше раскладывается по командам в памяти;
+        - QA (общий ресурс, к команде не привязан) — один запрос вместо N
+          одинаковых, и только если он вообще нужен;
+        - «команда не определена → все свои» (см. ``_team_ids_for_project``)
+          — тоже один запрос на всех сотрудников, и только если он нужен
+          хотя бы одному проекту.
+        """
+        from app.models import Employee
+        from app.models.employee_team import EmployeeTeam
+
+        # Команда каждого проекта — как в _project_teams, но фолбэк-запрос
+        # по plan_ids не зависит от root, поэтому выполняется максимум раз.
+        plan_teams: Optional[List[str]] = None
+        root_teams: Dict[str, List[str]] = {}
+        for root in roots:
+            if root.team:
+                root_teams[root.id] = [root.team]
+                continue
+            if plan_teams is None:
+                plan_teams = self._project_teams(root, plan_ids)
+            root_teams[root.id] = plan_teams
+
+        all_teams = {t for teams in root_teams.values() for t in teams}
+        members_by_team: Dict[str, set] = {}
+        if all_teams:
+            rows = (
+                self._db.query(EmployeeTeam.team, EmployeeTeam.employee_id)
+                .filter(EmployeeTeam.team.in_(all_teams))
+                .all()
+            )
+            for team, emp_id in rows:
+                members_by_team.setdefault(team, set()).add(emp_id)
+
+        qa_ids: Optional[set] = None
+        all_employee_ids: Optional[set] = None
+
+        result: Dict[str, set] = {}
+        for root in roots:
+            teams = root_teams[root.id]
+            if not teams:
+                if all_employee_ids is None:
+                    all_employee_ids = {r[0] for r in self._db.query(Employee.id).all()}
+                result[root.id] = all_employee_ids
+                continue
+            if qa_ids is None:
+                qa_ids = {
+                    r[0] for r in self._db.query(Employee.id).filter(Employee.role == "qa").all()
+                }
+            ids: set = set()
+            for t in teams:
+                ids |= members_by_team.get(t, set())
+            result[root.id] = ids | qa_ids
+        return result
 
     def _children(self, root_id: str, fact_until: date) -> List[dict]:
         """Прямые дети проекта; часы — по поддереву каждого ребёнка."""
