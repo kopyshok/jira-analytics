@@ -134,5 +134,23 @@ def test_portfolio_endpoint_respects_quarter_filter(db_session):
         body = resp.json()
         assert body["project_count"] == 1
         assert [r["key"] for r in body["timeline"]["rows"]] == ["PF-1"]
+
+        # Итоги должны считаться только по item_in (10ч аналитика) — если бы
+        # фильтр по сценарию не работал, item_out добавил бы ещё 10ч и итог
+        # был бы 20, а не 10. Нет ворклогов в сиде → факт везде 0.
+        assert body["total_plan"] == 10.0
+        assert body["total_fact"] == 0.0
+        assert body["total_pct"] == 0
+        assert body["external_hours"] == 0.0
+        by_code = {w["code"]: w for w in body["work_types"]}
+        assert by_code["analyst"]["plan_hours"] == 10.0
+        assert by_code["analyst"]["fact_hours"] == 0.0
+        assert by_code["analyst"]["pct"] == 0
+        assert by_code["dev"]["plan_hours"] == 0.0
+        assert by_code["dev"]["fact_hours"] == 0.0
+        assert by_code["dev"]["pct"] is None
+        assert by_code["qa"]["plan_hours"] == 0.0
+        assert by_code["qa"]["fact_hours"] == 0.0
+        assert by_code["qa"]["pct"] is None
     finally:
         app.dependency_overrides.clear()
