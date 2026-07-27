@@ -117,7 +117,9 @@ def test_role_breakdown_sums_across_multiple_plans_and_splits_opo(db_session):
     db.add(Issue(id="i4", jira_issue_id="4", key="PRJ4-1", summary="Epic 4",
                  issue_type="Epic", status="В работе", project_id="p4"))
     item_id = _uid()
-    db.add(BacklogItem(id=item_id, title="Epic 4", issue_id="i4", opo_analyst_ratio=0.5))
+    # Коэффициент нарочно отличается от дефолта 0.5 — иначе тест не отличит
+    # «код прочитал реальное значение» от «код всегда берёт дефолт».
+    db.add(BacklogItem(id=item_id, title="Epic 4", issue_id="i4", opo_analyst_ratio=0.3))
 
     plan_q3_id, plan_q4_id = _uid(), _uid()
     db.add(ResourcePlan(id=plan_q3_id, team="T4", year=2026, quarter="Q3",
@@ -138,10 +140,10 @@ def test_role_breakdown_sums_across_multiple_plans_and_splits_opo(db_session):
     )
 
     bd = result["i4"]
-    # 40 (Q3 analyst) + половина ОПЭ (30 * 0.5) = 55.
-    assert bd["plan"]["analyst"] == 55.0
-    # Вторая половина ОПЭ.
-    assert bd["plan"]["dev"] == 15.0
+    # 40 (Q3 analyst) + доля ОПЭ по коэффициенту (30 * 0.3) = 49.
+    assert bd["plan"]["analyst"] == 49.0
+    # Остаток ОПЭ (30 * 0.7).
+    assert bd["plan"]["dev"] == 21.0
     # 20 (Q4 qa) — план из другого квартала тоже учтён.
     assert bd["plan"]["qa"] == 20.0
     assert "opo" not in bd["plan"]
