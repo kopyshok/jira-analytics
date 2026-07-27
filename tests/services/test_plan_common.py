@@ -3,10 +3,12 @@ import uuid
 from datetime import date, datetime
 
 from app.models.backlog_item import BacklogItem
+from app.models.employee import Employee
 from app.models.issue import Issue
 from app.models.project import Project
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
+from app.models.worklog import Worklog
 from app.services.plan_common import plan_ids_for_issues, quarter_bounds, role_breakdown
 
 
@@ -148,3 +150,55 @@ def test_role_breakdown_sums_across_multiple_plans_and_splits_opo(db_session):
     assert bd["plan"]["qa"] == 20.0
     assert "opo" not in bd["plan"]
     assert "opo" not in bd["fact"]
+
+
+def test_role_breakdown_accepts_mapping_of_team_ids_per_root(db_session):
+    """team_ids как Mapping «корень → набор» — за один вызов считаем сразу
+    несколько корней с разным составом «своей» команды (нужно сводке
+    портфеля, чтобы не звать role_breakdown в цикле по проектам — см.
+    ProjectPlanService.get_portfolio).
+    """
+    db = db_session
+    db.add(Project(id="pm", jira_project_id="pm", key="PRM", name="Project M"))
+    db.add(Issue(id="ra", jira_issue_id="ra1", key="PRM-1", summary="Root A",
+                 issue_type="Epic", status="В работе", project_id="pm"))
+    db.add(Issue(id="rb", jira_issue_id="rb1", key="PRM-2", summary="Root B",
+                 issue_type="Epic", status="В работе", project_id="pm"))
+    emp_a, emp_b = str(uuid.uuid4()), str(uuid.uuid4())
+    db.add(Employee(id=emp_a, jira_account_id=emp_a, display_name="A", role="analyst"))
+    db.add(Employee(id=emp_b, jira_account_id=emp_b, display_name="B", role="analyst"))
+    # emp_a — свой на A, гость на B. emp_b — свой на B, гость на A.
+    db.add(Worklog(id=_uid(), jira_worklog_id=_uid(), issue_id="ra", employee_id=emp_a,
+                   hours=10.0, time_spent_seconds=36000, started_at=datetime(2026, 7, 10)))
+    db.add(Worklog(id=_uid(), jira_worklog_id=_uid(), issue_id="ra", employee_id=emp_b,
+                   hours=4.0, time_spent_seconds=14400, started_at=datetime(2026, 7, 11)))
+    db.add(Worklog(id=_uid(), jira_worklog_id=_uid(), issue_id="rb", employee_id=emp_b,
+                   hours=6.0, time_spent_seconds=21600, started_at=datetime(2026, 7, 12)))
+    db.commit()
+
+    subtree = {"ra": {"ra"}, "rb": {"rb"}}
+    team_ids = {"ra": {emp_a}, "rb": {emp_b}}
+    result = role_breakdown(db, [], ["ra", "rb"], subtree, date(2026, 7, 31), team_ids)
+
+    assert result["ra"]["fact"]["analyst"] == 10.0
+    assert result["ra"]["info"] == 4.0, "emp_b чужой для root A — во «Внешние»"
+    assert result["rb"]["fact"]["analyst"] == 6.0
+    assert result["rb"]["info"] == 0.0
+
+
+def test_role_breakdown_mapping_missing_root_treats_all_as_external(db_session):
+    """Корня нет в словаре team_ids → пустой набор по умолчанию, все часы во «внешние»."""
+    db = db_session
+    db.add(Project(id="pm2", jira_project_id="pm2", key="PRM2", name="Project M2"))
+    db.add(Issue(id="rc", jira_issue_id="rc1", key="PRM2-1", summary="Root C",
+                 issue_type="Epic", status="В работе", project_id="pm2"))
+    emp = str(uuid.uuid4())
+    db.add(Employee(id=emp, jira_account_id=emp, display_name="C", role="analyst"))
+    db.add(Worklog(id=_uid(), jira_worklog_id=_uid(), issue_id="rc", employee_id=emp,
+                   hours=5.0, time_spent_seconds=18000, started_at=datetime(2026, 7, 10)))
+    db.commit()
+
+    result = role_breakdown(db, [], ["rc"], {"rc": {"rc"}}, date(2026, 7, 31), {})
+
+    assert result["rc"]["fact"]["analyst"] == 0.0
+    assert result["rc"]["info"] == 5.0
