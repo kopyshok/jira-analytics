@@ -63,6 +63,157 @@ class ProjectPlanService:
         }
 
     # ------------------------------------------------------------------
+    # Портфель
+    # ------------------------------------------------------------------
+
+    SILENT_DAYS = 14
+    LAGGING_GAP_PP = 15
+
+    def get_portfolio(self, keys: Sequence[str], *, year: int, quarter: int) -> dict:
+        """Сводка по набору проектов — тому же, что видно в списке слева."""
+        from app.models import Issue
+
+        empty = {
+            "project_count": 0,
+            "work_types": [
+                {"code": r, "label": PHASE_LABEL[r], "plan_hours": 0.0,
+                 "fact_hours": 0.0, "pct": None}
+                for r in DISPLAY_ROLES
+            ],
+            "external_hours": 0.0,
+            "total_plan": None,
+            "total_fact": 0.0,
+            "total_pct": None,
+            "timeline": {"start": None, "end": None, "rows": [],
+                         "quarter_start": quarter_bounds(year, quarter)[0].isoformat(),
+                         "quarter_end": quarter_bounds(year, quarter)[1].isoformat()},
+            "signals": [],
+        }
+        wanted = [k for k in keys if k]
+        if not wanted:
+            return empty
+
+        roots = (
+            self._db.execute(select(Issue).where(Issue.key.in_(wanted))).scalars().all()
+        )
+        if not roots:
+            return empty
+
+        q_start, q_end = quarter_bounds(year, quarter)
+        root_ids = [r.id for r in roots]
+        subtree = subtree_ids(self._db, root_ids)
+        plan_ids = plan_ids_for_issues(self._db, root_ids)
+
+        # Состав команды считаем по каждому проекту отдельно: аналитик чужой
+        # команды на одном проекте не должен портить цифры остальным.
+        per_project: Dict[str, dict] = {}
+        for root in roots:
+            team_ids = self._team_ids_for_project(self._project_teams(root, plan_ids))
+            per_project[root.id] = role_breakdown(
+                self._db, plan_ids, [root.id], {root.id: subtree[root.id]}, q_end, team_ids
+            )[root.id]
+
+        totals = {"plan": {r: 0.0 for r in DISPLAY_ROLES},
+                  "fact": {r: 0.0 for r in DISPLAY_ROLES},
+                  "info": 0.0}
+        project_pcts: Dict[str, Optional[int]] = {}
+        for root in roots:
+            bd = per_project[root.id]
+            wt, total_plan, total_fact = _project_work_types(bd)
+            for w in wt:
+                totals["plan"][w["code"]] += w["plan_hours"]
+                totals["fact"][w["code"]] += w["fact_hours"]
+            totals["info"] += bd["info"]
+            project_pcts[root.key] = _pct(total_fact, total_plan)
+
+        work_types = [
+            {
+                "code": r,
+                "label": PHASE_LABEL[r],
+                "plan_hours": round(totals["plan"][r], 1),
+                "fact_hours": round(totals["fact"][r], 1),
+                "pct": _pct(totals["fact"][r], totals["plan"][r] or None),
+            }
+            for r in DISPLAY_ROLES
+        ]
+        total_plan_raw = round(sum(w["plan_hours"] for w in work_types), 1)
+        total_plan = total_plan_raw if total_plan_raw > 0 else None
+        total_fact = round(sum(w["fact_hours"] for w in work_types), 1)
+        total_pct = _pct(total_fact, total_plan)
+
+        return {
+            "project_count": len(roots),
+            "work_types": work_types,
+            "external_hours": round(totals["info"], 1),
+            "total_plan": total_plan,
+            "total_fact": total_fact,
+            "total_pct": total_pct,
+            "timeline": self._timeline(plan_ids, root_ids, q_start, q_end),
+            "signals": self._signals(roots, subtree, project_pcts, work_types, total_pct, q_end),
+        }
+
+    def _signals(
+        self,
+        roots,
+        subtree: Dict[str, set],
+        project_pcts: Dict[str, Optional[int]],
+        work_types: List[dict],
+        total_pct: Optional[int],
+        fact_until: date,
+    ) -> List[dict]:
+        """Короткие подсказки «куда смотреть». Пустой список — полосу не рисуем."""
+        from app.models import Worklog
+
+        out: List[dict] = []
+
+        overloaded = [k for k, p in project_pcts.items() if p is not None and p > 100]
+        if overloaded:
+            out.append({
+                "kind": "overload",
+                "text": f"{len(overloaded)} {_plural_projects(len(overloaded))} > 100% плана",
+                "severity": "warn",
+            })
+
+        all_ids = {i for ids in subtree.values() for i in ids}
+        last_rows = (
+            self._db.query(Worklog.issue_id, func.max(Worklog.started_at).label("last"))
+            .filter(Worklog.issue_id.in_(all_ids))
+            .group_by(Worklog.issue_id)
+            .all()
+        )
+        last_by_issue = {r.issue_id: r.last for r in last_rows}
+        cutoff = datetime.combine(fact_until, time.max)
+        silent = 0
+        for root in roots:
+            stamps = [last_by_issue[i] for i in subtree[root.id] if last_by_issue.get(i)]
+            if not stamps:
+                continue  # ещё не начинали — это не «замолчал»
+            if (cutoff - max(stamps)).days > self.SILENT_DAYS:
+                silent += 1
+        if silent:
+            out.append({
+                "kind": "silent",
+                "text": f"{silent} {_plural_projects(silent)} без списаний "
+                        f"{self.SILENT_DAYS}+ дней",
+                "severity": "warn",
+            })
+
+        if total_pct is not None:
+            lagging = [
+                w for w in work_types
+                if w["pct"] is not None and total_pct - w["pct"] > self.LAGGING_GAP_PP
+            ]
+            if lagging:
+                worst = min(lagging, key=lambda w: w["pct"])
+                out.append({
+                    "kind": "lagging",
+                    "text": f"{worst['label']} отстаёт: {worst['pct']}% "
+                            f"при {total_pct}% общей",
+                    "severity": "info",
+                })
+        return out
+
+    # ------------------------------------------------------------------
     # Внутреннее
     # ------------------------------------------------------------------
 
@@ -220,3 +371,10 @@ def _project_work_types(bd: dict) -> tuple[List[dict], Optional[float], float]:
     total_plan_raw = round(sum(w["plan_hours"] for w in work_types), 1)
     total_fact = round(sum(w["fact_hours"] for w in work_types), 1)
     return work_types, (total_plan_raw if total_plan_raw > 0 else None), total_fact
+
+
+def _plural_projects(n: int) -> str:
+    """Склонение слова «проект» для чисел в подсказках."""
+    if 11 <= n % 100 <= 14:
+        return "проектов"
+    return {1: "проект", 2: "проекта", 3: "проекта", 4: "проекта"}.get(n % 10, "проектов")
