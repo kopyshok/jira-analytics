@@ -121,6 +121,7 @@ export interface PlanChild {
   key: string;
   title: string | null;
   status: string | null;
+  status_category: string | null;
   jira_url: string | null;
   hours: number;
 }
@@ -153,6 +154,7 @@ export interface PortfolioProject {
   total_plan: number | null;
   total_fact: number;
   total_pct: number | null;
+  children: PlanChild[];
 }
 
 export interface Portfolio {

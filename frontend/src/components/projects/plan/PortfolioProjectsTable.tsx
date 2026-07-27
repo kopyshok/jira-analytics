@@ -1,7 +1,7 @@
 import React from 'react';
 import { Table, Tag, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import type { PlanWorkType, PortfolioProject, PlanTimeline } from '../../../types/projects';
+import type { PlanChild, PlanWorkType, PortfolioProject, PlanTimeline } from '../../../types/projects';
 import { statusTagColor } from '../../../utils/status';
 import { DARK_THEME } from '../../../utils/constants';
 
@@ -67,6 +67,48 @@ const StageCell: React.FC<{ wt: PlanWorkType | undefined }> = ({ wt }) => {
     </div>
   );
 };
+
+/** Подзадачи проекта — раскрываются под строкой, как на рабочих столах аналитиков. */
+const ChildrenList: React.FC<{ items: PlanChild[] }> = ({ items }) => (
+  <div style={{ padding: '4px 0 4px 24px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+    {items.map((c) => (
+      <div
+        key={c.key}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px',
+          borderRadius: 4, fontSize: 12,
+        }}
+      >
+        <a
+          href={c.jira_url ?? undefined}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          style={{ color: DARK_THEME.cyanPrimary, whiteSpace: 'nowrap' }}
+        >
+          {c.key}
+        </a>
+        <span style={{
+          flex: 1, minWidth: 0, color: DARK_THEME.textPrimary,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {c.title ?? c.key}
+        </span>
+        {c.status && (
+          <Tag
+            color={statusTagColor(c.status, c.status_category)}
+            style={{ margin: 0, fontSize: 11, lineHeight: '16px' }}
+          >
+            {c.status}
+          </Tag>
+        )}
+        <span style={{ color: DARK_THEME.textMuted, whiteSpace: 'nowrap', minWidth: 48, textAlign: 'right' }}>
+          {Math.round(c.hours)} ч
+        </span>
+      </div>
+    ))}
+  </div>
+);
 
 interface Props {
   projects: PortfolioProject[];
@@ -189,34 +231,46 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
       dataSource={projects}
       pagination={false}
       scroll={{ x: 'max-content' }}
+      expandable={{
+        rowExpandable: (p) => p.children.length > 0,
+        expandedRowRender: (p) => <ChildrenList items={p.children} />,
+        expandRowByClick: false,
+      }}
       onRow={(p) => ({
-        onClick: () => onRowClick(p.key),
+        onClick: (e) => {
+          // Стрелка раскрытия живёт внутри строки — без этой проверки клик по
+          // ней и разворачивал бы подзадачи, и уводил в карточку проекта.
+          if ((e.target as HTMLElement).closest('.ant-table-row-expand-icon')) return;
+          onRowClick(p.key);
+        },
         style: { cursor: 'pointer' },
       })}
       summary={() => (
         <Table.Summary.Row>
-          <Table.Summary.Cell index={0}>
+          {/* Пустая ячейка под колонку со стрелкой раскрытия — иначе итоги съедут влево. */}
+          <Table.Summary.Cell index={0} />
+          <Table.Summary.Cell index={1}>
             <span style={{ color: DARK_THEME.textPrimary, fontWeight: 600 }}>
               Итого · {projects.length}
             </span>
           </Table.Summary.Cell>
-          <Table.Summary.Cell index={1} align="right">
+          <Table.Summary.Cell index={2} align="right">
             <span style={{ color: DARK_THEME.textPrimary, fontWeight: 600, whiteSpace: 'nowrap' }}>
               {Math.round(totals.totalFact)} / {totals.totalPlan === null ? '—' : Math.round(totals.totalPlan)} ч
             </span>
           </Table.Summary.Cell>
-          <Table.Summary.Cell index={2} align="right">
+          <Table.Summary.Cell index={3} align="right">
             <span style={{ color: pctColor(totals.totalPct), fontWeight: 600 }}>
               {totals.totalPct === null ? '—' : `${totals.totalPct}%`}
             </span>
           </Table.Summary.Cell>
           {STAGES.map((s, i) => (
-            <Table.Summary.Cell key={s.code} index={3 + i} align="right">
+            <Table.Summary.Cell key={s.code} index={4 + i} align="right">
               <StageCell wt={totals.workTypes.find((w) => w.code === s.code)} />
             </Table.Summary.Cell>
           ))}
           {hasExternal && (
-            <Table.Summary.Cell index={3 + STAGES.length} align="right">
+            <Table.Summary.Cell index={4 + STAGES.length} align="right">
               <span style={{ color: DARK_THEME.textMuted }}>
                 {totals.externalHours > 0 ? `${Math.round(totals.externalHours)} ч` : '—'}
               </span>

@@ -150,6 +150,7 @@ class PlanChildSchema(BaseModel):
     key: str
     title: Optional[str] = None
     status: Optional[str] = None
+    status_category: Optional[str] = None
     jira_url: Optional[str] = None
     hours: float
 
@@ -182,6 +183,7 @@ class PortfolioProjectSchema(BaseModel):
     total_plan: Optional[float] = None
     total_fact: float
     total_pct: Optional[int] = None
+    children: List[PlanChildSchema] = []
 
 
 class PortfolioSchema(BaseModel):
