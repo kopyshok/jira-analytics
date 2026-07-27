@@ -1,6 +1,6 @@
 import { api } from './client';
 import type { ProjectResponse } from '../types/api';
-import type { ProjectListItem, ProjectDetail, ProjectSummary } from '../types/projects';
+import type { ProjectListItem, ProjectDetail, ProjectSummary, ProjectPlan, Portfolio } from '../types/projects';
 
 // Существующий — Jira projects list
 export const getProjects = () => api.get<ProjectResponse[]>('/projects/all');
@@ -20,4 +20,19 @@ export const projectsApi = {
 
   regenerateSummary: (key: string) =>
     api.post<ProjectSummary>(`/projects/${encodeURIComponent(key)}/regenerate-summary`),
+
+  plan: (key: string, params: { year: string; quarter: string }, signal?: AbortSignal) =>
+    api.get<ProjectPlan>(`/projects/${encodeURIComponent(key)}/plan`, params, signal),
+
+  portfolio: (
+    params: {
+      year: string;
+      quarter: string;
+      teams?: string;
+      category?: string;
+      status_category?: string;
+      search?: string;
+    },
+    signal?: AbortSignal,
+  ) => api.get<Portfolio>('/projects/portfolio', params as Record<string, string | undefined>, signal),
 };

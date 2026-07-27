@@ -31,3 +31,36 @@ export function useProjectDetail(key: string | null) {
     staleTime: 30_000,
   });
 }
+
+export function useProjectPlan(key: string | null, year: number, quarter: number) {
+  return useQuery({
+    queryKey: ['project-plan', key, year, quarter],
+    queryFn: ({ signal }) =>
+      projectsApi.plan(key!, { year: String(year), quarter: String(quarter) }, signal),
+    enabled: !!key,
+    staleTime: 30_000,
+  });
+}
+
+export function usePortfolio(filters: {
+  category?: string;
+  status_category?: string;
+  search?: string;
+  year: number;
+  quarter: number;
+}) {
+  const { queryParams } = useGlobalTeamFilter();
+  const teams = queryParams.teams;
+  return useQuery({
+    queryKey: ['projects-portfolio', teams, filters],
+    queryFn: ({ signal }) => projectsApi.portfolio({
+      teams,
+      category: filters.category,
+      status_category: filters.status_category,
+      search: filters.search,
+      year: String(filters.year),
+      quarter: String(filters.quarter),
+    }, signal),
+    staleTime: 30_000,
+  });
+}
