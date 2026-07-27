@@ -8,7 +8,7 @@ const columns: ColumnsType<PlanChild> = [
   {
     title: 'Ключ',
     dataIndex: 'key',
-    width: 130,
+    width: 110,
     render: (key: string, row) =>
       row.jira_url ? (
         <a href={row.jira_url} target="_blank" rel="noreferrer">{key}</a>
@@ -17,19 +17,22 @@ const columns: ColumnsType<PlanChild> = [
   {
     title: 'Название',
     dataIndex: 'title',
+    // Название — единственная тянущаяся колонка, остальным заданы ширины.
+    // Без minWidth в узкой панели она схлопывается в многоточие.
     ellipsis: true,
     render: (title: string | null) => title ?? '—',
   },
   {
     title: 'Статус',
     dataIndex: 'status',
-    width: 160,
+    width: 120,
+    ellipsis: true,
     render: (status: string | null) => status ?? '—',
   },
   {
     title: 'Часы',
     dataIndex: 'hours',
-    width: 90,
+    width: 80,
     align: 'right',
     sorter: (a, b) => a.hours - b.hours,
     render: (hours: number) => `${Math.round(hours)} ч`,

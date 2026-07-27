@@ -36,8 +36,10 @@ const Ring: React.FC<{ wt: PlanWorkType }> = ({ wt }) => {
   return (
     <div
       style={{
-        flex: 1,
-        minWidth: 0,
+        // Ниже 150px кольцо и подписи начинают наезжать друг на друга —
+        // пусть лучше плитка переносится на следующую строку.
+        flex: '1 1 150px',
+        minWidth: 150,
         display: 'flex',
         alignItems: 'center',
         gap: 10,
@@ -84,7 +86,7 @@ export const WorkTypeRings: React.FC<Props> = ({
   countLabel, count, workTypes, externalHours, totalPlan, totalFact, totalPct,
 }) => (
   <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, flexWrap: 'wrap' }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20, paddingRight: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 20, paddingRight: 8, flex: '0 0 auto' }}>
       {countLabel && count !== undefined && (
         <div>
           <div style={{ fontSize: 22, fontWeight: 700, color: DARK_THEME.textPrimary, lineHeight: 1.1 }}>
@@ -114,7 +116,7 @@ export const WorkTypeRings: React.FC<Props> = ({
     <div
       title={externalHours > 0 ? 'Часы сотрудников не из команды — вне плана и факта' : undefined}
       style={{
-        width: 96, flexShrink: 0, padding: '8px 10px', borderRadius: 8,
+        flex: '0 0 96px', padding: '8px 10px', borderRadius: 8,
         background: 'rgba(0,0,0,0.22)',
         border: '1px solid rgba(255,255,255,0.04)',
         display: 'flex', flexDirection: 'column', justifyContent: 'center',
