@@ -113,9 +113,11 @@ class ProjectPlanService:
                 self._db, plan_ids, [root.id], {root.id: subtree[root.id]}, q_end, team_ids
             )[root.id]
 
-        totals = {"plan": {r: 0.0 for r in DISPLAY_ROLES},
-                  "fact": {r: 0.0 for r in DISPLAY_ROLES},
-                  "info": 0.0}
+        totals: Dict[str, Dict[str, float]] = {
+            "plan": {r: 0.0 for r in DISPLAY_ROLES},
+            "fact": {r: 0.0 for r in DISPLAY_ROLES},
+        }
+        info_hours = 0.0
         project_pcts: Dict[str, Optional[int]] = {}
         for root in roots:
             bd = per_project[root.id]
@@ -123,10 +125,10 @@ class ProjectPlanService:
             for w in wt:
                 totals["plan"][w["code"]] += w["plan_hours"]
                 totals["fact"][w["code"]] += w["fact_hours"]
-            totals["info"] += bd["info"]
+            info_hours += bd["info"]
             project_pcts[root.key] = _pct(total_fact, total_plan)
 
-        work_types = [
+        work_types: List[dict] = [
             {
                 "code": r,
                 "label": PHASE_LABEL[r],
@@ -144,7 +146,7 @@ class ProjectPlanService:
         return {
             "project_count": len(roots),
             "work_types": work_types,
-            "external_hours": round(totals["info"], 1),
+            "external_hours": round(info_hours, 1),
             "total_plan": total_plan,
             "total_fact": total_fact,
             "total_pct": total_pct,
