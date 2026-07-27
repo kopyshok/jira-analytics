@@ -10,26 +10,19 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.issue import Issue
 from app.models.worklog import Worklog
 from app.models.employee import Employee
 from app.models.category import Category
+from app.models.planning_scenario import PlanningScenario
+from app.models.scenario_allocation import ScenarioAllocation
+from app.models.backlog_item import BacklogItem
 
 # Категории, у которых верхний issue считается «проектом».
 PROJECT_CATEGORY_CODES = ("quarterly_tasks", "archive_target")
-
-
-def goals_quarter_tokens(year: int, quarter: int) -> list[str]:
-    """Варианты записи квартала в Jira-поле «Цели»: 3кв26 / 3КВ26 / 3Кв26.
-
-    ponytail: три варианта регистра вместо нормализации в SQL — SQLite lower()
-    не сворачивает кириллицу. Если появятся ещё формы записи — чинить здесь.
-    """
-    yy = year % 100
-    return [f"{quarter}кв{yy:02d}", f"{quarter}КВ{yy:02d}", f"{quarter}Кв{yy:02d}"]
 
 
 # ---------------------------------------------------------------------------
@@ -144,24 +137,53 @@ class ProjectsService:
         Без year+quarter: проект = issue с категорией quarterly_tasks /
         archive_target и без parent_id.
 
-        С year+quarter: тот же скоуп категорий/parent_id, дополнительно
-        отфильтрованный по Jira-полю «Цели» (Issue.goals, формат 3кв26).
-        Проекты с незаполненным полем в выборку не попадают.
+        С year+quarter: только issues, утверждённые (included_flag=True)
+        в approved scenario для данного квартала. Ограничение
+        parent_id IS NULL не накладывается — utверждённая allocation
+        сама делает issue «проектом квартала».
         """
         db = self._db
 
         if year is not None and quarter is not None:
-            # Привязка проекта к кварталу — Jira-поле «Цели» (формат 3кв26).
-            # Проекты с незаполненным полем в квартальную выборку не попадают.
-            tokens = goals_quarter_tokens(year, quarter)
-            stmt = (
-                select(Issue)
+            # Фильтр по членству в approved scenario.
+            # team_filter применяется к PlanningScenario.team (команда сценария),
+            # а не к worklog-сотрудникам — новые задачи без worklogs не должны отсекаться.
+            quarter_str = f"Q{quarter}"
+            scenarios_q = (
+                select(PlanningScenario.id)
                 .where(
-                    Issue.category.in_(PROJECT_CATEGORY_CODES),
-                    Issue.parent_id.is_(None),
-                    or_(*[Issue.goals.contains(t) for t in tokens]),
+                    PlanningScenario.status == "approved",
+                    PlanningScenario.year == year,
+                    PlanningScenario.quarter == quarter_str,
                 )
             )
+            if team_filter:
+                scenarios_q = scenarios_q.where(PlanningScenario.team.in_(team_filter))
+            scenario_ids = db.execute(scenarios_q).scalars().all()
+            if not scenario_ids:
+                return []
+
+            approved_issue_ids = (
+                db.execute(
+                    select(BacklogItem.issue_id)
+                    .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+                    .where(
+                        ScenarioAllocation.scenario_id.in_(scenario_ids),
+                        ScenarioAllocation.included_flag.is_(True),
+                        BacklogItem.issue_id.is_not(None),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            approved_set = {iid for iid in approved_issue_ids if iid}
+            if not approved_set:
+                return []
+
+            # parent_id НЕ ограничиваем: утверждённый allocation сам по себе
+            # делает issue «проектом квартала», даже если в Jira-иерархии у
+            # него есть родитель (Initiative и т.п.).
+            stmt = select(Issue).where(Issue.id.in_(approved_set))
         else:
             # Загружаем все «проектные» issues (корни иерархии).
             stmt = (
@@ -222,8 +244,9 @@ class ProjectsService:
             sub_ids = subtree_map[root.id]
             rows = [r for iid in sub_ids for r in wl_by_issue.get(iid, [])]
 
-            # Проект принадлежит команде, если по нему списывался кто-то из неё.
-            if team_filter:
+            # Worklog-based team filter — только в legacy-режиме (без year+quarter).
+            # В approved-scenario mode team_filter уже применён к PlanningScenario.team.
+            if team_filter and (year is None or quarter is None):
                 has_team = any(r.team in team_filter for r in rows)
                 if not has_team:
                     continue
