@@ -3,6 +3,7 @@ import uuid
 from datetime import date, datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 
 from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
@@ -587,3 +588,117 @@ def test_portfolio_lagging_shows_only_the_worst_when_two_lag(db_session):
 )
 def test_plural_projects(n, expected):
     assert _plural_projects(n) == expected
+
+
+# ---------------------------------------------------------------------
+# get_portfolio — плоский счётчик SQL-запросов
+# ---------------------------------------------------------------------
+
+def _count_queries(db, fn) -> int:
+    """Считает SQL round-trip'ы, сделанные внутри fn() через сессию db."""
+    engine = db.get_bind()
+    counter = {"n": 0}
+
+    def _hook(conn, cursor, statement, parameters, context, executemany):
+        counter["n"] += 1
+
+    event.listen(engine, "before_cursor_execute", _hook)
+    try:
+        fn()
+    finally:
+        event.remove(engine, "before_cursor_execute", _hook)
+    return counter["n"]
+
+
+def _seed_flat_projects(db, n: int, tag: str, year: int = 2026, quarter: int = 3) -> list[str]:
+    """N проектов разных команд с планом (1 фаза), своим автором ворклога и
+    одним "чужим" гостем на каждый — чтобы role_breakdown и резолвинг
+    команды реально считали план/факт/внешние, а не работали на пустых
+    множествах. `tag` разводит два набора разного размера в одной БД
+    (small/big в одном тесте) по непересекающимся id/ключам/командам.
+    """
+    quarter_str = f"Q{quarter}"
+    keys: list[str] = []
+    for i in range(n):
+        team = f"{tag}Team{i}"
+        guest_team = f"{tag}Team{(i + 1) % n}"
+        pid, root_id, item_id = f"{tag}p{i}", f"{tag}root{i}", _uid()
+        key = f"{tag.upper()}{i}-1"
+        db.add(Project(id=pid, jira_project_id=pid, key=f"{tag.upper()}{i}", name=f"{tag} {i}"))
+        db.add(Issue(id=root_id, jira_issue_id=f"{tag}j{i}", key=key, summary=f"{tag} {i}",
+                     issue_type="Epic", status="В работе", project_id=pid,
+                     category="quarterly_tasks", include_in_analysis=True, team=team))
+        db.add(BacklogItem(id=item_id, title=f"{tag} {i}", issue_id=root_id,
+                           estimate_analyst_hours=10.0))
+        plan_id = _uid()
+        db.add(ResourcePlan(id=plan_id, team=team, year=year, quarter=quarter_str,
+                            computed_at=datetime(year, 1, 1)))
+        db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                      phase="analyst", hours_allocated=10.0,
+                                      start_date=date(year, 1, 1), end_date=date(year, 1, 10)))
+        own = _employee(db, f"{tag}Own{i}", "analyst", team)
+        guest = _employee(db, f"{tag}Guest{i}", "dev", guest_team)
+        _worklog(db, own, root_id, 5.0, datetime(year, 1, 5))
+        _worklog(db, guest, root_id, 2.0, datetime(year, 1, 6))
+        keys.append(key)
+    db.commit()
+    return keys
+
+
+def test_portfolio_query_count_does_not_grow_with_project_count(db_session):
+    """Прод ходит в удалённый Postgres — каждый лишний SQL-запрос это
+    отдельный сетевой round-trip, а не дешёвая операция в памяти. Раньше
+    get_portfolio делал в цикле по проектам ~4 запроса на проект внутри
+    role_breakdown и ещё ~2 запроса на проект на членство в команде + QA
+    — оба цикла убраны (см. _team_ids_by_root), число запросов больше не
+    должно зависеть от размера портфеля.
+
+    Не проверяем конкретное число (хрупко: любая безобидная правка сдвинет
+    фиксированную часть на 1-2 запроса, и тест начнут чинить не глядя) —
+    проверяем инвариант: большой портфель не дороже маленького больше чем
+    на небольшой допуск. Разница в размере (2 проекта против 12) выбрана
+    заметной: регрессия вида "+N лишних запросов на проект" на 10 лишних
+    проектах гарантированно проест любой разумный допуск, а колебание
+    фиксированной части — нет.
+    """
+    db = db_session
+    small_keys = _seed_flat_projects(db, 2, tag="small")
+    big_keys = _seed_flat_projects(db, 12, tag="big")
+
+    svc = ProjectPlanService(db)
+    small_queries = _count_queries(db, lambda: svc.get_portfolio(small_keys, year=2026, quarter=3))
+    big_queries = _count_queries(db, lambda: svc.get_portfolio(big_keys, year=2026, quarter=3))
+
+    tolerance = 5  # заметно меньше, чем добавили бы вернувшиеся циклы на 10 лишних проектах
+    assert big_queries <= small_queries + tolerance, (
+        f"{len(small_keys)} проектов -> {small_queries} запросов, "
+        f"{len(big_keys)} проектов -> {big_queries} запросов: похоже, где-то "
+        f"вернулся запрос внутри цикла по проектам"
+    )
+
+
+def test_portfolio_project_without_team_and_plan_counts_everyone_as_internal(db_session):
+    """Портфельный аналог test_project_without_team_and_plan_counts_everyone_as_internal
+    (спека §3.3: команда не определена — все авторы считаются своими), но
+    через батчевый _team_ids_by_root, а не через одиночный get_plan —
+    старый тест этот метод вообще не задевает.
+
+    Проект — единственный в портфеле нарочно: если рядом попадёт другой
+    проект С планом, "команда не определена" одолжит команду его плана
+    (plan_ids общий на весь портфель) — так ведёт себя код и до, и после
+    этой оптимизации, это не регрессия и не предмет этого теста.
+    """
+    db = db_session
+    db.add(Project(id="ntp", jira_project_id="ntp", key="NTP", name="No team portfolio"))
+    db.add(Issue(id="ntproot", jira_issue_id="70", key="NTP-1", summary="Без команды",
+                 issue_type="Epic", status="В работе", project_id="ntp",
+                 category="quarterly_tasks", include_in_analysis=True))
+    emp = _employee(db, "Аналитик без команды", "analyst", None)
+    _worklog(db, emp, "ntproot", 10.0, datetime(2026, 8, 1))
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["NTP-1"], year=2026, quarter=3)
+
+    by_code = {w["code"]: w for w in pf["work_types"]}
+    assert by_code["analyst"]["fact_hours"] == 10.0
+    assert pf["external_hours"] == 0.0
