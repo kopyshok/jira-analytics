@@ -108,13 +108,18 @@ class ProjectPlanService:
         plan_ids = plan_ids_for_issues(self._db, root_ids)
 
         # Состав команды считаем по каждому проекту отдельно: аналитик чужой
-        # команды на одном проекте не должен портить цифры остальным.
-        per_project: Dict[str, dict] = {}
-        for root in roots:
-            team_ids = self._team_ids_for_project(self._project_teams(root, plan_ids))
-            per_project[root.id] = role_breakdown(
-                self._db, plan_ids, [root.id], {root.id: subtree[root.id]}, q_end, team_ids
-            )[root.id]
+        # команды на одном проекте не должен портить цифры остальным (спека
+        # §3.3). Но role_breakdown теперь умеет принимать словарь «корень →
+        # свой набор» и посчитать все проекты за один проход — без этого тут
+        # был цикл с отдельным запросом назначений и ворклогов на каждый
+        # проект (примерно 4×N лишних запросов на N проектов).
+        team_ids_by_root: Dict[str, set] = {
+            root.id: self._team_ids_for_project(self._project_teams(root, plan_ids))
+            for root in roots
+        }
+        per_project = role_breakdown(
+            self._db, plan_ids, root_ids, subtree, q_end, team_ids_by_root
+        )
 
         totals: Dict[str, Dict[str, float]] = {
             "plan": {r: 0.0 for r in DISPLAY_ROLES},

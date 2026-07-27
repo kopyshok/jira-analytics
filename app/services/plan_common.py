@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import calendar as _cal
 from datetime import date, datetime, time
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -197,13 +197,30 @@ def assignment_norm(a) -> float:
     return 0.0
 
 
+def _team_ids_for_root(
+    team_ids: set[str] | Mapping[str, set[str]], root: str
+) -> set[str]:
+    """Резолвит состав «своей» команды для конкретного корня.
+
+    ``team_ids`` — либо один набор на все переданные корни (рабочие столы:
+    один сотрудник, одна команда сразу на всю пачку проектов), либо словарь
+    «корень → свой набор» (сводка портфеля — состав команды считается по
+    каждому проекту отдельно, спека §3.3, чтобы аналитик чужой команды на
+    одном проекте не портил цифры остальным). Проверяем именно ``Mapping``,
+    а не ``set`` — set тоже итерируемый и поддерживает ``in``, легко перепутать.
+    """
+    if isinstance(team_ids, Mapping):
+        return team_ids.get(root, set())
+    return team_ids
+
+
 def role_breakdown(
     db: Session,
     plan_ids: Sequence[str],
     root_ids: Sequence[str],
     subtree: Dict[str, set],
     fact_until: date,
-    team_ids: set[str],
+    team_ids: set[str] | Mapping[str, set[str]],
 ) -> Dict[str, dict]:
     """План/факт по видам работ для каждой задачи-корня.
 
@@ -213,6 +230,11 @@ def role_breakdown(
 
     Часы авторов вне команды и без плитки-роли идут в «прочее» (``info``) —
     они не входят в план/факт, показываются информационно.
+
+    ``team_ids`` принимает один набор (общий для всех ``root_ids``) либо
+    словарь «корень → набор» — так вызывающий может посчитать сразу несколько
+    проектов с разным составом команды за один вызов, без цикла с отдельным
+    запросом на каждый (см. ``ProjectPlanService.get_portfolio``).
 
     Возвращает {root_issue_id: {"plan": {role: ч}, "fact": {role: ч}, "info": ч}}.
     """
@@ -276,7 +298,7 @@ def role_breakdown(
             r = (role or "").lower()
             if r == "rp":  # РП засчитываем в Анализ
                 r = "analyst"
-            if emp_id in team_ids and r in ROLES:
+            if emp_id in _team_ids_for_root(team_ids, root) and r in ROLES:
                 out[root]["fact"][r] += h
             else:
                 out[root]["info"] += h
