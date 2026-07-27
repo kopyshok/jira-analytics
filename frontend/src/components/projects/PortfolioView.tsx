@@ -5,6 +5,7 @@ import { usePortfolio } from '../../hooks/useProjects';
 import type { ProjectListFiltersState } from '../../types/projects';
 import { WorkTypeRings } from './plan/WorkTypeRings';
 import { PhaseTimeline } from './plan/PhaseTimeline';
+import { PortfolioProjectsTable } from './plan/PortfolioProjectsTable';
 import { PortfolioSignals } from './plan/PortfolioSignals';
 import { DARK_THEME } from '../../utils/constants';
 
@@ -68,6 +69,26 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
         totalFact={data.total_fact}
         totalPct={data.total_pct}
       />
+
+      <Card
+        size="small"
+        title={<span style={{ color: 'var(--text-2, #cfd8e5)', fontSize: 13 }}>Проекты портфеля</span>}
+        style={{ background: DARK_THEME.cardBg, border: '1px solid rgba(255,255,255,0.06)' }}
+        styles={{ header: { borderColor: 'rgba(255,255,255,0.06)' }, body: { padding: 0 } }}
+      >
+        <PortfolioProjectsTable
+          projects={data.projects}
+          timeline={data.timeline}
+          totals={{
+            workTypes: data.work_types,
+            externalHours: data.external_hours,
+            totalPlan: data.total_plan,
+            totalFact: data.total_fact,
+            totalPct: data.total_pct,
+          }}
+          onRowClick={(key) => navigate(`/projects/${encodeURIComponent(key)}`)}
+        />
+      </Card>
 
       <Card
         size="small"

@@ -285,6 +285,25 @@ def test_portfolio_sums_projects_and_keeps_external_apart(db_session):
     assert [r["key"] for r in pf["timeline"]["rows"]] == ["PP-1"]
 
 
+def test_portfolio_returns_per_project_breakdown(db_session):
+    """Сводка отдаёт не только итог, но и разрез по каждому проекту —
+    то, что рисует таблица «Проекты портфеля» перед таймлайном.
+    """
+    db = db_session
+    _seed_project(db)
+
+    pf = ProjectPlanService(db).get_portfolio(["PP-1"], year=2026, quarter=3)
+
+    assert len(pf["projects"]) == 1
+    row = pf["projects"][0]
+    assert row["key"] == "PP-1"
+    assert row["total_plan"] == pf["total_plan"]
+    assert row["total_fact"] == pf["total_fact"]
+    assert row["total_pct"] == pf["total_pct"]
+    assert row["external_hours"] == pf["external_hours"]
+    assert {w["code"] for w in row["work_types"]} == {"analyst", "dev", "qa"}
+
+
 def test_portfolio_sums_across_projects_with_separate_team_per_project(db_session):
     """Два проекта разных команд: план/факт суммируются, но состав команды —
     и то, кто «свой», а кто «внешний» — считается отдельно для каждого
