@@ -232,6 +232,9 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
       pagination={false}
       scroll={{ x: 'max-content' }}
       expandable={{
+        // Иначе AntD принимает поле children за вложенные строки-дерево и
+        // рендерит подзадачи как обычные строки таблицы — без плана и стадий.
+        childrenColumnName: '__none__',
         // ?? — ответ, закэшированный до появления подзадач (или сервер старее
         // фронта на выкатке), приходит без поля children.
         rowExpandable: (p) => (p.children ?? []).length > 0,
