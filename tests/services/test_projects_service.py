@@ -1,5 +1,4 @@
 """ProjectsService: list_projects + get_project_detail."""
-import uuid
 from datetime import datetime
 
 from app.models.issue import Issue
@@ -7,9 +6,6 @@ from app.models.project import Project
 from app.models.worklog import Worklog
 from app.models.employee import Employee
 from app.models.category import Category
-from app.models.backlog_item import BacklogItem
-from app.models.planning_scenario import PlanningScenario
-from app.models.scenario_allocation import ScenarioAllocation
 from app.services.projects_service import ProjectsService
 
 
@@ -150,61 +146,6 @@ def test_get_project_detail_returns_detail_for_any_existing_issue(db_session):
     assert ProjectsService(db).get_project_detail("PRJ4-NOTEXIST") is None
 
 
-def test_list_projects_filters_by_approved_scenario(db_session):
-    """Только эпики, утверждённые в approved scenario для (year, quarter)."""
-    db = db_session
-    _make_project(db, "p_sc1", "SCN1")
-    # Два эпика с категорией quarterly_tasks
-    epic_in = Issue(id="sc_in", jira_issue_id="sc1", key="SCN1-1", summary="InScenario",
-                    issue_type="Epic", status="Done", project_id="p_sc1",
-                    category="quarterly_tasks", include_in_analysis=True)
-    epic_out = Issue(id="sc_out", jira_issue_id="sc2", key="SCN1-2", summary="NotInScenario",
-                     issue_type="Epic", status="Done", project_id="p_sc1",
-                     category="quarterly_tasks", include_in_analysis=True)
-    db.add_all([epic_in, epic_out])
-    db.commit()
-
-    # BacklogItem ссылается на epic_in
-    item = BacklogItem(id=str(uuid.uuid4()), issue_id="sc_in", title="In")
-    db.add(item)
-    db.commit()
-
-    # Approved scenario для 2026 Q2
-    scenario = PlanningScenario(id=str(uuid.uuid4()), name="S1",
-                                 year=2026, quarter="Q2", status="approved", team="T")
-    db.add(scenario)
-    db.commit()
-
-    alloc = ScenarioAllocation(id=str(uuid.uuid4()), scenario_id=scenario.id,
-                                backlog_item_id=item.id, included_flag=True)
-    db.add(alloc)
-    db.commit()
-
-    # Без year/quarter — оба
-    all_items = ProjectsService(db).list_projects()
-    all_keys = {i.key for i in all_items}
-    assert "SCN1-1" in all_keys
-    assert "SCN1-2" in all_keys
-
-    # С year=2026, quarter=2 — только SCN1-1
-    filtered = ProjectsService(db).list_projects(year=2026, quarter=2)
-    filtered_keys = {i.key for i in filtered}
-    assert "SCN1-1" in filtered_keys
-    assert "SCN1-2" not in filtered_keys
-
-    # Другой квартал — пусто
-    other_q = ProjectsService(db).list_projects(year=2026, quarter=3)
-    assert other_q == []
-
-    # team_filter совпадает с PlanningScenario.team="T" — проект есть
-    with_team = ProjectsService(db).list_projects(year=2026, quarter=2, team_filter=["T"])
-    assert any(i.key == "SCN1-1" for i in with_team)
-
-    # team_filter не совпадает — пусто (сценарий фильтруется)
-    wrong_team = ProjectsService(db).list_projects(year=2026, quarter=2, team_filter=["OTHER"])
-    assert wrong_team == []
-
-
 def test_list_projects_filters_by_team(db_session):
     """Глобальный team filter: проект попадает если есть worklog от сотрудника
     из выбранных команд."""
@@ -232,3 +173,37 @@ def test_list_projects_filters_by_team(db_session):
     # Фильтр по TeamA — проект есть
     items_a = ProjectsService(db).list_projects(team_filter=["TeamA"])
     assert any(i.key == "PRJ5-400" for i in items_a)
+
+
+def test_list_projects_filters_by_goals_quarter(db_session):
+    db = db_session
+    _make_project(db, "pg", "PG")
+    db.add(Issue(id="g1", jira_issue_id="900", key="PG-1", summary="В квартале",
+                 issue_type="Epic", status="В работе", project_id="pg",
+                 category="quarterly_tasks", include_in_analysis=True,
+                 goals="3кв26"))
+    db.add(Issue(id="g2", jira_issue_id="901", key="PG-2", summary="Другой квартал",
+                 issue_type="Epic", status="В работе", project_id="pg",
+                 category="quarterly_tasks", include_in_analysis=True,
+                 goals="2кв26"))
+    db.add(Issue(id="g3", jira_issue_id="902", key="PG-3", summary="Без цели",
+                 issue_type="Epic", status="В работе", project_id="pg",
+                 category="quarterly_tasks", include_in_analysis=True,
+                 goals=None))
+    db.commit()
+
+    items = ProjectsService(db).list_projects(year=2026, quarter=3)
+    assert {i.key for i in items} == {"PG-1"}
+
+
+def test_list_projects_goals_accepts_multiple_values_and_case(db_session):
+    db = db_session
+    _make_project(db, "pg2", "PG2")
+    db.add(Issue(id="g4", jira_issue_id="903", key="PG2-1", summary="Список целей",
+                 issue_type="Epic", status="В работе", project_id="pg2",
+                 category="quarterly_tasks", include_in_analysis=True,
+                 goals="2кв26, 3КВ26"))
+    db.commit()
+
+    items = ProjectsService(db).list_projects(year=2026, quarter=3)
+    assert {i.key for i in items} == {"PG2-1"}
