@@ -127,6 +127,7 @@ class ProjectPlanService:
         info_hours = 0.0
         project_pcts: Dict[str, Optional[int]] = {}
         priorities = self._priority_by_issue(root_ids)
+        children_by_root = self._children_by_root(root_ids, q_end)
         projects: List[dict] = []
         for root in roots:
             bd = per_project[root.id]
@@ -147,6 +148,7 @@ class ProjectPlanService:
                 "total_plan": total_plan,
                 "total_fact": total_fact,
                 "total_pct": project_pcts[root.key],
+                "children": children_by_root.get(root.id, []),
             })
         # По убыванию приоритета, как в списке проектов; дальше сортирует сам стол.
         projects.sort(key=lambda p: (p["priority"] is None, -(p["priority"] or 0), p["key"] or ""))
@@ -372,15 +374,26 @@ class ProjectPlanService:
 
     def _children(self, root_id: str, fact_until: date) -> List[dict]:
         """Прямые дети проекта; часы — по поддереву каждого ребёнка."""
+        return self._children_by_root([root_id], fact_until).get(root_id, [])
+
+    def _children_by_root(
+        self, root_ids: Sequence[str], fact_until: date
+    ) -> Dict[str, List[dict]]:
+        """То же, что _children, но на весь портфель — без запросов в цикле по проектам.
+
+        Число запросов фиксировано (дети + поддеревья + ворклоги) и не растёт
+        с размером портфеля — инвариант закреплён тестом на счётчик запросов.
+        """
         from app.models import Issue, Worklog
 
         rows = (
-            self._db.query(Issue.id, Issue.key, Issue.summary, Issue.status)
-            .filter(Issue.parent_id == root_id)
+            self._db.query(Issue.id, Issue.key, Issue.summary, Issue.status,
+                           Issue.status_category, Issue.parent_id)
+            .filter(Issue.parent_id.in_(list(root_ids)))
             .all()
         )
         if not rows:
-            return []
+            return {}
         child_ids = [r.id for r in rows]
         sub = subtree_ids(self._db, child_ids)
         all_ids = {i for ids in sub.values() for i in ids}
@@ -395,17 +408,20 @@ class ProjectPlanService:
             .all()
         )
         by_issue = {r.issue_id: float(r.hours or 0.0) for r in hours_rows}
-        out = [
-            {
-                "key": r.key,
-                "title": r.summary,
-                "status": r.status,
-                "jira_url": jira_url(r.key),
-                "hours": round(sum(by_issue.get(i, 0.0) for i in sub.get(r.id, ())), 1),
-            }
-            for r in rows
-        ]
-        out.sort(key=lambda c: (-c["hours"], c["key"] or ""))
+        out: Dict[str, List[dict]] = {}
+        for r in rows:
+            out.setdefault(r.parent_id, []).append(
+                {
+                    "key": r.key,
+                    "title": r.summary,
+                    "status": r.status,
+                    "status_category": r.status_category,
+                    "jira_url": jira_url(r.key),
+                    "hours": round(sum(by_issue.get(i, 0.0) for i in sub.get(r.id, ())), 1),
+                }
+            )
+        for items in out.values():
+            items.sort(key=lambda c: (-c["hours"], c["key"] or ""))
         return out
 
     def _timeline(

@@ -302,6 +302,9 @@ def test_portfolio_returns_per_project_breakdown(db_session):
     assert row["total_pct"] == pf["total_pct"]
     assert row["external_hours"] == pf["external_hours"]
     assert {w["code"] for w in row["work_types"]} == {"analyst", "dev", "qa"}
+    # Подзадачи для разворота строки — те же, что отдаёт карточка проекта.
+    plan = ProjectPlanService(db).get_plan("PP-1", year=2026, quarter=3)
+    assert row["children"] == plan["children"]
 
 
 def test_portfolio_sums_across_projects_with_separate_team_per_project(db_session):
