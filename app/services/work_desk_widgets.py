@@ -15,6 +15,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.work_desk import WorkDesk
+from app.services.plan_common import (
+    DISPLAY_ROLES as _DISPLAY_ROLES,
+    PHASE_LABEL as _PHASE_LABEL,
+    assignment_norm as _assignment_norm,
+    find_recent_plan as _find_recent_plan,
+    jira_url as _jira_url,
+    quarter_bounds as _quarter_bounds,
+    role_breakdown as _role_breakdown,
+    subtree_ids as _subtree_ids,
+    team_member_ids as _team_member_ids,
+)
 
 # Полный список ключей виджетов. Порядок — порядок отображения по умолчанию.
 WIDGET_KEYS: tuple[str, ...] = (
@@ -29,32 +40,6 @@ WIDGET_KEYS: tuple[str, ...] = (
     "awaiting_reaction",
 )
 
-_QUARTER_MONTHS: Dict[int, tuple[int, int, int]] = {
-    1: (1, 2, 3),
-    2: (4, 5, 6),
-    3: (7, 8, 9),
-    4: (10, 11, 12),
-}
-
-_JIRA_BROWSE = "https://itgri.atlassian.net/browse/"
-
-# Фаза назначения → поле плановой оценки на BacklogItem.
-_PHASE_ESTIMATE_FIELD: Dict[str, str] = {
-    "analyst": "estimate_analyst_hours",
-    "dev": "estimate_dev_hours",
-    "qa": "estimate_qa_hours",
-    "opo": "estimate_opo_hours",
-}
-
-# Фаза назначения → человекочитаемое название (для подписи полос таймлайна).
-_PHASE_LABEL: Dict[str, str] = {
-    "analyst": "Анализ",
-    "cons": "Консультация",
-    "dev": "Разработка",
-    "qa": "Тестирование",
-    "opo": "ОПЭ",
-}
-
 
 # ──────────────────────────────────────────────────────────────────────────
 # Вспомогательные функции
@@ -67,48 +52,6 @@ def _desk_teams(desk: WorkDesk) -> List[str]:
     if emp is None:
         return []
     return [t.team for t in emp.teams if t.team]
-
-
-def _quarter_bounds(year: int, quarter: int) -> tuple[date, date]:
-    months = _QUARTER_MONTHS[quarter]
-    start = date(year, months[0], 1)
-    last_month = months[-1]
-    end = date(year, last_month, _cal.monthrange(year, last_month)[1])
-    return start, end
-
-
-def _jira_url(key: Optional[str]) -> Optional[str]:
-    return f"{_JIRA_BROWSE}{key}" if key else None
-
-
-def _find_recent_plan(db: Session, teams: List[str], year: int, quarter: int):
-    """Самый свежий ResourcePlan команды стола за квартал, либо None.
-
-    Сначала ищем рассчитанные планы (computed_at) за нужный квартал и команду.
-    Возвращаем None — адаптеры отдают пустой контракт.
-    """
-    from app.models import ResourcePlan
-
-    if not teams:
-        return None
-    q_variants = [str(quarter), f"Q{quarter}", f"q{quarter}"]
-    rows = (
-        db.execute(
-            select(ResourcePlan)
-            .where(
-                ResourcePlan.team.in_(teams),
-                ResourcePlan.year == year,
-                ResourcePlan.quarter.in_(q_variants),
-            )
-            .order_by(
-                ResourcePlan.computed_at.desc().nullslast(),
-                ResourcePlan.created_at.desc(),
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return rows[0] if rows else None
 
 
 def _worklog_fact_map(
@@ -256,38 +199,6 @@ def _project_children(
     return by_parent
 
 
-def _subtree_ids(db: Session, root_ids: List[str]) -> Dict[str, set]:
-    """Для каждой задачи-корня — множество id её поддерева (корень + потомки).
-
-    Списания часто висят на подзадачах, а не на задаче-инициативе. BFS по
-    Issue.parent_id уровнями (несколько запросов, ограничено глубиной дерева).
-    """
-    from app.models import Issue
-
-    roots = [r for r in dict.fromkeys(root_ids) if r]
-    result: Dict[str, set] = {r: {r} for r in roots}
-    if not roots:
-        return result
-    parent_root: Dict[str, str] = {r: r for r in roots}
-    current = list(roots)
-    while current:
-        rows = (
-            db.query(Issue.id, Issue.parent_id)
-            .filter(Issue.parent_id.in_(current))
-            .all()
-        )
-        nxt: List[str] = []
-        for cid, pid in rows:
-            root = parent_root.get(pid)
-            if root is None or cid in result[root]:
-                continue
-            result[root].add(cid)
-            parent_root[cid] = root
-            nxt.append(cid)
-        current = nxt
-    return result
-
-
 def _worklog_span_map(
     db: Session,
     pairs: List[tuple[str, str]],
@@ -356,150 +267,9 @@ def _merge_projects(projects: List[dict]) -> List[dict]:
     return [merged[k] for k in order] + extras
 
 
-# Роли-фазы плана (включая ОПЭ — сворачивается в analyst/dev по коэффициенту).
-_ROLES: tuple[str, ...] = ("analyst", "dev", "qa", "opo")
-# Виды работ, показываемые в плитке (ОПЭ распределён, отдельной плашки нет).
-_DISPLAY_ROLES: tuple[str, ...] = ("analyst", "dev", "qa")
-
-
-def _role_breakdown(
-    db: Session,
-    plan_id: str,
-    root_ids: List[str],
-    subtree: Dict[str, set],
-    q_start: date,
-    q_end: date,
-    team_ids: set[str],
-) -> Dict[str, dict]:
-    """План/факт проекта по 4 видам работ (analyst/dev/qa/opo).
-
-    План — плановые часы всех фаз проекта в ресурсном плане
-    (`hours_allocated ?? оценка роли`, как у текущей строки Анализа), а не
-    только фазы аналитика. Факт — по ролям авторов ворклогов всего поддерева:
-    роль РП засчитывается в Анализ; ОПЭ у авторов нет, поэтому факт ОПЭ ≈ 0.
-
-    Часы авторов вне команды (внешняя помощь) и без плитки-роли идут в
-    «прочее» (`info`) — они не входят в план/факт, показываются информационно.
-
-    Возвращает {root_issue_id: {"plan": {role: ч}, "fact": {role: ч}, "info": ч}}.
-    """
-    from app.models import BacklogItem, Employee, ResourcePlanAssignment, Worklog
-
-    ids = [i for i in root_ids if i]
-    out: Dict[str, dict] = {
-        i: {"plan": {r: 0.0 for r in _ROLES}, "fact": {r: 0.0 for r in _ROLES},
-            "info": 0.0}
-        for i in ids
-    }
-    if not ids:
-        return out
-
-    # План по ролям — все фазовые назначения проекта (любого исполнителя).
-    ratios: Dict[str, float] = {}
-    arows = (
-        db.query(
-            ResourcePlanAssignment,
-            BacklogItem.issue_id,
-            BacklogItem.opo_analyst_ratio,
-        )
-        .join(BacklogItem, BacklogItem.id == ResourcePlanAssignment.backlog_item_id)
-        .filter(
-            ResourcePlanAssignment.plan_id == plan_id,
-            BacklogItem.issue_id.in_(ids),
-        )
-        .all()
-    )
-    for a, issue_id, opo_ratio in arows:
-        if a.phase in _ROLES and issue_id in out:
-            out[issue_id]["plan"][a.phase] += _assignment_norm(a)
-            ratios[issue_id] = 0.5 if opo_ratio is None else float(opo_ratio)
-
-    # Факт по ролям — все авторы по всему поддереву, один запрос.
-    issue_to_root: Dict[str, str] = {}
-    for root, members in subtree.items():
-        for iid in members:
-            issue_to_root[iid] = root
-    all_ids = list(issue_to_root.keys())
-    if all_ids:
-        # Накопительный факт: от старта инициативы до конца квартала (без нижней
-        # границы) — проекты часто стартуют раньше квартала; план квартальный.
-        end_dt = datetime.combine(q_end, time.max)
-        rows = (
-            db.query(
-                Worklog.issue_id,
-                Worklog.employee_id,
-                Employee.role,
-                func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
-            )
-            .join(Employee, Employee.id == Worklog.employee_id)
-            .filter(
-                Worklog.issue_id.in_(all_ids),
-                Worklog.started_at <= end_dt,
-            )
-            .group_by(Worklog.issue_id, Worklog.employee_id, Employee.role)
-            .all()
-        )
-        for issue_id, emp_id, role, hours in rows:
-            root = issue_to_root.get(issue_id)
-            if root not in out:
-                continue
-            h = float(hours or 0.0)
-            r = (role or "").lower()
-            if r == "rp":  # РП засчитываем в Анализ
-                r = "analyst"
-            if emp_id in team_ids and r in _ROLES:
-                out[root]["fact"][r] += h
-            else:  # внешняя помощь / роль без плитки — информационно
-                out[root]["info"] += h
-
-    # ОПЭ нельзя зафиксировать по факту отдельно — план ОПЭ распределяем на
-    # Анализ/Разработку по коэффициенту деления (opo_analyst_ratio), плашку ОПЭ
-    # убираем. Факт ОПЭ ≈ 0, но складываем тем же правилом для консистентности.
-    for iid, bd in out.items():
-        ratio = ratios.get(iid, 0.5)
-        for kind in ("plan", "fact"):
-            opo = bd[kind].pop("opo", 0.0)
-            bd[kind]["analyst"] += opo * ratio
-            bd[kind]["dev"] += opo * (1.0 - ratio)
-    return out
-
-
-def _assignment_norm(a) -> float:
-    """Плановые часы фазы: hours_allocated, иначе оценка роли на BacklogItem.
-
-    hours_allocated часто пустой/0 — тогда берём per-role оценку из связанной
-    инициативы (analyst/dev/qa/opo → estimate_*_hours). Если обоих нет — 0.0.
-    """
-    allocated = a.hours_allocated
-    if allocated is not None and allocated > 0:
-        return float(allocated)
-    item = a.backlog_item
-    if item is not None:
-        field = _PHASE_ESTIMATE_FIELD.get(a.phase)
-        if field is not None:
-            est = getattr(item, field, None)
-            if est is not None:
-                return float(est)
-    return 0.0
-
-
 # ──────────────────────────────────────────────────────────────────────────
 # Адаптеры виджетов
 # ──────────────────────────────────────────────────────────────────────────
-
-
-def _team_member_ids(db: Session, teams: List[str]) -> set[str]:
-    """ID сотрудников команд стола + QA (общий ресурс компании)."""
-    from app.models import Employee
-    from app.models.employee_team import EmployeeTeam
-
-    ids: set[str] = set()
-    if teams:
-        rows = db.query(EmployeeTeam.employee_id).filter(EmployeeTeam.team.in_(teams)).all()
-        ids = {r[0] for r in rows}
-    qa_rows = db.query(Employee.id).filter(Employee.role == "qa").all()
-    ids |= {r[0] for r in qa_rows}
-    return ids
 
 
 def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> dict:
@@ -522,7 +292,7 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
     # Факт проекта — по всему поддереву задачи (списания висят на подзадачах).
     subtree = _subtree_ids(db, issue_ids)
     # План/факт по 4 видам работ (analyst/dev/qa/opo) — как в карточке проекта.
-    breakdown = _role_breakdown(db, plan.id, issue_ids, subtree, q_start, q_end, team_ids)
+    breakdown = _role_breakdown(db, [plan.id], issue_ids, subtree, q_end, team_ids)
     for p in projects:
         iid = p.get("issue_id")
         p["children"] = children.get(iid, [])
