@@ -66,8 +66,10 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
   const labels = monthLabels(scaleStart, scaleEnd);
   const gridlines = labels.map((_, i) => (i / labels.length) * 100).slice(1);
 
-  const qLeft = pos(toTime(timeline.quarter_start));
-  const qRight = pos(toTime(timeline.quarter_end));
+  // Затенение квартала обрезается по границам строки: даты квартала приходят
+  // из фильтра списка и могут не пересекаться с плановыми датами проекта.
+  const qLeft = Math.max(0, Math.min(100, pos(toTime(timeline.quarter_start))));
+  const qRight = Math.max(0, Math.min(100, pos(toTime(timeline.quarter_end))));
 
   const nowTime = new Date().getTime();
   const nowLeft = nowTime >= s0 && nowTime <= scaleEnd.getTime() ? pos(nowTime) : null;
@@ -120,6 +122,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
           <div style={{
             position: 'relative', height: LANE_H + 6,
             background: 'rgba(255,255,255,0.02)', borderRadius: 4,
+            overflow: 'hidden',
           }}>
             <div style={{
               position: 'absolute', top: 0, bottom: 0,
