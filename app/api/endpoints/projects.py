@@ -243,9 +243,13 @@ def get_portfolio(
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Сводка по тем же проектам, что видны в списке слева."""
+    """Сводка по тем же проектам, что видны в списке слева.
+
+    Ключи берём лёгким путём (``list_project_keys``) — без обхода поддеревьев
+    и ворклогов ради метрик карточек списка, которые здесь не нужны.
+    """
     team_filter = [t.strip() for t in teams.split(",") if t.strip()] if teams else None
-    items = ProjectsService(db).list_projects(
+    keys = ProjectsService(db).list_project_keys(
         team_filter=team_filter,
         category=category,
         status_category=status_category,
@@ -253,7 +257,6 @@ def get_portfolio(
         year=year,
         quarter=quarter,
     )
-    keys = [i.key for i in items]
     return ProjectPlanService(db).get_portfolio(keys, year=year, quarter=quarter)
 
 
@@ -329,6 +332,15 @@ async def regenerate_summary(key: str, db: Session = Depends(get_db)):
         status = e.response.status_code
         body = (e.response.text or "")[:400]
         logger.error("LLM regenerate failed for %s: HTTP %s body=%s", key, status, body)
+        if "location is not supported" in body:
+            from app.api.endpoints.llm import GEO_BLOCK_MSG
+            raise HTTPException(status_code=503, detail=GEO_BLOCK_MSG)
+        if status == 404:
+            raise HTTPException(
+                status_code=503,
+                detail="Выбранная модель и все запасные больше недоступны бесплатно. "
+                       "Откройте Настройки → AI и выберите модель из актуального списка.",
+            )
         if status == 429:
             raise HTTPException(status_code=503, detail="LLM rate limit. Подождите минуту или смените модель в Настройках → AI.")
         raise HTTPException(status_code=503, detail=f"LLM ответил {status}: {body[:250]}. Проверьте ключ и модель в Настройках → AI.")
