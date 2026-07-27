@@ -117,10 +117,13 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
         alignItems: 'flex-start',
         justifyContent: 'space-between',
         gap: 12,
+        // Три вкладки + кнопки не влезают в узкую панель: переносим их на свою
+        // строку, иначе заголовок и мета-строка схлопываются в столбик.
+        flexWrap: 'wrap',
       }}
     >
       {/* Left: title + meta */}
-      <div style={{ minWidth: 0, flex: 1 }}>
+      <div style={{ minWidth: 0, flex: '1 1 260px' }}>
         <div
           style={{
             fontSize: 20,
@@ -177,7 +180,13 @@ export const ProjectHeader: React.FC<Props> = ({ detail, summary, view, onViewCh
       </div>
 
       {/* Right: controls */}
-      <div className="project-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <div
+        className="project-header-actions"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          flexWrap: 'wrap', justifyContent: 'flex-end',
+        }}
+      >
         <Space.Compact>
           <Button
             size="small"

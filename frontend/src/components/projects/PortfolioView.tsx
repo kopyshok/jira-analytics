@@ -8,6 +8,15 @@ import { PhaseTimeline } from './plan/PhaseTimeline';
 import { PortfolioSignals } from './plan/PortfolioSignals';
 import { DARK_THEME } from '../../utils/constants';
 
+/** Склонение слова «проект» под число: 1 проект, 3 проекта, 5 проектов. */
+function pluralProjects(n: number): string {
+  if (n % 100 >= 11 && n % 100 <= 14) return 'проектов';
+  const last = n % 10;
+  if (last === 1) return 'проект';
+  if (last >= 2 && last <= 4) return 'проекта';
+  return 'проектов';
+}
+
 export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ filters }) => {
   const navigate = useNavigate();
   const { data, isLoading } = usePortfolio({
@@ -20,7 +29,10 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
 
   if (isLoading || !data) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div
+        data-testid="portfolio-view"
+        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
         <Spin size="large" />
       </div>
     );
@@ -28,7 +40,10 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
 
   if (data.project_count === 0) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div
+        data-testid="portfolio-view"
+        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
         <Empty
           description={
             <span style={{ color: DARK_THEME.textMuted }}>Нет проектов за выбранный квартал</span>
@@ -40,9 +55,12 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div
+      data-testid="portfolio-view"
+      style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}
+    >
       <WorkTypeRings
-        countLabel="проектов"
+        countLabel={pluralProjects(data.project_count)}
         count={data.project_count}
         workTypes={data.work_types}
         externalHours={data.external_hours}
