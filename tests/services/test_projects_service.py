@@ -232,3 +232,135 @@ def test_list_projects_filters_by_team(db_session):
     # Фильтр по TeamA — проект есть
     items_a = ProjectsService(db).list_projects(team_filter=["TeamA"])
     assert any(i.key == "PRJ5-400" for i in items_a)
+
+
+def test_list_project_keys_matches_list_projects_with_quarter_and_filters(db_session):
+    """Лёгкий путь (только ключи, без обхода поддеревьев/ворклогов) обязан
+    давать тот же набор, что list_projects, на всех комбинациях фильтров
+    списка — команда/категория/статус/поиск. В квартальной ветке это точная
+    эквивалентность: команда фильтруется на уровне запроса (через команду
+    утверждённого сценария), до всякого обхода ворклогов.
+    """
+    db = db_session
+    _make_project(db, "pk1", "PK1")
+
+    epic_a = Issue(id="pka", jira_issue_id="900", key="PK1-1", summary="Alpha rollout",
+                   issue_type="Epic", status="Новый", status_category="new",
+                   project_id="pk1", category="quarterly_tasks", include_in_analysis=True)
+    epic_b = Issue(id="pkb", jira_issue_id="901", key="PK1-2", summary="Beta project",
+                   issue_type="Epic", status="Готово", status_category="done",
+                   project_id="pk1", category="archive_target", include_in_analysis=True)
+    db.add_all([epic_a, epic_b])
+    db.commit()
+
+    item_a = BacklogItem(id=str(uuid.uuid4()), issue_id="pka", title="Alpha")
+    item_b = BacklogItem(id=str(uuid.uuid4()), issue_id="pkb", title="Beta")
+    db.add_all([item_a, item_b])
+    db.commit()
+
+    scenario_a = PlanningScenario(id=str(uuid.uuid4()), name="SA", year=2026, quarter="Q3",
+                                   status="approved", team="TeamA")
+    scenario_b = PlanningScenario(id=str(uuid.uuid4()), name="SB", year=2026, quarter="Q3",
+                                   status="approved", team="TeamB")
+    db.add_all([scenario_a, scenario_b])
+    db.commit()
+
+    db.add_all([
+        ScenarioAllocation(id=str(uuid.uuid4()), scenario_id=scenario_a.id,
+                            backlog_item_id=item_a.id, included_flag=True),
+        ScenarioAllocation(id=str(uuid.uuid4()), scenario_id=scenario_b.id,
+                            backlog_item_id=item_b.id, included_flag=True),
+    ])
+    db.commit()
+
+    svc = ProjectsService(db)
+    combos = [
+        {},
+        {"team_filter": ["TeamA"]},
+        {"team_filter": ["TeamB"]},
+        {"team_filter": ["TeamA", "TeamB"]},
+        {"category": "archive_target"},
+        {"status_category": "done"},
+        {"search": "Alpha"},
+        {"team_filter": ["TeamB"], "category": "archive_target"},
+        {"team_filter": ["TeamA"], "category": "archive_target"},  # пересечение пусто
+    ]
+    for extra in combos:
+        expected = {i.key for i in svc.list_projects(year=2026, quarter=3, **extra)}
+        actual = set(svc.list_project_keys(year=2026, quarter=3, **extra))
+        assert actual == expected, f"mismatch for filters {extra}"
+
+    # Другой квартал — пусто с обеих сторон (нет подходящего сценария).
+    assert svc.list_project_keys(year=2026, quarter=4) == []
+    assert svc.list_projects(year=2026, quarter=4) == []
+
+
+def test_list_project_keys_falls_back_to_list_projects_without_quarter(db_session):
+    """Без year/quarter лёгкого пути нет: команда фильтруется постфактум по
+    авторам списаний, значит list_project_keys обязан честно делегировать
+    в list_projects, а не пытаться угадать по одному запросу корней."""
+    db = db_session
+    _make_project(db, "pk2", "PK2")
+    parent = Issue(id="pk2root", jira_issue_id="910", key="PK2-1", summary="No quarter",
+                   issue_type="Epic", status="Done", project_id="pk2",
+                   category="quarterly_tasks", include_in_analysis=True)
+    child = Issue(id="pk2child", jira_issue_id="911", key="PK2-2", summary="Child",
+                  issue_type="Task", status="Done", project_id="pk2",
+                  parent_id="pk2root", category="tech_debt", include_in_analysis=True)
+    emp = Employee(id="pk2emp", jira_account_id="pk2emp", display_name="E",
+                   email="e@e", is_active=True, team="TeamQ")
+    db.add_all([parent, child, emp])
+    db.commit()
+    db.add(Worklog(id="pk2w", jira_worklog_id="pk2w", issue_id="pk2child",
+                   employee_id="pk2emp", hours=5.0, time_spent_seconds=18000,
+                   started_at=datetime(2026, 2, 1), updated_at=datetime(2026, 2, 1)))
+    db.commit()
+
+    svc = ProjectsService(db)
+    for extra in ({}, {"team_filter": ["TeamQ"]}, {"team_filter": ["Nope"]}):
+        expected = {i.key for i in svc.list_projects(**extra)}
+        actual = set(svc.list_project_keys(**extra))
+        assert actual == expected, f"mismatch for filters {extra}"
+
+
+def test_list_project_keys_falls_back_when_only_one_of_year_quarter_given(db_session):
+    """Если задан только год или только квартал — list_projects всё равно
+    считает это «без квартала» (её условие для worklog-фильтра команды —
+    ``year is None or quarter is None``, не оба сразу). Проверяем этот
+    случай отдельно от полностью пустого: проверка «оба отсутствуют» вместо
+    «хотя бы один отсутствует» дала бы расхождение именно здесь.
+    """
+    db = db_session
+    _make_project(db, "pk3", "PK3")
+    root_x = Issue(id="pk3x", jira_issue_id="920", key="PK3-1", summary="X",
+                   issue_type="Epic", status="Done", project_id="pk3",
+                   category="quarterly_tasks", include_in_analysis=True)
+    child_x = Issue(id="pk3xc", jira_issue_id="921", key="PK3-1C", summary="Xc",
+                    issue_type="Task", status="Done", project_id="pk3",
+                    parent_id="pk3x", category="tech_debt", include_in_analysis=True)
+    root_y = Issue(id="pk3y", jira_issue_id="922", key="PK3-2", summary="Y",
+                   issue_type="Epic", status="Done", project_id="pk3",
+                   category="quarterly_tasks", include_in_analysis=True)
+    child_y = Issue(id="pk3yc", jira_issue_id="923", key="PK3-2C", summary="Yc",
+                    issue_type="Task", status="Done", project_id="pk3",
+                    parent_id="pk3y", category="tech_debt", include_in_analysis=True)
+    emp_q = Employee(id="pk3empq", jira_account_id="pk3empq", display_name="Q",
+                      email="q@e", is_active=True, team="TeamQ")
+    emp_o = Employee(id="pk3empo", jira_account_id="pk3empo", display_name="O",
+                      email="o@e", is_active=True, team="OtherTeam")
+    db.add_all([root_x, child_x, root_y, child_y, emp_q, emp_o])
+    db.commit()
+    db.add(Worklog(id="pk3wx", jira_worklog_id="pk3wx", issue_id="pk3xc",
+                   employee_id="pk3empq", hours=5.0, time_spent_seconds=18000,
+                   started_at=datetime(2026, 2, 1), updated_at=datetime(2026, 2, 1)))
+    db.add(Worklog(id="pk3wy", jira_worklog_id="pk3wy", issue_id="pk3yc",
+                   employee_id="pk3empo", hours=5.0, time_spent_seconds=18000,
+                   started_at=datetime(2026, 2, 1), updated_at=datetime(2026, 2, 1)))
+    db.commit()
+
+    svc = ProjectsService(db)
+    for partial in ({"year": 2026}, {"quarter": 3}):
+        expected = {i.key for i in svc.list_projects(team_filter=["TeamQ"], **partial)}
+        actual = set(svc.list_project_keys(team_filter=["TeamQ"], **partial))
+        assert actual == expected, f"mismatch for partial args {partial}"
+        assert expected == {"PK3-1"}, "sanity: только PK3-1 списан TeamQ"

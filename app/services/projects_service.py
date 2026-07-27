@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.models.issue import Issue
@@ -144,64 +144,16 @@ class ProjectsService:
         """
         db = self._db
 
-        if year is not None and quarter is not None:
-            # Фильтр по членству в approved scenario.
-            # team_filter применяется к PlanningScenario.team (команда сценария),
-            # а не к worklog-сотрудникам — новые задачи без worklogs не должны отсекаться.
-            quarter_str = f"Q{quarter}"
-            scenarios_q = (
-                select(PlanningScenario.id)
-                .where(
-                    PlanningScenario.status == "approved",
-                    PlanningScenario.year == year,
-                    PlanningScenario.quarter == quarter_str,
-                )
-            )
-            if team_filter:
-                scenarios_q = scenarios_q.where(PlanningScenario.team.in_(team_filter))
-            scenario_ids = db.execute(scenarios_q).scalars().all()
-            if not scenario_ids:
-                return []
-
-            approved_issue_ids = (
-                db.execute(
-                    select(BacklogItem.issue_id)
-                    .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
-                    .where(
-                        ScenarioAllocation.scenario_id.in_(scenario_ids),
-                        ScenarioAllocation.included_flag.is_(True),
-                        BacklogItem.issue_id.is_not(None),
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            approved_set = {iid for iid in approved_issue_ids if iid}
-            if not approved_set:
-                return []
-
-            # parent_id НЕ ограничиваем: утверждённый allocation сам по себе
-            # делает issue «проектом квартала», даже если в Jira-иерархии у
-            # него есть родитель (Initiative и т.п.).
-            stmt = select(Issue).where(Issue.id.in_(approved_set))
-        else:
-            # Загружаем все «проектные» issues (корни иерархии).
-            stmt = (
-                select(Issue)
-                .where(
-                    Issue.category.in_(PROJECT_CATEGORY_CODES),
-                    Issue.parent_id.is_(None),
-                )
-            )
-        if status_category:
-            stmt = stmt.where(Issue.status_category == status_category)
-        if category:
-            stmt = stmt.where(Issue.category == category)
-        if search:
-            like = f"%{search}%"
-            stmt = stmt.where(
-                Issue.summary.ilike(like) | Issue.key.ilike(like)
-            )
+        stmt = self._project_roots_stmt(
+            team_filter=team_filter,
+            status_category=status_category,
+            category=category,
+            search=search,
+            year=year,
+            quarter=quarter,
+        )
+        if stmt is None:
+            return []
 
         roots: list[Issue] = db.execute(stmt).scalars().all()
         if not roots:
@@ -280,6 +232,58 @@ class ProjectsService:
             ))
 
         return result
+
+    def list_project_keys(
+        self,
+        *,
+        team_filter: Optional[list[str]] = None,
+        status_category: Optional[str] = None,
+        category: Optional[str] = None,
+        search: Optional[str] = None,
+        year: Optional[int] = None,
+        quarter: Optional[int] = None,
+    ) -> list[str]:
+        """Ключи проектов по тем же фильтрам, что list_projects, без расчёта метрик.
+
+        Нужен сводке портфеля (``ProjectPlanService.get_portfolio``): ей нужен
+        только список ключей, а list_projects ради метрик карточек списка
+        обходит поддеревья всех проектов и суммирует их ворклоги — сводка
+        потом обходит те же поддеревья и ворклоги заново, дважды.
+
+        Эквивалентность набору ``[i.key for i in list_projects(...)]``
+        гарантирована только когда заданы оба ``year``/``quarter``: в этой
+        ветке фильтр по команде применяется на уровне запроса, через команду
+        утверждённого сценария (``PlanningScenario.team``), до всякого обхода
+        ворклогов — поэтому набор ключей полностью определяется запросом
+        корней. Без квартала team_filter в list_projects применяется
+        постфактум, по авторам списаний уже обойдённого поддерева — лёгкого
+        эквивалента для этой ветки нет, поэтому просто делегируем туда.
+        """
+        if year is None or quarter is None:
+            return [
+                item.key
+                for item in self.list_projects(
+                    team_filter=team_filter,
+                    status_category=status_category,
+                    category=category,
+                    search=search,
+                    year=year,
+                    quarter=quarter,
+                )
+            ]
+
+        stmt = self._project_roots_stmt(
+            team_filter=team_filter,
+            status_category=status_category,
+            category=category,
+            search=search,
+            year=year,
+            quarter=quarter,
+        )
+        if stmt is None:
+            return []
+        roots: list[Issue] = self._db.execute(stmt).scalars().all()
+        return [r.key for r in roots]
 
     def get_project_detail(self, key: str) -> Optional[ProjectDetail]:
         """Полный агрегат по одному проекту.
@@ -500,3 +504,85 @@ class ProjectsService:
             result[root_id] = visited
 
         return result
+
+    def _project_roots_stmt(
+        self,
+        *,
+        team_filter: Optional[list[str]],
+        status_category: Optional[str],
+        category: Optional[str],
+        search: Optional[str],
+        year: Optional[int],
+        quarter: Optional[int],
+    ) -> Optional[Select]:
+        """Запрос корней-проектов — общий для list_projects и list_project_keys.
+
+        Вынесен отдельно, чтобы условия фильтрации не разъезжались между
+        двумя методами. Без year+quarter: проект = issue с категорией
+        quarterly_tasks/archive_target и без parent_id. С year+quarter:
+        только issues, утверждённые (included_flag=True) в approved scenario
+        для данного квартала — команда фильтруется здесь же, через
+        PlanningScenario.team (новые задачи без worklogs не должны отсекаться
+        worklog-фильтром по команде).
+
+        None — точный сигнал «результат пуст» (нет подходящего сценария или
+        в нём нет ни одной аллокации), без выполнения запроса по Issue.
+        """
+        db = self._db
+
+        if year is not None and quarter is not None:
+            quarter_str = f"Q{quarter}"
+            scenarios_q = (
+                select(PlanningScenario.id)
+                .where(
+                    PlanningScenario.status == "approved",
+                    PlanningScenario.year == year,
+                    PlanningScenario.quarter == quarter_str,
+                )
+            )
+            if team_filter:
+                scenarios_q = scenarios_q.where(PlanningScenario.team.in_(team_filter))
+            scenario_ids = db.execute(scenarios_q).scalars().all()
+            if not scenario_ids:
+                return None
+
+            approved_issue_ids = (
+                db.execute(
+                    select(BacklogItem.issue_id)
+                    .join(ScenarioAllocation, ScenarioAllocation.backlog_item_id == BacklogItem.id)
+                    .where(
+                        ScenarioAllocation.scenario_id.in_(scenario_ids),
+                        ScenarioAllocation.included_flag.is_(True),
+                        BacklogItem.issue_id.is_not(None),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            approved_set = {iid for iid in approved_issue_ids if iid}
+            if not approved_set:
+                return None
+
+            # parent_id НЕ ограничиваем: утверждённый allocation сам по себе
+            # делает issue «проектом квартала», даже если в Jira-иерархии у
+            # него есть родитель (Initiative и т.п.).
+            stmt = select(Issue).where(Issue.id.in_(approved_set))
+        else:
+            # Загружаем все «проектные» issues (корни иерархии).
+            stmt = (
+                select(Issue)
+                .where(
+                    Issue.category.in_(PROJECT_CATEGORY_CODES),
+                    Issue.parent_id.is_(None),
+                )
+            )
+        if status_category:
+            stmt = stmt.where(Issue.status_category == status_category)
+        if category:
+            stmt = stmt.where(Issue.category == category)
+        if search:
+            like = f"%{search}%"
+            stmt = stmt.where(
+                Issue.summary.ilike(like) | Issue.key.ilike(like)
+            )
+        return stmt
