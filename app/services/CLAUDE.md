@@ -89,3 +89,13 @@ Lifecycle через `archived_at` — вкладки Активные / В ра
 ## ProductionCalendarService ([production_calendar_service.py](production_calendar_service.py))
 
 Per-day часы для RU календаря. `POST /production-calendar/sync` тянет официальный календарь (см. [app/connectors/CLAUDE.md](../connectors/CLAUDE.md) production-calendar).
+
+## plan_common ([plan_common.py](plan_common.py))
+
+Общие расчёты плана, вынесенные из `work_desk_widgets.py`: `quarter_bounds`, `find_recent_plan`, `plan_ids_for_issues` (свежий план на каждую тройку команда/год/квартал — форки и baseline-копии одного квартала не задваивают часы), `subtree_ids`, `team_member_ids`, `assignment_norm`, `role_breakdown` (план/факт по видам работ; принимает **список** планов — суммирует по всем, нужно для проектов на несколько кварталов/команд).
+
+Столы дают персональный срез (доля одного сотрудника), будущий `project_plan_service.py` — проектный (все исполнители, несколько команд). Формулы одни и те же.
+
+## work_desk_widgets ([work_desk_widgets.py](work_desk_widgets.py))
+
+Диспетчер виджетов публичного рабочего стола аналитика: `dispatch(key)` по `WIDGET_KEYS`, `desk_summary` для hero-шапки. Каждый виджет — тонкий адаптер, использует `plan_common` для план/факт расчётов.

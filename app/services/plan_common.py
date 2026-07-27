@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import calendar as _cal
 from datetime import date, datetime, time
-from typing import Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from app.models.resource_plan import ResourcePlan
 
 QUARTER_MONTHS: Dict[int, tuple[int, int, int]] = {
     1: (1, 2, 3),
@@ -114,7 +117,7 @@ def plan_ids_for_issues(db: Session, issue_ids: Sequence[str]) -> List[str]:
         .scalars()
         .all()
     )
-    best: Dict[tuple, object] = {}
+    best: Dict[tuple, "ResourcePlan"] = {}
     for p in plans:
         # Квартал в БД встречается как "3", "Q3", "q3" — нормализуем.
         q = (p.quarter or "").lower().lstrip("q")
