@@ -171,8 +171,22 @@ class PortfolioSignalSchema(BaseModel):
     severity: str
 
 
+class PortfolioProjectSchema(BaseModel):
+    key: str
+    title: Optional[str] = None
+    status: Optional[str] = None
+    status_category: Optional[str] = None
+    priority: Optional[int] = None
+    work_types: List[WorkTypeSchema]
+    external_hours: float
+    total_plan: Optional[float] = None
+    total_fact: float
+    total_pct: Optional[int] = None
+
+
 class PortfolioSchema(BaseModel):
     project_count: int
+    projects: List[PortfolioProjectSchema]
     work_types: List[WorkTypeSchema]
     external_hours: float
     total_plan: Optional[float] = None

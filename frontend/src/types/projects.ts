@@ -142,8 +142,22 @@ export interface PortfolioSignal {
   severity: 'warn' | 'info';
 }
 
+export interface PortfolioProject {
+  key: string;
+  title: string | null;
+  status: string | null;
+  status_category: string | null;
+  priority: number | null;
+  work_types: PlanWorkType[];
+  external_hours: number;
+  total_plan: number | null;
+  total_fact: number;
+  total_pct: number | null;
+}
+
 export interface Portfolio {
   project_count: number;
+  projects: PortfolioProject[];
   work_types: PlanWorkType[];
   external_hours: number;
   total_plan: number | null;

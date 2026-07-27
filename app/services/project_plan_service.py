@@ -78,6 +78,7 @@ class ProjectPlanService:
 
         empty = {
             "project_count": 0,
+            "projects": [],
             "work_types": [
                 {"code": r, "label": PHASE_LABEL[r], "plan_hours": 0.0,
                  "fact_hours": 0.0, "pct": None}
@@ -125,6 +126,8 @@ class ProjectPlanService:
         }
         info_hours = 0.0
         project_pcts: Dict[str, Optional[int]] = {}
+        priorities = self._priority_by_issue(root_ids)
+        projects: List[dict] = []
         for root in roots:
             bd = per_project[root.id]
             wt, total_plan, total_fact = _project_work_types(bd)
@@ -133,6 +136,20 @@ class ProjectPlanService:
                 totals["fact"][w["code"]] += w["fact_hours"]
             info_hours += bd["info"]
             project_pcts[root.key] = _pct(total_fact, total_plan)
+            projects.append({
+                "key": root.key,
+                "title": root.summary,
+                "status": root.status,
+                "status_category": root.status_category,
+                "priority": priorities.get(root.id),
+                "work_types": wt,
+                "external_hours": round(bd["info"], 1),
+                "total_plan": total_plan,
+                "total_fact": total_fact,
+                "total_pct": project_pcts[root.key],
+            })
+        # По убыванию приоритета, как в списке проектов; дальше сортирует сам стол.
+        projects.sort(key=lambda p: (p["priority"] is None, -(p["priority"] or 0), p["key"] or ""))
 
         work_types: List[dict] = [
             {
@@ -151,6 +168,7 @@ class ProjectPlanService:
 
         return {
             "project_count": len(roots),
+            "projects": projects,
             "work_types": work_types,
             "external_hours": round(info_hours, 1),
             "total_plan": total_plan,
@@ -334,6 +352,23 @@ class ProjectPlanService:
                 ids |= members_by_team.get(t, set())
             result[root.id] = ids | qa_ids
         return result
+
+    def _priority_by_issue(self, root_ids: Sequence[str]) -> Dict[str, Optional[int]]:
+        """Приоритет проекта из бэклога — одним запросом на весь портфель."""
+        from app.models import BacklogItem
+
+        rows = (
+            self._db.query(BacklogItem.issue_id, BacklogItem.priority)
+            .filter(BacklogItem.issue_id.in_(list(root_ids)))
+            .all()
+        )
+        out: Dict[str, Optional[int]] = {}
+        for issue_id, priority in rows:
+            # Одна задача может лежать в бэклоге нескольких кварталов — берём высший.
+            cur = out.get(issue_id)
+            if priority is not None and (cur is None or priority > cur):
+                out[issue_id] = priority
+        return out
 
     def _children(self, root_id: str, fact_until: date) -> List[dict]:
         """Прямые дети проекта; часы — по поддереву каждого ребёнка."""
