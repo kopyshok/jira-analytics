@@ -86,3 +86,78 @@ export interface ProjectSummary {
   generated_at: string;
   model_used: string;
 }
+
+export interface PlanWorkType {
+  code: 'analyst' | 'dev' | 'qa';
+  label: string;
+  plan_hours: number;
+  fact_hours: number;
+  pct: number | null;
+}
+
+export interface TimelineBar {
+  phase: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface TimelineRow {
+  key: string | null;
+  title: string | null;
+  status: string | null;
+  bars: TimelineBar[];
+}
+
+export interface PlanTimeline {
+  start: string | null;
+  end: string | null;
+  quarter_start: string;
+  quarter_end: string;
+  rows: TimelineRow[];
+}
+
+export interface PlanChild {
+  key: string;
+  title: string | null;
+  status: string | null;
+  jira_url: string | null;
+  hours: number;
+}
+
+export interface ProjectPlan {
+  key: string;
+  work_types: PlanWorkType[];
+  external_hours: number;
+  total_plan: number | null;
+  total_fact: number;
+  total_pct: number | null;
+  timeline: PlanTimeline;
+  children: PlanChild[];
+}
+
+export interface PortfolioSignal {
+  kind: 'overload' | 'silent' | 'lagging';
+  text: string;
+  severity: 'warn' | 'info';
+}
+
+export interface Portfolio {
+  project_count: number;
+  work_types: PlanWorkType[];
+  external_hours: number;
+  total_plan: number | null;
+  total_fact: number;
+  total_pct: number | null;
+  timeline: PlanTimeline;
+  signals: PortfolioSignal[];
+}
+
+/** Фильтры списка проектов — общие для списка и сводки портфеля. */
+export interface ProjectListFiltersState {
+  search: string;
+  statusCategory: string;
+  category: string;
+  year: number;
+  quarter: number;
+}
