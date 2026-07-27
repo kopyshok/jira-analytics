@@ -2,6 +2,8 @@
 import uuid
 from datetime import date, datetime
 
+import pytest
+
 from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
@@ -10,7 +12,7 @@ from app.models.project import Project
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.worklog import Worklog
-from app.services.project_plan_service import ProjectPlanService
+from app.services.project_plan_service import ProjectPlanService, _plural_projects
 
 
 def _uid() -> str:
@@ -262,3 +264,153 @@ def test_team_falls_back_to_plan_team_when_issue_team_empty(db_session):
     assert by_code["analyst"]["fact_hours"] == 6.0
     assert by_code["analyst"]["plan_hours"] == 10.0
     assert plan["external_hours"] == 0.0
+
+
+# ---------------------------------------------------------------------
+# get_portfolio
+# ---------------------------------------------------------------------
+
+def test_portfolio_sums_projects_and_keeps_external_apart(db_session):
+    db = db_session
+    _seed_project(db)
+
+    pf = ProjectPlanService(db).get_portfolio(["PP-1"], year=2026, quarter=3)
+
+    assert pf["project_count"] == 1
+    assert pf["total_plan"] == 130.0
+    assert pf["total_fact"] == 35.0
+    assert pf["total_pct"] == 27
+    assert pf["external_hours"] == 5.0
+    assert [r["key"] for r in pf["timeline"]["rows"]] == ["PP-1"]
+
+
+def test_portfolio_signal_overload(db_session):
+    db = db_session
+    db.add(Project(id="ov", jira_project_id="ov", key="OV", name="Overload"))
+    db.add(Issue(id="ovroot", jira_issue_id="30", key="OV-1", summary="Перегруз",
+                 issue_type="Epic", status="В работе", project_id="ov",
+                 category="quarterly_tasks", include_in_analysis=True, team="T"))
+    item_id = _uid()
+    db.add(BacklogItem(id=item_id, title="Перегруз", issue_id="ovroot"))
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2026, quarter="Q3",
+                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="analyst", hours_allocated=10.0,
+                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 30)))
+    emp = _employee(db, "Аналитик", "analyst", "T")
+    _worklog(db, emp, "ovroot", 25.0, datetime(2026, 7, 15))
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["OV-1"], year=2026, quarter=3)
+
+    kinds = {s["kind"] for s in pf["signals"]}
+    assert "overload" in kinds
+    overload = next(s for s in pf["signals"] if s["kind"] == "overload")
+    assert "1" in overload["text"]
+
+
+def test_portfolio_empty_list(db_session):
+    pf = ProjectPlanService(db_session).get_portfolio([], year=2026, quarter=3)
+    assert pf["project_count"] == 0
+    assert pf["total_plan"] is None
+    assert pf["signals"] == []
+
+
+def test_portfolio_signal_silent(db_session):
+    """Последнее списание больше 14 дней до конца квартала — сигнал «молчит»."""
+    db = db_session
+    db.add(Project(id="sl", jira_project_id="sl", key="SL", name="Silent"))
+    db.add(Issue(id="slroot", jira_issue_id="31", key="SL-1", summary="Молчит",
+                 issue_type="Epic", status="В работе", project_id="sl",
+                 category="quarterly_tasks", include_in_analysis=True, team="T"))
+    item_id = _uid()
+    db.add(BacklogItem(id=item_id, title="Молчит", issue_id="slroot"))
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2026, quarter="Q3",
+                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="analyst", hours_allocated=20.0,
+                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 30)))
+    emp = _employee(db, "Аналитик", "analyst", "T")
+    # Последнее (и единственное) списание 1 августа — до конца квартала (30 сентября)
+    # больше 14 дней тишины.
+    _worklog(db, emp, "slroot", 10.0, datetime(2026, 8, 1))
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["SL-1"], year=2026, quarter=3)
+
+    assert pf["signals"] == [
+        {"kind": "silent", "text": "1 проект без списаний 14+ дней", "severity": "warn"},
+    ]
+
+
+def test_portfolio_no_worklogs_is_not_silent(db_session):
+    """Проект вообще без списаний — это «ещё не начинали», а не «замолчал»."""
+    db = db_session
+    db.add(Project(id="nw", jira_project_id="nw", key="NW", name="No worklogs"))
+    db.add(Issue(id="nwroot", jira_issue_id="32", key="NW-1", summary="Не начинали",
+                 issue_type="Epic", status="Новый", project_id="nw",
+                 category="quarterly_tasks", include_in_analysis=True, team="T"))
+    item_id = _uid()
+    db.add(BacklogItem(id=item_id, title="Не начинали", issue_id="nwroot"))
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2026, quarter="Q3",
+                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="analyst", hours_allocated=20.0,
+                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 30)))
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["NW-1"], year=2026, quarter=3)
+
+    assert pf["signals"] == []
+
+
+def test_portfolio_signal_lagging(db_session):
+    """Вид работ, сильно отстающий от общего процента, — отдельный сигнал."""
+    db = db_session
+    db.add(Project(id="lg", jira_project_id="lg", key="LG", name="Lagging"))
+    db.add(Issue(id="lgroot", jira_issue_id="33", key="LG-1", summary="Разработка тормозит",
+                 issue_type="Epic", status="В работе", project_id="lg",
+                 category="quarterly_tasks", include_in_analysis=True, team="T"))
+    item_id = _uid()
+    db.add(BacklogItem(id=item_id, title="Разработка тормозит", issue_id="lgroot"))
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2026, quarter="Q3",
+                        computed_at=datetime(2026, 7, 20)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="analyst", hours_allocated=100.0,
+                                  start_date=date(2026, 7, 1), end_date=date(2026, 7, 31)))
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_id,
+                                  phase="dev", hours_allocated=100.0,
+                                  start_date=date(2026, 8, 1), end_date=date(2026, 8, 31)))
+    analyst = _employee(db, "Аналитик", "analyst", "T")
+    # Аналитик всё сдал, разработка ещё не начата; списание близко к концу
+    # квартала — «молчит» сработать не должно.
+    _worklog(db, analyst, "lgroot", 100.0, datetime(2026, 9, 25))
+    db.commit()
+
+    pf = ProjectPlanService(db).get_portfolio(["LG-1"], year=2026, quarter=3)
+
+    assert pf["signals"] == [
+        {"kind": "lagging", "text": "Разработка отстаёт: 0% при 50% общей", "severity": "info"},
+    ]
+
+
+@pytest.mark.parametrize(
+    "n,expected",
+    [
+        (1, "проект"),
+        (2, "проекта"),
+        (5, "проектов"),
+        (11, "проектов"),
+        (21, "проект"),
+        (22, "проекта"),
+        (25, "проектов"),
+        (111, "проектов"),
+        (112, "проектов"),
+    ],
+)
+def test_plural_projects(n, expected):
+    assert _plural_projects(n) == expected
