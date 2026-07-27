@@ -45,7 +45,7 @@ class ProjectPlanService:
         q_start, q_end = quarter_bounds(year, quarter)
         subtree = subtree_ids(self._db, [root.id])
         plan_ids = plan_ids_for_issues(self._db, [root.id])
-        team_ids = team_member_ids(self._db, self._project_teams(root, plan_ids))
+        team_ids = self._team_ids_for_project(self._project_teams(root, plan_ids))
         bd = role_breakdown(
             self._db, plan_ids, [root.id], subtree, q_end, team_ids
         )[root.id]
@@ -82,6 +82,23 @@ class ProjectPlanService:
             )
             return [t for t in dict.fromkeys(teams) if t]
         return []
+
+    def _team_ids_for_project(self, teams: List[str]) -> set[str]:
+        """Состав команды проекта для отсечения «внешних» авторов.
+
+        Если команду определить не удалось (у эпика нет поля «Команда» и нет
+        ни одного ресурсного плана с назначениями этого проекта) — считаем
+        внутренними всех сотрудников. `team_member_ids` при пустом списке
+        команд вернула бы только QA (общий ресурс на любую команду), а все
+        остальные авторы ошибочно уехали бы во «Внешние» — раз команда
+        проекта не определена, объявлять всех её авторов чужими некорректно
+        (спека §3.3).
+        """
+        if teams:
+            return team_member_ids(self._db, teams)
+        from app.models import Employee
+
+        return {r[0] for r in self._db.query(Employee.id).all()}
 
     def _children(self, root_id: str, fact_until: date) -> List[dict]:
         """Прямые дети проекта; часы — по поддереву каждого ребёнка."""
