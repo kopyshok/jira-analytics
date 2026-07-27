@@ -27,17 +27,17 @@ class LLMResponseError(Exception):
     """LLM вернул некорректный ответ (пустой, не-JSON, неверная структура)."""
 
 
-_DEFAULT_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
+_DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 # Цепочка по умолчанию — модели РАЗНЫХ провайдеров. Используется когда
 # AppSetting `llm_openrouter_fallback_models` отсутствует (None). Если
 # пользователь явно сохранил пустую строку — fallback отключён, остаётся
 # только primary.
 _DEFAULT_FALLBACK_MODELS = [
-    "nousresearch/hermes-3-llama-3.1-405b:free",
-    "openai/gpt-oss-120b:free",
-    "google/gemma-3-27b-it:free",
-    "z-ai/glm-4.5-air:free",
+    "google/gemma-4-31b-it:free",
+    "inclusionai/ling-3.0-flash:free",
+    "openai/gpt-oss-20b:free",
+    "openrouter/free",  # авто-роутер по бесплатному пулу — последний шанс
 ]
 _BASE_URL = "https://openrouter.ai/api/v1"
 _REFERER = "http://localhost"

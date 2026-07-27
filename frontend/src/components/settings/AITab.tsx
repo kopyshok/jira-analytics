@@ -27,16 +27,15 @@ const FALLBACK_GEMINI_MODELS: GeminiModelInfo[] = [
 ];
 
 const FALLBACK_OPENROUTER_MODELS: OpenRouterModelInfo[] = [
-  { id: 'qwen/qwen3-next-80b-a3b-instruct:free', label: 'Qwen3-Next 80B Instruct (free, рекомендуется)', context_length: 262144 },
-  { id: 'nousresearch/hermes-3-llama-3.1-405b:free', label: 'Hermes 3 Llama 3.1 405B (free)', context_length: 131072 },
-  { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B IT (free)', context_length: 131072 },
-  { id: 'z-ai/glm-4.5-air:free', label: 'GLM 4.5 Air (free)', context_length: 131072 },
-  { id: 'openai/gpt-oss-120b:free', label: 'GPT-OSS 120B (free)', context_length: 131072 },
-  { id: 'qwen/qwen3-coder:free', label: 'Qwen3 Coder (free)', context_length: 262000 },
+  { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nemotron 3 Super 120B (free, рекомендуется)', context_length: 262144 },
+  { id: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B IT (free)', context_length: 262144 },
+  { id: 'inclusionai/ling-3.0-flash:free', label: 'Ling 3.0 Flash (free)', context_length: 262144 },
+  { id: 'openai/gpt-oss-20b:free', label: 'GPT-OSS 20B (free)', context_length: 131072 },
+  { id: 'openrouter/free', label: 'OpenRouter Auto (бесплатный пул)', context_length: 200000 },
 ];
 
 const RECOMMENDED_GEMINI = 'gemini-3.1-flash-lite-preview';
-const RECOMMENDED_OPENROUTER = 'qwen/qwen3-next-80b-a3b-instruct:free';
+const RECOMMENDED_OPENROUTER = 'nvidia/nemotron-3-super-120b-a12b:free';
 const RECOMMENDED_DEEPSEEK = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODELS: DeepSeekModelInfo[] = [
   { id: 'deepseek-chat', label: 'DeepSeek V3.2 (chat, дешёвый, рекомендуется)' },
@@ -57,9 +56,9 @@ type FormValues = {
 };
 
 const DEFAULT_OPENROUTER_FALLBACKS = [
-  'nousresearch/hermes-3-llama-3.1-405b:free',
-  'openai/gpt-oss-120b:free',
-  'google/gemma-3-27b-it:free',
+  'google/gemma-4-31b-it:free',
+  'inclusionai/ling-3.0-flash:free',
+  'openai/gpt-oss-20b:free',
 ];
 
 export const AITab: React.FC = () => {

@@ -44,6 +44,12 @@ async def get_prompt_default():
     return {"system_role": DEFAULT_SYSTEM_ROLE, "format_spec": FORMAT_SPEC}
 
 
+GEO_BLOCK_MSG = (
+    "Google не обслуживает запросы из текущего региона. "
+    "Нужен доступ через другую страну либо переключитесь на OpenRouter в Настройках → AI."
+)
+
+
 # Префиксы моделей, не подходящих для текстового AI-саммари
 _GEMINI_EXCLUDE_KEYWORDS = (
     "tts", "image", "robotics", "computer-use", "embedding",
@@ -69,6 +75,8 @@ async def list_gemini_models(db: Session = Depends(get_db)):
             r.raise_for_status()
             data = r.json()
     except httpx.HTTPStatusError as e:
+        if "location is not supported" in (e.response.text or ""):
+            raise HTTPException(status_code=503, detail=GEO_BLOCK_MSG)
         raise HTTPException(status_code=503, detail=f"Google API ответил {e.response.status_code}")
     except httpx.HTTPError as e:
         raise HTTPException(status_code=503, detail=f"Google API недоступен: {e}")
@@ -123,6 +131,10 @@ async def list_openrouter_models(db: Session = Depends(get_db)):
             continue
         model_id = m.get("id", "")
         if not model_id:
+            continue
+        # Только текстовые: у аудио-моделей (lyria и пр.) в выходах не один text.
+        arch = m.get("architecture") or {}
+        if list(arch.get("output_modalities") or ["text"]) != ["text"]:
             continue
         out.append({
             "id": model_id,
