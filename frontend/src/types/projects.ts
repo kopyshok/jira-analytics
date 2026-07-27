@@ -154,7 +154,8 @@ export interface PortfolioProject {
   total_plan: number | null;
   total_fact: number;
   total_pct: number | null;
-  children: PlanChild[];
+  /** Может не прийти со старого сервера — читать через `?? []`. */
+  children?: PlanChild[];
 }
 
 export interface Portfolio {
