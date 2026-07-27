@@ -16,6 +16,7 @@ from app.core.ai_deps import require_ai_enabled
 from app.database import get_db
 from app.models import Project
 from app.services.llm.base import ConfigurationError
+from app.services.project_plan_service import ProjectPlanService
 from app.services.project_summary_service import ProjectSummaryService
 from app.services.projects_service import ProjectsService
 
@@ -115,6 +116,72 @@ class ProjectDetailSchema(BaseModel):
     rating_result: Optional[int] = None
 
 
+class WorkTypeSchema(BaseModel):
+    code: str
+    label: str
+    plan_hours: float
+    fact_hours: float
+    pct: Optional[int] = None
+
+
+class TimelineBarSchema(BaseModel):
+    phase: str
+    label: str
+    start_date: str
+    end_date: str
+
+
+class TimelineRowSchema(BaseModel):
+    key: Optional[str] = None
+    title: Optional[str] = None
+    status: Optional[str] = None
+    bars: List[TimelineBarSchema]
+
+
+class TimelineSchema(BaseModel):
+    start: Optional[str] = None
+    end: Optional[str] = None
+    quarter_start: str
+    quarter_end: str
+    rows: List[TimelineRowSchema]
+
+
+class PlanChildSchema(BaseModel):
+    key: str
+    title: Optional[str] = None
+    status: Optional[str] = None
+    jira_url: Optional[str] = None
+    hours: float
+
+
+class ProjectPlanSchema(BaseModel):
+    key: str
+    work_types: List[WorkTypeSchema]
+    external_hours: float
+    total_plan: Optional[float] = None
+    total_fact: float
+    total_pct: Optional[int] = None
+    timeline: TimelineSchema
+    children: List[PlanChildSchema]
+
+
+class PortfolioSignalSchema(BaseModel):
+    kind: str
+    text: str
+    severity: str
+
+
+class PortfolioSchema(BaseModel):
+    project_count: int
+    work_types: List[WorkTypeSchema]
+    external_hours: float
+    total_plan: Optional[float] = None
+    total_fact: float
+    total_pct: Optional[int] = None
+    timeline: TimelineSchema
+    signals: List[PortfolioSignalSchema]
+
+
 # ---------------------------------------------------------------------------
 # New endpoints
 # ---------------------------------------------------------------------------
@@ -162,6 +229,32 @@ def list_quarterly_projects(
             rating_result=item.rating_result,
         ))
     return result
+
+
+# КРИТИЧНО: маршрут объявлен до `/{key}` — иначе generic-роут перехватит
+# слово "portfolio" как ключ проекта (FastAPI матчит роуты по порядку).
+@router.get("/portfolio", response_model=PortfolioSchema)
+def get_portfolio(
+    year: int = Query(..., description="год квартала"),
+    quarter: int = Query(..., ge=1, le=4, description="квартал 1-4"),
+    teams: Optional[str] = Query(None, description="comma-separated team names"),
+    category: Optional[str] = Query(None),
+    status_category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Сводка по тем же проектам, что видны в списке слева."""
+    team_filter = [t.strip() for t in teams.split(",") if t.strip()] if teams else None
+    items = ProjectsService(db).list_projects(
+        team_filter=team_filter,
+        category=category,
+        status_category=status_category,
+        search=search,
+        year=year,
+        quarter=quarter,
+    )
+    keys = [i.key for i in items]
+    return ProjectPlanService(db).get_portfolio(keys, year=year, quarter=quarter)
 
 
 class WorkBreakdownGroupSchema(BaseModel):
@@ -317,3 +410,17 @@ def get_project(key: str, db: Session = Depends(get_db)):
         rating_speed=detail.rating_speed,
         rating_result=detail.rating_result,
     )
+
+
+@router.get("/{key}/plan", response_model=ProjectPlanSchema)
+def get_project_plan(
+    key: str,
+    year: int = Query(..., description="год квартала"),
+    quarter: int = Query(..., ge=1, le=4, description="квартал 1-4"),
+    db: Session = Depends(get_db),
+):
+    """План/факт по видам работ, таймлайн фаз и задачи проекта."""
+    plan = ProjectPlanService(db).get_plan(key, year=year, quarter=quarter)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return plan
