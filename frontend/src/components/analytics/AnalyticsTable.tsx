@@ -102,6 +102,28 @@ function buildIssueNode(
   periodEnd: string,
   navigate: ReturnType<typeof useNavigate>,
 ): TreeNode {
+  const rowKind = i.row_kind ?? 'issue';
+  const isContext = rowKind === 'context';
+  if (rowKind === 'own') {
+    return {
+      key: `${prefix}/i:${i.id}/own`,
+      kind: 'issue',
+      depth,
+      issueId: i.id,
+      issueKey: i.key,
+      label: indent(
+        depth,
+        <span style={{ color: 'var(--text-muted, #7e94b8)', fontStyle: 'italic' }}>
+          Собственные списания
+        </span>,
+      ),
+      totals: i.totals,
+      children: worklogMode === 'inline'
+        ? [worklogBlockNode(`${prefix}/i:${i.id}/own`, i.id, depth + 1, periodStart, periodEnd)]
+        : undefined,
+    };
+  }
+
   const cleanSummary = stripKeyPrefix(i.summary, i.key);
   const isProject =
     i.category === 'quarterly_tasks' || i.category === 'archive_target';
@@ -109,7 +131,7 @@ function buildIssueNode(
     key: `${prefix}/i:${i.id}`,
     kind: 'issue',
     depth,
-    issueId: i.id,
+    issueId: isContext ? undefined : i.id,
     issueKey: i.key,
     label: indent(
       depth,
@@ -154,7 +176,8 @@ function buildIssueNode(
           )}
           <span
             style={{
-              color: 'var(--text, #e6edf7)',
+              color: isContext ? 'var(--text-muted, #7e94b8)' : 'var(--text, #e6edf7)',
+              fontStyle: isContext ? 'italic' : undefined,
               whiteSpace: 'normal',
               wordBreak: 'break-word',
               minWidth: 0,
@@ -206,29 +229,44 @@ function buildIssueNode(
     totals: i.totals,
   };
 
+  // Режим «Иерархия»: под задачей идут подзадачи, собранные бэкендом.
+  const childNodes = (i.children ?? []).map((c) =>
+    buildIssueNode(c, node.key, depth + 1, worklogMode, periodStart, periodEnd, navigate),
+  );
+
   // В inline-режиме ворклоги задачи показываются как один child-row через
   // tree-expansion, чтобы не конфликтовать с tree-mode на родительских уровнях.
-  if (worklogMode === 'inline') {
-    node.children = [
-      {
-        key: `${node.key}/wl`,
-        kind: 'worklog-block',
-        depth: depth + 1,
-        label: (
-          <div style={{ paddingLeft: (depth + 1) * 14 }}>
-            <AnalyticsWorklogsBlock
-              issueId={i.id}
-              periodStart={periodStart}
-              periodEnd={periodEnd}
-            />
-          </div>
-        ),
-        totals: EMPTY_TOTALS,
-      },
-    ];
+  // У родителя своих ворклогов нет — они уходят в строку «собственные списания».
+  if (worklogMode === 'inline' && !isContext && childNodes.length === 0) {
+    childNodes.push(worklogBlockNode(node.key, i.id, depth + 1, periodStart, periodEnd));
   }
+  if (childNodes.length > 0) node.children = childNodes;
 
   return node;
+}
+
+function worklogBlockNode(
+  parentKey: string,
+  issueId: string,
+  depth: number,
+  periodStart: string,
+  periodEnd: string,
+): TreeNode {
+  return {
+    key: `${parentKey}/wl`,
+    kind: 'worklog-block',
+    depth,
+    label: (
+      <div style={{ paddingLeft: depth * 14 }}>
+        <AnalyticsWorklogsBlock
+          issueId={issueId}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+        />
+      </div>
+    ),
+    totals: EMPTY_TOTALS,
+  };
 }
 
 function ForeignChip({ totals }: { totals: NodeTotals }) {
@@ -326,14 +364,24 @@ function aggregateTotals(
   parentFact: number | null,
   grandFact: number,
   planByEmpWt: Map<string, number>,
+  hierarchical = false,
 ): NodeTotals {
   const fact = rows.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
-  const issueIds = new Set(rows.map((r) => r.issue.id));
   const empIds = new Set(rows.map((r) => r.employee_id));
-  const foreignRows = rows.filter((r) => r.issue.is_foreign);
-  const foreignHours = foreignRows.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
-  const foreignIssues = new Set(foreignRows.map((r) => r.issue.id));
   const wl = rows.reduce((s, r) => s + r.issue.totals.worklog_count, 0);
+
+  // В режиме «Иерархия» строка — это ветка дерева, её счётчики уже посчитаны
+  // бэкендом по всему поддереву. Дедуплицировать по id верхнего узла нельзя.
+  const issueCount = hierarchical
+    ? rows.reduce((s, r) => s + r.issue.totals.issue_count, 0)
+    : new Set(rows.map((r) => r.issue.id)).size;
+  const foreignRows = rows.filter((r) => r.issue.is_foreign);
+  const foreignHours = hierarchical
+    ? rows.reduce((s, r) => s + r.issue.totals.foreign_hours, 0)
+    : foreignRows.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
+  const foreignCount = hierarchical
+    ? rows.reduce((s, r) => s + r.issue.totals.foreign_issue_count, 0)
+    : new Set(foreignRows.map((r) => r.issue.id)).size;
 
   const planKeys = new Set<string>();
   for (const r of rows) planKeys.add(`${r.employee_id}|${r.work_type_id}`);
@@ -355,13 +403,62 @@ function aggregateTotals(
     pct_total: grandFact > 0 ? Math.round((fact / grandFact) * 1000) / 10 : 0,
     pct_in_group: parentFact && parentFact > 0 ? Math.round((fact / parentFact) * 1000) / 10 : null,
     worklog_count: wl,
-    issue_count: issueIds.size,
+    issue_count: issueCount,
     employee_count: empIds.size,
     avg_worklog_minutes: wl > 0 ? Math.round((fact * 60 / wl) * 10) / 10 : 0,
-    foreign_issue_count: foreignIssues.size,
+    foreign_issue_count: foreignCount,
     foreign_hours: Math.round(foreignHours * 10) / 10,
     foreign_pct: fact > 0 ? Math.round((foreignHours / fact) * 1000) / 10 : 0,
   };
+}
+
+/** Сумма итогов нескольких веток дерева задач. */
+function sumIssueTotals(
+  nodes: AnalyticsIssueNode[],
+  grandFact: number,
+  parentFact: number | null,
+): NodeTotals {
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  const fact = nodes.reduce((s, n) => s + n.totals.fact_hours, 0);
+  const wl = nodes.reduce((s, n) => s + n.totals.worklog_count, 0);
+  const foreignHours = nodes.reduce((s, n) => s + n.totals.foreign_hours, 0);
+  return {
+    fact_hours: r1(fact),
+    plan_hours: null,
+    pct_plan: null,
+    pct_total: grandFact > 0 ? r1((fact / grandFact) * 100) : 0,
+    pct_in_group: parentFact && parentFact > 0 ? r1((fact / parentFact) * 100) : null,
+    worklog_count: wl,
+    issue_count: nodes.reduce((s, n) => s + n.totals.issue_count, 0),
+    employee_count: Math.max(...nodes.map((n) => n.totals.employee_count)),
+    avg_worklog_minutes: wl > 0 ? r1((fact * 60) / wl) : 0,
+    foreign_issue_count: nodes.reduce((s, n) => s + n.totals.foreign_issue_count, 0),
+    foreign_hours: r1(foreignHours),
+    foreign_pct: fact > 0 ? r1((foreignHours / fact) * 100) : 0,
+  };
+}
+
+/**
+ * Одна и та же ветка может прийти из нескольких групп (например, когда уровень
+ * «Сотрудник» скрыт в настройке отчёта) — склеиваем поддеревья по задачам.
+ */
+function mergeIssueTrees(
+  nodes: AnalyticsIssueNode[],
+  grandFact: number,
+  parentFact: number | null,
+): AnalyticsIssueNode {
+  const totals = sumIssueTotals(nodes, grandFact, parentFact);
+  const groups = new Map<string, AnalyticsIssueNode[]>();
+  for (const n of nodes) {
+    for (const c of n.children ?? []) {
+      const k = `${c.row_kind ?? 'issue'}|${c.id}`;
+      groups.set(k, [...(groups.get(k) ?? []), c]);
+    }
+  }
+  const children = [...groups.values()]
+    .map((g) => mergeIssueTrees(g, grandFact, totals.fact_hours))
+    .sort((a, b) => b.totals.fact_hours - a.totals.fact_hours);
+  return { ...nodes[0], totals, children };
 }
 
 function kindOfLevel(level: AnalyticsLevel): RowKind {
@@ -386,6 +483,8 @@ function buildTreeFromLayout(
 ): TreeNode[] {
   const flat = flattenResponse(data);
   const grandFact = flat.reduce((s, r) => s + r.issue.totals.fact_hours, 0);
+  // Признак режима «Иерархия» — берём из данных, отдельный проп не нужен.
+  const hierarchical = flat.some((r) => (r.issue.children?.length ?? 0) > 0);
 
   const planByEmpWt = new Map<string, number>();
   for (const t of data.teams) {
@@ -532,8 +631,10 @@ function buildTreeFromLayout(
       const nodes: TreeNode[] = [];
       for (const [, grp] of byId.entries()) {
         const sample = grp[0];
-        const totals = aggregateTotals(grp, parentFact, grandFact, planByEmpWt);
-        const issueLikeRow: AnalyticsIssueNode = { ...sample.issue, totals };
+        const totals = aggregateTotals(grp, parentFact, grandFact, planByEmpWt, hierarchical);
+        const issueLikeRow: AnalyticsIssueNode = hierarchical
+          ? { ...mergeIssueTrees(grp.map((r) => r.issue), grandFact, parentFact), totals }
+          : { ...sample.issue, totals };
         const node = buildIssueNode(
           issueLikeRow,
           keyPrefix,
@@ -560,7 +661,7 @@ function buildTreeFromLayout(
     const nodes: TreeNode[] = [];
     for (const [k, rs] of groups.entries()) {
       const sample = rs[0];
-      const totals = aggregateTotals(rs, parentFact, grandFact, planByEmpWt);
+      const totals = aggregateTotals(rs, parentFact, grandFact, planByEmpWt, hierarchical);
       const nodeKey = `${keyPrefix}/${head}:${k}`;
       const children = group(rs, rest, depth + 1, nodeKey, totals.fact_hours);
       nodes.push({
@@ -831,7 +932,10 @@ export default function AnalyticsTable({
           rowExpandable: (record) => (record.children?.length ?? 0) > 0,
         }}
         onRow={(record) =>
-          worklogMode === 'drawer' && record.kind === 'issue' && record.issueId
+          worklogMode === 'drawer'
+          && record.kind === 'issue'
+          && record.issueId
+          && !(record.children?.length)
             ? {
                 onClick: () =>
                   setDrawerIssue({ id: record.issueId!, key: record.issueKey! }),

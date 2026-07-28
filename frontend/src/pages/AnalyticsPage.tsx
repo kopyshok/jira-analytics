@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { Space, DatePicker, Switch, Empty, Spin, Button } from 'antd';
+import { Space, DatePicker, Switch, Empty, Spin, Button, Tooltip } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../components/shared/PageHeader';
@@ -49,6 +49,7 @@ export default function AnalyticsPage() {
 
   const [localRange, setLocalRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [worklogMode, setWorklogMode] = useState<'inline' | 'drawer'>('drawer');
+  const [hierarchy, setHierarchy] = useState(false);
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
   useRegisterHelp('Аналитика трудозатрат', analyticsHelp);
 
@@ -63,7 +64,8 @@ export default function AnalyticsPage() {
     task_query: taskQ,
     work_type_codes: workType,
     category_codes: category,
-  }), [period, localRange, selectedTeam, selectedTeams, employeeId, workType, category, taskQ]);
+    hierarchy,
+  }), [period, localRange, selectedTeam, selectedTeams, employeeId, workType, category, taskQ, hierarchy]);
 
   const { data, isLoading } = useAnalyticsReport(queryParams);
   const { visible: visibleColumns } = useAnalyticsColumns();
@@ -124,6 +126,12 @@ export default function AnalyticsPage() {
         checked={worklogMode === 'inline'}
         onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
       />
+      <Tooltip title="Задачи деревом до самого верхнего родителя">
+        <Space size={4}>
+          <span>Иерархия:</span>
+          <Switch checked={hierarchy} onChange={setHierarchy} />
+        </Space>
+      </Tooltip>
       <Button
         icon={<SettingOutlined />}
         onClick={() => setColumnSettingsOpen(true)}
@@ -144,6 +152,7 @@ export default function AnalyticsPage() {
             ...(workType ? { work_type_codes: workType } : {}),
             ...(category ? { category_codes: category } : {}),
             ...(visibleColumns.length ? { columns: visibleColumns.join(',') } : {}),
+            ...(hierarchy ? { hierarchy: 'true' } : {}),
           });
           window.location.href = `${import.meta.env.VITE_API_BASE_URL}/analytics/report/export.xlsx?${p.toString()}`;
         }}

@@ -12,6 +12,7 @@ export interface AnalyticsReportParams {
   task_query?: string;
   work_type_codes?: string;
   category_codes?: string;
+  hierarchy?: boolean;
 }
 
 export function fetchAnalyticsReport(p: AnalyticsReportParams, signal?: AbortSignal) {
@@ -26,6 +27,7 @@ export function fetchAnalyticsReport(p: AnalyticsReportParams, signal?: AbortSig
     task_query: p.task_query,
     work_type_codes: p.work_type_codes,
     category_codes: p.category_codes,
+    hierarchy: p.hierarchy ? 'true' : undefined,
   };
   return api.get<AnalyticsReportResponse>('/analytics/report', params, signal);
 }
