@@ -32,9 +32,30 @@ Quarter mapping: `QUARTER_MONTHS = {1:(1,2,3), 2:(4,5,6), 3:(7,8,9), 4:(10,11,12
 
 Используется в `/planning/scenarios/{id}/resource` (посуточная матрица) и `/resource-summary` (разбивка по ролям × work_types).
 
+## team_membership ([team_membership.py](team_membership.py))
+
+**Единственный источник ответа «кто в команде».** Участие периодизовано (`joined_at` — первый день в команде, `left_at` — первый день ВНЕ; обе границы nullable = открыты). Прямые запросы `EmployeeTeam.team == X` в расчётах запрещены — выбывшие иначе попадают в прошлые кварталы задним числом.
+
+API (чистое чтение, без commit):
+- `members_on(db, teams, day)` — состав на дату
+- `members_overlapping(db, teams, start, end)` — все, кто пересёкся с периодом (ростеры квартала)
+- `members_ever(db, teams)` — включая выбывших (загрузка ворклогов из Jira)
+- `member_intervals(db, teams, start, end)` — отрезки участия, обрезанные периодом (посуточные циклы) + `day_in_intervals(day, intervals)`
+- `primary_team_on(db, employee_id, day)` — основная команда на дату
+- `shared_members(db, teams, start, end)` — кто пересекается с другими командами (общий сотрудник)
+- `month_membership_share(db, teams, employee_id, year, month)` — доля нормо-часов месяца на дни участия; нужна там, где часы считает `CapacityService`, не знающий про команды (снимок утверждения и `/capacity-diff` — обе стороны сравнения обязаны резаться одинаково)
+- `active_on_clause` / `overlaps_clause` — условия для вставки в чужой запрос
+- `membership_on_column_exists(teams, employee_col, date_col)` / `has_any_membership_on(...)` — EXISTS-корреляция по дате строки (факт/аналитика по `Worklog.started_at`)
+
 ## EmployeeTeamService ([employee_team_service.py](employee_team_service.py))
 
-CRUD для M:N `employee_teams`. API: `list_teams`, `add_team`, `remove_team`, `set_primary`, `replace_teams`. Инвариант: ровно одна `is_primary=true` строка на сотрудника (enforce в сервисе, не в БД — SQLite не поддерживает partial unique). Поле `Employee.team` — derived, обновляется через `_recompute_legacy_team`. Авто-определение команды (`auto_detect_team` / `auto_detect_all_missing`) пишет в primary membership через тот же сервис.
+CRUD для периодизованного `employee_teams`. API: `list_teams`, `add_team`, `remove_team`, `set_primary`, `replace_teams`, `set_joined_at`, `set_left_at`, `transfer`.
+
+- `transfer(employee_id, from_team=, to_team=, on=)` — перевод одним шагом: закрывает открытый период старой команды датой `on`, открывает новый с той же даты, переносит признак основной. Без дыр и нахлёстов.
+- `remove_team` / `replace_teams` трогают **только открытые** периоды — закрытые это история. «Человек ушёл» = `set_left_at`, а не удаление.
+- Валидация: `_assert_no_overlap` (периоды одной пары не пересекаются), `_assert_single_primary` (одна основная на дату; строгий режим включается `add_team(..., allow_primary_overlap=False)`).
+- `Employee.team` — derived от основной команды на сегодня, обновляется через `_recompute_legacy_team`.
+- Авто-определение команды (`auto_detect_team` / `auto_detect_all_missing`) считает «команды нет», когда нет **открытого** участия.
 
 ## ExportService ([export_service.py](export_service.py))
 
