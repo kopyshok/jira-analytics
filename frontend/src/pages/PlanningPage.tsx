@@ -131,6 +131,20 @@ function CapacityDriftIndicator({ scenarioId }: { scenarioId: string }) {
         <div style={{ marginTop: 8 }}>
           {diff.changed_employees.map(emp => (
             <div key={emp.employee_id}>
+              {emp.left_team_at && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '4px 6px', background: 'rgba(248,113,113,0.10)',
+                  borderRadius: 5, fontSize: 12, marginBottom: 3,
+                }}>
+                  <span style={{ color: '#e2e8f0', fontWeight: 500, minWidth: 120 }}>
+                    {emp.employee_name}
+                  </span>
+                  <span style={{ color: '#f87171', fontWeight: 600 }}>
+                    выбыл из команды {emp.left_team_at.split('-').reverse().join('.')}
+                  </span>
+                </div>
+              )}
               {emp.months.map(m => (
                 <div key={`${m.year}-${m.month}`} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap',

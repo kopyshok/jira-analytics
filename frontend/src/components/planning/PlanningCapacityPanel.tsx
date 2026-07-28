@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Card, Select, Skeleton, Tag } from 'antd';
+import { Card, Select, Skeleton, Tag, Tooltip } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
@@ -283,6 +283,15 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                     <span style={{ color: knownRole ? DARK_THEME.textPrimary : DARK_THEME.textMuted, fontSize: 15 }}>
                       {e.display_name}
                     </span>
+                    {!!e.shared_with?.length && (
+                      <Tooltip
+                        title={`Делит время с командами: ${e.shared_with.join(', ')}. `
+                          + `Заложено всеми командами: ${Math.round(e.committed_hours_all_teams ?? 0)} ч`
+                          + (e.is_overcommitted ? ' — больше его нормы' : '')}
+                      >
+                        <Tag color={e.is_overcommitted ? 'red' : 'blue'}>общий</Tag>
+                      </Tooltip>
+                    )}
                     {!knownRole && (
                       <Select
                         size="small"
