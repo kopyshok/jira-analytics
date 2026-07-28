@@ -12,15 +12,16 @@ import json
 from datetime import datetime, date, timedelta
 from typing import Optional
 
-from sqlalchemy import func, and_, or_, select, exists
+from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Worklog, Issue, Employee, EmployeeTeam
+from app.models import Worklog, Issue, Employee
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
 from app.models import MandatoryWorkType, RoleCapacityRule, Category, Role
 from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
+from app.services import team_membership as tm
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
     DashboardNormWorkResponse,
@@ -125,16 +126,18 @@ class AnalyticsService:
         if match_employees:
             emp_sub_clauses: list = []
             if named_teams:
+                # Участие проверяется НА ДАТУ списания: выбывший не тянет за
+                # собой поздние ворклоги.
                 emp_sub_clauses.append(
-                    Worklog.employee_id.in_(
-                        select(EmployeeTeam.employee_id).where(
-                            EmployeeTeam.team.in_(named_teams)
-                        )
+                    tm.membership_on_column_exists(
+                        named_teams, Worklog.employee_id, Worklog.started_at
                     )
                 )
             if has_none:
                 emp_sub_clauses.append(
-                    ~exists().where(EmployeeTeam.employee_id == Worklog.employee_id)
+                    ~tm.has_any_membership_on(
+                        Worklog.employee_id, Worklog.started_at
+                    )
                 )
             if emp_sub_clauses:
                 clauses.append(or_(*emp_sub_clauses) if len(emp_sub_clauses) > 1 else emp_sub_clauses[0])
@@ -357,12 +360,9 @@ class AnalyticsService:
         # Множество ID сотрудников команды — для split team vs alien (Task M11).
         # QA — общий ресурс компании, считается командным для всех команд.
         if teams:
-            team_emp_rows = (
-                self.db.query(EmployeeTeam.employee_id)
-                .filter(EmployeeTeam.team.in_(teams))
-                .all()
+            team_employee_ids: set[str] = tm.members_overlapping(
+                self.db, teams, period_start, period_end
             )
-            team_employee_ids: set[str] = {r[0] for r in team_emp_rows}
             qa_emp_rows = (
                 self.db.query(Employee.id)
                 .filter(Employee.role == "qa")
@@ -871,13 +871,9 @@ class AnalyticsService:
         # 3. Активные сотрудники в командах
         employees_q = self.db.query(Employee).filter(Employee.is_active.is_(True))
         if teams:
-            team_emp_ids = (
-                self.db.query(EmployeeTeam.employee_id)
-                .filter(EmployeeTeam.team.in_(teams))
-                .distinct()
-                .all()
+            emp_ids = list(
+                tm.members_overlapping(self.db, teams, period_start, period_end)
             )
-            emp_ids = [r[0] for r in team_emp_ids]
             employees_q = employees_q.filter(Employee.id.in_(emp_ids))
         employees: list[Employee] = employees_q.all()
 
@@ -890,17 +886,31 @@ class AnalyticsService:
         # с логикой иерархического отчёта Аналитики: если активен фильтр teams,
         # выбираем primary (если он в фильтре) либо первое совпавшее членство;
         # без фильтра — primary.
+        emp_ids_for_teams = [e.id for e in employees]
         emp_team_rows = (
-            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team, EmployeeTeam.is_primary)
-            .filter(EmployeeTeam.employee_id.in_([e.id for e in employees]))
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
+            .filter(
+                EmployeeTeam.employee_id.in_(emp_ids_for_teams),
+                *tm.overlaps_clause(period_start, period_end),
+            )
             .all()
         )
         emp_teams_all: dict[str, list[str]] = {}
-        emp_primary: dict[str, str] = {}
         for row in emp_team_rows:
             emp_teams_all.setdefault(row.employee_id, []).append(row.team)
-            if row.is_primary:
-                emp_primary[row.employee_id] = row.team
+
+        # Основная — та, что активна на конец периода: у переведённого в
+        # середине квартала основной считается новая команда.
+        primary_rows = (
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
+            .filter(
+                EmployeeTeam.employee_id.in_(emp_ids_for_teams),
+                EmployeeTeam.is_primary.is_(True),
+                *tm.active_on_clause(period_end),
+            )
+            .all()
+        )
+        emp_primary: dict[str, str] = {r.employee_id: r.team for r in primary_rows}
 
         emp_team_by_id: dict[str, str] = {}
         if teams:
@@ -1263,13 +1273,16 @@ class AnalyticsService:
             has_none = NO_TEAM_TOKEN in teams
             emp_clauses: list = []
             if named_teams:
-                emp_subq = select(EmployeeTeam.employee_id).where(
-                    EmployeeTeam.team.in_(named_teams)
-                ).scalar_subquery()
-                emp_clauses.append(Worklog.employee_id.in_(emp_subq))
+                emp_clauses.append(
+                    tm.membership_on_column_exists(
+                        named_teams, Worklog.employee_id, Worklog.started_at
+                    )
+                )
             if has_none:
                 emp_clauses.append(
-                    ~exists().where(EmployeeTeam.employee_id == Worklog.employee_id)
+                    ~tm.has_any_membership_on(
+                        Worklog.employee_id, Worklog.started_at
+                    )
                 )
             if emp_clauses:
                 agg_q = agg_q.filter(
@@ -1318,15 +1331,15 @@ class AnalyticsService:
             has_none = NO_TEAM_TOKEN in teams
             clauses: list = []
             if named_teams:
-                in_team_subq = (
-                    select(EmployeeTeam.employee_id)
-                    .where(EmployeeTeam.team.in_(named_teams))
-                    .scalar_subquery()
+                # Ростер «кто в команде сейчас» — состав на сегодня.
+                clauses.append(
+                    Employee.id.in_(
+                        list(tm.members_on(self.db, named_teams, date.today()))
+                    )
                 )
-                clauses.append(Employee.id.in_(in_team_subq))
             if has_none:
                 clauses.append(
-                    ~exists().where(EmployeeTeam.employee_id == Employee.id)
+                    ~tm.has_any_membership_on(Employee.id, func.now())
                 )
             if clauses:
                 emp_q = emp_q.filter(
@@ -1456,17 +1469,30 @@ class AnalyticsService:
 
         # Любое членство в команде, не только primary — соответствует логике
         # дашборд-виджетов (drill-in с плитки должен находить те же часы).
+        all_emp_ids = [e.id for e in all_employees]
         emp_team_rows = (
-            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team, EmployeeTeam.is_primary)
-            .filter(EmployeeTeam.employee_id.in_([e.id for e in all_employees]))
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
+            .filter(
+                EmployeeTeam.employee_id.in_(all_emp_ids),
+                *tm.overlaps_clause(period_start, period_end),
+            )
             .all()
         )
         emp_teams_all: dict[str, list[str]] = {}
-        emp_primary: dict[str, str] = {}
         for r in emp_team_rows:
             emp_teams_all.setdefault(r.employee_id, []).append(r.team)
-            if r.is_primary:
-                emp_primary[r.employee_id] = r.team
+
+        # Основная — активная на конец периода.
+        primary_rows = (
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team)
+            .filter(
+                EmployeeTeam.employee_id.in_(all_emp_ids),
+                EmployeeTeam.is_primary.is_(True),
+                *tm.active_on_clause(period_end),
+            )
+            .all()
+        )
+        emp_primary: dict[str, str] = {r.employee_id: r.team for r in primary_rows}
 
         # team filter — сотрудник проходит, если ЛЮБОЕ его членство в выбранных.
         # Атрибутирование в иерархии: primary, если он в выбранных, иначе

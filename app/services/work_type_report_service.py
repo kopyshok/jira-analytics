@@ -18,8 +18,8 @@ from app.models.issue_classification import IssueClassification
 from app.models.work_type_report_snapshot import WorkTypeReportSnapshot
 from app.models.worklog import Worklog
 from app.models.employee import Employee
-from app.models.employee_team import EmployeeTeam
 from app.models.category import Category
+from app.services import team_membership as tm
 from app.services.theme_dictionary_service import ThemeDictionaryService
 from app.services.work_type_outlier_detector import detect_outliers_for_theme
 from app.services.llm.work_type_classifier import (
@@ -500,16 +500,15 @@ class WorkTypeReportService:
                 issue_clauses.append(
                     Issue.participating_teams.like(f"%{escaped}%", escape="\\")
                 )
-            # employee-side: worklog authored by an employee in those teams
-            emp_subq = (
-                select(EmployeeTeam.employee_id)
-                .where(EmployeeTeam.team.in_(teams))
-                .scalar_subquery()
+            # employee-side: worklog authored by an employee who was in those
+            # teams ON THE DAY of the worklog (выбывший не тянет поздние часы)
+            emp_clause = tm.membership_on_column_exists(
+                teams, Worklog.employee_id, Worklog.started_at
             )
             q = q.where(
                 or_(
                     or_(*issue_clauses),
-                    Worklog.employee_id.in_(emp_subq),
+                    emp_clause,
                 )
             )
         return list(self.db.execute(q).scalars().all())
