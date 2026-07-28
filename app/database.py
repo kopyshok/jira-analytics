@@ -2,6 +2,7 @@
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import make_url
@@ -22,6 +23,21 @@ def _engine_kwargs(database_url: str, echo: bool) -> dict[str, object]:
         kwargs["connect_args"] = {"check_same_thread": False}
     return kwargs
 
+
+def _ensure_sqlite_dir(database_url: str) -> None:
+    """Создать каталог под файл БД: на чистой машине его ещё нет.
+
+    Без этого SQLite падает с «unable to open database file» — так CI ронял
+    все тесты, которые ходят через реальный engine приложения.
+    """
+    if not _is_sqlite_url(database_url):
+        return
+    db_path = make_url(database_url).database
+    if db_path and db_path != ":memory:":
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+
+_ensure_sqlite_dir(settings.database_url)
 
 engine = create_engine(settings.database_url, **_engine_kwargs(settings.database_url, settings.debug))
 
