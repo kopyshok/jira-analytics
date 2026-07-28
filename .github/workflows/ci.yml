@@ -116,8 +116,10 @@ jobs:
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
-      - run: npm run lint:design
-        working-directory: frontend
+      # Проверка дизайн-антипаттернов отключена 2026-07-28: её находки —
+      # осознанные решения по внешнему виду (градиентный текст Aurora,
+      # акцентная полоса карточек, шрифт Ганта). Запускать вручную:
+      # npm run lint:design
       # Drop TS incremental cache — иначе tsc -b может пропустить файлы
       # из-за кэша tsbuildinfo и упустить ошибки типизации (например, TS2367
       # narrowing на const literal union'ах). См. инцидент v1.2.1.
