@@ -36,7 +36,22 @@ export const updateMembershipJoinedAt = (
   team: string,
   joined_at: string | null,
 ) =>
-  api.patch<{ employee_id: string; team: string; is_primary: boolean; joined_at: string | null }>(
+  api.patch<EmployeeTeamItem>(
     `/employees/${employeeId}/teams/${encodeURIComponent(team)}/joined-at`,
     { joined_at },
   );
+
+export const updateMembershipLeftAt = (
+  employeeId: string,
+  team: string,
+  left_at: string | null,
+) =>
+  api.patch<EmployeeTeamItem>(
+    `/employees/${employeeId}/teams/${encodeURIComponent(team)}/left-at`,
+    { left_at },
+  );
+
+export const transferEmployeeTeam = (
+  employeeId: string,
+  body: { from_team: string; to_team: string; on: string },
+) => api.post<EmployeeTeamItem[]>(`/employees/${employeeId}/teams/transfer`, body);

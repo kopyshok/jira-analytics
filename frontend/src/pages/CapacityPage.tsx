@@ -55,9 +55,11 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   const storedEmp = useGenericSetting('ui_capacity_team_filter');
   const storedShowFact = useGenericSetting('ui_capacity_show_fact');
   const storedShowPct  = useGenericSetting('ui_capacity_show_pct');
+  const storedShowDeparted = useGenericSetting('ui_capacity_show_departed');
   const saveStored = useSaveGenericSetting();
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
   const [showFact, setShowFact] = useState(false);
+  const [showDeparted, setShowDeparted] = useState(false);
   const [showPct,  setShowPct]  = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
@@ -94,13 +96,15 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   useEffect(() => {
     if (hydrated) return;
     if (storedEmp.data === undefined
-        || storedShowFact.data === undefined || storedShowPct.data === undefined) return;
+        || storedShowFact.data === undefined || storedShowPct.data === undefined
+        || storedShowDeparted.data === undefined) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedEmpIds((storedEmp.data?.value || '').split(',').filter(Boolean));
     setShowFact(storedShowFact.data?.value === '1');
     setShowPct(storedShowPct.data?.value === '1');
+    setShowDeparted(storedShowDeparted.data?.value === '1');
     setHydrated(true);
-  }, [hydrated, storedEmp.data, storedShowFact.data, storedShowPct.data]);
+  }, [hydrated, storedEmp.data, storedShowFact.data, storedShowPct.data, storedShowDeparted.data]);
 
   // Drop removed employees from selection (parity with old code).
   useEffect(() => {
@@ -116,9 +120,24 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
 
   const persist = (key: string, value: string) => saveStored.mutate({ key, value });
 
+  // Выбывший — все периоды участия закрыты датой в прошлом.
+  const today = dayjs();
+  const isDeparted = (empId: string) => {
+    const teams = teamsByEmpId.get(empId) ?? [];
+    if (teams.length === 0) return false;
+    return teams.every(t => !!t.left_at && dayjs(t.left_at).isBefore(today, 'day'));
+  };
+  const departedAt = (empId: string) => {
+    const dates = (teamsByEmpId.get(empId) ?? [])
+      .map(t => t.left_at)
+      .filter((d): d is string => !!d);
+    return dates.length ? dates.sort().slice(-1)[0] : null;
+  };
+
   // ------------ Filter visible rows ------------
   const visible = (data ?? []).filter(r => {
     if (selectedEmpIds.length && !selectedEmpIds.includes(r.employee_id)) return false;
+    if (!showDeparted && isDeparted(r.employee_id)) return false;
     return true;
   });
 
@@ -240,9 +259,11 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
       const primary = teams.find(t => t.is_primary)?.team;
       const value = teams.map(t => t.team);
       const role = roleByEmpId.get(r.employee_id) ?? null;
+      const departedOn = isDeparted(r.employee_id) ? departedAt(r.employee_id) : null;
       return (
         <Space>
-          <span style={{ cursor: 'pointer' }}>{r.employee_name}</span>
+          <span style={{ cursor: 'pointer', opacity: departedOn ? 0.6 : 1 }}>{r.employee_name}</span>
+          {departedOn && <Tag>выбыл {dayjs(departedOn).format('DD.MM.YYYY')}</Tag>}
           <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           <Space>
           <Select
@@ -356,6 +377,8 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
           <Text>Факт</Text>
           <Switch checked={showPct} onChange={(v) => { setShowPct(v); persist('ui_capacity_show_pct', v ? '1' : '0'); }} />
           <Text>%</Text>
+          <Switch checked={showDeparted} onChange={(v) => { setShowDeparted(v); persist('ui_capacity_show_departed', v ? '1' : '0'); }} />
+          <Text>Показывать выбывших</Text>
         </Space>
         <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
         <Button

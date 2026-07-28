@@ -4,6 +4,8 @@ export interface EmployeeTeamItem {
   team: string;
   is_primary: boolean;
   joined_at?: string | null;
+  /** Первый день ВНЕ команды. null — состоит сейчас. */
+  left_at?: string | null;
 }
 
 export type EmployeeRole = string;  // now driven by roles registry
@@ -547,6 +549,11 @@ export interface ResourceEmployee {
   role: string | null;
   total_hours: number;
   days: ResourceDayHours[];
+  /** Другие команды сотрудника в этом квартале (ресурс не делится). */
+  shared_with?: string[];
+  /** Часы, заложенные на человека всеми его командами суммарно. */
+  committed_hours_all_teams?: number;
+  is_overcommitted?: boolean;
 }
 
 export interface ResourceBase {
@@ -660,6 +667,8 @@ export interface EmployeeDiff {
   employee_id: string;
   employee_name: string;
   months: MonthDiff[];
+  /** Дата выбытия из команды сценария, если человек ушёл после утверждения. */
+  left_team_at?: string | null;
 }
 
 export interface CapacityDiffResponse {

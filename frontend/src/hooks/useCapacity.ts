@@ -11,7 +11,7 @@ import {
   getEmployeeCapacityOverrides,
   recalcTeamCapacity,
 } from '../api/capacity';
-import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam, patchEmployee } from '../api/employees';
+import { getEmployees, recalcActiveEmployees, addEmployeeFromJira, replaceEmployeeTeams, setEmployeePrimaryTeam, patchEmployee, updateMembershipJoinedAt, updateMembershipLeftAt, transferEmployeeTeam } from '../api/employees';
 import { searchJiraUsers } from '../api/sync';
 import { api } from '../api/client';
 import type {
@@ -303,5 +303,44 @@ export const useTeamRecalc = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['capacity'] });
     },
+  });
+};
+
+/** Инвалидация всего, что зависит от состава команды. */
+const invalidateMembership = (
+  qc: ReturnType<typeof useQueryClient>,
+  employeeId: string,
+) => {
+  qc.invalidateQueries({ queryKey: ['employee', 'teams', employeeId] });
+  qc.invalidateQueries({ queryKey: ['employees'] });
+  qc.invalidateQueries({ queryKey: ['capacity'] });
+  qc.invalidateQueries({ queryKey: ['planning'] });
+  qc.invalidateQueries({ queryKey: ['dashboard', 'hours-balance'] });
+};
+
+export const useUpdateMembershipJoinedAt = () => {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { employeeId: string; team: string; joined_at: string | null }>({
+    mutationFn: ({ employeeId, team, joined_at }) =>
+      updateMembershipJoinedAt(employeeId, team, joined_at),
+    onSettled: (_d, _e, vars) => invalidateMembership(qc, vars.employeeId),
+  });
+};
+
+export const useUpdateMembershipLeftAt = () => {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { employeeId: string; team: string; left_at: string | null }>({
+    mutationFn: ({ employeeId, team, left_at }) =>
+      updateMembershipLeftAt(employeeId, team, left_at),
+    onSettled: (_d, _e, vars) => invalidateMembership(qc, vars.employeeId),
+  });
+};
+
+export const useTransferEmployeeTeam = () => {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { employeeId: string; from_team: string; to_team: string; on: string }>({
+    mutationFn: ({ employeeId, from_team, to_team, on }) =>
+      transferEmployeeTeam(employeeId, { from_team, to_team, on }),
+    onSettled: (_d, _e, vars) => invalidateMembership(qc, vars.employeeId),
   });
 };
