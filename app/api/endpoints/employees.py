@@ -23,6 +23,7 @@ class EmployeeTeamItem(BaseModel):
     team: str
     is_primary: bool
     joined_at: Optional[date] = None
+    left_at: Optional[date] = None
 
     model_config = {"from_attributes": True}
 
@@ -231,6 +232,7 @@ def set_team_legacy(
 class AddTeamRequest(BaseModel):
     team: str
     is_primary: bool = False
+    joined_at: Optional[date] = None
 
 
 class ReplaceTeamsRequest(BaseModel):
@@ -262,9 +264,12 @@ def post_team(
     emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
     if emp is None:
         raise HTTPException(status_code=404, detail="Employee not found")
-    row = EmployeeTeamService(db).add_team(
-        employee_id, req.team, is_primary=req.is_primary,
-    )
+    try:
+        row = EmployeeTeamService(db).add_team(
+            employee_id, req.team, is_primary=req.is_primary, joined_at=req.joined_at,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return EmployeeTeamItem.model_validate(row)
 
 
@@ -332,5 +337,58 @@ def patch_joined_at(
     try:
         row = EmployeeTeamService(db).set_joined_at(employee_id, team, payload.joined_at)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=422, detail=msg)
     return EmployeeTeamItem.model_validate(row)
+
+
+class LeftAtPayload(BaseModel):
+    left_at: Optional[date] = None
+
+
+@router.patch("/{employee_id}/teams/{team}/left-at", response_model=EmployeeTeamItem)
+def patch_left_at(
+    employee_id: str,
+    team: str,
+    payload: LeftAtPayload,
+    db: Session = Depends(get_db),
+):
+    """Установить дату выбытия сотрудника из команды."""
+    try:
+        row = EmployeeTeamService(db).set_left_at(employee_id, team, payload.left_at)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=422, detail=msg)
+    return EmployeeTeamItem.model_validate(row)
+
+
+class TransferRequest(BaseModel):
+    from_team: str
+    to_team: str
+    on: date
+
+
+@router.post("/{employee_id}/teams/transfer", response_model=List[EmployeeTeamItem])
+def post_transfer(
+    employee_id: str,
+    req: TransferRequest,
+    db: Session = Depends(get_db),
+):
+    """Перевести сотрудника в другую команду с указанной даты."""
+    emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
+    if emp is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    svc = EmployeeTeamService(db)
+    try:
+        svc.transfer(employee_id, from_team=req.from_team, to_team=req.to_team, on=req.on)
+    except ValueError as e:
+        msg = str(e)
+        if "не найдено" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=422, detail=msg)
+    rows = svc.list_teams(employee_id)
+    return [EmployeeTeamItem.model_validate(r) for r in rows]
