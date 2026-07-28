@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
+from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
 from app.services.plan_quality_service import PlanQualityService
 
@@ -22,6 +23,14 @@ def _make_employee(db: Session, name: str = "Иванов И.И.") -> Employee:
     db.add(emp)
     db.flush()
     return emp
+
+
+def _make_backlog_item(db: Session, title: str = "Инициатива") -> BacklogItem:
+    """Реальный элемент бэклога: назначение ссылается на него, Postgres проверяет ссылку."""
+    item = BacklogItem(title=title)
+    db.add(item)
+    db.flush()
+    return item
 
 
 def test_quality_empty_plan_returns_zeros(db_session: Session):
@@ -40,6 +49,7 @@ def test_quality_empty_plan_returns_zeros(db_session: Session):
 def test_quality_counts_overload_when_assignment_exceeds_capacity(db_session: Session):
     """Один сотрудник, 2 параллельных назначения по 8ч/день каждое = перегруз 200%."""
     emp = _make_employee(db_session)
+    item = _make_backlog_item(db_session)
     plan = ResourcePlan(team="Команда А", quarter="Q2", year=2026, status="ready")
     db_session.add(plan)
     db_session.flush()
@@ -48,7 +58,7 @@ def test_quality_counts_overload_when_assignment_exceeds_capacity(db_session: Se
     for _ in range(2):
         db_session.add(ResourcePlanAssignment(
             plan_id=plan.id,
-            backlog_item_id="dummy",  # FK relaxed in test fixture
+            backlog_item_id=item.id,
             phase="dev",
             employee_id=emp.id,
             hours_allocated=8.0,
@@ -66,6 +76,7 @@ def test_quality_counts_overload_when_assignment_exceeds_capacity(db_session: Se
 def test_quality_counts_late_assignments(db_session: Session):
     """Назначение с end_date после конца квартала считается просрочкой."""
     emp = _make_employee(db_session)
+    item = _make_backlog_item(db_session)
     plan = ResourcePlan(team="Команда А", quarter="Q2", year=2026, status="ready")
     db_session.add(plan)
     db_session.flush()
@@ -73,7 +84,7 @@ def test_quality_counts_late_assignments(db_session: Session):
     # Q2 2026 заканчивается 2026-06-30; end_date на следующий день → просрочка
     db_session.add(ResourcePlanAssignment(
         plan_id=plan.id,
-        backlog_item_id="dummy",
+        backlog_item_id=item.id,
         phase="dev",
         employee_id=emp.id,
         hours_allocated=8.0,

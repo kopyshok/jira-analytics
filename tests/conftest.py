@@ -50,6 +50,36 @@ def _app_engine_schema():
     Base.metadata.create_all(bind=app_engine)
 
 
+STUB_USER_ID = "00000000-0000-0000-0000-000000000000"
+
+
+def _make_stub_user() -> User:
+    return User(
+        id=STUB_USER_ID,
+        email="test@example.com",
+        password_hash="x",
+        display_name="Test User",
+        role=UserRole.admin,
+        is_active=True,
+        selected_teams_raw="[]",
+        selected_period_raw="{}",
+        analytics_columns_raw="[]",
+        analytics_layout_raw="{}",
+        appearance_settings_raw="{}",
+    )
+
+
+def _insert_stub_user(session) -> None:
+    """Положить подставного пользователя в БД сессии.
+
+    Эндпоинты пишут его id в поля «кто правил» (история правок плана).
+    Postgres проверяет ссылку и отклоняет запись, если пользователя нет.
+    """
+    if session.get(User, STUB_USER_ID) is None:
+        session.add(_make_stub_user())
+        session.commit()
+
+
 @pytest.fixture(autouse=True)
 def _bypass_auth_in_tests(request):
     """Bypass JWT auth for all tests.
@@ -64,11 +94,28 @@ def _bypass_auth_in_tests(request):
     if request.node.get_closest_marker("no_auth_bypass"):
         yield
         return
-    stub = User(
-        id="00000000-0000-0000-0000-000000000000",
-        email="test@example.com",
+    stub = _make_stub_user()
+    fastapi_app.dependency_overrides[get_current_user] = lambda: stub
+    fastapi_app.dependency_overrides[require_admin] = lambda: stub
+    try:
+        yield
+    finally:
+        fastapi_app.dependency_overrides.pop(get_current_user, None)
+        fastapi_app.dependency_overrides.pop(require_admin, None)
+
+
+@pytest.fixture
+def seed_user(db_session):
+    """Реальная запись пользователя `usr-1` в БД.
+
+    Тесты пишут её id в поля «кто создал» / «кто правил». Postgres проверяет
+    ссылку и отклоняет запись, если пользователя нет.
+    """
+    user = User(
+        id="usr-1",
+        email="usr-1@example.com",
         password_hash="x",
-        display_name="Test User",
+        display_name="Тестовый пользователь",
         role=UserRole.admin,
         is_active=True,
         selected_teams_raw="[]",
@@ -77,13 +124,9 @@ def _bypass_auth_in_tests(request):
         analytics_layout_raw="{}",
         appearance_settings_raw="{}",
     )
-    fastapi_app.dependency_overrides[get_current_user] = lambda: stub
-    fastapi_app.dependency_overrides[require_admin] = lambda: stub
-    try:
-        yield
-    finally:
-        fastapi_app.dependency_overrides.pop(get_current_user, None)
-        fastapi_app.dependency_overrides.pop(require_admin, None)
+    db_session.add(user)
+    db_session.commit()
+    return user
 
 
 @pytest.fixture(scope="session")
@@ -129,6 +172,7 @@ def db_session(engine):
         bind=engine,
     )
     session = TestingSessionLocal()
+    _insert_stub_user(session)
     try:
         yield session
     finally:
@@ -158,6 +202,7 @@ def testclient_db_session():
     Base.metadata.create_all(bind=tc_engine)
     Session = sessionmaker(autocommit=False, autoflush=False, bind=tc_engine)
     session = Session()
+    _insert_stub_user(session)
     try:
         yield session
     finally:

@@ -2,12 +2,22 @@
 
 from datetime import datetime
 
-from app.models import ResourcePlanAssignment
+from app.models import BacklogItem, ResourcePlan, ResourcePlanAssignment
+
+
+def _plan_and_item(db):
+    """Реальные план и элемент бэклога: Postgres проверяет ссылки назначения."""
+    plan = ResourcePlan(team="Команда А", quarter="Q2", year=2026, status="ready")
+    item = BacklogItem(title="Инициатива")
+    db.add_all([plan, item])
+    db.flush()
+    return plan, item
 
 
 def test_assignment_pinned_fields(db_session):
+    plan, item = _plan_and_item(db_session)
     a = ResourcePlanAssignment(
-        plan_id="p1", backlog_item_id="b1", phase="analyst",
+        plan_id=plan.id, backlog_item_id=item.id, phase="analyst",
         pinned_start=True, pinned_employee=False, pinned_split=True,
         manual_edit_at=datetime(2026, 5, 10, 12, 0),
     )
