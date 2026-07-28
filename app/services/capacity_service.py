@@ -356,9 +356,13 @@ class CapacityService:
             query = query.filter(Employee.is_active.is_(True))
         if teams_filter:
             from app.models import EmployeeTeam as _ET
+            from app.services import team_membership as _tm
             query = (
                 query.join(_ET, _ET.employee_id == Employee.id)
-                .filter(_ET.team.in_(teams_filter))
+                .filter(
+                    _ET.team.in_(teams_filter),
+                    *_tm.overlaps_clause(q_start, q_end),
+                )
                 .distinct()
             )
         employees = query.all()
@@ -564,10 +568,17 @@ class CapacityService:
         query = self.db.query(Employee).filter(Employee.is_active.is_(True))
         if team_filter:
             from app.models import EmployeeTeam
+            from app.services import team_membership as _tm
 
+            months = QUARTER_MONTHS[quarter]
+            q_start = date(year, months[0], 1)
+            q_end = date(year, months[-1], monthrange(year, months[-1])[1])
             query = (
                 query.join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-                .filter(EmployeeTeam.team.in_(team_filter))
+                .filter(
+                    EmployeeTeam.team.in_(team_filter),
+                    *_tm.overlaps_clause(q_start, q_end),
+                )
                 .distinct()
             )
         for emp in query.all():

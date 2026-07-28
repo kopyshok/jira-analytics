@@ -6,6 +6,8 @@
 фильтра команд — пустой список означает «без фильтра»).
 """
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,6 +25,7 @@ from app.schemas.work_desk import (
     WorkDeskListItem,
     WorkDeskWidgetsUpdate,
 )
+from app.services import team_membership
 from app.services.work_desk_service import WorkDeskService
 
 router = APIRouter()
@@ -44,6 +47,7 @@ def _employee_in_user_teams(db: Session, user: User, employee_id: str) -> bool:
         select(EmployeeTeam.id).where(
             EmployeeTeam.employee_id == employee_id,
             EmployeeTeam.team.in_(teams),
+            *team_membership.active_on_clause(date.today()),
         )
     ).first()
     return row is not None
@@ -79,7 +83,10 @@ def list_desks(
     if teams:
         stmt = stmt.join(
             EmployeeTeam, EmployeeTeam.employee_id == Employee.id
-        ).where(EmployeeTeam.team.in_(teams)).distinct()
+        ).where(
+            EmployeeTeam.team.in_(teams),
+            *team_membership.active_on_clause(date.today()),
+        ).distinct()
     desks = db.execute(stmt).scalars().unique().all()
 
     items: list[WorkDeskListItem] = []

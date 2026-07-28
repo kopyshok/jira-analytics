@@ -28,6 +28,7 @@ from app.schemas.hours_balance import (
     MonthlySummary,
     DailyEntry,
 )
+from app.services import team_membership
 from app.services.analytics_service import AnalyticsService, parse_teams_csv
 from app.services.export_service import ExportService
 from app.services.hours_balance_service import HoursBalanceService
@@ -185,13 +186,11 @@ def dashboard_hours_balance(
     team_ids = parse_teams_csv(teams)
 
     if team_ids:
-        employee_ids = (
-            db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.team.in_(team_ids))
-            .distinct()
-            .all()
+        employee_ids = list(
+            team_membership.members_overlapping(
+                db, team_ids, resolved_from, resolved_to
+            )
         )
-        employee_ids = [row[0] for row in employee_ids]
     else:
         employee_ids = [
             row[0]

@@ -168,15 +168,23 @@ def subtree_ids(db: Session, root_ids: Sequence[str]) -> Dict[str, set]:
     return result
 
 
-def team_member_ids(db: Session, teams: Sequence[str]) -> set[str]:
-    """ID сотрудников указанных команд + QA (общий ресурс компании)."""
+def team_member_ids(
+    db: Session,
+    teams: Sequence[str],
+    period_start: date,
+    period_end: date,
+) -> set[str]:
+    """ID сотрудников команд за период + QA (общий ресурс компании).
+
+    Период обязателен: без него выбывшие сотрудники задним числом попадали бы
+    в планы и рабочие столы прошлых кварталов.
+    """
     from app.models import Employee
-    from app.models.employee_team import EmployeeTeam
+    from app.services import team_membership as tm
 
     ids: set[str] = set()
     if teams:
-        rows = db.query(EmployeeTeam.employee_id).filter(EmployeeTeam.team.in_(list(teams))).all()
-        ids = {r[0] for r in rows}
+        ids = tm.members_overlapping(db, list(teams), period_start, period_end)
     qa_rows = db.query(Employee.id).filter(Employee.role == "qa").all()
     ids |= {r[0] for r in qa_rows}
     return ids

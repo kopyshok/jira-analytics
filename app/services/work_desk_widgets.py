@@ -26,6 +26,7 @@ from app.services.plan_common import (
     subtree_ids as _subtree_ids,
     team_member_ids as _team_member_ids,
 )
+from app.services import team_membership as _tm
 
 # Полный список ключей виджетов. Порядок — порядок отображения по умолчанию.
 WIDGET_KEYS: tuple[str, ...] = (
@@ -287,7 +288,7 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
 
     # Члены команды стола (+ QA как общий ресурс) — их часы идут в план/факт,
     # часы остальных авторов уходят в «прочее» (внешняя помощь, информационно).
-    team_ids = _team_member_ids(db, teams)
+    team_ids = _team_member_ids(db, teams, q_start, q_end)
 
     # Факт проекта — по всему поддереву задачи (списания висят на подзадачах).
     subtree = _subtree_ids(db, issue_ids)
@@ -558,7 +559,7 @@ def _adapter_team_absences(db: Session, desk: WorkDesk, year: int, quarter: int)
     emp_rows = (
         db.query(Employee.id, Employee.display_name)
         .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-        .filter(EmployeeTeam.team.in_(teams))
+        .filter(EmployeeTeam.team.in_(teams), *_tm.overlaps_clause(q_start, q_end))
         .distinct()
         .order_by(Employee.display_name)
         .all()
@@ -572,6 +573,7 @@ def _adapter_team_absences(db: Session, desk: WorkDesk, year: int, quarter: int)
         .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
         .filter(
             EmployeeTeam.team.in_(teams),
+            *_tm.overlaps_clause(q_start, q_end),
             Absence.start_date <= q_end,
             Absence.end_date >= q_start,
         )

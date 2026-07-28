@@ -420,12 +420,13 @@ class ScenarioXlsxExporter:
             .all()
         )
 
-        emp_ids = [
-            r[0]
-            for r in self.db.query(EmployeeTeam.employee_id)
-                .filter(EmployeeTeam.team == scenario.team)
-                .all()
-        ]
+        from app.services import team_membership as _tm
+
+        emp_ids = list(
+            _tm.members_overlapping(
+                self.db, [scenario.team], period_start, period_end - timedelta(days=1)
+            )
+        ) if scenario.team else []
         employees = (
             self.db.query(Employee)
             .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712

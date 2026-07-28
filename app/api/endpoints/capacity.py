@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models import Absence, Employee, EmployeeTeam
 from app.repositories.base import BaseRepository
+from app.services import team_membership
 from app.services.capacity_service import (
     CapacityService,
     MonthlyCapacity,
@@ -319,7 +320,11 @@ async def recalc_team(
     emp_count = (
         db.query(Employee)
         .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-        .filter(EmployeeTeam.team == team, Employee.is_active == True)
+        .filter(
+            EmployeeTeam.team == team,
+            Employee.is_active == True,
+            *team_membership.active_on_clause(date.today()),
+        )
         .count()
     )
     return {

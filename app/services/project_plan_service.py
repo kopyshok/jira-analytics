@@ -48,7 +48,9 @@ class ProjectPlanService:
         q_start, q_end = quarter_bounds(year, quarter)
         subtree = subtree_ids(self._db, [root.id])
         plan_ids = plan_ids_for_issues(self._db, [root.id])
-        team_ids = self._team_ids_for_project(self._project_teams(root, plan_ids))
+        team_ids = self._team_ids_for_project(
+            self._project_teams(root, plan_ids), q_start, q_end
+        )
         bd = role_breakdown(
             self._db, plan_ids, [root.id], subtree, q_end, team_ids
         )[root.id]
@@ -115,7 +117,7 @@ class ProjectPlanService:
         # назначений и ворклогов на каждый проект), а сам состав команды
         # каждого проекта собирается батчем в _team_ids_by_root — без цикла
         # запросов членства/QA на каждый проект.
-        team_ids_by_root = self._team_ids_by_root(roots, plan_ids)
+        team_ids_by_root = self._team_ids_by_root(roots, plan_ids, q_start, q_end)
         per_project = role_breakdown(
             self._db, plan_ids, root_ids, subtree, q_end, team_ids_by_root
         )
@@ -266,7 +268,9 @@ class ProjectPlanService:
             return [t for t in dict.fromkeys(teams) if t]
         return []
 
-    def _team_ids_for_project(self, teams: List[str]) -> set[str]:
+    def _team_ids_for_project(
+        self, teams: List[str], q_start: date, q_end: date
+    ) -> set[str]:
         """Состав команды проекта для отсечения «внешних» авторов.
 
         Если команду определить не удалось (у эпика нет поля «Команда» и нет
@@ -278,13 +282,17 @@ class ProjectPlanService:
         (спека §3.3).
         """
         if teams:
-            return team_member_ids(self._db, teams)
+            return team_member_ids(self._db, teams, q_start, q_end)
         from app.models import Employee
 
         return {r[0] for r in self._db.query(Employee.id).all()}
 
     def _team_ids_by_root(
-        self, roots: Sequence["Issue"], plan_ids: Sequence[str]
+        self,
+        roots: Sequence["Issue"],
+        plan_ids: Sequence[str],
+        q_start: date,
+        q_end: date,
     ) -> Dict[str, set]:
         """Состав «своей» команды для каждого проекта портфеля — без цикла запросов.
 
@@ -310,6 +318,7 @@ class ProjectPlanService:
         """
         from app.models import Employee
         from app.models.employee_team import EmployeeTeam
+        from app.services import team_membership as tm
 
         # Команда каждого проекта — как в _project_teams, но фолбэк-запрос
         # по plan_ids не зависит от root, поэтому выполняется максимум раз.
@@ -328,7 +337,10 @@ class ProjectPlanService:
         if all_teams:
             rows = (
                 self._db.query(EmployeeTeam.team, EmployeeTeam.employee_id)
-                .filter(EmployeeTeam.team.in_(all_teams))
+                .filter(
+                    EmployeeTeam.team.in_(all_teams),
+                    *tm.overlaps_clause(q_start, q_end),
+                )
                 .all()
             )
             for team, emp_id in rows:
