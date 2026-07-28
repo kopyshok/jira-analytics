@@ -35,6 +35,21 @@ def _is_sqlite(url: str) -> bool:
     return make_url(url).get_backend_name() == "sqlite"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _app_engine_schema():
+    """Схема на движке приложения: часть тестов ходит через app.database.SessionLocal.
+
+    Локально они опираются на dev-БД, в CI её нет — тесты падали на «no such table».
+    create_all идемпотентен, существующие таблицы не трогает.
+
+    ponytail: правильный путь — переводить такие тесты на override get_db,
+    делать по мере правок этих файлов.
+    """
+    from app.database import engine as app_engine
+
+    Base.metadata.create_all(bind=app_engine)
+
+
 @pytest.fixture(autouse=True)
 def _bypass_auth_in_tests(request):
     """Bypass JWT auth for all tests.
