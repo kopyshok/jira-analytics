@@ -1,10 +1,7 @@
-import React, { Suspense, type ReactNode } from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router';
+import { Suspense, type ReactNode } from 'react';
+import { createBrowserRouter, Navigate } from 'react-router';
 import AppLayout from './components/Layout/AppLayout';
-import { AuthProvider } from './components/AuthProvider';
-import { GlobalTeamFilterProvider } from './components/GlobalTeamFilterProvider';
-import { GlobalPeriodFilterProvider } from './components/shared/GlobalPeriodFilterProvider';
-import { useAuth } from './hooks/useAuth';
+import { AuthLayout, ProtectedRoute } from './components/routing/RouteGuards';
 import {
   AnalyticsPage,
   BacklogPage,
@@ -37,26 +34,6 @@ function page(element: ReactNode) {
       {element}
     </Suspense>
   );
-}
-
-function AuthLayout() {
-  return (
-    <AuthProvider>
-      <GlobalTeamFilterProvider>
-        <GlobalPeriodFilterProvider>
-          <Outlet />
-        </GlobalPeriodFilterProvider>
-      </GlobalTeamFilterProvider>
-    </AuthProvider>
-  );
-}
-
-function ProtectedRoute({ children, adminOnly }: { children: React.ReactNode; adminOnly?: boolean }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) return null;
-  if (!user) return <Navigate to="/login" replace />;
-  if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />;
-  return <>{children}</>;
 }
 
 export const router = createBrowserRouter([

@@ -1,5 +1,5 @@
 import { Drawer, Empty, Select, Spin, Table, Tag } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useScenarioRevisions, useRevisionDiff } from '../../hooks/usePlanning';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { RevisionDiffEmployee, RevisionDiffMonth } from '../../types/api';
@@ -25,14 +25,13 @@ export default function ScenarioRevisionHistoryDrawer({ open, onClose, scenarioI
   const [r1, setR1] = useState<number | null>(null);
   const [r2, setR2] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!open || revisions.length < 2) return;
-    setR1((prev) => prev ?? revisions[revisions.length - 2].revision_number);
-    setR2((prev) => prev ?? revisions[revisions.length - 1].revision_number);
-  }, [open, revisions]);
+  // По умолчанию сравниваем две последние ревизии. Считаем при отрисовке,
+  // а не эффектом после неё — иначе панель рисуется дважды на каждое открытие.
+  const pickedR1 = r1 ?? (revisions.length >= 2 ? revisions[revisions.length - 2].revision_number : null);
+  const pickedR2 = r2 ?? (revisions.length >= 1 ? revisions[revisions.length - 1].revision_number : null);
 
   const { data: diff, isLoading: diffLoading } = useRevisionDiff(
-    scenarioId ?? undefined, r1, r2,
+    scenarioId ?? undefined, pickedR1, pickedR2,
   );
 
   const options = useMemo(
@@ -63,7 +62,7 @@ export default function ScenarioRevisionHistoryDrawer({ open, onClose, scenarioI
               <div style={{ fontSize: 11, color: DARK_THEME.textMuted, marginBottom: 4 }}>Базовая ревизия</div>
               <Select
                 style={{ width: '100%' }}
-                value={r1 ?? undefined}
+                value={pickedR1 ?? undefined}
                 onChange={setR1}
                 options={options}
               />
@@ -72,14 +71,14 @@ export default function ScenarioRevisionHistoryDrawer({ open, onClose, scenarioI
               <div style={{ fontSize: 11, color: DARK_THEME.textMuted, marginBottom: 4 }}>Сравниваемая ревизия</div>
               <Select
                 style={{ width: '100%' }}
-                value={r2 ?? undefined}
+                value={pickedR2 ?? undefined}
                 onChange={setR2}
                 options={options}
               />
             </div>
           </div>
 
-          {r1 === r2 ? (
+          {pickedR1 === pickedR2 ? (
             <Empty description="Выберите две разные ревизии" />
           ) : diffLoading || !diff ? (
             <Spin />

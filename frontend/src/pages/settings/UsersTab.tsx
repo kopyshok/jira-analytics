@@ -32,7 +32,11 @@ export default function UsersTab() {
     listUsers().then(setUsers).finally(() => setLoading(false));
   }
 
-  useEffect(refresh, []);
+  // Первая загрузка: состояние меняем в колбэке запроса, а не в теле эффекта —
+  // иначе вкладка рисуется дважды подряд.
+  useEffect(() => {
+    listUsers().then(setUsers).finally(() => setLoading(false));
+  }, []);
 
   async function handleCreate(values: UserCreate) {
     try {

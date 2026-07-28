@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Drawer, Skeleton, Alert, Button, Tag } from 'antd';
 import { useIssueContext } from '../../hooks/useIssueContext';
 import { useCategories } from '../../hooks/useCategories';
@@ -204,14 +204,13 @@ export default function AnalyticsIssueDrawer({
   const [stack, setStack] = useState<Array<{ id: string; key: string }>>([]);
   const qc = useQueryClient();
 
-  // Sync stack when external issueId changes
-  useEffect(() => {
-    if (issueId && issueKey) {
-      setStack([{ id: issueId, key: issueKey }]);
-    } else {
-      setStack([]);
-    }
-  }, [issueId, issueKey]);
+  // Смена задачи снаружи сбрасывает стек. Правим состояние прямо при отрисовке,
+  // а не эффектом после неё — иначе панель рисуется дважды на каждое открытие.
+  const [syncedId, setSyncedId] = useState<string | null>(null);
+  if ((issueId ?? null) !== syncedId) {
+    setSyncedId(issueId ?? null);
+    setStack(issueId && issueKey ? [{ id: issueId, key: issueKey }] : []);
+  }
 
   const currentEntry = stack.length > 0 ? stack[stack.length - 1] : null;
   const open = !!currentEntry;
