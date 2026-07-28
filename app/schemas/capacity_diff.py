@@ -23,6 +23,8 @@ class EmployeeDiff(BaseModel):
     employee_id: str
     employee_name: str
     months: list[MonthDiff]
+    # Дата выбытия из команды сценария, если человек ушёл после утверждения.
+    left_team_at: date | None = None
 
 
 class CapacityDiffResponse(BaseModel):

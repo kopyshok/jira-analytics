@@ -79,6 +79,9 @@ class EmployeeBase:
     role: Optional[str]
     days: list[EmployeeDayHours]
     total_hours: float
+    shared_with: list[str]                 # чужие команды за этот квартал
+    committed_hours_all_teams: float       # часы, заложенные всеми командами
+    is_overcommitted: bool                 # заложено больше календарной нормы
 
 
 @dataclass
@@ -189,6 +192,8 @@ class ResourceBaseService:
             return fallback_pct
 
         # --- итерация по сотрудникам ---
+        # Кто из состава ещё числится в других командах этого же квартала.
+        shared_map = tm.shared_members(self.db, [team], period_start, last_day)
         result_emps: list[EmployeeBase] = []
         role_totals: dict[str, float] = {}
 
@@ -238,6 +243,17 @@ class ResourceBaseService:
                 cur += timedelta(days=1)
 
             total = round(sum(d.hours for d in days_out), 2)
+            others = shared_map.get(e.id, [])
+            # Часы, заложенные всеми командами: своя база + столько же за каждую
+            # чужую команду, где сотрудник числится в этом же квартале.
+            # Норматива деления нет, поэтому считаем «полный человек в каждой».
+            committed = round(total * (1 + len(others)), 2)
+            calendar_norm = 0.0
+            cur_n = period_start
+            while cur_n < period_end:
+                if tm.day_in_intervals(cur_n, emp_intervals):
+                    calendar_norm += day_hours(cur_n)
+                cur_n += timedelta(days=1)
             result_emps.append(
                 EmployeeBase(
                     employee_id=e.id,
@@ -245,6 +261,9 @@ class ResourceBaseService:
                     role=e.role,
                     days=days_out,
                     total_hours=total,
+                    shared_with=others,
+                    committed_hours_all_teams=committed,
+                    is_overcommitted=committed > round(calendar_norm, 2) + 0.01,
                 )
             )
             if e.role:

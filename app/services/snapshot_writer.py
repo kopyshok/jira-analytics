@@ -8,12 +8,12 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.services import team_membership as tm
 from app.models import (
     Absence,
     AbsenceReason,
     BacklogItem,
     Employee,
-    EmployeeTeam,
     MandatoryWorkType,
     PlanningScenario,
     ProductionCalendarDay,
@@ -76,6 +76,24 @@ class SnapshotWriter:
     def __init__(self, db: Session):
         self.db = db
 
+    def _team_employees(self, scenario: PlanningScenario) -> list[Employee]:
+        """Активные сотрудники команды, пересекавшиеся с кварталом сценария.
+
+        Единый ростер для всех снимков: выбывший в середине квартала должен
+        попасть в снимок (он давал часы), выбывший до квартала — нет.
+        """
+        if not (scenario.team and scenario.year and scenario.quarter):
+            return []
+        start, end = _quarter_bounds(scenario.year, scenario.quarter)
+        emp_ids = tm.members_overlapping(self.db, [scenario.team], start, end)
+        if not emp_ids:
+            return []
+        return (
+            self.db.query(Employee)
+            .filter(Employee.id.in_(list(emp_ids)), Employee.is_active.is_(True))
+            .all()
+        )
+
     def write_team_snapshot(
         self, revision: ScenarioRevision, scenario: PlanningScenario
     ) -> None:
@@ -86,15 +104,7 @@ class SnapshotWriter:
         """
         if not scenario.team:
             return
-        employees = (
-            self.db.query(Employee)
-            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-            .filter(
-                EmployeeTeam.team == scenario.team,
-                Employee.is_active.is_(True),
-            )
-            .all()
-        )
+        employees = self._team_employees(scenario)
         for emp in employees:
             self.db.add(
                 ScenarioTeamSnapshot(
@@ -240,16 +250,7 @@ class SnapshotWriter:
         q = int(str(scenario.quarter).replace("Q", ""))
         months = QUARTER_MONTHS[q]
 
-        # Активные сотрудники команды
-        employees = (
-            self.db.query(Employee)
-            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-            .filter(
-                EmployeeTeam.team == scenario.team,
-                Employee.is_active.is_(True),
-            )
-            .all()
-        )
+        employees = self._team_employees(scenario)
         if not employees:
             return
 
@@ -318,9 +319,14 @@ class SnapshotWriter:
             pct_mandatory = _sum_pct(emp.role)
             for month in months:
                 mc = capacity_svc.monthly_capacity(emp.id, scenario.year, month)
-                gross = mc.norm_hours
-                absence_hrs = mc.vacation_hours
-                available = mc.available_hours
+                # Часы режутся долей месяца, когда сотрудник был в команде:
+                # CapacityService про команды не знает.
+                share = tm.month_membership_share(
+                    self.db, [scenario.team], emp.id, scenario.year, month
+                )
+                gross = mc.norm_hours * share
+                absence_hrs = mc.vacation_hours * share
+                available = mc.available_hours * share
                 mandatory = round(available * pct_mandatory / 100, 2)
                 project = round(max(0.0, available - mandatory), 2)
 
@@ -372,16 +378,7 @@ class SnapshotWriter:
             for r in cap_rows if r.employee_id
         }
 
-        # Активные сотрудники команды
-        employees = (
-            self.db.query(Employee)
-            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-            .filter(
-                EmployeeTeam.team == scenario.team,
-                Employee.is_active.is_(True),
-            )
-            .all()
-        )
+        employees = self._team_employees(scenario)
 
         # Правила сценария + work_type labels
         rules = (
@@ -555,16 +552,7 @@ class SnapshotWriter:
             for r in cap_rows if r.employee_id
         }
 
-        # Активные сотрудники команды
-        emp_ids = [
-            r[0] for r in self.db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.team == scenario.team).all()
-        ]
-        employees = (
-            self.db.query(Employee)
-            .filter(Employee.id.in_(emp_ids), Employee.is_active.is_(True))
-            .all()
-        ) if emp_ids else []
+        employees = self._team_employees(scenario)
 
         devs = [e for e in employees if e.role == "dev"]
         qas = [e for e in employees if e.role == "qa"]

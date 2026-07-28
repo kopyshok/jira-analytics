@@ -12,6 +12,7 @@
 иначе выбывшие снова начнут попадать в расчёты задним числом.
 """
 
+from calendar import monthrange
 from datetime import date, timedelta
 from typing import Iterable, Optional, Sequence
 
@@ -145,6 +146,53 @@ def shared_members(
     for emp_id, team in rows:
         out.setdefault(emp_id, set()).add(team)
     return {k: sorted(v) for k, v in out.items()}
+
+
+def month_membership_share(
+    db: Session, teams: Sequence[str], employee_id: str, year: int, month: int
+) -> float:
+    """Доля нормо-часов месяца, приходящаяся на дни участия в командах.
+
+    1.0 — состоял весь месяц, 0.0 — ни дня. Используется там, где помесячные
+    часы считаются сервисом без знания о командах (снимок утверждения и
+    сравнение с ним) — чтобы обе стороны сравнения резались одинаково.
+
+    Норма дня берётся из производственного календаря; если записи нет —
+    8 ч Пн–Пт, 0 в выходные (тот же фолбэк, что в остальных расчётах).
+    """
+    from app.models import ProductionCalendarDay
+
+    last_day = monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    month_end = date(year, month, last_day)
+
+    cal = {
+        row.date: float(row.hours)
+        for row in db.query(ProductionCalendarDay).filter(
+            ProductionCalendarDay.date >= month_start,
+            ProductionCalendarDay.date <= month_end,
+        ).all()
+    }
+
+    def day_norm(d: date) -> float:
+        if d in cal:
+            return cal[d]
+        return 8.0 if d.weekday() < 5 else 0.0
+
+    intervals = member_intervals(db, teams, month_start, month_end).get(employee_id, [])
+    total = 0.0
+    inside = 0.0
+    cur = month_start
+    while cur <= month_end:
+        norm = day_norm(cur)
+        total += norm
+        if norm > 0 and day_in_intervals(cur, intervals):
+            inside += norm
+        cur += timedelta(days=1)
+
+    if total <= 0:
+        return 1.0
+    return min(1.0, inside / total)
 
 
 def membership_on_column_exists(teams: Sequence[str], employee_col, date_col):

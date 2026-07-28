@@ -17,7 +17,7 @@ Flow:
 """
 
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -50,6 +50,7 @@ from app.schemas.capacity_diff import (
     MonthDiff,
 )
 from app.schemas.scenario_override import AllocationOverrideRequest
+from app.services import team_membership
 from app.services.capacity_service import CapacityService
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
@@ -325,6 +326,10 @@ class ResourceBaseEmployeeOut(BaseModel):
     role: Optional[str] = None
     total_hours: float
     days: List[ResourceBaseDayOut]
+    # Общий сотрудник: ресурс не делится, но пересечение команд показывается.
+    shared_with: List[str] = []
+    committed_hours_all_teams: float = 0.0
+    is_overcommitted: bool = False
 
 
 class ResourceBaseOut(BaseModel):
@@ -445,6 +450,9 @@ def _resource_to_response(base) -> ResourceBaseOut:
                     ResourceBaseDayOut(date=d.date.isoformat(), hours=d.hours)
                     for d in e.days
                 ],
+                shared_with=list(getattr(e, "shared_with", []) or []),
+                committed_hours_all_teams=getattr(e, "committed_hours_all_teams", 0.0),
+                is_overcommitted=bool(getattr(e, "is_overcommitted", False)),
             )
             for e in base.employees
         ],
@@ -705,21 +713,20 @@ async def approve_scenario(
     if scenario.team and scenario.year and scenario.quarter:
         q = int(str(scenario.quarter).replace("Q", ""))
         months = QUARTER_MONTHS[q]
-        emp_ids = [
-            r[0]
-            for r in db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.team == scenario.team)
-            .all()
-        ]
+        quarter_start = date(scenario.year, months[0], 1)
+        last_day = calendar.monthrange(scenario.year, months[-1])[1]
+        quarter_end = date(scenario.year, months[-1], last_day)
+        emp_ids = list(
+            team_membership.members_overlapping(
+                db, [scenario.team], quarter_start, quarter_end
+            )
+        )
         employees = (
             db.query(Employee)
             .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712
             .all()
         )
         capacity_svc = CapacityService(db)
-        quarter_start = date(scenario.year, months[0], 1)
-        last_day = calendar.monthrange(scenario.year, months[-1])[1]
-        quarter_end = date(scenario.year, months[-1], last_day)
 
         absences = (
             db.query(Absence)
@@ -928,6 +935,22 @@ async def get_capacity_diff(
     for a in current_absences:
         current_by_emp.setdefault(a.employee_id, []).append(a)
 
+    # Состав на момент утверждения vs сейчас: кто выбыл из команды.
+    left_dates: dict[str, date_t] = {}
+    if scenario.team:
+        current_intervals = team_membership.member_intervals(
+            db, [scenario.team], quarter_start, quarter_end
+        )
+        for emp_id in emp_ids:
+            spans = current_intervals.get(emp_id)
+            if not spans:
+                # Выбыл до начала квартала — дата выбытия для показа = начало квартала.
+                left_dates[emp_id] = quarter_start
+                continue
+            last_end = spans[-1][1]
+            if last_end < quarter_end:
+                left_dates[emp_id] = last_end + timedelta(days=1)
+
     capacity_svc = CapacityService(db)
     changed_employees: list[EmployeeDiff] = []
 
@@ -946,7 +969,16 @@ async def get_capacity_diff(
                 continue
             # TODO: monthly_capacity computes fact_hours unnecessarily here; refactor to available_hours_for_month
             mc = capacity_svc.monthly_capacity(emp_id, scenario.year, month)
-            current_avail = mc.available_hours
+            # Та же доля участия в команде, что применена в снимке —
+            # CapacityService про команды не знает.
+            share = (
+                team_membership.month_membership_share(
+                    db, [scenario.team], emp_id, scenario.year, month
+                )
+                if scenario.team
+                else 1.0
+            )
+            current_avail = round(mc.available_hours * share, 2)
             delta = round(current_avail - snap_avail, 2)
 
             absence_changes: list[AbsenceChange] = []
@@ -985,12 +1017,14 @@ async def get_capacity_diff(
                     absence_changes=absence_changes,
                 ))
 
-        if month_diffs:
+        left_at = left_dates.get(emp_id)
+        if month_diffs or left_at:
             emp = employees.get(emp_id)
             changed_employees.append(EmployeeDiff(
                 employee_id=emp_id,
                 employee_name=emp.display_name if emp else emp_id,
                 months=month_diffs,
+                left_team_at=left_at,
             ))
 
     return CapacityDiffResponse(
