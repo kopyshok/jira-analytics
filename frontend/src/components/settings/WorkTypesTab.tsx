@@ -79,8 +79,9 @@ export default function WorkTypesTab() {
     }
     try {
       if (editing) {
-        const { code: _code, ...rest } = values;
-        const body = editing.is_system ? rest : values;
+        // У системного вида работ код менять нельзя — не отправляем его.
+        const { code, ...withoutCode } = values;
+        const body = editing.is_system ? withoutCode : { ...withoutCode, code };
         await update.mutateAsync({ id: editing.id, body });
       } else {
         await create.mutateAsync(values);

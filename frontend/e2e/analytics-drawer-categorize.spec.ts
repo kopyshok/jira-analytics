@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectVisible, trackBrowserErrors } from './helpers';
+import { trackBrowserErrors } from './helpers';
 
 /**
  * E2E: Analytics Drawer — категоризатор.

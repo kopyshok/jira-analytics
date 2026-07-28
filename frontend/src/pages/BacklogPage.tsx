@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
@@ -602,27 +602,34 @@ export default function BacklogPage() {
     },
   ];
 
-  // Раскрытие дерева RFA → дочки. defaultExpandAllRows срабатывает только
-  // на mount; данные приходят async, поэтому удерживаем expandedRowKeys
-  // через useEffect — авто-раскрытие всех родителей при изменении data.
-  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
-  useEffect(() => {
+  // Раскрытие дерева RFA → дочки. Данные приходят асинхронно, поэтому список
+  // раскрытых строк считаем при отрисовке, а не эффектом после неё: по умолчанию
+  // раскрыты все родители, а те, что пользователь схлопнул руками, остаются
+  // закрытыми и после обновления данных.
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<React.Key>>(new Set());
+  const parentKeys = useMemo(() => {
     const collect = (rows?: BacklogItemResponse[]) =>
       (rows ?? [])
         .filter((r) => Array.isArray(r.children) && r.children.length > 0)
-        .map((r) => r.id);
-    setExpandedKeys((prev) => {
-      const next = new Set<React.Key>(prev);
-      collect(activeRows).forEach((k) => next.add(k));
-      collect(quarterlyRows).forEach((k) => next.add(k));
-      collect(archivedRows).forEach((k) => next.add(k));
-      return Array.from(next);
-    });
+        .map((r) => r.id as React.Key);
+    return [
+      ...collect(activeRows),
+      ...collect(quarterlyRows),
+      ...collect(archivedRows),
+    ];
   }, [activeRows, quarterlyRows, archivedRows]);
+
+  const expandedKeys = useMemo(
+    () => parentKeys.filter((k) => !collapsedKeys.has(k)),
+    [parentKeys, collapsedKeys],
+  );
 
   const nestedExpandable = {
     expandedRowKeys: expandedKeys,
-    onExpandedRowsChange: (keys: readonly React.Key[]) => setExpandedKeys([...keys]),
+    onExpandedRowsChange: (keys: readonly React.Key[]) => {
+      const open = new Set(keys);
+      setCollapsedKeys(new Set(parentKeys.filter((k) => !open.has(k))));
+    },
     columnWidth: 36,
     fixed: 'left' as const,
   };

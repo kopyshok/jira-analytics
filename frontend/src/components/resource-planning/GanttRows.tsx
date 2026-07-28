@@ -7,7 +7,7 @@ import EmployeeAvatar from './EmployeeAvatar';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
-import { computeFillGradientAlphas } from './AppearanceModal';
+import { computeFillGradientAlphas } from './appearanceGradient';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
