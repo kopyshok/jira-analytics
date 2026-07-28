@@ -1818,15 +1818,19 @@ class SyncService:
         команд — JQL по ``worklogAuthor``. Незнакомые issue создаём
         с ``out_of_scope=True``; их ворклоги от ЛЮБОГО автора (не только
         наших) попадают в БД, чтобы не разделять граф."""
-        from app.models import EmployeeTeam
+        from app.services import team_membership as tm
 
-        # Собрать distinct сотрудников в этих командах
+        # Собрать всех, кто КОГДА-ЛИБО состоял в этих командах: у выбывшего
+        # история ворклогов должна догружаться, иначе прошлые кварталы
+        # «сдуваются» задним числом.
+        emp_ids = tm.members_ever(self.db, list(teams))
         emps = (
             self.db.query(Employee)
-            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-            .filter(EmployeeTeam.team.in_(teams))
+            .filter(Employee.id.in_(list(emp_ids)))
             .distinct()
             .all()
+            if emp_ids
+            else []
         )
         # Dedup: одна задача может встретиться у нескольких сотрудников команды.
         # Delete diff применяем только при первом обходе задачи.

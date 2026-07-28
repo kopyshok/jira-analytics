@@ -876,7 +876,6 @@ def get_gantt(
 
     from app.models import Absence, ProductionCalendarDay
     from app.models.phase_predecessor import PhasePredecessor
-    from app.models.employee_team import EmployeeTeam
 
     phase_counts: dict[tuple, int] = _Counter(
         (a.backlog_item_id, a.phase) for a in assignments_raw
@@ -988,24 +987,29 @@ def get_gantt(
         from app.models import Employee
         from app.services.resource_planning_service import ResourcePlanningService
 
+        from app.services import team_membership as tm
+
+        svc = ResourcePlanningService(db)
+        try:
+            q_start, q_end = svc._quarter_bounds(plan)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        # Состав — по пересечению участия с кварталом плана: выбывший в
+        # середине квартала остаётся строкой, ушедший до его начала — нет.
+        member_ids = tm.members_overlapping(db, [plan.team], q_start, q_end)
         plan_employees = (
             db.execute(
-                select(Employee)
-                .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-                .where(
-                    EmployeeTeam.team == plan.team,
+                select(Employee).where(
+                    Employee.id.in_(list(member_ids)),
                     Employee.is_active == True,  # noqa: E712
                 )
             )
             .scalars()
             .all()
+            if member_ids
+            else []
         )
         if plan_employees:
-            svc = ResourcePlanningService(db)
-            try:
-                q_start, q_end = svc._quarter_bounds(plan)
-            except ValueError as e:
-                raise HTTPException(422, str(e))
             avail = svc.build_availability(plan_employees, q_start, q_end, [])
             # Часы по дням на сотрудника по фазам (равномерно по диапазону фазы).
             used: dict[str, dict] = {e.id: {} for e in plan_employees}
