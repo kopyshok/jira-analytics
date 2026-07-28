@@ -2,8 +2,11 @@
 
 from datetime import date
 
+import pytest
+
 from app.models import Employee, EmployeeTeam
 from app.services import team_membership as tm
+from app.services.employee_team_service import EmployeeTeamService
 
 
 def _emp(db, name="Иванов И.", account="acc-1", role="dev"):
@@ -167,3 +170,97 @@ def test_shared_members(db_session):
         db_session, ["Альфа"], date(2026, 1, 1), date(2026, 3, 31)
     )
     assert shared == {emp.id: ["Бета"]}
+
+
+def test_set_left_at_closes_period(db_session):
+    """Дата выбытия проставляется на открытый период."""
+    emp = _emp(db_session)
+    db_session.commit()
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(emp.id, "Альфа")
+
+    svc.set_left_at(emp.id, "Альфа", date(2026, 2, 15))
+
+    row = db_session.query(EmployeeTeam).filter_by(team="Альфа").one()
+    assert row.left_at == date(2026, 2, 15)
+
+
+def test_left_at_before_joined_at_rejected(db_session):
+    """Выбытие не может быть раньше входа."""
+    emp = _emp(db_session)
+    db_session.commit()
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(emp.id, "Альфа")
+    svc.set_joined_at(emp.id, "Альфа", date(2026, 3, 1))
+
+    with pytest.raises(ValueError, match="раньше"):
+        svc.set_left_at(emp.id, "Альфа", date(2026, 2, 1))
+
+
+def test_overlapping_periods_rejected(db_session):
+    """Второй период не может пересекаться с первым."""
+    emp = _emp(db_session)
+    db_session.commit()
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(emp.id, "Альфа", joined_at=date(2026, 1, 1))
+    svc.set_left_at(emp.id, "Альфа", date(2026, 3, 1))
+
+    with pytest.raises(ValueError, match="пересек"):
+        svc.add_team(emp.id, "Альфа", joined_at=date(2026, 2, 1))
+
+
+def test_rejoin_after_leaving_allowed(db_session):
+    """Вернулся после выбытия — новый период создаётся."""
+    emp = _emp(db_session)
+    db_session.commit()
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(emp.id, "Альфа", joined_at=date(2026, 1, 1))
+    svc.set_left_at(emp.id, "Альфа", date(2026, 3, 1))
+
+    svc.add_team(emp.id, "Альфа", joined_at=date(2026, 9, 1))
+
+    rows = db_session.query(EmployeeTeam).filter_by(team="Альфа").all()
+    assert len(rows) == 2
+
+
+def test_transfer_closes_old_and_opens_new(db_session):
+    """Перевод одним шагом: старое закрыто, новое открыто с той же даты."""
+    emp = _emp(db_session)
+    db_session.commit()
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(emp.id, "Альфа", is_primary=True)
+
+    svc.transfer(emp.id, from_team="Альфа", to_team="Бета", on=date(2026, 2, 15))
+
+    old = db_session.query(EmployeeTeam).filter_by(team="Альфа").one()
+    new = db_session.query(EmployeeTeam).filter_by(team="Бета").one()
+    assert old.left_at == date(2026, 2, 15)
+    assert old.is_primary is False
+    assert new.joined_at == date(2026, 2, 15)
+    assert new.left_at is None
+    assert new.is_primary is True
+
+
+def test_two_primary_on_same_date_rejected(db_session):
+    """Две активные основные на одну дату — запрещено."""
+    emp = _emp(db_session)
+    db_session.commit()
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(emp.id, "Альфа", is_primary=True)
+
+    with pytest.raises(ValueError, match="основн"):
+        svc.add_team(emp.id, "Бета", is_primary=True, allow_primary_overlap=False)
+
+
+def test_legacy_team_follows_today(db_session):
+    """Legacy-колонка = основная команда на сегодня."""
+    emp = _emp(db_session)
+    db_session.commit()
+    svc = EmployeeTeamService(db_session)
+    svc.add_team(emp.id, "Альфа", is_primary=True)
+    db_session.refresh(emp)
+    assert emp.team == "Альфа"
+
+    svc.set_left_at(emp.id, "Альфа", date(2020, 1, 1))
+    db_session.refresh(emp)
+    assert emp.team is None
