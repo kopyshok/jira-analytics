@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from typing import Optional
 import logging
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.absence import Absence
@@ -220,6 +220,8 @@ class HoursBalanceService:
         q = self.db.query(EmployeeTeam).filter(
             EmployeeTeam.employee_id == employee_id,
             EmployeeTeam.joined_at.is_not(None),
+            # Периоды, закончившиеся до начала окна, дату старта не задают.
+            or_(EmployeeTeam.left_at.is_(None), EmployeeTeam.left_at > period_from),
         )
         if teams_filter:
             q = q.filter(EmployeeTeam.team.in_(teams_filter))
