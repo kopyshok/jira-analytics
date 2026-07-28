@@ -165,6 +165,27 @@ def ensure_docker_build() -> None:
     print("[release] docker build OK.\n")
 
 
+def ensure_notes_in_image(target: str) -> None:
+    """Проверить, что файл заметок версии реально лежит в собранном образе.
+
+    Раньше «Что нового» терялось: образ собирался до привязки черновиков.
+    """
+    check = subprocess.run(
+        ["docker", "run", "--rm", "--entrypoint", "sh",
+         "jira-analytics:pre-release-check",
+         "-c", f"test -f /app/release_notes/{target}.json"],
+        cwd=REPO_ROOT, check=False,
+    )
+    if check.returncode != 0:
+        run(["git", "checkout", "--", "release_notes"], check=False)
+        sys.stderr.write(
+            f"\n[release] В образе нет release_notes/{target}.json — "
+            "«Что нового» не доедет до прода. Тэг не создан.\n"
+        )
+        raise SystemExit(1)
+    print(f"[release] release_notes/{target}.json в образе — OK.\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Semi-automatic release tagger")
     parser.add_argument(
@@ -265,10 +286,8 @@ def main() -> None:
         )
         raise SystemExit(1)
 
-    if not args.skip_docker_build:
-        ensure_docker_build()
-
-    # После docker-build (если упал — bind не делаем, дерево чистое).
+    # Bind ДО docker build: иначе в проверяемый образ попадают черновики,
+    # а не release_notes/<target>.json — «Что нового» на проде пустое.
     if drafts_file.exists():
         print(f"\nПривязка черновиков release notes к {target}...")
         bind = subprocess.run(
@@ -282,6 +301,15 @@ def main() -> None:
                 f"py -3.10 scripts/release_note.py bind --version {target}\n"
             )
             raise SystemExit(bind.returncode)
+
+    if not args.skip_docker_build:
+        try:
+            ensure_docker_build()
+        except SystemExit:
+            # Откатить bind — дерево должно остаться таким же, как до запуска.
+            run(["git", "checkout", "--", "release_notes"], check=False)
+            raise
+        ensure_notes_in_image(target)
 
     # Бамп версий + commit + tag — нативно на Python (раньше был `make release`,
     # но POSIX-синтаксис Makefile падает под Windows cmd).
