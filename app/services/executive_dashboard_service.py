@@ -25,11 +25,11 @@ from sqlalchemy.orm import Session
 
 from app.models.backlog_item import BacklogItem
 from app.models.employee import Employee
-from app.models.employee_team import EmployeeTeam
 from app.models.issue import Issue
 from app.models.planning_scenario import PlanningScenario
 from app.models.scenario_allocation import ScenarioAllocation
 from app.models.worklog import Worklog
+from app.services import team_membership as tm
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.work_type_outlier_detector import detect_outliers_for_theme
 
@@ -124,12 +124,12 @@ class ExecutiveDashboardService:
             issue_clauses.append(
                 Issue.participating_teams.like(f"%{escaped}%", escape="\\"),
             )
-        emp_subq = (
-            select(EmployeeTeam.employee_id)
-            .where(EmployeeTeam.team.in_(teams))
-            .scalar_subquery()
+        # Участие проверяется НА ДАТУ списания — выбывший не тянет за собой
+        # более поздние ворклоги.
+        emp_clause = tm.membership_on_column_exists(
+            teams, Worklog.employee_id, Worklog.started_at
         )
-        return q.where(or_(or_(*issue_clauses), Worklog.employee_id.in_(emp_subq)))
+        return q.where(or_(or_(*issue_clauses), emp_clause))
 
     def _select_issues(
         self, start_dt: datetime, end_dt: datetime, teams: list[str],
@@ -513,6 +513,12 @@ class ExecutiveDashboardService:
         em = q_start + 2
         sdt = datetime.combine(date(year, q_start, 1), time.min)
         edt = datetime.combine(date(year, em, monthrange(year, em)[1]), time.max)
+        # Состав команд за квартал — считается один раз на все роли.
+        member_ids = (
+            list(tm.members_overlapping(self.db, teams, sdt.date(), edt.date()))
+            if teams
+            else []
+        )
         for role in roles:
             role_filter = (
                 func.lower(Employee.role).in_(("dev", "developer"))
@@ -530,12 +536,7 @@ class ExecutiveDashboardService:
                 .group_by(Employee.id)
             )
             if teams:
-                emp_subq = (
-                    select(EmployeeTeam.employee_id)
-                    .where(EmployeeTeam.team.in_(teams))
-                    .scalar_subquery()
-                )
-                q = q.where(Employee.id.in_(emp_subq))
+                q = q.where(Employee.id.in_(member_ids))
             rows = list(self.db.execute(q).all())
             if not rows:
                 out.append({"role": labels[role], "utilization_pct": 0})
