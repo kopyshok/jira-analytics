@@ -82,7 +82,7 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
           <Spin />
         </div>
       ) : (
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="large" style={{ width: '100%' }}>
           {/* Header card */}
           <div
             style={{
