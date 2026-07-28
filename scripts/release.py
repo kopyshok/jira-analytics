@@ -309,7 +309,8 @@ def main() -> None:
             # Откатить bind — дерево должно остаться таким же, как до запуска.
             run(["git", "checkout", "--", "release_notes"], check=False)
             raise
-        ensure_notes_in_image(target)
+        if not args.skip_notes_check:
+            ensure_notes_in_image(target)
 
     # Бамп версий + commit + tag — нативно на Python (раньше был `make release`,
     # но POSIX-синтаксис Makefile падает под Windows cmd).
