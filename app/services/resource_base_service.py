@@ -19,12 +19,12 @@ from app.models import (
     Absence,
     AbsenceReason,
     Employee,
-    EmployeeTeam,
     MandatoryWorkType,
     PlanningScenario,
     ProductionCalendarDay,
     ScenarioRule,
 )
+from app.services import team_membership as tm
 
 DEFAULT_HOURS_PER_DAY = 8.0
 
@@ -121,16 +121,13 @@ class ResourceBaseService:
         next_month = 1 if last_m == 12 else last_m + 1
         period_end = date(next_year, next_month, 1)  # exclusive upper bound
 
-        # --- сотрудники команды ---
-        emp_ids = [
-            r[0]
-            for r in self.db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.team == team)
-            .all()
-        ]
+        # --- сотрудники команды (все, кто пересёкся с кварталом) ---
+        # period_end — исключающая граница, для member_intervals нужна включающая
+        last_day = period_end - timedelta(days=1)
+        intervals = tm.member_intervals(self.db, [team], period_start, last_day)
         employees = (
             self.db.query(Employee)
-            .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712
+            .filter(Employee.id.in_(list(intervals.keys())), Employee.is_active == True)  # noqa: E712
             .all()
         )
 
@@ -207,11 +204,18 @@ class ResourceBaseService:
                 .all()
             )
 
+            emp_intervals = intervals.get(e.id, [])
+
             days_out: list[EmployeeDayHours] = []
             cur = period_start
             while cur < period_end:
                 norm = day_hours(cur)
                 if norm <= 0.0:
+                    cur += timedelta(days=1)
+                    continue
+
+                # Дни вне периодов участия в команде не дают ресурса
+                if not tm.day_in_intervals(cur, emp_intervals):
                     cur += timedelta(days=1)
                     continue
 
@@ -271,16 +275,12 @@ class ResourceBaseService:
         next_month = 1 if last_m == 12 else last_m + 1
         period_end = date(next_year, next_month, 1)
 
-        # --- сотрудники команды ---
-        emp_ids = [
-            r[0]
-            for r in self.db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.team == team)
-            .all()
-        ]
+        # --- сотрудники команды (все, кто пересёкся с кварталом) ---
+        last_day = period_end - timedelta(days=1)
+        intervals = tm.member_intervals(self.db, [team], period_start, last_day)
         employees = (
             self.db.query(Employee)
-            .filter(Employee.id.in_(emp_ids), Employee.is_active == True)  # noqa: E712
+            .filter(Employee.id.in_(list(intervals.keys())), Employee.is_active == True)  # noqa: E712
             .all()
         )
 
@@ -335,10 +335,12 @@ class ResourceBaseService:
         # --- брутто: производственный календарь × сотрудники (без любых вычетов) ---
         calendar_gross_by_role: dict[str, float] = {}
         for e in employees:
+            emp_intervals = intervals.get(e.id, [])
             total_cal = 0.0
             cur = period_start
             while cur < period_end:
-                total_cal += day_hours(cur)
+                if tm.day_in_intervals(cur, emp_intervals):
+                    total_cal += day_hours(cur)
                 cur += timedelta(days=1)
             if e.role:
                 calendar_gross_by_role[e.role] = (
@@ -361,10 +363,11 @@ class ResourceBaseService:
                 .all()
             )
             total = 0.0
+            emp_intervals = intervals.get(e.id, [])
             cur = period_start
             while cur < period_end:
                 norm = day_hours(cur)
-                if norm > 0:
+                if norm > 0 and tm.day_in_intervals(cur, emp_intervals):
                     on_absence = any(a.start_date <= cur <= a.end_date for a in abs_ranges)
                     if not on_absence:
                         total += norm
@@ -380,6 +383,7 @@ class ResourceBaseService:
         }
         absence_days_by_employee: list[dict] = []
         for e in employees:
+            emp_intervals = intervals.get(e.id, [])
             abs_ranges = (
                 self.db.query(Absence)
                 .filter(
@@ -393,7 +397,7 @@ class ResourceBaseService:
             unplanned_days = 0.0
             cur = period_start
             while cur < period_end:
-                if day_hours(cur) > 0:
+                if day_hours(cur) > 0 and tm.day_in_intervals(cur, emp_intervals):
                     covering = [a for a in abs_ranges if a.start_date <= cur <= a.end_date]
                     if covering:
                         # день относим к «отпуску», если хотя бы одна покрывающая
