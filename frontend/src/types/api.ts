@@ -969,6 +969,9 @@ export interface AnalyticsIssueNode {
   is_foreign: boolean;
   team: string | null;
   totals: NodeTotals;
+  /** issue — задача, context — родитель без своих часов, own — собственные списания родителя */
+  row_kind?: 'issue' | 'context' | 'own';
+  children?: AnalyticsIssueNode[];
 }
 
 export interface AnalyticsCategoryNode {

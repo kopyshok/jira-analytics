@@ -223,8 +223,13 @@ class ExportService:
         self,
         report: "AnalyticsReportResponse",
         visible_columns: list[str],
+        hierarchy: bool = False,
     ) -> bytes:
-        """Плоская xlsx-выгрузка иерархического отчёта Аналитики (по задачам)."""
+        """Xlsx-выгрузка иерархического отчёта Аналитики (по задачам).
+
+        В режиме «Иерархия» задачи идут деревом: ключ сдвигается отступом по
+        уровню вложенности, строки собираются в складные группы Excel.
+        """
         from io import BytesIO
         from openpyxl import Workbook
 
@@ -236,6 +241,8 @@ class ExportService:
             "Команда", "Роль", "Сотрудник", "Вид работ", "Категория",
             "Ключ", "Заголовок", "Тип", "Статус", "Часы факт",
         ]
+        if hierarchy:
+            base_headers.insert(5, "Уровень")
         col_label_map = {
             "plan_hours": "Часы план",
             "pct_plan": "% план",
@@ -257,46 +264,67 @@ class ExportService:
 
         ws.append(base_headers + opt_headers)
 
+        def optional_cells(issue) -> list:
+            cells: list = []
+            for k in opt_keys:
+                if k == "plan_hours":
+                    cells.append(issue.totals.plan_hours if issue.totals.plan_hours is not None else "")
+                elif k == "pct_plan":
+                    cells.append(issue.totals.pct_plan if issue.totals.pct_plan is not None else "")
+                elif k == "pct_total":
+                    cells.append(issue.totals.pct_total)
+                elif k == "worklog_count":
+                    cells.append(issue.totals.worklog_count)
+                elif k == "issue_count":
+                    cells.append(issue.totals.issue_count)
+                elif k == "employee_count":
+                    cells.append(issue.totals.employee_count)
+                elif k == "avg_worklog_minutes":
+                    cells.append(issue.totals.avg_worklog_minutes)
+                elif k == "last_worklog_at":
+                    cells.append(issue.last_worklog_at.isoformat() if issue.last_worklog_at else "")
+                elif k == "assignee_name":
+                    cells.append(issue.assignee_name or "")
+                else:
+                    cells.append("")
+            return cells
+
+        def write_issue(issue, group_cells: list, depth: int) -> None:
+            key_cell = ("    " * depth + issue.key) if hierarchy else issue.key
+            row: list = list(group_cells)
+            if hierarchy:
+                row.append(depth + 1)
+            row += [
+                key_cell,
+                issue.summary,
+                issue.issue_type,
+                issue.status,
+                issue.totals.fact_hours,
+            ]
+            ws.append(row + optional_cells(issue))
+            if hierarchy and depth:
+                # Excel сворачивает уровни начиная с 1 — верхние задачи остаются видимыми.
+                ws.row_dimensions[ws.max_row].outlineLevel = min(depth, 7)
+            for child in issue.children:
+                write_issue(child, group_cells, depth + 1)
+
         for team in report.teams:
             for role in team.roles:
                 for emp in role.employees:
                     for wt in emp.work_types:
                         for cat in wt.categories:
+                            group_cells = [
+                                team.team or "Без команды",
+                                role.role_label,
+                                emp.name,
+                                wt.label,
+                                cat.label,
+                            ]
                             for issue in cat.issues:
-                                row: list = [
-                                    team.team or "Без команды",
-                                    role.role_label,
-                                    emp.name,
-                                    wt.label,
-                                    cat.label,
-                                    issue.key,
-                                    issue.summary,
-                                    issue.issue_type,
-                                    issue.status,
-                                    issue.totals.fact_hours,
-                                ]
-                                for k in opt_keys:
-                                    if k == "plan_hours":
-                                        row.append(issue.totals.plan_hours if issue.totals.plan_hours is not None else "")
-                                    elif k == "pct_plan":
-                                        row.append(issue.totals.pct_plan if issue.totals.pct_plan is not None else "")
-                                    elif k == "pct_total":
-                                        row.append(issue.totals.pct_total)
-                                    elif k == "worklog_count":
-                                        row.append(issue.totals.worklog_count)
-                                    elif k == "issue_count":
-                                        row.append(issue.totals.issue_count)
-                                    elif k == "employee_count":
-                                        row.append(issue.totals.employee_count)
-                                    elif k == "avg_worklog_minutes":
-                                        row.append(issue.totals.avg_worklog_minutes)
-                                    elif k == "last_worklog_at":
-                                        row.append(issue.last_worklog_at.isoformat() if issue.last_worklog_at else "")
-                                    elif k == "assignee_name":
-                                        row.append(issue.assignee_name or "")
-                                    else:
-                                        row.append("")
-                                ws.append(row)
+                                write_issue(issue, group_cells, 0)
+
+        if hierarchy:
+            ws.sheet_properties.outlinePr.summaryBelow = False
 
         buf = BytesIO()
         wb.save(buf)

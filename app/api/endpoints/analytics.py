@@ -102,6 +102,7 @@ def get_analytics_report(
     task_query: Optional[str] = None,
     work_type_codes: Optional[str] = None,
     category_codes: Optional[str] = None,
+    hierarchy: bool = False,
     db: Session = Depends(get_db),
 ):
     """Иерархический отчёт Аналитики."""
@@ -113,6 +114,7 @@ def get_analytics_report(
         start_date=start_date, end_date=end_date,
         teams=teams_list, employee_id=employee_id,
         task_query=task_query, work_type_codes=wt_codes, category_codes=cat_codes,
+        hierarchy=hierarchy,
     )
 
 
@@ -129,6 +131,7 @@ def export_report_xlsx(
     work_type_codes: Optional[str] = None,
     category_codes: Optional[str] = None,
     columns: Optional[str] = None,
+    hierarchy: bool = False,
     db: Session = Depends(get_db),
 ):
     """XLSX-выгрузка иерархического отчёта Аналитики с применёнными фильтрами."""
@@ -142,8 +145,9 @@ def export_report_xlsx(
         start_date=start_date, end_date=end_date,
         teams=teams_list, employee_id=employee_id,
         task_query=task_query, work_type_codes=wt_codes, category_codes=cat_codes,
+        hierarchy=hierarchy,
     )
-    blob = ExportService(db).export_analytics_report_xlsx(report, cols)
+    blob = ExportService(db).export_analytics_report_xlsx(report, cols, hierarchy=hierarchy)
     return Response(
         content=blob,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

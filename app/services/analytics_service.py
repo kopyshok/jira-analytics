@@ -1400,6 +1400,153 @@ class AnalyticsService:
         return result
 
 
+    def _load_ancestor_chains(
+        self, issue_ids: set[str]
+    ) -> tuple[dict[str, "str | None"], dict[str, dict]]:
+        """Цепочки родителей задач отчёта: id родителя + метаданные каждого узла.
+
+        Один walk-up батчами вверх по дереву, пока не упрёмся в задачи без
+        родителя. Защита от циклов — уже разобранные id не попадают в следующий
+        фронт.
+        """
+        parent_of: dict[str, str | None] = {}
+        meta: dict[str, dict] = {}
+        frontier = set(issue_ids)
+        while frontier:
+            ids = list(frontier)
+            rows = []
+            for i in range(0, len(ids), 500):
+                rows.extend(
+                    self.db.query(
+                        Issue.id, Issue.parent_id, Issue.key, Issue.summary,
+                        Issue.status, Issue.status_category, Issue.issue_type,
+                        Issue.category, Issue.team,
+                    )
+                    .filter(Issue.id.in_(ids[i:i + 500]))
+                    .all()
+                )
+            next_frontier: set[str] = set()
+            for r in rows:
+                parent_of[r.id] = r.parent_id
+                meta[r.id] = {
+                    "issue_id": r.id, "key": r.key, "summary": r.summary or "",
+                    "status": r.status or "", "status_category": r.status_category,
+                    "issue_type": r.issue_type or "", "category": r.category,
+                    "team": r.team,
+                }
+                if r.parent_id:
+                    next_frontier.add(r.parent_id)
+            frontier = next_frontier - set(parent_of)
+        return parent_of, meta
+
+    @staticmethod
+    def _nest_issues_by_parent(
+        rows: list[dict],
+        parent_of: dict[str, "str | None"],
+        meta: dict[str, dict],
+        calc_totals,
+        grand_total_fact: float,
+        cat_fact: "float | None",
+    ) -> list:
+        """Плоский список задач категории → дерево до самого верхнего родителя.
+
+        Узел-родитель показывает сумму всей ветки. Если у родителя есть и свои
+        ворклоги, они выносятся отдельной подстрокой («собственные списания»),
+        чтобы не растворяться в сумме.
+        """
+        from app.schemas.analytics_report import AnalyticsIssueNode
+
+        nodes: dict[str, dict] = {}
+        roots: list[str] = []
+
+        def node_of(iid: str) -> dict:
+            n = nodes.get(iid)
+            if n is None:
+                n = {"own": None, "children": []}
+                nodes[iid] = n
+            return n
+
+        for row in rows:
+            iid = row["issue_id"]
+            node_of(iid)["own"] = row
+            child = iid
+            seen = {iid}
+            while True:
+                pid = parent_of.get(child)
+                if not pid or pid in seen or pid not in meta:
+                    if child not in roots:
+                        roots.append(child)
+                    break
+                seen.add(pid)
+                parent = node_of(pid)
+                if child not in parent["children"]:
+                    parent["children"].append(child)
+                child = pid
+
+        subtree_rows: dict[str, list[dict]] = {}
+
+        def collect(iid: str) -> list[dict]:
+            acc: list[dict] = []
+            for cid in nodes[iid]["children"]:
+                acc.extend(collect(cid))
+            own = nodes[iid]["own"]
+            if own is not None:
+                acc.append(own)
+            subtree_rows[iid] = acc
+            return acc
+
+        for rid in roots:
+            collect(rid)
+
+        def fact_of(iid: str) -> float:
+            return sum(r["fact_hours"] for r in subtree_rows[iid])
+
+        def build(iid: str, parent_fact: "float | None") -> AnalyticsIssueNode:
+            node = nodes[iid]
+            own = node["own"]
+            src = own if own is not None else meta[iid]
+            branch = subtree_rows[iid]
+            branch_fact = fact_of(iid)
+            last_at = max(
+                (r["last_at"] for r in branch if r.get("last_at") is not None),
+                default=None,
+            )
+            children_out = [
+                build(cid, branch_fact)
+                for cid in sorted(node["children"], key=lambda c: -fact_of(c))
+            ]
+            if own is not None and children_out:
+                children_out.append(AnalyticsIssueNode(
+                    id=iid, key=own["key"], summary="Собственные списания",
+                    status=own["status"], status_category=own["status_category"],
+                    issue_type=own["issue_type"], category=own["category"],
+                    last_worklog_at=own["last_at"],
+                    assignee_name=own.get("assignee_name"),
+                    is_foreign=own.get("is_foreign", False), team=own.get("team"),
+                    totals=calc_totals(
+                        [own], parent_total=grand_total_fact, parent_fact=branch_fact,
+                    ),
+                    row_kind="own",
+                ))
+            return AnalyticsIssueNode(
+                id=iid, key=src["key"], summary=src["summary"],
+                status=src["status"], status_category=src["status_category"],
+                issue_type=src["issue_type"], category=src["category"],
+                last_worklog_at=last_at,
+                assignee_name=src.get("assignee_name"),
+                is_foreign=bool(src.get("is_foreign", False)),
+                team=src.get("team"),
+                totals=calc_totals(
+                    branch, parent_total=grand_total_fact, parent_fact=parent_fact,
+                ),
+                row_kind="issue" if own is not None else "context",
+                children=children_out,
+            )
+
+        out = [build(rid, cat_fact) for rid in roots]
+        out.sort(key=lambda n: -n.totals.fact_hours)
+        return out
+
     def get_hierarchical_report(
         self,
         year: int,
@@ -1412,6 +1559,7 @@ class AnalyticsService:
         task_query: Optional[str] = None,
         work_type_codes: Optional[list[str]] = None,
         category_codes: Optional[list[str]] = None,
+        hierarchy: bool = False,
     ) -> "AnalyticsReportResponse":
         """Иерархический отчёт: Команда → Роль → Сотрудник → ВидРабот → Категория → Задача."""
         from app.schemas.analytics_report import (
@@ -1671,6 +1819,13 @@ class AnalyticsService:
                 entry["last_at"] = last_at
 
         # 6. Свёртка bucket → дерево
+        parent_of: dict[str, str | None] = {}
+        issue_meta: dict[str, dict] = {}
+        if hierarchy:
+            parent_of, issue_meta = self._load_ancestor_chains(
+                {v["issue_id"] for v in bucket.values()}
+            )
+
         tree: dict = {}
         for (team_k, role_k, emp_id, wt_id, cat_code, issue_id), v in bucket.items():
             tree.setdefault(team_k, {}).setdefault(role_k, {}).setdefault(emp_id, {}).setdefault(
@@ -1781,18 +1936,24 @@ class AnalyticsService:
                             )
                             _cat_fact = cat_fact.get((team_key, role_key, emp_id, wt_id, cat_code))
                             issues_out: list[AnalyticsIssueNode] = []
-                            for v in issues_list:
-                                issues_out.append(AnalyticsIssueNode(
-                                    id=v["issue_id"], key=v["key"], summary=v["summary"],
-                                    status=v["status"], status_category=v["status_category"],
-                                    issue_type=v["issue_type"], category=v["category"],
-                                    last_worklog_at=v["last_at"],
-                                    assignee_name=v.get("assignee_name"),
-                                    is_foreign=v.get("is_foreign", False),
-                                    team=v.get("team"),
-                                    totals=calc_totals([v], parent_total=grand_total_fact,
-                                                       parent_fact=_cat_fact),
-                                ))
+                            if hierarchy:
+                                issues_out = self._nest_issues_by_parent(
+                                    issues_list, parent_of, issue_meta,
+                                    calc_totals, grand_total_fact, _cat_fact,
+                                )
+                            else:
+                                for v in issues_list:
+                                    issues_out.append(AnalyticsIssueNode(
+                                        id=v["issue_id"], key=v["key"], summary=v["summary"],
+                                        status=v["status"], status_category=v["status_category"],
+                                        issue_type=v["issue_type"], category=v["category"],
+                                        last_worklog_at=v["last_at"],
+                                        assignee_name=v.get("assignee_name"),
+                                        is_foreign=v.get("is_foreign", False),
+                                        team=v.get("team"),
+                                        totals=calc_totals([v], parent_total=grand_total_fact,
+                                                           parent_fact=_cat_fact),
+                                    ))
                             cats_out.append(AnalyticsCategoryNode(
                                 category_code=cat_code,
                                 label=cat_label, color=cat_color,

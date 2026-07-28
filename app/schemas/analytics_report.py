@@ -33,6 +33,13 @@ class AnalyticsIssueNode(BaseModel):
     is_foreign: bool = False
     team: Optional[str] = None
     totals: NodeTotals
+    # Режим «Иерархия»: issue — обычная задача, context — родитель без своих
+    # часов (нужен только для цепочки), own — собственные списания родителя.
+    row_kind: str = "issue"
+    children: list["AnalyticsIssueNode"] = []
+
+
+AnalyticsIssueNode.model_rebuild()
 
 
 class AnalyticsCategoryNode(BaseModel):
