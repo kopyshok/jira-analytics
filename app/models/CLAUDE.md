@@ -14,7 +14,11 @@
 
 `Employee`, `EmployeeTeam` (M:N), `Project`, `Issue`, `Worklog`, `Comment`, `SyncState`.
 
-**`EmployeeTeam` инвариант:** ровно одна `is_primary=true` строка на сотрудника. Enforce в `EmployeeTeamService` (не в БД — SQLite не поддерживает partial unique). Поле `Employee.team` — derived от primary membership, обновляется через `_recompute_legacy_team` (backward-compat для legacy запросов/экспортов).
+**`EmployeeTeam` — периодизованное участие.** Активно в день `d`, если `(joined_at is None or joined_at <= d) and (left_at is None or d < left_at)`; `left_at` — первый день ВНЕ команды. На одну пару сотрудник/команда допустимо несколько непересекающихся периодов (ушёл — вернулся), unique-constraint снят.
+
+Инварианты enforce'ятся в `EmployeeTeamService` (не в БД — SQLite не поддерживает partial unique): периоды одной пары не пересекаются; на любую дату не более одной `is_primary=true` записи. Поле `Employee.team` — derived от основной команды **на сегодня**, обновляется через `_recompute_legacy_team`.
+
+**Состав команды НЕ запрашивать напрямую** — только через `app/services/team_membership.py` (см. [app/services/CLAUDE.md](../services/CLAUDE.md)), иначе выбывшие снова попадут в расчёты задним числом.
 
 **`Issue` user/Jira-metadata fields:**
 - `team` — первое значение team-поля
