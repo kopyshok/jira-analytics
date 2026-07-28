@@ -59,7 +59,24 @@ def emp_in_team_a(db_session_tc: Session) -> Employee:
 
 
 @pytest.fixture
-def emp_in_team_b(db_session_tc: Session) -> Employee:
+def other_manager(db_session_tc: Session) -> User:
+    """Создатель чужих столов (`usr-other`): Postgres проверяет ссылку «кто создал»."""
+    u = User(
+        id="usr-other",
+        email=f"{uuid.uuid4()}@test",
+        password_hash="x",
+        display_name="Other Manager",
+        role=UserRole.manager,
+        is_active=True,
+    )
+    u.selected_teams = ["TeamB"]
+    db_session_tc.add(u)
+    db_session_tc.commit()
+    return u
+
+
+@pytest.fixture
+def emp_in_team_b(db_session_tc: Session, other_manager: User) -> Employee:
     return _seed_employee(db_session_tc, "TeamB")
 
 

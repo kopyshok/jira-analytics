@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models import SyncSchedule
 from app.services.scheduler import scheduled_pipeline_runner
 
 
@@ -14,6 +15,18 @@ from app.services.scheduler import scheduled_pipeline_runner
 def _make_db(session):
     """Return a callable that yields the given db_session (replaces _get_db_session)."""
     return lambda: session
+
+
+def _seed_schedule(db, schedule_id: str):
+    """Реальное расписание: запуск ссылается на него, Postgres проверяет ссылку."""
+    db.add(SyncSchedule(
+        id=schedule_id,
+        name=f"Расписание {schedule_id}",
+        cron_expr="0 3 * * *",
+        mode="quick",
+        enabled=True,
+    ))
+    db.flush()
 
 
 def _make_jira_ctx():
@@ -32,6 +45,8 @@ def _make_jira_ctx():
 @pytest.mark.asyncio
 async def test_trigger_runner_skips_when_lock_held(db_session):
     from app.services.sync_lock import SyncLock
+
+    _seed_schedule(db_session, "sched-1")
 
     # Установить lock вручную
     lock = SyncLock(db_session)
@@ -66,6 +81,7 @@ async def test_trigger_runner_skips_when_lock_held(db_session):
 
 @pytest.mark.asyncio
 async def test_trigger_runner_creates_run_and_calls_orchestrator(db_session):
+    _seed_schedule(db_session, "sched-2")
     jira_ctx, jira_mock = _make_jira_ctx()
 
     mock_orch = MagicMock()

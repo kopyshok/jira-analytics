@@ -11,7 +11,8 @@ svc = WorkDeskService()
 
 
 @pytest.fixture
-def seed_employee(db_session):
+def seed_employee(db_session, seed_user):
+    # seed_user: столы ссылаются на «кто создал» = usr-1, Postgres проверяет ссылку
     emp = Employee(
         id="emp-desk-1",
         jira_account_id="acc-desk-1",
