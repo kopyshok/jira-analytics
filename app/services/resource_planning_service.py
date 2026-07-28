@@ -24,7 +24,7 @@ from app.models import (
     ScheduledBlock,
     ScenarioAllocation,
 )
-from app.models.employee_team import EmployeeTeam
+from app.services import team_membership as tm
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.rcpsp_leveler import RcpspLeveler
 
@@ -108,6 +108,14 @@ def _resolve_parallel_count_legacy(item: "BacklogItem", phase: str) -> int:
     if n_proj and int(n_proj) > 0:
         return int(n_proj)
     return 1
+
+
+def _iter_days(start: date, end: date):
+    """Дни отрезка включительно."""
+    cur = start
+    while cur <= end:
+        yield cur
+        cur += timedelta(days=1)
 
 
 def _advance_working_days(start: date, days: int) -> date:
@@ -1376,13 +1384,20 @@ class ResourcePlanningService:
         return float(getattr(item, PHASE_HOURS_FIELD[phase], 0) or 0.0)
 
     def _load_employees(self, plan: ResourcePlan) -> List[Employee]:
-        """Загрузить активных сотрудников команды плана."""
+        """Загрузить активных сотрудников, состоявших в команде в окне плана.
+
+        Состав берётся по пересечению периода участия с кварталом: выбывший
+        в середине квартала остаётся в пуле (его дни до ухода реальны), а
+        выбывший до начала квартала — нет.
+        """
+        q_start, q_end = self._quarter_bounds(plan)
+        emp_ids = tm.members_overlapping(self.db, [plan.team], q_start, q_end)
+        if not emp_ids:
+            return []
         rows = (
             self.db.execute(
-                select(Employee)
-                .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-                .where(
-                    EmployeeTeam.team == plan.team,
+                select(Employee).where(
+                    Employee.id.in_(list(emp_ids)),
                     Employee.is_active == True,  # noqa: E712
                 )
             )
@@ -2579,6 +2594,7 @@ class ResourcePlanningService:
         - OVERLOAD_LIGHT/MED/HIGH из _last_leveling_events (action='escalate')
         - LEVELING_DELAY / LEVELING_REASSIGN (info — что leveler сделал)
         - LATE_START (фаза стартует позже целевой даты — slack_days < 0)
+        - OUT_OF_TEAM (дни фазы вне периода участия исполнителя в команде)
         """
         from datetime import datetime as _dt
 
@@ -2666,6 +2682,47 @@ class ResourcePlanningService:
                         "backlog_item_id": a.backlog_item_id,
                         "assignment_id": a.id,
                         "employee_id": a.employee_id,
+                        # message сгенерит conflict_aggregator
+                    }
+                )
+
+        # OUT_OF_TEAM — назначение выходит за период участия в команде плана.
+        dated = [
+            a
+            for a in assignments
+            if a.employee_id
+            and isinstance(a.start_date, date)
+            and isinstance(a.end_date, date)
+        ]
+        if plan.team and dated:
+            # Окно берём по фактическим датам назначений: member_intervals
+            # обрезает отрезки участия границами запроса, и день за краем окна
+            # ложно считался бы «вне команды».
+            oot_start = min(a.start_date for a in dated)
+            oot_end = max(a.end_date for a in dated)
+            member_spans = tm.member_intervals(
+                self.db, [plan.team], oot_start, oot_end
+            )
+            for a in dated:
+                spans = member_spans.get(a.employee_id, [])
+                outside = [
+                    d
+                    for d in _iter_days(a.start_date, a.end_date)
+                    if not tm.day_in_intervals(d, spans)
+                ]
+                if not outside:
+                    continue
+                result.append(
+                    {
+                        "type": "OUT_OF_TEAM",
+                        "severity": "critical",
+                        "detection_key": f"OUT_OF_TEAM:{a.id}",
+                        "metric_value": float(len(outside)),
+                        "backlog_item_id": a.backlog_item_id,
+                        "assignment_id": a.id,
+                        "employee_id": a.employee_id,
+                        "window_start": min(outside),
+                        "window_end": max(outside),
                         # message сгенерит conflict_aggregator
                     }
                 )

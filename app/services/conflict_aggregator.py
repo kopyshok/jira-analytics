@@ -143,6 +143,12 @@ def _build_message(
         return f"{item_label} стартует с отставанием".strip() if item_label else (
             c.get("message") or t
         )
+    if t == "OUT_OF_TEAM":
+        days = int(round(float(c.get("metric_value") or 0)))
+        who = emp_name or "Сотрудник"
+        rng_part = f" ({rng})" if rng else ""
+        what = f" по «{item_label}»" if item_label else ""
+        return f"{who} вне команды {days} дн. в окне задачи{what}{rng_part}"
     if t == "LEVELING_DELAY":
         # Бэкенд формирует сообщение с именами сотрудников и названием задачи.
         return c.get("message") or t
