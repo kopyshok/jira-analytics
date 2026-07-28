@@ -33,7 +33,6 @@ from app.services.analytics_service import AnalyticsService, parse_teams_csv
 from app.services.export_service import ExportService
 from app.services.hours_balance_service import HoursBalanceService
 from app.models.employee import Employee
-from app.models.employee_team import EmployeeTeam
 
 
 router = APIRouter()

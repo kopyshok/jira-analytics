@@ -31,7 +31,6 @@ from app.models import (
     AbsenceReason,
     BacklogItem,
     Employee,
-    EmployeeTeam,
     Issue,
     PlanningScenario,
     RoleCapacityRule,
