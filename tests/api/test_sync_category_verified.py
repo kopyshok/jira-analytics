@@ -59,6 +59,7 @@ def _jira_issue(jira_id: str, key: str):
     ji.fields.statuscategorychangedate = None
     ji.fields.duedate = None
     ji.fields.assignee = None
+    ji.fields.creator = None
     ji.fields._extra = {}
     return ji
 
