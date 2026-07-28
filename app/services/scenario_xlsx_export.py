@@ -15,8 +15,7 @@ from openpyxl.utils import get_column_letter  # type: ignore[import-untyped]
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
-    Absence, AppSetting, BacklogItem, Employee, EmployeeTeam,
-    MandatoryWorkType, PlanningScenario, ProductionCalendarDay, Role,
+    Absence, AppSetting, BacklogItem, Employee, MandatoryWorkType, PlanningScenario, ProductionCalendarDay, Role,
     ScenarioAllocation, ScenarioRule,
 )
 from app.services.allocation_estimates import effective_estimate_hours
