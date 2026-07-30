@@ -89,6 +89,18 @@ const GROUPS: FieldGroup[] = [
       { key: 'jira_planned_end_date_field_id',   label: 'Дата окончания' },
     ],
   },
+  {
+    panelKey: 'kpi',
+    title: 'KPI',
+    subtitle: 'Для расчёта коэффициента эффективности сотрудника',
+    fields: [
+      { key: 'jira_environment_field_id', label: 'Окружение' },
+      { key: 'jira_subtype_field_id',     label: 'Подтип' },
+      { key: 'jira_cost_type_field_id',   label: 'Тип затрат' },
+      { key: 'jira_cycle_time_field_id',  label: 'Фактический Cycle Time' },
+      { key: 'jira_direction_field_id',   label: 'Продуктовое направление' },
+    ],
+  },
 ];
 
 const ALL_FIELDS: FieldDef[] = GROUPS.flatMap(g => g.fields);
