@@ -5,6 +5,7 @@ from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.project import Project
 from app.models.issue import Issue
+from app.models.issue_link import IssueLink
 from app.models.worklog import Worklog
 from app.models.comment import Comment
 from app.models.sync_state import SyncState
@@ -73,6 +74,7 @@ __all__ = [
     "EmployeeTeam",
     "Project",
     "Issue",
+    "IssueLink",
     "Worklog",
     "Comment",
     "SyncState",

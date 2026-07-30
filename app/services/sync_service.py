@@ -18,7 +18,7 @@ from app.connectors.schemas import (
     JiraUserSchema,
 )
 from app.models import (
-    Employee, Project, Issue, Worklog, Comment,
+    Employee, Project, Issue, IssueLink, Worklog, Comment,
     SyncState, ScopeProject,
 )
 from app.models.app_setting import AppSetting
@@ -72,6 +72,24 @@ def _extract_single_value(extra: dict, field_id: Optional[str]) -> Optional[str]
         first = raw[0]
         return first.get("value") or first.get("name") if isinstance(first, dict) else str(first)
     return str(raw)
+
+
+def _sync_issue_links(db: Session, issue: "Issue", raw_links: list) -> None:
+    """Пересобрать связи задачи. Ссылки на неизвестные локально задачи пропускаем."""
+    db.query(IssueLink).filter(IssueLink.source_issue_id == issue.id).delete()
+    if not raw_links:
+        return
+    for link in raw_links:
+        link_type = (link.get("type") or {}).get("name") or "Relates"
+        other = link.get("outwardIssue") or link.get("inwardIssue")
+        if not other:
+            continue
+        target = db.query(Issue).filter(Issue.jira_issue_id == str(other.get("id"))).first()
+        if target is None:
+            continue
+        db.add(IssueLink(
+            source_issue_id=issue.id, target_issue_id=target.id, link_type=link_type,
+        ))
 
 
 def _extract_text_field(extra: dict, field_id: str) -> Optional[str]:
@@ -845,6 +863,7 @@ class SyncService:
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
             "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
+            "issuelinks",
         ]
         request_fields = base_request_fields + list(extra_fields) if extra_fields else None
 
@@ -872,6 +891,7 @@ class SyncService:
 
         count = 0
         unresolved_parents: List[Tuple[str, str]] = []
+        pending_links: List[Tuple[str, list]] = []
         try:
             while sentinels_remaining > 0:
                 jira_issue = await queue.get()
@@ -926,6 +946,9 @@ class SyncService:
                 if parent_key and parent_id is None:
                     unresolved_parents.append((issue.id, parent_key))
 
+                if jira_issue.fields.issuelinks:
+                    pending_links.append((issue.id, jira_issue.fields.issuelinks))
+
                 if count % 500 == 0:
                     logger.debug(f"Synced {count} issues...")
                     self.db.commit()
@@ -955,6 +978,19 @@ class SyncService:
                     resolved += 1
             if resolved:
                 logger.info(f"Linked {resolved} issues to their parents in second pass")
+
+        # Связи задач — тоже вторым проходом: цель связи может быть задачей,
+        # ещё не сохранённой в момент обработки источника.
+        if pending_links:
+            linked_count = 0
+            for source_id, raw_links in pending_links:
+                source_issue = self.issue_repo.get(source_id)
+                if source_issue is None:
+                    continue
+                _sync_issue_links(self.db, source_issue, raw_links)
+                linked_count += 1
+            if linked_count:
+                logger.info(f"Synced issue links for {linked_count} issues")
 
         self._update_sync_state("issues", datetime.utcnow())
         self.db.commit()
