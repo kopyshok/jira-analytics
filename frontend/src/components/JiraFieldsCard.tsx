@@ -127,7 +127,7 @@ export default function JiraFieldsCard() {
   };
 
   const renderField = (f: FieldDef) => (
-    <Form.Item key={f.key} label={f.label} style={{ marginBottom: 8 }}>
+    <Form.Item key={f.key} label={f.label} style={{ marginBottom: 4 }}>
       <Select
         value={values[f.key] || undefined}
         onChange={v => setValues(prev => ({ ...prev, [f.key]: v || '' }))}
@@ -159,15 +159,21 @@ export default function JiraFieldsCard() {
         </Button>
       }
     >
-      <Form layout="vertical">
+      <Form
+        layout="horizontal"
+        labelAlign="left"
+        labelWrap
+        labelCol={{ flex: '0 0 260px' }}
+        wrapperCol={{ flex: '0 1 420px' }}
+      >
         <Collapse
           defaultActiveKey={['core', 'description_extra', 'planned_hours', 'prioritization', 'customer_rating']}
           items={GROUPS.map(g => ({
             key: g.panelKey,
             label: g.title,
             children: (
-              <Space orientation="vertical" style={{ width: '100%' }}>
-                {g.subtitle && <Text type="secondary" style={{ fontSize: 12 }}>{g.subtitle}</Text>}
+              <Space orientation="vertical" size={0} style={{ width: '100%' }}>
+                {g.subtitle && <Text type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>{g.subtitle}</Text>}
                 {g.fields.map(renderField)}
               </Space>
             ),
