@@ -118,6 +118,25 @@ def test_load_follows_scheduler_daily_hours(client, db_session):
     assert pct["2026-07-31"] == 0.0
 
 
+def test_membership_window_reported_for_leaver(client, db_session):
+    """Выбывший в середине квартала остаётся в составе, но с границей участия:
+    панель фазы по ней и подписывает кандидата, и предупреждает о выходе за неё."""
+    plan_id, emp_id = _seed(db_session, None)
+    row = (
+        db_session.query(EmployeeTeam)
+        .filter(EmployeeTeam.employee_id == emp_id, EmployeeTeam.team == TEAM)
+        .one()
+    )
+    row.left_at = date(2026, 7, 20)  # первый день ВНЕ команды
+    db_session.commit()
+
+    resp = client.get(f"/api/v1/resource-planning/resource-plans/{plan_id}/gantt")
+    assert resp.status_code == 200, resp.text
+    load = next(r for r in resp.json()["employee_load"] if r["employee_id"] == emp_id)
+    assert load["member_from"] is None  # квартал начался, когда он уже в команде
+    assert load["member_to"] == "2026-07-19"  # последний день участия
+
+
 def test_legacy_bar_without_daily_spreads_over_working_days(client, db_session):
     """Легаси-бар без раскладки: 12ч поровну по 23 рабочим дням июля, не по 31
     календарному — выходные не съедают часы."""

@@ -20,7 +20,6 @@ import {
 } from '../../api/resourcePlanning';
 import { useExplainAssignment } from '../../hooks/useResourcePlanning';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
-import type { EmployeeResponse } from '../../types/api';
 import { PHASE_LABELS } from '../../utils/gantt';
 import EmployeeAvatar from './EmployeeAvatar';
 import AbsencesSection from './sidebar/AbsencesSection';
@@ -32,14 +31,32 @@ import PhaseCalcSection from './sidebar/PhaseCalcSection';
 import SectionVisibilityPopover from './sidebar/SectionVisibilityPopover';
 import SplitAssignmentModal from './SplitAssignmentModal';
 
+/** Кандидат в исполнители: состав квартала плана + границы участия внутри него. */
+export interface EmployeeCandidate {
+  id: string;
+  display_name: string;
+  member_from?: string | null;
+  member_to?: string | null;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
   planId: string;
   assignment: AssignmentOut | null;
   allAssignments: AssignmentOut[];
-  employees: EmployeeResponse[];
+  employees: EmployeeCandidate[];
   onChanged?: () => void | Promise<unknown>;
+}
+
+const fmtDay = (iso: string) => dayjs(iso).format('DD.MM');
+
+/** «(в команде по 19.07)» — если участие обрывается внутри квартала плана. */
+function membershipSuffix(e: EmployeeCandidate): string {
+  if (e.member_from && e.member_to) return ` (в команде ${fmtDay(e.member_from)}–${fmtDay(e.member_to)})`;
+  if (e.member_to) return ` (в команде по ${fmtDay(e.member_to)})`;
+  if (e.member_from) return ` (в команде с ${fmtDay(e.member_from)})`;
+  return '';
 }
 
 export default function AssignmentSidebar({
@@ -76,6 +93,21 @@ export default function AssignmentSidebar({
         : false,
     [assignment, allAssignments],
   );
+
+  // Работа назначена на дни, когда сотрудник уже (или ещё) не в команде.
+  const membershipWarning = useMemo(() => {
+    const emp = assignment?.employee_id
+      ? employees.find(e => e.id === assignment.employee_id)
+      : null;
+    if (!emp) return null;
+    if (emp.member_to && assignment?.end_date && assignment.end_date > emp.member_to) {
+      return `Сотрудник в команде по ${fmtDay(emp.member_to)} — часть работы выходит за пределы участия.`;
+    }
+    if (emp.member_from && assignment?.start_date && assignment.start_date < emp.member_from) {
+      return `Сотрудник в команде с ${fmtDay(emp.member_from)} — часть работы выходит за пределы участия.`;
+    }
+    return null;
+  }, [assignment, employees]);
 
   if (!assignment) {
     return (
@@ -218,8 +250,16 @@ export default function AssignmentSidebar({
               onChange={(empId) => handleEmployeeChange(empId)}
               options={employees.map((e) => ({
                 value: e.id,
-                label: e.display_name,
+                label: e.display_name + membershipSuffix(e),
               }))}
+            />
+          )}
+          {membershipWarning && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginTop: 6 }}
+              message={membershipWarning}
             />
           )}
           {assignment.employee_name && (

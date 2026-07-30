@@ -474,6 +474,10 @@ class EmployeeLoadOut(BaseModel):
     employee_name: Optional[str]
     employee_role: Optional[str] = None
     days: List[EmployeeLoadDay]
+    # Границы участия в команде внутри квартала плана. None = участие
+    # покрывает соответствующий край квартала целиком.
+    member_from: Optional[date] = None
+    member_to: Optional[date] = None
 
 
 class GanttProjection(BaseModel):
@@ -1002,6 +1006,7 @@ def get_gantt(
         # Состав — по пересечению участия с кварталом плана: выбывший в
         # середине квартала остаётся строкой, ушедший до его начала — нет.
         member_ids = tm.members_overlapping(db, [plan.team], q_start, q_end)
+        member_iv = tm.member_intervals(db, [plan.team], q_start, q_end)
         plan_employees = (
             db.execute(
                 select(Employee).where(
@@ -1069,12 +1074,15 @@ def get_gantt(
                         off = None
                     days_out.append(EmployeeLoadDay(date=d, pct=round(pct, 1), off=off))
                     d += _td(days=1)
+                iv = member_iv.get(e.id) or []
                 employee_load.append(
                     EmployeeLoadOut(
                         employee_id=e.id,
                         employee_name=e.display_name,
                         employee_role=e.role,
                         days=days_out,
+                        member_from=(iv[0][0] if iv and iv[0][0] > q_start else None),
+                        member_to=(iv[-1][1] if iv and iv[-1][1] < q_end else None),
                     )
                 )
 
