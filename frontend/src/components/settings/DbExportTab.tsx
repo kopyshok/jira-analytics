@@ -54,7 +54,7 @@ export default function DbExportTab() {
       <Alert
         type="info"
         showIcon
-        message="Копия базы для локальной работы"
+        title="Копия базы для локальной работы"
         description={
           <>
             <Paragraph style={{ marginBottom: 8 }}>
@@ -100,7 +100,7 @@ export default function DbExportTab() {
           )}
 
           {data?.state === 'error' && (
-            <Alert type="error" showIcon message="Выгрузка не удалась" description={data.error} />
+            <Alert type="error" showIcon title="Выгрузка не удалась" description={data.error} />
           )}
 
           {ready && data && (
@@ -125,7 +125,7 @@ export default function DbExportTab() {
             <Alert
               type="warning"
               showIcon
-              message="Локальная база будет заменена целиком"
+              title="Локальная база будет заменена целиком"
               description={
                 <>
                   Файл распаковывается и кладётся на место локальной базы — всё, что было
