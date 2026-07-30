@@ -189,6 +189,10 @@ def seed_defaults(db: Session) -> None:
     profile = _ensure_profile(db, KpiProfile(
         code="analyst", name="Аналитик", role_code="analyst",
         target_pct=80.0, warn_band_pct=10.0, is_enabled=True,
+        # Спека допускает оценку руководителей проектов профилем «Аналитик»,
+        # пока для них не заведён свой — явный запасной профиль по
+        # умолчанию, а не первый попавшийся по случайному порядку выборки.
+        is_default=True,
     ))
 
     weighted_metrics = [
