@@ -22,17 +22,16 @@ from app.models.issue import Issue
 from app.models.user import User
 from app.models.worklog import Worklog
 from app.services.analytics_service import parse_teams_csv
-from app.services.kpi.conditions import ConditionSet, build_issue_query
 from app.services.kpi.kpi_service import (
-    build_report,
-    compute_employee_month,
-    month_bounds,
-    previous_month,
+    build_approval_payload,
+    build_teams_summary,
+    build_trend,
+    report_with_approvals,
+    resolve_breakdown,
+    save_approval,
+    score_field_names,
     summarize_report,
-    with_direction,
-    worklog_items,
 )
-from app.services.kpi.settings import read_kpi_settings
 from app.services.kpi.xlsx_export import export_report_xlsx
 
 router = APIRouter()
@@ -69,13 +68,24 @@ def _issue_url(base_url: str, key: str) -> Optional[str]:
     return f"{base_url}/browse/{key}" if base_url else None
 
 
-def _issue_brief(issue: Issue, base_url: str) -> dict:
+def _issue_brief(issue: Issue, base_url: str, metric: Optional[KpiMetric] = None) -> dict:
+    """Карточка задачи для расшифровки. Для «норматив к факту»/«балл к максимуму»
+    добавляет само значение факта/балла — иначе в списке видно только задачу
+    без причины, почему она туда попала (см. мелочи ревью Фазы 4)."""
+    extra: dict = {}
+    if metric is not None and metric.calc_kind == "norm_to_fact":
+        extra["fact"] = issue.cycle_time_fact
+    elif metric is not None and metric.calc_kind == "score_to_max":
+        scores = [getattr(issue, n, None) for n in score_field_names(metric)]
+        usable = [s for s in scores if s is not None]
+        extra["score"] = round(sum(usable) / len(usable), 2) if usable else None
     return {
         "key": issue.key,
         "summary": issue.summary,
         "status": issue.status,
         "resolution": issue.resolution,
         "url": _issue_url(base_url, issue.key),
+        **extra,
     }
 
 
@@ -98,6 +108,18 @@ def _resolve_teams(db: Session, teams_csv: Optional[str]) -> list[str]:
     return parsed or list_teams(db)
 
 
+# === Направления (доступно всем ролям — фильтр раздела виден не только админу) ===
+
+@router.get("/directions", response_model=list[str])
+def list_directions(db: Session = Depends(get_db)) -> list[str]:
+    """Уникальные продуктовые направления задач — источник для выпадающего списка
+    фильтра отчёта. Раньше единственным источником был справочник атрибутов
+    (только для админа), поэтому фильтр на фронте был обычным текстовым полем
+    (см. ревью, ВАЖНО 7)."""
+    rows = db.query(Issue.direction).filter(Issue.direction.isnot(None)).distinct().all()
+    return sorted({v for (v,) in rows if v})
+
+
 # === Отчёт и сводка ===
 
 @router.get("/report")
@@ -108,9 +130,13 @@ def get_report(
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Отчёт KPI по людям выбранных команд за месяц, со сводкой по направлению."""
+    """Отчёт KPI по людям выбранных команд за месяц, со сводкой по направлению.
+
+    Утверждённые месяцы отдаются из снимка (BLOCKER 1) — правка весов профиля
+    или норматива после утверждения на такой месяц не влияет.
+    """
     team_list = _resolve_teams(db, teams)
-    report = build_report(db, team_list, year, month, direction=direction)
+    report = report_with_approvals(db, team_list, year, month, direction=direction)
     report["summary"] = summarize_report(report["rows"])
     return report
 
@@ -124,24 +150,7 @@ def get_teams_summary(
 ) -> dict:
     """Итог по каждой команде за месяц плюс дельта к прошлому месяцу."""
     teams = list_teams(db)
-    prev_year, prev_month = previous_month(year, month)
-
-    rows = []
-    for team in teams:
-        current = summarize_report(build_report(db, [team], year, month, direction=direction)["rows"])
-        prior = summarize_report(build_report(db, [team], prev_year, prev_month, direction=direction)["rows"])
-        delta = (
-            current["avg_total"] - prior["avg_total"]
-            if current["avg_total"] is not None and prior["avg_total"] is not None
-            else None
-        )
-        rows.append({
-            "team": team,
-            "avg_total": current["avg_total"],
-            "below_target_count": current["below_target_count"],
-            "no_data_metrics_count": current["no_data_metrics_count"],
-            "delta": delta,
-        })
+    rows = build_teams_summary(db, teams, year, month, direction=direction)
     return {"year": year, "month": month, "rows": rows}
 
 
@@ -157,38 +166,34 @@ def get_breakdown(
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Расшифровка метрики: задачи (или записи трудозатрат) числителя и знаменателя со ссылками в Jira."""
+    """Расшифровка метрики: задачи (или записи трудозатрат) числителя и знаменателя со ссылками в Jira.
+
+    Использует тот же отбор, что и расчёт отчёта (``resolve_breakdown``) —
+    отрезки участия в команде и подстановку всех команд при пустом фильтре.
+    Раньше расшифровка резала период на весь месяц целиком, из-за чего дробь
+    в отчёте и список задач под ней могли расходиться (BLOCKER 2).
+    """
     metric = db.query(KpiMetric).filter(KpiMetric.code == metric_code).first()
     if metric is None:
         raise HTTPException(status_code=404, detail="Метрика не найдена")
 
-    team_list = parse_teams_csv(teams)
-    period_start, period_end = month_bounds(year, month)
-    periods = [(period_start, period_end)]
+    team_list = _resolve_teams(db, teams)
     base_url = _jira_base_url(db)
-    settings = read_kpi_settings(db)
-    num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
+    result = resolve_breakdown(db, metric, account_id, year, month, team_list, direction)
 
-    if num_cs.unit == "worklogs":
-        on_time, late = worklog_items(db, num_cs, account_id, periods, team_list, settings)
-        numerator = [_worklog_brief(w, base_url, late=True) for w in late]
-        denominator = [_worklog_brief(w, base_url, late=False) for w in on_time] + numerator
-        return {"metric_code": metric.code, "metric_name": metric.name,
-                "numerator": numerator, "denominator": denominator}
+    if result["unit"] == "worklogs":
+        late_ids = result["late_ids"]
+        numerator = [_worklog_brief(w, base_url, late=True) for w in result["numerator"]]
+        denominator = [_worklog_brief(w, base_url, late=(w.id in late_ids)) for w in result["denominator"]]
+    else:
+        numerator = [_issue_brief(i, base_url, metric) for i in result["numerator"]]
+        denominator = [_issue_brief(i, base_url, metric) for i in result["denominator"]]
 
-    num_q = build_issue_query(db, num_cs, account_id, periods,
-                              settings.excluded_statuses, team_list)
-    numerator = [_issue_brief(i, base_url) for i in num_q.all()]
-
-    denominator = []
-    if metric.calc_kind == "ratio":
-        den_cs = with_direction(ConditionSet.from_json(metric.denominator_json), direction)
-        den_q = build_issue_query(db, den_cs, account_id, periods,
-                                  settings.excluded_statuses, team_list)
-        denominator = [_issue_brief(i, base_url) for i in den_q.all()]
-
-    return {"metric_code": metric.code, "metric_name": metric.name,
-            "numerator": numerator, "denominator": denominator}
+    return {
+        "metric_code": metric.code, "metric_name": metric.name,
+        "numerator": numerator, "denominator": denominator,
+        "numerator_count": len(numerator), "denominator_count": len(denominator),
+    }
 
 
 # === Тренд сотрудника ===
@@ -211,15 +216,8 @@ def get_trend(
     team_list = parse_teams_csv(teams)
     if not team_list and employee.team:
         team_list = [employee.team]
-    settings = read_kpi_settings(db)
 
-    points = []
-    y, m = year, month
-    for _ in range(months):
-        row = compute_employee_month(db, employee, team_list, y, m, settings=settings, direction=direction)
-        points.append({"year": y, "month": m, **row})
-        y, m = previous_month(y, m)
-    points.reverse()
+    points = build_trend(db, employee, team_list, year, month, months, direction=direction)
     return {"account_id": account_id, "points": points}
 
 
@@ -235,31 +233,19 @@ def approve_month(
 
     Повторное утверждение того же месяца перезаписывает существующий снимок
     (уникальное ограничение team+year+month не должно приводить к ошибке).
+    Утверждение устойчиво к одновременному закрытию месяца двумя
+    руководителями (``save_approval`` откатывает и перечитывает строку при
+    конфликте уникального ограничения — см. ревью, ВАЖНО 3).
     """
-    report = build_report(db, [body.team], body.year, body.month)
-    payload = json.dumps(report, ensure_ascii=False)
+    payload = json.dumps(build_approval_payload(db, body.team, body.year, body.month), ensure_ascii=False)
     approved_at = datetime.utcnow()
     approved_by = current_user.email
 
-    row = (
-        db.query(KpiApproval)
-        .filter_by(team=body.team, year=body.year, month=body.month)
-        .first()
-    )
-    if row is None:
-        db.add(KpiApproval(
-            team=body.team, year=body.year, month=body.month,
-            approved_by=approved_by, approved_at=approved_at, payload_json=payload,
-        ))
-    else:
-        row.approved_by = approved_by
-        row.approved_at = approved_at
-        row.payload_json = payload
-    db.commit()
+    row = save_approval(db, body.team, body.year, body.month, approved_by, approved_at, payload)
 
     return KpiApprovalOut(
         team=body.team, year=body.year, month=body.month, approved=True,
-        approved_by=approved_by, approved_at=approved_at.isoformat(),
+        approved_by=row.approved_by, approved_at=row.approved_at.isoformat(),
     )
 
 
@@ -290,9 +276,9 @@ def export_xlsx(
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Отчёт KPI в xlsx."""
+    """Отчёт KPI в xlsx. Утверждённые месяцы выгружаются из снимка — как в отчёте (BLOCKER 1)."""
     team_list = _resolve_teams(db, teams)
-    report = build_report(db, team_list, year, month, direction=direction)
+    report = report_with_approvals(db, team_list, year, month, direction=direction)
     blob = export_report_xlsx(report)
     return Response(
         content=blob,

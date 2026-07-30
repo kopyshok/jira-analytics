@@ -6,12 +6,13 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.issue import Issue
-from app.models.kpi import KpiCycleTimeNorm, KpiMetric, KpiProfile
+from app.models.kpi import KpiApproval, KpiCycleTimeNorm, KpiMetric, KpiProfile
 from app.models.worklog import Worklog
 from app.services.kpi.calculators import MetricResult, norm_to_fact, ratio, score_to_max
 from app.services.kpi.conditions import (
@@ -102,20 +103,100 @@ def compute_metric(
 
     if metric.calc_kind == "norm_to_fact":
         q = build_issue_query(db, num_cs, account_id, periods, st.excluded_statuses, teams)
-        facts = [i.cycle_time_fact for i in q.all() if i.cycle_time_fact]
+        facts = [i.cycle_time_fact for i in q.all() if has_cycle_time_fact(i)]
         return norm_to_fact(norm_value, facts)
 
     if metric.calc_kind == "score_to_max":
         q = build_issue_query(db, num_cs, account_id, periods, st.excluded_statuses, teams)
-        names = json.loads(metric.score_fields or '["rating_speed","rating_quality","rating_result"]')
+        names = score_field_names(metric)
         rows: list[list[Optional[float]]] = []
         for issue in q.all():
-            row = [getattr(issue, n, None) for n in names]
-            if any(v is not None for v in row):
-                rows.append(row)
+            if has_any_score(issue, names):
+                rows.append([getattr(issue, n, None) for n in names])
         return score_to_max(rows, metric.score_max or 5.0)
 
     return MetricResult(value=None, has_data=False)
+
+
+def score_field_names(metric: KpiMetric) -> list[str]:
+    """Список полей оценки метрики «средний балл к максимуму», с дефолтом."""
+    return json.loads(metric.score_fields or '["rating_speed","rating_quality","rating_result"]')
+
+
+def has_cycle_time_fact(issue: Issue) -> bool:
+    """Задача участвует в среднем факте метрики «норматив к факту»."""
+    return bool(issue.cycle_time_fact)
+
+
+def has_any_score(issue: Issue, names: list[str]) -> bool:
+    """Задача участвует в среднем балле метрики «балл к максимуму» — есть хоть одна оценка.
+
+    Общий предикат для ``compute_metric`` и ``metric_breakdown``: расшифровка
+    обязана показывать ровно те задачи, что вошли в расчёт, а не превышающий
+    список без учёта фильтра «есть хоть одна оценка» (см. ревью Фазы 4,
+    мелочи).
+    """
+    return any(getattr(issue, n, None) is not None for n in names)
+
+
+def resolve_breakdown(
+    db: Session,
+    metric: KpiMetric,
+    account_id: str,
+    year: int,
+    month: int,
+    teams: list[str],
+    direction: Optional[str] = None,
+    settings: Optional[KpiSettings] = None,
+) -> dict:
+    """Тот же отбор задач/записей, что использует расчёт отчёта — для расшифровки метрики.
+
+    Раньше расшифровка резала период на весь месяц целиком и не подставляла
+    все команды при пустом фильтре, а расчёт отчёта — по фактическим отрезкам
+    участия сотрудника в команде (``member_intervals``) с тем же списком
+    команд, что и остальной отчёт. Из-за расхождения дробь в отчёте и список
+    задач под ней могли говорить о разных периодах (см. BLOCKER 2 ревью:
+    сотрудник вступил в команду 20 числа — отчёт «0 из 1», расшифровка — две
+    задачи). ``teams`` обязаны быть уже разрешённым списком (см.
+    ``_resolve_teams`` в роутере — то же самое, что подставляет отчёту все
+    команды при пустом фильтре).
+
+    Возвращает объекты ORM (не сериализованные словари) — форматирование в
+    JSON остаётся на роутере, здесь только который отбор данных.
+    """
+    st = settings or read_kpi_settings(db)
+    period_start, period_end = month_bounds(year, month)
+    employee = db.query(Employee).filter(Employee.jira_account_id == account_id).first()
+    emp_intervals: list[tuple[date, date]] = []
+    if employee is not None and teams:
+        emp_intervals = member_intervals(db, teams, period_start, period_end).get(employee.id, [])
+    periods = emp_intervals if emp_intervals else [(period_start, period_end)]
+
+    num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
+
+    if num_cs.unit == "worklogs":
+        on_time, late = worklog_items(db, num_cs, account_id, periods, teams, st)
+        return {
+            "unit": "worklogs",
+            "numerator": late,
+            "denominator": on_time + late,
+            "late_ids": {w.id for w in late},
+        }
+
+    num_q = build_issue_query(db, num_cs, account_id, periods, st.excluded_statuses, teams)
+    numerator = num_q.all()
+    if metric.calc_kind == "norm_to_fact":
+        numerator = [i for i in numerator if has_cycle_time_fact(i)]
+    elif metric.calc_kind == "score_to_max":
+        numerator = [i for i in numerator if has_any_score(i, score_field_names(metric))]
+
+    denominator: list = []
+    if metric.calc_kind == "ratio":
+        den_cs = with_direction(ConditionSet.from_json(metric.denominator_json), direction)
+        den_q = build_issue_query(db, den_cs, account_id, periods, st.excluded_statuses, teams)
+        denominator = den_q.all()
+
+    return {"unit": "issues", "numerator": numerator, "denominator": denominator}
 
 
 def worklog_items(
@@ -485,3 +566,207 @@ def summarize_report(rows: list[dict]) -> dict:
         "below_target_count": below_target,
         "no_data_metrics_count": no_data_metrics,
     }
+
+
+# === Утверждение месяца: снимок и его чтение (BLOCKER 1) ===
+
+def build_approval_payload(db: Session, team: str, year: int, month: int) -> dict:
+    """Снимок утверждаемого месяца: отчёт команды, сводка и применённые правила расчёта.
+
+    Кладётся в ``KpiApproval.payload_json`` при утверждении и отдаётся назад
+    без пересчёта — иначе правка весов профиля или норматива Cycle Time после
+    утверждения молча меняла бы уже подписанный результат. В снимок
+    сознательно попадают не только строки отчёта (веса и значения там уже
+    есть на метрику), но и общие правила месяца — не по строкам восстановить,
+    какой норматив или срок внесения часов действовал на момент утверждения.
+    """
+    report = build_report(db, [team], year, month)
+    report["summary"] = summarize_report(report["rows"])
+    st = read_kpi_settings(db)
+    quarter = QUARTER_OF_MONTH[month]
+    report["rules_snapshot"] = {
+        "excluded_statuses": st.excluded_statuses,
+        "worklog_deadline_days": st.worklog_deadline_days,
+        "worklog_deadline_time": st.worklog_deadline_time,
+        "empty_policy": st.empty_policy,
+        "cycle_time_norm": {
+            "team": team, "year": year, "quarter": quarter,
+            "value": _norm_for(db, team, year, month),
+        },
+    }
+    return report
+
+
+def save_approval(
+    db: Session, team: str, year: int, month: int, approved_by: str, approved_at: datetime, payload: str,
+) -> KpiApproval:
+    """Записать снимок утверждения, устойчиво к одновременному утверждению.
+
+    Двое руководителей могут закрыть один и тот же месяц одновременно: оба
+    видят, что снимка ещё нет, оба пытаются вставить строку. Уникальное
+    ограничение (``team``, ``year``, ``month``) не даёт вставиться второй —
+    без обработки это 500 на ровном месте. Проигравший гонку откатывается,
+    перечитывает уже вставленную соперником строку и обновляет её той же
+    информацией, что вставлял бы сам (см. ревью, ВАЖНО 3).
+    """
+    row = db.query(KpiApproval).filter_by(team=team, year=year, month=month).first()
+    if row is None:
+        row = KpiApproval(
+            team=team, year=year, month=month,
+            approved_by=approved_by, approved_at=approved_at, payload_json=payload,
+        )
+        db.add(row)
+        try:
+            db.commit()
+            return row
+        except IntegrityError:
+            db.rollback()
+            row = db.query(KpiApproval).filter_by(team=team, year=year, month=month).first()
+            if row is None:
+                raise
+
+    row.approved_by = approved_by
+    row.approved_at = approved_at
+    row.payload_json = payload
+    db.commit()
+    return row
+
+
+def report_with_approvals(
+    db: Session, teams: list[str], year: int, month: int, direction: Optional[str] = None,
+) -> dict:
+    """Отчёт по командам: утверждённые команды отдаются из снимка, остальные считаются вживую.
+
+    Направление — фильтр отчёта в реальном времени; на утверждённые месяцы не
+    действует, снимок замораживает месяц целиком таким, каким он был на дату
+    утверждения. Живая часть по-прежнему считается одним общим проходом по
+    всем неутверждённым командам (см. ``build_report``/``ReportCache``), а не
+    по одной на команду.
+    """
+    approvals = {
+        a.team: a
+        for a in db.query(KpiApproval).filter(
+            KpiApproval.team.in_(teams), KpiApproval.year == year, KpiApproval.month == month,
+        ).all()
+    } if teams else {}
+
+    live_teams = [t for t in teams if t not in approvals]
+    rows: list[dict] = []
+    if live_teams:
+        rows.extend(build_report(db, live_teams, year, month, direction=direction)["rows"])
+
+    approval_info: dict[str, dict] = {
+        t: {"approved": False, "approved_by": None, "approved_at": None} for t in live_teams
+    }
+    for team, appr in approvals.items():
+        frozen = json.loads(appr.payload_json)
+        rows.extend(frozen.get("rows", []))
+        approval_info[team] = {
+            "approved": True, "approved_by": appr.approved_by, "approved_at": appr.approved_at.isoformat(),
+        }
+
+    rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
+    return {"year": year, "month": month, "teams": teams, "rows": rows, "approvals": approval_info}
+
+
+def group_rows_by_team(rows: list[dict]) -> dict[str, list[dict]]:
+    """Строки отчёта, сгруппированные по команде — для сводки по нескольким командам сразу."""
+    by_team: dict[str, list[dict]] = {}
+    for row in rows:
+        by_team.setdefault(row.get("team") or "", []).append(row)
+    return by_team
+
+
+def build_teams_summary(
+    db: Session, teams: list[str], year: int, month: int, direction: Optional[str] = None,
+) -> list[dict]:
+    """Итог по каждой команде за месяц плюс дельта к прошлому месяцу — двумя расчётами на всё, не на команду.
+
+    Раньше на каждую команду вызывался отдельный расчёт отчёта (текущий и
+    прошлый месяц) — свой проход по кэшу профилей/нормативов/календаря на
+    каждую команду, сотни лишних запросов на десяток команд (см. ревью,
+    ВАЖНО 4). Здесь один комбинированный расчёт на все команды сразу (за
+    текущий и за прошлый месяц), а деление по командам — уже в памяти.
+    """
+    prev_year, prev_month = previous_month(year, month)
+    current = report_with_approvals(db, teams, year, month, direction=direction)
+    prior = report_with_approvals(db, teams, prev_year, prev_month, direction=direction)
+    current_by_team = group_rows_by_team(current["rows"])
+    prior_by_team = group_rows_by_team(prior["rows"])
+
+    rows = []
+    for team in teams:
+        cur_summary = summarize_report(current_by_team.get(team, []))
+        prior_summary = summarize_report(prior_by_team.get(team, []))
+        delta = (
+            cur_summary["avg_total"] - prior_summary["avg_total"]
+            if cur_summary["avg_total"] is not None and prior_summary["avg_total"] is not None
+            else None
+        )
+        rows.append({
+            "team": team,
+            "avg_total": cur_summary["avg_total"],
+            "below_target_count": cur_summary["below_target_count"],
+            "no_data_metrics_count": cur_summary["no_data_metrics_count"],
+            "delta": delta,
+        })
+    return rows
+
+
+def build_trend(
+    db: Session,
+    employee: Employee,
+    teams: list[str],
+    year: int,
+    month: int,
+    months: int,
+    direction: Optional[str] = None,
+) -> list[dict]:
+    """Тренд сотрудника за N месяцев назад — с одним общим кэшем на весь диапазон.
+
+    Раньше каждый месяц заново читал профиль, нормативы и календарь — полгода
+    истории одного человека давали больше сотни запросов (см. ревью, ВАЖНО
+    4). Профиль/нормативы не зависят от периода, календарь читается одним
+    запросом с запасом на весь диапазон; основная команда на начало месяца
+    пересчитывается каждый месяц отдельно (дешёвый индексный запрос) — она
+    могла смениться внутри диапазона при переводе сотрудника.
+
+    Утверждённые месяцы отдаются из снимка команды, а не пересчитываются —
+    как и в отчёте (BLOCKER 1). Признак заморозки применяется только когда
+    запрошена ровно одна команда: утверждение — понятие на одну команду,
+    а не на произвольный набор.
+    """
+    st = read_kpi_settings(db)
+    year_months: list[tuple[int, int]] = []
+    y, m = year, month
+    for _ in range(months):
+        year_months.append((y, m))
+        y, m = previous_month(y, m)
+    year_months.reverse()
+
+    first_start, _ = month_bounds(*year_months[0])
+    _, last_end = month_bounds(*year_months[-1])
+    cache = _build_report_cache(db, [employee.id], first_start, last_end)
+
+    single_team = teams[0] if len(teams) == 1 else None
+    points = []
+    for yy, mm in year_months:
+        approval = (
+            db.query(KpiApproval).filter_by(team=single_team, year=yy, month=mm).first()
+            if single_team else None
+        )
+        if approval is not None:
+            frozen = json.loads(approval.payload_json)
+            frozen_row = next(
+                (r for r in frozen.get("rows", []) if r.get("employee_id") == employee.id), None,
+            )
+            if frozen_row is not None:
+                points.append({"year": yy, "month": mm, **frozen_row, "approved": True})
+                continue
+
+        period_start, _ = month_bounds(yy, mm)
+        if teams:
+            cache.primary_team_by_employee[employee.id] = primary_team_on(db, employee.id, period_start) or ""
+        row = compute_employee_month(db, employee, teams, yy, mm, settings=st, direction=direction, cache=cache)
+        points.append({"year": yy, "month": mm, **row, "approved": False})
+    return points
