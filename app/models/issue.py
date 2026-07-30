@@ -161,6 +161,9 @@ class Issue(Base, SyncedMixin):
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     # Jira `updated` — дата последнего изменения задачи (любое касание).
     jira_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    # KPI: дата создания задачи в Jira (не путать с created_at — датой вставки
+    # строки в нашу базу). Нужна метрикам, отбирающим «создана и закрыта в периоде».
+    jira_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Customer ratings (Jira custom fields, 1-5 шкала)
