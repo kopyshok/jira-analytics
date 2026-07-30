@@ -84,6 +84,11 @@ def _parse_daily_hours(daily_hours_json: Optional[str]) -> Optional[Dict[str, fl
         return None
 
 
+def _daterange(start: date, end: date) -> List[date]:
+    """Список календарных дней [start, end] включительно."""
+    return [start + _timedelta(days=i) for i in range((end - start).days + 1)]
+
+
 def _compute_unavailable_days_for_assignment(
     db: Session, a: "ResourcePlanAssignment"
 ) -> List["UnavailableDay"]:
@@ -1011,19 +1016,37 @@ def get_gantt(
         )
         if plan_employees:
             avail = svc.build_availability(plan_employees, q_start, q_end, [])
-            # Часы по дням на сотрудника по фазам (равномерно по диапазону фазы).
+            # Часы по дням на сотрудника — из реальной раскладки планировщика.
+            # Размазывать hours_allocated по длине бара нельзя: планировщик
+            # оставляет внутри бара паузы (сотрудник ушёл на другую задачу), и
+            # равномерное распределение рисует фантомную перегрузку в дни,
+            # где две соседние фазы формально перекрываются датами.
             used: dict[str, dict] = {e.id: {} for e in plan_employees}
             for a in assignments_raw:
                 if not a.employee_id or not a.start_date or not a.end_date:
                     continue
                 if a.employee_id not in used:
                     continue
-                total_days = max(1, (a.end_date - a.start_date).days + 1)
-                per_day = (a.hours_allocated or 0.0) / total_days
-                d = a.start_date
-                while d <= a.end_date:
+                daily = _parse_daily_hours(a.daily_hours_json) or {}
+                if daily:
+                    for iso, h in daily.items():
+                        try:
+                            dd = date.fromisoformat(iso)
+                        except (TypeError, ValueError):
+                            continue
+                        used[a.employee_id][dd] = used[a.employee_id].get(dd, 0.0) + float(h)
+                    continue
+                # Легаси-бары без раскладки: поровну по рабочим дням бара
+                # (по календарным — часы утекают в выходные и день занижается).
+                emp_avail = avail.get(a.employee_id, {})
+                work_days = [
+                    d
+                    for d in _daterange(a.start_date, a.end_date)
+                    if emp_avail.get(d, 0.0) > 0
+                ] or _daterange(a.start_date, a.end_date)
+                per_day = (a.hours_allocated or 0.0) / len(work_days)
+                for d in work_days:
                     used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + per_day
-                    d += _td(days=1)
             for e in plan_employees:
                 emp_abs = absences_by_emp.get(e.id, [])
                 days_out: list[EmployeeLoadDay] = []
