@@ -8,6 +8,7 @@ import type {
   AssignmentExplainResponseV2,
   AssignmentOut,
   EmployeeChangePreviewResponse,
+  GanttProjection,
   ManualEditFlag,
 } from '../../api/resourcePlanning';
 import {
@@ -38,7 +39,7 @@ interface Props {
   assignment: AssignmentOut | null;
   allAssignments: AssignmentOut[];
   employees: EmployeeResponse[];
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<unknown>;
 }
 
 export default function AssignmentSidebar({
@@ -411,7 +412,7 @@ function InvolvementEditor({
 }: {
   planId: string;
   assignment: AssignmentOut;
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<unknown>;
 }) {
   const { message } = App.useApp();
   const qc = useQueryClient();
@@ -432,9 +433,15 @@ function InvolvementEditor({
     setSaving(true);
     try {
       await setAssignmentInvolvement(planId, assignment.id, pct);
-      await qc.invalidateQueries({ queryKey: ['assignment-explain', planId, assignment.id] });
+      // Сначала перечитать план: пересчёт мог пересоздать строку с новым id.
+      // Расчёт обновляем только если строка выжила — иначе запрос уйдёт на
+      // удалённый id и вернёт 404, а новая строка и так тянет свежие данные.
+      await onChanged?.();
+      const fresh = qc.getQueryData<GanttProjection>(['gantt', planId]);
+      if (fresh?.assignments.some(a => a.id === assignment.id)) {
+        qc.invalidateQueries({ queryKey: ['assignment-explain', planId, assignment.id] });
+      }
       message.success('Вовлечённость сохранена, план пересчитан');
-      onChanged?.();
     } catch (e) {
       message.error((e as Error).message || 'Ошибка сохранения');
     } finally {

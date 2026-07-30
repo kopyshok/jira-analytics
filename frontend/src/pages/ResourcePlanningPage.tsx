@@ -30,7 +30,8 @@ import {
 } from '../hooks/useResourcePlanning';
 import { useRpPreferences } from '../hooks/useRpPreferences';
 import { useScenarios } from '../hooks/usePlanning';
-import type { TimelineScale } from '../utils/gantt';
+import type { AssignmentKey, TimelineScale } from '../utils/gantt';
+import { findAssignmentByKey } from '../utils/gantt';
 import { useEmployees } from '../hooks/useCapacity';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
@@ -165,6 +166,26 @@ function ResourcePlanningPageInner() {
     () => sortedAssignments.find(a => a.id === selectedAssignmentId) ?? null,
     [sortedAssignments, selectedAssignmentId],
   );
+
+  // Пересчёт плана пересоздаёт незакреплённые строки с новыми id. Держим
+  // логический ключ выбранной фазы и переезжаем на её новую строку, иначе
+  // панель остаётся с мёртвым id (404 на расчёте) и молча закрывается.
+  const selectedKeyRef = useRef<AssignmentKey | null>(null);
+  useEffect(() => {
+    if (selectedAssignment) {
+      selectedKeyRef.current = {
+        backlog_item_id: selectedAssignment.backlog_item_id,
+        phase: selectedAssignment.phase,
+        part_number: selectedAssignment.part_number,
+      };
+      return;
+    }
+    if (!selectedAssignmentId) {
+      selectedKeyRef.current = null;
+      return;
+    }
+    setSelectedAssignmentId(findAssignmentByKey(sortedAssignments, selectedKeyRef.current)?.id ?? null);
+  }, [selectedAssignment, selectedAssignmentId, sortedAssignments]);
 
   const handleToggleCollapse = (itemId: string, willCollapse: boolean) => {
     const cur = prefs.collapsed_initiative_ids ?? [];
@@ -410,11 +431,9 @@ function ResourcePlanningPageInner() {
         assignment={selectedAssignment}
         allAssignments={sortedAssignments}
         employees={employees}
-        onChanged={() => {
-          if (planId) {
-            qc.invalidateQueries({ queryKey: ['gantt', planId] });
-          }
-        }}
+        onChanged={() =>
+          planId ? qc.invalidateQueries({ queryKey: ['gantt', planId] }) : Promise.resolve()
+        }
       />
 
       <ScheduledBlocksModal open={blocksOpen} onClose={() => setBlocksOpen(false)} team={team || undefined} />
