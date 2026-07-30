@@ -36,6 +36,12 @@ class Worklog(Base, SyncedMixin):
     )
     # KPI: дата внесения записи о трудозатратах в Jira (не путать с started_at —
     # днём, за который списаны часы). Нужна для метрики своевременности.
+    # ВНИМАНИЕ: хранится МЕСТНОЕ время учётной записи Jira, НЕ UTC (см.
+    # JiraWorklogSchema.created_datetime в app/connectors/schemas.py) — так и
+    # задумано, потому что дедлайн «12:00 следующего рабочего дня» тоже
+    # считается в местном времени. Сравнивать это поле можно только с
+    # дедлайном, построенным тем же способом — не приводить к UTC «для
+    # единообразия», это сломает метрику просрочки.
     jira_created_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True, index=True
     )

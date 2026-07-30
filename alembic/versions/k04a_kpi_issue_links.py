@@ -29,9 +29,12 @@ def upgrade() -> None:
         sa.UniqueConstraint("source_issue_id", "target_issue_id", "link_type",
                             name="uq_issue_link"),
     )
-    op.create_index("ix_issue_links_source", "issue_links", ["source_issue_id"])
-    op.create_index("ix_issue_links_target", "issue_links", ["target_issue_id"])
-    op.create_index("ix_issue_links_type", "issue_links", ["link_type"])
+    # Имена — по умолчанию SQLAlchemy (``ix_<table>_<column>``), чтобы совпадать
+    # с индексами, которые даёт ``index=True`` в модели: иначе autogenerate
+    # будет вечно предлагать досоздать «недостающие» индексы.
+    op.create_index("ix_issue_links_source_issue_id", "issue_links", ["source_issue_id"])
+    op.create_index("ix_issue_links_target_issue_id", "issue_links", ["target_issue_id"])
+    op.create_index("ix_issue_links_link_type", "issue_links", ["link_type"])
 
 
 def downgrade() -> None:

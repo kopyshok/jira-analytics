@@ -57,6 +57,19 @@ def _extract_team_values(extra: dict, field_id: Optional[str]) -> List[str]:
     return []
 
 
+def _dict_field_value(d: dict) -> Optional[str]:
+    """Значение из {'value': X} / {'name': X} по наличию ключа, а не истинности.
+
+    ``0`` и ``""`` — валидные значения (например, фактический Cycle Time = 0),
+    их нельзя терять из-за ``or`` — иначе метрика молча посчитает «нет данных».
+    """
+    if "value" in d and d["value"] is not None:
+        return str(d["value"])
+    if "name" in d and d["name"] is not None:
+        return str(d["name"])
+    return None
+
+
 def _extract_single_value(extra: dict, field_id: Optional[str]) -> Optional[str]:
     """Одно значение select-поля Jira. Три формы: {'value': X}, [{'value': X}], 'X'."""
     if not field_id:
@@ -65,31 +78,96 @@ def _extract_single_value(extra: dict, field_id: Optional[str]) -> Optional[str]
     if raw is None:
         return None
     if isinstance(raw, dict):
-        return raw.get("value") or raw.get("name")
+        return _dict_field_value(raw)
     if isinstance(raw, list):
         if not raw:
             return None
         first = raw[0]
-        return first.get("value") or first.get("name") if isinstance(first, dict) else str(first)
+        return _dict_field_value(first) if isinstance(first, dict) else str(first)
     return str(raw)
 
 
-def _sync_issue_links(db: Session, issue: "Issue", raw_links: list) -> None:
-    """Пересобрать связи задачи. Ссылки на неизвестные локально задачи пропускаем."""
-    db.query(IssueLink).filter(IssueLink.source_issue_id == issue.id).delete()
-    if not raw_links:
-        return
-    for link in raw_links:
+def _extract_link_pairs(raw_links: list) -> list[tuple[str, str]]:
+    """Извлечь (тип связи, jira_issue_id цели) из сырого ``issuelinks``, без дублей.
+
+    Jira отдаёт обе стороны связи одного типа с одинаковым ``type.name``
+    (например обе стороны «Relates» между A и B) — без дедупликации внутри
+    одной задачи это даст два одинаковых (source, target, type) и упадёт на
+    уникальном ограничении ``uq_issue_link`` при записи.
+    """
+    seen: set[tuple[str, str]] = set()
+    pairs: list[tuple[str, str]] = []
+    for link in raw_links or []:
         link_type = (link.get("type") or {}).get("name") or "Relates"
         other = link.get("outwardIssue") or link.get("inwardIssue")
         if not other:
             continue
-        target = db.query(Issue).filter(Issue.jira_issue_id == str(other.get("id"))).first()
-        if target is None:
+        key = (link_type, str(other.get("id")))
+        if key in seen:
             continue
-        db.add(IssueLink(
-            source_issue_id=issue.id, target_issue_id=target.id, link_type=link_type,
-        ))
+        seen.add(key)
+        pairs.append(key)
+    return pairs
+
+
+def _flush_pending_issue_links(
+    db: Session,
+    pending: dict[str, list[tuple[str, str]]],
+    batch_size: int = 500,
+) -> int:
+    """Записать связи задач пачками вместо N+1 запросов на связь.
+
+    ``pending`` — ``{source_issue_id: [(link_type, target_jira_issue_id), ...]}``.
+    Пустой список для источника — тоже валидный элемент: значит, что все
+    связи задачи сняты в Jira, и локальные строки надо удалить (иначе
+    отвязанный баг продолжит бессрочно считаться против аналитика).
+
+    На пачку источников — один SELECT (резолюция целей через ``IN``), один
+    DELETE (снос прежних связей через ``IN``) и один commit. Повторный
+    источник в той же пачке (Jira может отдать задачу дважды при пагинации)
+    дедуплицируется через ``set`` перед вставкой.
+    """
+    if not pending:
+        return 0
+
+    source_ids = list(pending.keys())
+    processed = 0
+    for i in range(0, len(source_ids), batch_size):
+        chunk = source_ids[i:i + batch_size]
+
+        target_jira_ids = {
+            target_id
+            for source_id in chunk
+            for _, target_id in pending[source_id]
+        }
+        target_local_id_by_jira_id: dict[str, str] = {}
+        if target_jira_ids:
+            rows = (
+                db.query(Issue.jira_issue_id, Issue.id)
+                .filter(Issue.jira_issue_id.in_(list(target_jira_ids)))
+                .all()
+            )
+            target_local_id_by_jira_id = dict(rows)
+
+        db.query(IssueLink).filter(
+            IssueLink.source_issue_id.in_(chunk)
+        ).delete(synchronize_session=False)
+
+        for source_id in chunk:
+            for link_type, target_jira_id in set(pending[source_id]):
+                target_local_id = target_local_id_by_jira_id.get(target_jira_id)
+                if target_local_id is None:
+                    continue
+                db.add(IssueLink(
+                    source_issue_id=source_id,
+                    target_issue_id=target_local_id,
+                    link_type=link_type,
+                ))
+            processed += 1
+
+        db.commit()
+
+    return processed
 
 
 def _extract_text_field(extra: dict, field_id: str) -> Optional[str]:
@@ -654,6 +732,7 @@ class SyncService:
                 if jira_issue.fields.resolution else None
             ),
             "resolved_at": _parse_jira_datetime(jira_issue.fields.resolutiondate),
+            "jira_created_at": _parse_jira_datetime(jira_issue.fields.created),
             "synced_at": datetime.utcnow(),
         }
         if team is not _UNSET:
@@ -891,7 +970,7 @@ class SyncService:
 
         count = 0
         unresolved_parents: List[Tuple[str, str]] = []
-        pending_links: List[Tuple[str, list]] = []
+        pending_links: dict[str, list[tuple[str, str]]] = {}
         try:
             while sentinels_remaining > 0:
                 jira_issue = await queue.get()
@@ -946,8 +1025,12 @@ class SyncService:
                 if parent_key and parent_id is None:
                     unresolved_parents.append((issue.id, parent_key))
 
-                if jira_issue.fields.issuelinks:
-                    pending_links.append((issue.id, jira_issue.fields.issuelinks))
+                # ``is not None`` — не ``truthy``: Jira присылает пустой список,
+                # когда последнюю связь сняли, и это надо записать как удаление,
+                # а не пропустить (см. _flush_pending_issue_links).
+                if jira_issue.fields.issuelinks is not None:
+                    pairs = _extract_link_pairs(jira_issue.fields.issuelinks)
+                    pending_links.setdefault(issue.id, []).extend(pairs)
 
                 if count % 500 == 0:
                     logger.debug(f"Synced {count} issues...")
@@ -981,16 +1064,9 @@ class SyncService:
 
         # Связи задач — тоже вторым проходом: цель связи может быть задачей,
         # ещё не сохранённой в момент обработки источника.
-        if pending_links:
-            linked_count = 0
-            for source_id, raw_links in pending_links:
-                source_issue = self.issue_repo.get(source_id)
-                if source_issue is None:
-                    continue
-                _sync_issue_links(self.db, source_issue, raw_links)
-                linked_count += 1
-            if linked_count:
-                logger.info(f"Synced issue links for {linked_count} issues")
+        linked_count = _flush_pending_issue_links(self.db, pending_links)
+        if linked_count:
+            logger.info(f"Synced issue links for {linked_count} issues")
 
         self._update_sync_state("issues", datetime.utcnow())
         self.db.commit()
