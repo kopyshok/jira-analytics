@@ -90,10 +90,12 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
 
     const empRows = rows.map((r) => {
       const byDate = new Map(r.days.map((d) => [d.date, d] as const));
+      // Среднее — по всем рабочим дням квартала, включая свободные: иначе
+      // бейдж показывает интенсивность в занятые дни, а не утилизацию.
       const workPcts: number[] = [];
       for (const ds of dates) {
         const d = byDate.get(ds);
-        if (d && !d.off && d.pct > 0) workPcts.push(d.pct);
+        if (d && !d.off) workPcts.push(d.pct);
       }
       const avg = workPcts.length ? Math.round(workPcts.reduce((s, p) => s + p, 0) / workPcts.length) : 0;
       const allEmpty = dates.every((ds) => {
