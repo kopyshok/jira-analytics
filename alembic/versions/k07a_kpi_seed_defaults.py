@@ -29,6 +29,15 @@ def downgrade() -> None:
     # `is_builtin = true` — булев литерал SQL, а не `= 1`: последнее ломается
     # на PostgreSQL (сравнение boolean с integer недопустимо), тогда как
     # `true`/`false` понимают и SQLite (3.23+), и PostgreSQL одинаково.
-    op.execute("DELETE FROM kpi_profile_metrics")
+    #
+    # Удаление весов ограничено профилем 'analyst' и встроенными метриками —
+    # раньше `DELETE FROM kpi_profile_metrics` без условия стирало веса ЛЮБЫХ
+    # профилей, включая заведённые руководителем вручную после сида (см.
+    # ревью Фазы 3, ВАЖНО 8).
+    op.execute("""
+        DELETE FROM kpi_profile_metrics
+        WHERE profile_id IN (SELECT id FROM kpi_profiles WHERE code = 'analyst')
+           OR metric_id IN (SELECT id FROM kpi_metrics WHERE is_builtin = true)
+    """)
     op.execute("DELETE FROM kpi_profiles WHERE code = 'analyst'")
     op.execute("DELETE FROM kpi_metrics WHERE is_builtin = true")
