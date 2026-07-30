@@ -77,6 +77,35 @@ class TestReport:
         assert [r["employee_name"] for r in resp.json()["rows"]] == ["Иванов И."]
 
 
+class TestConditionErrorNotA500:
+    """BLOCKER 2: опечатка в уже сохранённых условиях — понятный 422, а не 500."""
+
+    def test_report_returns_422_when_metric_has_bad_condition(
+        self, client, db_session, team_with_analyst
+    ):
+        import json
+
+        from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric
+
+        profile = db_session.query(KpiProfile).filter_by(code="analyst").one()
+        bad_metric = KpiMetric(
+            code="broken", name="Сломанная метрика", calc_kind="ratio",
+            numerator_json=json.dumps({
+                "unit": "issues", "person_field": "author", "period_window": "closed_in",
+                "conditions": [{"attr": "environmentt", "op": "eq", "value": "PROD"}],
+            }),
+            denominator_json=json.dumps({"conditions": []}),
+        )
+        db_session.add(bad_metric)
+        db_session.commit()
+        db_session.add(KpiProfileMetric(profile_id=profile.id, metric_id=bad_metric.id, weight=0.0))
+        db_session.commit()
+
+        resp = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи")
+        assert resp.status_code == 422, resp.text
+        assert "атрибут" in resp.json()["detail"]
+
+
 class TestTeamsSummary:
     def test_teams_summary_lists_team_with_delta(self, client, team_with_analyst):
         resp = client.get("/api/v1/kpi/teams-summary?year=2026&month=7")

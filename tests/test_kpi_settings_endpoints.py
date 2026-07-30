@@ -207,6 +207,26 @@ class TestGeneral:
         assert got["empty_policy"] == "zero"
 
 
+class TestConditionValidationOnSave:
+    """BLOCKER 2: опечатка в условии не сохраняется, а падает понятной ошибкой."""
+
+    def test_unknown_attr_rejected_with_422(self, admin_client):
+        payload = _metric_payload()
+        payload["numerator"]["conditions"] = [
+            {"attr": "environmentt", "op": "eq", "value": "PROD"},
+        ]
+        resp = admin_client.post("/api/v1/kpi-settings/metrics", json=payload)
+        assert resp.status_code == 422, resp.text
+        assert "атрибут" in resp.json()["detail"]
+
+    def test_unknown_person_field_rejected_with_422(self, admin_client):
+        payload = _metric_payload()
+        payload["numerator"]["person_field"] = "autor"
+        resp = admin_client.post("/api/v1/kpi-settings/metrics", json=payload)
+        assert resp.status_code == 422, resp.text
+        assert "кто считается" in resp.json()["detail"]
+
+
 class TestAttributes:
     def test_attributes_dictionary_exposed(self, admin_client):
         resp = admin_client.get("/api/v1/kpi-settings/attributes")
