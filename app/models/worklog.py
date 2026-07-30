@@ -34,6 +34,11 @@ class Worklog(Base, SyncedMixin):
     started_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, index=True
     )
+    # KPI: дата внесения записи о трудозатратах в Jira (не путать с started_at —
+    # днём, за который списаны часы). Нужна для метрики своевременности.
+    jira_created_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
     hours: Mapped[float] = mapped_column(Float, nullable=False)
     time_spent_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     

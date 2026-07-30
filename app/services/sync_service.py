@@ -1229,6 +1229,7 @@ class SyncService:
         data = {
             "jira_worklog_id": jira_worklog.id,
             "started_at": jira_worklog.started_datetime,
+            "jira_created_at": jira_worklog.created_datetime,
             "hours": jira_worklog.hours,
             "time_spent_seconds": jira_worklog.timeSpentSeconds,
             "comment_text": jira_worklog.comment_text,

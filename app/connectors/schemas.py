@@ -192,7 +192,14 @@ class JiraWorklogSchema(BaseModel):
     def started_datetime(self) -> datetime:
         """Распарсить started из Jira (например, ``2024-01-15T10:30:00.000+0300``)."""
         return _parse_jira_datetime(self.started)
-    
+
+    @property
+    def created_datetime(self) -> Optional[datetime]:
+        """Распарсить created из Jira — дата внесения записи о трудозатратах."""
+        if not self.created:
+            return None
+        return _parse_jira_datetime(self.created)
+
     @property
     def comment_text(self) -> Optional[str]:
         """Extract plain text from comment."""
@@ -204,7 +211,7 @@ class JiraWorklogSchema(BaseModel):
             # ADF format
             return self._extract_adf_text(self.comment)
         return str(self.comment)
-    
+
     def _extract_adf_text(self, node: dict) -> str:
         """Recursively extract text from ADF."""
         text_parts = []
@@ -214,7 +221,7 @@ class JiraWorklogSchema(BaseModel):
             if isinstance(child, dict):
                 text_parts.append(self._extract_adf_text(child))
         return " ".join(text_parts).strip()
-    
+
     class Config:
         extra = "ignore"
 
