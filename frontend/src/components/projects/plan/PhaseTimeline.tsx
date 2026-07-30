@@ -63,6 +63,10 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
   const span = scaleEnd.getTime() - s0 || 1;
   const pos = (t: number) => ((t - s0) / span) * 100;
 
+  // Подпись проекта — ключ плюс длинное название, ей нужно вдвое больше места
+  // и перенос на вторую строку. Названия фаз короткие, там ширины хватает.
+  const labelW = mode === 'by-project' ? 340 : 190;
+
   const labels = monthLabels(scaleStart, scaleEnd);
   const gridlines = labels.map((_, i) => (i / labels.length) * 100).slice(1);
 
@@ -86,7 +90,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: '190px 1fr', gap: 8, marginBottom: 4 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `${labelW}px 1fr`, gap: 8, marginBottom: 4 }}>
         <div />
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)` }}>
           {labels.map((m, i) => (
@@ -101,7 +105,10 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
       {rows.map((row, ri) => (
         <div
           key={`${row.key ?? ''}-${ri}`}
-          style={{ display: 'grid', gridTemplateColumns: '190px 1fr', gap: 8, marginBottom: 3 }}
+          style={{
+            display: 'grid', gridTemplateColumns: `${labelW}px 1fr`,
+            gap: 8, marginBottom: 3, alignItems: 'center',
+          }}
         >
           <div
             role={onRowClick && row.key ? 'button' : undefined}
@@ -112,8 +119,11 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
             } : undefined}
             title={row.label}
             style={{
-              fontSize: 11, color: DARK_THEME.textPrimary, alignSelf: 'center',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              fontSize: 11, lineHeight: 1.3, color: DARK_THEME.textPrimary,
+              // Две строки максимум: третья растянула бы строку таймлайна и
+              // полосы разъехались бы по вертикали.
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              overflow: 'hidden', overflowWrap: 'anywhere',
               cursor: onRowClick && row.key ? 'pointer' : 'default',
             }}
           >
