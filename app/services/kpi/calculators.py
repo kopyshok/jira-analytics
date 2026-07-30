@@ -44,7 +44,7 @@ def norm_to_fact(norm: Optional[float], facts: list[float]) -> MetricResult:
     )
 
 
-def score_to_max(scores: list[list[float]], score_max: float) -> MetricResult:
+def score_to_max(scores: list[list[Optional[float]]], score_max: float) -> MetricResult:
     """Средний балл к максимуму. Каждая задача даёт среднее своих оценок."""
     per_issue = []
     for row in scores:

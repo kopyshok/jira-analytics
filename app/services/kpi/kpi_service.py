@@ -74,7 +74,7 @@ def compute_metric(
         q = build_issue_query(db, num_cs, account_id, period_start, period_end,
                               st.excluded_statuses, teams)
         names = json.loads(metric.score_fields or '["rating_speed","rating_quality","rating_result"]')
-        rows = []
+        rows: list[list[Optional[float]]] = []
         for issue in q.all():
             row = [getattr(issue, n, None) for n in names]
             if any(v is not None for v in row):
@@ -180,7 +180,7 @@ def build_report(db: Session, teams: list[str], year: int, month: int) -> dict:
     )
     intervals = member_intervals(db, teams, period_start, period_end)
 
-    rows = []
+    rows: list[dict] = []
     for emp in employees:
         profile = _profile_for(db, emp)
         if profile is None:

@@ -110,7 +110,7 @@ def _apply_condition(clauses: list, cond: Condition) -> None:
     if cond.attr == "field_filled":
         names = cond.value if isinstance(cond.value, list) else [cond.value]
         for name in names:
-            col = FILLABLE_FIELDS.get(name)
+            col = FILLABLE_FIELDS.get(str(name))
             if col is None:
                 continue
             clauses.append(and_(col.isnot(None), col != ""))
