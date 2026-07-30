@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
+from app.api.endpoints import admin_db_export as admin_db_export_endpoints
 from app.api.endpoints import admin_release_notes as admin_release_notes_endpoints
 from app.api.endpoints import admin_usage as admin_usage_endpoints
 from app.api.endpoints import admin_users as admin_users_endpoints
@@ -238,5 +239,11 @@ api_router.include_router(
     admin_release_notes_endpoints.router,
     prefix="/admin/release-notes",
     tags=["release-notes-admin"],
+    dependencies=_admin_dep,
+)
+api_router.include_router(
+    admin_db_export_endpoints.router,
+    prefix="/admin/db-export",
+    tags=["admin-db-export"],
     dependencies=_admin_dep,
 )

@@ -39,6 +39,7 @@ import UsersTab from './settings/UsersTab';
 import FeedbackAdminTab from '../components/feedback/FeedbackAdminTab';
 import UsageTab from '../components/admin/usage/UsageTab';
 import ReleaseNotesAdminTab from '../components/settings/ReleaseNotesAdminTab';
+import DbExportTab from '../components/settings/DbExportTab';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -47,7 +48,7 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'visibility', 'users', 'feedback', 'usage', 'whats-new'] as const;
+const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'visibility', 'users', 'feedback', 'usage', 'whats-new', 'db-export'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function readHashKey(): TabKey {
@@ -98,6 +99,7 @@ export default function SettingsPage() {
                 { key: 'feedback', label: 'Обратная связь', children: <FeedbackAdminTab /> },
                 { key: 'usage', label: 'Использование', children: <UsageTab /> },
                 { key: 'whats-new', label: 'Что нового', children: <ReleaseNotesAdminTab /> },
+                { key: 'db-export', label: 'Выгрузка базы', children: <DbExportTab /> },
               ]
             : []),
         ]}

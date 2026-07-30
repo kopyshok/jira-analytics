@@ -140,7 +140,11 @@ export const api = {
     request<T>('PATCH', path, body, undefined, signal),
   del: <T>(path: string, signal?: AbortSignal) =>
     request<T>('DELETE', path, undefined, undefined, signal),
-  download: async (path: string, params?: Record<string, string | undefined>) => {
+  download: async (
+    path: string,
+    params?: Record<string, string | undefined>,
+    filenameOverride?: string,
+  ) => {
     const url = buildApiUrl(path);
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
@@ -150,7 +154,7 @@ export const api = {
     const res = await fetch(url.toString(), { credentials: 'include' });
     if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
     const blob = await res.blob();
-    const filename = path.split('/').pop() || 'download';
+    const filename = filenameOverride || path.split('/').pop() || 'download';
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;
