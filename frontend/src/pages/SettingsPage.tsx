@@ -32,6 +32,7 @@ import HierarchyRulesTab from '../components/HierarchyRulesTab';
 import AbsenceReasonsTab from '../components/AbsenceReasonsTab';
 import CategoriesTab from '../components/CategoriesTab';
 import WorkTypesTab from '../components/settings/WorkTypesTab';
+import KpiSettingsTab from '../components/settings/kpi/KpiSettingsTab';
 import { AITab } from '../components/settings/AITab';
 import VisibilityTab from '../components/settings/VisibilityTab';
 import PageHeader from '../components/shared/PageHeader';
@@ -69,6 +70,7 @@ const GROUPS: SectionGroup[] = [
       { key: 'categories', label: 'Категории работ', render: () => <CategoriesTab /> },
       { key: 'worktypes', label: 'Виды работ', render: () => <WorkTypesTab /> },
       { key: 'calendar', label: 'Производственный календарь', render: () => <ProductionCalendarTab /> },
+      { key: 'kpi', label: 'KPI', render: () => <KpiSettingsTab /> },
     ],
   },
   {
