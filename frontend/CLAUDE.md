@@ -78,20 +78,13 @@ Row tint deepens per depth level (`.tree-row-depth-0..5`) and italicizes context
 
 ## SettingsPage (`/settings`, admin-only)
 
-Вкладки (порядок и точные ключи — [`SettingsPage.tsx`](src/pages/SettingsPage.tsx)):
-- `connection` — `ConnectionCard` (Jira credentials)
-- `scope` — `ScopeAdmin` (проекты + roots)
-- `fields` — `JiraFieldsCard` (custom field IDs)
-- `hierarchy` — `HierarchyRulesTab`
-- `reasons` — `AbsenceReasonsTab`
-- `categories` — `CategoriesTab` — **тут живёт кнопка «Пересчитать маппинг по задачам»**
-- `worktypes` — `WorkTypesTab`
-- `calendar` — `ProductionCalendarTab` (+ кнопка «Синхронизировать» с RU календарём)
-- `ai` — `AITab`
-- `visibility` — `VisibilityTab`
-- `users` — `UsersTab` (только admin)
+Навигация — левое `Menu mode="inline"` с группами (не `Tabs`); `Grid.useBreakpoint()` → на `<md` вместо меню `Select`. Рендерится только активная секция (`render()`), состояние неактивных не живёт. Группы и точные ключи — `GROUPS` в [`SettingsPage.tsx`](src/pages/SettingsPage.tsx):
+- **Подключение**: `connection` (`ConnectionCard`) · `scope` (`ScopeAdmin`) · `fields` (`JiraFieldsCard`)
+- **Справочники**: `hierarchy` · `reasons` · `categories` (**тут кнопка «Пересчитать маппинг по задачам»**) · `worktypes` · `calendar` (`ProductionCalendarTab`, + синк с RU календарём)
+- **Доступ**: `users` (admin) · `visibility`
+- **Администрирование**: `ai` · `feedback` (admin) · `usage` (admin) · `whats-new` (admin) · `db-export` (admin)
 
-Активная вкладка зашита в URL.
+Активная секция зашита в URL-хеше; `adminOnly`-пункты вырезаются, пустые группы скрываются.
 
 ## CapacityPage v2
 
