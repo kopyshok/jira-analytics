@@ -48,6 +48,13 @@ class Issue(Base, SyncedMixin):
     resolution: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
+    # KPI: поля, приходящие из Jira по сопоставлению в настройках
+    environment: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    subtype: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    cycle_time_fact: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    direction: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
+
     # Foreign keys
     project_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("projects.id"), nullable=False, index=True

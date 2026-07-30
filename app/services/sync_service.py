@@ -57,6 +57,23 @@ def _extract_team_values(extra: dict, field_id: Optional[str]) -> List[str]:
     return []
 
 
+def _extract_single_value(extra: dict, field_id: Optional[str]) -> Optional[str]:
+    """Одно значение select-поля Jira. Три формы: {'value': X}, [{'value': X}], 'X'."""
+    if not field_id:
+        return None
+    raw = extra.get(field_id)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw.get("value") or raw.get("name")
+    if isinstance(raw, list):
+        if not raw:
+            return None
+        first = raw[0]
+        return first.get("value") or first.get("name") if isinstance(first, dict) else str(first)
+    return str(raw)
+
+
 def _extract_text_field(extra: dict, field_id: str) -> Optional[str]:
     """Достать text/ADF-значение кастомного поля из `_extra`.
 
@@ -154,11 +171,22 @@ _PLANNED_DATE_SETTING_KEYS = [
     "jira_planned_start_date_field_id",
     "jira_planned_end_date_field_id",
 ]
+# KPI: окружение, подтип, тип затрат, фактический Cycle Time, продуктовое
+# направление — сопоставляются в настройках тем же механизмом, что и
+# оценки заказчика.
+_KPI_FIELD_SETTING_KEYS = [
+    "jira_environment_field_id",
+    "jira_subtype_field_id",
+    "jira_cost_type_field_id",
+    "jira_cycle_time_field_id",
+    "jira_direction_field_id",
+]
 _ALL_PLANNED_KEYS = (
     _PLANNED_NUMERIC_SETTING_KEYS
     + _PLANNED_STRING_SETTING_KEYS
     + _RATING_SETTING_KEYS
     + _PLANNED_DATE_SETTING_KEYS
+    + _KPI_FIELD_SETTING_KEYS
 )
 
 
@@ -678,6 +706,17 @@ class SyncService:
         data["duration_launch_days"] = _fld_float("jira_duration_opo_field_id")
         data["impact"] = _fld_level("jira_impact_field_id")
         data["risk"] = _fld_level("jira_risk_field_id")
+
+        # KPI: окружение, подтип, тип затрат, направление, фактический Cycle Time
+        data["environment"] = _extract_single_value(extra, planned_ids.get("jira_environment_field_id"))
+        data["subtype"] = _extract_single_value(extra, planned_ids.get("jira_subtype_field_id"))
+        data["cost_type"] = _extract_single_value(extra, planned_ids.get("jira_cost_type_field_id"))
+        data["direction"] = _extract_single_value(extra, planned_ids.get("jira_direction_field_id"))
+        ct_raw = _extract_single_value(extra, planned_ids.get("jira_cycle_time_field_id"))
+        try:
+            data["cycle_time_fact"] = float(ct_raw) if ct_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            data["cycle_time_fact"] = None
 
         # Customer ratings (1-5)
         for field_key, attr in (
