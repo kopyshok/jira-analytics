@@ -63,37 +63,39 @@ def jira_url(key: Optional[str]) -> Optional[str]:
 
 
 def find_recent_plan(db: Session, teams: List[str], year: int, quarter: int):
-    """Самый свежий ResourcePlan команды за квартал, либо None."""
+    """Действующий ResourcePlan команды за квартал, либо None.
+
+    Форки (`parent_plan_id`) отсеиваем — это временные копии авто-распределения,
+    в списке планов на экране «Ресурсное планирование» их тоже не видно.
+    """
     from app.models import ResourcePlan
 
     if not teams:
         return None
-    q_variants = [str(quarter), f"Q{quarter}", f"q{quarter}"]
     rows = (
         db.execute(
-            select(ResourcePlan)
-            .where(
+            select(ResourcePlan).where(
                 ResourcePlan.team.in_(teams),
                 ResourcePlan.year == year,
-                ResourcePlan.quarter.in_(q_variants),
-            )
-            .order_by(
-                ResourcePlan.computed_at.desc().nullslast(),
-                ResourcePlan.created_at.desc(),
+                ResourcePlan.quarter.in_(_quarter_variants(quarter)),
+                ResourcePlan.parent_plan_id.is_(None),
             )
         )
         .scalars()
         .all()
     )
-    return rows[0] if rows else None
+    return max(rows, key=_plan_sort_key) if rows else None
 
 
 def plan_ids_for_issues(db: Session, issue_ids: Sequence[str]) -> List[str]:
-    """Планы, где есть назначения этих задач — по свежайшему на каждый квартал.
+    """Действующие планы кварталов, в которых эти задачи когда-либо планировались.
 
-    Проект может идти два-три квартала, назначения лежат в разных ResourcePlan.
-    Форки и baseline-копии одного квартала удвоили бы часы, поэтому на каждую
-    тройку (команда, год, квартал) оставляем только самый свежий план.
+    Проект может идти два-три квартала, назначения лежат в разных ResourcePlan,
+    поэтому кварталы определяем по самим назначениям. А вот план внутри квартала
+    выбираем среди ВСЕХ планов команды, а не только среди тех, где эта задача
+    есть: иначе задача, убранная из действующего плана, продолжает жить в старом
+    форке, и форк становится «самым свежим планом квартала». Форки и baseline-
+    копии отброшены — остаётся тот план, который аналитик видит на экране.
     """
     from app.models import BacklogItem, ResourcePlan, ResourcePlanAssignment
 
@@ -112,20 +114,51 @@ def plan_ids_for_issues(db: Session, issue_ids: Sequence[str]) -> List[str]:
     )
     if not raw_plan_ids:
         return []
-    plans = (
+    seen_plans = (
         db.execute(select(ResourcePlan).where(ResourcePlan.id.in_(raw_plan_ids)))
         .scalars()
         .all()
     )
+    buckets = {_plan_bucket(p) for p in seen_plans}
+    teams = {b[0] for b in buckets}
+    years = {b[1] for b in buckets}
+    candidates = (
+        db.execute(
+            select(ResourcePlan).where(
+                ResourcePlan.team.in_(teams),
+                ResourcePlan.year.in_(years),
+                ResourcePlan.parent_plan_id.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
     best: Dict[tuple, "ResourcePlan"] = {}
-    for p in plans:
-        # Квартал в БД встречается как "3", "Q3", "q3" — нормализуем.
-        q = (p.quarter or "").lower().lstrip("q")
-        bucket = (p.team, p.year, q)
+    for p in candidates:
+        bucket = _plan_bucket(p)
+        if bucket not in buckets:
+            continue
         cur = best.get(bucket)
         if cur is None or _plan_sort_key(p) > _plan_sort_key(cur):
             best[bucket] = p
+    # Квартал, где основных планов не осталось (были только форки) — берём
+    # свежайший из того, что есть, иначе часы проекта просто исчезнут.
+    for bucket in buckets - set(best):
+        forks = [p for p in seen_plans if _plan_bucket(p) == bucket]
+        if forks:
+            best[bucket] = max(forks, key=_plan_sort_key)
     return [p.id for p in best.values()]
+
+
+def _quarter_variants(quarter) -> List[str]:
+    """Квартал в БД встречается как "3", "Q3", "q3"."""
+    q = str(quarter).lower().lstrip("q")
+    return [q, f"Q{q}", f"q{q}"]
+
+
+def _plan_bucket(p) -> tuple:
+    return (p.team, p.year, str(p.quarter or "").lower().lstrip("q"))
 
 
 def _plan_sort_key(p) -> tuple:
