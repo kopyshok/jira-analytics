@@ -1,5 +1,6 @@
 """Расчёт KPI: по сотруднику, команде и периоду."""
 import json
+from calendar import monthrange
 from datetime import date, datetime
 from typing import Optional
 
@@ -7,12 +8,16 @@ from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
 from app.models.issue import Issue
-from app.models.kpi import KpiMetric
+from app.models.kpi import KpiCycleTimeNorm, KpiMetric, KpiProfile
 from app.models.worklog import Worklog
 from app.services.kpi.calculators import MetricResult, norm_to_fact, ratio, score_to_max
 from app.services.kpi.conditions import ConditionSet, build_issue_query
 from app.services.kpi.settings import KpiSettings, read_kpi_settings
 from app.services.kpi.timeliness import is_late
+from app.services.team_membership import member_intervals, members_overlapping
+
+QUARTER_OF_MONTH = {1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 2, 7: 3, 8: 3, 9: 3,
+                    10: 4, 11: 4, 12: 4}
 
 
 def combine(
@@ -118,3 +123,118 @@ def _ratio_over_worklogs(
                    st.worklog_deadline_days, st.worklog_deadline_time)
     )
     return ratio(late, len(rows), invert=True, cap_at_100=True)
+
+
+def month_bounds(year: int, month: int) -> tuple[date, date]:
+    """Первый и последний день месяца."""
+    return date(year, month, 1), date(year, month, monthrange(year, month)[1])
+
+
+def _profile_for(db: Session, employee: Employee) -> Optional[KpiProfile]:
+    """Профиль по роли сотрудника; если для роли профиля нет — первый включённый."""
+    if employee.role:
+        p = (
+            db.query(KpiProfile)
+            .filter(KpiProfile.role_code == employee.role, KpiProfile.is_enabled.is_(True))
+            .first()
+        )
+        if p:
+            return p
+    return db.query(KpiProfile).filter(KpiProfile.is_enabled.is_(True)).first()
+
+
+def _norm_for(db: Session, team: str, year: int, month: int) -> Optional[float]:
+    """Норматив Cycle Time команды на квартал, которому принадлежит месяц."""
+    row = (
+        db.query(KpiCycleTimeNorm)
+        .filter(
+            KpiCycleTimeNorm.team == team,
+            KpiCycleTimeNorm.year == year,
+            KpiCycleTimeNorm.quarter == QUARTER_OF_MONTH[month],
+        )
+        .first()
+    )
+    return row.norm_value if row else None
+
+
+def build_report(db: Session, teams: list[str], year: int, month: int) -> dict:
+    """Отчёт по людям выбранных команд за месяц.
+
+    Период человека внутри месяца обрезается по фактическим дням участия в
+    команде (``app/services/team_membership.py``) — так неполный месяц не
+    даёт задачам, закрытым до вступления или после выбытия, попасть в счёт.
+    Сотрудник без профиля оценки попадает в отчёт с пустым списком метрик —
+    руководителю нужно видеть его в списке команды, а не терять молча.
+    """
+    st = read_kpi_settings(db)
+    period_start, period_end = month_bounds(year, month)
+    emp_ids = members_overlapping(db, teams, period_start, period_end)
+    if not emp_ids:
+        return {"year": year, "month": month, "teams": teams, "rows": []}
+
+    employees = (
+        db.query(Employee)
+        .filter(Employee.id.in_(emp_ids))
+        .order_by(Employee.display_name)
+        .all()
+    )
+    intervals = member_intervals(db, teams, period_start, period_end)
+
+    rows = []
+    for emp in employees:
+        profile = _profile_for(db, emp)
+        if profile is None:
+            rows.append({
+                "employee_id": emp.id,
+                "employee_name": emp.display_name,
+                "account_id": emp.jira_account_id,
+                "team": emp.team,
+                "profile_code": None,
+                "target_pct": None,
+                "warn_band_pct": None,
+                "metrics": [],
+                "total": None,
+            })
+            continue
+
+        emp_intervals = intervals.get(emp.id, [])
+        if emp_intervals:
+            eff_start = max(period_start, min(lo for lo, _ in emp_intervals))
+            eff_end = min(period_end, max(hi for _, hi in emp_intervals))
+        else:
+            eff_start, eff_end = period_start, period_end
+
+        parts = []
+        metric_payload = []
+        for link in sorted(profile.metrics, key=lambda m: m.sort_order):
+            norm = _norm_for(db, emp.team or (teams[0] if teams else ""), year, month) \
+                if link.metric.calc_kind == "norm_to_fact" else None
+            res = compute_metric(
+                db, link.metric, emp.jira_account_id, eff_start, eff_end,
+                teams, settings=st, norm_value=norm,
+            )
+            parts.append((link.metric.code, res, link.weight))
+            metric_payload.append({
+                "code": link.metric.code,
+                "name": link.metric.name,
+                "weight": link.weight,
+                "value": res.value,
+                "has_data": res.has_data,
+                "numerator": res.numerator,
+                "denominator": res.denominator,
+            })
+
+        rows.append({
+            "employee_id": emp.id,
+            "employee_name": emp.display_name,
+            "account_id": emp.jira_account_id,
+            "team": emp.team,
+            "profile_code": profile.code,
+            "target_pct": profile.target_pct,
+            "warn_band_pct": profile.warn_band_pct,
+            "metrics": metric_payload,
+            "total": combine(parts, st.empty_policy),
+        })
+
+    rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
+    return {"year": year, "month": month, "teams": teams, "rows": rows}
