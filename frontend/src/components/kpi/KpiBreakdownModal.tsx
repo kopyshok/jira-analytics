@@ -48,7 +48,15 @@ function ItemRow({ item }: { item: KpiBreakdownItem }) {
             {item.late ? 'просрочено' : 'вовремя'} · {item.hours}ч
           </Tag>
         ) : (
-          <Tag style={{ margin: 0, flex: '0 0 auto' }}>{item.resolution ?? item.status ?? '—'}</Tag>
+          <>
+            {item.fact != null && (
+              <Tag className="num" style={{ margin: 0, flex: '0 0 auto' }}>факт {item.fact}</Tag>
+            )}
+            {item.score != null && (
+              <Tag className="num" style={{ margin: 0, flex: '0 0 auto' }}>балл {item.score}</Tag>
+            )}
+            <Tag style={{ margin: 0, flex: '0 0 auto' }}>{item.resolution ?? item.status ?? '—'}</Tag>
+          </>
         )}
       </div>
     </List.Item>
@@ -93,9 +101,14 @@ export default function KpiBreakdownModal({ target, year, month, direction, onCl
             }}
           >
             <div className="num" style={{ fontSize: 24, fontWeight: 800 }}>
-              {metric?.numerator != null ? Math.round(metric.numerator * 10) / 10 : '—'}
+              {/* Дробь берётся из тех же чисел, что и списки задач ниже
+                  (numerator_count/denominator_count), а не из значения метрики
+                  в отчёте — иначе для «норматив к факту»/«балл к максимуму»
+                  дробь показывала бы норматив/балл, а не число задач под ней
+                  (см. BLOCKER 2 ревью). */}
+              {query.data?.numerator_count ?? '—'}
               <Text type="secondary" style={{ fontSize: 12, fontWeight: 500, margin: '0 6px' }}>из</Text>
-              {metric?.denominator != null ? Math.round(metric.denominator * 10) / 10 : '—'}
+              {query.data?.denominator_count ?? '—'}
             </div>
             <div style={{ textAlign: 'right', fontSize: 11.5 }}>
               <div>
