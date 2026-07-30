@@ -237,8 +237,9 @@ def _person_clause(cs: ConditionSet, account_id: str):
     return Issue.reporter_account_id == account_id
 
 
-def _period_clause(cs: ConditionSet, period_start: date, period_end: date):
-    """Задача закрыта в периоде, а для окна ``created_and_closed_in`` — ещё и создана в нём.
+def _one_period_clause(cs: ConditionSet, period_start: date, period_end: date):
+    """Задача закрыта в одном конкретном периоде, а для окна ``created_and_closed_in`` —
+    ещё и создана в нём.
 
     Создана в Jira проверяется по ``jira_created_at`` — дате создания в Jira,
     а не по ``created_at`` (дате вставки строки в нашу базу).
@@ -251,21 +252,52 @@ def _period_clause(cs: ConditionSet, period_start: date, period_end: date):
     return closed
 
 
-def build_issue_query(
-    db: Session,
-    cs: ConditionSet,
-    account_id: str,
-    period_start: date,
-    period_end: date,
-    excluded_statuses: list[str],
-    teams: Optional[list[str]],
-) -> Query:
-    """Запрос задач, попадающих под набор условий, для одного человека и периода."""
-    clauses = [_person_clause(cs, account_id), _period_clause(cs, period_start, period_end)]
+def _period_clause(cs: ConditionSet, periods: list[tuple[date, date]]):
+    """Задача закрыта хотя бы в одном из периодов.
+
+    Несколько периодов — фактические отрезки участия сотрудника в команде
+    внутри месяца (ушёл — вернулся): считать по ним отдельно, а не по
+    объединяющему диапазону от первого до последнего дня, иначе разрыв
+    (например, 5-25 числа) молча превращается в «состоял весь месяц»
+    (см. ревью Фазы 3, мелочь про интервалы).
+    """
+    return or_(*[_one_period_clause(cs, start, end) for start, end in periods])
+
+
+def issue_attribute_clauses(
+    cs: ConditionSet, excluded_statuses: list[str], teams: Optional[list[str]],
+) -> list:
+    """Условия отбора задач по атрибутам, статусам и команде — без периода и без человека.
+
+    Период для unit=«worklogs» проверяется по дате самой записи
+    (``Worklog.started_at``), а не по дате закрытия задачи, а «кто
+    считается» — по автору записи, а не по атрибуту задачи. Поэтому
+    своевременность трудозатрат переиспользует именно эту часть транслятора
+    (см. ``worklog_items`` в ``kpi_service.py``, ВАЖНО 5 ревью Фазы 3), а не
+    весь ``build_issue_query`` целиком.
+    """
+    clauses: list = []
     for cond in cs.conditions:
         _apply_condition(clauses, cond)
     if excluded_statuses:
         clauses.append(or_(Issue.status.is_(None), ~Issue.status.in_(excluded_statuses)))
     if teams:
         clauses.append(Issue.team.in_(teams))
+    return clauses
+
+
+def build_issue_query(
+    db: Session,
+    cs: ConditionSet,
+    account_id: str,
+    periods: list[tuple[date, date]],
+    excluded_statuses: list[str],
+    teams: Optional[list[str]],
+) -> Query:
+    """Запрос задач, попадающих под набор условий, для одного человека и периода(ов)."""
+    clauses = [
+        _person_clause(cs, account_id),
+        _period_clause(cs, periods),
+        *issue_attribute_clauses(cs, excluded_statuses, teams),
+    ]
     return db.query(Issue).filter(and_(*clauses))
