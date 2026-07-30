@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  Tabs,
+  Menu,
+  Grid,
   App,
   Space,
   Button,
@@ -48,62 +49,122 @@ import {
 } from '../hooks/useProductionCalendar';
 import type { ProductionCalendarDayResponse } from '../types/api';
 
-const TAB_KEYS = ['connection', 'scope', 'fields', 'hierarchy', 'reasons', 'categories', 'worktypes', 'calendar', 'ai', 'visibility', 'users', 'feedback', 'usage', 'whats-new', 'db-export'] as const;
-type TabKey = typeof TAB_KEYS[number];
+type Section = { key: string; label: string; adminOnly?: boolean; render: () => React.ReactNode };
+type SectionGroup = { title: string; items: Section[] };
 
-function readHashKey(): TabKey {
+const GROUPS: SectionGroup[] = [
+  {
+    title: 'Подключение',
+    items: [
+      { key: 'connection', label: 'Подключение к Jira', render: () => <ConnectionCard /> },
+      { key: 'scope', label: 'Проекты в scope', render: () => <ScopeAdmin /> },
+      { key: 'fields', label: 'Поля Jira', render: () => <JiraFieldsCard /> },
+    ],
+  },
+  {
+    title: 'Справочники',
+    items: [
+      { key: 'hierarchy', label: 'Правила иерархии', render: () => <HierarchyRulesTab /> },
+      { key: 'reasons', label: 'Причины отсутствий', render: () => <AbsenceReasonsTab /> },
+      { key: 'categories', label: 'Категории работ', render: () => <CategoriesTab /> },
+      { key: 'worktypes', label: 'Виды работ', render: () => <WorkTypesTab /> },
+      { key: 'calendar', label: 'Производственный календарь', render: () => <ProductionCalendarTab /> },
+    ],
+  },
+  {
+    title: 'Доступ',
+    items: [
+      { key: 'users', label: 'Пользователи', adminOnly: true, render: () => <UsersTab /> },
+      { key: 'visibility', label: 'Видимость разделов', render: () => <VisibilityTab /> },
+    ],
+  },
+  {
+    title: 'Администрирование',
+    items: [
+      { key: 'ai', label: 'AI', render: () => <AITab /> },
+      { key: 'feedback', label: 'Обратная связь', adminOnly: true, render: () => <FeedbackAdminTab /> },
+      { key: 'usage', label: 'Использование', adminOnly: true, render: () => <UsageTab /> },
+      { key: 'whats-new', label: 'Что нового', adminOnly: true, render: () => <ReleaseNotesAdminTab /> },
+      { key: 'db-export', label: 'Выгрузка базы', adminOnly: true, render: () => <DbExportTab /> },
+    ],
+  },
+];
+
+function readHashKey(available: Section[]): string {
   const raw = window.location.hash.replace('#', '');
-  return TAB_KEYS.includes(raw as TabKey) ? (raw as TabKey) : 'connection';
+  return available.some((s) => s.key === raw) ? raw : available[0].key;
 }
 
 export default function SettingsPage() {
-  const [activeKey, setActiveKey] = useState<TabKey>(readHashKey);
   const { user } = useAuth();
+  const screens = Grid.useBreakpoint();
   useRegisterHelp('Настройки сервиса', settingsHelp);
 
+  const isAdmin = user?.role === 'admin';
+  const groups = GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((s) => isAdmin || !s.adminOnly),
+  })).filter((g) => g.items.length > 0);
+  const sections = groups.flatMap((g) => g.items);
+
+  const [activeKey, setActiveKey] = useState<string>(() => readHashKey(sections));
+
   useEffect(() => {
-    const handler = () => setActiveKey(readHashKey());
+    const handler = () => setActiveKey(readHashKey(sections));
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onChange = (k: string) => {
-    setActiveKey(k as TabKey);
+    setActiveKey(k);
     window.location.hash = k;
   };
+
+  const active = sections.find((s) => s.key === activeKey) ?? sections[0];
+  const narrow = !screens.md;
 
   return (
     <>
       <PageHeader
         eyebrow="Данные"
         title="Настройки"
-        subtitle="Подключение к Jira, scope проектов, поля, правила иерархии, производственный календарь"
+        subtitle="Подключение к Jira, состав проектов, справочники, доступ и администрирование"
       />
-      <Tabs
-        activeKey={activeKey}
-        onChange={onChange}
-        items={[
-          { key: 'connection', label: 'Подключение к Jira', children: <ConnectionCard /> },
-          { key: 'scope', label: 'Проекты в scope', children: <ScopeAdmin /> },
-          { key: 'fields', label: 'Поля Jira', children: <JiraFieldsCard /> },
-          { key: 'hierarchy', label: 'Правила иерархии', children: <HierarchyRulesTab /> },
-          { key: 'reasons', label: 'Причины отсутствий', children: <AbsenceReasonsTab /> },
-          { key: 'categories', label: 'Категории работ', children: <CategoriesTab /> },
-          { key: 'worktypes', label: 'Виды работ', children: <WorkTypesTab /> },
-          { key: 'calendar', label: 'Производственный календарь', children: <ProductionCalendarTab /> },
-          { key: 'ai', label: 'AI', children: <AITab /> },
-          { key: 'visibility', label: 'Видимость разделов', children: <VisibilityTab /> },
-          ...(user?.role === 'admin'
-            ? [
-                { key: 'users', label: 'Пользователи', children: <UsersTab /> },
-                { key: 'feedback', label: 'Обратная связь', children: <FeedbackAdminTab /> },
-                { key: 'usage', label: 'Использование', children: <UsageTab /> },
-                { key: 'whats-new', label: 'Что нового', children: <ReleaseNotesAdminTab /> },
-                { key: 'db-export', label: 'Выгрузка базы', children: <DbExportTab /> },
-              ]
-            : []),
-        ]}
-      />
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: narrow ? 'column' : 'row',
+          gap: narrow ? 12 : 24,
+          alignItems: 'flex-start',
+        }}
+      >
+        {narrow ? (
+          <Select
+            value={active.key}
+            onChange={onChange}
+            style={{ width: '100%' }}
+            options={groups.map((g) => ({
+              label: g.title,
+              options: g.items.map((s) => ({ value: s.key, label: s.label })),
+            }))}
+          />
+        ) : (
+          <Menu
+            mode="inline"
+            selectedKeys={[active.key]}
+            onClick={({ key }) => onChange(key)}
+            style={{ width: 248, flex: 'none', position: 'sticky', top: 16, background: 'transparent' }}
+            items={groups.map((g) => ({
+              key: g.title,
+              type: 'group' as const,
+              label: g.title,
+              children: g.items.map((s) => ({ key: s.key, label: s.label })),
+            }))}
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 0, width: '100%' }}>{active.render()}</div>
+      </div>
     </>
   );
 }
