@@ -1,15 +1,21 @@
 """kpi: шесть метрик и профиль «Аналитик» по умолчанию
 
 Revision ID: k07a_kpi_seed_defaults
-Revises: k06a_kpi_issue_jira_created_at
+Revises: k08a_kpi_profile_is_default
 Create Date: 2026-07-30
+
+Идёт ПОСЛЕ k08a (колонка ``is_default``), хотя порядковый номер меньше:
+``seed_defaults()`` пишет профиль через ORM-модель ``KpiProfile``, у которой
+эта колонка уже объявлена в коде. На чистой базе миграции применяются по
+цепочке ``down_revision``, а не по имени файла — раньше сидинг шёл раньше
+колонки и падал на «no such column» (см. ревью Фазы 4, BLOCKER 3).
 """
 from typing import Union
 
 from alembic import op
 
 revision: str = "k07a_kpi_seed_defaults"
-down_revision: Union[str, None] = "k06a_kpi_issue_jira_created_at"
+down_revision: Union[str, None] = "k08a_kpi_profile_is_default"
 branch_labels = None
 depends_on = None
 

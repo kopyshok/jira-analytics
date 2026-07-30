@@ -1,7 +1,7 @@
 """kpi: раздел скрыт по умолчанию в «Видимости разделов»
 
 Revision ID: k09a_kpi_hidden_by_default
-Revises: k08a_kpi_profile_is_default
+Revises: k07a_kpi_seed_defaults
 Create Date: 2026-07-30
 """
 import json
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "k09a_kpi_hidden_by_default"
-down_revision: Union[str, None] = "k08a_kpi_profile_is_default"
+down_revision: Union[str, None] = "k07a_kpi_seed_defaults"
 branch_labels = None
 depends_on = None
 
