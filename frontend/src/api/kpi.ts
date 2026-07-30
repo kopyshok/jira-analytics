@@ -30,12 +30,19 @@ export interface KpiReportSummary {
   no_data_metrics_count: number;
 }
 
+export interface KpiTeamApproval {
+  approved: boolean;
+  approved_by: string | null;
+  approved_at: string | null;
+}
+
 export interface KpiReport {
   year: number;
   month: number;
   teams: string[];
   rows: KpiReportRow[];
   summary: KpiReportSummary;
+  approvals: Record<string, KpiTeamApproval>;
 }
 
 export interface KpiTeamSummaryRow {
@@ -69,6 +76,8 @@ export const fetchKpiReport = (
     signal,
   );
 
+export const fetchDirections = () => api.get<string[]>('/kpi/directions');
+
 export const fetchTeamsSummary = (
   year: number,
   month: number,
@@ -89,6 +98,10 @@ export interface KpiIssueBrief {
   status: string | null;
   resolution: string | null;
   url: string | null;
+  /** Только для «норматив к факту» */
+  fact?: number | null;
+  /** Только для «средний балл к максимуму» */
+  score?: number | null;
 }
 
 export interface KpiWorklogBrief {
@@ -112,6 +125,8 @@ export interface KpiBreakdown {
   metric_name: string;
   numerator: KpiBreakdownItem[];
   denominator: KpiBreakdownItem[];
+  numerator_count: number;
+  denominator_count: number;
 }
 
 export interface KpiBreakdownFilters {
@@ -137,7 +152,7 @@ export const fetchBreakdown = (
 
 // === Тренд сотрудника ===
 
-export type KpiTrendPoint = KpiReportRow & { year: number; month: number };
+export type KpiTrendPoint = KpiReportRow & { year: number; month: number; approved: boolean };
 
 export interface KpiTrend {
   account_id: string;
@@ -265,6 +280,8 @@ export interface KpiProfilePayload {
   target_pct: number;
   warn_band_pct: number;
   is_enabled: boolean;
+  /** Запасной профиль для сотрудников без своей роли — ровно один на сервере. */
+  is_default: boolean;
   metrics: KpiProfileMetricPayload[];
 }
 
@@ -276,6 +293,7 @@ export interface KpiProfileDef {
   target_pct: number;
   warn_band_pct: number;
   is_enabled: boolean;
+  is_default: boolean;
   metrics: KpiProfileMetricDef[];
 }
 

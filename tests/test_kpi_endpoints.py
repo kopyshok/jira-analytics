@@ -202,3 +202,125 @@ class TestExport:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         assert len(resp.content) > 0
+
+    def test_export_rows_match_report_rows(self, client, team_with_analyst):
+        """ВАЖНО 8: выгрузка открывается как книга, её строки совпадают со строками отчёта."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        report = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи").json()
+        resp = client.get("/api/v1/kpi/export.xlsx?year=2026&month=7&teams=Платежи")
+        assert resp.status_code == 200
+
+        wb = load_workbook(BytesIO(resp.content))
+        ws = wb.active
+        names_in_sheet = [row[1] for row in ws.iter_rows(min_row=2, values_only=True)]
+        assert names_in_sheet == [r["employee_name"] for r in report["rows"]]
+
+
+class TestApprovalFreeze:
+    """BLOCKER 1: утверждённый месяц не меняется после правки весов профиля."""
+
+    def test_report_frozen_after_weight_change(self, client, db_session, team_with_analyst):
+        from datetime import datetime
+
+        from app.models import AppSetting
+        from app.models.kpi import KpiProfile
+        from app.services.kpi.kpi_service import build_report
+
+        project = team_with_analyst["project"]
+        # empty_policy=zero делает вес метрики значимым для итога даже когда
+        # данные есть только у одной метрики (redistribute свёл бы к тому же
+        # числу независимо от веса — тест не отличил бы заморозку от совпадения).
+        db_session.add(AppSetting(key="kpi_empty_policy", value="zero"))
+        db_session.add(Issue(
+            jira_issue_id="fr1", key="OS-900", summary="s", issue_type="Задача",
+            status="ГОТОВО", status_category="done", resolution="Готово",
+            resolved_at=datetime(2026, 7, 10), project_id=project.id,
+            reporter_account_id="acc-1", team="Платежи",
+        ))
+        db_session.commit()
+
+        before = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи").json()
+        row_before = next(r for r in before["rows"] if r["account_id"] == "acc-1")
+        assert row_before["total"] is not None
+
+        approve = client.post("/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "month": 7})
+        assert approve.status_code == 200
+
+        profile = db_session.query(KpiProfile).filter_by(code="analyst").one()
+        quality_link = next(m for m in profile.metrics if m.metric.code == "quality")
+        quality_link.weight = 0.9
+        db_session.commit()
+
+        # Живой пересчёт теперь дал бы другое число — иначе тест ничего не
+        # проверяет (сравнивал бы совпадающие по случайности значения).
+        live = build_report(db_session, ["Платежи"], 2026, 7)
+        live_row = next(r for r in live["rows"] if r["account_id"] == "acc-1")
+        assert live_row["total"] != row_before["total"]
+
+        after = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи").json()
+        row_after = next(r for r in after["rows"] if r["account_id"] == "acc-1")
+        assert row_after["total"] == row_before["total"]
+        assert after["approvals"]["Платежи"]["approved"] is True
+
+
+class TestBreakdownConsistency:
+    """BLOCKER 2: расшифровка использует тот же отбор, что и дробь в отчёте."""
+
+    def test_breakdown_matches_report_fraction_for_mid_month_join(self, client, db_session):
+        from datetime import date, datetime
+
+        seed_defaults(db_session)
+        db_session.commit()
+
+        project = Project(jira_project_id="p-bd", key="OS", name="1С")
+        db_session.add(project)
+        emp = Employee(jira_account_id="acc-mid", display_name="Петров П.", team="Платежи", role="analyst")
+        db_session.add(emp)
+        db_session.commit()
+        db_session.add(EmployeeTeam(
+            employee_id=emp.id, team="Платежи", is_primary=True, joined_at=date(2026, 7, 20),
+        ))
+        # Задача, закрытая до вступления в команду — не должна попасть в знаменатель.
+        db_session.add(Issue(
+            jira_issue_id="bd1", key="OS-900", summary="до", issue_type="Задача",
+            status="ГОТОВО", status_category="done", resolution="Готово",
+            resolved_at=datetime(2026, 7, 5), project_id=project.id,
+            reporter_account_id="acc-mid", team="Платежи",
+        ))
+        # Задача после вступления — попадает.
+        db_session.add(Issue(
+            jira_issue_id="bd2", key="OS-901", summary="после", issue_type="Задача",
+            status="ГОТОВО", status_category="done", resolution="Готово",
+            resolved_at=datetime(2026, 7, 25), project_id=project.id,
+            reporter_account_id="acc-mid", team="Платежи",
+        ))
+        db_session.commit()
+
+        report = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи").json()
+        row = next(r for r in report["rows"] if r["account_id"] == "acc-mid")
+        quality = next(m for m in row["metrics"] if m["code"] == "quality")
+        assert quality["denominator"] == 1  # только задача от 25 июля
+
+        breakdown = client.get(
+            "/api/v1/kpi/breakdown"
+            "?account_id=acc-mid&metric_code=quality&year=2026&month=7&teams=Платежи"
+        ).json()
+        assert breakdown["denominator_count"] == 1
+        assert len(breakdown["denominator"]) == 1
+        assert breakdown["denominator"][0]["key"] == "OS-901"
+
+
+class TestDirections:
+    def test_directions_lists_unique_values(self, client, db_session, team_with_analyst):
+        project = team_with_analyst["project"]
+        db_session.add(Issue(
+            jira_issue_id="dir1", key="OS-800", summary="s", issue_type="Задача",
+            status="ГОТОВО", status_category="done", project_id=project.id,
+            team="Платежи", direction="Финансовые операции",
+        ))
+        db_session.commit()
+        resp = client.get("/api/v1/kpi/directions")
+        assert resp.status_code == 200
+        assert "Финансовые операции" in resp.json()

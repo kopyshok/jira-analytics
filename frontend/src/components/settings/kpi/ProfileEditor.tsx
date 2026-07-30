@@ -15,7 +15,8 @@ const { Text } = Typography;
 
 function blankProfileForm(): KpiProfilePayload {
   return {
-    code: '', name: '', role_code: null, target_pct: 80, warn_band_pct: 10, is_enabled: true, metrics: [],
+    code: '', name: '', role_code: null, target_pct: 80, warn_band_pct: 10,
+    is_enabled: true, is_default: false, metrics: [],
   };
 }
 
@@ -43,7 +44,7 @@ export default function ProfileEditor() {
     if (p) {
       setForm({
         code: p.code, name: p.name, role_code: p.role_code, target_pct: p.target_pct,
-        warn_band_pct: p.warn_band_pct, is_enabled: p.is_enabled,
+        warn_band_pct: p.warn_band_pct, is_enabled: p.is_enabled, is_default: p.is_default,
         metrics: p.metrics.map((m) => ({ metric_code: m.metric_code, weight: m.weight, sort_order: m.sort_order })),
       });
     }
@@ -151,7 +152,7 @@ export default function ProfileEditor() {
             type={selectedId === p.id ? 'primary' : 'default'}
             onClick={() => setSelectedId(p.id)}
           >
-            {p.name}
+            {p.name}{p.is_default ? ' · по умолчанию' : ''}
           </Button>
         ))}
         <Button icon={<PlusOutlined />} onClick={startNew}>Создать профиль</Button>
@@ -203,6 +204,14 @@ export default function ProfileEditor() {
               <div>
                 <Text type="secondary" style={{ fontSize: 11 }}>Включён</Text><br />
                 <Switch checked={form.is_enabled} onChange={(v) => setForm((f) => ({ ...f, is_enabled: v }))} />
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: 11 }}>По умолчанию</Text><br />
+                <Switch
+                  checked={form.is_default}
+                  onChange={(v) => setForm((f) => ({ ...f, is_default: v }))}
+                  title="Запасной профиль для сотрудников, чья роль ни с чем не совпала. Ровно один."
+                />
               </div>
             </Space>
           </Card>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { App, Button, Input, Segmented, Space, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Segmented, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { CheckOutlined, DownloadOutlined, LeftOutlined, LockOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../components/shared/PageHeader';
@@ -10,7 +10,7 @@ import KpiBreakdownModal, { type KpiBreakdownTarget } from '../components/kpi/Kp
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import {
-  approveMonth, downloadKpiExport, fetchApproval, fetchKpiReport, fetchTeamsSummary,
+  approveMonth, downloadKpiExport, fetchApproval, fetchDirections, fetchKpiReport, fetchTeamsSummary,
   type KpiReportRow, type KpiTeamSummaryRow,
 } from '../api/kpi';
 
@@ -61,10 +61,13 @@ export default function KpiPage() {
     setSearchParams(p, { replace: true });
   };
 
-  const [directionInput, setDirectionInput] = useState(direction ?? '');
-  const applyDirection = () => {
+  // Раньше единственным источником направлений был справочник атрибутов
+  // (доступен только админу), поэтому фильтр был текстовым полем — теперь
+  // отдельный лёгкий запрос доступен всем ролям (см. ревью, ВАЖНО 7).
+  const directionsQuery = useQuery({ queryKey: ['kpi', 'directions'], queryFn: () => fetchDirections() });
+  const applyDirection = (value: string | undefined) => {
     const p = new URLSearchParams(searchParams);
-    if (directionInput.trim()) p.set('kpiDirection', directionInput.trim());
+    if (value) p.set('kpiDirection', value);
     else p.delete('kpiDirection');
     setSearchParams(p, { replace: true });
   };
@@ -130,6 +133,13 @@ export default function KpiPage() {
   const summary = reportQuery.data?.summary;
   const peopleCount = reportQuery.data?.rows.length ?? 0;
 
+  // Команды с утверждённым месяцем — числа в ведомости заморожены снимком,
+  // а не пересчитаны вживую (BLOCKER 1); показываем это явно, а не только
+  // тегом в шапке для режима «одна команда».
+  const approvedTeams = Object.entries(reportQuery.data?.approvals ?? {})
+    .filter(([, a]) => a.approved)
+    .map(([team]) => team);
+
   return (
     <div>
       <PageHeader
@@ -193,14 +203,14 @@ export default function KpiPage() {
             { label: 'Год', value: 'year' },
           ]}
         />
-        <Input
+        <Select
           placeholder="Продуктовое направление"
           allowClear
           style={{ width: 220 }}
-          value={directionInput}
-          onChange={(e) => setDirectionInput(e.target.value)}
-          onPressEnter={applyDirection}
-          onBlur={applyDirection}
+          loading={directionsQuery.isLoading}
+          value={direction}
+          onChange={(v) => applyDirection(v)}
+          options={(directionsQuery.data ?? []).map((d) => ({ value: d, label: d }))}
         />
       </Space>
 
@@ -240,6 +250,20 @@ export default function KpiPage() {
           <b className="num" style={{ fontSize: 13.5 }}>{summary?.no_data_metrics_count ?? '—'}</b>
         </span>
       </div>
+
+      {approvedTeams.length > 0 && (
+        <Alert
+          type="success"
+          showIcon
+          icon={<LockOutlined />}
+          style={{ marginBottom: 12 }}
+          message={
+            approvedTeams.length === 1
+              ? `Месяц утверждён по команде «${approvedTeams[0]}» — числа заморожены снимком, правки весов и нормативов на них не влияют.`
+              : `Месяц утверждён по командам: ${approvedTeams.join(', ')} — их числа заморожены снимком.`
+          }
+        />
+      )}
 
       <KpiLedger
         rows={reportQuery.data?.rows ?? []}

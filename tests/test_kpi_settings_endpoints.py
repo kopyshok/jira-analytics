@@ -99,6 +99,37 @@ class TestMetricsCrud:
         resp = admin_client.delete(f"/api/v1/kpi-settings/metrics/{metric['id']}")
         assert resp.status_code == 200
 
+    def test_metric_unknown_calc_kind_rejected(self, admin_client):
+        """ВАЖНО 5: опечатка в способе расчёта — 422, а не метрика, которая никогда не считает."""
+        payload = _metric_payload()
+        payload["calc_kind"] = "raito"
+        resp = admin_client.post("/api/v1/kpi-settings/metrics", json=payload)
+        assert resp.status_code == 422, resp.text
+        assert "способ расчёта" in resp.json()["detail"]
+
+    def test_metric_ratio_requires_denominator(self, admin_client):
+        payload = _metric_payload()
+        payload["denominator"] = None
+        resp = admin_client.post("/api/v1/kpi-settings/metrics", json=payload)
+        assert resp.status_code == 422, resp.text
+        assert "знаменатель" in resp.json()["detail"]
+
+    def test_metric_norm_to_fact_requires_fact_field(self, admin_client):
+        payload = _metric_payload()
+        payload["calc_kind"] = "norm_to_fact"
+        payload["denominator"] = None
+        resp = admin_client.post("/api/v1/kpi-settings/metrics", json=payload)
+        assert resp.status_code == 422, resp.text
+        assert "факта" in resp.json()["detail"]
+
+    def test_metric_score_to_max_requires_score_fields_and_max(self, admin_client):
+        payload = _metric_payload()
+        payload["calc_kind"] = "score_to_max"
+        payload["denominator"] = None
+        resp = admin_client.post("/api/v1/kpi-settings/metrics", json=payload)
+        assert resp.status_code == 422, resp.text
+        assert "оценок" in resp.json()["detail"]
+
 
 class TestProfilesCrud:
     def test_profile_weight_sum_validated(self, admin_client):
@@ -134,6 +165,78 @@ class TestProfilesCrud:
             "metrics": [{"metric_code": "nope", "weight": 1.0}],
         })
         assert resp.status_code == 404
+
+    def test_profile_duplicate_metric_rejected(self, admin_client):
+        """ВАЖНО 5: метрика дважды в профиле — понятный 422, а не 500 на уникальном ограничении."""
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
+        resp = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "test", "name": "Тест", "target_pct": 80,
+            "metrics": [
+                {"metric_code": "quality", "weight": 0.5},
+                {"metric_code": "quality", "weight": 0.5},
+            ],
+        })
+        assert resp.status_code == 422, resp.text
+        assert "дважды" in resp.json()["detail"]
+
+    def test_profile_negative_weight_rejected(self, admin_client):
+        """ВАЖНО 5: отрицательный вес принимался, если сумма всё равно сходилась к 100%."""
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("deadlines"))
+        resp = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "test", "name": "Тест", "target_pct": 80,
+            "metrics": [
+                {"metric_code": "quality", "weight": 1.2},
+                {"metric_code": "deadlines", "weight": -0.2},
+            ],
+        })
+        assert resp.status_code == 422, resp.text
+        assert "0 до 1" in resp.json()["detail"]
+
+    def test_profile_is_default_exclusive(self, admin_client):
+        """ВАЖНО 6: признак «по умолчанию» доступен через API и ровно один."""
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
+        first = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "first", "name": "Первый", "target_pct": 80, "is_default": True,
+            "metrics": [{"metric_code": "quality", "weight": 1.0}],
+        }).json()
+        assert first["is_default"] is True
+
+        second = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "second", "name": "Второй", "target_pct": 80, "is_default": True,
+            "metrics": [{"metric_code": "quality", "weight": 1.0}],
+        }).json()
+        assert second["is_default"] is True
+
+        listed = {p["code"]: p for p in admin_client.get("/api/v1/kpi-settings/profiles").json()}
+        assert listed["first"]["is_default"] is False
+        assert listed["second"]["is_default"] is True
+
+    def test_delete_profile_assigned_to_role_rejected(self, admin_client, db_session):
+        from app.models import Employee
+
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
+        created = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "analyst", "name": "Аналитик", "role_code": "analyst", "target_pct": 80,
+            "metrics": [{"metric_code": "quality", "weight": 1.0}],
+        }).json()
+        db_session.add(Employee(jira_account_id="e1", display_name="Сотрудник", role="analyst"))
+        db_session.commit()
+
+        resp = admin_client.delete(f"/api/v1/kpi-settings/profiles/{created['id']}")
+        assert resp.status_code == 409
+        assert "роли" in resp.json()["detail"]
+
+    def test_delete_default_profile_rejected(self, admin_client):
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
+        created = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "fallback", "name": "Запасной", "target_pct": 80, "is_default": True,
+            "metrics": [{"metric_code": "quality", "weight": 1.0}],
+        }).json()
+
+        resp = admin_client.delete(f"/api/v1/kpi-settings/profiles/{created['id']}")
+        assert resp.status_code == 409
+        assert "умолчанию" in resp.json()["detail"]
 
     def test_update_profile_replaces_metrics(self, admin_client):
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
@@ -185,6 +288,13 @@ class TestNorms:
         assert len(listed) == 1
         assert listed[0]["norm_value"] == 65.0
 
+    def test_save_norms_rejects_quarter_out_of_range(self, admin_client):
+        """ВАЖНО 5: квартал норматива не был ограничен диапазоном (принимал отрицательные)."""
+        resp = admin_client.put("/api/v1/kpi-settings/norms", json=[
+            {"team": "Платежи", "year": 2026, "quarter": -1, "norm_value": 70.0},
+        ])
+        assert resp.status_code == 422
+
 
 class TestGeneral:
     def test_get_general_defaults(self, admin_client):
@@ -200,6 +310,16 @@ class TestGeneral:
             "worklog_deadline_time": "12:00", "empty_policy": "bogus",
         })
         assert resp.status_code == 422
+
+    def test_save_general_rejects_bad_time_format(self, admin_client):
+        """ВАЖНО 5: время отсечки словами раньше сохранялось как есть, движок молча
+        подставлял полдень по умолчанию."""
+        resp = admin_client.put("/api/v1/kpi-settings/general", json={
+            "excluded_statuses": ["Отменено"], "worklog_deadline_days": 1,
+            "worklog_deadline_time": "после обеда", "empty_policy": "redistribute",
+        })
+        assert resp.status_code == 422
+        assert "ЧЧ:ММ" in resp.json()["detail"]
 
     def test_save_general_persists(self, admin_client):
         resp = admin_client.put("/api/v1/kpi-settings/general", json={
@@ -248,3 +368,46 @@ class TestAttributes:
         resp = admin_client.get("/api/v1/kpi-settings/attributes")
         attrs = {a["key"]: a for a in resp.json()["attributes"]}
         assert "OS" in attrs["project_key"]["choices"]
+
+
+class TestAdminOnly:
+    """ВАЖНО 8: справочники раздела — только для администратора.
+
+    Шаблон — как в ``tests/test_admin_usage_endpoints.py``: не глобальный
+    bypass-фикстурой (она подставляет админа всем тестам), а прямая замена
+    ``get_current_user``/``require_admin`` на реального не-админа.
+    """
+
+    def test_metrics_forbidden_for_non_admin(self, testclient_db_session):
+        import uuid
+
+        from fastapi import HTTPException
+        from fastapi.testclient import TestClient
+
+        from app.core.auth_deps import get_current_user, require_admin
+        from app.database import get_db
+        from app.main import app
+        from app.models import User, UserRole
+
+        manager = User(
+            id=str(uuid.uuid4()), email=f"{uuid.uuid4()}@test", password_hash="x",
+            display_name="Руководитель", role=UserRole.manager, is_active=True,
+        )
+        testclient_db_session.add(manager)
+        testclient_db_session.commit()
+
+        app.dependency_overrides[get_db] = lambda: testclient_db_session
+        app.dependency_overrides[get_current_user] = lambda: manager
+
+        def _require_admin_impl():
+            if manager.role != UserRole.admin:
+                raise HTTPException(status_code=403, detail="Только для администратора")
+            return manager
+
+        app.dependency_overrides[require_admin] = _require_admin_impl
+        try:
+            client = TestClient(app)
+            resp = client.get("/api/v1/kpi-settings/metrics")
+            assert resp.status_code == 403
+        finally:
+            app.dependency_overrides.clear()
