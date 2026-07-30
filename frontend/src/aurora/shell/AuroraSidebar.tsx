@@ -6,6 +6,7 @@ import {
   BarChart3,
   Lightbulb,
   Rocket,
+  Gauge,
   Users,
   ListChecks,
   Presentation,
@@ -53,6 +54,7 @@ export function AuroraSidebar() {
         { key: '/analytics', icon: BarChart3, label: 'Аналитика' },
         { key: '/analytics/work-type-report', icon: Lightbulb, label: 'Тематический отчёт' },
         { key: '/executive', icon: Rocket, label: 'Сводка для руководителя' },
+        { key: '/kpi', icon: Gauge, label: 'KPI' },
       ].filter((it) => !isHidden(it.key)),
     },
     {
