@@ -91,6 +91,17 @@ function ResourcePlanningPageInner() {
   const { data: blocks = [] } = useScheduledBlocks(team || undefined);
   const { data: allEmployees = [] } = useEmployees({ isActive: true });
   const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
+  // Кандидаты в исполнители — состав команды за квартал плана (те же люди,
+  // по которым считается загрузка), а не текущий состав на сегодня: выбывший
+  // в середине квартала должен оставаться выбираемым на свои дни.
+  const candidateEmployees = gantt?.employee_load?.length
+    ? gantt.employee_load.map(r => ({
+        id: r.employee_id,
+        display_name: r.employee_name ?? '—',
+        member_from: r.member_from,
+        member_to: r.member_to,
+      }))
+    : employees;
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
 
@@ -430,7 +441,7 @@ function ResourcePlanningPageInner() {
         planId={planId ?? ''}
         assignment={selectedAssignment}
         allAssignments={sortedAssignments}
-        employees={employees}
+        employees={candidateEmployees}
         onChanged={() =>
           planId ? qc.invalidateQueries({ queryKey: ['gantt', planId] }) : Promise.resolve()
         }

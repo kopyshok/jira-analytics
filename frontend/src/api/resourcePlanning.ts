@@ -141,6 +141,10 @@ export interface EmployeeLoadOut {
   employee_name: string | null;
   employee_role: string | null;
   days: EmployeeLoadDay[];
+  /** Первый день участия в команде внутри квартала; null — участие с начала квартала. */
+  member_from?: string | null;
+  /** Последний день участия внутри квартала; null — участие до конца квартала. */
+  member_to?: string | null;
 }
 
 export interface ResetCounts {
