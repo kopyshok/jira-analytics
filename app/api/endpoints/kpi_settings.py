@@ -17,7 +17,13 @@ from app.models.app_setting import AppSetting
 from app.models.issue import Issue
 from app.models.kpi import KpiCycleTimeNorm, KpiMetric, KpiProfile, KpiProfileMetric
 from app.models.project import Project
-from app.services.kpi.conditions import ATTRIBUTE_CHOICES, FILLABLE_FIELDS, PERIOD_WINDOWS, PERSON_FIELDS
+from app.services.kpi.conditions import (
+    ATTRIBUTE_CHOICES,
+    FILLABLE_FIELDS,
+    PERIOD_WINDOWS,
+    PERSON_FIELDS,
+    ConditionSet,
+)
 from app.services.kpi.settings import KpiSettings, read_kpi_settings
 
 router = APIRouter()
@@ -157,12 +163,21 @@ def _metric_to_out(m: KpiMetric) -> KpiMetricOut:
 
 
 def _apply_metric_fields(metric: KpiMetric, body: KpiMetricIn) -> None:
+    numerator_json = _condition_set_to_json(body.numerator)
+    denominator_json = _condition_set_to_json(body.denominator) if body.denominator else None
+    # Опечатка в атрибуте/сравнении/признаке «кто считается» должна провалить
+    # сохранение метрики понятной ошибкой (ConditionError → 422, см.
+    # app/main.py), а не тихо лечь в базу и ослабить фильтр расчёта.
+    ConditionSet.from_json(numerator_json)
+    if denominator_json:
+        ConditionSet.from_json(denominator_json)
+
     metric.code = body.code
     metric.name = body.name
     metric.description = body.description
     metric.calc_kind = body.calc_kind
-    metric.numerator_json = _condition_set_to_json(body.numerator)
-    metric.denominator_json = _condition_set_to_json(body.denominator) if body.denominator else None
+    metric.numerator_json = numerator_json
+    metric.denominator_json = denominator_json
     metric.fact_field = body.fact_field
     metric.score_fields = json.dumps(body.score_fields, ensure_ascii=False) if body.score_fields else None
     metric.score_max = body.score_max
