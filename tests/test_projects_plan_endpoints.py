@@ -73,6 +73,41 @@ def test_plan_endpoint_returns_work_types(db_session):
         app.dependency_overrides.clear()
 
 
+def test_plan_ignores_fork_where_task_was_still_planned(db_session):
+    """Задача, убранная из действующего плана, не должна оживать из форка.
+
+    Форк авто-распределения помнит задачу на апрель, действующий план квартала —
+    уже нет. Раньше «свежайший план квартала» выбирался только среди планов, где
+    задача есть, поэтому форк побеждал: часы задваивались, а на таймлайне
+    появлялись апрельские полосы поверх июльских.
+    """
+    db = db_session
+    _seed_plan(db)
+
+    base_id, fork_id = _uid(), _uid()
+    db.add(ResourcePlan(id=base_id, team="T", year=2026, quarter="Q2",
+                        created_at=datetime(2026, 4, 1), computed_at=datetime(2026, 6, 22)))
+    db.commit()
+    db.add(ResourcePlan(id=fork_id, team="T", year=2026, quarter="Q2",
+                        parent_plan_id=base_id,
+                        created_at=datetime(2026, 4, 5), computed_at=datetime(2026, 4, 5)))
+    db.commit()
+    item_id = db.query(BacklogItem).filter(BacklogItem.issue_id == "eproot").one().id
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=fork_id, backlog_item_id=item_id,
+                                  phase="dev", hours_allocated=100.0,
+                                  start_date=date(2026, 4, 1), end_date=date(2026, 4, 20)))
+    db.commit()
+
+    try:
+        client = _client(db)
+        body = client.get("/api/v1/projects/EP-1/plan?year=2026&quarter=3").json()
+        assert body["total_plan"] == 40.0  # без форка было бы 140
+        bars = [b for r in body["timeline"]["rows"] for b in r["bars"]]
+        assert [b["start_date"] for b in bars] == ["2026-07-01"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_plan_endpoint_404_on_unknown_key(db_session):
     try:
         client = _client(db_session)
