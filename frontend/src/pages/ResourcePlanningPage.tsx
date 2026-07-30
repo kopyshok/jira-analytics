@@ -173,15 +173,23 @@ function ResourcePlanningPageInner() {
     [gantt],
   );
 
-  const selectedAssignment = useMemo(
-    () => sortedAssignments.find(a => a.id === selectedAssignmentId) ?? null,
-    [sortedAssignments, selectedAssignmentId],
-  );
-
   // Пересчёт плана пересоздаёт незакреплённые строки с новыми id. Держим
   // логический ключ выбранной фазы и переезжаем на её новую строку, иначе
   // панель остаётся с мёртвым id (404 на расчёте) и молча закрывается.
   const selectedKeyRef = useRef<AssignmentKey | null>(null);
+
+  // Переезд по ключу — прямо в memo, а не в эффекте: иначе между «id устарел»
+  // и «id починен» проходит рендер с пустым выбором, и панель успевает
+  // закрыться и открыться заново (мигание после смены исполнителя).
+  const selectedAssignment = useMemo(() => {
+    if (!selectedAssignmentId) return null;
+    return (
+      sortedAssignments.find(a => a.id === selectedAssignmentId)
+      ?? findAssignmentByKey(sortedAssignments, selectedKeyRef.current)
+      ?? null
+    );
+  }, [sortedAssignments, selectedAssignmentId]);
+
   useEffect(() => {
     if (selectedAssignment) {
       selectedKeyRef.current = {
@@ -189,14 +197,15 @@ function ResourcePlanningPageInner() {
         phase: selectedAssignment.phase,
         part_number: selectedAssignment.part_number,
       };
+      if (selectedAssignment.id !== selectedAssignmentId) setSelectedAssignmentId(selectedAssignment.id);
       return;
     }
     if (!selectedAssignmentId) {
       selectedKeyRef.current = null;
       return;
     }
-    setSelectedAssignmentId(findAssignmentByKey(sortedAssignments, selectedKeyRef.current)?.id ?? null);
-  }, [selectedAssignment, selectedAssignmentId, sortedAssignments]);
+    setSelectedAssignmentId(null);  // фазы больше нет в плане — закрыть панель
+  }, [selectedAssignment, selectedAssignmentId]);
 
   const handleToggleCollapse = (itemId: string, willCollapse: boolean) => {
     const cur = prefs.collapsed_initiative_ids ?? [];
