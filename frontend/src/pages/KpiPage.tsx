@@ -5,11 +5,13 @@ import { CheckOutlined, DownloadOutlined, LeftOutlined, LockOutlined, RightOutli
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../components/shared/PageHeader';
 import KpiLedger from '../components/kpi/KpiLedger';
+import KpiEmployeeCard from '../components/kpi/KpiEmployeeCard';
+import KpiBreakdownModal, { type KpiBreakdownTarget } from '../components/kpi/KpiBreakdownModal';
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import {
   approveMonth, downloadKpiExport, fetchApproval, fetchKpiReport, fetchTeamsSummary,
-  type KpiTeamSummaryRow,
+  type KpiReportRow, type KpiTeamSummaryRow,
 } from '../api/kpi';
 
 const { Text } = Typography;
@@ -66,6 +68,9 @@ export default function KpiPage() {
     else p.delete('kpiDirection');
     setSearchParams(p, { replace: true });
   };
+
+  const [employeeCardRow, setEmployeeCardRow] = useState<KpiReportRow | null>(null);
+  const [breakdownTarget, setBreakdownTarget] = useState<KpiBreakdownTarget | null>(null);
 
   const reportQuery = useQuery({
     queryKey: ['kpi', 'report', year, month, queryParams.teams, direction],
@@ -240,6 +245,27 @@ export default function KpiPage() {
         rows={reportQuery.data?.rows ?? []}
         teamsSummaryByTeam={teamsSummaryByTeam}
         loading={reportQuery.isLoading}
+        onOpenEmployee={setEmployeeCardRow}
+        onOpenBreakdown={(row, metricCode, metricName) => setBreakdownTarget({ row, metricCode, metricName })}
+      />
+
+      <KpiEmployeeCard
+        row={employeeCardRow}
+        year={year}
+        month={month}
+        direction={direction}
+        onClose={() => setEmployeeCardRow(null)}
+        onOpenBreakdown={(metricCode, metricName) => {
+          if (employeeCardRow) setBreakdownTarget({ row: employeeCardRow, metricCode, metricName });
+        }}
+      />
+
+      <KpiBreakdownModal
+        target={breakdownTarget}
+        year={year}
+        month={month}
+        direction={direction}
+        onClose={() => setBreakdownTarget(null)}
       />
     </div>
   );
