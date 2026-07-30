@@ -105,13 +105,16 @@ class JiraIssueFieldsSchema(BaseModel):
     updated: Optional[str] = None
     statuscategorychangedate: Optional[str] = None
     duedate: Optional[str] = None
+    # KPI: резолюция задачи («Готово» / «Отменено» / ...) и дата резолюции.
+    resolution: Optional[dict] = None
+    resolutiondate: Optional[str] = None
     _extra: dict = {}
 
     def __init__(self, **data):
         known = {
             "summary", "description", "issuetype", "status", "priority",
             "project", "parent", "creator", "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         }
         extra = {k: v for k, v in data.items() if k not in known}
         super().__init__(**{k: v for k, v in data.items() if k in known})
