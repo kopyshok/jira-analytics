@@ -2,8 +2,10 @@
 import json
 from datetime import date, datetime
 
+import pytest
+
 from app.models.issue import Issue
-from app.services.kpi.conditions import ConditionSet, build_issue_query
+from app.services.kpi.conditions import ConditionError, ConditionSet, build_issue_query
 
 
 def _make_issue(db, project, **kw):
@@ -62,3 +64,113 @@ def test_field_filled_requires_all_fields(db_session, sample_project):
                           period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
                           excluded_statuses=[], teams=None)
     assert [i.key for i in q.all()] == ["OS-3"]
+
+
+def test_field_filled_rejects_blank_only_value(db_session, sample_project):
+    """BLOCKER важно-4: пробелы и переводы строк не считаются заполнением поля."""
+    _make_issue(db_session, sample_project, jid="5", key="OS-5", reporter_account_id="acc-1",
+                resolution="Готово", resolved_at=datetime(2026, 7, 10),
+                goal_text="  \n  ", current_behavior="как сейчас", description="описание")
+    db_session.commit()
+
+    cs = ConditionSet.from_json(json.dumps({
+        "unit": "issues", "person_field": "author", "period_window": "closed_in",
+        "conditions": [{"attr": "field_filled", "op": "all",
+                        "value": ["goal_text", "current_behavior", "description"]}],
+    }))
+    q = build_issue_query(db_session, cs, account_id="acc-1",
+                          period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+                          excluded_statuses=[], teams=None)
+    assert q.all() == []
+
+
+class TestResolvedOnTimeIsDateOnly:
+    """BLOCKER 1: сравнение даты резолюции с плановой датой — по датам, не по моментам."""
+
+    def _issue(self, db, project, *, resolved_at, planned_end_date):
+        issue = Issue(
+            jira_issue_id="10", key="OS-10", summary="s", issue_type="ИТ-задача",
+            status="ГОТОВО", status_category="done", project_id=project.id,
+            reporter_account_id="acc-1", assignee_account_id="acc-1",
+            resolution="Готово", resolved_at=resolved_at, planned_end_date=planned_end_date,
+        )
+        db.add(issue)
+        db.commit()
+        return issue
+
+    def _query(self, db):
+        cs = ConditionSet.from_json(json.dumps({
+            "unit": "issues", "person_field": "assignee", "period_window": "closed_in",
+            "conditions": [{"attr": "resolved_on_time", "op": "is_true"}],
+        }))
+        return build_issue_query(db, cs, account_id="acc-1",
+                                 period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+                                 excluded_statuses=[], teams=None)
+
+    def test_closed_same_day_as_plan_at_1500_counts_as_on_time(self, db_session, sample_project):
+        self._issue(
+            db_session, sample_project,
+            resolved_at=datetime(2026, 7, 10, 15, 0),
+            planned_end_date=datetime(2026, 7, 10, 0, 0),
+        )
+        assert self._query(db_session).count() == 1
+
+    def test_closed_next_day_at_0030_counts_as_late(self, db_session, sample_project):
+        self._issue(
+            db_session, sample_project,
+            resolved_at=datetime(2026, 7, 11, 0, 30),
+            planned_end_date=datetime(2026, 7, 10, 0, 0),
+        )
+        assert self._query(db_session).count() == 0
+
+
+class TestConditionValidation:
+    """BLOCKER 2: опечатка в условии падает с понятной ошибкой, а не тихо ослабляет фильтр."""
+
+    def test_unknown_attr_raises(self):
+        with pytest.raises(ConditionError, match="атрибут"):
+            ConditionSet.from_json(json.dumps({
+                "conditions": [{"attr": "environmentt", "op": "eq", "value": "PROD"}],
+            }))
+
+    def test_unknown_op_raises(self):
+        with pytest.raises(ConditionError, match="сравнение"):
+            ConditionSet.from_json(json.dumps({
+                "conditions": [{"attr": "environment", "op": "eqal", "value": "PROD"}],
+            }))
+
+    def test_unknown_field_filled_name_raises(self):
+        with pytest.raises(ConditionError, match="заполненности"):
+            ConditionSet.from_json(json.dumps({
+                "conditions": [{"attr": "field_filled", "op": "all", "value": ["goal_txt"]}],
+            }))
+
+    def test_unknown_person_field_raises(self):
+        with pytest.raises(ConditionError, match="кто считается"):
+            ConditionSet.from_json(json.dumps({"person_field": "autor", "conditions": []}))
+
+    def test_unknown_period_window_raises(self):
+        with pytest.raises(ConditionError, match="окно периода"):
+            ConditionSet.from_json(json.dumps({"period_window": "closed", "conditions": []}))
+
+    def test_unknown_unit_raises(self):
+        with pytest.raises(ConditionError, match="единиц"):
+            ConditionSet.from_json(json.dumps({"unit": "issue", "conditions": []}))
+
+
+class TestNullSafeExclusion:
+    """Мелочь: ne/not_in на пустом значении не должны выбрасывать задачу из выборки."""
+
+    def test_not_in_keeps_issue_with_null_direction(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="6", key="OS-6", reporter_account_id="acc-1",
+                    resolution="Готово", resolved_at=datetime(2026, 7, 10), direction=None)
+        db_session.commit()
+
+        cs = ConditionSet.from_json(json.dumps({
+            "unit": "issues", "person_field": "author", "period_window": "closed_in",
+            "conditions": [{"attr": "direction", "op": "not_in", "value": ["Прочее"]}],
+        }))
+        q = build_issue_query(db_session, cs, account_id="acc-1",
+                              period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+                              excluded_statuses=[], teams=None)
+        assert [i.key for i in q.all()] == ["OS-6"]
