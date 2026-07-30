@@ -179,7 +179,7 @@ def get_breakdown(
                               settings.excluded_statuses, team_list)
     numerator = [_issue_brief(i, base_url) for i in num_q.all()]
 
-    denominator: list[dict] = []
+    denominator = []
     if metric.calc_kind == "ratio":
         den_cs = with_direction(ConditionSet.from_json(metric.denominator_json), direction)
         den_q = build_issue_query(db, den_cs, account_id, period_start, period_end,
