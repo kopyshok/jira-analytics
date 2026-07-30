@@ -35,8 +35,11 @@ def norm_to_fact(norm: Optional[float], facts: list[float]) -> MetricResult:
     """Норматив к среднему факту. Потолок 100 всегда — превышение норматива не премируется."""
     usable = [f for f in facts if f is not None and f > 0]
     if not norm or not usable:
-        return MetricResult(value=None, has_data=False, numerator=norm,
-                            denominator=len(usable) or None)
+        # denominator в рабочей ветке ниже — средний факт, а не количество
+        # задач; в ветке «нет данных» средний факт посчитать не из чего (нет
+        # норматива или нет фактов), поэтому None — а не число задач, которое
+        # в расшифровке выглядело бы как случайно попавшее сюда значение.
+        return MetricResult(value=None, has_data=False, numerator=norm, denominator=None)
     avg_fact = sum(usable) / len(usable)
     return MetricResult(
         value=_cap(norm / avg_fact * 100.0, True), has_data=True,

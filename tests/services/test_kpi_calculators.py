@@ -30,6 +30,18 @@ def test_norm_to_fact_capped():
     assert norm_to_fact(norm=70.0, facts=[]).has_data is False
 
 
+def test_norm_to_fact_no_data_denominator_means_same_thing_as_working_branch():
+    """Мелочь: в ветке «нет данных» знаменатель не должен быть числом задач —
+    в рабочей ветке denominator означает средний факт, а не количество.
+
+    Норматив не задан, но факты есть — раньше в denominator попадало
+    количество фактов (случайное число в расшифровке), а не средний факт
+    (там его посчитать нельзя — норматива нет, поэтому None)."""
+    r = norm_to_fact(norm=None, facts=[70.0, 80.0])
+    assert r.has_data is False
+    assert r.denominator is None
+
+
 def test_score_to_max():
     r = score_to_max(scores=[[5, 4, 3], [4, 4, 4]], score_max=5.0)
     assert round(r.value, 1) == 80.0
