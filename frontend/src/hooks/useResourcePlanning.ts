@@ -129,6 +129,9 @@ export function useExplainAssignment(planId: string | null, assignmentId: string
     queryFn: () => explainAssignment(planId!, assignmentId!),
     enabled: !!planId && !!assignmentId && enabled,
     staleTime: 30_000,
+    // Строка могла исчезнуть при пересчёте плана другим пользователем —
+    // повтор такого запроса всё равно вернёт 404, только удвоит шум.
+    retry: false,
   });
 }
 

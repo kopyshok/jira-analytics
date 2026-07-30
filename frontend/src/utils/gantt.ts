@@ -206,3 +206,32 @@ export const ITEM_PALETTE = [
 export function getItemColor(itemIndex: number): string {
   return ITEM_PALETTE[itemIndex % ITEM_PALETTE.length];
 }
+
+/** Логический ключ фазы: переживает пересчёт плана, в отличие от id строки. */
+export interface AssignmentKey {
+  backlog_item_id: string;
+  phase: string;
+  part_number: number;
+}
+
+/**
+ * Найти назначение по логическому ключу фазы.
+ *
+ * Пересчёт плана удаляет и пересоздаёт незакреплённые строки с новыми id,
+ * поэтому выбор в интерфейсе нельзя держать только по id — иначе после
+ * пересчёта панель ссылается на несуществующую строку.
+ */
+export function findAssignmentByKey<T extends AssignmentKey>(
+  assignments: T[],
+  key: AssignmentKey | null,
+): T | null {
+  if (!key) return null;
+  return (
+    assignments.find(
+      a =>
+        a.backlog_item_id === key.backlog_item_id &&
+        a.phase === key.phase &&
+        a.part_number === key.part_number,
+    ) ?? null
+  );
+}

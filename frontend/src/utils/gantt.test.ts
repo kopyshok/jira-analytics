@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildWorkdayTimeline, dateToLeft, datesToWidth } from './gantt';
+import { buildWorkdayTimeline, dateToLeft, datesToWidth, findAssignmentByKey } from './gantt';
 
 describe('buildWorkdayTimeline', () => {
   it('skips weekends without production calendar', () => {
@@ -51,5 +51,23 @@ describe('buildWorkdayTimeline', () => {
     const tl = buildWorkdayTimeline(start, end, []);
     // Apr 4 (Sat) to Apr 5 (Sun) = 0 workdays → minimum 0.5
     expect(datesToWidth('2026-04-04', '2026-04-05', tl)).toBe(0.5);
+  });
+});
+
+describe('findAssignmentByKey', () => {
+  const key = { backlog_item_id: 'i1', phase: 'dev', part_number: 2 };
+
+  it('finds the row with the same phase key after ids change', () => {
+    const after = [
+      { id: 'new-1', backlog_item_id: 'i1', phase: 'dev', part_number: 1 },
+      { id: 'new-2', backlog_item_id: 'i1', phase: 'dev', part_number: 2 },
+      { id: 'new-3', backlog_item_id: 'i2', phase: 'dev', part_number: 2 },
+    ];
+    expect(findAssignmentByKey(after, key)?.id).toBe('new-2');
+  });
+
+  it('returns null when the phase is gone (merged away) or no key', () => {
+    expect(findAssignmentByKey([{ id: 'x', backlog_item_id: 'i1', phase: 'dev', part_number: 1 }], key)).toBeNull();
+    expect(findAssignmentByKey([], null)).toBeNull();
   });
 });
