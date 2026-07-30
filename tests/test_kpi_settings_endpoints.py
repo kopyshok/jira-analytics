@@ -102,6 +102,12 @@ class TestMetricsCrud:
 
 class TestProfilesCrud:
     def test_profile_weight_sum_validated(self, admin_client):
+        # Метрика должна реально существовать: раньше проверка суммы весов
+        # шла раньше проверки существования метрик, поэтому этот тест
+        # проходил по другой причине — код "quality" ни разу не был заведён
+        # в БД, и до проверки суммы дело доходило случайно (см. ревью, ВАЖНО
+        # 8 — «сделать честным»).
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
         resp = admin_client.post("/api/v1/kpi-settings/profiles", json={
             "code": "test", "name": "Тест", "role_code": "analyst", "target_pct": 80,
             "metrics": [{"metric_code": "quality", "weight": 0.5}],

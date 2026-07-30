@@ -6,14 +6,17 @@
 чтобы интерфейс настроек и движок расчёта не расходились.
 """
 import json
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy import literal, select, union
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.app_setting import AppSetting
+from app.models.employee import Employee
 from app.models.issue import Issue
 from app.models.kpi import KpiCycleTimeNorm, KpiMetric, KpiProfile, KpiProfileMetric
 from app.models.project import Project
@@ -30,6 +33,8 @@ router = APIRouter()
 
 _WEIGHT_TOLERANCE = 0.001
 _EMPTY_POLICIES = {"redistribute", "full", "zero"}
+_CALC_KINDS = {"ratio", "norm_to_fact", "score_to_max"}
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 # === Schemas ===
@@ -99,6 +104,11 @@ class KpiProfileIn(BaseModel):
     target_pct: float = 80.0
     warn_band_pct: float = 10.0
     is_enabled: bool = True
+    # Запасной профиль для сотрудников без своей роли — движок расчёта
+    # опирается на этот признак (см. ``kpi_service._resolve_profile``), а
+    # раньше он не был доступен через схемы: назначить или увидеть было
+    # нельзя (см. ревью, ВАЖНО 6).
+    is_default: bool = False
     metrics: List[KpiProfileMetricIn] = []
 
 
@@ -110,13 +120,14 @@ class KpiProfileOut(BaseModel):
     target_pct: float
     warn_band_pct: float
     is_enabled: bool
+    is_default: bool
     metrics: List[KpiProfileMetricOut]
 
 
 class KpiNormIn(BaseModel):
     team: str
     year: int
-    quarter: int
+    quarter: int = Field(ge=1, le=4)
     norm_value: float
 
 
@@ -162,7 +173,30 @@ def _metric_to_out(m: KpiMetric) -> KpiMetricOut:
     )
 
 
+def _validate_metric_kind(body: KpiMetricIn) -> None:
+    """Способ расчёта и обязательные для него поля.
+
+    Опечатка в способе расчёта раньше принималась молча — метрика после
+    этого навсегда возвращала «нет данных», не считая ни разу (в коде нет
+    ветки на неизвестный ``calc_kind``, см. ``compute_metric``). Точно так же
+    «доля» без знаменателя тихо считала знаменателем все задачи автора за
+    период — тот же класс тихой порчи (см. ревью, ВАЖНО 5).
+    """
+    if body.calc_kind not in _CALC_KINDS:
+        raise HTTPException(status_code=422, detail=f"Неизвестный способ расчёта: {body.calc_kind!r}")
+    if body.calc_kind == "ratio" and body.denominator is None:
+        raise HTTPException(status_code=422, detail="Для способа «доля» обязателен знаменатель")
+    if body.calc_kind == "norm_to_fact" and not body.fact_field:
+        raise HTTPException(status_code=422, detail="Для способа «норматив к факту» обязательно поле факта")
+    if body.calc_kind == "score_to_max" and (not body.score_fields or not body.score_max):
+        raise HTTPException(
+            status_code=422,
+            detail="Для способа «средний балл к максимуму» обязательны поля оценок и максимум",
+        )
+
+
 def _apply_metric_fields(metric: KpiMetric, body: KpiMetricIn) -> None:
+    _validate_metric_kind(body)
     numerator_json = _condition_set_to_json(body.numerator)
     denominator_json = _condition_set_to_json(body.denominator) if body.denominator else None
     # Опечатка в атрибуте/сравнении/признаке «кто считается» должна провалить
@@ -186,10 +220,25 @@ def _apply_metric_fields(metric: KpiMetric, body: KpiMetricIn) -> None:
     metric.sort_order = body.sort_order
 
 
+def _apply_default_flag(db: Session, profile: KpiProfile, is_default: bool) -> None:
+    """Признак «профиль по умолчанию» — ровно один включённый профиль в любой момент.
+
+    Движок расчёта берёт первый профиль с этим признаком как запасной для
+    сотрудника, чья роль ни с чем не совпала — двух «по умолчанию» одновременно
+    быть не должно (см. ревью, ВАЖНО 6).
+    """
+    if is_default:
+        db.query(KpiProfile).filter(
+            KpiProfile.id != profile.id, KpiProfile.is_default.is_(True),
+        ).update({KpiProfile.is_default: False})
+    profile.is_default = is_default
+
+
 def _profile_to_out(p: KpiProfile) -> KpiProfileOut:
     return KpiProfileOut(
         id=p.id, code=p.code, name=p.name, role_code=p.role_code,
         target_pct=p.target_pct, warn_band_pct=p.warn_band_pct, is_enabled=p.is_enabled,
+        is_default=p.is_default,
         metrics=[
             KpiProfileMetricOut(
                 metric_code=link.metric.code, metric_name=link.metric.name,
@@ -200,8 +249,27 @@ def _profile_to_out(p: KpiProfile) -> KpiProfileOut:
     )
 
 
-def _validate_weight_sum(metrics: List[KpiProfileMetricIn]) -> None:
-    """Сумма весов профиля обязана равняться единице (см. спека, раздел 6)."""
+def _validate_profile_metrics(metrics: List[KpiProfileMetricIn]) -> None:
+    """Веса профиля: метрика не дублируется, каждый вес в [0, 1], сумма — 100%.
+
+    Раньше повторный код метрики в списке ронял запрос ошибкой сервера
+    (нарушение уникального ограничения ``profile_id``+``metric_id`` при
+    вставке), а отрицательный вес принимался — сумма могла сойтись к единице
+    за счёт минуса у одной метрики и итог выше ста процентов у остальных
+    (см. ревью, ВАЖНО 5).
+    """
+    codes = [m.metric_code for m in metrics]
+    dupes = sorted({c for c in codes if codes.count(c) > 1})
+    if dupes:
+        raise HTTPException(
+            status_code=422, detail=f"Метрика указана в профиле дважды: {', '.join(dupes)}",
+        )
+    for m in metrics:
+        if not (0.0 <= m.weight <= 1.0):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Вес метрики «{m.metric_code}» должен быть от 0 до 1 — сейчас {m.weight}",
+            )
     total = sum(m.weight for m in metrics)
     if abs(total - 1.0) > _WEIGHT_TOLERANCE:
         raise HTTPException(
@@ -294,10 +362,12 @@ def list_profiles(db: Session = Depends(get_db)):
 
 @router.post("/profiles", response_model=KpiProfileOut, status_code=201)
 def create_profile(body: KpiProfileIn, db: Session = Depends(get_db)):
-    _validate_weight_sum(body.metrics)
     if db.query(KpiProfile).filter(KpiProfile.code == body.code).first():
         raise HTTPException(status_code=409, detail=f"Профиль с кодом {body.code!r} уже существует")
+    # Сначала — существуют ли метрики (иначе честная 404 маскируется ошибкой
+    # весов у кода, которого нет в базе), потом — веса.
     metrics_by_code = _resolve_metrics_by_code(db, [m.metric_code for m in body.metrics])
+    _validate_profile_metrics(body.metrics)
 
     profile = KpiProfile(
         code=body.code, name=body.name, role_code=body.role_code,
@@ -305,6 +375,7 @@ def create_profile(body: KpiProfileIn, db: Session = Depends(get_db)):
     )
     db.add(profile)
     db.flush()
+    _apply_default_flag(db, profile, body.is_default)
     for m in body.metrics:
         db.add(KpiProfileMetric(
             profile_id=profile.id, metric_id=metrics_by_code[m.metric_code].id,
@@ -317,13 +388,13 @@ def create_profile(body: KpiProfileIn, db: Session = Depends(get_db)):
 
 @router.put("/profiles/{profile_id}", response_model=KpiProfileOut)
 def update_profile(profile_id: str, body: KpiProfileIn, db: Session = Depends(get_db)):
-    _validate_weight_sum(body.metrics)
     profile = db.get(KpiProfile, profile_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Профиль не найден")
     if body.code != profile.code and db.query(KpiProfile).filter(KpiProfile.code == body.code).first():
         raise HTTPException(status_code=409, detail=f"Профиль с кодом {body.code!r} уже существует")
     metrics_by_code = _resolve_metrics_by_code(db, [m.metric_code for m in body.metrics])
+    _validate_profile_metrics(body.metrics)
 
     profile.code = body.code
     profile.name = body.name
@@ -331,6 +402,7 @@ def update_profile(profile_id: str, body: KpiProfileIn, db: Session = Depends(ge
     profile.target_pct = body.target_pct
     profile.warn_band_pct = body.warn_band_pct
     profile.is_enabled = body.is_enabled
+    _apply_default_flag(db, profile, body.is_default)
 
     db.query(KpiProfileMetric).filter(KpiProfileMetric.profile_id == profile.id).delete()
     db.flush()
@@ -346,9 +418,28 @@ def update_profile(profile_id: str, body: KpiProfileIn, db: Session = Depends(ge
 
 @router.delete("/profiles/{profile_id}")
 def delete_profile(profile_id: str, db: Session = Depends(get_db)):
+    """Удалить профиль — блокируя случаи, когда сотрудники этой роли останутся без метрик.
+
+    Симметрично удалению метрики, используемой профилем: раньше удаление
+    профиля, назначенного роли или отмеченного «по умолчанию», проходило
+    молча, и сотрудники этой роли (или те, чья роль ни с чем не совпала)
+    выпадали в строки без метрик (см. ревью, ВАЖНО 5).
+    """
     profile = db.get(KpiProfile, profile_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Профиль не найден")
+    if profile.is_default:
+        raise HTTPException(
+            status_code=409,
+            detail="Профиль отмечен как «по умолчанию» — сначала назначьте признак другому профилю",
+        )
+    if profile.role_code:
+        in_use = db.query(Employee).filter(Employee.role == profile.role_code).count()
+        if in_use > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Профиль назначен роли «{profile.role_code}» — сотрудников: {in_use}",
+            )
     db.delete(profile)
     db.commit()
     return {"status": "deleted"}
@@ -410,6 +501,11 @@ def save_general(body: KpiGeneralSettings, db: Session = Depends(get_db)):
             status_code=422,
             detail="Срок внесения трудозатрат должен быть не меньше одного рабочего дня",
         )
+    if not _TIME_RE.match(body.worklog_deadline_time):
+        # Раньше кривое значение (включая текст) сохранялось как есть, а
+        # движок расчёта молча подставлял полдень по умолчанию
+        # (``timeliness._parse_time``) — тихая порча срока (см. ревью, ВАЖНО 5).
+        raise HTTPException(status_code=422, detail="Время отсечки должно быть в формате ЧЧ:ММ")
     _set_kpi_setting(db, "kpi_excluded_statuses", json.dumps(body.excluded_statuses, ensure_ascii=False))
     _set_kpi_setting(db, "kpi_worklog_deadline_days", str(body.worklog_deadline_days))
     _set_kpi_setting(db, "kpi_worklog_deadline_time", body.worklog_deadline_time)
@@ -421,6 +517,7 @@ def save_general(body: KpiGeneralSettings, db: Session = Depends(get_db)):
 # === Словарь атрибутов условий ===
 
 _ATTR_VALUE_SOURCES = {
+    "project_key": Project.key,
     "issue_type": Issue.issue_type,
     "subtype": Issue.subtype,
     "status": Issue.status,
@@ -430,23 +527,39 @@ _ATTR_VALUE_SOURCES = {
     "direction": Issue.direction,
 }
 
+def _load_attribute_choices(db: Session) -> dict[str, list[str]]:
+    """Значения всех атрибутов условий одним запросом вместо семи отдельных.
+
+    Раньше на каждое открытие справочника атрибутов уходило семь отдельных
+    DISTINCT-запросов по таблице задач (сотни тысяч строк) — один на каждый
+    атрибут. UNION по всем источникам сразу даёт тот же результат за один
+    поход в базу (см. ревью, мелочи).
+    """
+    branches = [
+        select(literal(key).label("attr"), column.label("val")).where(column.isnot(None))
+        for key, column in _ATTR_VALUE_SOURCES.items()
+    ]
+    result: dict[str, list[str]] = {key: [] for key in _ATTR_VALUE_SOURCES}
+    for attr, val in db.execute(union(*branches)).all():
+        if val:
+            result[attr].append(val)
+    for values in result.values():
+        values.sort()
+    return result
+
 
 @router.get("/attributes")
 def get_attributes(db: Session = Depends(get_db)) -> dict:
     """Словарь допустимых атрибутов условий для конструктора метрики в настройках."""
+    choices_by_attr = _load_attribute_choices(db)
     attrs = []
     for choice in ATTRIBUTE_CHOICES:
         item = dict(choice)
         key = choice["key"]
-        if key == "project_key":
-            item["choices"] = sorted(
-                v for (v,) in db.query(Project.key).distinct().all() if v
-            )
-        elif key == "field_filled":
+        if key == "field_filled":
             item["choices"] = list(FILLABLE_FIELDS.keys())
-        elif key in _ATTR_VALUE_SOURCES:
-            column = _ATTR_VALUE_SOURCES[key]
-            item["choices"] = sorted(v for (v,) in db.query(column).distinct().all() if v)
+        elif key in choices_by_attr:
+            item["choices"] = choices_by_attr[key]
         attrs.append(item)
     return {
         "attributes": attrs,
