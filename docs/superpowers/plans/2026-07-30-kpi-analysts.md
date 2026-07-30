@@ -1095,7 +1095,9 @@ def _period_clause(cs: ConditionSet, period_start: date, period_end: date):
     end = datetime.combine(period_end, datetime.max.time())
     closed = and_(Issue.resolved_at.isnot(None), Issue.resolved_at.between(start, end))
     if cs.period_window == "created_and_closed_in":
-        return and_(closed, Issue.created_at.between(start, end))
+        # jira_created_at — дата создания задачи в Jira. Issue.created_at — дата
+        # вставки строки в нашу базу, для отбора по периоду она не годится.
+        return and_(closed, Issue.jira_created_at.between(start, end))
     return closed
 
 
@@ -1119,7 +1121,7 @@ def build_issue_query(
     return db.query(Issue).filter(and_(*clauses))
 ```
 
-Если `Issue.created_at` — это техническая дата записи в нашей базе, а не дата создания задачи в Jira, использовать поле с датой создания из Jira. Проверить `app/models/issue.py` и при необходимости взять `jira_created_at` (если такого поля нет — добавить его в Task 3 тем же способом, что `resolved_at`).
+`Issue.jira_created_at` добавлено в Фазе 1 — это дата создания задачи в Jira. Не путать с `Issue.created_at`, которая означает дату вставки строки в нашу базу и для отбора по периоду непригодна.
 
 - [ ] **Step 4: Прогнать и закоммитить**
 
