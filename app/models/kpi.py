@@ -46,6 +46,11 @@ class KpiProfile(Base, TimestampMixin):
     target_pct: Mapped[float] = mapped_column(Float, nullable=False, default=80.0)
     warn_band_pct: Mapped[float] = mapped_column(Float, nullable=False, default=10.0)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Явный запасной профиль для сотрудников без своей роли (например,
+    # руководители проектов — см. спека, раздел 5). Замена «первого
+    # включённого профиля по порядку выборки» — недетерминированной и
+    # случайной по факту (см. ревью Фазы 3, ВАЖНО 7).
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     metrics: Mapped[list["KpiProfileMetric"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan", lazy="selectin"
