@@ -164,25 +164,26 @@ def get_breakdown(
 
     team_list = parse_teams_csv(teams)
     period_start, period_end = month_bounds(year, month)
+    periods = [(period_start, period_end)]
     base_url = _jira_base_url(db)
     settings = read_kpi_settings(db)
     num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
 
     if num_cs.unit == "worklogs":
-        on_time, late = worklog_items(db, num_cs, account_id, period_start, period_end, settings)
+        on_time, late = worklog_items(db, num_cs, account_id, periods, team_list, settings)
         numerator = [_worklog_brief(w, base_url, late=True) for w in late]
         denominator = [_worklog_brief(w, base_url, late=False) for w in on_time] + numerator
         return {"metric_code": metric.code, "metric_name": metric.name,
                 "numerator": numerator, "denominator": denominator}
 
-    num_q = build_issue_query(db, num_cs, account_id, period_start, period_end,
+    num_q = build_issue_query(db, num_cs, account_id, periods,
                               settings.excluded_statuses, team_list)
     numerator = [_issue_brief(i, base_url) for i in num_q.all()]
 
     denominator = []
     if metric.calc_kind == "ratio":
         den_cs = with_direction(ConditionSet.from_json(metric.denominator_json), direction)
-        den_q = build_issue_query(db, den_cs, account_id, period_start, period_end,
+        den_q = build_issue_query(db, den_cs, account_id, periods,
                                   settings.excluded_statuses, team_list)
         denominator = [_issue_brief(i, base_url) for i in den_q.all()]
 

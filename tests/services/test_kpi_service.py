@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 from app.services.kpi.calculators import MetricResult
 from app.services.kpi.kpi_service import combine, compute_metric
+from app.services.kpi.settings import KpiSettings
 
 
 def test_weights_redistributed_when_metric_has_no_data():
@@ -91,8 +92,166 @@ def test_quality_metric_end_to_end(db_session, sample_project):
 
     result = compute_metric(
         db_session, metric, account_id="acc-1",
-        period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
         teams=["Платежи"], settings=None,
     )
     assert result.has_data is True
     assert round(result.value, 1) == 80.0
+
+
+def test_norm_to_fact_via_compute_metric(db_session, sample_project):
+    """ВАЖНО 9: норматив-к-факту проходит через общий вход расчёта (не только через unit-тест калькулятора)."""
+    from app.models.employee import Employee
+    from app.models.issue import Issue
+    from app.models.kpi import KpiMetric
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    db_session.add(emp)
+    db_session.add(Issue(
+        jira_issue_id="ct-1", key="OS-300", summary="ИТ-задача", issue_type="ИТ-задача",
+        status="ГОТОВО", status_category="done", resolution="Готово",
+        subtype="RFC_STANDARD", cost_type="Change", cycle_time_fact=100.0,
+        resolved_at=datetime(2026, 7, 10), project_id=sample_project.id,
+        assignee_account_id="acc-1", team="Платежи",
+    ))
+    db_session.commit()
+
+    metric = KpiMetric(
+        code="cycle_time", name="Cycle Time", calc_kind="norm_to_fact",
+        invert=False, cap_at_100=True, fact_field="cycle_time_fact",
+        numerator_json=_json.dumps({
+            "unit": "issues", "person_field": "assignee", "period_window": "closed_in",
+            "conditions": [
+                {"attr": "issue_type", "op": "in", "value": ["ИТ-задача"]},
+                {"attr": "resolution", "op": "in", "value": ["Готово"]},
+            ],
+        }),
+    )
+    db_session.add(metric)
+    db_session.commit()
+
+    result = compute_metric(
+        db_session, metric, account_id="acc-1",
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+        teams=["Платежи"], settings=None, norm_value=70.0,
+    )
+    assert result.has_data is True
+    assert round(result.value, 1) == 70.0
+
+
+def test_score_to_max_via_compute_metric(db_session, sample_project):
+    """ВАЖНО 9: балл-к-максимуму проходит через общий вход расчёта."""
+    from app.models.employee import Employee
+    from app.models.issue import Issue
+    from app.models.kpi import KpiMetric
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    db_session.add(emp)
+    db_session.add(Issue(
+        jira_issue_id="sc-1", key="OS-301", summary="ИТ-задача", issue_type="ИТ-задача",
+        status="ГОТОВО", status_category="done", resolution="Готово",
+        rating_speed=4, rating_quality=4, rating_result=4,
+        resolved_at=datetime(2026, 7, 10), project_id=sample_project.id,
+        assignee_account_id="acc-1", team="Платежи",
+    ))
+    db_session.commit()
+
+    metric = KpiMetric(
+        code="customer_score", name="Оценка заказчика", calc_kind="score_to_max",
+        invert=False, cap_at_100=True, score_max=5.0,
+        score_fields=_json.dumps(["rating_speed", "rating_quality", "rating_result"]),
+        numerator_json=_json.dumps({
+            "unit": "issues", "person_field": "assignee", "period_window": "closed_in",
+            "conditions": [{"attr": "resolution", "op": "in", "value": ["Готово"]}],
+        }),
+    )
+    db_session.add(metric)
+    db_session.commit()
+
+    result = compute_metric(
+        db_session, metric, account_id="acc-1",
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+        teams=["Платежи"], settings=None,
+    )
+    assert result.has_data is True
+    assert round(result.value, 1) == 80.0
+
+
+def test_worklog_timeliness_via_compute_metric_respects_status_team_and_metric_flags(
+    db_session, sample_project,
+):
+    """ВАЖНО 5: своевременность трудозатрат — через общий транслятор, не ручной разбор двух условий.
+
+    Проверяет разом: исключённый статус не попадает в знаменатель (раздел 6
+    спеки), задача из чужой команды не попадает в знаменатель, а инверсия и
+    потолок берутся из самой метрики (invert=False здесь — намеренно другое
+    значение, чем зашитое ранее True, чтобы отличить «взято из метрики» от
+    «совпало случайно»).
+    """
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.issue import Issue
+    from app.models.kpi import KpiMetric
+    from app.models.worklog import Worklog
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    db_session.add(emp)
+    db_session.commit()
+    db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True))
+
+    on_time_issue = Issue(
+        jira_issue_id="w1", key="OS-400", summary="s", issue_type="Задача",
+        status="ГОТОВО", project_id=sample_project.id, team="Платежи",
+    )
+    late_issue = Issue(
+        jira_issue_id="w2", key="OS-401", summary="s", issue_type="Задача",
+        status="ГОТОВО", project_id=sample_project.id, team="Платежи",
+    )
+    cancelled_issue = Issue(
+        jira_issue_id="w3", key="OS-402", summary="s", issue_type="Задача",
+        status="Отменено", project_id=sample_project.id, team="Платежи",
+    )
+    other_team_issue = Issue(
+        jira_issue_id="w4", key="OS-403", summary="s", issue_type="Задача",
+        status="ГОТОВО", project_id=sample_project.id, team="Другая команда",
+    )
+    db_session.add_all([on_time_issue, late_issue, cancelled_issue, other_team_issue])
+    db_session.commit()
+
+    def _wl(jid, issue, started, created):
+        return Worklog(
+            jira_worklog_id=jid, issue_id=issue.id, employee_id=emp.id,
+            started_at=started, jira_created_at=created, hours=4.0, time_spent_seconds=14400,
+        )
+
+    db_session.add_all([
+        _wl("wl-1", on_time_issue, datetime(2026, 7, 13, 10, 0), datetime(2026, 7, 13, 18, 0)),
+        _wl("wl-2", late_issue, datetime(2026, 7, 13, 10, 0), datetime(2026, 7, 15, 9, 0)),
+        _wl("wl-3", cancelled_issue, datetime(2026, 7, 13, 10, 0), datetime(2026, 7, 13, 11, 0)),
+        _wl("wl-4", other_team_issue, datetime(2026, 7, 13, 10, 0), datetime(2026, 7, 13, 11, 0)),
+    ])
+    db_session.commit()
+
+    metric = KpiMetric(
+        code="worklog_timeliness", name="Своевременность трудозатрат", calc_kind="ratio",
+        invert=False, cap_at_100=True,
+        numerator_json=_json.dumps({
+            "unit": "worklogs", "person_field": "worklog_author", "period_window": "closed_in",
+            "conditions": [{"attr": "project_key", "op": "in", "value": ["OS"]}],
+        }),
+    )
+    db_session.add(metric)
+    db_session.commit()
+
+    st = KpiSettings(excluded_statuses=["Отменено"], worklog_deadline_days=1,
+                     worklog_deadline_time="12:00", empty_policy="redistribute")
+    result = compute_metric(
+        db_session, metric, account_id="acc-1",
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+        teams=["Платежи"], settings=st,
+    )
+    assert result.has_data is True
+    # Знаменатель — 2 (отменённая и чужая команда отсеяны), просрочена 1 →
+    # invert=False даёт долю просроченных, а не «долю вовремя».
+    assert result.denominator == 2
+    assert round(result.value, 1) == 50.0

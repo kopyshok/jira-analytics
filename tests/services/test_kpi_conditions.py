@@ -39,7 +39,7 @@ def test_filters_by_project_type_resolution(db_session, sample_project):
     }))
     q = build_issue_query(
         db_session, cs, account_id="acc-1",
-        period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
         excluded_statuses=["Отменено"], teams=None,
     )
     keys = sorted(i.key for i in q.all())
@@ -61,7 +61,7 @@ def test_field_filled_requires_all_fields(db_session, sample_project):
                         "value": ["goal_text", "current_behavior", "description"]}],
     }))
     q = build_issue_query(db_session, cs, account_id="acc-1",
-                          period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+                          periods=[(date(2026, 7, 1), date(2026, 7, 31))],
                           excluded_statuses=[], teams=None)
     assert [i.key for i in q.all()] == ["OS-3"]
 
@@ -79,7 +79,7 @@ def test_field_filled_rejects_blank_only_value(db_session, sample_project):
                         "value": ["goal_text", "current_behavior", "description"]}],
     }))
     q = build_issue_query(db_session, cs, account_id="acc-1",
-                          period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+                          periods=[(date(2026, 7, 1), date(2026, 7, 31))],
                           excluded_statuses=[], teams=None)
     assert q.all() == []
 
@@ -104,7 +104,7 @@ class TestResolvedOnTimeIsDateOnly:
             "conditions": [{"attr": "resolved_on_time", "op": "is_true"}],
         }))
         return build_issue_query(db, cs, account_id="acc-1",
-                                 period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+                                 periods=[(date(2026, 7, 1), date(2026, 7, 31))],
                                  excluded_statuses=[], teams=None)
 
     def test_closed_same_day_as_plan_at_1500_counts_as_on_time(self, db_session, sample_project):
@@ -171,6 +171,97 @@ class TestNullSafeExclusion:
             "conditions": [{"attr": "direction", "op": "not_in", "value": ["Прочее"]}],
         }))
         q = build_issue_query(db_session, cs, account_id="acc-1",
-                              period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
                               excluded_statuses=[], teams=None)
         assert [i.key for i in q.all()] == ["OS-6"]
+
+
+class TestCreatedAndClosedInWindow:
+    """ВАЖНО 9: окно created_and_closed_in требует и создания, и закрытия в периоде."""
+
+    def _cs(self):
+        return ConditionSet.from_json(json.dumps({
+            "unit": "issues", "person_field": "author", "period_window": "created_and_closed_in",
+            "conditions": [],
+        }))
+
+    def test_created_before_period_excluded_even_if_closed_in_period(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="9", key="OS-9", reporter_account_id="acc-1",
+                    resolution="Готово", resolved_at=datetime(2026, 7, 10),
+                    jira_created_at=datetime(2026, 6, 20))
+        db_session.commit()
+
+        q = build_issue_query(db_session, self._cs(), account_id="acc-1",
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+                              excluded_statuses=[], teams=None)
+        assert q.all() == []
+
+    def test_created_and_closed_in_period_included(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="10", key="OS-10a", reporter_account_id="acc-1",
+                    resolution="Готово", resolved_at=datetime(2026, 7, 10),
+                    jira_created_at=datetime(2026, 7, 2))
+        db_session.commit()
+
+        q = build_issue_query(db_session, self._cs(), account_id="acc-1",
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+                              excluded_statuses=[], teams=None)
+        assert [i.key for i in q.all()] == ["OS-10a"]
+
+
+class TestExcludedStatusesTrimDenominator:
+    """ВАЖНО 9: задача в исключённом статусе реально не попадает в выборку."""
+
+    def test_cancelled_status_excluded(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="11", key="OS-11", reporter_account_id="acc-1",
+                    status="Отменено", resolution="Готово", resolved_at=datetime(2026, 7, 10))
+        _make_issue(db_session, sample_project, jid="12", key="OS-12", reporter_account_id="acc-1",
+                    status="ГОТОВО", resolution="Готово", resolved_at=datetime(2026, 7, 11))
+        db_session.commit()
+
+        cs = ConditionSet.from_json(json.dumps({
+            "unit": "issues", "person_field": "author", "period_window": "closed_in",
+            "conditions": [],
+        }))
+        q = build_issue_query(db_session, cs, account_id="acc-1",
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+                              excluded_statuses=["Отменено"], teams=None)
+        assert [i.key for i in q.all()] == ["OS-12"]
+
+
+class TestMultiplePeriods:
+    """Мелочь: несколько отрезков участия считаются по фактическим отрезкам, не по общему диапазону."""
+
+    def test_issue_closed_in_gap_between_periods_excluded(self, db_session, sample_project):
+        # Сотрудник состоял в команде 1-5 и 25-31 июля (ушёл и вернулся).
+        # Задача закрыта 15 июля — внутри общего диапазона 1-31, но не
+        # внутри ни одного из фактических отрезков.
+        _make_issue(db_session, sample_project, jid="7", key="OS-7", reporter_account_id="acc-1",
+                    resolution="Готово", resolved_at=datetime(2026, 7, 15))
+        db_session.commit()
+
+        cs = ConditionSet.from_json(json.dumps({
+            "unit": "issues", "person_field": "author", "period_window": "closed_in",
+            "conditions": [],
+        }))
+        q = build_issue_query(
+            db_session, cs, account_id="acc-1",
+            periods=[(date(2026, 7, 1), date(2026, 7, 5)), (date(2026, 7, 25), date(2026, 7, 31))],
+            excluded_statuses=[], teams=None,
+        )
+        assert q.all() == []
+
+    def test_issue_closed_inside_second_period_included(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="8", key="OS-8", reporter_account_id="acc-1",
+                    resolution="Готово", resolved_at=datetime(2026, 7, 27))
+        db_session.commit()
+
+        cs = ConditionSet.from_json(json.dumps({
+            "unit": "issues", "person_field": "author", "period_window": "closed_in",
+            "conditions": [],
+        }))
+        q = build_issue_query(
+            db_session, cs, account_id="acc-1",
+            periods=[(date(2026, 7, 1), date(2026, 7, 5)), (date(2026, 7, 25), date(2026, 7, 31))],
+            excluded_statuses=[], teams=None,
+        )
+        assert [i.key for i in q.all()] == ["OS-8"]
