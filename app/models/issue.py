@@ -42,6 +42,11 @@ class Issue(Base, SyncedMixin):
     # older installs). Нужна чтобы красить бейджи в то же, что показывает Jira.
     status_category: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     priority: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # KPI: резолюция Jira («Готово» / «Отменено» / ...) и дата резолюции —
+    # отдельно от статуса, чтобы отличить фактически выполненные задачи от
+    # отменённых (у обоих status_category='done').
+    resolution: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
     # Foreign keys
     project_id: Mapped[str] = mapped_column(

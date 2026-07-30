@@ -603,6 +603,11 @@ class SyncService:
             "status_changed_at": _parse_jira_datetime(jira_issue.fields.statuscategorychangedate),
             "jira_updated_at": _parse_jira_datetime(jira_issue.fields.updated),
             "due_date": _parse_jira_date(jira_issue.fields.duedate),
+            "resolution": (
+                jira_issue.fields.resolution.get("name")
+                if jira_issue.fields.resolution else None
+            ),
+            "resolved_at": _parse_jira_datetime(jira_issue.fields.resolutiondate),
             "synced_at": datetime.utcnow(),
         }
         if team is not _UNSET:
@@ -800,7 +805,7 @@ class SyncService:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         ]
         request_fields = base_request_fields + list(extra_fields) if extra_fields else None
 
@@ -971,7 +976,7 @@ class SyncService:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         ]
         fields = base_fields + list(extra_fields)
 
@@ -1095,7 +1100,7 @@ class SyncService:
             "summary", "description", "issuetype", "status",
             "priority", "project", "parent", "creator",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         ]
         request_fields = base_fields + list(extra_fields)
 
