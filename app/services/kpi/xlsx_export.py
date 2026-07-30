@@ -29,9 +29,13 @@ def export_report_xlsx(report: dict) -> bytes:
         cell.font = Font(bold=True)
 
     for row in rows:
-        by_name = {m["name"]: m["value"] for m in row.get("metrics", [])}
+        # Метрика без данных пишется словами, а не пустой ячейкой — иначе в
+        # книге её не отличить от честного нуля (см. ревью, мелочи).
+        by_metric = {m["name"]: m for m in row.get("metrics", [])}
         line: list = [row.get("team") or "", row["employee_name"]]
-        line += [by_name.get(name) for name in metric_names]
+        for name in metric_names:
+            m = by_metric.get(name)
+            line.append(m["value"] if m and m["has_data"] else ("нет данных" if m else None))
         line.append(row.get("total"))
         ws.append(line)
 
