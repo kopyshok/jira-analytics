@@ -11,12 +11,21 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Query, Session, aliased
 
 from app.models.issue import Issue
 from app.models.issue_link import IssueLink
 from app.models.project import Project
+
+
+class ConditionError(ValueError):
+    """Условие метрики ссылается на неизвестный атрибут, сравнение или значение.
+
+    От раздела KPI считают премии, поэтому опечатка в настройке метрики не
+    должна тихо ослаблять фильтр (пропуская условие) — она обязана
+    провалить сохранение или расчёт понятным сообщением на русском.
+    """
 
 # Атрибут условия → колонка задачи
 ATTR_COLUMNS = {
@@ -40,6 +49,12 @@ FILLABLE_FIELDS = {
 
 PERSON_FIELDS = {"author", "assignee", "linked_issue_author", "worklog_author"}
 PERIOD_WINDOWS = {"closed_in", "created_and_closed_in"}
+UNITS = {"issues", "worklogs"}
+
+# Атрибуты, не завязанные на конкретную колонку (обработка в _apply_condition),
+# плюс всё из ATTR_COLUMNS — вместе полный список допустимых значений `attr`.
+KNOWN_ATTRS = {"project_key", "field_filled", "resolved_on_time", "has_linked_bug", *ATTR_COLUMNS}
+KNOWN_OPS = {"in", "not_in", "eq", "ne", "all", "is_true"}
 
 # Словарь допустимых атрибутов условий — источник истины для выпадающих
 # списков конструктора метрики в настройках (Фаза 4). Единственное место в
@@ -55,6 +70,7 @@ ATTRIBUTE_CHOICES: list[dict] = [
     {"key": "environment", "label": "Окружение", "value_type": "list"},
     {"key": "cost_type", "label": "Тип затрат", "value_type": "list"},
     {"key": "direction", "label": "Продуктовое направление", "value_type": "list"},
+    {"key": "category", "label": "Категория", "value_type": "list"},
     {"key": "field_filled", "label": "Поле заполнено", "value_type": "list"},
     {"key": "resolved_on_time", "label": "Резолюция не позже плановой даты", "value_type": "none"},
     {"key": "has_linked_bug", "label": "Есть связанный баг", "value_type": "none"},
@@ -70,6 +86,24 @@ class Condition:
     value: object = None
 
 
+def _validate_condition(cond: Condition) -> None:
+    """Проверить одно условие на опечатки в атрибуте/сравнении/имени поля.
+
+    Вызывается при разборе JSON (``ConditionSet.from_json``) — то есть и при
+    сохранении метрики в настройках, и при каждом расчёте, читающем уже
+    сохранённые данные.
+    """
+    if cond.attr not in KNOWN_ATTRS:
+        raise ConditionError(f"Неизвестный атрибут условия: {cond.attr!r}")
+    if cond.op not in KNOWN_OPS:
+        raise ConditionError(f"Неизвестное сравнение {cond.op!r} для атрибута {cond.attr!r}")
+    if cond.attr == "field_filled":
+        names = cond.value if isinstance(cond.value, list) else [cond.value]
+        for name in names:
+            if str(name) not in FILLABLE_FIELDS:
+                raise ConditionError(f"Неизвестное поле для проверки заполненности: {name!r}")
+
+
 @dataclass
 class ConditionSet:
     """Набор условий отбора одной стороны метрики (числителя или знаменателя)."""
@@ -81,23 +115,46 @@ class ConditionSet:
 
     @classmethod
     def from_json(cls, raw: Optional[str]) -> "ConditionSet":
-        """Разобрать набор условий из JSON, хранящегося в метрике."""
+        """Разобрать набор условий из JSON, хранящегося в метрике.
+
+        Падает с ``ConditionError`` на любой опечатке (неизвестный атрибут,
+        сравнение, признак «кто считается», окно периода, единица счёта или
+        имя поля в проверке заполненности) — тихое ослабление фильтра для
+        раздела, по которому считают премии, недопустимо (см. ревью Фазы 3).
+        """
         if not raw:
             return cls()
         data = json.loads(raw)
-        return cls(
-            unit=data.get("unit", "issues"),
-            person_field=data.get("person_field", "author"),
-            period_window=data.get("period_window", "closed_in"),
-            conditions=[
-                Condition(attr=c["attr"], op=c.get("op", "in"), value=c.get("value"))
-                for c in data.get("conditions", [])
-            ],
-        )
+
+        unit = data.get("unit", "issues")
+        if unit not in UNITS:
+            raise ConditionError(f"Неизвестная единица счёта: {unit!r}")
+        person_field = data.get("person_field", "author")
+        if person_field not in PERSON_FIELDS:
+            raise ConditionError(f"Неизвестный признак «кто считается»: {person_field!r}")
+        period_window = data.get("period_window", "closed_in")
+        if period_window not in PERIOD_WINDOWS:
+            raise ConditionError(f"Неизвестное окно периода: {period_window!r}")
+
+        conditions = [
+            Condition(attr=c["attr"], op=c.get("op", "in"), value=c.get("value"))
+            for c in data.get("conditions", [])
+        ]
+        for cond in conditions:
+            _validate_condition(cond)
+
+        return cls(unit=unit, person_field=person_field, period_window=period_window,
+                   conditions=conditions)
 
 
 def _apply_condition(clauses: list, cond: Condition) -> None:
-    """Одно условие → предикат. Неизвестный атрибут молча пропускается."""
+    """Одно условие → предикат.
+
+    К моменту вызова атрибут/сравнение/имя поля уже проверены в
+    ``ConditionSet.from_json`` — здесь только перевод в SQL. Фолбэки на
+    неизвестный атрибут ниже — защита на случай прямого конструирования
+    ``Condition`` в обход ``from_json``, а не штатный путь.
+    """
     if cond.attr == "project_key":
         values = cond.value if isinstance(cond.value, list) else [cond.value]
         sub = select(Project.id).where(Project.key.in_(values))
@@ -108,20 +165,30 @@ def _apply_condition(clauses: list, cond: Condition) -> None:
         return
 
     if cond.attr == "field_filled":
+        # Поле из одних пробелов/переводов строк — не заполнение (ВАЖНО 4).
+        # func.trim() в SQLite снимает только пробелы по краям, поэтому
+        # переводы строк/табуляция сначала схлопываются в пробел.
         names = cond.value if isinstance(cond.value, list) else [cond.value]
         for name in names:
             col = FILLABLE_FIELDS.get(str(name))
             if col is None:
                 continue
-            clauses.append(and_(col.isnot(None), col != ""))
+            normalized = func.trim(
+                func.replace(func.replace(col, "\n", " "), "\t", " ")
+            )
+            clauses.append(and_(col.isnot(None), normalized != ""))
         return
 
     if cond.attr == "resolved_on_time":
+        # Плановая дата из Jira лежит полночью, дата резолюции — полный
+        # момент времени. Сравнивать нужно календарные даты, а не моменты —
+        # иначе задача, закрытая в день плана вечером, ложно числится
+        # просроченной (BLOCKER 1 ревью Фазы 3).
         clauses.append(
             and_(
                 Issue.resolved_at.isnot(None),
                 Issue.planned_end_date.isnot(None),
-                Issue.resolved_at <= Issue.planned_end_date,
+                func.date(Issue.resolved_at) <= func.date(Issue.planned_end_date),
             )
         )
         return
@@ -143,12 +210,16 @@ def _apply_condition(clauses: list, cond: Condition) -> None:
         values = cond.value if isinstance(cond.value, list) else [cond.value]
         clauses.append(col.in_(values))
     elif cond.op == "not_in":
+        # Пустое значение колонки — не "входит" ни в один список, поэтому
+        # исключать его вместе с явно перечисленными значениями нельзя:
+        # задача без направления/подтипа/типа затрат иначе выпадает из
+        # выборки, хотя условие говорит только про конкретные значения.
         values = cond.value if isinstance(cond.value, list) else [cond.value]
-        clauses.append(~col.in_(values))
+        clauses.append(or_(col.is_(None), ~col.in_(values)))
     elif cond.op == "eq":
         clauses.append(col == cond.value)
     elif cond.op == "ne":
-        clauses.append(col != cond.value)
+        clauses.append(or_(col.is_(None), col != cond.value))
 
 
 def _person_clause(cs: ConditionSet, account_id: str):
