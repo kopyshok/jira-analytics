@@ -14,5 +14,6 @@ export const ScenarioComparatorPage = lazy(() => import('./ScenarioComparatorPag
 export const WorkTypeReportPage = lazy(() => import('./WorkTypeReportPage'));
 export const WorkTypeReportPrintPage = lazy(() => import('./WorkTypeReportPrintPage'));
 export const ExecutiveDashboardPage = lazy(() => import('./ExecutiveDashboardPage'));
+export const KpiPage = lazy(() => import('./KpiPage'));
 export const FeedbackPage = lazy(() => import('./FeedbackPage'));
 export const DeskPage = lazy(() => import('./DeskPage'));
