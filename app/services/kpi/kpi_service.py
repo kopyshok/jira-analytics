@@ -489,6 +489,7 @@ def compute_employee_month(
             "account_id": employee.jira_account_id,
             "team": row_team,
             "profile_code": None,
+            "profile_name": None,
             "target_pct": None,
             "warn_band_pct": None,
             "metrics": [],
@@ -534,6 +535,10 @@ def compute_employee_month(
         "account_id": employee.jira_account_id,
         "team": row_team,
         "profile_code": profile.code,
+        # Человекочитаемое название профиля — фронт показывал технический
+        # код (латиницей) там, где нужна была роль сотрудника (см. ревью,
+        # мелочи).
+        "profile_name": profile.name,
         "target_pct": profile.target_pct,
         "warn_band_pct": profile.warn_band_pct,
         "metrics": metric_payload,

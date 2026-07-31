@@ -1,18 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { Drawer, Progress, Space, Tag, Typography, Empty, Spin, Alert, Button } from 'antd';
-import { LockOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { LockOutlined, CheckCircleOutlined, CheckCircleFilled, WarningFilled, CloseCircleFilled } from '@ant-design/icons';
 import {
   CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { useThemeTokens } from '../../aurora/theme/useThemeTokens';
 import { fetchApproval, fetchTrend, type KpiReportRow } from '../../api/kpi';
-import { formatDate } from '../../utils/format';
+import { formatDateOnly } from '../../utils/format';
+import { kpiStatusOf, onKpiCellActivate, KPI_MONTH_ABBR_RU, type KpiStatus } from '../../utils/kpiShared';
 
 const { Text, Title } = Typography;
-
-const MONTH_ABBR = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-
-type Status = 'good' | 'warn' | 'bad' | 'none';
 
 /** Текст про метрику без данных — по применённой политике, а не всегда
  * «перераспределён» (политика настраивается в общих правилах, доступных
@@ -24,12 +21,12 @@ function emptyPolicyText(policy: string, weightPct: number): string {
   return `Вес ${weightPct}% перераспределён между остальными метриками`;
 }
 
-function statusOf(value: number | null, target: number | null, warnBand: number | null): Status {
-  if (value == null || target == null) return 'none';
-  if (value >= target) return 'good';
-  const band = warnBand ?? 10;
-  if (value >= target - band) return 'warn';
-  return 'bad';
+/** Значок статуса — цвет не единственный сигнал (см. ревью, мелочи). */
+function StatusIcon({ status }: { status: KpiStatus }) {
+  if (status === 'good') return <CheckCircleFilled style={{ fontSize: 11 }} />;
+  if (status === 'warn') return <WarningFilled style={{ fontSize: 11 }} />;
+  if (status === 'bad') return <CloseCircleFilled style={{ fontSize: 11 }} />;
+  return null;
 }
 
 export interface KpiEmployeeCardProps {
@@ -68,16 +65,16 @@ export default function KpiEmployeeCard({
     enabled: !!row?.team,
   });
 
-  const statusColor = (s: Status) => (
+  const statusColor = (s: KpiStatus) => (
     s === 'good' ? t.success : s === 'warn' ? t.amber : s === 'bad' ? t.danger : t.textMuted
   );
 
   const total = row?.total ?? null;
   const target = row?.target_pct ?? null;
-  const ringStatus = statusOf(total, target, row?.warn_band_pct ?? null);
+  const ringStatus = kpiStatusOf(total, target, row?.warn_band_pct ?? null);
 
   const trendData = (trendQuery.data?.points ?? []).map((p) => ({
-    label: `${MONTH_ABBR[p.month - 1]} ${String(p.year).slice(2)}`,
+    label: `${KPI_MONTH_ABBR_RU[p.month - 1]} ${String(p.year).slice(2)}`,
     total: p.total,
   }));
 
@@ -93,8 +90,8 @@ export default function KpiEmployeeCard({
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Text type="secondary" style={{ fontSize: 12.5 }}>
             {row.team ?? 'без команды'}
-            {row.profile_code ? ` · профиль «${row.profile_code}»` : ''}
-            {` · ${MONTH_ABBR[month - 1]} ${year}`}
+            {row.profile_name ? ` · профиль «${row.profile_name}»` : ''}
+            {` · ${KPI_MONTH_ABBR_RU[month - 1]} ${year}`}
           </Text>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
@@ -165,7 +162,7 @@ export default function KpiEmployeeCard({
             {row.team == null
               ? 'Утверждение доступно только для сотрудника с командой'
               : approvalQuery.data?.approved
-                ? `Утвердил ${approvalQuery.data.approved_by} · ${formatDate(approvalQuery.data.approved_at)}`
+                ? `Утвердил ${approvalQuery.data.approved_by} · ${formatDateOnly(approvalQuery.data.approved_at)}`
                 : 'Месяц не утверждён'}
           </div>
 
@@ -174,13 +171,15 @@ export default function KpiEmployeeCard({
             {row.metrics.length === 0 && <Empty description="У сотрудника нет профиля оценки" />}
             <Space orientation="vertical" size={4} style={{ width: '100%' }}>
               {row.metrics.map((m) => {
-                const status = statusOf(m.value, row.target_pct, row.warn_band_pct);
+                const status = kpiStatusOf(m.value, row.target_pct, row.warn_band_pct);
+                const activate = () => onOpenBreakdown(m.code, m.name);
                 return (
                   <div
                     key={m.code}
                     role="button"
                     tabIndex={0}
-                    onClick={() => onOpenBreakdown(m.code, m.name)}
+                    onClick={activate}
+                    onKeyDown={onKpiCellActivate(activate)}
                     style={{
                       display: 'grid', gridTemplateColumns: '1fr auto', gap: 8,
                       alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${t.border}`,
@@ -202,11 +201,27 @@ export default function KpiEmployeeCard({
                               background: statusColor(status),
                             }}
                           />
+                          {/* Маркер цели на полосе — из макета, раньше не был перенесён. */}
+                          {row.target_pct != null && (
+                            <div
+                              title={`цель ${row.target_pct}%`}
+                              style={{
+                                position: 'absolute', top: -2, bottom: -2,
+                                left: `${Math.min(100, Math.max(0, row.target_pct))}%`,
+                                width: 2, background: t.textMuted, borderRadius: 1,
+                              }}
+                            />
+                          )}
                         </div>
                       )}
                     </div>
-                    <span className="num" style={{ fontWeight: 700, color: statusColor(status) }}>
-                      {m.has_data ? `${Math.round(m.value ?? 0)}%` : <Tag style={{ margin: 0 }}>нет данных</Tag>}
+                    <span className="num" style={{ fontWeight: 700, color: statusColor(status), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {m.has_data ? (
+                        <>
+                          <StatusIcon status={status} />
+                          {Math.round(m.value ?? 0)}%
+                        </>
+                      ) : <Tag style={{ margin: 0 }}>нет данных</Tag>}
                     </span>
                   </div>
                 );

@@ -18,6 +18,9 @@ export interface KpiReportRow {
   account_id: string;
   team: string | null;
   profile_code: string | null;
+  /** Человекочитаемое название профиля оценки — показывать вместо
+   * технического кода (латиницей), см. ревью, мелочи. */
+  profile_name: string | null;
   target_pct: number | null;
   warn_band_pct: number | null;
   metrics: KpiMetricValue[];
