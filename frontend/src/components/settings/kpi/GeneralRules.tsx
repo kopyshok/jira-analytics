@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
 import { PlusOutlined } from '@ant-design/icons';
 import { fetchGeneral, saveGeneral, type KpiGeneralSettings } from '../../../api/kpi';
+import { useThemeTokens } from '../../../aurora/theme/useThemeTokens';
 
 const { Text } = Typography;
 
@@ -32,6 +33,7 @@ function overdueExample(days: number, time: string): string {
 export default function GeneralRules() {
   const { notification } = App.useApp();
   const qc = useQueryClient();
+  const t = useThemeTokens();
 
   const generalQuery = useQuery({ queryKey: ['kpi-settings', 'general'], queryFn: fetchGeneral });
   const [form, setForm] = useState<KpiGeneralSettings | null>(null);
@@ -128,7 +130,7 @@ export default function GeneralRules() {
             />
           </div>
         </Space>
-        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-2, inherit)' }}>
+        <div style={{ marginTop: 10, fontSize: 12, color: t.textMuted }}>
           {overdueExample(form.worklog_deadline_days, form.worklog_deadline_time)}
         </div>
       </Card>

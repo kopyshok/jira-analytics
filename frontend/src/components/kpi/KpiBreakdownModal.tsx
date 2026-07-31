@@ -5,6 +5,7 @@ import { useThemeTokens } from '../../aurora/theme/useThemeTokens';
 import {
   fetchBreakdown, isWorklogItem, type KpiBreakdownItem, type KpiReportRow,
 } from '../../api/kpi';
+import { KPI_MONTH_ABBR_RU } from '../../utils/kpiShared';
 
 const { Text } = Typography;
 
@@ -88,7 +89,18 @@ export default function KpiBreakdownModal({ target, year, month, direction, team
 
   return (
     <Modal
-      title={target?.metricName}
+      title={target && (
+        <div>
+          <div>{target.metricName}</div>
+          {/* Подзаголовок «сотрудник, команда, период» — из макета, раньше
+              не был перенесён (см. ревью, «из макета не перенесено»). */}
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+            {target.row.employee_name}
+            {target.row.team ? ` · ${target.row.team}` : ' · без команды'}
+            {` · ${KPI_MONTH_ABBR_RU[month - 1]} ${year}`}
+          </Text>
+        </div>
+      )}
       open={!!target}
       onCancel={onClose}
       footer={null}

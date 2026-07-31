@@ -5,12 +5,13 @@ import { CheckOutlined, DownloadOutlined, LeftOutlined, LockOutlined, RightOutli
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import kpiHelp from '../../../docs/help/kpi.md?raw';
 import PageHeader from '../components/shared/PageHeader';
-import KpiLedger from '../components/kpi/KpiLedger';
+import KpiLedger, { KpiStatusLegend } from '../components/kpi/KpiLedger';
 import KpiEmployeeCard from '../components/kpi/KpiEmployeeCard';
 import KpiBreakdownModal, { type KpiBreakdownTarget } from '../components/kpi/KpiBreakdownModal';
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useRegisterHelp } from '../contexts/HelpContext';
+import { formatDateOnly } from '../utils/format';
 import {
   approveMonth, downloadKpiExport, fetchApproval, fetchDirections, fetchKpiReport, fetchTeamsSummary,
   type KpiReportRow, type KpiTeamSummaryRow,
@@ -151,7 +152,7 @@ export default function KpiPage() {
                 color={approvalQuery.data?.approved ? 'success' : 'default'}
               >
                 {approvalQuery.data?.approved
-                  ? `Утвердил ${approvalQuery.data.approved_by} · ${approvalQuery.data.approved_at?.slice(0, 10)}`
+                  ? `Утвердил ${approvalQuery.data.approved_by} · ${formatDateOnly(approvalQuery.data.approved_at)}`
                   : 'Черновик, не утверждён'}
               </Tag>
             ) : (
@@ -253,13 +254,17 @@ export default function KpiPage() {
           showIcon
           icon={<LockOutlined />}
           style={{ marginBottom: 12 }}
-          message={
+          title={
             approvedTeams.length === 1
               ? `Месяц утверждён по команде «${approvedTeams[0]}» — числа заморожены снимком, правки весов и нормативов на них не влияют.`
               : `Месяц утверждён по командам: ${approvedTeams.join(', ')} — их числа заморожены снимком.`
           }
         />
       )}
+
+      <div style={{ marginBottom: 8 }}>
+        <KpiStatusLegend />
+      </div>
 
       <KpiLedger
         rows={reportQuery.data?.rows ?? []}

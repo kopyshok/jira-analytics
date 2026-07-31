@@ -46,11 +46,12 @@ const EMPTY_CONDITION_SET: KpiConditionSet = {
   unit: 'issues', person_field: 'author', period_window: 'closed_in', conditions: [],
 };
 
-function blankMetricForm(): KpiMetricPayload {
+function blankMetricForm(sortOrder = 0): KpiMetricPayload {
   return {
     code: '', name: '', description: '', calc_kind: 'ratio',
     numerator: { ...EMPTY_CONDITION_SET }, denominator: { ...EMPTY_CONDITION_SET },
-    fact_field: null, score_fields: null, score_max: 5, invert: false, cap_at_100: true, sort_order: 0,
+    fact_field: null, score_fields: null, score_max: 5, invert: false, cap_at_100: true,
+    sort_order: sortOrder,
   };
 }
 
@@ -188,7 +189,14 @@ export default function MetricEditor() {
     }
   }, [selectedId, metricsQuery.data]);
 
-  const startNew = () => { setSelectedId('new'); setForm(blankMetricForm()); };
+  // Новая метрика встаёт в конец порядка колонок, а не всегда нулевым
+  // порядком — иначе порядок колонок для новых метрик был неуправляем
+  // (см. ревью, мелочи).
+  const startNew = () => {
+    const maxOrder = Math.max(0, ...(metricsQuery.data ?? []).map((m) => m.sort_order));
+    setSelectedId('new');
+    setForm(blankMetricForm(maxOrder + 1));
+  };
 
   // Правка метрики (условия отбора, способ расчёта) меняет живой расчёт
   // ведомости — она должна пересчитаться (см. ревью, ВАЖНО 7).
@@ -267,7 +275,7 @@ export default function MetricEditor() {
         ) : (
           <>
             <Card size="small" title="Основное">
-              <Space direction="vertical" style={{ width: '100%' }} size="small">
+              <Space orientation="vertical" style={{ width: '100%' }} size="small">
                 <div>
                   <Text type="secondary" style={{ fontSize: 11 }}>Код (латиницей, уникальный)</Text>
                   <Input
@@ -319,7 +327,7 @@ export default function MetricEditor() {
 
             {form.calc_kind === 'norm_to_fact' && (
               <Card size="small" title="Норматив к факту" style={{ marginTop: 12 }}>
-                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                <Space orientation="vertical" style={{ width: '100%' }} size="small">
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     Норматив задаётся ниже, в разделе «Нормативы Cycle Time», на команду и квартал.
                     Фактический показатель считается по задачам числителя — по полю ниже.
@@ -341,7 +349,7 @@ export default function MetricEditor() {
 
             {form.calc_kind === 'score_to_max' && (
               <Card size="small" title="Средний балл к максимуму" style={{ marginTop: 12 }}>
-                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                <Space orientation="vertical" style={{ width: '100%' }} size="small">
                   <div>
                     <Text type="secondary" style={{ fontSize: 11 }}>Поля с оценками (коды полей задачи)</Text>
                     <Select
