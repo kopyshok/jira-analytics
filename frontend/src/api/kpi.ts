@@ -336,7 +336,8 @@ export interface KpiNormPayload {
   team: string;
   year: number;
   quarter: number;
-  norm_value: number;
+  /** ``null`` очищает норматив (удаляет строку на сервере) — см. ревью, ВАЖНО 10. */
+  norm_value: number | null;
 }
 
 export const fetchNorms = (year?: number, quarter?: number) =>
