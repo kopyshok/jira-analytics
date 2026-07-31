@@ -6,6 +6,7 @@ import {
   BulbOutlined,
   ProjectOutlined,
   RocketOutlined,
+  PercentageOutlined,
   SyncOutlined,
   TeamOutlined,
   UnorderedListOutlined,
@@ -40,6 +41,7 @@ export default function SideMenu() {
     { key: '/analytics', icon: <BarChartOutlined />, label: 'Аналитика' },
     { key: '/analytics/work-type-report', icon: <BulbOutlined />, label: 'Тематический отчёт' },
     { key: '/executive', icon: <RocketOutlined />, label: 'Сводка для руководителя' },
+    { key: '/kpi', icon: <PercentageOutlined />, label: 'KPI' },
   ].filter(it => !isHidden(it.key));
 
   const planning = [

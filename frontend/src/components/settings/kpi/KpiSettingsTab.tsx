@@ -27,6 +27,14 @@ export default function KpiSettingsTab() {
           <a
             key={s.id}
             href={`#${s.id}`}
+            // Прокрутка к блоку без записи в адресный хеш: страница настроек
+            // держит активный раздел в хеше и слушает его изменение — обычный
+            // href="#..." увёл бы с настроек KPI обратно на «Подключение к
+            // Jira» при первом же клике (см. ревью, BLOCKER 2).
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
             style={{ fontSize: 12.5, fontWeight: 600, padding: '8px 10px', borderRadius: 8 }}
           >
             {s.label}
