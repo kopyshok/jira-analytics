@@ -114,6 +114,24 @@ class TestTeamsSummary:
         assert any(r["team"] == "Платежи" for r in rows)
         row = next(r for r in rows if r["team"] == "Платежи")
         assert "delta" in row
+        assert "member_count" in row and "metrics" in row
+
+    def test_teams_summary_scoped_to_filter(self, client, db_session, team_with_analyst):
+        """ВАЖНО 11: сводка считает только команды из фильтра, не все команды сервиса."""
+        from app.models.employee import Employee
+        from app.models.employee_team import EmployeeTeam
+
+        outsider = Employee(jira_account_id="acc-9", display_name="Сидоров С.",
+                            team="Другая команда", role="analyst")
+        db_session.add(outsider)
+        db_session.commit()
+        db_session.add(EmployeeTeam(employee_id=outsider.id, team="Другая команда", is_primary=True))
+        db_session.commit()
+
+        resp = client.get("/api/v1/kpi/teams-summary?year=2026&month=7&teams=Платежи")
+        assert resp.status_code == 200, resp.text
+        teams_in_response = {r["team"] for r in resp.json()["rows"]}
+        assert teams_in_response == {"Платежи"}
 
 
 class TestBreakdown:

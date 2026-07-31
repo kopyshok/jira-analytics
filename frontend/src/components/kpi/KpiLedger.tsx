@@ -51,15 +51,6 @@ function isTeamRow(r: TreeRow): r is TeamRow {
   return 'isTeam' in r;
 }
 
-/** Простое среднее по уже посчитанным на сервере процентам — только для витрины
- * строки команды в ведомости. Итог и дельта команды берутся напрямую из
- * `/kpi/teams-summary` (см. ниже), это среднее их не подменяет. */
-function avgOf(values: (number | null | undefined)[]): number | null {
-  const usable = values.filter((v): v is number => v != null);
-  if (!usable.length) return null;
-  return usable.reduce((a, b) => a + b, 0) / usable.length;
-}
-
 export interface KpiLedgerProps {
   rows: KpiReportRow[];
   teamsSummaryByTeam: Map<string, KpiTeamSummaryRow>;
@@ -121,11 +112,12 @@ export default function KpiLedger({
     width: 260,
     render: (_: unknown, r: TreeRow) => {
       if (isTeamRow(r)) {
+        const memberCount = teamsSummaryByTeam.get(r.team)?.member_count ?? r.members.length;
         return (
           <span style={{ fontWeight: 700 }}>
             {r.team}
             <Text type="secondary" style={{ fontWeight: 400, marginLeft: 6, fontSize: 12 }}>
-              · {r.members.length} чел.
+              · {memberCount} чел.
             </Text>
           </span>
         );
@@ -158,13 +150,17 @@ export default function KpiLedger({
     align: 'right' as const,
     render: (_: unknown, r: TreeRow) => {
       if (isTeamRow(r)) {
-        const avg = avgOf(r.members.map((m) => m.metrics.find((mm) => mm.code === col.code)?.value));
-        const target = r.members[0]?.target_pct ?? null;
-        const band = r.members[0]?.warn_band_pct ?? null;
-        const status = statusOf(avg, target, band);
+        // Среднее по метрике, цель и жёлтая зона строки команды приходят
+        // готовыми с сервера (`/kpi/teams-summary`) — тем же расчётом, что и
+        // итог, а не пересчитываются на клиенте простым средним по первому
+        // сотруднику (см. ревью, ВАЖНО 5).
+        const summary = teamsSummaryByTeam.get(r.team);
+        const metric = summary?.metrics.find((mm) => mm.code === col.code);
+        const value = metric?.has_data ? metric.value : null;
+        const status = statusOf(value, summary?.target_pct ?? null, summary?.warn_band_pct ?? null);
         return (
           <span className="num" style={{ ...cellStyle(status, t), fontWeight: 700, padding: '2px 6px', borderRadius: 6 }}>
-            {fmtPct(avg)}
+            {fmtPct(value)}
           </span>
         );
       }
@@ -205,7 +201,7 @@ export default function KpiLedger({
       if (isTeamRow(r)) {
         const summary = teamsSummaryByTeam.get(r.team);
         const value = summary?.avg_total ?? null;
-        const status = statusOf(value, r.members[0]?.target_pct ?? null, r.members[0]?.warn_band_pct ?? null);
+        const status = statusOf(value, summary?.target_pct ?? null, summary?.warn_band_pct ?? null);
         const delta = summary?.delta ?? null;
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>

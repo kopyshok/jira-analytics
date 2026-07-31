@@ -146,12 +146,18 @@ def get_report(
 def get_teams_summary(
     year: int = Query(..., ge=2020, le=2100),
     month: int = Query(..., ge=1, le=12),
+    teams: Optional[str] = Query(None, description="Команды через запятую"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Итог по каждой команде за месяц плюс дельта к прошлому месяцу."""
-    teams = list_teams(db)
-    rows = build_teams_summary(db, teams, year, month, direction=direction)
+    """Итог по каждой команде за месяц плюс дельта к прошлому месяцу.
+
+    Ограничено тем же набором команд, что и отчёт (см. ``_resolve_teams``) —
+    раньше сводка всегда считала все команды сервиса целиком, независимо от
+    фильтра, которым сужена таблица (см. ревью, ВАЖНО 11).
+    """
+    team_list = _resolve_teams(db, teams)
+    rows = build_teams_summary(db, team_list, year, month, direction=direction)
     return {"year": year, "month": month, "rows": rows}
 
 

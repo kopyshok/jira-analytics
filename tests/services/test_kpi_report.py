@@ -184,3 +184,25 @@ def test_cycle_time_norm_uses_team_at_period_start_not_current_team(db_session, 
     row = report["rows"][0]
     assert row["metrics"][0]["has_data"] is True
     assert round(row["metrics"][0]["value"], 1) == 100.0
+    # ВАЖНО 5: строка отчёта помечена исторической командой периода, а не
+    # «сегодняшней» Employee.team — иначе сотрудник группировался бы под
+    # чужой командой (или вовсе без команды) в ведомости.
+    assert row["team"] == "Платежи"
+
+
+def test_report_row_team_falls_back_when_no_membership_matches_filter(db_session):
+    """Сотрудник без исторического участия ни в одной из запрошенных команд —
+    строка помечена его текущей Employee.team, а не падает с ошибкой."""
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи",
+                   role="analyst")
+    db_session.add(emp)
+    db_session.commit()
+    db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
+                                joined_at=date(2026, 1, 1)))
+    db_session.commit()
+
+    report = build_report(db_session, teams=["Платежи"], year=2026, month=7)
+    assert report["rows"][0]["team"] == "Платежи"

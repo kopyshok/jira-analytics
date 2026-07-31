@@ -177,6 +177,100 @@ def test_score_to_max_via_compute_metric(db_session, sample_project):
     assert round(result.value, 1) == 80.0
 
 
+def test_norm_to_fact_reads_configured_fact_field_not_hardcoded_column(db_session, sample_project):
+    """BLOCKER 4: движок читает поле факта, заданное в метрике, а не всегда
+    жёстко колонку cycle_time_fact."""
+    from app.models.employee import Employee
+    from app.models.issue import Issue
+    from app.models.kpi import KpiMetric
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    db_session.add(emp)
+    db_session.add(Issue(
+        jira_issue_id="ct-2", key="OS-302", summary="ИТ-задача", issue_type="ИТ-задача",
+        status="ГОТОВО", status_category="done", resolution="Готово",
+        cycle_time_fact=999.0,  # намеренно «неправильное» значение — не должно использоваться
+        estimated_hours=50.0,
+        resolved_at=datetime(2026, 7, 10), project_id=sample_project.id,
+        assignee_account_id="acc-1", team="Платежи",
+    ))
+    db_session.commit()
+
+    metric = KpiMetric(
+        code="custom_fact", name="Своя метрика факта", calc_kind="norm_to_fact",
+        invert=False, cap_at_100=True, fact_field="estimated_hours",
+        numerator_json=_json.dumps({
+            "unit": "issues", "person_field": "assignee", "period_window": "closed_in",
+            "conditions": [{"attr": "resolution", "op": "in", "value": ["Готово"]}],
+        }),
+    )
+    db_session.add(metric)
+    db_session.commit()
+
+    result = compute_metric(
+        db_session, metric, account_id="acc-1",
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+        teams=["Платежи"], settings=None, norm_value=50.0,
+    )
+    assert result.has_data is True
+    assert round(result.value, 1) == 100.0
+
+
+def test_build_teams_summary_returns_metric_averages_member_count_and_target(db_session, sample_project):
+    """ВАЖНО 5: строка команды приходит с сервера целиком — сервер, не клиент,
+    усредняет метрики по людям с данными, считает состав, отдаёт цель/жёлтую зону."""
+    from app.models.employee import Employee
+    from app.models.employee_team import EmployeeTeam
+    from app.models.issue import Issue
+    from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric
+    from app.services.kpi.kpi_service import build_teams_summary
+
+    e1 = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи", role="analyst")
+    e2 = Employee(jira_account_id="acc-2", display_name="Петров П.", team="Платежи", role="analyst")
+    db_session.add_all([e1, e2])
+    db_session.commit()
+    db_session.add_all([
+        EmployeeTeam(employee_id=e1.id, team="Платежи", is_primary=True, joined_at=date(2026, 1, 1)),
+        EmployeeTeam(employee_id=e2.id, team="Платежи", is_primary=True, joined_at=date(2026, 1, 1)),
+    ])
+    db_session.commit()
+
+    # У e1 закрыта задача (данные есть), у e2 — ни одной (метрика без данных).
+    db_session.add(Issue(
+        jira_issue_id="ts-1", key="OS-700", summary="s", issue_type="Задача",
+        status="ГОТОВО", status_category="done", resolution="Готово",
+        resolved_at=datetime(2026, 7, 10), project_id=sample_project.id,
+        reporter_account_id="acc-1", team="Платежи",
+    ))
+    db_session.commit()
+
+    cond = _json.dumps({
+        "unit": "issues", "person_field": "author", "period_window": "closed_in",
+        "conditions": [{"attr": "issue_type", "op": "in", "value": ["Задача"]}],
+    })
+    metric = KpiMetric(
+        code="m1", name="Метрика", calc_kind="ratio", invert=False, cap_at_100=True,
+        numerator_json=cond, denominator_json=cond,
+    )
+    profile = KpiProfile(code="analyst", name="Аналитик", role_code="analyst",
+                         is_default=True, is_enabled=True, target_pct=80.0, warn_band_pct=10.0)
+    db_session.add_all([metric, profile])
+    db_session.commit()
+    db_session.add(KpiProfileMetric(profile_id=profile.id, metric_id=metric.id, weight=1.0))
+    db_session.commit()
+
+    rows = build_teams_summary(db_session, ["Платежи"], 2026, 7)
+    row = next(r for r in rows if r["team"] == "Платежи")
+    assert row["member_count"] == 2
+    assert row["target_pct"] == 80.0
+    assert row["warn_band_pct"] == 10.0
+    m = next(mm for mm in row["metrics"] if mm["code"] == "m1")
+    # Среднее — только по людям с данными (e1), а не по всем — иначе «нет
+    # данных» у e2 тянуло бы среднее вниз без причины.
+    assert m["has_data"] is True
+    assert round(m["value"], 1) == 100.0
+
+
 def test_worklog_timeliness_via_compute_metric_respects_status_team_and_metric_flags(
     db_session, sample_project,
 ):
