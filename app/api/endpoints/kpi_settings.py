@@ -23,6 +23,7 @@ from app.models.project import Project
 from app.services.kpi.conditions import (
     ATTRIBUTE_CHOICES,
     FILLABLE_FIELDS,
+    NUMERIC_FACT_FIELDS,
     PERIOD_WINDOWS,
     PERSON_FIELDS,
     ConditionSet,
@@ -188,6 +189,10 @@ def _validate_metric_kind(body: KpiMetricIn) -> None:
         raise HTTPException(status_code=422, detail="Для способа «доля» обязателен знаменатель")
     if body.calc_kind == "norm_to_fact" and not body.fact_field:
         raise HTTPException(status_code=422, detail="Для способа «норматив к факту» обязательно поле факта")
+    if body.calc_kind == "norm_to_fact" and body.fact_field not in NUMERIC_FACT_FIELDS:
+        raise HTTPException(
+            status_code=422, detail=f"Неизвестное поле факта: {body.fact_field!r}",
+        )
     if body.calc_kind == "score_to_max" and (not body.score_fields or not body.score_max):
         raise HTTPException(
             status_code=422,
@@ -565,4 +570,5 @@ def get_attributes(db: Session = Depends(get_db)) -> dict:
         "attributes": attrs,
         "person_fields": sorted(PERSON_FIELDS),
         "period_windows": sorted(PERIOD_WINDOWS),
+        "fact_fields": [{"key": k, "label": v} for k, v in NUMERIC_FACT_FIELDS.items()],
     }

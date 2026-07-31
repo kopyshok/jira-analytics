@@ -351,10 +351,16 @@ export interface KpiAttribute {
   choices?: string[];
 }
 
+export interface KpiFactField {
+  key: string;
+  label: string;
+}
+
 export interface KpiAttributesResponse {
   attributes: KpiAttribute[];
   person_fields: string[];
   period_windows: string[];
+  fact_fields: KpiFactField[];
 }
 
 export const fetchAttributes = () => api.get<KpiAttributesResponse>('/kpi-settings/attributes');

@@ -103,7 +103,7 @@ def compute_metric(
 
     if metric.calc_kind == "norm_to_fact":
         q = build_issue_query(db, num_cs, account_id, periods, st.excluded_statuses, teams)
-        facts = [i.cycle_time_fact for i in q.all() if has_cycle_time_fact(i)]
+        facts = [fact_value(i, metric) for i in q.all() if has_fact_value(i, metric)]
         return norm_to_fact(norm_value, facts)
 
     if metric.calc_kind == "score_to_max":
@@ -123,9 +123,25 @@ def score_field_names(metric: KpiMetric) -> list[str]:
     return json.loads(metric.score_fields or '["rating_speed","rating_quality","rating_result"]')
 
 
-def has_cycle_time_fact(issue: Issue) -> bool:
+def fact_field_name(metric: KpiMetric) -> str:
+    """Имя поля факта метрики «норматив к факту», с дефолтом на встроенный Cycle Time.
+
+    Раньше расчёт всегда читал ``issue.cycle_time_fact`` напрямую, игнорируя
+    ``metric.fact_field`` — новая метрика этого способа расчёта, заведённая
+    через справочник с другим полем факта, тихо считала бы по чужим данным
+    (см. ревью, BLOCKER 4).
+    """
+    return metric.fact_field or "cycle_time_fact"
+
+
+def fact_value(issue: Issue, metric: KpiMetric) -> Optional[float]:
+    """Значение факта задачи — поле, заданное в метрике."""
+    return getattr(issue, fact_field_name(metric), None)
+
+
+def has_fact_value(issue: Issue, metric: KpiMetric) -> bool:
     """Задача участвует в среднем факте метрики «норматив к факту»."""
-    return bool(issue.cycle_time_fact)
+    return bool(fact_value(issue, metric))
 
 
 def has_any_score(issue: Issue, names: list[str]) -> bool:
@@ -186,7 +202,7 @@ def resolve_breakdown(
     num_q = build_issue_query(db, num_cs, account_id, periods, st.excluded_statuses, teams)
     numerator = num_q.all()
     if metric.calc_kind == "norm_to_fact":
-        numerator = [i for i in numerator if has_cycle_time_fact(i)]
+        numerator = [i for i in numerator if has_fact_value(i, metric)]
     elif metric.calc_kind == "score_to_max":
         numerator = [i for i in numerator if has_any_score(i, score_field_names(metric))]
 

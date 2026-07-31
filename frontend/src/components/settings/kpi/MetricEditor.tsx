@@ -229,6 +229,7 @@ export default function MetricEditor() {
   const attributes = attributesQuery.data?.attributes ?? [];
   const personFields = attributesQuery.data?.person_fields ?? [];
   const periodWindows = attributesQuery.data?.period_windows ?? [];
+  const factFields = attributesQuery.data?.fact_fields ?? [];
   const selectedIsBuiltin = selectedId !== 'new' && selectedId != null
     && !!metricsQuery.data?.find((m) => m.id === selectedId)?.is_builtin;
 
@@ -313,10 +314,23 @@ export default function MetricEditor() {
 
             {form.calc_kind === 'norm_to_fact' && (
               <Card size="small" title="Норматив к факту" style={{ marginTop: 12 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Норматив задаётся ниже, в разделе «Нормативы Cycle Time», на команду и квартал.
-                  Фактический показатель считается по задачам числителя.
-                </Text>
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Норматив задаётся ниже, в разделе «Нормативы Cycle Time», на команду и квартал.
+                    Фактический показатель считается по задачам числителя — по полю ниже.
+                  </Text>
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Поле факта</Text>
+                    <Select
+                      style={{ width: '100%' }}
+                      placeholder="Выберите поле факта"
+                      loading={attributesQuery.isLoading}
+                      value={form.fact_field ?? undefined}
+                      options={factFields.map((f) => ({ value: f.key, label: f.label }))}
+                      onChange={(v) => setForm((f) => ({ ...f, fact_field: v }))}
+                    />
+                  </div>
+                </Space>
               </Card>
             )}
 
