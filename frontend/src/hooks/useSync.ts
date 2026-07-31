@@ -4,12 +4,13 @@ import {
   refreshIssuesByKeys, syncTeams,
   reloadWorklogsStream, type WorklogReloadProgress, type WorklogReloadDone,
   updateWorklogsStream, type WorklogUpdateProgress, type WorklogUpdateDone,
+  reloadIssuesStream, type IssuesReloadProgress, type IssuesReloadDone,
   getSyncStatus, getJiraProjects, getJiraEpics, getJiraFields, getJiraTeams,
   getTeams, getJiraIssueTypes,
 } from '../api/sync';
 import { batchScopeProjects } from '../api/scope';
 import { recalculateAll } from '../api/mapping';
-import type { WorklogReloadRequest } from '../types/api';
+import type { WorklogReloadRequest, IssuesReloadRequest } from '../types/api';
 
 export const useConnectionTest = () =>
   useQuery({ queryKey: ['sync', 'connection'], queryFn: testConnection, retry: false, enabled: false });
@@ -97,6 +98,24 @@ export const useUpdateWorklogs = () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+    },
+  });
+};
+
+type IssuesReloadInput = {
+  req: IssuesReloadRequest;
+  onProgress?: (e: IssuesReloadProgress) => void;
+  signal?: AbortSignal;
+};
+export const useReloadIssues = () => {
+  const qc = useQueryClient();
+  return useMutation<IssuesReloadDone, Error, IssuesReloadInput>({
+    mutationFn: ({ req, onProgress, signal }) =>
+      reloadIssuesStream(req, onProgress ?? (() => {}), signal),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+      qc.invalidateQueries({ queryKey: ['sync', 'status'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 };

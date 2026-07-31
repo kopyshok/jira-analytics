@@ -4,6 +4,7 @@ import type {
   ConnectionTestResponse, SyncResponse, SyncStatusResponse,
   JiraProjectItem, JiraEpicItem,
   WorklogReloadRequest, WorklogReloadResponse,
+  IssuesReloadRequest,
   JiraUserSearchResult,
 } from '../types/api';
 
@@ -194,6 +195,95 @@ export async function updateWorklogsStream(
   if (!final) throw new Error('Stream ended without done event');
   return final;
 }
+// ─── SSE-стрим перечитывания задач с даты ────────────────────────
+// Тот же паттерн, что у reload/update ворклогов: ``progress`` после
+// каждой порции задач, ``done`` — финальные счётчики.
+
+export type IssuesReloadProgress = {
+  type: 'progress';
+  issues_synced: number;
+  issues_created: number;
+  current_key: string | null;
+};
+
+export type IssuesReloadDone = {
+  type: 'done';
+  issues_synced: number;
+  issues_created: number;
+  mapping_affected: number;
+};
+
+type IssuesReloadEvent =
+  | IssuesReloadProgress
+  | IssuesReloadDone
+  | { type: 'error'; detail: string }
+  | { type: 'cancelled' };
+
+export async function reloadIssuesStream(
+  req: IssuesReloadRequest,
+  onProgress: (e: IssuesReloadProgress) => void,
+  signal?: AbortSignal,
+): Promise<IssuesReloadDone> {
+  const url = `${BASE_URL}/sync/issues/reload/stream`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(req),
+      signal,
+      credentials: 'include',
+    });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
+    pushError({
+      ts: new Date().toISOString(), method: 'POST', url,
+      status: null, detail: (e as Error).message,
+      requestBody: JSON.stringify(req),
+    });
+    throw e;
+  }
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = err.detail || res.statusText;
+    pushError({
+      ts: new Date().toISOString(), method: 'POST', url,
+      status: res.status, detail,
+      requestBody: JSON.stringify(req),
+    });
+    throw new Error(detail);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let final: IssuesReloadDone | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep = buffer.indexOf('\n\n');
+    while (sep !== -1) {
+      const raw = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      sep = buffer.indexOf('\n\n');
+      for (const line of raw.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const payload = JSON.parse(line.slice(5).trim()) as IssuesReloadEvent;
+        if (payload.type === 'progress') onProgress(payload);
+        else if (payload.type === 'done') final = payload;
+        else if (payload.type === 'error') throw new Error(payload.detail);
+        else if (payload.type === 'cancelled') {
+          const err = new Error('Sync cancelled by client');
+          err.name = 'AbortError';
+          throw err;
+        }
+      }
+    }
+  }
+  if (!final) throw new Error('Stream ended without done event');
+  return final;
+}
+
 export const syncComments = (signal?: AbortSignal) =>
   api.post<SyncResponse>('/sync/comments', undefined, signal);
 export const syncFull = (

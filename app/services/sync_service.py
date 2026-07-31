@@ -861,11 +861,23 @@ class SyncService:
         self,
         project_keys: Optional[List[str]] = None,
         incremental: bool = True,
+        since_override: Optional[date] = None,
+        on_progress: Optional[Callable[["SyncStats", Optional[str]], Awaitable[None]]] = None,
     ) -> int:
         """Синхронизация задач из Jira.
 
         Если project_keys не передан, использует scope_projects.
         Если scope пуст, загружает все локальные проекты.
+
+        ``since_override`` — явная дата отсечки «обновлено не раньше»;
+        если задана, побеждает и отметку последней синхронизации, и
+        ``incremental``. Используется ручным перечитыванием задач с
+        произвольной даты (``POST /sync/issues/reload/stream``). Курсор
+        ``sync_state`` в конце всё равно продвигается на текущее время —
+        назад он не двигается ни при обычном синке, ни здесь.
+
+        ``on_progress`` — коллбек прогресса; вызывается периодически с
+        текущими ``self.stats`` и ключом последней обработанной задачи.
         """
         logger.info(f"Starting issues sync (incremental={incremental})...")
 
@@ -891,7 +903,10 @@ class SyncService:
 
         # Get last sync time for incremental
         since = None
-        if incremental:
+        if since_override is not None:
+            since = datetime.combine(since_override, datetime.min.time())
+            logger.info(f"Issues reload override since {since}")
+        elif incremental:
             state = self._get_sync_state("issues")
             if state and state.last_success_at:
                 since = state.last_success_at
@@ -1031,6 +1046,9 @@ class SyncService:
                 if jira_issue.fields.issuelinks is not None:
                     pairs = _extract_link_pairs(jira_issue.fields.issuelinks)
                     pending_links.setdefault(issue.id, []).extend(pairs)
+
+                if on_progress is not None and count % 100 == 0:
+                    await on_progress(self.stats, jira_issue.key)
 
                 if count % 500 == 0:
                     logger.debug(f"Synced {count} issues...")
