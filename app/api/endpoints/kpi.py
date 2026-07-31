@@ -26,6 +26,7 @@ from app.services.kpi.kpi_service import (
     build_approval_payload,
     build_teams_summary,
     build_trend,
+    fact_value,
     report_with_approvals,
     resolve_breakdown,
     save_approval,
@@ -74,7 +75,7 @@ def _issue_brief(issue: Issue, base_url: str, metric: Optional[KpiMetric] = None
     без причины, почему она туда попала (см. мелочи ревью Фазы 4)."""
     extra: dict = {}
     if metric is not None and metric.calc_kind == "norm_to_fact":
-        extra["fact"] = issue.cycle_time_fact
+        extra["fact"] = fact_value(issue, metric)
     elif metric is not None and metric.calc_kind == "score_to_max":
         scores = [getattr(issue, n, None) for n in score_field_names(metric)]
         usable = [s for s in scores if s is not None]

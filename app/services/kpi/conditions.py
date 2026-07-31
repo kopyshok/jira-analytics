@@ -47,6 +47,16 @@ FILLABLE_FIELDS = {
     "goals": Issue.goals,
 }
 
+# Числовые поля задачи, пригодные как «факт» метрики «норматив к факту»
+# (конструктор метрики в настройках, см. ревью, BLOCKER 4). Список сознательно
+# закрытый — движок расчёта берёт значение через ``getattr`` по этому же имени
+# (``kpi_service.fact_field_name``), поэтому опечатка в имени поля должна
+# провалить сохранение метрики понятной ошибкой, а не тихо считать «нет данных»
+# на каждом расчёте.
+NUMERIC_FACT_FIELDS = {
+    "cycle_time_fact": "Фактический Cycle Time",
+}
+
 PERSON_FIELDS = {"author", "assignee", "linked_issue_author", "worklog_author"}
 PERIOD_WINDOWS = {"closed_in", "created_and_closed_in"}
 UNITS = {"issues", "worklogs"}
