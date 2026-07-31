@@ -12,6 +12,7 @@ import { useThemeTokens } from '../aurora/theme/useThemeTokens';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import { formatDateOnly } from '../utils/format';
+import { MONTH_NAMES } from '../utils/constants';
 import {
   approveMonth, downloadKpiExport, fetchApproval, fetchDirections, fetchKpiReport, fetchTeamsSummary,
   type KpiReportRow, type KpiTeamSummaryRow,
@@ -19,13 +20,10 @@ import {
 
 const { Text } = Typography;
 
-const MONTH_NAMES_RU = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
-];
-
+// Полные русские названия месяцев — общий справочник `utils/constants.ts`,
+// раньше был отдельно объявлен локальный дубликат (см. ревью, мелочи).
 function periodLabel(year: number, month: number): string {
-  return `${MONTH_NAMES_RU[month - 1]} ${year}`;
+  return `${MONTH_NAMES[month]} ${year}`;
 }
 
 function stepPeriod(year: number, month: number, dir: 1 | -1): { year: number; month: number } {
