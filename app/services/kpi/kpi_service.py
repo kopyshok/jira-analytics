@@ -493,6 +493,7 @@ def compute_employee_month(
             "warn_band_pct": None,
             "metrics": [],
             "total": None,
+            "empty_policy": st.empty_policy,
         }
 
     if teams:
@@ -537,6 +538,10 @@ def compute_employee_month(
         "warn_band_pct": profile.warn_band_pct,
         "metrics": metric_payload,
         "total": combine(parts, st.empty_policy),
+        # Политика на отсутствие данных — так карточка сотрудника пишет
+        # правду про применённую политику, а не всегда «вес перераспределён»
+        # (это лишь одна из трёх настраиваемых политик, см. ревью, ВАЖНО 9).
+        "empty_policy": st.empty_policy,
     }
 
 

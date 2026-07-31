@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import { Table, Typography, Tag, Empty } from 'antd';
+import { Table, Typography, Tag, Empty, Alert, Button } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from '@ant-design/icons';
 import { useThemeTokens } from '../../aurora/theme/useThemeTokens';
 import type { KpiReportRow, KpiTeamSummaryRow } from '../../api/kpi';
@@ -55,12 +55,16 @@ export interface KpiLedgerProps {
   rows: KpiReportRow[];
   teamsSummaryByTeam: Map<string, KpiTeamSummaryRow>;
   loading?: boolean;
+  /** Ошибка запроса отчёта — руководитель не должен принять её за «месяц
+   * пустой» (см. ревью, ВАЖНО 6). */
+  error?: Error | null;
+  onRetry?: () => void;
   onOpenEmployee?: (row: KpiReportRow) => void;
   onOpenBreakdown?: (row: KpiReportRow, metricCode: string, metricName: string) => void;
 }
 
 export default function KpiLedger({
-  rows, teamsSummaryByTeam, loading, onOpenEmployee, onOpenBreakdown,
+  rows, teamsSummaryByTeam, loading, error, onRetry, onOpenEmployee, onOpenBreakdown,
 }: KpiLedgerProps) {
   const t = useThemeTokens();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -234,6 +238,19 @@ export default function KpiLedger({
   };
 
   const columns = [nameColumn, ...metricCols, totalColumn];
+
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        title="Не удалось загрузить ведомость"
+        description={error.message}
+        action={onRetry && <Button size="small" onClick={onRetry}>Повторить</Button>}
+        style={{ margin: '16px 0' }}
+      />
+    );
+  }
 
   if (!loading && rows.length === 0) {
     return <Empty description="Нет данных за выбранный период" style={{ padding: '32px 0' }} />;

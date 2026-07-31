@@ -48,6 +48,9 @@ export default function CycleTimeNorms() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'norms', year] });
+      // Норматив участвует в живом расчёте метрики Cycle Time — ведомость
+      // должна пересчитаться (см. ревью, ВАЖНО 7).
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Нормативы сохранены' });
     },
     onError: (e: Error) => notification.error({ title: 'Не удалось сохранить', description: e.message }),
@@ -57,17 +60,19 @@ export default function CycleTimeNorms() {
     setGrid((g) => ({ ...g, [team]: { ...g[team], [quarter]: value } }));
   };
 
+  // Копирует значение соседнего квартала влево в пустые ячейки выбранного
+  // года — раньше цель всегда бралась от системной даты («сегодняшний
+  // квартал»), поэтому заполнить прошлый год или прошлый квартал текущего
+  // года было нечем (см. ревью, мелочи).
   const copyFromPrevious = () => {
-    const target = currentQuarter();
-    const source = target - 1;
-    if (source < 1) {
-      notification.info({ title: 'Первый квартал года — копировать неоткуда' });
-      return;
-    }
     setGrid((g) => {
       const next: typeof g = {};
       for (const [team, byQuarter] of Object.entries(g)) {
-        next[team] = { ...byQuarter, [target]: byQuarter[source] };
+        const updated = { ...byQuarter };
+        for (const q of [2, 3, 4] as const) {
+          if (updated[q] == null && byQuarter[q - 1] != null) updated[q] = byQuarter[q - 1];
+        }
+        next[team] = updated;
       }
       return next;
     });

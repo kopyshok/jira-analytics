@@ -52,10 +52,14 @@ export default function ProfileEditor() {
 
   const startNew = () => { setSelectedId('new'); setForm(blankProfileForm()); };
 
+  // Правка профиля (веса, цель, жёлтая зона) меняет результат уже открытой
+  // ведомости — она должна пересчитаться, а не оставаться со старыми
+  // числами до перезагрузки страницы (см. ревью, ВАЖНО 7).
   const createMut = useMutation({
     mutationFn: (body: KpiProfilePayload) => createProfile(body),
     onSuccess: (p: KpiProfileDef) => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'profiles'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Профиль создан' });
       setSelectedId(p.id);
     },
@@ -65,6 +69,7 @@ export default function ProfileEditor() {
     mutationFn: (body: KpiProfilePayload) => updateProfile(selectedId as string, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'profiles'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Профиль сохранён' });
     },
     onError: (e: Error) => notification.error({ title: 'Не удалось сохранить', description: e.message }),
@@ -73,6 +78,7 @@ export default function ProfileEditor() {
     mutationFn: (id: string) => deleteProfile(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'profiles'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Профиль удалён' });
       setSelectedId(null);
     },

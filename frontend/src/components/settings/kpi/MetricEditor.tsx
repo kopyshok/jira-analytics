@@ -190,10 +190,13 @@ export default function MetricEditor() {
 
   const startNew = () => { setSelectedId('new'); setForm(blankMetricForm()); };
 
+  // Правка метрики (условия отбора, способ расчёта) меняет живой расчёт
+  // ведомости — она должна пересчитаться (см. ревью, ВАЖНО 7).
   const createMut = useMutation({
     mutationFn: (body: KpiMetricPayload) => createMetric(body),
     onSuccess: (m: KpiMetricDef) => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'metrics'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Метрика создана' });
       setSelectedId(m.id);
     },
@@ -203,6 +206,7 @@ export default function MetricEditor() {
     mutationFn: (body: KpiMetricPayload) => updateMetric(selectedId as string, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'metrics'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Метрика сохранена' });
     },
     onError: (e: Error) => notification.error({ title: 'Не удалось сохранить', description: e.message }),
@@ -211,6 +215,7 @@ export default function MetricEditor() {
     mutationFn: (id: string) => deleteMetric(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'metrics'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Метрика удалена' });
       setSelectedId(null);
     },

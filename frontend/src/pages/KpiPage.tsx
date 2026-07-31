@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Alert, App, Button, Segmented, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { CheckOutlined, DownloadOutlined, LeftOutlined, LockOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../components/shared/PageHeader';
@@ -16,27 +16,17 @@ import {
 
 const { Text } = Typography;
 
-type PeriodMode = 'month' | 'quarter' | 'year';
-
 const MONTH_NAMES_RU = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
-const QUARTER_ROMAN = ['I', 'II', 'III', 'IV'];
 
-function quarterOf(month: number): number {
-  return Math.floor((month - 1) / 3) + 1;
-}
-
-function periodLabel(mode: PeriodMode, year: number, month: number): string {
-  if (mode === 'year') return String(year);
-  if (mode === 'quarter') return `${QUARTER_ROMAN[quarterOf(month) - 1]} квартал ${year}`;
+function periodLabel(year: number, month: number): string {
   return `${MONTH_NAMES_RU[month - 1]} ${year}`;
 }
 
-function stepPeriod(mode: PeriodMode, year: number, month: number, dir: 1 | -1): { year: number; month: number } {
-  const step = mode === 'year' ? 12 : mode === 'quarter' ? 3 : 1;
-  const total = year * 12 + (month - 1) + dir * step;
+function stepPeriod(year: number, month: number, dir: 1 | -1): { year: number; month: number } {
+  const total = year * 12 + (month - 1) + dir;
   return { year: Math.floor(total / 12), month: (total % 12) + 1 };
 }
 
@@ -47,17 +37,15 @@ export default function KpiPage() {
   const { selectedTeams, queryParams } = useGlobalTeamFilter();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const mode = (searchParams.get('kpiMode') as PeriodMode | null) ?? 'month';
   const now = new Date();
   const year = Number(searchParams.get('kpiYear')) || now.getFullYear();
   const month = Number(searchParams.get('kpiMonth')) || now.getMonth() + 1;
   const direction = searchParams.get('kpiDirection') || undefined;
 
-  const setPeriodParams = (next: { mode?: PeriodMode; year?: number; month?: number }) => {
+  const setPeriodParams = (next: { year: number; month: number }) => {
     const p = new URLSearchParams(searchParams);
-    p.set('kpiMode', next.mode ?? mode);
-    p.set('kpiYear', String(next.year ?? year));
-    p.set('kpiMonth', String(next.month ?? month));
+    p.set('kpiYear', String(next.year));
+    p.set('kpiMonth', String(next.month));
     setSearchParams(p, { replace: true });
   };
 
@@ -110,7 +98,13 @@ export default function KpiPage() {
     mutationFn: () => approveMonth({ team: singleTeam as string, year, month }),
     onSuccess: () => {
       notification.success({ title: 'Месяц утверждён', description: 'Результат заморожен снимком.' });
-      qc.invalidateQueries({ queryKey: ['kpi', 'approval', singleTeam, year, month] });
+      // Утверждение сбрасывает не только сам запрос об утверждении, но и
+      // отчёт со сводкой — иначе плашка «месяц утверждён» не появится, пока
+      // пользователь не перезагрузит страницу (см. ревью, ВАЖНО 7).
+      qc.invalidateQueries({ queryKey: ['kpi', 'approval'] });
+      qc.invalidateQueries({ queryKey: ['kpi', 'report'] });
+      qc.invalidateQueries({ queryKey: ['kpi', 'teams-summary'] });
+      qc.invalidateQueries({ queryKey: ['kpi', 'trend'] });
     },
     onError: (e: Error) => notification.error({ title: 'Не удалось утвердить', description: e.message }),
   });
@@ -183,26 +177,17 @@ export default function KpiPage() {
           <Button
             icon={<LeftOutlined />}
             size="small"
-            onClick={() => setPeriodParams(stepPeriod(mode, year, month, -1))}
+            onClick={() => setPeriodParams(stepPeriod(year, month, -1))}
           />
           <span style={{ minWidth: 150, textAlign: 'center', fontWeight: 600 }}>
-            {periodLabel(mode, year, month)}
+            {periodLabel(year, month)}
           </span>
           <Button
             icon={<RightOutlined />}
             size="small"
-            onClick={() => setPeriodParams(stepPeriod(mode, year, month, 1))}
+            onClick={() => setPeriodParams(stepPeriod(year, month, 1))}
           />
         </Space>
-        <Segmented
-          value={mode}
-          onChange={(v) => setPeriodParams({ mode: v as PeriodMode })}
-          options={[
-            { label: 'Месяц', value: 'month' },
-            { label: 'Квартал', value: 'quarter' },
-            { label: 'Год', value: 'year' },
-          ]}
-        />
         <Select
           placeholder="Продуктовое направление"
           allowClear
@@ -213,12 +198,6 @@ export default function KpiPage() {
           options={(directionsQuery.data ?? []).map((d) => ({ value: d, label: d }))}
         />
       </Space>
-
-      {mode !== 'month' && (
-        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-          Отчёт считается помесячно — показаны данные за {MONTH_NAMES_RU[month - 1].toLowerCase()} {year}.
-        </Text>
-      )}
 
       <div
         style={{
@@ -251,6 +230,20 @@ export default function KpiPage() {
         </span>
       </div>
 
+      {teamsSummaryQuery.isError && (
+        // Сводка по командам (итог строки команды, дельта) не загрузилась —
+        // без явного предупреждения руководитель принял бы прочерки за
+        // «данных нет», а не за обрыв связи (см. ревью, ВАЖНО 6).
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 12 }}
+          title="Не удалось загрузить сводку по командам"
+          description={(teamsSummaryQuery.error as Error).message}
+          action={<Button size="small" onClick={() => teamsSummaryQuery.refetch()}>Повторить</Button>}
+        />
+      )}
+
       {approvedTeams.length > 0 && (
         <Alert
           type="success"
@@ -269,6 +262,8 @@ export default function KpiPage() {
         rows={reportQuery.data?.rows ?? []}
         teamsSummaryByTeam={teamsSummaryByTeam}
         loading={reportQuery.isLoading}
+        error={reportQuery.isError ? (reportQuery.error as Error) : null}
+        onRetry={() => reportQuery.refetch()}
         onOpenEmployee={setEmployeeCardRow}
         onOpenBreakdown={(row, metricCode, metricName) => setBreakdownTarget({ row, metricCode, metricName })}
       />
