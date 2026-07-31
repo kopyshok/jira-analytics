@@ -45,12 +45,23 @@ export interface KpiReport {
   approvals: Record<string, KpiTeamApproval>;
 }
 
+export interface KpiTeamSummaryMetric {
+  code: string;
+  name: string;
+  value: number | null;
+  has_data: boolean;
+}
+
 export interface KpiTeamSummaryRow {
-  team: string;
+  team: string | null;
+  member_count: number;
   avg_total: number | null;
   below_target_count: number;
   no_data_metrics_count: number;
   delta: number | null;
+  target_pct: number | null;
+  warn_band_pct: number | null;
+  metrics: KpiTeamSummaryMetric[];
 }
 
 export interface KpiTeamsSummary {
@@ -81,12 +92,13 @@ export const fetchDirections = () => api.get<string[]>('/kpi/directions');
 export const fetchTeamsSummary = (
   year: number,
   month: number,
+  teams?: string,
   direction?: string,
   signal?: AbortSignal,
 ) =>
   api.get<KpiTeamsSummary>(
     '/kpi/teams-summary',
-    { year: String(year), month: String(month), direction },
+    { year: String(year), month: String(month), teams, direction },
     signal,
   );
 

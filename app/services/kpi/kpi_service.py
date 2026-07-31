@@ -472,13 +472,22 @@ def compute_employee_month(
     """
     st = settings or read_kpi_settings(db)
     period_start, period_end = month_bounds(year, month)
+
+    # Команда строки отчёта — та, что действовала на начало отчётного периода
+    # (и совпадает с фильтром, если он задан), а не «сегодняшняя»
+    # ``employee.team``. Иначе сотрудник, сменивший или покинувший команду
+    # позже отчётного месяца, попадал в строки другой команды или вовсе без
+    # команды — состав под строкой команды расходился со сводкой (см. ревью,
+    # ВАЖНО 5).
+    row_team = _team_for_norm(db, employee, teams, period_start, cache) or None
+
     profile = _resolve_profile(db, employee, cache)
     if profile is None:
         return {
             "employee_id": employee.id,
             "employee_name": employee.display_name,
             "account_id": employee.jira_account_id,
-            "team": employee.team,
+            "team": row_team,
             "profile_code": None,
             "target_pct": None,
             "warn_band_pct": None,
@@ -496,14 +505,12 @@ def compute_employee_month(
     # иначе разрыв между отрезками молча превращался в «состоял весь месяц».
     periods = emp_intervals if emp_intervals else [(period_start, period_end)]
 
-    norm_team = _team_for_norm(db, employee, teams, period_start, cache) if teams \
-        else (employee.team or "")
     calendar = cache.calendar if cache is not None else None
 
     parts = []
     metric_payload = []
     for link in sorted(profile.metrics, key=lambda m: m.sort_order):
-        norm = _norm_for(db, norm_team, year, month, cache) \
+        norm = _norm_for(db, row_team or "", year, month, cache) \
             if link.metric.calc_kind == "norm_to_fact" else None
         res = compute_metric(
             db, link.metric, employee.jira_account_id, periods,
@@ -524,7 +531,7 @@ def compute_employee_month(
         "employee_id": employee.id,
         "employee_name": employee.display_name,
         "account_id": employee.jira_account_id,
-        "team": employee.team,
+        "team": row_team,
         "profile_code": profile.code,
         "target_pct": profile.target_pct,
         "warn_band_pct": profile.warn_band_pct,
@@ -693,6 +700,46 @@ def group_rows_by_team(rows: list[dict]) -> dict[str, list[dict]]:
     return by_team
 
 
+def _uniform_or_none(values: list) -> Optional[float]:
+    """Значение, если оно одно и то же у всех, иначе ``None``.
+
+    Используется для цели и жёлтой зоны строки команды: раньше фронт брал их
+    у первого сотрудника — при разных профилях внутри команды заливка ячеек
+    красилась по цели случайного человека (см. ревью, ВАЖНО 5).
+    """
+    present = {v for v in values if v is not None}
+    return present.pop() if len(present) == 1 else None
+
+
+def _team_metric_averages(rows: list[dict]) -> list[dict]:
+    """Средние по метрикам для строки команды — только по людям с данными.
+
+    Раньше среднее по колонке метрики строки команды считал фронт простым
+    средним показанных на экране процентов; здесь тот же принцип, но на
+    сервере — единственный источник чисел, который клиент только рисует
+    (см. ревью, ВАЖНО 5).
+    """
+    by_code: dict[str, dict] = {}
+    order: list[str] = []
+    for row in rows:
+        for m in row["metrics"]:
+            if m["code"] not in by_code:
+                by_code[m["code"]] = {"code": m["code"], "name": m["name"], "values": []}
+                order.append(m["code"])
+            if m["has_data"] and m["value"] is not None:
+                by_code[m["code"]]["values"].append(m["value"])
+    result = []
+    for code in order:
+        entry = by_code[code]
+        values = entry["values"]
+        result.append({
+            "code": code, "name": entry["name"],
+            "value": sum(values) / len(values) if values else None,
+            "has_data": bool(values),
+        })
+    return result
+
+
 def build_teams_summary(
     db: Session, teams: list[str], year: int, month: int, direction: Optional[str] = None,
 ) -> list[dict]:
@@ -703,6 +750,12 @@ def build_teams_summary(
     каждую команду, сотни лишних запросов на десяток команд (см. ревью,
     ВАЖНО 4). Здесь один комбинированный расчёт на все команды сразу (за
     текущий и за прошлый месяц), а деление по командам — уже в памяти.
+
+    Строка отдаёт не только итог, но и всё, что раньше клиент довычислял
+    сам — среднее по каждой метрике, цель, жёлтую зону, число людей (см.
+    ревью, ВАЖНО 5). Ключи сводки — запрошенные команды плюс любая команда,
+    реально встретившаяся в строках, но не входившая в фильтр (в частности
+    пустая — сотрудник без команды), иначе для неё итог всегда был прочерк.
     """
     prev_year, prev_month = previous_month(year, month)
     current = report_with_approvals(db, teams, year, month, direction=direction)
@@ -710,21 +763,30 @@ def build_teams_summary(
     current_by_team = group_rows_by_team(current["rows"])
     prior_by_team = group_rows_by_team(prior["rows"])
 
+    extra_keys = [k for k in (*current_by_team, *prior_by_team) if k not in teams]
+    team_keys = [*teams, *dict.fromkeys(extra_keys)]
+
     rows = []
-    for team in teams:
-        cur_summary = summarize_report(current_by_team.get(team, []))
-        prior_summary = summarize_report(prior_by_team.get(team, []))
+    for key in team_keys:
+        cur_rows = current_by_team.get(key, [])
+        prior_rows = prior_by_team.get(key, [])
+        cur_summary = summarize_report(cur_rows)
+        prior_summary = summarize_report(prior_rows)
         delta = (
             cur_summary["avg_total"] - prior_summary["avg_total"]
             if cur_summary["avg_total"] is not None and prior_summary["avg_total"] is not None
             else None
         )
         rows.append({
-            "team": team,
+            "team": key or None,
+            "member_count": len(cur_rows),
             "avg_total": cur_summary["avg_total"],
             "below_target_count": cur_summary["below_target_count"],
             "no_data_metrics_count": cur_summary["no_data_metrics_count"],
             "delta": delta,
+            "target_pct": _uniform_or_none([r["target_pct"] for r in cur_rows]),
+            "warn_band_pct": _uniform_or_none([r["warn_band_pct"] for r in cur_rows]),
+            "metrics": _team_metric_averages(cur_rows),
         })
     return rows
 

@@ -85,15 +85,15 @@ export default function KpiPage() {
   });
 
   const teamsSummaryQuery = useQuery({
-    queryKey: ['kpi', 'teams-summary', year, month, direction],
-    queryFn: ({ signal }) => fetchTeamsSummary(year, month, direction, signal),
+    queryKey: ['kpi', 'teams-summary', year, month, queryParams.teams, direction],
+    queryFn: ({ signal }) => fetchTeamsSummary(year, month, queryParams.teams, direction, signal),
     staleTime: 30_000,
     retry: 1,
   });
 
   const teamsSummaryByTeam = useMemo(() => {
     const m = new Map<string, KpiTeamSummaryRow>();
-    for (const row of teamsSummaryQuery.data?.rows ?? []) m.set(row.team, row);
+    for (const row of teamsSummaryQuery.data?.rows ?? []) m.set(row.team ?? 'Без команды', row);
     return m;
   }, [teamsSummaryQuery.data]);
 
