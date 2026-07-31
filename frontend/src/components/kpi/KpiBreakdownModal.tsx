@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Modal, Typography, Space, Tag, Empty, Spin, List } from 'antd';
+import { Modal, Typography, Space, Tag, Empty, Spin, List, Alert, Button } from 'antd';
 import { LinkOutlined } from '@ant-design/icons';
 import { useThemeTokens } from '../../aurora/theme/useThemeTokens';
 import {
@@ -96,6 +96,14 @@ export default function KpiBreakdownModal({ target, year, month, direction, team
     >
       {query.isLoading ? (
         <div style={{ display: 'grid', placeItems: 'center', minHeight: 160 }}><Spin /></div>
+      ) : query.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          title="Не удалось загрузить расшифровку"
+          description={(query.error as Error).message}
+          action={<Button size="small" onClick={() => query.refetch()}>Повторить</Button>}
+        />
       ) : (
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Drawer, Progress, Space, Tag, Typography, Empty, Spin } from 'antd';
+import { Drawer, Progress, Space, Tag, Typography, Empty, Spin, Alert, Button } from 'antd';
 import { LockOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import {
   CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -13,6 +13,16 @@ const { Text, Title } = Typography;
 const MONTH_ABBR = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
 type Status = 'good' | 'warn' | 'bad' | 'none';
+
+/** Текст про метрику без данных — по применённой политике, а не всегда
+ * «перераспределён» (политика настраивается в общих правилах, доступных
+ * только администратору — фронт не может считать её всегда одной и той же,
+ * см. ревью, ВАЖНО 9). */
+function emptyPolicyText(policy: string, weightPct: number): string {
+  if (policy === 'full') return 'Нет данных — метрика считается выполненной на 100%';
+  if (policy === 'zero') return 'Нет данных — метрика считается невыполненной, 0%';
+  return `Вес ${weightPct}% перераспределён между остальными метриками`;
+}
 
 function statusOf(value: number | null, target: number | null, warnBand: number | null): Status {
   if (value == null || target == null) return 'none';
@@ -111,6 +121,14 @@ export default function KpiEmployeeCard({
             <div style={{ width: '100%', height: 170, marginTop: 6 }}>
               {trendQuery.isLoading ? (
                 <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><Spin /></div>
+              ) : trendQuery.isError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  title="Не удалось загрузить тренд"
+                  description={(trendQuery.error as Error).message}
+                  action={<Button size="small" onClick={() => trendQuery.refetch()}>Повторить</Button>}
+                />
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={trendData}>
@@ -173,7 +191,7 @@ export default function KpiEmployeeCard({
                       <div style={{ fontSize: 12.5, fontWeight: 600 }}>{m.name}</div>
                       {!m.has_data ? (
                         <Text type="secondary" style={{ fontSize: 10.5 }}>
-                          Вес {(m.weight * 100).toFixed(0)}% перераспределён между остальными метриками
+                          {emptyPolicyText(row.empty_policy, Math.round(m.weight * 100))}
                         </Text>
                       ) : (
                         <div style={{ height: 6, borderRadius: 999, background: t.darkRows, marginTop: 4, position: 'relative' }}>

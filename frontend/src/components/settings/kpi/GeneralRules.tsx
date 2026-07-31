@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { App, Button, Card, Input, InputNumber, Radio, Space, Tag, TimePicker, Typography } from 'antd';
+import { App, Alert, Button, Card, Input, InputNumber, Radio, Space, Tag, TimePicker, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
 import { PlusOutlined } from '@ant-design/icons';
@@ -46,12 +46,32 @@ export default function GeneralRules() {
     mutationFn: (body: KpiGeneralSettings) => saveGeneral(body),
     onSuccess: (data) => {
       qc.setQueryData(['kpi-settings', 'general'], data);
+      // Исключённые статусы, срок внесения часов и политика пустых данных
+      // участвуют в живом расчёте — ведомость должна пересчитаться (см.
+      // ревью, ВАЖНО 7).
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Правила сохранены' });
     },
     onError: (e: Error) => notification.error({ title: 'Не удалось сохранить', description: e.message }),
   });
 
-  if (!form) return null;
+  if (!form) {
+    // Раньше на ошибке запроса блок общих правил просто исчезал (форма
+    // никогда не гидрировалась) — руководитель не видел ни правил, ни
+    // причины, почему их нет (см. ревью, ВАЖНО 6).
+    if (generalQuery.isError) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          title="Не удалось загрузить общие правила"
+          description={(generalQuery.error as Error).message}
+          action={<Button size="small" onClick={() => generalQuery.refetch()}>Повторить</Button>}
+        />
+      );
+    }
+    return null;
+  }
 
   const addStatus = () => {
     const v = statusInput.trim();

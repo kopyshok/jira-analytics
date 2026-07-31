@@ -22,6 +22,10 @@ export interface KpiReportRow {
   warn_band_pct: number | null;
   metrics: KpiMetricValue[];
   total: number | null;
+  /** Применённая политика при отсутствии данных метрики — сервер сам решает,
+   * какая из трёх настроена (админ видит общие правила, остальные роли —
+   * нет), поэтому фронт не может считать её всегда «перераспределить». */
+  empty_policy: 'redistribute' | 'full' | 'zero';
 }
 
 export interface KpiReportSummary {
