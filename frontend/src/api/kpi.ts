@@ -124,6 +124,7 @@ export interface KpiIssueBrief {
 }
 
 export interface KpiWorklogBrief {
+  id: string;
   key: string | null;
   summary: string | null;
   started_at: string | null;
