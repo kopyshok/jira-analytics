@@ -5,7 +5,13 @@ from datetime import date, datetime
 import pytest
 
 from app.models.issue import Issue
-from app.services.kpi.conditions import ConditionError, ConditionSet, build_issue_query
+from app.services.kpi.conditions import (
+    ATTR_COLUMNS,
+    ATTRIBUTE_CHOICES,
+    ConditionError,
+    ConditionSet,
+    build_issue_query,
+)
 
 
 def _make_issue(db, project, **kw):
@@ -156,6 +162,18 @@ class TestConditionValidation:
     def test_unknown_unit_raises(self):
         with pytest.raises(ConditionError, match="единиц"):
             ConditionSet.from_json(json.dumps({"unit": "issue", "conditions": []}))
+
+
+class TestDirectionNotInMetricAttributes:
+    """Направление — фильтр отчёта, а не атрибут условия метрики (спека, раздел 6):
+    иначе руководитель может зашить его в метрику, и переключатель направления
+    на ведомости молча перестанет действовать на неё."""
+
+    def test_direction_not_offered_as_condition_attribute(self):
+        assert "direction" not in {c["key"] for c in ATTRIBUTE_CHOICES}
+
+    def test_direction_column_still_available_for_report_filter(self):
+        assert "direction" in ATTR_COLUMNS
 
 
 class TestNullSafeExclusion:

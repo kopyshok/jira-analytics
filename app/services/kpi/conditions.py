@@ -71,6 +71,12 @@ KNOWN_OPS = {"in", "not_in", "eq", "ne", "all", "is_true"}
 # коде, где предметная специфика (какие атрибуты вообще бывают) зашита явно —
 # сами значения условий («какой проект», «какой статус» и т. п.) остаются
 # данными в справочнике метрик.
+#
+# Продуктового направления здесь нет: по дизайну (спека, раздел 6) оно —
+# фильтр отчёта (см. ``with_direction``), а не часть условия метрики. Если
+# позволить зашить его в саму метрику, переключатель направления на ведомости
+# молча перестанет действовать на такую метрику. Колонка при этом остаётся в
+# ``ATTR_COLUMNS`` — ей пользуется ``with_direction``.
 ATTRIBUTE_CHOICES: list[dict] = [
     {"key": "project_key", "label": "Проект", "value_type": "list"},
     {"key": "issue_type", "label": "Тип задачи", "value_type": "list"},
@@ -79,7 +85,6 @@ ATTRIBUTE_CHOICES: list[dict] = [
     {"key": "resolution", "label": "Резолюция", "value_type": "list"},
     {"key": "environment", "label": "Окружение", "value_type": "list"},
     {"key": "cost_type", "label": "Тип затрат", "value_type": "list"},
-    {"key": "direction", "label": "Продуктовое направление", "value_type": "list"},
     {"key": "category", "label": "Категория", "value_type": "list"},
     {"key": "field_filled", "label": "Поле заполнено", "value_type": "list"},
     {"key": "resolved_on_time", "label": "Резолюция не позже плановой даты", "value_type": "none"},
