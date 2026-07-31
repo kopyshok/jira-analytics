@@ -18,7 +18,7 @@ from app.services.mapping_service import MappingService
 from app.services.production_calendar_service import ProductionCalendarService
 from app.services.sync_lock import SyncLock
 from app.services.sync_pipeline import PipelineOrchestrator, build_pipeline
-from app.services.sync_service import SyncService, ReloadStats, UpdateStats
+from app.services.sync_service import SyncService, ReloadStats, UpdateStats, SyncStats
 from app.repositories.sync_run import SyncRunRepository
 from app.schemas.sync_pipeline import PipelineRequest, TeamRefreshRequest
 
@@ -186,6 +186,11 @@ class ConnectionTestResponse(BaseModel):
 
 class WorklogReloadRequest(BaseModel):
     """Запрос на жёсткую перезагрузку worklog'ов с указанной даты."""
+    since: date
+
+
+class IssuesReloadRequest(BaseModel):
+    """Запрос на перечитывание задач, обновлённых с указанной даты."""
     since: date
 
 
@@ -375,6 +380,99 @@ async def refresh_issues(
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/issues/reload/stream")
+async def reload_issues_stream(
+    req: IssuesReloadRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """SSE-стрим перечитывания задач, обновлённых начиная с указанной даты.
+
+    В отличие от полного синка перечитывает не все задачи, а только те, что
+    менялись в Jira с ``since`` — использует существующий механизм
+    инкрементального синка задач, но с явно заданной датой отсечки вместо
+    отметки последней синхронизации (см. ``SyncService.sync_issues``,
+    параметр ``since_override``). Ничего не удаляет — только upsert.
+
+    Отметка последней синхронизации задач после успешного прогона
+    сдвигается на текущее время, как и при обычном синке — назад она
+    не двигается.
+
+    После перечитывания задач пересчитывает сопоставления категорий по
+    затронутым задачам — так же, как это делает стадия ``mapping`` в
+    обычном pipeline синхронизации. Дата сохраняется в AppSetting
+    ``issues_reload_since_date``.
+
+    События: ``progress`` после каждой порции задач, ``done`` — финальные
+    счётчики, ``error`` — ошибка, ``cancelled`` — клиент отключился.
+    """
+    from app.api.endpoints.settings import _set_setting
+    from app.services.mapping_service import MappingService
+    from app.models import Issue
+
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_progress(stats: SyncStats, current_key: Optional[str]) -> None:
+            await queue.put({
+                "type": "progress",
+                "issues_synced": stats.issues_synced,
+                "issues_created": stats.issues_created,
+                "current_key": current_key,
+            })
+
+        async def run() -> None:
+            try:
+                async with JiraClient.from_db(db) as jira:
+                    service = SyncService(
+                        db, jira,
+                        cancel_check=_disconnect_checker(http_request),
+                    )
+                    await service.sync_issues(
+                        since_override=req.since,
+                        on_progress=on_progress,
+                    )
+                    touched_keys = list(service.stats.touched_issue_keys)
+                    affected = 0
+                    if touched_keys:
+                        ids = [
+                            row[0] for row in
+                            db.query(Issue.id).filter(Issue.key.in_(touched_keys)).all()
+                        ]
+                        if ids:
+                            affected = MappingService(db).recalculate_for_issues(ids)
+                _set_setting(db, "issues_reload_since_date", req.since.isoformat())
+                db.commit()
+                await queue.put({
+                    "type": "done",
+                    "issues_synced": service.stats.issues_synced,
+                    "issues_created": service.stats.issues_created,
+                    "mapping_affected": affected,
+                })
+            except asyncio.CancelledError:
+                await queue.put({"type": "cancelled"})
+                raise
+            except JiraClientError as e:
+                await queue.put({"type": "error", "detail": f"Jira error: {e}"})
+            except Exception as e:
+                await queue.put({"type": "error", "detail": str(e)})
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                if event["type"] in ("done", "error", "cancelled"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await task
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @router.post("/teams", response_model=SyncResponse, deprecated=True)
