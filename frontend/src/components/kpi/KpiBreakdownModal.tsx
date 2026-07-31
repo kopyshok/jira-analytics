@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Modal, Typography, Space, Tag, Empty, Spin, List, Alert, Button } from 'antd';
+import { Modal, Typography, Space, Tag, Empty, Spin, Alert, Button } from 'antd';
 import { LinkOutlined } from '@ant-design/icons';
 import { useThemeTokens } from '../../aurora/theme/useThemeTokens';
 import {
@@ -34,11 +34,28 @@ function itemKey(item: KpiBreakdownItem): string {
   return isWorklogItem(item) ? item.id : item.key;
 }
 
+/** Список задач расшифровки — простая разметка вместо AntD List: в шестой
+ *  версии он объявлен устаревшим и печатает предупреждение в консоль. */
+function ItemList({ items, borderColor }: { items: KpiBreakdownItem[]; borderColor: string }) {
+  return (
+    <div role="list">
+      {items.map((item, i) => (
+        <div
+          key={itemKey(item)}
+          role="listitem"
+          style={{ padding: '8px 4px', borderTop: i === 0 ? 'none' : `1px solid ${borderColor}` }}
+        >
+          <ItemRow item={item} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ItemRow({ item }: { item: KpiBreakdownItem }) {
   const worklog = isWorklogItem(item);
   return (
-    <List.Item style={{ padding: '8px 4px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0 }}>
         {item.key && (
           item.url ? (
             <a href={item.url} target="_blank" rel="noreferrer" className="num" style={{ fontSize: 12, fontWeight: 700, flex: '0 0 auto' }}>
@@ -70,8 +87,7 @@ function ItemRow({ item }: { item: KpiBreakdownItem }) {
             <Tag style={{ margin: 0, flex: '0 0 auto' }}>{item.resolution ?? item.status ?? '—'}</Tag>
           </>
         )}
-      </div>
-    </List.Item>
+    </div>
   );
 }
 
@@ -160,24 +176,14 @@ export default function KpiBreakdownModal({ target, year, month, direction, team
             {(query.data?.numerator.length ?? 0) === 0 ? (
               <Empty description="Нет задач в числителе" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '8px 0' }} />
             ) : (
-              <List
-                size="small"
-                dataSource={query.data?.numerator ?? []}
-                rowKey={itemKey}
-                renderItem={(item) => <ItemRow item={item} />}
-              />
+              <ItemList items={query.data?.numerator ?? []} borderColor={t.border} />
             )}
           </div>
 
           {(query.data?.denominator.length ?? 0) > 0 && (
             <div>
               <Text strong style={{ fontSize: 12.5 }}>С чем сравниваем</Text>
-              <List
-                size="small"
-                dataSource={query.data?.denominator ?? []}
-                rowKey={itemKey}
-                renderItem={(item) => <ItemRow item={item} />}
-              />
+              <ItemList items={query.data?.denominator ?? []} borderColor={t.border} />
             </div>
           )}
         </Space>
