@@ -268,6 +268,11 @@ def worklog_items(
     on_time: list[Worklog] = []
     late: list[Worklog] = []
     for w in rows:
+        # Без даты внесения нельзя знать, вовремя запись или нет — запись не
+        # участвует ни в числителе, ни в знаменателе (иначе метрика лжёт
+        # «100%», не зная о записи ничего, см. дефект 2).
+        if w.jira_created_at is None:
+            continue
         bucket = late if is_late(
             calendar, w.started_at.date(), w.jira_created_at,
             st.worklog_deadline_days, st.worklog_deadline_time,
