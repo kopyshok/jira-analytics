@@ -247,7 +247,9 @@ def approve_month(
     """
     payload = json.dumps(build_approval_payload(db, body.team, body.year, body.month), ensure_ascii=False)
     approved_at = datetime.utcnow()
-    approved_by = current_user.email
+    # Имя — то, что видит руководитель на плашке утверждения; почта — запасной
+    # вариант, если у пользователя почему-то не заполнено имя (см. находка 4).
+    approved_by = current_user.display_name or current_user.email
 
     row = save_approval(db, body.team, body.year, body.month, approved_by, approved_at, payload)
 

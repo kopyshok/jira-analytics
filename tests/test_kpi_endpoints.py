@@ -236,12 +236,14 @@ class TestApproval:
             "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "month": 7}
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["approved_by"]
+        # Находка 4: плашка утверждения должна показывать имя, не почту —
+        # стаб-пользователь в тестах отличается тем и другим.
+        assert resp.json()["approved_by"] == "Test User"
 
         got = client.get("/api/v1/kpi/approval?team=Платежи&year=2026&month=7")
         assert got.status_code == 200
         assert got.json()["approved"] is True
-        assert got.json()["approved_by"]
+        assert got.json()["approved_by"] == "Test User"
 
     def test_approval_not_yet_approved(self, client, team_with_analyst):
         resp = client.get("/api/v1/kpi/approval?team=Платежи&year=2026&month=7")
