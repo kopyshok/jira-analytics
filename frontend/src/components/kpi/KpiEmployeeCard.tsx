@@ -83,7 +83,7 @@ export default function KpiEmployeeCard({
       title={row ? row.employee_name : ''}
       open={!!row}
       onClose={onClose}
-      width={460}
+      size={460}
       destroyOnHidden
     >
       {row && (
