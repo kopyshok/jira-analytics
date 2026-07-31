@@ -145,6 +145,9 @@ def _disconnect_checker(request: Optional[Request]):
 # для консистентного ответа на отмену пользователем.
 CLIENT_CLOSED_REQUEST = 499
 
+# Максимум значений в одном условии IN — ограничение подстановок SQLite.
+_IN_CHUNK = 5000
+
 # Отдельный роутер для браузинга пользователей Jira — монтируется в
 # ``app.api.router`` под префиксом ``/jira`` (чтобы URL был
 # ``/api/v1/jira/users/search`` без ``/sync``).
@@ -437,10 +440,16 @@ async def reload_issues_stream(
                     touched_keys = list(service.stats.touched_issue_keys)
                     affected = 0
                     if touched_keys:
-                        ids = [
-                            row[0] for row in
-                            db.query(Issue.id).filter(Issue.key.in_(touched_keys)).all()
-                        ]
+                        # Порциями: SQLite не принимает больше 32766 подстановок
+                        # в запросе, а перечитывание с начала года приносит
+                        # десятки тысяч ключей.
+                        ids: list[str] = []
+                        for start in range(0, len(touched_keys), _IN_CHUNK):
+                            chunk = touched_keys[start:start + _IN_CHUNK]
+                            ids.extend(
+                                row[0] for row in
+                                db.query(Issue.id).filter(Issue.key.in_(chunk)).all()
+                            )
                         if ids:
                             affected = MappingService(db).recalculate_for_issues(ids)
                 _set_setting(db, "issues_reload_since_date", req.since.isoformat())

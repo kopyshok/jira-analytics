@@ -18,6 +18,11 @@ from app.services.category_resolver import CategoryResolver
 
 logger = logging.getLogger("jira_analytics.mapping")
 
+# Максимум значений в одном условии IN. SQLite не принимает больше 32766
+# подстановок на запрос; берём с запасом, чтобы условие с запасом влезало
+# вместе с остальными параметрами.
+_IN_CHUNK = 5000
+
 
 class MappingStats:
     """Статистика пересчёта мэппинга."""
@@ -233,7 +238,13 @@ class MappingService:
         """
         if not issue_ids:
             return 0
-        issues = self.db.query(Issue).filter(Issue.id.in_(issue_ids)).all()
+        # Порциями: SQLite ограничивает число подстановок в запросе (32766),
+        # а пересчёт после перечитывания задач с начала года приходит
+        # с десятками тысяч идентификаторов.
+        issues = []
+        for start in range(0, len(issue_ids), _IN_CHUNK):
+            chunk = issue_ids[start:start + _IN_CHUNK]
+            issues.extend(self.db.query(Issue).filter(Issue.id.in_(chunk)).all())
         affected = 0
         backlog = BacklogService(self.db)
         for issue in issues:
