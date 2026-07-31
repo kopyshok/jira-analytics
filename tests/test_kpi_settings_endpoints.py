@@ -288,6 +288,19 @@ class TestNorms:
         assert len(listed) == 1
         assert listed[0]["norm_value"] == 65.0
 
+    def test_save_norms_null_value_deletes_row(self, admin_client):
+        """ВАЖНО 10: очистка норматива (null) удаляет строку, а не молча игнорируется."""
+        admin_client.put("/api/v1/kpi-settings/norms", json=[
+            {"team": "Платежи", "year": 2026, "quarter": 3, "norm_value": 70.0},
+        ])
+        resp = admin_client.put("/api/v1/kpi-settings/norms", json=[
+            {"team": "Платежи", "year": 2026, "quarter": 3, "norm_value": None},
+        ])
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == []
+        listed = admin_client.get("/api/v1/kpi-settings/norms?year=2026&quarter=3").json()
+        assert listed == []
+
     def test_save_norms_rejects_quarter_out_of_range(self, admin_client):
         """ВАЖНО 5: квартал норматива не был ограничен диапазоном (принимал отрицательные)."""
         resp = admin_client.put("/api/v1/kpi-settings/norms", json=[

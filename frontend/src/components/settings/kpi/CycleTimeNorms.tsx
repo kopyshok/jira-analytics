@@ -41,9 +41,11 @@ export default function CycleTimeNorms() {
 
   const saveMut = useMutation({
     mutationFn: () => {
+      // Отправляем и очищенные ячейки (`norm_value: null`) — иначе стёртый
+      // норматив не удалялся бы на сервере и возвращался бы после
+      // перезагрузки страницы (см. ревью, ВАЖНО 10).
       const items = Object.entries(grid).flatMap(([team, byQuarter]) => QUARTERS
-        .filter((q) => byQuarter[q] != null)
-        .map((q) => ({ team, year, quarter: q, norm_value: byQuarter[q] as number })));
+        .map((q) => ({ team, year, quarter: q, norm_value: byQuarter[q] ?? null })));
       return saveNorms(items);
     },
     onSuccess: () => {

@@ -129,7 +129,11 @@ class KpiNormIn(BaseModel):
     team: str
     year: int
     quarter: int = Field(ge=1, le=4)
-    norm_value: float
+    # ``None`` — очистить норматив (удалить строку, если она есть). Отсутствие
+    # норматива хранится отсутствием строки (колонка в модели не nullable),
+    # поэтому пустое значение обязано означать удаление, а не просто
+    # пропускаться (см. ревью, ВАЖНО 10).
+    norm_value: Optional[float] = None
 
 
 class KpiNormOut(BaseModel):
@@ -468,7 +472,14 @@ def list_norms(
 
 @router.put("/norms", response_model=List[KpiNormOut])
 def save_norms(body: List[KpiNormIn], db: Session = Depends(get_db)):
-    """Обновить нормативы: существующие пары команда/год/квартал — на месте, недостающие — создать."""
+    """Обновить нормативы: существующие пары команда/год/квартал — на месте, недостающие — создать.
+
+    Пустое значение (``norm_value=None``) удаляет строку норматива, если она
+    была — раньше очищенная ячейка просто не попадала в запрос (фронт
+    отправлял только непустые значения), а вставка-обновление ничего не
+    удаляет: после обновления страницы старое число возвращалось, хотя
+    пользователь видел «сохранено» (см. ревью, ВАЖНО 10).
+    """
     result = []
     for item in body:
         row = (
@@ -476,6 +487,10 @@ def save_norms(body: List[KpiNormIn], db: Session = Depends(get_db)):
             .filter_by(team=item.team, year=item.year, quarter=item.quarter)
             .first()
         )
+        if item.norm_value is None:
+            if row is not None:
+                db.delete(row)
+            continue
         if row is None:
             row = KpiCycleTimeNorm(
                 team=item.team, year=item.year, quarter=item.quarter, norm_value=item.norm_value,
