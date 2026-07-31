@@ -100,6 +100,7 @@ def seed_defaults(db: Session) -> None:
             "period_window": "closed_in",
             "conditions": [
                 {"attr": "issue_type", "op": "in", "value": EPIC_ONLY},
+                {"attr": "subtype", "op": "in", "value": PROJECT_SUBTYPES},
                 {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
                 {"attr": "resolved_on_time", "op": "is_true", "value": None},
             ],
@@ -109,6 +110,7 @@ def seed_defaults(db: Session) -> None:
             "period_window": "closed_in",
             "conditions": [
                 {"attr": "issue_type", "op": "in", "value": EPIC_ONLY},
+                {"attr": "subtype", "op": "in", "value": PROJECT_SUBTYPES},
                 {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
             ],
         }, ensure_ascii=False),

@@ -91,7 +91,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(8):
         _issue(
             db_session, project, f"dl-{i}", f"OS-{1200 + i}",
-            issue_type="Эпик", resolution="Done",
+            issue_type="Эпик", subtype="PROJECT", resolution="Done",
             resolved_at=datetime(2026, 7, 15, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0),
             assignee_account_id=ACCOUNT_ID,
@@ -99,7 +99,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(2):
         _issue(
             db_session, project, f"dl-late-{i}", f"OS-{1250 + i}",
-            issue_type="Эпик", resolution="Done",
+            issue_type="Эпик", subtype="PROJECT", resolution="Done",
             resolved_at=datetime(2026, 7, 16, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0),
             assignee_account_id=ACCOUNT_ID,
@@ -390,14 +390,14 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     for i in range(8):
         db_session.add(Issue(
             jira_issue_id=f"nd-dl-{i}", key=f"OS-{5200 + i}", summary="s",
-            issue_type="Эпик", status="ГОТОВО", status_category="done",
+            issue_type="Эпик", subtype="PROJECT", status="ГОТОВО", status_category="done",
             resolution="Done", resolved_at=datetime(2026, 7, 15, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0), project_id=project.id,
             assignee_account_id=account_id, team=TEAM,
         ))
     db_session.add(Issue(
         jira_issue_id="nd-dl-late", key="OS-5250", summary="s",
-        issue_type="Эпик", status="ГОТОВО", status_category="done",
+        issue_type="Эпик", subtype="PROJECT", status="ГОТОВО", status_category="done",
         resolution="Done", resolved_at=datetime(2026, 7, 16, 10, 0),
         planned_end_date=datetime(2026, 7, 15, 0, 0), project_id=project.id,
         assignee_account_id=account_id, team=TEAM,
@@ -513,7 +513,7 @@ def test_approved_month_frozen_after_weight_change(db_session):
     # Соблюдение сроков: 1 из 1 в срок → 100,0
     db_session.add(Issue(
         jira_issue_id="fz-dl-1", key="OS-6200", summary="s", issue_type="Эпик",
-        status="ГОТОВО", status_category="done", resolution="Done",
+        subtype="PROJECT", status="ГОТОВО", status_category="done", resolution="Done",
         resolved_at=datetime(2026, 7, 15, 10, 0), planned_end_date=datetime(2026, 7, 15, 0, 0),
         project_id=project.id, assignee_account_id=account_id, team=team,
     ))
