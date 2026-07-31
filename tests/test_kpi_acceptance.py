@@ -66,7 +66,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(15):
         issue = _issue(
             db_session, project, f"q-rel-{i}", f"OS-{1000 + i}",
-            resolution="Готово", resolved_at=datetime(2026, 7, 10),
+            resolution="Done", resolved_at=datetime(2026, 7, 10),
             reporter_account_id=ACCOUNT_ID,
         )
         released.append(issue)
@@ -74,7 +74,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     for i in range(3):
         bug = _issue(
             db_session, project, f"q-bug-{i}", f"OS-{1100 + i}",
-            issue_type="Баг", resolution="Готово", environment="PROD",
+            issue_type="Баг", resolution="Done", environment="PROD",
             resolved_at=datetime(2026, 7, 12),
         )
         db_session.commit()
@@ -83,16 +83,24 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     db_session.commit()
 
     # --- Соблюдение сроков: 8 из 10 в срок → 80,0 ---
-    # Явных «в срок» — 8 (ниже); недостающие 2 в знаменателе добирают задачи
-    # Cycle Time и Оценки заказчика (см. дальше) — у обеих issue_type
-    # «ИТ-задача» и resolution «Готово», как того требует и эта метрика, но
-    # без planned_end_date, поэтому «в срок» не засчитываются. Это не натяжка
-    # теста: в реальных данных многомерное пересечение условий метрик — норма.
+    # Метрика оценивает квартальную цель — эпик (уточнение заказчика, раздел
+    # 3.2 спеки); ИТ-задача сюда больше не попадает, поэтому все 10 задач
+    # знаменателя заведены явно типом «Эпик», а не добираются пересечением с
+    # Cycle Time/Оценкой заказчика (у тех — «ИТ-задача», в этот знаменатель
+    # больше не входит).
     for i in range(8):
         _issue(
             db_session, project, f"dl-{i}", f"OS-{1200 + i}",
-            issue_type="ИТ-задача", resolution="Готово",
+            issue_type="Эпик", resolution="Done",
             resolved_at=datetime(2026, 7, 15, 10, 0),
+            planned_end_date=datetime(2026, 7, 15, 0, 0),
+            assignee_account_id=ACCOUNT_ID,
+        )
+    for i in range(2):
+        _issue(
+            db_session, project, f"dl-late-{i}", f"OS-{1250 + i}",
+            issue_type="Эпик", resolution="Done",
+            resolved_at=datetime(2026, 7, 16, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0),
             assignee_account_id=ACCOUNT_ID,
         )
@@ -118,7 +126,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     # --- Cycle Time: норматив 80 при факте 75 → 80/75*100 = 106,7, потолок 100 ---
     _issue(
         db_session, project, "ct-1", "OS-1400",
-        issue_type="ИТ-задача", resolution="Готово", subtype="RFC_STANDARD", cost_type="Change",
+        issue_type="ИТ-задача", resolution="Done", subtype="RFC_STANDARD", cost_type="Change",
         cycle_time_fact=75.0, resolved_at=datetime(2026, 7, 20),
         assignee_account_id=ACCOUNT_ID,
     )
@@ -128,7 +136,7 @@ def test_control_example_matches_manual_calculation_at_86_5_percent(db_session):
     # --- Оценка заказчика: 4 из 5 → 80,0 ---
     _issue(
         db_session, project, "cs-1", "OS-1401",
-        issue_type="ИТ-задача", resolution="Готово", subtype="PROJECT",
+        issue_type="ИТ-задача", resolution="Done", subtype="PROJECT",
         resolved_at=datetime(2026, 7, 22), jira_created_at=datetime(2026, 7, 1),
         assignee_account_id=ACCOUNT_ID,
         rating_speed=4, rating_quality=4, rating_result=4,
@@ -191,7 +199,7 @@ def test_new_metric_added_as_dictionary_row_is_computed_without_code_changes(db_
     for i in range(4):
         db_session.add(Issue(
             jira_issue_id=f"nm-{i}", key=f"OS-{2000 + i}", summary="s", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Готово",
+            status="ГОТОВО", status_category="done", resolution="Done",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id="acc-new-metric", team=TEAM,
         ))
@@ -250,13 +258,13 @@ def test_cancelled_issue_excluded_from_denominator(db_session):
 
     db_session.add(Issue(
         jira_issue_id="cx-1", key="OS-3000", summary="s", issue_type="Задача",
-        status="Отменено", status_category="done", resolution="Готово",
+        status="Отменено", status_category="done", resolution="Done",
         resolved_at=datetime(2026, 7, 10), project_id=project.id,
         reporter_account_id="acc-cancel", team=TEAM,
     ))
     db_session.add(Issue(
         jira_issue_id="cx-2", key="OS-3001", summary="s", issue_type="Задача",
-        status="ГОТОВО", status_category="done", resolution="Готово",
+        status="ГОТОВО", status_category="done", resolution="Done",
         resolved_at=datetime(2026, 7, 12), project_id=project.id,
         reporter_account_id="acc-cancel", team=TEAM,
     ))
@@ -306,13 +314,13 @@ def test_employee_moved_between_teams_mid_month_not_duplicated(db_session):
 
     db_session.add(Issue(
         jira_issue_id="mv-1", key="OS-4000", summary="до переезда", issue_type="Задача",
-        status="ГОТОВО", status_category="done", resolution="Готово",
+        status="ГОТОВО", status_category="done", resolution="Done",
         resolved_at=datetime(2026, 7, 5), project_id=project.id,
         reporter_account_id=account_id, team=team_before,
     ))
     db_session.add(Issue(
         jira_issue_id="mv-2", key="OS-4001", summary="после переезда", issue_type="Задача",
-        status="ГОТОВО", status_category="done", resolution="Готово",
+        status="ГОТОВО", status_category="done", resolution="Done",
         resolved_at=datetime(2026, 7, 25), project_id=project.id,
         reporter_account_id=account_id, team=team_after,
     ))
@@ -356,7 +364,7 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     for i in range(15):
         issue = Issue(
             jira_issue_id=f"nd-rel-{i}", key=f"OS-{5000 + i}", summary="s", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Готово",
+            status="ГОТОВО", status_category="done", resolution="Done",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id=account_id, team=TEAM,
         )
@@ -366,7 +374,7 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     for i in range(3):
         bug = Issue(
             jira_issue_id=f"nd-bug-{i}", key=f"OS-{5100 + i}", summary="s", issue_type="Баг",
-            status="ГОТОВО", status_category="done", resolution="Готово", environment="PROD",
+            status="ГОТОВО", status_category="done", resolution="Done", environment="PROD",
             resolved_at=datetime(2026, 7, 12), project_id=project.id, team=TEAM,
         )
         db_session.add(bug)
@@ -375,19 +383,25 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
                                  link_type="Relates"))
     db_session.commit()
 
-    # Соблюдение сроков: 8 в срок. Знаменатель этой метрики («Эпик»/«ИТ-задача»,
-    # резолюция «Готово», исполнитель) пересекается с задачей Cycle Time ниже
-    # (у неё тот же тип и резолюция, но без плановой даты) — знаменатель
-    # получается 9, а не 8: то самое многомерное пересечение условий метрик,
-    # что и в контрольном примере ТЗ (см. комментарий там же), не натяжка теста.
+    # Соблюдение сроков: 8 в срок из 9. Метрика оценивает квартальную
+    # цель — эпик (раздел 3.2 спеки), поэтому знаменатель заведён явно
+    # девятью задачами типа «Эпик», а не добирается пересечением с Cycle
+    # Time (у той — «ИТ-задача», в этот знаменатель больше не входит).
     for i in range(8):
         db_session.add(Issue(
             jira_issue_id=f"nd-dl-{i}", key=f"OS-{5200 + i}", summary="s",
-            issue_type="ИТ-задача", status="ГОТОВО", status_category="done",
-            resolution="Готово", resolved_at=datetime(2026, 7, 15, 10, 0),
+            issue_type="Эпик", status="ГОТОВО", status_category="done",
+            resolution="Done", resolved_at=datetime(2026, 7, 15, 10, 0),
             planned_end_date=datetime(2026, 7, 15, 0, 0), project_id=project.id,
             assignee_account_id=account_id, team=TEAM,
         ))
+    db_session.add(Issue(
+        jira_issue_id="nd-dl-late", key="OS-5250", summary="s",
+        issue_type="Эпик", status="ГОТОВО", status_category="done",
+        resolution="Done", resolved_at=datetime(2026, 7, 16, 10, 0),
+        planned_end_date=datetime(2026, 7, 15, 0, 0), project_id=project.id,
+        assignee_account_id=account_id, team=TEAM,
+    ))
     db_session.commit()
 
     # Соблюдение регламентов: 9 из 10 с заполненными полями → 90,0
@@ -406,7 +420,7 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     # Cycle Time: норматив 80 при факте 75 → 106,7, потолок 100
     db_session.add(Issue(
         jira_issue_id="nd-ct-1", key="OS-5400", summary="s", issue_type="ИТ-задача",
-        status="ГОТОВО", status_category="done", resolution="Готово",
+        status="ГОТОВО", status_category="done", resolution="Done",
         subtype="RFC_STANDARD", cost_type="Change", cycle_time_fact=75.0,
         resolved_at=datetime(2026, 7, 20), project_id=project.id,
         assignee_account_id=account_id, team=TEAM,
@@ -477,7 +491,7 @@ def test_approved_month_frozen_after_weight_change(db_session):
     for i in range(15):
         issue = Issue(
             jira_issue_id=f"fz-rel-{i}", key=f"OS-{6000 + i}", summary="s", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Готово",
+            status="ГОТОВО", status_category="done", resolution="Done",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id=account_id, team=team,
         )
@@ -487,7 +501,7 @@ def test_approved_month_frozen_after_weight_change(db_session):
     for i in range(3):
         bug = Issue(
             jira_issue_id=f"fz-bug-{i}", key=f"OS-{6100 + i}", summary="s", issue_type="Баг",
-            status="ГОТОВО", status_category="done", resolution="Готово", environment="PROD",
+            status="ГОТОВО", status_category="done", resolution="Done", environment="PROD",
             resolved_at=datetime(2026, 7, 12), project_id=project.id, team=team,
         )
         db_session.add(bug)
@@ -498,8 +512,8 @@ def test_approved_month_frozen_after_weight_change(db_session):
 
     # Соблюдение сроков: 1 из 1 в срок → 100,0
     db_session.add(Issue(
-        jira_issue_id="fz-dl-1", key="OS-6200", summary="s", issue_type="ИТ-задача",
-        status="ГОТОВО", status_category="done", resolution="Готово",
+        jira_issue_id="fz-dl-1", key="OS-6200", summary="s", issue_type="Эпик",
+        status="ГОТОВО", status_category="done", resolution="Done",
         resolved_at=datetime(2026, 7, 15, 10, 0), planned_end_date=datetime(2026, 7, 15, 0, 0),
         project_id=project.id, assignee_account_id=account_id, team=team,
     ))

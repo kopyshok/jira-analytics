@@ -13,7 +13,13 @@ from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric
 
 PROJECT_1C = "OS"  # «1С» из ТЗ — проект с ключом OS (см. раздел 4 спеки)
 EPIC_OR_IT_TASK = ["Эпик", "ИТ-задача"]
+# «Соблюдение сроков» — только эпики (квартальная цель = эпик, уточнение
+# заказчика поверх ТЗ, см. раздел 3.2 спеки).
+EPIC_ONLY = ["Эпик"]
 PROJECT_SUBTYPES = ["RFC_STANDARD", "PROJECT"]
+# «Готово» из ТЗ — значение резолюции этого арендатора Jira называется Done
+# (см. раздел 3.8 спеки).
+RESOLUTION_DONE = "Done"
 
 
 def _ensure_metric(db: Session, metric: KpiMetric) -> KpiMetric:
@@ -69,7 +75,7 @@ def seed_defaults(db: Session) -> None:
             "conditions": [
                 {"attr": "project_key", "op": "in", "value": [PROJECT_1C]},
                 {"attr": "issue_type", "op": "in", "value": ["Баг"]},
-                {"attr": "resolution", "op": "in", "value": ["Готово"]},
+                {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
                 {"attr": "environment", "op": "eq", "value": "PROD"},
             ],
         }, ensure_ascii=False),
@@ -79,7 +85,7 @@ def seed_defaults(db: Session) -> None:
             "conditions": [
                 {"attr": "project_key", "op": "in", "value": [PROJECT_1C]},
                 {"attr": "issue_type", "op": "in", "value": ["Задача", "Баг"]},
-                {"attr": "resolution", "op": "in", "value": ["Готово"]},
+                {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
             ],
         }, ensure_ascii=False),
     ))
@@ -93,8 +99,8 @@ def seed_defaults(db: Session) -> None:
             "unit": "issues", "person_field": "assignee",
             "period_window": "closed_in",
             "conditions": [
-                {"attr": "issue_type", "op": "in", "value": EPIC_OR_IT_TASK},
-                {"attr": "resolution", "op": "in", "value": ["Готово"]},
+                {"attr": "issue_type", "op": "in", "value": EPIC_ONLY},
+                {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
                 {"attr": "resolved_on_time", "op": "is_true", "value": None},
             ],
         }, ensure_ascii=False),
@@ -102,8 +108,8 @@ def seed_defaults(db: Session) -> None:
             "unit": "issues", "person_field": "assignee",
             "period_window": "closed_in",
             "conditions": [
-                {"attr": "issue_type", "op": "in", "value": EPIC_OR_IT_TASK},
-                {"attr": "resolution", "op": "in", "value": ["Готово"]},
+                {"attr": "issue_type", "op": "in", "value": EPIC_ONLY},
+                {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
             ],
         }, ensure_ascii=False),
     ))
@@ -147,7 +153,7 @@ def seed_defaults(db: Session) -> None:
             "conditions": [
                 {"attr": "issue_type", "op": "in", "value": EPIC_OR_IT_TASK},
                 {"attr": "subtype", "op": "in", "value": PROJECT_SUBTYPES},
-                {"attr": "resolution", "op": "in", "value": ["Готово"]},
+                {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
                 {"attr": "cost_type", "op": "eq", "value": "Change"},
             ],
         }, ensure_ascii=False),
@@ -166,7 +172,7 @@ def seed_defaults(db: Session) -> None:
             "conditions": [
                 {"attr": "issue_type", "op": "in", "value": EPIC_OR_IT_TASK},
                 {"attr": "subtype", "op": "in", "value": PROJECT_SUBTYPES},
-                {"attr": "resolution", "op": "in", "value": ["Готово"]},
+                {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
             ],
         }, ensure_ascii=False),
     ))

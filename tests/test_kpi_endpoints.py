@@ -148,7 +148,7 @@ class TestBreakdown:
 
         released = Issue(
             jira_issue_id="r1", key="OS-100", summary="Задача", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Готово",
+            status="ГОТОВО", status_category="done", resolution="Done",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id="acc-1", team="Платежи",
         )
@@ -302,7 +302,7 @@ class TestApprovalFreeze:
         db_session.add(AppSetting(key="kpi_empty_policy", value="zero"))
         db_session.add(Issue(
             jira_issue_id="fr1", key="OS-900", summary="s", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Готово",
+            status="ГОТОВО", status_category="done", resolution="Done",
             resolved_at=datetime(2026, 7, 10), project_id=project.id,
             reporter_account_id="acc-1", team="Платежи",
         ))
@@ -352,14 +352,14 @@ class TestBreakdownConsistency:
         # Задача, закрытая до вступления в команду — не должна попасть в знаменатель.
         db_session.add(Issue(
             jira_issue_id="bd1", key="OS-900", summary="до", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Готово",
+            status="ГОТОВО", status_category="done", resolution="Done",
             resolved_at=datetime(2026, 7, 5), project_id=project.id,
             reporter_account_id="acc-mid", team="Платежи",
         ))
         # Задача после вступления — попадает.
         db_session.add(Issue(
             jira_issue_id="bd2", key="OS-901", summary="после", issue_type="Задача",
-            status="ГОТОВО", status_category="done", resolution="Готово",
+            status="ГОТОВО", status_category="done", resolution="Done",
             resolved_at=datetime(2026, 7, 25), project_id=project.id,
             reporter_account_id="acc-mid", team="Платежи",
         ))
