@@ -278,6 +278,7 @@ export default function KpiPage() {
         year={year}
         month={month}
         direction={direction}
+        teams={queryParams.teams}
         onClose={() => setEmployeeCardRow(null)}
         onOpenBreakdown={(metricCode, metricName) => {
           if (employeeCardRow) setBreakdownTarget({ row: employeeCardRow, metricCode, metricName });
@@ -289,6 +290,7 @@ export default function KpiPage() {
         year={year}
         month={month}
         direction={direction}
+        teams={queryParams.teams}
         onClose={() => setBreakdownTarget(null)}
       />
     </div>

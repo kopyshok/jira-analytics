@@ -19,6 +19,10 @@ export interface KpiBreakdownModalProps {
   year: number;
   month: number;
   direction?: string;
+  /** Команды, с которыми запрошен отчёт (глобальный фильтр) — расшифровка
+   * использует тот же отбор, что и ведомость, иначе дробь под метрикой может
+   * не сойтись с числами отчёта (см. ревью, BLOCKER 3). */
+  teams?: string;
   onClose: () => void;
 }
 
@@ -63,17 +67,17 @@ function ItemRow({ item }: { item: KpiBreakdownItem }) {
   );
 }
 
-export default function KpiBreakdownModal({ target, year, month, direction, onClose }: KpiBreakdownModalProps) {
+export default function KpiBreakdownModal({ target, year, month, direction, teams, onClose }: KpiBreakdownModalProps) {
   const t = useThemeTokens();
 
   const query = useQuery({
     queryKey: [
-      'kpi', 'breakdown', target?.row.account_id, target?.metricCode, year, month, target?.row.team, direction,
+      'kpi', 'breakdown', target?.row.account_id, target?.metricCode, year, month, teams, direction,
     ],
     queryFn: ({ signal }) => fetchBreakdown(
       {
         account_id: target!.row.account_id, metric_code: target!.metricCode, year, month,
-        teams: target?.row.team ?? undefined, direction,
+        teams, direction,
       },
       signal,
     ),

@@ -27,21 +27,25 @@ export interface KpiEmployeeCardProps {
   year: number;
   month: number;
   direction?: string;
+  /** Команды, с которыми запрошен отчёт (глобальный фильтр) — тренд считается
+   * тем же отбором, что и ведомость, иначе последняя точка графика может не
+   * совпасть с числом в кольце (см. ревью, BLOCKER 3). */
+  teams?: string;
   onClose: () => void;
   onOpenBreakdown: (metricCode: string, metricName: string) => void;
 }
 
 export default function KpiEmployeeCard({
-  row, year, month, direction, onClose, onOpenBreakdown,
+  row, year, month, direction, teams, onClose, onOpenBreakdown,
 }: KpiEmployeeCardProps) {
   const t = useThemeTokens();
 
   const trendQuery = useQuery({
-    queryKey: ['kpi', 'trend', row?.account_id, year, month, row?.team, direction],
+    queryKey: ['kpi', 'trend', row?.account_id, year, month, teams, direction],
     queryFn: ({ signal }) => fetchTrend(
       {
         account_id: row!.account_id, year, month, months: 6,
-        teams: row?.team ?? undefined, direction,
+        teams, direction,
       },
       signal,
     ),
