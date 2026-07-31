@@ -3,12 +3,14 @@ import { useSearchParams } from 'react-router';
 import { Alert, App, Button, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { CheckOutlined, DownloadOutlined, LeftOutlined, LockOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import kpiHelp from '../../../docs/help/kpi.md?raw';
 import PageHeader from '../components/shared/PageHeader';
 import KpiLedger from '../components/kpi/KpiLedger';
 import KpiEmployeeCard from '../components/kpi/KpiEmployeeCard';
 import KpiBreakdownModal, { type KpiBreakdownTarget } from '../components/kpi/KpiBreakdownModal';
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { useRegisterHelp } from '../contexts/HelpContext';
 import {
   approveMonth, downloadKpiExport, fetchApproval, fetchDirections, fetchKpiReport, fetchTeamsSummary,
   type KpiReportRow, type KpiTeamSummaryRow,
@@ -36,6 +38,7 @@ export default function KpiPage() {
   const t = useThemeTokens();
   const { selectedTeams, queryParams } = useGlobalTeamFilter();
   const [searchParams, setSearchParams] = useSearchParams();
+  useRegisterHelp('KPI аналитиков', kpiHelp);
 
   const now = new Date();
   const year = Number(searchParams.get('kpiYear')) || now.getFullYear();
