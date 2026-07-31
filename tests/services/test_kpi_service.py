@@ -349,3 +349,150 @@ def test_worklog_timeliness_via_compute_metric_respects_status_team_and_metric_f
     # invert=False даёт долю просроченных, а не «долю вовремя».
     assert result.denominator == 2
     assert round(result.value, 1) == 50.0
+
+
+def _worklog_timeliness_metric():
+    from app.models.kpi import KpiMetric
+
+    return KpiMetric(
+        code="worklog_timeliness", name="Своевременность трудозатрат", calc_kind="ratio",
+        invert=True, cap_at_100=True,
+        numerator_json=_json.dumps({
+            "unit": "worklogs", "person_field": "worklog_author", "period_window": "closed_in",
+            "conditions": [{"attr": "project_key", "op": "in", "value": ["OS"]}],
+        }),
+    )
+
+
+def test_worklog_timeliness_all_missing_created_at_gives_no_data(db_session, sample_project):
+    """Дефект 2: без единой даты внесения метрика обязана честно сказать «нет данных»,
+    а не молча посчитать все записи «внесёнными вовремя» (было 100% из ничего)."""
+    from app.models.employee import Employee
+    from app.models.issue import Issue
+    from app.models.worklog import Worklog
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    db_session.add(emp)
+    issue = Issue(
+        jira_issue_id="w10", key="OS-410", summary="s", issue_type="Задача",
+        status="ГОТОВО", project_id=sample_project.id, team="Платежи",
+    )
+    db_session.add(issue)
+    db_session.commit()
+
+    db_session.add_all([
+        Worklog(jira_worklog_id="wl-10", issue_id=issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 13, 10, 0), jira_created_at=None,
+                hours=4.0, time_spent_seconds=14400),
+        Worklog(jira_worklog_id="wl-11", issue_id=issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 14, 10, 0), jira_created_at=None,
+                hours=2.0, time_spent_seconds=7200),
+    ])
+    db_session.commit()
+
+    metric = _worklog_timeliness_metric()
+    db_session.add(metric)
+    db_session.commit()
+
+    st = KpiSettings(excluded_statuses=[], worklog_deadline_days=1,
+                     worklog_deadline_time="12:00", empty_policy="redistribute")
+    result = compute_metric(
+        db_session, metric, account_id="acc-1",
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+        teams=["Платежи"], settings=st,
+    )
+    assert result.has_data is False
+    assert result.value is None
+
+
+def test_worklog_timeliness_ignores_records_without_created_at(db_session, sample_project):
+    """Часть записей без даты внесения не портит расчёт по остальным — учитываются только они."""
+    from app.models.employee import Employee
+    from app.models.issue import Issue
+    from app.models.worklog import Worklog
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    db_session.add(emp)
+    issue = Issue(
+        jira_issue_id="w11", key="OS-411", summary="s", issue_type="Задача",
+        status="ГОТОВО", project_id=sample_project.id, team="Платежи",
+    )
+    db_session.add(issue)
+    db_session.commit()
+
+    db_session.add_all([
+        # Без даты — не считается ни в числителе, ни в знаменателе.
+        Worklog(jira_worklog_id="wl-20", issue_id=issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 13, 10, 0), jira_created_at=None,
+                hours=4.0, time_spent_seconds=14400),
+        # С датой, вовремя (до 12:00 следующего рабочего дня).
+        Worklog(jira_worklog_id="wl-21", issue_id=issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 13, 10, 0),
+                jira_created_at=datetime(2026, 7, 14, 11, 0),
+                hours=4.0, time_spent_seconds=14400),
+    ])
+    db_session.commit()
+
+    metric = _worklog_timeliness_metric()
+    db_session.add(metric)
+    db_session.commit()
+
+    st = KpiSettings(excluded_statuses=[], worklog_deadline_days=1,
+                     worklog_deadline_time="12:00", empty_policy="redistribute")
+    result = compute_metric(
+        db_session, metric, account_id="acc-1",
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+        teams=["Платежи"], settings=st,
+    )
+    assert result.has_data is True
+    assert result.denominator == 1
+    assert round(result.value, 1) == 100.0
+
+
+def test_worklog_timeliness_boundary_on_time_vs_one_minute_late(db_session, sample_project):
+    """Граница дедлайна не сломана исправлением: ровно в срок — вовремя, минутой позже — просрочено."""
+    from app.models.employee import Employee
+    from app.models.issue import Issue
+    from app.models.worklog import Worklog
+
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    db_session.add(emp)
+    on_time_issue = Issue(
+        jira_issue_id="w12", key="OS-412", summary="s", issue_type="Задача",
+        status="ГОТОВО", project_id=sample_project.id, team="Платежи",
+    )
+    late_issue = Issue(
+        jira_issue_id="w13", key="OS-413", summary="s", issue_type="Задача",
+        status="ГОТОВО", project_id=sample_project.id, team="Платежи",
+    )
+    db_session.add_all([on_time_issue, late_issue])
+    db_session.commit()
+
+    db_session.add_all([
+        # Дедлайн для работы 13.07 (пн) при days=1 — 12:00 14.07 (вт).
+        Worklog(jira_worklog_id="wl-30", issue_id=on_time_issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 13, 10, 0),
+                jira_created_at=datetime(2026, 7, 14, 12, 0),
+                hours=4.0, time_spent_seconds=14400),
+        Worklog(jira_worklog_id="wl-31", issue_id=late_issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 13, 10, 0),
+                jira_created_at=datetime(2026, 7, 14, 12, 1),
+                hours=4.0, time_spent_seconds=14400),
+    ])
+    db_session.commit()
+
+    metric = _worklog_timeliness_metric()
+    db_session.add(metric)
+    db_session.commit()
+
+    st = KpiSettings(excluded_statuses=[], worklog_deadline_days=1,
+                     worklog_deadline_time="12:00", empty_policy="redistribute")
+    result = compute_metric(
+        db_session, metric, account_id="acc-1",
+        periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+        teams=["Платежи"], settings=st,
+    )
+    assert result.has_data is True
+    assert result.denominator == 2
+    # invert=True: доля вовремя — 1 из 2 просрочена → 50%.
+    assert round(result.value, 1) == 50.0
