@@ -111,6 +111,16 @@ kbd,
   font-family: var(--font-mono) !important;
 }
 
+/* Numbers (.num) — tabular mono for digit alignment, in every theme.
+   Aurora has its own scoped rule in glass.css that wins there by
+   specificity; this is the base for the default "Тёмно-синий" theme and any
+   other theme without its own override. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
 /* ---------- Issue-tree depth tints (CategoryConfigTab) ---------- */
 .tree-row-depth-0 > td { background-color: transparent !important; }
 .tree-row-depth-1 > td { background-color: rgba(0, 201, 200, 0.04) !important; }
