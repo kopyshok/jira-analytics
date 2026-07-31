@@ -31,12 +31,17 @@ def export_report_xlsx(report: dict) -> bytes:
     for row in rows:
         # Метрика без данных пишется словами, а не пустой ячейкой — иначе в
         # книге её не отличить от честного нуля (см. ревью, мелочи).
+        #
+        # Значения округляются до целых процентов так же, как их показывает
+        # интерфейс (``Math.round``) — иначе в книге попадает сырое число вида
+        # 59.99999999999999 там, где на экране аккуратные 60% (см. находка 5).
         by_metric = {m["name"]: m for m in row.get("metrics", [])}
         line: list = [row.get("team") or "", row["employee_name"]]
         for name in metric_names:
             m = by_metric.get(name)
-            line.append(m["value"] if m and m["has_data"] else ("нет данных" if m else None))
-        line.append(row.get("total"))
+            line.append(round(m["value"]) if m and m["has_data"] else ("нет данных" if m else None))
+        total = row.get("total")
+        line.append(round(total) if total is not None else None)
         ws.append(line)
 
     buf = BytesIO()
