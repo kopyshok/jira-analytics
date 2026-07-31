@@ -167,6 +167,53 @@ class TestBreakdown:
         item = next(t for t in body["denominator"] if t["key"] == "OS-100")
         assert item["url"] == "https://itgri.atlassian.net/browse/OS-100"
 
+    def test_breakdown_worklog_items_have_distinct_ids_for_same_task(
+        self, client, db_session, team_with_analyst,
+    ):
+        """Находка 3: у одной задачи бывает несколько списаний трудозатрат —
+        расшифровка «Своевременности трудозатрат» должна ключевать записи по
+        идентификатору списания, а не по задаче, иначе список даёт
+        повторяющиеся ключи."""
+        from datetime import datetime
+
+        from app.models.worklog import Worklog
+
+        project = team_with_analyst["project"]
+        emp = team_with_analyst["employee"]
+
+        wl_issue = Issue(
+            jira_issue_id="wl-host", key="OS-1500", summary="Задача", issue_type="Задача",
+            status="ГОТОВО", status_category="done", project_id=project.id, team="Платежи",
+        )
+        db_session.add(wl_issue)
+        db_session.commit()
+        db_session.add_all([
+            Worklog(
+                jira_worklog_id="wl-a", issue_id=wl_issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 7, 10, 0),
+                jira_created_at=datetime(2026, 7, 7, 18, 0),
+                hours=1.0, time_spent_seconds=3600,
+            ),
+            Worklog(
+                jira_worklog_id="wl-b", issue_id=wl_issue.id, employee_id=emp.id,
+                started_at=datetime(2026, 7, 8, 10, 0),
+                jira_created_at=datetime(2026, 7, 8, 18, 0),
+                hours=2.0, time_spent_seconds=7200,
+            ),
+        ])
+        db_session.commit()
+
+        resp = client.get(
+            "/api/v1/kpi/breakdown"
+            "?account_id=acc-1&metric_code=worklog_timeliness&year=2026&month=7&teams=Платежи"
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert len(body["denominator"]) == 2
+        ids = [item["id"] for item in body["denominator"]]
+        assert len(set(ids)) == 2
+        assert all(item["key"] == "OS-1500" for item in body["denominator"])
+
 
 class TestTrend:
     def test_trend_returns_requested_number_of_points(self, client, team_with_analyst):

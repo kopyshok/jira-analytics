@@ -93,6 +93,7 @@ def _issue_brief(issue: Issue, base_url: str, metric: Optional[KpiMetric] = None
 def _worklog_brief(w: Worklog, base_url: str, late: bool) -> dict:
     issue = w.issue
     return {
+        "id": w.id,
         "key": issue.key if issue else None,
         "summary": issue.summary if issue else None,
         "started_at": w.started_at.isoformat() if w.started_at else None,

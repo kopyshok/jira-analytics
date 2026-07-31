@@ -27,6 +27,13 @@ export interface KpiBreakdownModalProps {
   onClose: () => void;
 }
 
+// У одной задачи может быть несколько списаний трудозатрат — ключевать список
+// по идентификатору записи о трудозатратах, а не по задаче, иначе React
+// получает повторяющиеся ключи (см. ревью, находка 3).
+function itemKey(item: KpiBreakdownItem): string {
+  return isWorklogItem(item) ? item.id : item.key;
+}
+
 function ItemRow({ item }: { item: KpiBreakdownItem }) {
   const worklog = isWorklogItem(item);
   return (
@@ -156,6 +163,7 @@ export default function KpiBreakdownModal({ target, year, month, direction, team
               <List
                 size="small"
                 dataSource={query.data?.numerator ?? []}
+                rowKey={itemKey}
                 renderItem={(item) => <ItemRow item={item} />}
               />
             )}
@@ -167,6 +175,7 @@ export default function KpiBreakdownModal({ target, year, month, direction, team
               <List
                 size="small"
                 dataSource={query.data?.denominator ?? []}
+                rowKey={itemKey}
                 renderItem={(item) => <ItemRow item={item} />}
               />
             </div>
