@@ -3,8 +3,10 @@
 Запуск:  py -3.10 scripts/make_demo_db.py
 
 Делает файл `data/demo_anonymized.db`, живую базу не трогает. Сотрудники,
-команды, проекты и тексты задач заменяются на синтетические; секреты, история
+проекты и тексты задач заменяются на синтетические; секреты, история
 синхронизаций, обратная связь и AI-кэши удаляются целиком.
+
+Названия команд остаются настоящими — по ним ищут во время показа.
 
 ponytail: один проход UPDATE/DELETE по копии вместо генератора фейковых данных —
 структура и цифры остаются настоящими, читаемый текст пропадает.
@@ -12,7 +14,6 @@ ponytail: один проход UPDATE/DELETE по копии вместо ге�
 
 from __future__ import annotations
 
-import json
 import secrets
 import sqlite3
 import string
@@ -49,23 +50,6 @@ def label(n: int) -> str:
         n, rem = divmod(n - 1, 26)
         out = string.ascii_uppercase[rem] + out
     return out
-
-
-def remap_json(raw: str, mapping: dict[str, str]):
-    """Заменить названия команд внутри JSON-значения (строки, ключи, вложенность).
-
-    Подстроковая замена тут не годится: одно название может входить в другое.
-    """
-    def walk(node):
-        if isinstance(node, str):
-            return mapping.get(node, node)
-        if isinstance(node, list):
-            return [walk(x) for x in node]
-        if isinstance(node, dict):
-            return {mapping.get(k, k): walk(v) for k, v in node.items()}
-        return node
-
-    return json.dumps(walk(json.loads(raw)), ensure_ascii=False)
 
 
 def copy_db() -> None:
@@ -146,49 +130,8 @@ def anonymize(db: sqlite3.Connection, demo_password: str) -> None:
     for (wid,) in cur.execute("SELECT id FROM work_desks").fetchall():
         cur.execute("UPDATE work_desks SET token=? WHERE id=?", (secrets.token_urlsafe(16), wid))
 
-    # --- команды ----------------------------------------------------------
-    team_cols = [
-        ("employees", "team"), ("employee_teams", "team"), ("issues", "team"),
-        ("backlog_items", "team"), ("resource_plans", "team"),
-        ("planning_scenarios", "team"), ("involvement_defaults", "team"),
-        ("scheduled_blocks", "team"), ("kpi_cycle_time_norms", "team"),
-        ("kpi_approvals", "team"), ("users", "default_team"),
-    ]
-    names: set[str] = set()
-    for table, col in team_cols:
-        for (v,) in cur.execute(f"SELECT DISTINCT {col} FROM {table} WHERE {col} IS NOT NULL"):
-            if v and v.strip():          # пустое название сломало бы замену
-                names.add(v)
-    cur.execute("CREATE TEMP TABLE team_map(old TEXT PRIMARY KEY, new TEXT)")
-    for i, old in enumerate(sorted(names)):
-        cur.execute("INSERT INTO team_map VALUES (?,?)", (old, f"Команда {label(i)}"))
-    for table, col in team_cols:
-        cur.execute(
-            f"UPDATE {table} SET {col}=(SELECT new FROM team_map WHERE old={col}) "
-            f"WHERE {col} IN (SELECT old FROM team_map)"
-        )
-    # списки команд в JSON: задачи, сохранённые фильтры пользователей и интерфейса
-    tmap = dict(cur.execute("SELECT old, new FROM team_map").fetchall())
-    json_cols = [
-        ("issues", "participating_teams", "id"),
-        ("users", "selected_teams", "id"),
-        ("app_settings", "value", "key"),
-    ]
-    for table, col, key in json_cols:
-        where = "AND key LIKE '%team%'" if table == "app_settings" else ""
-        rows = cur.execute(
-            f"SELECT {key}, {col} FROM {table} "
-            f"WHERE {col} IS NOT NULL AND {col} NOT IN ('','[]','{{}}') {where}"
-        ).fetchall()
-        for pk, raw in rows:
-            try:
-                new = remap_json(raw, tmap)
-            except (ValueError, TypeError):
-                # не JSON: оставляем, только если реальных названий там нет
-                if not any(t in raw for t in tmap):
-                    continue
-                new = None
-            cur.execute(f"UPDATE {table} SET {col}=? WHERE {key}=?", (new, pk))
+    # Названия команд сознательно остаются настоящими — по решению владельца
+    # сервиса: в демо по ним ищут, а синтетические буквы делают показ неудобным.
 
     # --- проекты и ключи задач -------------------------------------------
     projects = cur.execute("SELECT id, key FROM projects ORDER BY key").fetchall()
