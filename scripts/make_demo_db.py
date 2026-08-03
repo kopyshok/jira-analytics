@@ -137,6 +137,8 @@ def anonymize(db: sqlite3.Connection, demo_password: str) -> None:
             "UPDATE users SET email=?, display_name=?, password_hash=? WHERE id=?",
             (f"demo{i}@example.com", f"Пользователь {i}", pw_hash, uid),
         )
+    # сохранённые фильтры прошлых владельцев прячут данные в демо
+    cur.execute("UPDATE users SET selected_teams='[]', default_team=NULL")
     cur.execute("UPDATE release_notes SET created_by=NULL")
     cur.execute("UPDATE themes SET created_by=NULL")
 
