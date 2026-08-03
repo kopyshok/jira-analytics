@@ -239,17 +239,77 @@ def _apply_condition(clauses: list, cond: Condition) -> None:
 
 def _person_clause(cs: ConditionSet, account_id: str):
     """Как задача связана с оцениваемым человеком."""
+    return person_clause(cs, [account_id])
+
+
+def person_clause(cs: ConditionSet, account_ids: list[str]):
+    """Как задача связана с кем-то из перечисленных людей.
+
+    Список нужен предпросмотру метрики: воронка отбора считается сразу по
+    всей команде, а не по одному человеку (см. ``preview.py``). Расчёт
+    отчёта передаёт список из одного элемента.
+    """
     if cs.person_field == "assignee":
-        return Issue.assignee_account_id == account_id
+        return Issue.assignee_account_id.in_(account_ids)
     if cs.person_field == "linked_issue_author":
         linked = aliased(Issue)
         sub = (
             select(IssueLink.source_issue_id)
             .join(linked, linked.id == IssueLink.target_issue_id)
-            .where(linked.reporter_account_id == account_id)
+            .where(linked.reporter_account_id.in_(account_ids))
         )
         return Issue.id.in_(sub)
-    return Issue.reporter_account_id == account_id
+    return Issue.reporter_account_id.in_(account_ids)
+
+
+def condition_clauses(cond: Condition) -> list:
+    """Предикаты одного условия — по отдельности, для пошаговой воронки отбора.
+
+    ``build_issue_query`` склеивает все условия сразу; предпросмотру нужно
+    добавлять их по одному и считать остаток после каждого шага.
+    """
+    clauses: list = []
+    _apply_condition(clauses, cond)
+    return clauses
+
+
+_ATTR_LABELS = {c["key"]: c["label"] for c in ATTRIBUTE_CHOICES}
+_OP_LABELS = {
+    "in": "из списка", "not_in": "не из списка", "eq": "равно", "ne": "не равно",
+    "all": "все", "is_true": "да",
+}
+_PERSON_LABELS = {
+    "author": "автор задачи",
+    "assignee": "исполнитель задачи",
+    "linked_issue_author": "автор связанной задачи",
+    "worklog_author": "автор записи о часах",
+}
+_PERIOD_LABELS = {
+    "closed_in": "задача закрыта в периоде",
+    "created_and_closed_in": "задача создана и закрыта в периоде",
+}
+
+
+def describe_condition(cond: Condition) -> str:
+    """Условие человеческими словами — подпись шага воронки отбора."""
+    label = _ATTR_LABELS.get(cond.attr, cond.attr)
+    if cond.attr == "field_filled":
+        names = cond.value if isinstance(cond.value, list) else [cond.value]
+        return f"Заполнены поля: {', '.join(str(n) for n in names)}"
+    if cond.op in {"all", "is_true"} or cond.value is None:
+        return label
+    values = cond.value if isinstance(cond.value, list) else [cond.value]
+    return f"{label} {_OP_LABELS.get(cond.op, cond.op)}: {', '.join(str(v) for v in values)}"
+
+
+def describe_person(person_field: str) -> str:
+    """Признак «кто считается» человеческими словами."""
+    return _PERSON_LABELS.get(person_field, person_field)
+
+
+def describe_period(period_window: str) -> str:
+    """Окно периода человеческими словами."""
+    return _PERIOD_LABELS.get(period_window, period_window)
 
 
 def _one_period_clause(cs: ConditionSet, period_start: date, period_end: date):
@@ -277,6 +337,11 @@ def _period_clause(cs: ConditionSet, periods: list[tuple[date, date]]):
     (см. ревью Фазы 3, мелочь про интервалы).
     """
     return or_(*[_one_period_clause(cs, start, end) for start, end in periods])
+
+
+def period_clause(cs: ConditionSet, periods: list[tuple[date, date]]):
+    """Окно периода как отдельный предикат — нужен воронке отбора предпросмотра."""
+    return _period_clause(cs, periods)
 
 
 def issue_attribute_clauses(

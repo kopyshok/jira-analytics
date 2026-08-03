@@ -9,7 +9,11 @@ import json
 
 from sqlalchemy.orm import Session
 
-from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric
+from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole
+
+# Роли, которые оценивает профиль «Аналитик» первой версии: аналитик и
+# руководитель проектов (коды из реестра ролей `roles`).
+DEFAULT_PROFILE_ROLES = ["analyst", "RP"]
 
 PROJECT_1C = "OS"  # «1С» из ТЗ — проект с ключом OS (см. раздел 4 спеки)
 EPIC_OR_IT_TASK = ["Эпик", "ИТ-задача"]
@@ -40,6 +44,19 @@ def _ensure_profile(db: Session, profile: KpiProfile) -> KpiProfile:
     db.add(profile)
     db.flush()
     return profile
+
+
+def _ensure_profile_role(db: Session, profile: KpiProfile, role_code: str) -> None:
+    """Привязать роль к профилю, если она ещё ни за кем не закреплена.
+
+    Роль уникальна глобально — если руководитель уже отдал её другому
+    профилю, сидер не переписывает его выбор.
+    """
+    existing = db.query(KpiProfileRole).filter_by(role_code=role_code).first()
+    if existing is not None:
+        return
+    db.add(KpiProfileRole(profile_id=profile.id, role_code=role_code))
+    db.flush()
 
 
 def _ensure_profile_metric(db: Session, profile: KpiProfile, metric: KpiMetric,
@@ -195,13 +212,15 @@ def seed_defaults(db: Session) -> None:
     ))
 
     profile = _ensure_profile(db, KpiProfile(
-        code="analyst", name="Аналитик", role_code="analyst",
+        code="analyst", name="Аналитик",
         target_pct=80.0, warn_band_pct=10.0, is_enabled=True,
-        # Спека допускает оценку руководителей проектов профилем «Аналитик»,
-        # пока для них не заведён свой — явный запасной профиль по
-        # умолчанию, а не первый попавшийся по случайному порядку выборки.
-        is_default=True,
     ))
+    # Спека допускает оценку руководителей проектов профилем «Аналитик», пока
+    # для них не заведён свой. Раньше это делал признак «профиль по
+    # умолчанию», подхватывавший заодно и все остальные роли (программистов,
+    # тестировщиков) — теперь роли перечислены явно.
+    for role_code in DEFAULT_PROFILE_ROLES:
+        _ensure_profile_role(db, profile, role_code)
 
     weighted_metrics = [
         (quality, 0.2, 10), (deadlines, 0.2, 20), (regulations, 0.2, 30),

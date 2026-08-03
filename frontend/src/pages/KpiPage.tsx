@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Alert, App, Button, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Select, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
 import { CheckOutlined, DownloadOutlined, LeftOutlined, LockOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import kpiHelp from '../../../docs/help/kpi.md?raw';
 import PageHeader from '../components/shared/PageHeader';
 import KpiLedger, { KpiStatusLegend } from '../components/kpi/KpiLedger';
-import KpiEmployeeCard from '../components/kpi/KpiEmployeeCard';
-import KpiBreakdownModal, { type KpiBreakdownTarget } from '../components/kpi/KpiBreakdownModal';
+import KpiEmployeeTab from '../components/kpi/KpiEmployeeTab';
+import KpiBreakdownDock, { type KpiBreakdownTarget } from '../components/kpi/KpiBreakdownDock';
+import KpiSummaryTiles from '../components/kpi/KpiSummaryTiles';
+import KpiTeamMetricStrip from '../components/kpi/KpiTeamMetricStrip';
+import KpiDistribution from '../components/kpi/KpiDistribution';
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -62,8 +65,22 @@ export default function KpiPage() {
     setSearchParams(p, { replace: true });
   };
 
-  const [employeeCardRow, setEmployeeCardRow] = useState<KpiReportRow | null>(null);
+  // Сотрудники открываются вкладками рядом с ведомостью: двух человек можно
+  // держать рядом при сравнении, чего боковое окно не позволяло.
+  const [openEmployees, setOpenEmployees] = useState<KpiReportRow[]>([]);
+  const [activeTab, setActiveTab] = useState('ledger');
   const [breakdownTarget, setBreakdownTarget] = useState<KpiBreakdownTarget | null>(null);
+
+  const openEmployee = (row: KpiReportRow) => {
+    setOpenEmployees((prev) => (
+      prev.some((e) => e.employee_id === row.employee_id) ? prev : [...prev, row]
+    ));
+    setActiveTab(`emp:${row.employee_id}`);
+  };
+  const closeEmployee = (employeeId: string) => {
+    setOpenEmployees((prev) => prev.filter((e) => e.employee_id !== employeeId));
+    setActiveTab('ledger');
+  };
 
   const reportQuery = useQuery({
     queryKey: ['kpi', 'report', year, month, queryParams.teams, direction],
@@ -73,6 +90,26 @@ export default function KpiPage() {
     staleTime: 30_000,
     retry: 1,
   });
+
+  // Прошлый месяц — только ради дельты на человека в ведомости. Сводка по
+  // командам считает свою дельту на сервере, но на людей её там нет.
+  const prevPeriod = stepPeriod(year, month, -1);
+  const prevReportQuery = useQuery({
+    queryKey: ['kpi', 'report', prevPeriod.year, prevPeriod.month, queryParams.teams, direction],
+    queryFn: ({ signal }) => fetchKpiReport(
+      { year: prevPeriod.year, month: prevPeriod.month, teams: queryParams.teams, direction }, signal,
+    ),
+    staleTime: 30_000,
+    retry: 1,
+  });
+
+  const prevTotals = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const row of prevReportQuery.data?.rows ?? []) {
+      if (row.total != null) m.set(row.employee_id, row.total);
+    }
+    return m;
+  }, [prevReportQuery.data]);
 
   const teamsSummaryQuery = useQuery({
     queryKey: ['kpi', 'teams-summary', year, month, queryParams.teams, direction],
@@ -126,8 +163,8 @@ export default function KpiPage() {
     }
   };
 
+  const rows = reportQuery.data?.rows ?? [];
   const summary = reportQuery.data?.summary;
-  const peopleCount = reportQuery.data?.rows.length ?? 0;
 
   // Команды с утверждённым месяцем — числа в ведомости заморожены снимком,
   // а не пересчитаны вживую (BLOCKER 1); показываем это явно, а не только
@@ -135,6 +172,136 @@ export default function KpiPage() {
   const approvedTeams = Object.entries(reportQuery.data?.approvals ?? {})
     .filter(([, a]) => a.approved)
     .map(([team]) => team);
+
+  // Норматив Cycle Time — самая частая причина пустой метрики у всей команды
+  // сразу, поэтому она называется в предупреждении прямо.
+  const missingNorms = (teamsSummaryQuery.data?.rows ?? [])
+    .filter((r) => r.team && r.member_count > 0 && r.cycle_time_norm == null)
+    .map((r) => r.team as string);
+
+  // Ранг человека внутри его команды — тот же расчёт, что и в ведомости.
+  const rankOf = (row: KpiReportRow) => {
+    const peers = rows
+      .filter((r) => (r.team ?? null) === (row.team ?? null) && r.total != null)
+      .sort((a, b) => (b.total ?? 0) - (a.total ?? 0));
+    const place = peers.findIndex((r) => r.employee_id === row.employee_id) + 1;
+    return place > 0 ? { place, of: peers.length } : undefined;
+  };
+
+  const ledgerTab = (
+    <>
+      <KpiSummaryTiles
+        summary={summary}
+        peopleCount={rows.length}
+        skippedNoProfile={reportQuery.data?.skipped_no_profile ?? 0}
+      />
+
+      <KpiTeamMetricStrip rows={rows} prevRows={prevReportQuery.data?.rows ?? []} />
+
+      {(summary?.no_data_by_metric.length ?? 0) > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 14 }}
+          title={`Данных не хватает для ${summary?.no_data_metrics_count} клеток из ${rows.length * (rows[0]?.metrics.length ?? 0)}.`}
+          description={(
+            <span style={{ fontSize: 12.5 }}>
+              {summary?.no_data_by_metric
+                .map((m) => `${m.name} — у ${m.count} чел.`)
+                .join(' · ')}
+              {missingNorms.length > 0 && (
+                <> · норматив Cycle Time не задан: {missingNorms.join(', ')}</>
+              )}
+            </span>
+          )}
+        />
+      )}
+
+      {teamsSummaryQuery.isError && (
+        // Сводка по командам (итог строки команды, дельта) не загрузилась —
+        // без явного предупреждения руководитель принял бы прочерки за
+        // «данных нет», а не за обрыв связи (см. ревью, ВАЖНО 6).
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 12 }}
+          title="Не удалось загрузить сводку по командам"
+          description={(teamsSummaryQuery.error as Error).message}
+          action={<Button size="small" onClick={() => teamsSummaryQuery.refetch()}>Повторить</Button>}
+        />
+      )}
+
+      {approvedTeams.length > 0 && (
+        <Alert
+          type="success"
+          showIcon
+          icon={<LockOutlined />}
+          style={{ marginBottom: 12 }}
+          title={
+            approvedTeams.length === 1
+              ? `Месяц утверждён по команде «${approvedTeams[0]}» — числа заморожены снимком, правки весов и нормативов на них не влияют.`
+              : `Месяц утверждён по командам: ${approvedTeams.join(', ')} — их числа заморожены снимком.`
+          }
+        />
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(260px, 340px)', gap: 14, marginBottom: 14 }}>
+        <Card size="small" title="Ведомость" styles={{ body: { padding: 0 } }}>
+          <div style={{ padding: '10px 12px 0' }}>
+            <KpiStatusLegend />
+          </div>
+          <KpiLedger
+            rows={rows}
+            teamsSummaryByTeam={teamsSummaryByTeam}
+            loading={reportQuery.isLoading}
+            error={reportQuery.isError ? (reportQuery.error as Error) : null}
+            onRetry={() => reportQuery.refetch()}
+            onOpenEmployee={openEmployee}
+            onOpenBreakdown={(row, metricCode, metricName) => setBreakdownTarget({ row, metricCode, metricName })}
+            selectedCell={breakdownTarget
+              ? { employeeId: breakdownTarget.row.employee_id, metricCode: breakdownTarget.metricCode }
+              : null}
+            prevTotals={prevTotals}
+          />
+        </Card>
+
+        <KpiDistribution rows={rows} />
+      </div>
+
+      <KpiBreakdownDock
+        target={breakdownTarget}
+        year={year}
+        month={month}
+        direction={direction}
+        teams={queryParams.teams}
+        onClose={() => setBreakdownTarget(null)}
+      />
+    </>
+  );
+
+  const tabItems = [
+    { key: 'ledger', label: 'Ведомость', children: ledgerTab },
+    ...openEmployees.map((row) => ({
+      key: `emp:${row.employee_id}`,
+      label: row.employee_name,
+      closable: true,
+      children: (
+        <KpiEmployeeTab
+          row={rows.find((r) => r.employee_id === row.employee_id) ?? row}
+          year={year}
+          month={month}
+          direction={direction}
+          teams={queryParams.teams}
+          teamSummary={teamsSummaryByTeam.get(row.team ?? 'Без команды')}
+          rank={rankOf(row)}
+          onOpenBreakdown={(metricCode, metricName) => {
+            setBreakdownTarget({ row, metricCode, metricName });
+            setActiveTab('ledger');
+          }}
+        />
+      ),
+    })),
+  ];
 
   return (
     <div>
@@ -179,6 +346,7 @@ export default function KpiPage() {
           <Button
             icon={<LeftOutlined />}
             size="small"
+            aria-label="Предыдущий месяц"
             onClick={() => setPeriodParams(stepPeriod(year, month, -1))}
           />
           <span style={{ minWidth: 150, textAlign: 'center', fontWeight: 600 }}>
@@ -187,6 +355,7 @@ export default function KpiPage() {
           <Button
             icon={<RightOutlined />}
             size="small"
+            aria-label="Следующий месяц"
             onClick={() => setPeriodParams(stepPeriod(year, month, 1))}
           />
         </Space>
@@ -199,100 +368,21 @@ export default function KpiPage() {
           onChange={(v) => applyDirection(v)}
           options={(directionsQuery.data ?? []).map((d) => ({ value: d, label: d }))}
         />
+        {reportQuery.isFetching && <Text type="secondary" style={{ fontSize: 12 }}>обновляется…</Text>}
       </Space>
 
-      <div
-        style={{
-          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 18,
-          padding: '12px 18px', marginBottom: 14, borderRadius: 14,
-          background: t.darkAccent, border: `1px solid ${t.border}`, fontSize: 12.5,
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        type={openEmployees.length ? 'editable-card' : 'line'}
+        hideAdd
+        onEdit={(key, action) => {
+          if (action === 'remove') closeEmployee(String(key).replace('emp:', ''));
         }}
-      >
-        <span>
-          <Text type="secondary" style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 600 }}>
-            Средний КЭ
-          </Text>{' '}
-          <b className="num" style={{ fontSize: 13.5 }}>
-            {summary?.avg_total != null ? `${Math.round(summary.avg_total)}%` : '—'}
-          </b>
-        </span>
-        <span>
-          <Text type="secondary" style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 600 }}>
-            Ниже цели
-          </Text>{' '}
-          <b className="num" style={{ fontSize: 13.5 }}>
-            {summary ? `${summary.below_target_count} из ${peopleCount} человек` : '—'}
-          </b>
-        </span>
-        <span>
-          <Text type="secondary" style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 600 }}>
-            Метрик без данных
-          </Text>{' '}
-          <b className="num" style={{ fontSize: 13.5 }}>{summary?.no_data_metrics_count ?? '—'}</b>
-        </span>
-      </div>
-
-      {teamsSummaryQuery.isError && (
-        // Сводка по командам (итог строки команды, дельта) не загрузилась —
-        // без явного предупреждения руководитель принял бы прочерки за
-        // «данных нет», а не за обрыв связи (см. ревью, ВАЖНО 6).
-        <Alert
-          type="error"
-          showIcon
-          style={{ marginBottom: 12 }}
-          title="Не удалось загрузить сводку по командам"
-          description={(teamsSummaryQuery.error as Error).message}
-          action={<Button size="small" onClick={() => teamsSummaryQuery.refetch()}>Повторить</Button>}
-        />
-      )}
-
-      {approvedTeams.length > 0 && (
-        <Alert
-          type="success"
-          showIcon
-          icon={<LockOutlined />}
-          style={{ marginBottom: 12 }}
-          title={
-            approvedTeams.length === 1
-              ? `Месяц утверждён по команде «${approvedTeams[0]}» — числа заморожены снимком, правки весов и нормативов на них не влияют.`
-              : `Месяц утверждён по командам: ${approvedTeams.join(', ')} — их числа заморожены снимком.`
-          }
-        />
-      )}
-
-      <div style={{ marginBottom: 8 }}>
-        <KpiStatusLegend />
-      </div>
-
-      <KpiLedger
-        rows={reportQuery.data?.rows ?? []}
-        teamsSummaryByTeam={teamsSummaryByTeam}
-        loading={reportQuery.isLoading}
-        error={reportQuery.isError ? (reportQuery.error as Error) : null}
-        onRetry={() => reportQuery.refetch()}
-        onOpenEmployee={setEmployeeCardRow}
-        onOpenBreakdown={(row, metricCode, metricName) => setBreakdownTarget({ row, metricCode, metricName })}
-      />
-
-      <KpiEmployeeCard
-        row={employeeCardRow}
-        year={year}
-        month={month}
-        direction={direction}
-        teams={queryParams.teams}
-        onClose={() => setEmployeeCardRow(null)}
-        onOpenBreakdown={(metricCode, metricName) => {
-          if (employeeCardRow) setBreakdownTarget({ row: employeeCardRow, metricCode, metricName });
-        }}
-      />
-
-      <KpiBreakdownModal
-        target={breakdownTarget}
-        year={year}
-        month={month}
-        direction={direction}
-        teams={queryParams.teams}
-        onClose={() => setBreakdownTarget(null)}
+        items={tabItems}
+        // Цвет фона вкладок повторяет карточки страницы — иначе вкладка
+        // сотрудника выглядит как чужой блок поверх ведомости.
+        style={{ background: 'transparent', color: t.textPrimary }}
       />
     </div>
   );

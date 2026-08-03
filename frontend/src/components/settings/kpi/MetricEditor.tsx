@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import MetricPreview from './MetricPreview';
 import { useThemeTokens } from '../../../aurora/theme/useThemeTokens';
 import {
   createMetric, deleteMetric, fetchAttributes, fetchMetrics, updateMetric,
@@ -390,6 +391,8 @@ export default function MetricEditor() {
             >
               Сохранить метрику
             </Button>
+
+            <MetricPreview form={form} />
           </>
         )}
       </div>
@@ -414,8 +417,8 @@ export default function MetricEditor() {
             {formulaText(form)}
           </div>
           <Text type="secondary" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-            Числовой предпросмотр по реальным задачам недоступен до сохранения — точные цифры
-            смотрите в разделе «Ведомость», в расшифровке метрики за выбранный месяц.
+            Числа по реальным задачам — в блоке «Предпросмотр на реальных данных» под формой:
+            он считает то, что сейчас в форме, не сохраняя метрику.
           </Text>
         </aside>
       )}

@@ -1,82 +1,77 @@
-import { Typography } from 'antd';
+import { useState } from 'react';
+import { Tabs, Typography } from 'antd';
 import ProfileEditor from './ProfileEditor';
 import MetricEditor from './MetricEditor';
 import CycleTimeNorms from './CycleTimeNorms';
 import GeneralRules from './GeneralRules';
 
-const { Title, Paragraph } = Typography;
+const { Paragraph } = Typography;
 
-const SECTIONS = [
-  { id: 'kpi-profiles', label: 'Профили оценки' },
-  { id: 'kpi-constructor', label: 'Конструктор метрики' },
-  { id: 'kpi-cycletime', label: 'Нормативы Cycle Time' },
-  { id: 'kpi-rules', label: 'Общие правила' },
+/** Подпись раздела над формой — вместо заголовков, которые раньше шли подряд одной лентой. */
+function SectionNote({ children }: { children: React.ReactNode }) {
+  return (
+    <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 14 }}>
+      {children}
+    </Paragraph>
+  );
+}
+
+const ITEMS = [
+  {
+    key: 'profiles',
+    label: 'Профили оценки',
+    children: (
+      <>
+        <SectionNote>
+          Профиль оценивает перечисленные роли сотрудников. Сумма весов метрик обязана
+          равняться 100%. Сотрудники, чья роль не привязана ни к одному профилю, в
+          ведомость не попадают — следите за таблицей покрытия внизу.
+        </SectionNote>
+        <ProfileEditor />
+      </>
+    ),
+  },
+  {
+    key: 'constructor',
+    label: 'Конструктор метрики',
+    children: (
+      <>
+        <SectionNote>
+          Все параметры метрики — на одной форме. Предпросмотр считает то, что сейчас в
+          форме, не сохраняя её. Список полей Jira и их сопоставление настраиваются
+          отдельно — «Настройки → Подключение → Поля Jira».
+        </SectionNote>
+        <MetricEditor />
+      </>
+    ),
+  },
+  {
+    key: 'cycletime',
+    label: 'Нормативы Cycle Time',
+    children: (
+      <>
+        <SectionNote>Ожидаемое время выполнения задачи по командам и кварталам, дней.</SectionNote>
+        <CycleTimeNorms />
+      </>
+    ),
+  },
+  {
+    key: 'rules',
+    label: 'Общие правила',
+    children: (
+      <>
+        <SectionNote>Применяются ко всем метрикам раздела KPI.</SectionNote>
+        <GeneralRules />
+      </>
+    ),
+  },
 ];
 
 export default function KpiSettingsTab() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
-      <nav
-        aria-label="Быстрый переход по разделам KPI"
-        style={{
-          flex: 'none', width: 200, position: 'sticky', top: 16,
-          display: 'flex', flexDirection: 'column', gap: 2,
-        }}
-      >
-        {SECTIONS.map((s) => (
-          <a
-            key={s.id}
-            href={`#${s.id}`}
-            // Прокрутка к блоку без записи в адресный хеш: страница настроек
-            // держит активный раздел в хеше и слушает его изменение — обычный
-            // href="#..." увёл бы с настроек KPI обратно на «Подключение к
-            // Jira» при первом же клике (см. ревью, BLOCKER 2).
-            onClick={(e) => {
-              e.preventDefault();
-              document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }}
-            style={{ fontSize: 12.5, fontWeight: 600, padding: '8px 10px', borderRadius: 8 }}
-          >
-            {s.label}
-          </a>
-        ))}
-      </nav>
+  // Раньше здесь была колонка якорей и все четыре справочника одной прокруткой:
+  // колонка съедала ~200 px ширины рядом с левым меню настроек, а форма
+  // конструктора в остатке не помещалась.
+  const [active, setActive] = useState('profiles');
 
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <section id="kpi-profiles" style={{ scrollMarginTop: 16 }}>
-          <Title level={4} style={{ marginBottom: 2 }}>Профили оценки</Title>
-          <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-            Профиль привязан к роли сотрудника. Сумма весов метрик обязана равняться 100%.
-          </Paragraph>
-          <ProfileEditor />
-        </section>
-
-        <section id="kpi-constructor" style={{ scrollMarginTop: 16 }}>
-          <Title level={4} style={{ marginBottom: 2 }}>Конструктор метрики</Title>
-          <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-            Все параметры метрики — на одной форме, предпросмотр формулы закреплён справа.
-            Список полей Jira и их сопоставление настраиваются отдельно —
-            «Настройки → Подключение → Поля Jira».
-          </Paragraph>
-          <MetricEditor />
-        </section>
-
-        <section id="kpi-cycletime" style={{ scrollMarginTop: 16 }}>
-          <Title level={4} style={{ marginBottom: 2 }}>Нормативы Cycle Time</Title>
-          <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-            Ожидаемое время выполнения задачи по командам и кварталам, дней.
-          </Paragraph>
-          <CycleTimeNorms />
-        </section>
-
-        <section id="kpi-rules" style={{ scrollMarginTop: 16 }}>
-          <Title level={4} style={{ marginBottom: 2 }}>Общие правила</Title>
-          <Paragraph type="secondary" style={{ fontSize: 12.5, marginBottom: 12 }}>
-            Применяются ко всем метрикам раздела KPI.
-          </Paragraph>
-          <GeneralRules />
-        </section>
-      </div>
-    </div>
-  );
+  return <Tabs activeKey={active} onChange={setActive} items={ITEMS} />;
 }

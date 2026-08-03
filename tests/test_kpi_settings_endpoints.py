@@ -88,7 +88,7 @@ class TestMetricsCrud:
     def test_delete_metric_in_use_rejected(self, admin_client):
         metric = admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload()).json()
         admin_client.post("/api/v1/kpi-settings/profiles", json={
-            "code": "analyst", "name": "Аналитик", "role_code": "analyst", "target_pct": 80,
+            "code": "analyst", "name": "Аналитик", "role_codes": ["analyst"], "target_pct": 80,
             "metrics": [{"metric_code": "quality", "weight": 1.0}],
         })
         resp = admin_client.delete(f"/api/v1/kpi-settings/metrics/{metric['id']}")
@@ -140,7 +140,7 @@ class TestProfilesCrud:
         # 8 — «сделать честным»).
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
         resp = admin_client.post("/api/v1/kpi-settings/profiles", json={
-            "code": "test", "name": "Тест", "role_code": "analyst", "target_pct": 80,
+            "code": "test", "name": "Тест", "role_codes": ["analyst"], "target_pct": 80,
             "metrics": [{"metric_code": "quality", "weight": 0.5}],
         })
         assert resp.status_code == 422
@@ -150,7 +150,7 @@ class TestProfilesCrud:
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("deadlines"))
         resp = admin_client.post("/api/v1/kpi-settings/profiles", json={
-            "code": "analyst", "name": "Аналитик", "role_code": "analyst", "target_pct": 80,
+            "code": "analyst", "name": "Аналитик", "role_codes": ["analyst"], "target_pct": 80,
             "metrics": [
                 {"metric_code": "quality", "weight": 0.6},
                 {"metric_code": "deadlines", "weight": 0.4},
@@ -193,31 +193,61 @@ class TestProfilesCrud:
         assert resp.status_code == 422, resp.text
         assert "0 до 1" in resp.json()["detail"]
 
-    def test_profile_is_default_exclusive(self, admin_client):
-        """ВАЖНО 6: признак «по умолчанию» доступен через API и ровно один."""
+    def test_profile_accepts_several_roles(self, admin_client):
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
-        first = admin_client.post("/api/v1/kpi-settings/profiles", json={
-            "code": "first", "name": "Первый", "target_pct": 80, "is_default": True,
-            "metrics": [{"metric_code": "quality", "weight": 1.0}],
-        }).json()
-        assert first["is_default"] is True
+        created = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "analyst", "name": "Аналитик", "role_codes": ["analyst", "RP"],
+            "target_pct": 80, "metrics": [{"metric_code": "quality", "weight": 1.0}],
+        })
+        assert created.status_code == 201, created.text
+        assert created.json()["role_codes"] == ["RP", "analyst"]
 
-        second = admin_client.post("/api/v1/kpi-settings/profiles", json={
-            "code": "second", "name": "Второй", "target_pct": 80, "is_default": True,
+    def test_role_cannot_belong_to_two_profiles(self, admin_client):
+        """Роль у двух профилей делала бы выбор профиля недетерминированным."""
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
+        admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "first", "name": "Первый", "role_codes": ["analyst"], "target_pct": 80,
             "metrics": [{"metric_code": "quality", "weight": 1.0}],
-        }).json()
-        assert second["is_default"] is True
+        })
+        resp = admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "second", "name": "Второй", "role_codes": ["analyst"], "target_pct": 80,
+            "metrics": [{"metric_code": "quality", "weight": 1.0}],
+        })
+        assert resp.status_code == 409, resp.text
+        assert "другому профилю" in resp.json()["detail"]
 
-        listed = {p["code"]: p for p in admin_client.get("/api/v1/kpi-settings/profiles").json()}
-        assert listed["first"]["is_default"] is False
-        assert listed["second"]["is_default"] is True
+    def test_coverage_lists_roles_without_profile(self, admin_client, db_session):
+        """Таблица покрытия — единственный способ увидеть выпавших из оценки."""
+        from app.models import Employee
+
+        admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
+        admin_client.post("/api/v1/kpi-settings/profiles", json={
+            "code": "analyst", "name": "Аналитик", "role_codes": ["analyst"], "target_pct": 80,
+            "metrics": [{"metric_code": "quality", "weight": 1.0}],
+        })
+        db_session.add_all([
+            Employee(jira_account_id="e1", display_name="Аналитик", role="analyst",
+                     is_active=True),
+            Employee(jira_account_id="e2", display_name="Разработчик", role="dev",
+                     is_active=True),
+            Employee(jira_account_id="e3", display_name="Без роли", is_active=True),
+        ])
+        db_session.commit()
+
+        data = admin_client.get("/api/v1/kpi-settings/profiles/coverage").json()
+        by_role = {r["role_code"]: r for r in data["rows"]}
+        assert by_role["analyst"]["profile_code"] == "analyst"
+        assert by_role["dev"]["profile_code"] is None
+        assert by_role[None]["role_label"] == "Роль не заполнена"
+        assert data["evaluated_count"] == 1
+        assert data["total_count"] == 3
 
     def test_delete_profile_assigned_to_role_rejected(self, admin_client, db_session):
         from app.models import Employee
 
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
         created = admin_client.post("/api/v1/kpi-settings/profiles", json={
-            "code": "analyst", "name": "Аналитик", "role_code": "analyst", "target_pct": 80,
+            "code": "analyst", "name": "Аналитик", "role_codes": ["analyst"], "target_pct": 80,
             "metrics": [{"metric_code": "quality", "weight": 1.0}],
         }).json()
         db_session.add(Employee(jira_account_id="e1", display_name="Сотрудник", role="analyst"))
@@ -225,18 +255,17 @@ class TestProfilesCrud:
 
         resp = admin_client.delete(f"/api/v1/kpi-settings/profiles/{created['id']}")
         assert resp.status_code == 409
-        assert "роли" in resp.json()["detail"]
+        assert "ролям" in resp.json()["detail"]
 
-    def test_delete_default_profile_rejected(self, admin_client):
+    def test_delete_profile_without_employees_allowed(self, admin_client):
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
         created = admin_client.post("/api/v1/kpi-settings/profiles", json={
-            "code": "fallback", "name": "Запасной", "target_pct": 80, "is_default": True,
+            "code": "spare", "name": "Запасной", "role_codes": ["qa"], "target_pct": 80,
             "metrics": [{"metric_code": "quality", "weight": 1.0}],
         }).json()
 
         resp = admin_client.delete(f"/api/v1/kpi-settings/profiles/{created['id']}")
-        assert resp.status_code == 409
-        assert "умолчанию" in resp.json()["detail"]
+        assert resp.status_code == 200, resp.text
 
     def test_update_profile_replaces_metrics(self, admin_client):
         admin_client.post("/api/v1/kpi-settings/metrics", json=_metric_payload("quality"))
@@ -344,6 +373,59 @@ class TestGeneral:
         assert got["worklog_deadline_time"] == "15:30"
         assert "Отклонено" in got["excluded_statuses"]
         assert got["empty_policy"] == "zero"
+
+    def test_default_deadline_mode_is_from_the_spec(self, admin_client):
+        body = admin_client.get("/api/v1/kpi-settings/general").json()
+        assert body["worklog_deadline_mode"] == "hours_from_start"
+        assert body["worklog_deadline_hours"] == 18
+
+    def test_deadline_mode_switches_and_persists(self, admin_client):
+        resp = admin_client.put("/api/v1/kpi-settings/general", json={
+            "excluded_statuses": [], "worklog_deadline_mode": "calendar",
+            "worklog_deadline_hours": 18, "worklog_deadline_days": 1,
+            "worklog_deadline_time": "12:00", "empty_policy": "redistribute",
+        })
+        assert resp.status_code == 200, resp.text
+        assert admin_client.get("/api/v1/kpi-settings/general").json()["worklog_deadline_mode"] == "calendar"
+
+    def test_unknown_deadline_mode_rejected(self, admin_client):
+        resp = admin_client.put("/api/v1/kpi-settings/general", json={
+            "excluded_statuses": [], "worklog_deadline_mode": "whenever",
+            "worklog_deadline_hours": 18, "worklog_deadline_days": 1,
+            "worklog_deadline_time": "12:00", "empty_policy": "redistribute",
+        })
+        assert resp.status_code == 422
+
+
+class TestMetricPreviewEndpoints:
+    """Предпросмотр считает форму, а не сохранённую метрику."""
+
+    def test_preview_runs_on_unsaved_metric(self, admin_client):
+        resp = admin_client.post("/api/v1/kpi-settings/metrics/preview", json={
+            "metric": _metric_payload("unsaved"), "team": "Платежи", "year": 2026, "month": 7,
+        })
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["numerator_funnel"][0]["label"].startswith("Все задачи периода")
+        assert body["rows"] == []
+        # Метрика в справочник не попала.
+        codes = [m["code"] for m in admin_client.get("/api/v1/kpi-settings/metrics").json()]
+        assert "unsaved" not in codes
+
+    def test_preview_rejects_broken_metric(self, admin_client):
+        payload = _metric_payload("broken")
+        payload["calc_kind"] = "raito"
+        resp = admin_client.post("/api/v1/kpi-settings/metrics/preview", json={
+            "metric": payload, "team": "Платежи", "year": 2026, "month": 7,
+        })
+        assert resp.status_code == 422
+
+    def test_explain_rejects_unknown_side(self, admin_client):
+        resp = admin_client.post("/api/v1/kpi-settings/metrics/explain-issue", json={
+            "metric": _metric_payload("x"), "team": "Платежи", "year": 2026, "month": 7,
+            "issue_key": "OS-1", "side": "middle",
+        })
+        assert resp.status_code == 422
 
 
 class TestConditionValidationOnSave:

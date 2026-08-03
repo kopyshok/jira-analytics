@@ -48,7 +48,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/events` | `events.py` | SSE entity_changed broadcaster (см. EventBroadcaster) |
 | `/llm` | `llm.py` | AI summary/work_breakdown через Gemini (`/llm/test` + project summaries) |
 | `/kpi` | `kpi.py` | отчёт «Ведомость» + сводка по командам + расшифровка метрики + тренд сотрудника + утверждение месяца (снимок) + `/directions` + `export.xlsx` |
-| `/kpi-settings` | `kpi_settings.py` | **admin-only** — справочники раздела KPI: метрики, профили оценки, нормативы Cycle Time, общие правила, словарь атрибутов условий |
+| `/kpi-settings` | `kpi_settings.py` | **admin-only** — справочники раздела KPI: метрики, профили оценки (список ролей + `/profiles/coverage`), нормативы Cycle Time, общие правила, словарь атрибутов условий, предпросмотр метрики (`POST /metrics/preview`, `POST /metrics/explain-issue`), сравнение способов срока внесения часов (`GET /worklog-deadline/compare`) |
 
 ## Паттерны
 

@@ -31,10 +31,18 @@ export interface KpiReportRow {
   empty_policy: 'redistribute' | 'full' | 'zero';
 }
 
+export interface KpiNoDataMetric {
+  code: string;
+  name: string;
+  count: number;
+}
+
 export interface KpiReportSummary {
   avg_total: number | null;
   below_target_count: number;
   no_data_metrics_count: number;
+  /** Разбор пустых клеток по метрикам — «25 без данных» само по себе ни о чём не говорит. */
+  no_data_by_metric: KpiNoDataMetric[];
 }
 
 export interface KpiTeamApproval {
@@ -50,6 +58,8 @@ export interface KpiReport {
   rows: KpiReportRow[];
   summary: KpiReportSummary;
   approvals: Record<string, KpiTeamApproval>;
+  /** Сколько человек команды не оценивается: их роль не привязана ни к одному профилю. */
+  skipped_no_profile: number;
 }
 
 export interface KpiTeamSummaryMetric {
@@ -69,6 +79,8 @@ export interface KpiTeamSummaryRow {
   target_pct: number | null;
   warn_band_pct: number | null;
   metrics: KpiTeamSummaryMetric[];
+  /** Норматив Cycle Time на квартал; без него метрика пуста у всей команды. */
+  cycle_time_norm: number | null;
 }
 
 export interface KpiTeamsSummary {
@@ -140,6 +152,13 @@ export function isWorklogItem(item: KpiBreakdownItem): item is KpiWorklogBrief {
   return 'hours' in item;
 }
 
+/** Шаг воронки отбора: подпись условия, сколько осталось и сколько отсеяно. */
+export interface KpiFunnelStep {
+  label: string;
+  remaining: number;
+  dropped: number | null;
+}
+
 export interface KpiBreakdown {
   metric_code: string;
   metric_name: string;
@@ -147,6 +166,8 @@ export interface KpiBreakdown {
   denominator: KpiBreakdownItem[];
   numerator_count: number;
   denominator_count: number;
+  numerator_funnel: KpiFunnelStep[];
+  denominator_funnel: KpiFunnelStep[];
 }
 
 export interface KpiBreakdownFilters {
@@ -296,12 +317,11 @@ export interface KpiProfileMetricDef {
 export interface KpiProfilePayload {
   code: string;
   name: string;
-  role_code?: string | null;
+  /** Роли, которые оценивает профиль. Одна роль — не более чем в одном профиле. */
+  role_codes: string[];
   target_pct: number;
   warn_band_pct: number;
   is_enabled: boolean;
-  /** Запасной профиль для сотрудников без своей роли — ровно один на сервере. */
-  is_default: boolean;
   metrics: KpiProfileMetricPayload[];
 }
 
@@ -309,13 +329,29 @@ export interface KpiProfileDef {
   id: string;
   code: string;
   name: string;
-  role_code: string | null;
+  role_codes: string[];
   target_pct: number;
   warn_band_pct: number;
   is_enabled: boolean;
-  is_default: boolean;
   metrics: KpiProfileMetricDef[];
 }
+
+export interface KpiCoverageRow {
+  role_code: string | null;
+  role_label: string;
+  employee_count: number;
+  profile_code: string | null;
+  profile_name: string | null;
+}
+
+export interface KpiCoverage {
+  rows: KpiCoverageRow[];
+  evaluated_count: number;
+  total_count: number;
+}
+
+export const fetchCoverage = () =>
+  api.get<KpiCoverage>('/kpi-settings/profiles/coverage');
 
 export const fetchProfiles = () => api.get<KpiProfileDef[]>('/kpi-settings/profiles');
 
@@ -353,12 +389,29 @@ export const fetchNorms = (year?: number, quarter?: number) =>
 export const saveNorms = (items: KpiNormPayload[]) =>
   api.put<KpiNormDef[]>('/kpi-settings/norms', items);
 
+export type KpiDeadlineMode = 'hours_from_start' | 'calendar';
+
 export interface KpiGeneralSettings {
   excluded_statuses: string[];
+  /** «Часов от времени работы» (по ТЗ) или «рабочие дни и время отсечки». */
+  worklog_deadline_mode: KpiDeadlineMode;
+  worklog_deadline_hours: number;
   worklog_deadline_days: number;
   worklog_deadline_time: string;
   empty_policy: string;
 }
+
+export interface KpiDeadlineCompareRow {
+  employee_name: string;
+  worklog_count: number;
+  hours_from_start: number | null;
+  calendar: number | null;
+}
+
+export const fetchDeadlineCompare = (team: string, year: number, month: number) =>
+  api.get<{ rows: KpiDeadlineCompareRow[] }>('/kpi-settings/worklog-deadline/compare', {
+    team, year: String(year), month: String(month),
+  });
 
 export const fetchGeneral = () => api.get<KpiGeneralSettings>('/kpi-settings/general');
 
@@ -385,3 +438,66 @@ export interface KpiAttributesResponse {
 }
 
 export const fetchAttributes = () => api.get<KpiAttributesResponse>('/kpi-settings/attributes');
+
+// === Предпросмотр метрики (конструктор) ===
+
+export interface KpiPreviewRow {
+  employee_id: string;
+  employee_name: string;
+  account_id: string;
+  numerator: number | null;
+  denominator: number | null;
+  value: number | null;
+  has_data: boolean;
+}
+
+export interface KpiPreviewItems {
+  numerator: KpiIssueBrief[];
+  denominator: KpiIssueBrief[];
+  numerator_count: number;
+  denominator_count: number;
+}
+
+export interface KpiPreviewResult {
+  metric_name: string;
+  calc_kind: string;
+  team: string;
+  year: number;
+  month: number;
+  team_value: number | null;
+  people_with_data: number;
+  people_total: number;
+  numerator_funnel: KpiFunnelStep[];
+  denominator_funnel: KpiFunnelStep[];
+  rows: KpiPreviewRow[];
+  items: KpiPreviewItems;
+}
+
+export interface KpiPreviewRequest {
+  metric: KpiMetricPayload;
+  team: string;
+  year: number;
+  month: number;
+  account_id?: string | null;
+  direction?: string | null;
+}
+
+export const previewMetric = (body: KpiPreviewRequest) =>
+  api.post<KpiPreviewResult>('/kpi-settings/metrics/preview', body);
+
+export interface KpiExplainStep {
+  label: string;
+  passed: boolean;
+}
+
+export interface KpiExplainResult {
+  found: boolean;
+  issue_key: string;
+  summary?: string | null;
+  passed: boolean;
+  failed_step: string | null;
+  steps: KpiExplainStep[];
+}
+
+export const explainIssue = (body: KpiPreviewRequest & { issue_key: string; side: string }) =>
+  api.post<KpiExplainResult>('/kpi-settings/metrics/explain-issue', body);

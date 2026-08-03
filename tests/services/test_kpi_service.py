@@ -222,7 +222,7 @@ def test_build_teams_summary_returns_metric_averages_member_count_and_target(db_
     from app.models.employee import Employee
     from app.models.employee_team import EmployeeTeam
     from app.models.issue import Issue
-    from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric
+    from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole
     from app.services.kpi.kpi_service import build_teams_summary
 
     e1 = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи", role="analyst")
@@ -252,10 +252,11 @@ def test_build_teams_summary_returns_metric_averages_member_count_and_target(db_
         code="m1", name="Метрика", calc_kind="ratio", invert=False, cap_at_100=True,
         numerator_json=cond, denominator_json=cond,
     )
-    profile = KpiProfile(code="analyst", name="Аналитик", role_code="analyst",
-                         is_default=True, is_enabled=True, target_pct=80.0, warn_band_pct=10.0)
+    profile = KpiProfile(code="analyst", name="Аналитик",
+                         is_enabled=True, target_pct=80.0, warn_band_pct=10.0)
     db_session.add_all([metric, profile])
     db_session.commit()
+    db_session.add(KpiProfileRole(profile_id=profile.id, role_code="analyst"))
     db_session.add(KpiProfileMetric(profile_id=profile.id, metric_id=metric.id, weight=1.0))
     db_session.commit()
 
@@ -394,7 +395,8 @@ def test_worklog_timeliness_all_missing_created_at_gives_no_data(db_session, sam
     db_session.add(metric)
     db_session.commit()
 
-    st = KpiSettings(excluded_statuses=[], worklog_deadline_days=1,
+    st = KpiSettings(excluded_statuses=[], worklog_deadline_mode="calendar",
+                     worklog_deadline_days=1,
                      worklog_deadline_time="12:00", empty_policy="redistribute")
     result = compute_metric(
         db_session, metric, account_id="acc-1",
@@ -437,7 +439,8 @@ def test_worklog_timeliness_ignores_records_without_created_at(db_session, sampl
     db_session.add(metric)
     db_session.commit()
 
-    st = KpiSettings(excluded_statuses=[], worklog_deadline_days=1,
+    st = KpiSettings(excluded_statuses=[], worklog_deadline_mode="calendar",
+                     worklog_deadline_days=1,
                      worklog_deadline_time="12:00", empty_policy="redistribute")
     result = compute_metric(
         db_session, metric, account_id="acc-1",
@@ -485,7 +488,8 @@ def test_worklog_timeliness_boundary_on_time_vs_one_minute_late(db_session, samp
     db_session.add(metric)
     db_session.commit()
 
-    st = KpiSettings(excluded_statuses=[], worklog_deadline_days=1,
+    st = KpiSettings(excluded_statuses=[], worklog_deadline_mode="calendar",
+                     worklog_deadline_days=1,
                      worklog_deadline_time="12:00", empty_policy="redistribute")
     result = compute_metric(
         db_session, metric, account_id="acc-1",

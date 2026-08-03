@@ -22,7 +22,11 @@ from app.models.issue import Issue
 from app.models.user import User
 from app.models.worklog import Worklog
 from app.services.analytics_service import parse_teams_csv
+from app.services.kpi.conditions import ConditionSet
+from app.services.kpi.preview import build_context, issue_funnel, worklog_funnel
+from app.services.kpi.settings import read_kpi_settings
 from app.services.kpi.kpi_service import (
+    CALENDAR_BUFFER_DAYS,
     build_approval_payload,
     build_teams_summary,
     build_trend,
@@ -32,6 +36,7 @@ from app.services.kpi.kpi_service import (
     save_approval,
     score_field_names,
     summarize_report,
+    with_direction,
 )
 from app.services.kpi.xlsx_export import export_report_xlsx
 
@@ -101,6 +106,54 @@ def _worklog_brief(w: Worklog, base_url: str, late: bool) -> dict:
         "hours": w.hours,
         "late": late,
         "url": _issue_url(base_url, issue.key) if issue else None,
+    }
+
+
+def _breakdown_funnels(
+    db: Session,
+    metric: KpiMetric,
+    account_id: str,
+    year: int,
+    month: int,
+    teams: list[str],
+    direction: Optional[str],
+) -> dict:
+    """Воронка отбора числителя и знаменателя по одному сотруднику.
+
+    Считается на той же команде, что и расшифровка. Если фильтр не сужен до
+    одной команды, воронка берёт первую из списка — иначе шаг «команда»
+    оказался бы бессмысленно широким.
+    """
+    employee = db.query(Employee).filter(Employee.jira_account_id == account_id).first()
+    if employee is None:
+        return {"numerator_funnel": [], "denominator_funnel": []}
+    team = employee.team or (teams[0] if teams else "")
+    if teams and team not in teams:
+        team = teams[0]
+    settings = read_kpi_settings(db)
+    ctx = build_context(db, team, year, month, account_id, CALENDAR_BUFFER_DAYS)
+    account_ids = ctx.account_ids or [account_id]
+
+    num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
+    if num_cs.unit == "worklogs":
+        return {
+            "numerator_funnel": worklog_funnel(
+                db, num_cs, [employee.id], ctx.all_periods, [team] if team else None,
+                settings, ctx.calendar,
+            ),
+            "denominator_funnel": [],
+        }
+    den_cs = (
+        with_direction(ConditionSet.from_json(metric.denominator_json), direction)
+        if metric.denominator_json else None
+    )
+    return {
+        "numerator_funnel": issue_funnel(
+            db, num_cs, account_ids, ctx.all_periods, [team] if team else None, settings,
+        ),
+        "denominator_funnel": issue_funnel(
+            db, den_cs, account_ids, ctx.all_periods, [team] if team else None, settings,
+        ) if den_cs else [],
     }
 
 
@@ -201,6 +254,11 @@ def get_breakdown(
         "metric_code": metric.code, "metric_name": metric.name,
         "numerator": numerator, "denominator": denominator,
         "numerator_count": len(numerator), "denominator_count": len(denominator),
+        # Воронка отбора — та же, что в предпросмотре конструктора, но по
+        # одному человеку: панель расчёта под ведомостью должна отвечать не
+        # только «какие задачи», но и «почему их столько» (спека доработок,
+        # раздел 6).
+        **_breakdown_funnels(db, metric, account_id, year, month, team_list, direction),
     }
 
 

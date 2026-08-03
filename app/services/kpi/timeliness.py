@@ -1,4 +1,12 @@
-"""Срок внесения трудозатрат: до указанного времени N-го рабочего дня после дня работы.
+"""Срок внесения трудозатрат — два способа, переключаются в общих правилах.
+
+* ``hours_from_start`` (по умолчанию, формулировка ТЗ) — запись просрочена,
+  если создана позже чем через N часов после времени начала работы,
+  указанного в ней. Производственный календарь не участвует, счёт
+  непрерывный. В SQL дашборда заказчика это ``wl.created − wl.started >
+  INTERVAL '18 hours'``.
+* ``calendar`` — до указанного времени N-го рабочего дня после дня работы,
+  выходные и праздники пропускаются по производственному календарю.
 
 Календарь читается в словарь ОДНИМ запросом (``load_calendar``) и передаётся
 в чистые функции ниже — раньше на каждый проверяемый день был отдельный
@@ -72,7 +80,45 @@ def is_late(
     calendar: dict[date, bool], work_day: date, created_at: Optional[datetime],
     days: int, time_str: str,
 ) -> bool:
-    """Запись просрочена, если внесена позже крайнего момента. Без даты внесения — не судим."""
+    """Способ «рабочие дни и время отсечки»: позже крайнего момента — просрочка.
+
+    Без даты внесения не судим — вызывающий код такие записи отбрасывает
+    заранее, здесь это лишь страховка.
+    """
     if created_at is None:
         return False
     return created_at > deadline_for(calendar, work_day, days, time_str)
+
+
+def is_late_by_hours(
+    started_at: Optional[datetime], created_at: Optional[datetime], hours: int,
+) -> bool:
+    """Способ «часов от времени работы» (ТЗ): создана позже чем через N часов — просрочка.
+
+    Точка отсчёта — время начала работы в самой записи, а не полночь дня
+    работы: в Jira у записи о работе есть время, и ТЗ считает разницу именно
+    от него («Дата создания записи в журнале работ − Дата, указанная в
+    записи > 18 часов»). Пояснение старой страницы ТЗ «позднее чем 9 часов
+    после завершения рабочего дня» этому не противоречит: работа начата в 9
+    утра, плюс 18 часов — 3 часа ночи, ровно 9 часов после 18:00.
+    """
+    if created_at is None or started_at is None:
+        return False
+    return created_at - started_at > timedelta(hours=max(1, hours))
+
+
+def is_worklog_late(
+    calendar: dict[date, bool],
+    started_at: Optional[datetime],
+    created_at: Optional[datetime],
+    settings,
+) -> bool:
+    """Просрочена ли запись — по способу, выбранному в общих правилах."""
+    if settings.worklog_deadline_mode == "calendar":
+        if started_at is None:
+            return False
+        return is_late(
+            calendar, started_at.date(), created_at,
+            settings.worklog_deadline_days, settings.worklog_deadline_time,
+        )
+    return is_late_by_hours(started_at, created_at, settings.worklog_deadline_hours)
