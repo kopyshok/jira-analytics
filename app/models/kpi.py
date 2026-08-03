@@ -35,26 +35,43 @@ class KpiMetric(Base, TimestampMixin):
 
 
 class KpiProfile(Base, TimestampMixin):
-    """Набор метрик с весами, привязанный к роли сотрудника."""
+    """Набор метрик с весами, привязанный к ролям сотрудников."""
 
     __tablename__ = "kpi_profiles"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     target_pct: Mapped[float] = mapped_column(Float, nullable=False, default=80.0)
     warn_band_pct: Mapped[float] = mapped_column(Float, nullable=False, default=10.0)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # Явный запасной профиль для сотрудников без своей роли (например,
-    # руководители проектов — см. спека, раздел 5). Замена «первого
-    # включённого профиля по порядку выборки» — недетерминированной и
-    # случайной по факту (см. ревью Фазы 3, ВАЖНО 7).
-    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     metrics: Mapped[list["KpiProfileMetric"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan", lazy="selectin"
     )
+    roles: Mapped[list["KpiProfileRole"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class KpiProfileRole(Base, TimestampMixin):
+    """Роль сотрудника, которую оценивает профиль.
+
+    Роль уникальна глобально: сотрудник не может одновременно оцениваться
+    двумя профилями, иначе выбор был бы недетерминированным. Профиля «по
+    умолчанию» больше нет — сотрудник, чья роль не привязана ни к одному
+    профилю, в ведомость не попадает (см. спеку доработок, раздел 2).
+    """
+
+    __tablename__ = "kpi_profile_roles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    profile_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("kpi_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+
+    profile: Mapped["KpiProfile"] = relationship(back_populates="roles")
 
 
 class KpiProfileMetric(Base, TimestampMixin):

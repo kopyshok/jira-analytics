@@ -5,6 +5,19 @@ from datetime import date, datetime
 from app.services.kpi.kpi_service import build_report
 
 
+def _profile_for_role(db_session, role_code="analyst", code="test", **kwargs):
+    """Профиль, привязанный к роли — без привязки сотрудник в отчёт не попадает."""
+    from app.models.kpi import KpiProfile, KpiProfileRole
+
+    profile = KpiProfile(code=code, name=kwargs.pop("name", "Тест"), is_enabled=True,
+                         target_pct=kwargs.pop("target_pct", 80.0), **kwargs)
+    db_session.add(profile)
+    db_session.commit()
+    db_session.add(KpiProfileRole(profile_id=profile.id, role_code=role_code))
+    db_session.commit()
+    return profile
+
+
 def test_report_excludes_employees_not_in_team(db_session):
     """Раньше называлось «только участники команды», но в базе был один
     сотрудник и он же в команде — по заявленной причине провалиться не мог.
@@ -23,6 +36,7 @@ def test_report_excludes_employees_not_in_team(db_session):
     db_session.add(EmployeeTeam(employee_id=outsider.id, team="Другая команда", is_primary=True,
                                 joined_at=date(2026, 1, 1)))
     db_session.commit()
+    _profile_for_role(db_session)
 
     report = build_report(db_session, teams=["Платежи"], year=2026, month=7)
     assert [r["employee_name"] for r in report["rows"]] == ["Иванов И."]
@@ -34,7 +48,8 @@ def test_employee_in_two_teams_not_duplicated(db_session):
     from app.models.employee import Employee
     from app.models.employee_team import EmployeeTeam
 
-    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи",
+                   role="analyst")
     db_session.add(emp)
     db_session.commit()
     db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
@@ -42,6 +57,7 @@ def test_employee_in_two_teams_not_duplicated(db_session):
     db_session.add(EmployeeTeam(employee_id=emp.id, team="Другая команда", is_primary=False,
                                 joined_at=date(2026, 1, 1)))
     db_session.commit()
+    _profile_for_role(db_session)
 
     report = build_report(db_session, teams=["Платежи", "Другая команда"], year=2026, month=7)
     assert len(report["rows"]) == 1
@@ -52,9 +68,10 @@ def test_mid_month_joiner_excludes_tasks_before_join(db_session, sample_project)
     from app.models.employee import Employee
     from app.models.employee_team import EmployeeTeam
     from app.models.issue import Issue
-    from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric
+    from app.models.kpi import KpiMetric, KpiProfileMetric
 
-    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи")
+    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи",
+                   role="analyst")
     db_session.add(emp)
     db_session.commit()
     db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
@@ -80,9 +97,9 @@ def test_mid_month_joiner_excludes_tasks_before_join(db_session, sample_project)
         code="count_check", name="Проверка счёта", calc_kind="ratio",
         invert=False, cap_at_100=True, numerator_json=cond, denominator_json=cond,
     )
-    profile = KpiProfile(code="test", name="Тест", is_default=True, is_enabled=True, target_pct=80.0)
-    db_session.add_all([metric, profile])
+    db_session.add(metric)
     db_session.commit()
+    profile = _profile_for_role(db_session)
     db_session.add(KpiProfileMetric(profile_id=profile.id, metric_id=metric.id, weight=1.0))
     db_session.commit()
 
@@ -91,47 +108,57 @@ def test_mid_month_joiner_excludes_tasks_before_join(db_session, sample_project)
     assert row["metrics"][0]["denominator"] == 1
 
 
-def test_default_profile_used_when_role_unmatched(db_session):
-    """ВАЖНО 7: без совпадения по роли подставляется явный профиль по умолчанию, не первый попавшийся."""
+def test_profile_covers_several_roles(db_session):
+    """Один профиль оценивает и аналитиков, и руководителей проектов."""
     from app.models.employee import Employee
     from app.models.employee_team import EmployeeTeam
-    from app.models.kpi import KpiProfile
+    from app.models.kpi import KpiProfileRole
 
-    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи",
-                   role="project_manager")
-    db_session.add(emp)
+    analyst = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи",
+                       role="analyst")
+    manager = Employee(jira_account_id="acc-2", display_name="Петров П.", team="Платежи",
+                       role="RP")
+    db_session.add_all([analyst, manager])
     db_session.commit()
-    db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
-                                joined_at=date(2026, 1, 1)))
-    db_session.add(KpiProfile(code="analyst", name="Аналитик", role_code="analyst",
-                              is_default=True, is_enabled=True, target_pct=80.0))
+    for emp in (analyst, manager):
+        db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
+                                    joined_at=date(2026, 1, 1)))
+    db_session.commit()
+    profile = _profile_for_role(db_session, code="analyst", name="Аналитик")
+    db_session.add(KpiProfileRole(profile_id=profile.id, role_code="RP"))
     db_session.commit()
 
     report = build_report(db_session, teams=["Платежи"], year=2026, month=7)
-    assert report["rows"][0]["profile_code"] == "analyst"
+    assert {r["profile_code"] for r in report["rows"]} == {"analyst"}
+    assert len(report["rows"]) == 2
 
 
-def test_no_default_profile_gives_empty_metrics_row_not_arbitrary_profile(db_session):
-    """ВАЖНО 7: без совпадения по роли и без профиля по умолчанию — пустой список метрик, не случайный профиль."""
+def test_employee_with_unmatched_role_not_in_report(db_session):
+    """Роль не привязана ни к одному профилю — сотрудника в ведомости нет вообще.
+
+    Раньше его подхватывал профиль «по умолчанию», из-за чего в ведомость
+    попадали программисты и тестировщики (спека доработок, раздел 2).
+    """
     from app.models.employee import Employee
     from app.models.employee_team import EmployeeTeam
-    from app.models.kpi import KpiProfile
 
-    emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи",
-                   role="project_manager")
-    db_session.add(emp)
+    analyst = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Платежи",
+                       role="analyst")
+    developer = Employee(jira_account_id="acc-2", display_name="Петров П.", team="Платежи",
+                         role="dev")
+    no_role = Employee(jira_account_id="acc-3", display_name="Сидоров С.", team="Платежи")
+    db_session.add_all([analyst, developer, no_role])
     db_session.commit()
-    db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
-                                joined_at=date(2026, 1, 1)))
-    # Профиль есть, но не подходит по роли и не является профилем по умолчанию.
-    db_session.add(KpiProfile(code="analyst", name="Аналитик", role_code="analyst",
-                              is_default=False, is_enabled=True, target_pct=80.0))
+    for emp in (analyst, developer, no_role):
+        db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
+                                    joined_at=date(2026, 1, 1)))
     db_session.commit()
+    _profile_for_role(db_session)
 
     report = build_report(db_session, teams=["Платежи"], year=2026, month=7)
-    row = report["rows"][0]
-    assert row["profile_code"] is None
-    assert row["metrics"] == []
+    assert [r["employee_name"] for r in report["rows"]] == ["Иванов И."]
+    # Молча терять людей нельзя — сколько отсеялось, видно отдельным числом.
+    assert report["skipped_no_profile"] == 2
 
 
 def test_cycle_time_norm_uses_team_at_period_start_not_current_team(db_session, sample_project):
@@ -139,7 +166,7 @@ def test_cycle_time_norm_uses_team_at_period_start_not_current_team(db_session, 
     from app.models.employee import Employee
     from app.models.employee_team import EmployeeTeam
     from app.models.issue import Issue
-    from app.models.kpi import KpiCycleTimeNorm, KpiMetric, KpiProfile, KpiProfileMetric
+    from app.models.kpi import KpiCycleTimeNorm, KpiMetric, KpiProfileMetric
 
     emp = Employee(jira_account_id="acc-1", display_name="Иванов И.", team="Digital", role="analyst")
     db_session.add(emp)
@@ -171,10 +198,9 @@ def test_cycle_time_norm_uses_team_at_period_start_not_current_team(db_session, 
             ],
         }),
     )
-    profile = KpiProfile(code="analyst", name="Аналитик", role_code="analyst",
-                         is_default=True, is_enabled=True, target_pct=80.0)
-    db_session.add_all([metric, profile])
+    db_session.add(metric)
     db_session.commit()
+    profile = _profile_for_role(db_session, code="analyst", name="Аналитик")
     db_session.add(KpiProfileMetric(profile_id=profile.id, metric_id=metric.id, weight=1.0))
     # Норматив заведён на историческую команду «Платежи», не на «Digital».
     db_session.add(KpiCycleTimeNorm(team="Платежи", year=2026, quarter=2, norm_value=70.0))
@@ -203,6 +229,7 @@ def test_report_row_team_falls_back_when_no_membership_matches_filter(db_session
     db_session.add(EmployeeTeam(employee_id=emp.id, team="Платежи", is_primary=True,
                                 joined_at=date(2026, 1, 1)))
     db_session.commit()
+    _profile_for_role(db_session)
 
     report = build_report(db_session, teams=["Платежи"], year=2026, month=7)
     assert report["rows"][0]["team"] == "Платежи"

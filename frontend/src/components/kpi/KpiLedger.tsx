@@ -83,6 +83,11 @@ function isTeamRow(r: TreeRow): r is TeamRow {
   return 'isTeam' in r;
 }
 
+export interface KpiSelectedCell {
+  employeeId: string;
+  metricCode: string;
+}
+
 export interface KpiLedgerProps {
   rows: KpiReportRow[];
   teamsSummaryByTeam: Map<string, KpiTeamSummaryRow>;
@@ -93,13 +98,36 @@ export interface KpiLedgerProps {
   onRetry?: () => void;
   onOpenEmployee?: (row: KpiReportRow) => void;
   onOpenBreakdown?: (row: KpiReportRow, metricCode: string, metricName: string) => void;
+  /** Ячейка, раскрытая в панели расчёта снизу — подсвечивается рамкой. */
+  selectedCell?: KpiSelectedCell | null;
+  /** Итоги прошлого месяца по сотруднику — для дельты в строке человека. */
+  prevTotals?: Map<string, number>;
 }
 
 export default function KpiLedger({
   rows, teamsSummaryByTeam, loading, error, onRetry, onOpenEmployee, onOpenBreakdown,
+  selectedCell, prevTotals,
 }: KpiLedgerProps) {
   const t = useThemeTokens();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  // Ранг внутри команды: место человека в своей команде по итогу. Смотреть
+  // «кто где» по отсортированному списку из трёх десятков строк неудобно.
+  const rankByEmployee = useMemo(() => {
+    const byTeam = new Map<string, KpiReportRow[]>();
+    for (const row of rows) {
+      const key = row.team ?? '__none__';
+      byTeam.set(key, [...(byTeam.get(key) ?? []), row]);
+    }
+    const result = new Map<string, number>();
+    for (const members of byTeam.values()) {
+      members
+        .filter((m) => m.total != null)
+        .sort((a, b) => (b.total ?? 0) - (a.total ?? 0))
+        .forEach((m, i) => result.set(m.employee_id, i + 1));
+    }
+    return result;
+  }, [rows]);
 
   const metricColumns = useMemo(() => {
     const seen = new Map<string, string>();
@@ -147,6 +175,21 @@ export default function KpiLedger({
   // чего таблица теряла возможность переиспользовать неизменившиеся ячейки
   // (см. ревью, мелочи).
   const columns = useMemo(() => {
+    const rankColumn = {
+      title: '#',
+      key: 'rank',
+      fixed: 'left' as const,
+      width: 44,
+      align: 'right' as const,
+      render: (_: unknown, r: TreeRow) => {
+        if (isTeamRow(r)) return null;
+        const rank = rankByEmployee.get(r.employee_id);
+        return (
+          <span className="num" style={{ color: t.textMuted, fontSize: 11.5 }}>{rank ?? '—'}</span>
+        );
+      },
+    };
+
     const nameColumn = {
       title: 'Сотрудник',
       key: 'name',
@@ -230,6 +273,8 @@ export default function KpiLedger({
         const status = kpiStatusOf(metric.value, r.target_pct, r.warn_band_pct);
         const clickable = !!onOpenBreakdown;
         const activate = () => onOpenBreakdown?.(r, metric.code, metric.name);
+        const selected = selectedCell?.employeeId === r.employee_id
+          && selectedCell?.metricCode === metric.code;
         return (
           <span
             role={clickable ? 'button' : undefined}
@@ -240,6 +285,10 @@ export default function KpiLedger({
             style={{
               ...cellStyle(status, t), fontWeight: 600, padding: '2px 6px', borderRadius: 6,
               cursor: clickable ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 4,
+              // Раскрытая в панели снизу ячейка отмечена рамкой — иначе при
+              // переборе соседних ячеек непонятно, чей расчёт сейчас внизу.
+              outline: selected ? `2px solid ${t.cyanPrimary}` : undefined,
+              outlineOffset: selected ? 1 : undefined,
             }}
           >
             <StatusIcon status={status} />
@@ -253,7 +302,7 @@ export default function KpiLedger({
       title: 'Итог',
       key: 'total',
       fixed: 'right' as const,
-      width: 110,
+      width: 190,
       align: 'right' as const,
       render: (_: unknown, r: TreeRow) => {
         if (isTeamRow(r)) {
@@ -284,17 +333,49 @@ export default function KpiLedger({
           );
         }
         const status = kpiStatusOf(r.total, r.target_pct, r.warn_band_pct);
+        const prev = prevTotals?.get(r.employee_id);
+        const delta = prev != null && r.total != null ? r.total - prev : null;
         return (
-          <span className="num" style={{ ...cellStyle(status, t), fontWeight: 800, fontSize: 14, padding: '2px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <StatusIcon status={status} />
-            {fmtPct(r.total)}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+            {delta != null && Math.abs(delta) >= 0.05 && (
+              <span
+                className="num"
+                style={{
+                  fontSize: 10.5, fontWeight: 700,
+                  color: delta > 0 ? t.success : t.danger,
+                  display: 'flex', alignItems: 'center', gap: 1,
+                }}
+              >
+                {delta > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                {Math.abs(delta).toFixed(1)}
+              </span>
+            )}
+            {/* Полоска рядом с числом: разницу между 86% и 98% глаз ловит
+                быстрее по длине, чем по цифрам. */}
+            <span style={{
+              width: 54, height: 5, borderRadius: 3, background: t.darkRows, overflow: 'hidden',
+              display: 'inline-block',
+            }}
+            >
+              <span style={{
+                display: 'block', height: '100%',
+                width: `${Math.min(100, Math.max(0, r.total ?? 0))}%`,
+                background: cellStyle(status, t).color as string,
+              }}
+              />
+            </span>
+            <span className="num" style={{ ...cellStyle(status, t), fontWeight: 800, fontSize: 14, padding: '2px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <StatusIcon status={status} />
+              {fmtPct(r.total)}
+            </span>
+          </div>
         );
       },
     };
 
-    return [nameColumn, ...metricCols, totalColumn];
-  }, [metricColumns, teamsSummaryByTeam, t, onOpenEmployee, onOpenBreakdown]);
+    return [rankColumn, nameColumn, ...metricCols, totalColumn];
+  }, [metricColumns, teamsSummaryByTeam, t, onOpenEmployee, onOpenBreakdown, rankByEmployee,
+    selectedCell, prevTotals]);
 
   if (error) {
     return (

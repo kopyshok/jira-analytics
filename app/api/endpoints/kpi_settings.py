@@ -11,15 +11,18 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import literal, select, union
+from sqlalchemy import func, literal, select, union
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.app_setting import AppSetting
 from app.models.employee import Employee
 from app.models.issue import Issue
-from app.models.kpi import KpiCycleTimeNorm, KpiMetric, KpiProfile, KpiProfileMetric
+from app.models.kpi import (
+    KpiCycleTimeNorm, KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole,
+)
 from app.models.project import Project
+from app.models.role import Role
 from app.services.kpi.conditions import (
     ATTRIBUTE_CHOICES,
     FILLABLE_FIELDS,
@@ -28,7 +31,13 @@ from app.services.kpi.conditions import (
     PERSON_FIELDS,
     ConditionSet,
 )
-from app.services.kpi.settings import KpiSettings, read_kpi_settings
+from app.services.kpi.kpi_service import CALENDAR_BUFFER_DAYS
+from app.services.kpi.preview import compare_deadline_modes, explain_issue, preview_metric
+from app.services.kpi.settings import (
+    WORKLOG_DEADLINE_MODES,
+    KpiSettings,
+    read_kpi_settings,
+)
 
 router = APIRouter()
 
@@ -101,15 +110,14 @@ class KpiProfileMetricOut(BaseModel):
 class KpiProfileIn(BaseModel):
     code: str
     name: str
-    role_code: Optional[str] = None
+    # Роли, которые оценивает профиль. Одна роль принадлежит не более чем
+    # одному профилю; профиля «по умолчанию» больше нет — сотрудник, чья роль
+    # ни к чему не привязана, в ведомость не попадает (спека доработок
+    # 2026-08-03, раздел 2).
+    role_codes: List[str] = []
     target_pct: float = 80.0
     warn_band_pct: float = 10.0
     is_enabled: bool = True
-    # Запасной профиль для сотрудников без своей роли — движок расчёта
-    # опирается на этот признак (см. ``kpi_service._resolve_profile``), а
-    # раньше он не был доступен через схемы: назначить или увидеть было
-    # нельзя (см. ревью, ВАЖНО 6).
-    is_default: bool = False
     metrics: List[KpiProfileMetricIn] = []
 
 
@@ -117,12 +125,25 @@ class KpiProfileOut(BaseModel):
     id: str
     code: str
     name: str
-    role_code: Optional[str] = None
+    role_codes: List[str]
     target_pct: float
     warn_band_pct: float
     is_enabled: bool
-    is_default: bool
     metrics: List[KpiProfileMetricOut]
+
+
+class KpiRoleCoverageRow(BaseModel):
+    role_code: Optional[str] = None
+    role_label: str
+    employee_count: int
+    profile_code: Optional[str] = None
+    profile_name: Optional[str] = None
+
+
+class KpiCoverageOut(BaseModel):
+    rows: List[KpiRoleCoverageRow]
+    evaluated_count: int
+    total_count: int
 
 
 class KpiNormIn(BaseModel):
@@ -149,9 +170,29 @@ class KpiNormOut(BaseModel):
 
 class KpiGeneralSettings(BaseModel):
     excluded_statuses: List[str]
+    # Способ расчёта срока внесения часов: "hours_from_start" (по ТЗ, по
+    # умолчанию) или "calendar" (рабочие дни и время отсечки).
+    worklog_deadline_mode: str = "hours_from_start"
+    worklog_deadline_hours: int = 18
     worklog_deadline_days: int
     worklog_deadline_time: str
     empty_policy: str
+
+
+class KpiMetricPreviewIn(BaseModel):
+    """Несохранённое определение метрики плюс на чём его посчитать."""
+
+    metric: KpiMetricIn
+    team: str
+    year: int = Field(ge=2020, le=2100)
+    month: int = Field(ge=1, le=12)
+    account_id: Optional[str] = None
+    direction: Optional[str] = None
+
+
+class KpiExplainIssueIn(KpiMetricPreviewIn):
+    issue_key: str
+    side: str = "numerator"
 
 
 # === Helpers ===
@@ -229,25 +270,37 @@ def _apply_metric_fields(metric: KpiMetric, body: KpiMetricIn) -> None:
     metric.sort_order = body.sort_order
 
 
-def _apply_default_flag(db: Session, profile: KpiProfile, is_default: bool) -> None:
-    """Признак «профиль по умолчанию» — ровно один включённый профиль в любой момент.
+def _apply_roles(db: Session, profile: KpiProfile, role_codes: List[str]) -> None:
+    """Переписать список ролей профиля, проверив, что роль не занята другим.
 
-    Движок расчёта берёт первый профиль с этим признаком как запасной для
-    сотрудника, чья роль ни с чем не совпала — двух «по умолчанию» одновременно
-    быть не должно (см. ревью, ВАЖНО 6).
+    Роль, привязанная к двум профилям, делала бы выбор профиля
+    недетерминированным — поэтому конфликт это явная ошибка, а не тихое
+    «побеждает первый».
     """
-    if is_default:
-        db.query(KpiProfile).filter(
-            KpiProfile.id != profile.id, KpiProfile.is_default.is_(True),
-        ).update({KpiProfile.is_default: False})
-    profile.is_default = is_default
+    wanted = list(dict.fromkeys(code.strip() for code in role_codes if code and code.strip()))
+    taken = (
+        db.query(KpiProfileRole)
+        .filter(KpiProfileRole.role_code.in_(wanted), KpiProfileRole.profile_id != profile.id)
+        .all()
+        if wanted else []
+    )
+    if taken:
+        codes = ", ".join(sorted(r.role_code for r in taken))
+        raise HTTPException(
+            status_code=409,
+            detail=f"Роль уже привязана к другому профилю оценки: {codes}",
+        )
+    db.query(KpiProfileRole).filter(KpiProfileRole.profile_id == profile.id).delete()
+    db.flush()
+    for code in wanted:
+        db.add(KpiProfileRole(profile_id=profile.id, role_code=code))
 
 
 def _profile_to_out(p: KpiProfile) -> KpiProfileOut:
     return KpiProfileOut(
-        id=p.id, code=p.code, name=p.name, role_code=p.role_code,
+        id=p.id, code=p.code, name=p.name,
+        role_codes=sorted(r.role_code for r in p.roles),
         target_pct=p.target_pct, warn_band_pct=p.warn_band_pct, is_enabled=p.is_enabled,
-        is_default=p.is_default,
         metrics=[
             KpiProfileMetricOut(
                 metric_code=link.metric.code, metric_name=link.metric.name,
@@ -298,6 +351,12 @@ def _resolve_metrics_by_code(db: Session, codes: List[str]) -> dict[str, KpiMetr
     return found
 
 
+def _jira_base_url(db: Session) -> str:
+    """Базовый URL Jira — для ссылок на задачи в предпросмотре."""
+    row = db.query(AppSetting).filter(AppSetting.key == "jira_base_url").first()
+    return ((row.value if row else "") or "").rstrip("/")
+
+
 def _set_kpi_setting(db: Session, key: str, value: str) -> None:
     row = db.query(AppSetting).filter(AppSetting.key == key).first()
     if row:
@@ -309,10 +368,24 @@ def _set_kpi_setting(db: Session, key: str, value: str) -> None:
 def _general_from_settings(s: KpiSettings) -> KpiGeneralSettings:
     return KpiGeneralSettings(
         excluded_statuses=s.excluded_statuses,
+        worklog_deadline_mode=s.worklog_deadline_mode,
+        worklog_deadline_hours=s.worklog_deadline_hours,
         worklog_deadline_days=s.worklog_deadline_days,
         worklog_deadline_time=s.worklog_deadline_time,
         empty_policy=s.empty_policy,
     )
+
+
+def _metric_from_body(body: KpiMetricIn) -> KpiMetric:
+    """Определение метрики из формы — объектом в памяти, без записи в справочник.
+
+    Предпросмотр обязан считать именно то, что сейчас в форме: иначе
+    проверить заведомо неверную настройку можно было бы только сохранив её,
+    откуда её тут же подхватил бы отчёт.
+    """
+    metric = KpiMetric(is_builtin=False)
+    _apply_metric_fields(metric, body)
+    return metric
 
 
 # === Метрики ===
@@ -379,12 +452,12 @@ def create_profile(body: KpiProfileIn, db: Session = Depends(get_db)):
     _validate_profile_metrics(body.metrics)
 
     profile = KpiProfile(
-        code=body.code, name=body.name, role_code=body.role_code,
+        code=body.code, name=body.name,
         target_pct=body.target_pct, warn_band_pct=body.warn_band_pct, is_enabled=body.is_enabled,
     )
     db.add(profile)
     db.flush()
-    _apply_default_flag(db, profile, body.is_default)
+    _apply_roles(db, profile, body.role_codes)
     for m in body.metrics:
         db.add(KpiProfileMetric(
             profile_id=profile.id, metric_id=metrics_by_code[m.metric_code].id,
@@ -407,11 +480,10 @@ def update_profile(profile_id: str, body: KpiProfileIn, db: Session = Depends(ge
 
     profile.code = body.code
     profile.name = body.name
-    profile.role_code = body.role_code
     profile.target_pct = body.target_pct
     profile.warn_band_pct = body.warn_band_pct
     profile.is_enabled = body.is_enabled
-    _apply_default_flag(db, profile, body.is_default)
+    _apply_roles(db, profile, body.role_codes)
 
     db.query(KpiProfileMetric).filter(KpiProfileMetric.profile_id == profile.id).delete()
     db.flush()
@@ -427,31 +499,67 @@ def update_profile(profile_id: str, body: KpiProfileIn, db: Session = Depends(ge
 
 @router.delete("/profiles/{profile_id}")
 def delete_profile(profile_id: str, db: Session = Depends(get_db)):
-    """Удалить профиль — блокируя случаи, когда сотрудники этой роли останутся без метрик.
+    """Удалить профиль — блокируя случаи, когда сотрудники этих ролей выпадут из оценки.
 
     Симметрично удалению метрики, используемой профилем: раньше удаление
-    профиля, назначенного роли или отмеченного «по умолчанию», проходило
-    молча, и сотрудники этой роли (или те, чья роль ни с чем не совпала)
-    выпадали в строки без метрик (см. ревью, ВАЖНО 5).
+    профиля, назначенного роли, проходило молча, и сотрудники этой роли
+    выпадали из ведомости (см. ревью, ВАЖНО 5).
     """
     profile = db.get(KpiProfile, profile_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Профиль не найден")
-    if profile.is_default:
-        raise HTTPException(
-            status_code=409,
-            detail="Профиль отмечен как «по умолчанию» — сначала назначьте признак другому профилю",
-        )
-    if profile.role_code:
-        in_use = db.query(Employee).filter(Employee.role == profile.role_code).count()
+    role_codes = [r.role_code for r in profile.roles]
+    if role_codes:
+        in_use = db.query(Employee).filter(Employee.role.in_(role_codes)).count()
         if in_use > 0:
+            roles = ", ".join(sorted(role_codes))
             raise HTTPException(
                 status_code=409,
-                detail=f"Профиль назначен роли «{profile.role_code}» — сотрудников: {in_use}",
+                detail=f"Профиль назначен ролям «{roles}» — сотрудников: {in_use}",
             )
     db.delete(profile)
     db.commit()
     return {"status": "deleted"}
+
+
+@router.get("/profiles/coverage", response_model=KpiCoverageOut)
+def get_coverage(db: Session = Depends(get_db)):
+    """Какие роли оцениваются, какие нет и сколько людей за каждой.
+
+    Профиля «по умолчанию» больше нет — сотрудник с непривязанной или
+    незаполненной ролью молча исчезает из ведомости. Эта таблица —
+    единственный способ увидеть, кого потеряли (спека доработок, раздел 2).
+    """
+    counts = dict(
+        db.query(Employee.role, func.count(Employee.id))
+        .filter(Employee.is_active.is_(True))
+        .group_by(Employee.role)
+        .all()
+    )
+    labels = {r.code: r.label for r in db.query(Role).all()}
+    profile_by_role = {
+        role_code: profile
+        for role_code, profile in db.query(KpiProfileRole.role_code, KpiProfile)
+        .join(KpiProfile, KpiProfile.id == KpiProfileRole.profile_id)
+        .all()
+    }
+
+    rows: List[KpiRoleCoverageRow] = []
+    evaluated = 0
+    for role_code, count in sorted(counts.items(), key=lambda kv: (kv[0] is None, kv[0] or "")):
+        profile = profile_by_role.get(role_code) if role_code else None
+        if profile is not None and profile.is_enabled:
+            evaluated += count
+        rows.append(KpiRoleCoverageRow(
+            role_code=role_code,
+            role_label=labels.get(role_code or "", role_code or "Роль не заполнена"),
+            employee_count=count,
+            profile_code=profile.code if profile else None,
+            profile_name=profile.name if profile else None,
+        ))
+    return KpiCoverageOut(
+        rows=rows, evaluated_count=evaluated, total_count=sum(counts.values()),
+    )
 
 
 # === Нормативы Cycle Time ===
@@ -516,6 +624,12 @@ def get_general(db: Session = Depends(get_db)):
 def save_general(body: KpiGeneralSettings, db: Session = Depends(get_db)):
     if body.empty_policy not in _EMPTY_POLICIES:
         raise HTTPException(status_code=422, detail="Недопустимая политика при отсутствии данных")
+    if body.worklog_deadline_mode not in WORKLOG_DEADLINE_MODES:
+        raise HTTPException(status_code=422, detail="Недопустимый способ расчёта срока внесения часов")
+    if body.worklog_deadline_hours < 1:
+        raise HTTPException(
+            status_code=422, detail="Срок внесения трудозатрат должен быть не меньше часа",
+        )
     if body.worklog_deadline_days < 1:
         raise HTTPException(
             status_code=422,
@@ -527,11 +641,50 @@ def save_general(body: KpiGeneralSettings, db: Session = Depends(get_db)):
         # (``timeliness._parse_time``) — тихая порча срока (см. ревью, ВАЖНО 5).
         raise HTTPException(status_code=422, detail="Время отсечки должно быть в формате ЧЧ:ММ")
     _set_kpi_setting(db, "kpi_excluded_statuses", json.dumps(body.excluded_statuses, ensure_ascii=False))
+    _set_kpi_setting(db, "kpi_worklog_deadline_mode", body.worklog_deadline_mode)
+    _set_kpi_setting(db, "kpi_worklog_deadline_hours", str(body.worklog_deadline_hours))
     _set_kpi_setting(db, "kpi_worklog_deadline_days", str(body.worklog_deadline_days))
     _set_kpi_setting(db, "kpi_worklog_deadline_time", body.worklog_deadline_time)
     _set_kpi_setting(db, "kpi_empty_policy", body.empty_policy)
     db.commit()
     return _general_from_settings(read_kpi_settings(db))
+
+
+# === Предпросмотр метрики ===
+
+@router.post("/metrics/preview")
+def preview(body: KpiMetricPreviewIn, db: Session = Depends(get_db)) -> dict:
+    """Посчитать несохранённую метрику на команде и месяце: воронка и разбор по людям.
+
+    Отладочный инструмент конструктора: определение метрики берётся из формы,
+    в справочник не пишется.
+    """
+    return preview_metric(
+        db, _metric_from_body(body.metric), body.team, body.year, body.month,
+        body.account_id, body.direction, _jira_base_url(db), CALENDAR_BUFFER_DAYS,
+    )
+
+
+@router.post("/metrics/explain-issue")
+def explain(body: KpiExplainIssueIn, db: Session = Depends(get_db)) -> dict:
+    """На каком шаге отбора отсеялась конкретная задача."""
+    if body.side not in {"numerator", "denominator"}:
+        raise HTTPException(status_code=422, detail="Сторона формулы: numerator или denominator")
+    return explain_issue(
+        db, _metric_from_body(body.metric), body.side, body.issue_key, body.team,
+        body.year, body.month, body.account_id, body.direction, CALENDAR_BUFFER_DAYS,
+    )
+
+
+@router.get("/worklog-deadline/compare")
+def compare_worklog_deadline(
+    team: str = Query(...),
+    year: int = Query(..., ge=2020, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Своевременность трудозатрат обоими способами сразу — чтобы не переключать вслепую."""
+    return compare_deadline_modes(db, team, year, month, CALENDAR_BUFFER_DAYS)
 
 
 # === Словарь атрибутов условий ===

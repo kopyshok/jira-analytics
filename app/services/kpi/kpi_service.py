@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.issue import Issue
-from app.models.kpi import KpiApproval, KpiCycleTimeNorm, KpiMetric, KpiProfile
+from app.models.kpi import KpiApproval, KpiCycleTimeNorm, KpiMetric, KpiProfile, KpiProfileRole
 from app.models.worklog import Worklog
 from app.services.kpi.calculators import MetricResult, norm_to_fact, ratio, score_to_max
 from app.services.kpi.conditions import (
@@ -22,7 +22,7 @@ from app.services.kpi.conditions import (
     issue_attribute_clauses,
 )
 from app.services.kpi.settings import KpiSettings, read_kpi_settings
-from app.services.kpi.timeliness import is_late, load_calendar
+from app.services.kpi.timeliness import is_worklog_late, load_calendar
 from app.services.team_membership import (
     active_on_clause,
     member_intervals,
@@ -273,10 +273,7 @@ def worklog_items(
         # «100%», не зная о записи ничего, см. дефект 2).
         if w.jira_created_at is None:
             continue
-        bucket = late if is_late(
-            calendar, w.started_at.date(), w.jira_created_at,
-            st.worklog_deadline_days, st.worklog_deadline_time,
-        ) else on_time
+        bucket = late if is_worklog_late(calendar, w.started_at, w.jira_created_at, st) else on_time
         bucket.append(w)
     return on_time, late
 
@@ -327,7 +324,6 @@ class ReportCache:
     """
 
     profiles_by_role: dict[str, KpiProfile]
-    default_profile: Optional[KpiProfile]
     norms: dict[tuple[str, int, int], float]
     calendar: dict[date, bool]
     primary_team_by_employee: dict[str, str]
@@ -337,19 +333,7 @@ def _build_report_cache(
     db: Session, employee_ids: list[str], period_start: date, period_end: date,
 ) -> ReportCache:
     """Собрать кэш одним проходом на весь отчёт."""
-    profiles = (
-        db.query(KpiProfile)
-        .filter(KpiProfile.is_enabled.is_(True))
-        .order_by(KpiProfile.code)
-        .all()
-    )
-    profiles_by_role: dict[str, KpiProfile] = {}
-    default_profile: Optional[KpiProfile] = None
-    for p in profiles:
-        if p.role_code and p.role_code not in profiles_by_role:
-            profiles_by_role[p.role_code] = p
-        if p.is_default and default_profile is None:
-            default_profile = p
+    profiles_by_role = _profiles_by_role(db)
 
     norms = {
         (n.team, n.year, n.quarter): n.norm_value
@@ -376,41 +360,41 @@ def _build_report_cache(
         primary_team_by_employee = {emp_id: team for emp_id, team in rows}
 
     return ReportCache(
-        profiles_by_role=profiles_by_role, default_profile=default_profile,
+        profiles_by_role=profiles_by_role,
         norms=norms, calendar=calendar, primary_team_by_employee=primary_team_by_employee,
     )
+
+
+def _profiles_by_role(db: Session) -> dict[str, KpiProfile]:
+    """Роль сотрудника → включённый профиль оценки.
+
+    Роль уникальна в таблице связи, поэтому словарь однозначен. Профиля «по
+    умолчанию» больше нет: сотрудник, чья роль не привязана ни к одному
+    профилю, в отчёт не попадает (см. спеку доработок 2026-08-03, раздел 2).
+    """
+    rows = (
+        db.query(KpiProfileRole.role_code, KpiProfile)
+        .join(KpiProfile, KpiProfile.id == KpiProfileRole.profile_id)
+        .filter(KpiProfile.is_enabled.is_(True))
+        .all()
+    )
+    return {role_code: profile for role_code, profile in rows}
 
 
 def _resolve_profile(
     db: Session, employee: Employee, cache: Optional[ReportCache],
 ) -> Optional[KpiProfile]:
-    """Профиль по роли сотрудника; иначе — явный профиль по умолчанию.
+    """Профиль по роли сотрудника; роль не привязана — профиля нет.
 
-    Раньше запасным был «первый включённый профиль без сортировки» —
-    недетерминированная подстановка (см. ревью Фазы 3, ВАЖНО 7). Теперь это
-    осознанная настройка (``KpiProfile.is_default``): без неё сотрудник без
-    своей роли попадает в отчёт строкой без метрик, а не оценивается чужим
-    профилем случайно.
+    Возврат ``None`` означает «сотрудник разделом не оценивается»: строка в
+    ведомость не попадает вовсе. Раньше запасным был профиль «по умолчанию»,
+    из-за которого в ведомость попадали программисты и тестировщики.
     """
+    if not employee.role:
+        return None
     if cache is not None:
-        if employee.role and employee.role in cache.profiles_by_role:
-            return cache.profiles_by_role[employee.role]
-        return cache.default_profile
-
-    if employee.role:
-        p = (
-            db.query(KpiProfile)
-            .filter(KpiProfile.role_code == employee.role, KpiProfile.is_enabled.is_(True))
-            .first()
-        )
-        if p:
-            return p
-    return (
-        db.query(KpiProfile)
-        .filter(KpiProfile.is_enabled.is_(True), KpiProfile.is_default.is_(True))
-        .order_by(KpiProfile.code)
-        .first()
-    )
+        return cache.profiles_by_role.get(employee.role)
+    return _profiles_by_role(db).get(employee.role)
 
 
 def _team_for_norm(
@@ -563,14 +547,19 @@ def build_report(
     Период человека внутри месяца обрезается по фактическим дням участия в
     команде (``app/services/team_membership.py``) — так неполный месяц не
     даёт задачам, закрытым до вступления или после выбытия, попасть в счёт.
-    Сотрудник без профиля оценки попадает в отчёт с пустым списком метрик —
-    руководителю нужно видеть его в списке команды, а не терять молча.
+
+    Сотрудник, чья роль не привязана ни к одному профилю оценки, в отчёт не
+    попадает вообще (решение заказчика, спека доработок 2026-08-03) — раньше
+    его подхватывал профиль «по умолчанию», из-за чего в ведомость попадали
+    программисты и тестировщики. Сколько человек так отсеялось, отдаётся
+    отдельным числом (``skipped_no_profile``): молча терять людей нельзя,
+    руководитель должен видеть, что состав команды шире оценённого.
     """
     st = read_kpi_settings(db)
     period_start, period_end = month_bounds(year, month)
     emp_ids = members_overlapping(db, teams, period_start, period_end)
     if not emp_ids:
-        return {"year": year, "month": month, "teams": teams, "rows": []}
+        return {"year": year, "month": month, "teams": teams, "rows": [], "skipped_no_profile": 0}
 
     employees = (
         db.query(Employee)
@@ -580,14 +569,18 @@ def build_report(
     )
     cache = _build_report_cache(db, [e.id for e in employees], period_start, period_end)
 
+    evaluated = [e for e in employees if _resolve_profile(db, e, cache) is not None]
     rows = [
         compute_employee_month(
             db, emp, teams, year, month, settings=st, direction=direction, cache=cache,
         )
-        for emp in employees
+        for emp in evaluated
     ]
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
-    return {"year": year, "month": month, "teams": teams, "rows": rows}
+    return {
+        "year": year, "month": month, "teams": teams, "rows": rows,
+        "skipped_no_profile": len(employees) - len(evaluated),
+    }
 
 
 def summarize_report(rows: list[dict]) -> dict:
@@ -599,10 +592,23 @@ def summarize_report(rows: list[dict]) -> dict:
         if r["total"] is not None and r["target_pct"] is not None and r["total"] < r["target_pct"]
     )
     no_data_metrics = sum(1 for r in rows for m in r["metrics"] if not m["has_data"])
+    # Разбор пустых клеток по метрикам: «25 метрик без данных» само по себе
+    # ни о чём не говорит, а «оценка заказчика пустая у всех шестерых» —
+    # готовый повод пойти и разобраться (см. спеку доработок, раздел 8).
+    by_metric: dict[str, dict] = {}
+    order: list[str] = []
+    for row in rows:
+        for m in row["metrics"]:
+            if m["code"] not in by_metric:
+                by_metric[m["code"]] = {"code": m["code"], "name": m["name"], "count": 0}
+                order.append(m["code"])
+            if not m["has_data"]:
+                by_metric[m["code"]]["count"] += 1
     return {
         "avg_total": avg_total,
         "below_target_count": below_target,
         "no_data_metrics_count": no_data_metrics,
+        "no_data_by_metric": [by_metric[code] for code in order if by_metric[code]["count"]],
     }
 
 
@@ -624,6 +630,8 @@ def build_approval_payload(db: Session, team: str, year: int, month: int) -> dic
     quarter = QUARTER_OF_MONTH[month]
     report["rules_snapshot"] = {
         "excluded_statuses": st.excluded_statuses,
+        "worklog_deadline_mode": st.worklog_deadline_mode,
+        "worklog_deadline_hours": st.worklog_deadline_hours,
         "worklog_deadline_days": st.worklog_deadline_days,
         "worklog_deadline_time": st.worklog_deadline_time,
         "empty_policy": st.empty_policy,
@@ -690,8 +698,11 @@ def report_with_approvals(
 
     live_teams = [t for t in teams if t not in approvals]
     rows: list[dict] = []
+    skipped_no_profile = 0
     if live_teams:
-        rows.extend(build_report(db, live_teams, year, month, direction=direction)["rows"])
+        live = build_report(db, live_teams, year, month, direction=direction)
+        rows.extend(live["rows"])
+        skipped_no_profile = live.get("skipped_no_profile", 0)
 
     approval_info: dict[str, dict] = {
         t: {"approved": False, "approved_by": None, "approved_at": None} for t in live_teams
@@ -704,7 +715,10 @@ def report_with_approvals(
         }
 
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
-    return {"year": year, "month": month, "teams": teams, "rows": rows, "approvals": approval_info}
+    return {
+        "year": year, "month": month, "teams": teams, "rows": rows,
+        "approvals": approval_info, "skipped_no_profile": skipped_no_profile,
+    }
 
 
 def group_rows_by_team(rows: list[dict]) -> dict[str, list[dict]]:
@@ -802,6 +816,10 @@ def build_teams_summary(
             "target_pct": _uniform_or_none([r["target_pct"] for r in cur_rows]),
             "warn_band_pct": _uniform_or_none([r["warn_band_pct"] for r in cur_rows]),
             "metrics": _team_metric_averages(cur_rows),
+            # Норматив Cycle Time на квартал: без него метрика пуста у всей
+            # команды, и это самая частая причина «нет данных» — страница
+            # называет её прямо, а не оставляет руководителя гадать.
+            "cycle_time_norm": _norm_for(db, key, year, month) if key else None,
         })
     return rows
 

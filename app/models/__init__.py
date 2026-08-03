@@ -65,7 +65,9 @@ from app.models.usage_event import UsageEvent, UsageEventType
 from app.models.usage_daily import UsageDaily
 from app.models.plan_audit import PlanAudit  # noqa: F401
 from app.models.work_desk import WorkDesk  # noqa: F401
-from app.models.kpi import KpiMetric, KpiProfile, KpiProfileMetric, KpiCycleTimeNorm, KpiApproval
+from app.models.kpi import (
+    KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole, KpiCycleTimeNorm, KpiApproval,
+)
 
 __all__ = [
     "TimestampMixin",
@@ -141,6 +143,7 @@ __all__ = [
     "KpiMetric",
     "KpiProfile",
     "KpiProfileMetric",
+    "KpiProfileRole",
     "KpiCycleTimeNorm",
     "KpiApproval",
 ]

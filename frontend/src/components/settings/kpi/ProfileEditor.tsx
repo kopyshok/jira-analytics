@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react';
 import {
-  App, Button, Card, Input, InputNumber, Popconfirm, Select, Space, Switch, Table, Typography,
+  App, Button, Card, Input, InputNumber, Popconfirm, Select, Space, Switch, Table, Tag, Typography,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useThemeTokens } from '../../../aurora/theme/useThemeTokens';
 import { useRoles } from '../../../hooks/useRoles';
 import {
-  createProfile, deleteProfile, fetchMetrics, fetchProfiles, updateProfile,
-  type KpiProfileDef, type KpiProfileMetricPayload, type KpiProfilePayload,
+  createProfile, deleteProfile, fetchCoverage, fetchMetrics, fetchProfiles, updateProfile,
+  type KpiCoverageRow, type KpiProfileDef, type KpiProfileMetricPayload, type KpiProfilePayload,
 } from '../../../api/kpi';
 
 const { Text } = Typography;
 
 function blankProfileForm(): KpiProfilePayload {
   return {
-    code: '', name: '', role_code: null, target_pct: 80, warn_band_pct: 10,
-    is_enabled: true, is_default: false, metrics: [],
+    code: '', name: '', role_codes: [], target_pct: 80, warn_band_pct: 10,
+    is_enabled: true, metrics: [],
   };
 }
 
@@ -27,6 +27,7 @@ export default function ProfileEditor() {
 
   const profilesQuery = useQuery({ queryKey: ['kpi-settings', 'profiles'], queryFn: fetchProfiles });
   const metricsQuery = useQuery({ queryKey: ['kpi-settings', 'metrics'], queryFn: fetchMetrics });
+  const coverageQuery = useQuery({ queryKey: ['kpi-settings', 'coverage'], queryFn: fetchCoverage });
   const { data: roles } = useRoles();
 
   const [selectedId, setSelectedId] = useState<string | 'new' | null>(null);
@@ -43,8 +44,8 @@ export default function ProfileEditor() {
     const p = profilesQuery.data?.find((x) => x.id === selectedId);
     if (p) {
       setForm({
-        code: p.code, name: p.name, role_code: p.role_code, target_pct: p.target_pct,
-        warn_band_pct: p.warn_band_pct, is_enabled: p.is_enabled, is_default: p.is_default,
+        code: p.code, name: p.name, role_codes: p.role_codes, target_pct: p.target_pct,
+        warn_band_pct: p.warn_band_pct, is_enabled: p.is_enabled,
         metrics: p.metrics.map((m) => ({ metric_code: m.metric_code, weight: m.weight, sort_order: m.sort_order })),
       });
     }
@@ -59,6 +60,7 @@ export default function ProfileEditor() {
     mutationFn: (body: KpiProfilePayload) => createProfile(body),
     onSuccess: (p: KpiProfileDef) => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'profiles'] });
+      qc.invalidateQueries({ queryKey: ['kpi-settings', 'coverage'] });
       qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Профиль создан' });
       setSelectedId(p.id);
@@ -69,6 +71,7 @@ export default function ProfileEditor() {
     mutationFn: (body: KpiProfilePayload) => updateProfile(selectedId as string, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'profiles'] });
+      qc.invalidateQueries({ queryKey: ['kpi-settings', 'coverage'] });
       qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Профиль сохранён' });
     },
@@ -78,6 +81,7 @@ export default function ProfileEditor() {
     mutationFn: (id: string) => deleteProfile(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kpi-settings', 'profiles'] });
+      qc.invalidateQueries({ queryKey: ['kpi-settings', 'coverage'] });
       qc.invalidateQueries({ queryKey: ['kpi'] });
       notification.success({ title: 'Профиль удалён' });
       setSelectedId(null);
@@ -158,7 +162,7 @@ export default function ProfileEditor() {
             type={selectedId === p.id ? 'primary' : 'default'}
             onClick={() => setSelectedId(p.id)}
           >
-            {p.name}{p.is_default ? ' · по умолчанию' : ''}
+            {p.name}{p.role_codes.length ? ` · ролей: ${p.role_codes.length}` : ' · без ролей'}
           </Button>
         ))}
         <Button icon={<PlusOutlined />} onClick={startNew}>Создать профиль</Button>
@@ -185,12 +189,13 @@ export default function ProfileEditor() {
                 />
               </div>
               <div>
-                <Text type="secondary" style={{ fontSize: 11 }}>Роль сотрудника</Text><br />
+                <Text type="secondary" style={{ fontSize: 11 }}>Роли сотрудников</Text><br />
                 <Select
-                  allowClear style={{ width: 200 }}
+                  mode="multiple" allowClear style={{ minWidth: 280 }}
+                  placeholder="Кого оценивает профиль"
                   options={(roles ?? []).filter((r) => r.is_active).map((r) => ({ value: r.code, label: r.label }))}
-                  value={form.role_code ?? undefined}
-                  onChange={(v) => setForm((f) => ({ ...f, role_code: v ?? null }))}
+                  value={form.role_codes}
+                  onChange={(v: string[]) => setForm((f) => ({ ...f, role_codes: v }))}
                 />
               </div>
               <div>
@@ -211,15 +216,11 @@ export default function ProfileEditor() {
                 <Text type="secondary" style={{ fontSize: 11 }}>Включён</Text><br />
                 <Switch checked={form.is_enabled} onChange={(v) => setForm((f) => ({ ...f, is_enabled: v }))} />
               </div>
-              <div>
-                <Text type="secondary" style={{ fontSize: 11 }}>По умолчанию</Text><br />
-                <Switch
-                  checked={form.is_default}
-                  onChange={(v) => setForm((f) => ({ ...f, is_default: v }))}
-                  title="Запасной профиль для сотрудников, чья роль ни с чем не совпала. Ровно один."
-                />
-              </div>
             </Space>
+            <Text type="secondary" style={{ fontSize: 11.5, display: 'block', marginTop: 10 }}>
+              Одна роль принадлежит не более чем одному профилю — иначе выбор профиля был бы
+              неоднозначным. Сотрудники ролей вне профилей в ведомость не попадают.
+            </Text>
           </Card>
 
           <Card
@@ -281,6 +282,47 @@ export default function ProfileEditor() {
           </Space>
         </>
       )}
+
+      {/* Профиля «по умолчанию» больше нет: сотрудник с непривязанной или
+          незаполненной ролью молча исчезает из ведомости. Эта таблица —
+          единственный способ увидеть, кого потеряли. */}
+      <Card size="small" title="Покрытие ролей профилями" style={{ marginTop: 20 }}>
+        <Table<KpiCoverageRow>
+          dataSource={coverageQuery.data?.rows ?? []}
+          loading={coverageQuery.isLoading}
+          rowKey={(r) => r.role_code ?? '__none__'}
+          size="small"
+          pagination={false}
+          columns={[
+            { title: 'Роль', dataIndex: 'role_label' },
+            { title: 'Сотрудников', dataIndex: 'employee_count', width: 120, align: 'right' },
+            {
+              title: 'Профиль оценки',
+              render: (_: unknown, r: KpiCoverageRow) => (
+                r.profile_name
+                  ? <Tag color="cyan">{r.profile_name}</Tag>
+                  : <Text type="secondary">не привязана</Text>
+              ),
+            },
+            {
+              title: 'В ведомости', width: 170,
+              render: (_: unknown, r: KpiCoverageRow) => (
+                r.profile_name
+                  ? <Tag color="success">оценивается</Tag>
+                  : <Tag color={r.role_code ? 'default' : 'warning'}>
+                      {r.role_code ? 'не показывается' : 'проверить карточки'}
+                    </Tag>
+              ),
+            },
+          ]}
+        />
+        {coverageQuery.data && (
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 9 }}>
+            Оценивается {coverageQuery.data.evaluated_count} человек
+            из {coverageQuery.data.total_count}. Остальные в ведомость не попадают.
+          </Text>
+        )}
+      </Card>
     </div>
   );
 }

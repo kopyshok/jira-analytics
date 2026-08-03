@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
-import { App, Alert, Button, Card, Input, InputNumber, Radio, Space, Tag, TimePicker, Typography } from 'antd';
+import {
+  App, Alert, Button, Card, DatePicker, Input, InputNumber, Radio, Select, Space, Table, Tag,
+  TimePicker, Typography,
+} from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
 import { PlusOutlined } from '@ant-design/icons';
-import { fetchGeneral, saveGeneral, type KpiGeneralSettings } from '../../../api/kpi';
+import {
+  fetchDeadlineCompare, fetchGeneral, saveGeneral,
+  type KpiDeadlineCompareRow, type KpiGeneralSettings,
+} from '../../../api/kpi';
+import { useGlobalTeamFilter } from '../../../hooks/useGlobalTeamFilter';
+import { useTeams } from '../../../hooks/useSync';
 import { useThemeTokens } from '../../../aurora/theme/useThemeTokens';
 
 const { Text } = Typography;
@@ -28,6 +36,107 @@ function overdueExample(days: number, time: string): string {
   }
   const dayName = WEEKDAY_NAMES_RU[cursor.day() === 0 ? 6 : cursor.day() - 1];
   return `Часы за пятницу ${workDay.format('D MMMM')} нужно внести до ${dayName} ${cursor.format('D MMMM')}, ${time}. Праздники здесь не учтены — только пример.`;
+}
+
+/** Пример для способа по ТЗ: календарь не участвует, поэтому счёт прямой. */
+function hoursExample(hours: number): string {
+  const started = dayjs('2026-07-24T09:00'); // пятница, 9 утра
+  const deadline = started.add(hours, 'hour');
+  return `Работа начата в пятницу ${started.format('D MMMM')} в 09:00 — внести до `
+    + `${deadline.format('D MMMM, HH:mm')}. Выходные не пропускаются.`;
+}
+
+/**
+ * Сравнение способов на живых данных: способ по ТЗ строже, потому что не
+ * прощает выходные. Переключать вслепую нельзя — сначала видно, как он ляжет
+ * на людей.
+ */
+function DeadlineComparison() {
+  const t = useThemeTokens();
+  const { selectedTeams } = useGlobalTeamFilter();
+  const now = new Date();
+  const [team, setTeam] = useState<string | undefined>(selectedTeams[0]);
+  const [period, setPeriod] = useState<Dayjs>(dayjs(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+  const [enabled, setEnabled] = useState(false);
+
+  const teamsQuery = useTeams();
+  const compareQuery = useQuery({
+    queryKey: ['kpi-settings', 'deadline-compare', team, period.year(), period.month() + 1],
+    queryFn: () => fetchDeadlineCompare(team as string, period.year(), period.month() + 1),
+    enabled: enabled && !!team,
+  });
+
+  const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v)}%`);
+
+  return (
+    <Card size="small" title="Сравнить способы на данных">
+      <Space wrap align="end" style={{ marginBottom: 12 }}>
+        <div>
+          <Text type="secondary" style={{ fontSize: 11 }}>Команда</Text><br />
+          <Select
+            style={{ minWidth: 260 }} value={team} onChange={setTeam}
+            placeholder="Выберите команду"
+            options={(teamsQuery.data ?? []).map((x) => ({ value: x, label: x }))}
+          />
+        </div>
+        <div>
+          <Text type="secondary" style={{ fontSize: 11 }}>Месяц</Text><br />
+          <DatePicker
+            picker="month" value={period} allowClear={false}
+            onChange={(v: Dayjs | null) => v && setPeriod(v)}
+          />
+        </div>
+        <Button
+          onClick={() => { setEnabled(true); compareQuery.refetch(); }}
+          loading={compareQuery.isFetching} disabled={!team}
+        >
+          Сравнить
+        </Button>
+      </Space>
+
+      {compareQuery.data && (
+        <Table
+          dataSource={compareQuery.data.rows}
+          rowKey="employee_name"
+          size="small"
+          pagination={false}
+          columns={[
+            { title: 'Сотрудник', dataIndex: 'employee_name' },
+            { title: 'Записей', dataIndex: 'worklog_count', width: 100, align: 'right' },
+            {
+              title: 'Часов от времени работы', width: 200, align: 'right',
+              render: (_: unknown, r: KpiDeadlineCompareRow) => (
+                <span className="num">{pct(r.hours_from_start)}</span>
+              ),
+            },
+            {
+              title: 'Рабочие дни + отсечка', width: 190, align: 'right',
+              render: (_: unknown, r: KpiDeadlineCompareRow) => (
+                <span className="num">{pct(r.calendar)}</span>
+              ),
+            },
+            {
+              title: 'Разница', width: 110, align: 'right',
+              render: (_: unknown, r: KpiDeadlineCompareRow) => {
+                if (r.hours_from_start == null || r.calendar == null) return '—';
+                const delta = Math.round(r.hours_from_start - r.calendar);
+                return (
+                  <span className="num" style={{ color: delta < 0 ? t.danger : t.textMuted }}>
+                    {delta > 0 ? `+${delta}` : delta}
+                  </span>
+                );
+              },
+            },
+          ]}
+        />
+      )}
+      {compareQuery.data?.rows.length === 0 && (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          За этот месяц по команде нет записей о трудозатратах.
+        </Text>
+      )}
+    </Card>
+  );
 }
 
 export default function GeneralRules() {
@@ -109,31 +218,71 @@ export default function GeneralRules() {
       </Card>
 
       <Card size="small" title="Срок внесения трудозатрат">
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
-          Часы за рабочий день должны быть внесены не позже указанного времени следующего рабочего
-          дня. Выходные и праздники пропускаются по производственному календарю.
-        </Text>
-        <Space size="large">
-          <div>
-            <Text type="secondary" style={{ fontSize: 11 }}>Дать рабочих дней</Text><br />
-            <InputNumber
-              min={1} max={5} value={form.worklog_deadline_days}
-              onChange={(v) => setForm({ ...form, worklog_deadline_days: v ?? 1 })}
-            />
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 11 }}>Не позже</Text><br />
-            <TimePicker
-              format="HH:mm" value={dayjs(form.worklog_deadline_time, 'HH:mm')}
-              onChange={(v: Dayjs | null) => setForm({ ...form, worklog_deadline_time: v ? v.format('HH:mm') : form.worklog_deadline_time })}
-              allowClear={false}
-            />
-          </div>
-        </Space>
-        <div style={{ marginTop: 10, fontSize: 12, color: t.textMuted }}>
-          {overdueExample(form.worklog_deadline_days, form.worklog_deadline_time)}
-        </div>
+        <Radio.Group
+          value={form.worklog_deadline_mode}
+          onChange={(e) => setForm({ ...form, worklog_deadline_mode: e.target.value })}
+          style={{ width: '100%' }}
+        >
+          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            <div>
+              <Radio value="hours_from_start">
+                Часов от времени работы <Text type="secondary" style={{ fontSize: 11.5 }}>· как в ТЗ</Text>
+              </Radio>
+              <div style={{ paddingLeft: 24, marginTop: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                  Запись просрочена, если создана позже чем через указанное число часов после
+                  времени начала работы, записанного в ней. Производственный календарь не
+                  участвует — счёт непрерывный, выходные не прощаются.
+                </Text>
+                <Text type="secondary" style={{ fontSize: 11 }}>Часов на внесение</Text><br />
+                <InputNumber
+                  min={1} max={168} value={form.worklog_deadline_hours}
+                  disabled={form.worklog_deadline_mode !== 'hours_from_start'}
+                  onChange={(v) => setForm({ ...form, worklog_deadline_hours: v ?? 18 })}
+                />
+                <div style={{ marginTop: 8, fontSize: 12, color: t.textMuted }}>
+                  {hoursExample(form.worklog_deadline_hours)}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Radio value="calendar">Рабочие дни и время отсечки</Radio>
+              <div style={{ paddingLeft: 24, marginTop: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                  Часы за рабочий день внесены вовремя, если запись создана не позже указанного
+                  времени N-го рабочего дня. Выходные и праздники пропускаются по
+                  производственному календарю.
+                </Text>
+                <Space size="large">
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Дать рабочих дней</Text><br />
+                    <InputNumber
+                      min={1} max={5} value={form.worklog_deadline_days}
+                      disabled={form.worklog_deadline_mode !== 'calendar'}
+                      onChange={(v) => setForm({ ...form, worklog_deadline_days: v ?? 1 })}
+                    />
+                  </div>
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Не позже</Text><br />
+                    <TimePicker
+                      format="HH:mm" value={dayjs(form.worklog_deadline_time, 'HH:mm')}
+                      disabled={form.worklog_deadline_mode !== 'calendar'}
+                      onChange={(v: Dayjs | null) => setForm({ ...form, worklog_deadline_time: v ? v.format('HH:mm') : form.worklog_deadline_time })}
+                      allowClear={false}
+                    />
+                  </div>
+                </Space>
+                <div style={{ marginTop: 8, fontSize: 12, color: t.textMuted }}>
+                  {overdueExample(form.worklog_deadline_days, form.worklog_deadline_time)}
+                </div>
+              </div>
+            </div>
+          </Space>
+        </Radio.Group>
       </Card>
+
+      <DeadlineComparison />
 
       <Card size="small" title="Если данных для расчёта нет">
         <Radio.Group
