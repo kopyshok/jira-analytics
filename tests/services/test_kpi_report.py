@@ -157,8 +157,13 @@ def test_employee_with_unmatched_role_not_in_report(db_session):
 
     report = build_report(db_session, teams=["Платежи"], year=2026, month=7)
     assert [r["employee_name"] for r in report["rows"]] == ["Иванов И."]
-    # Молча терять людей нельзя — сколько отсеялось, видно отдельным числом.
+    # Молча терять людей нельзя — отсеявшиеся отдаются поимённо, с ролью:
+    # по одному числу руководитель не поймёт, кого именно он не видит.
     assert report["skipped_no_profile"] == 2
+    skipped = {s["employee_name"]: s for s in report["skipped"]}
+    assert set(skipped) == {"Петров П.", "Сидоров С."}
+    assert skipped["Петров П."]["role_code"] == "dev"
+    assert skipped["Сидоров С."]["role_label"] == "Роль не заполнена"
 
 
 def test_cycle_time_norm_uses_team_at_period_start_not_current_team(db_session, sample_project):
