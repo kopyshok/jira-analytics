@@ -778,14 +778,12 @@ class SyncService:
             jira_issue.fields.assignee.jira_account_id
             if jira_issue.fields.assignee else None
         )
-        data["reporter_account_id"] = (
-            jira_issue.fields.creator.jira_account_id
-            if jira_issue.fields.creator else None
-        )
-        data["reporter_display_name"] = (
-            jira_issue.fields.creator.display_name
-            if jira_issue.fields.creator else None
-        )
+        # «Автор» задачи для KPI — reporter (его в Jira можно переназначить),
+        # creator оставлен запасным вариантом: у задач, заведённых
+        # автоматикой, creator — робот, а reporter — живой сотрудник.
+        _author = jira_issue.fields.reporter or jira_issue.fields.creator
+        data["reporter_account_id"] = _author.jira_account_id if _author else None
+        data["reporter_display_name"] = _author.display_name if _author else None
 
         _new_plan_values = {
             "analyst": _fld_float("jira_planned_analyst_hours_field_id"),
@@ -954,7 +952,7 @@ class SyncService:
         producer_errors: list[Exception] = []
         base_request_fields = [
             "summary", "description", "issuetype", "status",
-            "priority", "project", "parent", "creator",
+            "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
             "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
             "issuelinks",
@@ -1143,7 +1141,7 @@ class SyncService:
         planned_field_ids = self._resolve_planned_field_ids()
         base_fields = [
             "summary", "description", "issuetype", "status",
-            "priority", "project", "parent", "creator",
+            "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
             "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         ]
@@ -1267,7 +1265,7 @@ class SyncService:
 
         base_fields = [
             "summary", "description", "issuetype", "status",
-            "priority", "project", "parent", "creator",
+            "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
             "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         ]

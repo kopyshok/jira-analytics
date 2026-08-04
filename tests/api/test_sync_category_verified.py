@@ -62,6 +62,7 @@ def _jira_issue(jira_id: str, key: str):
     ji.fields.resolutiondate = None
     ji.fields.assignee = None
     ji.fields.creator = None
+    ji.fields.reporter = None
     ji.fields._extra = {}
     return ji
 

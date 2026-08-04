@@ -100,6 +100,10 @@ class JiraIssueFieldsSchema(BaseModel):
     project: JiraProjectSchema
     parent: Optional[dict] = None
     creator: Optional[JiraUserSchema] = None
+    # «Автор» в интерфейсе Jira — это reporter, его можно переназначить.
+    # creator (создатель) неизменен и у автоматически заведённых задач
+    # равен роботу, поэтому для KPI нужен именно reporter.
+    reporter: Optional[JiraUserSchema] = None
     assignee: Optional[JiraUserSchema] = None
     created: Optional[str] = None
     updated: Optional[str] = None
@@ -115,7 +119,7 @@ class JiraIssueFieldsSchema(BaseModel):
     def __init__(self, **data):
         known = {
             "summary", "description", "issuetype", "status", "priority",
-            "project", "parent", "creator", "assignee", "created", "updated",
+            "project", "parent", "creator", "reporter", "assignee", "created", "updated",
             "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
             "issuelinks",
         }

@@ -271,7 +271,7 @@ class JiraClient:
         """
         default_fields = [
             "summary", "description", "issuetype", "status",
-            "priority", "project", "parent", "creator",
+            "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
             "statuscategorychangedate", "duedate",
         ]
@@ -338,7 +338,7 @@ class JiraClient:
         if extra_fields:
             default_fields = [
                 "summary", "description", "issuetype", "status",
-                "priority", "project", "parent", "creator",
+                "priority", "project", "parent", "creator", "reporter",
                 "assignee", "created", "updated",
                 "statuscategorychangedate", "duedate",
             ]

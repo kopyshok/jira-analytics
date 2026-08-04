@@ -87,11 +87,20 @@ async def lifespan(app: FastAPI):
     warmup_task = asyncio.create_task(_warmup_embedding())
     app.state.embedding_warmup_task = warmup_task
 
+    # --- Разовое дозаполнение «автора задачи» (background, non-blocking) ---
+    # Отрабатывает один раз на окружение при обновлении на версию с
+    # исправленным чтением Автора из Jira; дальше сам себя пропускает.
+    from app.jobs.backfill_issue_author import backfill_issue_author_once
+    backfill_task = asyncio.create_task(backfill_issue_author_once())
+    app.state.backfill_author_task = backfill_task
+
     yield
 
     # --- Shutdown ---
     if not warmup_task.done():
         warmup_task.cancel()
+    if not backfill_task.done():
+        backfill_task.cancel()
     sched_svc.shutdown()
     logger.info("Shutting down...")
 
