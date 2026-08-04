@@ -31,24 +31,23 @@ export interface KpiReportRow {
   empty_policy: 'redistribute' | 'full' | 'zero';
 }
 
-export interface KpiNoDataMetric {
-  code: string;
-  name: string;
-  count: number;
-}
-
 export interface KpiReportSummary {
   avg_total: number | null;
   below_target_count: number;
   no_data_metrics_count: number;
-  /** Разбор пустых клеток по метрикам — «25 без данных» само по себе ни о чём не говорит. */
-  no_data_by_metric: KpiNoDataMetric[];
 }
 
 export interface KpiTeamApproval {
   approved: boolean;
   approved_by: string | null;
   approved_at: string | null;
+}
+
+export interface KpiSkippedEmployee {
+  employee_id: string;
+  employee_name: string;
+  role_code: string | null;
+  role_label: string;
 }
 
 export interface KpiReport {
@@ -60,6 +59,8 @@ export interface KpiReport {
   approvals: Record<string, KpiTeamApproval>;
   /** Сколько человек команды не оценивается: их роль не привязана ни к одному профилю. */
   skipped_no_profile: number;
+  /** Они же поимённо — числа мало, руководителю нужно знать, кого он не видит. */
+  skipped: KpiSkippedEmployee[];
 }
 
 export interface KpiTeamSummaryMetric {

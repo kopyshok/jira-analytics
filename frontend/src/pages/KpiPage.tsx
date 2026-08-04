@@ -8,7 +8,7 @@ import PageHeader from '../components/shared/PageHeader';
 import KpiLedger, { KpiStatusLegend } from '../components/kpi/KpiLedger';
 import KpiEmployeeTab from '../components/kpi/KpiEmployeeTab';
 import KpiBreakdownDock, { type KpiBreakdownTarget } from '../components/kpi/KpiBreakdownDock';
-import KpiSummaryTiles from '../components/kpi/KpiSummaryTiles';
+import KpiSummaryBar from '../components/kpi/KpiSummaryBar';
 import KpiTeamMetricStrip from '../components/kpi/KpiTeamMetricStrip';
 import KpiDistribution from '../components/kpi/KpiDistribution';
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
@@ -173,11 +173,7 @@ export default function KpiPage() {
     .filter(([, a]) => a.approved)
     .map(([team]) => team);
 
-  // Норматив Cycle Time — самая частая причина пустой метрики у всей команды
-  // сразу, поэтому она называется в предупреждении прямо.
-  const missingNorms = (teamsSummaryQuery.data?.rows ?? [])
-    .filter((r) => r.team && r.member_count > 0 && r.cycle_time_norm == null)
-    .map((r) => r.team as string);
+  const teamsInLedger = new Set(rows.map((r) => r.team ?? '__none__')).size;
 
   // Ранг человека внутри его команды — тот же расчёт, что и в ведомости.
   const rankOf = (row: KpiReportRow) => {
@@ -190,31 +186,19 @@ export default function KpiPage() {
 
   const ledgerTab = (
     <>
-      <KpiSummaryTiles
+      <KpiSummaryBar
         summary={summary}
-        peopleCount={rows.length}
-        skippedNoProfile={reportQuery.data?.skipped_no_profile ?? 0}
+        rows={rows}
+        prevRows={prevReportQuery.data?.rows ?? []}
+        skipped={reportQuery.data?.skipped ?? []}
+        teamsSummary={teamsSummaryQuery.data?.rows ?? []}
       />
 
-      <KpiTeamMetricStrip rows={rows} prevRows={prevReportQuery.data?.rows ?? []} />
-
-      {(summary?.no_data_by_metric.length ?? 0) > 0 && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 14 }}
-          title={`Данных не хватает для ${summary?.no_data_metrics_count} клеток из ${rows.length * (rows[0]?.metrics.length ?? 0)}.`}
-          description={(
-            <span style={{ fontSize: 12.5 }}>
-              {summary?.no_data_by_metric
-                .map((m) => `${m.name} — у ${m.count} чел.`)
-                .join(' · ')}
-              {missingNorms.length > 0 && (
-                <> · норматив Cycle Time не задан: {missingNorms.join(', ')}</>
-              )}
-            </span>
-          )}
-        />
+      {/* Полоса метрик повторяет строку команды в ведомости один в один, если
+          команда одна — показываем её только когда команд несколько и в
+          таблице нет общего итога по всем сразу. */}
+      {teamsInLedger > 1 && (
+        <KpiTeamMetricStrip rows={rows} prevRows={prevReportQuery.data?.rows ?? []} />
       )}
 
       {teamsSummaryQuery.isError && (

@@ -13,6 +13,7 @@ from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.issue import Issue
 from app.models.kpi import KpiApproval, KpiCycleTimeNorm, KpiMetric, KpiProfile, KpiProfileRole
+from app.models.role import Role
 from app.models.worklog import Worklog
 from app.services.kpi.calculators import MetricResult, norm_to_fact, ratio, score_to_max
 from app.services.kpi.conditions import (
@@ -559,7 +560,10 @@ def build_report(
     period_start, period_end = month_bounds(year, month)
     emp_ids = members_overlapping(db, teams, period_start, period_end)
     if not emp_ids:
-        return {"year": year, "month": month, "teams": teams, "rows": [], "skipped_no_profile": 0}
+        return {
+            "year": year, "month": month, "teams": teams, "rows": [],
+            "skipped_no_profile": 0, "skipped": [],
+        }
 
     employees = (
         db.query(Employee)
@@ -577,9 +581,23 @@ def build_report(
         for emp in evaluated
     ]
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
+
+    # Поимённый список выпавших из оценки: числа мало, руководителю нужно
+    # знать, кого именно он не видит и по какой роли (спека доработок, п. 2).
+    evaluated_ids = {e.id for e in evaluated}
+    role_labels = {r.code: r.label for r in db.query(Role).all()}
+    skipped = [
+        {
+            "employee_id": e.id,
+            "employee_name": e.display_name,
+            "role_code": e.role,
+            "role_label": role_labels.get(e.role or "", "Роль не заполнена" if not e.role else e.role),
+        }
+        for e in employees if e.id not in evaluated_ids
+    ]
     return {
         "year": year, "month": month, "teams": teams, "rows": rows,
-        "skipped_no_profile": len(employees) - len(evaluated),
+        "skipped_no_profile": len(skipped), "skipped": skipped,
     }
 
 
@@ -592,23 +610,10 @@ def summarize_report(rows: list[dict]) -> dict:
         if r["total"] is not None and r["target_pct"] is not None and r["total"] < r["target_pct"]
     )
     no_data_metrics = sum(1 for r in rows for m in r["metrics"] if not m["has_data"])
-    # Разбор пустых клеток по метрикам: «25 метрик без данных» само по себе
-    # ни о чём не говорит, а «оценка заказчика пустая у всех шестерых» —
-    # готовый повод пойти и разобраться (см. спеку доработок, раздел 8).
-    by_metric: dict[str, dict] = {}
-    order: list[str] = []
-    for row in rows:
-        for m in row["metrics"]:
-            if m["code"] not in by_metric:
-                by_metric[m["code"]] = {"code": m["code"], "name": m["name"], "count": 0}
-                order.append(m["code"])
-            if not m["has_data"]:
-                by_metric[m["code"]]["count"] += 1
     return {
         "avg_total": avg_total,
         "below_target_count": below_target,
         "no_data_metrics_count": no_data_metrics,
-        "no_data_by_metric": [by_metric[code] for code in order if by_metric[code]["count"]],
     }
 
 
@@ -698,11 +703,11 @@ def report_with_approvals(
 
     live_teams = [t for t in teams if t not in approvals]
     rows: list[dict] = []
-    skipped_no_profile = 0
+    skipped: list[dict] = []
     if live_teams:
         live = build_report(db, live_teams, year, month, direction=direction)
         rows.extend(live["rows"])
-        skipped_no_profile = live.get("skipped_no_profile", 0)
+        skipped = live.get("skipped", [])
 
     approval_info: dict[str, dict] = {
         t: {"approved": False, "approved_by": None, "approved_at": None} for t in live_teams
@@ -717,7 +722,8 @@ def report_with_approvals(
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
     return {
         "year": year, "month": month, "teams": teams, "rows": rows,
-        "approvals": approval_info, "skipped_no_profile": skipped_no_profile,
+        "approvals": approval_info,
+        "skipped_no_profile": len(skipped), "skipped": skipped,
     }
 
 
