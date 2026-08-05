@@ -29,6 +29,7 @@ from app.api.endpoints import (
     issue_config,
     kpi as kpi_endpoints,
     kpi_settings as kpi_settings_endpoints,
+    team_desk as team_desk_endpoints,
     mandatory_work_types,
     mapping,
     planning,
@@ -216,6 +217,12 @@ api_router.include_router(
 )
 api_router.include_router(
     kpi_endpoints.router, prefix="/kpi", tags=["kpi"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    team_desk_endpoints.router,
+    prefix="/team-desk",
+    tags=["team-desk"],
+    dependencies=_auth_dep,
 )
 
 # Admin-only routers
