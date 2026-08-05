@@ -101,6 +101,15 @@ const GROUPS: FieldGroup[] = [
       { key: 'jira_direction_field_id',   label: 'Продуктовое направление' },
     ],
   },
+  {
+    panelKey: 'team-desk',
+    title: 'Стол тимлида',
+    subtitle: 'Контроль задач в разрезе разработчиков',
+    fields: [
+      { key: 'jira_developer_field_id', label: 'Разработчик' },
+      { key: 'jira_dev_est_field_id',   label: 'Оценка разработки, ч' },
+    ],
+  },
 ];
 
 const ALL_FIELDS: FieldDef[] = GROUPS.flatMap(g => g.fields);

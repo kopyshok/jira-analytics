@@ -33,6 +33,7 @@ import AbsenceReasonsTab from '../components/AbsenceReasonsTab';
 import CategoriesTab from '../components/CategoriesTab';
 import WorkTypesTab from '../components/settings/WorkTypesTab';
 import KpiSettingsTab from '../components/settings/kpi/KpiSettingsTab';
+import TeamDeskSettingsTab from '../components/settings/TeamDeskSettingsTab';
 import { AITab } from '../components/settings/AITab';
 import VisibilityTab from '../components/settings/VisibilityTab';
 import PageHeader from '../components/shared/PageHeader';
@@ -71,6 +72,7 @@ const GROUPS: SectionGroup[] = [
       { key: 'worktypes', label: 'Виды работ', render: () => <WorkTypesTab /> },
       { key: 'calendar', label: 'Производственный календарь', render: () => <ProductionCalendarTab /> },
       { key: 'kpi', label: 'KPI', render: () => <KpiSettingsTab /> },
+      { key: 'team-desk', label: 'Стол тимлида', render: () => <TeamDeskSettingsTab /> },
     ],
   },
   {
