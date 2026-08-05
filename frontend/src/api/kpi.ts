@@ -168,6 +168,8 @@ export interface KpiTableCheck {
 
 /** Строка таблицы разбора: задача (или запись о часах) и результат проверок. */
 export interface KpiTableRow {
+  /** Идентификатор задачи или записи о часах — ключ строки таблицы. */
+  id: string;
   key: string | null;
   summary: string | null;
   url: string | null;
@@ -195,6 +197,7 @@ export interface KpiTableRow {
 }
 
 export interface KpiTableDropped {
+  id: string;
   key: string | null;
   summary: string | null;
   url: string | null;

@@ -97,6 +97,7 @@ def _checks_from_conditions(num_cs: ConditionSet, den_cs: ConditionSet) -> list[
 
 def _issue_row(issue: Issue, base_url: str) -> dict:
     return {
+        "id": issue.id,
         "key": issue.key,
         "summary": issue.summary,
         "url": f"{base_url}/browse/{issue.key}" if base_url and issue.key else None,
@@ -346,6 +347,9 @@ def _worklog_table(
     """Своевременность часов: строка — запись о часах, проблема — опоздание с внесением."""
     def brief(w) -> dict:
         return {
+            # У одной задачи бывает несколько записей о часах — строку таблицы
+            # различает идентификатор записи, а не ключ задачи.
+            "id": w.id,
             "key": w.issue.key if w.issue else None,
             "summary": w.issue.summary if w.issue else None,
             "url": f"{base_url}/browse/{w.issue.key}" if base_url and w.issue else None,

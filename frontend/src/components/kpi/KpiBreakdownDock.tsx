@@ -351,7 +351,7 @@ export default function KpiBreakdownDock({
             size="small"
             columns={columns}
             dataSource={rows}
-            rowKey={(row, index) => `${row.key ?? 'row'}-${row.started_at ?? ''}-${index}`}
+            rowKey="id"
             pagination={rows.length > 25 ? { pageSize: 25, size: 'small' } : false}
             scroll={{ x: 'max-content' }}
             onRow={(row) => ({
@@ -376,7 +376,7 @@ export default function KpiBreakdownDock({
                   <Table<KpiTableDropped>
                     size="small"
                     pagination={table.dropped.length > 10 ? { pageSize: 10, size: 'small' } : false}
-                    rowKey={(row, index) => `${row.key ?? 'drop'}-${index}`}
+                    rowKey="id"
                     scroll={{ x: 'max-content' }}
                     dataSource={table.dropped}
                     columns={[
