@@ -44,6 +44,7 @@ def put_settings(
             thresholds=payload.thresholds,
             subtask_types=payload.subtask_types,
             assignee_types=payload.assignee_types,
+            developer_roles=payload.developer_roles,
         ),
     )
     return load_config(db).to_dict()
@@ -65,8 +66,16 @@ def get_overview(
     _: User = Depends(get_current_user),
 ):
     """Задачи, сводка по разработчикам, очередь работы и счётчики признаков."""
+    cfg = load_config(db)
     team_list = _split(teams)
     account_ids = set(_split(developers))
+
+    # Раздел — про разработчиков: аналитики, РП и консультанты в срез не идут,
+    # даже если задача назначена на них.
+    def _developers_only(query):
+        if cfg.developer_roles:
+            query = query.filter(Employee.role.in_(cfg.developer_roles))
+        return query
 
     employees: list[Employee] = []
     if team_list:
@@ -74,15 +83,18 @@ def get_overview(
         # выбывшие попадут в расчёт задним числом.
         member_ids = members_on(db, team_list, date.today())
         if member_ids:
-            employees = db.query(Employee).filter(Employee.id.in_(member_ids)).all()
+            employees = _developers_only(
+                db.query(Employee).filter(Employee.id.in_(member_ids))
+            ).all()
             account_ids.update(e.jira_account_id for e in employees if e.jira_account_id)
 
     known_accounts = {e.jira_account_id for e in employees if e.jira_account_id}
     missing = account_ids - known_accounts
     if missing:
-        employees += (
-            db.query(Employee).filter(Employee.jira_account_id.in_(missing)).all()
-        )
+        employees += _developers_only(
+            db.query(Employee).filter(Employee.jira_account_id.in_(missing))
+        ).all()
+    account_ids &= {e.jira_account_id for e in employees if e.jira_account_id}
 
     employee_by_account = {e.jira_account_id: e.id for e in employees if e.jira_account_id}
 
@@ -107,6 +119,17 @@ def get_overview(
         days=7,
     )
     result["employee_ids"] = employee_by_account
+
+    # Команда человека — подпись под именем в сводке. Тот, кого добрали
+    # точечно поверх команд, помечается отдельно.
+    picked = set(_split(developers))
+    team_by_account = {
+        e.jira_account_id: ("добран точечно" if e.jira_account_id in picked else e.team)
+        for e in employees
+        if e.jira_account_id
+    }
+    for row in result["developers"]:
+        row["team"] = team_by_account.get(row["developer_id"])
     return result
 
 

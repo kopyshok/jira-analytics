@@ -21,7 +21,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | Prefix | File | Назначение |
 |---|---|---|
 | `/auth` | `auth.py` | login + me (current user) |
-| `/users` | `users.py` | self-service: GET/PUT /me/period, /me/analytics-columns, /me/teams |
+| `/users` | `users.py` | self-service: GET/PUT /me/period, /me/analytics-columns, /me/teams, /me/team-desk-filter (команды + добранные разработчики стола тимлида) |
 | `/admin/users` | `admin_users.py` | **admin-only** — list/create/update/reset_password |
 | `/employees` | `employees.py` | список + create-from-Jira + recalc-active + auto-detect-teams + M:N teams CRUD |
 | `/projects` | `projects.py` | GET-only список локально известных проектов |
@@ -48,7 +48,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/events` | `events.py` | SSE entity_changed broadcaster (см. EventBroadcaster) |
 | `/llm` | `llm.py` | AI summary/work_breakdown через Gemini (`/llm/test` + project summaries) |
 | `/kpi` | `kpi.py` | отчёт «Ведомость» + сводка по командам + расшифровка метрики + тренд сотрудника + утверждение месяца (снимок) + `/directions` + `export.xlsx` |
-| `/team-desk` | `team_desk.py` | рабочий стол тимлида: `/overview` (срез задач + сводка по разработчикам + очередь работы), `/settings` (GET\|PUT — группы статусов, пороги, типы задач), `/flags` (справочник признаков), `POST\|DELETE /issues/{id}/mark` (отметка «просмотрено» на паре задача+признак) |
+| `/team-desk` | `team_desk.py` | рабочий стол тимлида: `/overview` (срез задач + сводка по разработчикам + очередь работы; ростер команд режется по `developer_roles` — в срез идут только разработчики), `/settings` (GET\|PUT — группы статусов, пороги, типы задач, роли среза), `/flags` (справочник признаков), `POST\|DELETE /issues/{id}/mark` (отметка «просмотрено» на паре задача+признак) |
 | `/kpi-settings` | `kpi_settings.py` | **admin-only** — справочники раздела KPI: метрики, профили оценки (список ролей + `/profiles/coverage`), нормативы Cycle Time, общие правила, словарь атрибутов условий, предпросмотр метрики (`POST /metrics/preview`, `POST /metrics/explain-issue`), сравнение способов срока внесения часов (`GET /worklog-deadline/compare`) |
 
 ## Паттерны

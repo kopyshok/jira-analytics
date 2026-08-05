@@ -29,20 +29,28 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
     {
       title: 'Разработчик',
       dataIndex: 'display_name',
+      ellipsis: true,
       sorter: (a, b) => (a.display_name ?? '').localeCompare(b.display_name ?? ''),
-      render: (v: string | null) => <Typography.Text strong>{v ?? 'Без имени'}</Typography.Text>,
+      render: (v: string | null, row) => (
+        <>
+          <Typography.Text strong>{v ?? 'Без имени'}</Typography.Text>
+          {row.team && (
+            <div style={{ fontSize: 11, opacity: 0.55 }}>{row.team}</div>
+          )}
+        </>
+      ),
     },
-    { title: 'Задач', dataIndex: 'total_issues', width: 90, align: 'right',
+    { title: 'Задач', dataIndex: 'total_issues', width: 72, align: 'right',
       sorter: (a, b) => a.total_issues - b.total_issues },
-    { title: 'У него', dataIndex: 'in_dev', width: 90, align: 'right',
+    { title: 'У него', dataIndex: 'in_dev', width: 76, align: 'right',
       sorter: (a, b) => a.in_dev - b.in_dev },
-    { title: 'Ждут не его', dataIndex: 'waiting', width: 110, align: 'right',
+    { title: 'Ждут не его', dataIndex: 'waiting', width: 104, align: 'right',
       sorter: (a, b) => a.waiting - b.waiting },
-    { title: 'Не начаты', dataIndex: 'todo', width: 100, align: 'right',
+    { title: 'Не начаты', dataIndex: 'todo', width: 92, align: 'right',
       sorter: (a, b) => a.todo - b.todo },
     {
       title: 'Факт / оценка',
-      width: 180,
+      width: 170,
       render: (_, row) => (
         <HoursScale fact={row.fact_hours} est={row.est_hours || null} overrunPct={overrunPct} width={150} />
       ),
@@ -50,14 +58,14 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
     {
       title: 'Точность',
       dataIndex: 'accuracy',
-      width: 100,
+      width: 84,
       align: 'right',
       sorter: (a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0),
       render: (v: number | null) => (v == null ? '—' : `×${v.toFixed(2)}`),
     },
     {
       title: 'Очередь',
-      width: 150,
+      width: 132,
       render: (_, row) => {
         const load = workload[row.developer_id];
         if (!load) return '—';
@@ -74,7 +82,7 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
     },
     {
       title: 'Замечания',
-      width: 200,
+      width: 156,
       render: (_, row) =>
         FLAG_ORDER.filter((f) => row.flag_counts[f]).map((flag) => (
           <Tooltip key={flag} title={FLAG_LABELS[flag]}>
@@ -103,7 +111,8 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
       dataSource={developers}
       columns={columns}
       pagination={false}
-      scroll={{ x: 'max-content' }}
+      // Ширины по макету: имя забирает остаток, цифры узкие.
+      scroll={{ x: 1000 }}
       onRow={(row) => ({
         onClick: () => onSelect(selected === row.developer_id ? null : row.developer_id),
         style: {

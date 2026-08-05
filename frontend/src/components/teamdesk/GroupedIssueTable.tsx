@@ -81,6 +81,7 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
   const columns: ColumnsType<Row> = [
     {
       title: 'Задача',
+      ellipsis: true,
       render: (_, row) =>
         row.isGroup ? (
           <Typography.Text strong>
@@ -98,17 +99,17 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
     },
     {
       title: 'Статус',
-      width: 190,
+      width: 170,
       render: (_, row) =>
         row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} />,
     },
-    { title: 'Оценка', width: 80, align: 'right',
+    { title: 'Оценка', width: 76, align: 'right',
       render: (_, row) => row.est_hours ?? '—' },
-    { title: 'Факт', width: 70, align: 'right',
+    { title: 'Факт', width: 68, align: 'right',
       render: (_, row) => row.fact_hours ?? 0 },
     {
       title: 'Недобор / перебор',
-      width: 170,
+      width: 165,
       render: (_, row) => (
         <HoursScale
           fact={row.fact_hours ?? 0}
@@ -118,11 +119,11 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
         />
       ),
     },
-    { title: 'Дней', width: 70, align: 'right',
+    { title: 'Дней', width: 64, align: 'right',
       render: (_, row) => (row.isGroup ? null : row.days_in_status) },
     {
       title: 'Замечания',
-      width: 180,
+      width: 140,
       render: (_, row) =>
         row.isGroup ? null : (
           <FlagList
@@ -170,7 +171,7 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
           dataSource={data}
           columns={columns}
           pagination={false}
-          scroll={{ x: 'max-content' }}
+          scroll={{ x: 900 }}
           expandable={{ defaultExpandAllRows: true }}
         />
       </Card>

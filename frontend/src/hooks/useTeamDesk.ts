@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { teamDeskApi, type DeskSettings, type FlagCode } from '../api/teamDesk';
+import {
+  teamDeskApi,
+  type DeskFilterPrefs, type DeskSettings, type FlagCode,
+} from '../api/teamDesk';
 
 export function useDeskOverview(params: {
   teams: string[];
@@ -24,6 +27,21 @@ export function useDeskSettings() {
   return useQuery({
     queryKey: ['team-desk', 'settings'],
     queryFn: () => teamDeskApi.settings(),
+  });
+}
+
+/** Выбор команд и людей хранится в профиле — он же на другом компьютере. */
+export function useDeskFilter() {
+  return useQuery({
+    queryKey: ['team-desk', 'filter'],
+    queryFn: () => teamDeskApi.filter(),
+    staleTime: 60_000,
+  });
+}
+
+export function useSaveDeskFilter() {
+  return useMutation({
+    mutationFn: (payload: DeskFilterPrefs) => teamDeskApi.saveFilter(payload),
   });
 }
 

@@ -18,7 +18,7 @@ Routable pages live in `pages/` and are lazy-loaded via [`lazyPages.tsx`](src/pa
 | `/analytics/work-type-report` (+ `/print`) | `WorkTypeReportPage` / `…PrintPage` | |
 | `/executive` | `ExecutiveDashboardPage` | KPI/тренды/риски |
 | `/kpi` | `KpiPage` | Ведомость КЭ аналитиков + вкладки сотрудников (ветка `feature/kpi`, по умолчанию скрыт — см. «Видимость разделов») |
-| `/team-desk` | `TeamDeskPage` | Рабочий стол тимлида: три раскладки (Светофор / Ведомость / Проблемы вперёд), выбор запоминается в `localStorage['team-desk-layout']` |
+| `/team-desk` | `TeamDeskPage` | Рабочий стол тимлида: три раскладки (Светофор / Ведомость / Проблемы вперёд), выбор раскладки — в `localStorage['team-desk-layout']`, выбор команд и людей — в профиле (`/users/me/team-desk-filter`) |
 | `/sync` | `SyncHubPage` | Запуск + расписание + ворклог-backfill |
 | `/categories` | `CategoriesEditorPage` | Разбор задач (бывший `CategoryConfigTab`) |
 | `/scope` | redirect → `/sync` | |

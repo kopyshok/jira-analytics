@@ -107,6 +107,29 @@ def set_my_appearance(
     return payload
 
 
+class TeamDeskFilterPayload(BaseModel):
+    """Выбор команд и добранных точечно разработчиков на рабочем столе тимлида."""
+
+    teams: list[str] = []
+    developers: list[str] = []
+
+
+@router.get("/me/team-desk-filter", response_model=TeamDeskFilterPayload)
+def get_my_team_desk_filter(current_user: User = Depends(get_current_user)):
+    return TeamDeskFilterPayload(**current_user.team_desk_filter)
+
+
+@router.put("/me/team-desk-filter", response_model=TeamDeskFilterPayload)
+def set_my_team_desk_filter(
+    payload: TeamDeskFilterPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_user.team_desk_filter = payload.model_dump()
+    db.commit()
+    return payload
+
+
 class AnalyticsLayoutPayload(BaseModel):
     layout: dict
 

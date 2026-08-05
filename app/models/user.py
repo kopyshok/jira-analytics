@@ -49,6 +49,9 @@ class User(Base, TimestampMixin):
     last_seen_release_version: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )
+    team_desk_filter_raw: Mapped[str] = mapped_column(
+        "team_desk_filter", Text, nullable=False, default="{}", server_default="{}"
+    )
 
     @property
     def selected_teams(self) -> list[str]:
@@ -104,3 +107,14 @@ class User(Base, TimestampMixin):
     @appearance_settings.setter
     def appearance_settings(self, value: dict) -> None:
         self.appearance_settings_raw = json.dumps(value or {})
+
+    @property
+    def team_desk_filter(self) -> dict:
+        try:
+            return json.loads(self.team_desk_filter_raw or "{}")
+        except (TypeError, ValueError):
+            return {}
+
+    @team_desk_filter.setter
+    def team_desk_filter(self, value: dict) -> None:
+        self.team_desk_filter_raw = json.dumps(value or {}, ensure_ascii=False)

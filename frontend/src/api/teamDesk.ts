@@ -35,6 +35,8 @@ export interface DeskIssue {
 export interface DeskDeveloper {
   developer_id: string;
   display_name: string | null;
+  /** Команда человека; «добран точечно» — если выбран поверх команд. */
+  team?: string | null;
   total_issues: number;
   in_dev: number;
   waiting: number;
@@ -67,6 +69,13 @@ export interface DeskSettings {
   thresholds: Record<string, number>;
   subtask_types: string[];
   assignee_types: string[];
+  /** Роли, попадающие в срез. По умолчанию только «Разработчик». */
+  developer_roles: string[];
+}
+
+export interface DeskFilterPrefs {
+  teams: string[];
+  developers: string[];
 }
 
 export const FLAG_LABELS: Record<FlagCode, string> = {
@@ -106,6 +115,11 @@ export const teamDeskApi = {
     }),
 
   settings: () => api.get<DeskSettings>('/team-desk/settings'),
+
+  filter: () => api.get<DeskFilterPrefs>('/users/me/team-desk-filter'),
+
+  saveFilter: (payload: DeskFilterPrefs) =>
+    api.put<DeskFilterPrefs>('/users/me/team-desk-filter', payload),
 
   saveSettings: (payload: DeskSettings) =>
     api.put<DeskSettings>('/team-desk/settings', payload),

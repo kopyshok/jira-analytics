@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { App, Alert, Button, Card, Select, Space, Spin, Typography } from 'antd';
 import type { DeskSettings } from '../../api/teamDesk';
 import { useDeskSettings, useSaveDeskSettings } from '../../hooks/useTeamDesk';
+import { useRoles } from '../../hooks/useRoles';
 
 const GROUP_TITLES: { key: string; title: string; hint: string }[] = [
   { key: 'dev', title: 'У разработчика', hint: 'Мяч у него: он должен двигать задачу' },
@@ -18,6 +19,7 @@ export default function TeamDeskSettingsTab() {
   const { message } = App.useApp();
   const query = useDeskSettings();
   const save = useSaveDeskSettings();
+  const rolesQuery = useRoles();
   const [draft, setDraft] = useState<DeskSettings | null>(null);
 
   if (query.isLoading) return <Spin />;
@@ -77,6 +79,21 @@ export default function TeamDeskSettingsTab() {
             Часть статусов очереди не отнесена ни к одной группе выше.
           </Typography.Text>
         )}
+      </Card>
+
+      <Card size="small" title="Кто попадает в срез">
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Роли сотрудников, задачи которых показывает раздел. Аналитики, руководители
+          проектов и консультанты в срез не идут — даже если задача назначена на них.
+        </Typography.Paragraph>
+        <Select
+          mode="multiple"
+          style={{ width: '100%' }}
+          value={current.developer_roles}
+          onChange={(v) => patch({ developer_roles: v })}
+          loading={rolesQuery.isLoading}
+          options={(rolesQuery.data ?? []).map((r) => ({ value: r.code, label: r.label }))}
+        />
       </Card>
 
       <Card size="small" title="Типы задач">
