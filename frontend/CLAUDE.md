@@ -39,9 +39,11 @@ Source-of-truth для текущих роутов — [`routes.tsx`](src/routes
 - Responsive grid: AntD `Col` with `xs/sm/lg` breakpoints; Sider auto-collapses on `lg`
 - API client base URL: `VITE_API_BASE_URL` (default `http://localhost:8000/api/v1`)
 
-## Dark Theme
+## Themes
 
-Tokens in `DARK_THEME` and `CHART_COLORS` (`utils/constants.ts`), configured in `main.tsx` via `ConfigProvider theme`. Page bg `#0d1c33`, cards `#0f2340`, sidebar `#091527`, primary cyan `#00c9c8`.
+Две темы, обе Aurora: `aurora-dark` (по умолчанию) и `aurora-light`. Классическая `dark-blue` удалена вместе с `ClassicShell`/`SideMenu` — оболочка теперь всегда `aurora/shell/AuroraShell`, меню одно: [`AuroraSidebar.tsx`](src/aurora/shell/AuroraSidebar.tsx). Список пунктов в нём должен совпадать с `SECTIONS` в `VisibilityTab`.
+
+`ThemeContext` ставит на `<html>` атрибуты `data-theme="aurora"` + `data-mode="dark|light"`; `DARK_THEME` — Proxy в `utils/constants.ts`, читающий их и отдающий нужный набор токенов. Прежние значения тем (`dark-blue`, `dark`, `dark-slate`, `dark-charcoal`) сводятся к `aurora-dark` и на фронте (`normalizeTheme`), и в БД (миграция `td03a`).
 
 ## Error Tracking
 

@@ -18,9 +18,9 @@ export const ThemeContext = createContext<ThemeContextValue>({
 function readStoredTheme(): AppTheme {
   try {
     const v = localStorage.getItem('app_theme');
-    if (v === 'dark-blue' || v === 'aurora-dark' || v === 'aurora-light') return v;
-    // Legacy миграция: dark/dark-slate/dark-charcoal → aurora-dark
-    if (v === 'dark' || v === 'dark-slate' || v === 'dark-charcoal') return 'aurora-dark';
+    if (v === 'aurora-dark' || v === 'aurora-light') return v;
+    // Все прежние темы (dark-blue, dark, dark-slate, dark-charcoal) сведены
+    // к Aurora — в продукте остались только две.
   } catch {
     // localStorage unavailable
   }
@@ -29,16 +29,8 @@ function readStoredTheme(): AppTheme {
 
 function applyDomAttrs(t: AppTheme): void {
   const root = document.documentElement;
-  if (t === 'aurora-dark') {
-    root.setAttribute('data-theme', 'aurora');
-    root.setAttribute('data-mode', 'dark');
-  } else if (t === 'aurora-light') {
-    root.setAttribute('data-theme', 'aurora');
-    root.setAttribute('data-mode', 'light');
-  } else {
-    root.setAttribute('data-theme', 'classic');
-    root.removeAttribute('data-mode');
-  }
+  root.setAttribute('data-theme', 'aurora');
+  root.setAttribute('data-mode', t === 'aurora-light' ? 'light' : 'dark');
 }
 
 // Apply DOM attrs eagerly on module load — before any React render reads the Proxy.
@@ -62,8 +54,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState(t);
   }, []);
 
-  const isAurora = theme === 'aurora-dark' || theme === 'aurora-light';
-  const mode: 'dark' | 'light' | null = theme === 'aurora-dark' ? 'dark' : theme === 'aurora-light' ? 'light' : null;
+  // isAurora остался в контракте контекста ради потребителей (графики, токены),
+  // но других тем в продукте больше нет — всегда true.
+  const isAurora = true;
+  const mode: 'dark' | 'light' = theme === 'aurora-light' ? 'light' : 'dark';
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, isAurora, mode }}>

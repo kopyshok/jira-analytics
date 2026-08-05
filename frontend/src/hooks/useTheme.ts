@@ -6,7 +6,7 @@ import { APP_THEMES, type AppTheme } from '../utils/constants';
 
 function normalizeTheme(v: string | null | undefined): AppTheme {
   if (v && (v in APP_THEMES)) return v as AppTheme;
-  // Legacy / removed темы (dark, dark-slate, dark-charcoal) → aurora-dark
+  // Legacy / removed темы (dark-blue, dark, dark-slate, dark-charcoal) → aurora-dark
   return 'aurora-dark';
 }
 
@@ -18,7 +18,7 @@ export function useThemeSync() {
   // Apply server theme exactly once per login. After that, only explicit
   // saveTheme() calls update the local context — otherwise this hook would
   // overwrite user toggles every time the shell remounts (e.g. when switching
-  // between AuroraShell and ClassicShell).
+  // between Aurora dark and light).
   useEffect(() => {
     if (user?.id && user.id !== lastSyncedUserId.current) {
       lastSyncedUserId.current = user.id;

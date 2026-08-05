@@ -193,7 +193,7 @@ export const DARK_THEME: DarkThemeShape = new Proxy(DARK_THEME_CLASSIC, {
   },
 });
 
-export type AppTheme = 'dark-blue' | 'aurora-dark' | 'aurora-light';
+export type AppTheme = 'aurora-dark' | 'aurora-light';
 
 export interface ThemeTokens {
   pageBg: string;
@@ -210,27 +210,9 @@ export interface ThemeTokens {
   textHint: string;
 }
 
-export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens; isNew?: boolean }> = {
-  'dark-blue': {
-    label: 'Тёмно-синий',
-    tokens: {
-      pageBg: '#0d1c33',
-      sidebarBg: '#091527',
-      cardBg: '#0f2340',
-      darkAccent: '#0a2a44',
-      border: '#1e3356',
-      darkRows: '#152740',
-      primary: '#00c9c8',
-      primarySecondary: '#4db8e8',
-      textPrimary: '#e8f0fa',
-      textSecondary: '#c5d8ee',
-      textMuted: '#8faec8',
-      textHint: '#6b8aaa',
-    },
-  },
+export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens }> = {
   'aurora-dark': {
     label: 'Aurora тёмная',
-    isNew: true,
     tokens: {
       pageBg: '#080b16',
       sidebarBg: '#0d1226',
@@ -248,7 +230,6 @@ export const APP_THEMES: Record<AppTheme, { label: string; tokens: ThemeTokens; 
   },
   'aurora-light': {
     label: 'Aurora светлая',
-    isNew: true,
     tokens: {
       pageBg: '#e6ebf2',
       sidebarBg: '#e6ebf2',

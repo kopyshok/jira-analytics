@@ -9,7 +9,7 @@ interface SectionDef {
   group: string;
 }
 
-// Должен совпадать со списком в SideMenu (см. components/Layout/SideMenu.tsx).
+// Должен совпадать со списком в меню (см. aurora/shell/AuroraSidebar.tsx).
 const SECTIONS: SectionDef[] = [
   { group: 'ОБЗОР', key: '/', label: 'Дашборд' },
   { group: 'ОБЗОР', key: '/projects', label: 'Проекты' },
