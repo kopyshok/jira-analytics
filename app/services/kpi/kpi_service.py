@@ -136,13 +136,24 @@ def fact_field_name(metric: KpiMetric) -> str:
 
 
 def fact_value(issue: Issue, metric: KpiMetric) -> Optional[float]:
-    """Значение факта задачи — поле, заданное в метрике."""
-    return getattr(issue, fact_field_name(metric), None)
+    """Значение факта задачи — поле, заданное в метрике.
+
+    Из Cycle Time вычитаются дни, что задача простояла на паузе
+    («Приостановлено»): это ожидание, а не срок работы исполнителя.
+    """
+    raw = getattr(issue, fact_field_name(metric), None)
+    if raw is None or fact_field_name(metric) != "cycle_time_fact":
+        return raw
+    return max(0.0, raw - (issue.paused_days or 0.0))
 
 
 def has_fact_value(issue: Issue, metric: KpiMetric) -> bool:
-    """Задача участвует в среднем факте метрики «норматив к факту»."""
-    return bool(fact_value(issue, metric))
+    """Задача участвует в среднем факте метрики «норматив к факту».
+
+    Смотрим на исходное значение поля: задача с фактом 5 дней и паузой в те же
+    5 дней должна остаться в расчёте с нулём, а не выпасть как «нет данных».
+    """
+    return bool(getattr(issue, fact_field_name(metric), None))
 
 
 def has_any_score(issue: Issue, names: list[str]) -> bool:

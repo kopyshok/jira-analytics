@@ -79,6 +79,8 @@ Incremental sync через `sync_state.last_sync` per entity; JQL `updated >= "
 
 **Targeted refresh:** `refresh_issues_by_keys(jira_keys)` перечитывает keys в JQL `key in (...)` батчами по 100 через `iter_issues`, skip unknowns, переиспользует `_upsert_issue`.
 
+**Дни простоя (`sync_paused_days`):** отдельный проход после задач (стадия `paused_days`, non-critical). JQL `status WAS IN (PAUSED_STATUSES)` сужает выборку до задач, которые вообще бывали на паузе (сотни, не сотни тысяч), дальше по каждой — полный changelog (`JiraClient.get_status_changes`; в bulk-поиске Jira отдаёт только последние 40 записей). Результат — `Issue.paused_days`, целые сутки. Свой курсор `sync_state` «paused_days». Разовый пересчёт по всей истории — `scripts/backfill_paused_days.py`.
+
 ### Worklog sync — два независимых прохода
 
 - **Bucket A — issue-centric:** JQL `updated >= since`, upsert по локально существующим Issue. Ловит back-dated ворклоги через переход с `worklogDate` на `updated` — Jira двигает `issue.updated` при добавлении любого ворклога, включая записи с прошлым `started`.

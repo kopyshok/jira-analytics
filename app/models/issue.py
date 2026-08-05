@@ -53,6 +53,9 @@ class Issue(Base, SyncedMixin):
     subtype: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     cycle_time_fact: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Сколько дней задача простояла в статусах паузы («Приостановлено»).
+    # Считается из истории статусов Jira, вычитается из факта Cycle Time.
+    paused_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     direction: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
 
     # Foreign keys

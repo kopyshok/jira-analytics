@@ -157,6 +157,14 @@ function useColumns(table: KpiBreakdownTable, good: string, bad: string): Column
           render: (v) => <span className="num">{v == null ? '—' : `${v} дн`}</span>,
         },
         {
+          title: 'На паузе', dataIndex: 'paused_days', width: 100, align: 'right',
+          render: (v: number | null) => (
+            <span className="num" style={{ opacity: v ? 1 : 0.45 }}>
+              {v ? `−${v} дн` : '—'}
+            </span>
+          ),
+        },
+        {
           title: 'Норматив', width: 100, align: 'right',
           render: () => (
             <span className="num">

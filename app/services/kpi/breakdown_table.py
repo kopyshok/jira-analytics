@@ -43,6 +43,7 @@ from app.services.kpi.kpi_service import (
     _norm_for,
     employee_periods,
     fact_value,
+    has_fact_value,
     score_field_names,
     with_direction,
     worklog_items,
@@ -245,22 +246,29 @@ def _norm_table(
     ).all()
     rows = []
     for issue in issues:
+        counted = has_fact_value(issue, metric)
         fact = fact_value(issue, metric)
-        over = bool(fact and norm_value and fact > norm_value)
+        paused = issue.paused_days or 0.0
+        over = bool(counted and norm_value and fact and fact > norm_value)
         deviation = (
             round(100.0 * (fact - norm_value) / norm_value, 1)
-            if fact and norm_value else None
+            if counted and fact and norm_value else None
         )
+        reasons = []
+        if not counted:
+            reasons.append("нет фактического значения")
+        elif over:
+            reasons.append(f"превышение норматива на {deviation}%")
+        if paused:
+            reasons.append(f"вычтено {paused:g} дн паузы")
         rows.append({
             **_issue_row(issue, base_url),
             "fact": fact,
+            "paused_days": paused or None,
             "deviation_pct": deviation,
-            "counted": bool(fact),
-            "problem": (not fact) or over,
-            "reasons": (
-                ["нет фактического значения"] if not fact
-                else ([f"превышение норматива на {deviation}%"] if over else [])
-            ),
+            "counted": counted,
+            "problem": (not counted) or over,
+            "reasons": reasons,
         })
     rows.sort(key=lambda r: (not r["problem"], -(r["fact"] or 0)))
     return {
