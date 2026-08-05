@@ -21,7 +21,7 @@ export default function TeamDeskSettingsTab() {
   const [draft, setDraft] = useState<DeskSettings | null>(null);
 
   if (query.isLoading) return <Spin />;
-  if (!query.data) return <Alert type="error" message="Не удалось загрузить настройки" />;
+  if (!query.data) return <Alert type="error" title="Не удалось загрузить настройки" />;
 
   const current = draft ?? query.data;
   const dirty = draft != null && JSON.stringify(draft) !== JSON.stringify(query.data);
@@ -34,16 +34,16 @@ export default function TeamDeskSettingsTab() {
   const known = new Set(Object.values(current.status_groups).flat());
 
   return (
-    <Space direction="vertical" size={14} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={14} style={{ width: '100%' }}>
       <Alert
         type="info"
         showIcon
-        message="Статусы вводятся вручную — ровно так, как они называются в Jira."
+        title="Статусы вводятся вручную — ровно так, как они называются в Jira."
         description="Статус, не попавший ни в одну группу, не ломает расчёты: он показывается как нераспределённый."
       />
 
       <Card size="small" title="Группы статусов">
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
           {GROUP_TITLES.map((g) => (
             <div key={g.key}>
               <Typography.Text strong>{g.title}</Typography.Text>{' '}
@@ -80,7 +80,7 @@ export default function TeamDeskSettingsTab() {
       </Card>
 
       <Card size="small" title="Типы задач">
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
           <div>
             <Typography.Text strong>Считаются декомпозицией</Typography.Text>{' '}
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>

@@ -27,7 +27,7 @@ export function ThresholdsPanel({ settings }: { settings: DeskSettings }) {
       <Space wrap size={[18, 10]} align="end">
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>ПОРОГИ ПОДСВЕТКИ</Typography.Text>
         {FIELDS.map((f) => (
-          <Space key={f.key} direction="vertical" size={2}>
+          <Space key={f.key} orientation="vertical" size={2}>
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>{f.label}</Typography.Text>
             <InputNumber
               size="small"
