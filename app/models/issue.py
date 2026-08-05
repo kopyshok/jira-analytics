@@ -160,6 +160,15 @@ class Issue(Base, SyncedMixin):
     reporter_account_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     reporter_display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Рабочий стол тимлида: кастомное поле Jira «Разработчик» (тип user) и
+    # «DEV est (ч)» — оценка разработки конкретной задачи. Не путать с
+    # planned_dev_hours: та приходит с вкладки плановых трудозатрат RFA/эпика.
+    developer_account_id: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    developer_display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    dev_est_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # Jira metadata for triage (e.g. «какие Done висят давно — в архив»)
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     # Jira `updated` — дата последнего изменения задачи (любое касание).
