@@ -30,6 +30,8 @@
 - `status_changed_at` — из `statuscategorychangedate`
 - `paused_days` — дни в статусах паузы («Приостановлено»), считаются из истории статусов Jira и вычитаются из факта Cycle Time в KPI
 - `goals` — comma-joined `customfield_11421`
+- `developer_account_id` / `developer_display_name` — кастомное поле Jira «Разработчик» (тип user, `customfield_14052`)
+- `dev_est_hours` — «DEV est (ч)» (`customfield_12952`), оценка разработки задачи; не путать с `planned_dev_hours` (вкладка плановых трудозатрат RFA/эпика)
 
 ### Scope / category config (6)
 
@@ -55,6 +57,10 @@
 - `ScenarioAllocation` — per-scenario галочки на `BacklogItem`
 - `ScenarioRule` — per-scenario правила обязательных работ (копия `RoleCapacityRule` на момент создания)
 - `ScenarioRevision` + `ScenarioRevisionItem` + `ScenarioCapacitySnapshot` — история утверждений сценария: дифф включённых инициатив + снапшот нормы команды
+
+### Team desk (1)
+
+`TeamDeskMark` — отметка «просмотрено» на паре задача + признак (`uq_team_desk_mark`). `signature` — снимок причины на момент отметки; расходится с текущей — отметка сгорает и удаляется (см. `app/services/team_desk/marks.py`). Настройки раздела живут не тут, а в `AppSetting['team_desk_config']`.
 
 ### App state (1)
 
