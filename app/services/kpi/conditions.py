@@ -47,6 +47,20 @@ FILLABLE_FIELDS = {
     "goals": Issue.goals,
 }
 
+# Как поле называется в интерфейсе Jira — подписи шагов воронки и колонок
+# таблицы разбора читает руководитель, а не разработчик.
+FIELD_LABELS = {
+    "goal_text": "Цель задачи",
+    "current_behavior": "Описание текущего поведения",
+    "description": "Описание",
+    "goals": "Цели",
+}
+
+
+def field_label(name: str) -> str:
+    """Название проверяемого поля человеческими словами."""
+    return FIELD_LABELS.get(str(name), str(name))
+
 # Числовые поля задачи, пригодные как «факт» метрики «норматив к факту»
 # (конструктор метрики в настройках, см. ревью, BLOCKER 4). Список сознательно
 # закрытый — движок расчёта берёт значение через ``getattr`` по этому же имени
@@ -295,7 +309,7 @@ def describe_condition(cond: Condition) -> str:
     label = _ATTR_LABELS.get(cond.attr, cond.attr)
     if cond.attr == "field_filled":
         names = cond.value if isinstance(cond.value, list) else [cond.value]
-        return f"Заполнены поля: {', '.join(str(n) for n in names)}"
+        return f"Заполнены поля: {', '.join(field_label(n) for n in names)}"
     if cond.op in {"all", "is_true"} or cond.value is None:
         return label
     values = cond.value if isinstance(cond.value, list) else [cond.value]

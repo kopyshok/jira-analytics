@@ -1,10 +1,15 @@
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Spin, Tag, Typography } from 'antd';
+import {
+  Alert, Button, Collapse, Empty, Segmented, Spin, Table, Tag, Tooltip, Typography,
+} from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { CloseOutlined, LinkOutlined } from '@ant-design/icons';
 import KpiFunnel from './KpiFunnel';
 import { useThemeTokens } from '../../aurora/theme/useThemeTokens';
 import {
-  fetchBreakdown, isWorklogItem, type KpiBreakdownItem, type KpiReportRow,
+  fetchBreakdown,
+  type KpiBreakdownTable, type KpiReportRow, type KpiTableDropped, type KpiTableRow,
 } from '../../api/kpi';
 import { KPI_MONTH_ABBR_RU } from '../../utils/kpiShared';
 
@@ -28,82 +33,199 @@ export interface KpiBreakdownDockProps {
   onClose: () => void;
 }
 
-// У одной задачи может быть несколько списаний трудозатрат — ключевать список
-// по идентификатору записи о трудозатратах, а не по задаче, иначе React
-// получает повторяющиеся ключи (см. ревью, находка 3).
-function itemKey(item: KpiBreakdownItem): string {
-  return isWorklogItem(item) ? item.id : item.key;
+/** Дата задачи/записи коротко — таблица разбора живёт внутри одного месяца. */
+function shortDay(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function ItemRow({ item }: { item: KpiBreakdownItem }) {
-  const worklog = isWorklogItem(item);
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0 }}>
-      {item.key && (
-        item.url ? (
-          <a href={item.url} target="_blank" rel="noreferrer" className="num" style={{ fontSize: 12, fontWeight: 700, flex: '0 0 auto' }}>
-            {item.key} <LinkOutlined style={{ fontSize: 10 }} />
-          </a>
-        ) : (
-          <span className="num" style={{ fontSize: 12, fontWeight: 700, flex: '0 0 auto' }}>{item.key}</span>
-        )
-      )}
-      <span style={{
-        flex: '1 1 auto', minWidth: 0, fontSize: 12.5, overflow: 'hidden',
-        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}
-      >
-        {item.summary ?? '—'}
-      </span>
-      {worklog ? (
-        <Tag color={item.late ? 'error' : 'success'} style={{ margin: 0, flex: '0 0 auto' }}>
-          {item.late ? 'просрочено' : 'вовремя'} · {item.hours}ч
-        </Tag>
-      ) : (
-        <>
-          {item.fact != null && (
-            <Tag className="num" style={{ margin: 0, flex: '0 0 auto' }}>факт {item.fact}</Tag>
-          )}
-          {item.score != null && (
-            <Tag className="num" style={{ margin: 0, flex: '0 0 auto' }}>балл {item.score}</Tag>
-          )}
-          <Tag style={{ margin: 0, flex: '0 0 auto' }}>{item.resolution ?? item.status ?? '—'}</Tag>
-        </>
-      )}
-    </div>
+/** Задержка внесения часов словами: сутки читаются лучше, чем «528 ч». */
+function delayText(hours?: number | null): string {
+  if (hours == null) return '—';
+  if (hours < 24) return `${Math.round(hours)} ч`;
+  return `${Math.round(hours / 24)} дн`;
+}
+
+function IssueKey({ row }: { row: KpiTableRow | KpiTableDropped }) {
+  if (!row.key) return <span>—</span>;
+  return row.url ? (
+    <a
+      href={row.url}
+      target="_blank"
+      rel="noreferrer"
+      className="num"
+      style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+    >
+      {row.key} <LinkOutlined style={{ fontSize: 10 }} />
+    </a>
+  ) : (
+    <span className="num" style={{ fontWeight: 700 }}>{row.key}</span>
   );
 }
 
-/** Список задач расшифровки — простая разметка вместо AntD List: в шестой
- *  версии он объявлен устаревшим и печатает предупреждение в консоль. */
-function ItemList({ items, borderColor }: { items: KpiBreakdownItem[]; borderColor: string }) {
-  return (
-    <div role="list">
-      {items.map((item, i) => (
-        <div
-          key={itemKey(item)}
-          role="listitem"
-          style={{ padding: '7px 4px', borderTop: i === 0 ? 'none' : `1px solid ${borderColor}` }}
-        >
-          <ItemRow item={item} />
-        </div>
-      ))}
-    </div>
-  );
+/**
+ * Итог по строке словами. Формулировка зависит от того, что метрика считает
+ * числителем: у метрики качества туда попадают баги, поэтому «засчитана» там
+ * означало бы ровно обратное смыслу.
+ */
+function Verdict({ table, row }: { table: KpiBreakdownTable; row: KpiTableRow }) {
+  const reasons = row.reasons.join(' · ');
+  const tag = (() => {
+    if (table.kind === 'worklogs') {
+      return row.problem
+        ? <Tag color="error">просрочено · {delayText(row.delay_hours)}</Tag>
+        : <Tag color="success">вовремя</Tag>;
+    }
+    if (table.kind === 'norm') {
+      if (!row.counted) return <Tag color="warning">нет данных</Tag>;
+      return row.problem
+        ? <Tag color="error">превышение {row.deviation_pct}%</Tag>
+        : <Tag color="success">в норме</Tag>;
+    }
+    if (table.kind === 'score') {
+      if (!row.counted) return <Tag color="warning">нет оценки</Tag>;
+      return row.problem
+        ? <Tag color="warning">{row.score_pct}% от максимума</Tag>
+        : <Tag color="success">максимум</Tag>;
+    }
+    if (table.invert) {
+      return row.problem
+        ? <Tag color="error">нарушение</Tag>
+        : <Tag>без нарушений</Tag>;
+    }
+    return row.counted
+      ? <Tag color="success">засчитана</Tag>
+      : <Tag color="error">не засчитана</Tag>;
+  })();
+  return reasons ? <Tooltip title={reasons}>{tag}</Tooltip> : tag;
+}
+
+/** Колонки таблицы разбора — по способу расчёта метрики. */
+function useColumns(table: KpiBreakdownTable, good: string, bad: string): ColumnsType<KpiTableRow> {
+  return useMemo(() => {
+    const head: ColumnsType<KpiTableRow> = [
+      {
+        title: 'Ключ', dataIndex: 'key', width: 120, fixed: 'left',
+        render: (_v, row) => (
+          <span>
+            <IssueKey row={row} />
+            {row.outside_base && (
+              <Tooltip title="Учтена показателем, хотя её нет в списке сравнения">
+                <Tag style={{ marginInlineStart: 6 }}>сверх списка</Tag>
+              </Tooltip>
+            )}
+          </span>
+        ),
+      },
+      { title: 'Задача', dataIndex: 'summary', ellipsis: true, render: (v) => v || '—' },
+    ];
+
+    if (table.kind === 'worklogs') {
+      return [
+        ...head,
+        {
+          title: 'Дата работы', dataIndex: 'started_at', width: 110,
+          render: (v) => <span className="num">{shortDay(v)}</span>,
+        },
+        {
+          title: 'Внесено', dataIndex: 'created_at', width: 100,
+          render: (v) => <span className="num">{shortDay(v)}</span>,
+        },
+        {
+          title: 'Часы', dataIndex: 'hours', width: 80, align: 'right',
+          render: (v) => <span className="num">{v}</span>,
+        },
+        {
+          title: 'Итог', width: 190,
+          render: (_v, row) => <Verdict table={table} row={row} />,
+        },
+      ];
+    }
+
+    const closed: ColumnsType<KpiTableRow> = [{
+      title: 'Закрыта', dataIndex: 'resolved_at', width: 100,
+      render: (v) => <span className="num">{shortDay(v)}</span>,
+    }];
+
+    if (table.kind === 'norm') {
+      return [
+        ...head, ...closed,
+        {
+          title: 'Факт', dataIndex: 'fact', width: 90, align: 'right',
+          render: (v) => <span className="num">{v == null ? '—' : `${v} дн`}</span>,
+        },
+        {
+          title: 'Норматив', width: 100, align: 'right',
+          render: () => (
+            <span className="num">
+              {table.norm_value == null ? '—' : `${table.norm_value} дн`}
+            </span>
+          ),
+        },
+        {
+          title: 'Отклонение', dataIndex: 'deviation_pct', width: 120, align: 'right',
+          render: (v: number | null, row) => (
+            <span className="num" style={{ color: row.problem ? bad : good }}>
+              {v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`}
+            </span>
+          ),
+        },
+        { title: 'Итог', width: 180, render: (_v, row) => <Verdict table={table} row={row} /> },
+      ];
+    }
+
+    if (table.kind === 'score') {
+      return [
+        ...head, ...closed,
+        {
+          title: 'Оценка', dataIndex: 'score', width: 100, align: 'right',
+          render: (v) => (
+            <span className="num">
+              {v == null ? '—' : `${v} из ${table.score_max ?? 5}`}
+            </span>
+          ),
+        },
+        { title: 'Итог', width: 190, render: (_v, row) => <Verdict table={table} row={row} /> },
+      ];
+    }
+
+    return [
+      ...head, ...closed,
+      ...table.checks.map((check) => ({
+        title: check.label,
+        width: 150,
+        align: 'center' as const,
+        render: (_v: unknown, row: KpiTableRow) => {
+          const ok = row.checks?.[check.code];
+          return (
+            <span style={{ color: ok ? good : bad, fontWeight: 600, fontSize: 12 }}>
+              {ok ? '✓ есть' : '✕ нет'}
+            </span>
+          );
+        },
+      })),
+      { title: 'Итог', width: 150, render: (_v, row) => <Verdict table={table} row={row} /> },
+    ];
+  }, [table, good, bad]);
 }
 
 /**
  * Расчёт показателя — панелью под ведомостью, а не модальным окном.
  *
- * Ведомость остаётся на экране, соседние ячейки кликаются подряд без
- * закрытия панели (вариант A макета, спека доработок 2026-08-03, раздел 6).
- * Кроме списков задач панель показывает воронку отбора — она отвечает не
- * «какие задачи», а «почему их столько».
+ * Главное здесь — таблица разбора: строка на задачу, колонка на требование
+ * метрики, проблемные строки подсвечены. Раньше панель показывала два списка
+ * («что считаем» и «с чем сравниваем»), и найти незачтённую задачу можно было
+ * только сверив их глазами. Воронка отбора осталась, но убрана в свёрнутый
+ * блок: она отвечает на вопрос «почему задач столько», а не «что не так с
+ * этой задачей».
  */
 export default function KpiBreakdownDock({
   target, year, month, direction, teams, onClose,
 }: KpiBreakdownDockProps) {
   const t = useThemeTokens();
+  const [onlyProblem, setOnlyProblem] = useState(false);
 
   const query = useQuery({
     queryKey: [
@@ -119,9 +241,23 @@ export default function KpiBreakdownDock({
     enabled: !!target,
   });
 
+  const table = query.data?.table;
+  const columns = useColumns(
+    table ?? { kind: 'checks', checks: [], rows: [], total_count: 0, counted_count: 0,
+      problem_count: 0, truncated: false, dropped: [] },
+    t.success,
+    t.danger,
+  );
+  const rows = useMemo(
+    () => (onlyProblem ? (table?.rows ?? []).filter((r) => r.problem) : table?.rows ?? []),
+    [table, onlyProblem],
+  );
+
   if (!target) return null;
 
   const metric = target.row.metrics.find((m) => m.code === target.metricCode);
+  const problemLabel = table?.invert || table?.kind === 'worklogs' ? 'Нарушения' : 'С ошибкой';
+  const okLabel = table?.kind === 'worklogs' ? 'вовремя' : 'засчитано';
 
   return (
     <section
@@ -158,10 +294,7 @@ export default function KpiBreakdownDock({
             {target.row.target_pct != null ? ` · цель ${target.row.target_pct}%` : ''}
           </Text>
         </div>
-        <span
-          className="num"
-          style={{ fontSize: 15, fontWeight: 700 }}
-        >
+        <span className="num" style={{ fontSize: 15, fontWeight: 700 }}>
           {metric?.has_data ? `${Math.round(metric.value ?? 0)}%` : 'нет данных'}
         </span>
         <Button
@@ -184,48 +317,111 @@ export default function KpiBreakdownDock({
             action={<Button size="small" onClick={() => query.refetch()}>Повторить</Button>}
           />
         </div>
+      ) : !table || table.total_count === 0 ? (
+        <Empty
+          description="За этот месяц у сотрудника нет строк для разбора"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          style={{ margin: '20px 0' }}
+        />
       ) : (
-        <div
-          style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))',
-            gap: 18, padding: 16,
-          }}
-        >
-          <div>
-            <Text type="secondary" style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700 }}>
-              Как получилось это число
+        <>
+          <div
+            style={{
+              display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+              padding: '10px 16px', borderBottom: `1px solid ${t.border}`,
+            }}
+          >
+            <Segmented
+              size="small"
+              value={onlyProblem ? 'problem' : 'all'}
+              onChange={(v) => setOnlyProblem(v === 'problem')}
+              options={[
+                { label: `Все · ${table.total_count}`, value: 'all' },
+                { label: `${problemLabel} · ${table.problem_count}`, value: 'problem' },
+              ]}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {table.counted_count} {okLabel}
+              {table.problem_count > 0 ? ` · ${table.problem_count} требуют внимания` : ''}
+              {table.truncated ? ` · показаны первые ${table.rows.length}` : ''}
             </Text>
-            <div style={{ marginTop: 7 }}>
-              <KpiFunnel steps={query.data?.numerator_funnel ?? []} />
-            </div>
-            {(query.data?.denominator_funnel.length ?? 0) > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <Text type="secondary" style={{ fontSize: 10.5, textTransform: 'uppercase', fontWeight: 700 }}>
-                  С чем сравниваем — отбор знаменателя
-                </Text>
-                <div style={{ marginTop: 7 }}>
-                  <KpiFunnel steps={query.data?.denominator_funnel ?? []} />
-                </div>
-              </div>
-            )}
           </div>
 
-          <div>
-            <Text strong style={{ fontSize: 12.5 }}>Что считаем</Text>
-            {(query.data?.numerator.length ?? 0) === 0 ? (
-              <Empty description="Нет задач в числителе" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '8px 0' }} />
-            ) : (
-              <ItemList items={query.data?.numerator ?? []} borderColor={t.border} />
-            )}
+          <Table<KpiTableRow>
+            size="small"
+            columns={columns}
+            dataSource={rows}
+            rowKey={(row, index) => `${row.key ?? 'row'}-${row.started_at ?? ''}-${index}`}
+            pagination={rows.length > 25 ? { pageSize: 25, size: 'small' } : false}
+            scroll={{ x: 'max-content' }}
+            onRow={(row) => ({
+              style: row.problem
+                ? {
+                  background: `color-mix(in srgb, ${t.danger} 12%, transparent)`,
+                  boxShadow: `inset 3px 0 0 ${t.danger}`,
+                }
+                : undefined,
+            })}
+            locale={{ emptyText: 'Строк с ошибками нет' }}
+          />
 
-            {(query.data?.denominator.length ?? 0) > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <Text strong style={{ fontSize: 12.5 }}>С чем сравниваем</Text>
-                <ItemList items={query.data?.denominator ?? []} borderColor={t.border} />
-              </div>
-            )}
-          </div>
-        </div>
+          <Collapse
+            ghost
+            size="small"
+            items={[
+              ...(table.dropped.length > 0 ? [{
+                key: 'dropped',
+                label: `${table.kind === 'worklogs' ? 'Не судим' : 'Отсеяно до сравнения'} · ${table.dropped.length}`,
+                children: (
+                  <Table<KpiTableDropped>
+                    size="small"
+                    pagination={table.dropped.length > 10 ? { pageSize: 10, size: 'small' } : false}
+                    rowKey={(row, index) => `${row.key ?? 'drop'}-${index}`}
+                    scroll={{ x: 'max-content' }}
+                    dataSource={table.dropped}
+                    columns={[
+                      { title: 'Ключ', width: 120, render: (_v, row) => <IssueKey row={row} /> },
+                      { title: 'Задача', dataIndex: 'summary', ellipsis: true, render: (v) => v || '—' },
+                      {
+                        title: table.kind === 'worklogs' ? 'Дата работы' : 'Закрыта',
+                        width: 110,
+                        render: (_v, row) => (
+                          <span className="num">
+                            {shortDay(row.started_at ?? row.resolved_at)}
+                          </span>
+                        ),
+                      },
+                      {
+                        title: 'Почему не вошла', dataIndex: 'reason', width: 230,
+                        render: (v: string) => <Tag color="warning">{v}</Tag>,
+                      },
+                    ]}
+                  />
+                ),
+              }] : []),
+              {
+                key: 'funnel',
+                label: 'Как получилось это число — отбор по шагам',
+                children: (
+                  <div
+                    style={{
+                      display: 'grid', gap: 14,
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))',
+                    }}
+                  >
+                    <KpiFunnel steps={query.data?.numerator_funnel ?? []} title="Что считаем" />
+                    {(query.data?.denominator_funnel.length ?? 0) > 0 && (
+                      <KpiFunnel
+                        steps={query.data?.denominator_funnel ?? []}
+                        title="С чем сравниваем"
+                      />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </>
       )}
     </section>
   );
