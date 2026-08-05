@@ -15,6 +15,7 @@ import {
   Tags,
   MessageCircle,
   Settings,
+  Code2,
   type LucideIcon as LucideIconType,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -55,6 +56,7 @@ export function AuroraSidebar() {
         { key: '/analytics/work-type-report', icon: Lightbulb, label: 'Тематический отчёт' },
         { key: '/executive', icon: Rocket, label: 'Сводка для руководителя' },
         { key: '/kpi', icon: Gauge, label: 'KPI' },
+        { key: '/team-desk', icon: Code2, label: 'Стол тимлида' },
       ].filter((it) => !isHidden(it.key)),
     },
     {
