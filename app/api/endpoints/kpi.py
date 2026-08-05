@@ -22,6 +22,7 @@ from app.models.issue import Issue
 from app.models.user import User
 from app.models.worklog import Worklog
 from app.services.analytics_service import parse_teams_csv
+from app.services.kpi.breakdown_table import build_table
 from app.services.kpi.conditions import ConditionSet
 from app.services.kpi.preview import build_context, issue_funnel, worklog_funnel
 from app.services.kpi.settings import read_kpi_settings
@@ -259,6 +260,12 @@ def get_breakdown(
         # только «какие задачи», но и «почему их столько» (спека доработок,
         # раздел 6).
         **_breakdown_funnels(db, metric, account_id, year, month, team_list, direction),
+        # Таблица разбора: строка — задача, колонка — требование метрики.
+        # Списки выше остаются для выгрузок и совместимости, но руководитель
+        # смотрит именно сюда — незачтённые строки видно сразу.
+        "table": build_table(
+            db, metric, account_id, year, month, team_list, base_url, direction,
+        ),
     }
 
 

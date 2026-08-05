@@ -160,6 +160,66 @@ export interface KpiFunnelStep {
   dropped: number | null;
 }
 
+/** Одно требование метрики — колонка таблицы разбора. */
+export interface KpiTableCheck {
+  code: string;
+  label: string;
+}
+
+/** Строка таблицы разбора: задача (или запись о часах) и результат проверок. */
+export interface KpiTableRow {
+  key: string | null;
+  summary: string | null;
+  url: string | null;
+  status?: string | null;
+  resolution?: string | null;
+  resolved_at?: string | null;
+  /** Результат каждой проверки по коду колонки — только для вида «checks». */
+  checks?: Record<string, boolean>;
+  counted: boolean;
+  problem: boolean;
+  reasons: string[];
+  /** Задача учтена, хотя её нет в списке сравнения. */
+  outside_base?: boolean;
+  /** «Норматив к факту» */
+  fact?: number | null;
+  deviation_pct?: number | null;
+  /** «Балл к максимуму» */
+  score?: number | null;
+  score_pct?: number | null;
+  /** Своевременность часов */
+  started_at?: string | null;
+  created_at?: string | null;
+  hours?: number;
+  delay_hours?: number | null;
+}
+
+export interface KpiTableDropped {
+  key: string | null;
+  summary: string | null;
+  url: string | null;
+  reason: string;
+  status?: string | null;
+  resolved_at?: string | null;
+  started_at?: string | null;
+  hours?: number;
+}
+
+export interface KpiBreakdownTable {
+  kind: 'checks' | 'norm' | 'score' | 'worklogs';
+  /** Числитель метрики — нарушения, а не успехи (баг на проде). */
+  invert?: boolean;
+  checks: KpiTableCheck[];
+  rows: KpiTableRow[];
+  total_count: number;
+  counted_count: number;
+  problem_count: number;
+  truncated: boolean;
+  dropped: KpiTableDropped[];
+  norm_value?: number | null;
+  score_max?: number | null;
+}
+
 export interface KpiBreakdown {
   metric_code: string;
   metric_name: string;
@@ -169,6 +229,7 @@ export interface KpiBreakdown {
   denominator_count: number;
   numerator_funnel: KpiFunnelStep[];
   denominator_funnel: KpiFunnelStep[];
+  table: KpiBreakdownTable;
 }
 
 export interface KpiBreakdownFilters {

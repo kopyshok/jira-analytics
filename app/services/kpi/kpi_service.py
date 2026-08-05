@@ -156,6 +156,23 @@ def has_any_score(issue: Issue, names: list[str]) -> bool:
     return any(getattr(issue, n, None) is not None for n in names)
 
 
+def employee_periods(
+    db: Session, account_id: str, year: int, month: int, teams: list[str],
+) -> tuple[list[tuple[date, date]], Optional[Employee]]:
+    """Отрезки месяца, за которые человек считается в команде, и он сам.
+
+    Общий источник для расшифровки (``resolve_breakdown``) и таблицы разбора
+    (``breakdown_table``) — обе обязаны резать период ровно так же, как расчёт
+    отчёта, иначе дробь и строки под ней разъедутся.
+    """
+    period_start, period_end = month_bounds(year, month)
+    employee = db.query(Employee).filter(Employee.jira_account_id == account_id).first()
+    emp_intervals: list[tuple[date, date]] = []
+    if employee is not None and teams:
+        emp_intervals = member_intervals(db, teams, period_start, period_end).get(employee.id, [])
+    return (emp_intervals or [(period_start, period_end)]), employee
+
+
 def resolve_breakdown(
     db: Session,
     metric: KpiMetric,
@@ -182,12 +199,7 @@ def resolve_breakdown(
     JSON остаётся на роутере, здесь только который отбор данных.
     """
     st = settings or read_kpi_settings(db)
-    period_start, period_end = month_bounds(year, month)
-    employee = db.query(Employee).filter(Employee.jira_account_id == account_id).first()
-    emp_intervals: list[tuple[date, date]] = []
-    if employee is not None and teams:
-        emp_intervals = member_intervals(db, teams, period_start, period_end).get(employee.id, [])
-    periods = emp_intervals if emp_intervals else [(period_start, period_end)]
+    periods, _employee = employee_periods(db, account_id, year, month, teams)
 
     num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
 
@@ -216,6 +228,43 @@ def resolve_breakdown(
     return {"unit": "issues", "numerator": numerator, "denominator": denominator}
 
 
+def worklog_rows(
+    db: Session,
+    cs: ConditionSet,
+    account_id: str,
+    periods: list[tuple[date, date]],
+    teams: Optional[list[str]],
+    st: KpiSettings,
+) -> list[Worklog]:
+    """Все записи о часах человека за период, попадающие под условия метрики.
+
+    До деления на «вовремя» и «просрочено»: таблице разбора нужны и записи без
+    даты внесения — в расчёт они не входят, но именно из-за них показатель
+    бывает пустым, и руководитель должен видеть их поимённо.
+    """
+    emp = db.query(Employee).filter(Employee.jira_account_id == account_id).first()
+    if emp is None:
+        return []
+
+    period_clauses = [
+        and_(
+            Worklog.started_at >= datetime.combine(start, datetime.min.time()),
+            Worklog.started_at <= datetime.combine(end, datetime.max.time()),
+        )
+        for start, end in periods
+    ]
+    q = (
+        db.query(Worklog)
+        .join(Issue, Issue.id == Worklog.issue_id)
+        .filter(Worklog.employee_id == emp.id)
+        .filter(or_(*period_clauses))
+    )
+    attr_clauses = issue_attribute_clauses(cs, st.excluded_statuses, teams)
+    if attr_clauses:
+        q = q.filter(and_(*attr_clauses))
+    return q.all()
+
+
 def worklog_items(
     db: Session,
     cs: ConditionSet,
@@ -238,28 +287,9 @@ def worklog_items(
     и её расшифровки (``GET /kpi/breakdown``) — числа не должны разъезжаться.
     """
     st = settings or read_kpi_settings(db)
-    emp = db.query(Employee).filter(Employee.jira_account_id == account_id).first()
-    if emp is None:
+    rows = worklog_rows(db, cs, account_id, periods, teams, st)
+    if not rows:
         return [], []
-
-    period_clauses = [
-        and_(
-            Worklog.started_at >= datetime.combine(start, datetime.min.time()),
-            Worklog.started_at <= datetime.combine(end, datetime.max.time()),
-        )
-        for start, end in periods
-    ]
-    attr_clauses = issue_attribute_clauses(cs, st.excluded_statuses, teams)
-
-    q = (
-        db.query(Worklog)
-        .join(Issue, Issue.id == Worklog.issue_id)
-        .filter(Worklog.employee_id == emp.id)
-        .filter(or_(*period_clauses))
-    )
-    if attr_clauses:
-        q = q.filter(and_(*attr_clauses))
-    rows = q.all()
 
     if calendar is None:
         lo = min(start for start, _ in periods) - timedelta(days=CALENDAR_BUFFER_DAYS)
