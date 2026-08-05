@@ -56,11 +56,9 @@ def set_my_columns(
     return {"ok": True}
 
 
+# В продукте остались только две темы Aurora. Прежние значения приходить
+# больше не должны; фронт сводит их к «aurora-dark» при входе.
 VALID_THEMES = {
-    "dark",
-    "dark-blue",
-    "dark-slate",
-    "dark-charcoal",
     "aurora-dark",
     "aurora-light",
 }

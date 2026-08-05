@@ -13,18 +13,6 @@ const OPTIONS = (Object.entries(APP_THEMES) as [AppTheme, typeof APP_THEMES[AppT
           background: def.tokens.primary, display: 'inline-block',
         }} />
         <span>{def.label}</span>
-        {def.isNew && (
-          <span style={{
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: '0.05em',
-            padding: '1px 5px',
-            borderRadius: 4,
-            background: 'linear-gradient(90deg, #38bdf8, #a78bfa)',
-            color: '#fff',
-            marginLeft: 2,
-          }}>NEW</span>
-        )}
       </span>
     ),
   }),

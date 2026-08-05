@@ -61,7 +61,7 @@ class UserResponse(BaseModel):
     role: UserRole
     default_team: str | None
     selected_teams: list[str] = []
-    selected_theme: str = "dark-blue"
+    selected_theme: str = "aurora-dark"
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -72,8 +72,8 @@ class UserResponse(BaseModel):
     @classmethod
     def _default_theme(cls, v: str | None) -> str:
         # Свежесозданный User-объект до flush'а имеет `selected_theme=None`,
-        # SQL-default «dark-blue» применяется только в БД.
-        return v if v else "dark-blue"
+        # SQL-default «aurora-dark» применяется только в БД.
+        return v if v else "aurora-dark"
 
 
 class UserCreate(BaseModel):

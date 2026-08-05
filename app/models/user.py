@@ -41,7 +41,7 @@ class User(Base, TimestampMixin):
         "analytics_layout", Text, nullable=False, default="{}", server_default="{}"
     )
     selected_theme: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="dark-blue", server_default="dark-blue"
+        String(20), nullable=False, default="aurora-dark", server_default="aurora-dark"
     )
     appearance_settings_raw: Mapped[str] = mapped_column(
         "appearance_settings", Text, nullable=False, default="{}", server_default="{}"
