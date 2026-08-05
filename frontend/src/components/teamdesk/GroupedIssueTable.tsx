@@ -136,7 +136,7 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
   ];
 
   return (
-    <Space direction="vertical" size={14} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={14} style={{ width: '100%' }}>
       <Card size="small" title="Что требует внимания">
         <Space wrap size={6}>
           {FLAG_ORDER.filter((f) => flagCounts[f]).map((flag) => (

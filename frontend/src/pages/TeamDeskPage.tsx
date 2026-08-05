@@ -57,7 +57,7 @@ export default function TeamDeskPage() {
   );
 
   return (
-    <Space direction="vertical" size={14} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={14} style={{ width: '100%' }}>
       <div>
         <Typography.Title level={4} style={{ margin: 0 }}>Рабочий стол тимлида</Typography.Title>
         <Typography.Text type="secondary">

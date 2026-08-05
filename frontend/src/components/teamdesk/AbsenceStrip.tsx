@@ -30,7 +30,7 @@ export function AbsenceStrip({ employeeIds }: Props) {
   }
 
   return (
-    <Space direction="vertical" size={10} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={10} style={{ width: '100%' }}>
       <Space size={8}>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>Период</Typography.Text>
         <Select
