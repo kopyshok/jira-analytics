@@ -65,7 +65,12 @@ export function DeveloperCards({ developers, workload, overrunPct, selected, onS
                 >
                   {initials(dev.display_name)}
                 </div>
-                <Typography.Text strong>{dev.display_name ?? 'Без имени'}</Typography.Text>
+                <div>
+                  <Typography.Text strong>{dev.display_name ?? 'Без имени'}</Typography.Text>
+                  {dev.team && (
+                    <div style={{ fontSize: 11, opacity: 0.55 }}>{dev.team}</div>
+                  )}
+                </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>

@@ -54,6 +54,7 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Задача',
       dataIndex: 'key',
+      ellipsis: true,
       render: (_, row) => (
         <span>
           {jiraBaseUrl ? (
@@ -71,20 +72,21 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Статус',
       dataIndex: 'status',
-      width: 190,
+      width: 170,
       sorter: (a, b) => a.status.localeCompare(b.status),
       render: (_, row) => <StatusTag status={row.status} group={row.status_group} />,
     },
     {
       title: 'Разработчик',
       dataIndex: 'developer_name',
-      width: 170,
+      width: 150,
+      ellipsis: true,
       sorter: (a, b) => (a.developer_name ?? '').localeCompare(b.developer_name ?? ''),
     },
     {
       title: 'Оценка',
       dataIndex: 'est_hours',
-      width: 80,
+      width: 76,
       align: 'right',
       sorter: (a, b) => (a.est_hours ?? 0) - (b.est_hours ?? 0),
       render: (v: number | null) => v ?? '—',
@@ -92,7 +94,7 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Факт',
       dataIndex: 'fact_hours',
-      width: 70,
+      width: 68,
       align: 'right',
       sorter: (a, b) => a.fact_hours - b.fact_hours,
       render: (v: number, row) => (
@@ -109,7 +111,7 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     },
     {
       title: 'Шкала',
-      width: 160,
+      width: 150,
       render: (_, row) => (
         <HoursScale fact={row.fact_hours} est={row.est_hours} overrunPct={overrunPct} />
       ),
@@ -117,13 +119,13 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Дней',
       dataIndex: 'days_in_status',
-      width: 70,
+      width: 64,
       align: 'right',
       sorter: (a, b) => a.days_in_status - b.days_in_status,
     },
     {
       title: 'Замечания',
-      width: 180,
+      width: 140,
       render: (_, row) => (
         <FlagList
           issueId={row.id}
@@ -142,7 +144,8 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
       dataSource={roots}
       columns={columns}
       pagination={false}
-      scroll={{ x: 'max-content' }}
+      // Название задачи забирает остаток ширины, как в макете.
+      scroll={{ x: 1020 }}
       expandable={{
         rowExpandable: (row) => (children.get(row.id)?.length ?? 0) > 0,
         expandedRowRender: (row) => (

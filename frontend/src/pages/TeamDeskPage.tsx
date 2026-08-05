@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Card, Empty, Space, Spin, Tabs, Typography } from 'antd';
-import { useDeskOverview, useDeskSettings } from '../hooks/useTeamDesk';
+import type { DeskFilterPrefs } from '../api/teamDesk';
+import {
+  useDeskFilter, useDeskOverview, useDeskSettings, useSaveDeskFilter,
+} from '../hooks/useTeamDesk';
 import { DeskFilters } from '../components/teamdesk/DeskFilters';
 import { ThresholdsPanel } from '../components/teamdesk/ThresholdsPanel';
 import { DeveloperCards } from '../components/teamdesk/DeveloperCards';
@@ -14,8 +17,6 @@ type Layout = 'cards' | 'table' | 'grouped';
 const LAYOUT_KEY = 'team-desk-layout';
 
 export default function TeamDeskPage() {
-  const [teams, setTeams] = useState<string[]>([]);
-  const [developers, setDevelopers] = useState<string[]>([]);
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [showReviewed, setShowReviewed] = useState(false);
   const [showThresholds, setShowThresholds] = useState(false);
@@ -26,6 +27,21 @@ export default function TeamDeskPage() {
     () => (localStorage.getItem(LAYOUT_KEY) as Layout) || 'cards',
   );
   useEffect(() => localStorage.setItem(LAYOUT_KEY, layout), [layout]);
+
+  // Команды и добранные люди живут в профиле: тимлид выбирает состав один раз,
+  // и видит его с любого компьютера.
+  const filterPrefs = useDeskFilter();
+  const saveFilter = useSaveDeskFilter();
+  // Пока тимлид ничего не трогал, показываем сохранённый в профиле выбор;
+  // после первой правки главной становится правка на экране.
+  const [picked, setPicked] = useState<DeskFilterPrefs | null>(null);
+  const teams = picked?.teams ?? filterPrefs.data?.teams ?? [];
+  const developers = picked?.developers ?? filterPrefs.data?.developers ?? [];
+
+  const change = (next: DeskFilterPrefs) => {
+    setPicked(next);
+    saveFilter.mutate(next);
+  };
 
   const settings = useDeskSettings();
   const overview = useDeskOverview({ teams, developers, onlyOpen, showReviewed });
@@ -68,9 +84,10 @@ export default function TeamDeskPage() {
 
       <DeskFilters
         teams={teams}
-        onTeamsChange={setTeams}
+        onTeamsChange={(value) => change({ teams: value, developers })}
         developers={developers}
-        onDevelopersChange={setDevelopers}
+        onDevelopersChange={(value) => change({ teams, developers: value })}
+        developerRoles={settings.data?.developer_roles ?? ['dev']}
         onlyOpen={onlyOpen}
         onOnlyOpenChange={setOnlyOpen}
         showReviewed={showReviewed}
@@ -95,8 +112,8 @@ export default function TeamDeskPage() {
         ]}
       />
 
-      {overview.isLoading && <Spin />}
-      {!overview.isLoading && !data && (
+      {(overview.isLoading || filterPrefs.isLoading) && <Spin />}
+      {!overview.isLoading && !filterPrefs.isLoading && !data && (
         <Empty description="Выберите команды или добавьте разработчиков" />
       )}
 

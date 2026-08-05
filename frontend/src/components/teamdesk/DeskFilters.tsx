@@ -8,6 +8,8 @@ interface Props {
   onTeamsChange: (v: string[]) => void;
   developers: string[];
   onDevelopersChange: (v: string[]) => void;
+  /** Коды ролей, которые считаются разработчиками. */
+  developerRoles: string[];
   onlyOpen: boolean;
   onOnlyOpenChange: (v: boolean) => void;
   showReviewed: boolean;
@@ -18,7 +20,7 @@ interface Props {
 /** Шапка раздела: команды, добранные точечно люди, период, пороги. */
 export function DeskFilters({
   teams, onTeamsChange,
-  developers, onDevelopersChange,
+  developers, onDevelopersChange, developerRoles,
   onlyOpen, onOnlyOpenChange,
   showReviewed, onShowReviewedChange,
   onToggleThresholds,
@@ -53,10 +55,12 @@ export function DeskFilters({
           value={developers}
           onChange={onDevelopersChange}
           loading={employeesQuery.isLoading}
-          options={(employeesQuery.data ?? []).map((e) => ({
-            value: e.jira_account_id,
-            label: e.display_name,
-          }))}
+          options={(employeesQuery.data ?? [])
+            .filter((e) => e.role && developerRoles.includes(e.role))
+            .map((e) => ({
+              value: e.jira_account_id,
+              label: e.display_name,
+            }))}
           maxTagCount="responsive"
         />
 

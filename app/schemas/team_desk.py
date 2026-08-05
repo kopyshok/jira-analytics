@@ -12,6 +12,9 @@ class DeskSettings(BaseModel):
     thresholds: dict[str, float]
     subtask_types: list[str]
     assignee_types: list[str]
+    developer_roles: list[str] = Field(
+        default_factory=lambda: ["dev"], description="Роли, попадающие в срез"
+    )
 
 
 class MarkRequest(BaseModel):

@@ -47,6 +47,9 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
 
 DEFAULT_SUBTASK_TYPES = ["Подзадача", "Sub-task"]
 DEFAULT_ASSIGNEE_TYPES = ["Research"]
+# Раздел — про разработчиков. Аналитики, РП и консультанты в срез не идут,
+# даже если на них назначены задачи. Роль берётся из реестра ролей.
+DEFAULT_DEVELOPER_ROLES = ["dev"]
 
 
 @dataclass
@@ -56,6 +59,7 @@ class DeskConfig:
     thresholds: dict[str, float] = field(default_factory=dict)
     subtask_types: list[str] = field(default_factory=list)
     assignee_types: list[str] = field(default_factory=list)
+    developer_roles: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,6 +68,7 @@ class DeskConfig:
             "thresholds": self.thresholds,
             "subtask_types": self.subtask_types,
             "assignee_types": self.assignee_types,
+            "developer_roles": self.developer_roles,
         }
 
 
@@ -75,6 +80,7 @@ def defaults() -> DeskConfig:
         thresholds=dict(DEFAULT_THRESHOLDS),
         subtask_types=list(DEFAULT_SUBTASK_TYPES),
         assignee_types=list(DEFAULT_ASSIGNEE_TYPES),
+        developer_roles=list(DEFAULT_DEVELOPER_ROLES),
     )
 
 
@@ -95,7 +101,7 @@ def load_config(db: Session) -> DeskConfig:
         for group, statuses in stored["status_groups"].items():
             if isinstance(statuses, list):
                 cfg.status_groups[group] = [str(s) for s in statuses]
-    for key in ("queue_statuses", "subtask_types", "assignee_types"):
+    for key in ("queue_statuses", "subtask_types", "assignee_types", "developer_roles"):
         if isinstance(stored.get(key), list):
             setattr(cfg, key, [str(s) for s in stored[key]])
     if isinstance(stored.get("thresholds"), dict):

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
-from app.models import Issue, Project
+from app.models import Employee, EmployeeTeam, Issue, Project
 
 
 @pytest.fixture()
@@ -39,6 +39,63 @@ def _issue(db) -> Issue:
     db.add(row)
     db.commit()
     return row
+
+
+def test_overview_keeps_only_developers(client, testclient_db_session):
+    """Аналитик из той же команды в срез не попадает — раздел про разработчиков."""
+    db = testclient_db_session
+    project = Project(
+        id=str(uuid.uuid4()),
+        jira_project_id=str(uuid.uuid4()),
+        key=f"OS{uuid.uuid4().hex[:4]}",
+        name="OS",
+    )
+    db.add(project)
+    db.flush()
+
+    people = {}
+    for account, name, role in (
+        ("acc-dev", "Шутов Сергей", "dev"),
+        ("acc-analyst", "Фокеева Наталья", "analyst"),
+    ):
+        emp = Employee(
+            id=str(uuid.uuid4()),
+            jira_account_id=account,
+            display_name=name,
+            role=role,
+        )
+        db.add(emp)
+        db.flush()
+        db.add(
+            EmployeeTeam(
+                id=str(uuid.uuid4()),
+                employee_id=emp.id,
+                team="Команда 1С",
+                is_primary=True,
+            )
+        )
+        people[account] = emp
+        db.add(
+            Issue(
+                id=str(uuid.uuid4()),
+                jira_issue_id=str(uuid.uuid4()),
+                key=f"OS-{account}",
+                summary="Задача",
+                issue_type="Задача",
+                status="В РАБОТЕ",
+                project_id=project.id,
+                developer_account_id=account,
+                developer_display_name=name,
+                dev_est_hours=8.0,
+            )
+        )
+    db.commit()
+
+    resp = client.get("/api/v1/team-desk/overview", params={"teams": "Команда 1С"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [d["developer_id"] for d in body["developers"]] == ["acc-dev"]
+    assert [i["key"] for i in body["issues"]] == ["OS-acc-dev"]
 
 
 def test_overview_empty_without_filters(client):
