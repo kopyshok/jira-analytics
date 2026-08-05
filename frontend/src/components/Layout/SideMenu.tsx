@@ -14,6 +14,7 @@ import {
   SettingOutlined,
   TagsOutlined,
   CommentOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -42,6 +43,7 @@ export default function SideMenu() {
     { key: '/analytics/work-type-report', icon: <BulbOutlined />, label: 'Тематический отчёт' },
     { key: '/executive', icon: <RocketOutlined />, label: 'Сводка для руководителя' },
     { key: '/kpi', icon: <PercentageOutlined />, label: 'KPI' },
+    { key: '/team-desk', icon: <CodeOutlined />, label: 'Стол тимлида' },
   ].filter(it => !isHidden(it.key));
 
   const planning = [
