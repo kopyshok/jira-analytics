@@ -1,6 +1,8 @@
 import { Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { STATUS_GROUP_LABELS, type DeskIssue, type StatusGroup } from '../../api/teamDesk';
+import {
+  STATUS_GROUP_LABELS, roundHours, type DeskIssue, type StatusGroup,
+} from '../../api/teamDesk';
 import { FlagList } from './FlagChip';
 import { HoursScale } from './HoursScale';
 
@@ -89,7 +91,7 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
       width: 76,
       align: 'right',
       sorter: (a, b) => (a.est_hours ?? 0) - (b.est_hours ?? 0),
-      render: (v: number | null) => v ?? '—',
+      render: (v: number | null) => (v == null ? '—' : roundHours(v)),
     },
     {
       title: 'Факт',
@@ -101,11 +103,11 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
         <Tooltip
           title={
             row.fact_by_person.length
-              ? row.fact_by_person.map((p) => `${p.name}: ${p.hours} ч`).join('\n')
+              ? row.fact_by_person.map((p) => `${p.name}: ${roundHours(p.hours)} ч`).join('\n')
               : 'Нет списаний'
           }
         >
-          {v}
+          {roundHours(v)}
         </Tooltip>
       ),
     },

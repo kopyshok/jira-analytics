@@ -78,6 +78,9 @@ export interface DeskFilterPrefs {
   developers: string[];
 }
 
+/** Часы на экране — один знак после запятой: суммы списаний дают длинный хвост. */
+export const roundHours = (value: number): number => Math.round(value * 10) / 10;
+
 export const FLAG_LABELS: Record<FlagCode, string> = {
   over: 'Перерасход',
   under: 'Недорасход',

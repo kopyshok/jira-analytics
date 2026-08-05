@@ -1,5 +1,5 @@
 import { Tooltip, Typography } from 'antd';
-import type { DeskDeveloper, DeskWorkload } from '../../api/teamDesk';
+import { roundHours, type DeskDeveloper, type DeskWorkload } from '../../api/teamDesk';
 
 interface Props {
   developers: DeskDeveloper[];
@@ -26,7 +26,7 @@ export function WorkloadBars({ developers, workload, limit }: Props) {
             <Tooltip
               title={
                 load
-                  ? `Очередь ${load.queue_hours} ч, свободно ${load.available_hours} ч на неделю`
+                  ? `Очередь ${roundHours(load.queue_hours)} ч, свободно ${roundHours(load.available_hours)} ч на неделю`
                   : undefined
               }
             >

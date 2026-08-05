@@ -1,4 +1,5 @@
 import { Tooltip } from 'antd';
+import { roundHours } from '../../api/teamDesk';
 
 interface Props {
   fact: number;
@@ -17,13 +18,15 @@ const TRACK = 'rgba(125,145,170,0.22)';
 
 /** Шкала «факт / оценка». Перерасход рисуется штриховым хвостом поверх полосы. */
 export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Props) {
+  const factText = roundHours(fact);
   if (est == null) {
-    return <span style={{ color: COLOR_IDLE }}>{fact} / — ч</span>;
+    return <span style={{ color: COLOR_IDLE }}>{factText} / — ч</span>;
   }
+  const estText = roundHours(est);
   const ratio = est > 0 ? fact / est : 0;
   const over = ratio > 1 + overrunPct / 100;
   const color = over ? COLOR_OVER : fact === 0 ? COLOR_IDLE : COLOR_OK;
-  const title = `Факт ${fact} ч из ${est} ч`;
+  const title = `Факт ${factText} ч из ${estText} ч`;
 
   if (variant === 'centered') {
     const left = ratio < 1 ? Math.min(1 - ratio, 1) * 50 : 0;
@@ -42,7 +45,7 @@ export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Pr
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: COLOR_IDLE, fontVariantNumeric: 'tabular-nums' }}>
             <span>{ratio < 1 ? `−${Math.round((1 - ratio) * 100)}%` : ''}</span>
-            <span>{fact}/{est} ч</span>
+            <span>{factText}/{estText} ч</span>
             <span>{ratio > 1 ? `+${Math.round((ratio - 1) * 100)}%` : ''}</span>
           </div>
         </div>
@@ -56,7 +59,7 @@ export function HoursScale({ fact, est, variant = 'bar', overrunPct, width }: Pr
     <Tooltip title={title}>
       <div style={{ minWidth: width ?? 132 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>
-          <span>{fact} / {est} ч</span>
+          <span>{factText} / {estText} ч</span>
           <span style={{ color }}>{Math.round(ratio * 100)}%</span>
         </div>
         <div style={{ position: 'relative', height: 5, borderRadius: 3, background: TRACK, marginTop: 4, overflow: 'hidden' }}>
