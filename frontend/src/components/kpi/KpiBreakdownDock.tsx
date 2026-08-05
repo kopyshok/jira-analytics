@@ -199,8 +199,22 @@ function useColumns(table: KpiBreakdownTable, good: string, bad: string): Column
       ];
     }
 
+    // Плановая дата — рядом с датой закрытия: без неё вердикт «не в срок»
+    // нечем проверить глазами.
+    const planned: ColumnsType<KpiTableRow> = table.show_planned ? [{
+      title: 'План', dataIndex: 'planned_end_date', width: 110,
+      render: (v: string | null, row) => (
+        <span className="num">
+          {v ? shortDay(v) : <span style={{ opacity: 0.45 }}>нет</span>}
+          {row.overdue_days != null && row.overdue_days > 0 && (
+            <span style={{ color: bad, marginLeft: 6 }}>+{row.overdue_days} дн</span>
+          )}
+        </span>
+      ),
+    }] : [];
+
     return [
-      ...head, ...closed,
+      ...head, ...closed, ...planned,
       ...table.checks.map((check) => ({
         title: check.label,
         width: 150,
