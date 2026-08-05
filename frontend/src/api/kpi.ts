@@ -183,6 +183,9 @@ export interface KpiTableRow {
   reasons: string[];
   /** Задача учтена, хотя её нет в списке сравнения. */
   outside_base?: boolean;
+  /** Плановая дата окончания и просрочка в днях («Соблюдение сроков») */
+  planned_end_date?: string | null;
+  overdue_days?: number | null;
   /** «Норматив к факту» */
   fact?: number | null;
   /** Дни на паузе («Приостановлено»), уже вычтенные из факта */
@@ -214,6 +217,8 @@ export interface KpiBreakdownTable {
   kind: 'checks' | 'norm' | 'score' | 'worklogs';
   /** Числитель метрики — нарушения, а не успехи (баг на проде). */
   invert?: boolean;
+  /** Метрика сверяет резолюцию с плановой датой — показать колонку «План». */
+  show_planned?: boolean;
   checks: KpiTableCheck[];
   rows: KpiTableRow[];
   total_count: number;

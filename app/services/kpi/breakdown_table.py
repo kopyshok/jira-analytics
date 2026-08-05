@@ -105,7 +105,18 @@ def _issue_row(issue: Issue, base_url: str) -> dict:
         "status": issue.status,
         "resolution": issue.resolution,
         "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
+        "planned_end_date": (
+            issue.planned_end_date.isoformat() if issue.planned_end_date else None
+        ),
+        "overdue_days": _overdue_days(issue),
     }
+
+
+def _overdue_days(issue: Issue) -> Optional[int]:
+    """На сколько дней резолюция позже плановой даты; ``None`` — если сравнивать не с чем."""
+    if not issue.resolved_at or not issue.planned_end_date:
+        return None
+    return (issue.resolved_at.date() - issue.planned_end_date.date()).days
 
 
 def _dropped_by_status(
@@ -213,6 +224,9 @@ def _checks_table(
     return {
         "kind": "checks",
         "invert": invert,
+        # Метрика сверяет резолюцию с плановой датой — значит саму плановую дату
+        # надо показать: иначе «не в срок» нечем проверить.
+        "show_planned": any(c.attr == "resolved_on_time" for c in num_cs.conditions),
         "checks": [{"code": c.code, "label": c.label} for c in checks],
         "rows": rows[:ROWS_LIMIT],
         "total_count": len(rows),
