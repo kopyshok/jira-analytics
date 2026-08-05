@@ -3,7 +3,7 @@
 import asyncio
 import base64
 from datetime import datetime
-from typing import Optional, List, AsyncIterator
+from typing import Optional, List, AsyncIterator, Tuple
 
 import httpx
 
@@ -347,8 +347,36 @@ class JiraClient:
         async for issue in self.iter_issues(jql=jql, max_results=max_results, fields=fields):
             yield issue
     
+    async def get_status_changes(self, issue_key: str) -> List[Tuple[str, str]]:
+        """История смен статуса задачи: список ``(когда ISO-строкой, новый статус)``.
+
+        Полный changelog с пагинацией — в bulk-поиске Jira отдаёт только
+        последние 40 записей, а пауза могла быть раньше.
+        """
+        changes: List[Tuple[str, str]] = []
+        start_at = 0
+        while True:
+            data = await self._request(
+                "GET",
+                f"/issue/{issue_key}/changelog",
+                params={"startAt": start_at, "maxResults": 100},
+            )
+            values = data.get("values", [])
+            for entry in values:
+                created = entry.get("created")
+                if not created:
+                    continue
+                for item in entry.get("items", []):
+                    if item.get("field") == "status" and item.get("toString"):
+                        changes.append((created, item["toString"]))
+            start_at += len(values)
+            if data.get("isLast") or not values or start_at >= data.get("total", 0):
+                break
+        changes.sort(key=lambda c: c[0])
+        return changes
+
     # === Worklog methods ===
-    
+
     async def get_worklogs_for_issue(
         self,
         issue_id: str,

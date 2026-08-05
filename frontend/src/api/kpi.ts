@@ -185,6 +185,8 @@ export interface KpiTableRow {
   outside_base?: boolean;
   /** «Норматив к факту» */
   fact?: number | null;
+  /** Дни на паузе («Приостановлено»), уже вычтенные из факта */
+  paused_days?: number | null;
   deviation_pct?: number | null;
   /** «Балл к максимуму» */
   score?: number | null;

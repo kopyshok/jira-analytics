@@ -91,4 +91,5 @@ async def test_pipeline_normal_mode_writes_sync_run(e2e_db_session):
 
     e2e_db_session.refresh(run)
     assert run.status == "ok"
-    assert len(run.stages_json) == 5  # calendar + projects + issues + worklogs + mapping
+    # calendar + projects + issues + paused_days + worklogs + mapping
+    assert len(run.stages_json) == 6

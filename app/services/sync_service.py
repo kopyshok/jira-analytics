@@ -224,6 +224,43 @@ def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
         return None
 
 
+# Статусы «задача на паузе»: время в них не считается сроком выполнения и
+# вычитается из факта Cycle Time.
+# ponytail: список зашит в код — в тенанте пауза одна («Приостановлено»);
+# понадобится вторая — сюда же, справочник заводить незачем.
+PAUSED_STATUSES = ("Приостановлено",)
+
+
+def paused_days_from_changes(
+    changes: List[Tuple[str, str]],
+    now: Optional[datetime] = None,
+) -> float:
+    """Сколько суток задача провела в статусах паузы.
+
+    ``changes`` — история смен статуса ``(когда, новый статус)`` из Jira.
+    Незакрытая пауза считается до ``now``. Результат округляется до целых
+    суток: Jira отдаёт Cycle Time тоже целыми днями.
+    """
+    parsed = sorted(
+        (when, status)
+        for when, status in (
+            (_parse_jira_datetime(raw), status) for raw, status in changes
+        )
+        if when is not None
+    )
+    total = 0.0
+    started: Optional[datetime] = None
+    for when, status in parsed:
+        if started is not None:
+            total += (when - started).total_seconds() / 86400
+            started = None
+        if status.strip() in PAUSED_STATUSES:
+            started = when
+    if started is not None:
+        total += ((now or datetime.utcnow()) - started).total_seconds() / 86400
+    return float(round(total))
+
+
 def _parse_jira_date(raw: Optional[str]) -> Optional[datetime]:
     """Parse Jira plain date (e.g. ``2026-06-30``) into a naive midnight datetime."""
     if not raw:
@@ -1089,6 +1126,63 @@ class SyncService:
 
         logger.info(f"Issues sync complete: {count} synced, {self.stats.issues_created} created")
         return count
+
+    async def sync_paused_days(
+        self,
+        project_keys: Optional[List[str]] = None,
+        since: Optional[datetime] = None,
+        incremental: bool = True,
+    ) -> int:
+        """Посчитать дни простоя в статусах паузы по истории статусов Jira.
+
+        Отдельный проход после задач: история статусов приходит только
+        поштучно, поэтому сначала JQL сужает выборку до задач, которые вообще
+        бывали на паузе (в тенанте это сотни задач, а не сотня тысяч).
+
+        Курсор свой (``sync_state`` «paused_days»): первый запуск проходит по
+        всей истории, дальше — только по задачам, изменившимся с прошлого раза.
+        """
+        if not project_keys:
+            project_keys = self._get_scope_project_keys() or [
+                p.key for p in self.project_repo.get_all(limit=1000)
+            ]
+        if not project_keys:
+            return 0
+        started_at = datetime.utcnow()
+        if since is None and incremental:
+            state = self._get_sync_state("paused_days")
+            if state and state.last_success_at:
+                since = state.last_success_at
+        projects_jql = ", ".join(f'"{k}"' for k in project_keys)
+        statuses_jql = ", ".join(f'"{s}"' for s in PAUSED_STATUSES)
+        jql = f"project in ({projects_jql}) AND status WAS IN ({statuses_jql})"
+        if since:
+            jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
+
+        keys: List[str] = []
+        async for jira_issue in self.jira.iter_issues(
+            jql=jql,
+            max_results=100,
+            fields=["summary", "issuetype", "status", "project"],
+        ):
+            keys.append(jira_issue.key)
+
+        updated = 0
+        for key in keys:
+            await self._check_cancelled()
+            issue = self.issue_repo.get_by_field("key", key)
+            if not issue:
+                continue
+            days = paused_days_from_changes(await self.jira.get_status_changes(key))
+            if issue.paused_days != days:
+                issue.paused_days = days
+                updated += 1
+            if updated and updated % 100 == 0:
+                self.db.commit()
+        self._update_sync_state("paused_days", started_at)
+        self.db.commit()
+        logger.info(f"Paused days: {updated} of {len(keys)} issues updated")
+        return updated
 
     async def refresh_issues_by_keys(
         self,

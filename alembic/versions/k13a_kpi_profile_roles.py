@@ -72,7 +72,14 @@ def upgrade() -> None:
                 rows.append((default_id, ROLE_PROJECT_MANAGER))
         # Одна роль могла быть указана у двух профилей — в новой схеме она
         # уникальна, поэтому берётся первый профиль, остальные пропускаются.
-        seen: set[str] = set()
+        # Таблица могла быть создана раньше (create_all + сид на старте
+        # приложения) и уже содержать роли — иначе перенос падает на
+        # уникальности role_code.
+        seen: set[str] = {
+            r[0] for r in bind.execute(
+                sa.text("SELECT role_code FROM kpi_profile_roles")
+            ).fetchall()
+        }
         now = datetime.utcnow()
         for profile_id, role_code in rows:
             if role_code in seen:
