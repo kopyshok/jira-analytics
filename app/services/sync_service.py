@@ -313,6 +313,9 @@ _KPI_FIELD_SETTING_KEYS = [
     "jira_cost_type_field_id",
     "jira_cycle_time_field_id",
     "jira_direction_field_id",
+    # Рабочий стол тимлида: «Разработчик» (поле-пользователь) и «DEV est (ч)»
+    "jira_developer_field_id",
+    "jira_dev_est_field_id",
 ]
 _ALL_PLANNED_KEYS = (
     _PLANNED_NUMERIC_SETTING_KEYS
@@ -370,6 +373,21 @@ def _normalize_level(raw: Any) -> Optional[str]:
     if not isinstance(value, str):
         return None
     return _LEVEL_MAP.get(value.strip().lower())
+
+
+def _extract_user_field(
+    extra: dict, field_id: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """Достаёт (accountId, displayName) из кастомного поля Jira типа user.
+
+    Пустое поле, ненастроенный id или чужая форма значения → (None, None).
+    """
+    if not field_id:
+        return None, None
+    raw = (extra or {}).get(field_id)
+    if not isinstance(raw, dict):
+        return None, None
+    return (raw.get("accountId") or None), (raw.get("displayName") or None)
 
 
 def _record_plan_changes(db: Session, issue: "Issue", new_values: dict) -> None:
@@ -844,6 +862,14 @@ class SyncService:
         data["subtype"] = _extract_single_value(extra, planned_ids.get("jira_subtype_field_id"))
         data["cost_type"] = _extract_single_value(extra, planned_ids.get("jira_cost_type_field_id"))
         data["direction"] = _extract_single_value(extra, planned_ids.get("jira_direction_field_id"))
+        # Рабочий стол тимлида: разработчик задачи и оценка разработки
+        _dev_account_id, _dev_display_name = _extract_user_field(
+            extra, planned_ids.get("jira_developer_field_id")
+        )
+        data["developer_account_id"] = _dev_account_id
+        data["developer_display_name"] = _dev_display_name
+        data["dev_est_hours"] = _fld_float("jira_dev_est_field_id")
+
         ct_raw = _extract_single_value(extra, planned_ids.get("jira_cycle_time_field_id"))
         try:
             data["cycle_time_fact"] = float(ct_raw) if ct_raw not in (None, "") else None
