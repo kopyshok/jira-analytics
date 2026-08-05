@@ -1,7 +1,7 @@
 import { Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  FLAG_LABELS, FLAG_ORDER,
+  FLAG_LABELS, FLAG_ORDER, roundHours,
   type DeskDeveloper, type DeskWorkload, type FlagCode,
 } from '../../api/teamDesk';
 import { HoursScale } from './HoursScale';
@@ -70,9 +70,9 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
         const load = workload[row.developer_id];
         if (!load) return '—';
         return (
-          <Tooltip title={`Свободно ${load.available_hours} ч на неделю вперёд`}>
+          <Tooltip title={`Свободно ${roundHours(load.available_hours)} ч на неделю вперёд`}>
             <span style={{ color: load.overloaded ? '#ff6b6b' : undefined }}>
-              {load.queue_hours} ч
+              {roundHours(load.queue_hours)} ч
               {load.queue_days != null ? ` ≈ ${load.queue_days} дн` : ''}
               {load.without_estimate > 0 ? ` +${load.without_estimate} б/о` : ''}
             </span>

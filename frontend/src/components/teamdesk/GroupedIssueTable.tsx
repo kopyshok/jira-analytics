@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  FLAG_LABELS, FLAG_ORDER,
+  FLAG_LABELS, FLAG_ORDER, roundHours,
   type DeskDeveloper, type DeskIssue, type FlagCode,
 } from '../../api/teamDesk';
 import { FlagList } from './FlagChip';
@@ -104,9 +104,9 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
         row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} />,
     },
     { title: 'Оценка', width: 76, align: 'right',
-      render: (_, row) => row.est_hours ?? '—' },
+      render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
     { title: 'Факт', width: 68, align: 'right',
-      render: (_, row) => row.fact_hours ?? 0 },
+      render: (_, row) => roundHours(row.fact_hours ?? 0) },
     {
       title: 'Недобор / перебор',
       width: 165,
