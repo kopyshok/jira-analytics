@@ -34,6 +34,7 @@ _NOTE_TYPES = ("new", "improvement", "fix")
 _SECTIONS = (
     "scenarios", "resources", "analytics", "issues",
     "dashboard", "backlog", "sync", "settings", "general",
+    "kpi", "projects",
 )
 
 

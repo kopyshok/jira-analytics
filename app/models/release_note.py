@@ -9,6 +9,7 @@ NOTE_TYPES = ("new", "improvement", "fix")
 SECTIONS = (
     "scenarios", "resources", "analytics", "issues",
     "dashboard", "backlog", "sync", "settings", "general",
+    "kpi", "projects",
 )
 
 
