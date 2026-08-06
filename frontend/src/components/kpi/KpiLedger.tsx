@@ -349,7 +349,10 @@ export default function KpiLedger({
       title: 'Итог',
       key: 'total',
       fixed: 'right' as const,
-      width: 190,
+      // Ширина под самое длинное содержимое: «100%» плюс дельта и полоска
+      // под ним. Закреплённая справа колонка не обрезает лишнее, а рисует
+      // его поверх соседей — тесная ширина превращалась в наложение.
+      width: 126,
       align: 'right' as const,
       render: (_: unknown, r: TreeRow) => {
         if (isTeamRow(r)) {
@@ -382,41 +385,47 @@ export default function KpiLedger({
         const status = kpiStatusOf(r.total, r.target_pct, r.warn_band_pct);
         const prev = prevTotals?.get(r.employee_id);
         const delta = prev != null && r.total != null ? r.total - prev : null;
+        // Число, дельта и полоска стоят в столбик, как в строке команды.
+        // В строку они не помещались: на периоде длиннее месяца слева
+        // появляются колонки месяцев, и содержимое закреплённой колонки
+        // «Итог» наползало на них поверх текста.
         return (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-            {delta != null && Math.abs(delta) >= 0.05 && (
-              <Tooltip title={prevPeriodLabel ? `Сравнение с периодом «${prevPeriodLabel}»` : undefined}>
-                <span
-                  className="num"
-                  style={{
-                    fontSize: 10.5, fontWeight: 700,
-                    color: delta > 0 ? t.success : t.danger,
-                    display: 'flex', alignItems: 'center', gap: 1,
-                  }}
-                >
-                  {delta > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                  {Math.abs(delta).toFixed(1)}
-                </span>
-              </Tooltip>
-            )}
-            {/* Полоска рядом с числом: разницу между 86% и 98% глаз ловит
-                быстрее по длине, чем по цифрам. */}
-            <span style={{
-              width: 54, height: 5, borderRadius: 3, background: t.darkRows, overflow: 'hidden',
-              display: 'inline-block',
-            }}
-            >
-              <span style={{
-                display: 'block', height: '100%',
-                width: `${Math.min(100, Math.max(0, r.total ?? 0))}%`,
-                background: cellStyle(status, t).color as string,
-              }}
-              />
-            </span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
             <span className="num" style={{ ...cellStyle(status, t), fontWeight: 800, fontSize: 14, padding: '2px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <StatusIcon status={status} />
               {fmtPct(r.total)}
             </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {delta != null && Math.abs(delta) >= 0.05 && (
+                <Tooltip title={prevPeriodLabel ? `Сравнение с периодом «${prevPeriodLabel}»` : undefined}>
+                  <span
+                    className="num"
+                    style={{
+                      fontSize: 10.5, fontWeight: 700,
+                      color: delta > 0 ? t.success : t.danger,
+                      display: 'flex', alignItems: 'center', gap: 1,
+                    }}
+                  >
+                    {delta > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                    {Math.abs(delta).toFixed(1)}
+                  </span>
+                </Tooltip>
+              )}
+              {/* Полоска рядом с числом: разницу между 86% и 98% глаз ловит
+                  быстрее по длине, чем по цифрам. */}
+              <span style={{
+                width: 54, height: 5, borderRadius: 3, background: t.darkRows, overflow: 'hidden',
+                display: 'inline-block',
+              }}
+              >
+                <span style={{
+                  display: 'block', height: '100%',
+                  width: `${Math.min(100, Math.max(0, r.total ?? 0))}%`,
+                  background: cellStyle(status, t).color as string,
+                }}
+                />
+              </span>
+            </div>
           </div>
         );
       },
