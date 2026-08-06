@@ -261,6 +261,19 @@ def paused_days_from_changes(
     return float(round(total))
 
 
+def _drop_tz(dt: Optional[datetime]) -> Optional[datetime]:
+    """Убрать таймзону, сохранив показания часов Jira.
+
+    Колонки времени в схеме — без таймзоны. Значение с зоной каждая БД
+    записывает по-своему: SQLite оставляет часы как есть, PostgreSQL приводит к
+    UTC и сдвигает их на разницу поясов. Приводим к одному виду до записи —
+    иначе те же ворклоги на разных базах лежат с разным временем.
+    """
+    if dt is None or dt.tzinfo is None:
+        return dt
+    return dt.replace(tzinfo=None)
+
+
 def _parse_jira_date(raw: Optional[str]) -> Optional[datetime]:
     """Parse Jira plain date (e.g. ``2026-06-30``) into a naive midnight datetime."""
     if not raw:
@@ -1494,8 +1507,8 @@ class SyncService:
         """Upsert worklog from Jira."""
         data = {
             "jira_worklog_id": jira_worklog.id,
-            "started_at": jira_worklog.started_datetime,
-            "jira_created_at": jira_worklog.created_datetime,
+            "started_at": _drop_tz(jira_worklog.started_datetime),
+            "jira_created_at": _drop_tz(jira_worklog.created_datetime),
             "hours": jira_worklog.hours,
             "time_spent_seconds": jira_worklog.timeSpentSeconds,
             "comment_text": jira_worklog.comment_text,
@@ -1593,7 +1606,7 @@ class SyncService:
         data = {
             "jira_comment_id": jira_comment.id,
             "body": jira_comment.body_text,
-            "jira_created_at": jira_comment.created_datetime,
+            "jira_created_at": _drop_tz(jira_comment.created_datetime),
             "issue_id": issue_id,
             "author_id": author_id,
             "synced_at": datetime.utcnow(),
