@@ -81,6 +81,22 @@ export default function TeamDeskSettingsTab() {
         )}
       </Card>
 
+      <Card size="small" title="Не показывать">
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Статусы, которых в разделе быть не должно вовсе: задача ещё не взята в работу,
+          смотреть на неё нечего. Такие задачи не идут ни в список, ни в счётчики, ни в
+          очередь работы.
+        </Typography.Paragraph>
+        <Select
+          mode="tags"
+          style={{ width: '100%' }}
+          value={current.hidden_statuses}
+          onChange={(v) => patch({ hidden_statuses: v })}
+          tokenSeparators={[',']}
+          placeholder="Например: Backlog"
+        />
+      </Card>
+
       <Card size="small" title="Кто попадает в срез">
         <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
           Роли сотрудников, задачи которых показывает раздел. Аналитики, руководители

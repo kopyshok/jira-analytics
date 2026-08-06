@@ -162,6 +162,28 @@ def test_closed_issues_hidden_when_only_open(db_session):
     assert len(full["issues"]) == 1
 
 
+def test_hidden_statuses_are_not_shown(db_session):
+    """Backlog по умолчанию не показывается: задача ещё не взята в работу."""
+    project = _project(db_session)
+    _issue(
+        db_session, project, "OS-50", status="Backlog",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=8.0,
+    )
+    _issue(
+        db_session, project, "OS-51", status="К выполнению",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=4.0,
+    )
+    db_session.commit()
+
+    # ни в «открытых сейчас», ни во «всех задачах»
+    for only_open in (True, False):
+        result = build_overview(db_session, ["acc-1"], only_open=only_open)
+        assert [i["key"] for i in result["issues"]] == ["OS-51"]
+        assert result["developers"][0]["total_issues"] == 1
+
+
 def test_reviewed_flag_hidden_until_asked(db_session, seed_user):
     from app.services.team_desk.marks import mark_reviewed
 

@@ -67,6 +67,8 @@ export interface DeskOverview {
 export interface DeskSettings {
   status_groups: Record<string, string[]>;
   queue_statuses: string[];
+  /** Статусы, которых раздел не показывает вовсе. */
+  hidden_statuses: string[];
   thresholds: Record<string, number>;
   subtask_types: string[];
   assignee_types: string[];

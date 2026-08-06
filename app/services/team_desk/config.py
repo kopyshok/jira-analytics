@@ -45,6 +45,10 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "wip_limit": 3,              # лимит задач в работе одновременно
 }
 
+# Статусы, которых в разделе быть не должно вовсе: задача ещё не взята в
+# работу, тимлиду смотреть на неё нечего. В счётчики и очередь тоже не идут.
+DEFAULT_HIDDEN_STATUSES = ["Backlog"]
+
 DEFAULT_SUBTASK_TYPES = ["Подзадача", "Sub-task"]
 DEFAULT_ASSIGNEE_TYPES = ["Research"]
 # Раздел — про разработчиков. Аналитики, РП и консультанты в срез не идут,
@@ -56,6 +60,7 @@ DEFAULT_DEVELOPER_ROLES = ["dev"]
 class DeskConfig:
     status_groups: dict[str, list[str]] = field(default_factory=dict)
     queue_statuses: list[str] = field(default_factory=list)
+    hidden_statuses: list[str] = field(default_factory=list)
     thresholds: dict[str, float] = field(default_factory=dict)
     subtask_types: list[str] = field(default_factory=list)
     assignee_types: list[str] = field(default_factory=list)
@@ -65,6 +70,7 @@ class DeskConfig:
         return {
             "status_groups": self.status_groups,
             "queue_statuses": self.queue_statuses,
+            "hidden_statuses": self.hidden_statuses,
             "thresholds": self.thresholds,
             "subtask_types": self.subtask_types,
             "assignee_types": self.assignee_types,
@@ -77,6 +83,7 @@ def defaults() -> DeskConfig:
     return DeskConfig(
         status_groups={k: list(v) for k, v in DEFAULT_STATUS_GROUPS.items()},
         queue_statuses=list(DEFAULT_QUEUE_STATUSES),
+        hidden_statuses=list(DEFAULT_HIDDEN_STATUSES),
         thresholds=dict(DEFAULT_THRESHOLDS),
         subtask_types=list(DEFAULT_SUBTASK_TYPES),
         assignee_types=list(DEFAULT_ASSIGNEE_TYPES),
@@ -101,7 +108,10 @@ def load_config(db: Session) -> DeskConfig:
         for group, statuses in stored["status_groups"].items():
             if isinstance(statuses, list):
                 cfg.status_groups[group] = [str(s) for s in statuses]
-    for key in ("queue_statuses", "subtask_types", "assignee_types", "developer_roles"):
+    for key in (
+        "queue_statuses", "hidden_statuses",
+        "subtask_types", "assignee_types", "developer_roles",
+    ):
         if isinstance(stored.get(key), list):
             setattr(cfg, key, [str(s) for s in stored[key]])
     if isinstance(stored.get("thresholds"), dict):

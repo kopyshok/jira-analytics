@@ -62,6 +62,10 @@ def _select_issues(
             )
         )
     query = db.query(Issue).filter(or_(*conditions))
+    if cfg.hidden_statuses:
+        # Задача ещё не взята в работу — тимлиду смотреть на неё нечего,
+        # и в счётчики она попадать не должна.
+        query = query.filter(~Issue.status.in_(cfg.hidden_statuses))
     if only_open:
         closed = cfg.status_groups.get("done", [])
         if closed:

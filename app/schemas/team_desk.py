@@ -9,6 +9,9 @@ class DeskSettings(BaseModel):
 
     status_groups: dict[str, list[str]]
     queue_statuses: list[str]
+    hidden_statuses: list[str] = Field(
+        default_factory=list, description="Статусы, которые раздел не показывает"
+    )
     thresholds: dict[str, float]
     subtask_types: list[str]
     assignee_types: list[str]
