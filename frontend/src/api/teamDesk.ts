@@ -1,7 +1,8 @@
 import { api, boolParam } from './client';
 
 export type FlagCode =
-  | 'over' | 'under' | 'decomp' | 'childgap' | 'noest' | 'nospent' | 'stale';
+  | 'over' | 'under' | 'decomp' | 'childgap'
+  | 'noest' | 'nospent' | 'idlespent' | 'stale';
 
 export type StatusGroup = 'dev' | 'waiting' | 'todo' | 'done' | 'unassigned';
 
@@ -88,12 +89,23 @@ export const FLAG_LABELS: Record<FlagCode, string> = {
   childgap: 'Подзадачи недооценены',
   noest: 'Нет оценки',
   nospent: 'Нет списаний',
+  idlespent: 'Часы в неначатой',
   stale: 'Зависла',
 };
 
 export const FLAG_ORDER: FlagCode[] = [
-  'over', 'under', 'decomp', 'childgap', 'noest', 'nospent', 'stale',
+  'over', 'under', 'decomp', 'childgap', 'noest', 'nospent', 'idlespent', 'stale',
 ];
+
+export const FLAG_ICON: Record<FlagCode, string> = {
+  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟',
+  noest: '∅', nospent: '◔', idlespent: '⏱', stale: '⏳',
+};
+
+export const FLAG_COLOR: Record<FlagCode, string> = {
+  over: 'red', under: 'gold', decomp: 'orange', childgap: 'volcano',
+  noest: 'default', nospent: 'default', idlespent: 'geekblue', stale: 'purple',
+};
 
 export const STATUS_GROUP_LABELS: Record<StatusGroup, string> = {
   dev: 'у разработчика',

@@ -1,19 +1,10 @@
 import { useState } from 'react';
 import { Card, Space, Tag, Typography } from 'antd';
 import {
-  FLAG_LABELS, FLAG_ORDER,
+  FLAG_COLOR, FLAG_ICON, FLAG_LABELS, FLAG_ORDER,
   type DeskDeveloper, type DeskIssue, type FlagCode,
 } from '../../api/teamDesk';
 import { GroupedIssues } from './GroupedIssues';
-
-const ICON: Record<FlagCode, string> = {
-  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟',
-  noest: '∅', nospent: '◔', stale: '⏳',
-};
-const COLOR: Record<FlagCode, string> = {
-  over: 'red', under: 'gold', decomp: 'orange', childgap: 'volcano',
-  noest: 'default', nospent: 'default', stale: 'purple',
-};
 
 interface Props {
   developers: DeskDeveloper[];
@@ -36,11 +27,11 @@ export function GroupedIssueTable({
           {FLAG_ORDER.filter((f) => flagCounts[f]).map((flag) => (
             <Tag
               key={flag}
-              color={filter === flag ? 'blue' : COLOR[flag]}
+              color={filter === flag ? 'blue' : FLAG_COLOR[flag]}
               style={{ cursor: 'pointer' }}
               onClick={() => setFilter(filter === flag ? null : flag)}
             >
-              {ICON[flag]} {FLAG_LABELS[flag]} · {flagCounts[flag]}
+              {FLAG_ICON[flag]} {FLAG_LABELS[flag]} · {flagCounts[flag]}
             </Tag>
           ))}
           {FLAG_ORDER.every((f) => !flagCounts[f]) && (

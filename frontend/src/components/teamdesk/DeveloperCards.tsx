@@ -1,18 +1,9 @@
 import { Card, Col, Row, Tag, Tooltip, Typography } from 'antd';
 import {
-  FLAG_LABELS, FLAG_ORDER,
-  type DeskDeveloper, type DeskWorkload, type FlagCode,
+  FLAG_COLOR, FLAG_ICON, FLAG_LABELS, FLAG_ORDER,
+  type DeskDeveloper, type DeskWorkload,
 } from '../../api/teamDesk';
 import { HoursScale } from './HoursScale';
-
-const ICON: Record<FlagCode, string> = {
-  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟',
-  noest: '∅', nospent: '◔', stale: '⏳',
-};
-const COLOR: Record<FlagCode, string> = {
-  over: 'red', under: 'gold', decomp: 'orange', childgap: 'volcano',
-  noest: 'default', nospent: 'default', stale: 'purple',
-};
 
 function initials(name: string | null): string {
   if (!name) return '?';
@@ -105,7 +96,7 @@ export function DeveloperCards({ developers, workload, overrunPct, selected, onS
               <div>
                 {FLAG_ORDER.filter((f) => dev.flag_counts[f]).map((flag) => (
                   <Tooltip key={flag} title={FLAG_LABELS[flag]}>
-                    <Tag color={COLOR[flag]}>{ICON[flag]} {dev.flag_counts[flag]}</Tag>
+                    <Tag color={FLAG_COLOR[flag]}>{FLAG_ICON[flag]} {dev.flag_counts[flag]}</Tag>
                   </Tooltip>
                 ))}
                 {FLAG_ORDER.every((f) => !dev.flag_counts[f]) && (
