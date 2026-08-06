@@ -138,17 +138,17 @@ def test_portfolio_endpoint_respects_quarter_filter(db_session):
     db.commit()
 
     # Оба эпика имеют плановые назначения — чтобы тест реально проверял
-    # ФИЛЬТРАЦИЮ по сценарию, а не просто пустой таймлайн у обоих.
-    plan_in_id, plan_out_id = _uid(), _uid()
-    db.add(ResourcePlan(id=plan_in_id, team="T", year=2026, quarter="Q3",
-                        computed_at=datetime(2026, 7, 20)))
-    db.add(ResourcePlan(id=plan_out_id, team="T", year=2026, quarter="Q3",
+    # ФИЛЬТРАЦИЮ по сценарию, а не просто пустой таймлайн у обоих. Назначения
+    # лежат в ОДНОМ плане: два плана квартала с одинаковой свежестью — это
+    # проверка выбора плана, а не фильтра, и она уводила тест в случайность.
+    plan_id = _uid()
+    db.add(ResourcePlan(id=plan_id, team="T", year=2026, quarter="Q3",
                         computed_at=datetime(2026, 7, 20)))
     db.commit()
-    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_in_id, backlog_item_id=item_in.id,
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_in.id,
                                   phase="analyst", hours_allocated=10.0,
                                   start_date=date(2026, 7, 1), end_date=date(2026, 7, 20)))
-    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_out_id, backlog_item_id=item_out.id,
+    db.add(ResourcePlanAssignment(id=_uid(), plan_id=plan_id, backlog_item_id=item_out.id,
                                   phase="analyst", hours_allocated=10.0,
                                   start_date=date(2026, 7, 1), end_date=date(2026, 7, 20)))
     db.commit()
