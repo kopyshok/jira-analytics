@@ -10,7 +10,7 @@ import { ThresholdsPanel } from '../components/teamdesk/ThresholdsPanel';
 import { DeveloperCards } from '../components/teamdesk/DeveloperCards';
 import { DeveloperTable } from '../components/teamdesk/DeveloperTable';
 import { GroupedIssueTable } from '../components/teamdesk/GroupedIssueTable';
-import { IssueTable } from '../components/teamdesk/IssueTable';
+import { GroupedIssues } from '../components/teamdesk/GroupedIssues';
 import { WorkloadBars } from '../components/teamdesk/WorkloadBars';
 import { AbsenceStrip } from '../components/teamdesk/AbsenceStrip';
 
@@ -51,19 +51,19 @@ export default function TeamDeskPage() {
   const overrunPct = settings.data?.thresholds.overrun_pct ?? 30;
   const wipLimit = settings.data?.thresholds.wip_limit ?? 3;
 
-  const visibleIssues = selectedDev
-    ? (data?.issues ?? []).filter((i) => i.developer_id === selectedDev)
-    : (data?.issues ?? []);
-
-  const filterHint = selectedDev
-    ? `только ${data?.developers.find((d) => d.developer_id === selectedDev)?.display_name ?? ''} — нажмите ещё раз, чтобы снять`
-    : '';
+  const filterHint = selectedDev ? 'нажмите на карточку ещё раз, чтобы снять фильтр' : '';
 
   const detailBlocks = (
     <>
-      <Card size="small" title="Задачи" extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>{filterHint}</Typography.Text>}>
-        <IssueTable issues={visibleIssues} overrunPct={overrunPct} jiraBaseUrl={jiraBaseUrl} />
-      </Card>
+      <GroupedIssues
+        title="Задачи"
+        developers={data?.developers ?? []}
+        issues={data?.issues ?? []}
+        overrunPct={overrunPct}
+        jiraBaseUrl={jiraBaseUrl}
+        onlyDeveloper={selectedDev}
+        hint={filterHint}
+      />
       <Card size="small" title="Задач в работе одновременно">
         <WorkloadBars
           developers={data?.developers ?? []}
