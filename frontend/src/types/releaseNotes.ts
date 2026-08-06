@@ -2,7 +2,8 @@ export type ReleaseNoteType = 'new' | 'improvement' | 'fix';
 
 export type ReleaseSection =
   | 'scenarios' | 'resources' | 'analytics' | 'issues'
-  | 'dashboard' | 'backlog' | 'sync' | 'settings' | 'general';
+  | 'dashboard' | 'backlog' | 'sync' | 'settings' | 'general'
+  | 'kpi' | 'projects';
 
 export interface ReleaseNote {
   id: string;
@@ -68,4 +69,6 @@ export const SECTION_LABELS: Record<ReleaseSection, string> = {
   sync: 'Синхронизация',
   settings: 'Настройки',
   general: 'Общее',
+  kpi: 'KPI',
+  projects: 'Проекты',
 };
