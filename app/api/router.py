@@ -27,6 +27,8 @@ from app.api.endpoints import (
     involvement_defaults as involvement_defaults_endpoints,
     issue_bulk,
     issue_config,
+    kpi as kpi_endpoints,
+    kpi_settings as kpi_settings_endpoints,
     mandatory_work_types,
     mapping,
     planning,
@@ -212,6 +214,9 @@ api_router.include_router(
     tags=["release-notes"],
     dependencies=_auth_dep,
 )
+api_router.include_router(
+    kpi_endpoints.router, prefix="/kpi", tags=["kpi"], dependencies=_auth_dep,
+)
 
 # Admin-only routers
 api_router.include_router(
@@ -245,5 +250,11 @@ api_router.include_router(
     admin_db_export_endpoints.router,
     prefix="/admin/db-export",
     tags=["admin-db-export"],
+    dependencies=_admin_dep,
+)
+api_router.include_router(
+    kpi_settings_endpoints.router,
+    prefix="/kpi-settings",
+    tags=["kpi-settings"],
     dependencies=_admin_dep,
 )

@@ -196,6 +196,24 @@ class IssuesFullStage(Stage):
         return ["issues", "tree", "backlog", "planning"]
 
 
+class PausedDaysStage(Stage):
+    """Дни простоя задач в статусе паузы — вычитаются из факта Cycle Time."""
+
+    name = "paused_days"
+    critical = False  # non-critical: без неё Cycle Time считается как раньше
+
+    def __init__(self, sync_svc, incremental: bool = True) -> None:
+        self.svc = sync_svc
+        self.incremental = incremental
+
+    async def run(self, ctx: dict) -> dict:
+        result = await self.svc.sync_paused_days(incremental=self.incremental)
+        return {"updated": result if isinstance(result, int) else 0}
+
+    def invalidates(self) -> list[str]:
+        return ["issues"]
+
+
 class WorklogsDeltaStage(Stage):
     name = "worklogs"
     critical = True
@@ -364,6 +382,7 @@ def build_pipeline(*, mode: str, services: dict, team: Optional[str] = None) -> 
             CalendarStage(calendar),
             ProjectsStage(sync),
             IssuesIncrementalStage(sync),
+            PausedDaysStage(sync),
             WorklogsDeltaStage(sync),
             MappingStage(mapping),
         ]
@@ -372,6 +391,7 @@ def build_pipeline(*, mode: str, services: dict, team: Optional[str] = None) -> 
             CalendarStage(calendar),
             ProjectsStage(sync),
             IssuesFullStage(sync),
+            PausedDaysStage(sync, incremental=False),
             WorklogsFullStage(sync),
             MappingStage(mapping),
         ]

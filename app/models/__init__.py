@@ -5,6 +5,7 @@ from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.project import Project
 from app.models.issue import Issue
+from app.models.issue_link import IssueLink
 from app.models.worklog import Worklog
 from app.models.comment import Comment
 from app.models.sync_state import SyncState
@@ -64,6 +65,9 @@ from app.models.usage_event import UsageEvent, UsageEventType
 from app.models.usage_daily import UsageDaily
 from app.models.plan_audit import PlanAudit  # noqa: F401
 from app.models.work_desk import WorkDesk  # noqa: F401
+from app.models.kpi import (
+    KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole, KpiCycleTimeNorm, KpiApproval,
+)
 
 __all__ = [
     "TimestampMixin",
@@ -73,6 +77,7 @@ __all__ = [
     "EmployeeTeam",
     "Project",
     "Issue",
+    "IssueLink",
     "Worklog",
     "Comment",
     "SyncState",
@@ -135,4 +140,10 @@ __all__ = [
     "UsageDaily",
     "PlanAudit",
     "WorkDesk",
+    "KpiMetric",
+    "KpiProfile",
+    "KpiProfileMetric",
+    "KpiProfileRole",
+    "KpiCycleTimeNorm",
+    "KpiApproval",
 ]

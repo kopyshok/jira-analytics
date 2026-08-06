@@ -121,6 +121,10 @@ export interface WorklogReloadResponse {
   worklogs_inserted: number;
 }
 
+export interface IssuesReloadRequest {
+  since: string;   // YYYY-MM-DD
+}
+
 // === Jira Browse ===
 
 export interface JiraProjectItem {
