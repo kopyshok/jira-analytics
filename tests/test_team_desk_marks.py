@@ -1,5 +1,6 @@
 """Отметка «просмотрено» и её сгорание при изменении причины."""
 import uuid
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -70,6 +71,31 @@ def test_second_mark_replaces_first(db_session, issue, seed_user):
     marks = active_marks(db_session, [issue.id], {("over", issue.id): "6:12"})
     assert marks[(issue.id, "over")].comment == "b"
     assert db_session.query(TeamDeskMark).count() == 1
+
+
+def test_reviewed_flag_hidden_when_switch_off(db_session, issue, seed_user):
+    """Отмеченный признак не показывается вообще, пока не включён показ."""
+    from app.services.team_desk.query import build_overview
+
+    issue.developer_account_id = "acc-1"
+    issue.developer_display_name = "Шутов Сергей"
+    issue.status_changed_at = datetime.utcnow() - timedelta(days=30)
+    db_session.commit()
+
+    before = build_overview(db_session, ["acc-1"], show_reviewed=False)["issues"][0]
+    assert "stale" in before["flags"]
+
+    mark_reviewed(db_session, issue.id, "stale", signature=before["signatures"]["stale"],
+                  comment="разобрались", user_id=seed_user.id)
+
+    hidden = build_overview(db_session, ["acc-1"], show_reviewed=False)
+    assert "stale" not in hidden["issues"][0]["flags"]
+    assert hidden["issues"][0]["reviewed"] == []
+    assert "stale" not in hidden["flag_counts"]
+
+    shown = build_overview(db_session, ["acc-1"], show_reviewed=True)
+    assert "stale" in shown["issues"][0]["flags"]
+    assert shown["issues"][0]["reviewed"][0]["comment"] == "разобрались"
 
 
 def test_unmark_removes(db_session, issue, seed_user):

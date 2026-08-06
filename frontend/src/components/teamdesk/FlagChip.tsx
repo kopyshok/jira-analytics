@@ -107,11 +107,11 @@ export function FlagList({
   signatures: Partial<Record<FlagCode, string>>;
   reviewed: ReviewedMark[];
 }) {
+  // Просмотренные приходят только при включённом переключателе — и тогда они
+  // остаются в flags, приглушёнными. Отдельного списка на экране нет.
   const reviewedMap = new Map(reviewed.map((r) => [r.flag, r]));
-  const shown = new Set(flags);
-  const extra = reviewed.filter((r) => !shown.has(r.flag));
 
-  if (flags.length === 0 && extra.length === 0) {
+  if (flags.length === 0) {
     return <span style={{ opacity: 0.35 }}>—</span>;
   }
   return (
@@ -123,15 +123,6 @@ export function FlagList({
           flag={flag}
           signature={signatures[flag] ?? ''}
           reviewed={reviewedMap.get(flag)}
-        />
-      ))}
-      {extra.map((r) => (
-        <FlagChip
-          key={`r-${r.flag}`}
-          issueId={issueId}
-          flag={r.flag}
-          signature={signatures[r.flag] ?? ''}
-          reviewed={r}
         />
       ))}
     </span>
