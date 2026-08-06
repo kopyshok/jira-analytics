@@ -5,7 +5,9 @@ from typing import Optional
 from app.services.team_desk.config import DeskConfig
 
 # Порядок важен: значки в интерфейсе идут в этом порядке.
-FLAG_ORDER = ["over", "under", "decomp", "childgap", "noest", "nospent", "stale"]
+FLAG_ORDER = [
+    "over", "under", "decomp", "childgap", "noest", "nospent", "idlespent", "stale",
+]
 
 FLAG_LABELS = {
     "over": "Перерасход",
@@ -14,6 +16,7 @@ FLAG_LABELS = {
     "childgap": "Подзадачи недооценены",
     "noest": "Нет оценки",
     "nospent": "Нет списаний",
+    "idlespent": "Часы в неначатой",
     "stale": "Зависла",
 }
 
@@ -60,6 +63,11 @@ def compute_flags(f: IssueFacts, cfg: DeskConfig) -> list[str]:
             ):
                 found.add("childgap")
 
+    # Часы списаны, а задача так и стоит в «не начатых». Статус готовности
+    # к работе означает, что работа не идёт: раз есть часы — статус врёт.
+    if f.group == "todo" and f.fact > 0:
+        found.add("idlespent")
+
     if not closed and f.days_in_status >= t["stale_days"]:
         found.add("stale")
 
@@ -77,6 +85,9 @@ def flag_signature(flag: str, f: IssueFacts) -> str:
     fact = f"{round(f.fact, 1):g}"
     if flag == "stale":
         return f"{f.status}"
+    if flag == "idlespent":
+        # Отметка сгорает, когда задачу сдвинули по статусу или дописали часы.
+        return f"{f.status}:{fact}"
     if flag in ("over", "under"):
         return f"{est}:{fact}"
     if flag == "decomp":

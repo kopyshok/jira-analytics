@@ -1,17 +1,9 @@
 import { useState } from 'react';
 import { Dropdown, Input, Modal, Tag, Tooltip } from 'antd';
-import { FLAG_LABELS, type FlagCode, type ReviewedMark } from '../../api/teamDesk';
+import {
+  FLAG_COLOR, FLAG_ICON, FLAG_LABELS, type FlagCode, type ReviewedMark,
+} from '../../api/teamDesk';
 import { useMarkFlag, useUnmarkFlag } from '../../hooks/useTeamDesk';
-
-const ICON: Record<FlagCode, string> = {
-  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟',
-  noest: '∅', nospent: '◔', stale: '⏳',
-};
-
-const COLOR: Record<FlagCode, string> = {
-  over: 'red', under: 'gold', decomp: 'orange', childgap: 'volcano',
-  noest: 'default', nospent: 'default', stale: 'purple',
-};
 
 interface Props {
   issueId: string;
@@ -58,10 +50,10 @@ export function FlagChip({ issueId, flag, signature, reviewed, count, withLabel 
       >
         <Tooltip title={title}>
           <Tag
-            color={reviewed ? 'default' : COLOR[flag]}
+            color={reviewed ? 'default' : FLAG_COLOR[flag]}
             style={{ cursor: 'pointer', opacity: reviewed ? 0.45 : 1, marginInlineEnd: 4 }}
           >
-            {ICON[flag]}
+            {FLAG_ICON[flag]}
             {withLabel ? ` ${label}` : ''}
             {count != null ? ` ${count}` : ''}
           </Tag>

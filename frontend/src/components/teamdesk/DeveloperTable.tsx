@@ -1,19 +1,10 @@
 import { Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  FLAG_LABELS, FLAG_ORDER, roundHours,
-  type DeskDeveloper, type DeskWorkload, type FlagCode,
+  FLAG_COLOR, FLAG_ICON, FLAG_LABELS, FLAG_ORDER, roundHours,
+  type DeskDeveloper, type DeskWorkload,
 } from '../../api/teamDesk';
 import { HoursScale } from './HoursScale';
-
-const ICON: Record<FlagCode, string> = {
-  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟',
-  noest: '∅', nospent: '◔', stale: '⏳',
-};
-const COLOR: Record<FlagCode, string> = {
-  over: 'red', under: 'gold', decomp: 'orange', childgap: 'volcano',
-  noest: 'default', nospent: 'default', stale: 'purple',
-};
 
 interface Props {
   developers: DeskDeveloper[];
@@ -86,7 +77,7 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
       render: (_, row) =>
         FLAG_ORDER.filter((f) => row.flag_counts[f]).map((flag) => (
           <Tooltip key={flag} title={FLAG_LABELS[flag]}>
-            <Tag color={COLOR[flag]}>{ICON[flag]} {row.flag_counts[flag]}</Tag>
+            <Tag color={FLAG_COLOR[flag]}>{FLAG_ICON[flag]} {row.flag_counts[flag]}</Tag>
           </Tooltip>
         )) || '—',
     },
