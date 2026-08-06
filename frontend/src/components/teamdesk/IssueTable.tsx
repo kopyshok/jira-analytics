@@ -37,6 +37,21 @@ export function StatusTag({ status, group }: { status: string; group: StatusGrou
   );
 }
 
+/** Ключ задачи — ссылка в Jira, если известен адрес сервиса. */
+export function IssueKey({ issueKey, jiraBaseUrl }: { issueKey: string; jiraBaseUrl?: string }) {
+  if (!jiraBaseUrl) return <Typography.Text strong>{issueKey}</Typography.Text>;
+  return (
+    <Typography.Link
+      href={`${jiraBaseUrl}/browse/${issueKey}`}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {issueKey}
+    </Typography.Link>
+  );
+}
+
 /** Детальная таблица задач: строки раскрываются в подзадачи. */
 export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
   const children = new Map<string, DeskIssue[]>();
@@ -56,16 +71,9 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Задача',
       dataIndex: 'key',
-      ellipsis: true,
       render: (_, row) => (
         <span>
-          {jiraBaseUrl ? (
-            <Typography.Link href={`${jiraBaseUrl}/browse/${row.key}`} target="_blank">
-              {row.key}
-            </Typography.Link>
-          ) : (
-            <Typography.Text strong>{row.key}</Typography.Text>
-          )}{' '}
+          <IssueKey issueKey={row.key} jiraBaseUrl={jiraBaseUrl} />{' '}
           {row.summary}
           {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
         </span>
@@ -74,21 +82,21 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Статус',
       dataIndex: 'status',
-      width: 170,
+      width: 190,
       sorter: (a, b) => a.status.localeCompare(b.status),
       render: (_, row) => <StatusTag status={row.status} group={row.status_group} />,
     },
     {
       title: 'Разработчик',
       dataIndex: 'developer_name',
-      width: 150,
+      width: 170,
       ellipsis: true,
       sorter: (a, b) => (a.developer_name ?? '').localeCompare(b.developer_name ?? ''),
     },
     {
       title: 'Оценка',
       dataIndex: 'est_hours',
-      width: 76,
+      width: 96,
       align: 'right',
       sorter: (a, b) => (a.est_hours ?? 0) - (b.est_hours ?? 0),
       render: (v: number | null) => (v == null ? '—' : roundHours(v)),
@@ -96,7 +104,7 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Факт',
       dataIndex: 'fact_hours',
-      width: 68,
+      width: 88,
       align: 'right',
       sorter: (a, b) => a.fact_hours - b.fact_hours,
       render: (v: number, row) => (
@@ -113,7 +121,7 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     },
     {
       title: 'Шкала',
-      width: 150,
+      width: 165,
       render: (_, row) => (
         <HoursScale fact={row.fact_hours} est={row.est_hours} overrunPct={overrunPct} />
       ),
@@ -121,13 +129,13 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
     {
       title: 'Дней',
       dataIndex: 'days_in_status',
-      width: 64,
+      width: 84,
       align: 'right',
       sorter: (a, b) => a.days_in_status - b.days_in_status,
     },
     {
       title: 'Замечания',
-      width: 140,
+      width: 165,
       render: (_, row) => (
         <FlagList
           issueId={row.id}
@@ -146,8 +154,9 @@ export function IssueTable({ issues, overrunPct, jiraBaseUrl }: Props) {
       dataSource={roots}
       columns={columns}
       pagination={false}
-      // Название задачи забирает остаток ширины, как в макете.
-      scroll={{ x: 1020 }}
+      // Название задачи забирает остаток ширины и переносится на вторую строку,
+      // когда места мало — заголовки колонок при этом не ломаются.
+      scroll={{ x: 1260 }}
       expandable={{
         rowExpandable: (row) => (children.get(row.id)?.length ?? 0) > 0,
         expandedRowRender: (row) => (

@@ -40,17 +40,17 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
         </>
       ),
     },
-    { title: 'Задач', dataIndex: 'total_issues', width: 72, align: 'right',
+    { title: 'Задач', dataIndex: 'total_issues', width: 100, align: 'right',
       sorter: (a, b) => a.total_issues - b.total_issues },
-    { title: 'У него', dataIndex: 'in_dev', width: 76, align: 'right',
+    { title: 'У него', dataIndex: 'in_dev', width: 104, align: 'right',
       sorter: (a, b) => a.in_dev - b.in_dev },
-    { title: 'Ждут не его', dataIndex: 'waiting', width: 104, align: 'right',
+    { title: 'Ждут не его', dataIndex: 'waiting', width: 140, align: 'right',
       sorter: (a, b) => a.waiting - b.waiting },
-    { title: 'Не начаты', dataIndex: 'todo', width: 92, align: 'right',
+    { title: 'Не начаты', dataIndex: 'todo', width: 128, align: 'right',
       sorter: (a, b) => a.todo - b.todo },
     {
       title: 'Факт / оценка',
-      width: 170,
+      width: 185,
       render: (_, row) => (
         <HoursScale fact={row.fact_hours} est={row.est_hours || null} overrunPct={overrunPct} width={150} />
       ),
@@ -58,14 +58,14 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
     {
       title: 'Точность',
       dataIndex: 'accuracy',
-      width: 84,
+      width: 120,
       align: 'right',
       sorter: (a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0),
       render: (v: number | null) => (v == null ? '—' : `×${v.toFixed(2)}`),
     },
     {
       title: 'Очередь',
-      width: 132,
+      width: 170,
       render: (_, row) => {
         const load = workload[row.developer_id];
         if (!load) return '—';
@@ -82,7 +82,7 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
     },
     {
       title: 'Замечания',
-      width: 156,
+      width: 180,
       render: (_, row) =>
         FLAG_ORDER.filter((f) => row.flag_counts[f]).map((flag) => (
           <Tooltip key={flag} title={FLAG_LABELS[flag]}>
@@ -111,8 +111,9 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
       dataSource={developers}
       columns={columns}
       pagination={false}
-      // Ширины по макету: имя забирает остаток, цифры узкие.
-      scroll={{ x: 1000 }}
+      // Имя забирает остаток; цифровым колонкам дана ширина, при которой
+      // заголовок помещается в одну строку.
+      scroll={{ x: 1330 }}
       onRow={(row) => ({
         onClick: () => onSelect(selected === row.developer_id ? null : row.developer_id),
         style: {

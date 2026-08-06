@@ -4,6 +4,7 @@ import type { DeskFilterPrefs } from '../api/teamDesk';
 import {
   useDeskFilter, useDeskOverview, useDeskSettings, useSaveDeskFilter,
 } from '../hooks/useTeamDesk';
+import { useJiraBaseUrl } from '../hooks/useSettings';
 import { DeskFilters } from '../components/teamdesk/DeskFilters';
 import { ThresholdsPanel } from '../components/teamdesk/ThresholdsPanel';
 import { DeveloperCards } from '../components/teamdesk/DeveloperCards';
@@ -44,6 +45,7 @@ export default function TeamDeskPage() {
   };
 
   const settings = useDeskSettings();
+  const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   const overview = useDeskOverview({ teams, developers, onlyOpen, showReviewed });
   const data = overview.data;
   const overrunPct = settings.data?.thresholds.overrun_pct ?? 30;
@@ -60,7 +62,7 @@ export default function TeamDeskPage() {
   const detailBlocks = (
     <>
       <Card size="small" title="Задачи" extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>{filterHint}</Typography.Text>}>
-        <IssueTable issues={visibleIssues} overrunPct={overrunPct} />
+        <IssueTable issues={visibleIssues} overrunPct={overrunPct} jiraBaseUrl={jiraBaseUrl} />
       </Card>
       <Card size="small" title="Задач в работе одновременно">
         <WorkloadBars
@@ -151,6 +153,7 @@ export default function TeamDeskPage() {
           issues={data.issues}
           flagCounts={data.flag_counts}
           overrunPct={overrunPct}
+          jiraBaseUrl={jiraBaseUrl}
         />
       )}
 
