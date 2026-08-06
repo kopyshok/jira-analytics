@@ -16,6 +16,7 @@ const SECTIONS: SectionDef[] = [
   { group: 'ОБЗОР', key: '/analytics', label: 'Аналитика' },
   { group: 'ОБЗОР', key: '/analytics/work-type-report', label: 'Тематический отчёт' },
   { group: 'ОБЗОР', key: '/executive', label: 'Сводка для руководителя' },
+  { group: 'ОБЗОР', key: '/kpi', label: 'KPI' },
   { group: 'ПЛАНИРОВАНИЕ', key: '/capacity', label: 'Ресурсы' },
   { group: 'ПЛАНИРОВАНИЕ', key: '/backlog', label: 'Целевые задачи' },
   { group: 'ПЛАНИРОВАНИЕ', key: '/planning', label: 'Сценарии' },

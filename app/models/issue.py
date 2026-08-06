@@ -42,6 +42,21 @@ class Issue(Base, SyncedMixin):
     # older installs). Нужна чтобы красить бейджи в то же, что показывает Jira.
     status_category: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     priority: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # KPI: резолюция Jira («Готово» / «Отменено» / ...) и дата резолюции —
+    # отдельно от статуса, чтобы отличить фактически выполненные задачи от
+    # отменённых (у обоих status_category='done').
+    resolution: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+
+    # KPI: поля, приходящие из Jira по сопоставлению в настройках
+    environment: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    subtype: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    cycle_time_fact: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Сколько дней задача простояла в статусах паузы («Приостановлено»).
+    # Считается из истории статусов Jira, вычитается из факта Cycle Time.
+    paused_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    direction: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
 
     # Foreign keys
     project_id: Mapped[str] = mapped_column(
@@ -149,6 +164,9 @@ class Issue(Base, SyncedMixin):
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     # Jira `updated` — дата последнего изменения задачи (любое касание).
     jira_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    # KPI: дата создания задачи в Jira (не путать с created_at — датой вставки
+    # строки в нашу базу). Нужна метрикам, отбирающим «создана и закрыта в периоде».
+    jira_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Customer ratings (Jira custom fields, 1-5 шкала)

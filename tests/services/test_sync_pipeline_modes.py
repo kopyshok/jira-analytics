@@ -7,6 +7,7 @@ from app.services.sync_pipeline import (
     IssuesIncrementalStage,
     IssuesRefreshByKeysStage,
     MappingStage,
+    PausedDaysStage,
     ProjectsStage,
     WorklogsDeltaStage,
     WorklogsFullStage,
@@ -36,6 +37,7 @@ def test_normal_mode_has_full_chain():
         CalendarStage,
         ProjectsStage,
         IssuesIncrementalStage,
+        PausedDaysStage,
         WorklogsDeltaStage,
         MappingStage,
     ]

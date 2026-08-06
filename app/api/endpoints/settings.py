@@ -1,5 +1,6 @@
 """Settings API endpoints — manage Jira credentials via UI."""
 
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,19 @@ from app.models.app_setting import AppSetting
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
 
 router = APIRouter()
+
+
+def _with_scheme(base_url: str) -> str:
+    """Достроить схему адресу Jira, если её не указали.
+
+    Без схемы ссылки на задачи в разделе KPI (и везде, где base_url
+    используется для формирования ``.../browse/KEY``) получались
+    относительными и вели в никуда.
+    """
+    trimmed = base_url.strip()
+    if trimmed and not re.match(r"^https?://", trimmed, re.IGNORECASE):
+        return f"https://{trimmed}"
+    return trimmed
 
 
 # --- Schemas ---
@@ -111,7 +125,7 @@ async def save_jira_settings(
     if body.api_token is not None:
         _set_setting(db, "jira_api_token", body.api_token)
     if body.base_url is not None:
-        _set_setting(db, "jira_base_url", body.base_url)
+        _set_setting(db, "jira_base_url", _with_scheme(body.base_url))
     db.commit()
 
     return JiraSettingsResponse(

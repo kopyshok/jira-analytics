@@ -100,18 +100,28 @@ class JiraIssueFieldsSchema(BaseModel):
     project: JiraProjectSchema
     parent: Optional[dict] = None
     creator: Optional[JiraUserSchema] = None
+    # «Автор» в интерфейсе Jira — это reporter, его можно переназначить.
+    # creator (создатель) неизменен и у автоматически заведённых задач
+    # равен роботу, поэтому для KPI нужен именно reporter.
+    reporter: Optional[JiraUserSchema] = None
     assignee: Optional[JiraUserSchema] = None
     created: Optional[str] = None
     updated: Optional[str] = None
     statuscategorychangedate: Optional[str] = None
     duedate: Optional[str] = None
+    # KPI: резолюция задачи («Готово» / «Отменено» / ...) и дата резолюции.
+    resolution: Optional[dict] = None
+    resolutiondate: Optional[str] = None
+    # KPI: связи задач (raw dict list из Jira ``issuelinks``).
+    issuelinks: Optional[list] = None
     _extra: dict = {}
 
     def __init__(self, **data):
         known = {
             "summary", "description", "issuetype", "status", "priority",
-            "project", "parent", "creator", "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "project", "parent", "creator", "reporter", "assignee", "created", "updated",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
+            "issuelinks",
         }
         extra = {k: v for k, v in data.items() if k not in known}
         super().__init__(**{k: v for k, v in data.items() if k in known})
@@ -192,7 +202,22 @@ class JiraWorklogSchema(BaseModel):
     def started_datetime(self) -> datetime:
         """Распарсить started из Jira (например, ``2024-01-15T10:30:00.000+0300``)."""
         return _parse_jira_datetime(self.started)
-    
+
+    @property
+    def created_datetime(self) -> Optional[datetime]:
+        """Распарсить created из Jira — дата внесения записи о трудозатратах.
+
+        ВНИМАНИЕ: в отличие от одноимённой функции в ``app/services/sync_service.py``,
+        здесь результат НЕ приводится к UTC — сохраняется локальное время того
+        часового пояса, что прислала Jira (обычно пояс учётной записи автора).
+        Это осознанное решение, не баг: метрика своевременности сравнивает
+        дату внесения с дедлайном «12:00 следующего рабочего дня», который
+        сам считается в местном времени. Если когда-нибудь понадобится UTC —
+        не трогай это свойство, посчитай отдельно."""
+        if not self.created:
+            return None
+        return _parse_jira_datetime(self.created)
+
     @property
     def comment_text(self) -> Optional[str]:
         """Extract plain text from comment."""
@@ -204,7 +229,7 @@ class JiraWorklogSchema(BaseModel):
             # ADF format
             return self._extract_adf_text(self.comment)
         return str(self.comment)
-    
+
     def _extract_adf_text(self, node: dict) -> str:
         """Recursively extract text from ADF."""
         text_parts = []
@@ -214,7 +239,7 @@ class JiraWorklogSchema(BaseModel):
             if isinstance(child, dict):
                 text_parts.append(self._extract_adf_text(child))
         return " ".join(text_parts).strip()
-    
+
     class Config:
         extra = "ignore"
 

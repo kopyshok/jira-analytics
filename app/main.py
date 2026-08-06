@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import get_settings
 from app.api.router import api_router
 from app.database import SessionLocal
+from app.services.kpi.conditions import ConditionError
 from app.repositories.sync_schedule import SyncScheduleRepository
 from app.services.scheduler import SchedulerService, scheduled_pipeline_runner
 from app.jobs.aggregate_usage import aggregate_usage_job
@@ -86,11 +87,20 @@ async def lifespan(app: FastAPI):
     warmup_task = asyncio.create_task(_warmup_embedding())
     app.state.embedding_warmup_task = warmup_task
 
+    # --- Разовое дозаполнение «автора задачи» (background, non-blocking) ---
+    # Отрабатывает один раз на окружение при обновлении на версию с
+    # исправленным чтением Автора из Jira; дальше сам себя пропускает.
+    from app.jobs.backfill_issue_author import backfill_issue_author_once
+    backfill_task = asyncio.create_task(backfill_issue_author_once())
+    app.state.backfill_author_task = backfill_task
+
     yield
 
     # --- Shutdown ---
     if not warmup_task.done():
         warmup_task.cancel()
+    if not backfill_task.done():
+        backfill_task.cancel()
     sched_svc.shutdown()
     logger.info("Shutting down...")
 
@@ -113,6 +123,17 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
+
+
+@app.exception_handler(ConditionError)
+async def kpi_condition_error_handler(request, exc: ConditionError) -> JSONResponse:
+    """Опечатка в условиях метрики KPI — понятный 422, а не 500.
+
+    Срабатывает и при сохранении метрики в настройках (валидация вызывается
+    явно), и при чтении уже сохранённых данных для отчёта — раздел считает
+    премии, тихо проглатывать такие ошибки нельзя (см. ревью Фазы 3, BLOCKER 2).
+    """
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 @app.get("/health")

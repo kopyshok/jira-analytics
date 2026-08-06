@@ -1,13 +1,18 @@
 # app/api — FastAPI routers
 
-27 routers include в `app/api/router.py`. Все эндпоинты под `/api/v1/`.
+45 routers include в `app/api/router.py`. Все эндпоинты под `/api/v1/`.
 
 ## Auth gating (router.py)
 
 `api_router` применяет dependency на уровне include:
 - **Public** (без auth): `/auth` (login + me), `/users` (current user self-service)
-- **Authenticated** (`Depends(get_current_user)`): все business routers — analytics/sync/capacity/planning/backlog/exports/categories/issues/projects/employees/teams/scope/mapping/production-calendar/mandatory-work-types/role-rules/employee-overrides/absence-reasons/roles/events/llm/jira browse
-- **Admin-only** (`Depends(require_admin)`): `/admin/users`, `/settings`, `/hierarchy-rules`
+- **Authenticated** (`Depends(get_current_user)`): все business routers — analytics/sync/capacity/planning/backlog/exports/categories/issues/projects/employees/teams/scope/mapping/production-calendar/mandatory-work-types/role-rules/employee-overrides/absence-reasons/roles/events/llm/jira browse/kpi
+- **Admin-only** (`Depends(require_admin)`): `/admin/users`, `/settings`, `/hierarchy-rules`, `/kpi-settings`
+
+Раздел KPI (ветка `feature/kpi`, ещё не в main) закрыт только скрытием пункта
+меню на фронте — сервер отвечает `/kpi/*` любому залогиненному, отдельных
+ограничений по ролям/людям нет (осознанное упрощение на время тестирования,
+см. спеку раздела). Справочники `/kpi-settings/*` — только для администратора.
 
 Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — backend проверяет каждый запрос.
 
@@ -42,6 +47,8 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/roles` | `roles.py` | CRUD + reorder |
 | `/events` | `events.py` | SSE entity_changed broadcaster (см. EventBroadcaster) |
 | `/llm` | `llm.py` | AI summary/work_breakdown через Gemini (`/llm/test` + project summaries) |
+| `/kpi` | `kpi.py` | отчёт «Ведомость» + сводка по командам + расшифровка метрики + тренд сотрудника + утверждение месяца (снимок) + `/directions` + `export.xlsx` |
+| `/kpi-settings` | `kpi_settings.py` | **admin-only** — справочники раздела KPI: метрики, профили оценки (список ролей + `/profiles/coverage`), нормативы Cycle Time, общие правила, словарь атрибутов условий, предпросмотр метрики (`POST /metrics/preview`, `POST /metrics/explain-issue`), сравнение способов срока внесения часов (`GET /worklog-deadline/compare`) |
 
 ## Паттерны
 

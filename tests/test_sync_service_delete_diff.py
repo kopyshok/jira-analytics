@@ -66,6 +66,7 @@ def _fake_worklog(wl_id: str, author_id: str = "acc-1"):
     return SimpleNamespace(
         id=wl_id,
         started_datetime=datetime(2026, 3, 1, 10),
+        created_datetime=None,
         timeSpentSeconds=3600,
         hours=1.0,
         comment_text=None,

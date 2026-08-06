@@ -18,7 +18,7 @@ from app.connectors.schemas import (
     JiraUserSchema,
 )
 from app.models import (
-    Employee, Project, Issue, Worklog, Comment,
+    Employee, Project, Issue, IssueLink, Worklog, Comment,
     SyncState, ScopeProject,
 )
 from app.models.app_setting import AppSetting
@@ -55,6 +55,119 @@ def _extract_team_values(extra: dict, field_id: Optional[str]) -> List[str]:
                 out.append(item)
         return out
     return []
+
+
+def _dict_field_value(d: dict) -> Optional[str]:
+    """Значение из {'value': X} / {'name': X} по наличию ключа, а не истинности.
+
+    ``0`` и ``""`` — валидные значения (например, фактический Cycle Time = 0),
+    их нельзя терять из-за ``or`` — иначе метрика молча посчитает «нет данных».
+    """
+    if "value" in d and d["value"] is not None:
+        return str(d["value"])
+    if "name" in d and d["name"] is not None:
+        return str(d["name"])
+    return None
+
+
+def _extract_single_value(extra: dict, field_id: Optional[str]) -> Optional[str]:
+    """Одно значение select-поля Jira. Три формы: {'value': X}, [{'value': X}], 'X'."""
+    if not field_id:
+        return None
+    raw = extra.get(field_id)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return _dict_field_value(raw)
+    if isinstance(raw, list):
+        if not raw:
+            return None
+        first = raw[0]
+        return _dict_field_value(first) if isinstance(first, dict) else str(first)
+    return str(raw)
+
+
+def _extract_link_pairs(raw_links: list) -> list[tuple[str, str]]:
+    """Извлечь (тип связи, jira_issue_id цели) из сырого ``issuelinks``, без дублей.
+
+    Jira отдаёт обе стороны связи одного типа с одинаковым ``type.name``
+    (например обе стороны «Relates» между A и B) — без дедупликации внутри
+    одной задачи это даст два одинаковых (source, target, type) и упадёт на
+    уникальном ограничении ``uq_issue_link`` при записи.
+    """
+    seen: set[tuple[str, str]] = set()
+    pairs: list[tuple[str, str]] = []
+    for link in raw_links or []:
+        link_type = (link.get("type") or {}).get("name") or "Relates"
+        other = link.get("outwardIssue") or link.get("inwardIssue")
+        if not other:
+            continue
+        key = (link_type, str(other.get("id")))
+        if key in seen:
+            continue
+        seen.add(key)
+        pairs.append(key)
+    return pairs
+
+
+def _flush_pending_issue_links(
+    db: Session,
+    pending: dict[str, list[tuple[str, str]]],
+    batch_size: int = 500,
+) -> int:
+    """Записать связи задач пачками вместо N+1 запросов на связь.
+
+    ``pending`` — ``{source_issue_id: [(link_type, target_jira_issue_id), ...]}``.
+    Пустой список для источника — тоже валидный элемент: значит, что все
+    связи задачи сняты в Jira, и локальные строки надо удалить (иначе
+    отвязанный баг продолжит бессрочно считаться против аналитика).
+
+    На пачку источников — один SELECT (резолюция целей через ``IN``), один
+    DELETE (снос прежних связей через ``IN``) и один commit. Повторный
+    источник в той же пачке (Jira может отдать задачу дважды при пагинации)
+    дедуплицируется через ``set`` перед вставкой.
+    """
+    if not pending:
+        return 0
+
+    source_ids = list(pending.keys())
+    processed = 0
+    for i in range(0, len(source_ids), batch_size):
+        chunk = source_ids[i:i + batch_size]
+
+        target_jira_ids = {
+            target_id
+            for source_id in chunk
+            for _, target_id in pending[source_id]
+        }
+        target_local_id_by_jira_id: dict[str, str] = {}
+        if target_jira_ids:
+            rows = (
+                db.query(Issue.jira_issue_id, Issue.id)
+                .filter(Issue.jira_issue_id.in_(list(target_jira_ids)))
+                .all()
+            )
+            target_local_id_by_jira_id = dict(rows)
+
+        db.query(IssueLink).filter(
+            IssueLink.source_issue_id.in_(chunk)
+        ).delete(synchronize_session=False)
+
+        for source_id in chunk:
+            for link_type, target_jira_id in set(pending[source_id]):
+                target_local_id = target_local_id_by_jira_id.get(target_jira_id)
+                if target_local_id is None:
+                    continue
+                db.add(IssueLink(
+                    source_issue_id=source_id,
+                    target_issue_id=target_local_id,
+                    link_type=link_type,
+                ))
+            processed += 1
+
+        db.commit()
+
+    return processed
 
 
 def _extract_text_field(extra: dict, field_id: str) -> Optional[str]:
@@ -111,6 +224,43 @@ def _parse_jira_datetime(raw: Optional[str]) -> Optional[datetime]:
         return None
 
 
+# Статусы «задача на паузе»: время в них не считается сроком выполнения и
+# вычитается из факта Cycle Time.
+# ponytail: список зашит в код — в тенанте пауза одна («Приостановлено»);
+# понадобится вторая — сюда же, справочник заводить незачем.
+PAUSED_STATUSES = ("Приостановлено",)
+
+
+def paused_days_from_changes(
+    changes: List[Tuple[str, str]],
+    now: Optional[datetime] = None,
+) -> float:
+    """Сколько суток задача провела в статусах паузы.
+
+    ``changes`` — история смен статуса ``(когда, новый статус)`` из Jira.
+    Незакрытая пауза считается до ``now``. Результат округляется до целых
+    суток: Jira отдаёт Cycle Time тоже целыми днями.
+    """
+    parsed = sorted(
+        (when, status)
+        for when, status in (
+            (_parse_jira_datetime(raw), status) for raw, status in changes
+        )
+        if when is not None
+    )
+    total = 0.0
+    started: Optional[datetime] = None
+    for when, status in parsed:
+        if started is not None:
+            total += (when - started).total_seconds() / 86400
+            started = None
+        if status.strip() in PAUSED_STATUSES:
+            started = when
+    if started is not None:
+        total += ((now or datetime.utcnow()) - started).total_seconds() / 86400
+    return float(round(total))
+
+
 def _parse_jira_date(raw: Optional[str]) -> Optional[datetime]:
     """Parse Jira plain date (e.g. ``2026-06-30``) into a naive midnight datetime."""
     if not raw:
@@ -154,11 +304,22 @@ _PLANNED_DATE_SETTING_KEYS = [
     "jira_planned_start_date_field_id",
     "jira_planned_end_date_field_id",
 ]
+# KPI: окружение, подтип, тип затрат, фактический Cycle Time, продуктовое
+# направление — сопоставляются в настройках тем же механизмом, что и
+# оценки заказчика.
+_KPI_FIELD_SETTING_KEYS = [
+    "jira_environment_field_id",
+    "jira_subtype_field_id",
+    "jira_cost_type_field_id",
+    "jira_cycle_time_field_id",
+    "jira_direction_field_id",
+]
 _ALL_PLANNED_KEYS = (
     _PLANNED_NUMERIC_SETTING_KEYS
     + _PLANNED_STRING_SETTING_KEYS
     + _RATING_SETTING_KEYS
     + _PLANNED_DATE_SETTING_KEYS
+    + _KPI_FIELD_SETTING_KEYS
 )
 
 
@@ -603,6 +764,12 @@ class SyncService:
             "status_changed_at": _parse_jira_datetime(jira_issue.fields.statuscategorychangedate),
             "jira_updated_at": _parse_jira_datetime(jira_issue.fields.updated),
             "due_date": _parse_jira_date(jira_issue.fields.duedate),
+            "resolution": (
+                jira_issue.fields.resolution.get("name")
+                if jira_issue.fields.resolution else None
+            ),
+            "resolved_at": _parse_jira_datetime(jira_issue.fields.resolutiondate),
+            "jira_created_at": _parse_jira_datetime(jira_issue.fields.created),
             "synced_at": datetime.utcnow(),
         }
         if team is not _UNSET:
@@ -648,14 +815,12 @@ class SyncService:
             jira_issue.fields.assignee.jira_account_id
             if jira_issue.fields.assignee else None
         )
-        data["reporter_account_id"] = (
-            jira_issue.fields.creator.jira_account_id
-            if jira_issue.fields.creator else None
-        )
-        data["reporter_display_name"] = (
-            jira_issue.fields.creator.display_name
-            if jira_issue.fields.creator else None
-        )
+        # «Автор» задачи для KPI — reporter (его в Jira можно переназначить),
+        # creator оставлен запасным вариантом: у задач, заведённых
+        # автоматикой, creator — робот, а reporter — живой сотрудник.
+        _author = jira_issue.fields.reporter or jira_issue.fields.creator
+        data["reporter_account_id"] = _author.jira_account_id if _author else None
+        data["reporter_display_name"] = _author.display_name if _author else None
 
         _new_plan_values = {
             "analyst": _fld_float("jira_planned_analyst_hours_field_id"),
@@ -673,6 +838,17 @@ class SyncService:
         data["duration_launch_days"] = _fld_float("jira_duration_opo_field_id")
         data["impact"] = _fld_level("jira_impact_field_id")
         data["risk"] = _fld_level("jira_risk_field_id")
+
+        # KPI: окружение, подтип, тип затрат, направление, фактический Cycle Time
+        data["environment"] = _extract_single_value(extra, planned_ids.get("jira_environment_field_id"))
+        data["subtype"] = _extract_single_value(extra, planned_ids.get("jira_subtype_field_id"))
+        data["cost_type"] = _extract_single_value(extra, planned_ids.get("jira_cost_type_field_id"))
+        data["direction"] = _extract_single_value(extra, planned_ids.get("jira_direction_field_id"))
+        ct_raw = _extract_single_value(extra, planned_ids.get("jira_cycle_time_field_id"))
+        try:
+            data["cycle_time_fact"] = float(ct_raw) if ct_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            data["cycle_time_fact"] = None
 
         # Customer ratings (1-5)
         for field_key, attr in (
@@ -720,11 +896,23 @@ class SyncService:
         self,
         project_keys: Optional[List[str]] = None,
         incremental: bool = True,
+        since_override: Optional[date] = None,
+        on_progress: Optional[Callable[["SyncStats", Optional[str]], Awaitable[None]]] = None,
     ) -> int:
         """Синхронизация задач из Jira.
 
         Если project_keys не передан, использует scope_projects.
         Если scope пуст, загружает все локальные проекты.
+
+        ``since_override`` — явная дата отсечки «обновлено не раньше»;
+        если задана, побеждает и отметку последней синхронизации, и
+        ``incremental``. Используется ручным перечитыванием задач с
+        произвольной даты (``POST /sync/issues/reload/stream``). Курсор
+        ``sync_state`` в конце всё равно продвигается на текущее время —
+        назад он не двигается ни при обычном синке, ни здесь.
+
+        ``on_progress`` — коллбек прогресса; вызывается периодически с
+        текущими ``self.stats`` и ключом последней обработанной задачи.
         """
         logger.info(f"Starting issues sync (incremental={incremental})...")
 
@@ -750,7 +938,10 @@ class SyncService:
 
         # Get last sync time for incremental
         since = None
-        if incremental:
+        if since_override is not None:
+            since = datetime.combine(since_override, datetime.min.time())
+            logger.info(f"Issues reload override since {since}")
+        elif incremental:
             state = self._get_sync_state("issues")
             if state and state.last_success_at:
                 since = state.last_success_at
@@ -798,9 +989,10 @@ class SyncService:
         producer_errors: list[Exception] = []
         base_request_fields = [
             "summary", "description", "issuetype", "status",
-            "priority", "project", "parent", "creator",
+            "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
+            "issuelinks",
         ]
         request_fields = base_request_fields + list(extra_fields) if extra_fields else None
 
@@ -828,6 +1020,7 @@ class SyncService:
 
         count = 0
         unresolved_parents: List[Tuple[str, str]] = []
+        pending_links: dict[str, list[tuple[str, str]]] = {}
         try:
             while sentinels_remaining > 0:
                 jira_issue = await queue.get()
@@ -882,6 +1075,16 @@ class SyncService:
                 if parent_key and parent_id is None:
                     unresolved_parents.append((issue.id, parent_key))
 
+                # ``is not None`` — не ``truthy``: Jira присылает пустой список,
+                # когда последнюю связь сняли, и это надо записать как удаление,
+                # а не пропустить (см. _flush_pending_issue_links).
+                if jira_issue.fields.issuelinks is not None:
+                    pairs = _extract_link_pairs(jira_issue.fields.issuelinks)
+                    pending_links.setdefault(issue.id, []).extend(pairs)
+
+                if on_progress is not None and count % 100 == 0:
+                    await on_progress(self.stats, jira_issue.key)
+
                 if count % 500 == 0:
                     logger.debug(f"Synced {count} issues...")
                     self.db.commit()
@@ -912,11 +1115,74 @@ class SyncService:
             if resolved:
                 logger.info(f"Linked {resolved} issues to their parents in second pass")
 
+        # Связи задач — тоже вторым проходом: цель связи может быть задачей,
+        # ещё не сохранённой в момент обработки источника.
+        linked_count = _flush_pending_issue_links(self.db, pending_links)
+        if linked_count:
+            logger.info(f"Synced issue links for {linked_count} issues")
+
         self._update_sync_state("issues", datetime.utcnow())
         self.db.commit()
 
         logger.info(f"Issues sync complete: {count} synced, {self.stats.issues_created} created")
         return count
+
+    async def sync_paused_days(
+        self,
+        project_keys: Optional[List[str]] = None,
+        since: Optional[datetime] = None,
+        incremental: bool = True,
+    ) -> int:
+        """Посчитать дни простоя в статусах паузы по истории статусов Jira.
+
+        Отдельный проход после задач: история статусов приходит только
+        поштучно, поэтому сначала JQL сужает выборку до задач, которые вообще
+        бывали на паузе (в тенанте это сотни задач, а не сотня тысяч).
+
+        Курсор свой (``sync_state`` «paused_days»): первый запуск проходит по
+        всей истории, дальше — только по задачам, изменившимся с прошлого раза.
+        """
+        if not project_keys:
+            project_keys = self._get_scope_project_keys() or [
+                p.key for p in self.project_repo.get_all(limit=1000)
+            ]
+        if not project_keys:
+            return 0
+        started_at = datetime.utcnow()
+        if since is None and incremental:
+            state = self._get_sync_state("paused_days")
+            if state and state.last_success_at:
+                since = state.last_success_at
+        projects_jql = ", ".join(f'"{k}"' for k in project_keys)
+        statuses_jql = ", ".join(f'"{s}"' for s in PAUSED_STATUSES)
+        jql = f"project in ({projects_jql}) AND status WAS IN ({statuses_jql})"
+        if since:
+            jql += f' AND updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
+
+        keys: List[str] = []
+        async for jira_issue in self.jira.iter_issues(
+            jql=jql,
+            max_results=100,
+            fields=["summary", "issuetype", "status", "project"],
+        ):
+            keys.append(jira_issue.key)
+
+        updated = 0
+        for key in keys:
+            await self._check_cancelled()
+            issue = self.issue_repo.get_by_field("key", key)
+            if not issue:
+                continue
+            days = paused_days_from_changes(await self.jira.get_status_changes(key))
+            if issue.paused_days != days:
+                issue.paused_days = days
+                updated += 1
+            if updated and updated % 100 == 0:
+                self.db.commit()
+        self._update_sync_state("paused_days", started_at)
+        self.db.commit()
+        logger.info(f"Paused days: {updated} of {len(keys)} issues updated")
+        return updated
 
     async def refresh_issues_by_keys(
         self,
@@ -969,9 +1235,9 @@ class SyncService:
         planned_field_ids = self._resolve_planned_field_ids()
         base_fields = [
             "summary", "description", "issuetype", "status",
-            "priority", "project", "parent", "creator",
+            "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         ]
         fields = base_fields + list(extra_fields)
 
@@ -1093,9 +1359,9 @@ class SyncService:
 
         base_fields = [
             "summary", "description", "issuetype", "status",
-            "priority", "project", "parent", "creator",
+            "priority", "project", "parent", "creator", "reporter",
             "assignee", "created", "updated",
-            "statuscategorychangedate", "duedate",
+            "statuscategorychangedate", "duedate", "resolution", "resolutiondate",
         ]
         request_fields = base_fields + list(extra_fields)
 
@@ -1229,6 +1495,7 @@ class SyncService:
         data = {
             "jira_worklog_id": jira_worklog.id,
             "started_at": jira_worklog.started_datetime,
+            "jira_created_at": jira_worklog.created_datetime,
             "hours": jira_worklog.hours,
             "time_spent_seconds": jira_worklog.timeSpentSeconds,
             "comment_text": jira_worklog.comment_text,

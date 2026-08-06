@@ -17,6 +17,7 @@ Routable pages live in `pages/` and are lazy-loaded via [`lazyPages.tsx`](src/pa
 | `/analytics` | `AnalyticsPage` | Иерархический отчёт |
 | `/analytics/work-type-report` (+ `/print`) | `WorkTypeReportPage` / `…PrintPage` | |
 | `/executive` | `ExecutiveDashboardPage` | KPI/тренды/риски |
+| `/kpi` | `KpiPage` | Ведомость КЭ аналитиков + вкладки сотрудников (ветка `feature/kpi`, по умолчанию скрыт — см. «Видимость разделов») |
 | `/sync` | `SyncHubPage` | Запуск + расписание + ворклог-backfill |
 | `/categories` | `CategoriesEditorPage` | Разбор задач (бывший `CategoryConfigTab`) |
 | `/scope` | redirect → `/sync` | |
@@ -80,7 +81,7 @@ Row tint deepens per depth level (`.tree-row-depth-0..5`) and italicizes context
 
 Навигация — левое `Menu mode="inline"` с группами (не `Tabs`); `Grid.useBreakpoint()` → на `<md` вместо меню `Select`. Рендерится только активная секция (`render()`), состояние неактивных не живёт. Группы и точные ключи — `GROUPS` в [`SettingsPage.tsx`](src/pages/SettingsPage.tsx):
 - **Подключение**: `connection` (`ConnectionCard`) · `scope` (`ScopeAdmin`) · `fields` (`JiraFieldsCard`)
-- **Справочники**: `hierarchy` · `reasons` · `categories` (**тут кнопка «Пересчитать маппинг по задачам»**) · `worktypes` · `calendar` (`ProductionCalendarTab`, + синк с RU календарём)
+- **Справочники**: `hierarchy` · `reasons` · `categories` (**тут кнопка «Пересчитать маппинг по задачам»**) · `worktypes` · `calendar` (`ProductionCalendarTab`, + синк с RU календарём) · `kpi` (`KpiSettingsTab` — четыре вкладки: профили/конструктор метрики с `MetricPreview`/нормативы Cycle Time/общие правила; admin-only маршруты `/kpi-settings/*`)
 - **Доступ**: `users` (admin) · `visibility`
 - **Администрирование**: `ai` · `feedback` (admin) · `usage` (admin) · `whats-new` (admin) · `db-export` (admin)
 

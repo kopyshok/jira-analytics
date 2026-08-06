@@ -28,6 +28,7 @@
 - `out_of_scope` — Bucket B auto-ingest (см. `app/services/CLAUDE.md` Worklog buckets)
 - `status_category` — Jira `new|indeterminate|done` из `status.statusCategory.key`
 - `status_changed_at` — из `statuscategorychangedate`
+- `paused_days` — дни в статусах паузы («Приостановлено»), считаются из истории статусов Jira и вычитаются из факта Cycle Time в KPI
 - `goals` — comma-joined `customfield_11421`
 
 ### Scope / category config (6)

@@ -82,6 +82,7 @@ function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClien
       qc.invalidateQueries({ queryKey: ['analytics'] });
       qc.invalidateQueries({ queryKey: ['backlog'] });
       qc.invalidateQueries({ queryKey: ['dashboard-projects'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       break;
     case 'backlog':
       qc.invalidateQueries({ queryKey: ['backlog'] });
@@ -99,6 +100,7 @@ function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClien
       qc.invalidateQueries({ queryKey: ['dashboard-projects'] });
       qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
       qc.invalidateQueries({ queryKey: ['dashboard-categories'] });
+      qc.invalidateQueries({ queryKey: ['kpi'] });
       break;
     case 'capacity':
       qc.invalidateQueries({ queryKey: ['capacity'] });
