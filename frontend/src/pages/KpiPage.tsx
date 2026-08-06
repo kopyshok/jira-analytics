@@ -10,7 +10,6 @@ import KpiEmployeeTab from '../components/kpi/KpiEmployeeTab';
 import KpiBreakdownDock, { type KpiBreakdownTarget } from '../components/kpi/KpiBreakdownDock';
 import KpiSummaryBar from '../components/kpi/KpiSummaryBar';
 import KpiTeamMetricStrip from '../components/kpi/KpiTeamMetricStrip';
-import KpiDistribution from '../components/kpi/KpiDistribution';
 import KpiPeriodPicker from '../components/kpi/KpiPeriodPicker';
 import { periodLabel, stepPeriod, type KpiPeriod } from '../utils/kpiPeriod';
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
@@ -240,7 +239,10 @@ export default function KpiPage() {
         />
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(260px, 340px)', gap: 14, marginBottom: 14 }}>
+      {/* Ведомость занимает всю ширину: на квартале к метрикам добавляются
+          колонки месяцев, и боковой блок отнимал у таблицы место, ради
+          которого её и открывают. */}
+      <div style={{ marginBottom: 14 }}>
         <Card size="small" title="Ведомость" styles={{ body: { padding: 0 } }}>
           <div style={{ padding: '10px 12px 0' }}>
             <KpiStatusLegend />
@@ -260,8 +262,6 @@ export default function KpiPage() {
             prevPeriodLabel={periodLabel(prevPeriod)}
           />
         </Card>
-
-        <KpiDistribution rows={rows} />
       </div>
 
       <KpiBreakdownDock
