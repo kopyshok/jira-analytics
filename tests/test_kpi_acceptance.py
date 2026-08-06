@@ -460,7 +460,7 @@ def test_metric_without_data_redistributes_weight_not_zeroes_total(db_session):
     assert round(row["total"], 1) == 89.2
 
 
-def test_approved_month_frozen_after_weight_change(db_session):
+def test_approved_quarter_frozen_after_weight_change(db_session):
     """Пункт 6 раздела 10: утверждённый месяц не меняется после правки весов.
 
     Утверждение через HTTP API (эндпоинт ``/kpi/approve``) и устойчивость к
@@ -519,7 +519,10 @@ def test_approved_month_frozen_after_weight_change(db_session):
     ))
     db_session.commit()
 
-    live_before = build_report(db_session, [team], 2026, 7)
+    # Утверждается квартал целиком, поэтому и сверяем квартальный отчёт:
+    # Q3 2026 — три месяца, кончающиеся сентябрём. Данные лежат в июле,
+    # поэтому числа те же, что и у июльского отчёта.
+    live_before = build_report(db_session, [team], 2026, 9, months=3)
     row_before = next(r for r in live_before["rows"] if r["account_id"] == account_id)
     # Веса «Качество» (0,2) и «Сроки» (0,2) перенормированы между собой к
     # единице (регламенты/Cycle Time/оценка/трудозатраты — без данных):
@@ -527,10 +530,10 @@ def test_approved_month_frozen_after_weight_change(db_session):
     assert round(row_before["total"], 1) == 90.0
 
     payload = json.dumps(
-        build_approval_payload(db_session, team, 2026, 7), ensure_ascii=False,
+        build_approval_payload(db_session, team, 2026, 3), ensure_ascii=False,
     )
-    save_approval(db_session, team, 2026, 7, "Тестовый руководитель",
-                 datetime(2026, 7, 30, 12, 0), payload)
+    save_approval(db_session, team, 2026, 3, "Тестовый руководитель",
+                 datetime(2026, 9, 30, 12, 0), payload)
 
     profile = db_session.query(KpiProfile).filter_by(code="analyst").one()
     quality_link = next(m for m in profile.metrics if m.metric.code == "quality")
@@ -539,11 +542,11 @@ def test_approved_month_frozen_after_weight_change(db_session):
 
     # Живой пересчёт теперь даёт другое число — иначе тест не отличил бы
     # заморозку от случайного совпадения значений.
-    live_after = build_report(db_session, [team], 2026, 7)
+    live_after = build_report(db_session, [team], 2026, 9, months=3)
     row_after = next(r for r in live_after["rows"] if r["account_id"] == account_id)
     assert round(row_after["total"], 1) != round(row_before["total"], 1)
 
-    frozen = report_with_approvals(db_session, [team], 2026, 7)
+    frozen = report_with_approvals(db_session, [team], 2026, 9, months=3)
     frozen_row = next(r for r in frozen["rows"] if r["account_id"] == account_id)
     assert round(frozen_row["total"], 1) == round(row_before["total"], 1)
     assert frozen["approvals"][team]["approved"] is True

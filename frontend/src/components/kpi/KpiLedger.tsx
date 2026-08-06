@@ -43,6 +43,11 @@ function StatusIcon({ status }: { status: KpiStatus }) {
   return null;
 }
 
+/** Короткие названия месяцев для узких колонок разбивки внутри квартала. */
+const MONTH_SHORT = [
+  '', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+];
+
 const LEGEND_ITEMS: { status: KpiStatus; label: string }[] = [
   { status: 'good', label: 'На цели' },
   { status: 'warn', label: 'Жёлтая зона' },
@@ -100,13 +105,15 @@ export interface KpiLedgerProps {
   onOpenBreakdown?: (row: KpiReportRow, metricCode: string, metricName: string) => void;
   /** Ячейка, раскрытая в панели расчёта снизу — подсвечивается рамкой. */
   selectedCell?: KpiSelectedCell | null;
-  /** Итоги прошлого месяца по сотруднику — для дельты в строке человека. */
+  /** Итоги прошлого периода по сотруднику — для дельты в строке человека. */
   prevTotals?: Map<string, number>;
+  /** Подпись прошлого периода — для подсказки над дельтой («I квартал 2026»). */
+  prevPeriodLabel?: string;
 }
 
 export default function KpiLedger({
   rows, teamsSummaryByTeam, loading, error, onRetry, onOpenEmployee, onOpenBreakdown,
-  selectedCell, prevTotals,
+  selectedCell, prevTotals, prevPeriodLabel,
 }: KpiLedgerProps) {
   const t = useThemeTokens();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -137,6 +144,19 @@ export default function KpiLedger({
       }
     }
     return Array.from(seen.entries()).map(([code, name]) => ({ code, name }));
+  }, [rows]);
+
+  // Колонки помесячной разбивки появляются только на периоде длиннее месяца:
+  // сервер кладёт разбивку в строку, у месячного отчёта её нет. Список берём
+  // у первой строки с разбивкой — период у всех строк отчёта общий.
+  const monthColumns = useMemo(() => {
+    const breakdown = rows.find((r) => r.months_breakdown?.length)?.months_breakdown ?? [];
+    return breakdown.map((p) => ({
+      key: `${p.year}-${p.month}`,
+      label: `${MONTH_SHORT[p.month]} ${String(p.year).slice(2)}`,
+      year: p.year,
+      month: p.month,
+    }));
   }, [rows]);
 
   const tree: TeamRow[] = useMemo(() => {
@@ -298,6 +318,33 @@ export default function KpiLedger({
       },
     }));
 
+    // Помесячные значения внутри периода — приглушённые, без цветовой
+    // заливки: это справка «где просело», а решение принимается по итогу
+    // периода, и две одинаково яркие группы колонок спорили бы за внимание.
+    const monthCols = monthColumns.map((col) => ({
+      title: <span style={{ fontSize: 11, color: t.textMuted }}>{col.label}</span>,
+      key: `month:${col.key}`,
+      width: 74,
+      align: 'right' as const,
+      render: (_: unknown, r: TreeRow) => {
+        const points = isTeamRow(r)
+          ? r.members.map((m) => m.months_breakdown?.find(
+            (p) => p.year === col.year && p.month === col.month,
+          )?.total)
+          : [r.months_breakdown?.find((p) => p.year === col.year && p.month === col.month)?.total];
+        const usable = points.filter((v): v is number => v != null);
+        const value = usable.length ? usable.reduce((a, b) => a + b, 0) / usable.length : null;
+        return (
+          <span
+            className="num"
+            style={{ fontSize: 12, color: value == null ? t.textMuted : undefined, fontWeight: isTeamRow(r) ? 600 : 400 }}
+          >
+            {value == null ? '—' : fmtPct(value)}
+          </span>
+        );
+      },
+    }));
+
     const totalColumn = {
       title: 'Итог',
       key: 'total',
@@ -338,17 +385,19 @@ export default function KpiLedger({
         return (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
             {delta != null && Math.abs(delta) >= 0.05 && (
-              <span
-                className="num"
-                style={{
-                  fontSize: 10.5, fontWeight: 700,
-                  color: delta > 0 ? t.success : t.danger,
-                  display: 'flex', alignItems: 'center', gap: 1,
-                }}
-              >
-                {delta > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                {Math.abs(delta).toFixed(1)}
-              </span>
+              <Tooltip title={prevPeriodLabel ? `Сравнение с периодом «${prevPeriodLabel}»` : undefined}>
+                <span
+                  className="num"
+                  style={{
+                    fontSize: 10.5, fontWeight: 700,
+                    color: delta > 0 ? t.success : t.danger,
+                    display: 'flex', alignItems: 'center', gap: 1,
+                  }}
+                >
+                  {delta > 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                  {Math.abs(delta).toFixed(1)}
+                </span>
+              </Tooltip>
             )}
             {/* Полоска рядом с числом: разницу между 86% и 98% глаз ловит
                 быстрее по длине, чем по цифрам. */}
@@ -373,9 +422,9 @@ export default function KpiLedger({
       },
     };
 
-    return [rankColumn, nameColumn, ...metricCols, totalColumn];
-  }, [metricColumns, teamsSummaryByTeam, t, onOpenEmployee, onOpenBreakdown, rankByEmployee,
-    selectedCell, prevTotals]);
+    return [rankColumn, nameColumn, ...metricCols, ...monthCols, totalColumn];
+  }, [metricColumns, monthColumns, teamsSummaryByTeam, t, onOpenEmployee, onOpenBreakdown,
+    rankByEmployee, selectedCell, prevTotals, prevPeriodLabel]);
 
   if (error) {
     return (

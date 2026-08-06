@@ -108,15 +108,19 @@ class KpiCycleTimeNorm(Base, TimestampMixin):
 
 
 class KpiApproval(Base, TimestampMixin):
-    """Снимок утверждённого месяца: результат вместе с весами и правилами на тот момент."""
+    """Снимок утверждённого квартала: результат вместе с весами и правилами на тот момент.
+
+    До 2026-08-06 утверждался месяц; заказчик решил, что подписывается только
+    целый квартал, поэтому единица утверждения — квартал (миграция `kpq01`).
+    """
 
     __tablename__ = "kpi_approvals"
-    __table_args__ = (UniqueConstraint("team", "year", "month", name="uq_kpi_approval"),)
+    __table_args__ = (UniqueConstraint("team", "year", "quarter", name="uq_kpi_approval"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     team: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
-    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    quarter: Mapped[int] = mapped_column(Integer, nullable=False)
     approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
     approved_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)

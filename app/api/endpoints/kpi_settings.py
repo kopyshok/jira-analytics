@@ -177,6 +177,9 @@ class KpiGeneralSettings(BaseModel):
     worklog_deadline_days: int
     worklog_deadline_time: str
     empty_policy: str
+    # Утверждение квартала: выключено, пока команда обкатывает раздел
+    # (решение заказчика 2026-08-06).
+    approval_enabled: bool = False
 
 
 class KpiMetricPreviewIn(BaseModel):
@@ -373,6 +376,7 @@ def _general_from_settings(s: KpiSettings) -> KpiGeneralSettings:
         worklog_deadline_days=s.worklog_deadline_days,
         worklog_deadline_time=s.worklog_deadline_time,
         empty_policy=s.empty_policy,
+        approval_enabled=s.approval_enabled,
     )
 
 
@@ -646,6 +650,7 @@ def save_general(body: KpiGeneralSettings, db: Session = Depends(get_db)):
     _set_kpi_setting(db, "kpi_worklog_deadline_days", str(body.worklog_deadline_days))
     _set_kpi_setting(db, "kpi_worklog_deadline_time", body.worklog_deadline_time)
     _set_kpi_setting(db, "kpi_empty_policy", body.empty_policy)
+    _set_kpi_setting(db, "kpi_approval_enabled", "true" if body.approval_enabled else "false")
     db.commit()
     return _general_from_settings(read_kpi_settings(db))
 

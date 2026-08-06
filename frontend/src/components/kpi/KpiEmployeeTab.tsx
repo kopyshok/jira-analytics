@@ -40,6 +40,8 @@ export interface KpiEmployeeTabProps {
   row: KpiReportRow;
   year: number;
   month: number;
+  /** Длина периода отчёта в месяцах — карточка подписывает тот же период. */
+  months?: number;
   direction?: string;
   /** Команды, с которыми запрошен отчёт (глобальный фильтр) — тренд считается
    * тем же отбором, что и ведомость, иначе последняя точка графика может не
@@ -61,7 +63,7 @@ export interface KpiEmployeeTabProps {
  * доработок 2026-08-03, раздел 7).
  */
 export default function KpiEmployeeTab({
-  row, year, month, direction, teams, teamSummary, rank, onOpenBreakdown,
+  row, year, month, months = 1, direction, teams, teamSummary, rank, onOpenBreakdown,
 }: KpiEmployeeTabProps) {
   const t = useThemeTokens();
 
@@ -73,9 +75,12 @@ export default function KpiEmployeeTab({
     ),
   });
 
+  // Утверждается квартал целиком, поэтому и признак заморозки читается по
+  // кварталу, которому принадлежит конечный месяц периода.
+  const quarter = Math.floor((month - 1) / 3) + 1;
   const approvalQuery = useQuery({
-    queryKey: ['kpi', 'approval', row.team, year, month],
-    queryFn: ({ signal }) => fetchApproval(row.team as string, year, month, signal),
+    queryKey: ['kpi', 'approval', row.team, year, quarter],
+    queryFn: ({ signal }) => fetchApproval(row.team as string, year, quarter, signal),
     enabled: !!row.team,
   });
 
@@ -93,8 +98,10 @@ export default function KpiEmployeeTab({
     total: p.total,
   }));
   // Дельта к прошлому месяцу — из того же тренда, отдельный запрос не нужен.
+  // На периоде длиннее месяца её не показываем: график остаётся помесячным, а
+  // итог карточки — за весь период, и вычитать одно из другого нельзя.
   const previous = points.length > 1 ? points[points.length - 2].total : null;
-  const delta = previous != null && total != null ? total - previous : null;
+  const delta = months === 1 && previous != null && total != null ? total - previous : null;
 
   const withData = row.metrics.filter((m) => m.has_data && m.value != null);
   const usableWeight = withData.reduce((s, m) => s + m.weight, 0);
@@ -134,17 +141,21 @@ export default function KpiEmployeeTab({
             <Text type="secondary" style={{ fontSize: 12.5 }}>
               {row.team ?? 'без команды'}
               {row.profile_name ? ` · профиль «${row.profile_name}»` : ''}
-              {` · ${KPI_MONTH_ABBR_RU[month - 1]} ${year}`}
+              {months > 1
+                ? ` · ${KPI_MONTH_ABBR_RU[(((month - months) % 12) + 12) % 12]}–${KPI_MONTH_ABBR_RU[month - 1]} ${year}`
+                : ` · ${KPI_MONTH_ABBR_RU[month - 1]} ${year}`}
             </Text>
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 10, fontSize: 12.5 }}>
-              <span>
-                <Text type="secondary">К прошлому месяцу </Text>
-                {delta == null ? '—' : (
-                  <b className="num" style={{ color: delta >= 0 ? t.success : t.danger }}>
-                    {delta > 0 ? '+' : ''}{delta.toFixed(1)} п.п.
-                  </b>
-                )}
-              </span>
+              {months === 1 && (
+                <span>
+                  <Text type="secondary">К прошлому месяцу </Text>
+                  {delta == null ? '—' : (
+                    <b className="num" style={{ color: delta >= 0 ? t.success : t.danger }}>
+                      {delta > 0 ? '+' : ''}{delta.toFixed(1)} п.п.
+                    </b>
+                  )}
+                </span>
+              )}
               {rank && (
                 <span>
                   <Text type="secondary">В команде </Text>
@@ -175,7 +186,7 @@ export default function KpiEmployeeTab({
               ? 'Утверждение доступно только для сотрудника с командой'
               : approvalQuery.data?.approved
                 ? `Утвердил ${approvalQuery.data.approved_by} · ${formatDateOnly(approvalQuery.data.approved_at)}`
-                : 'Месяц не утверждён'}
+                : 'Квартал не утверждён'}
           </div>
         </div>
       </Card>

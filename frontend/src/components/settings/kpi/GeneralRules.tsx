@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
-  App, Alert, Button, Card, DatePicker, Input, InputNumber, Radio, Select, Space, Table, Tag,
-  TimePicker, Typography,
+  App, Alert, Button, Card, DatePicker, Input, InputNumber, Radio, Select, Space, Switch, Table,
+  Tag, TimePicker, Typography,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -295,6 +295,21 @@ export default function GeneralRules() {
             ))}
           </Space>
         </Radio.Group>
+      </Card>
+
+      <Card size="small" title="Утверждение квартала">
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
+          Утверждение замораживает результат квартала снимком: правки весов профиля и нормативов
+          после этого на подписанный квартал не влияют. Пока раздел обкатывают, утверждение можно
+          не включать — кнопка не появится в ведомости, а попытка утвердить будет отклонена.
+        </Text>
+        <Switch
+          checked={form.approval_enabled}
+          onChange={(checked) => setForm({ ...form, approval_enabled: checked })}
+        />
+        <Text style={{ marginLeft: 10, fontSize: 13 }}>
+          {form.approval_enabled ? 'Включено' : 'Выключено'}
+        </Text>
       </Card>
 
       <Button type="primary" loading={saveMut.isPending} onClick={() => saveMut.mutate(form)}>

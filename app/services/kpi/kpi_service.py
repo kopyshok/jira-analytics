@@ -168,15 +168,15 @@ def has_any_score(issue: Issue, names: list[str]) -> bool:
 
 
 def employee_periods(
-    db: Session, account_id: str, year: int, month: int, teams: list[str],
+    db: Session, account_id: str, year: int, month: int, teams: list[str], months: int = 1,
 ) -> tuple[list[tuple[date, date]], Optional[Employee]]:
-    """Отрезки месяца, за которые человек считается в команде, и он сам.
+    """Отрезки периода, за которые человек считается в команде, и он сам.
 
     Общий источник для расшифровки (``resolve_breakdown``) и таблицы разбора
     (``breakdown_table``) — обе обязаны резать период ровно так же, как расчёт
     отчёта, иначе дробь и строки под ней разъедутся.
     """
-    period_start, period_end = month_bounds(year, month)
+    period_start, period_end = period_bounds(year, month, months)
     employee = db.query(Employee).filter(Employee.jira_account_id == account_id).first()
     emp_intervals: list[tuple[date, date]] = []
     if employee is not None and teams:
@@ -193,6 +193,7 @@ def resolve_breakdown(
     teams: list[str],
     direction: Optional[str] = None,
     settings: Optional[KpiSettings] = None,
+    months: int = 1,
 ) -> dict:
     """Тот же отбор задач/записей, что использует расчёт отчёта — для расшифровки метрики.
 
@@ -210,7 +211,7 @@ def resolve_breakdown(
     JSON остаётся на роутере, здесь только который отбор данных.
     """
     st = settings or read_kpi_settings(db)
-    periods, _employee = employee_periods(db, account_id, year, month, teams)
+    periods, _employee = employee_periods(db, account_id, year, month, teams, months)
 
     num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
 
@@ -355,6 +356,63 @@ def previous_month(year: int, month: int) -> tuple[int, int]:
     return (year - 1, 12) if month == 1 else (year, month - 1)
 
 
+# === Период отчёта: месяц, квартал или произвольное число месяцев ===
+#
+# Период всюду задаётся парой «последний месяц» (``year``/``month``) плюс
+# «сколько месяцев назад считать» (``months``). Одним параметром закрываются
+# все три режима, которые нужны руководителю: месяц (1), конкретный квартал
+# (3, конечный месяц — последний в квартале), последние N месяцев (N,
+# конечный месяц — текущий). Отдельных «режимов» в расчёте нет, поэтому и
+# расходиться им негде.
+
+def months_in_period(year: int, month: int, months: int = 1) -> list[tuple[int, int]]:
+    """Месяцы периода по возрастанию — от самого раннего к ``year``/``month``."""
+    result: list[tuple[int, int]] = []
+    y, m = year, month
+    for _ in range(max(1, months)):
+        result.append((y, m))
+        y, m = previous_month(y, m)
+    result.reverse()
+    return result
+
+
+def period_bounds(year: int, month: int, months: int = 1) -> tuple[date, date]:
+    """Первый и последний день периода. ``months=1`` — обычный месяц."""
+    first = months_in_period(year, month, months)[0]
+    return date(first[0], first[1], 1), month_bounds(year, month)[1]
+
+
+def previous_period(year: int, month: int, months: int = 1) -> tuple[int, int]:
+    """Последний месяц периода такой же длины, идущего перед данным.
+
+    Сравнение всегда с сопоставимым отрезком: месяц сравнивается с месяцем,
+    квартал — с прошлым кварталом, полугодие — с прошлым полугодием.
+    """
+    y, m = year, month
+    for _ in range(max(1, months)):
+        y, m = previous_month(y, m)
+    return y, m
+
+
+def quarters_in_period(year: int, month: int, months: int = 1) -> list[tuple[int, int]]:
+    """Кварталы, которых касается период — в них живут нормативы Cycle Time."""
+    seen: dict[tuple[int, int], None] = {}
+    for y, m in months_in_period(year, month, months):
+        seen[(y, QUARTER_OF_MONTH[m])] = None
+    return list(seen)
+
+
+def period_quarter(year: int, month: int, months: int = 1) -> Optional[tuple[int, int]]:
+    """Год и квартал, если период — ровно календарный квартал, иначе ``None``.
+
+    Утверждается только целый квартал: «последние 3 месяца» с концом в
+    октябре — это не квартал, и подписывать его нечего.
+    """
+    if months != 3 or month not in (3, 6, 9, 12):
+        return None
+    return year, QUARTER_OF_MONTH[month]
+
+
 @dataclass
 class ReportCache:
     """Кэш отчёта на команду: без похода в БД на каждого сотрудника отдельно.
@@ -466,25 +524,42 @@ def _team_for_norm(
 
 
 def _norm_for(
-    db: Session, team: str, year: int, month: int, cache: Optional[ReportCache] = None,
+    db: Session,
+    team: str,
+    year: int,
+    month: int,
+    cache: Optional[ReportCache] = None,
+    months: int = 1,
 ) -> Optional[float]:
-    """Норматив Cycle Time команды на квартал, которому принадлежит месяц."""
-    quarter = QUARTER_OF_MONTH[month]
-    if cache is not None:
-        return cache.norms.get((team, year, quarter))
-    row = (
-        db.query(KpiCycleTimeNorm)
-        .filter(
-            KpiCycleTimeNorm.team == team,
-            KpiCycleTimeNorm.year == year,
-            KpiCycleTimeNorm.quarter == quarter,
-        )
-        .first()
-    )
-    return row.norm_value if row else None
+    """Норматив Cycle Time команды на период.
+
+    Норматив задаётся на квартал. Период длиной в месяц или внутри одного
+    квартала берёт норматив этого квартала. Период, растянутый на несколько
+    кварталов, берёт среднее по тем кварталам, где норматив заведён —
+    кварталы без норматива просто не участвуют (иначе один незаполненный
+    квартал обнулял бы метрику всему полугодию).
+    """
+    values: list[float] = []
+    for qy, qq in quarters_in_period(year, month, months):
+        if cache is not None:
+            found = cache.norms.get((team, qy, qq))
+        else:
+            row = (
+                db.query(KpiCycleTimeNorm)
+                .filter(
+                    KpiCycleTimeNorm.team == team,
+                    KpiCycleTimeNorm.year == qy,
+                    KpiCycleTimeNorm.quarter == qq,
+                )
+                .first()
+            )
+            found = row.norm_value if row else None
+        if found is not None:
+            values.append(found)
+    return sum(values) / len(values) if values else None
 
 
-def compute_employee_month(
+def compute_employee_period(
     db: Session,
     employee: Employee,
     teams: list[str],
@@ -493,16 +568,22 @@ def compute_employee_month(
     settings: Optional[KpiSettings] = None,
     direction: Optional[str] = None,
     cache: Optional[ReportCache] = None,
+    months: int = 1,
 ) -> dict:
-    """Результат одного сотрудника за месяц: метрики его профиля и итог.
+    """Результат одного сотрудника за период: метрики его профиля и итог.
 
     Общий строитель одной строки для ``build_report`` (все люди команды за
-    месяц, с общим ``cache``) и ``GET /kpi/trend`` (один человек за несколько
+    период, с общим ``cache``) и ``GET /kpi/trend`` (один человек за несколько
     месяцев, без кэша) — чтобы числа в отчёте и на графике карточки не могли
     разойтись.
+
+    Период длиннее месяца считается ОДНИМ отрезком, а не средним трёх
+    месячных результатов: задачи всех месяцев складываются в одну дробь
+    (решение заказчика). Иначе месяц с одной закрытой задачей весил бы в
+    квартале столько же, сколько месяц с двадцатью.
     """
     st = settings or read_kpi_settings(db)
-    period_start, period_end = month_bounds(year, month)
+    period_start, period_end = period_bounds(year, month, months)
 
     # Команда строки отчёта — та, что действовала на начало отчётного периода
     # (и совпадает с фильтром, если он задан), а не «сегодняшняя»
@@ -543,7 +624,7 @@ def compute_employee_month(
     parts = []
     metric_payload = []
     for link in sorted(profile.metrics, key=lambda m: m.sort_order):
-        norm = _norm_for(db, row_team or "", year, month, cache) \
+        norm = _norm_for(db, row_team or "", year, month, cache, months) \
             if link.metric.calc_kind == "norm_to_fact" else None
         res = compute_metric(
             db, link.metric, employee.jira_account_id, periods,
@@ -582,13 +663,23 @@ def compute_employee_month(
 
 
 def build_report(
-    db: Session, teams: list[str], year: int, month: int, direction: Optional[str] = None,
+    db: Session,
+    teams: list[str],
+    year: int,
+    month: int,
+    direction: Optional[str] = None,
+    months: int = 1,
 ) -> dict:
-    """Отчёт по людям выбранных команд за месяц.
+    """Отчёт по людям выбранных команд за период (месяц, квартал или N месяцев).
 
-    Период человека внутри месяца обрезается по фактическим дням участия в
-    команде (``app/services/team_membership.py``) — так неполный месяц не
-    даёт задачам, закрытым до вступления или после выбытия, попасть в счёт.
+    Период человека обрезается по фактическим дням участия в команде
+    (``app/services/team_membership.py``) — так неполный месяц не даёт
+    задачам, закрытым до вступления или после выбытия, попасть в счёт.
+
+    Итог периода длиннее месяца — один сплошной расчёт, а не среднее месяцев
+    (см. ``compute_employee_period``). Помесячные значения при этом всё равно
+    считаются и кладутся в ``months_breakdown`` строки: руководителю нужно
+    видеть не только итог квартала, но и то, в каком месяце он просел.
 
     Сотрудник, чья роль не привязана ни к одному профилю оценки, в отчёт не
     попадает вообще (решение заказчика, спека доработок 2026-08-03) — раньше
@@ -598,11 +689,11 @@ def build_report(
     руководитель должен видеть, что состав команды шире оценённого.
     """
     st = read_kpi_settings(db)
-    period_start, period_end = month_bounds(year, month)
+    period_start, period_end = period_bounds(year, month, months)
     emp_ids = members_overlapping(db, teams, period_start, period_end)
     if not emp_ids:
         return {
-            "year": year, "month": month, "teams": teams, "rows": [],
+            "year": year, "month": month, "months": months, "teams": teams, "rows": [],
             "skipped_no_profile": 0, "skipped": [],
         }
 
@@ -616,11 +707,14 @@ def build_report(
 
     evaluated = [e for e in employees if _resolve_profile(db, e, cache) is not None]
     rows = [
-        compute_employee_month(
-            db, emp, teams, year, month, settings=st, direction=direction, cache=cache,
+        compute_employee_period(
+            db, emp, teams, year, month,
+            settings=st, direction=direction, cache=cache, months=months,
         )
         for emp in evaluated
     ]
+    if months > 1:
+        _attach_months_breakdown(db, rows, evaluated, teams, year, month, months, st, direction, cache)
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
 
     # Поимённый список выпавших из оценки: числа мало, руководителю нужно
@@ -637,9 +731,48 @@ def build_report(
         for e in employees if e.id not in evaluated_ids
     ]
     return {
-        "year": year, "month": month, "teams": teams, "rows": rows,
+        "year": year, "month": month, "months": months, "teams": teams, "rows": rows,
         "skipped_no_profile": len(skipped), "skipped": skipped,
     }
+
+
+def _attach_months_breakdown(
+    db: Session,
+    rows: list[dict],
+    employees: list[Employee],
+    teams: list[str],
+    year: int,
+    month: int,
+    months: int,
+    settings: KpiSettings,
+    direction: Optional[str],
+    cache: ReportCache,
+) -> None:
+    """Дописать в каждую строку помесячные итоги внутри периода.
+
+    Считается тем же строителем строки, что и сам период, только по одному
+    месяцу за раз. Кэш переиспользуется — профиль, нормативы и календарь на
+    период уже прочитаны; основная команда берётся на начало всего периода,
+    а не каждого месяца отдельно (перевод сотрудника в середине квартала
+    сместит подпись команды у месячных значений, но не итог — сознательное
+    упрощение ради одного прохода вместо трёх).
+    """
+    by_employee = {r["employee_id"]: r for r in rows}
+    for emp in employees:
+        row = by_employee.get(emp.id)
+        if row is None:
+            continue
+        row["months_breakdown"] = [
+            {
+                "year": yy,
+                "month": mm,
+                "total": compute_employee_period(
+                    db, emp, teams, yy, mm,
+                    settings=settings, direction=direction, cache=cache, months=1,
+                )["total"],
+            }
+            for yy, mm in months_in_period(year, month, months)
+        ]
 
 
 def summarize_report(rows: list[dict]) -> dict:
@@ -658,22 +791,32 @@ def summarize_report(rows: list[dict]) -> dict:
     }
 
 
-# === Утверждение месяца: снимок и его чтение (BLOCKER 1) ===
+# === Утверждение квартала: снимок и его чтение (BLOCKER 1) ===
+#
+# Подписывается только целый квартал (решение заказчика 2026-08-06). Раньше
+# утверждался месяц; месячного утверждения больше нет — квартал остался
+# единственной отчётной единицей, которую руководитель закрывает.
 
-def build_approval_payload(db: Session, team: str, year: int, month: int) -> dict:
-    """Снимок утверждаемого месяца: отчёт команды, сводка и применённые правила расчёта.
+def quarter_end_month(quarter: int) -> int:
+    """Последний месяц квартала — период утверждения задаётся через него."""
+    return quarter * 3
+
+
+def build_approval_payload(db: Session, team: str, year: int, quarter: int) -> dict:
+    """Снимок утверждаемого квартала: отчёт команды, сводка и применённые правила расчёта.
 
     Кладётся в ``KpiApproval.payload_json`` при утверждении и отдаётся назад
     без пересчёта — иначе правка весов профиля или норматива Cycle Time после
     утверждения молча меняла бы уже подписанный результат. В снимок
     сознательно попадают не только строки отчёта (веса и значения там уже
-    есть на метрику), но и общие правила месяца — не по строкам восстановить,
-    какой норматив или срок внесения часов действовал на момент утверждения.
+    есть на метрику), но и общие правила квартала — не по строкам
+    восстановить, какой норматив или срок внесения часов действовал на момент
+    утверждения.
     """
-    report = build_report(db, [team], year, month)
+    end_month = quarter_end_month(quarter)
+    report = build_report(db, [team], year, end_month, months=3)
     report["summary"] = summarize_report(report["rows"])
     st = read_kpi_settings(db)
-    quarter = QUARTER_OF_MONTH[month]
     report["rules_snapshot"] = {
         "excluded_statuses": st.excluded_statuses,
         "worklog_deadline_mode": st.worklog_deadline_mode,
@@ -683,28 +826,28 @@ def build_approval_payload(db: Session, team: str, year: int, month: int) -> dic
         "empty_policy": st.empty_policy,
         "cycle_time_norm": {
             "team": team, "year": year, "quarter": quarter,
-            "value": _norm_for(db, team, year, month),
+            "value": _norm_for(db, team, year, end_month, months=3),
         },
     }
     return report
 
 
 def save_approval(
-    db: Session, team: str, year: int, month: int, approved_by: str, approved_at: datetime, payload: str,
+    db: Session, team: str, year: int, quarter: int, approved_by: str, approved_at: datetime, payload: str,
 ) -> KpiApproval:
     """Записать снимок утверждения, устойчиво к одновременному утверждению.
 
-    Двое руководителей могут закрыть один и тот же месяц одновременно: оба
+    Двое руководителей могут закрыть один и тот же квартал одновременно: оба
     видят, что снимка ещё нет, оба пытаются вставить строку. Уникальное
-    ограничение (``team``, ``year``, ``month``) не даёт вставиться второй —
+    ограничение (``team``, ``year``, ``quarter``) не даёт вставиться второй —
     без обработки это 500 на ровном месте. Проигравший гонку откатывается,
     перечитывает уже вставленную соперником строку и обновляет её той же
     информацией, что вставлял бы сам (см. ревью, ВАЖНО 3).
     """
-    row = db.query(KpiApproval).filter_by(team=team, year=year, month=month).first()
+    row = db.query(KpiApproval).filter_by(team=team, year=year, quarter=quarter).first()
     if row is None:
         row = KpiApproval(
-            team=team, year=year, month=month,
+            team=team, year=year, quarter=quarter,
             approved_by=approved_by, approved_at=approved_at, payload_json=payload,
         )
         db.add(row)
@@ -713,7 +856,7 @@ def save_approval(
             return row
         except IntegrityError:
             db.rollback()
-            row = db.query(KpiApproval).filter_by(team=team, year=year, month=month).first()
+            row = db.query(KpiApproval).filter_by(team=team, year=year, quarter=quarter).first()
             if row is None:
                 raise
 
@@ -724,29 +867,55 @@ def save_approval(
     return row
 
 
+def _approvals_for_period(
+    db: Session, teams: list[str], year: int, month: int, months: int,
+) -> dict[str, KpiApproval]:
+    """Снимки, применимые к периоду отчёта — только если период равен кварталу.
+
+    Отрезок «последние 3 месяца», кончающийся в октябре, кварталу не равен:
+    подставлять в него подписанный снимок Q3 было бы подлогом. Такой период
+    всегда считается вживую.
+    """
+    yq = period_quarter(year, month, months)
+    if yq is None or not teams:
+        return {}
+    qy, qq = yq
+    return {
+        a.team: a
+        for a in db.query(KpiApproval).filter(
+            KpiApproval.team.in_(teams), KpiApproval.year == qy, KpiApproval.quarter == qq,
+        ).all()
+    }
+
+
 def report_with_approvals(
-    db: Session, teams: list[str], year: int, month: int, direction: Optional[str] = None,
+    db: Session,
+    teams: list[str],
+    year: int,
+    month: int,
+    direction: Optional[str] = None,
+    months: int = 1,
 ) -> dict:
     """Отчёт по командам: утверждённые команды отдаются из снимка, остальные считаются вживую.
 
-    Направление — фильтр отчёта в реальном времени; на утверждённые месяцы не
-    действует, снимок замораживает месяц целиком таким, каким он был на дату
-    утверждения. Живая часть по-прежнему считается одним общим проходом по
-    всем неутверждённым командам (см. ``build_report``/``ReportCache``), а не
-    по одной на команду.
+    Снимок подставляется, только когда запрошенный период — ровно тот
+    квартал, который был подписан (см. ``_approvals_for_period``). Месяц
+    внутри утверждённого квартала и произвольный отрезок считаются вживую:
+    подписан квартал целиком, а не каждый его кусок.
+
+    Направление — фильтр отчёта в реальном времени; на утверждённые кварталы
+    не действует, снимок замораживает квартал целиком таким, каким он был на
+    дату утверждения. Живая часть по-прежнему считается одним общим проходом
+    по всем неутверждённым командам (см. ``build_report``/``ReportCache``), а
+    не по одной на команду.
     """
-    approvals = {
-        a.team: a
-        for a in db.query(KpiApproval).filter(
-            KpiApproval.team.in_(teams), KpiApproval.year == year, KpiApproval.month == month,
-        ).all()
-    } if teams else {}
+    approvals = _approvals_for_period(db, teams, year, month, months)
 
     live_teams = [t for t in teams if t not in approvals]
     rows: list[dict] = []
     skipped: list[dict] = []
     if live_teams:
-        live = build_report(db, live_teams, year, month, direction=direction)
+        live = build_report(db, live_teams, year, month, direction=direction, months=months)
         rows.extend(live["rows"])
         skipped = live.get("skipped", [])
 
@@ -762,7 +931,7 @@ def report_with_approvals(
 
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
     return {
-        "year": year, "month": month, "teams": teams, "rows": rows,
+        "year": year, "month": month, "months": months, "teams": teams, "rows": rows,
         "approvals": approval_info,
         "skipped_no_profile": len(skipped), "skipped": skipped,
     }
@@ -817,9 +986,17 @@ def _team_metric_averages(rows: list[dict]) -> list[dict]:
 
 
 def build_teams_summary(
-    db: Session, teams: list[str], year: int, month: int, direction: Optional[str] = None,
+    db: Session,
+    teams: list[str],
+    year: int,
+    month: int,
+    direction: Optional[str] = None,
+    months: int = 1,
 ) -> list[dict]:
-    """Итог по каждой команде за месяц плюс дельта к прошлому месяцу — двумя расчётами на всё, не на команду.
+    """Итог по каждой команде за период плюс дельта к прошлому такому же периоду — двумя расчётами на всё, не на команду.
+
+    Сравнение всегда с сопоставимым отрезком: месяц — с прошлым месяцем,
+    квартал — с прошлым кварталом (см. ``previous_period``).
 
     Раньше на каждую команду вызывался отдельный расчёт отчёта (текущий и
     прошлый месяц) — свой проход по кэшу профилей/нормативов/календаря на
@@ -833,9 +1010,9 @@ def build_teams_summary(
     реально встретившаяся в строках, но не входившая в фильтр (в частности
     пустая — сотрудник без команды), иначе для неё итог всегда был прочерк.
     """
-    prev_year, prev_month = previous_month(year, month)
-    current = report_with_approvals(db, teams, year, month, direction=direction)
-    prior = report_with_approvals(db, teams, prev_year, prev_month, direction=direction)
+    prev_year, prev_month = previous_period(year, month, months)
+    current = report_with_approvals(db, teams, year, month, direction=direction, months=months)
+    prior = report_with_approvals(db, teams, prev_year, prev_month, direction=direction, months=months)
     current_by_team = group_rows_by_team(current["rows"])
     prior_by_team = group_rows_by_team(prior["rows"])
 
@@ -866,7 +1043,7 @@ def build_teams_summary(
             # Норматив Cycle Time на квартал: без него метрика пуста у всей
             # команды, и это самая частая причина «нет данных» — страница
             # называет её прямо, а не оставляет руководителя гадать.
-            "cycle_time_norm": _norm_for(db, key, year, month) if key else None,
+            "cycle_time_norm": _norm_for(db, key, year, month, months=months) if key else None,
         })
     return rows
 
@@ -889,10 +1066,13 @@ def build_trend(
     пересчитывается каждый месяц отдельно (дешёвый индексный запрос) — она
     могла смениться внутри диапазона при переводе сотрудника.
 
-    Утверждённые месяцы отдаются из снимка команды, а не пересчитываются —
-    как и в отчёте (BLOCKER 1). Признак заморозки применяется только когда
-    запрошена ровно одна команда: утверждение — понятие на одну команду,
-    а не на произвольный набор.
+    График остаётся помесячным и считается вживую даже по утверждённым
+    кварталам: снимок утверждения хранит итог квартала целиком, помесячных
+    чисел в нём нет — подставить туда нечего. Точка внутри подписанного
+    квартала помечается признаком ``approved``, чтобы на графике было видно,
+    какая часть истории уже закрыта. Признак ставится только когда запрошена
+    ровно одна команда: утверждение — понятие на одну команду, а не на
+    произвольный набор.
     """
     st = read_kpi_settings(db)
     year_months: list[tuple[int, int]] = []
@@ -907,24 +1087,21 @@ def build_trend(
     cache = _build_report_cache(db, [employee.id], first_start, last_end)
 
     single_team = teams[0] if len(teams) == 1 else None
+    approved_quarters: set[tuple[int, int]] = set()
+    if single_team:
+        approved_quarters = {
+            (a.year, a.quarter)
+            for a in db.query(KpiApproval).filter(KpiApproval.team == single_team).all()
+        }
+
     points = []
     for yy, mm in year_months:
-        approval = (
-            db.query(KpiApproval).filter_by(team=single_team, year=yy, month=mm).first()
-            if single_team else None
-        )
-        if approval is not None:
-            frozen = json.loads(approval.payload_json)
-            frozen_row = next(
-                (r for r in frozen.get("rows", []) if r.get("employee_id") == employee.id), None,
-            )
-            if frozen_row is not None:
-                points.append({"year": yy, "month": mm, **frozen_row, "approved": True})
-                continue
-
         period_start, _ = month_bounds(yy, mm)
         if teams:
             cache.primary_team_by_employee[employee.id] = primary_team_on(db, employee.id, period_start) or ""
-        row = compute_employee_month(db, employee, teams, yy, mm, settings=st, direction=direction, cache=cache)
-        points.append({"year": yy, "month": mm, **row, "approved": False})
+        row = compute_employee_period(db, employee, teams, yy, mm, settings=st, direction=direction, cache=cache)
+        points.append({
+            "year": yy, "month": mm, **row,
+            "approved": (yy, QUARTER_OF_MONTH[mm]) in approved_quarters,
+        })
     return points
