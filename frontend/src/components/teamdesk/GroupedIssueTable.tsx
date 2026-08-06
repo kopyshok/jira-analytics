@@ -7,7 +7,7 @@ import {
 } from '../../api/teamDesk';
 import { FlagList } from './FlagChip';
 import { HoursScale } from './HoursScale';
-import { StatusTag } from './IssueTable';
+import { IssueKey, StatusTag } from './IssueTable';
 
 const ICON: Record<FlagCode, string> = {
   over: '↑', under: '↓', decomp: '⊞', childgap: '⊟',
@@ -32,11 +32,23 @@ interface Props {
   issues: DeskIssue[];
   flagCounts: Partial<Record<FlagCode, number>>;
   overrunPct: number;
+  jiraBaseUrl?: string;
 }
 
 /** Раскладка «Проблемы вперёд»: фильтры-признаки + один список по людям. */
-export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }: Props) {
+export function GroupedIssueTable({
+  developers, issues, flagCounts, overrunPct, jiraBaseUrl,
+}: Props) {
   const [filter, setFilter] = useState<FlagCode | null>(null);
+  // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
+  // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
+  const [toggled, setToggled] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setToggled((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   const childrenOf = new Map<string, DeskIssue[]>();
   const ids = new Set(issues.map((i) => i.id));
@@ -78,10 +90,22 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
 
   const shown = data.reduce((n, g) => n + (g.children?.length ?? 0), 0);
 
+  const expandableKeys: string[] = [];
+  const collect = (rows: Row[]) =>
+    rows.forEach((row) => {
+      if (row.children?.length) {
+        expandableKeys.push(row.rowKey);
+        collect(row.children);
+      }
+    });
+  collect(data);
+  const expandedRowKeys = expandableKeys.filter(
+    (key) => key.startsWith('group-') !== toggled.has(key),
+  );
+
   const columns: ColumnsType<Row> = [
     {
       title: 'Задача',
-      ellipsis: true,
       render: (_, row) =>
         row.isGroup ? (
           <Typography.Text strong>
@@ -92,24 +116,24 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
           </Typography.Text>
         ) : (
           <span>
-            <Typography.Text strong>{row.key}</Typography.Text> {row.summary}
+            <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} /> {row.summary}
             {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
           </span>
         ),
     },
     {
       title: 'Статус',
-      width: 170,
+      width: 190,
       render: (_, row) =>
         row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} />,
     },
-    { title: 'Оценка', width: 76, align: 'right',
+    { title: 'Оценка', width: 96, align: 'right',
       render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
-    { title: 'Факт', width: 68, align: 'right',
+    { title: 'Факт', width: 88, align: 'right',
       render: (_, row) => roundHours(row.fact_hours ?? 0) },
     {
       title: 'Недобор / перебор',
-      width: 165,
+      width: 190,
       render: (_, row) => (
         <HoursScale
           fact={row.fact_hours ?? 0}
@@ -119,11 +143,11 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
         />
       ),
     },
-    { title: 'Дней', width: 64, align: 'right',
+    { title: 'Дней', width: 84, align: 'right',
       render: (_, row) => (row.isGroup ? null : row.days_in_status) },
     {
       title: 'Замечания',
-      width: 140,
+      width: 165,
       render: (_, row) =>
         row.isGroup ? null : (
           <FlagList
@@ -171,8 +195,16 @@ export function GroupedIssueTable({ developers, issues, flagCounts, overrunPct }
           dataSource={data}
           columns={columns}
           pagination={false}
-          scroll={{ x: 900 }}
-          expandable={{ defaultExpandAllRows: true }}
+          scroll={{ x: 1180 }}
+          expandable={{
+            expandedRowKeys,
+            onExpand: (_, row) => toggle(row.rowKey),
+          }}
+          onRow={(row) =>
+            row.isGroup
+              ? { onClick: () => toggle(row.rowKey), style: { cursor: 'pointer' } }
+              : {}
+          }
         />
       </Card>
     </Space>
