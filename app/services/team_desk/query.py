@@ -164,6 +164,11 @@ def build_overview(
             mark = marks.get((row["id"], flag))
             if not mark:
                 continue
+            if not show_reviewed:
+                # Переключатель выключен — признака на экране быть не должно
+                # вообще: ни в проблемных, ни приглушённым.
+                row["flags"].remove(flag)
+                continue
             reviewed.append(
                 {
                     "flag": flag,
@@ -171,8 +176,6 @@ def build_overview(
                     "marked_at": mark.marked_at.isoformat(),
                 }
             )
-            if not show_reviewed:
-                row["flags"].remove(flag)
         row["reviewed"] = reviewed
 
     flag_counts: dict[str, int] = {}

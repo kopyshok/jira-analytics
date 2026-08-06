@@ -176,9 +176,12 @@ def test_reviewed_flag_hidden_until_asked(db_session, seed_user):
     mark_reviewed(db_session, issue.id, "stale", signature="В РАБОТЕ",
                   comment="согласовано", user_id=seed_user.id)
 
+    # Переключатель выключен — признака нет ни в проблемных, ни в просмотренных:
+    # приглушённый значок на экране означал бы «показывать просмотренные».
     hidden = build_overview(db_session, developer_ids=["acc-1"])["issues"][0]
     assert "stale" not in hidden["flags"]
-    assert hidden["reviewed"][0]["comment"] == "согласовано"
+    assert hidden["reviewed"] == []
 
     shown = build_overview(db_session, developer_ids=["acc-1"], show_reviewed=True)
     assert "stale" in shown["issues"][0]["flags"]
+    assert shown["issues"][0]["reviewed"][0]["comment"] == "согласовано"
