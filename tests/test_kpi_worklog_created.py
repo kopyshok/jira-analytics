@@ -84,3 +84,8 @@ def test_upsert_worklog_persists_jira_created_at(db_session):
 
     loaded = db_session.query(Worklog).filter_by(jira_worklog_id="w-3").one()
     assert loaded.jira_created_at == datetime(2026, 7, 27, 9, 30)
+    assert loaded.started_at == datetime(2026, 7, 24, 10, 0)
+    # Часы Jira записываются как есть, без таймзоны: со зоной PostgreSQL сдвинул
+    # бы их к UTC, а SQLite — нет, и одни и те же ворклоги легли бы по-разному.
+    assert loaded.jira_created_at.tzinfo is None
+    assert loaded.started_at.tzinfo is None
