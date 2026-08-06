@@ -1,13 +1,10 @@
 import { useState } from 'react';
-import { Card, Space, Table, Tag, Typography } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Card, Space, Tag, Typography } from 'antd';
 import {
-  FLAG_LABELS, FLAG_ORDER, roundHours,
+  FLAG_LABELS, FLAG_ORDER,
   type DeskDeveloper, type DeskIssue, type FlagCode,
 } from '../../api/teamDesk';
-import { FlagList } from './FlagChip';
-import { HoursScale } from './HoursScale';
-import { IssueKey, StatusTag } from './IssueTable';
+import { GroupedIssues } from './GroupedIssues';
 
 const ICON: Record<FlagCode, string> = {
   over: '↑', under: '↓', decomp: '⊞', childgap: '⊟',
@@ -18,15 +15,6 @@ const COLOR: Record<FlagCode, string> = {
   noest: 'default', nospent: 'default', stale: 'purple',
 };
 
-interface Row extends Partial<DeskIssue> {
-  rowKey: string;
-  isGroup?: boolean;
-  groupName?: string;
-  groupCount?: number;
-  groupInDev?: number;
-  children?: Row[];
-}
-
 interface Props {
   developers: DeskDeveloper[];
   issues: DeskIssue[];
@@ -35,130 +23,11 @@ interface Props {
   jiraBaseUrl?: string;
 }
 
-/** Раскладка «Проблемы вперёд»: фильтры-признаки + один список по людям. */
+/** Раскладка «Проблемы вперёд»: лента признаков-фильтров над общим списком. */
 export function GroupedIssueTable({
   developers, issues, flagCounts, overrunPct, jiraBaseUrl,
 }: Props) {
   const [filter, setFilter] = useState<FlagCode | null>(null);
-  // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
-  // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
-  const [toggled, setToggled] = useState<Set<string>>(new Set());
-  const toggle = (key: string) =>
-    setToggled((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(key)) next.add(key);
-      return next;
-    });
-
-  const childrenOf = new Map<string, DeskIssue[]>();
-  const ids = new Set(issues.map((i) => i.id));
-  issues.forEach((issue) => {
-    if (issue.parent_id && ids.has(issue.parent_id)) {
-      const list = childrenOf.get(issue.parent_id) ?? [];
-      list.push(issue);
-      childrenOf.set(issue.parent_id, list);
-    }
-  });
-
-  const matches = (issue: DeskIssue): boolean =>
-    !filter ||
-    issue.flags.includes(filter) ||
-    (childrenOf.get(issue.id) ?? []).some((c) => c.flags.includes(filter));
-
-  const toRow = (issue: DeskIssue): Row => {
-    const kids = (childrenOf.get(issue.id) ?? []).map(toRow);
-    return { ...issue, rowKey: issue.id, children: kids.length ? kids : undefined };
-  };
-
-  const data: Row[] = [];
-  developers.forEach((dev) => {
-    const own = issues.filter(
-      (i) => i.developer_id === dev.developer_id && !(i.parent_id && ids.has(i.parent_id)),
-    ).filter(matches);
-    if (!own.length) return;
-    data.push({
-      rowKey: `group-${dev.developer_id}`,
-      isGroup: true,
-      groupName: dev.display_name ?? 'Без имени',
-      groupCount: own.length,
-      groupInDev: dev.in_dev,
-      est_hours: dev.est_hours,
-      fact_hours: dev.fact_hours,
-      children: own.map(toRow),
-    });
-  });
-
-  const shown = data.reduce((n, g) => n + (g.children?.length ?? 0), 0);
-
-  const expandableKeys: string[] = [];
-  const collect = (rows: Row[]) =>
-    rows.forEach((row) => {
-      if (row.children?.length) {
-        expandableKeys.push(row.rowKey);
-        collect(row.children);
-      }
-    });
-  collect(data);
-  const expandedRowKeys = expandableKeys.filter(
-    (key) => key.startsWith('group-') !== toggled.has(key),
-  );
-
-  const columns: ColumnsType<Row> = [
-    {
-      title: 'Задача',
-      render: (_, row) =>
-        row.isGroup ? (
-          <Typography.Text strong>
-            {row.groupName}{' '}
-            <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
-              · {row.groupCount} задач · {row.groupInDev} у него
-            </Typography.Text>
-          </Typography.Text>
-        ) : (
-          <span>
-            <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} /> {row.summary}
-            {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
-          </span>
-        ),
-    },
-    {
-      title: 'Статус',
-      width: 190,
-      render: (_, row) =>
-        row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} />,
-    },
-    { title: 'Оценка', width: 96, align: 'right',
-      render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
-    { title: 'Факт', width: 88, align: 'right',
-      render: (_, row) => roundHours(row.fact_hours ?? 0) },
-    {
-      title: 'Недобор / перебор',
-      width: 190,
-      render: (_, row) => (
-        <HoursScale
-          fact={row.fact_hours ?? 0}
-          est={row.est_hours ?? null}
-          variant="centered"
-          overrunPct={overrunPct}
-        />
-      ),
-    },
-    { title: 'Дней', width: 84, align: 'right',
-      render: (_, row) => (row.isGroup ? null : row.days_in_status) },
-    {
-      title: 'Замечания',
-      width: 165,
-      render: (_, row) =>
-        row.isGroup ? null : (
-          <FlagList
-            issueId={row.id!}
-            flags={row.flags ?? []}
-            signatures={row.signatures ?? {}}
-            reviewed={row.reviewed ?? []}
-          />
-        ),
-    },
-  ];
 
   return (
     <Space orientation="vertical" size={14} style={{ width: '100%' }}>
@@ -180,33 +49,16 @@ export function GroupedIssueTable({
         </Space>
       </Card>
 
-      <Card
-        size="small"
+      <GroupedIssues
         title="Задачи по разработчикам"
-        extra={
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {filter ? `отфильтровано: ${FLAG_LABELS[filter]} · ${shown} задач` : `${shown} задач`}
-          </Typography.Text>
-        }
-      >
-        <Table<Row>
-          size="small"
-          rowKey="rowKey"
-          dataSource={data}
-          columns={columns}
-          pagination={false}
-          scroll={{ x: 1180 }}
-          expandable={{
-            expandedRowKeys,
-            onExpand: (_, row) => toggle(row.rowKey),
-          }}
-          onRow={(row) =>
-            row.isGroup
-              ? { onClick: () => toggle(row.rowKey), style: { cursor: 'pointer' } }
-              : {}
-          }
-        />
-      </Card>
+        developers={developers}
+        issues={issues}
+        overrunPct={overrunPct}
+        jiraBaseUrl={jiraBaseUrl}
+        scale="centered"
+        flagFilter={filter}
+        hint={filter ? `отфильтровано: ${FLAG_LABELS[filter]}` : ''}
+      />
     </Space>
   );
 }
