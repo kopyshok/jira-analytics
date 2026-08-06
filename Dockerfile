@@ -30,6 +30,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# The base image ships pip 23.0.1 (2023). Upgrade it via the official PyPA
+# bootstrap: pip is embedded in get-pip.py, so this needs no package index.
+ADD https://bootstrap.pypa.io/get-pip.py /tmp/get-pip.py
+RUN python /tmp/get-pip.py && rm /tmp/get-pip.py
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
