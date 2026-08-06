@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, Empty, Space, Spin, Tabs, Typography } from 'antd';
-import type { DeskFilterPrefs } from '../api/teamDesk';
+import { FLAG_LABELS, type DeskFilterPrefs, type FlagCode } from '../api/teamDesk';
 import {
   useDeskFilter, useDeskOverview, useDeskSettings, useSaveDeskFilter,
 } from '../hooks/useTeamDesk';
@@ -9,8 +9,8 @@ import { DeskFilters } from '../components/teamdesk/DeskFilters';
 import { ThresholdsPanel } from '../components/teamdesk/ThresholdsPanel';
 import { DeveloperCards } from '../components/teamdesk/DeveloperCards';
 import { DeveloperTable } from '../components/teamdesk/DeveloperTable';
-import { GroupedIssueTable } from '../components/teamdesk/GroupedIssueTable';
 import { GroupedIssues } from '../components/teamdesk/GroupedIssues';
+import { FlagFilterBar } from '../components/teamdesk/FlagFilterBar';
 import { WorkloadBars } from '../components/teamdesk/WorkloadBars';
 import { AbsenceStrip } from '../components/teamdesk/AbsenceStrip';
 
@@ -22,6 +22,7 @@ export default function TeamDeskPage() {
   const [showReviewed, setShowReviewed] = useState(false);
   const [showThresholds, setShowThresholds] = useState(false);
   const [selectedDev, setSelectedDev] = useState<string | null>(null);
+  const [flagFilter, setFlagFilter] = useState<FlagCode | null>(null);
   // Тимлид пробует все три раскладки и остаётся на удобной — переключать
   // её каждый вход он не должен.
   const [layout, setLayout] = useState<Layout>(
@@ -51,7 +52,10 @@ export default function TeamDeskPage() {
   const overrunPct = settings.data?.thresholds.overrun_pct ?? 30;
   const wipLimit = settings.data?.thresholds.wip_limit ?? 3;
 
-  const filterHint = selectedDev ? 'нажмите на карточку ещё раз, чтобы снять фильтр' : '';
+  const hints = [
+    selectedDev ? 'нажмите на карточку ещё раз, чтобы снять фильтр' : '',
+    flagFilter ? `отфильтровано: ${FLAG_LABELS[flagFilter]}` : '',
+  ].filter(Boolean);
 
   const detailBlocks = (
     <>
@@ -62,7 +66,8 @@ export default function TeamDeskPage() {
         overrunPct={overrunPct}
         jiraBaseUrl={jiraBaseUrl}
         onlyDeveloper={selectedDev}
-        hint={filterHint}
+        flagFilter={flagFilter}
+        hint={hints.join(' · ')}
       />
       <Card size="small" title="Задач в работе одновременно">
         <WorkloadBars
@@ -114,6 +119,14 @@ export default function TeamDeskPage() {
         ]}
       />
 
+      {data && (
+        <FlagFilterBar
+          flagCounts={data.flag_counts}
+          value={flagFilter}
+          onChange={setFlagFilter}
+        />
+      )}
+
       {(overview.isLoading || filterPrefs.isLoading) && <Spin />}
       {!overview.isLoading && !filterPrefs.isLoading && !data && (
         <Empty description="Выберите команды или добавьте разработчиков" />
@@ -148,12 +161,15 @@ export default function TeamDeskPage() {
       )}
 
       {data && layout === 'grouped' && (
-        <GroupedIssueTable
+        <GroupedIssues
+          title="Задачи по разработчикам"
           developers={data.developers}
           issues={data.issues}
-          flagCounts={data.flag_counts}
           overrunPct={overrunPct}
           jiraBaseUrl={jiraBaseUrl}
+          scale="centered"
+          flagFilter={flagFilter}
+          hint={hints.join(' · ')}
         />
       )}
 
