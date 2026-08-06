@@ -230,35 +230,53 @@ class TestTrend:
         assert resp.status_code == 404
 
 
+@pytest.fixture
+def approval_enabled(db_session):
+    """Включить утверждение квартала: по умолчанию раздел его не предлагает."""
+    from app.models import AppSetting
+
+    db_session.add(AppSetting(key="kpi_approval_enabled", value="true"))
+    db_session.commit()
+
+
 class TestApproval:
-    def test_approve_and_read_back(self, client, team_with_analyst):
+    def test_approve_and_read_back(self, client, team_with_analyst, approval_enabled):
         resp = client.post(
-            "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "month": 7}
+            "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "quarter": 3}
         )
         assert resp.status_code == 200, resp.text
         # Находка 4: плашка утверждения должна показывать имя, не почту —
         # стаб-пользователь в тестах отличается тем и другим.
         assert resp.json()["approved_by"] == "Test User"
 
-        got = client.get("/api/v1/kpi/approval?team=Платежи&year=2026&month=7")
+        got = client.get("/api/v1/kpi/approval?team=Платежи&year=2026&quarter=3")
         assert got.status_code == 200
         assert got.json()["approved"] is True
         assert got.json()["approved_by"] == "Test User"
 
     def test_approval_not_yet_approved(self, client, team_with_analyst):
-        resp = client.get("/api/v1/kpi/approval?team=Платежи&year=2026&month=7")
+        resp = client.get("/api/v1/kpi/approval?team=Платежи&year=2026&quarter=3")
         assert resp.status_code == 200
         assert resp.json()["approved"] is False
 
-    def test_reapprove_overwrites_snapshot_without_error(self, client, team_with_analyst):
+    def test_reapprove_overwrites_snapshot_without_error(
+        self, client, team_with_analyst, approval_enabled,
+    ):
         first = client.post(
-            "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "month": 7}
+            "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "quarter": 3}
         )
         assert first.status_code == 200
         second = client.post(
-            "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "month": 7}
+            "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "quarter": 3}
         )
         assert second.status_code == 200
+
+    def test_approve_rejected_while_disabled(self, client, team_with_analyst):
+        """Выключатель держит и прямое обращение к сервису, а не только кнопку на экране."""
+        resp = client.post(
+            "/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "quarter": 3}
+        )
+        assert resp.status_code == 409
 
 
 class TestExport:
@@ -286,9 +304,11 @@ class TestExport:
 
 
 class TestApprovalFreeze:
-    """BLOCKER 1: утверждённый месяц не меняется после правки весов профиля."""
+    """BLOCKER 1: утверждённый квартал не меняется после правки весов профиля."""
 
-    def test_report_frozen_after_weight_change(self, client, db_session, team_with_analyst):
+    def test_report_frozen_after_weight_change(
+        self, client, db_session, team_with_analyst, approval_enabled,
+    ):
         from datetime import datetime
 
         from app.models import AppSetting
@@ -308,11 +328,14 @@ class TestApprovalFreeze:
         ))
         db_session.commit()
 
-        before = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи").json()
+        # Утверждается квартал целиком, поэтому и сверяем квартальный отчёт:
+        # период Q3 2026 — три месяца, кончающиеся сентябрём.
+        quarter_query = "year=2026&month=9&months=3&teams=Платежи"
+        before = client.get(f"/api/v1/kpi/report?{quarter_query}").json()
         row_before = next(r for r in before["rows"] if r["account_id"] == "acc-1")
         assert row_before["total"] is not None
 
-        approve = client.post("/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "month": 7})
+        approve = client.post("/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "quarter": 3})
         assert approve.status_code == 200
 
         profile = db_session.query(KpiProfile).filter_by(code="analyst").one()
@@ -322,14 +345,29 @@ class TestApprovalFreeze:
 
         # Живой пересчёт теперь дал бы другое число — иначе тест ничего не
         # проверяет (сравнивал бы совпадающие по случайности значения).
-        live = build_report(db_session, ["Платежи"], 2026, 7)
+        live = build_report(db_session, ["Платежи"], 2026, 9, months=3)
         live_row = next(r for r in live["rows"] if r["account_id"] == "acc-1")
         assert live_row["total"] != row_before["total"]
 
-        after = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи").json()
+        after = client.get(f"/api/v1/kpi/report?{quarter_query}").json()
         row_after = next(r for r in after["rows"] if r["account_id"] == "acc-1")
         assert row_after["total"] == row_before["total"]
         assert after["approvals"]["Платежи"]["approved"] is True
+
+    def test_month_inside_approved_quarter_stays_live(
+        self, client, db_session, team_with_analyst, approval_enabled,
+    ):
+        """Подписан квартал целиком — отдельный его месяц по-прежнему считается вживую.
+
+        Снимок хранит квартальный итог; подставлять его в июль было бы
+        подлогом, поэтому месяц внутри утверждённого квартала не помечается
+        замороженным.
+        """
+        approve = client.post("/api/v1/kpi/approve", json={"team": "Платежи", "year": 2026, "quarter": 3})
+        assert approve.status_code == 200
+
+        month = client.get("/api/v1/kpi/report?year=2026&month=7&teams=Платежи").json()
+        assert month["approvals"]["Платежи"]["approved"] is False
 
 
 class TestBreakdownConsistency:

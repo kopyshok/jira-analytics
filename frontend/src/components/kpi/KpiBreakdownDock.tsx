@@ -25,6 +25,8 @@ export interface KpiBreakdownDockProps {
   target: KpiBreakdownTarget | null;
   year: number;
   month: number;
+  /** Длина периода в месяцах — расшифровка обязана резать тот же отрезок, что и отчёт. */
+  months?: number;
   direction?: string;
   /** Команды, с которыми запрошен отчёт (глобальный фильтр) — расшифровка
    * использует тот же отбор, что и ведомость, иначе дробь под метрикой может
@@ -244,18 +246,19 @@ function useColumns(table: KpiBreakdownTable, good: string, bad: string): Column
  * этой задачей».
  */
 export default function KpiBreakdownDock({
-  target, year, month, direction, teams, onClose,
+  target, year, month, months = 1, direction, teams, onClose,
 }: KpiBreakdownDockProps) {
   const t = useThemeTokens();
   const [onlyProblem, setOnlyProblem] = useState(false);
 
   const query = useQuery({
     queryKey: [
-      'kpi', 'breakdown', target?.row.account_id, target?.metricCode, year, month, teams, direction,
+      'kpi', 'breakdown', target?.row.account_id, target?.metricCode, year, month, months,
+      teams, direction,
     ],
     queryFn: ({ signal }) => fetchBreakdown(
       {
-        account_id: target!.row.account_id, metric_code: target!.metricCode, year, month,
+        account_id: target!.row.account_id, metric_code: target!.metricCode, year, month, months,
         teams, direction,
       },
       signal,
@@ -310,7 +313,9 @@ export default function KpiBreakdownDock({
             {target.metricName} · {target.row.employee_name}
           </div>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {KPI_MONTH_ABBR_RU[month - 1]} {year}
+            {months > 1
+              ? `${KPI_MONTH_ABBR_RU[(((month - months) % 12) + 12) % 12]}–${KPI_MONTH_ABBR_RU[month - 1]} ${year}`
+              : `${KPI_MONTH_ABBR_RU[month - 1]} ${year}`}
             {target.row.team ? ` · ${target.row.team}` : ' · без команды'}
             {metric ? ` · вес ${Math.round(metric.weight * 100)}%` : ''}
             {target.row.target_pct != null ? ` · цель ${target.row.target_pct}%` : ''}

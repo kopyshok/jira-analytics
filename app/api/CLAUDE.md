@@ -47,7 +47,7 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 | `/roles` | `roles.py` | CRUD + reorder |
 | `/events` | `events.py` | SSE entity_changed broadcaster (см. EventBroadcaster) |
 | `/llm` | `llm.py` | AI summary/work_breakdown через Gemini (`/llm/test` + project summaries) |
-| `/kpi` | `kpi.py` | отчёт «Ведомость» + сводка по командам + расшифровка метрики + тренд сотрудника + утверждение месяца (снимок) + `/directions` + `export.xlsx` |
+| `/kpi` | `kpi.py` | отчёт «Ведомость» + сводка по командам + расшифровка метрики + тренд сотрудника + утверждение квартала (снимок) + `/directions` + `export.xlsx`. Период везде задаётся парой `year`/`month` (последний месяц) + `months` (длина, 1–24): месяц, квартал, произвольный отрезок — см. ниже |
 | `/team-desk` | `team_desk.py` | рабочий стол тимлида: `/overview` (срез задач + сводка по разработчикам + очередь работы; ростер команд режется по `developer_roles` — в срез идут только разработчики), `/settings` (GET\|PUT — группы статусов, пороги, типы задач, роли среза), `/flags` (справочник признаков), `POST\|DELETE /issues/{id}/mark` (отметка «просмотрено» на паре задача+признак) |
 | `/kpi-settings` | `kpi_settings.py` | **admin-only** — справочники раздела KPI: метрики, профили оценки (список ролей + `/profiles/coverage`), нормативы Cycle Time, общие правила, словарь атрибутов условий, предпросмотр метрики (`POST /metrics/preview`, `POST /metrics/explain-issue`), сравнение способов срока внесения часов (`GET /worklog-deadline/compare`) |
 
@@ -67,6 +67,26 @@ Frontend гейтинг через `AuthLayout` + `ProtectedRoute` cosmetic — 
 - `POST /sync/worklogs/reload/stream` — жёсткая перезагрузка: `DELETE WHERE started_at >= since` + перечитать через `worklogDate >=` JQL
 
 **Targeted refresh:** `POST /sync/issues/refresh` с `{jira_keys: [...]}` — re-reads только эти ключи в JQL `key in (...)` батчами по 100, обновляет только локально существующие, skip unknowns. Используется кнопкой «Обновить с Jira» чтобы dot-fill новые поля без 30-минутного полного resync.
+
+## Период раздела KPI (`/kpi/*`)
+
+Один способ задать период на все эндпоинты: `year` + `month` — ПОСЛЕДНИЙ месяц
+периода, `months` — длина в месяцах (по умолчанию 1). Месяц = `months=1`,
+квартал = `months=3` с `month ∈ {3,6,9,12}`, «последние N месяцев» = `months=N`.
+Отдельного «режима» на сервере нет.
+
+Итог периода длиннее месяца — ОДНА дробь по задачам всех месяцев (не среднее
+месячных значений). Помесячная разбивка приезжает в `months_breakdown` строки
+и считается тем же строителем по одному месяцу.
+
+**Утверждение — только целый квартал** (`POST /kpi/approve` c `team/year/quarter`,
+`GET /kpi/approval` тем же ключом). Месячного утверждения нет (миграция `kpq01`
+переименовала `kpi_approvals.month` → `quarter`). Снимок подставляется в отчёт,
+только когда запрошенный период совпадает с подписанным кварталом — месяц
+внутри него считается вживую. Утверждение гейтится настройкой
+`kpi_approval_enabled` (AppSetting, по умолчанию `false`): выключенное отдаёт
+409 на `/approve`, а `/kpi/report` возвращает признак `approval_enabled`, чтобы
+экран не решал это сам (общие правила admin-only).
 
 ## Issue tree (`GET /issues/tree`)
 

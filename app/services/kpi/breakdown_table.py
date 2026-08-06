@@ -424,15 +424,17 @@ def build_table(
     base_url: str,
     direction: Optional[str] = None,
     settings: Optional[KpiSettings] = None,
+    months: int = 1,
 ) -> dict:
-    """Таблица разбора показателя одного сотрудника за месяц.
+    """Таблица разбора показателя одного сотрудника за период отчёта.
 
     Отбор — тот же, что и в расчёте отчёта (отрезки участия в команде,
-    исключённые статусы, фильтр направления), поэтому «засчитано» в таблице
-    совпадает с числителем в дроби над ней.
+    исключённые статусы, фильтр направления, та же длина периода), поэтому
+    «засчитано» в таблице совпадает с числителем в дроби над ней — и на
+    месяце, и на квартале.
     """
     st = settings or read_kpi_settings(db)
-    periods, employee = employee_periods(db, account_id, year, month, teams)
+    periods, employee = employee_periods(db, account_id, year, month, teams, months)
     num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
 
     if num_cs.unit == "worklogs":
@@ -444,7 +446,7 @@ def build_table(
             team = teams[0]
         return _norm_table(
             db, metric, num_cs, account_id, periods, teams, st, base_url,
-            _norm_for(db, team, year, month),
+            _norm_for(db, team, year, month, months=months),
         )
 
     if metric.calc_kind == "score_to_max":

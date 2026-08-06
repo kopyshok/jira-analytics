@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Alert, App, Button, Card, Select, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
-import { CheckOutlined, DownloadOutlined, LeftOutlined, LockOutlined, RightOutlined } from '@ant-design/icons';
+import { CheckOutlined, DownloadOutlined, LockOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import kpiHelp from '../../../docs/help/kpi.md?raw';
 import PageHeader from '../components/shared/PageHeader';
@@ -11,28 +11,18 @@ import KpiBreakdownDock, { type KpiBreakdownTarget } from '../components/kpi/Kpi
 import KpiSummaryBar from '../components/kpi/KpiSummaryBar';
 import KpiTeamMetricStrip from '../components/kpi/KpiTeamMetricStrip';
 import KpiDistribution from '../components/kpi/KpiDistribution';
+import KpiPeriodPicker from '../components/kpi/KpiPeriodPicker';
+import { periodLabel, stepPeriod, type KpiPeriod } from '../utils/kpiPeriod';
 import { useThemeTokens } from '../aurora/theme/useThemeTokens';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import { formatDateOnly } from '../utils/format';
-import { MONTH_NAMES } from '../utils/constants';
 import {
-  approveMonth, downloadKpiExport, fetchApproval, fetchDirections, fetchKpiReport, fetchTeamsSummary,
+  approveQuarter, downloadKpiExport, fetchApproval, fetchDirections, fetchKpiReport, fetchTeamsSummary,
   type KpiReportRow, type KpiTeamSummaryRow,
 } from '../api/kpi';
 
 const { Text } = Typography;
-
-// Полные русские названия месяцев — общий справочник `utils/constants.ts`,
-// раньше был отдельно объявлен локальный дубликат (см. ревью, мелочи).
-function periodLabel(year: number, month: number): string {
-  return `${MONTH_NAMES[month]} ${year}`;
-}
-
-function stepPeriod(year: number, month: number, dir: 1 | -1): { year: number; month: number } {
-  const total = year * 12 + (month - 1) + dir;
-  return { year: Math.floor(total / 12), month: (total % 12) + 1 };
-}
 
 export default function KpiPage() {
   const { notification } = App.useApp();
@@ -45,12 +35,17 @@ export default function KpiPage() {
   const now = new Date();
   const year = Number(searchParams.get('kpiYear')) || now.getFullYear();
   const month = Number(searchParams.get('kpiMonth')) || now.getMonth() + 1;
+  // Длина периода живёт в адресе рядом с месяцем — ссылку на квартальную
+  // ведомость можно переслать так же, как на месячную.
+  const months = Math.min(24, Math.max(1, Number(searchParams.get('kpiMonths')) || 1));
+  const period: KpiPeriod = { year, month, months };
   const direction = searchParams.get('kpiDirection') || undefined;
 
-  const setPeriodParams = (next: { year: number; month: number }) => {
+  const setPeriodParams = (next: KpiPeriod) => {
     const p = new URLSearchParams(searchParams);
     p.set('kpiYear', String(next.year));
     p.set('kpiMonth', String(next.month));
+    p.set('kpiMonths', String(next.months));
     setSearchParams(p, { replace: true });
   };
 
@@ -83,21 +78,26 @@ export default function KpiPage() {
   };
 
   const reportQuery = useQuery({
-    queryKey: ['kpi', 'report', year, month, queryParams.teams, direction],
+    queryKey: ['kpi', 'report', year, month, months, queryParams.teams, direction],
     queryFn: ({ signal }) => fetchKpiReport(
-      { year, month, teams: queryParams.teams, direction }, signal,
+      { year, month, months, teams: queryParams.teams, direction }, signal,
     ),
     staleTime: 30_000,
     retry: 1,
   });
 
-  // Прошлый месяц — только ради дельты на человека в ведомости. Сводка по
-  // командам считает свою дельту на сервере, но на людей её там нет.
-  const prevPeriod = stepPeriod(year, month, -1);
+  // Прошлый период такой же длины — только ради дельты на человека в
+  // ведомости (квартал сравнивается с кварталом). Сводка по командам считает
+  // свою дельту на сервере, но на людей её там нет.
+  const prevPeriod = stepPeriod(period, -1);
   const prevReportQuery = useQuery({
-    queryKey: ['kpi', 'report', prevPeriod.year, prevPeriod.month, queryParams.teams, direction],
+    queryKey: ['kpi', 'report', prevPeriod.year, prevPeriod.month, months, queryParams.teams, direction],
     queryFn: ({ signal }) => fetchKpiReport(
-      { year: prevPeriod.year, month: prevPeriod.month, teams: queryParams.teams, direction }, signal,
+      {
+        year: prevPeriod.year, month: prevPeriod.month, months,
+        teams: queryParams.teams, direction,
+      },
+      signal,
     ),
     staleTime: 30_000,
     retry: 1,
@@ -112,8 +112,10 @@ export default function KpiPage() {
   }, [prevReportQuery.data]);
 
   const teamsSummaryQuery = useQuery({
-    queryKey: ['kpi', 'teams-summary', year, month, queryParams.teams, direction],
-    queryFn: ({ signal }) => fetchTeamsSummary(year, month, queryParams.teams, direction, signal),
+    queryKey: ['kpi', 'teams-summary', year, month, months, queryParams.teams, direction],
+    queryFn: ({ signal }) => fetchTeamsSummary(
+      year, month, queryParams.teams, direction, signal, months,
+    ),
     staleTime: 30_000,
     retry: 1,
   });
@@ -124,21 +126,30 @@ export default function KpiPage() {
     return m;
   }, [teamsSummaryQuery.data]);
 
-  // Утверждение — снимок на одну конкретную команду (см. модель KpiApproval).
-  // Кнопка в шапке активна, только когда фильтр сужен до одной команды.
+  // Утверждение — снимок на одну конкретную команду за целый квартал (см.
+  // модель KpiApproval). Кнопка активна, только когда фильтр сужен до одной
+  // команды И на экране именно квартал, а не месяц или произвольный отрезок.
   const singleTeam = selectedTeams.length === 1 ? selectedTeams[0] : null;
+  const approvalEnabled = reportQuery.data?.approval_enabled ?? false;
+  const periodQuarter = reportQuery.data?.quarter ?? null;
+  const canApprove = approvalEnabled && !!singleTeam && !!periodQuarter;
+
   const approvalQuery = useQuery({
-    queryKey: ['kpi', 'approval', singleTeam, year, month],
-    queryFn: ({ signal }) => fetchApproval(singleTeam as string, year, month, signal),
-    enabled: !!singleTeam,
+    queryKey: ['kpi', 'approval', singleTeam, periodQuarter?.year, periodQuarter?.quarter],
+    queryFn: ({ signal }) => fetchApproval(
+      singleTeam as string, periodQuarter!.year, periodQuarter!.quarter, signal,
+    ),
+    enabled: !!singleTeam && !!periodQuarter && approvalEnabled,
   });
 
   const approveMut = useMutation({
-    mutationFn: () => approveMonth({ team: singleTeam as string, year, month }),
+    mutationFn: () => approveQuarter({
+      team: singleTeam as string, year: periodQuarter!.year, quarter: periodQuarter!.quarter,
+    }),
     onSuccess: () => {
-      notification.success({ title: 'Месяц утверждён', description: 'Результат заморожен снимком.' });
+      notification.success({ title: 'Квартал утверждён', description: 'Результат заморожен снимком.' });
       // Утверждение сбрасывает не только сам запрос об утверждении, но и
-      // отчёт со сводкой — иначе плашка «месяц утверждён» не появится, пока
+      // отчёт со сводкой — иначе плашка «квартал утверждён» не появится, пока
       // пользователь не перезагрузит страницу (см. ревью, ВАЖНО 7).
       qc.invalidateQueries({ queryKey: ['kpi', 'approval'] });
       qc.invalidateQueries({ queryKey: ['kpi', 'report'] });
@@ -153,8 +164,8 @@ export default function KpiPage() {
     setExporting(true);
     try {
       await downloadKpiExport(
-        { year, month, teams: queryParams.teams, direction },
-        `kpi_${year}_${String(month).padStart(2, '0')}.xlsx`,
+        { year, month, months, teams: queryParams.teams, direction },
+        `kpi_${year}_${String(month).padStart(2, '0')}${months > 1 ? `_${months}мес` : ''}.xlsx`,
       );
     } catch (e) {
       notification.error({ title: 'Не удалось выгрузить', description: (e as Error).message });
@@ -223,8 +234,8 @@ export default function KpiPage() {
           style={{ marginBottom: 12 }}
           title={
             approvedTeams.length === 1
-              ? `Месяц утверждён по команде «${approvedTeams[0]}» — числа заморожены снимком, правки весов и нормативов на них не влияют.`
-              : `Месяц утверждён по командам: ${approvedTeams.join(', ')} — их числа заморожены снимком.`
+              ? `Квартал утверждён по команде «${approvedTeams[0]}» — числа заморожены снимком, правки весов и нормативов на них не влияют.`
+              : `Квартал утверждён по командам: ${approvedTeams.join(', ')} — их числа заморожены снимком.`
           }
         />
       )}
@@ -246,6 +257,7 @@ export default function KpiPage() {
               ? { employeeId: breakdownTarget.row.employee_id, metricCode: breakdownTarget.metricCode }
               : null}
             prevTotals={prevTotals}
+            prevPeriodLabel={periodLabel(prevPeriod)}
           />
         </Card>
 
@@ -256,6 +268,7 @@ export default function KpiPage() {
         target={breakdownTarget}
         year={year}
         month={month}
+        months={months}
         direction={direction}
         teams={queryParams.teams}
         onClose={() => setBreakdownTarget(null)}
@@ -274,6 +287,7 @@ export default function KpiPage() {
           row={rows.find((r) => r.employee_id === row.employee_id) ?? row}
           year={year}
           month={month}
+          months={months}
           direction={direction}
           teams={queryParams.teams}
           teamSummary={teamsSummaryByTeam.get(row.team ?? 'Без команды')}
@@ -295,29 +309,40 @@ export default function KpiPage() {
         subtitle="Коэффициент эффективности по командам и людям"
         actions={(
           <Space wrap>
-            {singleTeam ? (
-              <Tag
-                icon={<LockOutlined />}
-                color={approvalQuery.data?.approved ? 'success' : 'default'}
-              >
-                {approvalQuery.data?.approved
-                  ? `Утвердил ${approvalQuery.data.approved_by} · ${formatDateOnly(approvalQuery.data.approved_at)}`
-                  : 'Черновик, не утверждён'}
-              </Tag>
-            ) : (
-              <Tooltip title="Выберите одну команду в фильтре, чтобы утвердить месяц">
-                <Tag>Утверждение — по одной команде</Tag>
-              </Tooltip>
+            {/* Утверждение выключено правилами раздела — ни плашки, ни кнопки:
+                показывать неактивную кнопку значило бы обещать действие,
+                которого сейчас нет. */}
+            {approvalEnabled && (
+              <>
+                {canApprove ? (
+                  <Tag
+                    icon={<LockOutlined />}
+                    color={approvalQuery.data?.approved ? 'success' : 'default'}
+                  >
+                    {approvalQuery.data?.approved
+                      ? `Утвердил ${approvalQuery.data.approved_by} · ${formatDateOnly(approvalQuery.data.approved_at)}`
+                      : 'Черновик, не утверждён'}
+                  </Tag>
+                ) : (
+                  <Tooltip
+                    title={periodQuarter
+                      ? 'Выберите одну команду в фильтре, чтобы утвердить квартал'
+                      : 'Утверждается целый квартал — переключите период на квартал'}
+                  >
+                    <Tag>{periodQuarter ? 'Утверждение — по одной команде' : 'Утверждается только квартал'}</Tag>
+                  </Tooltip>
+                )}
+                <Button
+                  type="primary"
+                  icon={<CheckOutlined />}
+                  disabled={!canApprove || !!approvalQuery.data?.approved}
+                  loading={approveMut.isPending}
+                  onClick={() => approveMut.mutate()}
+                >
+                  Утвердить квартал
+                </Button>
+              </>
             )}
-            <Button
-              type="primary"
-              icon={<CheckOutlined />}
-              disabled={!singleTeam || !!approvalQuery.data?.approved}
-              loading={approveMut.isPending}
-              onClick={() => approveMut.mutate()}
-            >
-              Утвердить месяц
-            </Button>
             <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
               Выгрузить в Excel
             </Button>
@@ -326,23 +351,7 @@ export default function KpiPage() {
       />
 
       <Space wrap size="middle" style={{ marginBottom: 16 }}>
-        <Space size={4}>
-          <Button
-            icon={<LeftOutlined />}
-            size="small"
-            aria-label="Предыдущий месяц"
-            onClick={() => setPeriodParams(stepPeriod(year, month, -1))}
-          />
-          <span style={{ minWidth: 150, textAlign: 'center', fontWeight: 600 }}>
-            {periodLabel(year, month)}
-          </span>
-          <Button
-            icon={<RightOutlined />}
-            size="small"
-            aria-label="Следующий месяц"
-            onClick={() => setPeriodParams(stepPeriod(year, month, 1))}
-          />
-        </Space>
+        <KpiPeriodPicker period={period} onChange={setPeriodParams} />
         <Select
           placeholder="Продуктовое направление"
           allowClear

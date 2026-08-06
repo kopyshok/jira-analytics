@@ -31,7 +31,7 @@ from app.services.kpi.conditions import (
 from app.services.kpi.kpi_service import (
     _norm_for,
     compute_metric,
-    month_bounds,
+    period_bounds,
     resolve_breakdown,
     with_direction,
     worklog_items,
@@ -216,7 +216,7 @@ class PreviewContext:
 
     @property
     def all_periods(self) -> list[tuple[date, date]]:
-        """Общие границы месяца — воронка по команде считается по месяцу целиком."""
+        """Общие границы периода — воронка по команде считается по периоду целиком."""
         return [self.period]
 
 
@@ -227,9 +227,15 @@ def build_context(
     month: int,
     account_id: Optional[str],
     calendar_buffer_days: int,
+    months: int = 1,
 ) -> PreviewContext:
-    """Собрать состав команды на месяц и всё, что нужно для расчёта, одним проходом."""
-    period_start, period_end = month_bounds(year, month)
+    """Собрать состав команды на период и всё, что нужно для расчёта, одним проходом.
+
+    ``months`` — длина периода: предпросмотр метрики в конструкторе всегда
+    смотрит на один месяц, а воронка под расшифровкой в отчёте обязана
+    повторять период отчёта, иначе шаги воронки и дробь над ней разойдутся.
+    """
+    period_start, period_end = period_bounds(year, month, months)
     emp_ids = members_overlapping(db, [team], period_start, period_end) if team else []
     employees = (
         db.query(Employee)

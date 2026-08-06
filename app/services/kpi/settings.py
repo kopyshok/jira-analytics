@@ -29,6 +29,11 @@ class KpiSettings:
     worklog_deadline_days: int = 1
     worklog_deadline_time: str = "12:00"
     empty_policy: str = "redistribute"
+    # Утверждение квартала: пока команда обкатывает раздел, подписывать
+    # результат рано — выключатель по умолчанию выключен (решение заказчика
+    # 2026-08-06). Выключенное утверждение прячет кнопку и запрещает запись
+    # снимка на сервере, а не только на экране.
+    approval_enabled: bool = False
 
 
 def read_kpi_settings(db: Session) -> KpiSettings:
@@ -62,4 +67,6 @@ def read_kpi_settings(db: Session) -> KpiSettings:
         s.worklog_deadline_time = rows["kpi_worklog_deadline_time"]
     if rows.get("kpi_empty_policy") in {"redistribute", "full", "zero"}:
         s.empty_policy = rows["kpi_empty_policy"]
+    if rows.get("kpi_approval_enabled") is not None:
+        s.approval_enabled = str(rows["kpi_approval_enabled"]).lower() in {"1", "true", "yes"}
     return s

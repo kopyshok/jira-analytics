@@ -1,4 +1,4 @@
-"""Утверждение месяца KPI: гонка при одновременном закрытии, повторное утверждение."""
+"""Утверждение квартала KPI: гонка при одновременном закрытии, повторное утверждение."""
 from datetime import datetime
 from unittest import mock
 
@@ -9,10 +9,10 @@ from app.services.kpi.kpi_service import save_approval
 
 
 def test_save_approval_handles_concurrent_insert(db_session):
-    """ВАЖНО 3: двое руководителей закрывают месяц одновременно — второй не падает 500,
+    """ВАЖНО 3: двое руководителей закрывают квартал одновременно — второй не падает 500,
     а обновляет уже вставленную соперником строку."""
     existing = KpiApproval(
-        team="Платежи", year=2026, month=7,
+        team="Платежи", year=2026, quarter=3,
         approved_by="Первый", approved_at=datetime(2026, 7, 30, 10, 0),
         payload_json="{}",
     )
@@ -33,21 +33,21 @@ def test_save_approval_handles_concurrent_insert(db_session):
 
     with mock.patch.object(Query, "first", fake_first):
         row = save_approval(
-            db_session, "Платежи", 2026, 7, "Второй",
+            db_session, "Платежи", 2026, 3, "Второй",
             datetime(2026, 7, 30, 11, 0), "{}",
         )
 
     assert row.approved_by == "Второй"
-    rows = db_session.query(KpiApproval).filter_by(team="Платежи", year=2026, month=7).all()
+    rows = db_session.query(KpiApproval).filter_by(team="Платежи", year=2026, quarter=3).all()
     assert len(rows) == 1
 
 
 def test_save_approval_reapprove_keeps_latest_approver(db_session):
     """Повторное утверждение другим человеком — остаётся имя последнего утвердившего."""
-    save_approval(db_session, "Платежи", 2026, 7, "Первый", datetime(2026, 7, 30, 10, 0), "{}")
-    row = save_approval(db_session, "Платежи", 2026, 7, "Второй", datetime(2026, 7, 30, 11, 0), "{}")
+    save_approval(db_session, "Платежи", 2026, 3, "Первый", datetime(2026, 7, 30, 10, 0), "{}")
+    row = save_approval(db_session, "Платежи", 2026, 3, "Второй", datetime(2026, 7, 30, 11, 0), "{}")
 
     assert row.approved_by == "Второй"
-    rows = db_session.query(KpiApproval).filter_by(team="Платежи", year=2026, month=7).all()
+    rows = db_session.query(KpiApproval).filter_by(team="Платежи", year=2026, quarter=3).all()
     assert len(rows) == 1
     assert rows[0].approved_by == "Второй"

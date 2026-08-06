@@ -32,6 +32,7 @@ from app.services.kpi.kpi_service import (
     build_teams_summary,
     build_trend,
     fact_value,
+    period_quarter,
     report_with_approvals,
     resolve_breakdown,
     save_approval,
@@ -51,16 +52,23 @@ XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 class KpiApproveRequest(BaseModel):
     team: str
     year: int
-    month: int
+    quarter: int
 
 
 class KpiApprovalOut(BaseModel):
     team: str
     year: int
-    month: int
+    quarter: int
     approved: bool
     approved_by: Optional[str] = None
     approved_at: Optional[str] = None
+
+
+# Период отчёта — «последний месяц» + «сколько месяцев назад». Одним
+# параметром закрываются месяц, конкретный квартал и произвольный отрезок
+# (см. ``months_in_period`` в сервисе). Потолок в 24 месяца — защита от
+# случайного запроса на десятилетие, а не бизнес-правило.
+MonthsParam = Query(1, ge=1, le=24, description="Длина периода в месяцах (1 — месяц, 3 — квартал)")
 
 
 # === Helpers ===
@@ -118,6 +126,7 @@ def _breakdown_funnels(
     month: int,
     teams: list[str],
     direction: Optional[str],
+    months: int = 1,
 ) -> dict:
     """Воронка отбора числителя и знаменателя по одному сотруднику.
 
@@ -132,7 +141,7 @@ def _breakdown_funnels(
     if teams and team not in teams:
         team = teams[0]
     settings = read_kpi_settings(db)
-    ctx = build_context(db, team, year, month, account_id, CALENDAR_BUFFER_DAYS)
+    ctx = build_context(db, team, year, month, account_id, CALENDAR_BUFFER_DAYS, months)
     account_ids = ctx.account_ids or [account_id]
 
     num_cs = with_direction(ConditionSet.from_json(metric.numerator_json), direction)
@@ -164,6 +173,16 @@ def _resolve_teams(db: Session, teams_csv: Optional[str]) -> list[str]:
     return parsed or list_teams(db)
 
 
+def _period_quarter_payload(year: int, month: int, months: int) -> Optional[dict]:
+    """Год и квартал, если период — ровно календарный квартал, иначе ``None``.
+
+    Экран по этому полю решает, можно ли вообще предлагать утверждение:
+    «последние 3 месяца» кварталом не являются, подписывать там нечего.
+    """
+    yq = period_quarter(year, month, months)
+    return {"year": yq[0], "quarter": yq[1]} if yq else None
+
+
 # === Направления (доступно всем ролям — фильтр раздела виден не только админу) ===
 
 @router.get("/directions", response_model=list[str])
@@ -182,18 +201,25 @@ def list_directions(db: Session = Depends(get_db)) -> list[str]:
 def get_report(
     year: int = Query(..., ge=2020, le=2100),
     month: int = Query(..., ge=1, le=12),
+    months: int = MonthsParam,
     teams: Optional[str] = Query(None, description="Команды через запятую"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Отчёт KPI по людям выбранных команд за месяц, со сводкой по направлению.
+    """Отчёт KPI по людям выбранных команд за период, со сводкой по направлению.
 
-    Утверждённые месяцы отдаются из снимка (BLOCKER 1) — правка весов профиля
-    или норматива после утверждения на такой месяц не влияет.
+    Период — месяц, квартал или произвольные N месяцев, кончающиеся указанным
+    месяцем. Утверждённые кварталы отдаются из снимка (BLOCKER 1) — правка
+    весов профиля или норматива после утверждения на такой квартал не влияет.
+
+    Ответ несёт признак, включено ли утверждение вообще: экран не должен
+    решать это сам, а справочник общих правил доступен только администратору.
     """
     team_list = _resolve_teams(db, teams)
-    report = report_with_approvals(db, team_list, year, month, direction=direction)
+    report = report_with_approvals(db, team_list, year, month, direction=direction, months=months)
     report["summary"] = summarize_report(report["rows"])
+    report["approval_enabled"] = read_kpi_settings(db).approval_enabled
+    report["quarter"] = _period_quarter_payload(year, month, months)
     return report
 
 
@@ -201,19 +227,22 @@ def get_report(
 def get_teams_summary(
     year: int = Query(..., ge=2020, le=2100),
     month: int = Query(..., ge=1, le=12),
+    months: int = MonthsParam,
     teams: Optional[str] = Query(None, description="Команды через запятую"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Итог по каждой команде за месяц плюс дельта к прошлому месяцу.
+    """Итог по каждой команде за период плюс дельта к прошлому такому же периоду.
+
+    Квартал сравнивается с прошлым кварталом, месяц — с прошлым месяцем.
 
     Ограничено тем же набором команд, что и отчёт (см. ``_resolve_teams``) —
     раньше сводка всегда считала все команды сервиса целиком, независимо от
     фильтра, которым сужена таблица (см. ревью, ВАЖНО 11).
     """
     team_list = _resolve_teams(db, teams)
-    rows = build_teams_summary(db, team_list, year, month, direction=direction)
-    return {"year": year, "month": month, "rows": rows}
+    rows = build_teams_summary(db, team_list, year, month, direction=direction, months=months)
+    return {"year": year, "month": month, "months": months, "rows": rows}
 
 
 # === Расшифровка метрики ===
@@ -224,6 +253,7 @@ def get_breakdown(
     metric_code: str = Query(...),
     year: int = Query(..., ge=2020, le=2100),
     month: int = Query(..., ge=1, le=12),
+    months: int = MonthsParam,
     teams: Optional[str] = Query(None, description="Команды через запятую"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
@@ -241,7 +271,7 @@ def get_breakdown(
 
     team_list = _resolve_teams(db, teams)
     base_url = _jira_base_url(db)
-    result = resolve_breakdown(db, metric, account_id, year, month, team_list, direction)
+    result = resolve_breakdown(db, metric, account_id, year, month, team_list, direction, months=months)
 
     if result["unit"] == "worklogs":
         late_ids = result["late_ids"]
@@ -259,12 +289,12 @@ def get_breakdown(
         # одному человеку: панель расчёта под ведомостью должна отвечать не
         # только «какие задачи», но и «почему их столько» (спека доработок,
         # раздел 6).
-        **_breakdown_funnels(db, metric, account_id, year, month, team_list, direction),
+        **_breakdown_funnels(db, metric, account_id, year, month, team_list, direction, months),
         # Таблица разбора: строка — задача, колонка — требование метрики.
         # Списки выше остаются для выгрузок и совместимости, но руководитель
         # смотрит именно сюда — незачтённые строки видно сразу.
         "table": build_table(
-            db, metric, account_id, year, month, team_list, base_url, direction,
+            db, metric, account_id, year, month, team_list, base_url, direction, months=months,
         ),
     }
 
@@ -294,32 +324,44 @@ def get_trend(
     return {"account_id": account_id, "points": points}
 
 
-# === Утверждение месяца ===
+# === Утверждение квартала ===
 
 @router.post("/approve", response_model=KpiApprovalOut)
-def approve_month(
+def approve_quarter(
     body: KpiApproveRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> KpiApprovalOut:
-    """Заморозить снимок месяца: результат вместе с весами и правилами на момент утверждения.
+    """Заморозить снимок квартала: результат вместе с весами и правилами на момент утверждения.
 
-    Повторное утверждение того же месяца перезаписывает существующий снимок
-    (уникальное ограничение team+year+month не должно приводить к ошибке).
-    Утверждение устойчиво к одновременному закрытию месяца двумя
+    Подписывается целый квартал, а не месяц (решение заказчика 2026-08-06).
+    Пока утверждение выключено общими правилами раздела, запрос отклоняется —
+    проверка на сервере, а не только скрытая кнопка: выключатель должен
+    держать и прямое обращение к сервису.
+
+    Повторное утверждение того же квартала перезаписывает существующий снимок
+    (уникальное ограничение team+year+quarter не должно приводить к ошибке).
+    Утверждение устойчиво к одновременному закрытию квартала двумя
     руководителями (``save_approval`` откатывает и перечитывает строку при
     конфликте уникального ограничения — см. ревью, ВАЖНО 3).
     """
-    payload = json.dumps(build_approval_payload(db, body.team, body.year, body.month), ensure_ascii=False)
+    if not read_kpi_settings(db).approval_enabled:
+        raise HTTPException(status_code=409, detail="Утверждение квартала выключено в правилах раздела")
+    if body.quarter not in (1, 2, 3, 4):
+        raise HTTPException(status_code=422, detail="Квартал должен быть от 1 до 4")
+
+    payload = json.dumps(
+        build_approval_payload(db, body.team, body.year, body.quarter), ensure_ascii=False,
+    )
     approved_at = datetime.utcnow()
     # Имя — то, что видит руководитель на плашке утверждения; почта — запасной
     # вариант, если у пользователя почему-то не заполнено имя (см. находка 4).
     approved_by = current_user.display_name or current_user.email
 
-    row = save_approval(db, body.team, body.year, body.month, approved_by, approved_at, payload)
+    row = save_approval(db, body.team, body.year, body.quarter, approved_by, approved_at, payload)
 
     return KpiApprovalOut(
-        team=body.team, year=body.year, month=body.month, approved=True,
+        team=body.team, year=body.year, quarter=body.quarter, approved=True,
         approved_by=row.approved_by, approved_at=row.approved_at.isoformat(),
     )
 
@@ -328,15 +370,15 @@ def approve_month(
 def get_approval(
     team: str = Query(...),
     year: int = Query(..., ge=2020, le=2100),
-    month: int = Query(..., ge=1, le=12),
+    quarter: int = Query(..., ge=1, le=4),
     db: Session = Depends(get_db),
 ) -> KpiApprovalOut:
-    """Кто и когда утвердил месяц; если ещё не утверждён — ``approved: false``."""
-    row = db.query(KpiApproval).filter_by(team=team, year=year, month=month).first()
+    """Кто и когда утвердил квартал; если ещё не утверждён — ``approved: false``."""
+    row = db.query(KpiApproval).filter_by(team=team, year=year, quarter=quarter).first()
     if row is None:
-        return KpiApprovalOut(team=team, year=year, month=month, approved=False)
+        return KpiApprovalOut(team=team, year=year, quarter=quarter, approved=False)
     return KpiApprovalOut(
-        team=team, year=year, month=month, approved=True,
+        team=team, year=year, quarter=quarter, approved=True,
         approved_by=row.approved_by, approved_at=row.approved_at.isoformat(),
     )
 
@@ -347,16 +389,20 @@ def get_approval(
 def export_xlsx(
     year: int = Query(..., ge=2020, le=2100),
     month: int = Query(..., ge=1, le=12),
+    months: int = MonthsParam,
     teams: Optional[str] = Query(None, description="Команды через запятую"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Отчёт KPI в xlsx. Утверждённые месяцы выгружаются из снимка — как в отчёте (BLOCKER 1)."""
+    """Отчёт KPI за период в xlsx. Утверждённые кварталы выгружаются из снимка — как в отчёте (BLOCKER 1)."""
     team_list = _resolve_teams(db, teams)
-    report = report_with_approvals(db, team_list, year, month, direction=direction)
+    report = report_with_approvals(db, team_list, year, month, direction=direction, months=months)
     blob = export_report_xlsx(report)
+    # Имя файла — только ASCII: кириллица в заголовке Content-Disposition
+    # ломает ответ (заголовки HTTP — latin-1).
+    suffix = f"{year}_{month:02d}" if months == 1 else f"{year}_{month:02d}_{months}m"
     return Response(
         content=blob,
         media_type=XLSX_MIME,
-        headers={"Content-Disposition": f'attachment; filename="kpi_{year}_{month:02d}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="kpi_{suffix}.xlsx"'},
     )

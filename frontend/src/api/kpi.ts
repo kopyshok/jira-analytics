@@ -12,11 +12,20 @@ export interface KpiMetricValue {
   denominator: number | null;
 }
 
+/** Итог одного месяца внутри периода длиннее месяца. */
+export interface KpiMonthPoint {
+  year: number;
+  month: number;
+  total: number | null;
+}
+
 export interface KpiReportRow {
   employee_id: string;
   employee_name: string;
   account_id: string;
   team: string | null;
+  /** Помесячная разбивка внутри периода; у месячного отчёта её нет. */
+  months_breakdown?: KpiMonthPoint[];
   profile_code: string | null;
   /** Человекочитаемое название профиля оценки — показывать вместо
    * технического кода (латиницей), см. ревью, мелочи. */
@@ -53,6 +62,12 @@ export interface KpiSkippedEmployee {
 export interface KpiReport {
   year: number;
   month: number;
+  /** Длина периода в месяцах: 1 — месяц, 3 — квартал. */
+  months: number;
+  /** Год и квартал, если период — ровно календарный квартал; иначе `null`. */
+  quarter: { year: number; quarter: number } | null;
+  /** Утверждение квартала включено в правилах раздела. */
+  approval_enabled: boolean;
   teams: string[];
   rows: KpiReportRow[];
   summary: KpiReportSummary;
@@ -87,23 +102,27 @@ export interface KpiTeamSummaryRow {
 export interface KpiTeamsSummary {
   year: number;
   month: number;
+  months: number;
   rows: KpiTeamSummaryRow[];
 }
 
 export interface KpiReportFilters {
   year: number;
+  /** Последний месяц периода. */
   month: number;
+  /** Длина периода в месяцах; по умолчанию 1 (месяц). */
+  months?: number;
   teams?: string;
   direction?: string;
 }
 
 export const fetchKpiReport = (
-  { year, month, teams, direction }: KpiReportFilters,
+  { year, month, months, teams, direction }: KpiReportFilters,
   signal?: AbortSignal,
 ) =>
   api.get<KpiReport>(
     '/kpi/report',
-    { year: String(year), month: String(month), teams, direction },
+    { year: String(year), month: String(month), months: String(months ?? 1), teams, direction },
     signal,
   );
 
@@ -115,10 +134,11 @@ export const fetchTeamsSummary = (
   teams?: string,
   direction?: string,
   signal?: AbortSignal,
+  months = 1,
 ) =>
   api.get<KpiTeamsSummary>(
     '/kpi/teams-summary',
-    { year: String(year), month: String(month), teams, direction },
+    { year: String(year), month: String(month), months: String(months), teams, direction },
     signal,
   );
 
@@ -247,18 +267,20 @@ export interface KpiBreakdownFilters {
   metric_code: string;
   year: number;
   month: number;
+  months?: number;
   teams?: string;
   direction?: string;
 }
 
 export const fetchBreakdown = (
-  { account_id, metric_code, year, month, teams, direction }: KpiBreakdownFilters,
+  { account_id, metric_code, year, month, months, teams, direction }: KpiBreakdownFilters,
   signal?: AbortSignal,
 ) =>
   api.get<KpiBreakdown>(
     '/kpi/breakdown',
     {
-      account_id, metric_code, year: String(year), month: String(month), teams, direction,
+      account_id, metric_code, year: String(year), month: String(month),
+      months: String(months ?? 1), teams, direction,
     },
     signal,
   );
@@ -294,36 +316,36 @@ export const fetchTrend = (
     signal,
   );
 
-// === Утверждение месяца ===
+// === Утверждение квартала ===
 
 export interface KpiApproval {
   team: string;
   year: number;
-  month: number;
+  quarter: number;
   approved: boolean;
   approved_by: string | null;
   approved_at: string | null;
 }
 
-export const approveMonth = (body: { team: string; year: number; month: number }) =>
+export const approveQuarter = (body: { team: string; year: number; quarter: number }) =>
   api.post<KpiApproval>('/kpi/approve', body);
 
-export const fetchApproval = (team: string, year: number, month: number, signal?: AbortSignal) =>
+export const fetchApproval = (team: string, year: number, quarter: number, signal?: AbortSignal) =>
   api.get<KpiApproval>(
     '/kpi/approval',
-    { team, year: String(year), month: String(month) },
+    { team, year: String(year), quarter: String(quarter) },
     signal,
   );
 
 // === Выгрузка ===
 
 export const downloadKpiExport = (
-  { year, month, teams, direction }: KpiReportFilters,
+  { year, month, months, teams, direction }: KpiReportFilters,
   filename: string,
 ) =>
   api.download(
     '/kpi/export.xlsx',
-    { year: String(year), month: String(month), teams, direction },
+    { year: String(year), month: String(month), months: String(months ?? 1), teams, direction },
     filename,
   );
 
@@ -471,6 +493,8 @@ export interface KpiGeneralSettings {
   worklog_deadline_days: number;
   worklog_deadline_time: string;
   empty_policy: string;
+  /** Утверждение квартала: пока раздел обкатывают, выключено. */
+  approval_enabled: boolean;
 }
 
 export interface KpiDeadlineCompareRow {
