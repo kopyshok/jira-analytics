@@ -288,6 +288,7 @@ def main() -> None:
 
     # Bind ДО docker build: иначе в проверяемый образ попадают черновики,
     # а не release_notes/<target>.json — «Что нового» на проде пустое.
+    notes_file_existed = target_notes.exists()
     if drafts_file.exists():
         print(f"\nПривязка черновиков release notes к {target}...")
         bind = subprocess.run(
@@ -305,12 +306,16 @@ def main() -> None:
     if not args.skip_docker_build:
         try:
             ensure_docker_build()
+            if not args.skip_notes_check:
+                ensure_notes_in_image(target)
         except SystemExit:
             # Откатить bind — дерево должно остаться таким же, как до запуска.
+            # git checkout вернёт drafts.json, но файл версии не отслеживается —
+            # без unlink повторный запуск подшил бы заметки в него вторым слоем.
             run(["git", "checkout", "--", "release_notes"], check=False)
+            if not notes_file_existed:
+                target_notes.unlink(missing_ok=True)
             raise
-        if not args.skip_notes_check:
-            ensure_notes_in_image(target)
 
     # Бамп версий + commit + tag — нативно на Python (раньше был `make release`,
     # но POSIX-синтаксис Makefile падает под Windows cmd).
