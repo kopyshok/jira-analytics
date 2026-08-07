@@ -27,7 +27,10 @@ def upgrade() -> None:
 
     bind = op.get_bind()
     session = Session(bind=bind)
-    seed_defaults(session)
+    # Без ролей: таблица связи «профиль — роль» появляется только в k13a, она же
+    # заводит роли профиля «Аналитик». Сегодняшний seed_defaults() пишет туда, и
+    # на чистой базе это падало «relation kpi_profile_roles does not exist».
+    seed_defaults(session, with_roles=False)
     session.commit()
 
 
