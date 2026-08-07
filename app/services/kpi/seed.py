@@ -74,12 +74,16 @@ def _ensure_profile_metric(db: Session, profile: KpiProfile, metric: KpiMetric,
     ))
 
 
-def seed_defaults(db: Session) -> None:
+def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
     """Завести шесть метрик и профиль «Аналитик», если их ещё нет.
 
     Идемпотентно: повторный вызов не создаёт дублей метрик и не дублирует
     веса в профиле (миграция, вызывающая эту функцию, может быть применена
     к уже заполненной базе при пересборе dev-окружения).
+
+    ``with_roles=False`` — для миграции ``k07a``: на её ревизии таблицы связи
+    «профиль — роль» ещё нет, она появляется только в ``k13a``, которая сама и
+    заводит роли профиля. На чистой базе иначе падение «нет такой таблицы».
     """
     quality = _ensure_metric(db, KpiMetric(
         code="quality",
@@ -219,8 +223,9 @@ def seed_defaults(db: Session) -> None:
     # для них не заведён свой. Раньше это делал признак «профиль по
     # умолчанию», подхватывавший заодно и все остальные роли (программистов,
     # тестировщиков) — теперь роли перечислены явно.
-    for role_code in DEFAULT_PROFILE_ROLES:
-        _ensure_profile_role(db, profile, role_code)
+    if with_roles:
+        for role_code in DEFAULT_PROFILE_ROLES:
+            _ensure_profile_role(db, profile, role_code)
 
     weighted_metrics = [
         (quality, 0.2, 10), (deadlines, 0.2, 20), (regulations, 0.2, 30),

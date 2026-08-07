@@ -94,6 +94,32 @@ def upgrade() -> None:
                 {"id": str(uuid.uuid4()), "pid": profile_id, "role": role_code, "now": now},
             )
 
+    # Чистая база: профиль «Аналитик» завела миграция k07a, но без ролей —
+    # таблицы тогда ещё не было. Заводим их здесь, иначе после установки с нуля
+    # профиль никого не оценивает. Коды ролей продублированы намеренно: миграция
+    # не должна зависеть от константы в коде, которая может измениться.
+    analyst_id = bind.execute(sa.text(
+        "SELECT id FROM kpi_profiles WHERE code = 'analyst' LIMIT 1"
+    )).scalar()
+    if analyst_id:
+        taken: set[str] = {
+            r[0] for r in bind.execute(
+                sa.text("SELECT role_code FROM kpi_profile_roles")
+            ).fetchall()
+        }
+        now = datetime.utcnow()
+        for role_code in ("analyst", ROLE_PROJECT_MANAGER):
+            if role_code in taken:
+                continue
+            bind.execute(
+                sa.text(
+                    "INSERT INTO kpi_profile_roles "
+                    "(id, profile_id, role_code, created_at, updated_at) "
+                    "VALUES (:id, :pid, :role, :now, :now)"
+                ),
+                {"id": str(uuid.uuid4()), "pid": analyst_id, "role": role_code, "now": now},
+            )
+
     # Индекс по удаляемой колонке снимается отдельно: batch-режим SQLite
     # пересоздаёт таблицу и пытается восстановить все её индексы, включая
     # индекс по колонке, которой в новой таблице уже нет.
