@@ -34,6 +34,7 @@ const PERSON_FIELD_LABELS: Record<string, string> = {
 const PERIOD_WINDOW_LABELS: Record<string, string> = {
   closed_in: 'Закрыта в периоде',
   created_and_closed_in: 'Создана и закрыта в периоде',
+  open_or_closed_in: 'Закрыта в периоде или открыта на его конец',
 };
 
 const LIST_OPS = [
