@@ -74,6 +74,8 @@ class KpiMetricIn(BaseModel):
     score_max: Optional[float] = None
     invert: bool = False
     cap_at_100: bool = True
+    # None — брать общее правило раздела
+    empty_policy: Optional[str] = None
     sort_order: int = 0
 
 
@@ -90,6 +92,7 @@ class KpiMetricOut(BaseModel):
     score_max: Optional[float] = None
     invert: bool
     cap_at_100: bool
+    empty_policy: Optional[str] = None
     is_builtin: bool
     sort_order: int
 
@@ -218,6 +221,7 @@ def _metric_to_out(m: KpiMetric) -> KpiMetricOut:
         fact_field=m.fact_field,
         score_fields=json.loads(m.score_fields) if m.score_fields else None,
         score_max=m.score_max, invert=m.invert, cap_at_100=m.cap_at_100,
+        empty_policy=m.empty_policy,
         is_builtin=m.is_builtin, sort_order=m.sort_order,
     )
 
@@ -246,6 +250,11 @@ def _validate_metric_kind(body: KpiMetricIn) -> None:
             status_code=422,
             detail="Для способа «средний балл к максимуму» обязательны поля оценок и максимум",
         )
+    if body.empty_policy is not None and body.empty_policy not in _EMPTY_POLICIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Неизвестное правило на отсутствие данных: {body.empty_policy!r}",
+        )
 
 
 def _apply_metric_fields(metric: KpiMetric, body: KpiMetricIn) -> None:
@@ -270,6 +279,7 @@ def _apply_metric_fields(metric: KpiMetric, body: KpiMetricIn) -> None:
     metric.score_max = body.score_max
     metric.invert = body.invert
     metric.cap_at_100 = body.cap_at_100
+    metric.empty_policy = body.empty_policy
     metric.sort_order = body.sort_order
 
 

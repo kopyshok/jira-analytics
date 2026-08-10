@@ -33,6 +33,35 @@ def test_all_metrics_missing_gives_none():
     assert combine(parts, empty_policy="redistribute") is None
 
 
+def test_metric_policy_overrides_general_rule():
+    """Своё правило метрики перебивает общее правило раздела."""
+    parts = [("a", MetricResult(80.0, True), 0.5), ("b", MetricResult(None, False), 0.5, "zero")]
+    assert combine(parts, empty_policy="redistribute") == 40.0
+
+
+def test_metric_policies_mix_in_one_profile():
+    """Метрика «не учитывать» выбывает, метрика «0%» остаётся в знаменателе.
+
+    Три метрики по 1/3: первая с данными, вторая без данных «не учитывать»,
+    третья без данных «0%». Знаменатель — 2/3, числитель — 90 × 1/3.
+    """
+    parts = [
+        ("a", MetricResult(90.0, True), 1 / 3),
+        ("b", MetricResult(None, False), 1 / 3, "redistribute"),
+        ("c", MetricResult(None, False), 1 / 3, "zero"),
+    ]
+    assert round(combine(parts, empty_policy="full"), 2) == 45.0
+
+
+def test_all_missing_metrics_excluded_gives_none():
+    """Все метрики без данных и все «не учитывать» — итога нет, а не 0%."""
+    parts = [
+        ("a", MetricResult(None, False), 0.5, "redistribute"),
+        ("b", MetricResult(None, False), 0.5, "redistribute"),
+    ]
+    assert combine(parts, empty_policy="zero") is None
+
+
 def test_quality_metric_end_to_end(db_session, sample_project):
     """Три бага на пятнадцать выпущенных задач дают 80%."""
     from app.models.employee import Employee

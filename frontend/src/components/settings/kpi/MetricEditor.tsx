@@ -44,6 +44,13 @@ const LIST_OPS = [
   { value: 'ne', label: 'не равно' },
 ];
 
+const EMPTY_POLICY_OPTIONS = [
+  { value: null, label: 'Как в общих правилах' },
+  { value: 'redistribute', label: 'Не учитывать метрику, вес уходит остальным' },
+  { value: 'full', label: 'Считать выполненной на 100%' },
+  { value: 'zero', label: 'Считать невыполненной, 0%' },
+];
+
 const EMPTY_CONDITION_SET: KpiConditionSet = {
   unit: 'issues', person_field: 'author', period_window: 'closed_in', conditions: [],
 };
@@ -53,6 +60,7 @@ function blankMetricForm(sortOrder = 0): KpiMetricPayload {
     code: '', name: '', description: '', calc_kind: 'ratio',
     numerator: { ...EMPTY_CONDITION_SET }, denominator: { ...EMPTY_CONDITION_SET },
     fact_field: null, score_fields: null, score_max: 5, invert: false, cap_at_100: true,
+    empty_policy: null,
     sort_order: sortOrder,
   };
 }
@@ -186,7 +194,7 @@ export default function MetricEditor() {
         code: m.code, name: m.name, description: m.description, calc_kind: m.calc_kind,
         numerator: m.numerator, denominator: m.denominator, fact_field: m.fact_field,
         score_fields: m.score_fields, score_max: m.score_max, invert: m.invert,
-        cap_at_100: m.cap_at_100, sort_order: m.sort_order,
+        cap_at_100: m.cap_at_100, empty_policy: m.empty_policy ?? null, sort_order: m.sort_order,
       });
     }
   }, [selectedId, metricsQuery.data]);
@@ -383,6 +391,19 @@ export default function MetricEditor() {
                   <Text>Ограничить сверху 100%</Text>
                 </Space>
               </Space>
+            </Card>
+
+            <Card size="small" title="Если данных для расчёта нет" style={{ marginTop: 12 }}>
+              <Select
+                style={{ width: '100%', maxWidth: 460 }}
+                value={form.empty_policy ?? null}
+                onChange={(v) => setForm((f) => ({ ...f, empty_policy: v }))}
+                options={EMPTY_POLICY_OPTIONS}
+              />
+              <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
+                Правило действует только на эту метрику. «Как в общих правилах» —
+                берётся настройка раздела (вкладка «Общие правила»).
+              </Text>
             </Card>
 
             <Button
