@@ -33,20 +33,36 @@ def _fact_by_issue(db: Session, issue_ids: list[str]) -> dict[str, float]:
 
 
 def _fact_by_person(db: Session, issue_ids: list[str]) -> dict[str, list[dict]]:
-    """Разбивка факта по людям — показывается при раскрытии строки."""
+    """Разбивка факта по людям — показывается при раскрытии строки.
+
+    Часы подзадач приплюсовываются к родителю: разработчик списывает и в
+    основную задачу, и в подчинённые, а на экране это одна работа.
+    """
     if not issue_ids:
         return {}
-    rows = (
+    own = (
         db.query(Worklog.issue_id, Employee.display_name, func.sum(Worklog.hours))
         .join(Employee, Employee.id == Worklog.employee_id)
         .filter(Worklog.issue_id.in_(issue_ids))
         .group_by(Worklog.issue_id, Employee.display_name)
         .all()
     )
-    out: dict[str, list[dict]] = {}
-    for issue_id, name, total in rows:
-        out.setdefault(issue_id, []).append({"name": name, "hours": float(total or 0)})
-    return out
+    children = (
+        db.query(Issue.parent_id, Employee.display_name, func.sum(Worklog.hours))
+        .join(Worklog, Worklog.issue_id == Issue.id)
+        .join(Employee, Employee.id == Worklog.employee_id)
+        .filter(Issue.parent_id.in_(issue_ids))
+        .group_by(Issue.parent_id, Employee.display_name)
+        .all()
+    )
+    totals: dict[str, dict[str, float]] = {}
+    for issue_id, name, total in list(own) + list(children):
+        by_name = totals.setdefault(issue_id, {})
+        by_name[name] = by_name.get(name, 0.0) + float(total or 0)
+    return {
+        issue_id: [{"name": name, "hours": hours} for name, hours in by_name.items()]
+        for issue_id, by_name in totals.items()
+    }
 
 
 def _select_issues(
@@ -88,6 +104,24 @@ def _child_estimates(db: Session, issue_ids: list[str]) -> tuple[dict, dict]:
     return est_sum, counts
 
 
+def _child_fact(db: Session, issue_ids: list[str]) -> dict[str, float]:
+    """Часы подзадач по родителям — по ВСЕМ подзадачам, а не только видимым.
+
+    Подзадача может быть закрыта или отфильтрована из среза, но списанные в
+    неё часы всё равно потрачены на работу родителя.
+    """
+    if not issue_ids:
+        return {}
+    rows = (
+        db.query(Issue.parent_id, func.sum(Worklog.hours))
+        .join(Worklog, Worklog.issue_id == Issue.id)
+        .filter(Issue.parent_id.in_(issue_ids))
+        .group_by(Issue.parent_id)
+        .all()
+    )
+    return {parent_id: float(total or 0) for parent_id, total in rows}
+
+
 def build_overview(
     db: Session,
     developer_ids: list[str],
@@ -107,26 +141,33 @@ def build_overview(
 
     issues = _select_issues(db, cfg, developer_ids, only_open)
     ids = [i.id for i in issues]
+    id_set = set(ids)
     fact_map = _fact_by_issue(db, ids)
     person_map = _fact_by_person(db, ids)
     child_est, child_count = _child_estimates(db, ids)
+    child_fact = _child_fact(db, ids)
 
     rows: list[dict] = []
     signatures: dict[tuple[str, str], str] = {}
     for issue in issues:
         group = group_of_status(cfg, issue.status)
         is_analysis = issue.issue_type in cfg.assignee_types
+        is_subtask = issue.issue_type in cfg.subtask_types
+        is_orphan = is_subtask and (
+            not issue.parent_id or issue.parent_id not in id_set
+        )
         facts = IssueFacts(
             key=issue.key,
             status=issue.status,
             group=group,
             est=issue.dev_est_hours,
-            fact=fact_map.get(issue.id, 0.0),
+            fact=fact_map.get(issue.id, 0.0) + child_fact.get(issue.id, 0.0),
             days_in_status=_days_in_status(issue, today),
             child_est_sum=child_est.get(issue.id),
             has_children=child_count.get(issue.id, 0) > 0,
-            is_subtask=issue.issue_type in cfg.subtask_types,
+            is_subtask=is_subtask,
             is_analysis=is_analysis,
+            is_orphan=is_orphan,
         )
         flags = compute_flags(facts, cfg)
         for flag in flags:
@@ -156,6 +197,10 @@ def build_overview(
                 "days_in_status": facts.days_in_status,
                 "is_analysis": is_analysis,
                 "is_subtask": facts.is_subtask,
+                # Самостоятельная задача = не подзадача либо подзадача-сирота.
+                # Только такие идут в счётчики, часы и очередь: оценка подзадачи
+                # уже сидит в родителе и задваивать её нельзя.
+                "is_standalone": not facts.is_subtask or is_orphan,
                 "flags": flags,
                 "signatures": {f: signatures[(f, issue.id)] for f in flags},
             }
@@ -195,7 +240,12 @@ def build_overview(
 
 
 def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
-    """Сводка на человека: счётчики по группам статусов, часы, точность, признаки."""
+    """Сводка на человека: счётчики по группам статусов, часы, точность, признаки.
+
+    Счётчики и часы считаются по самостоятельным задачам: подзадача — это
+    декомпозиция, её оценка уже учтена в родителе, а часы подтянуты туда же.
+    Признаки — по всем строкам: проблема на подзадаче остаётся проблемой.
+    """
     by_dev: dict[str, list[dict]] = {dev_id: [] for dev_id in developer_ids}
     for row in rows:
         by_dev.setdefault(row["developer_id"], []).append(row)
@@ -204,9 +254,10 @@ def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
     for dev_id, items in by_dev.items():
         if not items:
             continue
+        main = [r for r in items if r["is_standalone"]]
         ratios = [
             r["fact_hours"] / r["est_hours"]
-            for r in items
+            for r in main
             if r["est_hours"] and r["fact_hours"] > 0
         ]
         flag_counts: dict[str, int] = {}
@@ -217,12 +268,12 @@ def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
             {
                 "developer_id": dev_id,
                 "display_name": items[0]["developer_name"],
-                "total_issues": len(items),
-                "in_dev": sum(1 for r in items if r["status_group"] == "dev"),
-                "waiting": sum(1 for r in items if r["status_group"] == "waiting"),
-                "todo": sum(1 for r in items if r["status_group"] == "todo"),
-                "est_hours": sum(r["est_hours"] or 0 for r in items),
-                "fact_hours": sum(r["fact_hours"] for r in items),
+                "total_issues": len(main),
+                "in_dev": sum(1 for r in main if r["status_group"] == "dev"),
+                "waiting": sum(1 for r in main if r["status_group"] == "waiting"),
+                "todo": sum(1 for r in main if r["status_group"] == "todo"),
+                "est_hours": sum(r["est_hours"] or 0 for r in main),
+                "fact_hours": sum(r["fact_hours"] for r in main),
                 "accuracy": round(statistics.median(ratios), 2) if ratios else None,
                 "flag_counts": flag_counts,
             }

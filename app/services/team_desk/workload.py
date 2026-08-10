@@ -61,7 +61,11 @@ def queue_for_developers(
 ) -> dict[str, dict]:
     """Очередь работы на окно `days` дней вперёд.
 
-    queue_hours — сумма оценок незакрытых задач в статусах очереди.
+    queue_hours — остаток работы по задачам в статусах очереди: оценка минус
+    уже списанные часы (свои и подзадач), не меньше нуля. Задача в работе
+    остаток тоже даёт — она по-прежнему висит на человеке.
+    Подзадачи в очередь не идут: их оценка — декомпозиция родительской, и
+    считать её второй раз значит задвоить нагрузку.
     available_hours — нормо-часы окна минус дни отсутствий.
     queue_days — во сколько рабочих дней укладывается очередь; None, если
     свободных часов в окне нет (человек в отпуске).
@@ -77,7 +81,9 @@ def queue_for_developers(
     per_dev: dict[str, dict] = {}
     for row in issue_rows:
         dev_id = row.get("developer_id")
-        if not dev_id or row.get("status") not in cfg.queue_statuses:
+        if not dev_id or not row.get("is_standalone"):
+            continue
+        if row.get("status") not in cfg.queue_statuses:
             continue
         bucket = per_dev.setdefault(
             dev_id, {"queue_hours": 0.0, "without_estimate": 0}
@@ -86,9 +92,11 @@ def queue_for_developers(
         if est is None:
             bucket["without_estimate"] += 1
         else:
-            bucket["queue_hours"] += float(est)
+            done = float(row.get("fact_hours") or 0)
+            bucket["queue_hours"] += max(0.0, float(est) - done)
 
     for dev_id, bucket in per_dev.items():
+        bucket["queue_hours"] = round(bucket["queue_hours"], 1)
         employee_id = employee_by_account.get(dev_id)
         away = absences.get(employee_id, set()) if employee_id else set()
         available = sum(hours for day, hours in calendar.items() if day not in away)

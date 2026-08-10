@@ -6,7 +6,8 @@ from app.services.team_desk.config import DeskConfig
 
 # Порядок важен: значки в интерфейсе идут в этом порядке.
 FLAG_ORDER = [
-    "over", "under", "decomp", "childgap", "noest", "nospent", "idlespent", "stale",
+    "over", "under", "decomp", "childgap", "orphan",
+    "noest", "nospent", "idlespent", "stale",
 ]
 
 FLAG_LABELS = {
@@ -14,6 +15,7 @@ FLAG_LABELS = {
     "under": "Недорасход",
     "decomp": "Без декомпозиции",
     "childgap": "Подзадачи недооценены",
+    "orphan": "Подзадача без родителя",
     "noest": "Нет оценки",
     "nospent": "Нет списаний",
     "idlespent": "Часы в неначатой",
@@ -35,6 +37,7 @@ class IssueFacts:
     has_children: bool
     is_subtask: bool
     is_analysis: bool               # задача технического анализа
+    is_orphan: bool = False         # подзадача, родителя которой нет в срезе
 
 
 def compute_flags(f: IssueFacts, cfg: DeskConfig) -> list[str]:
@@ -62,6 +65,12 @@ def compute_flags(f: IssueFacts, cfg: DeskConfig) -> list[str]:
                 1 - t["child_gap_pct"] / 100
             ):
                 found.add("childgap")
+
+    # Подзадача — декомпозиция родителя, её оценка живёт в родителе. Родителя
+    # в срезе нет — значит связь порвана: часы такой подзадачи считать не с чем,
+    # и она идёт в расчёты как самостоятельная. Это ошибка данных, не норма.
+    if f.is_orphan:
+        found.add("orphan")
 
     # Часы списаны, а задача так и стоит в «не начатых». Статус готовности
     # к работе означает, что работа не идёт: раз есть часы — статус врёт.
