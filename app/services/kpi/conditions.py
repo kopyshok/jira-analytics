@@ -72,7 +72,7 @@ NUMERIC_FACT_FIELDS = {
 }
 
 PERSON_FIELDS = {"author", "assignee", "linked_issue_author", "worklog_author"}
-PERIOD_WINDOWS = {"closed_in", "created_and_closed_in"}
+PERIOD_WINDOWS = {"closed_in", "created_and_closed_in", "open_or_closed_in"}
 UNITS = {"issues", "worklogs"}
 
 # Атрибуты, не завязанные на конкретную колонку (обработка в _apply_condition),
@@ -301,6 +301,7 @@ _PERSON_LABELS = {
 _PERIOD_LABELS = {
     "closed_in": "задача закрыта в периоде",
     "created_and_closed_in": "задача создана и закрыта в периоде",
+    "open_or_closed_in": "задача закрыта в периоде или была открыта на его конец",
 }
 
 
@@ -332,12 +333,24 @@ def _one_period_clause(cs: ConditionSet, period_start: date, period_end: date):
 
     Создана в Jira проверяется по ``jira_created_at`` — дате создания в Jira,
     а не по ``created_at`` (дате вставки строки в нашу базу).
+
+    Окно ``open_or_closed_in`` добавляет к закрытым живые задачи: заведённые не
+    позже конца периода и на этот момент ещё не закрытые. Нужно метрикам вроде
+    «Соблюдение регламентов», где работа аналитика видна в момент постановки
+    задачи в разработку, а не в момент её закрытия месяцы спустя. Отсев бэклога
+    и отменённых остаётся на условиях по статусу — окно отвечает только за даты.
     """
     start = datetime.combine(period_start, datetime.min.time())
     end = datetime.combine(period_end, datetime.max.time())
     closed = and_(Issue.resolved_at.isnot(None), Issue.resolved_at.between(start, end))
     if cs.period_window == "created_and_closed_in":
         return and_(closed, Issue.jira_created_at.between(start, end))
+    if cs.period_window == "open_or_closed_in":
+        # Дата создания в Jira заполнена не у всех задач (старая выгрузка) —
+        # такие не выбрасываем, иначе окно молча теряет часть живых задач.
+        created_by_end = or_(Issue.jira_created_at.is_(None), Issue.jira_created_at <= end)
+        still_open = or_(Issue.resolved_at.is_(None), Issue.resolved_at > end)
+        return or_(closed, and_(created_by_end, still_open))
     return closed
 
 

@@ -226,6 +226,61 @@ class TestCreatedAndClosedInWindow:
         assert [i.key for i in q.all()] == ["OS-10a"]
 
 
+class TestOpenOrClosedInWindow:
+    """Окно open_or_closed_in: закрытые в периоде + живые на его конец."""
+
+    def _cs(self):
+        return ConditionSet.from_json(json.dumps({
+            "unit": "issues", "person_field": "author", "period_window": "open_or_closed_in",
+            "conditions": [],
+        }))
+
+    def test_open_issue_created_before_period_included(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="20", key="OS-20", reporter_account_id="acc-1",
+                    status="В работе", resolution=None, resolved_at=None,
+                    jira_created_at=datetime(2026, 5, 20))
+        db_session.commit()
+
+        q = build_issue_query(db_session, self._cs(), account_id="acc-1",
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+                              excluded_statuses=[], teams=None)
+        assert [i.key for i in q.all()] == ["OS-20"]
+
+    def test_issue_created_after_period_excluded(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="21", key="OS-21", reporter_account_id="acc-1",
+                    status="В работе", resolution=None, resolved_at=None,
+                    jira_created_at=datetime(2026, 8, 3))
+        db_session.commit()
+
+        q = build_issue_query(db_session, self._cs(), account_id="acc-1",
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+                              excluded_statuses=[], teams=None)
+        assert q.all() == []
+
+    def test_issue_closed_before_period_excluded(self, db_session, sample_project):
+        _make_issue(db_session, sample_project, jid="22", key="OS-22", reporter_account_id="acc-1",
+                    resolution="Готово", resolved_at=datetime(2026, 6, 10),
+                    jira_created_at=datetime(2026, 5, 1))
+        db_session.commit()
+
+        q = build_issue_query(db_session, self._cs(), account_id="acc-1",
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+                              excluded_statuses=[], teams=None)
+        assert q.all() == []
+
+    def test_issue_closed_after_period_counts_as_open(self, db_session, sample_project):
+        """Закрыта в августе — на конец июля была живой, значит в июль попадает."""
+        _make_issue(db_session, sample_project, jid="23", key="OS-23", reporter_account_id="acc-1",
+                    resolution="Готово", resolved_at=datetime(2026, 8, 5),
+                    jira_created_at=datetime(2026, 6, 1))
+        db_session.commit()
+
+        q = build_issue_query(db_session, self._cs(), account_id="acc-1",
+                              periods=[(date(2026, 7, 1), date(2026, 7, 31))],
+                              excluded_statuses=[], teams=None)
+        assert [i.key for i in q.all()] == ["OS-23"]
+
+
 class TestExcludedStatusesTrimDenominator:
     """ВАЖНО 9: задача в исключённом статусе реально не попадает в выборку."""
 
