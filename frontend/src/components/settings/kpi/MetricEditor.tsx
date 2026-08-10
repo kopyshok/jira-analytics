@@ -44,8 +44,14 @@ const LIST_OPS = [
   { value: 'ne', label: 'не равно' },
 ];
 
+// «Как в общих правилах» — это отсутствие своего правила у метрики. В самом
+// выпадающем списке значение не может быть пустым (AntD ругается на null),
+// поэтому наружу оно уходит служебным словом и превращается обратно в «нет
+// своего правила» при сохранении.
+const INHERIT = 'inherit';
+
 const EMPTY_POLICY_OPTIONS = [
-  { value: null, label: 'Как в общих правилах' },
+  { value: INHERIT, label: 'Как в общих правилах' },
   { value: 'redistribute', label: 'Не учитывать метрику, вес уходит остальным' },
   { value: 'full', label: 'Считать выполненной на 100%' },
   { value: 'zero', label: 'Считать невыполненной, 0%' },
@@ -396,8 +402,10 @@ export default function MetricEditor() {
             <Card size="small" title="Если данных для расчёта нет" style={{ marginTop: 12 }}>
               <Select
                 style={{ width: '100%', maxWidth: 460 }}
-                value={form.empty_policy ?? null}
-                onChange={(v) => setForm((f) => ({ ...f, empty_policy: v }))}
+                value={form.empty_policy ?? INHERIT}
+                onChange={(v) => setForm((f) => ({
+                  ...f, empty_policy: v === INHERIT ? null : v,
+                }))}
                 options={EMPTY_POLICY_OPTIONS}
               />
               <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
