@@ -4,14 +4,22 @@ Revision ID: k07a_kpi_seed_defaults
 Revises: k08a_kpi_profile_is_default
 Create Date: 2026-07-30
 
-Идёт ПОСЛЕ k08a (колонка ``is_default``), хотя порядковый номер меньше:
-``seed_defaults()`` пишет профиль через ORM-модель ``KpiProfile``, у которой
-эта колонка уже объявлена в коде. На чистой базе миграции применяются по
-цепочке ``down_revision``, а не по имени файла — раньше сидинг шёл раньше
-колонки и падал на «no such column» (см. ревью Фазы 4, BLOCKER 3).
+Идёт ПОСЛЕ k08a, хотя порядковый номер меньше: на чистой базе миграции
+применяются по цепочке ``down_revision``, а не по имени файла.
+
+Вставка идёт по ЗАМОРОЖЕННОМУ списку колонок этой ревизии, а не через
+ORM-модели. Модель растёт (новые колонки, новые связанные таблицы), а
+миграция обязана работать на схеме своего времени: дважды установка с нуля
+падала именно на этом — «нет такой колонки» и «нет такой таблицы». Данные
+сида берутся из ``app.services.kpi.seed`` как обычные словари: значения,
+появившиеся позже, здесь молча отбрасываются, их доставляют более поздние
+миграции.
 """
+import uuid
+from datetime import datetime
 from typing import Union
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "k07a_kpi_seed_defaults"
@@ -19,19 +27,88 @@ down_revision: Union[str, None] = "k08a_kpi_profile_is_default"
 branch_labels = None
 depends_on = None
 
+# Колонки, существующие на этой ревизии (kpi_metrics создан в k05a).
+METRIC_COLUMNS = (
+    "id", "code", "name", "description", "calc_kind", "numerator_json",
+    "denominator_json", "fact_field", "score_fields", "score_max", "invert",
+    "cap_at_100", "is_builtin", "sort_order", "created_at", "updated_at",
+)
+PROFILE_COLUMNS = (
+    "id", "code", "name", "target_pct", "warn_band_pct", "is_enabled",
+    "created_at", "updated_at",
+)
+PROFILE_METRIC_COLUMNS = (
+    "id", "profile_id", "metric_id", "weight", "sort_order",
+    "created_at", "updated_at",
+)
+
+
+def _table(name: str, columns: tuple[str, ...]) -> sa.Table:
+    return sa.table(name, *(sa.column(c) for c in columns))
+
+
+def _row(values: dict, columns: tuple[str, ...], now: datetime) -> dict:
+    """Строка ровно по колонкам этой ревизии, с идентификатором и датами.
+
+    Ключи одинаковые у всех строк пачки (недостающие — ``None``): пакетная
+    вставка требует единого набора параметров.
+    """
+    row = {c: values.get(c) for c in columns}
+    row["id"] = values.get("id") or str(uuid.uuid4())
+    row["created_at"] = now
+    row["updated_at"] = now
+    return row
+
 
 def upgrade() -> None:
-    from sqlalchemy.orm import Session
-
-    from app.services.kpi.seed import seed_defaults
+    # Только данные, без моделей: см. шапку файла.
+    from app.services.kpi.seed import METRIC_SEEDS, PROFILE_METRIC_WEIGHTS, PROFILE_SEED
 
     bind = op.get_bind()
-    session = Session(bind=bind)
-    # Без ролей: таблица связи «профиль — роль» появляется только в k13a, она же
-    # заводит роли профиля «Аналитик». Сегодняшний seed_defaults() пишет туда, и
-    # на чистой базе это падало «relation kpi_profile_roles does not exist».
-    seed_defaults(session, with_roles=False)
-    session.commit()
+    now = datetime.utcnow()
+
+    # Идемпотентность: миграцию применяют и к уже заполненной базе при
+    # пересборке dev-окружения.
+    existing_metrics = {
+        code for (code,) in bind.execute(sa.text("SELECT code FROM kpi_metrics"))
+    }
+    new_metrics = [
+        _row(seed, METRIC_COLUMNS, now)
+        for seed in METRIC_SEEDS if seed["code"] not in existing_metrics
+    ]
+    if new_metrics:
+        op.bulk_insert(_table("kpi_metrics", METRIC_COLUMNS), new_metrics)
+
+    profile_id = bind.execute(
+        sa.text("SELECT id FROM kpi_profiles WHERE code = :code"),
+        {"code": PROFILE_SEED["code"]},
+    ).scalar()
+    if profile_id is None:
+        profile_row = _row(PROFILE_SEED, PROFILE_COLUMNS, now)
+        profile_id = profile_row["id"]
+        op.bulk_insert(_table("kpi_profiles", PROFILE_COLUMNS), [profile_row])
+
+    metric_ids = {
+        code: mid
+        for code, mid in bind.execute(sa.text("SELECT code, id FROM kpi_metrics"))
+    }
+    linked = {
+        mid for (mid,) in bind.execute(
+            sa.text("SELECT metric_id FROM kpi_profile_metrics WHERE profile_id = :pid"),
+            {"pid": profile_id},
+        )
+    }
+    links = [
+        _row(
+            {"profile_id": profile_id, "metric_id": metric_ids[code],
+             "weight": weight, "sort_order": sort_order},
+            PROFILE_METRIC_COLUMNS, now,
+        )
+        for code, weight, sort_order in PROFILE_METRIC_WEIGHTS
+        if code in metric_ids and metric_ids[code] not in linked
+    ]
+    if links:
+        op.bulk_insert(_table("kpi_profile_metrics", PROFILE_METRIC_COLUMNS), links)
 
 
 def downgrade() -> None:

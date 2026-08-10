@@ -122,6 +122,19 @@ class TestMetricsCrud:
         assert resp.status_code == 422, resp.text
         assert "факта" in resp.json()["detail"]
 
+    def test_metric_empty_policy_saved_and_validated(self, admin_client):
+        """Своё правило на отсутствие данных сохраняется; опечатка — 422."""
+        payload = _metric_payload()
+        payload["empty_policy"] = "zero"
+        created = admin_client.post("/api/v1/kpi-settings/metrics", json=payload)
+        assert created.status_code == 201, created.text
+        assert created.json()["empty_policy"] == "zero"
+
+        bogus = _metric_payload("bogus_policy")
+        bogus["empty_policy"] = "whatever"
+        resp = admin_client.post("/api/v1/kpi-settings/metrics", json=bogus)
+        assert resp.status_code == 422, resp.text
+
     def test_metric_score_to_max_requires_score_fields_and_max(self, admin_client):
         payload = _metric_payload()
         payload["calc_kind"] = "score_to_max"

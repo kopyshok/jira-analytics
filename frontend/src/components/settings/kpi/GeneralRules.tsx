@@ -285,6 +285,10 @@ export default function GeneralRules() {
       <DeadlineComparison />
 
       <Card size="small" title="Если данных для расчёта нет">
+        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
+          Правило по умолчанию для всех метрик. У отдельной метрики можно задать своё —
+          в конструкторе метрики, блок «Если данных для расчёта нет».
+        </Text>
         <Radio.Group
           value={form.empty_policy}
           onChange={(e) => setForm({ ...form, empty_policy: e.target.value })}

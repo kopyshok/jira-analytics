@@ -336,7 +336,7 @@ export default function KpiEmployeeTab({
                   </>
                 ) : (
                   <Text type="secondary" style={{ fontSize: 11.5, display: 'block', marginTop: 7 }}>
-                    {emptyPolicyText(row.empty_policy, Math.round(m.weight * 100))}
+                    {emptyPolicyText(m.empty_policy ?? row.empty_policy, Math.round(m.weight * 100))}
                   </Text>
                 )}
               </div>

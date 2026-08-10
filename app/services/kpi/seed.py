@@ -74,18 +74,11 @@ def _ensure_profile_metric(db: Session, profile: KpiProfile, metric: KpiMetric,
     ))
 
 
-def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
-    """Завести шесть метрик и профиль «Аналитик», если их ещё нет.
-
-    Идемпотентно: повторный вызов не создаёт дублей метрик и не дублирует
-    веса в профиле (миграция, вызывающая эту функцию, может быть применена
-    к уже заполненной базе при пересборе dev-окружения).
-
-    ``with_roles=False`` — для миграции ``k07a``: на её ревизии таблицы связи
-    «профиль — роль» ещё нет, она появляется только в ``k13a``, которая сама и
-    заводит роли профиля. На чистой базе иначе падение «нет такой таблицы».
-    """
-    quality = _ensure_metric(db, KpiMetric(
+# Данные сида — обычные словари, а не готовые объекты модели: их же читает
+# миграция ``k07a``, которой нельзя опираться на сегодняшний набор колонок
+# (колонка, добавленная позже, роняла установку с нуля — см. миграцию).
+METRIC_SEEDS: list[dict] = [
+    dict(
         code="quality",
         name="Качество выпуска",
         description="100 − доля багов на проде от выпущенных задач автора, при нуле багов — 100",
@@ -109,9 +102,8 @@ def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
                 {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
             ],
         }, ensure_ascii=False),
-    ))
-
-    deadlines = _ensure_metric(db, KpiMetric(
+    ),
+    dict(
         code="deadlines",
         name="Соблюдение сроков",
         description="Доля задач исполнителя, выполненных не позже плановой даты окончания",
@@ -135,9 +127,8 @@ def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
                 {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
             ],
         }, ensure_ascii=False),
-    ))
-
-    regulations = _ensure_metric(db, KpiMetric(
+    ),
+    dict(
         code="regulations",
         name="Соблюдение регламентов",
         description="Доля задач, поставленных в разработку с заполненными обязательными полями",
@@ -162,9 +153,8 @@ def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
                 {"attr": "status", "op": "not_in", "value": ["Backlog", "Бэклог"]},
             ],
         }, ensure_ascii=False),
-    ))
-
-    cycle_time = _ensure_metric(db, KpiMetric(
+    ),
+    dict(
         code="cycle_time",
         name="Cycle Time",
         description="Норматив команды на квартал делённый на средний фактический цикл, потолок 100",
@@ -180,9 +170,8 @@ def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
                 {"attr": "cost_type", "op": "eq", "value": "Change"},
             ],
         }, ensure_ascii=False),
-    ))
-
-    customer_score = _ensure_metric(db, KpiMetric(
+    ),
+    dict(
         code="customer_score",
         name="Оценка заказчика",
         description="Средний балл заказчика (скорость, качество, результат) от максимума 5",
@@ -198,9 +187,8 @@ def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
                 {"attr": "resolution", "op": "in", "value": [RESOLUTION_DONE]},
             ],
         }, ensure_ascii=False),
-    ))
-
-    worklog_timeliness = _ensure_metric(db, KpiMetric(
+    ),
+    dict(
         code="worklog_timeliness",
         name="Своевременность трудозатрат",
         description="Доля записей о трудозатратах, внесённых не позже срока по производственному календарю",
@@ -213,12 +201,33 @@ def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
             ],
         }, ensure_ascii=False),
         denominator_json=None,
-    ))
+    ),
+]
 
-    profile = _ensure_profile(db, KpiProfile(
-        code="analyst", name="Аналитик",
-        target_pct=80.0, warn_band_pct=10.0, is_enabled=True,
-    ))
+PROFILE_SEED: dict = dict(
+    code="analyst", name="Аналитик",
+    target_pct=80.0, warn_band_pct=10.0, is_enabled=True,
+)
+
+# Вес метрики в профиле и порядок колонки: (код метрики, вес, порядок).
+PROFILE_METRIC_WEIGHTS: list[tuple[str, float, int]] = [
+    ("quality", 0.2, 10), ("deadlines", 0.2, 20), ("regulations", 0.2, 30),
+    ("cycle_time", 0.2, 40), ("customer_score", 0.1, 50), ("worklog_timeliness", 0.1, 60),
+]
+
+
+def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
+    """Завести шесть метрик и профиль «Аналитик», если их ещё нет.
+
+    Идемпотентно: повторный вызов не создаёт дублей метрик и не дублирует
+    веса в профиле.
+
+    ``with_roles=False`` оставлен для совместимости вызовов: связка «профиль —
+    роль» появляется только в миграции ``k13a``, она же заводит роли профиля.
+    """
+    metrics = {d["code"]: _ensure_metric(db, KpiMetric(**d)) for d in METRIC_SEEDS}
+
+    profile = _ensure_profile(db, KpiProfile(**PROFILE_SEED))
     # Спека допускает оценку руководителей проектов профилем «Аналитик», пока
     # для них не заведён свой. Раньше это делал признак «профиль по
     # умолчанию», подхватывавший заодно и все остальные роли (программистов,
@@ -227,9 +236,5 @@ def seed_defaults(db: Session, *, with_roles: bool = True) -> None:
         for role_code in DEFAULT_PROFILE_ROLES:
             _ensure_profile_role(db, profile, role_code)
 
-    weighted_metrics = [
-        (quality, 0.2, 10), (deadlines, 0.2, 20), (regulations, 0.2, 30),
-        (cycle_time, 0.2, 40), (customer_score, 0.1, 50), (worklog_timeliness, 0.1, 60),
-    ]
-    for metric, weight, sort_order in weighted_metrics:
-        _ensure_profile_metric(db, profile, metric, weight, sort_order)
+    for code, weight, sort_order in PROFILE_METRIC_WEIGHTS:
+        _ensure_profile_metric(db, profile, metrics[code], weight, sort_order)

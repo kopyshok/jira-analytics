@@ -10,6 +10,9 @@ export interface KpiMetricValue {
   has_data: boolean;
   numerator: number | null;
   denominator: number | null;
+  /** Правило метрики на отсутствие данных; сервер уже подставил общее, если
+   * у метрики своего нет. */
+  empty_policy?: 'redistribute' | 'full' | 'zero';
 }
 
 /** Итог одного месяца внутри периода длиннее месяца. */
@@ -376,6 +379,8 @@ export interface KpiMetricPayload {
   score_max?: number | null;
   invert: boolean;
   cap_at_100: boolean;
+  /** null — брать общее правило раздела. */
+  empty_policy?: 'redistribute' | 'full' | 'zero' | null;
   sort_order: number;
 }
 

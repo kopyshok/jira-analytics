@@ -30,6 +30,11 @@ class KpiMetric(Base, TimestampMixin):
     score_max: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     invert: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cap_at_100: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Что делать, когда данных для расчёта нет: redistribute | full | zero.
+    # NULL — брать общее правило раздела (KpiSettings.empty_policy): одним
+    # метрикам «нет данных» означает «не за что штрафовать», другим —
+    # «работа не сделана», поэтому правило задаётся на метрике.
+    empty_policy: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

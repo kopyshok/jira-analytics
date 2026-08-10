@@ -39,23 +39,33 @@ QUARTER_OF_MONTH = {1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 2, 7: 3, 8: 3, 9: 3,
 CALENDAR_BUFFER_DAYS = 7
 
 
-def combine(
-    parts: list[tuple[str, MetricResult, float]], empty_policy: str
-) -> Optional[float]:
-    """Взвешенная сумма метрик с учётом политики пустых данных."""
-    if empty_policy == "redistribute":
-        usable = [(r.value, w) for _, r, w in parts if r.has_data and r.value is not None]
-        total_weight = sum(w for _, w in usable)
-        if not usable or total_weight <= 0:
-            return None
-        return sum(v * w for v, w in usable) / total_weight
-    fill = 100.0 if empty_policy == "full" else 0.0
-    total_weight = sum(w for _, _, w in parts)
+def combine(parts: list[tuple], empty_policy: str) -> Optional[float]:
+    """Взвешенная сумма метрик с учётом политики пустых данных.
+
+    Элемент ``parts`` — ``(код, результат, вес)`` либо
+    ``(код, результат, вес, политика метрики)``; политика метрики (``None`` —
+    не задана) перебивает общее правило раздела ``empty_policy``.
+
+    Политики в одном профиле смешиваются: метрика без данных с политикой
+    «не учитывать» выбывает из расчёта вместе со своим весом, метрики с
+    «0%»/«100%» остаются в знаменателе с подставленным значением. Иначе
+    настройка отдельной метрики обесценивалась бы соседями.
+    """
+    total_weight = 0.0
+    acc = 0.0
+    for part in parts:
+        res, weight = part[1], part[2]
+        policy = (part[3] if len(part) > 3 else None) or empty_policy
+        if res.has_data and res.value is not None:
+            value = res.value
+        elif policy == "redistribute":
+            continue
+        else:
+            value = 100.0 if policy == "full" else 0.0
+        total_weight += weight
+        acc += value * weight
     if total_weight <= 0:
         return None
-    acc = 0.0
-    for _, r, w in parts:
-        acc += (r.value if r.has_data and r.value is not None else fill) * w
     return acc / total_weight
 
 
@@ -630,13 +640,17 @@ def compute_employee_period(
             db, link.metric, employee.jira_account_id, periods,
             teams, settings=st, norm_value=norm, direction=direction, calendar=calendar,
         )
-        parts.append((link.metric.code, res, link.weight))
+        parts.append((link.metric.code, res, link.weight, link.metric.empty_policy))
         metric_payload.append({
             "code": link.metric.code,
             "name": link.metric.name,
             "weight": link.weight,
             "value": res.value,
             "has_data": res.has_data,
+            # Правило метрики, если задано, иначе общее правило раздела —
+            # карточка сотрудника обязана писать применённое правило, а не
+            # общее (см. ревью, ВАЖНО 9).
+            "empty_policy": link.metric.empty_policy or st.empty_policy,
             "numerator": res.numerator,
             "denominator": res.denominator,
         })
