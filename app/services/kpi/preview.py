@@ -31,8 +31,11 @@ from app.services.kpi.conditions import (
 from app.services.kpi.kpi_service import (
     _norm_for,
     compute_metric,
+    has_any_score,
+    has_fact_value,
     period_bounds,
     resolve_breakdown,
+    score_field_names,
     with_direction,
     worklog_items,
 )
@@ -381,6 +384,15 @@ def _breakdown_items(breakdown: dict, base_url: Optional[str]) -> dict:
     }
 
 
+def _value_step(issue: Issue, metric: KpiMetric) -> Optional[tuple[str, bool]]:
+    """Шаг «есть чем считать» для способов расчёта, где мало пройти отбор."""
+    if metric.calc_kind == "norm_to_fact":
+        return "Значение факта заполнено", has_fact_value(issue, metric)
+    if metric.calc_kind == "score_to_max":
+        return "Есть хотя бы одна оценка", has_any_score(issue, score_field_names(metric))
+    return None
+
+
 def explain_issue(
     db: Session,
     metric: KpiMetric,
@@ -436,6 +448,16 @@ def explain_issue(
     failed_step = None
     for label, clauses in checks:
         ok = db.query(Issue.id).filter(Issue.id == issue.id).filter(and_(*clauses)).count() > 0
+        steps.append({"label": label, "passed": ok})
+        if not ok and failed_step is None:
+            failed_step = label
+
+    # Условия отбора — не весь ответ: в среднее берутся только задачи с
+    # заполненным значением. Без этого шага задача с пустым фактом выглядела
+    # «прошла всё», хотя метрика по ней показывала «нет данных».
+    value_step = _value_step(issue, metric)
+    if value_step is not None:
+        label, ok = value_step
         steps.append({"label": label, "passed": ok})
         if not ok and failed_step is None:
             failed_step = label

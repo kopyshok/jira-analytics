@@ -86,6 +86,28 @@ def test_preview_narrowed_to_one_employee_returns_task_lists(db_session, sample_
     assert result["items"]["numerator"][0]["url"] == "https://jira.example/browse/OS-1"
 
 
+def test_explain_issue_names_empty_fact_value(db_session, sample_project):
+    """Задача проходит отбор, но факт пуст — это и должно быть названо шагом."""
+    _setup(db_session, sample_project)
+    metric = KpiMetric(
+        code="ct_preview", name="Cycle Time", calc_kind="norm_to_fact",
+        invert=False, cap_at_100=True, fact_field="cycle_time_fact",
+        numerator_json=json.dumps({
+            "unit": "issues", "person_field": "author", "period_window": "closed_in",
+            "conditions": [{"attr": "issue_type", "op": "in", "value": ["Баг"]}],
+        }),
+    )
+
+    result = explain_issue(
+        db_session, metric, side="numerator", issue_key="OS-1", team="Платежи",
+        year=2026, month=7, account_id="acc-1", direction=None,
+        calendar_buffer_days=CALENDAR_BUFFER_DAYS,
+    )
+    assert result["passed"] is False
+    assert result["failed_step"] == "Значение факта заполнено"
+    assert all(s["passed"] for s in result["steps"][:-1])
+
+
 def test_explain_issue_names_the_step_that_dropped_it(db_session, sample_project):
     _setup(db_session, sample_project)
 
