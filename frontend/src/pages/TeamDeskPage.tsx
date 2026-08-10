@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Card, Empty, Space, Spin, Tabs, Typography } from 'antd';
+import teamDeskHelp from '../../../docs/help/team-desk.md?raw';
 import { FLAG_LABELS, type DeskFilterPrefs, type FlagCode } from '../api/teamDesk';
+import { useRegisterHelp } from '../contexts/HelpContext';
 import {
   useDeskFilter, useDeskOverview, useDeskSettings, useSaveDeskFilter,
 } from '../hooks/useTeamDesk';
@@ -18,6 +20,7 @@ type Layout = 'cards' | 'table' | 'grouped';
 const LAYOUT_KEY = 'team-desk-layout';
 
 export default function TeamDeskPage() {
+  useRegisterHelp('Рабочий стол тимлида', teamDeskHelp);
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [showReviewed, setShowReviewed] = useState(false);
   const [showThresholds, setShowThresholds] = useState(false);
