@@ -112,6 +112,8 @@ def get_overview(
                 "developer_id": row["developer_id"],
                 "status": row["status"],
                 "est_hours": row["est_hours"],
+                "fact_hours": row["fact_hours"],
+                "is_standalone": row["is_standalone"],
             }
             for row in result["issues"]
         ],

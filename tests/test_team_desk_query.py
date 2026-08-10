@@ -101,33 +101,81 @@ def test_overview_groups_issues_by_developer(db_session):
     assert row["fact_by_person"] == [{"name": "Шутов Сергей", "hours": 9.0}]
 
 
-def test_subtask_counts_for_its_own_developer(db_session):
+def test_subtask_does_not_double_count(db_session):
+    """Подзадача — декомпозиция: её оценка живёт в родителе, счётчик не растёт."""
     project = _project(db_session)
+    emp = _employee(db_session, "acc-1", "Шутов Сергей")
     parent = _issue(
         db_session, project, "OS-10",
         developer_account_id="acc-1",
         developer_display_name="Шутов Сергей",
         dev_est_hours=40.0,
     )
-    _issue(
+    child = _issue(
         db_session, project, "OS-11",
         issue_type="Подзадача",
         parent_id=parent.id,
-        developer_account_id="acc-2",
-        developer_display_name="Пак Илья",
+        developer_account_id="acc-1",
+        developer_display_name="Шутов Сергей",
+        dev_est_hours=8.0,
+    )
+    # Часы списаны в подзадачу — факт всё равно должен приехать к родителю.
+    db_session.add(
+        Worklog(
+            id=str(uuid.uuid4()),
+            jira_worklog_id=str(uuid.uuid4()),
+            issue_id=child.id,
+            employee_id=emp.id,
+            hours=5.0,
+            time_spent_seconds=5 * 3600,
+            started_at=datetime.utcnow(),
+        )
+    )
+    db_session.commit()
+
+    result = build_overview(db_session, developer_ids=["acc-1"])
+    dev = result["developers"][0]
+    assert dev["total_issues"] == 1
+    assert dev["est_hours"] == 40.0
+    assert dev["fact_hours"] == 5.0
+
+    rows = {r["key"]: r for r in result["issues"]}
+    assert rows["OS-10"]["is_standalone"] is True
+    assert rows["OS-10"]["fact_hours"] == 5.0
+    assert rows["OS-10"]["fact_by_person"] == [{"name": "Шутов Сергей", "hours": 5.0}]
+    assert rows["OS-11"]["is_standalone"] is False
+    # у родителя одна подзадача на 8 ч против оценки 40 ч
+    assert "childgap" in rows["OS-10"]["flags"]
+    assert "decomp" not in rows["OS-10"]["flags"]
+
+
+def test_subtask_without_parent_in_slice_is_an_error(db_session):
+    """Родителя в срезе нет — связь порвана: подзадача считается сама и подсвечена."""
+    project = _project(db_session)
+    parent = _issue(
+        db_session, project, "OS-20", status="ГОТОВО",
+        developer_account_id="acc-9",
+        developer_display_name="Другой человек",
+        dev_est_hours=40.0,
+    )
+    _issue(
+        db_session, project, "OS-21",
+        issue_type="Подзадача",
+        parent_id=parent.id,
+        developer_account_id="acc-1",
+        developer_display_name="Шутов Сергей",
         dev_est_hours=8.0,
     )
     db_session.commit()
 
-    result = build_overview(db_session, developer_ids=["acc-1", "acc-2"])
-    by_name = {d["display_name"]: d for d in result["developers"]}
+    result = build_overview(db_session, developer_ids=["acc-1"])
+    row = result["issues"][0]
 
-    assert by_name["Пак Илья"]["total_issues"] == 1
-    assert by_name["Шутов Сергей"]["total_issues"] == 1
-    # у родителя одна подзадача на 8 ч против оценки 40 ч
-    parent_row = next(r for r in result["issues"] if r["key"] == "OS-10")
-    assert "childgap" in parent_row["flags"]
-    assert "decomp" not in parent_row["flags"]
+    assert row["key"] == "OS-21"
+    assert row["is_standalone"] is True
+    assert "orphan" in row["flags"]
+    assert result["developers"][0]["total_issues"] == 1
+    assert result["developers"][0]["est_hours"] == 8.0
 
 
 def test_research_issue_taken_by_assignee(db_session):

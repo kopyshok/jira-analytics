@@ -9,12 +9,22 @@ from app.services.team_desk.workload import queue_for_developers
 START = date(2026, 8, 5)
 
 
+def _row(status, est, fact=0.0, standalone=True, dev="acc-1"):
+    return {
+        "developer_id": dev,
+        "status": status,
+        "est_hours": est,
+        "fact_hours": fact,
+        "is_standalone": standalone,
+    }
+
+
 def test_queue_counts_only_queue_statuses(db_session):
     rows = [
-        {"developer_id": "acc-1", "status": "В РАБОТЕ", "est_hours": 8.0},
-        {"developer_id": "acc-1", "status": "К выполнению", "est_hours": 4.0},
-        {"developer_id": "acc-1", "status": "Ожидает тестирования", "est_hours": 40.0},
-        {"developer_id": "acc-1", "status": "ГОТОВО", "est_hours": 16.0},
+        _row("В РАБОТЕ", 8.0),
+        _row("К выполнению", 4.0),
+        _row("Ожидает тестирования", 40.0),
+        _row("ГОТОВО", 16.0),
     ]
     result = queue_for_developers(
         db_session, rows, employee_by_account={}, start=START, days=7
@@ -23,10 +33,35 @@ def test_queue_counts_only_queue_statuses(db_session):
     assert result["acc-1"]["queue_days"] == 1.5
 
 
+def test_subtasks_do_not_inflate_queue(db_session):
+    """Подзадача — декомпозиция родителя, её оценка в очередь второй раз не идёт."""
+    rows = [
+        _row("К выполнению", 40.0),
+        _row("К выполнению", 8.0, standalone=False),
+        _row("К выполнению", 8.0, standalone=False),
+    ]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["queue_hours"] == 40.0
+
+
+def test_queue_takes_remainder_of_started_issue(db_session):
+    """Задача в работе даёт остаток: оценка минус уже списанные часы."""
+    rows = [
+        _row("В РАБОТЕ", 40.0, fact=30.0),
+        _row("В РАБОТЕ", 8.0, fact=20.0),   # перерасход в минус не уводит
+    ]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["queue_hours"] == 10.0
+
+
 def test_issues_without_estimate_counted_separately(db_session):
     rows = [
-        {"developer_id": "acc-1", "status": "В РАБОТЕ", "est_hours": None},
-        {"developer_id": "acc-1", "status": "В РАБОТЕ", "est_hours": 6.0},
+        _row("В РАБОТЕ", None),
+        _row("В РАБОТЕ", 6.0),
     ]
     result = queue_for_developers(
         db_session, rows, employee_by_account={}, start=START, days=7
@@ -36,7 +71,7 @@ def test_issues_without_estimate_counted_separately(db_session):
 
 
 def test_overload_when_queue_exceeds_available(db_session):
-    rows = [{"developer_id": "acc-1", "status": "В РАБОТЕ", "est_hours": 80.0}]
+    rows = [_row("В РАБОТЕ", 80.0)]
     result = queue_for_developers(
         db_session, rows, employee_by_account={}, start=START, days=7
     )
@@ -65,7 +100,7 @@ def test_available_hours_drop_during_absence(db_session):
     )
     db_session.commit()
 
-    rows = [{"developer_id": "acc-1", "status": "В РАБОТЕ", "est_hours": 8.0}]
+    rows = [_row("В РАБОТЕ", 8.0)]
     result = queue_for_developers(
         db_session, rows, employee_by_account={"acc-1": emp.id}, start=START, days=7
     )
