@@ -88,6 +88,34 @@ def test_get_set_my_period(testclient_db_session):
         app.dependency_overrides.clear()
 
 
+def test_team_desk_filter_keeps_whole_header(testclient_db_session):
+    """Шапка стола тимлида переживает выход из раздела целиком, а не частями."""
+    _seed_user(testclient_db_session, "ep_test@example.com")
+    client, headers = _make_authed_client(testclient_db_session)
+    try:
+        resp = client.get("/api/v1/users/me/team-desk-filter", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "teams": [], "developers": [], "mode": "open",
+            "period_start": None, "period_end": None,
+            "show_reviewed": False, "show_done_subtasks": True,
+        }
+
+        saved = {
+            "teams": ["Команда 1С"], "developers": ["acc-1"], "mode": "period",
+            "period_start": "2026-07-01", "period_end": "2026-09-30",
+            "show_reviewed": True, "show_done_subtasks": False,
+        }
+        assert client.put(
+            "/api/v1/users/me/team-desk-filter", json=saved, headers=headers,
+        ).status_code == 200
+
+        resp = client.get("/api/v1/users/me/team-desk-filter", headers=headers)
+        assert resp.json() == saved
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_set_my_analytics_columns(testclient_db_session):
     _seed_user(testclient_db_session, "ep_test@example.com")
     client, headers = _make_authed_client(testclient_db_session)

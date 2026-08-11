@@ -50,7 +50,9 @@ const LIST_OPS = [
 // своего правила» при сохранении.
 const INHERIT = 'inherit';
 
-const EMPTY_POLICY_OPTIONS = [
+type EmptyPolicy = NonNullable<KpiMetricPayload['empty_policy']>;
+
+const EMPTY_POLICY_OPTIONS: { value: EmptyPolicy | typeof INHERIT; label: string }[] = [
   { value: INHERIT, label: 'Как в общих правилах' },
   { value: 'redistribute', label: 'Не учитывать метрику, вес уходит остальным' },
   { value: 'full', label: 'Считать выполненной на 100%' },
@@ -403,7 +405,7 @@ export default function MetricEditor() {
               <Select
                 style={{ width: '100%', maxWidth: 460 }}
                 value={form.empty_policy ?? INHERIT}
-                onChange={(v) => setForm((f) => ({
+                onChange={(v: EmptyPolicy | typeof INHERIT) => setForm((f) => ({
                   ...f, empty_policy: v === INHERIT ? null : v,
                 }))}
                 options={EMPTY_POLICY_OPTIONS}

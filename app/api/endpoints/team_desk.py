@@ -63,6 +63,9 @@ def get_overview(
     developers: Optional[str] = Query(None, description="Учётные записи через запятую"),
     only_open: bool = Query(True),
     show_reviewed: bool = Query(False),
+    show_done_subtasks: bool = Query(True),
+    period_start: Optional[date] = Query(None, description="Начало окна периода"),
+    period_end: Optional[date] = Query(None, description="Конец окна периода"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -104,6 +107,9 @@ def get_overview(
         developer_ids=sorted(account_ids),
         only_open=only_open,
         show_reviewed=show_reviewed,
+        show_done_subtasks=show_done_subtasks,
+        period_start=period_start,
+        period_end=period_end,
     )
     result["workload"] = queue_for_developers(
         db,

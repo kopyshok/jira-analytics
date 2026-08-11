@@ -1,7 +1,11 @@
-import { Button, Card, Segmented, Select, Space, Switch, Typography } from 'antd';
+import { Button, Card, DatePicker, Segmented, Select, Space, Switch, Typography } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import type { DeskMode } from '../../api/teamDesk';
 import { useTeams } from '../../hooks/useSync';
 import { useEmployees } from '../../hooks/useCapacity';
+
+const DATE_FMT = 'YYYY-MM-DD';
 
 interface Props {
   teams: string[];
@@ -10,10 +14,15 @@ interface Props {
   onDevelopersChange: (v: string[]) => void;
   /** Коды ролей, которые считаются разработчиками. */
   developerRoles: string[];
-  onlyOpen: boolean;
-  onOnlyOpenChange: (v: boolean) => void;
+  mode: DeskMode;
+  onModeChange: (v: DeskMode) => void;
+  periodStart: string;
+  periodEnd: string;
+  onPeriodChange: (start: string, end: string) => void;
   showReviewed: boolean;
   onShowReviewedChange: (v: boolean) => void;
+  showDoneSubtasks: boolean;
+  onShowDoneSubtasksChange: (v: boolean) => void;
   onToggleThresholds: () => void;
 }
 
@@ -21,8 +30,10 @@ interface Props {
 export function DeskFilters({
   teams, onTeamsChange,
   developers, onDevelopersChange, developerRoles,
-  onlyOpen, onOnlyOpenChange,
+  mode, onModeChange,
+  periodStart, periodEnd, onPeriodChange,
   showReviewed, onShowReviewedChange,
+  showDoneSubtasks, onShowDoneSubtasksChange,
   onToggleThresholds,
 }: Props) {
   const teamsQuery = useTeams();
@@ -65,18 +76,49 @@ export function DeskFilters({
         />
 
         <Segmented
-          value={onlyOpen ? 'open' : 'all'}
-          onChange={(v) => onOnlyOpenChange(v === 'open')}
+          value={mode}
+          onChange={(v) => onModeChange(v as DeskMode)}
           options={[
             { value: 'open', label: 'Открытые сейчас' },
+            { value: 'period', label: 'За период' },
             { value: 'all', label: 'Все задачи' },
           ]}
         />
+
+        {mode === 'period' && (
+          <DatePicker.RangePicker
+            value={[dayjs(periodStart), dayjs(periodEnd)]}
+            onChange={(range) => {
+              if (range?.[0] && range?.[1]) {
+                onPeriodChange(range[0].format(DATE_FMT), range[1].format(DATE_FMT));
+              }
+            }}
+            allowClear={false}
+            format="DD.MM.YYYY"
+          />
+        )}
 
         <Space size={6}>
           <Switch size="small" checked={showReviewed} onChange={onShowReviewedChange} />
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             показывать просмотренные
+          </Typography.Text>
+        </Space>
+
+        <Space size={6}>
+          <Switch
+            size="small"
+            checked={showDoneSubtasks}
+            onChange={onShowDoneSubtasksChange}
+            // В режиме «все задачи» закрытые подзадачи видны и без тумблера.
+            disabled={mode === 'all'}
+          />
+          <Typography.Text
+            type="secondary"
+            style={{ fontSize: 12 }}
+            title="Показывать закрытые подзадачи под их родителями — видно, разбита задача или нет"
+          >
+            выполненные подзадачи
           </Typography.Text>
         </Space>
 

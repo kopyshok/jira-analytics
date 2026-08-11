@@ -1,3 +1,6 @@
+from datetime import date
+from typing import Literal, Optional
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -108,10 +111,19 @@ def set_my_appearance(
 
 
 class TeamDeskFilterPayload(BaseModel):
-    """Выбор команд и добранных точечно разработчиков на рабочем столе тимлида."""
+    """Шапка рабочего стола тимлида целиком: состав, режим среза, переключатели.
+
+    Тимлид настроил вид один раз — при следующем заходе он должен увидеть тот же
+    экран, и с любого компьютера. Поэтому не localStorage, а профиль.
+    """
 
     teams: list[str] = []
     developers: list[str] = []
+    mode: Literal["open", "period", "all"] = "open"
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
+    show_reviewed: bool = False
+    show_done_subtasks: bool = True
 
 
 @router.get("/me/team-desk-filter", response_model=TeamDeskFilterPayload)
@@ -125,7 +137,8 @@ def set_my_team_desk_filter(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    current_user.team_desk_filter = payload.model_dump()
+    # mode="json" — даты в хранилище должны лечь строками.
+    current_user.team_desk_filter = payload.model_dump(mode="json")
     db.commit()
     return payload
 
