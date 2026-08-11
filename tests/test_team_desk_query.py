@@ -1,6 +1,6 @@
 """Срез задач рабочего стола тимлида."""
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from app.models import Employee, Issue, Project, Worklog
 from app.services.team_desk.query import build_overview
@@ -230,6 +230,87 @@ def test_hidden_statuses_are_not_shown(db_session):
         result = build_overview(db_session, ["acc-1"], only_open=only_open)
         assert [i["key"] for i in result["issues"]] == ["OS-51"]
         assert result["developers"][0]["total_issues"] == 1
+
+
+def test_done_subtask_shown_under_open_parent(db_session):
+    """Родитель в работе, декомпозиция закрыта — она должна быть видна справочно."""
+    project = _project(db_session)
+    parent = _issue(
+        db_session, project, "OS-60",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=40.0,
+    )
+    _issue(
+        db_session, project, "OS-61", status="ГОТОВО",
+        issue_type="Подзадача", parent_id=parent.id,
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=8.0,
+    )
+    db_session.commit()
+
+    shown = build_overview(db_session, developer_ids=["acc-1"])
+    assert sorted(i["key"] for i in shown["issues"]) == ["OS-60", "OS-61"]
+    # Счётчики и суммы от справочной строки не двигаются.
+    assert shown["developers"][0]["total_issues"] == 1
+    assert shown["developers"][0]["est_hours"] == 40.0
+
+    hidden = build_overview(db_session, ["acc-1"], show_done_subtasks=False)
+    assert [i["key"] for i in hidden["issues"]] == ["OS-60"]
+    assert hidden["developers"][0]["total_issues"] == 1
+
+
+def test_done_subtask_without_parent_in_slice_stays_hidden(db_session):
+    """Родителя в срезе нет — закрытая подзадача уже не про декомпозицию."""
+    project = _project(db_session)
+    parent = _issue(
+        db_session, project, "OS-70", status="ГОТОВО",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=40.0,
+    )
+    _issue(
+        db_session, project, "OS-71", status="ГОТОВО",
+        issue_type="Подзадача", parent_id=parent.id,
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=8.0,
+    )
+    db_session.commit()
+
+    assert build_overview(db_session, developer_ids=["acc-1"])["issues"] == []
+
+
+def test_period_window_adds_created_and_closed(db_session):
+    """Окно периода: закрытые и созданные внутри окна плюс всё открытое сейчас."""
+    project = _project(db_session)
+    inside = datetime(2026, 8, 5)
+    before = datetime(2026, 5, 5)
+    _issue(
+        db_session, project, "OS-80", status="ГОТОВО",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=4.0, jira_created_at=before, resolved_at=inside,
+    )
+    _issue(
+        db_session, project, "OS-81", status="ГОТОВО",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=4.0, jira_created_at=before, resolved_at=before,
+    )
+    _issue(
+        db_session, project, "OS-82", status="ГОТОВО",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=4.0, jira_created_at=inside, resolved_at=None,
+    )
+    _issue(
+        db_session, project, "OS-83",
+        developer_account_id="acc-1", developer_display_name="Шутов Сергей",
+        dev_est_hours=4.0, jira_created_at=before,
+    )
+    db_session.commit()
+
+    result = build_overview(
+        db_session, ["acc-1"],
+        period_start=date(2026, 7, 1), period_end=date(2026, 9, 30),
+    )
+    # OS-81 закрыта до окна и создана до окна — её в срезе быть не должно.
+    assert sorted(i["key"] for i in result["issues"]) == ["OS-80", "OS-82", "OS-83"]
 
 
 def test_reviewed_flag_hidden_until_asked(db_session, seed_user):

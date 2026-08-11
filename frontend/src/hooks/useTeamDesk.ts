@@ -1,23 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   teamDeskApi,
-  type DeskFilterPrefs, type DeskSettings, type FlagCode,
+  type DeskFilterPrefs, type DeskMode, type DeskSettings, type FlagCode,
 } from '../api/teamDesk';
 
 export function useDeskOverview(params: {
   teams: string[];
   developers: string[];
-  onlyOpen: boolean;
+  mode: DeskMode;
+  periodStart?: string;
+  periodEnd?: string;
   showReviewed: boolean;
+  showDoneSubtasks: boolean;
 }) {
+  const period = params.mode === 'period';
   return useQuery({
     queryKey: ['team-desk', 'overview', params],
     queryFn: () =>
       teamDeskApi.overview({
         teams: params.teams.join(',') || undefined,
         developers: params.developers.join(',') || undefined,
-        only_open: params.onlyOpen,
+        only_open: params.mode !== 'all',
         show_reviewed: params.showReviewed,
+        show_done_subtasks: params.showDoneSubtasks,
+        period_start: period ? params.periodStart : undefined,
+        period_end: period ? params.periodEnd : undefined,
       }),
     enabled: params.teams.length > 0 || params.developers.length > 0,
   });

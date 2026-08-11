@@ -19,10 +19,20 @@ import { AbsenceStrip } from '../components/teamdesk/AbsenceStrip';
 type Layout = 'cards' | 'table' | 'grouped';
 const LAYOUT_KEY = 'team-desk-layout';
 
+/** Текущий квартал — период по умолчанию для режима «За период». */
+function currentQuarter(): { start: string; end: string } {
+  const now = new Date();
+  const firstMonth = Math.floor(now.getMonth() / 3) * 3;
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return {
+    start: iso(new Date(now.getFullYear(), firstMonth, 1)),
+    end: iso(new Date(now.getFullYear(), firstMonth + 3, 0)),
+  };
+}
+
 export default function TeamDeskPage() {
   useRegisterHelp('Рабочий стол тимлида', teamDeskHelp);
-  const [onlyOpen, setOnlyOpen] = useState(true);
-  const [showReviewed, setShowReviewed] = useState(false);
   const [showThresholds, setShowThresholds] = useState(false);
   const [selectedDev, setSelectedDev] = useState<string | null>(null);
   const [flagFilter, setFlagFilter] = useState<FlagCode | null>(null);
@@ -33,24 +43,42 @@ export default function TeamDeskPage() {
   );
   useEffect(() => localStorage.setItem(LAYOUT_KEY, layout), [layout]);
 
-  // Команды и добранные люди живут в профиле: тимлид выбирает состав один раз,
-  // и видит его с любого компьютера.
+  // Вся шапка раздела живёт в профиле: тимлид настраивает вид один раз и
+  // видит его при следующем заходе с любого компьютера.
   const filterPrefs = useDeskFilter();
   const saveFilter = useSaveDeskFilter();
   // Пока тимлид ничего не трогал, показываем сохранённый в профиле выбор;
   // после первой правки главной становится правка на экране.
   const [picked, setPicked] = useState<DeskFilterPrefs | null>(null);
-  const teams = picked?.teams ?? filterPrefs.data?.teams ?? [];
-  const developers = picked?.developers ?? filterPrefs.data?.developers ?? [];
+  const quarter = currentQuarter();
+  const prefs: DeskFilterPrefs = {
+    teams: [], developers: [], mode: 'open',
+    period_start: quarter.start, period_end: quarter.end,
+    show_reviewed: false, show_done_subtasks: true,
+    ...(filterPrefs.data ?? {}),
+    ...(picked ?? {}),
+  };
+  const { teams, developers } = prefs;
+  const periodStart = prefs.period_start ?? quarter.start;
+  const periodEnd = prefs.period_end ?? quarter.end;
 
-  const change = (next: DeskFilterPrefs) => {
+  const change = (patch: Partial<DeskFilterPrefs>) => {
+    const next = { ...prefs, ...patch };
     setPicked(next);
     saveFilter.mutate(next);
   };
 
   const settings = useDeskSettings();
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
-  const overview = useDeskOverview({ teams, developers, onlyOpen, showReviewed });
+  const overview = useDeskOverview({
+    teams,
+    developers,
+    mode: prefs.mode,
+    periodStart,
+    periodEnd,
+    showReviewed: prefs.show_reviewed,
+    showDoneSubtasks: prefs.show_done_subtasks,
+  });
   const data = overview.data;
   const overrunPct = settings.data?.thresholds.overrun_pct ?? 30;
   const wipLimit = settings.data?.thresholds.wip_limit ?? 3;
@@ -94,14 +122,20 @@ export default function TeamDeskPage() {
 
       <DeskFilters
         teams={teams}
-        onTeamsChange={(value) => change({ teams: value, developers })}
+        onTeamsChange={(value) => change({ teams: value })}
         developers={developers}
-        onDevelopersChange={(value) => change({ teams, developers: value })}
+        onDevelopersChange={(value) => change({ developers: value })}
         developerRoles={settings.data?.developer_roles ?? ['dev']}
-        onlyOpen={onlyOpen}
-        onOnlyOpenChange={setOnlyOpen}
-        showReviewed={showReviewed}
-        onShowReviewedChange={setShowReviewed}
+        mode={prefs.mode}
+        onModeChange={(value) => change({ mode: value })}
+        periodStart={periodStart}
+        periodEnd={periodEnd}
+        onPeriodChange={(start, end) =>
+          change({ period_start: start, period_end: end })}
+        showReviewed={prefs.show_reviewed}
+        onShowReviewedChange={(value) => change({ show_reviewed: value })}
+        showDoneSubtasks={prefs.show_done_subtasks}
+        onShowDoneSubtasksChange={(value) => change({ show_done_subtasks: value })}
         onToggleThresholds={() => setShowThresholds((v) => !v)}
       />
 

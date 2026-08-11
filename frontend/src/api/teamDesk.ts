@@ -78,9 +78,18 @@ export interface DeskSettings {
   developer_roles: string[];
 }
 
+/** Режим среза: открытые сейчас / окно периода / вся история. */
+export type DeskMode = 'open' | 'period' | 'all';
+
+/** Шапка раздела целиком — живёт в профиле, переживает выход из раздела. */
 export interface DeskFilterPrefs {
   teams: string[];
   developers: string[];
+  mode: DeskMode;
+  period_start: string | null;
+  period_end: string | null;
+  show_reviewed: boolean;
+  show_done_subtasks: boolean;
 }
 
 /** Часы на экране — один знак после запятой: суммы списаний дают длинный хвост. */
@@ -128,12 +137,18 @@ export const teamDeskApi = {
     developers?: string;
     only_open?: boolean;
     show_reviewed?: boolean;
+    show_done_subtasks?: boolean;
+    period_start?: string;
+    period_end?: string;
   }) =>
     api.get<DeskOverview>('/team-desk/overview', {
       teams: params.teams,
       developers: params.developers,
       only_open: boolParam(params.only_open),
       show_reviewed: boolParam(params.show_reviewed),
+      show_done_subtasks: boolParam(params.show_done_subtasks),
+      period_start: params.period_start,
+      period_end: params.period_end,
     }),
 
   settings: () => api.get<DeskSettings>('/team-desk/settings'),

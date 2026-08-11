@@ -1,6 +1,6 @@
 """Срез задач рабочего стола тимлида: выборка, факт, признаки, сводка."""
 import statistics
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Optional
 
 from sqlalchemy import and_, func, or_
@@ -65,10 +65,8 @@ def _fact_by_person(db: Session, issue_ids: list[str]) -> dict[str, list[dict]]:
     }
 
 
-def _select_issues(
-    db: Session, cfg: DeskConfig, developer_ids: list[str], only_open: bool
-) -> list[Issue]:
-    """Задачи, где человек стоит разработчиком, плюс тех. анализ по исполнителю."""
+def _owner_conditions(cfg: DeskConfig, developer_ids: list[str]) -> list:
+    """Чьи задачи берём: поле «Разработчик» плюс тех. анализ по исполнителю."""
     conditions = [Issue.developer_account_id.in_(developer_ids)]
     if cfg.assignee_types:
         conditions.append(
@@ -77,15 +75,68 @@ def _select_issues(
                 Issue.assignee_account_id.in_(developer_ids),
             )
         )
-    query = db.query(Issue).filter(or_(*conditions))
+    return conditions
+
+
+def _select_issues(
+    db: Session,
+    cfg: DeskConfig,
+    developer_ids: list[str],
+    only_open: bool,
+    period_start: Optional[date] = None,
+    period_end: Optional[date] = None,
+) -> list[Issue]:
+    """Задачи, где человек стоит разработчиком, плюс тех. анализ по исполнителю.
+
+    Окно периода задано — к открытым добавляются задачи, созданные или закрытые
+    внутри окна: старая задача в работе занимает разработчика в этом периоде
+    независимо от того, когда её завели.
+    """
+    query = db.query(Issue).filter(or_(*_owner_conditions(cfg, developer_ids)))
     if cfg.hidden_statuses:
         # Задача ещё не взята в работу — тимлиду смотреть на неё нечего,
         # и в счётчики она попадать не должна.
         query = query.filter(~Issue.status.in_(cfg.hidden_statuses))
-    if only_open:
-        closed = cfg.status_groups.get("done", [])
-        if closed:
-            query = query.filter(~Issue.status.in_(closed))
+    closed = cfg.status_groups.get("done", [])
+    if only_open and closed:
+        is_open = ~Issue.status.in_(closed)
+        if period_start and period_end:
+            start = datetime.combine(period_start, time.min)
+            end = datetime.combine(period_end, time.max)
+            query = query.filter(
+                or_(
+                    is_open,
+                    Issue.jira_created_at.between(start, end),
+                    Issue.resolved_at.between(start, end),
+                )
+            )
+        else:
+            query = query.filter(is_open)
+    return query.all()
+
+
+def _done_subtasks(
+    db: Session, cfg: DeskConfig, developer_ids: list[str], parent_ids: list[str]
+) -> list[Issue]:
+    """Закрытые подзадачи под уже показанными родителями — справочно.
+
+    Родитель в работе, вся декомпозиция закрыта — без этого добора он выглядит
+    неразбитым. В счётчики и часы такие строки не идут: подзадача не
+    самостоятельна, а её часы давно приплюсованы к родителю.
+    """
+    closed = cfg.status_groups.get("done", [])
+    if not parent_ids or not closed or not cfg.subtask_types:
+        return []
+    query = db.query(Issue).filter(
+        Issue.parent_id.in_(parent_ids),
+        Issue.issue_type.in_(cfg.subtask_types),
+        Issue.status.in_(closed),
+        # Свой же состав: иначе в сводке всплывёт карточка постороннего
+        # человека с нулём задач.
+        or_(*_owner_conditions(cfg, developer_ids)),
+    )
+    if cfg.hidden_statuses:
+        query = query.filter(~Issue.status.in_(cfg.hidden_statuses))
     return query.all()
 
 
@@ -127,6 +178,9 @@ def build_overview(
     developer_ids: list[str],
     only_open: bool = True,
     show_reviewed: bool = False,
+    show_done_subtasks: bool = True,
+    period_start: Optional[date] = None,
+    period_end: Optional[date] = None,
     today: Optional[datetime] = None,
 ) -> dict:
     """Всё, что нужно любой из трёх раскладок: задачи, сводка, признаки.
@@ -139,7 +193,15 @@ def build_overview(
     if not developer_ids:
         return {"developers": [], "issues": [], "flag_counts": {}}
 
-    issues = _select_issues(db, cfg, developer_ids, only_open)
+    issues = _select_issues(
+        db, cfg, developer_ids, only_open, period_start, period_end
+    )
+    if only_open and show_done_subtasks:
+        # Фильтр статуса вообще применялся — значит закрытая декомпозиция
+        # выпала и её нужно вернуть. В режиме «все задачи» она и так на месте.
+        known = {i.id for i in issues}
+        extra = _done_subtasks(db, cfg, developer_ids, [i.id for i in issues])
+        issues += [i for i in extra if i.id not in known]
     ids = [i.id for i in issues]
     id_set = set(ids)
     fact_map = _fact_by_issue(db, ids)
