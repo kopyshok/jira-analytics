@@ -23,10 +23,6 @@ interface Props {
   onShowReviewedChange: (v: boolean) => void;
   showDoneSubtasks: boolean;
   onShowDoneSubtasksChange: (v: boolean) => void;
-  /** Статусы, встретившиеся в срезе, в порядке групп. */
-  statusOptions: string[];
-  statusCounters: string[];
-  onStatusCountersChange: (v: string[]) => void;
   onToggleThresholds: () => void;
 }
 
@@ -38,7 +34,6 @@ export function DeskFilters({
   periodStart, periodEnd, onPeriodChange,
   showReviewed, onShowReviewedChange,
   showDoneSubtasks, onShowDoneSubtasksChange,
-  statusOptions, statusCounters, onStatusCountersChange,
   onToggleThresholds,
 }: Props) {
   const teamsQuery = useTeams();
@@ -127,20 +122,7 @@ export function DeskFilters({
           </Typography.Text>
         </Space>
 
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>СЧЁТЧИКИ СТАТУСОВ</Typography.Text>
-        <Select
-          mode="multiple"
-          allowClear
-          // Пусто = все статусы среза: польза сразу, настраивать не обязательно.
-          placeholder="все статусы"
-          style={{ minWidth: 260 }}
-          value={statusCounters}
-          onChange={onStatusCountersChange}
-          options={statusOptions.map((s) => ({ value: s, label: s }))}
-          maxTagCount="responsive"
-        />
-
-        <Button icon={<SettingOutlined />} onClick={onToggleThresholds} title="Пороги подсветки" />
+        <Button icon={<SettingOutlined />} onClick={onToggleThresholds} title="Настройки вида" />
       </Space>
     </Card>
   );
