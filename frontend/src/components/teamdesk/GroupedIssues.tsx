@@ -183,6 +183,17 @@ export function GroupedIssues({
     { title: 'Факт', width: 88, align: 'right',
       render: (_, row) => roundHours(row.fact_hours ?? 0) },
     {
+      title: 'Осталось',
+      width: 108,
+      align: 'right',
+      render: (_, row) => {
+        if (row.est_hours == null) return '—';
+        // Минус — перерасход: оценка исчерпана, работа продолжается.
+        const left = roundHours(row.est_hours - (row.fact_hours ?? 0));
+        return <span style={{ color: left < 0 ? '#ff6b6b' : undefined }}>{left}</span>;
+      },
+    },
+    {
       title: scale === 'centered' ? 'Недобор / перебор' : 'Шкала',
       width: 190,
       render: (_, row) => (
@@ -227,7 +238,7 @@ export function GroupedIssues({
         dataSource={data}
         columns={columns}
         pagination={false}
-        scroll={{ x: 1180 }}
+        scroll={{ x: 1288 }}
         expandable={{
           expandedRowKeys,
           onExpand: (_, row) => toggle(row.rowKey),
