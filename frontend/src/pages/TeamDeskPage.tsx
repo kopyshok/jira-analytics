@@ -164,9 +164,6 @@ export default function TeamDeskPage() {
         onShowReviewedChange={(value) => change({ show_reviewed: value })}
         showDoneSubtasks={prefs.show_done_subtasks}
         onShowDoneSubtasksChange={(value) => change({ show_done_subtasks: value })}
-        statusOptions={statusOptions}
-        statusCounters={prefs.status_counters}
-        onStatusCountersChange={(value) => change({ status_counters: value })}
         onToggleThresholds={() => setShowThresholds((v) => !v)}
       />
 
@@ -174,6 +171,9 @@ export default function TeamDeskPage() {
         <ThresholdsPanel
           key={JSON.stringify(settings.data.thresholds)}
           settings={settings.data}
+          statusOptions={statusOptions}
+          statusCounters={prefs.status_counters}
+          onStatusCountersChange={(value) => change({ status_counters: value })}
         />
       )}
 

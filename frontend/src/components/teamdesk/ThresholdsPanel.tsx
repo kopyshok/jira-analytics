@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, Card, InputNumber, Space, Typography } from 'antd';
+import { App, Button, Card, InputNumber, Select, Space, Typography } from 'antd';
 import type { DeskSettings } from '../../api/teamDesk';
 import { useSaveDeskSettings } from '../../hooks/useTeamDesk';
 
@@ -12,8 +12,21 @@ const FIELDS: { key: string; label: string; suffix: string }[] = [
   { key: 'wip_limit', label: 'Лимит задач в работе', suffix: '' },
 ];
 
-/** Пороги подсветки. Меняются здесь же — подбираются на живых данных. */
-export function ThresholdsPanel({ settings }: { settings: DeskSettings }) {
+interface Props {
+  settings: DeskSettings;
+  /** Статусы, встретившиеся в срезе, в порядке групп. */
+  statusOptions: string[];
+  statusCounters: string[];
+  onStatusCountersChange: (v: string[]) => void;
+}
+
+/**
+ * Настройки вида раздела: пороги подсветки и набор счётчиков статусов.
+ * Настраивается разово, поэтому спрятано за шестерёнкой.
+ */
+export function ThresholdsPanel({
+  settings, statusOptions, statusCounters, onStatusCountersChange,
+}: Props) {
   const { message } = App.useApp();
   const [draft, setDraft] = useState<Record<string, number>>(settings.thresholds);
   const save = useSaveDeskSettings();
@@ -24,6 +37,7 @@ export function ThresholdsPanel({ settings }: { settings: DeskSettings }) {
 
   return (
     <Card size="small" styles={{ body: { padding: '10px 12px' } }}>
+      <Space orientation="vertical" size={10} style={{ width: '100%' }}>
       <Space wrap size={[18, 10]} align="end">
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>ПОРОГИ ПОДСВЕТКИ</Typography.Text>
         {FIELDS.map((f) => (
@@ -53,6 +67,30 @@ export function ThresholdsPanel({ settings }: { settings: DeskSettings }) {
         >
           Сохранить
         </Button>
+      </Space>
+
+      <Space wrap size={[18, 10]} align="end">
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          СЧЁТЧИКИ СТАТУСОВ
+        </Typography.Text>
+        <Space orientation="vertical" size={2}>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            Показывать в разрезе разработчиков
+          </Typography.Text>
+          <Select
+            mode="multiple"
+            allowClear
+            size="small"
+            // Пусто = все статусы среза: польза сразу, настраивать не обязательно.
+            placeholder="все статусы"
+            style={{ minWidth: 420 }}
+            value={statusCounters}
+            onChange={onStatusCountersChange}
+            options={statusOptions.map((s) => ({ value: s, label: s }))}
+            maxTagCount="responsive"
+          />
+        </Space>
+      </Space>
       </Space>
     </Card>
   );
