@@ -12,10 +12,15 @@ interface Props {
   overrunPct: number;
   selected: string | null;
   onSelect: (id: string | null) => void;
+  /** Статусы-счётчики: по колонке на каждый, в порядке групп. */
+  statuses: string[];
+  onStatusFilter: (developerId: string, status: string | null) => void;
 }
 
 /** Раскладка «Ведомость»: строка на разработчика, снизу итог. */
-export function DeveloperTable({ developers, workload, overrunPct, selected, onSelect }: Props) {
+export function DeveloperTable({
+  developers, workload, overrunPct, selected, onSelect, statuses, onStatusFilter,
+}: Props) {
   const columns: ColumnsType<DeskDeveloper> = [
     {
       title: 'Разработчик',
@@ -83,6 +88,34 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
     },
   ];
 
+  // Пустая колонка — шум: показываем статус, если задачи в нём есть хоть у кого-то.
+  const statusCols = statuses.filter((status) =>
+    developers.some((d) => d.status_counts?.[status]),
+  );
+  statusCols.forEach((status) => {
+    columns.push({
+      title: status,
+      key: `status:${status}`,
+      width: 150,
+      align: 'right',
+      sorter: (a, b) => (a.status_counts?.[status] ?? 0) - (b.status_counts?.[status] ?? 0),
+      render: (_, row) => {
+        const count = row.status_counts?.[status] ?? 0;
+        if (!count) return <Typography.Text type="secondary">—</Typography.Text>;
+        return (
+          <Typography.Link
+            onClick={(e) => {
+              e.stopPropagation();
+              onStatusFilter(row.developer_id, status);
+            }}
+          >
+            {count}
+          </Typography.Link>
+        );
+      },
+    });
+  });
+
   const totals = developers.reduce(
     (acc, d) => ({
       total: acc.total + d.total_issues,
@@ -104,7 +137,7 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
       pagination={false}
       // Имя забирает остаток; цифровым колонкам дана ширина, при которой
       // заголовок помещается в одну строку.
-      scroll={{ x: 1330 }}
+      scroll={{ x: 1330 + statusCols.length * 150 }}
       onRow={(row) => ({
         onClick: () => onSelect(selected === row.developer_id ? null : row.developer_id),
         style: {
@@ -125,6 +158,11 @@ export function DeveloperTable({ developers, workload, overrunPct, selected, onS
           <Table.Summary.Cell index={6} align="right">—</Table.Summary.Cell>
           <Table.Summary.Cell index={7} />
           <Table.Summary.Cell index={8} />
+          {statusCols.map((status, i) => (
+            <Table.Summary.Cell key={status} index={9 + i} align="right">
+              {developers.reduce((n, d) => n + (d.status_counts?.[status] ?? 0), 0)}
+            </Table.Summary.Cell>
+          ))}
         </Table.Summary.Row>
       )}
     />

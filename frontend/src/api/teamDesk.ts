@@ -48,6 +48,8 @@ export interface DeskDeveloper {
   fact_hours: number;
   accuracy: number | null;
   flag_counts: Partial<Record<FlagCode, number>>;
+  /** Разбивка задач по статусам; сумма равна total_issues. */
+  status_counts: Record<string, number>;
 }
 
 export interface DeskWorkload {
@@ -90,6 +92,8 @@ export interface DeskFilterPrefs {
   period_end: string | null;
   show_reviewed: boolean;
   show_done_subtasks: boolean;
+  /** Статусы, показываемые счётчиками. Пусто — все статусы среза. */
+  status_counters: string[];
 }
 
 /** Часы на экране — один знак после запятой: суммы списаний дают длинный хвост. */
@@ -130,6 +134,46 @@ export const STATUS_GROUP_LABELS: Record<StatusGroup, string> = {
   done: 'закрыта',
   unassigned: 'статус не распределён',
 };
+
+export const STATUS_GROUP_COLOR: Record<StatusGroup, string> = {
+  dev: '#4ba3ff',
+  waiting: '#eeb13c',
+  todo: '#788799',
+  done: '#3ebd85',
+  unassigned: '#a78bfa',
+};
+
+/** Порядок групп: сначала мяч у разработчика, в конце нераспределённые статусы. */
+export const STATUS_GROUP_ORDER: StatusGroup[] = ['dev', 'waiting', 'todo', 'done', 'unassigned'];
+
+export function statusGroupOf(
+  statusGroups: Record<string, string[]> | undefined,
+  status: string,
+): StatusGroup {
+  for (const group of STATUS_GROUP_ORDER) {
+    if ((statusGroups?.[group] ?? []).includes(status)) return group;
+  }
+  return 'unassigned';
+}
+
+/**
+ * Статусы в порядке групп — один и тот же порядок во всех раскладках.
+ * Внутри группы сохраняется порядок из настроек раздела; статусы, не попавшие
+ * ни в одну группу, идут в конце по алфавиту.
+ */
+export function orderedStatuses(
+  statusGroups: Record<string, string[]> | undefined,
+  seen: Iterable<string>,
+): string[] {
+  const rest = new Set(seen);
+  const out: string[] = [];
+  for (const group of STATUS_GROUP_ORDER) {
+    for (const status of statusGroups?.[group] ?? []) {
+      if (rest.delete(status)) out.push(status);
+    }
+  }
+  return [...out, ...[...rest].sort((a, b) => a.localeCompare(b))];
+}
 
 export const teamDeskApi = {
   overview: (params: {
