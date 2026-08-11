@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Card, Empty, Space, Spin, Tabs, Typography } from 'antd';
 import teamDeskHelp from '../../../docs/help/team-desk.md?raw';
-import { FLAG_LABELS, type DeskFilterPrefs, type FlagCode } from '../api/teamDesk';
+import {
+  FLAG_LABELS, orderedStatuses, type DeskFilterPrefs, type FlagCode,
+} from '../api/teamDesk';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import {
   useDeskFilter, useDeskOverview, useDeskSettings, useSaveDeskFilter,
@@ -36,6 +38,7 @@ export default function TeamDeskPage() {
   const [showThresholds, setShowThresholds] = useState(false);
   const [selectedDev, setSelectedDev] = useState<string | null>(null);
   const [flagFilter, setFlagFilter] = useState<FlagCode | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   // Тимлид пробует все три раскладки и остаётся на удобной — переключать
   // её каждый вход он не должен.
   const [layout, setLayout] = useState<Layout>(
@@ -54,7 +57,7 @@ export default function TeamDeskPage() {
   const prefs: DeskFilterPrefs = {
     teams: [], developers: [], mode: 'open',
     period_start: quarter.start, period_end: quarter.end,
-    show_reviewed: false, show_done_subtasks: true,
+    show_reviewed: false, show_done_subtasks: true, status_counters: [],
     ...(filterPrefs.data ?? {}),
     ...(picked ?? {}),
   };
@@ -83,9 +86,33 @@ export default function TeamDeskPage() {
   const overrunPct = settings.data?.thresholds.overrun_pct ?? 30;
   const wipLimit = settings.data?.thresholds.wip_limit ?? 3;
 
+  // Список статусов для настройки: те, по которым в срезе есть задачи, плюс
+  // ранее выбранные — иначе выбор молча сбрасывался бы на пустом срезе.
+  const seenStatuses = new Set<string>(prefs.status_counters);
+  (data?.developers ?? []).forEach((dev) =>
+    Object.keys(dev.status_counts ?? {}).forEach((s) => seenStatuses.add(s)));
+  const statusGroups = settings.data?.status_groups;
+  const statusOptions = orderedStatuses(statusGroups, seenStatuses);
+  const shownStatuses = prefs.status_counters.length
+    ? orderedStatuses(statusGroups, prefs.status_counters)
+    : statusOptions;
+
+  const pickStatus = (developerId: string, status: string | null) => {
+    setSelectedDev(status ? developerId : null);
+    setStatusFilter(status);
+  };
+
+  // Разработчика сняли — фильтр по его статусу тоже снимается, иначе список
+  // остался бы урезанным без видимой причины.
+  const pickDeveloper = (id: string | null) => {
+    setSelectedDev(id);
+    if (!id) setStatusFilter(null);
+  };
+
   const hints = [
-    selectedDev ? 'нажмите на карточку ещё раз, чтобы снять фильтр' : '',
+    selectedDev ? 'нажмите ещё раз, чтобы снять фильтр' : '',
     flagFilter ? `отфильтровано: ${FLAG_LABELS[flagFilter]}` : '',
+    statusFilter ? `статус: ${statusFilter}` : '',
   ].filter(Boolean);
 
   const detailBlocks = (
@@ -98,6 +125,7 @@ export default function TeamDeskPage() {
         jiraBaseUrl={jiraBaseUrl}
         onlyDeveloper={selectedDev}
         flagFilter={flagFilter}
+        statusFilter={statusFilter}
         hint={hints.join(' · ')}
       />
       <Card size="small" title="Задач в работе одновременно">
@@ -136,6 +164,9 @@ export default function TeamDeskPage() {
         onShowReviewedChange={(value) => change({ show_reviewed: value })}
         showDoneSubtasks={prefs.show_done_subtasks}
         onShowDoneSubtasksChange={(value) => change({ show_done_subtasks: value })}
+        statusOptions={statusOptions}
+        statusCounters={prefs.status_counters}
+        onStatusCountersChange={(value) => change({ status_counters: value })}
         onToggleThresholds={() => setShowThresholds((v) => !v)}
       />
 
@@ -176,7 +207,11 @@ export default function TeamDeskPage() {
             workload={data.workload}
             overrunPct={overrunPct}
             selected={selectedDev}
-            onSelect={setSelectedDev}
+            onSelect={pickDeveloper}
+            statuses={shownStatuses}
+            statusGroups={statusGroups}
+            statusFilter={statusFilter}
+            onStatusFilter={pickStatus}
           />
           {detailBlocks}
         </>
@@ -190,7 +225,9 @@ export default function TeamDeskPage() {
               workload={data.workload}
               overrunPct={overrunPct}
               selected={selectedDev}
-              onSelect={setSelectedDev}
+              onSelect={pickDeveloper}
+              statuses={shownStatuses}
+              onStatusFilter={pickStatus}
             />
           </Card>
           {detailBlocks}
@@ -206,7 +243,14 @@ export default function TeamDeskPage() {
           jiraBaseUrl={jiraBaseUrl}
           scale="centered"
           flagFilter={flagFilter}
+          statusFilter={statusFilter}
+          // Разработчик здесь выбирается только кликом по счётчику статуса —
+          // карточек в этой раскладке нет.
+          onlyDeveloper={selectedDev}
           hint={hints.join(' · ')}
+          statuses={shownStatuses}
+          statusGroups={statusGroups}
+          onStatusFilter={pickStatus}
         />
       )}
 

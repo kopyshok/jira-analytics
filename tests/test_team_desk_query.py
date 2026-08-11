@@ -149,6 +149,42 @@ def test_subtask_does_not_double_count(db_session):
     assert "decomp" not in rows["OS-10"]["flags"]
 
 
+def test_status_counts_match_total_issues(db_session):
+    """Разбивка по статусам сходится с общим числом задач и не считает подзадачи."""
+    project = _project(db_session)
+    for key, status in (
+        ("OS-30", "В РАБОТЕ"),
+        ("OS-31", "Ожидает помещения"),
+        ("OS-32", "Ожидает помещения"),
+        ("OS-33", "Ожидает тестирования"),
+    ):
+        _issue(
+            db_session, project, key, status=status,
+            developer_account_id="acc-1",
+            developer_display_name="Шутов Сергей",
+            dev_est_hours=8.0,
+        )
+    parent = db_session.query(Issue).filter_by(key="OS-30").one()
+    # Подзадача в разбивку идти не должна: её оценка живёт в родителе.
+    _issue(
+        db_session, project, "OS-34",
+        issue_type="Подзадача", status="Ожидает помещения",
+        parent_id=parent.id,
+        developer_account_id="acc-1",
+        developer_display_name="Шутов Сергей",
+        dev_est_hours=4.0,
+    )
+    db_session.commit()
+
+    dev = build_overview(db_session, developer_ids=["acc-1"])["developers"][0]
+    assert dev["status_counts"] == {
+        "В РАБОТЕ": 1,
+        "Ожидает помещения": 2,
+        "Ожидает тестирования": 1,
+    }
+    assert sum(dev["status_counts"].values()) == dev["total_issues"]
+
+
 def test_subtask_without_parent_in_slice_is_an_error(db_session):
     """Родителя в срезе нет — связь порвана: подзадача считается сама и подсвечена."""
     project = _project(db_session)

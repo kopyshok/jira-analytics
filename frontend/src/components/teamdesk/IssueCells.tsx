@@ -1,13 +1,7 @@
 import { Tag, Tooltip, Typography } from 'antd';
-import { STATUS_GROUP_LABELS, type StatusGroup } from '../../api/teamDesk';
-
-const GROUP_COLOR: Record<StatusGroup, string> = {
-  dev: '#4ba3ff',
-  waiting: '#eeb13c',
-  todo: '#788799',
-  done: '#3ebd85',
-  unassigned: '#a78bfa',
-};
+import {
+  STATUS_GROUP_COLOR as GROUP_COLOR, STATUS_GROUP_LABELS, type StatusGroup,
+} from '../../api/teamDesk';
 
 /** Статус с точкой-меткой: чей сейчас мяч. */
 export function StatusTag({ status, group }: { status: string; group: StatusGroup }) {

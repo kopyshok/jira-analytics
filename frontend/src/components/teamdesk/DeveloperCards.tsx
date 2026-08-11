@@ -4,6 +4,7 @@ import {
   type DeskDeveloper, type DeskWorkload,
 } from '../../api/teamDesk';
 import { HoursScale } from './HoursScale';
+import { StatusCounters } from './StatusCounters';
 
 function initials(name: string | null): string {
   if (!name) return '?';
@@ -24,10 +25,18 @@ interface Props {
   overrunPct: number;
   selected: string | null;
   onSelect: (id: string | null) => void;
+  /** Статусы-счётчики в порядке групп; пусто — строки счётчиков нет. */
+  statuses: string[];
+  statusGroups?: Record<string, string[]>;
+  statusFilter: string | null;
+  onStatusFilter: (developerId: string, status: string | null) => void;
 }
 
 /** Раскладка «Светофор»: карточка на разработчика, клик фильтрует таблицу. */
-export function DeveloperCards({ developers, workload, overrunPct, selected, onSelect }: Props) {
+export function DeveloperCards({
+  developers, workload, overrunPct, selected, onSelect,
+  statuses, statusGroups, statusFilter, onStatusFilter,
+}: Props) {
   return (
     <Row gutter={[10, 10]}>
       {developers.map((dev) => {
@@ -92,6 +101,16 @@ export function DeveloperCards({ developers, workload, overrunPct, selected, onS
                   </Typography.Text>
                 </div>
               )}
+
+              <div style={{ marginBottom: 8 }}>
+                <StatusCounters
+                  counts={dev.status_counts ?? {}}
+                  statuses={statuses}
+                  statusGroups={statusGroups}
+                  selected={isSelected ? statusFilter : null}
+                  onSelect={(status) => onStatusFilter(dev.developer_id, status)}
+                />
+              </div>
 
               <div>
                 {FLAG_ORDER.filter((f) => dev.flag_counts[f]).map((flag) => (

@@ -307,6 +307,11 @@ def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
     Счётчики и часы считаются по самостоятельным задачам: подзадача — это
     декомпозиция, её оценка уже учтена в родителе, а часы подтянуты туда же.
     Признаки — по всем строкам: проблема на подзадаче остаётся проблемой.
+
+    Разбивка по конкретным статусам (`status_counts`) считается по тому же
+    составу, что и `total_issues`, — их сумма обязана совпадать, иначе на экране
+    придётся объяснять расхождение. Отдаётся целиком: какие статусы показать,
+    решает интерфейс.
     """
     by_dev: dict[str, list[dict]] = {dev_id: [] for dev_id in developer_ids}
     for row in rows:
@@ -326,6 +331,10 @@ def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
         for row in items:
             for flag in row["flags"]:
                 flag_counts[flag] = flag_counts.get(flag, 0) + 1
+        status_counts: dict[str, int] = {}
+        for row in main:
+            status = row["status"] or "—"
+            status_counts[status] = status_counts.get(status, 0) + 1
         result.append(
             {
                 "developer_id": dev_id,
@@ -338,6 +347,7 @@ def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
                 "fact_hours": sum(r["fact_hours"] for r in main),
                 "accuracy": round(statistics.median(ratios), 2) if ratios else None,
                 "flag_counts": flag_counts,
+                "status_counts": status_counts,
             }
         )
     result.sort(key=lambda d: d["display_name"] or "")

@@ -99,12 +99,14 @@ def test_team_desk_filter_keeps_whole_header(testclient_db_session):
             "teams": [], "developers": [], "mode": "open",
             "period_start": None, "period_end": None,
             "show_reviewed": False, "show_done_subtasks": True,
+            "status_counters": [],
         }
 
         saved = {
             "teams": ["Команда 1С"], "developers": ["acc-1"], "mode": "period",
             "period_start": "2026-07-01", "period_end": "2026-09-30",
             "show_reviewed": True, "show_done_subtasks": False,
+            "status_counters": ["Ожидает помещения"],
         }
         assert client.put(
             "/api/v1/users/me/team-desk-filter", json=saved, headers=headers,

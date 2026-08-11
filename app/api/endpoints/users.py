@@ -124,6 +124,9 @@ class TeamDeskFilterPayload(BaseModel):
     period_end: Optional[date] = None
     show_reviewed: bool = False
     show_done_subtasks: bool = True
+    # Статусы, которые показываются счётчиками в разрезе разработчиков.
+    # Пусто — показываются все статусы, встретившиеся в срезе.
+    status_counters: list[str] = []
 
 
 @router.get("/me/team-desk-filter", response_model=TeamDeskFilterPayload)

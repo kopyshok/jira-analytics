@@ -7,6 +7,7 @@ import {
 import { FlagList } from './FlagChip';
 import { HoursScale } from './HoursScale';
 import { IssueKey, StatusTag } from './IssueCells';
+import { StatusCounters } from './StatusCounters';
 
 interface Row extends Partial<DeskIssue> {
   rowKey: string;
@@ -14,6 +15,8 @@ interface Row extends Partial<DeskIssue> {
   groupName?: string;
   groupCount?: number;
   groupInDev?: number;
+  groupDeveloperId?: string;
+  groupStatusCounts?: Record<string, number>;
   /** Имя, если подзадачу делает не владелец группы. */
   otherDeveloper?: string | null;
   children?: Row[];
@@ -29,10 +32,16 @@ interface Props {
   scale?: 'bar' | 'centered';
   /** Оставить только задачи с этим признаком (и их родителей). */
   flagFilter?: FlagCode | null;
+  /** Оставить только задачи в этом статусе (и их родителей). */
+  statusFilter?: string | null;
   /** Оставить только одного разработчика — клик по карточке или строке сводки. */
   onlyDeveloper?: string | null;
   /** Пояснение слева от счётчика задач в шапке карточки. */
   hint?: string;
+  /** Счётчики статусов в строке разработчика; пусто — не показывать. */
+  statuses?: string[];
+  statusGroups?: Record<string, string[]>;
+  onStatusFilter?: (developerId: string, status: string | null) => void;
 }
 
 /**
@@ -41,7 +50,9 @@ interface Props {
  */
 export function GroupedIssues({
   title, developers, issues, overrunPct, jiraBaseUrl,
-  scale = 'bar', flagFilter = null, onlyDeveloper = null, hint = '',
+  scale = 'bar', flagFilter = null, statusFilter = null,
+  onlyDeveloper = null, hint = '',
+  statuses = [], statusGroups, onStatusFilter,
 }: Props) {
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
   // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
@@ -63,10 +74,14 @@ export function GroupedIssues({
     }
   });
 
+  // Фильтры складываются: строка остаётся, если под оба условия попадает она
+  // сама либо её подзадача — иначе подзадача осталась бы без родителя.
+  const hit = (issue: DeskIssue): boolean =>
+    (!flagFilter || issue.flags.includes(flagFilter)) &&
+    (!statusFilter || issue.status === statusFilter);
+
   const matches = (issue: DeskIssue): boolean =>
-    !flagFilter ||
-    issue.flags.includes(flagFilter) ||
-    (childrenOf.get(issue.id) ?? []).some((c) => c.flags.includes(flagFilter));
+    hit(issue) || (childrenOf.get(issue.id) ?? []).some(hit);
 
   const data: Row[] = [];
   developers
@@ -96,6 +111,8 @@ export function GroupedIssues({
         groupName: dev.display_name ?? 'Без имени',
         groupCount: own.length,
         groupInDev: dev.in_dev,
+        groupDeveloperId: dev.developer_id,
+        groupStatusCounts: dev.status_counts ?? {},
         est_hours: dev.est_hours,
         fact_hours: dev.fact_hours,
         children: own.map(toRow),
@@ -122,12 +139,29 @@ export function GroupedIssues({
       title: 'Задача',
       render: (_, row) =>
         row.isGroup ? (
-          <Typography.Text strong>
-            {row.groupName}{' '}
-            <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
-              · {row.groupCount} задач · {row.groupInDev} у него
+          <>
+            <Typography.Text strong>
+              {row.groupName}{' '}
+              <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
+                · {row.groupCount} задач · {row.groupInDev} у него
+              </Typography.Text>
             </Typography.Text>
-          </Typography.Text>
+            {statuses.length > 0 && (
+              <div style={{ marginTop: 5 }}>
+                <StatusCounters
+                  counts={row.groupStatusCounts ?? {}}
+                  statuses={statuses}
+                  statusGroups={statusGroups}
+                  selected={statusFilter}
+                  onSelect={
+                    onStatusFilter
+                      ? (status) => onStatusFilter(row.groupDeveloperId!, status)
+                      : undefined
+                  }
+                />
+              </div>
+            )}
+          </>
         ) : (
           <span>
             <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} /> {row.summary}
