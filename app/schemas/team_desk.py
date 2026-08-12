@@ -9,6 +9,10 @@ class DeskSettings(BaseModel):
 
     status_groups: dict[str, list[str]]
     queue_statuses: list[str]
+    wip_statuses: list[str] = Field(
+        default_factory=lambda: ["В РАБОТЕ"],
+        description="Статусы, в которых работа идёт руками — лимит одновременных задач",
+    )
     hidden_statuses: list[str] = Field(
         default_factory=list, description="Статусы, которые раздел не показывает"
     )

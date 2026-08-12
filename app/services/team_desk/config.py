@@ -36,6 +36,11 @@ DEFAULT_STATUS_GROUPS: dict[str, list[str]] = {
 
 DEFAULT_QUEUE_STATUSES = ["К выполнению", "В РАБОТЕ", "Ожидает помещения"]
 
+# Статусы, в которых человек реально делает работу руками. Группа «у
+# разработчика» шире: код-ревью и ожидание помещения мяч тоже держат за ним, но
+# одновременной работой не являются — в лимите задач их считать нельзя.
+DEFAULT_WIP_STATUSES = ["В РАБОТЕ"]
+
 DEFAULT_THRESHOLDS: dict[str, float] = {
     "decomposition_hours": 16,   # оценка, с которой обязательна декомпозиция
     "overrun_pct": 30,           # перерасход от, %
@@ -60,6 +65,7 @@ DEFAULT_DEVELOPER_ROLES = ["dev"]
 class DeskConfig:
     status_groups: dict[str, list[str]] = field(default_factory=dict)
     queue_statuses: list[str] = field(default_factory=list)
+    wip_statuses: list[str] = field(default_factory=list)
     hidden_statuses: list[str] = field(default_factory=list)
     thresholds: dict[str, float] = field(default_factory=dict)
     subtask_types: list[str] = field(default_factory=list)
@@ -70,6 +76,7 @@ class DeskConfig:
         return {
             "status_groups": self.status_groups,
             "queue_statuses": self.queue_statuses,
+            "wip_statuses": self.wip_statuses,
             "hidden_statuses": self.hidden_statuses,
             "thresholds": self.thresholds,
             "subtask_types": self.subtask_types,
@@ -83,6 +90,7 @@ def defaults() -> DeskConfig:
     return DeskConfig(
         status_groups={k: list(v) for k, v in DEFAULT_STATUS_GROUPS.items()},
         queue_statuses=list(DEFAULT_QUEUE_STATUSES),
+        wip_statuses=list(DEFAULT_WIP_STATUSES),
         hidden_statuses=list(DEFAULT_HIDDEN_STATUSES),
         thresholds=dict(DEFAULT_THRESHOLDS),
         subtask_types=list(DEFAULT_SUBTASK_TYPES),
@@ -109,7 +117,7 @@ def load_config(db: Session) -> DeskConfig:
             if isinstance(statuses, list):
                 cfg.status_groups[group] = [str(s) for s in statuses]
     for key in (
-        "queue_statuses", "hidden_statuses",
+        "queue_statuses", "wip_statuses", "hidden_statuses",
         "subtask_types", "assignee_types", "developer_roles",
     ):
         if isinstance(stored.get(key), list):

@@ -185,6 +185,29 @@ def test_status_counts_match_total_issues(db_session):
     assert sum(dev["status_counts"].values()) == dev["total_issues"]
 
 
+def test_in_progress_counts_only_hands_on_work(db_session):
+    """Лимит одновременной работы считает «В РАБОТЕ», а не всю группу «у него»."""
+    project = _project(db_session)
+    for key, status in (
+        ("OS-40", "В РАБОТЕ"),
+        ("OS-41", "В РАБОТЕ"),
+        ("OS-42", "КОД-РЕВЬЮ"),
+        ("OS-43", "Ожидает помещения"),
+    ):
+        _issue(
+            db_session, project, key, status=status,
+            developer_account_id="acc-1",
+            developer_display_name="Шутов Сергей",
+            dev_est_hours=8.0,
+        )
+    db_session.commit()
+
+    dev = build_overview(db_session, developer_ids=["acc-1"])["developers"][0]
+    # Все четыре статуса — группа «у разработчика», но руками делаются две.
+    assert dev["in_dev"] == 4
+    assert dev["in_progress"] == 2
+
+
 def test_subtask_without_parent_in_slice_is_an_error(db_session):
     """Родителя в срезе нет — связь порвана: подзадача считается сама и подсвечена."""
     project = _project(db_session)

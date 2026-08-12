@@ -295,13 +295,15 @@ def build_overview(
             flag_counts[flag] = flag_counts.get(flag, 0) + 1
 
     return {
-        "developers": _summarize(rows, developer_ids),
+        "developers": _summarize(rows, developer_ids, cfg.wip_statuses),
         "issues": rows,
         "flag_counts": flag_counts,
     }
 
 
-def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
+def _summarize(
+    rows: list[dict], developer_ids: list[str], wip_statuses: Optional[list[str]] = None
+) -> list[dict]:
     """Сводка на человека: счётчики по группам статусов, часы, точность, признаки.
 
     Счётчики и часы считаются по самостоятельным задачам: подзадача — это
@@ -312,7 +314,13 @@ def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
     составу, что и `total_issues`, — их сумма обязана совпадать, иначе на экране
     придётся объяснять расхождение. Отдаётся целиком: какие статусы показать,
     решает интерфейс.
+
+    `in_progress` — задачи, которые человек делает руками прямо сейчас
+    (`wip_statuses`). Это не то же, что `in_dev`: группа «у разработчика» шире и
+    держит за ним ещё код-ревью и ожидание помещения, а в лимите одновременной
+    работы такие задачи считать нельзя.
     """
+    wip = set(wip_statuses or [])
     by_dev: dict[str, list[dict]] = {dev_id: [] for dev_id in developer_ids}
     for row in rows:
         by_dev.setdefault(row["developer_id"], []).append(row)
@@ -341,6 +349,7 @@ def _summarize(rows: list[dict], developer_ids: list[str]) -> list[dict]:
                 "display_name": items[0]["developer_name"],
                 "total_issues": len(main),
                 "in_dev": sum(1 for r in main if r["status_group"] == "dev"),
+                "in_progress": sum(1 for r in main if r["status"] in wip),
                 "waiting": sum(1 for r in main if r["status_group"] == "waiting"),
                 "todo": sum(1 for r in main if r["status_group"] == "todo"),
                 "est_hours": sum(r["est_hours"] or 0 for r in main),
