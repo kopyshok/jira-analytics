@@ -198,6 +198,9 @@ def test_hours_after_transfer_not_counted_for_old_team(db_session, emp, issue):
     assert bal.overtime_days == 6
     assert bal.balance_hours == pytest.approx(12.0, abs=0.01)
 
+    # Пометка «выбыл» — с первого дня вне команды
+    assert bal.left_at == date(2026, 1, 20)
+
     detail = svc.compute_employee(
         employee_id=emp.id,
         from_=date(2026, 1, 12),
@@ -206,6 +209,22 @@ def test_hours_after_transfer_not_counted_for_old_team(db_session, emp, issue):
     )
     assert detail.overtime_days == 6
     assert detail.balance_hours == pytest.approx(12.0, abs=0.01)
+
+
+def test_active_member_has_no_left_mark(db_session, emp, issue):
+    """Действующий участник команды пометки «выбыл» не получает."""
+    db_session.add(EmployeeTeam(
+        id="et-live", employee_id=emp.id, team="Команда A", is_primary=True,
+    ))
+    db_session.commit()
+
+    result = HoursBalanceService(db_session).compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 30),
+        teams_filter=["Команда A"],
+    )
+    assert result.employees[0].left_at is None
 
 
 def test_vacation_not_counted_as_skip(db_session, emp, vacation_reason):

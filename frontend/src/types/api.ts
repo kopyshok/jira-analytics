@@ -1142,6 +1142,7 @@ export interface HoursBalanceEmployee {
   skip_days: number;
   skip_hours: number;
   sparkline: number[];
+  left_at?: string | null;
 }
 
 export interface HoursBalanceResponse {

@@ -15,6 +15,11 @@ type SortKey =
   | 'name'
   | 'role';
 
+function formatDay(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y.slice(2)}`;
+}
+
 function balanceColor(b: number): string {
   if (b > 1) return '#ff4d4f'; // переработка — красный
   if (b < -1) return '#faad14'; // недоработка — оранжевый
@@ -101,6 +106,15 @@ function EmployeeCard({
           <div style={{ color: DARK_THEME.textMuted, fontSize: 12 }}>
             {emp.role_label ?? '—'}
           </div>
+          {emp.left_at && (
+            <span style={{
+              display: 'inline-block', marginTop: 4,
+              fontSize: 11, padding: '1px 6px', borderRadius: 4,
+              background: 'rgba(250,173,20,.14)', color: '#faad14',
+            }}>
+              Выбыл {formatDay(emp.left_at)} · часы только за время в команде
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 28, fontWeight: 700, color }}>
           {sign}{Math.round(emp.balance_hours)}ч

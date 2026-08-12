@@ -232,6 +232,7 @@ def dashboard_hours_balance(
                 skip_days=e.skip_days,
                 skip_hours=e.skip_hours,
                 sparkline=e.sparkline,
+                left_at=e.left_at,
             )
             for e in result.employees
         ],

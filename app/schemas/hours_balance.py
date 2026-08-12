@@ -36,6 +36,7 @@ class EmployeeBalance(BaseModel):
     skip_days: int
     skip_hours: float
     sparkline: list[float]
+    left_at: date | None = None  # выбыл из выбранных команд с этой даты
 
 
 class HoursBalanceResponse(BaseModel):
