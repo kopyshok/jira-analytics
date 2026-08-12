@@ -1,6 +1,6 @@
 """Cross-team routing in dashboard NormWork widget."""
 
-from datetime import datetime
+from datetime import date, datetime
 import json
 import uuid
 
@@ -289,6 +289,46 @@ def test_other_foreign_row_visible_when_plan_zero_fact_positive(db_session, clie
     assert other_row["plan_hours"] == 0
     assert other_row["fact_hours"] == 6.0
     assert other_row["pct"] == 0.0  # план 0 → pct=0 по текущей логике, фронт сам красит
+
+
+def test_hours_after_transfer_excluded_from_old_team(db_session, client):
+    """Сотрудник переведён в другую команду — часы после перевода не наши."""
+    _seed_work_types_and_categories(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_employee(db_session, "Переведён Ный", team=None)
+    db_session.add_all([
+        EmployeeTeam(
+            id=str(uuid.uuid4()), employee_id=emp.id, team="Команда A",
+            is_primary=False, left_at=date(2026, 5, 1),
+        ),
+        EmployeeTeam(
+            id=str(uuid.uuid4()), employee_id=emp.id, team="Команда B",
+            is_primary=True, joined_at=date(2026, 5, 1),
+        ),
+    ])
+    db_session.commit()
+
+    issue = _seed_issue(db_session, project, "TRN-1", team="Команда A")
+    _seed_worklog(db_session, issue, emp, 4.0)  # 15 апреля — ещё в команде A
+    db_session.add(
+        Worklog(
+            id=str(uuid.uuid4()),
+            jira_worklog_id=f"wl-{uuid.uuid4()}",
+            issue_id=issue.id,
+            employee_id=emp.id,
+            started_at=datetime(2026, 5, 15, 10, 0, 0),
+            time_spent_seconds=int(9.0 * 3600),
+            hours=9.0,
+        )
+    )
+    db_session.commit()
+
+    resp = client.get(
+        "/api/v1/analytics/dashboard/norm-work",
+        params={"year": 2026, "quarter": 2, "teams": "Команда A"},
+    )
+    block = _find_emp_breakdown(resp.json(), emp.id)
+    assert _wt_label_hours(block, "Сопровождение") == 4.0
 
 
 def test_foreign_hours_aggregated_at_employee_role_and_total(db_session, client):
