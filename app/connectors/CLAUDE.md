@@ -20,6 +20,18 @@ Pydantic response schema **требует** `summary` / `issuetype` / `status` /
 
 `/sync/jira-teams` возвращает sorted union по обоим configured team fields.
 
+### Доступность поля на карточке
+
+`get_editable_field_ids(issue_key)` → `GET /issue/{key}/editmeta`, множество id
+полей карточки. Нужен, чтобы отличить живое значение кастомного поля от
+оставшегося после переноса задачи в другой проект: Jira такие значения хранит и
+отдаёт в `fields`, хотя поля на экранах нового проекта нет. Ответ зависит от
+проекта, типа задачи и прав — см. `app/services/stale_field_cleanup.py`.
+
+`/field/{id}/context/projectmapping` для той же задачи не годится: отдаёт 403 без
+админских прав, а у поля обычно один глобальный контекст на все проекты —
+ограничение делают экраны, а не контекст.
+
 ### Team filter на `/sync/jira-projects`
 
 Team filter не может быть single global JQL (`ORDER BY project` + 1000-issue cap группирует всё под первым проектом). Решение: iterate projects, probe каждый `project = "K" AND (field1 = X OR field2 = X)` через `search_issues(max_results=1)`. Cost ~200ms × N projects, но корректно.

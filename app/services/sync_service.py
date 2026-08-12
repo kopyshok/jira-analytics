@@ -1166,6 +1166,17 @@ class SyncService:
         logger.info(f"Issues sync complete: {count} synced, {self.stats.issues_created} created")
         return count
 
+    async def clear_stale_developer_field(self) -> dict:
+        """Обнулить поле «Разработчик» у задач, где его нет на карточке.
+
+        Отдельный проход после задач: значение мёртвое, но приходит из Jira при
+        каждом синке, поэтому чистка обязана идти следом. Подробности —
+        в [stale_field_cleanup.py](stale_field_cleanup.py).
+        """
+        from app.services.stale_field_cleanup import clear_stale_developer_field
+
+        return await clear_stale_developer_field(self.db, self.jira)
+
     async def sync_paused_days(
         self,
         project_keys: Optional[List[str]] = None,
