@@ -56,6 +56,7 @@ class EmployeeBalanceResult:
     skip_days: int
     skip_hours: float
     sparkline: list
+    left_at: Optional[date] = None
 
 
 @dataclass
@@ -370,6 +371,12 @@ class HoursBalanceService:
                     skip_hours += delta  # negative
                 sparkline.append(balance)
 
+            # Выбыл, если последний день участия внутри окна — не последний
+            # день окна. Уход после окна не помечаем: это ещё не случилось.
+            left_at = None
+            if intervals and intervals[-1][1] < to_:
+                left_at = intervals[-1][1] + timedelta(days=1)
+
             initials = "".join(p[0] for p in e.display_name.split()[:2]).upper() if e.display_name else "?"
             emp_results.append(EmployeeBalanceResult(
                 id=e.id,
@@ -383,6 +390,7 @@ class HoursBalanceService:
                 skip_days=skip_days,
                 skip_hours=round(skip_hours, 1),
                 sparkline=[round(v, 1) for v in sparkline],
+                left_at=left_at,
             ))
             team_overtime += overtime_hours
             team_skip += skip_hours
