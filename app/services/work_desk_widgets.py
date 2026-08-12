@@ -21,6 +21,7 @@ from app.services.plan_common import (
     assignment_norm as _assignment_norm,
     find_recent_plan as _find_recent_plan,
     jira_url as _jira_url,
+    member_windows as _member_windows,
     quarter_bounds as _quarter_bounds,
     role_breakdown as _role_breakdown,
     subtree_ids as _subtree_ids,
@@ -293,7 +294,12 @@ def _adapter_my_tasks(db: Session, desk: WorkDesk, year: int, quarter: int) -> d
     # Факт проекта — по всему поддереву задачи (списания висят на подзадачах).
     subtree = _subtree_ids(db, issue_ids)
     # План/факт по 4 видам работ (analyst/dev/qa/opo) — как в карточке проекта.
-    breakdown = _role_breakdown(db, [plan.id], issue_ids, subtree, q_end, team_ids)
+    # Часы своих засчитываются только за дни участия в команде стола.
+    windows = _member_windows(db, teams, q_end)
+    breakdown = _role_breakdown(
+        db, [plan.id], issue_ids, subtree, q_end, team_ids,
+        member_windows={iid: windows for iid in issue_ids},
+    )
     for p in projects:
         iid = p.get("issue_id")
         p["children"] = children.get(iid, [])

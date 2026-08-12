@@ -429,3 +429,50 @@ class TestTeamCapacityIncludesTeamField:
         by_id = {r.employee_id: r for r in rows}
         assert by_id["e1"].team == "Alpha"
         assert by_id["e2"].team is None
+
+
+class TestTeamCapacityMembershipWindow:
+    """Перевод в другую команду режет и норму, и факт старой команды."""
+
+    def test_transfer_cuts_norm_and_fact(self, db_session):
+        from datetime import datetime
+
+        from app.models import EmployeeTeam, Issue, Project, Worklog
+
+        emp = Employee(
+            id="emp-tr", jira_account_id="acc-tr", display_name="Переведённый",
+            is_active=True,
+        )
+        db_session.add(emp)
+        db_session.add_all([
+            EmployeeTeam(id="et-a", employee_id="emp-tr", team="Alpha",
+                         is_primary=False, left_at=date(2026, 2, 1)),
+            EmployeeTeam(id="et-b", employee_id="emp-tr", team="Beta",
+                         is_primary=True, joined_at=date(2026, 2, 1)),
+        ])
+        db_session.add(Project(id="p-tr", jira_project_id="jp-tr", key="TR", name="TR"))
+        db_session.add(Issue(
+            id="i-tr", jira_issue_id="ji-tr", key="TR-1", summary="t",
+            issue_type="Task", status="Open", project_id="p-tr",
+        ))
+        db_session.commit()
+        for day, hours in ((date(2026, 1, 15), 5.0), (date(2026, 2, 16), 7.0)):
+            db_session.add(Worklog(
+                id=f"wl-{day}", jira_worklog_id=f"jw-{day}", issue_id="i-tr",
+                employee_id="emp-tr", hours=hours,
+                time_spent_seconds=int(hours * 3600),
+                started_at=datetime.combine(day, datetime.min.time()),
+            ))
+        db_session.commit()
+
+        svc = CapacityService(db_session)
+        rows = svc.team_quarter_capacity(2026, 1, teams_filter=["Alpha"])
+        qc = next(r for r in rows if r.employee_id == "emp-tr")
+        by_month = {m.month: m for m in qc.months}
+
+        # Январь целиком наш, февраль и март — уже нет.
+        assert by_month[1].norm_hours > 0
+        assert by_month[2].norm_hours == 0
+        assert by_month[3].norm_hours == 0
+        assert qc.total_fact_hours == 5.0
+        assert by_month[2].fact_hours == 0

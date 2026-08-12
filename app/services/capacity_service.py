@@ -433,7 +433,7 @@ class CapacityService:
         else:
             q_exclusive_end = datetime(year, months[-1] + 1, 1)
 
-        fact_rows = (
+        fact_q = (
             self.db.query(
                 Worklog.employee_id,
                 extract("month", Worklog.started_at).label("m"),
@@ -444,14 +444,40 @@ class CapacityService:
                 Worklog.started_at >= q_start_dt,
                 Worklog.started_at < q_exclusive_end,
             )
-            .group_by(Worklog.employee_id, "m")
-            .all()
         )
+        if teams_filter:
+            # Часы после перевода в другую команду в ёмкость этой не идут.
+            from app.services import team_membership as _tm2
+
+            fact_q = fact_q.filter(
+                _tm2.membership_on_column_exists(
+                    teams_filter, Worklog.employee_id, Worklog.started_at
+                )
+            )
+        fact_rows = fact_q.group_by(Worklog.employee_id, "m").all()
         fact_map: dict[tuple[str, int], float] = {
             (emp_id, int(m)): float(h) for emp_id, m, h in fact_rows
         }
 
-        # 5. Сборка результатов.
+        # 5. Отрезки участия в выбранных командах — норма и отсутствия
+        # считаются только за дни внутри них (переведённый в середине
+        # квартала приносит команде лишь свою часть нормы).
+        intervals_by_emp: Optional[dict[str, list]] = None
+        if teams_filter:
+            from app.services import team_membership as _tm3
+
+            intervals_by_emp = _tm3.member_intervals(
+                self.db, teams_filter, q_start, q_end
+            )
+
+        def _in_team(emp_id: str, d: date) -> bool:
+            if intervals_by_emp is None:
+                return True
+            from app.services import team_membership as _tm4
+
+            return _tm4.day_in_intervals(d, intervals_by_emp.get(emp_id, []))
+
+        # 6. Сборка результатов.
         results: list[QuarterCapacity] = []
         for emp in employees:
             qc = QuarterCapacity(
@@ -473,11 +499,23 @@ class CapacityService:
                         continue
                     cur = ov_start
                     while cur <= ov_end:
-                        absence_hours += _day_hours(cur)
+                        if _in_team(emp.id, cur):
+                            absence_hours += _day_hours(cur)
                         cur += timedelta(days=1)
 
-                norm_hours = month_norm[m]
-                workdays = month_workdays[m]
+                if intervals_by_emp is None:
+                    norm_hours = month_norm[m]
+                    workdays = month_workdays[m]
+                else:
+                    norm_hours = 0.0
+                    workdays = 0
+                    cur = ms
+                    while cur <= me:
+                        if _in_team(emp.id, cur):
+                            norm_hours += _day_hours(cur)
+                            if _day_is_workday(cur):
+                                workdays += 1
+                        cur += timedelta(days=1)
                 available = max(0.0, norm_hours - absence_hours)
                 fact = fact_map.get((emp.id, m), 0.0)
 

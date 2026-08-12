@@ -317,3 +317,39 @@ def test_foreign_issue_with_assigned_category_overrides_routing(db_session):
     assert wt_node.label == "Сопровождение и консультация"
     cat_node = wt_node.categories[0]
     assert cat_node.category_code == "support_consultation"
+
+
+def test_report_excludes_hours_after_transfer(db_session):
+    """Часы, списанные после перевода в другую команду, в отчёт не идут."""
+    from datetime import date
+    from app.services.analytics_service import AnalyticsService
+
+    _seed_minimal(db_session)
+    project = _seed_project(db_session)
+    emp = _seed_emp(db_session, "Переведён Ный", "Команда A")
+    membership = (
+        db_session.query(EmployeeTeam)
+        .filter(EmployeeTeam.employee_id == emp.id)
+        .one()
+    )
+    membership.left_at = date(2026, 5, 1)
+    db_session.add(EmployeeTeam(
+        id=str(uuid.uuid4()), employee_id=emp.id, team="Команда B",
+        is_primary=False, joined_at=date(2026, 5, 1),
+    ))
+    db_session.commit()
+
+    issue = _seed_issue(db_session, project, "TR-1", "Команда A", "support_consultation")
+    _seed_worklog(db_session, issue, emp, 4.0, day=15)          # апрель — ещё наш
+    db_session.add(Worklog(
+        id=str(uuid.uuid4()), jira_worklog_id=f"wl-{uuid.uuid4()}",
+        issue_id=issue.id, employee_id=emp.id,
+        started_at=datetime(2026, 5, 15, 10, 0, 0),
+        time_spent_seconds=int(9.0 * 3600), hours=9.0,
+    ))
+    db_session.commit()
+
+    data = AnalyticsService(db_session).get_hierarchical_report(
+        year=2026, quarter=2, teams=["Команда A"]
+    )
+    assert data.grand_totals.fact_hours == 4.0

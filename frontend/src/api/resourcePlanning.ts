@@ -133,7 +133,7 @@ export interface EmployeeLoadDay {
   date: string;
   pct: number;
   /** Нерабочий день: 'weekend' | 'holiday' | 'absence'. Отсутствует — рабочий. */
-  off?: 'weekend' | 'holiday' | 'absence' | null;
+  off?: 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null;
 }
 
 export interface EmployeeLoadOut {

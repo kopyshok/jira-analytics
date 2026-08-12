@@ -20,6 +20,9 @@ const ABSENCE_FILL =
   'repeating-linear-gradient(45deg, rgba(116,150,224,0.7) 0 3px, rgba(116,150,224,0.22) 3px 6px)';
 const HOLIDAY_FILL =
   'repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 3px, rgba(255,255,255,0.04) 3px 6px)';
+// Дни вне участия в команде — человека в этом периоде в команде просто нет.
+const OUT_OF_TEAM_FILL =
+  'repeating-linear-gradient(45deg, rgba(250,173,20,0.5) 0 3px, rgba(250,173,20,0.12) 3px 6px)';
 
 function isoDate(s: string): Date {
   return new Date(s + 'T00:00:00');
@@ -42,7 +45,7 @@ function loadColor(pct: number): { bg: string; border?: string } {
   return { bg: `hsl(150 ${sat}% ${light}%)` };
 }
 
-type Off = 'weekend' | 'holiday' | 'absence' | null | undefined;
+type Off = 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null | undefined;
 
 interface Day {
   date: string;
@@ -117,7 +120,8 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
     const dt = isoDate(date);
     const head = `${RU_WD[dt.getDay()]}, ${dt.getDate()} ${RU_MONTHS_SHORT[dt.getMonth()]}`;
     let body: string;
-    if (off === 'absence') body = 'отпуск / отсутствие';
+    if (off === 'out_of_team') body = 'вне команды';
+    else if (off === 'absence') body = 'отпуск / отсутствие';
     else if (off === 'holiday') body = 'праздник';
     else body = pct > 0 ? `${Math.round(pct)}%` : 'нет загрузки';
     setTip({ x: e.clientX, y: e.clientY, text: `${head} · ${body}` });
@@ -262,7 +266,8 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
                         const pct = d?.pct ?? 0;
                         let bg: string;
                         let border: string | undefined;
-                        if (off === 'absence') bg = ABSENCE_FILL;
+                        if (off === 'out_of_team') bg = OUT_OF_TEAM_FILL;
+                        else if (off === 'absence') bg = ABSENCE_FILL;
                         else if (off === 'holiday') bg = HOLIDAY_FILL;
                         else {
                           const c = loadColor(pct);

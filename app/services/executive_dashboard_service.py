@@ -513,11 +513,14 @@ class ExecutiveDashboardService:
         em = q_start + 2
         sdt = datetime.combine(date(year, q_start, 1), time.min)
         edt = datetime.combine(date(year, em, monthrange(year, em)[1]), time.max)
-        # Состав команд за квартал — считается один раз на все роли.
-        member_ids = (
-            list(tm.members_overlapping(self.db, teams, sdt.date(), edt.date()))
+        # Часы засчитываются, только если человек был в команде В ДЕНЬ списания:
+        # переведённый в середине квартала не тянет за собой часы новой команды.
+        member_clause = (
+            tm.membership_on_column_exists(
+                teams, Worklog.employee_id, Worklog.started_at
+            )
             if teams
-            else []
+            else None
         )
         for role in roles:
             role_filter = (
@@ -535,8 +538,8 @@ class ExecutiveDashboardService:
                 )
                 .group_by(Employee.id)
             )
-            if teams:
-                q = q.where(Employee.id.in_(member_ids))
+            if member_clause is not None:
+                q = q.where(member_clause)
             rows = list(self.db.execute(q).all())
             if not rows:
                 out.append({"role": labels[role], "utilization_pct": 0})

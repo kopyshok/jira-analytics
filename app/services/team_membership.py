@@ -103,9 +103,87 @@ def member_intervals(
     return out
 
 
+def intervals_by_team(
+    db: Session, teams: Sequence[str], start: date, end: date
+) -> dict[str, dict[str, list[tuple[date, date]]]]:
+    """То же, что ``member_intervals``, но отрезки разложены по командам.
+
+    Нужно там, где в одном расчёте участвуют несколько команд со своим
+    составом каждая (сводка портфеля проектов): общий словарь склеил бы
+    участие в разных командах в один отрезок.
+    """
+    if not teams:
+        return {}
+    rows = (
+        db.query(
+            EmployeeTeam.team,
+            EmployeeTeam.employee_id,
+            EmployeeTeam.joined_at,
+            EmployeeTeam.left_at,
+        )
+        .filter(EmployeeTeam.team.in_(list(teams)), *overlaps_clause(start, end))
+        .all()
+    )
+    out: dict[str, dict[str, list[tuple[date, date]]]] = {}
+    for team, emp_id, joined, left in rows:
+        lo = max(joined, start) if joined else start
+        hi = min(left - timedelta(days=1), end) if left else end
+        if lo > hi:
+            continue
+        out.setdefault(team, {}).setdefault(emp_id, []).append((lo, hi))
+    for per_emp in out.values():
+        for intervals in per_emp.values():
+            intervals.sort()
+    return out
+
+
 def day_in_intervals(day: date, intervals: Iterable[tuple[date, date]]) -> bool:
     """Попадает ли день в один из отрезков (границы включительно)."""
     return any(lo <= day <= hi for lo, hi in intervals)
+
+
+def membership_rows(
+    db: Session, employee_ids: Sequence[str]
+) -> dict[str, list[tuple[str, Optional[date], Optional[date], bool]]]:
+    """Все периоды участия перечисленных сотрудников — одним запросом.
+
+    Нужно там, где у каждого сотрудника своя дата (например, подпись команды
+    на день последнего списания): ходить в БД на каждого — N+1.
+    """
+    if not employee_ids:
+        return {}
+    rows = (
+        db.query(
+            EmployeeTeam.employee_id,
+            EmployeeTeam.team,
+            EmployeeTeam.joined_at,
+            EmployeeTeam.left_at,
+            EmployeeTeam.is_primary,
+        )
+        .filter(EmployeeTeam.employee_id.in_(list(employee_ids)))
+        .all()
+    )
+    out: dict[str, list[tuple[str, Optional[date], Optional[date], bool]]] = {}
+    for emp_id, team, joined, left, is_primary in rows:
+        out.setdefault(emp_id, []).append((team, joined, left, bool(is_primary)))
+    return out
+
+
+def team_on_day(
+    rows: Iterable[tuple[str, Optional[date], Optional[date], bool]], day: date
+) -> Optional[str]:
+    """Команда сотрудника на указанный день: основная, иначе первая по алфавиту."""
+    active = [
+        (team, is_primary)
+        for team, joined, left, is_primary in rows
+        if (joined is None or joined <= day) and (left is None or left > day)
+    ]
+    if not active:
+        return None
+    primary = [t for t, is_primary in active if is_primary]
+    if primary:
+        return sorted(primary)[0]
+    return sorted(t for t, _ in active)[0]
 
 
 def primary_team_on(db: Session, employee_id: str, day: date) -> Optional[str]:
