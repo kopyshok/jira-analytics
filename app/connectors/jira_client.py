@@ -495,6 +495,19 @@ class JiraClient:
         data = await self._request("GET", "/field")
         return data
 
+    async def get_editable_field_ids(self, issue_key: str) -> set[str]:
+        """ID полей, доступных на карточке задачи.
+
+        Jira хранит значения кастомных полей и после переезда задачи в проект,
+        где такого поля на экране нет: значение остаётся в базе и приезжает по
+        API, хотя никто его больше не видит и не может изменить. Единственный
+        способ отличить живое значение от мёртвого — спросить, какие поля вообще
+        доступны на карточке этой задачи.
+        """
+        data = await self._request("GET", f"/issue/{issue_key}/editmeta")
+        fields = data.get("fields") or {}
+        return set(fields.keys())
+
     async def get_issue_types(self) -> list[dict]:
         """Получить все типы задач Jira (каталог issuetype)."""
         data = await self._request("GET", "/issuetype")

@@ -214,6 +214,23 @@ class PausedDaysStage(Stage):
         return ["issues"]
 
 
+class StaleDeveloperFieldStage(Stage):
+    """Поле «Разработчик» у переехавших задач: Jira его хранит, мы чистим."""
+
+    name = "stale_fields"
+    critical = False  # non-critical: без неё в срезах остаются мёртвые значения
+
+    def __init__(self, sync_svc) -> None:
+        self.svc = sync_svc
+
+    async def run(self, ctx: dict) -> dict:
+        result = await self.svc.clear_stale_developer_field()
+        return result if isinstance(result, dict) else {}
+
+    def invalidates(self) -> list[str]:
+        return ["issues"]
+
+
 class WorklogsDeltaStage(Stage):
     name = "worklogs"
     critical = True
@@ -382,6 +399,7 @@ def build_pipeline(*, mode: str, services: dict, team: Optional[str] = None) -> 
             CalendarStage(calendar),
             ProjectsStage(sync),
             IssuesIncrementalStage(sync),
+            StaleDeveloperFieldStage(sync),
             PausedDaysStage(sync),
             WorklogsDeltaStage(sync),
             MappingStage(mapping),
@@ -391,6 +409,7 @@ def build_pipeline(*, mode: str, services: dict, team: Optional[str] = None) -> 
             CalendarStage(calendar),
             ProjectsStage(sync),
             IssuesFullStage(sync),
+            StaleDeveloperFieldStage(sync),
             PausedDaysStage(sync, incremental=False),
             WorklogsFullStage(sync),
             MappingStage(mapping),
