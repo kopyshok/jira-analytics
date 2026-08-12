@@ -41,6 +41,7 @@ def put_settings(
         DeskConfig(
             status_groups=payload.status_groups,
             queue_statuses=payload.queue_statuses,
+            wip_statuses=payload.wip_statuses,
             hidden_statuses=payload.hidden_statuses,
             thresholds=payload.thresholds,
             subtask_types=payload.subtask_types,

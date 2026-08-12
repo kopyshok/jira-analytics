@@ -42,6 +42,8 @@ export interface DeskDeveloper {
   team?: string | null;
   total_issues: number;
   in_dev: number;
+  /** Задачи, которые человек делает руками сейчас — уже группы «у него». */
+  in_progress: number;
   waiting: number;
   todo: number;
   est_hours: number;
@@ -71,6 +73,8 @@ export interface DeskOverview {
 export interface DeskSettings {
   status_groups: Record<string, string[]>;
   queue_statuses: string[];
+  /** Статусы, в которых работа идёт руками — лимит одновременных задач. */
+  wip_statuses: string[];
   /** Статусы, которых раздел не показывает вовсе. */
   hidden_statuses: string[];
   thresholds: Record<string, number>;

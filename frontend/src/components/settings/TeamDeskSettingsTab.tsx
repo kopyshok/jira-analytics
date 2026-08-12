@@ -81,6 +81,23 @@ export default function TeamDeskSettingsTab() {
         )}
       </Card>
 
+      <Card size="small" title="Работа идёт руками">
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Статусы, в которых разработчик делает задачу прямо сейчас. По ним считается
+          виджет «Задач в работе одновременно» и лимит к нему. Группа «у разработчика»
+          шире: код-ревью и ожидание помещения мяч тоже держат за ним, но одновременной
+          работой не являются.
+        </Typography.Paragraph>
+        <Select
+          mode="tags"
+          style={{ width: '100%' }}
+          value={current.wip_statuses}
+          onChange={(v) => patch({ wip_statuses: v })}
+          tokenSeparators={[',']}
+          placeholder="Например: В РАБОТЕ"
+        />
+      </Card>
+
       <Card size="small" title="Не показывать">
         <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
           Статусы, которых в разделе быть не должно вовсе: задача ещё не взята в работу,
