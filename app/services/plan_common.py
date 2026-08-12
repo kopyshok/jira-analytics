@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.services import team_membership as tm
+
 if TYPE_CHECKING:
     from app.models.resource_plan import ResourcePlan
 
@@ -230,6 +232,29 @@ def team_member_ids(
     return ids
 
 
+# Факт в role_breakdown копится с начала истории, поэтому отрезки участия
+# берутся от заведомо ранней даты, а не от начала квартала.
+FACT_EPOCH = date(1970, 1, 1)
+
+
+def member_windows(
+    db: Session, teams: Sequence[str], fact_until: date
+) -> Dict[str, list]:
+    """Отрезки участия в командах «за всю историю» до ``fact_until``."""
+    if not teams:
+        return {}
+    return tm.member_intervals(db, list(teams), FACT_EPOCH, fact_until)
+
+
+def member_windows_by_team(
+    db: Session, teams: Sequence[str], fact_until: date
+) -> Dict[str, Dict[str, list]]:
+    """То же, но с разбивкой по командам — для портфеля из разных команд."""
+    if not teams:
+        return {}
+    return tm.intervals_by_team(db, list(teams), FACT_EPOCH, fact_until)
+
+
 def assignment_norm(a) -> float:
     """Плановые часы фазы: hours_allocated, иначе оценка роли на BacklogItem."""
     allocated = a.hours_allocated
@@ -269,6 +294,7 @@ def role_breakdown(
     subtree: Dict[str, set],
     fact_until: date,
     team_ids: set[str] | Mapping[str, set[str]],
+    member_windows: Optional[Mapping[str, Mapping[str, list]]] = None,
 ) -> Dict[str, dict]:
     """План/факт по видам работ для каждой задачи-корня.
 
@@ -283,6 +309,13 @@ def role_breakdown(
     словарь «корень → набор» — так вызывающий может посчитать сразу несколько
     проектов с разным составом команды за один вызов, без цикла с отдельным
     запросом на каждый (см. ``ProjectPlanService.get_portfolio``).
+
+    ``member_windows`` — «корень → сотрудник → отрезки участия в команде».
+    Часы сотрудника засчитываются своими только за дни внутри его отрезков:
+    переведённый в другую команду перестаёт быть своим со дня перевода, его
+    поздние часы уходят в «прочее». Сотрудник, которого в словаре нет
+    (QA — общий ресурс, либо команда проекта не определена), считается своим
+    всегда.
 
     Возвращает {root_issue_id: {"plan": {role: ч}, "fact": {role: ч}, "info": ч}}.
     """
@@ -323,11 +356,13 @@ def role_breakdown(
     all_ids = list(issue_to_root.keys())
     if all_ids:
         end_dt = datetime.combine(fact_until, time.max)
+        day_col = func.date(Worklog.started_at).label("day")
         rows = (
             db.query(
                 Worklog.issue_id,
                 Worklog.employee_id,
                 Employee.role,
+                day_col,
                 func.coalesce(func.sum(Worklog.hours), 0.0).label("hours"),
             )
             .join(Employee, Employee.id == Worklog.employee_id)
@@ -335,10 +370,10 @@ def role_breakdown(
                 Worklog.issue_id.in_(all_ids),
                 Worklog.started_at <= end_dt,
             )
-            .group_by(Worklog.issue_id, Worklog.employee_id, Employee.role)
+            .group_by(Worklog.issue_id, Worklog.employee_id, Employee.role, day_col)
             .all()
         )
-        for issue_id, emp_id, role, hours in rows:
+        for issue_id, emp_id, role, day_val, hours in rows:
             root = issue_to_root.get(issue_id)
             if root not in out:
                 continue
@@ -346,7 +381,14 @@ def role_breakdown(
             r = (role or "").lower()
             if r == "rp":  # РП засчитываем в Анализ
                 r = "analyst"
-            if emp_id in _team_ids_for_root(team_ids, root) and r in ROLES:
+            own = emp_id in _team_ids_for_root(team_ids, root) and r in ROLES
+            if own and member_windows:
+                intervals = (member_windows.get(root) or {}).get(emp_id)
+                if intervals is not None:
+                    # SQLite отдаёт дату строкой, PostgreSQL — объектом date
+                    d = date.fromisoformat(day_val) if isinstance(day_val, str) else day_val
+                    own = tm.day_in_intervals(d, intervals)
+            if own:
                 out[root]["fact"][r] += h
             else:
                 out[root]["info"] += h

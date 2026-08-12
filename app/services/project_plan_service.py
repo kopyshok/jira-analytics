@@ -16,6 +16,8 @@ from app.services.plan_common import (
     DISPLAY_ROLES,
     PHASE_LABEL,
     jira_url,
+    member_windows,
+    member_windows_by_team,
     plan_ids_for_issues,
     quarter_bounds,
     role_breakdown,
@@ -48,11 +50,13 @@ class ProjectPlanService:
         q_start, q_end = quarter_bounds(year, quarter)
         subtree = subtree_ids(self._db, [root.id])
         plan_ids = plan_ids_for_issues(self._db, [root.id])
-        team_ids = self._team_ids_for_project(
-            self._project_teams(root, plan_ids), q_start, q_end
-        )
+        project_teams = self._project_teams(root, plan_ids)
+        team_ids = self._team_ids_for_project(project_teams, q_start, q_end)
+        # Часы своих засчитываются только за дни участия в команде проекта.
+        windows = {root.id: member_windows(self._db, project_teams, q_end)}
         bd = role_breakdown(
-            self._db, plan_ids, [root.id], subtree, q_end, team_ids
+            self._db, plan_ids, [root.id], subtree, q_end, team_ids,
+            member_windows=windows,
         )[root.id]
 
         work_types, total_plan, total_fact = _project_work_types(bd)
@@ -117,9 +121,12 @@ class ProjectPlanService:
         # назначений и ворклогов на каждый проект), а сам состав команды
         # каждого проекта собирается батчем в _team_ids_by_root — без цикла
         # запросов членства/QA на каждый проект.
-        team_ids_by_root = self._team_ids_by_root(roots, plan_ids, q_start, q_end)
+        team_ids_by_root, windows_by_root = self._team_ids_by_root(
+            roots, plan_ids, q_start, q_end
+        )
         per_project = role_breakdown(
-            self._db, plan_ids, root_ids, subtree, q_end, team_ids_by_root
+            self._db, plan_ids, root_ids, subtree, q_end, team_ids_by_root,
+            member_windows=windows_by_root,
         )
 
         totals: Dict[str, Dict[str, float]] = {
@@ -293,8 +300,12 @@ class ProjectPlanService:
         plan_ids: Sequence[str],
         q_start: date,
         q_end: date,
-    ) -> Dict[str, set]:
+    ) -> tuple[Dict[str, set], Dict[str, Dict[str, list]]]:
         """Состав «своей» команды для каждого проекта портфеля — без цикла запросов.
+
+        Возвращает пару «состав по проектам» + «отрезки участия по проектам»
+        (сотрудник → отрезки в командах этого проекта): состав отвечает на
+        вопрос «свой ли вообще», отрезки — «был ли своим в день списания».
 
         Семантически то же самое, что вызвать
         ``_team_ids_for_project(_project_teams(root, plan_ids))`` на каждый
@@ -346,26 +357,39 @@ class ProjectPlanService:
             for team, emp_id in rows:
                 members_by_team.setdefault(team, set()).add(emp_id)
 
+        # Отрезки участия — одним запросом на все команды портфеля.
+        intervals_by_team = member_windows_by_team(self._db, sorted(all_teams), q_end)
+
         qa_ids: Optional[set] = None
         all_employee_ids: Optional[set] = None
 
         result: Dict[str, set] = {}
+        windows: Dict[str, Dict[str, list]] = {}
         for root in roots:
             teams = root_teams[root.id]
             if not teams:
                 if all_employee_ids is None:
                     all_employee_ids = {r[0] for r in self._db.query(Employee.id).all()}
                 result[root.id] = all_employee_ids
+                windows[root.id] = {}  # команда не определена — все свои всегда
                 continue
             if qa_ids is None:
                 qa_ids = {
                     r[0] for r in self._db.query(Employee.id).filter(Employee.role == "qa").all()
                 }
             ids: set = set()
+            root_windows: Dict[str, list] = {}
             for t in teams:
                 ids |= members_by_team.get(t, set())
+                for emp_id, ivs in intervals_by_team.get(t, {}).items():
+                    root_windows.setdefault(emp_id, []).extend(ivs)
             result[root.id] = ids | qa_ids
-        return result
+            # QA — общий ресурс: в отрезках не участвует, значит свой всегда.
+            windows[root.id] = {
+                emp_id: sorted(ivs) for emp_id, ivs in root_windows.items()
+                if emp_id not in qa_ids
+            }
+        return result, windows
 
     def _priority_by_issue(self, root_ids: Sequence[str]) -> Dict[str, Optional[int]]:
         """Приоритет проекта из бэклога — одним запросом на весь портфель."""

@@ -724,3 +724,25 @@ def test_portfolio_project_without_team_and_plan_counts_everyone_as_internal(db_
     by_code = {w["code"]: w for w in pf["work_types"]}
     assert by_code["analyst"]["fact_hours"] == 10.0
     assert pf["external_hours"] == 0.0
+
+
+def test_hours_after_departure_count_as_external(db_session):
+    """Свой разработчик ушёл из команды — его поздние часы идут в «прочее»."""
+    db = db_session
+    ids = _seed_project(db)
+
+    membership = (
+        db.query(EmployeeTeam)
+        .filter(EmployeeTeam.employee_id == ids["dev"], EmployeeTeam.team == "T")
+        .one()
+    )
+    membership.left_at = date(2026, 7, 20)  # часы 1 августа — уже не наши
+    db.commit()
+
+    plan = ProjectPlanService(db).get_plan("PP-1", year=2026, quarter=3)
+    by_code = {w["code"]: w for w in plan["work_types"]}
+    assert by_code["dev"]["fact_hours"] == 0.0
+    assert plan["external_hours"] == 25.0  # 5 чужих + 20 после выбытия
+
+    pf = ProjectPlanService(db).get_portfolio(["PP-1"], year=2026, quarter=3)
+    assert pf["external_hours"] == 25.0

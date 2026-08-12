@@ -1752,6 +1752,14 @@ class AnalyticsService:
                 Worklog.started_at <= end_dt,
             )
         )
+        if teams:
+            # Участие проверяется НА ДАТУ списания: часы, списанные после
+            # перевода в другую команду, в отчёт этой команды не идут.
+            wl_q = wl_q.filter(
+                tm.membership_on_column_exists(
+                    teams, Worklog.employee_id, Worklog.started_at
+                )
+            )
         if task_query:
             q = f"%{task_query}%"
             wl_q = wl_q.filter(or_(Issue.key.ilike(q), Issue.summary.ilike(q)))

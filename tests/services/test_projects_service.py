@@ -6,6 +6,7 @@ from app.models.issue import Issue
 from app.models.project import Project
 from app.models.worklog import Worklog
 from app.models.employee import Employee
+from app.models.employee_team import EmployeeTeam
 from app.models.category import Category
 from app.models.backlog_item import BacklogItem
 from app.models.planning_scenario import PlanningScenario
@@ -220,6 +221,11 @@ def test_list_projects_filters_by_team(db_session):
     e_b = Employee(id="e_y", jira_account_id="y1", display_name="Y", email="y@e", is_active=True, team="TeamB")
     db.add_all([parent, child, e_a, e_b])
     db.commit()
+    db.add_all([
+        EmployeeTeam(id="et_x", employee_id="e_x", team="TeamA", is_primary=True),
+        EmployeeTeam(id="et_y", employee_id="e_y", team="TeamB", is_primary=True),
+    ])
+    db.commit()
     db.add(Worklog(id="wA", jira_worklog_id="wA", issue_id="ic5", employee_id="e_x",
                    hours=10, time_spent_seconds=36000,
                    started_at=datetime(2026, 2, 1), updated_at=datetime(2026, 2, 1)))
@@ -350,6 +356,11 @@ def test_list_project_keys_falls_back_when_only_one_of_year_quarter_given(db_ses
                       email="o@e", is_active=True, team="OtherTeam")
     db.add_all([root_x, child_x, root_y, child_y, emp_q, emp_o])
     db.commit()
+    db.add_all([
+        EmployeeTeam(id="pk3etq", employee_id="pk3empq", team="TeamQ", is_primary=True),
+        EmployeeTeam(id="pk3eto", employee_id="pk3empo", team="OtherTeam", is_primary=True),
+    ])
+    db.commit()
     db.add(Worklog(id="pk3wx", jira_worklog_id="pk3wx", issue_id="pk3xc",
                    employee_id="pk3empq", hours=5.0, time_spent_seconds=18000,
                    started_at=datetime(2026, 2, 1), updated_at=datetime(2026, 2, 1)))
@@ -364,3 +375,35 @@ def test_list_project_keys_falls_back_when_only_one_of_year_quarter_given(db_ses
         actual = set(svc.list_project_keys(team_filter=["TeamQ"], **partial))
         assert actual == expected, f"mismatch for partial args {partial}"
         assert expected == {"PK3-1"}, "sanity: только PK3-1 списан TeamQ"
+
+
+def test_detail_team_label_is_team_on_worklog_day(db_session):
+    """Подпись команды — та, где человек был в день последнего списания."""
+    from datetime import date
+
+    db = db_session
+    _make_category(db, "tech_debt", "Tech Debt", "#00c9c8")
+    _make_project(db, "p9", "PRJ9")
+    parent = Issue(id="ip9", jira_issue_id="900", key="PRJ9-900", summary="Big",
+                   issue_type="Epic", status="Done", project_id="p9",
+                   category="quarterly_tasks", include_in_analysis=True)
+    child = Issue(id="ic9", jira_issue_id="901", key="PRJ9-901", summary="Sub",
+                  issue_type="Task", status="Done", project_id="p9",
+                  parent_id="ip9", category="tech_debt", include_in_analysis=True)
+    emp = Employee(id="e_m", jira_account_id="am", display_name="Moved",
+                   email="m@e", is_active=True, team="NewTeam")
+    db.add_all([parent, child, emp])
+    db.commit()
+    db.add_all([
+        EmployeeTeam(id="et_old", employee_id="e_m", team="OldTeam",
+                     is_primary=False, left_at=date(2026, 3, 1)),
+        EmployeeTeam(id="et_new", employee_id="e_m", team="NewTeam",
+                     is_primary=True, joined_at=date(2026, 3, 1)),
+    ])
+    db.add(Worklog(id="wm", jira_worklog_id="wm", issue_id="ic9", employee_id="e_m",
+                   hours=8, time_spent_seconds=28800,
+                   started_at=datetime(2026, 2, 10), updated_at=datetime(2026, 2, 10)))
+    db.commit()
+
+    detail = ProjectsService(db).get_project_detail("PRJ9-900")
+    assert detail.employees[0].team == "OldTeam"

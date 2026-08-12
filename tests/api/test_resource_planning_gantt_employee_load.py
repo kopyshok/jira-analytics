@@ -136,6 +136,12 @@ def test_membership_window_reported_for_leaver(client, db_session):
     assert load["member_from"] is None  # квартал начался, когда он уже в команде
     assert load["member_to"] == "2026-07-19"  # последний день участия
 
+    # Дни после выбытия помечены отдельно — это не выходной и не отпуск.
+    off_by_date = {d["date"]: d["off"] for d in load["days"]}
+    assert off_by_date["2026-07-17"] is None          # пятница, ещё в команде
+    assert off_by_date["2026-07-20"] == "out_of_team"  # понедельник, уже нет
+    assert off_by_date["2026-07-18"] == "weekend"      # суббота остаётся выходным
+
 
 def test_legacy_bar_without_daily_spreads_over_working_days(client, db_session):
     """Легаси-бар без раскладки: 12ч поровну по 23 рабочим дням июля, не по 31

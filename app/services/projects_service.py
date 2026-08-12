@@ -7,7 +7,7 @@ get_project_detail() — полная агрегация для правой п�
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import Select, select
@@ -20,6 +20,7 @@ from app.models.category import Category
 from app.models.planning_scenario import PlanningScenario
 from app.models.scenario_allocation import ScenarioAllocation
 from app.models.backlog_item import BacklogItem
+from app.services import team_membership as tm
 
 # Категории, у которых верхний issue считается «проектом».
 PROJECT_CATEGORY_CODES = ("quarterly_tasks", "archive_target")
@@ -191,6 +192,24 @@ class ProjectsService:
         for row in wl_rows:
             wl_by_issue[row.issue_id].append(row)
 
+        # Задачи, где хоть один час списан человеком, состоявшим в выбранных
+        # командах В ДЕНЬ списания (для legacy-фильтра ниже).
+        team_issue_ids: set[str] = set()
+        if team_filter and (year is None or quarter is None) and all_issue_ids:
+            team_issue_ids = {
+                r[0]
+                for r in db.execute(
+                    select(Worklog.issue_id)
+                    .where(
+                        Worklog.issue_id.in_(all_issue_ids),
+                        tm.membership_on_column_exists(
+                            team_filter, Worklog.employee_id, Worklog.started_at
+                        ),
+                    )
+                    .distinct()
+                ).all()
+            }
+
         result: list[ProjectListItem] = []
         for root in roots:
             sub_ids = subtree_map[root.id]
@@ -198,9 +217,10 @@ class ProjectsService:
 
             # Worklog-based team filter — только в legacy-режиме (без year+quarter).
             # В approved-scenario mode team_filter уже применён к PlanningScenario.team.
+            # Принадлежность автора берётся на дату списания: перевод человека
+            # в другую команду не должен ни добавлять, ни отнимать проекты.
             if team_filter and (year is None or quarter is None):
-                has_team = any(r.team in team_filter for r in rows)
-                if not has_team:
+                if not any(iid in team_issue_ids for iid in sub_ids):
                     continue
 
             total_hours = float(round(sum(r.hours for r in rows)))
@@ -325,12 +345,26 @@ class ProjectsService:
         from collections import defaultdict
         emp_hours: dict[str, float] = defaultdict(float)
         emp_meta: dict[str, tuple[str, Optional[str]]] = {}
+        emp_last_day: dict[str, date] = {}
         started_times: list[datetime] = []
 
         for row in wl_rows:
             emp_hours[row.employee_id] += row.hours
             emp_meta[row.employee_id] = (row.display_name, row.team)
             started_times.append(row.started_at)
+            day = row.started_at.date()
+            if day > emp_last_day.get(row.employee_id, date.min):
+                emp_last_day[row.employee_id] = day
+
+        # Подпись команды — та, в которой человек состоял в день последнего
+        # списания по проекту, а не сегодняшняя: переведённый в другую команду
+        # не должен задним числом переписывать историю проекта.
+        membership = tm.membership_rows(db, list(emp_hours.keys()))
+        for emp_id, (name, current_team) in list(emp_meta.items()):
+            on_day = tm.team_on_day(
+                membership.get(emp_id, []), emp_last_day[emp_id]
+            )
+            emp_meta[emp_id] = (name, on_day or current_team)
 
         total_hours = float(round(sum(emp_hours.values())))
         period_start = min(started_times) if started_times else None
