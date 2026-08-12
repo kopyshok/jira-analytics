@@ -19,6 +19,7 @@ from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.issue import Issue
 from app.models.worklog import Worklog
+from app.services import team_membership as tm
 from app.services.production_calendar_service import ProductionCalendarService
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,22 @@ class HoursBalanceService:
             result[(emp_id, day_val)] = float(hours or 0)
         return result
 
+    def membership_windows(
+        self,
+        teams_filter: list[str] | None,
+        from_: date,
+        to_: date,
+    ) -> dict[str, list[tuple[date, date]]] | None:
+        """Отрезки участия в выбранных командах внутри окна.
+
+        ``None`` — фильтра команд нет, резать нечего. Иначе словарь
+        ``employee_id -> [(с, по), ...]``; отсутствие ключа означает «в этих
+        командах в окне не состоял» — все дни такого сотрудника пропускаются.
+        """
+        if not teams_filter:
+            return None
+        return tm.member_intervals(self.db, teams_filter, from_, to_)
+
     def team_start(
         self,
         employee_id: str,
@@ -307,10 +324,13 @@ class HoursBalanceService:
         # Deduplicate and sort
         days_iter = sorted(set(days_iter))
 
+        windows = self.membership_windows(teams_filter, from_, to_)
+
         emp_results: list[EmployeeBalanceResult] = []
         team_overtime = 0.0
         team_skip = 0.0
         for e in employees:
+            intervals = None if windows is None else windows.get(e.id, [])
             balance = 0.0
             overtime_days = 0
             overtime_hours = 0.0
@@ -319,8 +339,11 @@ class HoursBalanceService:
             sparkline: list[float] = []
             eff_from = self.team_start(e.id, teams_filter, from_)
             for d in days_iter:
-                # Дни до даты вступления — пропускаем (нулевая точка в спарклайне)
-                if d < eff_from:
+                # Дни вне участия в выбранных командах — не наши: до вступления,
+                # после выбытия/перевода. Нулевая точка в спарклайне.
+                if d < eff_from or (
+                    intervals is not None and not tm.day_in_intervals(d, intervals)
+                ):
                     sparkline.append(balance)
                     continue
                 ch = cal_hours.get(d)
@@ -406,11 +429,15 @@ class HoursBalanceService:
             lambda: {"balance": 0.0, "overtime_days": 0, "skip_days": 0}
         )
         eff_from = self.team_start(employee_id, teams_filter, from_)
+        windows = self.membership_windows(teams_filter, from_, to_)
+        intervals = None if windows is None else windows.get(employee_id, [])
 
         cur = from_
         while cur <= to_:
-            # Дни до даты вступления — пропускаем как holiday
-            if cur < eff_from:
+            # Дни вне участия в выбранных командах — пустые (как выходной)
+            if cur < eff_from or (
+                intervals is not None and not tm.day_in_intervals(cur, intervals)
+            ):
                 days.append(DayCalc(cur, 0.0, 0.0, 0.0, "holiday"))
                 cur += timedelta(days=1)
                 continue

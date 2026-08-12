@@ -209,6 +209,82 @@ def test_dashboard_projects_splits_team_alien(testclient_db_session):
         app.dependency_overrides.pop(get_db, None)
 
 
+def test_dashboard_projects_hours_after_transfer_are_alien(testclient_db_session):
+    """Часы, списанные после перевода в другую команду, — помощь извне."""
+    from datetime import date, datetime
+    from uuid import uuid4
+    from app.main import app
+    from app.database import get_db
+    from fastapi.testclient import TestClient
+    from app.models import (Project, Issue, Worklog, Employee, EmployeeTeam,
+                            BacklogItem, PlanningScenario, ScenarioAllocation, Category)
+
+    db = testclient_db_session
+
+    cat = db.query(Category).filter_by(code="quarterly_tasks").first()
+    if not cat:
+        db.add(Category(id=str(uuid4()), code="quarterly_tasks",
+                        label="Квартальные задачи", color="#2dd4bf"))
+
+    project = Project(id=str(uuid4()), jira_project_id="jp9", key="TRN",
+                      name="Transfer project", is_active=True)
+    db.add(project)
+
+    rfa_id = str(uuid4())
+    db.add(Issue(id=rfa_id, jira_issue_id="ji9", key="TRN-1", summary="RFA",
+                 issue_type="Инициатива", status="In Progress",
+                 status_category="indeterminate", project_id=project.id,
+                 category="quarterly_tasks"))
+
+    team = "Команда Тест"
+    epic_id = str(uuid4())
+    db.add(Issue(id=epic_id, jira_issue_id="ji9e", key="TRN-2", summary="Epic",
+                 issue_type="Epic", status="In Progress",
+                 status_category="indeterminate", project_id=project.id,
+                 parent_id=rfa_id, team=team, category="quarterly_tasks"))
+
+    bi = BacklogItem(id=str(uuid4()), title="RFA", issue_id=rfa_id,
+                     estimate_analyst_hours=100.0)
+    db.add(bi)
+    scn = PlanningScenario(id=str(uuid4()), name="Q2 2026 plan", year=2026,
+                           quarter="Q2", team=team, status="approved")
+    db.add(scn)
+    db.flush()
+    db.add(ScenarioAllocation(id=str(uuid4()), scenario_id=scn.id,
+                              backlog_item_id=bi.id, included_flag=True,
+                              planned_hours=100.0))
+
+    moved = Employee(id=str(uuid4()), jira_account_id="acc9",
+                     display_name="Ушёл Петров", is_active=True)
+    db.add(moved)
+    db.add(EmployeeTeam(id=str(uuid4()), employee_id=moved.id, team=team,
+                        is_primary=False, left_at=date(2026, 5, 1)))
+    db.add(EmployeeTeam(id=str(uuid4()), employee_id=moved.id, team="Команда Другая",
+                        is_primary=True, joined_at=date(2026, 5, 1)))
+
+    db.add_all([
+        Worklog(id=str(uuid4()), jira_worklog_id="wl9a", issue_id=epic_id,
+                employee_id=moved.id, started_at=datetime(2026, 4, 15, 10, 0),
+                time_spent_seconds=6*3600, hours=6.0),
+        Worklog(id=str(uuid4()), jira_worklog_id="wl9b", issue_id=epic_id,
+                employee_id=moved.id, started_at=datetime(2026, 5, 15, 10, 0),
+                time_spent_seconds=4*3600, hours=4.0),
+    ])
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        c = TestClient(app)
+        resp = c.get(f"/api/v1/analytics/dashboard/projects?year=2026&quarter=2&teams={team}")
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["total_team_fact_hours"] == 6.0, data
+        assert data["total_alien_fact_hours"] == 4.0, data
+        assert data["alien_helper_count"] == 1
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
 def test_dashboard_projects_team_with_no_members_marks_all_as_alien(testclient_db_session):
     """Команда задана но без сотрудников — все ворклоги считаются чужими."""
     from datetime import datetime

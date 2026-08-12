@@ -357,20 +357,22 @@ class AnalyticsService:
         child_to_parent = descendant_to_rfa
         all_wl_ids = set(descendant_to_rfa.keys())
 
-        # Множество ID сотрудников команды — для split team vs alien (Task M11).
+        # Условие «ворклог сделан членом команды» — для split team vs alien
+        # (Task M11). Участие проверяется НА ДАТУ списания: часы, списанные
+        # после перевода в другую команду, идут в «помощь извне».
         # QA — общий ресурс компании, считается командным для всех команд.
+        team_wl_clause = None
         if teams:
-            team_employee_ids: set[str] = tm.members_overlapping(
-                self.db, teams, period_start, period_end
+            qa_emp_ids = {
+                r[0] for r in self.db.query(Employee.id).filter(Employee.role == "qa").all()
+            }
+            team_wl_clause = tm.membership_on_column_exists(
+                teams, Worklog.employee_id, Worklog.started_at
             )
-            qa_emp_rows = (
-                self.db.query(Employee.id)
-                .filter(Employee.role == "qa")
-                .all()
-            )
-            team_employee_ids |= {r[0] for r in qa_emp_rows}
-        else:
-            team_employee_ids = set()  # фильтр не задан — раздела нет
+            if qa_emp_ids:
+                team_wl_clause = or_(
+                    team_wl_clause, Worklog.employee_id.in_(qa_emp_ids)
+                )
 
         # Last worklog per epic (для silence)
         last_wl_rows = (
@@ -407,22 +409,20 @@ class AnalyticsService:
 
         # Аналогичный агрегат, но только по командным сотрудникам
         if teams:
-            # Фильтр команды задан — считаем командным только то, что от членов команды.
-            # Если команда без сопоставленных сотрудников — всё уходит в «помощь извне».
-            if team_employee_ids:
-                team_fact_rows = (
-                    self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
-                    .filter(
-                        Worklog.issue_id.in_(all_wl_ids),
-                        Worklog.started_at <= period_end_dt,
-                        Worklog.employee_id.in_(team_employee_ids),
-                    )
-                    .group_by(Worklog.issue_id)
-                    .all()
+            # Фильтр команды задан — считаем командным только то, что списано
+            # человеком, состоявшим в команде в день списания. Остальное —
+            # «помощь извне».
+            team_fact_rows = (
+                self.db.query(Worklog.issue_id, func.sum(Worklog.time_spent_seconds).label("secs"))
+                .filter(
+                    Worklog.issue_id.in_(all_wl_ids),
+                    Worklog.started_at <= period_end_dt,
+                    team_wl_clause,
                 )
-                team_fact_secs_by_issue: dict[str, int] = {r[0]: r[1] or 0 for r in team_fact_rows}
-            else:
-                team_fact_secs_by_issue = {}
+                .group_by(Worklog.issue_id)
+                .all()
+            )
+            team_fact_secs_by_issue: dict[str, int] = {r[0]: r[1] or 0 for r in team_fact_rows}
         else:
             # Фильтр команды не задан — раздела нет, всё считается командным
             team_fact_secs_by_issue = dict(fact_secs_by_issue)
@@ -505,15 +505,32 @@ class AnalyticsService:
         employees = self.db.query(Employee).filter(Employee.id.in_(employee_ids)).all() if employee_ids else []
         emp_by_id: dict[str, Employee] = {e.id: e for e in employees}
 
-        # Раздели epic_to_employees на свои/чужие; чужие пригодятся для alien_helpers
+        # Раздели epic_to_employees на свои/чужие; чужие пригодятся для alien_helpers.
+        # Чужие часы = все минус списанные членом команды на дату списания —
+        # так один и тот же человек до перевода «свой», после перевода «чужой».
         epic_alien_employees: dict[str, dict[str, int]] = {}
         if teams:
-            # Фильтр задан — отделяем чужих. Если team_employee_ids пуст,
-            # все сотрудники считаются чужими (team_employee_ids = пустое множество).
+            asg_team_rows = (
+                self.db.query(
+                    Worklog.issue_id,
+                    Worklog.employee_id,
+                    func.sum(Worklog.time_spent_seconds).label("secs"),
+                )
+                .filter(Worklog.issue_id.in_(all_wl_ids), team_wl_clause)
+                .group_by(Worklog.issue_id, Worklog.employee_id)
+                .all()
+            )
+            team_secs_by_epic_emp: dict[str, dict[str, int]] = {}
+            for issue_id, employee_id, secs in asg_team_rows:
+                epic_id = child_to_parent.get(issue_id, issue_id) if issue_id in child_to_parent else issue_id
+                d = team_secs_by_epic_emp.setdefault(epic_id, {})
+                d[employee_id] = d.get(employee_id, 0) + (secs or 0)
             for epic_id_key, emp_secs_map in epic_to_employees.items():
+                own = team_secs_by_epic_emp.get(epic_id_key, {})
                 aliens = {
-                    eid: secs for eid, secs in emp_secs_map.items()
-                    if eid not in team_employee_ids
+                    eid: secs - own.get(eid, 0)
+                    for eid, secs in emp_secs_map.items()
+                    if secs - own.get(eid, 0) > 0
                 }
                 if aliens:
                     epic_alien_employees[epic_id_key] = aliens
@@ -802,12 +819,23 @@ class AnalyticsService:
             )
         except ValueError:
             team_caps = []
+        # План режется долей участия в командах: переведённому в середине
+        # квартала не выставляется норма за месяцы, когда он был уже не наш.
+        def _share(emp_id: str, m: int) -> float:
+            if not teams:
+                return 1.0
+            return tm.month_membership_share(self.db, teams, emp_id, year, m)
+
         for qcap in team_caps:
             if month is not None:
                 mcap = next((m for m in qcap.months if m.month == month), None)
-                base_hours_by_emp[qcap.employee_id] = mcap.available_hours if mcap else 0.0
+                base = mcap.available_hours if mcap else 0.0
+                base_hours_by_emp[qcap.employee_id] = base * _share(qcap.employee_id, month)
             else:
-                base_hours_by_emp[qcap.employee_id] = qcap.total_available_hours
+                base_hours_by_emp[qcap.employee_id] = sum(
+                    m.available_hours * _share(qcap.employee_id, m.month)
+                    for m in qcap.months
+                )
         for emp in employees:
             base_hours_by_emp.setdefault(emp.id, 0.0)
 
@@ -967,7 +995,7 @@ class AnalyticsService:
         # числится в participating_teams), факт идёт в work_type 'other_foreign'
         # независимо от категории задачи. Пустая team задачи = чужая.
         emp_ids_list = [e.id for e in employees]
-        wl_rows = (
+        wl_q = (
             self.db.query(
                 Worklog.employee_id,
                 Issue.category,
@@ -983,6 +1011,17 @@ class AnalyticsService:
                 Worklog.started_at <= end_dt,
                 Issue.include_in_analysis != False,  # noqa: E712
             )
+        )
+        if teams:
+            # Участие проверяется НА ДАТУ списания: часы, списанные после
+            # перевода в другую команду, в срез этой команды не попадают.
+            wl_q = wl_q.filter(
+                tm.membership_on_column_exists(
+                    teams, Worklog.employee_id, Worklog.started_at
+                )
+            )
+        wl_rows = (
+            wl_q
             .group_by(
                 Worklog.employee_id,
                 Issue.category,
@@ -1080,7 +1119,7 @@ class AnalyticsService:
                 proj_rows: list[tuple[str, int | None]] = []
                 for i in range(0, len(project_ids_list), CHUNK):
                     chunk = project_ids_list[i : i + CHUNK]
-                    proj_rows.extend(
+                    proj_q = (
                         self.db.query(
                             Worklog.employee_id,
                             func.sum(Worklog.time_spent_seconds).label("secs"),
@@ -1093,9 +1132,14 @@ class AnalyticsService:
                             Worklog.started_at <= end_dt,
                             Issue.include_in_analysis != False,  # noqa: E712
                         )
-                        .group_by(Worklog.employee_id)
-                        .all()
                     )
+                    if teams:
+                        proj_q = proj_q.filter(
+                            tm.membership_on_column_exists(
+                                teams, Worklog.employee_id, Worklog.started_at
+                            )
+                        )
+                    proj_rows.extend(proj_q.group_by(Worklog.employee_id).all())
                 for emp_id, secs in proj_rows:
                     h = (secs or 0) / 3600.0
                     fact_per_emp_wt.setdefault(emp_id, {})

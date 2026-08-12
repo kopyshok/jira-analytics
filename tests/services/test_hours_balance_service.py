@@ -155,6 +155,59 @@ def test_employee_full_norm_balance_zero(db_session, emp, issue):
 # ---------------------------------------------------------------------------
 
 
+def test_hours_after_transfer_not_counted_for_old_team(db_session, emp, issue):
+    """Переведён в другую команду 20 января — дни после перевода не наши.
+
+    Работает по 10 ч каждый рабочий день 12-30 января (норма 8 ч).
+    Срез по старой команде видит переработку только за 12-19 января.
+    """
+    db_session.add_all([
+        EmployeeTeam(
+            id="et-old", employee_id=emp.id, team="Команда A",
+            is_primary=False, left_at=date(2026, 1, 20),
+        ),
+        EmployeeTeam(
+            id="et-new", employee_id=emp.id, team="Команда B",
+            is_primary=True, joined_at=date(2026, 1, 20),
+        ),
+    ])
+    for day_num in range(12, 31):
+        d = date(2026, 1, day_num)
+        if d.weekday() >= 5:
+            continue
+        db_session.add(Worklog(
+            id=f"wl-t-{day_num}",
+            jira_worklog_id=f"j-t-{day_num}",
+            issue_id=issue.id,
+            employee_id=emp.id,
+            hours=10.0,
+            time_spent_seconds=int(10.0 * 3600),
+            started_at=datetime(2026, 1, day_num, 10, 0),
+        ))
+    db_session.commit()
+
+    svc = HoursBalanceService(db_session)
+    result = svc.compute_team(
+        employee_ids=[emp.id],
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 30),
+        teams_filter=["Команда A"],
+    )
+    bal = result.employees[0]
+    # 12-16 + 19 января = 6 рабочих дней × 2 ч переработки
+    assert bal.overtime_days == 6
+    assert bal.balance_hours == pytest.approx(12.0, abs=0.01)
+
+    detail = svc.compute_employee(
+        employee_id=emp.id,
+        from_=date(2026, 1, 12),
+        to_=date(2026, 1, 30),
+        teams_filter=["Команда A"],
+    )
+    assert detail.overtime_days == 6
+    assert detail.balance_hours == pytest.approx(12.0, abs=0.01)
+
+
 def test_vacation_not_counted_as_skip(db_session, emp, vacation_reason):
     """Сотрудник в отпуске 12-16 января → ни отгулов, ни переработок."""
     db_session.add(Absence(
