@@ -7,6 +7,14 @@ import type { DashboardCategoriesResponse, CategoryMetaItem, EmployeeWorklogActi
 
 const STORAGE_KEY = 'dashboard.categories.activityThresholds';
 
+// Плитка «Чужие задачи» — часть корзины незаполненных ворклогов; своего кода
+// в справочнике у неё нет, поэтому в Аналитике открываем саму корзину.
+const FOREIGN_UNFILLED_KEY = '__foreign_unfilled__';
+
+function analyticsCategory(key: string): string {
+  return key === FOREIGN_UNFILLED_KEY ? 'unfilled_worklog' : key;
+}
+
 interface Thresholds {
   greenMax: number;   // ≤ greenMax дней — зелёный
   yellowMax: number;  // ≤ yellowMax дней — жёлтый, иначе красный
