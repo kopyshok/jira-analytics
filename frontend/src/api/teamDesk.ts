@@ -1,7 +1,7 @@
 import { api, boolParam } from './client';
 
 export type FlagCode =
-  | 'over' | 'under' | 'decomp' | 'childgap' | 'orphan'
+  | 'over' | 'under' | 'decomp' | 'childgap' | 'orphan' | 'alien'
   | 'noest' | 'nospent' | 'idlespent' | 'stale';
 
 export type StatusGroup = 'dev' | 'waiting' | 'todo' | 'done' | 'unassigned';
@@ -24,7 +24,10 @@ export interface DeskIssue {
   parent_id: string | null;
   est_hours: number | null;
   fact_hours: number;
+  /** Разбивка часов по людям: владелец и, если есть, другие разработчики. */
   fact_by_person: { name: string; hours: number }[];
+  /** Часы других разработчиков — в факт не входят. */
+  alien_hours: number;
   days_in_status: number;
   is_analysis: boolean;
   is_subtask: boolean;
@@ -109,6 +112,7 @@ export const FLAG_LABELS: Record<FlagCode, string> = {
   decomp: 'Без декомпозиции',
   childgap: 'Подзадачи недооценены',
   orphan: 'Подзадача без родителя',
+  alien: 'Часы другого разработчика',
   noest: 'Нет оценки',
   nospent: 'Нет списаний',
   idlespent: 'Часы в неначатой',
@@ -116,18 +120,18 @@ export const FLAG_LABELS: Record<FlagCode, string> = {
 };
 
 export const FLAG_ORDER: FlagCode[] = [
-  'over', 'under', 'decomp', 'childgap', 'orphan',
+  'over', 'under', 'decomp', 'childgap', 'orphan', 'alien',
   'noest', 'nospent', 'idlespent', 'stale',
 ];
 
 export const FLAG_ICON: Record<FlagCode, string> = {
-  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟', orphan: '⚠',
+  over: '↑', under: '↓', decomp: '⊞', childgap: '⊟', orphan: '⚠', alien: '⇄',
   noest: '∅', nospent: '◔', idlespent: '⏱', stale: '⏳',
 };
 
 export const FLAG_COLOR: Record<FlagCode, string> = {
   over: 'red', under: 'gold', decomp: 'orange', childgap: 'volcano',
-  orphan: 'magenta',
+  orphan: 'magenta', alien: 'cyan',
   noest: 'default', nospent: 'default', idlespent: 'geekblue', stale: 'purple',
 };
 

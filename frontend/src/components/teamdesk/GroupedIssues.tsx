@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Table, Tag, Typography } from 'antd';
+import { Card, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   roundHours, type DeskDeveloper, type DeskIssue, type FlagCode,
@@ -180,8 +180,36 @@ export function GroupedIssues({
     },
     { title: 'Оценка', width: 96, align: 'right',
       render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
-    { title: 'Факт', width: 88, align: 'right',
-      render: (_, row) => roundHours(row.fact_hours ?? 0) },
+    {
+      title: 'Факт',
+      width: 88,
+      align: 'right',
+      render: (_, row) => {
+        const hours = roundHours(row.fact_hours ?? 0);
+        const people = row.fact_by_person ?? [];
+        if (row.isGroup || !people.length) return hours;
+        return (
+          <Tooltip
+            title={
+              <div>
+                {people.map((p) => (
+                  <div key={p.name}>
+                    {p.name}: {roundHours(p.hours)} ч
+                  </div>
+                ))}
+                {(row.alien_hours ?? 0) > 0 && (
+                  <div style={{ marginTop: 4, opacity: 0.75 }}>
+                    Часы других разработчиков в факт не входят
+                  </div>
+                )}
+              </div>
+            }
+          >
+            <span style={{ borderBottom: '1px dotted rgba(160,175,195,0.6)' }}>{hours}</span>
+          </Tooltip>
+        );
+      },
+    },
     {
       title: 'Осталось',
       width: 108,

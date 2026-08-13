@@ -19,50 +19,60 @@ def _days_in_status(issue: Issue, today: datetime) -> int:
     return max(0, (today - issue.status_changed_at).days)
 
 
-def _fact_by_issue(db: Session, issue_ids: list[str]) -> dict[str, float]:
-    """Часы списаний по задачам. Факт — сумма по всем, кто списывал."""
-    if not issue_ids:
-        return {}
-    rows = (
-        db.query(Worklog.issue_id, func.sum(Worklog.hours))
-        .filter(Worklog.issue_id.in_(issue_ids))
-        .group_by(Worklog.issue_id)
-        .all()
-    )
-    return {issue_id: float(total or 0) for issue_id, total in rows}
+def _hours_by_person(
+    db: Session, issue_ids: list[str]
+) -> tuple[dict[str, list[tuple]], dict[str, list[tuple]]]:
+    """Часы по людям: (списанные в саму задачу, списанные в её подзадачи).
 
-
-def _fact_by_person(db: Session, issue_ids: list[str]) -> dict[str, list[dict]]:
-    """Разбивка факта по людям — показывается при раскрытии строки.
-
-    Часы подзадач приплюсовываются к родителю: разработчик списывает и в
-    основную задачу, и в подчинённые, а на экране это одна работа.
+    Каждая запись — кортеж «учётная запись, имя, роль, часы». Роль нужна, чтобы
+    отделить работу разработчика от часов тестировщиков и аналитиков: раздел про
+    работу программистов, остальные часы в нём не участвуют вовсе.
     """
     if not issue_ids:
-        return {}
-    own = (
-        db.query(Worklog.issue_id, Employee.display_name, func.sum(Worklog.hours))
+        return {}, {}
+    own_rows = (
+        db.query(
+            Worklog.issue_id,
+            Employee.jira_account_id,
+            Employee.display_name,
+            Employee.role,
+            func.sum(Worklog.hours),
+        )
         .join(Employee, Employee.id == Worklog.employee_id)
         .filter(Worklog.issue_id.in_(issue_ids))
-        .group_by(Worklog.issue_id, Employee.display_name)
+        .group_by(
+            Worklog.issue_id, Employee.jira_account_id,
+            Employee.display_name, Employee.role,
+        )
         .all()
     )
-    children = (
-        db.query(Issue.parent_id, Employee.display_name, func.sum(Worklog.hours))
+    child_rows = (
+        db.query(
+            Issue.parent_id,
+            Employee.jira_account_id,
+            Employee.display_name,
+            Employee.role,
+            func.sum(Worklog.hours),
+        )
         .join(Worklog, Worklog.issue_id == Issue.id)
         .join(Employee, Employee.id == Worklog.employee_id)
         .filter(Issue.parent_id.in_(issue_ids))
-        .group_by(Issue.parent_id, Employee.display_name)
+        .group_by(
+            Issue.parent_id, Employee.jira_account_id,
+            Employee.display_name, Employee.role,
+        )
         .all()
     )
-    totals: dict[str, dict[str, float]] = {}
-    for issue_id, name, total in list(own) + list(children):
-        by_name = totals.setdefault(issue_id, {})
-        by_name[name] = by_name.get(name, 0.0) + float(total or 0)
-    return {
-        issue_id: [{"name": name, "hours": hours} for name, hours in by_name.items()]
-        for issue_id, by_name in totals.items()
-    }
+
+    def _group(rows) -> dict[str, list[tuple]]:
+        out: dict[str, list[tuple]] = {}
+        for issue_id, account_id, name, role, total in rows:
+            out.setdefault(issue_id, []).append(
+                (account_id, name, role, float(total or 0))
+            )
+        return out
+
+    return _group(own_rows), _group(child_rows)
 
 
 def _owner_conditions(cfg: DeskConfig, developer_ids: list[str]) -> list:
@@ -155,24 +165,6 @@ def _child_estimates(db: Session, issue_ids: list[str]) -> tuple[dict, dict]:
     return est_sum, counts
 
 
-def _child_fact(db: Session, issue_ids: list[str]) -> dict[str, float]:
-    """Часы подзадач по родителям — по ВСЕМ подзадачам, а не только видимым.
-
-    Подзадача может быть закрыта или отфильтрована из среза, но списанные в
-    неё часы всё равно потрачены на работу родителя.
-    """
-    if not issue_ids:
-        return {}
-    rows = (
-        db.query(Issue.parent_id, func.sum(Worklog.hours))
-        .join(Worklog, Worklog.issue_id == Issue.id)
-        .filter(Issue.parent_id.in_(issue_ids))
-        .group_by(Issue.parent_id)
-        .all()
-    )
-    return {parent_id: float(total or 0) for parent_id, total in rows}
-
-
 def build_overview(
     db: Session,
     developer_ids: list[str],
@@ -204,10 +196,9 @@ def build_overview(
         issues += [i for i in extra if i.id not in known]
     ids = [i.id for i in issues]
     id_set = set(ids)
-    fact_map = _fact_by_issue(db, ids)
-    person_map = _fact_by_person(db, ids)
+    own_hours, child_hours = _hours_by_person(db, ids)
     child_est, child_count = _child_estimates(db, ids)
-    child_fact = _child_fact(db, ids)
+    dev_roles = set(cfg.developer_roles)
 
     rows: list[dict] = []
     signatures: dict[tuple[str, str], str] = {}
@@ -218,12 +209,41 @@ def build_overview(
         is_orphan = is_subtask and (
             not issue.parent_id or issue.parent_id not in id_set
         )
+        # У тех. анализа поле «Разработчик» пустое — там владелец это исполнитель.
+        owner_id = issue.developer_account_id or (
+            issue.assignee_account_id if is_analysis else None
+        )
+        owner_name = issue.developer_display_name or (
+            issue.assignee_display_name if is_analysis else None
+        )
+
+        # Факт — часы ВЛАДЕЛЬЦА: в самой задаче и в её подзадачах. Часы
+        # тестировщиков и аналитиков в разделе не участвуют вовсе — тимлид
+        # смотрит работу программистов, а оценка в задаче тоже только на неё.
+        rows_own = own_hours.get(issue.id, [])
+        fact = sum(
+            hours
+            for account_id, _, _, hours in rows_own + child_hours.get(issue.id, [])
+            if owner_id and account_id == owner_id
+        )
+        # Часы другого разработчика в задаче — ошибка: работу двигает владелец,
+        # а списанное коллегой попадёт в его собственную оценку не туда.
+        alien = [
+            {"name": name, "hours": round(hours, 1)}
+            for account_id, name, role, hours in rows_own
+            if account_id != owner_id and role in dev_roles
+        ]
+        alien_hours = sum(item["hours"] for item in alien)
+        by_person = ([{"name": owner_name, "hours": round(fact, 1)}] if fact else [])
+        by_person += alien
+
         facts = IssueFacts(
             key=issue.key,
             status=issue.status,
             group=group,
             est=issue.dev_est_hours,
-            fact=fact_map.get(issue.id, 0.0) + child_fact.get(issue.id, 0.0),
+            fact=fact,
+            alien_hours=alien_hours,
             days_in_status=_days_in_status(issue, today),
             child_est_sum=child_est.get(issue.id),
             has_children=child_count.get(issue.id, 0) > 0,
@@ -235,13 +255,6 @@ def build_overview(
         for flag in flags:
             signatures[(flag, issue.id)] = flag_signature(flag, facts)
 
-        # У тех. анализа поле «Разработчик» пустое — там владелец это исполнитель.
-        owner_id = issue.developer_account_id or (
-            issue.assignee_account_id if is_analysis else None
-        )
-        owner_name = issue.developer_display_name or (
-            issue.assignee_display_name if is_analysis else None
-        )
         rows.append(
             {
                 "id": issue.id,
@@ -255,7 +268,10 @@ def build_overview(
                 "parent_id": issue.parent_id,
                 "est_hours": issue.dev_est_hours,
                 "fact_hours": facts.fact,
-                "fact_by_person": person_map.get(issue.id, []),
+                "fact_by_person": by_person,
+                # Часы других разработчиков — в факт не идут, показываются
+                # подсказкой и подсвечиваются замечанием.
+                "alien_hours": round(alien_hours, 1),
                 "days_in_status": facts.days_in_status,
                 "is_analysis": is_analysis,
                 "is_subtask": facts.is_subtask,
