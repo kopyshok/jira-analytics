@@ -22,6 +22,7 @@ from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
 from app.services import team_membership as tm
+from app.services.categories import UNFILLED_WORKLOG_CODE
 from app.schemas.dashboard import (
     DashboardProjectsResponse,
     DashboardNormWorkResponse,
@@ -33,6 +34,10 @@ from app.utils.period import quarter_to_dates
 
 
 NO_TEAM_TOKEN = "__none__"
+
+# Виртуальная плитка виджета категорий: незаполненные ворклоги на чужих задачах.
+FOREIGN_UNFILLED_KEY = "__foreign_unfilled__"
+FOREIGN_UNFILLED_LABEL = "Чужие задачи (без категории)"
 
 
 def _initials(name: str) -> str:
@@ -173,6 +178,23 @@ class AnalyticsService:
 
         final = or_(*clauses) if len(clauses) > 1 else clauses[0]
         return query.filter(final)
+
+    @staticmethod
+    def _issue_belongs_to_teams(named_teams: list[str]):
+        """Условие «задача принадлежит одной из команд».
+
+        Совпадение по основной команде задачи либо по участвующим. Пустая
+        команда задачи = не принадлежит (``coalesce`` — иначе NULL съедает
+        строку при отрицании условия).
+        """
+        team_col = func.coalesce(Issue.team, "")
+        parts_col = func.coalesce(Issue.participating_teams, "")
+        clauses = [team_col.in_(named_teams)]
+        for t in named_teams:
+            t_json = json.dumps(t, ensure_ascii=False)
+            escaped = t_json.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append(parts_col.like(f"%{escaped}%", escape="\\"))
+        return or_(*clauses)
 
     @staticmethod
     def _exclude_non_analysis(query):
@@ -1296,15 +1318,15 @@ class AnalyticsService:
         allowed_codes = list(cat_meta.keys())
 
         # 2. Агрегат по категории задачи
+        agg_cols = [
+            func.sum(Worklog.hours).label("hours"),
+            func.count(Worklog.id).label("worklog_count"),
+            func.count(func.distinct(Issue.id)).label("issue_count"),
+            func.count(func.distinct(Worklog.employee_id)).label("employee_count"),
+            func.avg(Worklog.hours * 60).label("avg_worklog_minutes"),
+        ]
         agg_q = (
-            self.db.query(
-                Issue.category.label("category"),
-                func.sum(Worklog.hours).label("hours"),
-                func.count(Worklog.id).label("worklog_count"),
-                func.count(func.distinct(Issue.id)).label("issue_count"),
-                func.count(func.distinct(Worklog.employee_id)).label("employee_count"),
-                func.avg(Worklog.hours * 60).label("avg_worklog_minutes"),
-            )
+            self.db.query(Issue.category.label("category"), *agg_cols)
             .join(Issue, Worklog.issue_id == Issue.id)
             .filter(
                 Worklog.started_at >= start_dt,
@@ -1312,9 +1334,20 @@ class AnalyticsService:
                 Issue.category.in_(allowed_codes),
             )
         )
+        # Незаполненные ворклоги на задачах чужих команд — отдельной плиткой:
+        # разбирать чужую задачу некому, а в общей корзине они маскируют
+        # собственные незаполненные списания команды.
+        named_teams = [t for t in teams if t != NO_TEAM_TOKEN] if teams else []
+        foreign_unfilled_clause = None
+        if named_teams:
+            foreign_unfilled_clause = and_(
+                Issue.category == UNFILLED_WORKLOG_CODE,
+                ~self._issue_belongs_to_teams(named_teams),
+            )
+            agg_q = agg_q.filter(~foreign_unfilled_clause)
+
+        emp_clause = None
         if teams:
-            named_teams = [t for t in teams if t != NO_TEAM_TOKEN]
-            has_none = NO_TEAM_TOKEN in teams
             emp_clauses: list = []
             if named_teams:
                 emp_clauses.append(
@@ -1322,16 +1355,17 @@ class AnalyticsService:
                         named_teams, Worklog.employee_id, Worklog.started_at
                     )
                 )
-            if has_none:
+            if NO_TEAM_TOKEN in teams:
                 emp_clauses.append(
                     ~tm.has_any_membership_on(
                         Worklog.employee_id, Worklog.started_at
                     )
                 )
             if emp_clauses:
-                agg_q = agg_q.filter(
+                emp_clause = (
                     or_(*emp_clauses) if len(emp_clauses) > 1 else emp_clauses[0]
                 )
+                agg_q = agg_q.filter(emp_clause)
         agg_rows = agg_q.group_by(Issue.category).all()
 
         items: list[CategoryMetaItem] = []
@@ -1348,6 +1382,32 @@ class AnalyticsService:
                 avg_worklog_minutes=round(float(row.avg_worklog_minutes or 0), 1),
                 pct=0.0,  # computed below
             ))
+
+        if foreign_unfilled_clause is not None:
+            foreign_q = (
+                self.db.query(*agg_cols)
+                .join(Issue, Worklog.issue_id == Issue.id)
+                .filter(
+                    Worklog.started_at >= start_dt,
+                    Worklog.started_at <= end_dt,
+                    foreign_unfilled_clause,
+                )
+            )
+            if emp_clause is not None:
+                foreign_q = foreign_q.filter(emp_clause)
+            fr = foreign_q.one()
+            if fr.hours:
+                items.append(CategoryMetaItem(
+                    key=FOREIGN_UNFILLED_KEY,
+                    label=FOREIGN_UNFILLED_LABEL,
+                    color="#ff7875",
+                    hours=round(float(fr.hours or 0), 2),
+                    worklog_count=int(fr.worklog_count or 0),
+                    issue_count=int(fr.issue_count or 0),
+                    employee_count=int(fr.employee_count or 0),
+                    avg_worklog_minutes=round(float(fr.avg_worklog_minutes or 0), 1),
+                    pct=0.0,
+                ))
 
         items.sort(key=lambda x: x.hours, reverse=True)
         total_hours = round(sum(i.hours for i in items), 2)
