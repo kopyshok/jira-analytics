@@ -1,0 +1,107 @@
+ЛИЦЕНЗИЯ НА ПРОГРАММНОЕ ОБЕСПЕЧЕНИЕ «JIRA ANALYTICS»
+PROPRIETARY SOFTWARE LICENSE — «JIRA ANALYTICS»
+
+Copyright (c) 2026 [ФИО ПРАВООБЛАДАТЕЛЯ]. Все права защищены. / All rights reserved.
+
+--------------------------------------------------------------------------------
+РУССКАЯ ВЕРСИЯ (имеет преимущественную силу)
+--------------------------------------------------------------------------------
+
+1. ПРАВООБЛАДАТЕЛЬ
+
+Исключительное право на настоящее программное обеспечение (далее — «ПО»),
+включая исходный код, интерфейс, документацию и производные материалы,
+принадлежит правообладателю, указанному выше.
+
+2. ОТСУТСТВИЕ ОБЩЕГО РАЗРЕШЕНИЯ
+
+Настоящий файл НЕ предоставляет никому никаких прав на использование ПО.
+Публикация исходного кода в любом репозитории, а равно предоставление доступа
+к нему, сами по себе не означают выдачу лицензии.
+
+Без отдельного письменного соглашения с правообладателем запрещается:
+   а) использовать ПО, в том числе устанавливать и запускать его;
+   б) воспроизводить, копировать и распространять ПО;
+   в) изменять ПО и создавать производные произведения;
+   г) предоставлять доступ к ПО третьим лицам, в том числе по модели
+      «программное обеспечение как услуга»;
+   д) удалять или изменять указания об авторстве и настоящую лицензию.
+
+3. ПОРЯДОК ПРЕДОСТАВЛЕНИЯ ПРАВ
+
+Право использования ПО предоставляется исключительно на основании отдельного
+лицензионного договора (простой неисключительной лицензии), заключаемого
+правообладателем с конкретным лицом в письменной форме.
+
+Правообладатель по своему усмотрению определяет условия каждого такого договора,
+включая срок, территорию, объём разрешённого использования и размер
+вознаграждения. Договор может быть как возмездным, так и безвозмездным.
+Предоставление безвозмездной лицензии одному лицу не создаёт у иных лиц права
+требовать предоставления лицензии на тех же условиях.
+
+4. ДОПУСТИМЫЕ ДЕЙСТВИЯ БЕЗ ДОГОВОРА
+
+Разрешается ознакомление с исходным кодом в целях его изучения и оценки, а также
+техническое копирование, неизбежно возникающее при таком ознакомлении. Любое
+иное использование требует договора согласно разделу 3.
+
+5. КОМПОНЕНТЫ ТРЕТЬИХ ЛИЦ
+
+ПО использует компоненты третьих лиц, распространяемые на условиях собственных
+лицензий. Перечень таких компонентов и условия их использования приведены в файле
+THIRD-PARTY-NOTICES.md. Настоящая лицензия не изменяет и не ограничивает права,
+предоставленные лицензиями этих компонентов.
+
+6. ОТСУТСТВИЕ ГАРАНТИЙ
+
+ПО ПРЕДОСТАВЛЯЕТСЯ «КАК ЕСТЬ», БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ, ЯВНЫХ ИЛИ
+ПОДРАЗУМЕВАЕМЫХ, ВКЛЮЧАЯ ГАРАНТИИ ПРИГОДНОСТИ ДЛЯ ОПРЕДЕЛЁННЫХ ЦЕЛЕЙ И
+ОТСУТСТВИЯ НАРУШЕНИЙ ПРАВ ТРЕТЬИХ ЛИЦ. ПРАВООБЛАДАТЕЛЬ НЕ НЕСЁТ
+ОТВЕТСТВЕННОСТИ ЗА ЛЮБОЙ УЩЕРБ, ВОЗНИКШИЙ В СВЯЗИ С ИСПОЛЬЗОВАНИЕМ ИЛИ
+НЕВОЗМОЖНОСТЬЮ ИСПОЛЬЗОВАНИЯ ПО, ЕСЛИ ИНОЕ ПРЯМО НЕ ПРЕДУСМОТРЕНО ОТДЕЛЬНЫМ
+ДОГОВОРОМ.
+
+7. КОНТАКТ ДЛЯ ПОЛУЧЕНИЯ ЛИЦЕНЗИИ
+
+Запросы на предоставление права использования направляются правообладателю:
+[КОНТАКТНЫЙ EMAIL]
+
+--------------------------------------------------------------------------------
+ENGLISH VERSION (for reference; the Russian version prevails)
+--------------------------------------------------------------------------------
+
+1. OWNERSHIP. All rights in this software (the "Software"), including source
+code, user interface, documentation and derivative materials, are owned by the
+copyright holder named above.
+
+2. NO GENERAL GRANT. This file grants no rights to anyone. Publication of, or
+access to, the source code does not constitute a licence.
+
+Without a separate written agreement with the copyright holder, you may not:
+(a) use, install or run the Software; (b) reproduce, copy or distribute it;
+(c) modify it or create derivative works; (d) make it available to third
+parties, including as a hosted or software-as-a-service offering; (e) remove or
+alter authorship notices or this licence.
+
+3. HOW RIGHTS ARE GRANTED. Permission to use the Software is granted solely
+under a separate written non-exclusive licence agreement between the copyright
+holder and a named licensee. The copyright holder determines the terms of each
+agreement at its sole discretion, including term, territory, permitted scope and
+fees. An agreement may be granted with or without charge. A royalty-free grant
+to one licensee creates no entitlement for any other party.
+
+4. PERMITTED WITHOUT AN AGREEMENT. You may read the source code to evaluate it,
+including the incidental copying that such reading requires. Any other use
+requires an agreement under Section 3.
+
+5. THIRD-PARTY COMPONENTS. The Software incorporates third-party components
+licensed under their own terms, listed in THIRD-PARTY-NOTICES.md. This licence
+neither modifies nor limits the rights granted by those licences.
+
+6. NO WARRANTY. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NON-INFRINGEMENT. THE COPYRIGHT HOLDER SHALL NOT BE
+LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF OR INABILITY TO USE THE SOFTWARE
+UNLESS EXPRESSLY AGREED OTHERWISE IN A SEPARATE AGREEMENT.
+
+7. LICENCE ENQUIRIES. [КОНТАКТНЫЙ EMAIL]
