@@ -149,6 +149,90 @@ def test_subtask_does_not_double_count(db_session):
     assert "decomp" not in rows["OS-10"]["flags"]
 
 
+def _worklog(db_session, issue, employee, hours):
+    db_session.add(
+        Worklog(
+            id=str(uuid.uuid4()),
+            jira_worklog_id=str(uuid.uuid4()),
+            issue_id=issue.id,
+            employee_id=employee.id,
+            hours=hours,
+            time_spent_seconds=int(hours * 3600),
+            started_at=datetime.utcnow(),
+        )
+    )
+    db_session.flush()
+
+
+def test_fact_takes_only_owner_hours(db_session):
+    """Факт — часы владельца. Тестировщик и аналитик в разделе не участвуют."""
+    project = _project(db_session)
+    owner = _employee(db_session, "acc-1", "Шутов Сергей")
+    owner.role = "dev"
+    qa = _employee(db_session, "acc-qa", "Ганиева Марина")
+    qa.role = "qa"
+    analyst = _employee(db_session, "acc-an", "Фокеева Наталья")
+    analyst.role = "analyst"
+    task = _issue(
+        db_session, project, "OS-50",
+        developer_account_id="acc-1",
+        developer_display_name="Шутов Сергей",
+        dev_est_hours=40.0,
+    )
+    child = _issue(
+        db_session, project, "OS-51",
+        issue_type="Подзадача", status="ГОТОВО",
+        parent_id=task.id,
+        developer_account_id="acc-1",
+        developer_display_name="Шутов Сергей",
+        dev_est_hours=16.0,
+    )
+    _worklog(db_session, task, owner, 4.0)
+    _worklog(db_session, child, owner, 35.0)
+    _worklog(db_session, task, qa, 49.5)
+    _worklog(db_session, task, analyst, 1.0)
+    db_session.commit()
+
+    result = build_overview(db_session, developer_ids=["acc-1"])
+    row = {r["key"]: r for r in result["issues"]}["OS-50"]
+    # 4 своих в задаче + 35 своих в подзадаче; 50.5 ч чужих ролей отброшены.
+    assert row["fact_hours"] == 39.0
+    assert row["alien_hours"] == 0
+    assert row["fact_by_person"] == [{"name": "Шутов Сергей", "hours": 39.0}]
+    assert "over" not in row["flags"]
+    assert result["developers"][0]["fact_hours"] == 39.0
+
+
+def test_other_developer_hours_are_a_problem(db_session):
+    """Часы другого разработчика — замечание, а не факт владельца."""
+    project = _project(db_session)
+    owner = _employee(db_session, "acc-1", "Шутов Сергей")
+    owner.role = "dev"
+    other = _employee(db_session, "acc-2", "Болдонов Алексей")
+    other.role = "dev"
+    task = _issue(
+        db_session, project, "OS-60",
+        developer_account_id="acc-1",
+        developer_display_name="Шутов Сергей",
+        dev_est_hours=10.0,
+    )
+    _worklog(db_session, task, owner, 6.0)
+    _worklog(db_session, task, other, 5.0)
+    db_session.commit()
+
+    row = {
+        r["key"]: r
+        for r in build_overview(db_session, developer_ids=["acc-1"])["issues"]
+    }["OS-60"]
+    assert row["fact_hours"] == 6.0
+    assert row["alien_hours"] == 5.0
+    assert "alien" in row["flags"]
+    assert row["fact_by_person"] == [
+        {"name": "Шутов Сергей", "hours": 6.0},
+        {"name": "Болдонов Алексей", "hours": 5.0},
+    ]
+
+
 def test_status_counts_match_total_issues(db_session):
     """Разбивка по статусам сходится с общим числом задач и не считает подзадачи."""
     project = _project(db_session)

@@ -6,7 +6,7 @@ from app.services.team_desk.config import DeskConfig
 
 # Порядок важен: значки в интерфейсе идут в этом порядке.
 FLAG_ORDER = [
-    "over", "under", "decomp", "childgap", "orphan",
+    "over", "under", "decomp", "childgap", "orphan", "alien",
     "noest", "nospent", "idlespent", "stale",
 ]
 
@@ -16,6 +16,7 @@ FLAG_LABELS = {
     "decomp": "Без декомпозиции",
     "childgap": "Подзадачи недооценены",
     "orphan": "Подзадача без родителя",
+    "alien": "Часы другого разработчика",
     "noest": "Нет оценки",
     "nospent": "Нет списаний",
     "idlespent": "Часы в неначатой",
@@ -31,13 +32,14 @@ class IssueFacts:
     status: Optional[str]
     group: str                      # dev | waiting | todo | done | unassigned
     est: Optional[float]            # оценка разработки, ч
-    fact: float                     # часы из списаний
+    fact: float                     # часы владельца задачи (свои + свои в подзадачах)
     days_in_status: int
     child_est_sum: Optional[float]  # сумма оценок подзадач
     has_children: bool
     is_subtask: bool
     is_analysis: bool               # задача технического анализа
     is_orphan: bool = False         # подзадача, родителя которой нет в срезе
+    alien_hours: float = 0.0        # часы других разработчиков в этой задаче
 
 
 def compute_flags(f: IssueFacts, cfg: DeskConfig) -> list[str]:
@@ -72,6 +74,12 @@ def compute_flags(f: IssueFacts, cfg: DeskConfig) -> list[str]:
     if f.is_orphan:
         found.add("orphan")
 
+    # В задачу списался другой разработчик. Работу двигает владелец: чужие часы
+    # либо списаны не туда, либо задачу делают вдвоём без декомпозиции — и в
+    # обоих случаях оценка владельца перестаёт что-то значить.
+    if f.alien_hours > 0:
+        found.add("alien")
+
     # Часы списаны, а задача так и стоит в «не начатых». Статус готовности
     # к работе означает, что работа не идёт: раз есть часы — статус врёт.
     if f.group == "todo" and f.fact > 0:
@@ -99,6 +107,9 @@ def flag_signature(flag: str, f: IssueFacts) -> str:
         return f"{f.status}:{fact}"
     if flag in ("over", "under"):
         return f"{est}:{fact}"
+    if flag == "alien":
+        # Отметка сгорает, когда чужих часов стало больше или меньше.
+        return f"{round(f.alien_hours, 1):g}"
     if flag == "decomp":
         return est
     if flag == "childgap":
