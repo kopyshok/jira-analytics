@@ -3,7 +3,7 @@ export type ReleaseNoteType = 'new' | 'improvement' | 'fix';
 export type ReleaseSection =
   | 'scenarios' | 'resources' | 'analytics' | 'issues'
   | 'dashboard' | 'backlog' | 'sync' | 'settings' | 'general'
-  | 'kpi' | 'projects';
+  | 'kpi' | 'projects' | 'team-desk';
 
 export interface ReleaseNote {
   id: string;
@@ -71,4 +71,5 @@ export const SECTION_LABELS: Record<ReleaseSection, string> = {
   general: 'Общее',
   kpi: 'KPI',
   projects: 'Проекты',
+  'team-desk': 'Стол тимлида',
 };
