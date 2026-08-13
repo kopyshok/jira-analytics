@@ -94,6 +94,7 @@ export default function TeamDeskPage() {
     Object.keys(dev.status_counts ?? {}).forEach((s) => seenStatuses.add(s)));
   const statusGroups = settings.data?.status_groups;
   const statusOptions = orderedStatuses(statusGroups, seenStatuses);
+  // Только для разрезов по разработчикам: плитки, ведомость, «проблемы вперёд».
   const shownStatuses = prefs.status_counters.length
     ? orderedStatuses(statusGroups, prefs.status_counters)
     : statusOptions;
@@ -207,7 +208,10 @@ export default function TeamDeskPage() {
           />
           <StatusFilterBar
             counts={totalStatusCounts}
-            statuses={shownStatuses}
+            // Полоса — фильтр на весь срез, а не разрез по людям: показываем
+            // все статусы среза, иначе выбор счётчиков отнимал бы фильтрацию
+            // по остальным статусам.
+            statuses={statusOptions}
             statusGroups={statusGroups}
             value={statusFilter}
             // Фильтр на весь срез: выбор конкретного человека снимается.
