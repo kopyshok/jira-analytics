@@ -15,6 +15,7 @@ import { DeveloperCards } from '../components/teamdesk/DeveloperCards';
 import { DeveloperTable } from '../components/teamdesk/DeveloperTable';
 import { GroupedIssues } from '../components/teamdesk/GroupedIssues';
 import { FlagFilterBar } from '../components/teamdesk/FlagFilterBar';
+import { StatusFilterBar } from '../components/teamdesk/StatusFilterBar';
 import { WorkloadBars } from '../components/teamdesk/WorkloadBars';
 import { AbsenceStrip } from '../components/teamdesk/AbsenceStrip';
 
@@ -96,6 +97,14 @@ export default function TeamDeskPage() {
   const shownStatuses = prefs.status_counters.length
     ? orderedStatuses(statusGroups, prefs.status_counters)
     : statusOptions;
+
+  // Итог по срезу: задачи разбиты по владельцам, поэтому сумма по людям — это
+  // и есть счётчик команды, без задвоений.
+  const totalStatusCounts: Record<string, number> = {};
+  (data?.developers ?? []).forEach((dev) =>
+    Object.entries(dev.status_counts ?? {}).forEach(([status, count]) => {
+      totalStatusCounts[status] = (totalStatusCounts[status] ?? 0) + count;
+    }));
 
   const pickStatus = (developerId: string, status: string | null) => {
     setSelectedDev(status ? developerId : null);
@@ -188,11 +197,26 @@ export default function TeamDeskPage() {
       />
 
       {data && (
-        <FlagFilterBar
-          flagCounts={data.flag_counts}
-          value={flagFilter}
-          onChange={setFlagFilter}
-        />
+        // Свой контейнер с отступом: внутри Space фрагмент считается одним
+        // элементом и полосы склеились бы.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <FlagFilterBar
+            flagCounts={data.flag_counts}
+            value={flagFilter}
+            onChange={setFlagFilter}
+          />
+          <StatusFilterBar
+            counts={totalStatusCounts}
+            statuses={shownStatuses}
+            statusGroups={statusGroups}
+            value={statusFilter}
+            // Фильтр на весь срез: выбор конкретного человека снимается.
+            onChange={(status) => {
+              setSelectedDev(null);
+              setStatusFilter(status);
+            }}
+          />
+        </div>
       )}
 
       {(overview.isLoading || filterPrefs.isLoading) && <Spin />}

@@ -234,7 +234,8 @@ function HeatmapGrid({ items }: { items: CategoryMetaItem[] }) {
           );
         }
         const item = c;
-        const openCategory = () => navigate(`/analytics?category=${encodeURIComponent(item.key)}`);
+        const openCategory = () =>
+          navigate(`/analytics?category=${encodeURIComponent(analyticsCategory(item.key))}`);
         return (
           <div
             key={item.key}
