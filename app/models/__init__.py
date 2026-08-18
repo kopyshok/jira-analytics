@@ -65,6 +65,7 @@ from app.models.usage_event import UsageEvent, UsageEventType
 from app.models.usage_daily import UsageDaily
 from app.models.plan_audit import PlanAudit  # noqa: F401
 from app.models.work_desk import WorkDesk  # noqa: F401
+from app.models.team_desk_daily_rate import TeamDeskDailyRate  # noqa: F401
 from app.models.team_desk_mark import TeamDeskMark  # noqa: F401
 from app.models.kpi import (
     KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole, KpiCycleTimeNorm, KpiApproval,
@@ -141,6 +142,7 @@ __all__ = [
     "UsageDaily",
     "PlanAudit",
     "WorkDesk",
+    "TeamDeskDailyRate",
     "TeamDeskMark",
     "KpiMetric",
     "KpiProfile",

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Table, Tag, Tooltip, Typography } from 'antd';
+import { Card, InputNumber, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   roundHours, type DeskDeveloper, type DeskIssue, type FlagCode,
@@ -8,6 +8,7 @@ import { FlagList } from './FlagChip';
 import { HoursScale } from './HoursScale';
 import { IssueKey, StatusTag } from './IssueCells';
 import { StatusCounters } from './StatusCounters';
+import { inQueueScope, type QueueScope } from './queueFilter';
 
 interface Row extends Partial<DeskIssue> {
   rowKey: string;
@@ -36,6 +37,10 @@ interface Props {
   statusFilter?: string | null;
   /** Оставить только одного разработчика — клик по карточке или строке сводки. */
   onlyDeveloper?: string | null;
+  /** Разложенная строка очереди: оставить только её задачи. */
+  queueScope?: QueueScope;
+  /** Правка дневной нормы «резиновой» задачи; не задана — колонки нет. */
+  onDailyRate?: (issueId: string, hours: number | null) => void;
   /** Пояснение слева от счётчика задач в шапке карточки. */
   hint?: string;
   /** Счётчики статусов в строке разработчика; пусто — не показывать. */
@@ -51,7 +56,7 @@ interface Props {
 export function GroupedIssues({
   title, developers, issues, overrunPct, jiraBaseUrl,
   scale = 'bar', flagFilter = null, statusFilter = null,
-  onlyDeveloper = null, hint = '',
+  onlyDeveloper = null, queueScope = null, onDailyRate, hint = '',
   statuses = [], statusGroups, onStatusFilter,
 }: Props) {
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
@@ -78,7 +83,8 @@ export function GroupedIssues({
   // сама либо её подзадача — иначе подзадача осталась бы без родителя.
   const hit = (issue: DeskIssue): boolean =>
     (!flagFilter || issue.flags.includes(flagFilter)) &&
-    (!statusFilter || issue.status === statusFilter);
+    (!statusFilter || issue.status === statusFilter) &&
+    inQueueScope(issue, queueScope);
 
   const matches = (issue: DeskIssue): boolean =>
     hit(issue) || (childrenOf.get(issue.id) ?? []).some(hit);
@@ -166,6 +172,11 @@ export function GroupedIssues({
           <span>
             <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} /> {row.summary}
             {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
+            {row.daily_rate ? (
+              <Tooltip title={`В очередь идёт по ${row.daily_rate} ч в день, а не весь остаток`}>
+                <Tag color="geekblue" style={{ marginLeft: 6 }}>резиновая</Tag>
+              </Tooltip>
+            ) : null}
             {row.otherDeveloper && (
               <Typography.Text type="secondary"> · {row.otherDeveloper}</Typography.Text>
             )}
@@ -180,6 +191,34 @@ export function GroupedIssues({
     },
     { title: 'Оценка', width: 96, align: 'right',
       render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
+    ...(onDailyRate
+      ? [{
+          title: (
+            <Tooltip title="Часов в день по «резиновой» задаче: в очередь пойдёт норма за настроенное число дней, а не весь остаток">
+              <span style={{ borderBottom: '1px dotted rgba(160,175,195,0.6)' }}>
+                DevForDay
+              </span>
+            </Tooltip>
+          ),
+          key: 'daily_rate',
+          width: 118,
+          align: 'right' as const,
+          render: (_: unknown, row: Row) =>
+            row.isGroup ? null : (
+              <InputNumber
+                size="small"
+                min={0}
+                max={24}
+                step={0.5}
+                placeholder="—"
+                value={row.daily_rate ?? null}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(v) => onDailyRate(row.id!, v == null ? null : Number(v))}
+                style={{ width: 84 }}
+              />
+            ),
+        }]
+      : []),
     {
       title: 'Факт',
       width: 88,
@@ -266,7 +305,7 @@ export function GroupedIssues({
         dataSource={data}
         columns={columns}
         pagination={false}
-        scroll={{ x: 1288 }}
+        scroll={{ x: onDailyRate ? 1406 : 1288 }}
         expandable={{
           expandedRowKeys,
           onExpand: (_, row) => toggle(row.rowKey),

@@ -148,3 +148,26 @@ def test_mark_rejects_unknown_flag(client, testclient_db_session):
         json={"flag": "выдуманный", "signature": "x"},
     )
     assert resp.status_code == 422
+
+
+def test_daily_rate_set_and_clear(client, testclient_db_session):
+    """Норму по «резиновой» задаче ставят и снимают одной ручкой."""
+    issue = _issue(testclient_db_session)
+    resp = client.put(
+        f"/api/v1/team-desk/issues/{issue.id}/daily-rate", json={"hours": 2}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["hours"] == 2.0
+
+    resp = client.put(
+        f"/api/v1/team-desk/issues/{issue.id}/daily-rate", json={"hours": None}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["hours"] is None
+
+
+def test_daily_rate_unknown_issue(client, testclient_db_session):
+    resp = client.put(
+        f"/api/v1/team-desk/issues/{uuid.uuid4()}/daily-rate", json={"hours": 2}
+    )
+    assert resp.status_code == 404

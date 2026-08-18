@@ -106,3 +106,69 @@ def test_available_hours_drop_during_absence(db_session):
     )
     assert result["acc-1"]["available_hours"] == 0
     assert result["acc-1"]["queue_days"] is None
+
+
+def _queue_row(status, est, fact=0.0, assigned=True, rate=None, dev="acc-1"):
+    row = _row(status, est, fact, dev=dev)
+    row["assigned_to_owner"] = assigned
+    row["daily_rate"] = rate
+    return row
+
+
+def test_assigned_line_counts_only_own_assignee(db_session):
+    """Задача на РП висит в общей очереди, но не в очереди к выполнению."""
+    rows = [
+        _queue_row("К выполнению", 10.0, assigned=True),
+        _queue_row("К выполнению", 6.0, assigned=False),
+    ]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["queue_hours"] == 16.0
+    assert result["acc-1"]["assigned_hours"] == 10.0
+    assert result["acc-1"]["assigned_days"] == 1.2
+
+
+def test_without_estimate_counted_per_line(db_session):
+    rows = [
+        _queue_row("К выполнению", None, assigned=True),
+        _queue_row("К выполнению", None, assigned=False),
+    ]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["without_estimate"] == 2
+    assert result["acc-1"]["assigned_without_estimate"] == 1
+
+
+def test_rubber_issue_takes_daily_rate_for_window(db_session):
+    """Резиновая задача: норма в день × дней настройки, а не весь остаток."""
+    rows = [_queue_row("В РАБОТЕ", 80.0, rate=2.0)]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["queue_hours"] == 10.0
+    assert result["acc-1"]["assigned_hours"] == 10.0
+
+
+def test_rubber_issue_never_exceeds_remainder(db_session):
+    """Остаток меньше нормы за период — в очередь идёт остаток."""
+    rows = [_queue_row("В РАБОТЕ", 80.0, fact=76.0, rate=2.0)]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["queue_hours"] == 4.0
+
+
+def test_rubber_days_setting_changes_queue(db_session):
+    """Настройка «дней в очередь» меняет вклад резиновой задачи."""
+    from app.services.team_desk.config import defaults, save_config
+
+    cfg = defaults()
+    cfg.thresholds["rubber_days"] = 2
+    save_config(db_session, cfg)
+    rows = [_queue_row("В РАБОТЕ", 80.0, rate=2.0)]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["queue_hours"] == 4.0

@@ -39,11 +39,15 @@ export function StatusCounters({
                     }
                   : undefined
               }
+              // Выбранный статус видно сразу: жирная рамка и текст, крестик
+              // снятия. Одного оттенка фона для этого мало.
               style={{
                 marginInlineEnd: 0,
                 cursor: onSelect ? 'pointer' : undefined,
-                borderColor: active ? STATUS_GROUP_COLOR[group] : undefined,
-                background: active ? 'rgba(75,163,255,0.14)' : undefined,
+                borderColor: active ? '#4ba3ff' : undefined,
+                outline: active ? '2px solid #4ba3ff' : undefined,
+                fontWeight: active ? 700 : undefined,
+                background: active ? 'rgba(75,163,255,0.22)' : undefined,
               }}
             >
               <span
@@ -52,7 +56,7 @@ export function StatusCounters({
                   background: STATUS_GROUP_COLOR[group], marginRight: 6,
                 }}
               />
-              {status} <b>{counts[status]}</b>
+              {status} <b>{counts[status]}</b>{active ? ' ✕' : ''}
             </Tag>
           </Tooltip>
         );

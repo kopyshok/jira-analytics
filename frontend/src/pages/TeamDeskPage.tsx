@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Card, Empty, Space, Spin, Tabs, Typography } from 'antd';
 import teamDeskHelp from '../../../docs/help/team-desk.md?raw';
 import {
-  FLAG_LABELS, orderedStatuses, type DeskFilterPrefs, type FlagCode,
+  orderedStatuses, type DeskFilterPrefs, type FlagCode,
 } from '../api/teamDesk';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import {
-  useDeskFilter, useDeskOverview, useDeskSettings, useSaveDeskFilter,
+  useDeskFilter, useDeskOverview, useDeskSettings, useSaveDailyRate, useSaveDeskFilter,
 } from '../hooks/useTeamDesk';
 import { useJiraBaseUrl } from '../hooks/useSettings';
 import { DeskFilters } from '../components/teamdesk/DeskFilters';
@@ -18,6 +18,9 @@ import { FlagFilterBar } from '../components/teamdesk/FlagFilterBar';
 import { StatusFilterBar } from '../components/teamdesk/StatusFilterBar';
 import { WorkloadBars } from '../components/teamdesk/WorkloadBars';
 import { AbsenceStrip } from '../components/teamdesk/AbsenceStrip';
+import { ActiveFilters } from '../components/teamdesk/ActiveFilters';
+import { RubberTasks } from '../components/teamdesk/RubberTasks';
+import type { QueueScope } from '../components/teamdesk/queueFilter';
 
 type Layout = 'cards' | 'table' | 'grouped';
 const LAYOUT_KEY = 'team-desk-layout';
@@ -40,6 +43,9 @@ export default function TeamDeskPage() {
   const [selectedDev, setSelectedDev] = useState<string | null>(null);
   const [flagFilter, setFlagFilter] = useState<FlagCode | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // Какая строка очереди разложена по задачам: расшифровка живёт до
+  // следующего клика, в профиле не сохраняется — это разовый разрез.
+  const [queueScope, setQueueScope] = useState<QueueScope>(null);
   // Тимлид пробует все три раскладки и остаётся на удобной — переключать
   // её каждый вход он не должен.
   const [layout, setLayout] = useState<Layout>(
@@ -86,6 +92,10 @@ export default function TeamDeskPage() {
   const data = overview.data;
   const overrunPct = settings.data?.thresholds.overrun_pct ?? 30;
   const wipLimit = settings.data?.thresholds.wip_limit ?? 3;
+  const rubberDays = settings.data?.thresholds.rubber_days ?? 5;
+  const saveDailyRate = useSaveDailyRate();
+  const setDailyRate = (issueId: string, hours: number | null) =>
+    saveDailyRate.mutate({ issueId, hours });
 
   // Список статусов для настройки: те, по которым в срезе есть задачи, плюс
   // ранее выбранные — иначе выбор молча сбрасывался бы на пустом срезе.
@@ -112,21 +122,74 @@ export default function TeamDeskPage() {
     setStatusFilter(status);
   };
 
+  // Клик по строке очереди и по значку замечания на плитке: человек остаётся
+  // выбранным и после снятия разреза — иначе экран прыгает обратно на всю команду.
+  const pickQueue = (developerId: string, scope: QueueScope) => {
+    setSelectedDev(developerId);
+    setQueueScope(scope);
+  };
+
+  const pickFlag = (developerId: string, flag: FlagCode | null) => {
+    setSelectedDev(developerId);
+    setFlagFilter(flag);
+  };
+
+  const resetFilters = () => {
+    setSelectedDev(null);
+    setFlagFilter(null);
+    setStatusFilter(null);
+    setQueueScope(null);
+  };
+
   // Разработчика сняли — фильтр по его статусу тоже снимается, иначе список
   // остался бы урезанным без видимой причины.
   const pickDeveloper = (id: string | null) => {
     setSelectedDev(id);
-    if (!id) setStatusFilter(null);
+    if (!id) {
+      setStatusFilter(null);
+      setQueueScope(null);
+    }
   };
 
-  const hints = [
-    selectedDev ? 'нажмите ещё раз, чтобы снять фильтр' : '',
-    flagFilter ? `отфильтровано: ${FLAG_LABELS[flagFilter]}` : '',
-    statusFilter ? `статус: ${statusFilter}` : '',
-  ].filter(Boolean);
+  const selectedName = data?.developers.find(
+    (dev) => dev.developer_id === selectedDev,
+  )?.display_name;
+
+  // Отборы стоят вплотную к таблице задач: влияют они только на неё.
+  const filterBars = data && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <FlagFilterBar
+        flagCounts={data.flag_counts}
+        value={flagFilter}
+        onChange={setFlagFilter}
+      />
+      <StatusFilterBar
+        counts={totalStatusCounts}
+        // Полоса — фильтр на весь срез, а не разрез по людям: показываем
+        // все статусы среза, иначе выбор счётчиков отнимал бы фильтрацию
+        // по остальным статусам.
+        statuses={statusOptions}
+        statusGroups={statusGroups}
+        value={statusFilter}
+        // Фильтр на весь срез: выбор конкретного человека снимается.
+        onChange={(status) => {
+          setSelectedDev(null);
+          setStatusFilter(status);
+        }}
+      />
+      <ActiveFilters
+        developerName={selectedName}
+        flag={flagFilter}
+        status={statusFilter}
+        queueScope={queueScope}
+        onReset={resetFilters}
+      />
+    </div>
+  );
 
   const detailBlocks = (
     <>
+      {filterBars}
       <GroupedIssues
         title="Задачи"
         developers={data?.developers ?? []}
@@ -136,7 +199,8 @@ export default function TeamDeskPage() {
         onlyDeveloper={selectedDev}
         flagFilter={flagFilter}
         statusFilter={statusFilter}
-        hint={hints.join(' · ')}
+        queueScope={queueScope}
+        onDailyRate={setDailyRate}
       />
       <Card size="small" title="Задач в работе одновременно">
         <WorkloadBars
@@ -197,32 +261,6 @@ export default function TeamDeskPage() {
         ]}
       />
 
-      {data && (
-        // Свой контейнер с отступом: внутри Space фрагмент считается одним
-        // элементом и полосы склеились бы.
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <FlagFilterBar
-            flagCounts={data.flag_counts}
-            value={flagFilter}
-            onChange={setFlagFilter}
-          />
-          <StatusFilterBar
-            counts={totalStatusCounts}
-            // Полоса — фильтр на весь срез, а не разрез по людям: показываем
-            // все статусы среза, иначе выбор счётчиков отнимал бы фильтрацию
-            // по остальным статусам.
-            statuses={statusOptions}
-            statusGroups={statusGroups}
-            value={statusFilter}
-            // Фильтр на весь срез: выбор конкретного человека снимается.
-            onChange={(status) => {
-              setSelectedDev(null);
-              setStatusFilter(status);
-            }}
-          />
-        </div>
-      )}
-
       {(overview.isLoading || filterPrefs.isLoading) && <Spin />}
       {!overview.isLoading && !filterPrefs.isLoading && !data && (
         <Empty description="Выберите команды или добавьте разработчиков" />
@@ -240,6 +278,10 @@ export default function TeamDeskPage() {
             statusGroups={statusGroups}
             statusFilter={statusFilter}
             onStatusFilter={pickStatus}
+            queueScope={queueScope}
+            onQueueFilter={pickQueue}
+            flagFilter={flagFilter}
+            onFlagFilter={pickFlag}
           />
           {detailBlocks}
         </>
@@ -256,12 +298,17 @@ export default function TeamDeskPage() {
               onSelect={pickDeveloper}
               statuses={shownStatuses}
               onStatusFilter={pickStatus}
+              queueScope={queueScope}
+              onQueueFilter={pickQueue}
+              flagFilter={flagFilter}
+              onFlagFilter={pickFlag}
             />
           </Card>
           {detailBlocks}
         </>
       )}
 
+      {data && layout === 'grouped' && filterBars}
       {data && layout === 'grouped' && (
         <GroupedIssues
           title="Задачи по разработчикам"
@@ -275,10 +322,20 @@ export default function TeamDeskPage() {
           // Разработчик здесь выбирается только кликом по счётчику статуса —
           // карточек в этой раскладке нет.
           onlyDeveloper={selectedDev}
-          hint={hints.join(' · ')}
+          queueScope={queueScope}
+          onDailyRate={setDailyRate}
           statuses={shownStatuses}
           statusGroups={statusGroups}
           onStatusFilter={pickStatus}
+        />
+      )}
+
+      {data && (
+        <RubberTasks
+          issues={data.issues}
+          rubberDays={rubberDays}
+          jiraBaseUrl={jiraBaseUrl}
+          onDailyRate={setDailyRate}
         />
       )}
 
