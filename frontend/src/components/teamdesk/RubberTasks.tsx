@@ -65,9 +65,10 @@ export function RubberTasks({ issues, rubberDays, jiraBaseUrl, onDailyRate }: Pr
       width: 116,
       align: 'right',
       render: (_, row) => {
+        // Оценка — только потолок: нет её — вклад задаёт дневная норма.
+        const byRate = (row.daily_rate ?? 0) * rubberDays;
         const value = left(row);
-        if (value == null) return '—';
-        return roundHours(Math.min(value, (row.daily_rate ?? 0) * rubberDays));
+        return roundHours(value == null ? byRate : Math.min(byRate, value));
       },
     },
   ];
