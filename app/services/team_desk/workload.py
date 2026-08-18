@@ -102,11 +102,15 @@ def queue_for_developers(
         assigned = bool(row.get("assigned_to_owner"))
         est = row.get("est_hours")
         rate = row.get("daily_rate")
-        if est is None and not rate:
+        if est is None:
+            # Оценка обязательна для любой задачи, в том числе «резиновой»:
+            # счётчик остаётся сигналом дисциплины, даже когда норма уже даёт
+            # часы в очередь.
             bucket["without_estimate"] += 1
             if assigned:
                 bucket["assigned_without_estimate"] += 1
-            continue
+            if not rate:
+                continue
         done = float(row.get("fact_hours") or 0)
         if rate:
             # Дневная норма сама задаёт вклад: у длинной задачи общей оценки
