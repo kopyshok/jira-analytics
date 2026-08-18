@@ -187,8 +187,20 @@ export default function TeamDeskPage() {
     </div>
   );
 
+  // Резиновые задачи стоят сразу за разрезом по людям: тимлид видит, из-за
+  // каких задач очередь считается по норме, до того как начнёт фильтровать.
+  const rubberCard = data && (
+    <RubberTasks
+      issues={data.issues}
+      rubberDays={rubberDays}
+      jiraBaseUrl={jiraBaseUrl}
+      onDailyRate={setDailyRate}
+    />
+  );
+
   const detailBlocks = (
     <>
+      {rubberCard}
       {filterBars}
       <GroupedIssues
         title="Задачи"
@@ -308,6 +320,7 @@ export default function TeamDeskPage() {
         </>
       )}
 
+      {data && layout === 'grouped' && rubberCard}
       {data && layout === 'grouped' && filterBars}
       {data && layout === 'grouped' && (
         <GroupedIssues
@@ -330,14 +343,6 @@ export default function TeamDeskPage() {
         />
       )}
 
-      {data && (
-        <RubberTasks
-          issues={data.issues}
-          rubberDays={rubberDays}
-          jiraBaseUrl={jiraBaseUrl}
-          onDailyRate={setDailyRate}
-        />
-      )}
 
       {data && (
         <Card size="small" title="Отсутствия">
