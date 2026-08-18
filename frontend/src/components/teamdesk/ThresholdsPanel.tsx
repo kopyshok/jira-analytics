@@ -10,6 +10,7 @@ const FIELDS: { key: string; label: string; suffix: string }[] = [
   { key: 'stale_days', label: 'Зависла, дней в статусе', suffix: '' },
   { key: 'child_gap_pct', label: 'Оценки подзадач ниже родителя на', suffix: '%' },
   { key: 'wip_limit', label: 'Лимит задач в работе', suffix: '' },
+  { key: 'rubber_days', label: 'Резиновая задача: дней в очередь', suffix: 'дн' },
 ];
 
 interface Props {

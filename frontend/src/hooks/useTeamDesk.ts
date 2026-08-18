@@ -60,6 +60,16 @@ export function useSaveDeskSettings() {
   });
 }
 
+/** Дневная норма «резиновой» задачи; null снимает признак. */
+export function useSaveDailyRate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { issueId: string; hours: number | null }) =>
+      teamDeskApi.saveDailyRate(vars.issueId, vars.hours),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['team-desk', 'overview'] }),
+  });
+}
+
 export function useMarkFlag() {
   const qc = useQueryClient();
   return useMutation({

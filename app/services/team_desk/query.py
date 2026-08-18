@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from app.models import Employee, Issue, Worklog
+from app.models import Employee, Issue, TeamDeskDailyRate, Worklog
 from app.services.team_desk.config import DeskConfig, group_of_status, load_config
 from app.services.team_desk.flags import IssueFacts, compute_flags, flag_signature
 from app.services.team_desk.marks import active_marks
@@ -165,6 +165,18 @@ def _child_estimates(db: Session, issue_ids: list[str]) -> tuple[dict, dict]:
     return est_sum, counts
 
 
+def _daily_rates(db: Session, issue_ids: list[str]) -> dict[str, float]:
+    """Дневные нормы «резиновых» задач: задача → часов в день."""
+    if not issue_ids:
+        return {}
+    rows = (
+        db.query(TeamDeskDailyRate.issue_id, TeamDeskDailyRate.hours)
+        .filter(TeamDeskDailyRate.issue_id.in_(issue_ids))
+        .all()
+    )
+    return {issue_id: float(hours) for issue_id, hours in rows if hours}
+
+
 def build_overview(
     db: Session,
     developer_ids: list[str],
@@ -198,6 +210,8 @@ def build_overview(
     id_set = set(ids)
     own_hours, child_hours = _hours_by_person(db, ids)
     child_est, child_count = _child_estimates(db, ids)
+    daily_rates = _daily_rates(db, ids)
+    queue_statuses = set(cfg.queue_statuses)
     dev_roles = set(cfg.developer_roles)
 
     rows: list[dict] = []
@@ -279,6 +293,21 @@ def build_overview(
                 # Только такие идут в счётчики, часы и очередь: оценка подзадачи
                 # уже сидит в родителе и задваивать её нельзя.
                 "is_standalone": not facts.is_subtask or is_orphan,
+                # Исполнитель в Jira: пока задача на РП или тимлиде, работать
+                # по ней разработчик ещё не может — вторая строка очереди
+                # считает только те, где исполнитель он сам.
+                "assigned_to_owner": bool(
+                    owner_id and issue.assignee_account_id == owner_id
+                ),
+                # Задача формирует очередь — по ней же строится расшифровка
+                # по клику на плитке.
+                "in_queue": (
+                    issue.status in queue_statuses
+                    and bool(owner_id)
+                    and (not facts.is_subtask or is_orphan)
+                ),
+                # Дневная норма «резиновой» задачи; пусто — обычная задача.
+                "daily_rate": daily_rates.get(issue.id),
                 "flags": flags,
                 "signatures": {f: signatures[(f, issue.id)] for f in flags},
             }

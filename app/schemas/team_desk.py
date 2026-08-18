@@ -30,3 +30,9 @@ class MarkRequest(BaseModel):
     flag: str = Field(..., description="Код признака")
     signature: str = Field("", description="Снимок причины на момент отметки")
     comment: Optional[str] = None
+
+
+class DailyRateRequest(BaseModel):
+    """Дневная норма «резиновой» задачи; пусто — снять признак."""
+
+    hours: Optional[float] = Field(None, ge=0, le=24)

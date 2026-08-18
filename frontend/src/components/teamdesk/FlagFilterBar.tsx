@@ -21,16 +21,26 @@ export function FlagFilterBar({ flagCounts, value, onChange }: Props) {
         >
           ТРЕБУЕТ ВНИМАНИЯ
         </Typography.Text>
-        {FLAG_ORDER.filter((f) => flagCounts[f]).map((flag) => (
-          <Tag
-            key={flag}
-            color={value === flag ? 'blue' : FLAG_COLOR[flag]}
-            style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-            onClick={() => onChange(value === flag ? null : flag)}
-          >
-            {FLAG_ICON[flag]} {FLAG_LABELS[flag]} · {flagCounts[flag]}
-          </Tag>
-        ))}
+        {FLAG_ORDER.filter((f) => flagCounts[f]).map((flag) => {
+          const active = value === flag;
+          return (
+            <Tag
+              key={flag}
+              color={active ? 'blue' : FLAG_COLOR[flag]}
+              // Выбранный отбор виден без сравнения оттенков: жирная рамка,
+              // жирный текст и крестик снятия.
+              style={{
+                cursor: 'pointer',
+                marginInlineEnd: 0,
+                fontWeight: active ? 700 : undefined,
+                outline: active ? '2px solid #4ba3ff' : undefined,
+              }}
+              onClick={() => onChange(active ? null : flag)}
+            >
+              {FLAG_ICON[flag]} {FLAG_LABELS[flag]} · {flagCounts[flag]}{active ? ' ✕' : ''}
+            </Tag>
+          );
+        })}
         {empty && <Typography.Text type="secondary">Замечаний нет</Typography.Text>}
       </div>
     </Card>

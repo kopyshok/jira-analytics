@@ -59,20 +59,27 @@ def queue_for_developers(
     start: date,
     days: int = 7,
 ) -> dict[str, dict]:
-    """Очередь работы на окно `days` дней вперёд.
+    """Очередь работы на окно `days` дней вперёд — двумя строками.
 
     queue_hours — остаток работы по задачам в статусах очереди: оценка минус
     уже списанные часы (свои и подзадач), не меньше нуля. Задача в работе
     остаток тоже даёт — она по-прежнему висит на человеке.
+    assigned_hours — то же, но только по задачам, где исполнитель в Jira сам
+    разработчик: пока задача на РП или тимлиде, работать по ней он не может.
     Подзадачи в очередь не идут: их оценка — декомпозиция родительской, и
     считать её второй раз значит задвоить нагрузку.
     available_hours — нормо-часы окна минус дни отсутствий.
-    queue_days — во сколько рабочих дней укладывается очередь; None, если
-    свободных часов в окне нет (человек в отпуске).
+    queue_days / assigned_days — во сколько рабочих дней укладывается каждая
+    строка; None, если свободных часов в окне нет (человек в отпуске).
     Задачи без оценки в часы не попадают, но считаются отдельно — иначе
     очередь врала бы в меньшую сторону.
+
+    «Резиновая» задача (задана дневная норма) даёт в очередь не весь остаток, а
+    норму за `rubber_days` рабочих дней, но не больше остатка: такая задача
+    заводится на месяц и забирает у человека фиксированные часы в день.
     """
     cfg = load_config(db)
+    rubber_days = float(cfg.thresholds.get("rubber_days", 5) or 0)
     end = start + timedelta(days=days - 1)
     calendar = _calendar_hours(db, start, end)
     employee_ids = [e for e in employee_by_account.values() if e]
@@ -86,23 +93,42 @@ def queue_for_developers(
         if row.get("status") not in cfg.queue_statuses:
             continue
         bucket = per_dev.setdefault(
-            dev_id, {"queue_hours": 0.0, "without_estimate": 0}
+            dev_id,
+            {
+                "queue_hours": 0.0, "without_estimate": 0,
+                "assigned_hours": 0.0, "assigned_without_estimate": 0,
+            },
         )
+        assigned = bool(row.get("assigned_to_owner"))
         est = row.get("est_hours")
         if est is None:
             bucket["without_estimate"] += 1
-        else:
-            done = float(row.get("fact_hours") or 0)
-            bucket["queue_hours"] += max(0.0, float(est) - done)
+            if assigned:
+                bucket["assigned_without_estimate"] += 1
+            continue
+        done = float(row.get("fact_hours") or 0)
+        left = max(0.0, float(est) - done)
+        rate = row.get("daily_rate")
+        if rate:
+            left = min(left, float(rate) * rubber_days)
+        bucket["queue_hours"] += left
+        if assigned:
+            bucket["assigned_hours"] += left
 
     for dev_id, bucket in per_dev.items():
         bucket["queue_hours"] = round(bucket["queue_hours"], 1)
+        bucket["assigned_hours"] = round(bucket["assigned_hours"], 1)
         employee_id = employee_by_account.get(dev_id)
         away = absences.get(employee_id, set()) if employee_id else set()
         available = sum(hours for day, hours in calendar.items() if day not in away)
         bucket["available_hours"] = available
         bucket["queue_days"] = (
             round(bucket["queue_hours"] / DAILY_NORM_HOURS, 1) if available > 0 else None
+        )
+        bucket["assigned_days"] = (
+            round(bucket["assigned_hours"] / DAILY_NORM_HOURS, 1)
+            if available > 0
+            else None
         )
         bucket["overloaded"] = available > 0 and bucket["queue_hours"] > available
     return per_dev

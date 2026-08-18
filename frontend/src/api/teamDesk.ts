@@ -33,6 +33,12 @@ export interface DeskIssue {
   is_subtask: boolean;
   /** Задача идёт в счётчики и часы: не подзадача либо подзадача без родителя. */
   is_standalone: boolean;
+  /** Исполнитель в Jira — сам владелец задачи, а не РП или тимлид. */
+  assigned_to_owner: boolean;
+  /** Задача формирует очередь — по ней строится расшифровка. */
+  in_queue: boolean;
+  /** Часов в день по «резиновой» задаче; пусто — обычная задача. */
+  daily_rate: number | null;
   flags: FlagCode[];
   signatures: Partial<Record<FlagCode, string>>;
   reviewed: ReviewedMark[];
@@ -63,6 +69,10 @@ export interface DeskWorkload {
   available_hours: number;
   queue_days: number | null;
   overloaded: boolean;
+  /** Очередь по задачам, где исполнитель — сам разработчик. */
+  assigned_hours: number;
+  assigned_days: number | null;
+  assigned_without_estimate: number;
 }
 
 export interface DeskOverview {
@@ -217,6 +227,12 @@ export const teamDeskApi = {
     api.post<{ issue_id: string; flag: string; marked_at: string }>(
       `/team-desk/issues/${issueId}/mark`,
       payload,
+    ),
+
+  saveDailyRate: (issueId: string, hours: number | null) =>
+    api.put<{ issue_id: string; hours: number | null }>(
+      `/team-desk/issues/${issueId}/daily-rate`,
+      { hours },
     ),
 
   unmark: (issueId: string, flag: FlagCode) =>

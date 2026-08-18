@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_deps import get_current_user
 from app.database import get_db
-from app.models import Employee, User
-from app.schemas.team_desk import DeskSettings, MarkRequest
+from app.models import Employee, Issue, TeamDeskDailyRate, User
+from app.schemas.team_desk import DailyRateRequest, DeskSettings, MarkRequest
 from app.services.team_desk.config import DeskConfig, load_config, save_config
 from app.services.team_desk.flags import FLAG_LABELS, FLAG_ORDER
 from app.services.team_desk.marks import mark_reviewed, unmark
@@ -121,6 +121,8 @@ def get_overview(
                 "est_hours": row["est_hours"],
                 "fact_hours": row["fact_hours"],
                 "is_standalone": row["is_standalone"],
+                "assigned_to_owner": row["assigned_to_owner"],
+                "daily_rate": row["daily_rate"],
             }
             for row in result["issues"]
         ],
@@ -170,3 +172,32 @@ def delete_mark(
     """Снять отметку — признак снова считается проблемным."""
     unmark(db, issue_id, flag)
     return {"issue_id": issue_id, "flag": flag}
+
+
+@router.put("/issues/{issue_id}/daily-rate")
+def put_daily_rate(
+    issue_id: str,
+    payload: DailyRateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Дневная норма «резиновой» задачи. Пусто или 0 — задача снова обычная."""
+    if not db.query(Issue.id).filter(Issue.id == issue_id).first():
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    row = (
+        db.query(TeamDeskDailyRate)
+        .filter(TeamDeskDailyRate.issue_id == issue_id)
+        .first()
+    )
+    if not payload.hours:
+        if row:
+            db.delete(row)
+            db.commit()
+        return {"issue_id": issue_id, "hours": None}
+    if row is None:
+        row = TeamDeskDailyRate(issue_id=issue_id)
+        db.add(row)
+    row.hours = float(payload.hours)
+    row.created_by_user_id = user.id
+    db.commit()
+    return {"issue_id": issue_id, "hours": row.hours}

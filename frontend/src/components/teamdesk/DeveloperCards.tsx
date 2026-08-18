@@ -1,8 +1,9 @@
 import { Card, Col, Row, Tag, Tooltip, Typography } from 'antd';
 import {
   FLAG_COLOR, FLAG_ICON, FLAG_LABELS, FLAG_ORDER,
-  type DeskDeveloper, type DeskWorkload,
+  type DeskDeveloper, type DeskWorkload, type FlagCode,
 } from '../../api/teamDesk';
+import type { QueueScope } from './queueFilter';
 import { HoursScale } from './HoursScale';
 import { StatusCounters } from './StatusCounters';
 
@@ -30,12 +31,53 @@ interface Props {
   statusGroups?: Record<string, string[]>;
   statusFilter: string | null;
   onStatusFilter: (developerId: string, status: string | null) => void;
+  /** Какая строка очереди сейчас разложена по задачам. */
+  queueScope: QueueScope;
+  onQueueFilter: (developerId: string, scope: QueueScope) => void;
+  flagFilter: FlagCode | null;
+  onFlagFilter: (developerId: string, flag: FlagCode | null) => void;
+}
+
+/** Строка очереди на плитке: клик раскладывает её по задачам в таблице ниже. */
+function QueueLine({
+  label, hours, days, withoutEstimate, active, onClick,
+}: {
+  label: string;
+  hours: number;
+  days: number | null;
+  withoutEstimate: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        cursor: 'pointer',
+        padding: '2px 6px',
+        marginInline: -6,
+        borderRadius: 4,
+        background: active ? 'rgba(75,163,255,0.18)' : undefined,
+        outline: active ? '1px solid #4ba3ff' : undefined,
+      }}
+    >
+      <Typography.Text type="secondary">
+        {label} <b style={{ fontVariantNumeric: 'tabular-nums' }}>{hours}</b> ч
+        {days != null ? ` ≈ ${days} дн` : ' · нет свободных дней'}
+        {withoutEstimate > 0 ? ` · ещё ${withoutEstimate} без оценки` : ''}
+      </Typography.Text>
+    </div>
+  );
 }
 
 /** Раскладка «Светофор»: карточка на разработчика, клик фильтрует таблицу. */
 export function DeveloperCards({
   developers, workload, overrunPct, selected, onSelect,
   statuses, statusGroups, statusFilter, onStatusFilter,
+  queueScope, onQueueFilter, flagFilter, onFlagFilter,
 }: Props) {
   return (
     <Row gutter={[10, 10]}>
@@ -93,12 +135,31 @@ export function DeveloperCards({
               </div>
 
               {load && (
-                <div style={{ fontSize: 11.5, marginBottom: 8 }}>
-                  <Typography.Text type="secondary">
-                    очередь {load.queue_hours} ч
-                    {load.queue_days != null ? ` ≈ ${load.queue_days} дн` : ' · нет свободных дней'}
-                    {load.without_estimate > 0 ? ` · ещё ${load.without_estimate} без оценки` : ''}
-                  </Typography.Text>
+                <div style={{ fontSize: 11.5, marginBottom: 8, display: 'grid', gap: 2 }}>
+                  <QueueLine
+                    label="очередь"
+                    hours={load.queue_hours}
+                    days={load.queue_days}
+                    withoutEstimate={load.without_estimate}
+                    active={isSelected && queueScope === 'all'}
+                    onClick={() =>
+                      onQueueFilter(
+                        dev.developer_id,
+                        isSelected && queueScope === 'all' ? null : 'all',
+                      )}
+                  />
+                  <QueueLine
+                    label="очередь к выполнению"
+                    hours={load.assigned_hours}
+                    days={load.assigned_days}
+                    withoutEstimate={load.assigned_without_estimate}
+                    active={isSelected && queueScope === 'assigned'}
+                    onClick={() =>
+                      onQueueFilter(
+                        dev.developer_id,
+                        isSelected && queueScope === 'assigned' ? null : 'assigned',
+                      )}
+                  />
                 </div>
               )}
 
@@ -113,11 +174,27 @@ export function DeveloperCards({
               </div>
 
               <div>
-                {FLAG_ORDER.filter((f) => dev.flag_counts[f]).map((flag) => (
-                  <Tooltip key={flag} title={FLAG_LABELS[flag]}>
-                    <Tag color={FLAG_COLOR[flag]}>{FLAG_ICON[flag]} {dev.flag_counts[flag]}</Tag>
-                  </Tooltip>
-                ))}
+                {FLAG_ORDER.filter((f) => dev.flag_counts[f]).map((flag) => {
+                  const activeFlag = isSelected && flagFilter === flag;
+                  return (
+                    <Tooltip key={flag} title={`${FLAG_LABELS[flag]} — показать только эти`}>
+                      <Tag
+                        color={FLAG_COLOR[flag]}
+                        style={{
+                          cursor: 'pointer',
+                          fontWeight: activeFlag ? 700 : undefined,
+                          outline: activeFlag ? '2px solid #4ba3ff' : undefined,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onFlagFilter(dev.developer_id, activeFlag ? null : flag);
+                        }}
+                      >
+                        {FLAG_ICON[flag]} {dev.flag_counts[flag]}
+                      </Tag>
+                    </Tooltip>
+                  );
+                })}
                 {FLAG_ORDER.every((f) => !dev.flag_counts[f]) && (
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>без замечаний</Typography.Text>
                 )}
