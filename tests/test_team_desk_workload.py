@@ -172,3 +172,14 @@ def test_rubber_days_setting_changes_queue(db_session):
         db_session, rows, employee_by_account={}, start=START, days=7
     )
     assert result["acc-1"]["queue_hours"] == 4.0
+
+
+def test_rubber_issue_without_estimate_uses_daily_rate(db_session):
+    """У длинной задачи общей оценки обычно нет — вклад задаёт дневная норма."""
+    rows = [_queue_row("К выполнению", None, fact=20.0, rate=5.0)]
+    result = queue_for_developers(
+        db_session, rows, employee_by_account={}, start=START, days=7
+    )
+    assert result["acc-1"]["queue_hours"] == 25.0
+    # Норма задана — задача уже даёт часы, во «без оценки» её считать нельзя.
+    assert result["acc-1"]["without_estimate"] == 0

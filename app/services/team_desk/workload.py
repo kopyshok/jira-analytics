@@ -101,16 +101,21 @@ def queue_for_developers(
         )
         assigned = bool(row.get("assigned_to_owner"))
         est = row.get("est_hours")
-        if est is None:
+        rate = row.get("daily_rate")
+        if est is None and not rate:
             bucket["without_estimate"] += 1
             if assigned:
                 bucket["assigned_without_estimate"] += 1
             continue
         done = float(row.get("fact_hours") or 0)
-        left = max(0.0, float(est) - done)
-        rate = row.get("daily_rate")
         if rate:
-            left = min(left, float(rate) * rubber_days)
+            # Дневная норма сама задаёт вклад: у длинной задачи общей оценки
+            # обычно нет вовсе, а если есть — она работает только потолком.
+            left = float(rate) * rubber_days
+            if est is not None:
+                left = min(left, max(0.0, float(est) - done))
+        else:
+            left = max(0.0, float(est) - done)
         bucket["queue_hours"] += left
         if assigned:
             bucket["assigned_hours"] += left
