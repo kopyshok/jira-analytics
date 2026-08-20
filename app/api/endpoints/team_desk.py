@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models import Employee, Issue, TeamDeskDailyRate, User
 from app.schemas.team_desk import DailyRateRequest, DeskSettings, MarkRequest
 from app.services.team_desk.config import DeskConfig, load_config, save_config
-from app.services.team_desk.flags import FLAG_LABELS, FLAG_ORDER
+from app.services.team_desk.flags import FLAG_LABELS, FLAG_ORDER, FLAG_THRESHOLDS
 from app.services.team_desk.marks import mark_reviewed, unmark
 from app.services.team_desk.query import build_overview
 from app.services.team_desk.workload import queue_for_developers
@@ -47,6 +47,7 @@ def put_settings(
             subtask_types=payload.subtask_types,
             assignee_types=payload.assignee_types,
             developer_roles=payload.developer_roles,
+            disabled_flags=[f for f in payload.disabled_flags if f in FLAG_ORDER],
         ),
     )
     return load_config(db).to_dict()
@@ -54,8 +55,15 @@ def put_settings(
 
 @router.get("/flags")
 def get_flag_dictionary(_: User = Depends(get_current_user)):
-    """Справочник признаков — подписи для интерфейса."""
-    return [{"code": code, "label": FLAG_LABELS[code]} for code in FLAG_ORDER]
+    """Справочник признаков — подписи и порог, который обслуживает признак."""
+    return [
+        {
+            "code": code,
+            "label": FLAG_LABELS[code],
+            "threshold": FLAG_THRESHOLDS.get(code),
+        }
+        for code in FLAG_ORDER
+    ]
 
 
 @router.get("/overview")

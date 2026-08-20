@@ -118,12 +118,26 @@ def test_settings_roundtrip(client):
     assert resp.json()["thresholds"]["decomposition_hours"] == 24
 
 
+def test_settings_disabled_flags_roundtrip(client):
+    """Выключенный признак переживает сохранение; мусорные коды отсекаются."""
+    cfg = client.get("/api/v1/team-desk/settings").json()
+    assert cfg["disabled_flags"] == []
+
+    cfg["disabled_flags"] = ["decomp", "такого признака нет"]
+    body = client.put("/api/v1/team-desk/settings", json=cfg).json()
+    assert body["disabled_flags"] == ["decomp"]
+    assert client.get("/api/v1/team-desk/settings").json()["disabled_flags"] == ["decomp"]
+
+
 def test_flag_dictionary(client):
     resp = client.get("/api/v1/team-desk/flags")
     assert resp.status_code == 200
     codes = [item["code"] for item in resp.json()]
     assert codes[0] == "over"
     assert "stale" in codes
+    by_code = {item["code"]: item["threshold"] for item in resp.json()}
+    assert by_code["decomp"] == "decomposition_hours"
+    assert by_code["orphan"] is None
 
 
 def test_mark_and_unmark(client, testclient_db_session):

@@ -255,7 +255,7 @@ export default function TeamDeskPage() {
 
       {showThresholds && settings.data && (
         <ThresholdsPanel
-          key={JSON.stringify(settings.data.thresholds)}
+          key={JSON.stringify([settings.data.thresholds, settings.data.disabled_flags])}
           settings={settings.data}
           statusOptions={statusOptions}
           statusCounters={prefs.status_counters}
