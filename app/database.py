@@ -21,6 +21,15 @@ def _engine_kwargs(database_url: str, echo: bool) -> dict[str, object]:
     kwargs: dict[str, object] = {"echo": echo}
     if _is_sqlite_url(database_url):
         kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        # Пул под FastAPI: sync-эндпоинты крутятся в threadpool (по умолчанию 40
+        # потоков) плюс фоновые job'ы планировщика. Дефолтные 5+10 упираются в
+        # лимит и отдают 500 «QueuePool limit reached» под всплеском запросов.
+        # pre_ping отсеивает соединения, закрытые сервером БД за время простоя.
+        kwargs["pool_size"] = 20
+        kwargs["max_overflow"] = 20
+        kwargs["pool_pre_ping"] = True
+        kwargs["pool_recycle"] = 1800
     return kwargs
 
 
