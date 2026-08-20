@@ -24,6 +24,17 @@ FLAG_LABELS = {
 }
 
 
+# Порог, который обслуживает только один признак. Признак выключен — порог
+# незачем показывать и незачем объяснять: интерфейс прячет его по этой карте.
+FLAG_THRESHOLDS = {
+    "over": "overrun_pct",
+    "under": "underrun_pct",
+    "decomp": "decomposition_hours",
+    "childgap": "child_gap_pct",
+    "stale": "stale_days",
+}
+
+
 @dataclass
 class IssueFacts:
     """Всё, что нужно для признаков одной задачи. Собирается в query.py."""
@@ -43,7 +54,7 @@ class IssueFacts:
 
 
 def compute_flags(f: IssueFacts, cfg: DeskConfig) -> list[str]:
-    """Коды признаков задачи в порядке FLAG_ORDER."""
+    """Коды признаков задачи в порядке FLAG_ORDER. Выключенные не возвращаются."""
     t = cfg.thresholds
     closed = f.group == "done"
     found: set[str] = set()
@@ -88,7 +99,8 @@ def compute_flags(f: IssueFacts, cfg: DeskConfig) -> list[str]:
     if not closed and f.days_in_status >= t["stale_days"]:
         found.add("stale")
 
-    return [code for code in FLAG_ORDER if code in found]
+    off = set(cfg.disabled_flags)
+    return [code for code in FLAG_ORDER if code in found and code not in off]
 
 
 def flag_signature(flag: str, f: IssueFacts) -> str:

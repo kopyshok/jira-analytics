@@ -61,6 +61,11 @@ DEFAULT_ASSIGNEE_TYPES = ["Research"]
 # даже если на них назначены задачи. Роль берётся из реестра ролей.
 DEFAULT_DEVELOPER_ROLES = ["dev"]
 
+# Признаки, выключенные тимлидом: практика меняется, и метрика, которая вчера
+# ловила проблему, сегодня может быть просто шумом. Выключенный признак не
+# считается вовсе — ни в ленте, ни в счётчиках, ни на строках задач.
+DEFAULT_DISABLED_FLAGS: list[str] = []
+
 
 @dataclass
 class DeskConfig:
@@ -72,6 +77,7 @@ class DeskConfig:
     subtask_types: list[str] = field(default_factory=list)
     assignee_types: list[str] = field(default_factory=list)
     developer_roles: list[str] = field(default_factory=list)
+    disabled_flags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -83,6 +89,7 @@ class DeskConfig:
             "subtask_types": self.subtask_types,
             "assignee_types": self.assignee_types,
             "developer_roles": self.developer_roles,
+            "disabled_flags": self.disabled_flags,
         }
 
 
@@ -97,6 +104,7 @@ def defaults() -> DeskConfig:
         subtask_types=list(DEFAULT_SUBTASK_TYPES),
         assignee_types=list(DEFAULT_ASSIGNEE_TYPES),
         developer_roles=list(DEFAULT_DEVELOPER_ROLES),
+        disabled_flags=list(DEFAULT_DISABLED_FLAGS),
     )
 
 
@@ -120,6 +128,7 @@ def load_config(db: Session) -> DeskConfig:
     for key in (
         "queue_statuses", "wip_statuses", "hidden_statuses",
         "subtask_types", "assignee_types", "developer_roles",
+        "disabled_flags",
     ):
         if isinstance(stored.get(key), list):
             setattr(cfg, key, [str(s) for s in stored[key]])

@@ -94,3 +94,13 @@ def test_signature_changes_with_cause():
 
 def test_signature_of_decomposition_follows_estimate():
     assert flag_signature("decomp", facts(est=24)) != flag_signature("decomp", facts(est=40))
+
+
+def test_disabled_flag_is_not_computed():
+    """Выключенный признак не считается вовсе — ни на строке, ни в счётчиках."""
+    from dataclasses import replace
+
+    cfg = replace(CFG, disabled_flags=["decomp"])
+    assert "decomp" not in compute_flags(facts(est=24), cfg)
+    # Остальные признаки той же задачи продолжают работать.
+    assert "nospent" in compute_flags(facts(est=24), cfg)

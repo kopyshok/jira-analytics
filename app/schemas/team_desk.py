@@ -22,6 +22,9 @@ class DeskSettings(BaseModel):
     developer_roles: list[str] = Field(
         default_factory=lambda: ["dev"], description="Роли, попадающие в срез"
     )
+    disabled_flags: list[str] = Field(
+        default_factory=list, description="Признаки, выключенные тимлидом"
+    )
 
 
 class MarkRequest(BaseModel):
