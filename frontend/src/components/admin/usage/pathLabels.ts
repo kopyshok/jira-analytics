@@ -6,6 +6,8 @@ export const PATH_LABELS: Record<string, string> = {
   '/analytics/work-type-report': 'Отчёт по видам работ',
   '/analytics/work-type-report/print': 'Отчёт по видам работ (печать)',
   '/executive': 'Сводка для руководства',
+  '/kpi': 'KPI',
+  '/team-desk': 'Стол тимлида',
   '/sync': 'Синхронизация',
   '/categories': 'Категории',
   '/capacity': 'Загрузка',

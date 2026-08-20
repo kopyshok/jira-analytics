@@ -6,6 +6,8 @@ export const KNOWN_ROUTES: string[] = [
   '/analytics/work-type-report',
   '/analytics/work-type-report/print',
   '/executive',
+  '/kpi',
+  '/team-desk',
   '/sync',
   '/categories',
   '/capacity',
