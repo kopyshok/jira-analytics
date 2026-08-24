@@ -565,7 +565,11 @@ def _adapter_team_absences(db: Session, desk: WorkDesk, year: int, quarter: int)
     emp_rows = (
         db.query(Employee.id, Employee.display_name)
         .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
-        .filter(EmployeeTeam.team.in_(teams), *_tm.overlaps_clause(q_start, q_end))
+        .filter(
+            EmployeeTeam.team.in_(teams),
+            Employee.is_active.is_(True),
+            *_tm.overlaps_clause(q_start, q_end),
+        )
         .distinct()
         .order_by(Employee.display_name)
         .all()
@@ -579,6 +583,7 @@ def _adapter_team_absences(db: Session, desk: WorkDesk, year: int, quarter: int)
         .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
         .filter(
             EmployeeTeam.team.in_(teams),
+            Employee.is_active.is_(True),
             *_tm.overlaps_clause(q_start, q_end),
             Absence.start_date <= q_end,
             Absence.end_date >= q_start,
