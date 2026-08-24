@@ -98,3 +98,28 @@ def test_patch_role_rejects_unknown_value(client, employee):
 def test_patch_employee_missing_404(client):
     res = client.patch("/api/v1/employees/does-not-exist", json={"role": "analyst"})
     assert res.status_code == 404
+
+
+def test_patch_is_active_toggles_flag(client, employee, db_session):
+    """Ручное выключение сотрудника: он перестаёт быть активным и возвращается обратно."""
+    res = client.patch(f"/api/v1/employees/{employee.id}", json={"is_active": False})
+    assert res.status_code == 200
+    assert res.json()["is_active"] is False
+    db_session.refresh(employee)
+    assert employee.is_active is False
+
+    res = client.patch(f"/api/v1/employees/{employee.id}", json={"is_active": True})
+    assert res.status_code == 200
+    db_session.refresh(employee)
+    assert employee.is_active is True
+
+
+def test_patch_role_only_keeps_active_flag(client, employee, db_session):
+    """Правка роли не должна трогать признак активности."""
+    employee.is_active = False
+    db_session.commit()
+
+    res = client.patch(f"/api/v1/employees/{employee.id}", json={"role": "analyst"})
+    assert res.status_code == 200
+    db_session.refresh(employee)
+    assert employee.is_active is False

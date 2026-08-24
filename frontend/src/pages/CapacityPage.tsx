@@ -29,7 +29,8 @@ const { Text } = Typography;
 function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   const { notification } = App.useApp();
   const { queryParams } = useGlobalTeamFilter();
-  const { data, isLoading } = useTeamCapacity(year, quarter, queryParams.teams);
+  const [showInactive, setShowInactive] = useState(false);
+  const { data, isLoading } = useTeamCapacity(year, quarter, queryParams.teams, showInactive);
   const { data: employees } = useEmployees();
   const replaceTeams = useReplaceEmployeeTeams();
   const setPrimary = useSetPrimaryTeam();
@@ -41,6 +42,10 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
     (employeesFull.data ?? []).forEach(e => m.set(e.id, e.teams ?? []));
     return m;
   }, [employeesFull.data]);
+  const inactiveEmpIds = useMemo(
+    () => new Set((employeesFull.data ?? []).filter(e => !e.is_active).map(e => e.id)),
+    [employeesFull.data],
+  );
   const roleByEmpId = useMemo(() => {
     const m = new Map<string, EmployeeRole | null>();
     (employeesFull.data ?? []).forEach(e => m.set(e.id, e.role ?? null));
@@ -60,6 +65,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
   const [showFact, setShowFact] = useState(false);
   const [showDeparted, setShowDeparted] = useState(false);
+  const storedShowInactive = useGenericSetting('ui_capacity_show_inactive');
   const [showPct,  setShowPct]  = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
@@ -97,14 +103,17 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
     if (hydrated) return;
     if (storedEmp.data === undefined
         || storedShowFact.data === undefined || storedShowPct.data === undefined
-        || storedShowDeparted.data === undefined) return;
+        || storedShowDeparted.data === undefined
+        || storedShowInactive.data === undefined) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedEmpIds((storedEmp.data?.value || '').split(',').filter(Boolean));
     setShowFact(storedShowFact.data?.value === '1');
     setShowPct(storedShowPct.data?.value === '1');
     setShowDeparted(storedShowDeparted.data?.value === '1');
+    setShowInactive(storedShowInactive.data?.value === '1');
     setHydrated(true);
-  }, [hydrated, storedEmp.data, storedShowFact.data, storedShowPct.data, storedShowDeparted.data]);
+  }, [hydrated, storedEmp.data, storedShowFact.data, storedShowPct.data, storedShowDeparted.data,
+      storedShowInactive.data]);
 
   // Drop removed employees from selection (parity with old code).
   useEffect(() => {
@@ -264,6 +273,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
         <Space>
           <span style={{ cursor: 'pointer', opacity: departedOn ? 0.6 : 1 }}>{r.employee_name}</span>
           {departedOn && <Tag>выбыл {dayjs(departedOn).format('DD.MM.YYYY')}</Tag>}
+          {inactiveEmpIds.has(r.employee_id) && <Tag color="default">выключен</Tag>}
           <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           <Space>
           <Select
@@ -379,6 +389,8 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
           <Text>%</Text>
           <Switch checked={showDeparted} onChange={(v) => { setShowDeparted(v); persist('ui_capacity_show_departed', v ? '1' : '0'); }} />
           <Text>Показывать выбывших</Text>
+          <Switch checked={showInactive} onChange={(v) => { setShowInactive(v); persist('ui_capacity_show_inactive', v ? '1' : '0'); }} />
+          <Text>Показывать выключенных</Text>
         </Space>
         <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
         <Button

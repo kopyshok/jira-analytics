@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form, Button } from 'antd';
+import { Card, Spin, Empty, Tooltip, Modal, InputNumber, Form, Button, Switch } from 'antd';
 import { SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
@@ -12,8 +12,8 @@ import type {
   NormWorkTypeBreakdown,
 } from '../../types/api';
 
-interface Thresholds { warnAbove: number; underBelow: number; }
-const DEFAULT_THRESHOLDS: Thresholds = { warnAbove: 110, underBelow: 70 };
+interface Thresholds { warnAbove: number; underBelow: number; hideZeroFact: boolean; }
+const DEFAULT_THRESHOLDS: Thresholds = { warnAbove: 110, underBelow: 70, hideZeroFact: true };
 const STORAGE_KEY = 'dashboard.normWork.thresholds';
 
 function loadThresholds(): Thresholds {
@@ -23,7 +23,7 @@ function loadThresholds(): Thresholds {
     const parsed = JSON.parse(raw) as Partial<Thresholds>;
     const warnAbove = Number.isFinite(parsed.warnAbove) ? Math.max(1, Math.min(500, Math.floor(parsed.warnAbove!))) : DEFAULT_THRESHOLDS.warnAbove;
     const underBelow = Number.isFinite(parsed.underBelow) ? Math.max(1, Math.min(500, Math.floor(parsed.underBelow!))) : DEFAULT_THRESHOLDS.underBelow;
-    return { warnAbove, underBelow };
+    return { warnAbove, underBelow, hideZeroFact: parsed.hideZeroFact !== false };
   } catch {
     return DEFAULT_THRESHOLDS;
   }
@@ -223,6 +223,48 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
   );
 }
 
+/** Скрыть сотрудников без факта за период и пересчитать итоги по видимым. */
+function withoutZeroFact(data: DashboardNormWorkResponse): {
+  data: DashboardNormWorkResponse; hidden: number;
+} {
+  let hidden = 0;
+  const roles = data.roles.map((role) => {
+    const employees = role.employees.filter((e) => e.fact_hours > 0);
+    hidden += role.employees.length - employees.length;
+    if (employees.length === role.employees.length) return role;
+    const total_plan = employees.reduce((s, e) => s + e.plan_hours, 0);
+    const total_fact = employees.reduce((s, e) => s + e.fact_hours, 0);
+    const foreign_hours = employees.reduce((s, e) => s + e.foreign_hours, 0);
+    return {
+      ...role,
+      employees,
+      employees_count: employees.length,
+      total_plan,
+      total_fact,
+      total_pct: total_plan > 0 ? (total_fact / total_plan) * 100 : 0,
+      foreign_hours,
+      foreign_pct: total_fact > 0 ? (foreign_hours / total_fact) * 100 : 0,
+    };
+  }).filter((r) => r.employees.length > 0);
+
+  if (!hidden) return { data, hidden: 0 };
+  const total_plan = roles.reduce((s, r) => s + r.total_plan, 0);
+  const total_fact = roles.reduce((s, r) => s + r.total_fact, 0);
+  const foreign_hours = roles.reduce((s, r) => s + r.foreign_hours, 0);
+  return {
+    data: {
+      ...data,
+      roles,
+      total_plan,
+      total_fact,
+      total_pct: total_plan > 0 ? (total_fact / total_plan) * 100 : 0,
+      foreign_hours,
+      foreign_pct: total_fact > 0 ? (foreign_hours / total_fact) * 100 : 0,
+    },
+    hidden,
+  };
+}
+
 function RoleColumn({ role, t }: { role: NormWorkRoleGroup; t: Thresholds }) {
   return (
     <div style={{ background: DARK_THEME.cardBg, borderRadius: 8, overflow: 'hidden' }}>
@@ -267,11 +309,14 @@ interface Props {
 
 export default function NormWorkWidget({ data, loading }: Props) {
   const [t, setT] = useState<Thresholds>(loadThresholds);
+  const { data: shown, hidden } = t.hideZeroFact && data
+    ? withoutZeroFact(data)
+    : { data, hidden: 0 };
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<Thresholds>();
 
   const gear = (
-    <Tooltip title="Настройка порогов">
+    <Tooltip title="Настройка виджета">
       <SettingOutlined
         style={{ cursor: 'pointer', color: DARK_THEME.textMuted, fontSize: 16 }}
         onClick={() => { form.setFieldsValue(t); setModalOpen(true); }}
@@ -282,15 +327,20 @@ export default function NormWorkWidget({ data, loading }: Props) {
   const title = (
     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 16 }}>
       <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text, #e6edf7)' }}>Нормированные работы</span>
-      {data && !loading && (
+      {shown && !loading && (
         <span style={{ fontSize: 14, color: DARK_THEME.textMuted, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span>
-            Σ план <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_plan)} ч</b>
-            {' · '}Σ факт <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(data.total_fact)} ч</b>
-            {' · '}загрузка <b style={{ color: statusColor(data.total_pct, t) }}>{Math.round(data.total_pct)}%</b>
+            Σ план <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(shown.total_plan)} ч</b>
+            {' · '}Σ факт <b style={{ color: DARK_THEME.textPrimary }}>{Math.round(shown.total_fact)} ч</b>
+            {' · '}загрузка <b style={{ color: statusColor(shown.total_pct, t) }}>{Math.round(shown.total_pct)}%</b>
           </span>
-          {data.foreign_hours > 0 && (
-            <ForeignBadge hours={data.foreign_hours} pct={data.foreign_pct} />
+          {shown.foreign_hours > 0 && (
+            <ForeignBadge hours={shown.foreign_hours} pct={shown.foreign_pct} />
+          )}
+          {hidden > 0 && (
+            <Tooltip title="Сотрудники без списаний за период скрыты — включается в настройках виджета">
+              <span style={{ color: DARK_THEME.textMuted }}>скрыто без факта: {hidden}</span>
+            </Tooltip>
           )}
         </span>
       )}
@@ -299,7 +349,7 @@ export default function NormWorkWidget({ data, loading }: Props) {
   );
 
   if (loading) return <Card title="Нормированные работы"><Spin /></Card>;
-  if (!data?.roles.length) return <Card title={title}><Empty description="Нет данных" /></Card>;
+  if (!shown?.roles.length) return <Card title={title}><Empty description="Нет данных" /></Card>;
 
   return (
     <>
@@ -310,12 +360,12 @@ export default function NormWorkWidget({ data, loading }: Props) {
           gap: 16,
           alignItems: 'flex-start',
         }}>
-          {data.roles.map((r) => <RoleColumn key={r.role_code} role={r} t={t} />)}
+          {shown.roles.map((r) => <RoleColumn key={r.role_code} role={r} t={t} />)}
         </div>
       </Card>
 
       <Modal
-        title="Настройка порогов загрузки"
+        title="Настройка виджета"
         open={modalOpen}
         onOk={() => form.validateFields().then((v) => { setT(v); saveThresholds(v); setModalOpen(false); })}
         onCancel={() => setModalOpen(false)}
@@ -328,6 +378,13 @@ export default function NormWorkWidget({ data, loading }: Props) {
           </Form.Item>
           <Form.Item label="Недозагрузка — ниже, % (зелёный)" name="underBelow" rules={[{ required: true, type: 'number', min: 1, max: 500 }]}>
             <InputNumber style={{ width: '100%' }} min={1} max={500} suffix="%" />
+          </Form.Item>
+          <Form.Item
+            label="Скрывать сотрудников без списаний за период"
+            name="hideZeroFact"
+            valuePropName="checked"
+          >
+            <Switch />
           </Form.Item>
         </Form>
       </Modal>

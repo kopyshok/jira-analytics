@@ -11,9 +11,12 @@ import type {
 } from '../types/api';
 
 // Capacity Reports
-export const getTeamCapacity = (year: string, quarter: string, teams?: string) => {
+export const getTeamCapacity = (
+  year: string, quarter: string, teams?: string, includeInactive?: boolean,
+) => {
   const params: Record<string, string> = { year, quarter };
   if (teams) params.teams = teams;
+  if (includeInactive) params.include_inactive = 'true';
   return api.get<QuarterCapacityResponse[]>('/capacity/team', params);
 };
 

@@ -35,10 +35,12 @@ export const useEmployees = (params?: { withTeams?: boolean; isActive?: boolean 
     staleTime: 30_000,
   });
 
-export const useTeamCapacity = (year: string, quarter: string, teams?: string) =>
+export const useTeamCapacity = (
+  year: string, quarter: string, teams?: string, includeInactive = false,
+) =>
   useQuery({
-    queryKey: ['capacity', 'team', year, quarter, teams ?? null],
-    queryFn: () => getTeamCapacity(year, quarter, teams),
+    queryKey: ['capacity', 'team', year, quarter, teams ?? null, includeInactive],
+    queryFn: () => getTeamCapacity(year, quarter, teams, includeInactive),
     enabled: !!year && !!quarter,
   });
 
@@ -156,6 +158,23 @@ export const useUpdateEmployeeRole = () => {
     onError: (_err, _vars, ctx) => rollbackEmployeesCache(qc, ctx),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+};
+
+export const useSetEmployeeActive = () => {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { employeeId: string; is_active: boolean }, EmployeesCtx>({
+    mutationFn: ({ employeeId, is_active }) => patchEmployee(employeeId, { is_active }),
+    onMutate: async ({ employeeId, is_active }) => {
+      await qc.cancelQueries({ queryKey: ['employees'] });
+      return patchEmployeesCache(qc, employeeId, e => ({ ...e, is_active }));
+    },
+    onError: (_err, _vars, ctx) => rollbackEmployeesCache(qc, ctx),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['capacity'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-norm-work'] });
     },
   });
 };
