@@ -19,7 +19,7 @@ from typing import Iterable, Optional, Sequence
 from sqlalchemy import exists, or_
 from sqlalchemy.orm import Session
 
-from app.models import EmployeeTeam
+from app.models import Employee, EmployeeTeam
 
 
 def active_on_clause(day: date):
@@ -53,12 +53,22 @@ def members_on(db: Session, teams: Sequence[str], day: date) -> set[str]:
 def members_overlapping(
     db: Session, teams: Sequence[str], start: date, end: date
 ) -> set[str]:
-    """ID сотрудников, состоявших в командах хотя бы один день периода."""
+    """ID сотрудников, состоявших в командах хотя бы один день периода.
+
+    Выключенные (``Employee.is_active = False``) в состав не попадают: признак
+    активности — ручной рубильник «человек больше не учитывается», и он должен
+    действовать одинаково во всех разрезах (ёмкость, дашборд, KPI, планирование).
+    """
     if not teams:
         return set()
     rows = (
         db.query(EmployeeTeam.employee_id)
-        .filter(EmployeeTeam.team.in_(list(teams)), *overlaps_clause(start, end))
+        .join(Employee, Employee.id == EmployeeTeam.employee_id)
+        .filter(
+            EmployeeTeam.team.in_(list(teams)),
+            Employee.is_active.is_(True),
+            *overlaps_clause(start, end),
+        )
         .all()
     )
     return {r[0] for r in rows}
