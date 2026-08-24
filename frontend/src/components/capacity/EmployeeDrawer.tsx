@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Drawer, Spin, Tag, DatePicker, Typography, Space, App, Avatar, Button } from 'antd';
+import { Drawer, Spin, Tag, DatePicker, Typography, Space, App, Avatar, Button, Switch } from 'antd';
 import { UserOutlined, SwapOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -8,6 +8,7 @@ import { getTeams } from '../../api/sync';
 import {
   useUpdateMembershipJoinedAt,
   useUpdateMembershipLeftAt,
+  useSetEmployeeActive,
 } from '../../hooks/useCapacity';
 import { DARK_THEME } from '../../utils/constants';
 import TransferTeamModal from './TransferTeamModal';
@@ -45,6 +46,7 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
     enabled: !!employeeId,
   });
 
+  const activeMut = useSetEmployeeActive();
   const joinedMut = useUpdateMembershipJoinedAt();
   const leftMut = useUpdateMembershipLeftAt();
 
@@ -121,6 +123,26 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
                 </div>
               )}
             </div>
+            <Space size="small" style={{ marginInlineStart: 'auto' }}>
+              <Text style={{ color: DARK_THEME.textSecondary, fontSize: 13 }}>Активен</Text>
+              <Switch
+                size="small"
+                checked={employee.is_active}
+                loading={activeMut.isPending}
+                onChange={(checked) =>
+                  activeMut
+                    .mutateAsync({ employeeId: employee.id, is_active: checked })
+                    .then(() =>
+                      message.success(
+                        checked
+                          ? 'Сотрудник снова учитывается в расчётах'
+                          : 'Сотрудник исключён из расчётов и виджетов',
+                      ),
+                    )
+                    .catch(() => message.error('Не удалось сохранить'))
+                }
+              />
+            </Space>
           </div>
 
           {/* Memberships section */}

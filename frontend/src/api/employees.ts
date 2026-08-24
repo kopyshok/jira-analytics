@@ -22,7 +22,10 @@ export const setEmployeePrimaryTeam = (employeeId: string, team: string) =>
 export const deleteEmployeeTeam = (employeeId: string, team: string) =>
   api.del<void>(`/employees/${employeeId}/teams/${encodeURIComponent(team)}`);
 
-export const patchEmployee = (employeeId: string, body: { role?: EmployeeRole | null }) =>
+export const patchEmployee = (
+  employeeId: string,
+  body: { role?: EmployeeRole | null; is_active?: boolean },
+) =>
   api.patch<EmployeeResponse>(`/employees/${employeeId}`, body);
 
 export const recalcActiveEmployees = () =>

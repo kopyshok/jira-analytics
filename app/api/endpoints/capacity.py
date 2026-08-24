@@ -295,12 +295,16 @@ async def get_team_quarter_capacity(
     quarter: int = Query(..., ge=1, le=4),
     team: Optional[str] = Query(None, description="Команда (одна, устаревший параметр)"),
     teams: Optional[str] = Query(None, description="Команды через запятую"),
+    include_inactive: bool = Query(False, description="Показывать выключенных сотрудников"),
     db: Session = Depends(get_db),
 ):
     """Ёмкость команды на квартал. Фильтр: teams=A,B или team=A (backward compat)."""
     teams_list = _resolve_teams(team, teams)
     service = CapacityService(db)
-    results = service.team_quarter_capacity(year, quarter, employee_ids=None, teams_filter=teams_list)
+    results = service.team_quarter_capacity(
+        year, quarter, employee_ids=None, teams_filter=teams_list,
+        include_inactive=include_inactive,
+    )
     return [QuarterCapacityResponse.from_dataclass(r) for r in results]
 
 

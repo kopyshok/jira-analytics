@@ -43,9 +43,10 @@ class EmployeeResponse(BaseModel):
 
 
 class EmployeePatchRequest(BaseModel):
-    """Частичное обновление сотрудника (пока только role)."""
+    """Частичное обновление сотрудника (role, is_active)."""
 
     role: Optional[str] = None  # None → сбросить роль
+    is_active: Optional[bool] = None
 
 
 class EmployeeFromJiraRequest(BaseModel):
@@ -168,7 +169,7 @@ def patch_employee(
     req: EmployeePatchRequest,
     db: Session = Depends(get_db),
 ):
-    """Частично обновить поля сотрудника. Сейчас поддерживается `role`."""
+    """Частично обновить поля сотрудника: `role`, `is_active`."""
     emp = db.query(Employee).filter(Employee.id == employee_id).one_or_none()
     if emp is None:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -186,6 +187,8 @@ def patch_employee(
                     detail=f"Unknown role {role!r}. Allowed: {sorted(valid_codes)}",
                 )
         emp.role = role
+    if "is_active" in data and data["is_active"] is not None:
+        emp.is_active = data["is_active"]
 
     # Snapshot before commit — see CLAUDE.md ORM caveat.
     response = EmployeeResponse.model_validate(emp)
