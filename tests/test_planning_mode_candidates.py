@@ -151,3 +151,31 @@ def test_patch_reconciles_existing_draft_allocations(client, db_session):
         .count()
         == 1
     )
+
+
+def test_whole_mode_excludes_child(client, db_session):
+    """RFA целиком — дочерний Эпик отдельным кандидатом не идёт.
+
+    Регресс: часы дочки уже сидят в родительской RFA, поэтому пара
+    «RFA + её Эпик» в одном сценарии считала часы дважды.
+    """
+    _seed_rfa_with_child(db_session)
+    sid = _create_scenario(client)
+    ids = _alloc_item_ids(client, sid)
+    assert "bi-rfa" in ids, "сама RFA остаётся кандидатом"
+    assert "bi-epic" not in ids, "дочерний Эпик в режиме whole — не кандидат"
+
+
+def test_whole_mode_drops_existing_child_allocation(client, db_session):
+    """Уже добавленная дочка вычищается из черновика при возврате в whole."""
+    _seed_rfa_with_child(db_session)
+    r = client.patch("/api/v1/backlog/bi-rfa/planning-mode", json={"mode": "by_epics"})
+    assert r.status_code == 200, r.text
+    sid = _create_scenario(client)
+    assert "bi-epic" in _alloc_item_ids(client, sid)
+
+    r = client.patch("/api/v1/backlog/bi-rfa/planning-mode", json={"mode": "whole"})
+    assert r.status_code == 200, r.text
+    ids = _alloc_item_ids(client, sid)
+    assert "bi-epic" not in ids
+    assert "bi-rfa" in ids

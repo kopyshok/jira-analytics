@@ -38,12 +38,24 @@ def seeded(testclient_db_session):
         issue_type="Task", status="Open", project_id="p1",
         category="initiatives_rfa", assigned_category=None, parent_id="i-rfa",
     )
-    db.add_all([issue_rfa, issue_qrt, issue_child])
+    # Родитель вне бэклога — его ребёнок остаётся самостоятельным кандидатом.
+    issue_outer = Issue(
+        id="i-outer", jira_issue_id="j-outer", key="PRJ-4", summary="Outer parent",
+        issue_type="RFA", status="Open", project_id="p1",
+        category="operations", assigned_category=None, parent_id=None,
+    )
+    issue_loose = Issue(
+        id="i-loose", jira_issue_id="j-loose", key="PRJ-5", summary="Loose Child",
+        issue_type="Task", status="Open", project_id="p1",
+        category="initiatives_rfa", assigned_category=None, parent_id="i-outer",
+    )
+    db.add_all([issue_rfa, issue_qrt, issue_child, issue_outer, issue_loose])
 
     item_rfa = BacklogItem(id="b-rfa", title="Root RFA", issue_id="i-rfa")
     item_qrt = BacklogItem(id="b-qrt", title="Already Quarterly", issue_id="i-qrt")
     item_child = BacklogItem(id="b-child", title="Child Task", issue_id="i-child")
-    db.add_all([item_rfa, item_qrt, item_child])
+    item_loose = BacklogItem(id="b-loose", title="Loose Child", issue_id="i-loose")
+    db.add_all([item_rfa, item_qrt, item_child, item_loose])
     db.commit()
 
 
@@ -61,9 +73,12 @@ def test_draft_scenario_filters_by_category_only(client, seeded):
     item_ids = [a["backlog_item_id"] for a in allocs]
     assert "b-rfa" in item_ids, "root initiatives_rfa must be shown"
     assert "b-qrt" not in item_ids, "already-quarterly must be excluded"
-    assert "b-child" in item_ids, (
-        "initiatives_rfa with a parent (e.g. под Эпиком) must be shown — "
-        "категория решает, а не наличие parent_id"
+    assert "b-child" not in item_ids, (
+        "родитель планируется «RFA целиком» — его ребёнок отдельным "
+        "кандидатом не идёт, иначе часы посчитаются дважды"
+    )
+    assert "b-loose" in item_ids, (
+        "родителя нет в бэклоге — категория решает, а не наличие parent_id"
     )
 
 

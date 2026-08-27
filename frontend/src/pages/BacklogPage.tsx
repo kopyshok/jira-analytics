@@ -520,6 +520,11 @@ export default function BacklogPage() {
 
   const actionsArchived = (r: BacklogItemResponse) => (
     <Space size={4}>
+      {r.archived_by_status ? (
+        <Tooltip title="Задача закрыта или отменена в Jira — вернуть её в бэклог нельзя">
+          <Button icon={<UndoOutlined />} size="small" disabled />
+        </Tooltip>
+      ) : (
       <Popconfirm
         title="Вернуть в активный бэклог?"
         onConfirm={() => restore.mutate(r.id, {
@@ -531,6 +536,7 @@ export default function BacklogPage() {
           <Button icon={<UndoOutlined />} size="small" />
         </Tooltip>
       </Popconfirm>
+      )}
       {!r.issue_id && (
         <Tooltip title="Редактировать">
           <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} />
