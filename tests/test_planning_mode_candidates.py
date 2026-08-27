@@ -179,3 +179,93 @@ def test_whole_mode_drops_existing_child_allocation(client, db_session):
     ids = _alloc_item_ids(client, sid)
     assert "bi-epic" not in ids
     assert "bi-rfa" in ids
+
+
+def _make_multi_team(db, teams):
+    """Родителя делают несколько команд — признак мультикомандности."""
+    import json as _json
+    parent = db.query(Issue).filter_by(id="i-rfa").one()
+    parent.team = teams[0]
+    parent.participating_teams = _json.dumps(teams, ensure_ascii=False)
+    db.commit()
+
+
+def test_multi_team_parent_is_not_candidate(client, db_session):
+    """Мультикомандную RFA целиком планировать нельзя — идут её Эпики."""
+    _seed_rfa_with_child(db_session)
+    _make_multi_team(db_session, ["Команда А", "Команда Б"])
+
+    sid = _create_scenario(client)
+    ids = _alloc_item_ids(client, sid)
+    assert "bi-rfa" not in ids, "мультикомандная RFA — контекст, не кандидат"
+    assert "bi-epic" in ids, "дочерний Эпик остаётся кандидатом"
+
+
+def test_single_participant_other_than_product_team_is_multi(client, db_session):
+    """Работает одна команда, но не та, что владеет продуктом — тоже группа."""
+    _seed_rfa_with_child(db_session)
+    import json as _json
+    parent = db_session.query(Issue).filter_by(id="i-rfa").one()
+    parent.team = "Команда А"
+    parent.participating_teams = _json.dumps(["Команда Б"], ensure_ascii=False)
+    db_session.commit()
+
+    sid = _create_scenario(client)
+    assert "bi-rfa" not in _alloc_item_ids(client, sid)
+
+
+def test_multi_team_mode_switch_rejected(client, db_session):
+    """Переключить мультикомандную RFA обратно в «целиком» нельзя."""
+    _seed_rfa_with_child(db_session)
+    _make_multi_team(db_session, ["Команда А", "Команда Б"])
+
+    r = client.patch("/api/v1/backlog/bi-rfa/planning-mode", json={"mode": "whole"})
+    assert r.status_code == 409, r.text
+    r = client.patch("/api/v1/backlog/bi-rfa/included", json={"included": True})
+    assert r.status_code == 409, r.text
+
+
+def test_multi_team_lock_can_be_switched_off(client, db_session):
+    """Блокировку можно выключить в настройках — тогда режим решает PM."""
+    from app.models import AppSetting
+    _seed_rfa_with_child(db_session)
+    _make_multi_team(db_session, ["Команда А", "Команда Б"])
+    db_session.add(AppSetting(key="planning_multi_team_by_epics", value="false"))
+    db_session.commit()
+
+    sid = _create_scenario(client)
+    ids = _alloc_item_ids(client, sid)
+    assert "bi-rfa" in ids, "блокировка выключена — RFA снова кандидат"
+    assert "bi-epic" not in ids, "режим whole снова прячет дочку"
+
+
+def test_multi_team_flag_exposed_in_backlog(client, db_session):
+    """Список бэклога отдаёт признак мультикомандности и состав команд."""
+    _seed_rfa_with_child(db_session)
+    _make_multi_team(db_session, ["Команда А", "Команда Б"])
+
+    r = client.get("/api/v1/backlog?view=active")
+    assert r.status_code == 200, r.text
+    rows = {i["id"]: i for i in r.json()}
+    parent = rows["bi-rfa"]
+    assert parent["is_multi_team"] is True
+    assert parent["planning_mode_locked"] is True
+    assert parent["participating_teams"] == ["Команда А", "Команда Б"]
+
+
+def test_parent_context_when_parent_hidden_by_team_filter(client, db_session):
+    """Родитель чужой команды не в списке — отдаём его как контекст строки."""
+    _seed_rfa_with_child(db_session)
+    parent = db_session.query(Issue).filter_by(id="i-rfa").one()
+    child = db_session.query(Issue).filter_by(id="i-epic").one()
+    parent.team = "Команда А"
+    child.team = "Команда Б"
+    db_session.commit()
+
+    r = client.get("/api/v1/backlog", params={"view": "active", "teams": "Команда Б"})
+    assert r.status_code == 200, r.text
+    rows = {i["id"]: i for i in r.json()}
+    assert "bi-rfa" not in rows, "родитель чужой команды в список не попадает"
+    ctx = rows["bi-epic"]["parent_context"]
+    assert ctx is not None and ctx["key"] == "RFA-1"
+    assert ctx["team"] == "Команда А"

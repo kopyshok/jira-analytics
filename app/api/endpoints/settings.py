@@ -83,6 +83,9 @@ LLM_KEYS = (
     "llm_openrouter_fallback_models",
     "llm_deepseek_api_key",
     "llm_deepseek_model",
+    "llm_omniroute_base_url",
+    "llm_omniroute_api_key",
+    "llm_omniroute_model",
     "llm_anthropic_api_key",
     "llm_openai_api_key",
     "llm_project_summary_system_prompt",
@@ -93,7 +96,7 @@ def _is_allowed_generic_key(key: str) -> bool:
     """Limit generic settings to non-secret UI/runtime keys."""
     if key in LLM_KEYS:
         return True
-    if key == "ai_enabled":
+    if key in ("ai_enabled", "planning_multi_team_by_epics"):
         return True
     return (
         key.startswith("ui_")
