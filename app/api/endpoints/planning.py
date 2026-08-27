@@ -1265,14 +1265,18 @@ async def sync_backlog(
             )
         )
         next_order += 1.0
-    # Безусловный снос: leaf-типы, потомки утверждённых и RFA-родители «по
-    # эпикам» (даже если PM отметил — они не единицы планирования).
-    stale_unconditional = existing_ids & (leaf_ids | descendant_ids | mode_excluded)
+    # Безусловный снос: потомки утверждённых и RFA-родители «по эпикам»
+    # (даже если PM отметил — иначе часы посчитаются дважды).
+    stale_unconditional = existing_ids & (descendant_ids | mode_excluded)
     # Опциональный снос (только если PM не включил): архивированные,
     # задачи чужой команды, физически удалённые из бэклога, инициативы
-    # уже включённые в утверждённый сценарий (если PM поставил галочку
-    # вручную — оставляем, пусть сам разруливает конфликт).
-    stale_if_unincluded = ((existing_ids - current_ids) | (existing_ids & approved_included_ids)) - stale_unconditional
+    # уже включённые в утверждённый сценарий, leaf-типы (если PM поставил
+    # галочку вручную — оставляем, пусть сам разруливает конфликт).
+    stale_if_unincluded = (
+        (existing_ids - current_ids)
+        | (existing_ids & approved_included_ids)
+        | (existing_ids & leaf_ids)
+    ) - stale_unconditional
     if stale_unconditional:
         db.query(ScenarioAllocation).filter(
             ScenarioAllocation.scenario_id == scenario_id,
@@ -1335,13 +1339,17 @@ async def list_scenario_allocations(
         # RFA-родители «по эпикам» — контекст, не кандидаты.
         mode_excluded = mode_excluded_backlog_ids(db)
         missing = (((((current_ids - existing_ids) - leaf_ids) - descendant_ids) - approved_included_ids) - mode_excluded)
-        # Безусловный stale: leaf-типы, потомки утверждённых, RFA «по эпикам».
-        stale_unconditional = existing_ids & (leaf_ids | descendant_ids | mode_excluded)
+        # Безусловный stale: потомки утверждённых, RFA «по эпикам».
+        stale_unconditional = existing_ids & (descendant_ids | mode_excluded)
         # Опциональный stale (только если PM не включил вручную):
-        # архивированные BacklogItem, задачи чужой команды, инициативы
-        # уже включённые в утверждённый сценарий (PM мог намеренно
-        # держать галочку — оставляем при included=True).
-        stale_if_unincluded = ((existing_ids - current_ids) | (existing_ids & approved_included_ids)) - stale_unconditional
+        # архивированные BacklogItem, задачи чужой команды, leaf-типы,
+        # инициативы уже включённые в утверждённый сценарий (PM мог
+        # намеренно держать галочку — оставляем при included=True).
+        stale_if_unincluded = (
+            (existing_ids - current_ids)
+            | (existing_ids & approved_included_ids)
+            | (existing_ids & leaf_ids)
+        ) - stale_unconditional
         changed = False
         if missing:
             next_order = (
