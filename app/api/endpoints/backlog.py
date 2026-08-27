@@ -33,6 +33,14 @@ from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 from app.services.sync_service import SyncService
 
+# Cancel-like статусы (Отменено / Cancelled / Rejected) считаем «закрыты»
+# — Jira держит их в statusCategory != 'done', но для backlog'а они мусор.
+# Список явный, потому что SQLite lower()/LIKE не работает на кириллице.
+CANCEL_STATUSES = [
+    "Отменено", "Отменена", "Отменён", "Отклонено", "Отклонена",
+    "Cancelled", "Canceled", "Rejected", "Won't Do", "Won't Fix",
+]
+
 
 router = APIRouter()
 
@@ -130,6 +138,9 @@ class BacklogItemResponse(BaseModel):
     jira_status: Optional[str] = None
     jira_status_category: Optional[str] = None
     jira_status_changed_at: Optional[datetime] = None
+    # True если задача сидит в архиве из-за своего статуса в Jira (закрыта или
+    # отменена) — «Восстановить» такую не вернёт, статус решает.
+    archived_by_status: bool = False
     goals: Optional[str] = None
     quarter_label: Optional[str] = None
     # Parallel staffing overrides (NULL = inherit project default).
@@ -277,6 +288,9 @@ def _to_response(
     scenarios = approved_scenarios or []
     issue = item.issue
     jira_in_progress = bool(issue and issue.status_category == "indeterminate")
+    archived_by_status = bool(
+        issue and (issue.status_category == "done" or issue.status in CANCEL_STATUSES)
+    )
     return BacklogItemResponse(
         id=item.id,
         title=item.title,
@@ -306,6 +320,7 @@ def _to_response(
         jira_status=issue.status if issue else None,
         jira_status_category=issue.status_category if issue else None,
         jira_status_changed_at=issue.status_changed_at if issue else None,
+        archived_by_status=archived_by_status,
         goals=issue.goals if issue else None,
         quarter_label=quarter_label,
         parallel_count_analyst=item.parallel_count_analyst,
@@ -381,13 +396,6 @@ async def list_backlog_items(
             )
         )
 
-    # Cancel-like статусы (Отменено / Cancelled / Rejected) считаем «закрыты»
-    # — Jira держит их в statusCategory != 'done', но для backlog'а они мусор.
-    # Список явный, потому что SQLite lower()/LIKE не работает на кириллице.
-    CANCEL_STATUSES = [
-        "Отменено", "Отменена", "Отменён", "Отклонено", "Отклонена",
-        "Cancelled", "Canceled", "Rejected", "Won't Do", "Won't Fix",
-    ]
     cancel_like = Issue.status.in_(CANCEL_STATUSES)
 
     if view == "active":

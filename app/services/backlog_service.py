@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
 from app.services.hierarchy_rules import is_explicit_leaf, load_rules
@@ -137,8 +137,14 @@ def descendant_backlog_ids_of_included_ancestors(db: Session) -> set[str]:
 
 
 def mode_excluded_backlog_ids(db: Session) -> set[str]:
-    """BacklogItem.id RFA-родителей, планируемых «по эпикам» и НЕ включённых
-    отдельной галочкой (``planning_mode='by_epics'`` И ``included_in_planning=False``).
+    """BacklogItem.id, исключённые из кандидатов режимом планирования группы.
+
+    Две зеркальные ситуации:
+
+    1. ``by_epics`` — RFA-родитель без отдельной галочки (``planning_mode='by_epics'``
+       И ``included_in_planning=False``): в сценарий идут дочерние Эпики.
+    2. ``whole`` — прямые дети RFA-родителя: часы уже сидят в самой RFA,
+       отдельным кандидатом ребёнок идти не должен, иначе двойной счёт.
 
     В режиме «по эпикам» сам RFA-родитель — контекст: в сценарий идут его
     дочерние Эпики, а не он. Возвращается только если у родителя реально есть
@@ -158,7 +164,7 @@ def mode_excluded_backlog_ids(db: Session) -> set[str]:
         .all()
     )
     if not rows:
-        return set()
+        return _whole_mode_child_ids(db)
     bid_by_issue = {iid: bid for bid, iid in rows}
     parent_issue_ids_with_children = {
         pid
@@ -171,9 +177,32 @@ def mode_excluded_backlog_ids(db: Session) -> set[str]:
         .distinct()
         .all()
     }
-    return {
+    by_epics_parents = {
         bid for iid, bid in bid_by_issue.items() if iid in parent_issue_ids_with_children
     }
+    return by_epics_parents | _whole_mode_child_ids(db)
+
+
+def _whole_mode_child_ids(db: Session) -> set[str]:
+    """BacklogItem.id прямых детей RFA-родителей в режиме «RFA целиком».
+
+    ponytail: только один уровень вложенности — глубже сидят leaf-типы задач,
+    которые в бэклог и так не попадают.
+    """
+    ParentItem = aliased(BacklogItem)
+    rows = (
+        db.query(BacklogItem.id)
+        .join(Issue, BacklogItem.issue_id == Issue.id)
+        .join(ParentItem, ParentItem.issue_id == Issue.parent_id)
+        .filter(
+            Issue.parent_id.isnot(None),
+            BacklogItem.archived_at.is_(None),
+            ParentItem.archived_at.is_(None),
+            ParentItem.planning_mode == "whole",
+        )
+        .all()
+    )
+    return {bid for (bid,) in rows}
 
 
 def has_included_ancestor(db: Session, issue: Issue) -> bool:
