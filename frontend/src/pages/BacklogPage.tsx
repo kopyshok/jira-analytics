@@ -218,20 +218,36 @@ export default function BacklogPage() {
             )}
             {v}
           </Typography.Text>
-          {r.jira_key && (
-            jiraBaseUrl
-              ? (
-                <Typography.Link
-                  href={`${jiraBaseUrl}/browse/${r.jira_key}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ fontSize: 12 }}
-                >
-                  {r.jira_key}
-                </Typography.Link>
-              )
-              : <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.jira_key}</Typography.Text>
+          {r.parent_context && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              в составе {r.parent_context.key}
+              {r.parent_context.team ? ` · ${r.parent_context.team}` : ''}
+              {r.parent_context.is_multi_team && (
+                <Tag color="gold" style={{ marginLeft: 6 }}>мультикоманда</Tag>
+              )}
+            </Typography.Text>
           )}
+          <Space size={6}>
+            {r.jira_key && (
+              jiraBaseUrl
+                ? (
+                  <Typography.Link
+                    href={`${jiraBaseUrl}/browse/${r.jira_key}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 12 }}
+                  >
+                    {r.jira_key}
+                  </Typography.Link>
+                )
+                : <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.jira_key}</Typography.Text>
+            )}
+            {r.is_multi_team && (
+              <Tooltip title={`Работают несколько команд: ${(r.participating_teams ?? []).join(', ')}. Планируется только по Эпикам.`}>
+                <Tag color="gold" style={{ marginInlineEnd: 0 }}>мультикоманда</Tag>
+              </Tooltip>
+            )}
+          </Space>
         </Space>
       ),
     },

@@ -487,6 +487,15 @@ export interface BacklogItemResponse {
   jira_status_category: string | null;
   jira_status_changed_at: string | null;
   archived_by_status?: boolean;
+  participating_teams?: string[];
+  is_multi_team?: boolean;
+  planning_mode_locked?: boolean;
+  parent_context?: {
+    key: string;
+    title: string;
+    team: string | null;
+    is_multi_team: boolean;
+  } | null;
   goals: string | null;
   quarter_label: string | null;
   // Planning parameters — effective values (from Jira or manual override).

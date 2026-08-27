@@ -22,24 +22,20 @@ from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenari
 from app.repositories.base import BaseRepository
 from app.services.backlog_service import (
     BACKLOG_CATEGORY,
+    CANCEL_STATUSES,
     QUARTERLY_TASKS_CATEGORY,
     TRACKED_CATEGORIES,
     BacklogService,
     is_cancel_like,
+    issue_is_multi_team,
     mode_excluded_backlog_ids,
+    multi_team_lock_enabled,
+    parse_participating_teams,
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 from app.services.sync_service import SyncService
-
-# Cancel-like статусы (Отменено / Cancelled / Rejected) считаем «закрыты»
-# — Jira держит их в statusCategory != 'done', но для backlog'а они мусор.
-# Список явный, потому что SQLite lower()/LIKE не работает на кириллице.
-CANCEL_STATUSES = [
-    "Отменено", "Отменена", "Отменён", "Отклонено", "Отклонена",
-    "Cancelled", "Canceled", "Rejected", "Won't Do", "Won't Fix",
-]
 
 
 router = APIRouter()
@@ -111,6 +107,15 @@ class BacklogChildSchema(BaseModel):
     estimate_opo_hours: Optional[float] = None
 
 
+class ParentContextSchema(BaseModel):
+    """Родительская задача, которой нет в текущем списке — только для контекста."""
+
+    key: str
+    title: str
+    team: Optional[str] = None
+    is_multi_team: bool = False
+
+
 class BacklogItemResponse(BaseModel):
     id: str
     title: str
@@ -141,6 +146,15 @@ class BacklogItemResponse(BaseModel):
     # True если задача сидит в архиве из-за своего статуса в Jira (закрыта или
     # отменена) — «Восстановить» такую не вернёт, статус решает.
     archived_by_status: bool = False
+    # Команды, участвующие в работе (поле Jira). Мультикомандность = участников
+    # больше одной или единственный участник не совпадает с продуктовой командой.
+    participating_teams: List[str] = []
+    is_multi_team: bool = False
+    # Режим планирования группы навязан мультикомандностью — переключать нельзя.
+    planning_mode_locked: bool = False
+    # Родитель, которого нет в этом списке (обычно чужая команда) — показываем
+    # как контекст, чтобы было видно, из какой RFA растёт задача.
+    parent_context: Optional["ParentContextSchema"] = None
     goals: Optional[str] = None
     quarter_label: Optional[str] = None
     # Parallel staffing overrides (NULL = inherit project default).
@@ -284,13 +298,19 @@ def _to_response(
     has_parent_in_backlog: bool = False,
     has_children_in_backlog: bool = False,
     children: Optional[List[BacklogChildSchema]] = None,
+    *,
+    # Одиночные ответы (после правки элемента) считают блокировку включённой —
+    # это её значение по умолчанию; списки передают реальное.
+    multi_team_lock: bool = True,
+    parent_context: Optional[ParentContextSchema] = None,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
     jira_in_progress = bool(issue and issue.status_category == "indeterminate")
     archived_by_status = bool(
-        issue and (issue.status_category == "done" or issue.status in CANCEL_STATUSES)
+        issue and (issue.status_category == "done" or is_cancel_like(issue))
     )
+    is_multi_team = issue_is_multi_team(issue)
     return BacklogItemResponse(
         id=item.id,
         title=item.title,
@@ -321,6 +341,10 @@ def _to_response(
         jira_status_category=issue.status_category if issue else None,
         jira_status_changed_at=issue.status_changed_at if issue else None,
         archived_by_status=archived_by_status,
+        participating_teams=parse_participating_teams(issue.participating_teams) if issue else [],
+        is_multi_team=is_multi_team,
+        planning_mode_locked=is_multi_team and multi_team_lock,
+        parent_context=parent_context,
         goals=issue.goals if issue else None,
         quarter_label=quarter_label,
         parallel_count_analyst=item.parallel_count_analyst,
@@ -396,7 +420,7 @@ async def list_backlog_items(
             )
         )
 
-    cancel_like = Issue.status.in_(CANCEL_STATUSES)
+    cancel_like = Issue.status.in_(list(CANCEL_STATUSES))
 
     if view == "active":
         quarterly_filter = or_(
@@ -580,16 +604,59 @@ async def list_backlog_items(
             return []
         return children_map.get(item.issue_id, [])
 
+    # Родители, которых нет в этом списке (обычно чужая команда) — показываем
+    # строкой контекста, чтобы было видно, из какой RFA растёт задача.
+    outside_parent_ids = {
+        pid
+        for iid, pid in parent_map.items()
+        if pid is not None and pid not in backlog_issue_ids and iid not in child_issue_ids
+    }
+    parent_context_map: dict[str, ParentContextSchema] = {}
+    if outside_parent_ids:
+        for parent in (
+            db.query(Issue).filter(Issue.id.in_(list(outside_parent_ids))).all()
+        ):
+            parent_context_map[parent.id] = ParentContextSchema(
+                key=parent.key,
+                title=parent.summary or parent.key,
+                team=parent.team,
+                is_multi_team=issue_is_multi_team(parent),
+            )
+
+    def _parent_context(item: BacklogItem) -> Optional[ParentContextSchema]:
+        if item.issue_id is None:
+            return None
+        parent_id = parent_map.get(item.issue_id)
+        return parent_context_map.get(parent_id) if parent_id else None
+
+    lock_enabled = multi_team_lock_enabled(db)
+
     if view in ("in_work", "quarterly"):
         labels = _quarter_labels_bulk(db, [i.id for i in visible_items])
         return [
-            _to_response(i, _approved_scenarios_for(db, i.id), labels.get(i.id), *_hierarchy_flags(i), _children_for(i))
+            _to_response(
+                i, _approved_scenarios_for(db, i.id), labels.get(i.id),
+                *_hierarchy_flags(i), _children_for(i),
+                multi_team_lock=lock_enabled, parent_context=_parent_context(i),
+            )
             for i in visible_items
         ]
     if view == "archived":
         labels = _quarter_labels_bulk(db, [i.id for i in visible_items])
-        return [_to_response(i, None, labels.get(i.id), *_hierarchy_flags(i), _children_for(i)) for i in visible_items]
-    return [_to_response(i, None, None, *_hierarchy_flags(i), _children_for(i)) for i in visible_items]
+        return [
+            _to_response(
+                i, None, labels.get(i.id), *_hierarchy_flags(i), _children_for(i),
+                multi_team_lock=lock_enabled, parent_context=_parent_context(i),
+            )
+            for i in visible_items
+        ]
+    return [
+        _to_response(
+            i, None, None, *_hierarchy_flags(i), _children_for(i),
+            multi_team_lock=lock_enabled, parent_context=_parent_context(i),
+        )
+        for i in visible_items
+    ]
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)
@@ -1167,6 +1234,15 @@ async def set_planning_mode(
     bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
     if bi is None:
         raise HTTPException(404, "BacklogItem not found")
+    if (
+        payload.mode == "whole"
+        and multi_team_lock_enabled(db)
+        and issue_is_multi_team(bi.issue)
+    ):
+        raise HTTPException(
+            409,
+            "Мультикомандную RFA нельзя планировать целиком — только по Эпикам",
+        )
     bi.planning_mode = payload.mode
     # by_epics → родитель по умолчанию контекст; whole → флаг участия не нужен.
     bi.included_in_planning = payload.mode != "by_epics"
@@ -1190,6 +1266,11 @@ async def set_included(
     bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
     if bi is None:
         raise HTTPException(404, "BacklogItem not found")
+    if payload.included and multi_team_lock_enabled(db) and issue_is_multi_team(bi.issue):
+        raise HTTPException(
+            409,
+            "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",
+        )
     bi.included_in_planning = payload.included
     db.flush()
     _reconcile_mode(db, item_id)

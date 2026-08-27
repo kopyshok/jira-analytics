@@ -29,6 +29,7 @@ import ConnectionCard from '../components/ConnectionCard';
 import ScopeAdmin from '../components/ScopeAdmin';
 import JiraFieldsCard from '../components/JiraFieldsCard';
 import HierarchyRulesTab from '../components/HierarchyRulesTab';
+import PlanningSettingsTab from '../components/settings/PlanningSettingsTab';
 import AbsenceReasonsTab from '../components/AbsenceReasonsTab';
 import CategoriesTab from '../components/CategoriesTab';
 import WorkTypesTab from '../components/settings/WorkTypesTab';
@@ -67,6 +68,7 @@ const GROUPS: SectionGroup[] = [
     title: 'Справочники',
     items: [
       { key: 'hierarchy', label: 'Правила иерархии', render: () => <HierarchyRulesTab /> },
+      { key: 'planning', label: 'Планирование', render: () => <PlanningSettingsTab /> },
       { key: 'reasons', label: 'Причины отсутствий', render: () => <AbsenceReasonsTab /> },
       { key: 'categories', label: 'Категории работ', render: () => <CategoriesTab /> },
       { key: 'worktypes', label: 'Виды работ', render: () => <WorkTypesTab /> },

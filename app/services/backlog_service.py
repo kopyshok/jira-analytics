@@ -16,13 +16,14 @@ BacklogItem allocations в draft-сценариях удаляются. Утве
 сценарий — наличие parent (Эпик/контейнер) не блокирует.
 """
 
+import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, aliased
 
-from app.models import BacklogItem, Issue, PlanningScenario, ScenarioAllocation
+from app.models import AppSetting, BacklogItem, Issue, PlanningScenario, ScenarioAllocation
 from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 
 
@@ -136,73 +137,115 @@ def descendant_backlog_ids_of_included_ancestors(db: Session) -> set[str]:
     return descendants
 
 
+MULTI_TEAM_LOCK_KEY = "planning_multi_team_by_epics"
+
+
+def parse_participating_teams(raw: Optional[str]) -> list[str]:
+    """Список участвующих команд из JSON-поля Jira. Мусор — пустой список."""
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(value, list):
+        return []
+    return [str(t) for t in value if t]
+
+
+def issue_is_multi_team(issue: Optional[Issue]) -> bool:
+    """Задачу делают несколько команд — или не та команда, что владеет продуктом.
+
+    Признак: участвующих команд больше одной, либо участвующая одна, но
+    отличается от продуктовой. Поле не заполнено — признака нет.
+    """
+    if issue is None:
+        return False
+    teams = parse_participating_teams(issue.participating_teams)
+    if not teams:
+        return False
+    if len(teams) > 1:
+        return True
+    return bool(issue.team) and teams[0] != issue.team
+
+
+def multi_team_lock_enabled(db: Session) -> bool:
+    """Блокировка планирования мультикомандных RFA целиком. По умолчанию — включена."""
+    row = db.query(AppSetting).filter(AppSetting.key == MULTI_TEAM_LOCK_KEY).first()
+    if row is None or row.value is None:
+        return True
+    return str(row.value).strip().lower() not in ("false", "0", "off", "no")
+
+
+def effective_planning_mode(
+    item: BacklogItem, issue: Optional[Issue], lock_enabled: bool
+) -> str:
+    """Режим планирования группы с учётом блокировки мультикомандных RFA."""
+    if lock_enabled and issue_is_multi_team(issue):
+        return "by_epics"
+    return item.planning_mode or "whole"
+
+
+def group_parents(db: Session) -> list[tuple[BacklogItem, Issue]]:
+    """Родители групп: элементы бэклога, у которых есть прямой ребёнок
+    в активном бэклоге. Тот же признак, что ``has_children_in_backlog``."""
+    ChildIssue = aliased(Issue)
+    ChildItem = aliased(BacklogItem)
+    child_exists = (
+        db.query(ChildItem.id)
+        .join(ChildIssue, ChildItem.issue_id == ChildIssue.id)
+        .filter(
+            ChildIssue.parent_id == Issue.id,
+            ChildItem.archived_at.is_(None),
+        )
+        .exists()
+    )
+    rows = (
+        db.query(BacklogItem, Issue)
+        .join(Issue, BacklogItem.issue_id == Issue.id)
+        .filter(BacklogItem.archived_at.is_(None), child_exists)
+        .all()
+    )
+    return cast(list[tuple[BacklogItem, Issue]], rows)
+
+
 def mode_excluded_backlog_ids(db: Session) -> set[str]:
     """BacklogItem.id, исключённые из кандидатов режимом планирования группы.
 
     Две зеркальные ситуации:
 
-    1. ``by_epics`` — RFA-родитель без отдельной галочки (``planning_mode='by_epics'``
-       И ``included_in_planning=False``): в сценарий идут дочерние Эпики.
+    1. ``by_epics`` — RFA-родитель: в сценарий идут дочерние Эпики, а сам он
+       контекст. Вернуть его в кандидаты можно галочкой «Включить саму RFA»
+       (``included_in_planning=True``) — но не когда режим навязан
+       мультикомандностью, там планировать RFA целиком запрещено.
     2. ``whole`` — прямые дети RFA-родителя: часы уже сидят в самой RFA,
        отдельным кандидатом ребёнок идти не должен, иначе двойной счёт.
 
-    В режиме «по эпикам» сам RFA-родитель — контекст: в сценарий идут его
-    дочерние Эпики, а не он. Возвращается только если у родителя реально есть
-    прямой ребёнок в активном бэклоге (тот же признак, что ``has_children_in_backlog``)
-    — одиночная задача, помеченная «по эпикам», из планирования не пропадает.
-    Вернуть родителя в кандидаты можно галочкой «Включить саму RFA»
-    (``included_in_planning=True``).
+    Обе проверки работают только для родителей, у которых реально есть
+    ребёнок в активном бэклоге — одиночная задача из планирования не пропадает.
     """
-    rows = (
-        db.query(BacklogItem.id, BacklogItem.issue_id)
-        .filter(
-            BacklogItem.planning_mode == "by_epics",
-            BacklogItem.included_in_planning == False,  # noqa: E712
-            BacklogItem.issue_id.isnot(None),
-            BacklogItem.archived_at.is_(None),
+    lock_enabled = multi_team_lock_enabled(db)
+    excluded: set[str] = set()
+    whole_parent_issue_ids: list[str] = []
+    for item, issue in group_parents(db):
+        if effective_planning_mode(item, issue, lock_enabled) == "by_epics":
+            forced = lock_enabled and issue_is_multi_team(issue)
+            if forced or not item.included_in_planning:
+                excluded.add(item.id)
+        else:
+            whole_parent_issue_ids.append(issue.id)
+    if whole_parent_issue_ids:
+        rows = (
+            db.query(BacklogItem.id)
+            .join(Issue, BacklogItem.issue_id == Issue.id)
+            .filter(
+                Issue.parent_id.in_(whole_parent_issue_ids),
+                BacklogItem.archived_at.is_(None),
+            )
+            .all()
         )
-        .all()
-    )
-    if not rows:
-        return _whole_mode_child_ids(db)
-    bid_by_issue = {iid: bid for bid, iid in rows}
-    parent_issue_ids_with_children = {
-        pid
-        for (pid,) in db.query(Issue.parent_id)
-        .join(BacklogItem, BacklogItem.issue_id == Issue.id)
-        .filter(
-            Issue.parent_id.in_(list(bid_by_issue.keys())),
-            BacklogItem.archived_at.is_(None),
-        )
-        .distinct()
-        .all()
-    }
-    by_epics_parents = {
-        bid for iid, bid in bid_by_issue.items() if iid in parent_issue_ids_with_children
-    }
-    return by_epics_parents | _whole_mode_child_ids(db)
-
-
-def _whole_mode_child_ids(db: Session) -> set[str]:
-    """BacklogItem.id прямых детей RFA-родителей в режиме «RFA целиком».
-
-    ponytail: только один уровень вложенности — глубже сидят leaf-типы задач,
-    которые в бэклог и так не попадают.
-    """
-    ParentItem = aliased(BacklogItem)
-    rows = (
-        db.query(BacklogItem.id)
-        .join(Issue, BacklogItem.issue_id == Issue.id)
-        .join(ParentItem, ParentItem.issue_id == Issue.parent_id)
-        .filter(
-            Issue.parent_id.isnot(None),
-            BacklogItem.archived_at.is_(None),
-            ParentItem.archived_at.is_(None),
-            ParentItem.planning_mode == "whole",
-        )
-        .all()
-    )
-    return {bid for (bid,) in rows}
+        excluded |= {bid for (bid,) in rows}
+    return excluded
 
 
 def has_included_ancestor(db: Session, issue: Issue) -> bool:

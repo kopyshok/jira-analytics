@@ -187,6 +187,7 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
 
   const issueId = item?.issue_id ?? null;
   const hasChildren = !!item?.has_children_in_backlog;
+  const modeLocked = !!item?.planning_mode_locked;
   const backlogItemId = item?.id ?? '';
 
   const { data: hoursData, isLoading: hoursLoading } = useHoursBreakdown(
@@ -301,14 +302,24 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
             {hasChildren && (
               <Space orientation="vertical" style={{ width: '100%', marginBottom: 12 }}>
                 <Radio.Group
-                  value={mode}
+                  value={modeLocked ? 'by_epics' : mode}
                   onChange={(e) => changeMode(e.target.value as 'whole' | 'by_epics')}
                   optionType="button"
+                  disabled={modeLocked}
                 >
                   <Radio.Button value="whole">RFA целиком</Radio.Button>
                   <Radio.Button value="by_epics">По Эпикам</Radio.Button>
                 </Radio.Group>
-                {mode === 'by_epics' && (
+                {modeLocked && (
+                  <Typography.Text type="warning" style={{ fontSize: 12 }}>
+                    Над задачей работают несколько команд
+                    {item?.participating_teams?.length
+                      ? `: ${item.participating_teams.join(', ')}`
+                      : ''}
+                    . Такую RFA планируют только по Эпикам — каждая команда берёт свою часть.
+                  </Typography.Text>
+                )}
+                {mode === 'by_epics' && !modeLocked && (
                   <Checkbox
                     checked={included}
                     onChange={(e) => changeIncluded(e.target.checked)}
