@@ -65,6 +65,8 @@ from app.services.backlog_service import (
     mode_excluded_backlog_ids,
 )
 from app.services.category_resolver import CategoryResolver
+from app.services.plan_common import quarter_bounds
+from app.services.subgroup_flow_service import flow_for_team
 from app.services.hierarchy_rules import is_explicit_leaf, load_rules
 
 
@@ -367,6 +369,9 @@ class ResourceSummaryOut(BaseModel):
     subgroups: List[Dict] = []
     gross_by_subgroup_role: Dict[str, Dict[str, float]] = {}
     available_by_subgroup_role: Dict[str, Dict[str, float]] = {}
+    # Переток внутри команды за квартал: сколько часов группы ушло к соседям
+    # и сколько пришло от них. Это расход ёмкости, а не помощь извне.
+    flow_by_subgroup: List[Dict] = []
 
 
 # === Helpers ===
@@ -1661,6 +1666,7 @@ async def scenario_resource_summary(
         raise HTTPException(status_code=400, detail="Год/квартал у сценария не заданы")
 
     summary = ResourceBaseService(db).compute_summary(sc)
+    q_start, q_end = quarter_bounds(summary.year, summary.quarter)
 
     return ResourceSummaryOut(
         year=summary.year,
@@ -1689,6 +1695,15 @@ async def scenario_resource_summary(
         subgroups=summary.subgroups,
         gross_by_subgroup_role=summary.gross_by_subgroup_role,
         available_by_subgroup_role=summary.available_by_subgroup_role,
+        flow_by_subgroup=[
+            {
+                "subgroup_id": f.subgroup_id,
+                "subgroup_name": f.subgroup_name,
+                "out_hours": f.out_hours,
+                "in_hours": f.in_hours,
+            }
+            for f in flow_for_team(db, summary.team, q_start, q_end)
+        ] if summary.subgroups else [],
     )
 
 

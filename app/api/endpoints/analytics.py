@@ -19,6 +19,7 @@ from app.schemas.dashboard import (
 from app.schemas.analytics_report import AnalyticsReportResponse, IssueWorklogItem
 from app.schemas.hours_balance import (
     HoursBalanceResponse,
+    SubgroupFlowItem,
     PeriodInfo,
     TeamSummary,
     EmployeeBalance,
@@ -30,6 +31,7 @@ from app.schemas.hours_balance import (
 )
 from app.services import team_membership
 from app.services.analytics_service import AnalyticsService, parse_teams_csv
+from app.services.subgroup_flow_service import flow_for_teams
 from app.services.subgroup_filter import (
     employee_ids as subgroup_employee_ids,
     parse_subgroups_csv,
@@ -229,7 +231,18 @@ def dashboard_hours_balance(
         teams_filter=team_ids if team_ids else None,
     )
 
+    flow = flow_for_teams(db, team_ids, resolved_from, resolved_to)
+
     return HoursBalanceResponse(
+        subgroup_flow=[
+            SubgroupFlowItem(
+                subgroup_id=f.subgroup_id,
+                subgroup_name=f.subgroup_name,
+                out_hours=f.out_hours,
+                in_hours=f.in_hours,
+            )
+            for f in flow
+        ],
         period=PeriodInfo(
             from_=result.period_from,
             to=result.period_to,

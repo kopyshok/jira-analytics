@@ -1711,8 +1711,9 @@ class AnalyticsService:
         from app.schemas.analytics_report import (
             AnalyticsReportResponse, AnalyticsTeamNode, AnalyticsRoleNode,
             AnalyticsEmployeeNode, AnalyticsWorkTypeNode, AnalyticsCategoryNode,
-            AnalyticsIssueNode, NodeTotals,
+            AnalyticsIssueNode, NodeTotals, SubgroupFlowItem,
         )
+        from app.services.subgroup_flow_service import flow_for_teams
         from app.models.employee_team import EmployeeTeam
 
         # 1. Период (приоритет start_date/end_date > month > quarter)
@@ -2229,6 +2230,15 @@ class AnalyticsService:
                 foreign_hours=round(grand_foreign_hours, 1),
                 foreign_pct=round(grand_foreign_pct, 1),
             ),
+            subgroup_flow=[
+                SubgroupFlowItem(
+                    subgroup_id=f.subgroup_id,
+                    subgroup_name=f.subgroup_name,
+                    out_hours=f.out_hours,
+                    in_hours=f.in_hours,
+                )
+                for f in flow_for_teams(self.db, teams, period_start, period_end)
+            ],
         )
 
     def get_issue_worklogs(
