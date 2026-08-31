@@ -681,8 +681,52 @@ class ScenarioXlsxExporter:
         c.number_format = "0%"
         c.alignment = _Style.RIGHT
 
+        # --- Section 2b: По группам внутри команды ---
+        # Тот же разрез, что сценарий показывает на экране. У команды без
+        # деления секции нет вовсе — лист выглядит как раньше.
+        groups_end_row = total_row_idx
+        if summary.subgroups:
+            g_header_row = total_row_idx + 2
+            _write_section_header(ws, row=g_header_row, text="По группам", columns=8)
+
+            g_head = g_header_row + 1
+            headers = ["Группа"] + [
+                ctx.roles_by_code[r].label if r in ctx.roles_by_code else r
+                for r in summary.roles
+            ] + ["Итого, ч"]
+            for c_idx, h in enumerate(headers, start=1):
+                c = ws.cell(row=g_head, column=c_idx, value=h)
+                c.font = _Style.HEADER_FONT
+                c.fill = _Style.HEADER_FILL
+                c.alignment = _Style.CENTER if c_idx > 1 else _Style.LEFT
+
+            rows_out = [
+                {"id": g["id"], "name": g["name"]} for g in summary.subgroups
+            ]
+            # «Без группы» — последней строкой и только если в ней что-то есть.
+            if summary.available_by_subgroup_role.get(""):
+                rows_out.append({"id": "", "name": "Без группы"})
+
+            g_idx = g_head + 1
+            for g in rows_out:
+                by_role = summary.available_by_subgroup_role.get(g["id"], {})
+                ws.cell(row=g_idx, column=1, value=g["name"]).font = _Style.BOLD_FONT
+                total_g = 0.0
+                for i, role in enumerate(summary.roles):
+                    v = round(by_role.get(role, 0.0), 1)
+                    c = ws.cell(row=g_idx, column=2 + i, value=v)
+                    c.number_format = "#,##0"
+                    c.alignment = _Style.RIGHT
+                    total_g += v
+                c = ws.cell(row=g_idx, column=2 + len(summary.roles), value=round(total_g, 1))
+                c.number_format = "#,##0"
+                c.alignment = _Style.RIGHT
+                c.font = _Style.BOLD_FONT
+                g_idx += 1
+            groups_end_row = g_idx - 1
+
         # --- Section 3: По сотрудникам ---
-        section3_row = total_row_idx + 2
+        section3_row = groups_end_row + 2
         _write_section_header(ws, row=section3_row, text="По сотрудникам", columns=8)
 
         emp_header_row = section3_row + 1

@@ -37,6 +37,8 @@ class AnalyticsIssueNode(BaseModel):
     # часов (нужен только для цепочки), own — собственные списания родителя.
     row_kind: str = "issue"
     children: list["AnalyticsIssueNode"] = []
+    # Группа внутри команды — для выгрузки и подписи строки.
+    subgroup_name: Optional[str] = None
 
 
 AnalyticsIssueNode.model_rebuild()
