@@ -60,6 +60,11 @@ class ResourceSummary:
     external_qa_hours: Optional[float]
     calendar_gross_by_role: dict[str, float]          # production calendar hours, no deductions
     absence_days_by_employee: list[dict]               # [{employee_id, display_name, role, planned_days, unplanned_days}]
+    # Разрез по группам внутри команды. Пусто, если у команды выключен
+    # признак деления — тогда сценарий выглядит как до правки.
+    subgroups: list[dict]                              # [{id, name}] в порядке сортировки
+    gross_by_subgroup_role: dict[str, dict[str, float]]      # ключ "" — без группы
+    available_by_subgroup_role: dict[str, dict[str, float]]  # ключ "" — без группы
 
 
 @dataclass
@@ -520,6 +525,33 @@ class ResourceBaseService:
         gross_total = round(sum(gross_by_role.values()), 2)
         available_total = round(sum(available_by_role.values()), 2)
 
+        # --- разрез по группам внутри команды ---
+        # Считаем из тех же gross_by_emp, поэтому сумма по группам сходится
+        # с итогом по команде по построению. Обязательные работы вычитаются
+        # процентом от роли, значит доля группы в роли переносится напрямую.
+        subgroups, emp_subgroup = self._team_subgroups(team)
+        gross_by_subgroup_role: dict[str, dict[str, float]] = {}
+        available_by_subgroup_role: dict[str, dict[str, float]] = {}
+        if subgroups:
+            for emp_id, gross in gross_by_emp.items():
+                role = emp_role[emp_id]
+                if not role:
+                    continue
+                # Внешний QA задан вручную на всю команду и группе не принадлежит.
+                if role == "qa" and scenario.external_qa_hours is not None:
+                    continue
+                key = emp_subgroup.get(emp_id) or ""
+                bucket = gross_by_subgroup_role.setdefault(key, {})
+                bucket[role] = round(bucket.get(role, 0.0) + gross, 2)
+
+            for key, roles in gross_by_subgroup_role.items():
+                out: dict[str, float] = {}
+                for role, g in roles.items():
+                    team_gross = gross_by_role.get(role, 0.0)
+                    share = g / team_gross if team_gross else 0.0
+                    out[role] = round(available_by_role.get(role, 0.0) * share, 2)
+                available_by_subgroup_role[key] = out
+
         return ResourceSummary(
             year=year,
             quarter=q,
@@ -534,4 +566,29 @@ class ResourceBaseService:
             external_qa_hours=scenario.external_qa_hours,
             calendar_gross_by_role=calendar_gross_by_role,
             absence_days_by_employee=absence_days_by_employee,
+            subgroups=subgroups,
+            gross_by_subgroup_role=gross_by_subgroup_role,
+            available_by_subgroup_role=available_by_subgroup_role,
         )
+
+    def _team_subgroups(self, team: str) -> tuple[list[dict], dict[str, str]]:
+        """Группы команды и приписка сотрудников к ним.
+
+        Пустой список групп — у команды выключен признак деления.
+        """
+        from app.models import EmployeeTeam, Team
+
+        registry = self.db.query(Team).filter(Team.name == team).first()
+        if registry is None or not registry.has_subgroups:
+            return [], {}
+        subgroups = [{"id": g.id, "name": g.name} for g in registry.subgroups]
+        known = {g["id"] for g in subgroups}
+        rows = (
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
+            .filter(EmployeeTeam.team == team, EmployeeTeam.subgroup_id.isnot(None))
+            .all()
+        )
+        emp_subgroup = {
+            emp_id: sg_id for emp_id, sg_id in rows if sg_id in known
+        }
+        return subgroups, emp_subgroup
