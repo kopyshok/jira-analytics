@@ -715,6 +715,60 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
           );
         })()}
       </div>
+      {summary.subgroups.length > 0 && (
+        <div style={{ borderTop: `1px solid ${DARK_THEME.border}`, padding: '10px 14px' }}>
+          <div style={{ fontSize: 12, color: DARK_THEME.textMuted, marginBottom: 6 }}>
+            Ресурс по группам · часы на бэклог
+          </div>
+          {[
+            ...summary.subgroups.map((g) => ({ id: g.id, name: g.name })),
+            // Строка «Без группы» — последняя и только если в ней что-то есть.
+            ...(summary.available_by_subgroup_role[''] ? [{ id: '', name: 'Без группы' }] : []),
+          ].map((g) => {
+            const byRole = summary.available_by_subgroup_role[g.id] ?? {};
+            return (
+              <div
+                key={g.id || '__none__'}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: gridCols,
+                  alignItems: 'center',
+                  padding: '3px 0',
+                }}
+              >
+                <div style={{ fontSize: 13, color: DARK_THEME.textSecondary, paddingLeft: 4 }}>
+                  {g.name}
+                </div>
+                {summary.roles.map((role) => (
+                  <div
+                    key={role}
+                    style={{
+                      textAlign: 'center' as const,
+                      fontFamily: FONTS.mono,
+                      fontSize: 13,
+                      color: getRoleColor(roles, role),
+                    }}
+                  >
+                    {Math.round(byRole[role] ?? 0).toLocaleString('ru')}
+                  </div>
+                ))}
+                <div
+                  style={{
+                    textAlign: 'center' as const,
+                    fontFamily: FONTS.mono,
+                    fontSize: 13,
+                    color: DARK_THEME.textMuted,
+                  }}
+                >
+                  {Math.round(
+                    Object.values(byRole).reduce((acc, v) => acc + v, 0),
+                  ).toLocaleString('ru')}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 
