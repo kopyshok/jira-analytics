@@ -627,3 +627,50 @@ class CapacityService:
             out[role] += self.employee_quarter_capacity(emp.id, year, quarter)
         return out
 
+    def team_role_capacity_by_subgroup(
+        self,
+        year: int,
+        quarter: int,
+        team: str,
+    ) -> dict[Optional[str], dict[str, float]]:
+        """Ёмкость одной команды, разложенная по группам и ролям.
+
+        Ключ ``None`` — сотрудники команды, не приписанные ни к одной группе.
+        Пустой словарь — у команды выключен признак деления; вызывающий код
+        в этом случае показывает команду целиком, как раньше.
+        """
+        if quarter not in QUARTER_MONTHS:
+            raise ValueError(f"Quarter must be 1..4, got {quarter}")
+
+        from app.models import EmployeeTeam, Team
+        from app.services import team_membership as _tm
+
+        registry = self.db.query(Team).filter(Team.name == team).first()
+        if registry is None or not registry.has_subgroups:
+            return {}
+
+        months = QUARTER_MONTHS[quarter]
+        q_start = date(year, months[0], 1)
+        q_end = date(year, months[-1], monthrange(year, months[-1])[1])
+
+        rows = (
+            self.db.query(Employee, EmployeeTeam.subgroup_id)
+            .join(EmployeeTeam, EmployeeTeam.employee_id == Employee.id)
+            .filter(
+                Employee.is_active.is_(True),
+                EmployeeTeam.team == team,
+                *_tm.overlaps_clause(q_start, q_end),
+            )
+            .distinct()
+            .all()
+        )
+
+        out: dict[Optional[str], dict[str, float]] = {}
+        for emp, subgroup_id in rows:
+            role = (emp.role or "").strip().lower()
+            if role not in ROLE_WHITELIST:
+                continue
+            bucket = out.setdefault(subgroup_id, {r: 0.0 for r in ROLE_WHITELIST})
+            bucket[role] += self.employee_quarter_capacity(emp.id, year, quarter)
+        return out
+
