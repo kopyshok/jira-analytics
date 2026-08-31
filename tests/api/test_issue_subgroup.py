@@ -147,3 +147,16 @@ def test_parent_move_resets_subgroup_verification(testclient_db_session):
     assert moved.parent_changed is True
     assert moved.category_verified is False
     assert moved.subgroup_verified is False
+
+
+def test_tree_roots_carry_resolved_subgroup(client, seeded):
+    """Стопка разбора видит предположение по исполнителю."""
+    tc, _ = client
+
+    resp = tc.get("/api/v1/issues/tree/roots", params={"teams": TEAM})
+
+    assert resp.status_code == 200
+    node = next(n for n in resp.json() if n["key"] == "OS-1")
+    assert node["subgroup_id"] == "sg-2"
+    assert node["subgroup_name"] == "Интеграции"
+    assert node["subgroup_source"] == "guess"
