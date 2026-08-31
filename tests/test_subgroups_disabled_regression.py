@@ -117,3 +117,66 @@ def test_plain_team_endpoint_unchanged(testclient_db_session):
 
     assert resp.status_code == 200
     assert resp.json() == [TEAM]
+
+
+# === Второй выпуск: витрины ===
+
+def _quarter_data(db_session):
+    """Немного факта, чтобы витринам было что показать."""
+    from datetime import datetime
+
+    from app.models import Category, Worklog
+
+    db_session.add(Category(code="development", label="Разработка", color="#123456"))
+    issue = Issue(
+        id="i-9", jira_issue_id="10009", key="OS-9", summary="x", issue_type="Task",
+        status="Open", project_id="p1", team=TEAM, category="development",
+        assignee_account_id="acc-1",
+    )
+    db_session.add(issue)
+    db_session.flush()
+    db_session.add(
+        Worklog(jira_worklog_id="w9", issue_id=issue.id, employee_id="e-1",
+                started_at=datetime(2026, 1, 12, 10, 0), time_spent_seconds=3600, hours=1.0)
+    )
+    db_session.commit()
+    SubgroupResolver(db_session).recompute_effective()
+
+
+def test_dashboard_and_report_identical_without_subgroups(db_session, plain_team):
+    """Пустой разрез не меняет ни одну витрину второго выпуска."""
+    from app.services.analytics_service import AnalyticsService
+
+    _quarter_data(db_session)
+    svc = AnalyticsService(db_session)
+
+    categories = svc.get_dashboard_categories(year=2026, quarter=1, teams=[TEAM])
+    categories_empty = svc.get_dashboard_categories(
+        year=2026, quarter=1, teams=[TEAM], subgroups=[]
+    )
+    report = svc.get_hierarchical_report(year=2026, quarter=1, teams=[TEAM])
+    report_empty = svc.get_hierarchical_report(
+        year=2026, quarter=1, teams=[TEAM], subgroups=[]
+    )
+
+    assert categories.model_dump() == categories_empty.model_dump()
+    assert report.model_dump() == report_empty.model_dump()
+    # Переток есть только у команд с делением.
+    assert report.subgroup_flow == []
+
+
+def test_effective_column_stays_empty_without_subgroups(db_session, plain_team):
+    _quarter_data(db_session)
+
+    rows = db_session.query(Issue.effective_subgroup_id).all()
+
+    assert all(v is None for (v,) in rows)
+
+
+def test_kpi_report_identical_without_subgroups(db_session, plain_team):
+    from app.services.kpi.kpi_service import report_with_approvals
+
+    a = report_with_approvals(db_session, [TEAM], 2026, 1)
+    b = report_with_approvals(db_session, [TEAM], 2026, 1, subgroups=[])
+
+    assert a == b

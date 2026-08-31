@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import Worklog, Issue, Employee
 from app.models import BacklogItem, PlanningScenario, ScenarioAllocation
 from app.models import MandatoryWorkType, RoleCapacityRule, Category, Role
+from app.models import TeamSubgroup
 from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
@@ -1668,6 +1669,7 @@ class AnalyticsService:
                     last_worklog_at=own["last_at"],
                     assignee_name=own.get("assignee_name"),
                     is_foreign=own.get("is_foreign", False), team=own.get("team"),
+                    subgroup_name=own.get("subgroup_name"),
                     totals=calc_totals(
                         [own], parent_total=grand_total_fact, parent_fact=branch_fact,
                     ),
@@ -1681,6 +1683,7 @@ class AnalyticsService:
                 assignee_name=src.get("assignee_name"),
                 is_foreign=bool(src.get("is_foreign", False)),
                 team=src.get("team"),
+                subgroup_name=src.get("subgroup_name"),
                 totals=calc_totals(
                     branch, parent_total=grand_total_fact, parent_fact=parent_fact,
                 ),
@@ -1836,6 +1839,7 @@ class AnalyticsService:
             Issue.team,
             Issue.participating_teams,
             Issue.include_in_analysis,
+            Issue.effective_subgroup_id,
             func.sum(Worklog.time_spent_seconds).label("secs"),
             func.count(Worklog.id).label("wl_count"),
             func.max(Worklog.started_at).label("last_at"),
@@ -1877,6 +1881,7 @@ class AnalyticsService:
             Issue.status, Issue.status_category, Issue.issue_type, Issue.category,
             Issue.assigned_category,
             Issue.team, Issue.participating_teams, Issue.include_in_analysis,
+            Issue.effective_subgroup_id,
         ]
         if assignee_col is not None:
             group_cols.append(assignee_col)
@@ -1885,6 +1890,12 @@ class AnalyticsService:
         wl_rows = wl_q.all()
 
         emp_by_id = {e.id: e for e in employees}
+
+        # Подписи групп внутри команды — нужны выгрузке и колонке отчёта.
+        subgroup_names: dict[str, str] = {
+            gid: name
+            for gid, name in self.db.query(TeamSubgroup.id, TeamSubgroup.name).all()
+        }
 
         # 5. Бакетируем строки по (team, role, emp, wt_id, cat_code, issue)
         bucket: dict[tuple, dict] = {}
@@ -1971,6 +1982,7 @@ class AnalyticsService:
                     "assignee_name": assignee_name_val,
                     "is_foreign": is_foreign,
                     "team": issue_team,
+                    "subgroup_name": subgroup_names.get(row.effective_subgroup_id),
                 }
                 bucket[key] = entry
             entry["fact_hours"] += h
@@ -2111,6 +2123,7 @@ class AnalyticsService:
                                         assignee_name=v.get("assignee_name"),
                                         is_foreign=v.get("is_foreign", False),
                                         team=v.get("team"),
+                                        subgroup_name=v.get("subgroup_name"),
                                         totals=calc_totals([v], parent_total=grand_total_fact,
                                                            parent_fact=_cat_fact),
                                     ))

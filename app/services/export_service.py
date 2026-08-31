@@ -237,12 +237,13 @@ class ExportService:
         ws = wb.active
         ws.title = "Аналитика"
 
+        # «Группа» — группа внутри команды у задачи. У команд без деления пусто.
         base_headers = [
-            "Команда", "Роль", "Сотрудник", "Вид работ", "Категория",
+            "Команда", "Группа", "Роль", "Сотрудник", "Вид работ", "Категория",
             "Ключ", "Заголовок", "Тип", "Статус", "Часы факт",
         ]
         if hierarchy:
-            base_headers.insert(5, "Уровень")
+            base_headers.insert(6, "Уровень")
         col_label_map = {
             "plan_hours": "Часы план",
             "pct_plan": "% план",
@@ -292,6 +293,7 @@ class ExportService:
         def write_issue(issue, group_cells: list, depth: int) -> None:
             key_cell = ("    " * depth + issue.key) if hierarchy else issue.key
             row: list = list(group_cells)
+            row.insert(1, issue.subgroup_name or "")
             if hierarchy:
                 row.append(depth + 1)
             row += [
