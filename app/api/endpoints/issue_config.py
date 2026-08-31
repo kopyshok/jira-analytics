@@ -747,7 +747,10 @@ async def set_issue_subgroup(
     resolution = SubgroupResolver(db).resolve_for_issue(issue)
 
     key = issue.key
+    team = issue.team
     db.commit()
+    if team:
+        SubgroupResolver(db).recompute_effective(team=team)
     await event_bus.publish({"type": "entity_changed", "entities": ["issues", "analytics"]})
     return {
         "ok": True,

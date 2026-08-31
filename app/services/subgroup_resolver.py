@@ -109,3 +109,72 @@ class SubgroupResolver:
             return SubgroupResolution(subgroup_id=guess, source=SubgroupSource.GUESS)
 
         return empty
+
+    # --- Материализация -----------------------------------------------------
+
+    def _walk(
+        self,
+        issue_id: str,
+        team: str,
+        account_id: Optional[str],
+        parents: dict[str, Optional[str]],
+        assigned: dict[str, Optional[str]],
+    ) -> Optional[str]:
+        """Та же лесенка, но по загруженным в память картам родителей."""
+        if self._valid(assigned.get(issue_id), team):
+            return assigned[issue_id]
+
+        visited = {issue_id}
+        current = parents.get(issue_id)
+        while current is not None and current not in visited:
+            visited.add(current)
+            if self._valid(assigned.get(current), team):
+                return assigned[current]
+            current = parents.get(current)
+
+        guess = self._by_account.get((account_id or "", team))
+        return guess if self._valid(guess, team) else None
+
+    def recompute_effective(self, team: Optional[str] = None) -> int:
+        """Пересчитать ``Issue.effective_subgroup_id``. Вернуть число правок.
+
+        ``team`` сужает пересчёт до одной команды. Задачи команд без признака
+        деления обнуляются — так снятие признака убирает за собой хвост.
+        """
+        self._load()
+        enabled = self._enabled_teams or set()
+
+        parents: dict[str, Optional[str]] = {}
+        assigned: dict[str, Optional[str]] = {}
+        for iid, pid, aid in self.db.query(
+            Issue.id, Issue.parent_id, Issue.assigned_subgroup_id
+        ).all():
+            parents[iid] = pid
+            assigned[iid] = aid
+
+        q = self.db.query(
+            Issue.id, Issue.team, Issue.assignee_account_id, Issue.effective_subgroup_id
+        )
+        if team is not None:
+            q = q.filter(Issue.team == team)
+
+        updates: dict[Optional[str], list[str]] = {}
+        changed = 0
+        for iid, team_name, account_id, current in q.all():
+            value = (
+                self._walk(iid, team_name, account_id, parents, assigned)
+                if team_name in enabled
+                else None
+            )
+            if value != current:
+                updates.setdefault(value, []).append(iid)
+                changed += 1
+
+        for value, ids in updates.items():
+            for i in range(0, len(ids), 400):
+                self.db.query(Issue).filter(Issue.id.in_(ids[i : i + 400])).update(
+                    {Issue.effective_subgroup_id: value}, synchronize_session=False
+                )
+        if changed:
+            self.db.commit()
+        return changed
