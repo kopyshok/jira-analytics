@@ -363,6 +363,10 @@ class ResourceSummaryOut(BaseModel):
     external_qa_hours: Optional[float] = None
     calendar_gross_by_role: Dict[str, float] = {}
     absence_days_by_employee: List[Dict] = []
+    # Разрез по группам внутри команды; пусто — признак деления выключен.
+    subgroups: List[Dict] = []
+    gross_by_subgroup_role: Dict[str, Dict[str, float]] = {}
+    available_by_subgroup_role: Dict[str, Dict[str, float]] = {}
 
 
 # === Helpers ===
@@ -1682,6 +1686,9 @@ async def scenario_resource_summary(
         external_qa_hours=summary.external_qa_hours,
         calendar_gross_by_role=summary.calendar_gross_by_role,
         absence_days_by_employee=summary.absence_days_by_employee,
+        subgroups=summary.subgroups,
+        gross_by_subgroup_role=summary.gross_by_subgroup_role,
+        available_by_subgroup_role=summary.available_by_subgroup_role,
     )
 
 
