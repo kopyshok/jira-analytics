@@ -30,6 +30,10 @@ from app.schemas.hours_balance import (
 )
 from app.services import team_membership
 from app.services.analytics_service import AnalyticsService, parse_teams_csv
+from app.services.subgroup_filter import (
+    employee_ids as subgroup_employee_ids,
+    parse_subgroups_csv,
+)
 from app.services.export_service import ExportService
 from app.services.hours_balance_service import HoursBalanceService
 from app.models.employee import Employee
@@ -46,12 +50,16 @@ def dashboard_norm_work(
     quarter: int = Query(..., ge=1, le=4),
     month: Optional[int] = Query(None, ge=1, le=12),
     teams: Optional[str] = Query(None, description="Команды CSV"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Widget 2: план/факт нормированных работ за квартал/месяц."""
     svc = AnalyticsService(db)
     try:
-        return svc.get_dashboard_norm_work(year=year, quarter=quarter, month=month, teams=parse_teams_csv(teams))
+        return svc.get_dashboard_norm_work(
+            year=year, quarter=quarter, month=month,
+            teams=parse_teams_csv(teams), subgroups=parse_subgroups_csv(subgroups),
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -62,12 +70,16 @@ def dashboard_categories(
     quarter: int = Query(..., ge=1, le=4),
     month: Optional[int] = Query(None, ge=1, le=12),
     teams: Optional[str] = Query(None, description="Команды CSV"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Widget 3: метрики по категориям работ за квартал/месяц."""
     svc = AnalyticsService(db)
     try:
-        return svc.get_dashboard_categories(year=year, quarter=quarter, month=month, teams=parse_teams_csv(teams))
+        return svc.get_dashboard_categories(
+            year=year, quarter=quarter, month=month,
+            teams=parse_teams_csv(teams), subgroups=parse_subgroups_csv(subgroups),
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -78,13 +90,15 @@ def dashboard_projects(
     quarter: int = Query(..., ge=1, le=4),
     month: Optional[int] = Query(None, ge=1, le=12),
     teams: Optional[str] = Query(None, description="Команды CSV"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Widget 1: обзор проектов квартала из утверждённого сценария."""
     svc = AnalyticsService(db)
     try:
         return svc.get_dashboard_projects(
-            year=year, quarter=quarter, month=month, teams=parse_teams_csv(teams)
+            year=year, quarter=quarter, month=month,
+            teams=parse_teams_csv(teams), subgroups=parse_subgroups_csv(subgroups),
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -103,6 +117,7 @@ def get_analytics_report(
     work_type_codes: Optional[str] = None,
     category_codes: Optional[str] = None,
     hierarchy: bool = False,
+    subgroups: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Иерархический отчёт Аналитики."""
@@ -114,7 +129,7 @@ def get_analytics_report(
         start_date=start_date, end_date=end_date,
         teams=teams_list, employee_id=employee_id,
         task_query=task_query, work_type_codes=wt_codes, category_codes=cat_codes,
-        hierarchy=hierarchy,
+        hierarchy=hierarchy, subgroups=parse_subgroups_csv(subgroups),
     )
 
 
@@ -132,6 +147,7 @@ def export_report_xlsx(
     category_codes: Optional[str] = None,
     columns: Optional[str] = None,
     hierarchy: bool = False,
+    subgroups: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """XLSX-выгрузка иерархического отчёта Аналитики с применёнными фильтрами."""
@@ -145,7 +161,7 @@ def export_report_xlsx(
         start_date=start_date, end_date=end_date,
         teams=teams_list, employee_id=employee_id,
         task_query=task_query, work_type_codes=wt_codes, category_codes=cat_codes,
-        hierarchy=hierarchy,
+        hierarchy=hierarchy, subgroups=parse_subgroups_csv(subgroups),
     )
     blob = ExportService(db).export_analytics_report_xlsx(report, cols, hierarchy=hierarchy)
     return Response(
@@ -174,6 +190,7 @@ def dashboard_hours_balance(
     from_: Optional[date] = Query(None, alias="from"),
     to: Optional[date] = Query(None),
     teams: Optional[str] = Query(None, description="Команды CSV"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     lag_days: int = Query(
         2, ge=0, le=10,
         description="Лаг в рабочих днях для правой границы окна (если to не задан)",
@@ -199,6 +216,11 @@ def dashboard_hours_balance(
             row[0]
             for row in db.query(Employee.id).filter(Employee.is_active == True).all()  # noqa: E712
         ]
+
+    # Баланс часов — показатель человека, поэтому режется по его приписке.
+    in_subgroups = subgroup_employee_ids(db, parse_subgroups_csv(subgroups), team_ids)
+    if in_subgroups is not None:
+        employee_ids = [e for e in employee_ids if e in in_subgroups]
 
     result = svc.compute_team(
         employee_ids=employee_ids,

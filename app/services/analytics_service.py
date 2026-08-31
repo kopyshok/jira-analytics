@@ -21,6 +21,7 @@ from app.models import MandatoryWorkType, RoleCapacityRule, Category, Role
 from app.models.absence import Absence
 from app.models.absence_reason import AbsenceReason
 from app.api.endpoints.issue_config import ARCHIVE_CATEGORY_CODES
+from app.services import subgroup_filter as sgf
 from app.services import team_membership as tm
 from app.services.categories import UNFILLED_WORKLOG_CODE
 from app.schemas.dashboard import (
@@ -209,6 +210,7 @@ class AnalyticsService:
         month: Optional[int] = None,
         teams: Optional[list[str]] = None,
         silence_days: int = 14,
+        subgroups: Optional[list[str]] = None,
     ) -> DashboardProjectsResponse:
         """Widget 1: обзор проектов квартала из утверждённого сценария."""
         from app.schemas.dashboard import ProjectItem, ProjectAssignee
@@ -271,19 +273,6 @@ class AnalyticsService:
         issue_ids = list(plan_by_issue.keys())
 
         issues: list[Issue] = self.db.query(Issue).filter(Issue.id.in_(issue_ids)).all()
-        total = len(issues)
-
-        # Статусы
-        done = sum(1 for i in issues if i.status_category == "done")
-        in_progress = sum(1 for i in issues if i.status_category == "indeterminate")
-        not_started = sum(1 for i in issues if i.status_category == "new")
-        overdue_issues = [
-            i for i in issues
-            if i.status_category != "done"
-            and i.due_date is not None
-            and i.due_date.date() < today
-        ]
-        overdue = len(overdue_issues)
 
         # Полное дерево под инициативами (RFA). Команда ведёт работы в рамках
         # своих эпиков (PRJ/ITL), а часы лежат на задачах/подзадачах на любой
@@ -313,6 +302,7 @@ class AnalyticsService:
         node_parent: dict[str, str] = {}
         node_team: dict[str, tuple[str | None, str | None]] = {}
         node_status: dict[str, str | None] = {}
+        node_subgroup: dict[str, str | None] = {}
         seen_nodes: set[str] = set(issue_id_set)
         frontier: set[str] = set(issue_id_set)
         while frontier:
@@ -324,16 +314,18 @@ class AnalyticsService:
                     self.db.query(
                         Issue.id, Issue.parent_id, Issue.team,
                         Issue.participating_teams, Issue.status_category,
+                        Issue.effective_subgroup_id,
                     )
                     .filter(Issue.parent_id.in_(chunk))
                     .all()
                 )
-                for cid, pid, t, pt, st in rows:
+                for cid, pid, t, pt, st, sg in rows:
                     if cid in seen_nodes:
                         continue
                     node_parent[cid] = pid
                     node_team[cid] = (t, pt)
                     node_status[cid] = st
+                    node_subgroup[cid] = sg
                     seen_nodes.add(cid)
                     next_frontier.add(cid)
             frontier = next_frontier
@@ -341,8 +333,24 @@ class AnalyticsService:
         # Привязка потомка к его инициативе с учётом владельца-эпика.
         # Потомок входит в область, если ближайший родитель-контейнер с
         # проставленной командой (включая сам узел) принадлежит выбранной команде.
+        # Инициативы и эпики заводятся одни на команду, деление проходит ниже —
+        # поэтому по группам отсекаются именно узлы работ.
+        sg_ids, sg_has_none = (
+            ([g for g in subgroups if g != sgf.NO_SUBGROUP_TOKEN],
+             sgf.NO_SUBGROUP_TOKEN in subgroups)
+            if subgroups else ([], False)
+        )
+
+        def _node_in_subgroups(nid: str) -> bool:
+            if not subgroups:
+                return True
+            value = node_subgroup.get(nid)
+            return value in sg_ids if value else sg_has_none
+
         descendant_to_rfa: dict[str, str] = {}
         for nid in node_parent:
+            if not _node_in_subgroups(nid):
+                continue
             chain: list[str] = []
             cur = nid
             root: str | None = None
@@ -365,6 +373,25 @@ class AnalyticsService:
                     if _belongs_to_selected(t, pt):
                         descendant_to_rfa[nid] = root
                     break
+
+        # При выбранной группе инициатива без её работ уходит из витрины:
+        # показывать её было бы враньём о загрузке группы. Счётчики статусов
+        # считаются уже по суженному списку.
+        if subgroups:
+            keep = set(descendant_to_rfa.values())
+            issues = [i for i in issues if i.id in keep]
+
+        total = len(issues)
+        done = sum(1 for i in issues if i.status_category == "done")
+        in_progress = sum(1 for i in issues if i.status_category == "indeterminate")
+        not_started = sum(1 for i in issues if i.status_category == "new")
+        overdue_issues = [
+            i for i in issues
+            if i.status_category != "done"
+            and i.due_date is not None
+            and i.due_date.date() < today
+        ]
+        overdue = len(overdue_issues)
 
         # Счётчик «сделано/всего» по узлам области
         subtasks_done_by_parent: dict[str, int] = {}
@@ -888,6 +915,7 @@ class AnalyticsService:
         quarter: int,
         month: Optional[int] = None,
         teams: Optional[list[str]] = None,
+        subgroups: Optional[list[str]] = None,
     ) -> DashboardNormWorkResponse:
         """Widget 2: per-employee план/факт по обязательным видам работ, группировка по ролям."""
         from app.schemas.dashboard import (
@@ -925,6 +953,11 @@ class AnalyticsService:
                 tm.members_overlapping(self.db, teams, period_start, period_end)
             )
             employees_q = employees_q.filter(Employee.id.in_(emp_ids))
+        # Нормированные работы привязаны к человеку, поэтому режутся по его
+        # приписке к группе, а не по группе задачи.
+        in_subgroups = sgf.employee_ids(self.db, subgroups, teams)
+        if in_subgroups is not None:
+            employees_q = employees_q.filter(Employee.id.in_(in_subgroups))
         employees: list[Employee] = employees_q.all()
 
         if not employees:
@@ -1293,6 +1326,7 @@ class AnalyticsService:
         quarter: int,
         month: Optional[int] = None,
         teams: Optional[list[str]] = None,
+        subgroups: Optional[list[str]] = None,
     ) -> DashboardCategoriesResponse:
         """Widget 3: метрики по категориям работ за квартал/месяц.
 
@@ -1338,6 +1372,11 @@ class AnalyticsService:
         # разбирать чужую задачу некому, а в общей корзине они маскируют
         # собственные незаполненные списания команды.
         named_teams = [t for t in teams if t != NO_TEAM_TOKEN] if teams else []
+        # Факт режется по группе задачи. Чужие задачи группы не имеют и
+        # попадают в «Без группы» — поэтому сумма по группам сходится с командой.
+        sg_clause = sgf.issue_clause(subgroups)
+        if sg_clause is not None:
+            agg_q = agg_q.filter(sg_clause)
         foreign_unfilled_clause = None
         if named_teams:
             foreign_unfilled_clause = and_(
@@ -1393,6 +1432,8 @@ class AnalyticsService:
                     foreign_unfilled_clause,
                 )
             )
+            if sg_clause is not None:
+                foreign_q = foreign_q.filter(sg_clause)
             if emp_clause is not None:
                 foreign_q = foreign_q.filter(emp_clause)
             fr = foreign_q.one()
@@ -1664,6 +1705,7 @@ class AnalyticsService:
         work_type_codes: Optional[list[str]] = None,
         category_codes: Optional[list[str]] = None,
         hierarchy: bool = False,
+        subgroups: Optional[list[str]] = None,
     ) -> "AnalyticsReportResponse":
         """Иерархический отчёт: Команда → Роль → Сотрудник → ВидРабот → Категория → Задача."""
         from app.schemas.analytics_report import (
@@ -1820,6 +1862,11 @@ class AnalyticsService:
                     teams, Worklog.employee_id, Worklog.started_at
                 )
             )
+        # Группа внутри команды режет факт по задаче: часы человека из соседней
+        # группы остаются у группы-заказчика, как и договорено в дизайне.
+        sg_clause = sgf.issue_clause(subgroups)
+        if sg_clause is not None:
+            wl_q = wl_q.filter(sg_clause)
         if task_query:
             q = f"%{task_query}%"
             wl_q = wl_q.filter(or_(Issue.key.ilike(q), Issue.summary.ilike(q)))
