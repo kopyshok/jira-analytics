@@ -1,9 +1,19 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 
 import type { EmployeeLoadOut } from '../../api/resourcePlanning';
 
 interface Props {
   rows: EmployeeLoadOut[];
+  /**
+   * Сотрудник -> имя группы внутри команды. Пусто — команда не делится,
+   * строки идут сплошным списком, как раньше.
+   *
+   * План остаётся общекомандным сознательно: занятость человека считается
+   * сквозь все группы, иначе перегруз в соседней группе не виден.
+   */
+  subgroupByEmployee?: Record<string, string>;
+  /** Порядок групп; «Без группы» всегда последняя. */
+  subgroupOrder?: string[];
 }
 
 const RU_MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -57,7 +67,7 @@ interface Week {
   monthLabel: string | null;
 }
 
-export default function EmployeeLoadHeatmap({ rows }: Props) {
+export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroupOrder = [] }: Props) {
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
 
   const data = useMemo(() => {
@@ -113,6 +123,25 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
     const periodLabel = `${first.getDate()} ${RU_MONTHS_SHORT[first.getMonth()]} – ${last.getDate()} ${RU_MONTHS_SHORT[last.getMonth()]}`;
     return { weeks, empRows, periodLabel };
   }, [rows]);
+
+  const grouped = Object.keys(subgroupByEmployee ?? {}).length > 0;
+  const groupOf = (employeeId: string) => subgroupByEmployee?.[employeeId] ?? '';
+
+  // Порядок групп из реестра; «Без группы» уходит в конец.
+  const orderedRows = useMemo(() => {
+    const empRows = data?.empRows ?? [];
+    if (!grouped) return empRows;
+    const rank = new Map(subgroupOrder.map((name, i) => [name, i]));
+    return [...empRows].sort((a, b) => {
+      const ga = groupOf(a.row.employee_id);
+      const gb = groupOf(b.row.employee_id);
+      const ra = ga ? (rank.get(ga) ?? subgroupOrder.length) : subgroupOrder.length + 1;
+      const rb = gb ? (rank.get(gb) ?? subgroupOrder.length) : subgroupOrder.length + 1;
+      if (ra !== rb) return ra - rb;
+      return (a.row.employee_name ?? '').localeCompare(b.row.employee_name ?? '');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, grouped, subgroupByEmployee, subgroupOrder]);
 
   if (!data) return null;
 
@@ -191,10 +220,30 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
             ))}
           </div>
 
-          {/* Строки сотрудников */}
-          {data.empRows.map(({ row, byDate, avg, allEmpty }, ri) => {
+          {/* Строки сотрудников; при делении команды — секциями по группам. */}
+          {orderedRows.map(({ row, byDate, avg, allEmpty }, ri) => {
             const avgColor = loadColor(avg);
+            const group = groupOf(row.employee_id);
+            const prev = ri === 0 ? null : groupOf(orderedRows[ri - 1].row.employee_id);
+            const header = grouped && group !== prev ? (
+              <div
+                style={{
+                  width: LABEL_W,
+                  position: 'sticky',
+                  left: 0,
+                  padding: '8px 0 2px',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  color: '#7a9ab8',
+                }}
+              >
+                {(group || 'Без группы').toUpperCase()}
+              </div>
+            ) : null;
             return (
+              <Fragment key={`sec-${row.employee_id}`}>
+              {header}
               <div
                 key={row.employee_id}
                 style={{
@@ -303,6 +352,7 @@ export default function EmployeeLoadHeatmap({ rows }: Props) {
                   ))
                 )}
               </div>
+              </Fragment>
             );
           })}
         </div>

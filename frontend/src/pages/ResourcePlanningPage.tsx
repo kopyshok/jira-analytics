@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTeamRegistry } from '../hooks/useTeamRegistry';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import '../utils/gantt.css';
@@ -89,8 +90,27 @@ function ResourcePlanningPageInner() {
   const { data: approvedScenarios = [] } = useScenarios(undefined, undefined, 'approved', team || undefined);
   const { data: gantt, isLoading: ganttLoading } = useGanttProjection(planId);
   const { data: blocks = [] } = useScheduledBlocks(team || undefined);
-  const { data: allEmployees = [] } = useEmployees({ isActive: true });
+  const { data: allEmployees = [] } = useEmployees({ isActive: true, withTeams: true });
   const employees = team ? allEmployees.filter(e => e.team === team) : allEmployees;
+
+  // Группы внутри команды. План остаётся общекомандным — группы дают только
+  // секции строк; занятость человека по-прежнему считается сквозь все группы.
+  const { data: teamRegistry = [] } = useTeamRegistry();
+  const registryRow = teamRegistry.find(t => t.name === team);
+  const subgroupOrder = registryRow?.has_subgroups
+    ? registryRow.subgroups.map(g => g.name)
+    : [];
+  const subgroupByEmployee = useMemo(() => {
+    if (!registryRow?.has_subgroups || !team) return {};
+    const names = new Map(registryRow.subgroups.map(g => [g.id, g.name]));
+    const out: Record<string, string> = {};
+    for (const e of allEmployees) {
+      const membership = e.teams?.find(t => t.team === team);
+      const name = membership?.subgroup_id ? names.get(membership.subgroup_id) : undefined;
+      out[e.id] = name ?? '';
+    }
+    return out;
+  }, [registryRow, team, allEmployees]);
   // Кандидаты в исполнители — состав команды за квартал плана (те же люди,
   // по которым считается загрузка), а не текущий состав на сегодня: выбывший
   // в середине квартала должен оставаться выбираемым на свои дни.
@@ -441,7 +461,11 @@ function ResourcePlanningPageInner() {
       )}
 
       {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
-        <EmployeeLoadHeatmap rows={gantt.employee_load} />
+        <EmployeeLoadHeatmap
+          rows={gantt.employee_load}
+          subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
+          subgroupOrder={subgroupOrder}
+        />
       )}
 
       <AssignmentSidebar

@@ -617,6 +617,11 @@ export interface ResourceSummaryOut {
     planned_days: number;
     unplanned_days: number;
   }>;
+  /** Группы внутри команды; пусто — признак деления выключен. */
+  subgroups: Array<{ id: string; name: string }>;
+  /** Ключ группы -> роль -> часы. Ключ '' — сотрудники без группы. */
+  gross_by_subgroup_role: Record<string, Record<string, number>>;
+  available_by_subgroup_role: Record<string, Record<string, number>>;
 }
 
 export interface AllocationResponse {
