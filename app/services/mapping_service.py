@@ -180,6 +180,9 @@ class MappingService:
             elif issue.category_verified and inherited != issue.category_context:
                 issue.parent_changed = True
                 issue.category_verified = False
+                # Группа наследуется от родителя так же, как категория, —
+                # значит переезд возвращает на переподтверждение и её.
+                issue.subgroup_verified = False
                 # category_context / _key оставляем как «откуда / была».
 
             count += 1
