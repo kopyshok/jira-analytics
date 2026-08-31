@@ -67,6 +67,7 @@ from app.models.plan_audit import PlanAudit  # noqa: F401
 from app.models.work_desk import WorkDesk  # noqa: F401
 from app.models.team_desk_daily_rate import TeamDeskDailyRate  # noqa: F401
 from app.models.team_desk_mark import TeamDeskMark  # noqa: F401
+from app.models.team import Team, TeamSubgroup  # noqa: F401
 from app.models.kpi import (
     KpiMetric, KpiProfile, KpiProfileMetric, KpiProfileRole, KpiCycleTimeNorm, KpiApproval,
 )
@@ -150,4 +151,6 @@ __all__ = [
     "KpiProfileRole",
     "KpiCycleTimeNorm",
     "KpiApproval",
+    "Team",
+    "TeamSubgroup",
 ]

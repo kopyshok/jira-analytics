@@ -31,6 +31,9 @@ class User(Base, TimestampMixin):
     selected_teams_raw: Mapped[str] = mapped_column(
         "selected_teams", Text, nullable=False, default="[]"
     )
+    selected_subgroups_raw: Mapped[str] = mapped_column(
+        "selected_subgroups", Text, nullable=False, default="[]", server_default="[]"
+    )
     selected_period_raw: Mapped[str] = mapped_column(
         "selected_period", Text, nullable=False, default="{}"
     )
@@ -63,6 +66,17 @@ class User(Base, TimestampMixin):
     @selected_teams.setter
     def selected_teams(self, value: list[str]) -> None:
         self.selected_teams_raw = json.dumps(list(value or []))
+
+    @property
+    def selected_subgroups(self) -> list[str]:
+        try:
+            return json.loads(self.selected_subgroups_raw or "[]")
+        except (TypeError, ValueError):
+            return []
+
+    @selected_subgroups.setter
+    def selected_subgroups(self, value: list[str]) -> None:
+        self.selected_subgroups_raw = json.dumps(list(value or []))
 
     @property
     def selected_period(self) -> dict:

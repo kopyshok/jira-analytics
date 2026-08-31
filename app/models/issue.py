@@ -128,6 +128,17 @@ class Issue(Base, SyncedMixin):
     impact: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     risk: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
+    # Группа внутри команды. Разрешается лесенкой в SubgroupResolver:
+    # assigned_subgroup_id -> группа ближайшего предка -> группа исполнителя.
+    assigned_subgroup_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("team_subgroups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    subgroup_verified: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     category_verified: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
