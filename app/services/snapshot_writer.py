@@ -105,6 +105,7 @@ class SnapshotWriter:
         if not scenario.team:
             return
         employees = self._team_employees(scenario)
+        subgroups = self._subgroup_names(scenario.team)
         for emp in employees:
             self.db.add(
                 ScenarioTeamSnapshot(
@@ -115,8 +116,30 @@ class SnapshotWriter:
                     hours_per_day=8.0,
                     is_active=bool(emp.is_active),
                     is_external=False,
+                    subgroup_name=subgroups.get(emp.id),
                 )
             )
+
+    def _subgroup_names(self, team: str) -> dict[str, str]:
+        """Сотрудник -> имя группы внутри команды.
+
+        Пустой словарь, если у команды выключен признак деления: тогда в
+        снапшоте групп нет и ревизия выглядит как раньше.
+        """
+        from app.models import EmployeeTeam, Team, TeamSubgroup
+
+        registry = self.db.query(Team).filter(Team.name == team).first()
+        if registry is None or not registry.has_subgroups:
+            return {}
+        names = {g.id: g.name for g in registry.subgroups}
+        rows = (
+            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
+            .filter(EmployeeTeam.team == team, EmployeeTeam.subgroup_id.isnot(None))
+            .all()
+        )
+        return {
+            emp_id: names[sg_id] for emp_id, sg_id in rows if sg_id in names
+        }
 
     def write_calendar_snapshot(
         self, revision: ScenarioRevision, scenario: PlanningScenario

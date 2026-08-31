@@ -32,5 +32,8 @@ class ScenarioTeamSnapshot(Base, TimestampMixin):
     is_external: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=expression.false()
     )
+    # Имя группы внутри команды на момент утверждения — строкой, чтобы
+    # переименование или удаление группы не переписывало историю сценария.
+    subgroup_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     revision: Mapped["ScenarioRevision"] = relationship(back_populates="team_snapshots")
