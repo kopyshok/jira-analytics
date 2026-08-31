@@ -24,6 +24,9 @@ class EmployeeTeamItem(BaseModel):
     is_primary: bool
     joined_at: Optional[date] = None
     left_at: Optional[date] = None
+    # Группа внутри команды; пусто, если у команды выключен признак деления
+    # или сотрудника ещё не приписали.
+    subgroup_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

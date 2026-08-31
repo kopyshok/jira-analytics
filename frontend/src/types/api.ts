@@ -6,6 +6,8 @@ export interface EmployeeTeamItem {
   joined_at?: string | null;
   /** Первый день ВНЕ команды. null — состоит сейчас. */
   left_at?: string | null;
+  /** Группа внутри команды. null — команда не делится или не приписан. */
+  subgroup_id?: string | null;
 }
 
 export type EmployeeRole = string;  // now driven by roles registry
