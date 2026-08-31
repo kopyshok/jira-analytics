@@ -67,8 +67,18 @@ class TeamRegistryService:
         return group
 
     def delete_subgroup(self, subgroup_id: str) -> None:
-        """Удалить группу. Приписки сотрудников и задач обнуляются каскадом."""
+        """Удалить группу, сняв её с сотрудников и задач.
+
+        Ссылки обнуляются здесь, а не через ``ON DELETE SET NULL``: в SQLite
+        внешние ключи по умолчанию не проверяются, и каскад не сработал бы.
+        """
         group = self.db.query(TeamSubgroup).filter(TeamSubgroup.id == subgroup_id).one()
+        self.db.query(EmployeeTeam).filter(
+            EmployeeTeam.subgroup_id == subgroup_id
+        ).update({EmployeeTeam.subgroup_id: None}, synchronize_session=False)
+        self.db.query(Issue).filter(
+            Issue.assigned_subgroup_id == subgroup_id
+        ).update({Issue.assigned_subgroup_id: None}, synchronize_session=False)
         self.db.delete(group)
         self.db.commit()
 
