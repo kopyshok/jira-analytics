@@ -79,9 +79,20 @@ class AnalyticsTeamNode(BaseModel):
     roles: list[AnalyticsRoleNode]
 
 
+class SubgroupFlowItem(BaseModel):
+    """Переток одной группы внутри команды за период отчёта."""
+
+    subgroup_id: str
+    subgroup_name: str
+    out_hours: float
+    in_hours: float
+
+
 class AnalyticsReportResponse(BaseModel):
     teams: list[AnalyticsTeamNode]
     grand_totals: NodeTotals
+    # Переток внутри команды — строка в шапке отчёта. Пусто, если деления нет.
+    subgroup_flow: list[SubgroupFlowItem] = []
 
 
 class IssueWorklogItem(BaseModel):

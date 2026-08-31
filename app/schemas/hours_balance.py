@@ -39,10 +39,21 @@ class EmployeeBalance(BaseModel):
     left_at: date | None = None  # выбыл из выбранных команд с этой даты
 
 
+class SubgroupFlowItem(BaseModel):
+    """Переток одной группы: ушло к соседям / пришло от них."""
+
+    subgroup_id: str
+    subgroup_name: str
+    out_hours: float
+    in_hours: float
+
+
 class HoursBalanceResponse(BaseModel):
     period: PeriodInfo
     team_summary: TeamSummary
     employees: list[EmployeeBalance]
+    # Переток внутри команды за то же окно. Пусто — деления на группы нет.
+    subgroup_flow: list[SubgroupFlowItem] = []
 
 
 class MonthlySummary(BaseModel):
