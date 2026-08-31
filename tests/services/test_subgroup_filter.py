@@ -57,3 +57,21 @@ def test_names(db_session, groups):
     assert sf.names(db_session, [groups["integ"].id]) == {
         groups["integ"].id: "Интеграции"
     }
+
+
+def test_no_subgroup_token_picks_unassigned(db_session, groups):
+    """«Без группы» — сотрудники команды, которых не приписали."""
+    from app.models import Employee, EmployeeTeam
+
+    loose = Employee(jira_account_id="acc-3", display_name="Сидоров")
+    db_session.add(loose)
+    db_session.flush()
+    db_session.add(EmployeeTeam(employee_id=loose.id, team=TEAM, is_primary=True))
+    db_session.commit()
+
+    got = sf.employee_ids(db_session, [sf.NO_SUBGROUP_TOKEN], teams=[TEAM])
+
+    assert got == {loose.id}
+    assert sf.names(db_session, [sf.NO_SUBGROUP_TOKEN]) == {
+        sf.NO_SUBGROUP_TOKEN: "Без группы"
+    }
