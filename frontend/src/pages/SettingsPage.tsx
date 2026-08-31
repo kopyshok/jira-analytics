@@ -33,6 +33,7 @@ import PlanningSettingsTab from '../components/settings/PlanningSettingsTab';
 import AbsenceReasonsTab from '../components/AbsenceReasonsTab';
 import CategoriesTab from '../components/CategoriesTab';
 import WorkTypesTab from '../components/settings/WorkTypesTab';
+import TeamsRegistryTab from '../components/settings/TeamsRegistryTab';
 import KpiSettingsTab from '../components/settings/kpi/KpiSettingsTab';
 import TeamDeskSettingsTab from '../components/settings/TeamDeskSettingsTab';
 import { AITab } from '../components/settings/AITab';
@@ -67,6 +68,7 @@ const GROUPS: SectionGroup[] = [
   {
     title: 'Справочники',
     items: [
+      { key: 'teams', label: 'Команды и группы', render: () => <TeamsRegistryTab /> },
       { key: 'hierarchy', label: 'Правила иерархии', render: () => <HierarchyRulesTab /> },
       { key: 'planning', label: 'Планирование', render: () => <PlanningSettingsTab /> },
       { key: 'reasons', label: 'Причины отсутствий', render: () => <AbsenceReasonsTab /> },
