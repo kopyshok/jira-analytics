@@ -93,3 +93,64 @@ def names(db: Session, subgroups: Optional[list[str]]) -> dict[str, str]:
     if has_none:
         out[NO_SUBGROUP_TOKEN] = "Без группы"
     return out
+
+
+def roots_matching(
+    db: Session, root_ids: list[str], subgroups: Optional[list[str]]
+) -> Optional[set[str]]:
+    """Инициативы, у которых под ними есть работы выбранных групп.
+
+    Инициативы и эпики заводятся одни на всю команду — своей группы у них
+    обычно нет, поэтому решают работы под ними. Инициатива, под которой групп
+    вообще не проставили, остаётся видна всем: свежую идею прятать нельзя.
+
+    ``None`` — фильтр не задан.
+    """
+    if not subgroups or not root_ids:
+        return None
+
+    ids, _ = _split(subgroups)
+
+    # Обход вниз по дереву: узел -> его корень-инициатива.
+    root_of: dict[str, str] = {rid: rid for rid in root_ids}
+    frontier = list(root_ids)
+    matched: set[str] = set()
+    grouped: set[str] = set()
+
+    while frontier:
+        rows = []
+        for i in range(0, len(frontier), 400):
+            chunk = frontier[i : i + 400]
+            rows += (
+                db.query(Issue.id, Issue.parent_id, Issue.effective_subgroup_id)
+                .filter(Issue.parent_id.in_(chunk))
+                .all()
+            )
+        frontier = []
+        for iid, pid, sg in rows:
+            if iid in root_of:
+                continue
+            root = root_of.get(pid)
+            if root is None:
+                continue
+            root_of[iid] = root
+            frontier.append(iid)
+            if sg:
+                grouped.add(root)
+                if sg in ids:
+                    matched.add(root)
+
+    # Группа у самой инициативы — тоже решение человека, учитываем.
+    own = (
+        db.query(Issue.id, Issue.effective_subgroup_id)
+        .filter(Issue.id.in_(root_ids), Issue.effective_subgroup_id.isnot(None))
+        .all()
+    )
+    for iid, sg in own:
+        grouped.add(iid)
+        if sg in ids:
+            matched.add(iid)
+
+    # Инициатива без единой проставленной группы видна при любом выборе.
+    ungrouped = set(root_ids) - grouped
+    return matched | ungrouped

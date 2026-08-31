@@ -18,6 +18,7 @@ from app.models import Project
 from app.services.llm.base import ConfigurationError
 from app.services.project_plan_service import ProjectPlanService
 from app.services.project_summary_service import ProjectSummaryService
+from app.services.subgroup_filter import parse_subgroups_csv
 from app.services.projects_service import ProjectsService
 
 
@@ -210,6 +211,7 @@ def list_quarterly_projects(
     search: Optional[str] = Query(None, description="search by key/summary"),
     year: Optional[int] = Query(None, description="filter by approved scenario year"),
     quarter: Optional[int] = Query(None, description="filter by approved scenario quarter (1-4)"),
+    subgroups: Optional[str] = Query(None, description="группы внутри команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Список проектов.
@@ -225,6 +227,7 @@ def list_quarterly_projects(
         search=search,
         year=year,
         quarter=quarter,
+        subgroups=parse_subgroups_csv(subgroups),
     )
 
     result = []
@@ -257,6 +260,7 @@ def get_portfolio(
     category: Optional[str] = Query(None),
     status_category: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    subgroups: Optional[str] = Query(None, description="группы внутри команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Сводка по тем же проектам, что видны в списке слева.
@@ -272,6 +276,7 @@ def get_portfolio(
         search=search,
         year=year,
         quarter=quarter,
+        subgroups=parse_subgroups_csv(subgroups),
     )
     return ProjectPlanService(db).get_portfolio(keys, year=year, quarter=quarter)
 

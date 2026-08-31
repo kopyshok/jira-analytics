@@ -20,6 +20,8 @@ from app.connectors.jira_client import JiraClient, JiraClientError
 from app.database import get_db
 from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
+from app.services import subgroup_filter as sgf
+from app.services.subgroup_filter import parse_subgroups_csv
 from app.services.backlog_service import (
     BACKLOG_CATEGORY,
     CANCEL_STATUSES,
@@ -381,6 +383,7 @@ async def list_backlog_items(
     project_id: Optional[str] = Query(None),
     view: str = Query("active", pattern="^(active|archived|in_work|quarterly)$"),
     teams: Optional[str] = Query(None, description="Comma-separated team codes to filter by"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     db: Session = Depends(get_db),
 ):
     """Список бэклога с фильтром по виду.
@@ -518,6 +521,15 @@ async def list_backlog_items(
         )
 
     items = query.all()
+
+    # Группа внутри команды: инициатива живёт на всю команду, поэтому решают
+    # работы под ней. Инициатива без единой проставленной группы и ручная идея
+    # остаются видны — прятать незаполненное нельзя.
+    sg_list = parse_subgroups_csv(subgroups)
+    if sg_list:
+        root_ids = [i.issue_id for i in items if i.issue_id]
+        keep = sgf.roots_matching(db, root_ids, sg_list) or set()
+        items = [i for i in items if not i.issue_id or i.issue_id in keep]
 
     # Скрываем явные leaf-типы (HierarchyRule с is_container=False).
     rules = load_rules(db)
