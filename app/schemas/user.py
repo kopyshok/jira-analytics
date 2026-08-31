@@ -61,6 +61,7 @@ class UserResponse(BaseModel):
     role: UserRole
     default_team: str | None
     selected_teams: list[str] = []
+    selected_subgroups: list[str] = []
     selected_theme: str = "aurora-dark"
     is_active: bool
     created_at: datetime
@@ -102,3 +103,5 @@ class PasswordReset(BaseModel):
 
 class UserTeamsUpdate(BaseModel):
     teams: list[str]
+    # Группы внутри выбранных команд; пусто — фильтр по группам не задан.
+    subgroups: list[str] = []

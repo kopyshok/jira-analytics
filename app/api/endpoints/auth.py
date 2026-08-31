@@ -66,4 +66,5 @@ def update_my_teams(
     db: Session = Depends(get_db),
 ) -> UserResponse:
     user.selected_teams = data.teams
+    user.selected_subgroups = data.subgroups
     return UserResponse.model_validate(_repo.update(db, user))
