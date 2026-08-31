@@ -14,6 +14,10 @@ from app.services.team_desk.flags import FLAG_LABELS, FLAG_ORDER, FLAG_THRESHOLD
 from app.services.team_desk.marks import mark_reviewed, unmark
 from app.services.team_desk.query import build_overview
 from app.services.team_desk.workload import queue_for_developers
+from app.services.subgroup_filter import (
+    employee_ids as subgroup_employee_ids,
+    parse_subgroups_csv,
+)
 from app.services.team_membership import members_on
 
 router = APIRouter()
@@ -69,6 +73,7 @@ def get_flag_dictionary(_: User = Depends(get_current_user)):
 @router.get("/overview")
 def get_overview(
     teams: Optional[str] = Query(None, description="Команды через запятую"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     developers: Optional[str] = Query(None, description="Учётные записи через запятую"),
     only_open: bool = Query(True),
     show_reviewed: bool = Query(False),
@@ -95,6 +100,14 @@ def get_overview(
         # Состав команды на сегодня — только через team_membership, иначе
         # выбывшие попадут в расчёт задним числом.
         member_ids = members_on(db, team_list, date.today())
+        # Стол — про людей, поэтому группа берётся по приписке разработчика.
+        # Добранный точечно человек фильтру группы не подчиняется: его выбрали
+        # руками.
+        in_subgroups = subgroup_employee_ids(
+            db, parse_subgroups_csv(subgroups), team_list
+        )
+        if in_subgroups is not None:
+            member_ids = [m for m in member_ids if m in in_subgroups]
         if member_ids:
             employees = _developers_only(
                 db.query(Employee).filter(Employee.id.in_(member_ids))
