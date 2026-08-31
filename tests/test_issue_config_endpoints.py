@@ -1086,3 +1086,55 @@ def test_verify_without_category_code_keeps_existing_category(client, project_an
     issue = db_session.get(Issue, target.id)
     assert issue.assigned_category == "qa"
     assert issue.category_verified is True
+
+
+def test_batch_category_overwrite_covers_owned_and_unverified_descendants(client, db_session):
+    """overwrite=True — код перезаписывается всему поддереву: и потомкам со своей
+    категорией, и вернувшимся на переподтверждение после переезда.
+    """
+    _seed_hierarchy_rules(db_session)
+    project = Project(jira_project_id="80020", key="CO", name="Cascade overwrite", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    epic = Issue(
+        jira_issue_id="80020-1", key="CO-1", summary="Epic",
+        issue_type="Эпик", status="Open", project_id=project.id,
+        include_in_analysis=True,
+    )
+    db_session.add(epic)
+    db_session.flush()
+    moved = Issue(
+        jira_issue_id="80020-2", key="CO-2", summary="Moved child",
+        issue_type="Task", status="Open", project_id=project.id,
+        parent_id=epic.id, include_in_analysis=True,
+        assigned_category="support_consultation",
+        category_verified=False, parent_changed=True,
+    )
+    db_session.add(moved)
+    db_session.flush()
+    grandchild = Issue(
+        jira_issue_id="80020-3", key="CO-3", summary="Grandchild",
+        issue_type="Task", status="Open", project_id=project.id,
+        parent_id=moved.id, include_in_analysis=True,
+    )
+    db_session.add(grandchild)
+    db_session.flush()
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={
+            "issue_ids": [epic.id],
+            "category_code": "development",
+            "verify": True,
+            "overwrite": True,
+        },
+    )
+    assert response.status_code == 200
+    assert sorted(response.json()["cascaded_ids"]) == sorted([moved.id, grandchild.id])
+
+    db_session.expire_all()
+    for issue_id in (epic.id, moved.id, grandchild.id):
+        persisted = db_session.get(Issue, issue_id)
+        assert persisted.assigned_category == "development"
+        assert persisted.category_verified is True
+    assert db_session.get(Issue, moved.id).parent_changed is False

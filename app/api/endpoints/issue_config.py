@@ -86,6 +86,7 @@ class BatchCategoryRequest(BaseModel):
     issue_ids: List[str]
     category_code: Optional[str] = None
     verify: bool = False
+    overwrite: bool = False
 
 
 class VerifyRequest(BaseModel):
@@ -815,6 +816,24 @@ def _walk_subtree_no_assigned(db: Session, root_id: str) -> list[Issue]:
     return out
 
 
+def _walk_subtree_all(db: Session, root_id: str) -> list[Issue]:
+    """BFS вниз от root_id по всему поддереву без границ. Root не входит."""
+    out: list[Issue] = []
+    frontier = [root_id]
+    visited: set[str] = {root_id}
+    while frontier:
+        children = db.query(Issue).filter(Issue.parent_id.in_(frontier)).all()
+        next_frontier: list[str] = []
+        for ch in children:
+            if ch.id in visited:
+                continue
+            visited.add(ch.id)
+            out.append(ch)
+            next_frontier.append(ch.id)
+        frontier = next_frontier
+    return out
+
+
 @router.put("/batch-category")
 async def batch_set_category(
     body: BatchCategoryRequest,
@@ -827,10 +846,12 @@ async def batch_set_category(
     возвращает ``archived_ids`` — список задач, у которых одновременно
     снялся ``include_in_analysis``.
 
-    Каскадирует вниз по поддереву: для каждой задачи в ``issue_ids`` все
-    потомки без собственной ``assigned_category`` тоже получают категорию.
-    Граница — потомок с уже выставленным ручным решением PM (его поддерево
-    не трогается). ID протянутых потомков возвращаются в ``cascaded_ids``.
+    Каскадирует вниз по поддереву. ``overwrite=False`` (по умолчанию) —
+    категорию получают только потомки без собственной ``assigned_category``,
+    граница каскада — потомок с ручным решением PM (его поддерево не трогается).
+    ``overwrite=True`` — код перезаписывается всему поддереву целиком, включая
+    задачи с собственной категорией (в том числе вернувшиеся на переподтверждение
+    после переезда). ID протянутых потомков возвращаются в ``cascaded_ids``.
 
     ``skipped_containers`` остаётся в ответе (всегда пустой) для обратной
     совместимости с фронтом.
@@ -859,9 +880,10 @@ async def batch_set_category(
         updated += 1
         seen_targets.add(issue.id)
 
-        # Каскад: потомки без своей категории получают тот же код.
-        # Останавливаемся на ручных решениях PM (assigned_category != None).
-        for d in _walk_subtree_no_assigned(db, issue.id):
+        # Каскад: overwrite=False — только потомки без своей категории
+        # (граница — ручное решение PM); overwrite=True — всё поддерево целиком.
+        walk = _walk_subtree_all if body.overwrite else _walk_subtree_no_assigned
+        for d in walk(db, issue.id):
             if d.id in seen_targets:
                 continue
             d.assigned_category = body.category_code

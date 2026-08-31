@@ -58,11 +58,13 @@ export function useBatchSetCategory() {
       issueIds,
       categoryCode,
       verify,
+      overwrite,
     }: {
       issueIds: string[];
       categoryCode: string | null;
       verify?: boolean;
-    }) => batchSetCategory(issueIds, categoryCode, verify ?? false),
+      overwrite?: boolean;
+    }) => batchSetCategory(issueIds, categoryCode, verify ?? false, overwrite ?? false),
     onSuccess: (_data, { issueIds }) => {
       invalidateCategoryDependents(qc);
       trackAction('category_changed', issueIds[0]);

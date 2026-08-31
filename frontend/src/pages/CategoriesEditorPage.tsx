@@ -242,6 +242,8 @@ export default function CategoriesEditorPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
+  // Какая из двух кнопок диалога нажата — нужно только для спиннера на ней.
+  const [bulkMode, setBulkMode] = useState<'all' | 'empty' | null>(null);
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const verifyMut = useVerifyIssue();
   useRegisterHelp('Категоризация задач', categoriesHelp);
@@ -409,13 +411,15 @@ export default function CategoriesEditorPage() {
     [selectedIds, contextIdSet],
   );
 
-  const applyBulkCategory = async () => {
+  const applyBulkCategory = async (overwrite: boolean) => {
     if (!bulkCategory || applicableSelectedIds.length === 0) return;
+    setBulkMode(overwrite ? 'all' : 'empty');
     try {
       const res = await batchCategoryMut.mutateAsync({
         issueIds: applicableSelectedIds,
         categoryCode: bulkCategory,
         verify: true,
+        overwrite,
       });
       qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
       void refreshLoadedChildren();
@@ -1028,14 +1032,38 @@ export default function CategoriesEditorPage() {
         title={`Установить категорию для ${applicableSelectedIds.length} задач`}
         open={bulkModalOpen}
         onCancel={() => { setBulkModalOpen(false); setBulkCategory(undefined); }}
-        onOk={applyBulkCategory}
-        okText="Применить"
-        cancelText="Отмена"
-        confirmLoading={batchCategoryMut.isPending}
-        okButtonProps={{ disabled: !bulkCategory }}
+        width={620}
+        footer={[
+          <Button key="cancel" onClick={() => { setBulkModalOpen(false); setBulkCategory(undefined); }}>
+            Отмена
+          </Button>,
+          <Button
+            key="empty"
+            disabled={!bulkCategory}
+            loading={batchCategoryMut.isPending && bulkMode === 'empty'}
+            onClick={() => applyBulkCategory(false)}
+          >
+            Назначить для пустых
+          </Button>,
+          <Button
+            key="all"
+            type="primary"
+            disabled={!bulkCategory}
+            loading={batchCategoryMut.isPending && bulkMode === 'all'}
+            onClick={() => applyBulkCategory(true)}
+          >
+            Назначить для всех
+          </Button>,
+        ]}
       >
         <Text type="secondary">
           Категория будет применена и сразу подтверждена.
+          <br />
+          <b>Для всех</b> — категорию получит вся ветка, включая подзадачи со своей
+          категорией и вернувшиеся на переподтверждение после переезда.
+          <br />
+          <b>Для пустых</b> — только задачи без своей категории; подзадачи с уже
+          выбранной категорией останутся как есть.
           {selectedIds.length > applicableSelectedIds.length && (
             <>
               <br />

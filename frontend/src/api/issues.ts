@@ -56,11 +56,13 @@ export const batchSetCategory = (
   issueIds: string[],
   categoryCode: string | null,
   verify: boolean = false,
+  overwrite: boolean = false,
 ) =>
   api.put<BatchCategoryResponse>('/issues/batch-category', {
     issue_ids: issueIds,
     category_code: categoryCode,
     verify,
+    overwrite,
   });
 
 export interface VerifyIssueResponse {
