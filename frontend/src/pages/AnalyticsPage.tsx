@@ -10,6 +10,7 @@ import AnalyticsTeamList from '../components/analytics/AnalyticsTeamList';
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';
 import AnalyticsTable from '../components/analytics/AnalyticsTable';
 import AnalyticsReportSettings from '../components/analytics/AnalyticsReportSettings';
+import SubgroupFlowLine from '../components/common/SubgroupFlowLine';
 import AnalyticsKpiTiles from '../components/analytics/AnalyticsKpiTiles';
 import { useAnalyticsReport } from '../hooks/useAnalyticsReport';
 import { useAnalyticsColumns } from '../hooks/useAnalyticsColumns';
@@ -35,7 +36,7 @@ function periodBounds(year: number, quarter: number, month?: number): { start: s
 export default function AnalyticsPage() {
   const [params, setParams] = useSearchParams();
   const { period } = useGlobalPeriod();
-  const { selectedTeams } = useGlobalTeamFilter();
+  const { selectedTeams, selectedSubgroups } = useGlobalTeamFilter();
 
   const [selectedTeam, setSelectedTeam] = useState<string | 'all'>(
     selectedTeams[0] || 'all',
@@ -60,12 +61,13 @@ export default function AnalyticsPage() {
     start_date: localRange?.[0]?.format('YYYY-MM-DD'),
     end_date: localRange?.[1]?.format('YYYY-MM-DD'),
     teams: selectedTeam !== 'all' ? selectedTeam : (selectedTeams.join(',') || undefined),
+    subgroups: selectedSubgroups.join(',') || undefined,
     employee_id: employeeId,
     task_query: taskQ,
     work_type_codes: workType,
     category_codes: category,
     hierarchy,
-  }), [period, localRange, selectedTeam, selectedTeams, employeeId, workType, category, taskQ, hierarchy]);
+  }), [period, localRange, selectedTeam, selectedTeams, selectedSubgroups, employeeId, workType, category, taskQ, hierarchy]);
 
   const { data, isLoading } = useAnalyticsReport(queryParams);
   const { visible: visibleColumns } = useAnalyticsColumns();
@@ -147,6 +149,7 @@ export default function AnalyticsPage() {
             ...(localRange?.[0] ? { start_date: localRange[0].format('YYYY-MM-DD') } : {}),
             ...(localRange?.[1] ? { end_date: localRange[1].format('YYYY-MM-DD') } : {}),
             ...(selectedTeam !== 'all' ? { teams: selectedTeam } : selectedTeams.length ? { teams: selectedTeams.join(',') } : {}),
+            ...(selectedSubgroups.length ? { subgroups: selectedSubgroups.join(',') } : {}),
             ...(employeeId ? { employee_id: employeeId } : {}),
             ...(taskQ ? { task_query: taskQ } : {}),
             ...(workType ? { work_type_codes: workType } : {}),
@@ -188,6 +191,11 @@ export default function AnalyticsPage() {
       ) : (
         <>
           <AnalyticsKpiTiles totals={data.grand_totals} />
+          {data.subgroup_flow && data.subgroup_flow.length > 0 && (
+            <div style={{ margin: '4px 0 12px' }}>
+              <SubgroupFlowLine items={data.subgroup_flow} />
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
             <AnalyticsTeamList
               data={data}

@@ -11,10 +11,12 @@ export function useProjectsList(filters: {
 }) {
   const { queryParams } = useGlobalTeamFilter();
   const teams = queryParams.teams;
+  const subgroups = queryParams.subgroups;
   return useQuery({
-    queryKey: ['projects', teams, filters],
+    queryKey: ['projects', teams, subgroups, filters],
     queryFn: ({ signal }) => projectsApi.list({
       teams,
+      subgroups,
       ...filters,
       year: filters.year !== undefined ? String(filters.year) : undefined,
       quarter: filters.quarter !== undefined ? String(filters.quarter) : undefined,
@@ -51,10 +53,12 @@ export function usePortfolio(filters: {
 }) {
   const { queryParams } = useGlobalTeamFilter();
   const teams = queryParams.teams;
+  const subgroups = queryParams.subgroups;
   return useQuery({
-    queryKey: ['projects-portfolio', teams, filters],
+    queryKey: ['projects-portfolio', teams, subgroups, filters],
     queryFn: ({ signal }) => projectsApi.portfolio({
       teams,
+      subgroups,
       category: filters.category,
       status_category: filters.status_category,
       search: filters.search,

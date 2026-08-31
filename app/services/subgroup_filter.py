@@ -18,7 +18,7 @@ from typing import Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models import EmployeeTeam, Issue, TeamSubgroup
+from app.models import EmployeeTeam, Issue, Team, TeamSubgroup
 
 NO_SUBGROUP_TOKEN = "__none__"
 
@@ -75,6 +75,29 @@ def employee_ids(
             q = q.filter(EmployeeTeam.team.in_(teams))
         out |= {emp_id for (emp_id,) in q.distinct().all()}
     return out
+
+
+def restrict_to_teams(
+    db: Session, subgroups: Optional[list[str]], teams: Optional[list[str]]
+) -> list[str]:
+    """Оставить только группы выбранных команд.
+
+    Нужно там, где у раздела свой список команд (стол тимлида): группа соседней
+    команды не должна опустошать срез — её просто не с чем сопоставить.
+    """
+    if not subgroups or not teams:
+        return []
+    ids, has_none = _split(subgroups)
+    kept = [
+        gid
+        for (gid,) in db.query(TeamSubgroup.id)
+        .join(Team, Team.id == TeamSubgroup.team_id)
+        .filter(TeamSubgroup.id.in_(ids), Team.name.in_(teams))
+        .all()
+    ] if ids else []
+    if has_none and kept:
+        kept.append(NO_SUBGROUP_TOKEN)
+    return kept
 
 
 def names(db: Session, subgroups: Optional[list[str]]) -> dict[str, str]:

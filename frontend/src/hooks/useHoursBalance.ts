@@ -8,14 +8,15 @@ import type {
 } from '../types/api';
 
 export function useHoursBalance() {
-  const { selectedTeams } = useGlobalTeamFilter();
+  const { selectedTeams, selectedSubgroups } = useGlobalTeamFilter();
   const appearance = useAppearanceSettings();
   const lagDays = appearance.hours_balance_lag_days;
   return useQuery<HoursBalanceResponse>({
-    queryKey: ['dashboard', 'hours-balance', selectedTeams, lagDays],
+    queryKey: ['dashboard', 'hours-balance', selectedTeams, selectedSubgroups, lagDays],
     queryFn: ({ signal }) => {
       const params: Record<string, string> = { lag_days: String(lagDays) };
       if (selectedTeams.length > 0) params.teams = selectedTeams.join(',');
+      if (selectedSubgroups.length > 0) params.subgroups = selectedSubgroups.join(',');
       return api.get<HoursBalanceResponse>(
         '/analytics/dashboard/hours-balance',
         params,
@@ -30,14 +31,15 @@ export function useHoursBalance() {
 export function useHoursBalanceDetail(
   employeeId: string | null,
 ) {
-  const { selectedTeams } = useGlobalTeamFilter();
+  const { selectedTeams, selectedSubgroups } = useGlobalTeamFilter();
   const appearance = useAppearanceSettings();
   const lagDays = appearance.hours_balance_lag_days;
   return useQuery<HoursBalanceDetailResponse>({
-    queryKey: ['dashboard', 'hours-balance', 'detail', employeeId, lagDays, selectedTeams],
+    queryKey: ['dashboard', 'hours-balance', 'detail', employeeId, lagDays, selectedTeams, selectedSubgroups],
     queryFn: ({ signal }) => {
       const params: Record<string, string> = { lag_days: String(lagDays) };
       if (selectedTeams.length > 0) params.teams = selectedTeams.join(',');
+      if (selectedSubgroups.length > 0) params.subgroups = selectedSubgroups.join(',');
       return api.get<HoursBalanceDetailResponse>(
         `/analytics/dashboard/hours-balance/${employeeId}`,
         params,

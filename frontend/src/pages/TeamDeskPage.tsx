@@ -4,6 +4,7 @@ import teamDeskHelp from '../../../docs/help/team-desk.md?raw';
 import {
   orderedStatuses, type DeskFilterPrefs, type FlagCode,
 } from '../api/teamDesk';
+import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import {
   useDeskFilter, useDeskOverview, useDeskSettings, useSaveDailyRate, useSaveDeskFilter,
@@ -39,6 +40,9 @@ function currentQuarter(): { start: string; end: string } {
 
 export default function TeamDeskPage() {
   useRegisterHelp('Рабочий стол тимлида', teamDeskHelp);
+  // Команды у раздела свои, а группы приезжают из шапки: группа чужой команды
+  // на сервере отбрасывается, срез от неё не пустеет.
+  const { selectedSubgroups } = useGlobalTeamFilter();
   const [showThresholds, setShowThresholds] = useState(false);
   const [selectedDev, setSelectedDev] = useState<string | null>(null);
   const [flagFilter, setFlagFilter] = useState<FlagCode | null>(null);
@@ -82,6 +86,7 @@ export default function TeamDeskPage() {
   const jiraBaseUrl = useJiraBaseUrl().data?.base_url ?? '';
   const overview = useDeskOverview({
     teams,
+    subgroups: selectedSubgroups,
     developers,
     mode: prefs.mode,
     periodStart,

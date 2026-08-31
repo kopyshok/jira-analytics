@@ -116,16 +116,20 @@ export interface KpiReportFilters {
   /** Длина периода в месяцах; по умолчанию 1 (месяц). */
   months?: number;
   teams?: string;
+  subgroups?: string;
   direction?: string;
 }
 
 export const fetchKpiReport = (
-  { year, month, months, teams, direction }: KpiReportFilters,
+  { year, month, months, teams, subgroups, direction }: KpiReportFilters,
   signal?: AbortSignal,
 ) =>
   api.get<KpiReport>(
     '/kpi/report',
-    { year: String(year), month: String(month), months: String(months ?? 1), teams, direction },
+    {
+      year: String(year), month: String(month), months: String(months ?? 1),
+      teams, subgroups, direction,
+    },
     signal,
   );
 
@@ -138,10 +142,14 @@ export const fetchTeamsSummary = (
   direction?: string,
   signal?: AbortSignal,
   months = 1,
+  subgroups?: string,
 ) =>
   api.get<KpiTeamsSummary>(
     '/kpi/teams-summary',
-    { year: String(year), month: String(month), months: String(months), teams, direction },
+    {
+      year: String(year), month: String(month), months: String(months),
+      teams, subgroups, direction,
+    },
     signal,
   );
 

@@ -7,6 +7,10 @@ import { useTeamRegistry } from '../../hooks/useTeamRegistry';
 
 const { Text } = Typography;
 
+// Задачи и сотрудники, которых к группе не приписали. Без этого пункта сумма
+// по группам не сходилась бы с командой, а неприписанный человек пропадал.
+const NO_SUBGROUP = '__none__';
+
 export default function GlobalTeamFilterButton() {
   const { selectedTeams, selectedSubgroups, setSelectedTeams, saving } = useGlobalTeamFilter();
   const { data: teams, isLoading } = useTeams();
@@ -51,9 +55,10 @@ export default function GlobalTeamFilterButton() {
       const next = prev.includes(team) ? prev.filter((t) => t !== team) : [...prev, team];
       // Снятая команда уносит с собой свои группы, иначе фильтр остаётся
       // сужен группой, которой в выборке уже нет.
-      const alive = new Set(
-        registry.filter((t) => next.includes(t.name)).flatMap((t) => t.subgroups.map((g) => g.id)),
-      );
+      const alive = new Set([
+        NO_SUBGROUP,
+        ...registry.filter((t) => next.includes(t.name)).flatMap((t) => t.subgroups.map((g) => g.id)),
+      ]);
       setSubgroupDraft((sg) => sg.filter((id) => alive.has(id)));
       return next;
     });
@@ -188,6 +193,24 @@ export default function GlobalTeamFilterButton() {
                     <span style={{ flex: 1 }}>{g.name}</span>
                   </div>
                 ))}
+                <div
+                  onClick={() => toggleSubgroup(NO_SUBGROUP)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '4px 8px 4px 20px',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Checkbox
+                    checked={subgroupDraft.includes(NO_SUBGROUP)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleSubgroup(NO_SUBGROUP)}
+                  />
+                  <span style={{ flex: 1, opacity: 0.75 }}>Без группы</span>
+                </div>
               </div>
             ))}
           </div>

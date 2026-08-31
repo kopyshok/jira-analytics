@@ -8,7 +8,7 @@ export const getProjects = () => api.get<ProjectResponse[]>('/projects/all');
 // Новые
 export const projectsApi = {
   list: (
-    params: { teams?: string; category?: string; status_category?: string; search?: string; year?: string; quarter?: string },
+    params: { teams?: string; subgroups?: string; category?: string; status_category?: string; search?: string; year?: string; quarter?: string },
     signal?: AbortSignal,
   ) => api.get<ProjectListItem[]>('/projects', params as Record<string, string | undefined>, signal),
 
@@ -29,6 +29,7 @@ export const projectsApi = {
       year: string;
       quarter: string;
       teams?: string;
+      subgroups?: string;
       category?: string;
       status_category?: string;
       search?: string;

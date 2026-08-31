@@ -198,6 +198,7 @@ export function orderedStatuses(
 export const teamDeskApi = {
   overview: (params: {
     teams?: string;
+    subgroups?: string;
     developers?: string;
     only_open?: boolean;
     show_reviewed?: boolean;
@@ -207,6 +208,7 @@ export const teamDeskApi = {
   }) =>
     api.get<DeskOverview>('/team-desk/overview', {
       teams: params.teams,
+      subgroups: params.subgroups,
       developers: params.developers,
       only_open: boolParam(params.only_open),
       show_reviewed: boolParam(params.show_reviewed),

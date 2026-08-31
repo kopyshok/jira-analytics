@@ -7,6 +7,7 @@ import { useAppearanceSettings } from '../../contexts/AppearanceContext';
 import { useUpdateAppearance } from '../../api/appearance';
 import type { HoursBalanceEmployee } from '../../types/api';
 import HoursBalanceModal from './HoursBalanceModal';
+import SubgroupFlowLine from '../common/SubgroupFlowLine';
 
 type SortKey =
   | 'abs_desc'
@@ -298,6 +299,11 @@ export default function HoursBalanceWidget() {
           {t.net_balance > 0 ? '+' : ''}{Math.round(t.net_balance)}ч
         </span>
       </div>
+      {data.subgroup_flow && data.subgroup_flow.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <SubgroupFlowLine items={data.subgroup_flow} />
+        </div>
+      )}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',

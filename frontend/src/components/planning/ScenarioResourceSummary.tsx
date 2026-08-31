@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import SubgroupFlowLine from '../common/SubgroupFlowLine';
 import { Card, Skeleton, Tooltip } from 'antd';
 import { useScenarioResourceSummary } from '../../hooks/usePlanning';
 import { useRoles } from '../../hooks/useRoles';
@@ -767,6 +768,11 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
               </div>
             );
           })}
+          {summary.flow_by_subgroup.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <SubgroupFlowLine items={summary.flow_by_subgroup} />
+            </div>
+          )}
         </div>
       )}
     </Card>
