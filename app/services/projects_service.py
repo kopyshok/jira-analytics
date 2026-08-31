@@ -20,6 +20,7 @@ from app.models.category import Category
 from app.models.planning_scenario import PlanningScenario
 from app.models.scenario_allocation import ScenarioAllocation
 from app.models.backlog_item import BacklogItem
+from app.services import subgroup_filter as sgf
 from app.services import team_membership as tm
 
 # Категории, у которых верхний issue считается «проектом».
@@ -132,6 +133,7 @@ class ProjectsService:
         search: Optional[str] = None,
         year: Optional[int] = None,
         quarter: Optional[int] = None,
+        subgroups: Optional[list[str]] = None,
     ) -> list[ProjectListItem]:
         """Список проектов с метриками.
 
@@ -169,6 +171,24 @@ class ProjectsService:
         all_issue_ids = set()
         for ids in subtree_map.values():
             all_issue_ids.update(ids)
+
+        # Фильтр по группе внутри команды: инициатива заводится одна на всю
+        # команду, поэтому режем не корни, а работы под ними. Проект без работ
+        # выбранной группы из списка уходит.
+        sg_clause = sgf.issue_clause(subgroups)
+        if sg_clause is not None and all_issue_ids:
+            in_subgroups = {
+                r[0]
+                for r in db.execute(
+                    select(Issue.id).where(Issue.id.in_(all_issue_ids), sg_clause)
+                ).all()
+            }
+            subtree_map = {
+                rid: ids & in_subgroups for rid, ids in subtree_map.items()
+            }
+            subtree_map = {rid: ids for rid, ids in subtree_map.items() if ids}
+            roots = [r for r in roots if r.id in subtree_map]
+            all_issue_ids &= in_subgroups
 
         # Один запрос worklogs по всем задачам.
         wl_rows = (
@@ -213,6 +233,8 @@ class ProjectsService:
         result: list[ProjectListItem] = []
         for root in roots:
             sub_ids = subtree_map[root.id]
+            # Корень мог выпасть из своей же выборки — размер поддерева
+            # считаем от того, что осталось.
             rows = [r for iid in sub_ids for r in wl_by_issue.get(iid, [])]
 
             # Worklog-based team filter — только в legacy-режиме (без year+quarter).
@@ -262,6 +284,7 @@ class ProjectsService:
         search: Optional[str] = None,
         year: Optional[int] = None,
         quarter: Optional[int] = None,
+        subgroups: Optional[list[str]] = None,
     ) -> list[str]:
         """Ключи проектов по тем же фильтрам, что list_projects, без расчёта метрик.
 
@@ -279,7 +302,9 @@ class ProjectsService:
         постфактум, по авторам списаний уже обойдённого поддерева — лёгкого
         эквивалента для этой ветки нет, поэтому просто делегируем туда.
         """
-        if year is None or quarter is None:
+        if year is None or quarter is None or subgroups:
+            # С фильтром групп лёгкого пути нет: принадлежность группе живёт
+            # на работах под инициативой, а не на самой инициативе.
             return [
                 item.key
                 for item in self.list_projects(
@@ -289,6 +314,7 @@ class ProjectsService:
                     search=search,
                     year=year,
                     quarter=quarter,
+                    subgroups=subgroups,
                 )
             ]
 
