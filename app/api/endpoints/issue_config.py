@@ -22,6 +22,7 @@ from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import EvaluationInput, classify, load_rules
 from app.services.hours_breakdown_service import HoursBreakdownService
 from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
+from app.services.subgroup_resolver import SubgroupResolver
 from app.core.auth_deps import get_current_user
 
 router = APIRouter()
@@ -676,6 +677,42 @@ async def set_issue_category(
         "assigned_category": assigned_category,
         "include_in_analysis": include_in_analysis,
         "auto_excluded": auto_excluded,
+    }
+
+
+class SetSubgroupRequest(BaseModel):
+    subgroup_id: Optional[str] = None
+
+
+@router.put("/{issue_id}/subgroup")
+async def set_issue_subgroup(
+    issue_id: str,
+    body: SetSubgroupRequest,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Назначить группу внутри команды на задачу и снять её со стопки.
+
+    Потомки наследуют группу через ``SubgroupResolver`` — как и категорию.
+    Пустое значение возвращает задачу к предположению по исполнителю.
+    """
+    issue = db.get(Issue, issue_id)
+    if not issue:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    issue.assigned_subgroup_id = body.subgroup_id
+    issue.subgroup_verified = True
+    resolution = SubgroupResolver(db).resolve_for_issue(issue)
+
+    key = issue.key
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "analytics"]})
+    return {
+        "ok": True,
+        "key": key,
+        "subgroup_id": resolution.subgroup_id,
+        "source": resolution.source,
+        "verified": True,
     }
 
 
