@@ -7,6 +7,7 @@ export interface UserProfile {
   role: 'admin' | 'super_manager' | 'manager';
   default_team: string | null;
   selected_teams: string[];
+  selected_subgroups: string[];
   selected_theme: string;
   is_active: boolean;
 }
@@ -28,6 +29,6 @@ export function getMe(): Promise<UserProfile> {
   return api.get<UserProfile>('/auth/me');
 }
 
-export function updateMyTeams(teams: string[]): Promise<UserProfile> {
-  return api.put<UserProfile>('/auth/me/teams', { teams });
+export function updateMyTeams(teams: string[], subgroups: string[] = []): Promise<UserProfile> {
+  return api.put<UserProfile>('/auth/me/teams', { teams, subgroups });
 }

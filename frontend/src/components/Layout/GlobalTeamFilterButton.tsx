@@ -3,15 +3,25 @@ import { Button, Checkbox, Empty, Input, Popover, Space, Tooltip, Typography } f
 import { useMemo, useState } from 'react';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import { useTeams } from '../../hooks/useSync';
+import { useTeamRegistry } from '../../hooks/useTeamRegistry';
 
 const { Text } = Typography;
 
 export default function GlobalTeamFilterButton() {
-  const { selectedTeams, setSelectedTeams, saving } = useGlobalTeamFilter();
+  const { selectedTeams, selectedSubgroups, setSelectedTeams, saving } = useGlobalTeamFilter();
   const { data: teams, isLoading } = useTeams();
+  const { data: registry = [] } = useTeamRegistry();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string[]>(selectedTeams);
+  const [subgroupDraft, setSubgroupDraft] = useState<string[]>(selectedSubgroups);
   const [query, setQuery] = useState('');
+
+  // Второй уровень появляется, только когда среди выбранных команд есть
+  // делящаяся на группы. У остальных шапка не меняется вовсе.
+  const splitTeams = useMemo(
+    () => registry.filter((t) => t.has_subgroups && draft.includes(t.name)),
+    [registry, draft],
+  );
 
   const label = selectedTeams.length === 0
     ? 'Все команды'
@@ -37,7 +47,20 @@ export default function GlobalTeamFilterButton() {
   }
 
   const toggle = (team: string) => {
-    setDraft((prev) => (prev.includes(team) ? prev.filter((t) => t !== team) : [...prev, team]));
+    setDraft((prev) => {
+      const next = prev.includes(team) ? prev.filter((t) => t !== team) : [...prev, team];
+      // Снятая команда уносит с собой свои группы, иначе фильтр остаётся
+      // сужен группой, которой в выборке уже нет.
+      const alive = new Set(
+        registry.filter((t) => next.includes(t.name)).flatMap((t) => t.subgroups.map((g) => g.id)),
+      );
+      setSubgroupDraft((sg) => sg.filter((id) => alive.has(id)));
+      return next;
+    });
+  };
+
+  const toggleSubgroup = (id: string) => {
+    setSubgroupDraft((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const allVisible = filtered.length > 0 && filtered.every((t) => draft.includes(t));
@@ -52,11 +75,14 @@ export default function GlobalTeamFilterButton() {
   };
 
   const apply = async () => {
-    await setSelectedTeams(draft);
+    await setSelectedTeams(draft, subgroupDraft);
     setOpen(false);
   };
 
-  const reset = () => setDraft([]);
+  const reset = () => {
+    setDraft([]);
+    setSubgroupDraft([]);
+  };
 
   const content = (
     <div style={{ width: 320 }}>
@@ -132,6 +158,42 @@ export default function GlobalTeamFilterButton() {
         )}
       </div>
 
+      {splitTeams.length > 0 && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Группы</Text>
+          <div style={{ maxHeight: 180, overflowY: 'auto', margin: '4px -4px 0' }}>
+            {splitTeams.map((team) => (
+              <div key={team.name}>
+                <div style={{ padding: '4px 8px' }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>{team.name}</Text>
+                </div>
+                {team.subgroups.map((g) => (
+                  <div
+                    key={g.id}
+                    onClick={() => toggleSubgroup(g.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '4px 8px 4px 20px',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Checkbox
+                      checked={subgroupDraft.includes(g.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleSubgroup(g.id)}
+                    />
+                    <span style={{ flex: 1 }}>{g.name}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div
         style={{
           display: 'flex',
@@ -142,11 +204,11 @@ export default function GlobalTeamFilterButton() {
           borderTop: '1px solid rgba(255,255,255,0.08)',
         }}
       >
-        <Button type="link" size="small" onClick={reset} disabled={draft.length === 0} style={{ padding: 0 }}>
+        <Button type="link" size="small" onClick={reset} disabled={draft.length === 0 && subgroupDraft.length === 0} style={{ padding: 0 }}>
           Сбросить
         </Button>
         <Space>
-          <Button size="small" onClick={() => { setDraft(selectedTeams); setOpen(false); }}>Отмена</Button>
+          <Button size="small" onClick={() => { setDraft(selectedTeams); setSubgroupDraft(selectedSubgroups); setOpen(false); }}>Отмена</Button>
           <Button size="small" type="primary" loading={saving} onClick={apply}>Применить</Button>
         </Space>
       </div>
@@ -160,6 +222,7 @@ export default function GlobalTeamFilterButton() {
       onOpenChange={(v) => {
         if (v) {
           setDraft(selectedTeams);
+          setSubgroupDraft(selectedSubgroups);
           setQuery('');
         }
         setOpen(v);
