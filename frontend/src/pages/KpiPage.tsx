@@ -77,9 +77,9 @@ export default function KpiPage() {
   };
 
   const reportQuery = useQuery({
-    queryKey: ['kpi', 'report', year, month, months, queryParams.teams, direction],
+    queryKey: ['kpi', 'report', year, month, months, queryParams.teams, queryParams.subgroups, direction],
     queryFn: ({ signal }) => fetchKpiReport(
-      { year, month, months, teams: queryParams.teams, direction }, signal,
+      { year, month, months, teams: queryParams.teams, subgroups: queryParams.subgroups, direction }, signal,
     ),
     staleTime: 30_000,
     retry: 1,
@@ -90,11 +90,11 @@ export default function KpiPage() {
   // свою дельту на сервере, но на людей её там нет.
   const prevPeriod = stepPeriod(period, -1);
   const prevReportQuery = useQuery({
-    queryKey: ['kpi', 'report', prevPeriod.year, prevPeriod.month, months, queryParams.teams, direction],
+    queryKey: ['kpi', 'report', prevPeriod.year, prevPeriod.month, months, queryParams.teams, queryParams.subgroups, direction],
     queryFn: ({ signal }) => fetchKpiReport(
       {
         year: prevPeriod.year, month: prevPeriod.month, months,
-        teams: queryParams.teams, direction,
+        teams: queryParams.teams, subgroups: queryParams.subgroups, direction,
       },
       signal,
     ),
@@ -111,9 +111,9 @@ export default function KpiPage() {
   }, [prevReportQuery.data]);
 
   const teamsSummaryQuery = useQuery({
-    queryKey: ['kpi', 'teams-summary', year, month, months, queryParams.teams, direction],
+    queryKey: ['kpi', 'teams-summary', year, month, months, queryParams.teams, queryParams.subgroups, direction],
     queryFn: ({ signal }) => fetchTeamsSummary(
-      year, month, queryParams.teams, direction, signal, months,
+      year, month, queryParams.teams, direction, signal, months, queryParams.subgroups,
     ),
     staleTime: 30_000,
     retry: 1,
@@ -163,7 +163,7 @@ export default function KpiPage() {
     setExporting(true);
     try {
       await downloadKpiExport(
-        { year, month, months, teams: queryParams.teams, direction },
+        { year, month, months, teams: queryParams.teams, subgroups: queryParams.subgroups, direction },
         `kpi_${year}_${String(month).padStart(2, '0')}${months > 1 ? `_${months}мес` : ''}.xlsx`,
       );
     } catch (e) {

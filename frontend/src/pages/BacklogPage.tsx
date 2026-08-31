@@ -55,9 +55,9 @@ export default function BacklogPage() {
     rawView === 'archived' ? 'archived' : rawView === 'active' ? 'active' : 'quarterly';
 
   const { queryParams } = useGlobalTeamFilter();
-  const active = useBacklogItems('active', queryParams.teams);
-  const archived = useBacklogItems('archived', queryParams.teams);
-  const quarterly = useBacklogItems('quarterly', queryParams.teams);
+  const active = useBacklogItems('active', queryParams.teams, queryParams.subgroups);
+  const archived = useBacklogItems('archived', queryParams.teams, queryParams.subgroups);
+  const quarterly = useBacklogItems('quarterly', queryParams.teams, queryParams.subgroups);
 
   const { data: projects } = useProjects();
   const jiraSettings = useJiraBaseUrl();

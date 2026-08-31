@@ -17,6 +17,7 @@ from app.services.team_desk.workload import queue_for_developers
 from app.services.subgroup_filter import (
     employee_ids as subgroup_employee_ids,
     parse_subgroups_csv,
+    restrict_to_teams as restrict_subgroups_to_teams,
 )
 from app.services.team_membership import members_on
 
@@ -104,7 +105,9 @@ def get_overview(
         # Добранный точечно человек фильтру группы не подчиняется: его выбрали
         # руками.
         in_subgroups = subgroup_employee_ids(
-            db, parse_subgroups_csv(subgroups), team_list
+            db,
+            restrict_subgroups_to_teams(db, parse_subgroups_csv(subgroups), team_list),
+            team_list,
         )
         if in_subgroups is not None:
             member_ids = [m for m in member_ids if m in in_subgroups]

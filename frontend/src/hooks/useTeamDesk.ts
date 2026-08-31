@@ -6,6 +6,7 @@ import {
 
 export function useDeskOverview(params: {
   teams: string[];
+  subgroups?: string[];
   developers: string[];
   mode: DeskMode;
   periodStart?: string;
@@ -19,6 +20,7 @@ export function useDeskOverview(params: {
     queryFn: () =>
       teamDeskApi.overview({
         teams: params.teams.join(',') || undefined,
+        subgroups: params.subgroups?.join(',') || undefined,
         developers: params.developers.join(',') || undefined,
         only_open: params.mode !== 'all',
         show_reviewed: params.showReviewed,

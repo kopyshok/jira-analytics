@@ -622,6 +622,16 @@ export interface ResourceSummaryOut {
   /** Ключ группы -> роль -> часы. Ключ '' — сотрудники без группы. */
   gross_by_subgroup_role: Record<string, Record<string, number>>;
   available_by_subgroup_role: Record<string, Record<string, number>>;
+  /** Переток внутри команды за квартал: ушло к соседям / пришло от них. */
+  flow_by_subgroup: SubgroupFlowItem[];
+}
+
+/** Переток одной группы: часы, ушедшие к соседям и пришедшие от них. */
+export interface SubgroupFlowItem {
+  subgroup_id: string;
+  subgroup_name: string;
+  out_hours: number;
+  in_hours: number;
 }
 
 export interface AllocationResponse {
@@ -1042,6 +1052,8 @@ export interface AnalyticsTeamNode {
 export interface AnalyticsReportResponse {
   teams: AnalyticsTeamNode[];
   grand_totals: NodeTotals;
+  /** Переток внутри команды за период отчёта; пусто — деления на группы нет. */
+  subgroup_flow?: SubgroupFlowItem[];
 }
 
 export interface IssueWorklogItem {
@@ -1173,6 +1185,8 @@ export interface HoursBalanceResponse {
   period: HoursBalancePeriod;
   team_summary: HoursBalanceTeamSummary;
   employees: HoursBalanceEmployee[];
+  /** Переток внутри команды за то же окно; пусто — деления на группы нет. */
+  subgroup_flow?: SubgroupFlowItem[];
 }
 
 export interface HoursBalanceMonthlySummary {
