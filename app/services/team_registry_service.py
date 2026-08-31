@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import EmployeeTeam, Issue, Team, TeamSubgroup
+from app.services.subgroup_resolver import SubgroupResolver
 
 
 class TeamRegistryService:
@@ -47,6 +48,7 @@ class TeamRegistryService:
             self.db.add(team)
         team.has_subgroups = enabled
         self.db.commit()
+        SubgroupResolver(self.db).recompute_effective(team=name)
         return team
 
     def add_subgroup(self, name: str, subgroup_name: str) -> TeamSubgroup:
@@ -79,8 +81,10 @@ class TeamRegistryService:
         self.db.query(Issue).filter(
             Issue.assigned_subgroup_id == subgroup_id
         ).update({Issue.assigned_subgroup_id: None}, synchronize_session=False)
+        team_name = group.team.name
         self.db.delete(group)
         self.db.commit()
+        SubgroupResolver(self.db).recompute_effective(team=team_name)
 
     def assign_employee(
         self, employee_id: str, team: str, subgroup_id: Optional[str]
@@ -94,3 +98,6 @@ class TeamRegistryService:
         for row in rows:
             row.subgroup_id = subgroup_id
         self.db.commit()
+        # Приписка сотрудника — третья ступень лесенки, поэтому её правка
+        # меняет действующую группу у задач, где она угадана по исполнителю.
+        SubgroupResolver(self.db).recompute_effective(team=team)

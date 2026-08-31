@@ -14,6 +14,7 @@ from app.models import Issue, Worklog, CategoryMapping
 from app.repositories.base import BaseRepository
 from app.services.backlog_service import BacklogService, TRACKED_CATEGORIES
 from app.services.category_resolver import CategoryResolver
+from app.services.subgroup_resolver import SubgroupResolver
 
 
 logger = logging.getLogger("jira_analytics.mapping")
@@ -268,6 +269,9 @@ class MappingService:
                 source_rule=resolution.source,
             )
         self.db.commit()
+        subgroups = SubgroupResolver(self.db)
+        for team in {i.team for i in issues if i.team}:
+            subgroups.recompute_effective(team=team)
         return affected
 
     def recalculate_all(self) -> MappingStats:
@@ -282,6 +286,9 @@ class MappingService:
         try:
             self.recalculate_issues()
             self.recalculate_worklogs()
+            # Действующая группа задачи живёт по тем же правилам, что категория,
+            # и обязана обновляться в том же проходе.
+            SubgroupResolver(self.db).recompute_effective()
         finally:
             self.stats.finish()
 

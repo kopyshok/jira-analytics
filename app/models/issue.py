@@ -139,6 +139,15 @@ class Issue(Base, SyncedMixin):
     subgroup_verified: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
     )
+    # Результат лесенки, материализованный: витрины считают агрегаты в SQL и
+    # не могут ходить вверх по родителям для каждой задачи. Пересчитывается
+    # там же, где пересчитываются категории (см. SubgroupResolver).
+    effective_subgroup_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("team_subgroups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     assigned_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     category_verified: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true(), nullable=False
