@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useTeamRegistry, useSetEmployeeSubgroup } from '../hooks/useTeamRegistry';
 import { Tabs, Table, Button, Space, App, Checkbox, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, InputNumber } from 'antd';
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
 import capacityHelp from '../../../docs/help/capacity.md?raw';
@@ -31,6 +32,8 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   const { queryParams } = useGlobalTeamFilter();
   const [showInactive, setShowInactive] = useState(false);
   const { data, isLoading } = useTeamCapacity(year, quarter, queryParams.teams, showInactive);
+  const { data: teamRegistry = [] } = useTeamRegistry();
+  const setEmployeeSubgroup = useSetEmployeeSubgroup();
   const { data: employees } = useEmployees();
   const replaceTeams = useReplaceEmployeeTeams();
   const setPrimary = useSetPrimaryTeam();
@@ -341,6 +344,31 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
               );
             }}
           />
+          {(() => {
+            // Группа показывается только для команды, под которой стоит строка,
+            // и только если у этой команды включён признак деления.
+            const teamName = r.team ?? null;
+            const registryRow = teamRegistry.find((t) => t.name === teamName);
+            if (!teamName || !registryRow?.has_subgroups) return null;
+            const current = teams.find((t) => t.team === teamName)?.subgroup_id ?? null;
+            return (
+              <Select
+                allowClear
+                size="small"
+                style={{ width: 180 }}
+                placeholder="Группа"
+                value={current}
+                options={registryRow.subgroups.map((g) => ({ value: g.id, label: g.name }))}
+                onChange={(next: string | null) =>
+                  setEmployeeSubgroup.mutate({
+                    employeeId: r.employee_id,
+                    team: teamName,
+                    subgroupId: next ?? null,
+                  })
+                }
+              />
+            );
+          })()}
           </Space>
           </div>
         </Space>
