@@ -194,6 +194,13 @@ export interface IssueTreeRootNode {
   has_children: boolean;
   descendant_count: number;
   descendant_match_count: number;
+  /** Группа внутри команды: проставленная и разрешённая лесенкой. */
+  assigned_subgroup_id?: string | null;
+  subgroup_id?: string | null;
+  subgroup_name?: string | null;
+  /** assigned | inherited | guess — откуда взялось значение. */
+  subgroup_source?: string | null;
+  subgroup_verified?: boolean;
 }
 
 export interface IssueTreeCounts {

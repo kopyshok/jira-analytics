@@ -29,6 +29,18 @@ export interface SetCategoryResponse {
 export const setIssueCategory = (issueId: string, categoryCode: string | null) =>
   api.put<SetCategoryResponse>(`/issues/${issueId}/category`, { category_code: categoryCode });
 
+export interface SetSubgroupResponse {
+  ok: boolean;
+  key: string;
+  /** Разрешённая группа после сохранения; null — команда не делится на группы. */
+  subgroup_id: string | null;
+  source: string;
+  verified: boolean;
+}
+
+export const setIssueSubgroup = (issueId: string, subgroupId: string | null) =>
+  api.put<SetSubgroupResponse>(`/issues/${issueId}/subgroup`, { subgroup_id: subgroupId });
+
 export const setIssueInclude = (issueId: string, include: boolean, recursive: boolean = false) =>
   api.put<{ ok: boolean }>(`/issues/${issueId}/include`, { include, recursive });
 

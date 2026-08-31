@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, memo, type HTMLAttributes, type Key, type SyntheticEvent } from 'react';
+import { useTeamRegistry } from '../hooks/useTeamRegistry';
+import { useSetIssueSubgroup } from '../hooks/useIssueTree';
 import {
   Button, Space, Table, Tag, App,
   Select, Typography, Modal, Checkbox,
@@ -214,9 +216,24 @@ export default function CategoriesEditorPage() {
   const SEARCH_MODE: SearchMode = (import.meta.env.VITE_CATEGORIES_SEARCH_MODE === 'filter') ? 'filter' : 'jump';
   const [jumpedKey, setJumpedKey] = useState<string | null>(null);
 
+  // Группы внутри команд. Колонка появляется, только если хоть у одной
+  // команды включён признак деления — у остальных стопка как раньше.
+  const { data: teamRegistry = [] } = useTeamRegistry();
+  const setIssueSubgroupMut = useSetIssueSubgroup();
+  const subgroupOptions = useMemo(
+    () =>
+      teamRegistry
+        .filter((t) => t.has_subgroups)
+        .flatMap((t) =>
+          t.subgroups.map((g) => ({ value: g.id, label: g.name, team: t.name })),
+        ),
+    [teamRegistry],
+  );
+  const anyTeamSplit = subgroupOptions.length > 0;
+
   const [widths, setWidths] = useState<Record<string, number>>({
     key: 130, summary: 380, status: 140, statusChanged: 150, goals: 110,
-    category: 260, include: 80,
+    category: 260, subgroup: 170, include: 80,
     verify: 160,
   });
   const [innerTab, setInnerTab] = useState<InnerTab>('stack');
@@ -696,6 +713,40 @@ export default function CategoriesEditorPage() {
           />
         ),
       },
+      ...(anyTeamSplit ? [{
+        title: 'Группа',
+        key: 'subgroup',
+        width: widths.subgroup,
+        render: (_: unknown, record: TreeNodeWithChildren) => {
+          if (record.issue_type === 'group' || record.is_context) return null;
+          const assigned = record.assigned_subgroup_id ?? null;
+          const resolved = record.subgroup_id ?? null;
+          if (!resolved && !assigned && subgroupOptions.length === 0) return null;
+          const source = record.subgroup_source;
+          const hint =
+            source === 'inherited'
+              ? 'Унаследовано от родителя'
+              : source === 'guess'
+                ? 'Предположение по исполнителю'
+                : undefined;
+          return (
+            <Tooltip title={hint}>
+              <Select
+                allowClear
+                size="small"
+                style={{ width: '100%', opacity: assigned ? 1 : 0.65 }}
+                placeholder="Группа"
+                value={resolved ?? undefined}
+                options={subgroupOptions}
+                loading={setIssueSubgroupMut.isPending}
+                onChange={(next: string | null) =>
+                  setIssueSubgroupMut.mutate({ issueId: record.id, subgroupId: next ?? null })
+                }
+              />
+            </Tooltip>
+          );
+        },
+      }] : []),
       {
         title: 'Статус',
         dataIndex: 'status',
@@ -776,6 +827,7 @@ export default function CategoriesEditorPage() {
     widths, jiraBaseUrl,
     pendingCats, categoryOptions, categoryLabels, savingRowId,
     setPendingCategory, toggleInclude, handleResize, handleSaveRow,
+    anyTeamSplit, subgroupOptions, setIssueSubgroupMut,
   ]);
 
   const stackExtraColumns = useMemo(() => [
