@@ -26,6 +26,7 @@ from app.services.kpi.breakdown_table import build_table
 from app.services.kpi.conditions import ConditionSet
 from app.services.kpi.preview import build_context, issue_funnel, worklog_funnel
 from app.services.kpi.settings import read_kpi_settings
+from app.services.subgroup_filter import parse_subgroups_csv
 from app.services.kpi.kpi_service import (
     CALENDAR_BUFFER_DAYS,
     build_approval_payload,
@@ -203,6 +204,7 @@ def get_report(
     month: int = Query(..., ge=1, le=12),
     months: int = MonthsParam,
     teams: Optional[str] = Query(None, description="Команды через запятую"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -216,7 +218,10 @@ def get_report(
     решать это сам, а справочник общих правил доступен только администратору.
     """
     team_list = _resolve_teams(db, teams)
-    report = report_with_approvals(db, team_list, year, month, direction=direction, months=months)
+    report = report_with_approvals(
+        db, team_list, year, month, direction=direction, months=months,
+        subgroups=parse_subgroups_csv(subgroups),
+    )
     report["summary"] = summarize_report(report["rows"])
     report["approval_enabled"] = read_kpi_settings(db).approval_enabled
     report["quarter"] = _period_quarter_payload(year, month, months)
@@ -229,6 +234,7 @@ def get_teams_summary(
     month: int = Query(..., ge=1, le=12),
     months: int = MonthsParam,
     teams: Optional[str] = Query(None, description="Команды через запятую"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -241,7 +247,10 @@ def get_teams_summary(
     фильтра, которым сужена таблица (см. ревью, ВАЖНО 11).
     """
     team_list = _resolve_teams(db, teams)
-    rows = build_teams_summary(db, team_list, year, month, direction=direction, months=months)
+    rows = build_teams_summary(
+        db, team_list, year, month, direction=direction, months=months,
+        subgroups=parse_subgroups_csv(subgroups),
+    )
     return {"year": year, "month": month, "months": months, "rows": rows}
 
 
@@ -391,12 +400,16 @@ def export_xlsx(
     month: int = Query(..., ge=1, le=12),
     months: int = MonthsParam,
     teams: Optional[str] = Query(None, description="Команды через запятую"),
+    subgroups: Optional[str] = Query(None, description="Группы внутри команды CSV"),
     direction: Optional[str] = Query(None, description="Продуктовое направление"),
     db: Session = Depends(get_db),
 ) -> Response:
     """Отчёт KPI за период в xlsx. Утверждённые кварталы выгружаются из снимка — как в отчёте (BLOCKER 1)."""
     team_list = _resolve_teams(db, teams)
-    report = report_with_approvals(db, team_list, year, month, direction=direction, months=months)
+    report = report_with_approvals(
+        db, team_list, year, month, direction=direction, months=months,
+        subgroups=parse_subgroups_csv(subgroups),
+    )
     blob = export_report_xlsx(report)
     # Имя файла — только ASCII: кириллица в заголовке Content-Disposition
     # ломает ответ (заголовки HTTP — latin-1).

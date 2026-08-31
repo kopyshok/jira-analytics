@@ -24,6 +24,7 @@ from app.services.kpi.conditions import (
 )
 from app.services.kpi.settings import KpiSettings, read_kpi_settings
 from app.services.kpi.timeliness import is_worklog_late, load_calendar
+from app.services import subgroup_filter as sgf
 from app.services.team_membership import (
     active_on_clause,
     member_intervals,
@@ -909,6 +910,7 @@ def report_with_approvals(
     month: int,
     direction: Optional[str] = None,
     months: int = 1,
+    subgroups: Optional[list[str]] = None,
 ) -> dict:
     """Отчёт по командам: утверждённые команды отдаются из снимка, остальные считаются вживую.
 
@@ -942,6 +944,14 @@ def report_with_approvals(
         approval_info[team] = {
             "approved": True, "approved_by": appr.approved_by, "approved_at": appr.approved_at.isoformat(),
         }
+
+    # КЭ — показатель человека, поэтому группа берётся по его приписке.
+    # Фильтруем здесь, а не в ``build_report``: так же режутся строки
+    # утверждённого квартала, приехавшие из снимка.
+    in_subgroups = sgf.employee_ids(db, subgroups, teams)
+    if in_subgroups is not None:
+        rows = [r for r in rows if r.get("employee_id") in in_subgroups]
+        skipped = [s for s in skipped if s.get("employee_id") in in_subgroups]
 
     rows.sort(key=lambda r: (r["total"] is None, r["total"] or 0))
     return {
@@ -1006,6 +1016,7 @@ def build_teams_summary(
     month: int,
     direction: Optional[str] = None,
     months: int = 1,
+    subgroups: Optional[list[str]] = None,
 ) -> list[dict]:
     """Итог по каждой команде за период плюс дельта к прошлому такому же периоду — двумя расчётами на всё, не на команду.
 
@@ -1025,8 +1036,13 @@ def build_teams_summary(
     пустая — сотрудник без команды), иначе для неё итог всегда был прочерк.
     """
     prev_year, prev_month = previous_period(year, month, months)
-    current = report_with_approvals(db, teams, year, month, direction=direction, months=months)
-    prior = report_with_approvals(db, teams, prev_year, prev_month, direction=direction, months=months)
+    current = report_with_approvals(
+        db, teams, year, month, direction=direction, months=months, subgroups=subgroups
+    )
+    prior = report_with_approvals(
+        db, teams, prev_year, prev_month, direction=direction, months=months,
+        subgroups=subgroups,
+    )
     current_by_team = group_rows_by_team(current["rows"])
     prior_by_team = group_rows_by_team(prior["rows"])
 
