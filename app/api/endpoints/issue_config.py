@@ -10,7 +10,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Issue, Project, PlanAudit
+from app.models import Issue, Project, PlanAudit, TeamSubgroup
 from app.schemas.issue_context import (
     IssueContextAncestor,
     IssueContextChild,
@@ -62,6 +62,14 @@ class IssueTreeNode(BaseModel):
     parent_changed: bool = False
     category_context: Optional[str] = None
     category_context_key: Optional[str] = None
+    # Группа внутри команды. resolved_* заполняются лесенкой: явно ->
+    # от родителя -> предположение по исполнителю. Пусто, если у команды
+    # выключен признак деления.
+    assigned_subgroup_id: Optional[str] = None
+    subgroup_id: Optional[str] = None
+    subgroup_name: Optional[str] = None
+    subgroup_source: Optional[str] = None
+    subgroup_verified: bool = True
     children: List["IssueTreeNode"] = []
 
 
@@ -119,6 +127,12 @@ class IssueTreeRootNode(BaseModel):
     has_children: bool = False
     descendant_count: int = 0
     descendant_match_count: int = 0
+    # Группа внутри команды — см. IssueTreeNode.
+    assigned_subgroup_id: Optional[str] = None
+    subgroup_id: Optional[str] = None
+    subgroup_name: Optional[str] = None
+    subgroup_source: Optional[str] = None
+    subgroup_verified: bool = True
 
 
 INITIATIVES_CODE = "initiatives_rfa"
@@ -175,6 +189,32 @@ def _node_matches_tab(effective_code: Optional[str], verified: bool, tab: str) -
 
 
 # --- Endpoints ---
+
+def _apply_subgroups(db: Session, nodes: list, issues: list) -> list:
+    """Дописать в узлы дерева разрешённую группу внутри команды.
+
+    Один резолвер на весь ответ: его кэши избавляют от похода в БД на каждую
+    задачу. Команда без включённого признака деления даёт пустой результат —
+    узлы остаются такими же, какими были до появления групп.
+    """
+    resolver = SubgroupResolver(db)
+    names = {g.id: g.name for g in db.query(TeamSubgroup).all()}
+    issue_by_id = {i.id: i for i in issues}
+    for node in nodes:
+        issue = issue_by_id.get(node.id)
+        if issue is None:
+            continue
+        node.assigned_subgroup_id = issue.assigned_subgroup_id
+        node.subgroup_verified = (
+            issue.subgroup_verified if issue.subgroup_verified is not None else True
+        )
+        resolution = resolver.resolve_for_issue(issue)
+        if resolution.subgroup_id:
+            node.subgroup_id = resolution.subgroup_id
+            node.subgroup_name = names.get(resolution.subgroup_id)
+            node.subgroup_source = resolution.source
+    return nodes
+
 
 @router.get("/tree", response_model=List[IssueTreeNode])
 async def get_issue_tree(
@@ -330,6 +370,7 @@ async def get_issue_tree(
         )
         roots_keep.append(ops_group)
 
+    _apply_subgroups(db, list(node_map.values()), issues)
     return roots_keep
 
 
@@ -569,6 +610,7 @@ def get_tree_roots(
         ))
 
     roots.sort(key=lambda n: n.key)
+    _apply_subgroups(db, roots, list(by_id.values()))
     return roots
 
 
@@ -1260,7 +1302,7 @@ def get_issue_children(
             .filter(Issue.parent_id.in_({c.id for c in children}))
             .distinct().all()
         }
-        return [
+        return _apply_subgroups(db, [
             IssueTreeRootNode(
                 id=ch.id,
                 key=ch.key,
@@ -1291,7 +1333,7 @@ def get_issue_children(
                 descendant_match_count=0,
             )
             for ch in children
-        ]
+        ], children)
 
     # С tab: возвращаем ПРЯМЫЕ дети parent_id, которые либо сами матчат вкладку,
     # либо имеют tab-матчащих потомков глубже. Иерархия сохраняется — PM
@@ -1404,7 +1446,7 @@ def get_issue_children(
     matched = matched[:limit]
 
     has_kids_set = {c.id for c in matched if children_by_parent.get(c.id)}
-    return [
+    return _apply_subgroups(db, [
         IssueTreeRootNode(
             id=ch.id,
             key=ch.key,
@@ -1441,4 +1483,4 @@ def get_issue_children(
             descendant_match_count=desc_match(ch.id),
         )
         for ch in matched
-    ]
+    ], matched)
