@@ -1,20 +1,22 @@
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Высота видимой области для sticky-колонки со своей прокруткой.
+ *
+ * На вход — сам узел, а не ref: колонка появляется только после загрузки
+ * сценария, и замер по ref успевал отработать вхолостую по пустой ссылке.
  *
  * Меряем реальный контейнер прокрутки, а не окно: в тёмной теме страница
  * листается внутри собственного вьюпорта оболочки, и `100vh` там врёт —
  * нижняя карточка уезжала за край.
  */
 export function useStickyViewportHeight(
-  ref: RefObject<HTMLElement | null>,
+  el: HTMLElement | null,
   offset: number,
 ): number | undefined {
   const [height, setHeight] = useState<number>();
 
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
 
     let scroller: HTMLElement | null = null;
@@ -39,7 +41,7 @@ export function useStickyViewportHeight(
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [ref, offset]);
+  }, [el, offset]);
 
   return height;
 }

@@ -309,8 +309,8 @@ export default function PlanningPage() {
   // обновляем после применения инверсии.
   // Правая колонка листается сама по себе — иначе её низ достижим только
   // после прокрутки всего бэклога. 72 = отступ sticky сверху + воздух снизу.
-  const rightColumnRef = useRef<HTMLDivElement>(null);
-  const rightColumnHeight = useStickyViewportHeight(rightColumnRef, 72);
+  const [rightColumnEl, setRightColumnEl] = useState<HTMLDivElement | null>(null);
+  const rightColumnHeight = useStickyViewportHeight(rightColumnEl, 72);
 
   const flipPrevTopsRef = useRef<Map<string, number>>(new Map());
   const allocIdsKey = orderedAllocations.map((a) => a.id).join(',');
@@ -962,7 +962,7 @@ export default function PlanningPage() {
                 контейнера прокрутки — в Aurora страница листается внутри
                 собственного вьюпорта, и 100vh там обрезал нижнюю карточку. */}
             <div
-              ref={rightColumnRef}
+              ref={setRightColumnEl}
               style={{
                 position: 'sticky',
                 top: 56,
