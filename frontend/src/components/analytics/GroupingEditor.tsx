@@ -123,7 +123,14 @@ export default function GroupingEditor() {
     const nextHidden = new Set(hidden);
     if (nextHidden.has(level)) nextHidden.delete(level);
     else nextHidden.add(level);
-    save({ ...layout, hidden_levels: Array.from(nextHidden), active_preset: 'custom' });
+    // Сохраняем порядок целиком: иначе уровень, дописанный в конец, не попадёт
+    // в сохранённую раскладку и снова окажется скрытым.
+    save({
+      ...layout,
+      group_order: order,
+      hidden_levels: Array.from(nextHidden),
+      active_preset: 'custom',
+    });
   };
 
   const applyPreset = (preset: typeof PRESETS[number]) => {
