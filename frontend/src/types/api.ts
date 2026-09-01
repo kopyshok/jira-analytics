@@ -1022,6 +1022,8 @@ export interface AnalyticsIssueNode {
   /** issue — задача, context — родитель без своих часов, own — собственные списания родителя */
   row_kind?: 'issue' | 'context' | 'own';
   children?: AnalyticsIssueNode[];
+  /** Группа внутри команды, к которой относится задача. */
+  subgroup_name?: string | null;
 }
 
 export interface AnalyticsCategoryNode {

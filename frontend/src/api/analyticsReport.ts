@@ -38,7 +38,14 @@ export function fetchIssueWorklogs(issueId: string, start: string, end: string, 
   );
 }
 
-export type AnalyticsLevel = 'team' | 'role' | 'employee' | 'work_type' | 'category' | 'issue';
+export type AnalyticsLevel =
+  | 'team'
+  | 'subgroup'
+  | 'role'
+  | 'employee'
+  | 'work_type'
+  | 'category'
+  | 'issue';
 
 export interface AnalyticsLayout {
   group_order?: AnalyticsLevel[];
