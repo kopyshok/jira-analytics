@@ -37,6 +37,8 @@ interface Props {
   hideWeekends?: boolean;
   highlightedEmployeeId?: string | null;
   onEmployeeRowClick?: (employeeId: string | null) => void;
+  /** Секции групп команды: {id инициативы: название группы}. */
+  sectionByItem?: Record<string, string>;
 }
 
 export default function GanttChart({
@@ -58,6 +60,7 @@ export default function GanttChart({
   conflictAssignmentIds,
   onAssignmentClick,
   hideWeekends = false,
+  sectionByItem,
   highlightedEmployeeId,
   onEmployeeRowClick,
 }: Props) {
@@ -308,6 +311,7 @@ export default function GanttChart({
             conflictAssignmentIds={conflictAssignmentIds}
             onAssignmentClick={onAssignmentClick}
             highlightedEmployeeId={highlightedEmployeeId}
+            sectionByItem={sectionByItem}
             onEmployeeRowClick={onEmployeeRowClick}
             quarterEndDate={qEndIso}
           />
