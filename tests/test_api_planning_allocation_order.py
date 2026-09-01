@@ -195,6 +195,30 @@ def test_sync_backlog_appends_new_to_bottom(db_session):
         app.dependency_overrides.clear()
 
 
+def test_read_picks_up_new_backlog_item_without_sync(db_session):
+    """Self-heal на чтении кэшируется по слепку состояния — но новый элемент
+    бэклога обязан появиться в черновике уже на следующем чтении."""
+    from app.models import BacklogItem
+
+    _seed_three_items(db_session)
+    _override(db_session)
+    try:
+        client = TestClient(app)
+        sid = _create_scenario(client)
+        items_before, _ = _ids_in_order(client, sid)
+        assert items_before == ["b1", "b2", "b3"]
+        # Второе чтение — кэш слепка попадает.
+        assert _ids_in_order(client, sid)[0] == ["b1", "b2", "b3"]
+
+        db_session.add(BacklogItem(id="b4", title="Delta", priority=None))
+        db_session.commit()
+
+        items_after, _ = _ids_in_order(client, sid)
+        assert items_after == ["b1", "b2", "b3", "b4"], items_after
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_reorder_blocked_for_approved_scenario(db_session):
     from app.models import PlanningScenario
 

@@ -112,28 +112,38 @@ def descendant_backlog_ids_of_included_ancestors(db: Session) -> set[str]:
     }
     if not included_issue_ids:
         return set()
-    parent_of: dict[str, str] = {
-        iid: pid
-        for iid, pid in db.query(Issue.id, Issue.parent_id)
-        .filter(Issue.parent_id.isnot(None))
-        .all()
-    }
+    # Спускаемся вниз слоями от утверждённых предков по индексу parent_id.
+    # Раньше строили карту «ребёнок → родитель» по ВСЕМ задачам (сотни тысяч
+    # строк) и шли вверх от каждого элемента бэклога — ~300 мс на каждый вызов,
+    # а вызывается он на каждом чтении раскладок сценария.
+    descendant_issue_ids: set[str] = set()
+    frontier: set[str] = set(included_issue_ids)
+    while frontier:
+        next_layer: set[str] = set()
+        batch_ids = list(frontier)
+        for start in range(0, len(batch_ids), 500):
+            rows = (
+                db.query(Issue.id)
+                .filter(Issue.parent_id.in_(batch_ids[start : start + 500]))
+                .all()
+            )
+            for (child_id,) in rows:
+                if child_id in included_issue_ids or child_id in descendant_issue_ids:
+                    continue
+                next_layer.add(child_id)
+        descendant_issue_ids |= next_layer
+        frontier = next_layer
+    if not descendant_issue_ids:
+        return set()
     descendants: set[str] = set()
-    for bid, iid in (
-        db.query(BacklogItem.id, BacklogItem.issue_id)
-        .filter(BacklogItem.issue_id.isnot(None))
-        .all()
-    ):
-        if iid in included_issue_ids:
-            continue  # сам утверждённый предок
-        cur = parent_of.get(iid)
-        seen: set[str] = set()
-        while cur and cur not in seen:
-            seen.add(cur)
-            if cur in included_issue_ids:
-                descendants.add(bid)
-                break
-            cur = parent_of.get(cur)
+    ids = list(descendant_issue_ids)
+    for start in range(0, len(ids), 500):
+        rows = (
+            db.query(BacklogItem.id)
+            .filter(BacklogItem.issue_id.in_(ids[start : start + 500]))
+            .all()
+        )
+        descendants |= {bid for (bid,) in rows}
     return descendants
 
 

@@ -259,9 +259,11 @@ export default function PlanningPage() {
     useScenarioAllocations(scenarioId);
   const { data: continuation } = useScenarioContinuationInfo(scenarioId ?? undefined);
 
-  const patchAlloc = usePatchAllocation();
-  const patchAssignee = usePatchAllocationAssignee();
-  const patchBacklogPriority = usePatchBacklogPriority();
+  // Берём только mutate: сам объект мутации пересоздаётся на каждый рендер и
+  // ломал бы мемоизацию строк через колбэки ниже.
+  const { mutate: patchAlloc } = usePatchAllocation();
+  const { mutate: patchAssignee } = usePatchAllocationAssignee();
+  const { mutate: patchBacklogPriority } = usePatchBacklogPriority();
   const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
   const approve = useApproveScenario();
@@ -294,7 +296,7 @@ export default function PlanningPage() {
 
   // Порядок строк — целиком с бэка (sort_order). Чек поднимает строку
   // наверх, снятие — оставляет на месте, drag&drop переписывает порядок.
-  const orderedAllocations = allocations ?? [];
+  const orderedAllocations = useMemo(() => allocations ?? [], [allocations]);
 
   // FLIP-анимация перестановок: меряем top всех строк по data-alloc-id
   // ДО render'а (useLayoutEffect возвращает функцию, она НЕ для cleanup —
@@ -358,6 +360,9 @@ export default function PlanningPage() {
     flipPrevTopsRef.current = nextTops;
   }, [allocIdsKey]);
 
+  // Стабильные ссылки для мемоизированных строк: новый массив на каждый рендер
+  // дёргал бы dnd-контекст и пересобирал выпадающий список в каждой строке.
+  const sortableIds = useMemo(() => orderedAllocations.map((a) => a.id), [orderedAllocations]);
   const reorderAllocs = useReorderAllocations();
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
     if (!scenarioId || !isDraft) return;
@@ -388,6 +393,14 @@ export default function PlanningPage() {
   const { data: resourceSummary } = useScenarioResourceSummary(
     scenarioId ?? '',
     !!scenario?.team,
+  );
+
+  const assigneeOptions = useMemo(
+    () => (resourceBase?.employees ?? []).map((emp) => ({
+      label: emp.display_name,
+      value: emp.employee_id,
+    })),
+    [resourceBase?.employees],
   );
 
   const isDraft = scenario?.status === 'draft';
@@ -429,7 +442,7 @@ export default function PlanningPage() {
       flashRow(alloc.id);
       pulseRoles(rolesAffectedByAllocation(alloc, resourceBase?.employees));
       scrollRowIntoView(alloc.id);
-      patchAlloc.mutate(
+      patchAlloc(
         { scenarioId, allocId: alloc.id, data: { included: !alloc.included } },
         { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
       );
@@ -444,7 +457,7 @@ export default function PlanningPage() {
 
   const handlePriorityChange = useCallback(
     (backlogItemId: string, priority: number | null) => {
-      patchBacklogPriority.mutate({ backlogItemId, priority });
+      patchBacklogPriority({ backlogItemId, priority });
     },
     [patchBacklogPriority],
   );
@@ -452,7 +465,7 @@ export default function PlanningPage() {
   const handleAssigneeChange = useCallback(
     (allocId: string, employeeId: string | null) => {
       if (!scenarioId) return;
-      patchAssignee.mutate({ scenarioId, allocId, assigneeEmployeeId: employeeId });
+      patchAssignee({ scenarioId, allocId, assigneeEmployeeId: employeeId });
     },
     [patchAssignee, scenarioId],
   );
@@ -791,7 +804,7 @@ export default function PlanningPage() {
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext
-                    items={orderedAllocations.map((a) => a.id)}
+                    items={sortableIds}
                     strategy={verticalListSortingStrategy}
                   >
                     <div>
@@ -808,11 +821,11 @@ export default function PlanningPage() {
                       gridTemplate={GRID}
                       gridGap={GRID_GAP}
                       continuationInfo={continuation?.info_by_allocation_id?.[a.id]}
-                      employees={resourceBase?.employees}
+                      assigneeOptions={assigneeOptions}
                       roles={roles}
                       jiraBaseUrl={jiraBaseUrl}
                       resourceTotalForBacklog={resourceSummary?.available_for_backlog_total ?? 0}
-                      registerRef={(el) => registerRowRef(a.id, el)}
+                      registerRef={registerRowRef}
                       onToggle={toggleAllocation}
                       onPriorityChange={handlePriorityChange}
                       onAssigneeChange={handleAssigneeChange}

@@ -1,4 +1,4 @@
-import { memo, type CSSProperties } from 'react';
+import { memo, useCallback, type CSSProperties } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Checkbox, InputNumber, Select, Tag } from 'antd';
@@ -10,7 +10,7 @@ import { statusTagColor } from '../../utils/status';
 import { getRoleColor } from '../../utils/roles';
 import { OPO_COLOR } from '../../utils/opo';
 import { DARK_THEME, FONTS } from '../../utils/constants';
-import type { AllocationResponse, ResourceEmployee, Role } from '../../types/api';
+import type { AllocationResponse, Role } from '../../types/api';
 import type { ContinuationInfoRow } from '../../api/planning';
 
 export type BacklogAllocRowProps = {
@@ -24,11 +24,11 @@ export type BacklogAllocRowProps = {
   gridTemplate: string;
   gridGap: number;
   continuationInfo: ContinuationInfoRow | undefined;
-  employees: ResourceEmployee[] | undefined;
+  assigneeOptions: { label: string; value: string }[];
   roles: Role[];
   jiraBaseUrl: string;
   resourceTotalForBacklog: number;
-  registerRef: (el: HTMLDivElement | null) => void;
+  registerRef: (id: string, el: HTMLDivElement | null) => void;
   onToggle: (a: AllocationResponse) => void;
   onPriorityChange: (backlogItemId: string, priority: number | null) => void;
   onAssigneeChange: (allocId: string, employeeId: string | null) => void;
@@ -46,7 +46,7 @@ function BacklogAllocRowBase({
   gridTemplate,
   gridGap,
   continuationInfo,
-  employees,
+  assigneeOptions,
   roles,
   jiraBaseUrl,
   resourceTotalForBacklog,
@@ -57,6 +57,14 @@ function BacklogAllocRowBase({
   onOpenBreakdown,
 }: BacklogAllocRowProps) {
   const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id: a.id });
+
+  const setRowRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      setNodeRef(el);
+      registerRef(a.id, el);
+    },
+    [setNodeRef, registerRef, a.id],
+  );
 
   const eff = effectiveEstimate(a);
   const an = eff.analyst;
@@ -103,10 +111,7 @@ function BacklogAllocRowBase({
   return (
     <div data-flip-wrapper="" data-alloc-id={a.id}>
     <div
-      ref={(el) => {
-        setNodeRef(el);
-        registerRef(el);
-      }}
+      ref={setRowRef}
       onClick={() => onToggle(a)}
       className={className}
       style={style}
@@ -257,12 +262,7 @@ function BacklogAllocRowBase({
             allowClear
             disabled={!isDraft}
             style={{ width: '100%', fontSize: 12 }}
-            options={
-              employees?.map((emp) => ({
-                label: emp.display_name,
-                value: emp.employee_id,
-              })) ?? []
-            }
+            options={assigneeOptions}
             onChange={(value: string | undefined) => onAssigneeChange(a.id, value ?? null)}
           />
         )}

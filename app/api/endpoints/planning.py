@@ -23,16 +23,19 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.database import get_db
 from app.models import (
     Absence,
     AbsenceReason,
+    AppSetting,
     BacklogItem,
     Employee,
+    HierarchyRule,
     Issue,
     PlanningScenario,
+    Project,
     RoleCapacityRule,
     ScenarioAbsenceSnapshot,
     ScenarioAllocation,
@@ -112,9 +115,42 @@ def _backlog_item_is_leaf(item: BacklogItem, rules) -> bool:
     )
 
 
+# Подпись состояния, от которого зависит self-heal раскладок черновика.
+# Пока она не изменилась, пересобирать список кандидатов бессмысленно —
+# результат будет тот же, а стоит он ~180 мс на каждое чтение раскладок.
+# ponytail: кэш живёт в памяти процесса; при нескольких воркерах каждый
+# прогреется сам. Если понадобится общий кэш — вынести в БД/Redis.
+_ALLOC_HEAL_SIGNATURES: dict[str, tuple] = {}
+
+
+def _alloc_heal_signature(db: Session) -> tuple:
+    """Дёшево (4 агрегата) снять слепок всего, на что смотрит self-heal."""
+    items_count, items_ts = db.query(
+        func.count(BacklogItem.id), func.max(BacklogItem.updated_at)
+    ).one()
+    alloc_count, alloc_ts = db.query(
+        func.count(ScenarioAllocation.id), func.max(ScenarioAllocation.updated_at)
+    ).one()
+    rules_ts = db.query(func.max(HierarchyRule.updated_at)).scalar()
+    settings_ts = db.query(func.max(AppSetting.updated_at)).scalar()
+    return (
+        items_count,
+        str(items_ts),
+        alloc_count,
+        str(alloc_ts),
+        str(rules_ts),
+        str(settings_ts),
+    )
+
+
 def _filter_leaf_backlog_ids(db: Session, item_ids) -> set:
     """Subset of item_ids whose Issue is an explicit leaf — chunked для
-    избежания SQLite parameter limit и больших WHERE IN."""
+    избежания SQLite parameter limit и больших WHERE IN.
+
+    Тянем только те четыре поля, что нужны правилам иерархии: гидрация полных
+    ORM-объектов BacklogItem+Issue+Project на всём бэклоге стоила ~290 мс на
+    каждый GET раскладок.
+    """
     rules = load_rules(db)
     if not item_ids:
         return set()
@@ -124,14 +160,20 @@ def _filter_leaf_backlog_ids(db: Session, item_ids) -> set:
     for start in range(0, len(ids), chunk):
         batch = ids[start : start + chunk]
         rows = (
-            db.query(BacklogItem)
-            .options(joinedload(BacklogItem.issue).joinedload(Issue.project))
+            db.query(BacklogItem.id, Project.key, Issue.issue_type, Issue.parent_id)
+            .join(Issue, BacklogItem.issue_id == Issue.id)
+            .outerjoin(Project, Issue.project_id == Project.id)
             .filter(BacklogItem.id.in_(batch))
             .all()
         )
-        for it in rows:
-            if _backlog_item_is_leaf(it, rules):
-                leaves.add(it.id)
+        for item_id, project_key, issue_type, parent_id in rows:
+            if is_explicit_leaf(
+                rules,
+                project_key=project_key or "",
+                issue_type=issue_type or "",
+                has_parent=parent_id is not None,
+            ):
+                leaves.add(item_id)
     return leaves
 
 
@@ -1323,7 +1365,10 @@ async def list_scenario_allocations(
     # неархивными BacklogItem, которых ещё нет, И чистим уже добавленные
     # leaf-allocations (OS/PMD). Идемпотентно. Закрывает пробел для
     # исторических scenario'в.
-    if scenario.status == "draft":
+    # Запускаем только когда изменилось что-то, на что self-heal смотрит:
+    # раньше он крутился на каждом чтении, и клик по галочке ждал его дважды.
+    signature = _alloc_heal_signature(db) if scenario.status == "draft" else None
+    if scenario.status == "draft" and _ALLOC_HEAL_SIGNATURES.get(scenario_id) != signature:
         existing_ids = {
             bid
             for (bid,) in db.query(ScenarioAllocation.backlog_item_id)
@@ -1394,6 +1439,10 @@ async def list_scenario_allocations(
             changed = True
         if changed:
             db.commit()
+            # После правок подпись другая — пересчитываем, иначе следующий
+            # запрос прогонит self-heal вхолостую.
+            signature = _alloc_heal_signature(db)
+        _ALLOC_HEAL_SIGNATURES[scenario_id] = signature
 
     query = (
         db.query(ScenarioAllocation, BacklogItem)
@@ -1417,15 +1466,16 @@ async def list_scenario_allocations(
         allowed_categories = [BACKLOG_CATEGORY]
         if was_approved:
             allowed_categories.append("quarterly_tasks")
-        allowed_issue_ids = (
-            db.query(Issue.id)
-            .filter(Issue.category.in_(allowed_categories))
-            .scalar_subquery()
-        )
-        query = query.filter(
+        # Фильтр через outer join, а не `issue_id IN (подзапрос)`: подзапрос
+        # заставлял SQLite перебирать всю таблицу задач (сотни тысяч строк)
+        # на каждое чтение раскладок — ~100 мс на пустом месте.
+        category_issue = aliased(Issue)
+        query = query.outerjoin(
+            category_issue, BacklogItem.issue_id == category_issue.id
+        ).filter(
             or_(
                 BacklogItem.issue_id.is_(None),
-                BacklogItem.issue_id.in_(allowed_issue_ids),
+                category_issue.category.in_(allowed_categories),
             )
         )
 
