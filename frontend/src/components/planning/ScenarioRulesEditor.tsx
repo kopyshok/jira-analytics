@@ -75,6 +75,12 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
     workTypes.map((wt) => ({ value: wt.id, label: wt.label })),
   [workTypes]);
 
+  // Подписи для сортировки: сравниваем то, что видит человек, а не коды.
+  const roleLabelOf = (role: string | null) =>
+    roleOptions.find((o) => o.value === toRoleUi(role))?.label ?? '';
+  const workTypeLabelOf = (id: string) =>
+    workTypeOptions.find((o) => o.value === id)?.label ?? '';
+
   const updateRow = (key: string, patch: Partial<RuleDraft>) => {
     setDrafts((prev) => prev.map((d) => d._key === key ? { ...d, ...patch } : d));
     setDirty(true);
@@ -140,6 +146,8 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
       title: 'Роль',
       dataIndex: 'role',
       width: 160,
+      sorter: (a: RuleDraft, b: RuleDraft) =>
+        roleLabelOf(a.role).localeCompare(roleLabelOf(b.role), 'ru'),
       render: (_: unknown, record: RuleDraft) => (
         <Select
           size="small"
@@ -153,6 +161,8 @@ export default function ScenarioRulesEditor({ scenarioId }: Props) {
     {
       title: 'Вид работ',
       dataIndex: 'work_type_id',
+      sorter: (a: RuleDraft, b: RuleDraft) =>
+        workTypeLabelOf(a.work_type_id).localeCompare(workTypeLabelOf(b.work_type_id), 'ru'),
       render: (_: unknown, record: RuleDraft) => {
         const isDup = duplicateKeys.has(`${record.role ?? '__all__'}::${record.work_type_id}`);
         return (
