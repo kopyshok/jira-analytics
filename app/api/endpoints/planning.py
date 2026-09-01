@@ -32,6 +32,7 @@ from app.models import (
     AppSetting,
     BacklogItem,
     Employee,
+    EmployeeTeam,
     HierarchyRule,
     Issue,
     PlanningScenario,
@@ -344,6 +345,8 @@ class AllocationResponse(BaseModel):
     status_category: Optional[str] = None
     issue_id: Optional[str] = None
     has_children_in_backlog: bool = False
+    # Группа внутри команды. None — команда без деления либо группа не определена.
+    subgroup_id: Optional[str] = None
 
 
 class AllocationAssigneePatch(BaseModel):
@@ -373,6 +376,7 @@ class ResourceBaseEmployeeOut(BaseModel):
     shared_with: List[str] = []
     committed_hours_all_teams: float = 0.0
     is_overcommitted: bool = False
+    subgroup_id: Optional[str] = None
 
 
 class ResourceBaseOut(BaseModel):
@@ -430,11 +434,24 @@ def _to_scenario_resp(s: PlanningScenario) -> ScenarioResponse:
     )
 
 
+def _subgroup_by_employee(db: Session, team: Optional[str]) -> dict:
+    """Группа сотрудника внутри команды. Пусто — у команды нет деления."""
+    if not team:
+        return {}
+    rows = (
+        db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
+        .filter(EmployeeTeam.team == team, EmployeeTeam.subgroup_id.isnot(None))
+        .all()
+    )
+    return {emp_id: sg_id for emp_id, sg_id in rows}
+
+
 def _to_allocation_resp(
     alloc: ScenarioAllocation,
     item: BacklogItem,
     employee_role_by_name: dict | None = None,
     parents_in_backlog: set | None = None,
+    subgroup_by_employee: dict | None = None,
 ) -> AllocationResponse:
     jira_assignee_name = item.issue.assignee_display_name if item.issue else None
     resolved_role = (
@@ -448,6 +465,11 @@ def _to_allocation_resp(
     has_children = bool(
         parents_in_backlog and item.issue_id and item.issue_id in parents_in_backlog
     )
+    # Группа берётся из материализованного поля задачи — там уже отработала
+    # лесенка резолвера. Идея без задачи опирается на группу исполнителя.
+    subgroup_id = item.issue.effective_subgroup_id if item.issue else None
+    if not subgroup_id and subgroup_by_employee and item.assignee_employee_id:
+        subgroup_id = subgroup_by_employee.get(item.assignee_employee_id)
     return AllocationResponse(
         id=alloc.id,
         scenario_id=alloc.scenario_id,
@@ -482,6 +504,7 @@ def _to_allocation_resp(
         status_category=item.issue.status_category if item.issue else None,
         issue_id=item.issue_id,
         has_children_in_backlog=has_children,
+        subgroup_id=subgroup_id,
     )
 
 
@@ -503,6 +526,7 @@ def _resource_to_response(base) -> ResourceBaseOut:
                 shared_with=list(getattr(e, "shared_with", []) or []),
                 committed_hours_all_teams=getattr(e, "committed_hours_all_teams", 0.0),
                 is_overcommitted=bool(getattr(e, "is_overcommitted", False)),
+                subgroup_id=getattr(e, "subgroup_id", None),
             )
             for e in base.employees
         ],
@@ -1503,7 +1527,14 @@ async def list_scenario_allocations(
     else:
         parents_in_backlog = set()
 
-    return [_to_allocation_resp(alloc, item, emp_role_by_name, parents_in_backlog) for alloc, item in rows]
+    subgroup_by_employee = _subgroup_by_employee(db, scenario.team)
+
+    return [
+        _to_allocation_resp(
+            alloc, item, emp_role_by_name, parents_in_backlog, subgroup_by_employee
+        )
+        for alloc, item in rows
+    ]
 
 
 @router.patch(
@@ -1620,7 +1651,9 @@ async def patch_allocation(
         .filter(BacklogItem.id == alloc.backlog_item_id)
         .first()
     )
-    return _to_allocation_resp(alloc, item)
+    return _to_allocation_resp(
+        alloc, item, subgroup_by_employee=_subgroup_by_employee(db, scenario.team)
+    )
 
 
 @router.patch(
@@ -1675,7 +1708,11 @@ async def patch_allocation_assignee(
         .filter(BacklogItem.id == backlog_item.id)
         .first()
     )
-    return _to_allocation_resp(alloc, backlog_item)
+    return _to_allocation_resp(
+        alloc,
+        backlog_item,
+        subgroup_by_employee=_subgroup_by_employee(db, scenario.team),
+    )
 
 
 # === Scenario resource base ===

@@ -40,11 +40,13 @@ import {
   useScenarioResourceSummary,
   useUpdateScenario,
   usePatchAllocationAssignee,
+  useSetAllocationSubgroup,
   useReorderAllocations,
   useCapacityDiff,
   useAcknowledgeDrift,
   usePatchBacklogPriority,
 } from '../hooks/usePlanning';
+import SubgroupSectionHeader from '../components/planning/SubgroupSectionHeader';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
@@ -59,6 +61,8 @@ import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
 
 const GRID = '24px 36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
+// Та же сетка + колонка «Группа» после исполнителя — для команд с делением.
+const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(0, 1fr) 150px 140px 180px 260px 90px';
 const GRID_GAP = 8;
 
 
@@ -362,7 +366,6 @@ export default function PlanningPage() {
 
   // Стабильные ссылки для мемоизированных строк: новый массив на каждый рендер
   // дёргал бы dnd-контекст и пересобирал выпадающий список в каждой строке.
-  const sortableIds = useMemo(() => orderedAllocations.map((a) => a.id), [orderedAllocations]);
   const reorderAllocs = useReorderAllocations();
   const handleDragEnd = ({ active: dragActive, over }: DragEndEvent) => {
     if (!scenarioId || !isDraft) return;
@@ -371,6 +374,14 @@ export default function PlanningPage() {
     const oldIndex = ids.indexOf(String(dragActive.id));
     const newIndex = ids.indexOf(String(over.id));
     if (oldIndex < 0 || newIndex < 0) return;
+    // Перетаскивание живёт внутри своей группы: группа меняется выпадашкой,
+    // а не броском строки — иначе один жест значит две разные вещи.
+    if (
+      (orderedAllocations[oldIndex].subgroup_id ?? '') !==
+      (orderedAllocations[newIndex].subgroup_id ?? '')
+    ) {
+      return;
+    }
     const next = ids.slice();
     next.splice(oldIndex, 1);
     next.splice(newIndex, 0, String(dragActive.id));
@@ -468,6 +479,71 @@ export default function PlanningPage() {
       patchAssignee({ scenarioId, allocId, assigneeEmployeeId: employeeId });
     },
     [patchAssignee, scenarioId],
+  );
+
+  // === Группы внутри команды =============================================
+  // Список групп приходит вместе со сводкой ресурса. Пусто — у команды нет
+  // деления, и раздел выглядит ровно как до правки.
+  const subgroups = useMemo(() => resourceSummary?.subgroups ?? [], [resourceSummary]);
+  const hasSubgroups = subgroups.length > 0;
+  const subgroupOptions = useMemo(
+    () => subgroups.map((g) => ({ label: g.name, value: g.id })),
+    [subgroups],
+  );
+  const subgroupOfAlloc = useCallback(
+    (a: AllocationResponse) => a.subgroup_id ?? '',
+    [],
+  );
+
+  const sections = useMemo(() => {
+    if (!hasSubgroups) {
+      return [{ id: null as string | null, name: '', items: orderedAllocations }];
+    }
+    const byGroup = new Map<string, AllocationResponse[]>();
+    for (const a of orderedAllocations) {
+      const key = subgroupOfAlloc(a);
+      const bucket = byGroup.get(key);
+      if (bucket) bucket.push(a);
+      else byGroup.set(key, [a]);
+    }
+    const out = subgroups
+      .map((g) => ({ id: g.id as string | null, name: g.name, items: byGroup.get(g.id) ?? [] }))
+      .filter((sec) => sec.items.length > 0);
+    const orphans = byGroup.get('');
+    if (orphans?.length) out.push({ id: '', name: 'Без группы', items: orphans });
+    return out;
+  }, [hasSubgroups, subgroups, orderedAllocations, subgroupOfAlloc]);
+
+  // Свёрнутые секции живут в браузере — у каждого планировщика свои.
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('planning.collapsedSubgroups');
+      return new Set<string>(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const toggleSection = useCallback((id: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem('planning.collapsedSubgroups', JSON.stringify([...next]));
+      } catch {
+        // приватный режим браузера — просто не запоминаем
+      }
+      return next;
+    });
+  }, []);
+
+  const setSubgroup = useSetAllocationSubgroup();
+  const handleSubgroupChange = useCallback(
+    (issueId: string, subgroupId: string | null) => {
+      if (!scenarioId) return;
+      setSubgroup.mutate({ scenarioId, issueId, subgroupId });
+    },
+    [setSubgroup, scenarioId],
   );
 
   const handleOpenBreakdown = useCallback((issueId: string, issueKey: string) => {
@@ -756,7 +832,7 @@ export default function PlanningPage() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: GRID,
+                    gridTemplateColumns: hasSubgroups ? GRID_WITH_SUBGROUP : GRID,
                     columnGap: GRID_GAP,
                     padding: compact ? '4px 14px' : '8px 14px',
                     borderBottom: `1px solid ${DARK_THEME.border}`,
@@ -784,6 +860,7 @@ export default function PlanningPage() {
                     <UserOutlined className="icon-bob" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
                     Исполнитель
                   </span>
+                  {hasSubgroups && <span>Группа</span>}
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <ShopOutlined className="icon-wiggle" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
                     Заказчик
@@ -803,42 +880,64 @@ export default function PlanningPage() {
                   modifiers={[restrictToVerticalAxis]}
                   onDragEnd={handleDragEnd}
                 >
-                  <SortableContext
-                    items={sortableIds}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div>
-                  {orderedAllocations.map((a) => (
-                    <BacklogAllocRow
-                      key={a.id}
-                      alloc={a}
-                      scenarioId={scenarioId!}
-                      scenarioStatus={(scenario?.status ?? 'draft') as 'draft' | 'approved'}
-                      isDraft={isDraft}
-                      compact={compact}
-                      flashing={flashingIds.has(a.id)}
-                      rowStateClass={rowStateClass(a)}
-                      gridTemplate={GRID}
-                      gridGap={GRID_GAP}
-                      continuationInfo={continuation?.info_by_allocation_id?.[a.id]}
-                      assigneeOptions={assigneeOptions}
-                      roles={roles}
-                      jiraBaseUrl={jiraBaseUrl}
-                      resourceTotalForBacklog={resourceSummary?.available_for_backlog_total ?? 0}
-                      registerRef={registerRowRef}
-                      onToggle={toggleAllocation}
-                      onPriorityChange={handlePriorityChange}
-                      onAssigneeChange={handleAssigneeChange}
-                      onOpenBreakdown={handleOpenBreakdown}
-                    />
-                  ))}
+                  <div>
+                  {sections.map((section) => {
+                    const collapsed = section.id !== null && collapsedSections.has(section.id);
+                    return (
+                      <div key={section.id ?? '__all__'}>
+                        {section.id !== null && (
+                          <SubgroupSectionHeader
+                            name={section.name}
+                            items={section.items}
+                            collapsed={collapsed}
+                            roles={roles}
+                            onToggle={() => toggleSection(section.id!)}
+                          />
+                        )}
+                        {!collapsed && (
+                          <SortableContext
+                            items={section.items.map((a) => a.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div>
+                              {section.items.map((a) => (
+                                <BacklogAllocRow
+                                  key={a.id}
+                                  alloc={a}
+                                  scenarioId={scenarioId!}
+                                  scenarioStatus={(scenario?.status ?? 'draft') as 'draft' | 'approved'}
+                                  isDraft={isDraft}
+                                  compact={compact}
+                                  flashing={flashingIds.has(a.id)}
+                                  rowStateClass={rowStateClass(a)}
+                                  gridTemplate={hasSubgroups ? GRID_WITH_SUBGROUP : GRID}
+                                  gridGap={GRID_GAP}
+                                  continuationInfo={continuation?.info_by_allocation_id?.[a.id]}
+                                  assigneeOptions={assigneeOptions}
+                                  subgroupOptions={hasSubgroups ? subgroupOptions : undefined}
+                                  roles={roles}
+                                  jiraBaseUrl={jiraBaseUrl}
+                                  resourceTotalForBacklog={resourceSummary?.available_for_backlog_total ?? 0}
+                                  registerRef={registerRowRef}
+                                  onToggle={toggleAllocation}
+                                  onPriorityChange={handlePriorityChange}
+                                  onAssigneeChange={handleAssigneeChange}
+                                  onSubgroupChange={handleSubgroupChange}
+                                  onOpenBreakdown={handleOpenBreakdown}
+                                />
+                              ))}
+                            </div>
+                          </SortableContext>
+                        )}
+                      </div>
+                    );
+                  })}
                   {(allocations ?? []).length === 0 && !allocLoading && (
                     <div style={{ padding: 24, textAlign: 'center', color: DARK_THEME.textMuted, fontSize: 13 }}>
                       В сценарии нет элементов. Добавьте задачи в бэклог — они появятся автоматически.
                     </div>
                   )}
-                    </div>
-                  </SortableContext>
+                  </div>
                 </DndContext>
               </Card>
             ) : (

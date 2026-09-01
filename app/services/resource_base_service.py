@@ -87,6 +87,7 @@ class EmployeeBase:
     shared_with: list[str]                 # чужие команды за этот квартал
     committed_hours_all_teams: float       # часы, заложенные всеми командами
     is_overcommitted: bool                 # заложено больше календарной нормы
+    subgroup_id: Optional[str] = None      # группа внутри команды, None — нет деления
 
 
 @dataclass
@@ -199,6 +200,8 @@ class ResourceBaseService:
         # --- итерация по сотрудникам ---
         # Кто из состава ещё числится в других командах этого же квартала.
         shared_map = tm.shared_members(self.db, [team], period_start, last_day)
+        # Приписка сотрудников к группам команды. Пусто, если деления нет.
+        _, emp_subgroup = self._team_subgroups(team)
         result_emps: list[EmployeeBase] = []
         role_totals: dict[str, float] = {}
 
@@ -269,6 +272,7 @@ class ResourceBaseService:
                     shared_with=others,
                     committed_hours_all_teams=committed,
                     is_overcommitted=committed > round(calendar_norm, 2) + 0.01,
+                    subgroup_id=emp_subgroup.get(e.id),
                 )
             )
             if e.role:
