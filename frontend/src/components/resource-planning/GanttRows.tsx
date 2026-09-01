@@ -32,6 +32,9 @@ interface Props {
   /** Группа команды для каждой инициативы: показывать строки секциями групп.
    *  План остаётся общекомандным — секции только визуальные. */
   sectionByItem?: Record<string, string>;
+  /** Свёрнутые секции групп (названия). */
+  collapsedSections?: string[];
+  onToggleSection?: (name: string, collapsed: boolean) => void;
   /** ISO end of strict quarter (without spillover buffer). Days past this
    *  date are striped to mark out-of-quarter portion of phase bars. */
   quarterEndDate?: string;
@@ -678,10 +681,12 @@ function TwoLevelRows({
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
   highlightedEmployeeId, onEmployeeRowClick, quarterEndDate, sectionByItem,
+  collapsedSections, onToggleSection,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
   const collapsedSet = useMemo(() => new Set(collapsedItemIds ?? []), [collapsedItemIds]);
+  const collapsedSectionSet = useMemo(() => new Set(collapsedSections ?? []), [collapsedSections]);
   const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; key: string | null; priority: number | null; assignments: AssignmentOut[] }>();
@@ -713,6 +718,9 @@ function TwoLevelRows({
         const sectionItems = showSection
           ? byItem.filter(([id]) => sectionByItem?.[id] === section).length
           : 0;
+        const sectionName = section ?? '';
+        const sectionCollapsed = !!sectionByItem && collapsedSectionSet.has(sectionName);
+        if (sectionCollapsed && !showSection) return null;
         const phases = ['analyst', 'dev', 'qa', 'opo'] as const;
         const itemBg = ROW_BG;
         const isPendingFrom = pendingFromItem === itemId;
@@ -727,7 +735,10 @@ function TwoLevelRows({
           <div key={itemId} style={{ background: itemBg, borderTop: itemIdx > 0 && !showSection ? INIT_DIVIDER : 'none' }}>
             {showSection && (
               <div
+                onClick={() => onToggleSection?.(sectionName, !sectionCollapsed)}
                 style={{
+                  cursor: 'pointer',
+                  userSelect: 'none',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
@@ -742,6 +753,9 @@ function TwoLevelRows({
                   borderBottom: '1px solid #1e3a5f',
                 }}
               >
+                <span style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>
+                  {sectionCollapsed ? '▶' : '▼'}
+                </span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #e6f0f7)' }}>
                   {section || 'Без группы'}
                 </span>
@@ -750,6 +764,7 @@ function TwoLevelRows({
                 </span>
               </div>
             )}
+            {!sectionCollapsed && (
             <div
               ref={el => {
                 if (el) rowRefs.current.set(itemId, el);
@@ -870,7 +885,8 @@ function TwoLevelRows({
                 })()}
               </div>
             </div>
-            {!isCollapsed && phases.flatMap(phase => {
+            )}
+            {!sectionCollapsed && !isCollapsed && phases.flatMap(phase => {
               const phaseAssignments = ia.filter(a => a.phase === phase);
               if (phaseAssignments.length === 0) return [];
               const color = appearance.phase_colors[phase] ?? PHASE_COLORS[phase];
