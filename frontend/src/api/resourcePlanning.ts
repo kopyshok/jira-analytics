@@ -84,6 +84,8 @@ export interface AssignmentOut {
   out_of_quarter: boolean;
   daily_hours: Record<string, number> | null;
   worklog_hours_actual: number;
+  /** Группа внутри команды, к которой отнесена работа. */
+  subgroup_id?: string | null;
 }
 
 export interface ConflictOut {

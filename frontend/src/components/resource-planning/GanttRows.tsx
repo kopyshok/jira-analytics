@@ -29,6 +29,9 @@ interface Props {
   onAssignmentClick?: (assignmentId: string) => void;
   highlightedEmployeeId?: string | null;
   onEmployeeRowClick?: (employeeId: string | null) => void;
+  /** Группа команды для каждой инициативы: показывать строки секциями групп.
+   *  План остаётся общекомандным — секции только визуальные. */
+  sectionByItem?: Record<string, string>;
   /** ISO end of strict quarter (without spillover buffer). Days past this
    *  date are striped to mark out-of-quarter portion of phase bars. */
   quarterEndDate?: string;
@@ -47,6 +50,7 @@ const ROW_BG = 'transparent';
 const INIT_HEADER_BG = 'rgba(0,201,200,0.20)';
 const INIT_PENDING_BG = 'rgba(255,122,69,0.22)';
 const INIT_DIVIDER = '2px solid #066770';
+const SECTION_BG = 'rgba(6, 103, 112, 0.22)';
 // Opaque blends of INIT_HEADER_BG / INIT_PENDING_BG over pageBg #0d1c33 — used on
 // sticky left-column wrappers so absolute bars/markers don't bleed through during horizontal scroll.
 // Must visually match the translucent tints above when rendered over #0d1c33.
@@ -673,7 +677,7 @@ function TwoLevelRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
-  highlightedEmployeeId, onEmployeeRowClick, quarterEndDate,
+  highlightedEmployeeId, onEmployeeRowClick, quarterEndDate, sectionByItem,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -698,6 +702,17 @@ function TwoLevelRows({
   return (
     <>
       {byItem.map(([itemId, { title, key, priority, assignments: ia }], itemIdx) => {
+        const section = sectionByItem?.[itemId];
+        const prevSection = itemIdx > 0 ? sectionByItem?.[byItem[itemIdx - 1][0]] : undefined;
+        const showSection = !!sectionByItem && (itemIdx === 0 || section !== prevSection);
+        const sectionHours = showSection
+          ? byItem
+              .filter(([id]) => sectionByItem?.[id] === section)
+              .reduce((s, [, g]) => s + g.assignments.reduce((x, a) => x + (a.hours_allocated ?? 0), 0), 0)
+          : 0;
+        const sectionItems = showSection
+          ? byItem.filter(([id]) => sectionByItem?.[id] === section).length
+          : 0;
         const phases = ['analyst', 'dev', 'qa', 'opo'] as const;
         const itemBg = ROW_BG;
         const isPendingFrom = pendingFromItem === itemId;
@@ -709,7 +724,32 @@ function TwoLevelRows({
           ?? '—';
 
         return (
-          <div key={itemId} style={{ background: itemBg, borderTop: itemIdx > 0 ? INIT_DIVIDER : 'none' }}>
+          <div key={itemId} style={{ background: itemBg, borderTop: itemIdx > 0 && !showSection ? INIT_DIVIDER : 'none' }}>
+            {showSection && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '6px 14px',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: STICKY_INIT_Z,
+                  width: leftColWidth,
+                  boxSizing: 'border-box',
+                  background: SECTION_BG,
+                  borderTop: itemIdx > 0 ? INIT_DIVIDER : 'none',
+                  borderBottom: '1px solid #1e3a5f',
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #e6f0f7)' }}>
+                  {section || 'Без группы'}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text-hint, #7a9ab8)' }}>
+                  {sectionItems} задач · {Math.round(sectionHours).toLocaleString('ru')} ч
+                </span>
+              </div>
+            )}
             <div
               ref={el => {
                 if (el) rowRefs.current.set(itemId, el);

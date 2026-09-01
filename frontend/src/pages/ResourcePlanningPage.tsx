@@ -58,6 +58,7 @@ function ResourcePlanningPageInner() {
   const [depDrawMode, setDepDrawMode] = useState(false);
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [showRelayArrows, setShowRelayArrows] = useState(true);
+  const [groupBySubgroup, setGroupBySubgroup] = useState(false);
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkLabel, setForkLabel] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
@@ -97,9 +98,10 @@ function ResourcePlanningPageInner() {
   // секции строк; занятость человека по-прежнему считается сквозь все группы.
   const { data: teamRegistry = [] } = useTeamRegistry();
   const registryRow = teamRegistry.find(t => t.name === team);
-  const subgroupOrder = registryRow?.has_subgroups
-    ? registryRow.subgroups.map(g => g.name)
-    : [];
+  const subgroupOrder = useMemo(
+    () => (registryRow?.has_subgroups ? registryRow.subgroups.map(g => g.name) : []),
+    [registryRow],
+  );
   const subgroupByEmployee = useMemo(() => {
     if (!registryRow?.has_subgroups || !team) return {};
     const names = new Map(registryRow.subgroups.map(g => [g.id, g.name]));
@@ -111,6 +113,13 @@ function ResourcePlanningPageInner() {
     }
     return out;
   }, [registryRow, team, allEmployees]);
+  // Группа инициативы: своя группа работы, иначе группа её главного
+  // исполнителя из сценария (та же логика, что в Сценариях).
+  const subgroupNameById = useMemo(
+    () => new Map((registryRow?.subgroups ?? []).map(g => [g.id, g.name])),
+    [registryRow],
+  );
+
   // Кандидаты в исполнители — состав команды за квартал плана (те же люди,
   // по которым считается загрузка), а не текущий состав на сегодня: выбывший
   // в середине квартала должен оставаться выбираемым на свои дни.
@@ -187,6 +196,35 @@ function ResourcePlanningPageInner() {
     () => (gantt ? sortAssignmentsByScenarioAssignee(gantt.assignments) : []),
     [gantt],
   );
+
+  // Название группы для каждой инициативы плана + порядок секций.
+  const sectionByItem = useMemo(() => {
+    if (!groupBySubgroup || subgroupOrder.length === 0) return undefined;
+    const out: Record<string, string> = {};
+    for (const a of sortedAssignments) {
+      if (out[a.backlog_item_id]) continue;
+      const own = a.subgroup_id ? subgroupNameById.get(a.subgroup_id) : undefined;
+      const byAssignee = a.scenario_assignee_employee_id
+        ? subgroupByEmployee[a.scenario_assignee_employee_id]
+        : undefined;
+      out[a.backlog_item_id] = own ?? byAssignee ?? '';
+    }
+    return out;
+  }, [groupBySubgroup, subgroupOrder, sortedAssignments, subgroupNameById, subgroupByEmployee]);
+
+  // Строки секциями: инициативы одной группы идут подряд, порядок групп —
+  // как в реестре команды, «без группы» в конце.
+  const displayedAssignments = useMemo(() => {
+    if (!sectionByItem) return sortedAssignments;
+    const rank = new Map(subgroupOrder.map((name, i) => [name, i]));
+    const rankOf = (id: string) => {
+      const name = sectionByItem[id] ?? '';
+      return name ? (rank.get(name) ?? subgroupOrder.length) : subgroupOrder.length + 1;
+    };
+    return [...sortedAssignments].sort(
+      (a, b) => rankOf(a.backlog_item_id) - rankOf(b.backlog_item_id),
+    );
+  }, [sortedAssignments, sectionByItem, subgroupOrder]);
 
   const conflictAssignmentIds = useMemo(
     () => (gantt ? gantt.conflicts.flatMap(c => (c.assignment_id ? [c.assignment_id] : [])) : []),
@@ -362,6 +400,16 @@ function ResourcePlanningPageInner() {
               <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>Эстафета</span>
             </Space>
           )}
+          {viewMode === 'two-level' && subgroupOrder.length > 0 && (
+            <Space size={4}>
+              <Switch
+                checked={groupBySubgroup}
+                onChange={setGroupBySubgroup}
+                size="small"
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>По группам</span>
+            </Space>
+          )}
           {viewMode === 'two-level' && (
             <Space size={4}>
               <Switch
@@ -421,7 +469,7 @@ function ResourcePlanningPageInner() {
       )}
       {gantt && !ganttLoading && planId && viewMode !== 'plane' && (
         <GanttChart
-          assignments={sortedAssignments}
+          assignments={displayedAssignments}
           blocks={blocks}
           quarter={gantt.plan.quarter ?? 'Q1'}
           year={gantt.plan.year ?? new Date().getFullYear()}
@@ -438,6 +486,7 @@ function ResourcePlanningPageInner() {
           onAssignmentClick={(id) => setSelectedAssignmentId(id)}
           hideWeekends={prefs.hide_weekends}
           highlightedEmployeeId={highlightedEmployeeId}
+          sectionByItem={sectionByItem}
           onEmployeeRowClick={setHighlightedEmployeeId}
           onCreateDependency={(from, to) => {
             createDep.mutate(

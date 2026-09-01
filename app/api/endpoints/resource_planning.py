@@ -220,6 +220,7 @@ def _assignment_to_out(
         out_of_quarter=a.out_of_quarter,
         daily_hours=_parse_daily_hours(a.daily_hours_json),
         worklog_hours_actual=worklog_hours_actual,
+        subgroup_id=getattr(issue, "effective_subgroup_id", None) if issue else None,
     )
 
 
@@ -364,6 +365,10 @@ class AssignmentOut(BaseModel):
     out_of_quarter: bool = False
     daily_hours: Optional[Dict[str, float]] = None  # {"YYYY-MM-DD": hours}
     worklog_hours_actual: float = 0.0  # Task 23 — фактически отработанные часы из Worklog
+    # Группа внутри команды, к которой отнесена работа (Issue.effective_subgroup_id).
+    # Фронт режет график на секции групп; если у задачи группы нет, подставляет
+    # группу главного исполнителя из сценария.
+    subgroup_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
