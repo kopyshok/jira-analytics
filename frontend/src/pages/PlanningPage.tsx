@@ -51,6 +51,7 @@ import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
+import { useStickyViewportHeight } from '../hooks/useStickyViewportHeight';
 import { downloadScenarioXlsx } from '../api/exports';
 import { trackAction } from '../lib/usage/track';
 import { DARK_THEME, FONTS } from '../utils/constants';
@@ -306,6 +307,11 @@ export default function PlanningPage() {
   // ДО render'а (useLayoutEffect возвращает функцию, она НЕ для cleanup —
   // она вызывается перед следующим эффектом). Лучше: ref хранит prev positions,
   // обновляем после применения инверсии.
+  // Правая колонка листается сама по себе — иначе её низ достижим только
+  // после прокрутки всего бэклога. 72 = отступ sticky сверху + воздух снизу.
+  const rightColumnRef = useRef<HTMLDivElement>(null);
+  const rightColumnHeight = useStickyViewportHeight(rightColumnRef, 72);
+
   const flipPrevTopsRef = useRef<Map<string, number>>(new Map());
   const allocIdsKey = orderedAllocations.map((a) => a.id).join(',');
 
@@ -950,14 +956,13 @@ export default function PlanningPage() {
               </Card>
             )}
 
-            {/* Правая колонка — sticky сверху, ниже свободно расширяется.
-                Раньше: maxHeight + overflowY:auto — обрезало карточку «Часы
-                тестировщика» в Aurora, потому что AuroraShell использует
-                собственный scroll-viewport (.scroll-y), а 100vh ссылается на
-                window. Сейчас высота не ограничена — блок встаёт sticky-only
-                верхним краем и при коротком вьюпорте уезжает вниз вместе со
-                скроллом страницы. Это работает одинаково в classic и Aurora. */}
+            {/* Правая колонка — sticky сверху, со своей прокруткой: секции по
+                группам сделали блок выше экрана, и без этого до его низа
+                приходилось прокручивать весь бэклог. Высоту берём от реального
+                контейнера прокрутки — в Aurora страница листается внутри
+                собственного вьюпорта, и 100vh там обрезал нижнюю карточку. */}
             <div
+              ref={rightColumnRef}
               style={{
                 position: 'sticky',
                 top: 56,
@@ -965,6 +970,9 @@ export default function PlanningPage() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 12,
+                maxHeight: rightColumnHeight,
+                overflowY: 'auto',
+                paddingRight: 4,
               }}
             >
               <PlanningCapacityPanel
