@@ -21,6 +21,7 @@ import {
   DEFAULT_LAYOUT,
   ALL_LEVELS,
   LEVEL_LABELS,
+  withAllLevels,
   type AnalyticsLevel,
 } from '../../hooks/useAnalyticsLayout';
 
@@ -28,26 +29,26 @@ const PRESETS: { key: string; label: string; order: AnalyticsLevel[]; hidden: An
   {
     key: 'default',
     label: 'Стандарт',
-    order: ['team', 'role', 'employee', 'work_type', 'category', 'issue'],
-    hidden: [],
+    order: ['team', 'subgroup', 'role', 'employee', 'work_type', 'category', 'issue'],
+    hidden: ['subgroup'],
   },
   {
     key: 'people',
     label: 'По людям',
     order: ['employee', 'category', 'issue'],
-    hidden: ['team', 'role', 'work_type'],
+    hidden: ['team', 'subgroup', 'role', 'work_type'],
   },
   {
     key: 'categories',
     label: 'По категориям',
     order: ['category', 'work_type', 'issue'],
-    hidden: ['team', 'role', 'employee'],
+    hidden: ['team', 'subgroup', 'role', 'employee'],
   },
   {
     key: 'work_types',
     label: 'По видам работ',
     order: ['work_type', 'category', 'issue'],
-    hidden: ['team', 'role', 'employee'],
+    hidden: ['team', 'subgroup', 'role', 'employee'],
   },
 ];
 
@@ -94,8 +95,17 @@ function SortableLevel({ level, hidden, onToggleVisible }: SortableLevelProps) {
 
 export default function GroupingEditor() {
   const { layout, save, isSaving } = useAnalyticsLayout();
-  const order = layout.group_order && layout.group_order.length > 0 ? layout.group_order : DEFAULT_LAYOUT.group_order;
-  const hidden = useMemo(() => new Set(layout.hidden_levels ?? []), [layout.hidden_levels]);
+  // Уровни, появившиеся после сохранения раскладки, дописываем в конец и
+  // держим скрытыми — иначе их не видно даже в списке «Скрытые».
+  const saved = layout.group_order && layout.group_order.length > 0 ? layout.group_order : DEFAULT_LAYOUT.group_order;
+  const order = useMemo(() => withAllLevels(saved), [saved]);
+  const hidden = useMemo(() => {
+    const set = new Set(layout.hidden_levels ?? []);
+    for (const level of ALL_LEVELS) {
+      if (!saved.includes(level)) set.add(level);
+    }
+    return set;
+  }, [layout.hidden_levels, saved]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 

@@ -310,6 +310,7 @@ interface FlatRow {
   category_code: string | null;
   category_label: string;
   category_color: string;
+  subgroup_label: string;
   issue: AnalyticsIssueNode;
 }
 
@@ -337,6 +338,7 @@ function flattenResponse(data: AnalyticsReportResponse): FlatRow[] {
                 category_code: c.category_code,
                 category_label: c.label,
                 category_color: c.color,
+                subgroup_label: i.subgroup_name ?? 'Без группы',
                 issue: i,
               });
             }
@@ -351,6 +353,7 @@ function flattenResponse(data: AnalyticsReportResponse): FlatRow[] {
 function keyOf(level: AnalyticsLevel, row: FlatRow): string {
   switch (level) {
     case 'team': return row.team;
+    case 'subgroup': return `${row.team}|${row.subgroup_label}`;
     case 'role': return `${row.team}|${row.role ?? '_none'}`;
     case 'employee': return row.employee_id;
     case 'work_type': return row.work_type_id;
@@ -464,6 +467,8 @@ function mergeIssueTrees(
 function kindOfLevel(level: AnalyticsLevel): RowKind {
   switch (level) {
     case 'team': return 'team';
+    // Отдельного вида строки группе не заводим — ведёт себя как заголовок команды.
+    case 'subgroup': return 'team';
     case 'role': return 'role';
     case 'employee': return 'emp';
     case 'work_type': return 'wt';
@@ -503,6 +508,8 @@ function buildTreeFromLayout(
     switch (level) {
       case 'team':
         return indent(depth, <b>{row.team_label}</b>);
+      case 'subgroup':
+        return indent(depth, <b>{row.subgroup_label}</b>);
       case 'role':
         return indent(
           depth,
