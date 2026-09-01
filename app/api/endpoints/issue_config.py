@@ -375,24 +375,25 @@ async def get_issue_tree(
     return roots_keep
 
 
-def _load_context_ancestors(
-    db: Session, matched_ids: set[str], matched_by_id: dict[str, Issue]
-) -> dict[str, Issue]:
+def _load_context_ancestor_rows(db: Session, matched_ids: set, matched_rows, cols):
     """Дотащить предков, не попавших под фильтр команды.
 
     Для каждой matched-задачи с ``parent_id`` вне ``matched_ids`` поднимаемся
-    по цепочке до корня (или до встречи с уже известным узлом). Возвращает
-    словарь ``id -> Issue`` контекстных предков. UI рендерит их как
-    read-only якоря дерева (``is_context=True``).
+    по цепочке до корня (или до встречи с уже известным узлом). UI рендерит
+    их как read-only якоря дерева (``is_context=True``).
+
+    Работаем лёгкими строками-кортежами: обход смотрит на несколько полей, а
+    гидрация ~90 колонок на каждую задачу команды стоила сотни миллисекунд
+    на каждое чтение вкладок категоризации.
     """
-    context: dict[str, Issue] = {}
-    frontier: set[str] = {
-        i.parent_id for i in matched_by_id.values()
-        if i.parent_id and i.parent_id not in matched_ids
+    context: dict = {}
+    frontier: set = {
+        r.parent_id for r in matched_rows
+        if r.parent_id and r.parent_id not in matched_ids
     }
     while frontier:
-        batch = db.query(Issue).filter(Issue.id.in_(frontier)).all()
-        next_frontier: set[str] = set()
+        batch = db.query(*cols).filter(Issue.id.in_(frontier)).all()
+        next_frontier: set = set()
         for a in batch:
             if a.id in context or a.id in matched_ids:
                 continue
@@ -417,14 +418,15 @@ def get_tree_counts(
     ``by_id_full`` для корректного walk-up через ``CategoryResolver``, но
     САМИ В СЧЁТЧИКИ НЕ ИДУТ — считаются только продуктовые задачи команды.
     """
-    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
+    cols = (Issue.id, Issue.parent_id, Issue.category_verified, Issue.assigned_category)
+    base = _filter_query_by_tree_params(db.query(*cols), project_keys, teams, db, primary_only=True)
     rows = base.all()
     by_id = {r.id: r for r in rows}
     # Чужие предки нужны только для разрешения эффективной категории.
-    context_ancestors = _load_context_ancestors(db, set(by_id.keys()), by_id)
+    context_ancestors = _load_context_ancestor_rows(db, set(by_id.keys()), rows, cols)
     by_id_full = {**by_id, **context_ancestors}
 
-    def effective(node: Issue) -> Optional[str]:
+    def effective(node) -> Optional[str]:
         if not (node.category_verified or False):
             return None
         if node.assigned_category:
@@ -476,14 +478,26 @@ def get_tree_roots(
     (под каким эпиком висит задача), но править эпик не может —
     он принадлежит другой команде.
     """
-    base = _filter_query_by_tree_params(db.query(Issue), project_keys, teams, db, primary_only=True)
+    # Лёгкие строки вместо полных ORM-объектов: дереву нужны эти 18 полей,
+    # а гидрация всей таблицы задач команды стоила ~350 мс на каждый запрос.
+    cols = (
+        Issue.id, Issue.key, Issue.summary, Issue.issue_type, Issue.status,
+        Issue.status_category, Issue.project_id, Issue.parent_id,
+        Issue.assigned_category, Issue.category, Issue.include_in_analysis,
+        Issue.status_changed_at, Issue.goals, Issue.category_verified,
+        Issue.require_child_verification, Issue.parent_changed,
+        Issue.category_context, Issue.category_context_key,
+    )
+    base = _filter_query_by_tree_params(db.query(*cols), project_keys, teams, db, primary_only=True)
     matched_rows = base.all()
-    matched_by_id: dict[str, Issue] = {r.id: r for r in matched_rows}
+    matched_by_id: dict = {r.id: r for r in matched_rows}
 
     # Дотащить чужих предков как read-only контекст.
-    context_ancestors = _load_context_ancestors(db, set(matched_by_id.keys()), matched_by_id)
+    context_ancestors = _load_context_ancestor_rows(
+        db, set(matched_by_id.keys()), matched_rows, cols
+    )
     context_ids: set[str] = set(context_ancestors.keys())
-    by_id: dict[str, Issue] = {**matched_by_id, **context_ancestors}
+    by_id: dict = {**matched_by_id, **context_ancestors}
 
     project_key_by_id = {
         p.id: p.key
@@ -494,7 +508,7 @@ def get_tree_roots(
 
     rules = load_rules(db)
 
-    def effective(node: Issue) -> Optional[str]:
+    def effective(node) -> Optional[str]:
         if not (node.category_verified or False):
             return None
         if node.assigned_category:
@@ -518,7 +532,7 @@ def get_tree_roots(
     import re as _re
     key_search = bool(_re.fullmatch(r"[a-z][a-z0-9]*-\d+", search_lc))
 
-    def text_matches(node: Issue) -> bool:
+    def text_matches(node) -> bool:
         if not search_lc:
             return True
         if key_search:
@@ -537,7 +551,7 @@ def get_tree_roots(
             and text_matches(r)
         )
 
-    children_by_parent: dict[str, list[Issue]] = {}
+    children_by_parent: dict[str, list] = {}
     for r in by_id.values():
         if r.parent_id:
             children_by_parent.setdefault(r.parent_id, []).append(r)
@@ -611,7 +625,12 @@ def get_tree_roots(
         ))
 
     roots.sort(key=lambda n: n.key)
-    _apply_subgroups(db, roots, list(by_id.values()))
+    # Резолверу групп нужны настоящие ORM-объекты, но только для попавших
+    # в ответ корней — их десятки, а не тысячи.
+    root_issues = (
+        db.query(Issue).filter(Issue.id.in_([n.id for n in roots])).all() if roots else []
+    )
+    _apply_subgroups(db, roots, root_issues)
     return roots
 
 
