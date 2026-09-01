@@ -25,6 +25,8 @@ export type BacklogAllocRowProps = {
   gridGap: number;
   continuationInfo: ContinuationInfoRow | undefined;
   assigneeOptions: { label: string; value: string }[];
+  /** Группы команды. undefined — у команды нет деления, колонка не рисуется. */
+  subgroupOptions?: { label: string; value: string }[];
   roles: Role[];
   jiraBaseUrl: string;
   resourceTotalForBacklog: number;
@@ -32,6 +34,7 @@ export type BacklogAllocRowProps = {
   onToggle: (a: AllocationResponse) => void;
   onPriorityChange: (backlogItemId: string, priority: number | null) => void;
   onAssigneeChange: (allocId: string, employeeId: string | null) => void;
+  onSubgroupChange?: (issueId: string, subgroupId: string | null) => void;
   onOpenBreakdown: (issueId: string, issueKey: string) => void;
 };
 
@@ -47,6 +50,7 @@ function BacklogAllocRowBase({
   gridGap,
   continuationInfo,
   assigneeOptions,
+  subgroupOptions,
   roles,
   jiraBaseUrl,
   resourceTotalForBacklog,
@@ -54,6 +58,7 @@ function BacklogAllocRowBase({
   onToggle,
   onPriorityChange,
   onAssigneeChange,
+  onSubgroupChange,
   onOpenBreakdown,
 }: BacklogAllocRowProps) {
   const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id: a.id });
@@ -267,6 +272,23 @@ function BacklogAllocRowBase({
           />
         )}
       </div>
+      {subgroupOptions && (
+        <div onClick={(e) => e.stopPropagation()}>
+          {/* Группа пишется на саму задачу — идея без задачи её хранить негде. */}
+          <Select
+            size="small"
+            value={a.subgroup_id ?? undefined}
+            placeholder="—"
+            allowClear
+            disabled={!isDraft || !a.issue_id}
+            style={{ width: '100%', fontSize: 12 }}
+            options={subgroupOptions}
+            onChange={(value: string | undefined) =>
+              a.issue_id && onSubgroupChange?.(a.issue_id, value ?? null)
+            }
+          />
+        </div>
+      )}
       <div
         style={{
           fontSize: 12,

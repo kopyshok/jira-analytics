@@ -1,10 +1,11 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Card, Select, Skeleton, Tag, Tooltip } from 'antd';
+import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import { useRoles } from '../../hooks/useRoles';
 import { getRoleColor } from '../../utils/roles';
-import type { AllocationResponse, ResourceBase, ResourceSummaryOut } from '../../types/api';
+import type { AllocationResponse, ResourceBase, ResourceEmployee, ResourceSummaryOut } from '../../types/api';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
 import { demandByAssigneeRole } from '../../utils/planning';
@@ -116,6 +117,30 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
     [allocations, resourceBase],
   );
 
+  // === Разрез по группам внутри команды =================================
+  // Пустой список групп — деления нет, карточки выглядят как раньше.
+  const subgroups = useMemo(() => summary?.subgroups ?? [], [summary]);
+  const hasSubgroups = subgroups.length > 0;
+
+  // Потребность по ролям внутри каждой группы: та же утилита, что для команды,
+  // но на идеях этой группы.
+  const demandBySubgroupRole = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    if (!hasSubgroups || !resourceBase?.employees) return out;
+    const byGroup: Record<string, AllocationResponse[]> = {};
+    for (const a of allocations) {
+      const key = a.subgroup_id ?? '';
+      (byGroup[key] ??= []).push(a);
+    }
+    for (const [key, list] of Object.entries(byGroup)) {
+      out[key] = demandByAssigneeRole(list, resourceBase.employees);
+    }
+    return out;
+  }, [hasSubgroups, allocations, resourceBase]);
+
+  const [collapsedRoleGroups, setCollapsedRoleGroups] = useState<Set<string>>(new Set());
+  const [collapsedEmpGroups, setCollapsedEmpGroups] = useState<Set<string>>(new Set());
+
   if (!resourceBase) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -176,86 +201,102 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
     }
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* 1. Overall gauge */}
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-          <span style={{ fontSize: 14, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-            Ресурс команды · Q{quarter}
-          </span>
-          {resourceBase.external_qa_hours != null && (
-            <Tag color="purple" style={{ fontSize: 12, lineHeight: '20px' }}>
-              внешний QA {Math.round(resourceBase.external_qa_hours)} ч
-            </Tag>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 44, fontWeight: 700, color: overallOver ? DARK_THEME.amber : DARK_THEME.textPrimary, fontFamily: FONTS.mono, lineHeight: 1 }}>
-            {Math.round(totalDemand)}
-          </span>
-          <span style={{ fontSize: 18, color: DARK_THEME.textMuted }}>/</span>
-          <span style={{ fontSize: 26, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
-            {Math.round(totalCapacity)} ч
-          </span>
-        </div>
-        <div style={{ fontSize: 14, color: DARK_THEME.textHint, marginBottom: 10 }}>
-          {overallOver
-            ? 'Перегруз по одной или нескольким ролям — см. ниже'
-            : totalCapacity > 0
-              ? `Запас ${freeHours} ч · ${freePct}% свободно · включено ${includedCount} идей`
-              : 'Нет данных о ёмкости'}
-        </div>
-        <div style={{ position: 'relative', height: 14, background: DARK_THEME.darkAccent, borderRadius: 7, overflow: 'hidden' }}>
-          <div
-            style={{
-              position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-              transform: `scaleX(${plannedPct / 100})`,
-              transformOrigin: 'left',
-              background: overallOver ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
-              transition: 'transform .2s',
-            }}
-          />
-        </div>
-      </Card>
+  // Секции групп: сотрудники группы + её ёмкость по ролям. «Без группы» —
+  // последней и только если в ней кто-то есть.
+  const groupSections = hasSubgroups
+    ? [
+        ...subgroups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          employees: resourceBase.employees.filter((e) => (e.subgroup_id ?? '') === g.id),
+        })),
+        ...(resourceBase.employees.some((e) => !e.subgroup_id)
+          ? [
+              {
+                id: '',
+                name: 'Без группы',
+                employees: resourceBase.employees.filter((e) => !e.subgroup_id),
+              },
+            ]
+          : []),
+      ]
+    : [];
 
-      {/* 2. Per-role */}
-      <Card
-        title="Ресурс по ролям"
-        styles={{ body: { padding: 0 } }}
-        extra={<span style={{ fontSize: 13, color: DARK_THEME.textMuted }}>план / доступно</span>}
-      >
-        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {CORE_ROLE_KEYS.map((r) => (
-            <RoleCapacityBar
-              key={r}
-              role={r}
-              demand={demandByEmployeeRole[r] ?? 0}
-              capacity={capacityByRole[r]}
-              employeeCount={resourceBase.employees.filter((e) => e.role === r).length}
-            />
-          ))}
-          {infoRoles.map((r) => (
-            <RoleCapacityBar
-              key={r.code}
-              role={r.code}
-              demand={demandByEmployeeRole[r.code] ?? 0}
-              capacity={availableByRole[r.code] ?? 0}
-              employeeCount={resourceBase.employees.filter((e) => e.role === r.code).length}
-            />
-          ))}
-        </div>
-      </Card>
+  const sectionHeader = (
+    name: string,
+    right: string,
+    collapsed: boolean,
+    onToggle: () => void,
+  ) => (
+    <div
+      onClick={onToggle}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 14px',
+        cursor: 'pointer',
+        background: DARK_THEME.darkAccent,
+        borderTop: `1px solid ${DARK_THEME.border}`,
+        userSelect: 'none',
+      }}
+    >
+      {collapsed ? (
+        <RightOutlined style={{ fontSize: 10, color: DARK_THEME.textMuted }} />
+      ) : (
+        <DownOutlined style={{ fontSize: 10, color: DARK_THEME.textMuted }} />
+      )}
+      <span style={{ fontSize: 13, fontWeight: 600, color: DARK_THEME.textPrimary }}>{name}</span>
+      <span style={{ flex: 1 }} />
+      <span style={{ fontSize: 12, fontFamily: FONTS.mono, color: DARK_THEME.textMuted }}>{right}</span>
+    </div>
+  );
 
-      {/* 3. По сотрудникам */}
-      <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
-        <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-          {[...resourceBase.employees]
-            .sort((a, b) => {
-              const d = roleSortKey(a.role) - roleSortKey(b.role);
-              return d !== 0 ? d : a.display_name.localeCompare(b.display_name, 'ru');
-            })
-            .map((e) => {
+  const roleBars = (
+    capacity: Record<string, number>,
+    demand: Record<string, number>,
+    employees: ResourceEmployee[],
+  ) => (
+    <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {CORE_ROLE_KEYS.map((r) => (
+        <RoleCapacityBar
+          key={r}
+          role={r}
+          demand={demand[r] ?? 0}
+          capacity={capacity[r] ?? 0}
+          employeeCount={employees.filter((e) => e.role === r).length}
+        />
+      ))}
+      {infoRoles.map((r) => (
+        <RoleCapacityBar
+          key={r.code}
+          role={r.code}
+          demand={demand[r.code] ?? 0}
+          capacity={capacity[r.code] ?? 0}
+          employeeCount={employees.filter((e) => e.role === r.code).length}
+        />
+      ))}
+    </div>
+  );
+
+  const toggleIn = (
+    set: React.Dispatch<React.SetStateAction<Set<string>>>,
+    id: string,
+  ) =>
+    set((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const sortedEmployees = (list: ResourceEmployee[]) =>
+    [...list].sort((a, b) => {
+      const d = roleSortKey(a.role) - roleSortKey(b.role);
+      return d !== 0 ? d : a.display_name.localeCompare(b.display_name, 'ru');
+    });
+
+  const renderEmployee = (e: ResourceEmployee) => {
             const knownRole = e.role && roles.some(r => r.code === e.role && r.is_active) ? e.role : null;
             const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
             const roleShort = knownRole ? getRoleShort(knownRole) : '—';
@@ -336,7 +377,112 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                 })()}
               </div>
             );
-          })}
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* 1. Overall gauge */}
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+          <span style={{ fontSize: 14, color: DARK_THEME.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Ресурс команды · Q{quarter}
+          </span>
+          {resourceBase.external_qa_hours != null && (
+            <Tag color="purple" style={{ fontSize: 12, lineHeight: '20px' }}>
+              внешний QA {Math.round(resourceBase.external_qa_hours)} ч
+            </Tag>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+          <span style={{ fontSize: 44, fontWeight: 700, color: overallOver ? DARK_THEME.amber : DARK_THEME.textPrimary, fontFamily: FONTS.mono, lineHeight: 1 }}>
+            {Math.round(totalDemand)}
+          </span>
+          <span style={{ fontSize: 18, color: DARK_THEME.textMuted }}>/</span>
+          <span style={{ fontSize: 26, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
+            {Math.round(totalCapacity)} ч
+          </span>
+        </div>
+        <div style={{ fontSize: 14, color: DARK_THEME.textHint, marginBottom: 10 }}>
+          {overallOver
+            ? 'Перегруз по одной или нескольким ролям — см. ниже'
+            : totalCapacity > 0
+              ? `Запас ${freeHours} ч · ${freePct}% свободно · включено ${includedCount} идей`
+              : 'Нет данных о ёмкости'}
+        </div>
+        <div style={{ position: 'relative', height: 14, background: DARK_THEME.darkAccent, borderRadius: 7, overflow: 'hidden' }}>
+          <div
+            style={{
+              position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+              transform: `scaleX(${plannedPct / 100})`,
+              transformOrigin: 'left',
+              background: overallOver ? DARK_THEME.amber : DARK_THEME.cyanPrimary,
+              transition: 'transform .2s',
+            }}
+          />
+        </div>
+      </Card>
+
+      {/* 2. Per-role */}
+      <Card
+        title="Ресурс по ролям"
+        styles={{ body: { padding: 0 } }}
+        extra={<span style={{ fontSize: 13, color: DARK_THEME.textMuted }}>план / доступно</span>}
+      >
+        {hasSubgroups ? (
+          groupSections.map((sec) => {
+            const collapsed = collapsedRoleGroups.has(sec.id);
+            const capacity = summary?.available_by_subgroup_role?.[sec.id] ?? {};
+            const demand = demandBySubgroupRole[sec.id] ?? {};
+            const capTotal = Object.values(capacity).reduce((acc, v) => acc + v, 0);
+            const demTotal = Object.values(demand).reduce((acc, v) => acc + v, 0);
+            return (
+              <div key={sec.id || '__none__'}>
+                {sectionHeader(
+                  sec.name,
+                  `${Math.round(demTotal)} / ${Math.round(capTotal)} ч`,
+                  collapsed,
+                  () => toggleIn(setCollapsedRoleGroups, sec.id),
+                )}
+                {!collapsed && roleBars(capacity, demand, sec.employees)}
+              </div>
+            );
+          })
+        ) : (
+          roleBars(availableByRole, demandByEmployeeRole, resourceBase.employees)
+        )}
+      </Card>
+
+      {/* 3. По сотрудникам */}
+      <Card title="По сотрудникам" styles={{ body: { padding: 0 } }}>
+        <div
+          style={{
+            // При секциях внешний отступ снимаем: заголовки групп идут во всю ширину.
+            padding: hasSubgroups ? 0 : '8px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: hasSubgroups ? 0 : 9,
+          }}
+        >
+          {hasSubgroups
+            ? groupSections.map((sec) => {
+                const collapsed = collapsedEmpGroups.has(sec.id);
+                return (
+                  <div key={sec.id || '__none__'}>
+                    {sectionHeader(
+                      sec.name,
+                      `${sec.employees.length} чел.`,
+                      collapsed,
+                      () => toggleIn(setCollapsedEmpGroups, sec.id),
+                    )}
+                    {!collapsed && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: '8px 14px' }}>
+                        {sortedEmployees(sec.employees).map(renderEmployee)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            : sortedEmployees(resourceBase.employees).map(renderEmployee)}
           {resourceBase.employees.length === 0 && (
             <div style={{ color: DARK_THEME.textMuted, fontSize: 12, padding: 8 }}>
               Нет сотрудников в команде.

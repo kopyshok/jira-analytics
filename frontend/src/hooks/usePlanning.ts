@@ -25,6 +25,7 @@ import {
   type AllocationOverridePayload,
 } from '../api/planning';
 import { updateBacklogItem } from '../api/backlog';
+import { setIssueSubgroup } from '../api/issues';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
@@ -285,6 +286,27 @@ export const useReorderAllocations = () => {
     },
     onSettled: (_data, _err, vars) => {
       qc.invalidateQueries({ queryKey: ['planning', 'allocations', vars.scenarioId] });
+    },
+  });
+};
+
+/** Группа идеи. Пишется на задачу — та же операция, что в стопке разбора. */
+export const useSetAllocationSubgroup = () => {
+  const qc = useQueryClient();
+  const { notification } = App.useApp();
+  return useMutation<
+    unknown,
+    Error,
+    { scenarioId: string; issueId: string; subgroupId: string | null }
+  >({
+    mutationFn: ({ issueId, subgroupId }) => setIssueSubgroup(issueId, subgroupId),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['planning', 'allocations', vars.scenarioId] });
+      qc.invalidateQueries({ queryKey: ['backlog'] });
+      qc.invalidateQueries({ queryKey: ['issues'] });
+    },
+    onError: () => {
+      notification.error({ title: 'Не удалось сменить группу' });
     },
   });
 };

@@ -468,6 +468,9 @@ export interface BacklogChild {
   estimate_dev_hours: number | null;
   estimate_qa_hours: number | null;
   estimate_opo_hours: number | null;
+  assigned_subgroup_id?: string | null;
+  subgroup_id?: string | null;
+  subgroup_source?: string | null;
 }
 
 export interface BacklogItemResponse {
@@ -536,6 +539,9 @@ export interface BacklogItemResponse {
   has_parent_in_backlog: boolean;
   has_children_in_backlog: boolean;
   children?: BacklogChild[];
+  assigned_subgroup_id?: string | null;
+  subgroup_id?: string | null;
+  subgroup_source?: string | null;
 }
 
 export interface BacklogRefreshResult {
@@ -577,6 +583,8 @@ export interface ResourceEmployee {
   /** Часы, заложенные на человека всеми его командами суммарно. */
   committed_hours_all_teams?: number;
   is_overcommitted?: boolean;
+  /** Группа внутри команды. null — у команды нет деления. */
+  subgroup_id?: string | null;
 }
 
 export interface ResourceBase {
@@ -665,6 +673,8 @@ export interface AllocationResponse {
   status_category: string | null;
   issue_id: string | null;
   has_children_in_backlog: boolean;
+  /** Группа внутри команды. null — деления нет либо группа не определена. */
+  subgroup_id?: string | null;
 }
 
 // === Scenario rules ===
@@ -788,6 +798,7 @@ export interface HierarchyRule {
   project_key: string | null;
   issue_type: string | null;
   require_no_parent: boolean;
+  require_parent: boolean;
   is_container: boolean;
   is_enabled: boolean;
   description: string | null;
@@ -798,6 +809,7 @@ export interface HierarchyRuleCreate {
   project_key: string | null;
   issue_type: string | null;
   require_no_parent: boolean;
+  require_parent: boolean;
   is_container: boolean;
   is_enabled: boolean;
   description: string | null;
