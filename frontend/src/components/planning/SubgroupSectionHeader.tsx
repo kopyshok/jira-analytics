@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { effectiveEstimate } from '../../utils/allocationEstimates';
 import { getRoleColor } from '../../utils/roles';
-import { OPO_COLOR } from '../../utils/opo';
+import { OPO_COLOR, foldOpo } from '../../utils/opo';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { AllocationResponse, Role } from '../../types/api';
 
@@ -11,11 +11,13 @@ type Props = {
   items: AllocationResponse[];
   collapsed: boolean;
   roles: Role[];
+  /** Квартал сценария не раньше отсечки ОПЭ — колонки ОПЭ нет. */
+  opoOff?: boolean;
   onToggle: () => void;
 };
 
 /** Заголовок секции группы в списке идей: название, счёт идей и часы по ролям. */
-export default function SubgroupSectionHeader({ name, items, collapsed, roles, onToggle }: Props) {
+export default function SubgroupSectionHeader({ name, items, collapsed, roles, opoOff = false, onToggle }: Props) {
   const totals = useMemo(() => {
     let analyst = 0;
     let dev = 0;
@@ -23,7 +25,8 @@ export default function SubgroupSectionHeader({ name, items, collapsed, roles, o
     let opo = 0;
     let included = 0;
     for (const a of items) {
-      const eff = effectiveEstimate(a);
+      const raw = effectiveEstimate(a);
+      const eff = opoOff ? foldOpo(raw, a.opo_analyst_ratio) : raw;
       analyst += eff.analyst;
       dev += eff.dev;
       qa += eff.qa;
@@ -31,14 +34,14 @@ export default function SubgroupSectionHeader({ name, items, collapsed, roles, o
       if (a.included) included += 1;
     }
     return { analyst, dev, qa, opo, included, total: analyst + dev + qa + opo };
-  }, [items]);
+  }, [items, opoOff]);
 
   const cells: Array<[string, number, string]> = [
     ['АН', totals.analyst, getRoleColor(roles, 'analyst')],
     ['ПР', totals.dev, getRoleColor(roles, 'dev')],
     ['ТС', totals.qa, getRoleColor(roles, 'qa')],
-    ['ОПЭ', totals.opo, OPO_COLOR],
   ];
+  if (!opoOff) cells.push(['ОПЭ', totals.opo, OPO_COLOR]);
 
   return (
     <div

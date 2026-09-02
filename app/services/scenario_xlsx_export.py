@@ -18,6 +18,7 @@ from app.models import (
     Absence, AppSetting, BacklogItem, Employee, MandatoryWorkType, PlanningScenario, ProductionCalendarDay, Role,
     ScenarioAllocation, ScenarioRule,
 )
+from app.services import opo_policy
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
 from app.services.planning_service import should_skip_in_plan
@@ -153,13 +154,24 @@ def _demand_by_role(alloc: ScenarioAllocation) -> tuple[float, float, float, flo
     return ea + eo * r, ed + eo * (1.0 - r), eq, eo
 
 
-def _initiative_row_mid(alloc: ScenarioAllocation, *, included: bool) -> list:
+def _drop_opo(values: list, opo_off: bool) -> list:
+    """Убрать колонку «ОПЭ, ч» (индекс 7) из шапки/ширин/строки."""
+    if not opo_off:
+        return values
+    return values[:7] + values[8:]
+
+
+def _initiative_row_mid(
+    alloc: ScenarioAllocation, *, included: bool, opo_off: bool = False,
+) -> list:
     """Row values for Mid-11 (included) or Mid-10 (excluded) sheets."""
     item = alloc.backlog_item
     issue = getattr(item, "issue", None)
     key = issue.key if issue else ""
     analyst, dev, qa, opo = _demand_by_role(alloc)
-    total = round(analyst + dev + qa + opo, 1)
+    # analyst/dev уже включают свою долю ОПЭ, поэтому в «Итого» ОПЭ не
+    # прибавляется второй раз.
+    total = round(analyst + dev + qa, 1)
     goals = (issue.goals or "") if issue else ""
     base = [
         key,
@@ -172,6 +184,7 @@ def _initiative_row_mid(alloc: ScenarioAllocation, *, included: bool) -> list:
         round(opo, 1),
         total,
     ]
+    base = _drop_opo(base, opo_off)
     if included:
         base.append(round(alloc.planned_hours or 0.0, 1))
     base.append(goals)
@@ -355,6 +368,9 @@ class ScenarioXlsxExporter:
     def __init__(self, db: Session, scenario_id: str) -> None:
         self.db = db
         self.scenario_id = scenario_id
+        # Квартал сценария не раньше отсечки ОПЭ → колонки «ОПЭ, ч» нет,
+        # её часы уже сидят в «Аналитик»/«Разработка».
+        self._opo_off = False
 
     def build(self) -> bytes:
         ctx = self._load()
@@ -381,6 +397,7 @@ class ScenarioXlsxExporter:
 
         q = int(str(scenario.quarter or "Q1").replace("Q", ""))
         year = scenario.year or datetime.utcnow().year
+        self._opo_off = opo_policy.is_off(self.db, year, q)
         months = QUARTER_MONTHS[q]
         period_start = date(year, months[0], 1)
         last_m = months[-1]
@@ -837,10 +854,11 @@ class ScenarioXlsxExporter:
             f"Сценарий: {ctx.scenario.name} — {status} · "
             f"Включено ({len(rows)} задач)"
         )
-        _write_title_strip(ws, title, columns=len(INCLUDED_HEADERS))
+        headers = _drop_opo(INCLUDED_HEADERS, self._opo_off)
+        _write_title_strip(ws, title, columns=len(headers))
 
         # Header row at row 2
-        for c_idx, h in enumerate(INCLUDED_HEADERS, start=1):
+        for c_idx, h in enumerate(headers, start=1):
             c = ws.cell(row=2, column=c_idx, value=h)
             c.font = _Style.HEADER_FONT
             c.fill = _Style.HEADER_FILL
@@ -849,7 +867,7 @@ class ScenarioXlsxExporter:
 
         # Data rows
         for r_idx, alloc in enumerate(rows, start=3):
-            values = _initiative_row_mid(alloc, included=True)
+            values = _initiative_row_mid(alloc, included=True, opo_off=self._opo_off)
             for c_idx, val in enumerate(values, start=1):
                 c = ws.cell(row=r_idx, column=c_idx, value=val)
                 if c_idx in (5, 6, 7, 8):
@@ -887,10 +905,13 @@ class ScenarioXlsxExporter:
             start_row=total_row_idx, start_column=1,
             end_row=total_row_idx, end_column=4,
         )
-        sum_cols = [5, 6, 7, 8, 9, 10]
+        sum_cols = list(range(5, len(headers)))
         for c_idx in sum_cols:
             if rows:
-                total = sum(_initiative_row_mid(a, included=True)[c_idx - 1] for a in rows)
+                total = sum(
+                    _initiative_row_mid(a, included=True, opo_off=self._opo_off)[c_idx - 1]
+                    for a in rows
+                )
             else:
                 total = 0
             c = ws.cell(row=total_row_idx, column=c_idx, value=round(total, 1))
@@ -903,7 +924,7 @@ class ScenarioXlsxExporter:
         c.fill = _Style.HEADER_FILL
 
         # Тонкая линия снизу каждой строки данных
-        _stamp_row_borders(ws, [(3, total_row_idx - 1, len(INCLUDED_HEADERS))])
+        _stamp_row_borders(ws, [(3, total_row_idx - 1, len(headers))])
 
         # Heatmap on hours columns 5-8 (only if there are rows)
         if rows:
@@ -919,14 +940,14 @@ class ScenarioXlsxExporter:
                 )
 
         # Column widths
-        for c_idx, w in enumerate(INCLUDED_WIDTHS, start=1):
+        for c_idx, w in enumerate(_drop_opo(INCLUDED_WIDTHS, self._opo_off), start=1):
             ws.column_dimensions[get_column_letter(c_idx)].width = w
 
         ws.freeze_panes = "A3"
         if rows:
-            ws.auto_filter.ref = f"A2:{get_column_letter(len(INCLUDED_HEADERS))}{total_row_idx}"
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}{total_row_idx}"
         else:
-            ws.auto_filter.ref = f"A2:{get_column_letter(len(INCLUDED_HEADERS))}2"
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}2"
 
     def _sheet_excluded(self, ws, ctx: ScenarioExportContext) -> None:
         from openpyxl.formatting.rule import ColorScaleRule  # type: ignore[import-untyped]
@@ -943,9 +964,10 @@ class ScenarioXlsxExporter:
         )
 
         title = f"Сценарий: {ctx.scenario.name} · Не вошло ({len(rows)} задач)"
-        _write_title_strip(ws, title, columns=len(EXCLUDED_HEADERS))
+        headers = _drop_opo(EXCLUDED_HEADERS, self._opo_off)
+        _write_title_strip(ws, title, columns=len(headers))
 
-        for c_idx, h in enumerate(EXCLUDED_HEADERS, start=1):
+        for c_idx, h in enumerate(headers, start=1):
             c = ws.cell(row=2, column=c_idx, value=h)
             c.font = _Style.HEADER_FONT
             c.fill = _Style.HEADER_FILL
@@ -953,7 +975,7 @@ class ScenarioXlsxExporter:
         ws.row_dimensions[2].height = 22
 
         for r_idx, alloc in enumerate(rows, start=3):
-            values = _initiative_row_mid(alloc, included=False)
+            values = _initiative_row_mid(alloc, included=False, opo_off=self._opo_off)
             for c_idx, val in enumerate(values, start=1):
                 c = ws.cell(row=r_idx, column=c_idx, value=val)
                 c.fill = _Style.GREY_BG
@@ -987,10 +1009,13 @@ class ScenarioXlsxExporter:
             start_row=total_row_idx, start_column=1,
             end_row=total_row_idx, end_column=4,
         )
-        sum_cols = [5, 6, 7, 8, 9]
+        sum_cols = list(range(5, len(headers)))
         for c_idx in sum_cols:
             if rows:
-                total = sum(_initiative_row_mid(a, included=False)[c_idx - 1] for a in rows)
+                total = sum(
+                    _initiative_row_mid(a, included=False, opo_off=self._opo_off)[c_idx - 1]
+                    for a in rows
+                )
             else:
                 total = 0
             c = ws.cell(row=total_row_idx, column=c_idx, value=round(total, 1))
@@ -1002,7 +1027,7 @@ class ScenarioXlsxExporter:
         c.fill = _Style.HEADER_FILL
 
         # Тонкая линия снизу каждой строки данных
-        _stamp_row_borders(ws, [(3, total_row_idx - 1, len(EXCLUDED_HEADERS))])
+        _stamp_row_borders(ws, [(3, total_row_idx - 1, len(headers))])
 
         # Heatmap on hours
         if rows:
@@ -1017,14 +1042,14 @@ class ScenarioXlsxExporter:
                     ),
                 )
 
-        for c_idx, w in enumerate(EXCLUDED_WIDTHS, start=1):
+        for c_idx, w in enumerate(_drop_opo(EXCLUDED_WIDTHS, self._opo_off), start=1):
             ws.column_dimensions[get_column_letter(c_idx)].width = w
 
         ws.freeze_panes = "A3"
         if rows:
-            ws.auto_filter.ref = f"A2:{get_column_letter(len(EXCLUDED_HEADERS))}{total_row_idx}"
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}{total_row_idx}"
         else:
-            ws.auto_filter.ref = f"A2:{get_column_letter(len(EXCLUDED_HEADERS))}2"
+            ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}2"
 
     def _sheet_reference(self, ws, ctx: ScenarioExportContext) -> None:
         ws.sheet_view.showGridLines = False

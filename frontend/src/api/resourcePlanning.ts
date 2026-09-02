@@ -393,6 +393,8 @@ export interface AbsenceWindowItem {
 export interface PhaseCalcDetails {
   duration_days_jira: number | null;
   involvement_pct: number | null;
+  /** 'task' — значение задачи, 'team' — из справочника команды. */
+  involvement_source?: 'task' | 'team' | null;
   parallel_count: number;
   role_pct: number | null;
   daily_capacity_hours: number;

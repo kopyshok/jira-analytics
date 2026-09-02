@@ -8,7 +8,7 @@ import BacklogRoleCell from './BacklogRoleCell';
 import { effectiveEstimate } from '../../utils/allocationEstimates';
 import { statusTagColor } from '../../utils/status';
 import { getRoleColor } from '../../utils/roles';
-import { OPO_COLOR } from '../../utils/opo';
+import { OPO_COLOR, foldOpo } from '../../utils/opo';
 import { DARK_THEME, FONTS } from '../../utils/constants';
 import type { AllocationResponse, Role } from '../../types/api';
 import type { ContinuationInfoRow } from '../../api/planning';
@@ -28,6 +28,8 @@ export type BacklogAllocRowProps = {
   /** Группы команды. undefined — у команды нет деления, колонка не рисуется. */
   subgroupOptions?: { label: string; value: string }[];
   roles: Role[];
+  /** Квартал сценария не раньше отсечки ОПЭ — колонки ОПЭ нет. */
+  opoOff: boolean;
   jiraBaseUrl: string;
   resourceTotalForBacklog: number;
   registerRef: (id: string, el: HTMLDivElement | null) => void;
@@ -52,6 +54,7 @@ function BacklogAllocRowBase({
   assigneeOptions,
   subgroupOptions,
   roles,
+  opoOff,
   jiraBaseUrl,
   resourceTotalForBacklog,
   registerRef,
@@ -71,7 +74,9 @@ function BacklogAllocRowBase({
     [setNodeRef, registerRef, a.id],
   );
 
-  const eff = effectiveEstimate(a);
+  const raw = effectiveEstimate(a);
+  // С квартала отсечки часы ОПЭ показываем внутри АН и ПР.
+  const eff = opoOff ? foldOpo(raw, a.opo_analyst_ratio) : raw;
   const an = eff.analyst;
   const de = eff.dev;
   const qa = eff.qa;
@@ -210,6 +215,8 @@ function BacklogAllocRowBase({
               opo: a.override_estimate_opo_hours,
             }}
             continuation={continuationInfo}
+            opoOff={opoOff}
+            opoAnalystRatio={a.opo_analyst_ratio}
           />
         </div>
         {a.status && (
@@ -304,7 +311,9 @@ function BacklogAllocRowBase({
         <BacklogRoleCell label="АН" hours={an} total={total} color={getRoleColor(roles, 'analyst')} />
         <BacklogRoleCell label="ПР" hours={de} total={total} color={getRoleColor(roles, 'dev')} />
         <BacklogRoleCell label="ТС" hours={qa} total={total} color={getRoleColor(roles, 'qa')} />
-        <BacklogRoleCell label="ОПЭ" hours={op} total={total} color={OPO_COLOR} />
+        {!opoOff && (
+          <BacklogRoleCell label="ОПЭ" hours={op} total={total} color={OPO_COLOR} />
+        )}
       </div>
       <div style={{ textAlign: 'right' }}>
         <span style={{ fontFamily: FONTS.mono, fontSize: 14, color: DARK_THEME.textPrimary }}>

@@ -25,6 +25,11 @@ export default function PhaseCalcSection({ data, collapsed, onToggleCollapse }: 
               </Descriptions.Item>
               <Descriptions.Item label="Вовлечённость">
                 {data.involvement_pct != null ? `${data.involvement_pct}%` : '—'}
+                {data.involvement_source === 'team' && (
+                  <Typography.Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>
+                    общая по команде
+                  </Typography.Text>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Параллельных исполнителей">
                 {data.parallel_count}

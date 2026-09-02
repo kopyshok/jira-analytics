@@ -21,6 +21,7 @@ from app.database import get_db
 from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
 from app.services import subgroup_filter as sgf
+from app.services.subgroup_resolver import SubgroupResolver
 from app.services.subgroup_filter import parse_subgroups_csv
 from app.services.backlog_service import (
     BACKLOG_CATEGORY,
@@ -107,6 +108,10 @@ class BacklogChildSchema(BaseModel):
     estimate_dev_hours: Optional[float] = None
     estimate_qa_hours: Optional[float] = None
     estimate_opo_hours: Optional[float] = None
+    # Группа внутри команды: явная и разрешённая по лесенке.
+    assigned_subgroup_id: Optional[str] = None
+    subgroup_id: Optional[str] = None
+    subgroup_source: Optional[str] = None
 
 
 class ParentContextSchema(BaseModel):
@@ -187,6 +192,10 @@ class BacklogItemResponse(BaseModel):
     has_parent_in_backlog: bool = False
     has_children_in_backlog: bool = False
     children: List[BacklogChildSchema] = []
+    # Группа внутри команды: явная и разрешённая по лесенке.
+    assigned_subgroup_id: Optional[str] = None
+    subgroup_id: Optional[str] = None
+    subgroup_source: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -374,6 +383,39 @@ def _to_response(
         has_children_in_backlog=has_children_in_backlog,
         children=children or [],
     )
+
+
+def _apply_backlog_subgroups(
+    db: Session, rows: List[BacklogItemResponse]
+) -> List[BacklogItemResponse]:
+    """Дописать группу внутри команды в строки бэклога и их детей.
+
+    Один резолвер на весь ответ — его кэши снимают поход в БД на каждую задачу.
+    Команда без признака деления даёт пустой результат, строки не меняются.
+    """
+    issue_ids = [r.issue_id for r in rows if r.issue_id]
+    issue_ids += [c.issue_id for r in rows for c in r.children]
+    if not issue_ids:
+        return rows
+    issues = {
+        i.id: i for i in db.query(Issue).filter(Issue.id.in_(set(issue_ids))).all()
+    }
+    resolver = SubgroupResolver(db)
+
+    def fill(target, issue_id: Optional[str]) -> None:
+        issue = issues.get(issue_id) if issue_id else None
+        if issue is None:
+            return
+        target.assigned_subgroup_id = issue.assigned_subgroup_id
+        resolution = resolver.resolve_for_issue(issue)
+        target.subgroup_id = resolution.subgroup_id
+        target.subgroup_source = resolution.source
+
+    for row in rows:
+        fill(row, row.issue_id)
+        for child in row.children:
+            fill(child, child.issue_id)
+    return rows
 
 
 # === CRUD ===
@@ -645,30 +687,30 @@ async def list_backlog_items(
 
     if view in ("in_work", "quarterly"):
         labels = _quarter_labels_bulk(db, [i.id for i in visible_items])
-        return [
+        return _apply_backlog_subgroups(db, [
             _to_response(
                 i, _approved_scenarios_for(db, i.id), labels.get(i.id),
                 *_hierarchy_flags(i), _children_for(i),
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
             )
             for i in visible_items
-        ]
+        ])
     if view == "archived":
         labels = _quarter_labels_bulk(db, [i.id for i in visible_items])
-        return [
+        return _apply_backlog_subgroups(db, [
             _to_response(
                 i, None, labels.get(i.id), *_hierarchy_flags(i), _children_for(i),
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
             )
             for i in visible_items
-        ]
-    return [
+        ])
+    return _apply_backlog_subgroups(db, [
         _to_response(
             i, None, None, *_hierarchy_flags(i), _children_for(i),
             multi_team_lock=lock_enabled, parent_context=_parent_context(i),
         )
         for i in visible_items
-    ]
+    ])
 
 
 @router.post("", response_model=BacklogItemResponse, status_code=201)

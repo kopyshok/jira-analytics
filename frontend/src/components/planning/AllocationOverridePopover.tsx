@@ -3,6 +3,7 @@ import { Popover, Button, Table, InputNumber, Space, Typography } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import type { ContinuationInfoRow } from '../../api/planning';
 import { useAllocationOverrideMutation } from '../../hooks/usePlanning';
+import { foldOpo } from '../../utils/opo';
 
 const { Text } = Typography;
 
@@ -19,6 +20,9 @@ interface Props {
     opo: number | null;
   };
   continuation: ContinuationInfoRow | undefined;
+  /** Квартал сценария не раньше отсечки — строки ОПЭ нет, её часы уже в АН/ПР. */
+  opoOff?: boolean;
+  opoAnalystRatio?: number | null;
 }
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -39,6 +43,8 @@ interface FormProps {
   hasOverride: boolean;
   currentOverride: Props['currentOverride'];
   continuation: ContinuationInfoRow | undefined;
+  opoOff: boolean;
+  opoAnalystRatio: number | null | undefined;
   onDone: () => void;
 }
 
@@ -55,17 +61,23 @@ function OverrideForm({
   hasOverride,
   currentOverride,
   continuation,
+  opoOff,
+  opoAnalystRatio,
   onDone,
 }: FormProps) {
   const jira = continuation?.jira_estimate ?? ZERO_BREAKDOWN;
   const spent = continuation?.spent ?? ZERO_BREAKDOWN;
+  const visibleRoles = opoOff ? ROLES.filter((r) => r !== 'opo') : ROLES;
 
-  const [values, setValues] = useState<Record<Role, number>>({
-    analyst:
-      currentOverride.analyst ?? Math.max(0, (jira.analyst ?? 0) - (spent.analyst ?? 0)),
-    dev: currentOverride.dev ?? Math.max(0, (jira.dev ?? 0) - (spent.dev ?? 0)),
-    qa: currentOverride.qa ?? Math.max(0, (jira.qa ?? 0) - (spent.qa ?? 0)),
-    opo: currentOverride.opo ?? Math.max(0, (jira.opo ?? 0) - (spent.opo ?? 0)),
+  const [values, setValues] = useState<Record<Role, number>>(() => {
+    const base = {
+      analyst:
+        currentOverride.analyst ?? Math.max(0, (jira.analyst ?? 0) - (spent.analyst ?? 0)),
+      dev: currentOverride.dev ?? Math.max(0, (jira.dev ?? 0) - (spent.dev ?? 0)),
+      qa: currentOverride.qa ?? Math.max(0, (jira.qa ?? 0) - (spent.qa ?? 0)),
+      opo: currentOverride.opo ?? Math.max(0, (jira.opo ?? 0) - (spent.opo ?? 0)),
+    };
+    return opoOff ? foldOpo(base, opoAnalystRatio) : base;
   });
 
   const mut = useAllocationOverrideMutation(scenarioId);
@@ -88,17 +100,19 @@ function OverrideForm({
   return (
     <div style={{ minWidth: 380 }} onClick={(e) => e.stopPropagation()}>
       <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-        Оригинал Jira: А {jira.analyst} / Р {jira.dev} / Т {jira.qa} / ОПЭ {jira.opo} = {jiraTotal}ч
+        Оригинал Jira: А {jira.analyst} / Р {jira.dev} / Т {jira.qa}
+        {!opoOff && ` / ОПЭ ${jira.opo}`} = {jiraTotal}ч
       </Text>
       <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
-        Списано в прошлых периодах: А {spent.analyst} / Р {spent.dev} / Т {spent.qa} / ОПЭ {spent.opo} = {spentTotal}ч
+        Списано в прошлых периодах: А {spent.analyst} / Р {spent.dev} / Т {spent.qa}
+        {!opoOff && ` / ОПЭ ${spent.opo}`} = {spentTotal}ч
       </Text>
 
       <Table
         size="small"
         pagination={false}
         rowKey="role"
-        dataSource={ROLES.map((role) => ({
+        dataSource={visibleRoles.map((role) => ({
           role,
           label: ROLE_LABEL[role],
           value: values[role],
@@ -161,6 +175,8 @@ export function AllocationOverridePopover({
   scenarioStatus,
   currentOverride,
   continuation,
+  opoOff = false,
+  opoAnalystRatio,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -186,6 +202,8 @@ export function AllocationOverridePopover({
           hasOverride={hasOverride}
           currentOverride={currentOverride}
           continuation={continuation}
+          opoOff={opoOff}
+          opoAnalystRatio={opoAnalystRatio}
           onDone={() => setOpen(false)}
         />
       }
