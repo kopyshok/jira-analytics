@@ -32,9 +32,12 @@ _BASE_URL = "https://api.deepseek.com/v1"
 class DeepSeekProvider:
     name = "deepseek"
 
-    def __init__(self, api_key: str, model: str = _DEFAULT_MODEL) -> None:
+    def __init__(
+        self, api_key: str, model: str = _DEFAULT_MODEL, base_url: str = _BASE_URL,
+    ) -> None:
         self.api_key = api_key
         self.model = model
+        self.base_url = base_url.rstrip("/")
         self.last_error: str | None = None
 
     async def summarize_project(
@@ -44,7 +47,7 @@ class DeepSeekProvider:
         try:
             return ProjectSummary.model_validate(data), meta
         except ValidationError as e:
-            raise LLMResponseError(f"DeepSeek {self.model} вернул JSON не по схеме: {e}") from e
+            raise LLMResponseError(f"{self.name} {self.model} вернул JSON не по схеме: {e}") from e
 
     async def classify_issue(
         self, prompt: str, themes_payload: list[dict],
@@ -94,20 +97,17 @@ class DeepSeekProvider:
         self.last_error = None
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                r = await client.get(
-                    f"{_BASE_URL}/models",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                )
+                r = await client.get(f"{self.base_url}/models", headers=self._headers())
                 r.raise_for_status()
             return True
         except httpx.HTTPStatusError as e:
             body = e.response.text[:500]
             self.last_error = f"HTTP {e.response.status_code}: {body}"
-            logger.warning("DeepSeek healthcheck failed: %s", self.last_error)
+            logger.warning("%s healthcheck failed: %s", self.name, self.last_error)
             return False
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
-            logger.warning("DeepSeek healthcheck failed: %s", self.last_error)
+            logger.warning("%s healthcheck failed: %s", self.name, self.last_error)
             return False
 
     async def _call_json(
@@ -121,21 +121,21 @@ class DeepSeekProvider:
         if json_mode:
             body["response_format"] = {"type": "json_object"}
 
-        resp = await self._post(f"{_BASE_URL}/chat/completions", body)
+        resp = await self._post(f"{self.base_url}/chat/completions", body)
         try:
             text = resp["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError) as e:
             raise LLMResponseError(
-                f"DeepSeek вернул неожиданную структуру ответа ({type(e).__name__}). "
+                f"{self.name} вернул неожиданную структуру ответа ({type(e).__name__}). "
                 f"Тело: {str(resp)[:500]}"
             ) from e
         if not text.strip():
-            raise LLMResponseError(f"DeepSeek {model} вернул пустой ответ.")
+            raise LLMResponseError(f"{self.name} {model} вернул пустой ответ.")
         try:
             data = json.loads(text)
         except json.JSONDecodeError as e:
             raise LLMResponseError(
-                f"DeepSeek {model} вернул не-JSON. Первые 300 символов: {text[:300]}"
+                f"{self.name} {model} вернул не-JSON. Первые 300 символов: {text[:300]}"
             ) from e
         usage = resp.get("usage", {}) or {}
         meta = {
@@ -145,12 +145,14 @@ class DeepSeekProvider:
         }
         return data, meta
 
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
     async def _post(self, url: str, body: dict) -> dict:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
         async with httpx.AsyncClient(timeout=60.0) as client:
-            r = await client.post(url, json=body, headers=headers)
+            r = await client.post(url, json=body, headers=self._headers())
             r.raise_for_status()
             return r.json()

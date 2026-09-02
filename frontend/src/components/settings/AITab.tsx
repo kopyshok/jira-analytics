@@ -8,6 +8,7 @@ import {
   type GeminiModelInfo,
   type OpenRouterModelInfo,
   type DeepSeekModelInfo,
+  type OmniRouteModelInfo,
   type PromptDefault,
 } from '../../api/llm';
 import { api } from '../../api/client';
@@ -41,6 +42,13 @@ const FALLBACK_DEEPSEEK_MODELS: DeepSeekModelInfo[] = [
   { id: 'deepseek-chat', label: 'DeepSeek V3.2 (chat, дешёвый, рекомендуется)' },
   { id: 'deepseek-reasoner', label: 'DeepSeek R1 (reasoner, SOTA reasoning, дороже)' },
 ];
+const RECOMMENDED_OMNIROUTE = 'auto';
+const DEFAULT_OMNIROUTE_BASE_URL = 'http://localhost:20128/v1';
+const FALLBACK_OMNIROUTE_MODELS: OmniRouteModelInfo[] = [
+  { id: 'auto', label: 'auto — балансировка' },
+  { id: 'auto/coding', label: 'auto/coding — качество' },
+  { id: 'auto/cheap', label: 'auto/cheap — дешевле' },
+];
 const PROMPT_KEY = 'llm_project_summary_system_prompt';
 
 type FormValues = {
@@ -52,6 +60,9 @@ type FormValues = {
   openrouter_fallback_models: string[];
   deepseek_key: string;
   deepseek_model: string;
+  omniroute_base_url: string;
+  omniroute_key: string;
+  omniroute_model: string;
   prompt_role: string;
 };
 
@@ -92,6 +103,9 @@ export const AITab: React.FC = () => {
   const [deepSeekModels, setDeepSeekModels] = useState<DeepSeekModelInfo[]>(FALLBACK_DEEPSEEK_MODELS);
   const [deepSeekModelsLoading, setDeepSeekModelsLoading] = useState(false);
 
+  const [omniRouteModels, setOmniRouteModels] = useState<OmniRouteModelInfo[]>(FALLBACK_OMNIROUTE_MODELS);
+  const [omniRouteModelsLoading, setOmniRouteModelsLoading] = useState(false);
+
   const [promptDefault, setPromptDefault] = useState<PromptDefault | null>(null);
 
   useEffect(() => {
@@ -108,6 +122,9 @@ export const AITab: React.FC = () => {
       const fallbackList = fallbackCsv.split(',').map((s) => s.trim()).filter(Boolean);
       const deepSeekKey = await loadSetting('llm_deepseek_api_key', '');
       const deepSeekModel = await loadSetting('llm_deepseek_model', RECOMMENDED_DEEPSEEK);
+      const omniRouteBaseUrl = await loadSetting('llm_omniroute_base_url', DEFAULT_OMNIROUTE_BASE_URL);
+      const omniRouteKey = await loadSetting('llm_omniroute_api_key', '');
+      const omniRouteModel = await loadSetting('llm_omniroute_model', RECOMMENDED_OMNIROUTE);
       const def = await llmApi.getPromptDefault().catch(() => null);
       setPromptDefault(def);
       const promptRole = (await loadSetting(PROMPT_KEY, '')) || (def?.system_role ?? '');
@@ -121,12 +138,16 @@ export const AITab: React.FC = () => {
         openrouter_fallback_models: fallbackList,
         deepseek_key: deepSeekKey,
         deepseek_model: deepSeekModel,
+        omniroute_base_url: omniRouteBaseUrl,
+        omniroute_key: omniRouteKey,
+        omniroute_model: omniRouteModel,
         prompt_role: promptRole,
       });
       const status = await aiStatusApi.get().catch(() => ({ enabled: false }));
       if (status.enabled && geminiKey) await refreshGeminiModels(true);
       if (status.enabled && openRouterKey) await refreshOpenRouterModels(true);
       if (status.enabled && deepSeekKey) await refreshDeepSeekModels(true);
+      if (status.enabled && prov === 'omniroute') await refreshOmniRouteModels(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -173,6 +194,20 @@ export const AITab: React.FC = () => {
     }
   };
 
+  const refreshOmniRouteModels = async (silent = false) => {
+    if (!aiEnabled) return;
+    setOmniRouteModelsLoading(true);
+    try {
+      const list = await llmApi.listOmniRouteModels();
+      if (list && list.length) setOmniRouteModels(list);
+      if (!silent) message.success(`Загружено ${list.length} моделей OmniRoute`);
+    } catch (e: unknown) {
+      if (!silent) message.error(e instanceof Error ? e.message : 'Не удалось загрузить список');
+    } finally {
+      setOmniRouteModelsLoading(false);
+    }
+  };
+
   const onSave = async (values: FormValues) => {
     setLoading(true);
     try {
@@ -196,6 +231,17 @@ export const AITab: React.FC = () => {
       if (values.deepseek_key) {
         await api.put('/settings/generic', { key: 'llm_deepseek_api_key', value: values.deepseek_key });
       }
+
+      await api.put('/settings/generic', {
+        key: 'llm_omniroute_base_url',
+        value: (values.omniroute_base_url || '').trim() || DEFAULT_OMNIROUTE_BASE_URL,
+      });
+      await api.put('/settings/generic', { key: 'llm_omniroute_model', value: values.omniroute_model });
+      // Ключ опционален: пустое поле — сервис без авторизации, поэтому пишем как есть.
+      await api.put('/settings/generic', {
+        key: 'llm_omniroute_api_key',
+        value: values.omniroute_key ?? '',
+      });
 
       const role = (values.prompt_role ?? '').trim();
       const isDefault = promptDefault && role === promptDefault.system_role.trim();
@@ -323,6 +369,7 @@ export const AITab: React.FC = () => {
               { value: 'gemini', label: 'Google Gemini' },
               { value: 'openrouter', label: 'OpenRouter (десятки free-моделей)' },
               { value: 'deepseek', label: 'DeepSeek (прямой API, платный)' },
+              { value: 'omniroute', label: 'OmniRoute (внутренний шлюз)' },
               { value: 'anthropic', label: 'Anthropic Claude (заглушка)', disabled: true },
               { value: 'openai', label: 'OpenAI GPT (заглушка)', disabled: true },
             ]}
@@ -474,6 +521,76 @@ export const AITab: React.FC = () => {
             extra="Получить ключ: platform.deepseek.com/api_keys"
           >
             <MaskedInput placeholder="sk-..." name="deepseek_api_key_field" />
+          </Form.Item>
+        </div>
+
+        <div style={{ display: provider === 'omniroute' ? 'block' : 'none' }}>
+          <Form.Item
+            label="Адрес сервиса"
+            name="omniroute_base_url"
+            extra={
+              <Typography.Text type="secondary">
+                Адрес внутреннего шлюза вместе с «/v1» на конце. Локальная установка по
+                умолчанию — {DEFAULT_OMNIROUTE_BASE_URL}.
+              </Typography.Text>
+            }
+          >
+            <Input placeholder={DEFAULT_OMNIROUTE_BASE_URL} />
+          </Form.Item>
+
+          <Form.Item
+            label={
+              <Space>
+                <span>Модель OmniRoute</span>
+                <Button
+                  size="small"
+                  type="link"
+                  loading={omniRouteModelsLoading}
+                  disabled={!aiEnabled}
+                  onClick={() => refreshOmniRouteModels(false)}
+                >
+                  Обновить список
+                </Button>
+              </Space>
+            }
+            name="omniroute_model"
+            extra={
+              <Typography.Text type="secondary">
+                «auto» — шлюз сам выбирает провайдера и сам переключается при отказе,
+                поэтому отдельная цепочка запасных моделей здесь не нужна.
+                «auto/coding» — приоритет качеству, «auto/cheap» — цене. Можно выбрать
+                и конкретную модель из списка.
+              </Typography.Text>
+            }
+          >
+            <Select
+              showSearch
+              optionFilterProp="searchText"
+              options={omniRouteModels.map((m) => ({
+                value: m.id,
+                label: (
+                  <span>
+                    {m.label}
+                    {m.id === RECOMMENDED_OMNIROUTE && (
+                      <Tag color="green" style={{ marginLeft: 8 }}>
+                        рекомендуется
+                      </Tag>
+                    )}
+                  </span>
+                ),
+                searchText: `${m.label} ${m.id}`,
+              }))}
+              optionLabelProp="label"
+              popupMatchSelectWidth={false}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="Ключ доступа (необязательно)"
+            name="omniroute_key"
+            extra="Если шлюз развёрнут без авторизации — оставьте поле пустым."
+          >
+            <MaskedInput placeholder="можно оставить пустым" name="omniroute_api_key_field" />
           </Form.Item>
         </div>
 

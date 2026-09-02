@@ -178,6 +178,51 @@ async def list_deepseek_models(db: Session = Depends(get_db)):
     return out
 
 
+@router.get("/omniroute/models", dependencies=[Depends(require_ai_enabled)])
+async def list_omniroute_models(db: Session = Depends(get_db)):
+    """Live-список моделей внутреннего шлюза OmniRoute через `/models`.
+
+    Ключ опционален — свежая установка шлюза отвечает без авторизации.
+    Псевдо-модели авто-роутинга (`auto`, `auto/coding`, `auto/cheap`) шлюз в
+    списке не отдаёт, поэтому добавляем их вручную первыми.
+    """
+    from app.services.llm.omniroute import DEFAULT_BASE_URL
+
+    def _setting(key: str) -> str:
+        row = db.query(AppSetting).filter(AppSetting.key == key).first()
+        return (row.value if row else "") or ""
+
+    base_url = (_setting("llm_omniroute_base_url") or DEFAULT_BASE_URL).rstrip("/")
+    headers = {}
+    api_key = _setting("llm_omniroute_api_key")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(f"{base_url}/models", headers=headers)
+            r.raise_for_status()
+            data = r.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=503, detail=f"OmniRoute ответил {e.response.status_code}")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"OmniRoute недоступен: {e}")
+
+    auto = [
+        {"id": "auto", "label": "auto — балансировка"},
+        {"id": "auto/coding", "label": "auto/coding — качество"},
+        {"id": "auto/cheap", "label": "auto/cheap — дешевле"},
+    ]
+    auto_ids = {m["id"] for m in auto}
+    out: list[dict] = []
+    for m in data.get("data", []):
+        model_id = m.get("id", "")
+        if not model_id or model_id in auto_ids:
+            continue
+        out.append({"id": model_id, "label": model_id})
+    out.sort(key=lambda x: x["id"])
+    return auto + out
+
+
 def _is_zero(price: str) -> bool:
     try:
         return float(price) == 0.0
