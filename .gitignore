@@ -85,3 +85,4 @@ tour/
 
 # graphify knowledge graph — локально, только для разработки
 graphify-out/
+node_modules/

@@ -4,6 +4,7 @@ import type { Color } from 'antd/es/color-picker';
 import type { AppearanceSettings } from '../../api/appearance';
 import { DEFAULT_APPEARANCE } from '../../contexts/appearanceDefaults';
 import { useUpdateAppearance } from '../../api/appearance';
+import { useOpoCutoff } from '../../hooks/useOpoCutoff';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { computeFillGradientAlphas } from './appearanceGradient';
 
@@ -108,6 +109,8 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
   const [intensityPct, setIntensityPct] = useState<number>(prefs.fill_intensity_pct);
   const [contrastPct, setContrastPct] = useState<number>(prefs.fill_contrast_pct);
   const [pulseCritical, setPulseCritical] = useState<boolean>(prefs.pulse_critical_path);
+  const { opoOffNow } = useOpoCutoff();
+  const phaseLabels = opoOffNow ? PHASE_LABELS.filter((p) => p.key !== 'opo') : PHASE_LABELS;
   const [pulseEmployee, setPulseEmployee] = useState<boolean>(prefs.pulse_highlighted_employee);
 
   const handleSave = () => {
@@ -156,7 +159,7 @@ function AppearanceModalContent({ initial, onClose }: { initial: AppearanceSetti
 
   return (
     <div style={{ marginTop: 8 }}>
-      {PHASE_LABELS.map(({ key, label }) =>
+      {phaseLabels.map(({ key, label }) =>
         row(
           key,
           label,

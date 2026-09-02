@@ -522,25 +522,32 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
     [queryParams.teams],
   );
   const employeeTeamMap = useMemo(() => {
-    const m = new Map<string, string[]>();
+    const m = new Map<string, EmployeeTeamItem[]>();
     (empsWithTeams.data ?? []).forEach(e => {
-      m.set(e.id, (e.teams ?? []).map(t => t.team));
+      m.set(e.id, e.teams ?? []);
     });
     return m;
   }, [empsWithTeams.data]);
-  const matchesTeam = useCallback((employeeId: string): boolean => {
-    if (selectedTeams.length === 0) return true;
-    const teams = employeeTeamMap.get(employeeId) ?? [];
-    return teams.some(t => selectedTeams.includes(t));
-  }, [selectedTeams, employeeTeamMap]);
-
-  const activeEmployees = (employees ?? []).filter(e => e.is_active && matchesTeam(e.id));
-  const activeReasons = (reasons ?? []).filter(r => r.is_active);
 
   // Quarter bounds.
   const months = QUARTER_MONTHS[Number(quarter)] ?? [];
   const periodStart = dayjs(`${year}-${String(months[0] ?? 1).padStart(2, '0')}-01`);
   const periodEnd = periodStart.add(3, 'month').subtract(1, 'day');
+
+  const matchesTeam = useCallback((employeeId: string): boolean => {
+    if (selectedTeams.length === 0) return true;
+    const teams = employeeTeamMap.get(employeeId) ?? [];
+    // Состав команды берём на квартал: период участия должен пересекаться с ним.
+    return teams.some(t => {
+      if (!selectedTeams.includes(t.team)) return false;
+      if (t.left_at && dayjs(t.left_at).isBefore(periodStart, 'day')) return false;
+      if (t.joined_at && dayjs(t.joined_at).isAfter(periodEnd, 'day')) return false;
+      return true;
+    });
+  }, [selectedTeams, employeeTeamMap, periodStart, periodEnd]);
+
+  const activeEmployees = (employees ?? []).filter(e => e.is_active && matchesTeam(e.id));
+  const activeReasons = (reasons ?? []).filter(r => r.is_active);
 
   const absencesByEmp = useMemo(() => {
     const m = new Map<string, AbsenceResponse[]>();
