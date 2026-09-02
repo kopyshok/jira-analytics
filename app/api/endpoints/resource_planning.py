@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
+from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import ResourcePlanningService
 
@@ -412,6 +413,9 @@ class AbsenceWindowItem(BaseModel):
 class PhaseCalcDetails(BaseModel):
     duration_days_jira: Optional[int] = None
     involvement_pct: Optional[int] = None
+    # Откуда взята вовлечённость: "task" — задана у задачи, "team" — из
+    # справочника команды, None — не задана нигде (считаем как 100%).
+    involvement_source: Optional[str] = None
     parallel_count: int = 1
     role_pct: Optional[int] = None
     daily_capacity_hours: float
@@ -1027,7 +1031,9 @@ def get_gantt(
             else []
         )
         if plan_employees:
-            avail = svc.build_availability(plan_employees, q_start, q_end, [])
+            avail = svc.build_availability(
+                plan_employees, q_start, q_end, [], team=plan.team
+            )
             # Часы по дням на сотрудника — из реальной раскладки планировщика.
             # Размазывать hours_allocated по длине бара нельзя: планировщик
             # оставляет внутри бара паузы (сотрудник ушёл на другую задачу), и
@@ -1494,13 +1500,9 @@ def patch_assignment(
         plan_for_window = db.get(ResourcePlan, plan_id)
         backlog_item = a.backlog_item
         if plan_for_window and backlog_item:
-            inv = (
-                ResourcePlanningService._involvement_for_phase(
-                    backlog_item, a.phase
-                )
-                or 1.0
-            )
             svc = ResourcePlanningService(db)
+            svc._load_plan_context(plan_for_window)
+            inv = svc._involvement_for_phase(backlog_item, a.phase) or 1.0
             _, q_end, q_end_extended = svc._quarter_bounds_extended(plan_for_window)
             new_end_dt, daily_json = svc._extend_window_for_hours(
                 start_date=patch["start_date"],
@@ -2180,7 +2182,9 @@ def explain_conflict(
     )
 
     svc = ResourcePlanningService(db)
-    availability = svc.build_availability(employees, target_date, target_date, list(blocks))
+    availability = svc.build_availability(
+        employees, target_date, target_date, list(blocks), team=team
+    )
     avail_map = availability.get(c.employee_id, {})
     available_h = float(avail_map.get(target_date, 0.0))
 
@@ -2213,6 +2217,7 @@ def explain_conflict(
         emp_horizon_start,
         emp_horizon_end,
         list(blocks),
+        team=team,
     ).get(c.employee_id, {})
 
     demand_total = 0.0
@@ -2609,6 +2614,25 @@ def _build_absences_in_window(
     return items
 
 
+def _plan_involvement_defaults(db: Session, plan_id: Optional[str]) -> Dict[str, float]:
+    """Справочник вовлечённости команды на квартал плана: роль → значение."""
+    plan = db.get(ResourcePlan, plan_id) if plan_id else None
+    if plan is None:
+        return {}
+    try:
+        quarter = int(str(plan.quarter or "").upper().lstrip("Q"))
+    except ValueError:
+        return {}
+    return team_defaults(db, plan.team, plan.year, quarter or None)
+
+
+def _effective_involvement(
+    db: Session, a: "ResourcePlanAssignment", bi: "BacklogItem",
+) -> Optional[float]:
+    """Вовлечённость фазы так же, как её считает планировщик."""
+    return effective_for_phase(bi, a.phase, _plan_involvement_defaults(db, a.plan_id))
+
+
 def _build_phase_calc(
     a: "ResourcePlanAssignment",
     db: Session,
@@ -2638,13 +2662,17 @@ def _build_phase_calc(
     if dur_field is None or inv_field is None:
         return None
     duration = getattr(bi, dur_field, None)
-    inv = getattr(bi, inv_field, None)
+    own_inv = getattr(bi, inv_field, None)
+    inv = _effective_involvement(db, a, bi)
     parallel = getattr(bi, par_field, None) if par_field else None
     inv_pct = int(inv * 100) if inv else None
     daily_cap = 8.0 * (inv or 1.0) * (parallel or 1)
     return PhaseCalcDetails(
         duration_days_jira=int(duration) if duration else None,
         involvement_pct=inv_pct,
+        involvement_source=(
+            "task" if own_inv is not None else ("team" if inv is not None else None)
+        ),
         parallel_count=int(parallel or 1),
         role_pct=None,
         daily_capacity_hours=round(daily_cap, 2),
@@ -2834,6 +2862,7 @@ def explain_assignment(
             horizon_start,
             horizon_end,
             list(blocks),
+            team=plan.team,
         ).get(a.employee_id, {})
 
     # Calendar map для окна фазы (расширено влево до expected_start для трассы).
@@ -2857,17 +2886,8 @@ def explain_assignment(
     # для всех фаз (Анализ/Разработка/Тестирование/ОПЭ) показывать сколько
     # часов реально может уйти на этот проект, а не голый календарь.
     _bi_for_inv = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
-    _inv_field = {
-        "analyst": "involvement_analyst",
-        "dev": "involvement_dev",
-        "qa": "involvement_qa",
-        "opo": "involvement_launch",
-    }.get(a.phase)
-    _inv_value = (
-        float(getattr(_bi_for_inv, _inv_field) or 1.0)
-        if _bi_for_inv and _inv_field and getattr(_bi_for_inv, _inv_field, None) is not None
-        else 1.0
-    )
+    _inv_raw = _effective_involvement(db, a, _bi_for_inv) if _bi_for_inv else None
+    _inv_value = float(_inv_raw) if _inv_raw is not None else 1.0
 
     # QA — внешний ресурс без сотрудника. Доступность по дням = 8ч × involvement_qa
     # на рабочих днях, 0 на выходных/праздниках.
