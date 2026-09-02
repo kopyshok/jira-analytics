@@ -178,13 +178,21 @@ class ResourcePlanningService:
         start: date,
         end: date,
         scheduled_blocks: List[ScheduledBlock],
+        team: Optional[str] = None,
     ) -> Dict[str, Dict[date, float]]:
         """Returns {employee_id: {date: available_hours}}.
 
         available_hours = production calendar hours if working day,
         0.0 if weekend/holiday/absence/blocked period.
+
+        ``team`` задан → дни вне периода участия в этой команде тоже нулевые:
+        пришедший в середине квартала не получает работу до своей даты входа,
+        выбывший — после даты ухода.
         """
         emp_ids = [e.id for e in employees]
+        member_spans = (
+            tm.member_intervals(self.db, [team], start, end) if team else {}
+        )
 
         # Production calendar — only anomaly days are stored
         cal_rows = (
@@ -257,9 +265,11 @@ class ResourcePlanningService:
         result: Dict[str, Dict[date, float]] = {}
         for emp in employees:
             daily: Dict[date, float] = {}
+            spans = member_spans.get(emp.id, []) if team else []
             d = start
             while d <= end:
-                if d in absent_days[emp.id] or d in blocked_days[emp.id]:
+                out_of_team = bool(team) and not tm.day_in_intervals(d, spans)
+                if out_of_team or d in absent_days[emp.id] or d in blocked_days[emp.id]:
                     daily[d] = 0.0
                 else:
                     cal_hours = cal.get(d, None)
@@ -539,7 +549,9 @@ class ResourcePlanningService:
             .all()
         )
 
-        avail = self.build_availability(employees, q_start, q_end_extended, list(blocks))
+        avail = self.build_availability(
+            employees, q_start, q_end_extended, list(blocks), team=plan.team
+        )
 
         # Календарь рабочих часов БЕЗ сотрудника — для фазы QA (часы-only,
         # без employee_id). Используется чтобы пропускать выходные/праздники

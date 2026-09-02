@@ -105,6 +105,12 @@ def test_assignment_after_departure_creates_conflict(db_session, sample_plan):
     assert a is not None
     assert a.start_date and a.end_date and a.end_date > a.start_date
 
+    # Строка закреплена по датам: пересчёт её не двигает, поэтому она и
+    # остаётся висеть на выбывшем — именно этот случай ловит конфликт.
+    # (Незакреплённые строки планировщик теперь сам не заводит за дату ухода.)
+    a.pinned_start = True
+    db_session.commit()
+
     # Сотрудник выбывает на второй день своей же фазы.
     membership = (
         db_session.execute(
