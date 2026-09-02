@@ -3,7 +3,29 @@ import uuid
 
 from app.models import BacklogItem, Employee
 from app.models.employee_team import EmployeeTeam
+from app.models.team import Team, TeamSubgroup
 from app.services.resource_planning_service import ResourcePlanningService
+
+
+def _subgroup(db_session, key: str, team_name: str = "T1") -> str:
+    """Реальная строка группы: на Postgres внешний ключ employee_teams проверяется."""
+    row = db_session.query(Team).filter(Team.name == team_name).first()
+    if row is None:
+        row = Team(name=team_name, has_subgroups=True)
+        db_session.add(row)
+        db_session.commit()
+        db_session.refresh(row)
+    sub = (
+        db_session.query(TeamSubgroup)
+        .filter(TeamSubgroup.team_id == row.id, TeamSubgroup.name == key)
+        .first()
+    )
+    if sub is None:
+        sub = TeamSubgroup(team_id=row.id, name=key)
+        db_session.add(sub)
+        db_session.commit()
+        db_session.refresh(sub)
+    return sub.id
 
 
 def _emp(db_session, name: str, subgroup: str | None, team: str = "T1") -> Employee:
@@ -18,7 +40,12 @@ def _emp(db_session, name: str, subgroup: str | None, team: str = "T1") -> Emplo
     db_session.commit()
     db_session.refresh(e)
     db_session.add(
-        EmployeeTeam(employee_id=e.id, team=team, is_primary=True, subgroup_id=subgroup)
+        EmployeeTeam(
+            employee_id=e.id,
+            team=team,
+            is_primary=True,
+            subgroup_id=_subgroup(db_session, subgroup, team) if subgroup else None,
+        )
     )
     db_session.commit()
     return e
