@@ -76,6 +76,9 @@ export const useSetEmployeeSubgroup = () => {
     }) => setEmployeeSubgroup(employeeId, team, subgroupId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
+      // Группа сотрудника приезжает в составе команд сотрудника — без этого
+      // селект в «Ресурсах» показывает старое значение до перезагрузки.
+      qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['planning'] });
     },

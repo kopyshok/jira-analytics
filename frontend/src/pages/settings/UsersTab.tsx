@@ -17,6 +17,10 @@ const ROLE_LABEL: Record<string, string> = Object.fromEntries(
   ROLE_OPTIONS.map((o) => [o.value, o.label]),
 );
 
+// Сравнение с учётом русского алфавита; пустое значение считаем пустой строкой.
+const cmp = (a: string | null | undefined, b: string | null | undefined) =>
+  (a ?? '').localeCompare(b ?? '', 'ru');
+
 export default function UsersTab() {
   const { data: jiraTeams } = useJiraTeams();
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -88,21 +92,31 @@ export default function UsersTab() {
   }
 
   const columns = [
-    { title: 'Имя', dataIndex: 'display_name', key: 'display_name' },
-    { title: 'Email', dataIndex: 'email', key: 'email' },
+    {
+      title: 'Имя', dataIndex: 'display_name', key: 'display_name',
+      sorter: (a: UserProfile, b: UserProfile) => cmp(a.display_name, b.display_name),
+    },
+    {
+      title: 'Email', dataIndex: 'email', key: 'email',
+      sorter: (a: UserProfile, b: UserProfile) => cmp(a.email, b.email),
+    },
     {
       title: 'Роль', dataIndex: 'role', key: 'role',
       render: (r: string) => ROLE_LABEL[r] ?? r,
+      sorter: (a: UserProfile, b: UserProfile) =>
+        cmp(ROLE_LABEL[a.role] ?? a.role, ROLE_LABEL[b.role] ?? b.role),
     },
     {
       title: 'Команда', dataIndex: 'default_team', key: 'default_team',
       render: (t: string | null) => t ?? <span style={{ color: '#666' }}>—</span>,
+      sorter: (a: UserProfile, b: UserProfile) => cmp(a.default_team, b.default_team),
     },
     {
       title: 'Активен', dataIndex: 'is_active', key: 'is_active',
       render: (active: boolean, u: UserProfile) => (
         <Switch checked={active} onChange={() => handleToggleActive(u)} />
       ),
+      sorter: (a: UserProfile, b: UserProfile) => Number(a.is_active) - Number(b.is_active),
     },
     {
       title: '', key: 'actions',
@@ -125,7 +139,14 @@ export default function UsersTab() {
           Добавить пользователя
         </Button>
       </div>
-      <Table dataSource={users} columns={columns} rowKey="id" loading={loading} size="small" />
+      <Table
+        dataSource={users}
+        columns={columns}
+        rowKey="id"
+        loading={loading}
+        size="small"
+        pagination={{ defaultPageSize: 25, pageSizeOptions: [10, 25, 50, 100], showSizeChanger: true }}
+      />
 
       <Modal title="Новый пользователь" open={createOpen}
         onCancel={() => { setCreateOpen(false); form.resetFields(); }}
