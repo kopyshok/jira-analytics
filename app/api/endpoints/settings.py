@@ -96,7 +96,7 @@ def _is_allowed_generic_key(key: str) -> bool:
     """Limit generic settings to non-secret UI/runtime keys."""
     if key in LLM_KEYS:
         return True
-    if key in ("ai_enabled", "planning_multi_team_by_epics"):
+    if key in ("ai_enabled", "planning_multi_team_by_epics", "planning_opo_cutoff"):
         return True
     return (
         key.startswith("ui_")

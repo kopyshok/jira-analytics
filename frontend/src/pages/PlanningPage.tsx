@@ -26,6 +26,7 @@ import ScenarioDiffPanel from '../components/planning/ScenarioDiffPanel';
 import ScenarioCompareDrawer from '../components/planning/ScenarioCompareDrawer';
 import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisionHistoryDrawer';
 import InvolvementDefaultsDrawer from '../components/planning/InvolvementDefaultsDrawer';
+import { useOpoCutoff } from '../hooks/useOpoCutoff';
 import HoursBreakdownDrawer from '../components/hours/HoursBreakdownDrawer';
 import { useScenarioContinuationInfo } from '../hooks/useScenarioContinuationInfo';
 import {
@@ -260,6 +261,8 @@ export default function PlanningPage() {
   });
   const { data: scenarios } = useScenarios(undefined, undefined, undefined, queryParams.teams);
   const { data: scenario } = useScenario(scenarioId);
+  const { opoOffFor } = useOpoCutoff();
+  const opoOff = opoOffFor(scenario?.year, scenario?.quarter);
   const { data: allocations, isLoading: allocLoading } =
     useScenarioAllocations(scenarioId);
   const { data: continuation } = useScenarioContinuationInfo(scenarioId ?? undefined);
@@ -872,7 +875,7 @@ export default function PlanningPage() {
                     Заказчик
                   </span>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    {['АН', 'ПР', 'ТС', 'ОПЭ'].map((l) => (
+                    {(opoOff ? ['АН', 'ПР', 'ТС'] : ['АН', 'ПР', 'ТС', 'ОПЭ']).map((l) => (
                       <span key={l} style={{ flex: 1, minWidth: 52, textAlign: 'center' }}>{l}</span>
                     ))}
                   </div>
@@ -897,6 +900,7 @@ export default function PlanningPage() {
                             items={section.items}
                             collapsed={collapsed}
                             roles={roles}
+                            opoOff={opoOff}
                             onToggle={() => toggleSection(section.id!)}
                           />
                         )}
@@ -922,6 +926,7 @@ export default function PlanningPage() {
                                   assigneeOptions={assigneeOptions}
                                   subgroupOptions={hasSubgroups ? subgroupOptions : undefined}
                                   roles={roles}
+                                  opoOff={opoOff}
                                   jiraBaseUrl={jiraBaseUrl}
                                   resourceTotalForBacklog={resourceSummary?.available_for_backlog_total ?? 0}
                                   registerRef={registerRowRef}

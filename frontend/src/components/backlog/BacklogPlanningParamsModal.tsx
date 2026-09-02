@@ -10,6 +10,7 @@ import HoursBreakdownTable from '../hours/HoursBreakdownTable';
 import PlanConflictBanner from '../hours/PlanConflictBanner';
 import PlanEditDrawer from '../hours/PlanEditDrawer';
 import type { BacklogItemResponse } from '../../types/api';
+import { useOpoCutoff } from '../../hooks/useOpoCutoff';
 
 interface Props {
   open: boolean;
@@ -158,6 +159,7 @@ function PhaseRow({
 }
 
 export default function BacklogPlanningParamsModal({ open, item, onClose }: Props) {
+  const { opoOffNow } = useOpoCutoff();
   const { notification } = App.useApp();
   const update = useUpdateBacklogItem();
   const initial = useMemo(() => buildState(item), [item]);
@@ -231,7 +233,9 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
   const handleSave = () => {
     if (!item) return;
     const patch: Record<string, number | null> = {};
-    const phases: PhaseKey[] = ['analyst', 'dev', 'qa', 'launch'];
+    const phases: PhaseKey[] = opoOffNow
+      ? ['analyst', 'dev', 'qa']
+      : ['analyst', 'dev', 'qa', 'launch'];
     for (const ph of phases) {
       if (state.involvement[ph].effective !== initial.involvement[ph].effective) {
         patch[`involvement_${ph}`] = state.involvement[ph].effective;
@@ -286,7 +290,7 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
           </Col>
           <Col xs={24} md={12}>
             <PhaseRow phase="qa" state={state} onChange={setState} />
-            <PhaseRow phase="launch" state={state} onChange={setState} />
+            {!opoOffNow && <PhaseRow phase="launch" state={state} onChange={setState} />}
           </Col>
         </Row>
 

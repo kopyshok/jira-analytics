@@ -4,6 +4,7 @@ import { useCreateBacklogItem, useUpdateBacklogItem, useProjects } from '../../h
 import { useTeams } from '../../hooks/useSync';
 import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import type { BacklogItemResponse, BacklogImpactRisk } from '../../types/api';
+import { useOpoCutoff } from '../../hooks/useOpoCutoff';
 
 interface Props {
   open: boolean;
@@ -35,6 +36,7 @@ const IMPACT_RISK_OPTIONS = [
 ];
 
 export default function BacklogManualModal({ open, item, onClose }: Props) {
+  const { opoOffNow } = useOpoCutoff();
   const { notification } = App.useApp();
   const { data: projects } = useProjects();
   const { data: teams } = useTeams();
@@ -154,7 +156,7 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
         )}
 
         <Form.Item label="Оценка по ролям (часы)" style={{ marginBottom: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: opoOffNow ? '1fr 1fr 1fr' : '1fr 1fr 1fr 1fr', gap: 12 }}>
             <Form.Item name="estimate_analyst_hours" label="АН ч">
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
@@ -164,19 +166,23 @@ export default function BacklogManualModal({ open, item, onClose }: Props) {
             <Form.Item name="estimate_qa_hours" label="ТС ч">
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item name="estimate_opo_hours" label="ОПЭ ч">
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
+            {!opoOffNow && (
+              <Form.Item name="estimate_opo_hours" label="ОПЭ ч">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            )}
           </div>
         </Form.Item>
 
-        <Form.Item
-          name="opo_analyst_ratio"
-          label="Доля ОПЭ на аналитика (0…1)"
-          tooltip="Какая часть часов ОПЭ ложится на АН; остальное — на ПР"
-        >
-          <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
-        </Form.Item>
+        {!opoOffNow && (
+          <Form.Item
+            name="opo_analyst_ratio"
+            label="Доля ОПЭ на аналитика (0…1)"
+            tooltip="Какая часть часов ОПЭ ложится на АН; остальное — на ПР"
+          >
+            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+          </Form.Item>
+        )}
 
         <Form.Item
           label="Параллельность (чел. по ролям)"

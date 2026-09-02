@@ -8,6 +8,7 @@ import {
   useCreateInvolvementDefault,
   useDeleteInvolvementDefault,
 } from '../../hooks/useInvolvementDefaults';
+import { useOpoCutoff } from '../../hooks/useOpoCutoff';
 
 const ROLE_LABELS: Record<string, string> = {
   analyst: 'Анализ',
@@ -15,7 +16,7 @@ const ROLE_LABELS: Record<string, string> = {
   qa: 'Тестирование',
   opo: 'ОПЭ',
 };
-const ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
+const ALL_ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
 const QUARTER_OPTIONS = [1, 2, 3, 4].map((q) => ({ value: q, label: `Q${q}` }));
 
 export default function InvolvementDefaultsDrawer({
@@ -26,7 +27,14 @@ export default function InvolvementDefaultsDrawer({
   team: string | null;
 }) {
   const { notification } = App.useApp();
-  const { data = [], isLoading } = useInvolvementDefaults(team);
+  const { opoOffNow } = useOpoCutoff();
+  const roleOptions = opoOffNow
+    ? ALL_ROLE_OPTIONS.filter((o) => o.value !== 'opo')
+    : ALL_ROLE_OPTIONS;
+  const { data: allRows = [], isLoading } = useInvolvementDefaults(team);
+  const data = opoOffNow
+    ? allRows.filter((r) => r.role !== 'opo')
+    : allRows;
   const create = useCreateInvolvementDefault();
   const del = useDeleteInvolvementDefault();
 
@@ -79,7 +87,7 @@ export default function InvolvementDefaultsDrawer({
       ) : (
         <Space orientation="vertical" size={16} style={{ width: '100%' }}>
           <Space wrap>
-            <Select style={{ width: 150 }} value={role} onChange={setRole} options={ROLE_OPTIONS} />
+            <Select style={{ width: 150 }} value={role} onChange={setRole} options={roleOptions} />
             <Select style={{ width: 90 }} value={quarter} onChange={setQuarter} options={QUARTER_OPTIONS} />
             <InputNumber style={{ width: 100 }} value={year} onChange={(v) => setYear(v ?? year)} min={2000} max={2100} />
             <InputNumber style={{ width: 110 }} value={value} onChange={setValue} min={0} max={1} step={0.05} placeholder="0–1" />
