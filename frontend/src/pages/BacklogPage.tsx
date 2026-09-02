@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
@@ -16,6 +16,9 @@ import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningPar
 import { statusTagColor } from '../utils/status';
 import { daysSince, formatDateOnly } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTeamRegistry } from '../hooks/useTeamRegistry';
+import { useSetIssueSubgroup } from '../hooks/useIssueTree';
 import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
   useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem, useRefreshFromJira,
@@ -26,7 +29,8 @@ import { useJiraBaseUrl } from '../hooks/useSettings';
 import { useEmployees } from '../hooks/useCapacity';
 import { useRoles } from '../hooks/useRoles';
 import { getRoleColor } from '../utils/roles';
-import { OPO_COLOR } from '../utils/opo';
+import { OPO_COLOR, foldOpo } from '../utils/opo';
+import { useOpoCutoff } from '../hooks/useOpoCutoff';
 import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import type {
   BacklogItemResponse, BacklogView,
@@ -54,7 +58,7 @@ export default function BacklogPage() {
   const view: BacklogView =
     rawView === 'archived' ? 'archived' : rawView === 'active' ? 'active' : 'quarterly';
 
-  const { queryParams } = useGlobalTeamFilter();
+  const { queryParams, selectedTeams } = useGlobalTeamFilter();
   const active = useBacklogItems('active', queryParams.teams, queryParams.subgroups);
   const archived = useBacklogItems('archived', queryParams.teams, queryParams.subgroups);
   const quarterly = useBacklogItems('quarterly', queryParams.teams, queryParams.subgroups);
@@ -103,6 +107,48 @@ export default function BacklogPage() {
     [projects],
   );
 
+  const qc = useQueryClient();
+  const { data: teamRegistry = [] } = useTeamRegistry();
+  const setSubgroupMut = useSetIssueSubgroup();
+  const [savingSubgroupId, setSavingSubgroupId] = useState<string | null>(null);
+
+  /** Правим строку в кэше вместо перезагрузки списков — она заметно тормозила.
+   *  ponytail: при активном фильтре по группам строка не исчезнет до перезахода. */
+  const patchSubgroupInCache = useCallback((
+    issueId: string,
+    assigned: string | null,
+    resolved: string | null,
+    source: string | null,
+  ) => {
+    qc.setQueriesData<BacklogItemResponse[]>({ queryKey: ['backlog'] }, (old) => {
+      if (!old) return old;
+      return old.map((row) => {
+        const isRow = row.issue_id === issueId;
+        const children = (row.children ?? []).map((c) =>
+          c.issue_id === issueId
+            ? { ...c, assigned_subgroup_id: assigned, subgroup_id: resolved, subgroup_source: source }
+            : isRow && !c.assigned_subgroup_id
+              // Ребёнок без своей группы наследует новую от родителя.
+              ? { ...c, subgroup_id: resolved, subgroup_source: resolved ? 'inherited' : null }
+              : c,
+        );
+        return isRow
+          ? { ...row, assigned_subgroup_id: assigned, subgroup_id: resolved, subgroup_source: source, children }
+          : { ...row, children };
+      });
+    });
+  }, [qc]);
+  // Группы выбранных команд, у которых включено деление. Пусто — колонки нет.
+  // Без выбора команды берём все команды с делением.
+  const subgroupOptions = useMemo(
+    () =>
+      teamRegistry
+        .filter((t) => t.has_subgroups)
+        .filter((t) => selectedTeams.length === 0 || selectedTeams.includes(t.name))
+        .flatMap((t) => t.subgroups.map((g) => ({ value: g.id, label: g.name }))),
+    [teamRegistry, selectedTeams],
+  );
+
   const sortByPriority = (rows?: BacklogItemResponse[]) =>
     rows?.slice().sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
@@ -125,6 +171,9 @@ export default function BacklogPage() {
         estimate_dev_hours: c.estimate_dev_hours,
         estimate_qa_hours: c.estimate_qa_hours,
         estimate_opo_hours: c.estimate_opo_hours,
+        assigned_subgroup_id: c.assigned_subgroup_id ?? null,
+        subgroup_id: c.subgroup_id ?? null,
+        subgroup_source: c.subgroup_source ?? null,
         has_parent_in_backlog: true,
         has_children_in_backlog: false,
       })) as unknown as BacklogItemResponse['children'],
@@ -136,6 +185,7 @@ export default function BacklogPage() {
 
   const { data: employees = [] } = useEmployees();
   const { data: roles = [] } = useRoles();
+  const { opoOffNow } = useOpoCutoff();
   const activeEmployees = useMemo(
     () => employees.filter((e) => e.is_active),
     [employees],
@@ -304,6 +354,50 @@ export default function BacklogPage() {
         );
       },
     },
+    ...(subgroupOptions.length > 0 ? [{
+      title: 'Группа',
+      key: 'subgroup',
+      width: 130,
+      render: (_: unknown, r: BacklogItemResponse) => {
+        if (!r.issue_id) return <span style={{ color: 'var(--text-muted, #8faec8)' }}>—</span>;
+        const assigned = r.assigned_subgroup_id ?? null;
+        const source = r.subgroup_source;
+        const hint =
+          source === 'inherited'
+            ? 'Унаследовано от родителя'
+            : source === 'guess'
+              ? 'Предположение по исполнителю'
+              : undefined;
+        return (
+          <Tooltip title={hint}>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Select
+                allowClear
+                size="small"
+                variant="borderless"
+                style={{ width: '100%', fontSize: 12, opacity: assigned ? 1 : 0.65 }}
+                placeholder="Группа"
+                value={r.subgroup_id ?? undefined}
+                options={subgroupOptions}
+                loading={savingSubgroupId === r.id}
+                onChange={(next: string | null) => {
+                  setSavingSubgroupId(r.id);
+                  setSubgroupMut.mutate(
+                    { issueId: r.issue_id as string, subgroupId: next ?? null },
+                    {
+                      onSuccess: (res) => patchSubgroupInCache(
+                        r.issue_id as string, next ?? null, res.subgroup_id, res.source ?? null,
+                      ),
+                      onSettled: () => setSavingSubgroupId(null),
+                    },
+                  );
+                }}
+              />
+            </div>
+          </Tooltip>
+        );
+      },
+    }] : []),
     {
       title: 'Статус', dataIndex: 'jira_status', width: 150,
       sorter: (a: BacklogItemResponse, b: BacklogItemResponse) => {
@@ -336,16 +430,43 @@ export default function BacklogPage() {
       },
     },
     {
-      title: 'АН / ПР / ТС / ОПЭ',
+      title: opoOffNow ? 'АН / ПР / ТС' : 'АН / ПР / ТС / ОПЭ',
       key: 'roles',
-      width: 280,
+      width: opoOffNow ? 210 : 280,
       render: (_: unknown, r: BacklogItemResponse) => {
-        const an = r.estimate_analyst_hours ?? 0;
-        const de = r.estimate_dev_hours ?? 0;
-        const qa = r.estimate_qa_hours ?? 0;
-        const op = r.estimate_opo_hours ?? 0;
-        const total = r.estimate_hours ?? an + de + qa + op;
+        const raw = {
+          analyst: r.estimate_analyst_hours ?? 0,
+          dev: r.estimate_dev_hours ?? 0,
+          qa: r.estimate_qa_hours ?? 0,
+          opo: r.estimate_opo_hours ?? 0,
+        };
+        // С квартала отсечки часы ОПЭ показываем внутри АН и ПР.
+        const eff = opoOffNow ? foldOpo(raw, r.opo_analyst_ratio) : raw;
+        const an = eff.analyst;
+        const de = eff.dev;
+        const qa = eff.qa;
+        const op = eff.opo;
+        const total = r.estimate_hours ?? raw.analyst + raw.dev + raw.qa + raw.opo;
         const isEditable = editable && !r.issue_id;
+
+        // Правка часов при выключенном ОПЭ окончательно переносит его часы
+        // в АН/ПР: иначе введённое значение (уже с долей ОПЭ) задвоилось бы.
+        const patchHours = (
+          field: 'estimate_analyst_hours' | 'estimate_dev_hours' | 'estimate_qa_hours' | 'estimate_opo_hours',
+          next: number | null,
+        ) => {
+          if (opoOffNow && raw.opo > 0) {
+            patch(r.id, {
+              estimate_analyst_hours: an,
+              estimate_dev_hours: de,
+              estimate_qa_hours: qa,
+              estimate_opo_hours: 0,
+              [field]: next,
+            });
+            return;
+          }
+          patch(r.id, { [field]: next });
+        };
 
         const makeCell = (
           label: string,
@@ -372,14 +493,14 @@ export default function BacklogPage() {
                     const raw = e.currentTarget.value.trim();
                     const next = raw === '' ? null : Number(raw);
                     if (next !== hours) {
-                      patch(r.id, { [field]: next });
+                      patchHours(field, next);
                     }
                   }}
                   onPressEnter={(e) => {
                     const raw = (e.target as HTMLInputElement).value.trim();
                     const next = raw === '' ? null : Number(raw);
                     if (next !== hours) {
-                      patch(r.id, { [field]: next });
+                      patchHours(field, next);
                     }
                   }}
                 />
@@ -395,13 +516,14 @@ export default function BacklogPage() {
             {makeCell('АН', an, 'estimate_analyst_hours', getRoleColor(roles, 'analyst'), r.involvement_analyst, r.duration_analyst_days)}
             {makeCell('ПР', de, 'estimate_dev_hours', getRoleColor(roles, 'dev'), r.involvement_dev, r.duration_dev_days)}
             {makeCell('ТС', qa, 'estimate_qa_hours', getRoleColor(roles, 'qa'), r.involvement_qa, r.duration_qa_days)}
-            {makeCell('ОПЭ', op, 'estimate_opo_hours', OPO_COLOR, r.involvement_launch, r.duration_launch_days)}
+            {!opoOffNow && makeCell('ОПЭ', op, 'estimate_opo_hours', OPO_COLOR, r.involvement_launch, r.duration_launch_days)}
           </div>
         );
       },
     },
     {
       title: 'ОПЭ→АН', dataIndex: 'opo_analyst_ratio', width: 90,
+      hidden: opoOffNow,
       render: (v: number | null, r: BacklogItemResponse) => {
         if (!editable) {
           return <span style={{ color: 'var(--text-muted, #8faec8)' }}>{v ?? '—'}</span>;

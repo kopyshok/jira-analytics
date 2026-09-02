@@ -216,18 +216,19 @@ export default function CategoriesEditorPage() {
   const SEARCH_MODE: SearchMode = (import.meta.env.VITE_CATEGORIES_SEARCH_MODE === 'filter') ? 'filter' : 'jump';
   const [jumpedKey, setJumpedKey] = useState<string | null>(null);
 
-  // Группы внутри команд. Колонка появляется, только если хоть у одной
-  // команды включён признак деления — у остальных стопка как раньше.
+  // Группы выбранных команд. Колонка появляется, только если у команды
+  // включён признак деления — у остальных стопка как раньше.
   const { data: teamRegistry = [] } = useTeamRegistry();
   const setIssueSubgroupMut = useSetIssueSubgroup();
   const subgroupOptions = useMemo(
     () =>
       teamRegistry
         .filter((t) => t.has_subgroups)
+        .filter((t) => selectedTeams.length === 0 || selectedTeams.includes(t.name))
         .flatMap((t) =>
           t.subgroups.map((g) => ({ value: g.id, label: g.name, team: t.name })),
         ),
-    [teamRegistry],
+    [teamRegistry, selectedTeams],
   );
   const anyTeamSplit = subgroupOptions.length > 0;
 
@@ -299,6 +300,58 @@ export default function CategoriesEditorPage() {
     setLoadedChildren(prev => {
       const next = new Map(prev);
       next.set(record.id, children);
+      return next;
+    });
+  }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, normalizedSearch]);
+
+  // ─── Группа: правка строки без перезагрузки дерева ───────────
+
+  const [savingSubgroupId, setSavingSubgroupId] = useState<string | null>(null);
+
+  const patchSubgroupRow = useCallback((
+    issueId: string,
+    assigned: string | null,
+    resolved: string | null,
+    source: string | null,
+  ) => {
+    const patch = (n: IssueTreeRootNode): IssueTreeRootNode =>
+      n.id === issueId
+        ? { ...n, assigned_subgroup_id: assigned, subgroup_id: resolved, subgroup_source: source }
+        : n;
+    qc.setQueriesData<IssueTreeRootNode[]>(
+      { queryKey: ['issues', 'tree', 'roots'] },
+      (old) => (old ? old.map(patch) : old),
+    );
+    setLoadedChildren(prev => {
+      const next = new Map(prev);
+      prev.forEach((kids, parentId) => {
+        if (kids.some(k => k.id === issueId)) next.set(parentId, kids.map(patch));
+      });
+      return next;
+    });
+  }, [qc]);
+
+  /** Перечитывает только уже раскрытые уровни под строкой — наследуемая группа детей. */
+  const reloadLoadedSubtree = useCallback(async (rootId: string) => {
+    const ids: string[] = [];
+    const walk = (id: string) => {
+      const kids = loadedChildren.get(id);
+      if (!kids) return;
+      ids.push(id);
+      kids.forEach(k => walk(k.id));
+    };
+    walk(rootId);
+    if (ids.length === 0) return;
+    const fetched = await Promise.all(ids.map(id => loadChildrenMut.mutateAsync({
+      parentId: id,
+      tab: innerTab,
+      teams: selectedTeams.length > 0 ? selectedTeams.join(',') : undefined,
+      project_keys: scopeKeys || undefined,
+      search: SEARCH_MODE === 'filter' ? (normalizedSearch || undefined) : undefined,
+    })));
+    setLoadedChildren(prev => {
+      const next = new Map(prev);
+      ids.forEach((id, i) => next.set(id, fetched[i]));
       return next;
     });
   }, [loadedChildren, loadChildrenMut, innerTab, selectedTeams, scopeKeys, normalizedSearch]);
@@ -421,7 +474,8 @@ export default function CategoriesEditorPage() {
         verify: true,
         overwrite,
       });
-      qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
+      // Дерево уже помечено устаревшим в самой мутации — повторный вызов
+      // отменял бы начатую перезагрузку и запускал её заново.
       void refreshLoadedChildren();
       setPendingCats(prev => {
         if (prev.size === 0) return prev;
@@ -481,11 +535,10 @@ export default function CategoriesEditorPage() {
     setIncludeMut.mutate(
       { issueId, include: checked, recursive: hasChildren },
       {
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['issues', 'tree'] }),
         onError: (err) => notification.error({ title: 'Ошибка', description: err.message }),
       },
     );
-  }, [setIncludeMut, notification, qc]);
+  }, [setIncludeMut, notification]);
 
   const handleVerify = useCallback((
     issueId: string,
@@ -497,7 +550,6 @@ export default function CategoriesEditorPage() {
       { issueId, cascade, categoryCode, hasCategoryCode },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
           void refreshLoadedChildren();
           if (hasCategoryCode) {
             setPendingCats(prev => {
@@ -511,7 +563,7 @@ export default function CategoriesEditorPage() {
         onError: (err) => notification.error({ title: 'Ошибка верификации', description: (err as Error).message }),
       },
     );
-  }, [pendingCats, verifyMut, notification, qc, refreshLoadedChildren]);
+  }, [pendingCats, verifyMut, notification, refreshLoadedChildren]);
 
   // ─── Точечное сохранение категории одной строки ───────────────
   // cascade=false → только эта задача; cascade=true → и всё поддерево.
@@ -525,7 +577,6 @@ export default function CategoriesEditorPage() {
       { issueId, cascade, categoryCode, hasCategoryCode },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ['issues', 'tree'] });
           void refreshLoadedChildren();
           setPendingCats(prev => {
             if (!prev.has(issueId)) return prev;
@@ -538,7 +589,7 @@ export default function CategoriesEditorPage() {
         onSettled: () => setSavingRowId(null),
       },
     );
-  }, [pendingCats, verifyMut, qc, refreshLoadedChildren, notification]);
+  }, [pendingCats, verifyMut, refreshLoadedChildren, notification]);
 
   const handleResize = useCallback((colKey: string) =>
     (_: SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
@@ -735,6 +786,8 @@ export default function CategoriesEditorPage() {
                 : undefined;
           return (
             <Tooltip title={hint}>
+              {/* обёртка гасит клик — иначе строка сворачивается/разворачивается */}
+              <div onClick={(e) => e.stopPropagation()}>
               <Select
                 allowClear
                 size="small"
@@ -742,11 +795,23 @@ export default function CategoriesEditorPage() {
                 placeholder="Группа"
                 value={resolved ?? undefined}
                 options={subgroupOptions}
-                loading={setIssueSubgroupMut.isPending}
-                onChange={(next: string | null) =>
-                  setIssueSubgroupMut.mutate({ issueId: record.id, subgroupId: next ?? null })
-                }
+                loading={savingSubgroupId === record.id}
+                onChange={(next: string | null) => {
+                  const value = next ?? null;
+                  setSavingSubgroupId(record.id);
+                  setIssueSubgroupMut.mutate(
+                    { issueId: record.id, subgroupId: value },
+                    {
+                      onSuccess: (res) => {
+                        patchSubgroupRow(record.id, value, res.subgroup_id, res.source ?? null);
+                        void reloadLoadedSubtree(record.id);
+                      },
+                      onSettled: () => setSavingSubgroupId(null),
+                    },
+                  );
+                }}
               />
+              </div>
             </Tooltip>
           );
         },
@@ -831,7 +896,7 @@ export default function CategoriesEditorPage() {
     widths, jiraBaseUrl,
     pendingCats, categoryOptions, categoryLabels, savingRowId,
     setPendingCategory, toggleInclude, handleResize, handleSaveRow,
-    anyTeamSplit, subgroupOptions, setIssueSubgroupMut,
+    anyTeamSplit, subgroupOptions, setIssueSubgroupMut, savingSubgroupId, patchSubgroupRow, reloadLoadedSubtree,
   ]);
 
   const stackExtraColumns = useMemo(() => [
