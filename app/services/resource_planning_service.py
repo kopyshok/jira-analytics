@@ -17,15 +17,18 @@ from app.models import (
     Absence,
     BacklogItem,
     Employee,
+    EmployeeTeam,
     ProductionCalendarDay,
     ResourcePlan,
     ResourcePlanAssignment,
     Role,
     ScheduledBlock,
     ScenarioAllocation,
+    Team,
 )
-from app.services import team_membership as tm
+from app.services import opo_policy, team_membership as tm
 from app.services.allocation_estimates import effective_estimate_hours
+from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.rcpsp_leveler import RcpspLeveler
 
 PHASE_ORDER = ["analyst", "dev", "qa", "opo"]
@@ -141,6 +144,12 @@ class ResourcePlanningService:
     def __init__(self, db: Session):
         self.db = db
         self._last_leveling_events: List = []
+        # Квартал плана не раньше отсечки ОПЭ → фаза не планируется, её часы
+        # вливаются в Анализ и Разработку (см. app/services/opo_policy.py).
+        self._opo_off = False
+        # Вовлечённость по ролям из справочника команды: подставляется там,
+        # где у задачи своё значение не задано.
+        self._involvement_defaults: Dict[str, float] = {}
 
     @staticmethod
     def _daily_role_capacity(
@@ -159,18 +168,9 @@ class ResourcePlanningService:
         inv = 1.0 if involvement is None else max(0.0, min(1.0, involvement))
         return avail_hours * inv * max(1, parallel_count)
 
-    @staticmethod
-    def _involvement_for_phase(item: BacklogItem, phase: str) -> Optional[float]:
-        """Коэф вовлечённости из BacklogItem для указанной фазы (None если не задан)."""
-        field = {
-            "analyst": "involvement_analyst",
-            "dev": "involvement_dev",
-            "qa": "involvement_qa",
-            "opo": "involvement_launch",
-        }.get(phase)
-        if not field:
-            return None
-        return getattr(item, field, None)
+    def _involvement_for_phase(self, item: BacklogItem, phase: str) -> Optional[float]:
+        """Коэф вовлечённости фазы: своё значение задачи, иначе справочник команды."""
+        return effective_for_phase(item, phase, self._involvement_defaults)
 
     def build_availability(
         self,
@@ -410,6 +410,7 @@ class ResourcePlanningService:
         plan = self.db.get(ResourcePlan, plan_id)
         if not plan:
             raise ValueError(f"ResourcePlan {plan_id} not found")
+        self._load_plan_context(plan)
 
         # Снимок логических ключей рёбер до удаления назначений (CASCADE
         # предшественников). После пересоздания назначений рёбра восстанавливаются
@@ -575,8 +576,20 @@ class ResourcePlanningService:
         # младшей задачи — фаза разрывается на видимые куски.
         preempt_locked: Dict[str, set] = {eid: set() for eid in avail.keys()}
 
+        emp_group, item_group = self._subgroup_context(plan, employees, items)
+        # Потолок «свои не влезают» — ёмкость сотрудника внутри квартала.
+        quarter_capacity = {
+            eid: sum(h for d, h in days.items() if q_start <= d <= q_end)
+            for eid, days in avail.items()
+        }
         assignments_by_role = self._assign_employees(
-            items, employees, pinned=pinned_map, alloc_by_item=alloc_by_item
+            items,
+            employees,
+            pinned=pinned_map,
+            alloc_by_item=alloc_by_item,
+            emp_group=emp_group,
+            item_group=item_group,
+            capacity=quarter_capacity,
         )
 
         # Mutable remaining hours copy
@@ -1370,8 +1383,8 @@ class ResourcePlanningService:
         )
         return {a.backlog_item_id: a for a in rows}
 
-    @staticmethod
     def _phase_hours(
+        self,
         item: BacklogItem,
         phase: str,
         alloc_by_item: Dict[str, ScenarioAllocation],
@@ -1379,9 +1392,26 @@ class ResourcePlanningService:
         """Часы фазы: через effective если есть allocation, иначе из BacklogItem."""
         alloc = alloc_by_item.get(item.id)
         if alloc is not None:
-            eff = effective_estimate_hours(alloc)
-            return float(eff.get(phase, 0.0) or 0.0)
-        return float(getattr(item, PHASE_HOURS_FIELD[phase], 0) or 0.0)
+            hours = dict(effective_estimate_hours(alloc))
+        else:
+            hours = {
+                p: float(getattr(item, f, 0) or 0.0)
+                for p, f in PHASE_HOURS_FIELD.items()
+            }
+        if self._opo_off:
+            hours = opo_policy.fold(hours, item.opo_analyst_ratio)
+        return float(hours.get(phase, 0.0) or 0.0)
+
+    def _load_plan_context(self, plan: ResourcePlan) -> None:
+        """Настройки квартала плана: отсечка ОПЭ и справочник вовлечённости."""
+        self._opo_off = opo_policy.is_off(self.db, plan.year, plan.quarter)
+        try:
+            quarter = int(str(plan.quarter or "").upper().lstrip("Q"))
+        except ValueError:
+            quarter = 0
+        self._involvement_defaults = team_defaults(
+            self.db, plan.team, plan.year, quarter or None,
+        )
 
     def _load_employees(self, plan: ResourcePlan) -> List[Employee]:
         """Загрузить активных сотрудников, состоявших в команде в окне плана.
@@ -1448,12 +1478,18 @@ class ResourcePlanningService:
         employees: List[Employee],
         pinned: Optional[Dict[Tuple[str, str, int], str]] = None,
         alloc_by_item: Optional[Dict[str, ScenarioAllocation]] = None,
+        emp_group: Optional[Dict[str, str]] = None,
+        item_group: Optional[Dict[str, str]] = None,
+        capacity: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Dict[str, Optional[str]]]:
         """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
         - analyst: исполнитель инициативы (`assignee_employee_id`), независимо от его роли.
                    Если у задачи нет исполнителя — None.
         - dev:     greedy по минимальной нагрузке в пуле DEV_ROLES (fallback — все).
+                   В команде с группами сначала перебираются свои по группе;
+                   сосед из другой группы берётся, только когда своих уже не
+                   хватает по ёмкости квартала (см. `_pick_in_group`).
         - qa:      всегда None (часы-only, дату назначаем без сотрудника).
         - opo:     не возвращается — реально создаётся как 2 строки через
                    `_opo_split` в compute_schedule.
@@ -1463,6 +1499,9 @@ class ResourcePlanningService:
         """
         pinned = pinned or {}
         alloc_by_item = alloc_by_item or {}
+        emp_group = emp_group or {}
+        item_group = item_group or {}
+        capacity = capacity or {}
 
         by_id: Dict[str, Employee] = {e.id: e for e in employees}
         # Резолв по display_name для fallback (если bk.assignee_employee_id NULL,
@@ -1499,18 +1538,26 @@ class ResourcePlanningService:
             # Если исполнитель не из команды плана (или вообще не задан) —
             # берём наименее загруженного из пула аналитиков команды, чтобы
             # фаза «Анализ» всё равно появилась в расписании.
+            an_hours = self._phase_hours(item, "analyst", alloc_by_item)
             if not analyst_id and analyst_ids:
-                analyst_id = min(analyst_ids, key=lambda eid: load[eid])
+                analyst_id = self._pick_in_group(
+                    analyst_ids, item_group.get(item.id), load, an_hours,
+                    emp_group, capacity,
+                )
             if analyst_id:
-                load[analyst_id] += self._phase_hours(item, "analyst", alloc_by_item)
+                load[analyst_id] += an_hours
             result["analyst"][item.id] = analyst_id
 
             # ── dev ────────────────────────────────────────────────────
+            dev_hours = self._phase_hours(item, "dev", alloc_by_item)
             dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
             if not dev_id and dev_ids:
-                dev_id = min(dev_ids, key=lambda eid: load[eid])
+                dev_id = self._pick_in_group(
+                    dev_ids, item_group.get(item.id), load, dev_hours,
+                    emp_group, capacity,
+                )
             if dev_id:
-                load[dev_id] += self._phase_hours(item, "dev", alloc_by_item)
+                load[dev_id] += dev_hours
             result["dev"][item.id] = dev_id
 
             # ── qa: без сотрудника ─────────────────────────────────────
@@ -1520,6 +1567,83 @@ class ResourcePlanningService:
             # через _opo_split в compute_schedule.
 
         return result
+
+    def _pick_in_group(
+        self,
+        pool: List[str],
+        group: Optional[str],
+        load: Dict[str, float],
+        hours: float,
+        emp_group: Dict[str, str],
+        capacity: Dict[str, float],
+    ) -> Optional[str]:
+        """Кандидат из пула: свои по группе вперёд, соседи — если свои не влезают.
+
+        Команда без деления (пустые карты групп) ведёт себя как раньше —
+        greedy по минимальной нагрузке.
+
+        Своего берём, пока квартальная ёмкость самого свободного из группы
+        вмещает часы фазы. Как только не вмещает — зовём самого свободного
+        соседа из другой группы, у которого ёмкость ещё осталась. Инициативы
+        идут по приоритету, поэтому своих разбирают сначала старшие задачи.
+        """
+        if not pool:
+            return None
+        best = min(pool, key=lambda eid: load[eid])
+        if not group or not emp_group:
+            return best
+        own = [eid for eid in pool if emp_group.get(eid) == group]
+        if not own:
+            return best
+        best_own = min(own, key=lambda eid: load[eid])
+        if load[best_own] + hours <= capacity.get(best_own, float("inf")):
+            return best_own
+        outsiders = [
+            eid
+            for eid in pool
+            if eid not in own and load[eid] + hours <= capacity.get(eid, float("inf"))
+        ]
+        if not outsiders:
+            return best_own
+        best_out = min(outsiders, key=lambda eid: load[eid])
+        return best_out if load[best_out] < load[best_own] else best_own
+
+    def _subgroup_context(
+        self,
+        plan: ResourcePlan,
+        employees: List[Employee],
+        items: List[BacklogItem],
+    ) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """({employee_id: группа}, {item_id: группа}) для команды с делением.
+
+        Команда без деления → две пустые карты: подбор исполнителей не меняется.
+        Группа инициативы — своя, иначе группа её главного исполнителя из
+        сценария (та же лесенка, что на экранах Сценариев и Гантта).
+        """
+        team = self.db.query(Team).filter(Team.name == plan.team).one_or_none()
+        if not team or not team.has_subgroups:
+            return {}, {}
+
+        emp_group: Dict[str, str] = {}
+        if employees:
+            rows = self.db.execute(
+                select(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id).where(
+                    EmployeeTeam.team == plan.team,
+                    EmployeeTeam.employee_id.in_([e.id for e in employees]),
+                    EmployeeTeam.subgroup_id.isnot(None),
+                )
+            ).all()
+            for eid, gid in rows:
+                emp_group[eid] = gid
+
+        item_group: Dict[str, str] = {}
+        for it in items:
+            gid = getattr(it.issue, "effective_subgroup_id", None) if it.issue else None
+            if not gid and it.assignee_employee_id:
+                gid = emp_group.get(it.assignee_employee_id)
+            if gid:
+                item_group[it.id] = gid
+        return emp_group, item_group
 
     def _opo_split(
         self,
@@ -2055,6 +2179,9 @@ class ResourcePlanningService:
         a = self.db.get(ResourcePlanAssignment, assignment_id)
         if not a:
             raise ValueError("assignment not found")
+        split_plan = self.db.get(ResourcePlan, a.plan_id)
+        if split_plan:
+            self._load_plan_context(split_plan)
         if a.part_number != 1:
             raise ValueError("can split only single-part phase")
         if a.pinned_split:
@@ -2351,6 +2478,9 @@ class ResourcePlanningService:
         a = self.db.get(ResourcePlanAssignment, assignment_id)
         if not a:
             raise ValueError("assignment not found")
+        merge_plan = self.db.get(ResourcePlan, a.plan_id)
+        if merge_plan:
+            self._load_plan_context(merge_plan)
         siblings = (
             self.db.execute(
                 select(ResourcePlanAssignment)

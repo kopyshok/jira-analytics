@@ -39,6 +39,8 @@ interface Props {
   onEmployeeRowClick?: (employeeId: string | null) => void;
   /** Секции групп команды: {id инициативы: название группы}. */
   sectionByItem?: Record<string, string>;
+  /** Группа сотрудника внутри команды: для метки «из другой группы». */
+  subgroupByEmployee?: Record<string, string>;
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
 }
@@ -63,6 +65,7 @@ export default function GanttChart({
   onAssignmentClick,
   hideWeekends = false,
   sectionByItem,
+  subgroupByEmployee,
   collapsedSections,
   onToggleSection,
   highlightedEmployeeId,
@@ -316,6 +319,7 @@ export default function GanttChart({
             onAssignmentClick={onAssignmentClick}
             highlightedEmployeeId={highlightedEmployeeId}
             sectionByItem={sectionByItem}
+            subgroupByEmployee={subgroupByEmployee}
             collapsedSections={collapsedSections}
             onToggleSection={onToggleSection}
             onEmployeeRowClick={onEmployeeRowClick}
