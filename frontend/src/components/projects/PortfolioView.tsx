@@ -87,6 +87,7 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
             totalPct: data.total_pct,
           }}
           onRowClick={(key) => navigate(`/projects/${encodeURIComponent(key)}`)}
+          maxHeight="calc(33vh + 120px)"
         />
       </Card>
 
@@ -99,6 +100,7 @@ export const PortfolioView: React.FC<{ filters: ProjectListFiltersState }> = ({ 
         <PhaseTimeline
           timeline={data.timeline}
           mode="by-project"
+          maxHeight="38vh"
           onRowClick={(key) => navigate(`/projects/${encodeURIComponent(key)}`)}
         />
       </Card>

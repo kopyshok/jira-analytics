@@ -122,9 +122,11 @@ interface Props {
     totalPct: number | null;
   };
   onRowClick: (key: string) => void;
+  /** Высота области строк; всё, что выше — прокручивается внутри таблицы. */
+  maxHeight?: number | string;
 }
 
-export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick }) => {
+export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, totals, onRowClick, maxHeight }) => {
   const dates = React.useMemo(() => datesByKey(timeline), [timeline]);
   const hasExternal = projects.some((p) => p.external_hours > 0) || totals.externalHours > 0;
 
@@ -230,7 +232,9 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
       columns={columns}
       dataSource={projects}
       pagination={false}
-      scroll={{ x: 'max-content' }}
+      // Своя вертикальная прокрутка: шапка и итоги остаются на месте, а список
+      // не растягивается на всю длину при нескольких выбранных командах.
+      scroll={{ x: 'max-content', y: maxHeight }}
       expandable={{
         // Иначе AntD принимает поле children за вложенные строки-дерево и
         // рендерит подзадачи как обычные строки таблицы — без плана и стадий.
@@ -251,6 +255,8 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
         style: { cursor: 'pointer' },
       })}
       summary={() => (
+        // fixed="bottom" — строка итогов видна и при прокрутке списка.
+        <Table.Summary fixed="bottom">
         <Table.Summary.Row>
           {/* Пустая ячейка под колонку со стрелкой раскрытия — иначе итоги съедут влево. */}
           <Table.Summary.Cell index={0} />
@@ -282,6 +288,7 @@ export const PortfolioProjectsTable: React.FC<Props> = ({ projects, timeline, to
             </Table.Summary.Cell>
           )}
         </Table.Summary.Row>
+        </Table.Summary>
       )}
     />
   );
