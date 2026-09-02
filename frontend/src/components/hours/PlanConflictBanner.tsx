@@ -35,7 +35,7 @@ export default function PlanConflictBanner({ issueId }: Props) {
           key={c.audit_id}
           type="warning"
           showIcon
-          message={`В Jira план изменили на ${c.value_jira ?? '—'}ч (${ROLE_LABEL[c.role] ?? c.role}). Сейчас активна ручная правка.`}
+          title={`В Jira план изменили на ${c.value_jira ?? '—'}ч (${ROLE_LABEL[c.role] ?? c.role}). Сейчас активна ручная правка.`}
           action={
             <Space>
               <Button size="small" onClick={() => resolveMut.mutate({ action: 'accept_jira', role: c.role })}>

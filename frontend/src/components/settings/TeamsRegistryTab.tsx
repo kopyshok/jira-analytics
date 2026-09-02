@@ -48,7 +48,7 @@ function SubgroupList({ team }: { team: TeamRegistryRow }) {
   };
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+    <Space orientation="vertical" style={{ width: '100%' }} size={8}>
       {team.subgroups.map((g) => (
         <Space key={g.id}>
           <Input
@@ -90,11 +90,11 @@ export default function TeamsRegistryTab() {
   const toggle = useSetTeamHasSubgroups();
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size={16}>
+    <Space orientation="vertical" style={{ width: '100%' }} size={16}>
       <Alert
         type="info"
         showIcon
-        message="Группы — деление внутри команды"
+        title="Группы — деление внутри команды"
         description={
           <>
             В Jira такого деления нет, оно живёт только здесь. Каждая группа планируется
