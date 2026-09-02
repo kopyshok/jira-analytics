@@ -476,6 +476,7 @@ function ResourcePlanningPageInner() {
           hideWeekends={prefs.hide_weekends}
           highlightedEmployeeId={highlightedEmployeeId}
           sectionByItem={sectionByItem}
+          subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
           collapsedSections={collapsedSections}
           onToggleSection={(name, collapsed) =>
             setCollapsedSections(prev =>

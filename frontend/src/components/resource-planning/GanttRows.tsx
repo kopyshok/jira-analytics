@@ -32,6 +32,9 @@ interface Props {
   /** Группа команды для каждой инициативы: показывать строки секциями групп.
    *  План остаётся общекомандным — секции только визуальные. */
   sectionByItem?: Record<string, string>;
+  /** Группа сотрудника внутри команды: строка помечается, если исполнитель
+   *  не из группы инициативы (плавающий разработчик соседней группы). */
+  subgroupByEmployee?: Record<string, string>;
   /** Свёрнутые секции групп (названия). */
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
@@ -681,7 +684,7 @@ function TwoLevelRows({
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
   highlightedEmployeeId, onEmployeeRowClick, quarterEndDate, sectionByItem,
-  collapsedSections, onToggleSection,
+  collapsedSections, onToggleSection, subgroupByEmployee,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -928,6 +931,10 @@ function TwoLevelRows({
                   : PHASE_LABELS[phase];
                 const isHighlighted = !!highlightedEmployeeId && empId === highlightedEmployeeId;
                 const isDimmed = !!highlightedEmployeeId && !isHighlighted;
+                // Исполнитель из другой группы — помощь соседей, помечаем строку.
+                const empGroup = empId ? subgroupByEmployee?.[empId] : undefined;
+                const foreignGroup =
+                  !!section && !!empGroup && empGroup !== section ? empGroup : null;
                 const assigneeNode = phase === 'qa' ? (
                   <span style={{ color: '#4a6a90' }}>—</span>
                 ) : (
@@ -950,6 +957,22 @@ function TwoLevelRows({
                   >
                     <EmployeeAvatar name={empName} role={empRole} size={16} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{empName ?? '—'}</span>
+                    {foreignGroup && (
+                      <span
+                        title={`Из группы «${foreignGroup}»`}
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 10,
+                          lineHeight: '14px',
+                          padding: '0 4px',
+                          borderRadius: 3,
+                          color: '#f0a868',
+                          border: '1px solid rgba(240,168,104,0.45)',
+                        }}
+                      >
+                        {foreignGroup}
+                      </span>
+                    )}
                   </span>
                 );
                 return (
