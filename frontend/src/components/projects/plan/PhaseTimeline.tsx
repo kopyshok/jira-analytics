@@ -45,9 +45,12 @@ interface Props {
    *  'by-project' — подпись строки = ключ и название проекта. */
   mode: 'by-phase' | 'by-project';
   onRowClick?: (key: string) => void;
+  /** Высота области строк; всё, что выше — прокручивается внутри блока.
+   *  Нужна портфелю: строк там столько же, сколько проектов у выбранных команд. */
+  maxHeight?: number | string;
 }
 
-export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) => {
+export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick, maxHeight }) => {
   if (!timeline.start || !timeline.end || timeline.rows.length === 0) {
     return (
       <Empty
@@ -90,7 +93,9 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: `${labelW}px 1fr`, gap: 8, marginBottom: 4 }}>
+      <div style={{
+        display: 'grid', gridTemplateColumns: `${labelW}px 1fr`, gap: 8, marginBottom: 4,
+      }}>
         <div />
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)` }}>
           {labels.map((m, i) => (
@@ -102,6 +107,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
         </div>
       </div>
 
+      <div style={maxHeight ? { maxHeight, overflowY: 'auto', paddingRight: 4 } : undefined}>
       {rows.map((row, ri) => (
         <div
           key={`${row.key ?? ''}-${ri}`}
@@ -177,6 +183,7 @@ export const PhaseTimeline: React.FC<Props> = ({ timeline, mode, onRowClick }) =
           </div>
         </div>
       ))}
+      </div>
 
       <div style={{
         display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8,
