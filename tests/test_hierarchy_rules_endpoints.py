@@ -125,3 +125,25 @@ class TestHierarchyRulesCrud:
     def test_delete_unknown_404(self, client):
         resp = client.delete("/api/v1/hierarchy-rules/nonexistent-id")
         assert resp.status_code == 404
+
+    def test_both_parent_predicates_rejected(self, client):
+        resp = client.post("/api/v1/hierarchy-rules", json={
+            "priority": 5, "project_key": "RFA", "issue_type": "Эпик",
+            "require_no_parent": True, "require_parent": True,
+            "is_container": False, "is_enabled": True,
+        })
+        assert resp.status_code == 400
+
+    def test_require_parent_roundtrip(self, client):
+        created = _create(client, {
+            "priority": 5, "project_key": "RFA", "issue_type": "Эпик",
+            "require_no_parent": False, "require_parent": True,
+            "is_container": False, "is_enabled": True,
+        })
+        assert created["require_parent"] is True
+        patched = client.patch(
+            f"/api/v1/hierarchy-rules/{created['id']}",
+            json={"require_parent": False},
+        )
+        assert patched.status_code == 200
+        assert patched.json()["require_parent"] is False

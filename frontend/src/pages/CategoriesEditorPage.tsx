@@ -4,7 +4,7 @@ import { useSetIssueSubgroup } from '../hooks/useIssueTree';
 import {
   Button, Space, Table, Tag, App,
   Select, Typography, Modal, Checkbox,
-  Empty, Input, Popover, Tooltip, Switch,
+  Empty, Input, Popover, Tooltip, Switch, Popconfirm,
 } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import categoriesHelp from '../../../docs/help/categories.md?raw';
@@ -244,7 +244,7 @@ export default function CategoriesEditorPage() {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState<string | undefined>();
   // Какая из двух кнопок диалога нажата — нужно только для спиннера на ней.
-  const [bulkMode, setBulkMode] = useState<'all' | 'empty' | null>(null);
+  const [bulkMode, setBulkMode] = useState<'all' | 'empty' | 'reset' | null>(null);
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const verifyMut = useVerifyIssue();
   useRegisterHelp('Категоризация задач', categoriesHelp);
@@ -502,6 +502,33 @@ export default function CategoriesEditorPage() {
       }
     } catch (e) {
       notification.error({ title: 'Ошибка применения категории', description: (e as Error).message });
+    }
+  };
+
+  const applyBulkReset = async () => {
+    if (applicableSelectedIds.length === 0) return;
+    setBulkMode('reset');
+    try {
+      const res = await batchCategoryMut.mutateAsync({
+        issueIds: applicableSelectedIds,
+        categoryCode: null,
+        verify: false,
+        overwrite: true,
+      });
+      void refreshLoadedChildren();
+      setPendingCats(prev => {
+        if (prev.size === 0) return prev;
+        const next = new Map(prev);
+        applicableSelectedIds.forEach(id => next.delete(id));
+        return next;
+      });
+      setBulkModalOpen(false);
+      setBulkCategory(undefined);
+      setSelectedIds([]);
+      const total = res.updated + (res.cascaded_ids?.length ?? 0);
+      message.success(`Сброшено категорий: ${total} — задачи вернулись в «К разбору»`);
+    } catch (e) {
+      notification.error({ title: 'Ошибка сброса категории', description: (e as Error).message });
     }
   };
 
@@ -1102,6 +1129,18 @@ export default function CategoriesEditorPage() {
           <Button key="cancel" onClick={() => { setBulkModalOpen(false); setBulkCategory(undefined); }}>
             Отмена
           </Button>,
+          <Popconfirm
+            key="reset"
+            title="Сбросить категорию?"
+            description={`Категория снимется у ${applicableSelectedIds.length} отмеченных задач и всех их подзадач — они вернутся в «К разбору».`}
+            okText="Сбросить"
+            cancelText="Отмена"
+            onConfirm={applyBulkReset}
+          >
+            <Button danger loading={batchCategoryMut.isPending && bulkMode === 'reset'}>
+              Сбросить категорию
+            </Button>
+          </Popconfirm>,
           <Button
             key="empty"
             disabled={!bulkCategory}

@@ -29,7 +29,7 @@ from app.models.issue import Issue
 from app.models.planning_scenario import PlanningScenario
 from app.models.scenario_allocation import ScenarioAllocation
 from app.models.worklog import Worklog
-from app.services import team_membership as tm
+from app.services import opo_policy, team_membership as tm
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.work_type_outlier_detector import detect_outliers_for_theme
 
@@ -365,6 +365,7 @@ class ExecutiveDashboardService:
 
         plan: dict[str, float] = defaultdict(float)
         scenario_issue_ids: list[str] = []
+        opo_off = opo_policy.is_off(self.db, year, quarter)
         if scen:
             rows = self.db.execute(
                 select(ScenarioAllocation, BacklogItem)
@@ -380,6 +381,8 @@ class ExecutiveDashboardService:
                     if alloc.involvement_coefficient is not None else 1.0
                 )
                 eff = effective_estimate_hours(alloc)
+                if opo_off:
+                    eff = opo_policy.fold(eff, bi.opo_analyst_ratio)
                 plan["analyst"] += eff["analyst"] * coef
                 plan["dev"] += eff["dev"] * coef
                 plan["qa"] += eff["qa"] * coef
@@ -424,14 +427,18 @@ class ExecutiveDashboardService:
         # 6 строк: 5 реальных ролей + ОПЭ как фаза (только на стороне плана).
         # На фактической стороне ОПЭ всегда 0 — часы по фазе ОПЭ
         # уже распределены по ролям (analyst/dev), у самой "ОПЭ" роли нет.
-        return [
+        rows_out = [
             {"role": "Аналитики", "plan": round(plan["analyst"], 1), "fact": round(fact["analyst"], 1)},
             {"role": "Консультанты", "plan": 0.0, "fact": round(fact["consultant"], 1)},
             {"role": "Разработка", "plan": round(plan["dev"], 1), "fact": round(fact["dev"], 1)},
             {"role": "QA", "plan": round(plan["qa"], 1), "fact": round(fact["qa"], 1)},
             {"role": "Архитектор/тимлид", "plan": 0.0, "fact": round(fact["lead"], 1)},
-            {"role": "ОПЭ (фаза)", "plan": round(plan["ope"], 1), "fact": 0.0},
         ]
+        if not opo_off:
+            rows_out.append(
+                {"role": "ОПЭ (фаза)", "plan": round(plan["ope"], 1), "fact": 0.0}
+            )
+        return rows_out
 
     def _top_risks(self, issues, worklog_rows) -> list[dict]:
         """Outliers + критичные open задачи. До 5."""

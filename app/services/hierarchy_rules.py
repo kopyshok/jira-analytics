@@ -32,16 +32,24 @@ def load_rules(db: Session) -> List[HierarchyRule]:
     return list(db.execute(stmt).scalars().all())
 
 
+def matches(rule: HierarchyRule, input_: EvaluationInput) -> bool:
+    """Все предикаты правила проходят на задаче."""
+    if rule.project_key and rule.project_key != input_.project_key:
+        return False
+    if rule.issue_type and rule.issue_type != input_.issue_type:
+        return False
+    if rule.require_no_parent and input_.has_parent:
+        return False
+    if rule.require_parent and not input_.has_parent:
+        return False
+    return True
+
+
 def classify(rules: List[HierarchyRule], input_: EvaluationInput) -> bool:
     """First-match-wins evaluation. Rules must already be ordered and enabled."""
     for rule in rules:
-        if rule.project_key and rule.project_key != input_.project_key:
-            continue
-        if rule.issue_type and rule.issue_type != input_.issue_type:
-            continue
-        if rule.require_no_parent and input_.has_parent:
-            continue
-        return bool(rule.is_container)
+        if matches(rule, input_):
+            return bool(rule.is_container)
     return False
 
 
@@ -62,11 +70,6 @@ def is_explicit_leaf(rules: List[HierarchyRule], project_key: str, issue_type: s
         has_parent=has_parent,
     )
     for rule in rules:
-        if rule.project_key and rule.project_key != inp.project_key:
-            continue
-        if rule.issue_type and rule.issue_type != inp.issue_type:
-            continue
-        if rule.require_no_parent and inp.has_parent:
-            continue
-        return not rule.is_container
+        if matches(rule, inp):
+            return not rule.is_container
     return False

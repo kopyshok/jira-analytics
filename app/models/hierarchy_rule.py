@@ -20,6 +20,10 @@ class HierarchyRule(Base, TimestampMixin):
     - ``project_key`` (None = any project)
     - ``issue_type`` (None = any type)
     - ``require_no_parent`` (True = only matches issues with no parent_id)
+    - ``require_parent`` (True = only matches issues that HAVE a parent_id)
+
+    ``require_no_parent`` and ``require_parent`` are mutually exclusive; the
+    API rejects rules that set both. UI exposes them as one tri-state select.
     """
 
     __tablename__ = "hierarchy_rule"
@@ -29,6 +33,7 @@ class HierarchyRule(Base, TimestampMixin):
     project_key: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
     issue_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     require_no_parent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    require_parent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_container: Mapped[bool] = mapped_column(Boolean, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
