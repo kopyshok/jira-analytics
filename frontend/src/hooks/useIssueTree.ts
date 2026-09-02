@@ -38,7 +38,12 @@ export function useSetIssueSubgroup() {
   return useMutation({
     mutationFn: ({ issueId, subgroupId }: { issueId: string; subgroupId: string | null }) =>
       setIssueSubgroup(issueId, subgroupId),
-    onSuccess: () => invalidateCategoryDependents(qc),
+    // Ни дерево, ни бэклог не инвалидируем: перезагрузка тяжёлых списков на
+    // каждый выбор группы подвешивала таблицу. Строку правит вызывающая
+    // страница по ответу, остальные списки перечитаются при заходе на них.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['planning'] });
+    },
   });
 }
 

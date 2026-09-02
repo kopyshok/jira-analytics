@@ -879,6 +879,9 @@ async def batch_set_category(
     archived_ids: list[str] = []
     cascaded_ids: list[str] = []
     is_archive = body.category_code in ARCHIVE_CATEGORY_CODES
+    # Пустой код = сброс разбора: задача возвращается в стек «К разбору»
+    # и снова попадает в анализ (снятый архивом флаг восстанавливается).
+    is_reset = body.category_code is None
     resolver = CategoryResolver(db)
     backlog = BacklogService(db)
     seen_targets: set[str] = set()
@@ -892,6 +895,9 @@ async def batch_set_category(
             archived_ids.append(issue.id)
         if body.verify:
             issue.category_verified = True
+        if is_reset:
+            issue.category_verified = False
+            issue.include_in_analysis = True
         # Пересчитать denormalized category и синкнуть BacklogItem.
         issue.category = resolver.resolve_for_issue(issue).category_code
         reset_parent_context(db, issue, resolver)
@@ -911,6 +917,9 @@ async def batch_set_category(
                 archived_ids.append(d.id)
             if body.verify:
                 d.category_verified = True
+            if is_reset:
+                d.category_verified = False
+                d.include_in_analysis = True
             d.category = resolver.resolve_for_issue(d).category_code
             reset_parent_context(db, d, resolver)
             backlog.sync_from_issue(d)

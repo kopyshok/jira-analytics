@@ -295,3 +295,38 @@ def test_capacity_by_role_employee_in_two_teams_no_double_counting(db_session):
     # Без фикса часы удвоились бы (200 → 38%); с фиксом ровно 100 → 19%.
     expected_pct = min(100, round(100.0 / 520 * 100))
     assert cap["Аналитики"]["utilization_pct"] == expected_pct
+
+
+def test_ope_row_folded_into_roles_from_cutoff(db_session):
+    """С квартала отсечки строки «ОПЭ (фаза)» нет, её часы — в анализе и разработке."""
+    from app.models import AppSetting
+    from app.services import opo_policy
+
+    _mk_project(db_session)
+    _mk_issue(db_session, "i9", "P-9", status="In Progress")
+    db_session.add(AppSetting(key=opo_policy.SETTING_KEY, value="2026Q2"))
+    bi = BacklogItem(
+        id="bi9", title="Item", issue_id="i9",
+        estimate_analyst_hours=20.0,
+        estimate_dev_hours=30.0,
+        estimate_qa_hours=0.0,
+        estimate_opo_hours=8.0,
+        opo_analyst_ratio=0.25,
+    )
+    db_session.add(bi)
+    scen = PlanningScenario(
+        id="s9", name="Q2 plan", year=2026, quarter="Q2", status="approved",
+    )
+    db_session.add(scen)
+    db_session.flush()
+    db_session.add(ScenarioAllocation(
+        id="a9", scenario_id="s9", backlog_item_id="bi9", included_flag=True,
+    ))
+    db_session.commit()
+
+    f = ExecutiveDashboardService(db_session).aggregate(year=2026, quarter=2, teams=["T1"])
+    plan_fact = {row["role"]: row for row in f.plan_fact_by_role}
+
+    assert "ОПЭ (фаза)" not in plan_fact
+    assert plan_fact["Аналитики"]["plan"] == 22.0
+    assert plan_fact["Разработка"]["plan"] == 36.0

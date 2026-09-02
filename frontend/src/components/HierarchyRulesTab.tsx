@@ -21,6 +21,7 @@ const EMPTY_FORM: FormState = {
   project_key: null,
   issue_type: null,
   require_no_parent: false,
+  require_parent: false,
   is_container: true,
   is_enabled: true,
   description: null,
@@ -62,6 +63,7 @@ export default function HierarchyRulesTab() {
       project_key: form.project_key || null,
       issue_type: form.issue_type || null,
       require_no_parent: form.require_no_parent,
+      require_parent: form.require_parent,
       is_container: form.is_container,
       is_enabled: form.is_enabled,
       description: form.description || null,
@@ -101,8 +103,11 @@ export default function HierarchyRulesTab() {
       render: (v: string | null) => v ? <Tag>{v}</Tag> : <Text type="secondary">любой</Text>,
     },
     {
-      title: 'Без родителя', dataIndex: 'require_no_parent', key: 'require_no_parent', width: 120,
-      render: (v: boolean) => v ? <Tag color="geekblue">да</Tag> : <Text type="secondary">—</Text>,
+      title: 'Родитель', key: 'parent_cond', width: 140,
+      render: (_: unknown, r: HierarchyRule) =>
+        r.require_no_parent ? <Tag color="geekblue">только без родителя</Tag>
+          : r.require_parent ? <Tag color="purple">только с родителем</Tag>
+            : <Text type="secondary">неважно</Text>,
     },
     {
       title: 'Контейнер', dataIndex: 'is_container', key: 'is_container', width: 110,
@@ -205,10 +210,20 @@ export default function HierarchyRulesTab() {
               style={{ width: '100%' }}
             />
           </Form.Item>
-          <Form.Item label="Только при отсутствии родителя">
-            <Switch
-              checked={form.require_no_parent}
-              onChange={v => setForm(f => ({ ...f, require_no_parent: v }))}
+          <Form.Item label="Родитель">
+            <Select
+              value={form.require_no_parent ? 'none' : form.require_parent ? 'has' : 'any'}
+              onChange={v => setForm(f => ({
+                ...f,
+                require_no_parent: v === 'none',
+                require_parent: v === 'has',
+              }))}
+              options={[
+                { value: 'any', label: 'Неважно' },
+                { value: 'none', label: 'Только без родителя (верхний уровень)' },
+                { value: 'has', label: 'Только с родителем (вложенная задача)' },
+              ]}
+              style={{ width: '100%' }}
             />
           </Form.Item>
           <Form.Item label="Считать контейнером">

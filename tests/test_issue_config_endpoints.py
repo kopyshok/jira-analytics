@@ -1138,3 +1138,25 @@ def test_batch_category_overwrite_covers_owned_and_unverified_descendants(client
         assert persisted.assigned_category == "development"
         assert persisted.category_verified is True
     assert db_session.get(Issue, moved.id).parent_changed is False
+
+
+def test_batch_category_reset_returns_to_stack(client, project_and_issues, db_session):
+    """Пустой код = сброс: категория снимается, задача снова «К разбору»."""
+    _, issues = project_and_issues
+    target = issues[0]
+    target.assigned_category = "archive"
+    target.category_verified = True
+    target.include_in_analysis = False
+    db_session.flush()
+
+    response = client.put(
+        "/api/v1/issues/batch-category",
+        json={"issue_ids": [target.id], "category_code": None, "overwrite": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated"] == 1
+    issue = db_session.get(Issue, target.id)
+    assert issue.assigned_category is None
+    assert issue.category_verified is False
+    assert issue.include_in_analysis is True
