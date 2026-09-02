@@ -259,7 +259,7 @@ export default function AssignmentSidebar({
               type="warning"
               showIcon
               style={{ marginTop: 6 }}
-              message={membershipWarning}
+              title={membershipWarning}
             />
           )}
           {assignment.employee_name && (
