@@ -15,6 +15,15 @@ const PLAIN_CAUSE: Record<string, string> = {
   IntegrityError: 'Данные не прошли проверку целостности при записи',
 };
 
+// Отказ по паролю выглядит так же, как «база недоступна», а чинится иначе:
+// это адрес или пароль базы, а не сама база.
+function plainCause(row: ServerErrorItem): string {
+  if (row.message.includes('password authentication failed')) {
+    return 'База данных отвергла подключение сервиса — не подошёл пароль или адрес';
+  }
+  return PLAIN_CAUSE[row.error_type] ?? row.error_type;
+}
+
 function fmt(dt: string): string {
   return new Date(dt).toLocaleString('ru-RU');
 }
@@ -52,7 +61,7 @@ export default function ServerErrorsTab() {
       dataIndex: 'error_type',
       render: (_: string, row: ServerErrorItem) => (
         <Space orientation="vertical" size={0}>
-          <Text strong>{PLAIN_CAUSE[row.error_type] ?? row.error_type}</Text>
+          <Text strong>{plainCause(row)}</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>{row.message}</Text>
         </Space>
       ),
