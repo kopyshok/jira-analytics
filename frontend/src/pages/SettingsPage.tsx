@@ -45,6 +45,7 @@ import FeedbackAdminTab from '../components/feedback/FeedbackAdminTab';
 import UsageTab from '../components/admin/usage/UsageTab';
 import ReleaseNotesAdminTab from '../components/settings/ReleaseNotesAdminTab';
 import DbExportTab from '../components/settings/DbExportTab';
+import ServerErrorsTab from '../components/settings/ServerErrorsTab';
 import {
   useProductionCalendarYear,
   useSyncProductionCalendarYear,
@@ -94,6 +95,7 @@ const GROUPS: SectionGroup[] = [
       { key: 'usage', label: 'Использование', adminOnly: true, render: () => <UsageTab /> },
       { key: 'whats-new', label: 'Что нового', adminOnly: true, render: () => <ReleaseNotesAdminTab /> },
       { key: 'db-export', label: 'Выгрузка базы', adminOnly: true, render: () => <DbExportTab /> },
+      { key: 'errors', label: 'Ошибки сервиса', adminOnly: true, render: () => <ServerErrorsTab /> },
     ],
   },
 ];
