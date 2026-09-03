@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.api.router import api_router
+from app.core import error_log
 from app.database import SessionLocal
 from app.services.kpi.conditions import ConditionError
 from app.repositories.sync_schedule import SyncScheduleRepository
@@ -128,6 +129,24 @@ async def kpi_condition_error_handler(request, exc: ConditionError) -> JSONRespo
     премии, тихо проглатывать такие ошибки нельзя (см. ревью Фазы 3, BLOCKER 2).
     """
     return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(Exception)
+async def unhandled_error_handler(request, exc: Exception) -> JSONResponse:
+    """Необработанная ошибка — в кольцевой буфер для админской страницы.
+
+    Без этого разбор любого 500 на проде упирался в консоль сервера: журнал
+    контейнера доступен только системному администратору.
+    """
+    entry_id = error_log.record(request, exc)
+    logger.exception(
+        "Необработанная ошибка %s %s (номер %s)",
+        request.method, request.url.path, entry_id,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера", "error_id": entry_id},
+    )
 
 
 @app.get("/health")
