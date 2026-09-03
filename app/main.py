@@ -39,17 +39,9 @@ async def lifespan(app: FastAPI):
     logger.info("Database: %s", settings.database_url)
 
     # --- Release notes seed from release_notes/*.json ---
-    db = SessionLocal()
-    try:
-        from app.services.release_note_seed import seed_from_files
-        try:
-            seed_from_files(db)
-        except Exception:
-            # Без traceback причина не видна: на проде лента осталась без новых
-            # версий, а в журнале была одна строка без подробностей.
-            logger.exception("release_notes seed failed (non-fatal)")
-    finally:
-        db.close()
+    from app.services.release_note_seed import seed_with_retry
+
+    seed_with_retry(SessionLocal)
 
     # --- Scheduler ---
     db = SessionLocal()
