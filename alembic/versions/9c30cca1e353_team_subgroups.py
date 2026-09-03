@@ -32,7 +32,7 @@ def upgrade() -> None:
             sa.Column(
                 'has_subgroups',
                 sa.Boolean(),
-                server_default=sa.text('0'),
+                server_default=sa.false(),
                 nullable=False,
             ),
             sa.Column('created_at', sa.DateTime(), nullable=False),
@@ -79,7 +79,7 @@ def upgrade() -> None:
             sa.Column(
                 'subgroup_verified',
                 sa.Boolean(),
-                server_default=sa.text('1'),
+                server_default=sa.true(),
                 nullable=False,
             )
         )
