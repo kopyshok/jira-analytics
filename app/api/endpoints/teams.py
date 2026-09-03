@@ -13,6 +13,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth_deps import require_admin
 from app.database import get_db
 from app.models import EmployeeTeam, Issue, Team
 from app.schemas.team import (
@@ -26,6 +27,10 @@ from app.services.team_registry_service import TeamRegistryService
 
 
 router = APIRouter()
+
+# Правка реестра команд и групп — административная операция: экран живёт
+# в разделе администратора, а удаление группы снимает её с сотрудников и задач.
+_admin_only = [Depends(require_admin)]
 
 
 @router.get("", response_model=List[str])
@@ -57,13 +62,18 @@ def list_registry(db: Session = Depends(get_db)) -> List[TeamOut]:
     return [_to_out(t) for t in db.query(Team).order_by(Team.name).all()]
 
 
-@router.patch("/registry/{name}", response_model=TeamOut)
+@router.patch("/registry/{name}", response_model=TeamOut, dependencies=_admin_only)
 def patch_registry(name: str, data: TeamPatch, db: Session = Depends(get_db)) -> TeamOut:
     """Включить или выключить деление команды на группы."""
     return _to_out(TeamRegistryService(db).set_has_subgroups(name, data.has_subgroups))
 
 
-@router.post("/registry/{name}/subgroups", response_model=SubgroupOut, status_code=201)
+@router.post(
+    "/registry/{name}/subgroups",
+    response_model=SubgroupOut,
+    status_code=201,
+    dependencies=_admin_only,
+)
 def create_subgroup(
     name: str, data: SubgroupIn, db: Session = Depends(get_db)
 ) -> SubgroupOut:
@@ -74,7 +84,9 @@ def create_subgroup(
     return SubgroupOut.model_validate(group)
 
 
-@router.patch("/subgroups/{subgroup_id}", response_model=SubgroupOut)
+@router.patch(
+    "/subgroups/{subgroup_id}", response_model=SubgroupOut, dependencies=_admin_only
+)
 def rename_subgroup(
     subgroup_id: str, data: SubgroupIn, db: Session = Depends(get_db)
 ) -> SubgroupOut:
@@ -83,7 +95,7 @@ def rename_subgroup(
     )
 
 
-@router.delete("/subgroups/{subgroup_id}", status_code=204)
+@router.delete("/subgroups/{subgroup_id}", status_code=204, dependencies=_admin_only)
 def delete_subgroup(subgroup_id: str, db: Session = Depends(get_db)) -> None:
     """Удалить группу. Приписки сотрудников и задач обнуляются каскадом."""
     TeamRegistryService(db).delete_subgroup(subgroup_id)
