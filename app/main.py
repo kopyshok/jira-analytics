@@ -44,8 +44,10 @@ async def lifespan(app: FastAPI):
         from app.services.release_note_seed import seed_from_files
         try:
             seed_from_files(db)
-        except Exception as e:
-            logger.warning("release_notes seed failed (non-fatal): %s", e)
+        except Exception:
+            # Без traceback причина не видна: на проде лента осталась без новых
+            # версий, а в журнале была одна строка без подробностей.
+            logger.exception("release_notes seed failed (non-fatal)")
     finally:
         db.close()
 
