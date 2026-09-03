@@ -23,7 +23,14 @@ services:
     volumes:
       - pgdata-prod:/var/lib/postgresql/data
     networks:
-      - internal
+      internal:
+        # Сеть `internal` общая для всех проектов хоста, а имя сервиса
+        # `postgres` в ней занимает кто угодно. При совпадении Docker DNS
+        # отдаёт несколько адресов и часть подключений уходит в чужую базу —
+        # оттуда «password authentication failed» на случайных запросах.
+        # Приложение ходит по этому уникальному имени.
+        aliases:
+          - jira-analytics-postgres
     ports:
       - 5432:5432
     healthcheck:
@@ -57,7 +64,7 @@ services:
     env_file: .env
     environment:
       # Overrides any DATABASE_URL that might be in .env
-      DATABASE_URL: "postgresql://app:${DB_PASSWORD}@postgres:5432/jira_analytics_prod"
+      DATABASE_URL: "postgresql://app:${DB_PASSWORD}@jira-analytics-postgres:5432/jira_analytics_prod"
       HF_HOME: /opt/hf-cache
     volumes:
       - app-data-prod:/app/data
