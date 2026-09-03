@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -140,3 +141,38 @@ def known_versions(source_dir: Path | None = None) -> Iterable[str]:
     if not src.is_dir():
         return []
     return sorted(p.stem for p in src.glob("v*.json"))
+
+
+def seed_with_retry(
+    session_factory,
+    *,
+    attempts: int = 3,
+    delay_seconds: float = 3.0,
+    sleep=time.sleep,
+) -> dict[str, int] | None:
+    """Наполнить ленту при старте, переживая недоступную на первой секунде БД.
+
+    Прод после релиза остался без новых записей: единственная попытка на старте
+    упала (Postgres ещё поднимался), сбой намеренно не фатален — и лента молча
+    осталась старой до ручного нажатия «перечитать» в админке.
+
+    Возвращает статистику или None, если все попытки провалились.
+    """
+    for attempt in range(1, attempts + 1):
+        db = session_factory()
+        try:
+            return ReleaseNoteSeeder(db).seed()
+        except Exception:
+            logger.exception(
+                "release_notes seed: попытка %d из %d не удалась", attempt, attempts
+            )
+            if attempt < attempts:
+                sleep(delay_seconds)
+        finally:
+            db.close()
+    logger.error(
+        "release_notes seed: все %d попыток провалились — лента осталась без "
+        "новых версий, поможет кнопка «перечитать» в админке",
+        attempts,
+    )
+    return None
