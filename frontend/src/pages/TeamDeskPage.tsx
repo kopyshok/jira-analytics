@@ -70,7 +70,8 @@ export default function TeamDeskPage() {
     teams: [], developers: [], mode: 'open',
     period_start: quarter.start, period_end: quarter.end,
     show_reviewed: false, show_done_subtasks: true, status_counters: [],
-    hidden_columns: [], group_by_developer: true, sprints: [], releases: [],
+    hidden_columns: [], column_widths: {},
+    group_by_developer: true, sprints: [], releases: [],
     ...(filterPrefs.data ?? {}),
     ...(picked ?? {}),
   };
@@ -141,6 +142,9 @@ export default function TeamDeskPage() {
   // Настройка рабочего места и кнопка обновления — общие для всех раскладок.
   const listProps = {
     hiddenColumns: prefs.hidden_columns,
+    columnWidths: prefs.column_widths,
+    onColumnWidthsChange: (widths: Record<string, number>) =>
+      change({ column_widths: widths }),
     groupByDeveloper: prefs.group_by_developer,
     sprintFilter: prefs.sprints,
     releaseFilter: prefs.releases,

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   roundHours, type DeskDeveloper, type DeskIssue, type FlagCode,
@@ -57,6 +58,9 @@ interface Props {
   /** Оставить задачи с этими спринтами (по последнему) и релизами. */
   sprintFilter?: string[];
   releaseFilter?: string[];
+  /** Ширины колонок, растянутых мышкой. Пусто — ширина по умолчанию. */
+  columnWidths?: Record<string, number>;
+  onColumnWidthsChange?: (widths: Record<string, number>) => void;
   /** Настройка рабочего места: какие колонки показывать и группировать ли. */
   onHiddenColumnsChange?: (hidden: string[]) => void;
   onGroupByDeveloperChange?: (value: boolean) => void;
@@ -98,6 +102,51 @@ const SORT_VALUE: Record<string, (row: Row) => string | number | null> = {
 
 type SortState = { key: string; order: 'ascend' | 'descend' } | null;
 
+interface HeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
+  columnKey?: string;
+  columnWidth?: number;
+  onResize?: (key: string, width: number) => void;
+  onResizeEnd?: () => void;
+}
+
+/** Заголовок колонки с «ручкой» справа: тянешь мышкой — меняется ширина. */
+function ResizableHeaderCell({
+  columnKey, columnWidth, onResize, onResizeEnd, children, ...rest
+}: HeaderCellProps) {
+  if (!columnKey || !onResize) return <th {...rest}>{children}</th>;
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const cell = (e.currentTarget as HTMLElement).closest('th');
+    const startX = e.clientX;
+    const startWidth = columnWidth ?? cell?.getBoundingClientRect().width ?? 120;
+    const move = (ev: MouseEvent) =>
+      // Меньше 60 не даём: заголовок перестаёт читаться.
+      onResize(columnKey, Math.max(60, Math.round(startWidth + ev.clientX - startX)));
+    const stop = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', stop);
+      onResizeEnd?.();
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', stop);
+  };
+  return (
+    <th {...rest} style={{ ...rest.style, position: 'relative' }}>
+      {children}
+      <span
+        onMouseDown={startDrag}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          // Держим ручку внутри ячейки: у колонок с обрезкой края скрыты.
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: 8,
+          cursor: 'col-resize', zIndex: 1, touchAction: 'none',
+        }}
+      />
+    </th>
+  );
+}
+
 /** Сортировка задач внутри уровня; подзадачи сортируются тем же порядком. */
 function sortRows(rows: Row[], sort: SortState): Row[] {
   if (!sort || !SORT_VALUE[sort.key]) return rows;
@@ -128,9 +177,17 @@ export function GroupedIssues({
   statuses = [], statusGroups, onStatusFilter,
   hiddenColumns = [], groupByDeveloper = true,
   sprintFilter = [], releaseFilter = [],
+  columnWidths = {}, onColumnWidthsChange,
   onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false,
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
+  // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
+  // когда кнопку отпустили — иначе на каждый пиксель шёл бы запрос.
+  const [draggedWidths, setDraggedWidths] = useState<Record<string, number> | null>(null);
+  // Обработчики тяги живут с момента нажатия кнопки, поэтому итог берём из
+  // ссылки, а не из состояния: в замыкании оно так и осталось бы пустым.
+  const draggedRef = useRef<Record<string, number> | null>(null);
+  const widths = draggedWidths ?? columnWidths;
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
   // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
   const [toggled, setToggled] = useState<Set<string>>(new Set());
@@ -452,17 +509,62 @@ export function GroupedIssues({
 
   // Сортируем сами: строки групп остаются на месте, порядок меняется только
   // у задач. Колонка «Задача» в сплошном списке сортируется по названию.
+  const resizeColumn = (key: string, width: number) => {
+    const next = { ...(draggedRef.current ?? widths), [key]: width };
+    draggedRef.current = next;
+    setDraggedWidths(next);
+  };
+  const saveWidths = () => {
+    const next = draggedRef.current;
+    draggedRef.current = null;
+    if (next) onColumnWidthsChange?.(next);
+    // Состояние не сбрасываем: пока сохранённые ширины не приехали обратно,
+    // таблица должна остаться в том виде, в каком её отпустили.
+  };
+
   const columns: ColumnsType<Row> = allColumns
     .filter((col) => !hiddenColumns.includes(String(col.key)))
     .map((col) => {
       const key = String(col.key);
-      if (!SORT_VALUE[key]) return col;
+      const width = widths[key] ?? (col.width as number | undefined);
       return {
         ...col,
-        sorter: true,
-        sortOrder: sort?.key === key ? sort.order : null,
+        width,
+        ...(SORT_VALUE[key]
+          ? { sorter: true, sortOrder: sort?.key === key ? sort.order : null }
+          : {}),
+        ...(onColumnWidthsChange
+          ? {
+              onHeaderCell: () => ({
+                columnKey: key,
+                columnWidth: width,
+                onResize: resizeColumn,
+                onResizeEnd: saveWidths,
+              }) as React.HTMLAttributes<HTMLElement>,
+            }
+          : {}),
       };
     });
+  // Ширины заданы руками — таблица больше не обязана влезать в экран,
+  // и тогда появляется горизонтальная прокрутка.
+  const resized = Object.keys(widths).length > 0;
+  const columnMenuItems: MenuProps['items'] = [
+    ...COLUMN_LABELS
+      .filter(([key]) => key !== 'developer' || !groupByDeveloper)
+      .map(([key, label]) => ({
+        key,
+        label: <Checkbox checked={!hiddenColumns.includes(key)}>{label}</Checkbox>,
+      })),
+    ...(onColumnWidthsChange && resized
+      ? [
+          { type: 'divider' as const, key: 'w-div' },
+          { key: '__reset_widths__', label: 'Сбросить ширину колонок' },
+        ]
+      : []),
+  ];
+  const totalWidth = columns.reduce(
+    (sum, col) => sum + ((col.width as number | undefined) ?? 160), 0,
+  );
 
   return (
     <Card
@@ -488,20 +590,20 @@ export function GroupedIssues({
             <Dropdown
               trigger={['click']}
               menu={{
-                items: COLUMN_LABELS.filter(
-                  ([key]) => key !== 'developer' || !groupByDeveloper,
-                ).map(([key, label]) => ({
-                  key,
-                  label: (
-                    <Checkbox checked={!hiddenColumns.includes(key)}>{label}</Checkbox>
-                  ),
-                })),
-                onClick: ({ key }) =>
+                items: columnMenuItems,
+                onClick: ({ key }) => {
+                  if (key === '__reset_widths__') {
+                    draggedRef.current = null;
+                    setDraggedWidths(null);
+                    onColumnWidthsChange?.({});
+                    return;
+                  }
                   onHiddenColumnsChange(
                     hiddenColumns.includes(key)
                       ? hiddenColumns.filter((k) => k !== key)
                       : [...hiddenColumns, key],
-                  ),
+                  );
+                },
               }}
             >
               <Button size="small" icon={<SettingOutlined />}>Колонки</Button>
@@ -533,10 +635,16 @@ export function GroupedIssues({
           const key = single?.columnKey ? String(single.columnKey) : null;
           setSort(key && single?.order ? { key, order: single.order } : null);
         }}
-        // Прокрутки вправо нет: таблица ужимается под ширину экрана —
-        // ширины колонок служат подсказкой, длинные значения обрезаются
-        // многоточием с подсказкой по наведению. Лишние колонки тимлид
-        // убирает кнопкой «Колонки».
+        // По умолчанию прокрутки вправо нет: таблица ужимается под ширину
+        // экрана, длинные значения обрезаются многоточием с подсказкой.
+        // Колонки растянули мышкой — уважаем ширину и включаем прокрутку.
+        tableLayout={resized ? 'fixed' : undefined}
+        scroll={resized ? { x: totalWidth } : undefined}
+        components={
+          onColumnWidthsChange
+            ? { header: { cell: ResizableHeaderCell } }
+            : undefined
+        }
         expandable={{
           expandedRowKeys,
           onExpand: (_, row) => toggle(row.rowKey),
