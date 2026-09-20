@@ -290,33 +290,42 @@ export function GroupedIssues({
       : [{
           title: 'Разработчик',
           key: 'developer',
-          width: 180,
+          width: 140,
+          ellipsis: true,
           render: (_: unknown, row: Row) => row.developer_name ?? '—',
         }]),
     {
       title: 'Статус',
       key: 'status',
-      width: 190,
+      width: 150,
+      ellipsis: true,
       render: (_, row) =>
         row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} />,
     },
     {
       title: 'Спринт',
       key: 'sprint',
-      width: 190,
+      width: 148,
+      ellipsis: true,
       render: (_, row) => {
         if (row.isGroup || !row.sprint) return row.isGroup ? null : '—';
-        const all = row.sprints ?? [];
-        const tag = <Tag style={{ marginInlineEnd: 0 }}>{row.sprint}</Tag>;
-        if (all.length < 2) return tag;
         // Задача переходящая — в колонке последний спринт, остальные подсказкой.
+        const all = row.sprints ?? [];
         return (
           <Tooltip
-            title={<div>{all.map((name) => <div key={name}>{name}</div>)}</div>}
+            title={
+              <div>
+                {(all.length ? all : [row.sprint]).map((name) => (
+                  <div key={name}>{name}</div>
+                ))}
+              </div>
+            }
           >
-            <span>
-              {tag}
-              <Typography.Text type="secondary"> +{all.length - 1}</Typography.Text>
+            <span style={{ whiteSpace: 'nowrap' }}>
+              <Tag style={{ marginInlineEnd: 0 }}>{row.sprint}</Tag>
+              {all.length > 1 && (
+                <Typography.Text type="secondary"> +{all.length - 1}</Typography.Text>
+              )}
             </span>
           </Tooltip>
         );
@@ -325,11 +334,19 @@ export function GroupedIssues({
     {
       title: 'Релиз',
       key: 'release',
-      width: 170,
-      render: (_, row) =>
-        row.isGroup ? null : (row.release ? <Tag style={{ marginInlineEnd: 0 }}>{row.release}</Tag> : '—'),
+      width: 132,
+      ellipsis: true,
+      render: (_, row) => {
+        if (row.isGroup) return null;
+        if (!row.release) return '—';
+        return (
+          <Tooltip title={row.release}>
+            <Tag style={{ marginInlineEnd: 0 }}>{row.release}</Tag>
+          </Tooltip>
+        );
+      },
     },
-    { title: 'Оценка', key: 'est', width: 96, align: 'right',
+    { title: 'Оценка', key: 'est', width: 82, align: 'right',
       render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
     ...(onDailyRate
       ? [{
@@ -341,7 +358,7 @@ export function GroupedIssues({
             </Tooltip>
           ),
           key: 'daily_rate',
-          width: 118,
+          width: 104,
           align: 'right' as const,
           render: (_: unknown, row: Row) =>
             row.isGroup ? null : (
@@ -362,7 +379,7 @@ export function GroupedIssues({
     {
       title: 'Факт',
       key: 'fact',
-      width: 88,
+      width: 76,
       align: 'right',
       render: (_, row) => {
         const hours = roundHours(row.fact_hours ?? 0);
@@ -393,7 +410,7 @@ export function GroupedIssues({
     {
       title: 'Осталось',
       key: 'left',
-      width: 108,
+      width: 92,
       align: 'right',
       render: (_, row) => {
         if (row.est_hours == null) return '—';
@@ -405,7 +422,7 @@ export function GroupedIssues({
     {
       title: scale === 'centered' ? 'Недобор / перебор' : 'Шкала',
       key: 'scale',
-      width: 190,
+      width: 150,
       render: (_, row) => (
         <HoursScale
           fact={row.fact_hours ?? 0}
@@ -415,12 +432,12 @@ export function GroupedIssues({
         />
       ),
     },
-    { title: 'Дней', key: 'days', width: 84, align: 'right',
+    { title: 'Дней', key: 'days', width: 68, align: 'right',
       render: (_, row) => (row.isGroup ? null : row.days_in_status) },
     {
       title: 'Замечания',
       key: 'flags',
-      width: 165,
+      width: 132,
       render: (_, row) =>
         row.isGroup ? null : (
           <FlagList
@@ -516,7 +533,10 @@ export function GroupedIssues({
           const key = single?.columnKey ? String(single.columnKey) : null;
           setSort(key && single?.order ? { key, order: single.order } : null);
         }}
-        scroll={{ x: 'max-content' }}
+        // Прокрутки вправо нет: таблица ужимается под ширину экрана —
+        // ширины колонок служат подсказкой, длинные значения обрезаются
+        // многоточием с подсказкой по наведению. Лишние колонки тимлид
+        // убирает кнопкой «Колонки».
         expandable={{
           expandedRowKeys,
           onExpand: (_, row) => toggle(row.rowKey),
