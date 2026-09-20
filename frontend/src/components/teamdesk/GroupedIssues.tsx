@@ -341,7 +341,9 @@ export function GroupedIssues({
           // Ключ отдельной колонкой внутри ячейки: перенос длинного названия
           // начинается под первой строкой названия, а не под ключом.
           <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-            <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} />
+            <span style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}>
+              <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} />
+            </span>
             <span style={{ minWidth: 0 }}>
             {row.summary}
             {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
