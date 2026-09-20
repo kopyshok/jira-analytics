@@ -308,6 +308,9 @@ class ScenarioRulesReplaceBody(BaseModel):
 class AllocationPatch(BaseModel):
     included: Optional[bool] = None
     planned_hours: Optional[float] = Field(default=None, ge=0)
+    # Поднимать ли включённую задачу в начало списка. Личная настройка
+    # пользователя — кто её выключил, у того строка остаётся на месте.
+    lift: bool = True
 
 
 class AllocationResponse(BaseModel):
@@ -1629,7 +1632,7 @@ async def patch_allocation(
                 alloc.planned_hours = eff["analyst"] + eff["dev"] + eff["qa"] + eff["opo"]
             # Поднимаем строку в самый верх только при переходе False → True.
             # Снятие галочки оставляет sort_order на месте — строка не прыгает.
-            if not was_included:
+            if not was_included and data.lift:
                 current_min = (
                     db.query(func.min(ScenarioAllocation.sort_order))
                     .filter(ScenarioAllocation.scenario_id == scenario_id)

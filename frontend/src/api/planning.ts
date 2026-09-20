@@ -35,7 +35,7 @@ export const getScenarioAllocations = (id: string) =>
 export const patchAllocation = (
   scenarioId: string,
   allocId: string,
-  data: { included?: boolean; planned_hours?: number },
+  data: { included?: boolean; planned_hours?: number; lift?: boolean },
 ) => api.patch<AllocationResponse>(
   `/planning/scenarios/${scenarioId}/allocations/${allocId}`, data,
 );

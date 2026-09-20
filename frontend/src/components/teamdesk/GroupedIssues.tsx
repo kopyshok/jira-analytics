@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { Card, InputNumber, Table, Tag, Tooltip, Typography } from 'antd';
+import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
+import {
+  Button, Card, Checkbox, Dropdown, InputNumber, Space, Switch, Table, Tag, Tooltip, Typography,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   roundHours, type DeskDeveloper, type DeskIssue, type FlagCode,
@@ -47,6 +50,71 @@ interface Props {
   statuses?: string[];
   statusGroups?: Record<string, string[]>;
   onStatusFilter?: (developerId: string, status: string | null) => void;
+  /** Колонки, которые тимлид убрал с экрана. */
+  hiddenColumns?: string[];
+  /** Группировать по разработчикам; выключено — сплошной список. */
+  groupByDeveloper?: boolean;
+  /** Оставить задачи с этими спринтами (по последнему) и релизами. */
+  sprintFilter?: string[];
+  releaseFilter?: string[];
+  /** Настройка рабочего места: какие колонки показывать и группировать ли. */
+  onHiddenColumnsChange?: (hidden: string[]) => void;
+  onGroupByDeveloperChange?: (value: boolean) => void;
+  /** Перечитать с Jira задачи, которые сейчас в списке. */
+  onRefreshVisible?: (keys: string[]) => void;
+  refreshing?: boolean;
+}
+
+/** Подписи колонок для настройки видимости. «Задача» не убирается. */
+const COLUMN_LABELS: [string, string][] = [
+  ['developer', 'Разработчик'],
+  ['status', 'Статус'],
+  ['sprint', 'Спринт'],
+  ['release', 'Релиз'],
+  ['est', 'Оценка'],
+  ['daily_rate', 'DevForDay'],
+  ['fact', 'Факт'],
+  ['left', 'Осталось'],
+  ['scale', 'Шкала'],
+  ['days', 'Дней'],
+  ['flags', 'Замечания'],
+];
+
+/** Значение колонки для сортировки. Пусто — строка уходит в конец. */
+const SORT_VALUE: Record<string, (row: Row) => string | number | null> = {
+  task: (r) => r.summary ?? '',
+  developer: (r) => r.developer_name ?? '',
+  status: (r) => r.status ?? '',
+  sprint: (r) => r.sprint ?? '',
+  release: (r) => r.release ?? '',
+  est: (r) => r.est_hours ?? null,
+  daily_rate: (r) => r.daily_rate ?? null,
+  fact: (r) => r.fact_hours ?? null,
+  left: (r) => (r.est_hours == null ? null : r.est_hours - (r.fact_hours ?? 0)),
+  scale: (r) => (r.est_hours ? (r.fact_hours ?? 0) / r.est_hours : null),
+  days: (r) => r.days_in_status ?? null,
+  flags: (r) => r.flags?.length ?? 0,
+};
+
+type SortState = { key: string; order: 'ascend' | 'descend' } | null;
+
+/** Сортировка задач внутри уровня; подзадачи сортируются тем же порядком. */
+function sortRows(rows: Row[], sort: SortState): Row[] {
+  if (!sort || !SORT_VALUE[sort.key]) return rows;
+  const value = SORT_VALUE[sort.key];
+  const sign = sort.order === 'descend' ? -1 : 1;
+  const sorted = [...rows].sort((a, b) => {
+    const va = value(a);
+    const vb = value(b);
+    // Пустые значения всегда внизу — иначе «по оценке» сверху окажутся прочерки.
+    if (va == null || va === '') return vb == null || vb === '' ? 0 : 1;
+    if (vb == null || vb === '') return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sign;
+    return String(va).localeCompare(String(vb), 'ru') * sign;
+  });
+  return sorted.map((row) =>
+    row.children ? { ...row, children: sortRows(row.children, sort) } : row,
+  );
 }
 
 /**
@@ -58,7 +126,11 @@ export function GroupedIssues({
   scale = 'bar', flagFilter = null, statusFilter = null,
   onlyDeveloper = null, queueScope = null, onDailyRate, hint = '',
   statuses = [], statusGroups, onStatusFilter,
+  hiddenColumns = [], groupByDeveloper = true,
+  sprintFilter = [], releaseFilter = [],
+  onHiddenColumnsChange, onGroupByDeveloperChange, onRefreshVisible, refreshing = false,
 }: Props) {
+  const [sort, setSort] = useState<SortState>(null);
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
   // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
   const [toggled, setToggled] = useState<Set<string>>(new Set());
@@ -84,48 +156,77 @@ export function GroupedIssues({
   const hit = (issue: DeskIssue): boolean =>
     (!flagFilter || issue.flags.includes(flagFilter)) &&
     (!statusFilter || issue.status === statusFilter) &&
+    (!sprintFilter.length || (!!issue.sprint && sprintFilter.includes(issue.sprint))) &&
+    (!releaseFilter.length || (!!issue.release && releaseFilter.includes(issue.release))) &&
     inQueueScope(issue, queueScope);
 
   const matches = (issue: DeskIssue): boolean =>
     hit(issue) || (childrenOf.get(issue.id) ?? []).some(hit);
 
-  const data: Row[] = [];
-  developers
-    .filter((dev) => !onlyDeveloper || dev.developer_id === onlyDeveloper)
-    .forEach((dev) => {
-      const toRow = (issue: DeskIssue): Row => {
-        const kids = (childrenOf.get(issue.id) ?? []).map(toRow);
-        return {
-          ...issue,
-          rowKey: issue.id,
-          otherDeveloper:
-            issue.developer_id && issue.developer_id !== dev.developer_id
-              ? issue.developer_name
-              : null,
-          children: kids.length ? kids : undefined,
-        };
-      };
-      const own = issues
-        .filter(
-          (i) => i.developer_id === dev.developer_id && !(i.parent_id && ids.has(i.parent_id)),
-        )
-        .filter(matches);
-      if (!own.length) return;
-      data.push({
-        rowKey: `group-${dev.developer_id}`,
-        isGroup: true,
-        groupName: dev.display_name ?? 'Без имени',
-        groupCount: own.length,
-        groupInDev: dev.in_dev,
-        groupDeveloperId: dev.developer_id,
-        groupStatusCounts: dev.status_counts ?? {},
-        est_hours: dev.est_hours,
-        fact_hours: dev.fact_hours,
-        children: own.map(toRow),
-      });
-    });
+  const toRow = (issue: DeskIssue, ownerId?: string | null): Row => {
+    const kids = (childrenOf.get(issue.id) ?? []).map((kid) => toRow(kid, ownerId));
+    return {
+      ...issue,
+      rowKey: issue.id,
+      otherDeveloper:
+        ownerId && issue.developer_id && issue.developer_id !== ownerId
+          ? issue.developer_name
+          : null,
+      children: kids.length ? kids : undefined,
+    };
+  };
 
-  const shown = data.reduce((n, g) => n + (g.children?.length ?? 0), 0);
+  const data: Row[] = [];
+  if (groupByDeveloper) {
+    developers
+      .filter((dev) => !onlyDeveloper || dev.developer_id === onlyDeveloper)
+      .forEach((dev) => {
+        const own = issues
+          .filter(
+            (i) => i.developer_id === dev.developer_id && !(i.parent_id && ids.has(i.parent_id)),
+          )
+          .filter(matches);
+        if (!own.length) return;
+        data.push({
+          rowKey: `group-${dev.developer_id}`,
+          isGroup: true,
+          groupName: dev.display_name ?? 'Без имени',
+          groupCount: own.length,
+          groupInDev: dev.in_dev,
+          groupDeveloperId: dev.developer_id,
+          groupStatusCounts: dev.status_counts ?? {},
+          est_hours: dev.est_hours,
+          fact_hours: dev.fact_hours,
+          children: sortRows(own.map((i) => toRow(i, dev.developer_id)), sort),
+        });
+      });
+  } else {
+    // Сплошной список: группировка по людям выключена, сортировка идёт по
+    // всем задачам сразу, а имя разработчика показывается колонкой.
+    const flat = issues
+      .filter((i) => !(i.parent_id && ids.has(i.parent_id)))
+      .filter((i) => !onlyDeveloper || i.developer_id === onlyDeveloper)
+      .filter(matches)
+      .map((i) => toRow(i, null));
+    data.push(...sortRows(flat, sort));
+  }
+
+  const countRows = (rows: Row[]): number =>
+    rows.reduce(
+      (n, row) => n + (row.isGroup ? 0 : 1) + countRows(row.children ?? []),
+      0,
+    );
+  // Ключи задач на экране — их и перечитываем по кнопке.
+  const collectKeys = (rows: Row[]): string[] =>
+    rows.flatMap((row) => [
+      ...(row.isGroup || !row.key ? [] : [row.key]),
+      ...collectKeys(row.children ?? []),
+    ]);
+  const visibleKeys = collectKeys(data);
+
+  const shown = groupByDeveloper
+    ? data.reduce((n, g) => n + (g.children?.length ?? 0), 0)
+    : countRows(data);
 
   const expandableKeys: string[] = [];
   const collect = (rows: Row[]) =>
@@ -140,9 +241,10 @@ export function GroupedIssues({
     (key) => key.startsWith('group-') !== toggled.has(key),
   );
 
-  const columns: ColumnsType<Row> = [
+  const allColumns: ColumnsType<Row> = [
     {
       title: 'Задача',
+      key: 'task',
       render: (_, row) =>
         row.isGroup ? (
           <>
@@ -183,13 +285,51 @@ export function GroupedIssues({
           </span>
         ),
     },
+    ...(groupByDeveloper
+      ? []
+      : [{
+          title: 'Разработчик',
+          key: 'developer',
+          width: 180,
+          render: (_: unknown, row: Row) => row.developer_name ?? '—',
+        }]),
     {
       title: 'Статус',
+      key: 'status',
       width: 190,
       render: (_, row) =>
         row.isGroup ? null : <StatusTag status={row.status!} group={row.status_group!} />,
     },
-    { title: 'Оценка', width: 96, align: 'right',
+    {
+      title: 'Спринт',
+      key: 'sprint',
+      width: 190,
+      render: (_, row) => {
+        if (row.isGroup || !row.sprint) return row.isGroup ? null : '—';
+        const all = row.sprints ?? [];
+        const tag = <Tag style={{ marginInlineEnd: 0 }}>{row.sprint}</Tag>;
+        if (all.length < 2) return tag;
+        // Задача переходящая — в колонке последний спринт, остальные подсказкой.
+        return (
+          <Tooltip
+            title={<div>{all.map((name) => <div key={name}>{name}</div>)}</div>}
+          >
+            <span>
+              {tag}
+              <Typography.Text type="secondary"> +{all.length - 1}</Typography.Text>
+            </span>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: 'Релиз',
+      key: 'release',
+      width: 170,
+      render: (_, row) =>
+        row.isGroup ? null : (row.release ? <Tag style={{ marginInlineEnd: 0 }}>{row.release}</Tag> : '—'),
+    },
+    { title: 'Оценка', key: 'est', width: 96, align: 'right',
       render: (_, row) => (row.est_hours == null ? '—' : roundHours(row.est_hours)) },
     ...(onDailyRate
       ? [{
@@ -221,6 +361,7 @@ export function GroupedIssues({
       : []),
     {
       title: 'Факт',
+      key: 'fact',
       width: 88,
       align: 'right',
       render: (_, row) => {
@@ -251,6 +392,7 @@ export function GroupedIssues({
     },
     {
       title: 'Осталось',
+      key: 'left',
       width: 108,
       align: 'right',
       render: (_, row) => {
@@ -262,6 +404,7 @@ export function GroupedIssues({
     },
     {
       title: scale === 'centered' ? 'Недобор / перебор' : 'Шкала',
+      key: 'scale',
       width: 190,
       render: (_, row) => (
         <HoursScale
@@ -272,10 +415,11 @@ export function GroupedIssues({
         />
       ),
     },
-    { title: 'Дней', width: 84, align: 'right',
+    { title: 'Дней', key: 'days', width: 84, align: 'right',
       render: (_, row) => (row.isGroup ? null : row.days_in_status) },
     {
       title: 'Замечания',
+      key: 'flags',
       width: 165,
       render: (_, row) =>
         row.isGroup ? null : (
@@ -289,14 +433,76 @@ export function GroupedIssues({
     },
   ];
 
+  // Сортируем сами: строки групп остаются на месте, порядок меняется только
+  // у задач. Колонка «Задача» в сплошном списке сортируется по названию.
+  const columns: ColumnsType<Row> = allColumns
+    .filter((col) => !hiddenColumns.includes(String(col.key)))
+    .map((col) => {
+      const key = String(col.key);
+      if (!SORT_VALUE[key]) return col;
+      return {
+        ...col,
+        sorter: true,
+        sortOrder: sort?.key === key ? sort.order : null,
+      };
+    });
+
   return (
     <Card
       size="small"
       title={title}
       extra={
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {hint ? `${hint} · ` : ''}{shown} задач
-        </Typography.Text>
+        <Space size="small">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {hint ? `${hint} · ` : ''}{shown} задач
+          </Typography.Text>
+          {onGroupByDeveloperChange && (
+            <Tooltip title="Группировать задачи по разработчикам">
+              <Switch
+                size="small"
+                checked={groupByDeveloper}
+                onChange={onGroupByDeveloperChange}
+                checkedChildren="по людям"
+                unCheckedChildren="списком"
+              />
+            </Tooltip>
+          )}
+          {onHiddenColumnsChange && (
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: COLUMN_LABELS.filter(
+                  ([key]) => key !== 'developer' || !groupByDeveloper,
+                ).map(([key, label]) => ({
+                  key,
+                  label: (
+                    <Checkbox checked={!hiddenColumns.includes(key)}>{label}</Checkbox>
+                  ),
+                })),
+                onClick: ({ key }) =>
+                  onHiddenColumnsChange(
+                    hiddenColumns.includes(key)
+                      ? hiddenColumns.filter((k) => k !== key)
+                      : [...hiddenColumns, key],
+                  ),
+              }}
+            >
+              <Button size="small" icon={<SettingOutlined />}>Колонки</Button>
+            </Dropdown>
+          )}
+          {onRefreshVisible && (
+            <Tooltip title="Перечитать с Jira только задачи из этого списка">
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                loading={refreshing}
+                onClick={() => onRefreshVisible(visibleKeys)}
+              >
+                Обновить видимые
+              </Button>
+            </Tooltip>
+          )}
+        </Space>
       }
     >
       <Table<Row>
@@ -305,7 +511,12 @@ export function GroupedIssues({
         dataSource={data}
         columns={columns}
         pagination={false}
-        scroll={{ x: onDailyRate ? 1406 : 1288 }}
+        onChange={(_p, _f, sorter) => {
+          const single = Array.isArray(sorter) ? sorter[0] : sorter;
+          const key = single?.columnKey ? String(single.columnKey) : null;
+          setSort(key && single?.order ? { key, order: single.order } : null);
+        }}
+        scroll={{ x: 'max-content' }}
         expandable={{
           expandedRowKeys,
           onExpand: (_, row) => toggle(row.rowKey),

@@ -5,6 +5,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel
+
+from app.connectors.jira_client import JiraClient, JiraClientError
 from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models import Employee, Issue, TeamDeskDailyRate, User
@@ -20,8 +23,16 @@ from app.services.subgroup_filter import (
     restrict_to_teams as restrict_subgroups_to_teams,
 )
 from app.services.team_membership import members_on
+from app.services.sync_service import SyncService
 
 router = APIRouter()
+
+# Точечное обновление — не замена синку: столько задач Jira отдаёт быстро.
+_REFRESH_LIMIT = 200
+
+
+class RefreshIssuesRequest(BaseModel):
+    keys: list[str] = []
 
 
 def _split(raw: Optional[str]) -> list[str]:
@@ -225,3 +236,31 @@ def put_daily_rate(
     row.created_by_user_id = user.id
     db.commit()
     return {"issue_id": issue_id, "hours": row.hours}
+
+
+@router.post("/refresh-issues")
+async def refresh_issues(
+    payload: RefreshIssuesRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Перечитать с Jira только переданные задачи — те, что сейчас на экране.
+
+    Полного синка ради десятка строк ждать незачем: тимлид жмёт кнопку и
+    видит свежие статусы, оценки, спринт и релиз по видимым задачам.
+    """
+    keys = list(dict.fromkeys(k.strip() for k in payload.keys if k.strip()))
+    if not keys:
+        return {"matched": 0, "total": 0}
+    if len(keys) > _REFRESH_LIMIT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"За один раз обновляем не больше {_REFRESH_LIMIT} задач",
+        )
+    try:
+        async with JiraClient.from_db(db) as jira:
+            service = SyncService(db, jira)
+            matched, total = await service.refresh_issues_by_keys(keys)
+    except JiraClientError as e:
+        raise HTTPException(status_code=502, detail=f"Ошибка Jira: {e}")
+    return {"matched": matched, "total": total}

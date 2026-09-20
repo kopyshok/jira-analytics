@@ -7,7 +7,8 @@ import {
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useRegisterHelp } from '../contexts/HelpContext';
 import {
-  useDeskFilter, useDeskOverview, useDeskSettings, useSaveDailyRate, useSaveDeskFilter,
+  useDeskFilter, useDeskOverview, useDeskSettings, useRefreshDeskIssues,
+  useSaveDailyRate, useSaveDeskFilter,
 } from '../hooks/useTeamDesk';
 import { useJiraBaseUrl } from '../hooks/useSettings';
 import { DeskFilters } from '../components/teamdesk/DeskFilters';
@@ -69,6 +70,7 @@ export default function TeamDeskPage() {
     teams: [], developers: [], mode: 'open',
     period_start: quarter.start, period_end: quarter.end,
     show_reviewed: false, show_done_subtasks: true, status_counters: [],
+    hidden_columns: [], group_by_developer: true, sprints: [], releases: [],
     ...(filterPrefs.data ?? {}),
     ...(picked ?? {}),
   };
@@ -121,6 +123,32 @@ export default function TeamDeskPage() {
     Object.entries(dev.status_counts ?? {}).forEach(([status, count]) => {
       totalStatusCounts[status] = (totalStatusCounts[status] ?? 0) + count;
     }));
+
+  // Варианты отбора собираем из самого среза: спринт и релиз приходят
+  // вместе с задачами, отдельного справочника не нужно.
+  const sprintOptions = Array.from(
+    new Set((data?.issues ?? []).map((i) => i.sprint).filter(Boolean) as string[]),
+  ).sort((a, b) => a.localeCompare(b, 'ru'));
+  const releaseOptions = Array.from(
+    new Set((data?.issues ?? []).map((i) => i.release).filter(Boolean) as string[]),
+  ).sort((a, b) => a.localeCompare(b, 'ru'));
+
+  const refreshIssues = useRefreshDeskIssues();
+  const refreshVisible = (keys: string[]) => {
+    if (keys.length) refreshIssues.mutate(keys);
+  };
+
+  // Настройка рабочего места и кнопка обновления — общие для всех раскладок.
+  const listProps = {
+    hiddenColumns: prefs.hidden_columns,
+    groupByDeveloper: prefs.group_by_developer,
+    sprintFilter: prefs.sprints,
+    releaseFilter: prefs.releases,
+    onHiddenColumnsChange: (hidden: string[]) => change({ hidden_columns: hidden }),
+    onGroupByDeveloperChange: (value: boolean) => change({ group_by_developer: value }),
+    onRefreshVisible: refreshVisible,
+    refreshing: refreshIssues.isPending,
+  };
 
   const pickStatus = (developerId: string, status: string | null) => {
     setSelectedDev(status ? developerId : null);
@@ -218,6 +246,7 @@ export default function TeamDeskPage() {
         statusFilter={statusFilter}
         queueScope={queueScope}
         onDailyRate={setDailyRate}
+        {...listProps}
       />
       <Card size="small" title="Задач в работе одновременно">
         <WorkloadBars
@@ -256,6 +285,12 @@ export default function TeamDeskPage() {
         showDoneSubtasks={prefs.show_done_subtasks}
         onShowDoneSubtasksChange={(value) => change({ show_done_subtasks: value })}
         onToggleThresholds={() => setShowThresholds((v) => !v)}
+        sprintOptions={sprintOptions}
+        releaseOptions={releaseOptions}
+        sprints={prefs.sprints}
+        onSprintsChange={(value) => change({ sprints: value })}
+        releases={prefs.releases}
+        onReleasesChange={(value) => change({ releases: value })}
       />
 
       {showThresholds && settings.data && (
@@ -345,6 +380,7 @@ export default function TeamDeskPage() {
           statuses={shownStatuses}
           statusGroups={statusGroups}
           onStatusFilter={pickStatus}
+          {...listProps}
         />
       )}
 

@@ -24,6 +24,13 @@ interface Props {
   showDoneSubtasks: boolean;
   onShowDoneSubtasksChange: (v: boolean) => void;
   onToggleThresholds: () => void;
+  /** Спринты и релизы, встретившиеся в срезе — варианты для отбора. */
+  sprintOptions: string[];
+  releaseOptions: string[];
+  sprints: string[];
+  onSprintsChange: (v: string[]) => void;
+  releases: string[];
+  onReleasesChange: (v: string[]) => void;
 }
 
 /** Шапка раздела: команды, добранные точечно люди, период, пороги. */
@@ -35,6 +42,8 @@ export function DeskFilters({
   showReviewed, onShowReviewedChange,
   showDoneSubtasks, onShowDoneSubtasksChange,
   onToggleThresholds,
+  sprintOptions, releaseOptions,
+  sprints, onSprintsChange, releases, onReleasesChange,
 }: Props) {
   const teamsQuery = useTeams();
   const employeesQuery = useEmployees({ isActive: true });
@@ -72,6 +81,34 @@ export function DeskFilters({
               value: e.jira_account_id,
               label: e.display_name,
             }))}
+          maxTagCount="responsive"
+        />
+
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>СПРИНТ</Typography.Text>
+        <Select
+          mode="multiple"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="Все спринты"
+          style={{ minWidth: 220 }}
+          value={sprints}
+          onChange={onSprintsChange}
+          options={sprintOptions.map((v) => ({ value: v, label: v }))}
+          maxTagCount="responsive"
+        />
+
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>РЕЛИЗ</Typography.Text>
+        <Select
+          mode="multiple"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="Все релизы"
+          style={{ minWidth: 200 }}
+          value={releases}
+          onChange={onReleasesChange}
+          options={releaseOptions.map((v) => ({ value: v, label: v }))}
           maxTagCount="responsive"
         />
 

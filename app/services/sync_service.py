@@ -189,6 +189,64 @@ def _extract_text_field(extra: dict, field_id: str) -> Optional[str]:
     return None
 
 
+def _extract_sprints(extra: dict, field_id: Optional[str]) -> tuple[Optional[str], list[str]]:
+    """Спринты задачи: (последний, все имена в хронологическом порядке).
+
+    Поле Jira Software отдаёт список объектов со статусом (``active`` /
+    ``closed`` / ``future``) и датой старта. Последним считаем активный
+    спринт, а если активного нет — самый поздний по дате начала.
+    """
+    if not field_id:
+        return None, []
+    raw = extra.get(field_id)
+    if not isinstance(raw, list) or not raw:
+        return None, []
+    items: list[tuple[str, str, str]] = []  # (имя, состояние, дата старта)
+    for entry in raw:
+        if isinstance(entry, dict):
+            name = entry.get("name")
+            state = (entry.get("state") or "").lower()
+            start = entry.get("startDate") or ""
+        elif isinstance(entry, str):
+            # Старый формат Jira — строка вида "...,name=Sprint 1,startDate=..."
+            name = None
+            state = ""
+            start = ""
+            for part in entry.split(","):
+                key, _, value = part.partition("=")
+                if key.strip().endswith("name"):
+                    name = value
+                elif key.strip().endswith("state"):
+                    state = value.lower()
+                elif key.strip().endswith("startDate"):
+                    start = value
+        else:
+            continue
+        if name:
+            items.append((name, state, start))
+    if not items:
+        return None, []
+    items.sort(key=lambda it: it[2] or "")
+    names = [it[0] for it in items]
+    active = [it for it in items if it[1] == "active"]
+    last = active[-1][0] if active else names[-1]
+    return last, names
+
+
+def _extract_release(extra: dict) -> Optional[str]:
+    """Релиз задачи — стандартное поле Jira «Версии исправления».
+
+    ponytail: берём первую версию — в проекте у задачи она одна.
+    """
+    raw = extra.get("fixVersions")
+    if not isinstance(raw, list):
+        return None
+    for entry in raw:
+        if isinstance(entry, dict) and entry.get("name"):
+            return entry["name"]
+    return None
+
+
 def _adf_to_text(node: dict) -> str:
     """Рекурсивный обход ADF дерева — конкатенация text-нод с переводами строк после параграфов."""
     if not isinstance(node, dict):
@@ -326,9 +384,11 @@ _KPI_FIELD_SETTING_KEYS = [
     "jira_cost_type_field_id",
     "jira_cycle_time_field_id",
     "jira_direction_field_id",
-    # Рабочий стол тимлида: «Разработчик» (поле-пользователь) и «DEV est (ч)»
+    # Рабочий стол тимлида: «Разработчик» (поле-пользователь), «DEV est (ч)»
+    # и «Спринт» (поле Jira Software со списком спринтов задачи).
     "jira_developer_field_id",
     "jira_dev_est_field_id",
+    "jira_sprint_field_id",
 ]
 _ALL_PLANNED_KEYS = (
     _PLANNED_NUMERIC_SETTING_KEYS
@@ -610,14 +670,37 @@ class SyncService:
         Используется для расширения ``fields=`` параметра в запросах к Jira,
         чтобы эти поля реально возвращались в ответе и попадали в ``_extra``.
         """
-        ids: list[str] = []
-        seen: set[str] = set()
+        # «Версии исправления» — стандартное поле, сопоставлять его в настройках
+        # не нужно, но в ответе оно приходит только если запрошено явно.
+        ids: list[str] = ["fixVersions"]
+        seen: set[str] = {"fixVersions"}
         for key in _ALL_PLANNED_KEYS:
             fid = self._get_setting(key)
             if fid and fid not in seen:
                 ids.append(fid)
                 seen.add(fid)
         return ids
+
+    async def _ensure_sprint_field_id(self) -> None:
+        """Найти поле «Спринт» в Jira, если админ его ещё не сопоставил.
+
+        Поле стандартное для Jira Software, у него фиксированный тип, поэтому
+        ищем по типу и сохраняем — руками настраивать не нужно.
+        """
+        if self._get_setting("jira_sprint_field_id"):
+            return
+        try:
+            fields = await self.jira.get_fields()
+        except Exception:  # связь с Jira не настроена — не мешаем синку
+            return
+        for field in fields:
+            schema = field.get("schema") or {}
+            if schema.get("custom") == "com.pyxis.greenhopper.jira:gh-sprint":
+                row = AppSetting(key="jira_sprint_field_id", value=field["id"])
+                self.db.merge(row)
+                self.db.commit()
+                logger.info("Sprint field discovered: %s", field["id"])
+                return
 
     def _resolve_planned_field_ids(self) -> dict[str, Optional[str]]:
         """Резолвит все planned-effort / impact / risk AppSetting ключи один
@@ -882,6 +965,15 @@ class SyncService:
         data["developer_account_id"] = _dev_account_id
         data["developer_display_name"] = _dev_display_name
         data["dev_est_hours"] = _fld_float("jira_dev_est_field_id")
+        # Спринт и релиз — колонки и отборы на рабочем столе тимлида
+        _sprint_last, _sprint_all = _extract_sprints(
+            extra, planned_ids.get("jira_sprint_field_id")
+        )
+        data["sprint"] = _sprint_last
+        data["sprints"] = (
+            json.dumps(_sprint_all, ensure_ascii=False) if _sprint_all else None
+        )
+        data["release"] = _extract_release(extra)
 
         ct_raw = _extract_single_value(extra, planned_ids.get("jira_cycle_time_field_id"))
         try:
@@ -987,6 +1079,7 @@ class SyncService:
                 logger.info(f"Incremental sync since {since}")
 
         # Read team/goals field IDs from AppSetting — if configured, request them from Jira
+        await self._ensure_sprint_field_id()
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
@@ -1265,6 +1358,7 @@ class SyncService:
         if not jira_keys:
             return 0, 0
 
+        await self._ensure_sprint_field_id()
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")
@@ -1375,6 +1469,7 @@ class SyncService:
         if not teams:
             return {}
 
+        await self._ensure_sprint_field_id()
         product_field_id = self._get_setting("jira_team_field_id")
         participating_field_id = self._get_setting("jira_participating_teams_field_id")
         goals_field_id = self._get_setting("jira_goals_field_id")

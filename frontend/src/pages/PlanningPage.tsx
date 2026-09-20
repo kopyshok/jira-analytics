@@ -4,7 +4,7 @@ import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
-  Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Tooltip,
+  Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Switch, Tooltip,
 } from 'antd';
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined,
@@ -50,6 +50,8 @@ import {
 import SubgroupSectionHeader from '../components/planning/SubgroupSectionHeader';
 import { TeamSelector } from '../components/planning/TeamSelector';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
+import { useAppearance, useUpdateAppearance } from '../api/appearance';
+import { DEFAULT_APPEARANCE } from '../contexts/appearanceDefaults';
 import { useGlobalPeriod } from '../hooks/useGlobalPeriod';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { useStickyViewportHeight } from '../hooks/useStickyViewportHeight';
@@ -270,6 +272,11 @@ export default function PlanningPage() {
   // Берём только mutate: сам объект мутации пересоздаётся на каждый рендер и
   // ломал бы мемоизацию строк через колбэки ниже.
   const { mutate: patchAlloc } = usePatchAllocation();
+  // Поднимать ли включённую задачу наверх — личная настройка пользователя.
+  const appearance = useAppearance();
+  const updateAppearance = useUpdateAppearance();
+  const appearanceValue = appearance.data ?? DEFAULT_APPEARANCE;
+  const liftIncluded = appearanceValue.scenario_lift_included;
   const { mutate: patchAssignee } = usePatchAllocationAssignee();
   const { mutate: patchBacklogPriority } = usePatchBacklogPriority();
   const updateScenario = useUpdateScenario();
@@ -463,11 +470,17 @@ export default function PlanningPage() {
       pulseRoles(rolesAffectedByAllocation(alloc, resourceBase?.employees));
       scrollRowIntoView(alloc.id);
       patchAlloc(
-        { scenarioId, allocId: alloc.id, data: { included: !alloc.included } },
+        {
+          scenarioId,
+          allocId: alloc.id,
+          // Подъём строки наверх — личная настройка: кто его выключил,
+          // у того включённая задача остаётся на своём месте.
+          data: { included: !alloc.included, lift: liftIncluded },
+        },
         { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
       );
     },
-    [scenarioId, isDraft, resourceBase?.employees, patchAlloc, notification],
+    [scenarioId, isDraft, resourceBase?.employees, patchAlloc, notification, liftIncluded],
   );
 
   const registerRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
@@ -763,6 +776,22 @@ export default function PlanningPage() {
                   >
                     История
                   </Button>
+                </Tooltip>
+                <Tooltip title="При включении задача поднимается в начало списка">
+                  <Space size={6}>
+                    <Switch
+                      size="small"
+                      checked={liftIncluded}
+                      onChange={(value) =>
+                        updateAppearance.mutate({
+                          ...appearanceValue,
+                          scenario_lift_included: value,
+                        })}
+                    />
+                    <span style={{ color: DARK_THEME.textHint, fontSize: 12 }}>
+                      поднимать наверх
+                    </span>
+                  </Space>
                 </Tooltip>
                 <Button
                   size="small"

@@ -749,6 +749,7 @@ async def _perform_refresh(
     db: Session,
     http_request: Optional[Request],
     on_progress: Optional[Callable[[int, int, Optional[str]], Awaitable[None]]] = None,
+    only_keys: Optional[List[str]] = None,
 ) -> RefreshResponse:
     """Перечитать с Jira задачи-кандидаты в бэклог и синкнуть BacklogItem.
 
@@ -767,6 +768,10 @@ async def _perform_refresh(
       4) Синк BacklogItem через ``BacklogService.sync_from_issue``.
 
     ``on_progress(matched, total, current_key)`` — async-коллбек для SSE.
+
+    ``only_keys`` — обновить не весь список, а только эти задачи (кнопка
+    «Обновить видимые»). Остальные строки не трогаем вовсе: ни в Jira за
+    ними не ходим, ни в архив по ним не переводим.
 
     Возвращает счётчики created / updated / archived / restored / jira_refreshed.
     Исключения (``CancelledError`` / ``JiraClientError``) пробрасываются —
@@ -787,10 +792,11 @@ async def _perform_refresh(
         .filter(BacklogItem.issue_id.isnot(None), BacklogItem.archived_at.isnot(None))
         .all()
     }
+    wanted = set(only_keys) if only_keys else None
     fetch_keys = [
         key for (iid, key) in db.query(Issue.id, Issue.key)
         .filter(_backlog_candidate_filter()).all()
-        if iid not in archived_issue_ids
+        if iid not in archived_issue_ids and (wanted is None or key in wanted)
     ]
 
     # 2) Один поход в Jira за всеми нужными полями сразу.
@@ -862,7 +868,10 @@ async def _perform_refresh(
 
     # 3) Перечитать кандидатов заново — их ``planned_*`` / impact / risk
     #    теперь актуальны. Сессия могла истечь атрибуты после commit в шаге 2.
-    candidates = db.query(Issue).filter(_backlog_candidate_filter()).all()
+    candidates_q = db.query(Issue).filter(_backlog_candidate_filter())
+    if wanted:
+        candidates_q = candidates_q.filter(Issue.key.in_(list(wanted)))
+    candidates = candidates_q.all()
     created = 0
     updated = 0
     archived = 0
@@ -888,12 +897,16 @@ async def _perform_refresh(
             created += 1
 
     # Items that used to be backlog but Jira category moved away → archive.
-    stale_items = (
+    stale_q = (
         db.query(BacklogItem)
         .options(joinedload(BacklogItem.issue))
         .filter(BacklogItem.issue_id.isnot(None))
-        .all()
     )
+    if wanted:
+        stale_q = stale_q.join(Issue, Issue.id == BacklogItem.issue_id).filter(
+            Issue.key.in_(list(wanted))
+        )
+    stale_items = stale_q.all()
     for item in stale_items:
         if item.issue is None:
             continue
@@ -928,9 +941,16 @@ async def refresh_from_jira(
         raise HTTPException(status_code=502, detail=f"Jira error: {e}")
 
 
+class RefreshScope(BaseModel):
+    """Какие задачи обновлять. Пусто — весь список целевых задач."""
+
+    keys: List[str] = []
+
+
 @router.post("/refresh-from-jira/stream")
 async def refresh_from_jira_stream(
     http_request: Request,
+    scope: Optional[RefreshScope] = None,
     db: Session = Depends(get_db),
 ):
     """SSE-стрим прогресса «Обновить с Jira».
@@ -952,7 +972,10 @@ async def refresh_from_jira_stream(
 
         async def run() -> None:
             try:
-                result = await _perform_refresh(db, http_request, on_progress=on_progress)
+                result = await _perform_refresh(
+                    db, http_request, on_progress=on_progress,
+                    only_keys=(scope.keys if scope and scope.keys else None),
+                )
                 await queue.put({
                     "type": "done",
                     "created": result.created,

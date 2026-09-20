@@ -214,12 +214,28 @@ export default function BacklogPage() {
     );
   };
 
-  const handleRefreshFromJira = () => {
+  // Ключи задач открытой вкладки — их обновляет кнопка «Обновить видимые».
+  // Вместо нескольких тысяч задач в Jira уходит ровно то, что на экране.
+  const visibleJiraKeys = () => {
+    const rows =
+      view === 'quarterly' ? quarterlyRows
+        : view === 'active' ? activeRows
+          : archivedRows;
+    type KeyedRow = { jira_key?: string | null; children?: KeyedRow[] };
+    const collect = (list: KeyedRow[]): string[] =>
+      list.flatMap((r) => [
+        ...(r.jira_key ? [r.jira_key] : []),
+        ...collect(r.children ?? []),
+      ]);
+    return Array.from(new Set(collect((rows ?? []) as KeyedRow[])));
+  };
+
+  const handleRefreshFromJira = (keys?: string[]) => {
     const ctl = new AbortController();
     refreshAbortRef.current = ctl;
     setRefreshProgress(null);
     refreshFromJiraMut.mutate(
-      { onProgress: (e) => setRefreshProgress(e), signal: ctl.signal },
+      { onProgress: (e) => setRefreshProgress(e), signal: ctl.signal, keys },
       {
         onSuccess: () => notification.success({ title: 'Данные обновлены из Jira' }),
         onError: (e) => {
@@ -963,9 +979,25 @@ export default function BacklogPage() {
                 </Button>
               </Space>
             ) : (
-              <Button icon={<ReloadOutlined />} onClick={handleRefreshFromJira}>
-                Обновить с Jira
-              </Button>
+              <Space size="small">
+                <Button icon={<ReloadOutlined />} onClick={() => handleRefreshFromJira()}>
+                  Обновить с Jira
+                </Button>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => {
+                    const keys = visibleJiraKeys();
+                    if (!keys.length) {
+                      notification.info({ title: 'На вкладке нет задач из Jira' });
+                      return;
+                    }
+                    handleRefreshFromJira(keys);
+                  }}
+                  title="Перечитать только задачи открытой вкладки"
+                >
+                  Обновить только видимые
+                </Button>
+              </Space>
             )}
             <Button
               icon={<PlusOutlined />}

@@ -72,6 +72,15 @@ export function useSaveDailyRate() {
   });
 }
 
+/** Перечитать с Jira задачи, которые сейчас на экране. */
+export function useRefreshDeskIssues() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (keys: string[]) => teamDeskApi.refreshIssues(keys),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['team-desk', 'overview'] }),
+  });
+}
+
 export function useMarkFlag() {
   const qc = useQueryClient();
   return useMutation({

@@ -80,12 +80,16 @@ export const useUnlinkJira = () => {
 type RefreshInput = {
   onProgress?: (e: BacklogRefreshProgress) => void;
   signal?: AbortSignal;
+  /** Обновить только эти задачи; пусто — весь список. */
+  keys?: string[];
 };
 export const useRefreshFromJira = () => {
   const qc = useQueryClient();
   return useMutation<BacklogRefreshDone, Error, RefreshInput | void>({
     mutationFn: (input) =>
-      refreshFromJiraStream(input?.onProgress ?? (() => {}), input?.signal),
+      refreshFromJiraStream(
+        input?.onProgress ?? (() => {}), input?.signal, input?.keys,
+      ),
     onSuccess: () => {
       invalidateAllBacklog(qc);
       qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
