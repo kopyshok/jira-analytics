@@ -105,28 +105,39 @@ type SortState = { key: string; order: 'ascend' | 'descend' } | null;
 interface HeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
   columnKey?: string;
   columnWidth?: number;
-  onResize?: (key: string, width: number) => void;
-  onResizeEnd?: () => void;
+  /** Вызывается один раз — когда кнопку мыши отпустили. */
+  onResized?: (key: string, width: number) => void;
 }
 
 /** Заголовок колонки с «ручкой» справа: тянешь мышкой — меняется ширина. */
 function ResizableHeaderCell({
-  columnKey, columnWidth, onResize, onResizeEnd, children, ...rest
+  columnKey, columnWidth, onResized, children, ...rest
 }: HeaderCellProps) {
-  if (!columnKey || !onResize) return <th {...rest}>{children}</th>;
+  if (!columnKey || !onResized) return <th {...rest}>{children}</th>;
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const cell = (e.currentTarget as HTMLElement).closest('th');
+    if (!cell) return;
     const startX = e.clientX;
-    const startWidth = columnWidth ?? cell?.getBoundingClientRect().width ?? 120;
-    const move = (ev: MouseEvent) =>
+    const startWidth = columnWidth ?? cell.getBoundingClientRect().width;
+    const index = cell.cellIndex;
+    const table = cell.closest('.ant-table');
+    let latest = startWidth;
+    const move = (ev: MouseEvent) => {
       // Меньше 60 не даём: заголовок перестаёт читаться.
-      onResize(columnKey, Math.max(60, Math.round(startWidth + ev.clientX - startX)));
+      latest = Math.max(60, Math.round(startWidth + ev.clientX - startX));
+      // Пока тянут, двигаем саму колонку в разметке. Перерисовывать сотню
+      // строк на каждое движение мыши слишком дорого — список подвисает.
+      table?.querySelectorAll('colgroup').forEach((group) => {
+        const col = group.children[index] as HTMLElement | undefined;
+        if (col) col.style.width = `${latest}px`;
+      });
+    };
     const stop = () => {
       document.removeEventListener('mousemove', move);
       document.removeEventListener('mouseup', stop);
-      onResizeEnd?.();
+      onResized(columnKey, latest);
     };
     document.addEventListener('mousemove', move);
     document.addEventListener('mouseup', stop);
@@ -184,9 +195,8 @@ export function GroupedIssues({
   // Пока тянут мышкой, ширина живёт на экране; в профиль уходит один раз,
   // когда кнопку отпустили — иначе на каждый пиксель шёл бы запрос.
   const [draggedWidths, setDraggedWidths] = useState<Record<string, number> | null>(null);
-  // Обработчики тяги живут с момента нажатия кнопки, поэтому итог берём из
-  // ссылки, а не из состояния: в замыкании оно так и осталось бы пустым.
-  const draggedRef = useRef<Record<string, number> | null>(null);
+  // Нужна, чтобы после перетаскивания снять фактические размеры колонок.
+  const tableRef = useRef<HTMLDivElement>(null);
   const widths = draggedWidths ?? columnWidths;
   // Люди развёрнуты по умолчанию, задачи — свёрнуты; здесь только отклонения
   // от этого правила, чтобы не пересобирать состояние на каждой загрузке.
@@ -328,8 +338,12 @@ export function GroupedIssues({
             )}
           </>
         ) : (
-          <span>
-            <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} /> {row.summary}
+          // Ключ отдельной колонкой внутри ячейки: перенос длинного названия
+          // начинается под первой строкой названия, а не под ключом.
+          <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+            <IssueKey issueKey={row.key!} jiraBaseUrl={jiraBaseUrl} />
+            <span style={{ minWidth: 0 }}>
+            {row.summary}
             {row.is_analysis && <Tag style={{ marginLeft: 6 }}>тех. анализ</Tag>}
             {row.daily_rate ? (
               <Tooltip title={`В очередь идёт по ${row.daily_rate} ч в день, а не весь остаток`}>
@@ -339,6 +353,7 @@ export function GroupedIssues({
             {row.otherDeveloper && (
               <Typography.Text type="secondary"> · {row.otherDeveloper}</Typography.Text>
             )}
+            </span>
           </span>
         ),
     },
@@ -509,18 +524,6 @@ export function GroupedIssues({
 
   // Сортируем сами: строки групп остаются на месте, порядок меняется только
   // у задач. Колонка «Задача» в сплошном списке сортируется по названию.
-  const resizeColumn = (key: string, width: number) => {
-    const next = { ...(draggedRef.current ?? widths), [key]: width };
-    draggedRef.current = next;
-    setDraggedWidths(next);
-  };
-  const saveWidths = () => {
-    const next = draggedRef.current;
-    draggedRef.current = null;
-    if (next) onColumnWidthsChange?.(next);
-    // Состояние не сбрасываем: пока сохранённые ширины не приехали обратно,
-    // таблица должна остаться в том виде, в каком её отпустили.
-  };
 
   const columns: ColumnsType<Row> = allColumns
     .filter((col) => !hiddenColumns.includes(String(col.key)))
@@ -538,13 +541,33 @@ export function GroupedIssues({
               onHeaderCell: () => ({
                 columnKey: key,
                 columnWidth: width,
-                onResize: resizeColumn,
-                onResizeEnd: saveWidths,
+                onResized: commitWidth,
               }) as React.HTMLAttributes<HTMLElement>,
             }
           : {}),
       };
     });
+  // Ширину запоминаем, когда кнопку отпустили. Заодно фиксируем соседние
+  // колонки по их текущему размеру на экране: иначе при первом растягивании
+  // они прыгнули бы с подогнанной ширины на исходную.
+  function commitWidth(key: string, width: number) {
+    const next: Record<string, number> = { ...widths };
+    const cells = tableRef.current?.querySelectorAll('.ant-table-thead th');
+    if (cells?.length) {
+      const offset = cells.length - columns.length;
+      columns.forEach((col, i) => {
+        const cell = cells[i + offset] as HTMLElement | undefined;
+        const colKey = String(col.key);
+        if (cell && next[colKey] == null) {
+          next[colKey] = Math.round(cell.getBoundingClientRect().width);
+        }
+      });
+    }
+    next[key] = width;
+    setDraggedWidths(next);
+    onColumnWidthsChange?.(next);
+  }
+
   // Ширины заданы руками — таблица больше не обязана влезать в экран,
   // и тогда появляется горизонтальная прокрутка.
   const resized = Object.keys(widths).length > 0;
@@ -593,7 +616,6 @@ export function GroupedIssues({
                 items: columnMenuItems,
                 onClick: ({ key }) => {
                   if (key === '__reset_widths__') {
-                    draggedRef.current = null;
                     setDraggedWidths(null);
                     onColumnWidthsChange?.({});
                     return;
@@ -624,6 +646,7 @@ export function GroupedIssues({
         </Space>
       }
     >
+      <div ref={tableRef}>
       <Table<Row>
         size="small"
         rowKey="rowKey"
@@ -655,6 +678,7 @@ export function GroupedIssues({
             : {}
         }
       />
+      </div>
     </Card>
   );
 }
