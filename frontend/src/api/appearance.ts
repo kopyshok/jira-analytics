@@ -7,6 +7,8 @@ export interface AppearanceSettings {
   initiative_fill_intensity: 'soft' | 'medium' | 'dense';
   animation_speed_seconds: number;
   hours_balance_lag_days: number;
+  /** Сценарии: поднимать включённую задачу в начало списка. */
+  scenario_lift_included: boolean;
 }
 
 export const APPEARANCE_QUERY_KEY = ['appearance'] as const;

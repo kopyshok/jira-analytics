@@ -137,7 +137,11 @@ export const usePatchAllocation = () => {
   return useMutation<
     AllocationResponse,
     Error,
-    { scenarioId: string; allocId: string; data: { included?: boolean; planned_hours?: number } },
+    {
+      scenarioId: string;
+      allocId: string;
+      data: { included?: boolean; planned_hours?: number; lift?: boolean };
+    },
     { prev?: AllocationResponse[] }
   >({
     mutationFn: ({ scenarioId, allocId, data }) => patchAllocation(scenarioId, allocId, data),

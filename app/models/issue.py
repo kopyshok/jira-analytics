@@ -58,6 +58,14 @@ class Issue(Base, SyncedMixin):
     paused_days: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     direction: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
 
+    # Рабочий стол тимлида: спринт и релиз задачи.
+    # sprint — последний спринт (активный, иначе самый поздний по дате начала),
+    # sprints — все спринты задачи в хронологическом порядке (JSON-список имён),
+    # release — версия исправления из Jira (fixVersions).
+    sprint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    sprints: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    release: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+
     # Foreign keys
     project_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("projects.id"), nullable=False, index=True

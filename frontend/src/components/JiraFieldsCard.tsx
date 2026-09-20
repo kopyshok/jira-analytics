@@ -108,6 +108,7 @@ const GROUPS: FieldGroup[] = [
     fields: [
       { key: 'jira_developer_field_id', label: 'Разработчик' },
       { key: 'jira_dev_est_field_id',   label: 'Оценка разработки, ч' },
+      { key: 'jira_sprint_field_id',    label: 'Спринт' },
     ],
   },
 ];

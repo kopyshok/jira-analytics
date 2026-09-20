@@ -98,6 +98,8 @@ type BacklogRefreshEvent =
 export async function refreshFromJiraStream(
   onProgress: (e: BacklogRefreshProgress) => void,
   signal?: AbortSignal,
+  /** Ключи задач: пусто — обновляется весь список. */
+  keys?: string[],
 ): Promise<BacklogRefreshDone> {
   const url = `${BASE_URL}/backlog/refresh-from-jira/stream`;
   let res: Response;
@@ -105,6 +107,7 @@ export async function refreshFromJiraStream(
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ keys: keys ?? [] }),
       signal,
       credentials: 'include',
     });

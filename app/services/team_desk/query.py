@@ -1,4 +1,5 @@
 """Срез задач рабочего стола тимлида: выборка, факт, признаки, сводка."""
+import json
 import statistics
 from datetime import date, datetime, time
 from typing import Optional
@@ -10,6 +11,17 @@ from app.models import Employee, Issue, TeamDeskDailyRate, Worklog
 from app.services.team_desk.config import DeskConfig, group_of_status, load_config
 from app.services.team_desk.flags import IssueFacts, compute_flags, flag_signature
 from app.services.team_desk.marks import active_marks
+
+
+def _sprint_list(raw: Optional[str]) -> list[str]:
+    """Все спринты задачи из хранимого JSON-списка."""
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return [str(v) for v in value] if isinstance(value, list) else []
 
 
 def _days_in_status(issue: Issue, today: datetime) -> int:
@@ -287,6 +299,11 @@ def build_overview(
                 # подсказкой и подсвечиваются замечанием.
                 "alien_hours": round(alien_hours, 1),
                 "days_in_status": facts.days_in_status,
+                # Спринт и релиз — отдельные колонки списка задач. sprint —
+                # последний спринт, sprints — все, показываются подсказкой.
+                "sprint": issue.sprint,
+                "sprints": _sprint_list(issue.sprints),
+                "release": issue.release,
                 "is_analysis": is_analysis,
                 "is_subtask": facts.is_subtask,
                 # Самостоятельная задача = не подзадача либо подзадача-сирота.

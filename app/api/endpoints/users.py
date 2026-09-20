@@ -127,6 +127,13 @@ class TeamDeskFilterPayload(BaseModel):
     # Статусы, которые показываются счётчиками в разрезе разработчиков.
     # Пусто — показываются все статусы, встретившиеся в срезе.
     status_counters: list[str] = []
+    # Колонки списка задач, которые тимлид убрал с экрана.
+    hidden_columns: list[str] = []
+    # Список задач сгруппирован по разработчикам; выключено — плоский список.
+    group_by_developer: bool = True
+    # Отборы по спринту и релизу (пусто — без отбора).
+    sprints: list[str] = []
+    releases: list[str] = []
 
 
 @router.get("/me/team-desk-filter", response_model=TeamDeskFilterPayload)

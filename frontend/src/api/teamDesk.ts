@@ -39,6 +39,12 @@ export interface DeskIssue {
   in_queue: boolean;
   /** Часов в день по «резиновой» задаче; пусто — обычная задача. */
   daily_rate: number | null;
+  /** Последний спринт задачи: активный, иначе самый поздний. */
+  sprint: string | null;
+  /** Все спринты задачи в хронологическом порядке — показываются подсказкой. */
+  sprints: string[];
+  /** Релиз задачи — версия исправления из Jira. */
+  release: string | null;
   flags: FlagCode[];
   signatures: Partial<Record<FlagCode, string>>;
   reviewed: ReviewedMark[];
@@ -113,6 +119,14 @@ export interface DeskFilterPrefs {
   show_done_subtasks: boolean;
   /** Статусы, показываемые счётчиками. Пусто — все статусы среза. */
   status_counters: string[];
+  /** Колонки списка задач, убранные с экрана. */
+  hidden_columns: string[];
+  /** Список сгруппирован по разработчикам; выключено — сплошной список. */
+  group_by_developer: boolean;
+  /** Отбор по спринту. Пусто — без отбора. */
+  sprints: string[];
+  /** Отбор по релизу. Пусто — без отбора. */
+  releases: string[];
 }
 
 /** Часы на экране — один знак после запятой: суммы списаний дают длинный хвост. */
@@ -223,6 +237,9 @@ export const teamDeskApi = {
 
   saveFilter: (payload: DeskFilterPrefs) =>
     api.put<DeskFilterPrefs>('/users/me/team-desk-filter', payload),
+
+  refreshIssues: (keys: string[]) =>
+    api.post<{ matched: number; total: number }>('/team-desk/refresh-issues', { keys }),
 
   saveSettings: (payload: DeskSettings) =>
     api.put<DeskSettings>('/team-desk/settings', payload),
