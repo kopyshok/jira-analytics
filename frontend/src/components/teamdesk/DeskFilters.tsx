@@ -50,13 +50,20 @@ export function DeskFilters({
 
   return (
     <Card size="small" styles={{ body: { padding: '10px 12px' } }}>
-      <Space wrap size={[10, 8]} style={{ width: '100%' }}>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>КОМАНДЫ</Typography.Text>
+      {/* Отборы жмутся под ширину окна и держатся в одну строку: выпадающие
+          списки ужимаются, а не переносят шапку на второй ряд. */}
+      <div
+        style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+          columnGap: 10, rowGap: 8, width: '100%',
+        }}
+      >
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>КОМАНДЫ</Typography.Text>
         <Select
           mode="multiple"
           allowClear
           placeholder="Выберите команды"
-          style={{ minWidth: 340 }}
+          style={{ flex: '2 1 180px', minWidth: 120 }}
           value={teams}
           onChange={onTeamsChange}
           loading={teamsQuery.isLoading}
@@ -64,14 +71,14 @@ export function DeskFilters({
           maxTagCount="responsive"
         />
 
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>ОТДЕЛЬНЫЕ ЛЮДИ</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>ОТДЕЛЬНЫЕ ЛЮДИ</Typography.Text>
         <Select
           mode="multiple"
           allowClear
           showSearch
           optionFilterProp="label"
           placeholder="Добрать разработчика"
-          style={{ minWidth: 260 }}
+          style={{ flex: '1 1 150px', minWidth: 120 }}
           value={developers}
           onChange={onDevelopersChange}
           loading={employeesQuery.isLoading}
@@ -84,28 +91,28 @@ export function DeskFilters({
           maxTagCount="responsive"
         />
 
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>СПРИНТ</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>СПРИНТ</Typography.Text>
         <Select
           mode="multiple"
           allowClear
           showSearch
           optionFilterProp="label"
           placeholder="Все спринты"
-          style={{ minWidth: 220 }}
+          style={{ flex: '1 1 140px', minWidth: 110 }}
           value={sprints}
           onChange={onSprintsChange}
           options={sprintOptions.map((v) => ({ value: v, label: v }))}
           maxTagCount="responsive"
         />
 
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>РЕЛИЗ</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>РЕЛИЗ</Typography.Text>
         <Select
           mode="multiple"
           allowClear
           showSearch
           optionFilterProp="label"
           placeholder="Все релизы"
-          style={{ minWidth: 200 }}
+          style={{ flex: '1 1 140px', minWidth: 110 }}
           value={releases}
           onChange={onReleasesChange}
           options={releaseOptions.map((v) => ({ value: v, label: v }))}
@@ -113,6 +120,7 @@ export function DeskFilters({
         />
 
         <Segmented
+          style={{ flexShrink: 0 }}
           value={mode}
           onChange={(v) => onModeChange(v as DeskMode)}
           options={[
@@ -124,6 +132,7 @@ export function DeskFilters({
 
         {mode === 'period' && (
           <DatePicker.RangePicker
+            style={{ flexShrink: 0 }}
             value={[dayjs(periodStart), dayjs(periodEnd)]}
             onChange={(range) => {
               if (range?.[0] && range?.[1]) {
@@ -135,14 +144,14 @@ export function DeskFilters({
           />
         )}
 
-        <Space size={6}>
+        <Space size={6} style={{ flexShrink: 0 }}>
           <Switch size="small" checked={showReviewed} onChange={onShowReviewedChange} />
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
             показывать просмотренные
           </Typography.Text>
         </Space>
 
-        <Space size={6}>
+        <Space size={6} style={{ flexShrink: 0 }}>
           <Switch
             size="small"
             checked={showDoneSubtasks}
@@ -160,7 +169,7 @@ export function DeskFilters({
         </Space>
 
         <Button icon={<SettingOutlined />} onClick={onToggleThresholds} title="Настройки вида" />
-      </Space>
+      </div>
     </Card>
   );
 }
