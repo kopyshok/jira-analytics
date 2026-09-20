@@ -121,6 +121,8 @@ export interface DeskFilterPrefs {
   status_counters: string[];
   /** Колонки списка задач, убранные с экрана. */
   hidden_columns: string[];
+  /** Ширины колонок, растянутых мышкой. Пусто — ширина по умолчанию. */
+  column_widths: Record<string, number>;
   /** Список сгруппирован по разработчикам; выключено — сплошной список. */
   group_by_developer: boolean;
   /** Отбор по спринту. Пусто — без отбора. */

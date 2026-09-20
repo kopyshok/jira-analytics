@@ -129,6 +129,8 @@ class TeamDeskFilterPayload(BaseModel):
     status_counters: list[str] = []
     # Колонки списка задач, которые тимлид убрал с экрана.
     hidden_columns: list[str] = []
+    # Ширины колонок, если тимлид растянул их мышкой. Пусто — ширина по умолчанию.
+    column_widths: dict[str, int] = {}
     # Список задач сгруппирован по разработчикам; выключено — плоский список.
     group_by_developer: bool = True
     # Отборы по спринту и релизу (пусто — без отбора).

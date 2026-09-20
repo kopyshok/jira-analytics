@@ -100,7 +100,7 @@ def test_team_desk_filter_keeps_whole_header(testclient_db_session):
             "period_start": None, "period_end": None,
             "show_reviewed": False, "show_done_subtasks": True,
             "status_counters": [],
-            "hidden_columns": [], "group_by_developer": True,
+            "hidden_columns": [], "column_widths": {}, "group_by_developer": True,
             "sprints": [], "releases": [],
         }
 
@@ -109,7 +109,8 @@ def test_team_desk_filter_keeps_whole_header(testclient_db_session):
             "period_start": "2026-07-01", "period_end": "2026-09-30",
             "show_reviewed": True, "show_done_subtasks": False,
             "status_counters": ["Ожидает помещения"],
-            "hidden_columns": ["sprint"], "group_by_developer": False,
+            "hidden_columns": ["sprint"], "column_widths": {"status": 220},
+            "group_by_developer": False,
             "sprints": ["OS 19"], "releases": ["MFO OS| 30.09.26"],
         }
         assert client.put(
