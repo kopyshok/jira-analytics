@@ -11,7 +11,7 @@ from app.database import get_db
 from app.models.app_setting import AppSetting
 from app.models.sync_state import SyncState
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
-from app.services.plan_sources import PLAN_HOURS_SETTING_KEYS, parse_field_setting
+from app.services.plan_sources import PLAN_HOURS_SETTING_KEYS, field_layout, parse_field_setting
 
 router = APIRouter()
 
@@ -141,8 +141,9 @@ async def save_jira_settings(
 
 
 def _check_plan_hours_fields(db: Session, key: str, value: Optional[str]) -> None:
-    """Поля оценки роли: мусорный список не сохраняем, смена полей —
-    перечитать все задачи при следующем синке.
+    """Поля оценки роли: мусорный список не сохраняем, смена полей, их вида
+    или порядка — перечитать все задачи при следующем синке (одни названия
+    не в счёт).
 
     Синк задач берёт из Jira только изменённые с прошлого раза. Без сброса
     курсора у старых задач не появились бы значения новых полей и споры.
@@ -152,7 +153,7 @@ def _check_plan_hours_fields(db: Session, key: str, value: Optional[str]) -> Non
         raise HTTPException(
             status_code=422, detail="В списке полей оценки нет ни одного поля Jira",
         )
-    if parse_field_setting(_get_setting(db, key)) != new_specs:
+    if field_layout(_get_setting(db, key)) != field_layout(value):
         for state in db.query(SyncState).filter(SyncState.entity_name == "issues"):
             state.last_success_at = None
 

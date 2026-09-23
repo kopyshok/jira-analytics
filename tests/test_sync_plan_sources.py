@@ -261,3 +261,18 @@ async def test_same_fields_saved_during_sync_advance_cursor(db_session):
         db_session, '[{"field_id": "customfield_12432", "kind": "alt"}]',
     )
     assert state.last_success_at is not None
+
+
+async def test_only_names_saved_during_sync_advance_cursor(db_session):
+    """Поле подписали названием посреди синка: задачи прочитаны по тем же полям."""
+    state = await _sync_while_admin_saves(
+        db_session, '[{"field_id": "customfield_12432", "kind": "alt", "name": "Разработка (ч)"}]',
+    )
+    assert state.last_success_at is not None
+
+
+async def test_kind_changed_during_sync_does_not_advance_cursor(db_session):
+    state = await _sync_while_admin_saves(
+        db_session, '[{"field_id": "customfield_12432", "kind": "sum", "name": "Разработка (ч)"}]',
+    )
+    assert state.last_success_at is None

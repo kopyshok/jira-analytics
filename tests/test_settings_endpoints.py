@@ -179,6 +179,52 @@ def test_plan_hours_same_fields_keep_cursors(client: TestClient, db_session, val
     assert _cursors(db_session)[("issues", "")] is not None
 
 
+@pytest.mark.parametrize("stored, value", [
+    # Старая строка → тот же список с названием: редактор подписал поле.
+    (
+        "customfield_12432",
+        '[{"field_id": "customfield_12432", "kind": "alt", "name": "Разработка (ч)"}]',
+    ),
+    # Поменялись только названия.
+    (
+        '[{"field_id": "customfield_12432", "kind": "alt", "name": "Разработка (ч)"},'
+        ' {"field_id": "customfield_12888", "kind": "sum"}]',
+        '[{"field_id": "customfield_12432", "kind": "alt"},'
+        ' {"field_id": "customfield_12888", "kind": "sum", "name": "Оценка Back"}]',
+    ),
+])
+def test_plan_hours_names_only_keep_cursors(client: TestClient, db_session, stored, value):
+    """Название поля — только подпись варианта в споре: синк читает те же поля,
+    перечитывать все задачи незачем."""
+    db_session.add(AppSetting(key=PLAN_KEY, value=stored))
+    _seed_cursors(db_session)
+
+    assert _put_plan_fields(client, value).status_code == 200
+
+    assert _cursors(db_session)[("issues", "")] is not None
+
+
+@pytest.mark.parametrize("stored, value", [
+    # Другой вид поля.
+    (
+        "customfield_12432",
+        '[{"field_id": "customfield_12432", "kind": "sum", "name": "Разработка (ч)"}]',
+    ),
+    # Другой порядок: до выбора действует верхнее поле.
+    (
+        '[{"field_id": "customfield_12432", "kind": "alt"}, {"field_id": "customfield_14648", "kind": "alt"}]',
+        '[{"field_id": "customfield_14648", "kind": "alt"}, {"field_id": "customfield_12432", "kind": "alt"}]',
+    ),
+])
+def test_plan_hours_kind_or_order_change_resets_cursors(client: TestClient, db_session, stored, value):
+    db_session.add(AppSetting(key=PLAN_KEY, value=stored))
+    _seed_cursors(db_session)
+
+    assert _put_plan_fields(client, value).status_code == 200
+
+    assert _cursors(db_session)[("issues", "")] is None
+
+
 def test_other_field_setting_keeps_cursors(client: TestClient, db_session):
     _seed_cursors(db_session)
     r = client.put(

@@ -103,6 +103,16 @@ def parse_field_setting(raw: Optional[str]) -> tuple[FieldSpec, ...]:
     return tuple(specs)
 
 
+def field_layout(raw: Optional[str]) -> tuple[tuple[str, str], ...]:
+    """Что из настройки роли читает синк: поля и их вид по порядку.
+
+    Название поля — только подпись варианта в споре. Смена одних названий
+    (например, старая строка → тот же список с названием) не повод
+    перечитывать все задачи из Jira.
+    """
+    return tuple((s.field_id, s.kind) for s in parse_field_setting(raw))
+
+
 def build_candidates(
     specs: Sequence[FieldSpec], values: Mapping[str, Optional[float]]
 ) -> tuple[Candidate, ...]:
