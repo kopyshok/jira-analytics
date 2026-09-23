@@ -4,7 +4,7 @@ import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
-  Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Switch, Tooltip,
+  Alert, App, Badge, Button, Card, Popconfirm, Select, Space, Switch, Tooltip, Typography,
 } from 'antd';
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined,
@@ -618,6 +618,17 @@ export default function PlanningPage() {
     );
   };
 
+  // Enter/потеря фокуса — сохранить; Esc AntD отменяет сам. Пустое и
+  // неизменённое имя не отправляем. Разрешено и для утверждённого сценария.
+  const handleRename = (next: string) => {
+    const name = next.trim();
+    if (!scenarioId || !name || name === scenario?.name) return;
+    updateScenario.mutate(
+      { id: scenarioId, data: { name } },
+      { onError: (e) => notification.error({ title: 'Не удалось переименовать', description: (e as Error).message }) },
+    );
+  };
+
   const scenarioOptions = useMemo(
     () => (scenarios ?? []).map((s) => ({
       value: s.id,
@@ -710,9 +721,16 @@ export default function PlanningPage() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 18, fontWeight: 600, color: DARK_THEME.textPrimary }}>
+                <Typography.Text
+                  editable={{
+                    onChange: handleRename,
+                    tooltip: 'Переименовать',
+                    maxLength: 200,
+                  }}
+                  style={{ fontSize: 18, fontWeight: 600, color: DARK_THEME.textPrimary, margin: 0 }}
+                >
                   {scenario.name}
-                </span>
+                </Typography.Text>
                 <span style={{ color: DARK_THEME.textMuted, fontFamily: FONTS.mono, fontSize: 13 }}>
                   {scenario.quarter} {scenario.year}
                 </span>
