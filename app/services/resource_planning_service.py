@@ -31,6 +31,7 @@ from app.services import cross_team_occupancy as cto
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.jira_developer import jira_developers_for_items
 from app.services.involvement_default_service import effective_for_phase, team_defaults
+from app.services.plan_common import PHASE_LABEL
 from app.services.rcpsp_leveler import RcpspLeveler
 
 PHASE_ORDER = ["analyst", "dev", "qa", "opo"]
@@ -113,6 +114,16 @@ def _resolve_parallel_count_legacy(item: "BacklogItem", phase: str) -> int:
     if n_proj and int(n_proj) > 0:
         return int(n_proj)
     return 1
+
+
+def _placed_hours(a: ResourcePlanAssignment) -> float:
+    """Часы строки, реально разложенные по дням; без раскладки — объём строки."""
+    if a.daily_hours_json:
+        try:
+            return sum(float(v) for v in json.loads(a.daily_hours_json).values())
+        except (ValueError, TypeError, AttributeError):
+            pass
+    return float(a.hours_allocated or 0.0)
 
 
 def _iter_days(start: date, end: date):
@@ -1289,6 +1300,10 @@ class ResourcePlanningService:
         detected = self._build_conflict_dicts(
             plan, new_assignments, employees, q_end, borrowed=borrowed
         )
+        detected += self._unplaced_conflict_dicts(
+            items, new_assignments, alloc_by_item, pinned_phase_keys,
+            assignments_by_role,
+        )
         detected = aggregate_conflicts(detected, db_session=self.db)
         self._persist_conflicts(plan_id, detected)
 
@@ -1573,7 +1588,9 @@ class ResourcePlanningService:
         - analyst: исполнитель инициативы (`assignee_employee_id`), независимо от его роли.
                    Если у задачи нет исполнителя — None.
         - dev:     закреп вручную → «Разработчик» из Jira (``jira_dev``, из любой
-                   команды) → greedy по минимальной нагрузке в пуле DEV_ROLES
+                   команды), если его ёмкости квартала (``capacity`` — уже за
+                   вычетом броней других команд) хватает на часы разработки →
+                   greedy по минимальной нагрузке в пуле DEV_ROLES
                    команды (fallback — вся команда). В команде с группами
                    сначала перебираются свои по группе; сосед из другой группы
                    берётся, только когда своих уже не хватает по ёмкости
@@ -1646,8 +1663,16 @@ class ResourcePlanningService:
             # ── dev ────────────────────────────────────────────────────
             dev_hours = self._phase_hours(item, "dev", alloc_by_item)
             dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
-            if not dev_id:
-                dev_id = jira_dev.get(item.id)
+            jira_id = jira_dev.get(item.id)
+            # Занятый «Разработчик» из Jira не получает работу, которую некуда
+            # положить: без этой проверки фаза без единого свободного дня
+            # пропадала из плана молча.
+            if (
+                not dev_id
+                and jira_id
+                and load[jira_id] + dev_hours <= capacity.get(jira_id, float("inf"))
+            ):
+                dev_id = jira_id
             if not dev_id and dev_ids:
                 dev_id = self._pick_in_group(
                     dev_ids, item_group.get(item.id), load, dev_hours,
@@ -3075,3 +3100,63 @@ class ResourcePlanningService:
                 )
 
         return result
+
+    def _unplaced_conflict_dicts(
+        self,
+        items: List[BacklogItem],
+        assignments: List[ResourcePlanAssignment],
+        alloc_by_item: Dict[str, ScenarioAllocation],
+        skip: set,
+        executors: Dict[str, Dict[str, Optional[str]]],
+    ) -> List[dict]:
+        """UNPLACED_HOURS: фаза разложена не на все свои часы.
+
+        Часы не влезли в окно (квартал + месяц запаса) или не нашёлся
+        исполнитель — фаза не должна пропадать из плана молча. Фазы,
+        закреплённые пользователем по датам или разбивке (``skip``), не
+        проверяются: их объём он задал сам.
+        """
+        placed: Dict[Tuple[str, str], float] = defaultdict(float)
+        first_row: Dict[Tuple[str, str], ResourcePlanAssignment] = {}
+        for a in assignments:
+            key = (a.backlog_item_id, a.phase)
+            placed[key] += _placed_hours(a)
+            first_row.setdefault(key, a)
+
+        def _h(v: float) -> str:
+            return f"{round(v, 1):g}"
+
+        out: List[dict] = []
+        for item in items:
+            for phase in PHASE_ORDER:
+                key = (item.id, phase)
+                if key in skip:
+                    continue
+                need = self._phase_hours(item, phase, alloc_by_item)
+                got = placed.get(key, 0.0)
+                if need <= 0 or got + 0.01 >= need:
+                    continue
+                row = first_row.get(key)
+                emp_id = (
+                    row.employee_id
+                    if row is not None
+                    else executors.get(phase, {}).get(item.id)
+                )
+                no_executor = row is None and phase in ("analyst", "dev") and not emp_id
+                why = "нет исполнителя" if no_executor else "не хватило ёмкости"
+                out.append(
+                    {
+                        "type": "UNPLACED_HOURS",
+                        "severity": "critical",
+                        "detection_key": f"UNPLACED_HOURS:{item.id}:{phase}",
+                        "message": (
+                            f"{PHASE_LABEL.get(phase, phase)}: {why} — "
+                            f"размещено {_h(got)} из {_h(need)} ч"
+                        ),
+                        "metric_value": round(need - got, 2),
+                        "backlog_item_id": item.id,
+                        "assignment_id": row.id if row is not None else None,
+                        "employee_id": emp_id,
+                    }
+                )
+        return out

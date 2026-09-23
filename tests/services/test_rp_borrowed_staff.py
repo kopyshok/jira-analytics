@@ -1,7 +1,7 @@
 """Привлечение сотрудников из чужих команд в ресурсный план."""
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 
@@ -203,3 +203,86 @@ def test_opo_dev_part_stays_with_borrowed_jira_developer(db_session, sample_proj
         )
     ).scalars().all()
     assert {r.employee_id for r in opo} == {an.id, e.id}
+
+
+def _weekdays(start: str, end: str, hours: float = 6.0) -> dict:
+    """{iso: часы} на каждый будний день отрезка."""
+    out, d = {}, D(start)
+    while d <= D(end):
+        if d.weekday() < 5:
+            out[d.isoformat()] = hours
+        d += timedelta(days=1)
+    return out
+
+
+def _booked_all_window(db, team, employee):
+    """Сотрудник занят в опорном плане ``team`` весь квартал и месяц запаса."""
+    sc, plan = make_plan(db, team)
+    item = add_item(db, sc, f"Работа {team}", dev=1)
+    book(db, plan, item, employee, _weekdays("2026-01-01", "2026-04-30"))
+
+
+def _conflicts(db, plan_id, type_):
+    return db.execute(
+        select(PlanConflict).where(
+            PlanConflict.plan_id == plan_id, PlanConflict.type == type_
+        )
+    ).scalars().all()
+
+
+def test_busy_jira_developer_falls_back_to_team_developer(db_session, sample_project):
+    """«Разработчик» из Jira занят другой командой весь квартал — берём своего."""
+    e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
+    own = make_employee(db_session, "Свой B", "B")
+    _booked_all_window(db_session, "A", e)
+    issue = make_issue(db_session, sample_project, "OS-2", developer="acc-e")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    add_item(db_session, sc_b, "Работа B", dev=12, issue=issue)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    rows = _dev_rows(db_session, plan_b.id)
+    assert {r.employee_id for r in rows} == {own.id}
+    assert sum(r.hours_allocated or 0 for r in rows) == 12
+    assert _conflicts(db_session, plan_b.id, "UNPLACED_HOURS") == []
+
+
+def test_phase_without_capacity_is_reported_not_dropped(db_session, sample_project):
+    """Ни у кого нет ёмкости — разработка не пропадает молча, а даёт конфликт."""
+    e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
+    own = make_employee(db_session, "Свой B", "B")
+    _booked_all_window(db_session, "A", e)
+    _booked_all_window(db_session, "C", own)
+    issue = make_issue(db_session, sample_project, "OS-3", developer="acc-e")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    item = add_item(db_session, sc_b, "Работа B", dev=12, issue=issue)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert _dev_rows(db_session, plan_b.id) == []
+    [c] = _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")
+    assert c.backlog_item_id == item.id
+    assert c.severity == "critical"
+    assert c.metric_value == 12.0
+    assert "Разработка" in c.message
+    assert "размещено 0 из 12 ч" in c.message
+
+
+def test_partially_placed_phase_is_reported(db_session):
+    """Часов больше, чем окна у исполнителя: размещённое остаётся, остаток — конфликт."""
+    own = make_employee(db_session, "Свой B", "B")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    # Окно — квартал + месяц: 86 будних дней × 6 ч = 516 ч.
+    add_item(db_session, sc_b, "Большая", dev=600)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    placed = sum(r.hours_allocated or 0 for r in _dev_rows(db_session, plan_b.id))
+    assert placed == 516
+    [c] = _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")
+    assert c.employee_id == own.id
+    assert c.metric_value == 84.0
+    assert "размещено 516 из 600 ч" in c.message

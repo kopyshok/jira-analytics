@@ -160,6 +160,10 @@ def _build_message(
             if item_label
             else (c.get("message") or t)
         )
+    if t == "UNPLACED_HOURS":
+        # Бэкенд пишет фазу и часы; спереди — метка инициативы.
+        msg = c.get("message") or t
+        return f"{item_label} · {msg}" if item_label else msg
     if t == "PREDECESSOR_VIOLATED":
         return (
             f"{item_label}: фаза стартует до завершения предшественника — "
