@@ -4,7 +4,7 @@ from typing import Optional, List, TYPE_CHECKING
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, false, true
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import SyncedMixin, generate_uuid
@@ -101,6 +101,15 @@ class Issue(Base, SyncedMixin):
     planned_qa_hours_manual: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     planned_opo_hours_jira: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     planned_opo_hours_manual: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Несколько полей оценки на роль (см. app/services/plan_sources.py).
+    # planned_hours_sources — кандидаты из Jira на момент синка:
+    #   {role: [{"source": field_id|"sum", "label": str, "value": float}]}.
+    # planned_hours_choice — выбор пользователя при споре:
+    #   {role: {"source": field_id|"sum"|"manual", "fingerprint": str}};
+    #   действует, пока отпечаток текущих кандидатов совпадает.
+    # Действующее значение по-прежнему лежит в planned_<role>_hours_jira.
+    planned_hours_sources: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    planned_hours_choice: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     @property
     def planned_analyst_hours(self) -> Optional[float]:
