@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
+from app.services import cross_team_occupancy as cto
 from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import ResourcePlanningService
@@ -445,6 +446,9 @@ class ConflictOut(BaseModel):
     message: str
     created_at: datetime
     updated_at: datetime
+    # «Живой» конфликт: считается при чтении диаграммы, в БД не хранится,
+    # статус у него не меняется.
+    is_live: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -478,6 +482,8 @@ class EmployeeLoadDay(BaseModel):
     # ('out_of_team' — день вне периода участия в команде плана).
     # None — рабочий день.
     off: Optional[str] = None
+    # Доля ёмкости дня, занятая опорными планами других команд, %.
+    ext_pct: float = 0.0
 
 
 class TeamMoveOut(BaseModel):
@@ -501,6 +507,27 @@ class EmployeeLoadOut(BaseModel):
     # первого). None — участие покрывает этот край квартала.
     left_to: Optional[TeamMoveOut] = None
     joined_from: Optional[TeamMoveOut] = None
+    # Привлечён из другой команды: в команде плана не состоял ни дня квартала.
+    is_borrowed: bool = False
+    borrowed_from: Optional[str] = None
+
+
+class ExternalBookingOut(BaseModel):
+    """Фаза привлечённого сотрудника в опорном плане другой команды."""
+
+    assignment_id: str
+    employee_id: str
+    employee_name: Optional[str] = None
+    team: str
+    issue_key: Optional[str] = None
+    title: str
+    phase: str
+    start: date
+    end: date
+    # {"YYYY-MM-DD": часы} внутри окна диаграммы (квартал + месяц запаса).
+    daily_hours: Dict[str, float] = {}
+    # Опорный план — черновик сценария (утверждённого у команды нет).
+    provisional: bool = False
 
 
 class GanttProjection(BaseModel):
@@ -510,6 +537,8 @@ class GanttProjection(BaseModel):
     pert_projection: List[InitiativePertOut]
     dependencies: List[DependencyOut] = []
     employee_load: List[EmployeeLoadOut] = []
+    # Брони привлечённых в опорных планах других команд — блок «Привлечённые».
+    external_bookings: List[ExternalBookingOut] = []
     # Счётчики для bulk-reset dropdown'а на фронте: сколько фаз
     # затронет каждый режим сброса. Позволяет дизейблить пункты с 0
     # и показывать «Сбросить закреплённые даты (N)».
@@ -892,6 +921,76 @@ def _compute_pert_projection(plan, assignments, db):
     return result
 
 
+def _cross_team_conflicts(
+    plan: ResourcePlan,
+    assignments_raw: List[ResourcePlanAssignment],
+    borrowed: set,
+    used: Dict[str, Dict[date, float]],
+    capacity: Dict[str, Dict[date, float]],
+    bookings: List[cto.ExternalBooking],
+    emp_names: Dict[str, str],
+) -> List[ConflictOut]:
+    """Пересечение с планами других команд — только у привлечённых этого плана.
+
+    День пересечения: у фазы этого плана есть часы, и вместе с бронями других
+    команд они больше ёмкости дня. Одна запись на фазу; в БД не хранится.
+    """
+    ext_by_emp = cto.daily_totals(bookings)
+    teams_on: Dict[tuple, set] = {}
+    for b in bookings:
+        for d in b.daily_hours:
+            teams_on.setdefault((b.employee_id, d), set()).add(b.team)
+    stamp = plan.computed_at or plan.created_at
+
+    out: List[ConflictOut] = []
+    for eid in sorted(borrowed):
+        days = set(
+            cto.overlap_days(
+                used.get(eid, {}), ext_by_emp.get(eid, {}), capacity.get(eid, {})
+            )
+        )
+        if not days:
+            continue
+        name = emp_names.get(eid) or "Сотрудник"
+        for a in assignments_raw:
+            if a.employee_id != eid or not a.start_date or not a.end_date:
+                continue
+            own_daily = _parse_daily_map(a.daily_hours_json)
+            a_days = sorted(
+                d
+                for d in days
+                if a.start_date <= d <= a.end_date
+                and (own_daily.get(d, 0.0) > 0 if own_daily else True)
+            )
+            if not a_days:
+                continue
+            teams = sorted(set().union(*(teams_on.get((eid, d), set()) for d in a_days)))
+            out.append(
+                ConflictOut(
+                    id=f"live:CROSS_TEAM_OVERLAP:{a.id}",
+                    type="CROSS_TEAM_OVERLAP",
+                    severity="warning",
+                    status="open",
+                    backlog_item_id=a.backlog_item_id,
+                    backlog_item_title=a.backlog_item.title if a.backlog_item else None,
+                    employee_id=eid,
+                    employee_name=name,
+                    assignment_id=a.id,
+                    window_start=datetime.combine(a_days[0], datetime.min.time()),
+                    window_end=datetime.combine(a_days[-1], datetime.min.time()),
+                    metric_value=float(len(a_days)),
+                    message=(
+                        f"{name} пересекается с планом {', '.join(teams)} "
+                        f"({_format_date_range(a_days[0], a_days[-1])})"
+                    ),
+                    created_at=stamp,
+                    updated_at=stamp,
+                    is_live=True,
+                )
+            )
+    return out
+
+
 @router.get("/resource-plans/{plan_id}/gantt", response_model=GanttProjection)
 def get_gantt(
     plan_id: str,
@@ -1034,6 +1133,8 @@ def get_gantt(
     ]
 
     # Posuточная нагрузка сотрудников команды плана для тепловой карты.
+    external_out: list[ExternalBookingOut] = []
+    live_conflicts: list[ConflictOut] = []
     employee_load: list[EmployeeLoadOut] = []
     if plan.team:
         from app.models import Employee
@@ -1050,25 +1151,51 @@ def get_gantt(
         # середине квартала остаётся строкой, ушедший до его начала — нет.
         member_ids = tm.members_overlapping(db, [plan.team], q_start, q_end)
         member_iv = tm.member_intervals(db, [plan.team], q_start, q_end)
+        # Привлечённые — исполнители фаз этого плана, не состоявшие в команде
+        # ни дня квартала. Их строки тоже идут в подвал.
+        borrowed = {eid for eid in emp_ids_in_plan if eid not in member_iv}
+        row_ids = set(member_ids) | borrowed
         plan_employees = (
             db.execute(
                 select(Employee).where(
-                    Employee.id.in_(list(member_ids)),
+                    Employee.id.in_(list(row_ids)),
                     Employee.is_active == True,  # noqa: E712
                 )
             )
             .scalars()
             .all()
-            if member_ids
+            if row_ids
             else []
         )
         if plan_employees:
             avail = svc.build_availability(
-                plan_employees, q_start, q_end, [], team=plan.team
+                plan_employees, q_start, q_end, [], team=plan.team, borrowed=borrowed
             )
-            # Периоды участия во всех командах — для «куда выбыл / откуда пришёл»;
-            # одним запросом на всех, без N+1.
+            # Брони этих людей в опорных планах других команд — одним заходом
+            # на всех (окно — как у диаграммы: квартал + месяц запаса).
+            q_end_ext = svc._quarter_bounds_extended(plan)[2]
+            bookings = cto.external_bookings(
+                db,
+                team=plan.team,
+                year=plan.year,
+                quarter=cto.quarter_num(plan.quarter),
+                employee_ids=[e.id for e in plan_employees],
+                start=q_start,
+                end=q_end_ext,
+            )
+            ext_daily = cto.daily_totals(bookings)
+            # Периоды участия во всех командах — для «куда выбыл / откуда пришёл»
+            # и домашней команды привлечённого; одним запросом на всех, без N+1.
             membership = tm.membership_rows(db, [e.id for e in plan_employees])
+            home_team = {
+                e.id: (
+                    tm.team_on_day(membership.get(e.id, []), q_start)
+                    or tm.team_on_day(membership.get(e.id, []), q_end)
+                    or e.team
+                )
+                for e in plan_employees
+                if e.id in borrowed
+            }
             # Часы по дням на сотрудника — из реальной раскладки планировщика.
             # Размазывать hours_allocated по длине бара нельзя: планировщик
             # оставляет внутри бара паузы (сотрудник ушёл на другую задачу), и
@@ -1109,6 +1236,8 @@ def get_gantt(
                     av = avail.get(e.id, {}).get(d, 0.0)
                     u = used.get(e.id, {}).get(d, 0.0)
                     pct = (u / av * 100.0) if av > 0 else 0.0
+                    ext_h = ext_daily.get(e.id, {}).get(d, 0.0)
+                    ext_pct = (ext_h / av * 100.0) if av > 0 else 0.0
                     # Признак нерабочего дня (календарь имеет приоритет над отпуском).
                     cal_h = cal_map.get(d, None)
                     if cal_h is None:
@@ -1126,7 +1255,11 @@ def get_gantt(
                         off = "absence"
                     else:
                         off = None
-                    days_out.append(EmployeeLoadDay(date=d, pct=round(pct, 1), off=off))
+                    days_out.append(
+                        EmployeeLoadDay(
+                            date=d, pct=round(pct, 1), off=off, ext_pct=round(ext_pct, 1)
+                        )
+                    )
                     d += _td(days=1)
                 iv = member_iv.get(e.id) or []
                 member_from = iv[0][0] if iv and iv[0][0] > q_start else None
@@ -1157,10 +1290,33 @@ def get_gantt(
                         member_to=member_to,
                         left_to=left_to,
                         joined_from=joined_from,
+                        is_borrowed=e.id in borrowed,
+                        borrowed_from=home_team.get(e.id),
                     )
                 )
+            names = {e.id: e.display_name for e in plan_employees}
+            external_out = [
+                ExternalBookingOut(
+                    assignment_id=b.assignment_id,
+                    employee_id=b.employee_id,
+                    employee_name=names.get(b.employee_id),
+                    team=b.team,
+                    issue_key=b.issue_key,
+                    title=b.title,
+                    phase=b.phase,
+                    start=b.start,
+                    end=b.end,
+                    daily_hours={d.isoformat(): h for d, h in b.daily_hours.items()},
+                    provisional=b.provisional,
+                )
+                for b in bookings
+                if b.employee_id in borrowed
+            ]
+            live_conflicts = _cross_team_conflicts(
+                plan, list(assignments_raw), borrowed, used, avail, bookings, names
+            )
 
-    conflicts = _detect_conflicts(plan, assignments_raw, db)
+    conflicts = _detect_conflicts(plan, assignments_raw, db) + live_conflicts
     pert_projection = _compute_pert_projection(plan, assignments_raw, db)
 
     from app.models import PlanItemDependency
@@ -1200,6 +1356,7 @@ def get_gantt(
         pert_projection=pert_projection,
         dependencies=deps,
         employee_load=employee_load,
+        external_bookings=external_out,
         reset_counts=reset_counts,
     )
 
@@ -1420,7 +1577,6 @@ def list_assignment_candidates(
     Пустые группы не возвращаются.
     """
     from app.models import Employee
-    from app.services import cross_team_occupancy as cto
     from app.services import team_membership as tm
     from app.services.jira_developer import jira_developers_for_items
 
@@ -2228,7 +2384,7 @@ def patch_conflict(
     if c.backlog_item_id:
         b = db.get(BacklogItem, c.backlog_item_id)
         title = b.title if b else None
-    snap = {
+    snap: dict = {
         "id": c.id,
         "type": c.type,
         "severity": c.severity,
