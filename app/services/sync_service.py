@@ -23,6 +23,14 @@ from app.models import (
 )
 from app.models.app_setting import AppSetting
 from app.services.backlog_service import switch_off_if_became_service_epic
+from app.services.plan_sources import (
+    PLAN_HOURS_SETTING_KEYS,
+    ROLE_SETTING_KEYS,
+    build_candidates,
+    candidates_to_json,
+    parse_field_setting,
+    resolve_role,
+)
 from app.repositories.base import BaseRepository
 
 
@@ -464,6 +472,30 @@ def _extract_user_field(
     return (raw.get("accountId") or None), (raw.get("displayName") or None)
 
 
+def _apply_plan_sources(
+    issue: "Issue", extra: dict, planned_ids: dict[str, Optional[str]]
+) -> dict[str, Optional[float]]:
+    """Собрать кандидатов по ролям, сохранить их в задаче и вернуть
+    действующие Jira-значения {role: часы} для ``_record_plan_changes``.
+
+    Спор без действующего выбора даёт первого кандидата по настройке.
+    """
+    choice = issue.planned_hours_choice or {}
+    sources: dict[str, list] = {}
+    values: dict[str, Optional[float]] = {}
+    for role, key in ROLE_SETTING_KEYS.items():
+        specs = parse_field_setting(planned_ids.get(key))
+        raw = {s.field_id: _to_float(extra.get(s.field_id)) for s in specs}
+        cands = build_candidates(specs, raw)
+        values[role] = resolve_role(cands, choice.get(role)).value
+        if cands:
+            sources[role] = candidates_to_json(cands)
+    new_sources = sources or None
+    if issue.planned_hours_sources != new_sources:
+        issue.planned_hours_sources = new_sources
+    return values
+
+
 def _record_plan_changes(db: Session, issue: "Issue", new_values: dict) -> None:
     """Сравнивает каждое значение из new_values со старым _jira; обновляет _jira
     и пишет audit-запись если значение изменилось.
@@ -676,10 +708,16 @@ class SyncService:
         ids: list[str] = ["fixVersions"]
         seen: set[str] = {"fixVersions"}
         for key in _ALL_PLANNED_KEYS:
-            fid = self._get_setting(key)
-            if fid and fid not in seen:
-                ids.append(fid)
-                seen.add(fid)
+            raw = self._get_setting(key)
+            if key in PLAN_HOURS_SETTING_KEYS:
+                # Плановые часы: в настройке список полей (или старая строка).
+                fids = [s.field_id for s in parse_field_setting(raw)]
+            else:
+                fids = [raw] if raw else []
+            for fid in fids:
+                if fid not in seen:
+                    ids.append(fid)
+                    seen.add(fid)
         return ids
 
     async def _ensure_sprint_field_id(self) -> None:
@@ -956,12 +994,6 @@ class SyncService:
         data["reporter_account_id"] = _author.jira_account_id if _author else None
         data["reporter_display_name"] = _author.display_name if _author else None
 
-        _new_plan_values = {
-            "analyst": _fld_float("jira_planned_analyst_hours_field_id"),
-            "dev": _fld_float("jira_planned_dev_hours_field_id"),
-            "qa": _fld_float("jira_planned_qa_hours_field_id"),
-            "opo": _fld_float("jira_planned_opo_hours_field_id"),
-        }
         data["involvement_analyst"] = _fld_float("jira_involvement_analyst_field_id")
         data["involvement_dev"] = _fld_float("jira_involvement_dev_field_id")
         data["involvement_qa"] = _fld_float("jira_involvement_qa_field_id")
@@ -1029,7 +1061,9 @@ class SyncService:
             issue, created = self.issue_repo.update(existing, data), False
         else:
             issue, created = self.issue_repo.create(data), True
-        _record_plan_changes(self.db, issue, _new_plan_values)
+        _record_plan_changes(
+            self.db, issue, _apply_plan_sources(issue, extra, planned_ids)
+        )
         if before is not None:
             # Родитель может быть ещё не в базе (достраивается вторым проходом) —
             # наличие родителя берём по ключу из Jira.
