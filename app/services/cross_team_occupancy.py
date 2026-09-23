@@ -19,9 +19,15 @@ from typing import Dict, Iterable, List, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import BacklogItem, PlanningScenario, ResourcePlan, ResourcePlanAssignment
+from app.models import (
+    BacklogItem,
+    Employee,
+    PlanningScenario,
+    ResourcePlan,
+    ResourcePlanAssignment,
+)
 from app.services import team_membership as tm
-from app.services.plan_common import _plan_sort_key, _quarter_variants
+from app.services.plan_common import _plan_sort_key, _quarter_variants, quarter_bounds
 
 
 @dataclass(frozen=True)
@@ -260,3 +266,40 @@ def borrowed_ids(
         return set()
     members = set(tm.member_intervals(db, [team], start, end))
     return {e for e in employee_ids if e and e not in members}
+
+
+def quarter_load_pct(
+    db: Session,
+    year: int,
+    quarter: int,
+    employees: List[Employee],
+) -> Dict[str, float]:
+    """Загрузка за квартал по всем опорным планам, % от «календарь − отсутствия».
+
+    Шкала та же, что у планировщика (6 ч в обычный день). Запросов — константа
+    на любой объём: опорные планы, их назначения, календарь, отсутствия.
+    """
+    if not employees:
+        return {}
+    # Сервис планировщика сам импортирует этот модуль — отсюда только лениво.
+    from app.services.resource_planning_service import ResourcePlanningService
+
+    start, end = quarter_bounds(year, quarter)
+    booked = daily_totals(
+        external_bookings(
+            db,
+            team=None,
+            year=year,
+            quarter=quarter,
+            employee_ids=[e.id for e in employees],
+            start=start,
+            end=end,
+        )
+    )
+    avail = ResourcePlanningService(db).build_availability(employees, start, end, [])
+    out: Dict[str, float] = {}
+    for e in employees:
+        cap = sum(avail.get(e.id, {}).values())
+        hours = sum(booked.get(e.id, {}).values())
+        out[e.id] = round(hours / cap * 100.0, 1) if cap > 0 else 0.0
+    return out

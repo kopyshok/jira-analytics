@@ -152,3 +152,13 @@ def test_borrowed_ids(db_session):
     assert cto.borrowed_ids(
         db_session, None, D("2026-01-01"), D("2026-03-31"), [e.id]
     ) == set()
+
+
+def test_quarter_load_pct_counts_all_reference_plans(db_session):
+    e, m = _setup_booked(db_session)  # 12 + 9 = 21 ч в опорном плане A
+
+    load = cto.quarter_load_pct(db_session, 2026, 1, [e, m])
+
+    # Q1 2026 без записей календаря: 64 будних дня × 6 ч = 384 ч.
+    assert load[e.id] == round(21 / 384 * 100, 1)
+    assert load[m.id] == 0.0
