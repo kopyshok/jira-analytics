@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, App, Button, DatePicker, Descriptions, Divider, Drawer, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import type { SelectProps } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 
@@ -18,9 +19,10 @@ import {
   previewEmployeeChange,
   setAssignmentInvolvement,
 } from '../../api/resourcePlanning';
-import { useExplainAssignment } from '../../hooks/useResourcePlanning';
+import { useAssignmentCandidates, useExplainAssignment } from '../../hooks/useResourcePlanning';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { PHASE_LABELS } from '../../utils/gantt';
+import { candidateOptions } from '../../utils/rpCandidates';
 import EmployeeAvatar from './EmployeeAvatar';
 import AbsencesSection from './sidebar/AbsencesSection';
 import AlgorithmSection from './sidebar/AlgorithmSection';
@@ -76,6 +78,13 @@ export default function AssignmentSidebar({
     preview: EmployeeChangePreviewResponse;
   } | null>(null);
   const { prefs, patch: patchPrefs } = useRpPreferences();
+  const qc = useQueryClient();
+  // Кандидаты — все активные сотрудники тремя группами с загрузкой за квартал.
+  const candidatesQuery = useAssignmentCandidates(
+    planId || null,
+    assignment?.id ?? null,
+    open && !!assignment && assignment.phase !== 'qa',
+  );
 
   const sameItemAssignments = useMemo(
     () => (assignment ? allAssignments.filter(a => a.backlog_item_id === assignment.backlog_item_id && a.id !== assignment.id) : []),
@@ -133,6 +142,18 @@ export default function AssignmentSidebar({
     }
   };
 
+  // Смена исполнителя меняет загрузку в подписях кандидатов. Пересчёт плана
+  // обычно пересоздаёт строку с новым id — тогда новый id сам подтянет свежий
+  // список. Обновляем вручную, только если строка выжила: иначе запрос уйдёт
+  // на удалённый id и вернёт 404.
+  const reloadAfterEmployeeChange = async () => {
+    await onChanged?.();
+    const fresh = qc.getQueryData<GanttProjection>(['gantt', planId]);
+    if (fresh?.assignments.some(a => a.id === assignment.id)) {
+      qc.invalidateQueries({ queryKey: ['assignment-candidates', planId, assignment.id] });
+    }
+  };
+
   const handleEmployeeChange = async (newEmpId: string) => {
     if (!newEmpId || newEmpId === assignment.employee_id) return;
     setSaving(true);
@@ -145,7 +166,7 @@ export default function AssignmentSidebar({
       }
       // Без конфликтов — сразу применяем
       await patchAssignment(planId, assignment.id, { employee_id: newEmpId });
-      onChanged?.();
+      void reloadAfterEmployeeChange();
     } catch (e) {
       message.error((e as Error).message || 'Ошибка');
     } finally {
@@ -163,7 +184,7 @@ export default function AssignmentSidebar({
       });
       setPendingEmpChange(null);
       message.success('Сотрудник заменён, план пересчитан');
-      onChanged?.();
+      void reloadAfterEmployeeChange();
     } catch (e) {
       message.error((e as Error).message || 'Ошибка пересчёта');
     } finally {
@@ -184,6 +205,14 @@ export default function AssignmentSidebar({
       setSaving(false);
     }
   };
+
+  // Пока список кандидатов грузится (или не пришёл) — прежний выбор из состава команды.
+  const employeeOptions: SelectProps['options'] = candidatesQuery.data?.length
+    ? candidateOptions(candidatesQuery.data)
+    : employees.map((e) => ({
+        value: e.id,
+        label: e.display_name + membershipSuffix(e),
+      }));
 
   const handleClearManual = async (flags?: ManualEditFlag[]) => {
     setSaving(true);
@@ -244,14 +273,11 @@ export default function AssignmentSidebar({
               value={assignment.employee_id ?? undefined}
               placeholder="Не назначен"
               style={{ width: '100%' }}
-              loading={saving}
+              loading={saving || candidatesQuery.isFetching}
               showSearch
               optionFilterProp="label"
               onChange={(empId) => handleEmployeeChange(empId)}
-              options={employees.map((e) => ({
-                value: e.id,
-                label: e.display_name + membershipSuffix(e),
-              }))}
+              options={employeeOptions}
             />
           )}
           {membershipWarning && (
