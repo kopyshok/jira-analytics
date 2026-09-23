@@ -88,3 +88,81 @@ def test_candidates_for_analysis_take_initiative_assignee(client, db_session, tw
 
     assert [c["employee_id"] for c in groups["jira"]["employees"]] == [t["other"]]
     assert t["e"] in [c["employee_id"] for c in groups["other"]["employees"]]
+
+
+def _gantt(client, plan_id):
+    r = client.get(f"{BASE}/{plan_id}/gantt")
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _row(body, emp_id):
+    return next(r for r in body["employee_load"] if r["employee_id"] == emp_id)
+
+
+def _day(row, iso):
+    return next(d for d in row["days"] if d["date"] == iso)
+
+
+def test_borrower_plan_shows_overlap_bookings_and_borrowed_row(client, two_teams):
+    t = two_teams
+    body = _gantt(client, t["plan_b"])
+
+    live = [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"]
+    assert len(live) == 1
+    assert live[0]["assignment_id"] == t["b_row"]
+    assert live[0]["is_live"] is True
+    assert live[0]["employee_id"] == t["e"]
+    assert "пересекается с планом A" in live[0]["message"]
+
+    assert [(b["employee_id"], b["team"], b["phase"]) for b in body["external_bookings"]] == [
+        (t["e"], "A", "dev")
+    ]
+    assert body["external_bookings"][0]["provisional"] is False
+    assert body["external_bookings"][0]["employee_name"] == "Пряничников"
+    assert body["external_bookings"][0]["daily_hours"] == {
+        "2026-01-01": 6.0, "2026-01-02": 6.0,
+    }
+
+    row = _row(body, t["e"])
+    assert row["is_borrowed"] is True
+    assert row["borrowed_from"] == "A"
+    assert row["left_to"] is None and row["joined_from"] is None
+    day = _day(row, "2026-01-01")
+    assert day["pct"] == 100.0
+    assert day["ext_pct"] == 100.0
+    assert day["off"] is None
+    assert _day(row, "2026-01-05")["off"] is None  # вне команды B — не «вне команды»
+    assert _row(body, t["d"])["is_borrowed"] is False
+
+
+def test_home_plan_shows_other_team_share_without_conflict(client, two_teams):
+    t = two_teams
+    body = _gantt(client, t["plan_a"])
+
+    assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
+    assert body["external_bookings"] == []
+    row = _row(body, t["e"])
+    assert row["is_borrowed"] is False
+    assert row["borrowed_from"] is None
+    assert _day(row, "2026-01-01")["ext_pct"] == 100.0
+    assert _day(row, "2026-01-05")["ext_pct"] == 0.0
+
+
+def test_no_live_conflict_when_borrower_fits_next_to_booking(client, db_session, two_teams):
+    import json
+
+    from app.models import ResourcePlanAssignment
+
+    t = two_teams
+    # В плане B у E по 3 ч в те же дни, в плане A — по 3 ч: вместе 6 ч = ёмкость дня.
+    for rid in (t["a_row"], t["b_row"]):
+        row = db_session.get(ResourcePlanAssignment, rid)
+        row.daily_hours_json = json.dumps({"2026-01-01": 3.0, "2026-01-02": 3.0})
+        row.hours_allocated = 6.0
+    db_session.commit()
+
+    body = _gantt(client, t["plan_b"])
+
+    assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
+    assert _day(_row(body, t["e"]), "2026-01-01")["ext_pct"] == 50.0
