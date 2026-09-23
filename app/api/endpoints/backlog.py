@@ -38,7 +38,7 @@ from app.services.backlog_service import (
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
-from app.services.hierarchy_rules import is_explicit_leaf, load_rules
+from app.services.hierarchy_rules import is_explicit_leaf, is_service_epic, load_rules
 from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
 from app.services.sync_service import SyncService
 
@@ -585,21 +585,40 @@ async def list_backlog_items(
         items = [i for i in items if not i.issue_id or i.issue_id in keep]
 
     # Скрываем явные leaf-типы (HierarchyRule с is_container=False).
+    # Служебные эпики (Дискавери внутри RFA) — не инициативы, но остаются
+    # дочерней строкой своей RFA: у них есть галочка «В план».
     rules = load_rules(db)
+
+    def _rule_args(it: BacklogItem) -> dict:
+        issue = it.issue
+        return {
+            "project_key": issue.project.key if issue.project else "",
+            "issue_type": issue.issue_type or "",
+            "has_parent": issue.parent_id is not None,
+        }
 
     def _item_is_leaf(it: BacklogItem) -> bool:
         if it.issue_id is None or it.issue is None:
             return False
-        issue = it.issue
-        project_key = issue.project.key if issue.project else ""
-        return is_explicit_leaf(
-            rules,
-            project_key=project_key,
-            issue_type=issue.issue_type or "",
-            has_parent=issue.parent_id is not None,
-        )
+        return is_explicit_leaf(rules, **_rule_args(it))
 
-    items = [it for it in items if not _item_is_leaf(it)]
+    service_ids = {
+        it.id
+        for it in items
+        if it.issue_id is not None
+        and it.issue is not None
+        and is_service_epic(rules, **_rule_args(it))
+    }
+    items = [it for it in items if it.id in service_ids or not _item_is_leaf(it)]
+    # Служебный эпик без родителя в этом же списке не показываем вовсе.
+    listed_issue_ids = {
+        it.issue_id for it in items if it.issue_id is not None and it.id not in service_ids
+    }
+    items = [
+        it
+        for it in items
+        if it.id not in service_ids or it.issue.parent_id in listed_issue_ids
+    ]
 
     items.sort(
         key=lambda i: (
@@ -1317,14 +1336,16 @@ class IncludedRequest(BaseModel):
 
 
 def _reconcile_mode(db: Session, item_id: str) -> None:
-    """Синхронизировать draft-allocations элемента с его режимом планирования.
+    """Синхронизировать draft-allocations элемента с режимом и галочкой «В план».
 
-    RFA-родитель «по эпикам» (контекст) — снять его allocations из черновиков;
-    иначе — добить (идемпотентно). Выравнивает уже существующие сценарии сразу
-    после смены режима, не дожидаясь self-heal при следующем открытии.
+    RFA-родитель «по эпикам» (контекст) или задача со снятой галочкой — снять
+    её allocations из черновиков (утверждённые не трогаем); иначе — добить
+    (идемпотентно). Выравнивает существующие сценарии сразу, не дожидаясь
+    self-heal при следующем открытии.
     """
     svc = BacklogService(db)
-    if item_id in mode_excluded_backlog_ids(db):
+    bi = db.get(BacklogItem, item_id)
+    if item_id in mode_excluded_backlog_ids(db) or (bi is not None and not bi.included_in_planning):
         svc._remove_draft_allocations(item_id)
     else:
         svc._ensure_draft_allocations(item_id)
@@ -1376,11 +1397,27 @@ async def set_included(
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    """Включить/исключить RFA-родитель из планирования (режим «по эпикам»)."""
+    """Галочка «В план» для любой задачи бэклога.
+
+    Выключили — задача не кандидат, её распределения уходят из черновых
+    сценариев (утверждённые не трогаем). Включили — добавляется в черновики
+    своей команды. Для RFA «по эпикам» это та же галочка «Включить саму RFA».
+    Мультикомандную RFA с детьми включить целиком нельзя — только по Эпикам.
+    """
     bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
     if bi is None:
         raise HTTPException(404, "BacklogItem not found")
-    if payload.included and multi_team_lock_enabled(db) and issue_is_multi_team(bi.issue):
+    if (
+        payload.included
+        and multi_team_lock_enabled(db)
+        and issue_is_multi_team(bi.issue)
+        and bi.issue_id is not None
+        and db.query(BacklogItem.id)
+        .join(Issue, BacklogItem.issue_id == Issue.id)
+        .filter(Issue.parent_id == bi.issue_id, BacklogItem.archived_at.is_(None))
+        .first()
+        is not None
+    ):
         raise HTTPException(
             409,
             "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",
