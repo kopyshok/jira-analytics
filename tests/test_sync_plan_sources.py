@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 from app.models import AppSetting, Issue, Project
 from app.services.plan_sources import SUM_SOURCE, candidates_from_json, fingerprint
-from app.services.sync_service import SyncService
+from app.services.sync_service import SyncService, _to_float
 from tests.test_sync_service import _make_issue_schema_with_extra
 
 DEV_SETTING = json.dumps([
@@ -73,6 +73,21 @@ def test_dispute_default_first_then_choice_then_change(db_session):
     extra["customfield_12889"] = 60
     issue = _upsert(svc, proj, extra)
     assert issue.planned_dev_hours_jira == 100.0
+
+
+def test_non_finite_values_are_not_numbers():
+    for raw in ("nan", "NaN", "inf", "-Infinity", "1e400", float("nan"), float("inf")):
+        assert _to_float(raw) is None, raw
+
+
+def test_non_finite_field_is_not_a_candidate(db_session):
+    """NaN из Jira не становится кандидатом: PostgreSQL не примет его в JSONB."""
+    svc, proj = _setup(db_session)
+    issue = _upsert(svc, proj, {"customfield_12432": "NaN", "customfield_14648": 56})
+    assert issue.planned_dev_hours_jira == 56.0
+    assert [c.source for c in candidates_from_json(issue.planned_hours_sources["dev"])] == [
+        "customfield_14648",
+    ]
 
 
 def test_zero_field_is_not_a_candidate(db_session):

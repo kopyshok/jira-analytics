@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from typing import Awaitable, Callable, Optional, List, Tuple, Any
 import json
 import logging
+import math
 
 from sqlalchemy.orm import Session
 
@@ -410,17 +411,21 @@ _ALL_PLANNED_KEYS = (
 
 def _to_float(raw: Any) -> Optional[float]:
     """Coerce a Jira-field value to float. Supports numbers, numeric strings
-    with ``.`` or ``,`` decimal separator. Returns ``None`` for anything else."""
+    with ``.`` or ``,`` decimal separator. Returns ``None`` for anything else,
+    including NaN and infinity: часов таких не бывает, а PostgreSQL не примет
+    их в JSONB кандидатов оценки."""
     if raw is None:
         return None
     if isinstance(raw, bool):
         return None
     if isinstance(raw, (int, float)):
-        return float(raw)
-    try:
-        return float(str(raw).replace(",", "."))
-    except (TypeError, ValueError):
-        return None
+        value = float(raw)
+    else:
+        try:
+            value = float(str(raw).replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+    return value if math.isfinite(value) else None
 
 
 def _to_int_rating(raw: Any) -> Optional[int]:
