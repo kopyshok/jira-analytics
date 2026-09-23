@@ -83,6 +83,28 @@ def test_no_fields_filled_clears_sources(db_session):
     assert issue.planned_dev_hours_jira is None
 
 
+def _is_sql_null(db, column) -> bool:
+    return db.query(Issue).filter(Issue.jira_issue_id == "90001", column.is_(None)).count() == 1
+
+
+def test_cleared_json_columns_are_sql_null(db_session):
+    """Пустые кандидаты и выбор лежат в базе как SQL NULL, а не как JSON-строка
+    'null': иначе условие «IS NULL» таких задач не находит."""
+    svc, proj = _setup(db_session)
+    issue = _upsert(svc, proj, {"customfield_12432": 100, "customfield_14648": 120})
+    cands = candidates_from_json(issue.planned_hours_sources["dev"])
+    issue.planned_hours_choice = {"dev": {"source": "customfield_14648", "fingerprint": fingerprint(cands)}}
+    db_session.commit()
+    assert not _is_sql_null(db_session, Issue.planned_hours_sources)
+
+    issue = _upsert(svc, proj, {})
+    issue.planned_hours_choice = None
+    db_session.commit()
+
+    assert _is_sql_null(db_session, Issue.planned_hours_sources)
+    assert _is_sql_null(db_session, Issue.planned_hours_choice)
+
+
 async def test_sync_issues_end_to_end_multi_fields(db_session):
     """Полный путь синка: запрос к Jira просит все поля ролей, ответ с
     несколькими полями даёт кандидатов, спор и действующее значение."""
