@@ -94,3 +94,27 @@ def test_resource_summary_endpoint_returns_booked_hours(db_session):
     assert body["available_for_backlog_by_role"]["developer"] == round(
         body["total_by_role"]["developer"] - 6.0, 2
     )
+
+
+def test_summary_booking_cut_matches_daily_base(db_session):
+    """Бронь больше остатка дня после обязательных работ — сводка режет столько же, сколько база."""
+    from app.models import MandatoryWorkType, ScenarioRule
+
+    e, sc_a = _setup(db_session)  # бронь B: 6 ч на 05.01
+    wt = MandatoryWorkType(code="xteam-meet", label="Совещания", subtracts_from_pool=True)
+    db_session.add(wt)
+    db_session.flush()
+    db_session.add(ScenarioRule(
+        scenario_id=sc_a.id, role="developer", work_type_id=wt.id, percent_of_norm=50.0,
+    ))
+    db_session.commit()
+    svc = ResourceBaseService(db_session)
+
+    base = svc.compute(sc_a)
+    s = svc.compute_summary(sc_a)
+
+    emp = next(x for x in base.employees if x.employee_id == e.id)
+    # Норма 8 ч, половина — обязательные работы: на бэклог 4 ч; бронь съедает только их.
+    assert {d.date: d.hours for d in emp.days}[date(2026, 1, 5)] == 0.0
+    assert s.booked_by_other_teams_by_role == {"developer": 4.0}
+    assert s.available_by_role["developer"] == emp.total_hours
