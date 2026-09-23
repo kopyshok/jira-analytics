@@ -43,16 +43,24 @@ function fmtDM(iso: string): string {
   return `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 }
 
-/** Подпись под фамилией: откуда пришёл / куда выбыл в этом квартале. */
+/** День накануне: «2026-08-11» → «2026-08-10» (без сдвига часовых поясов). */
+function prevDayIso(iso: string): string {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Подпись под фамилией: с какого дня в команде и до какого — в этом квартале. */
 function moveNote(row: EmployeeLoadOut): string {
   const parts: string[] = [];
   if (row.joined_from) {
     const d = fmtDM(row.joined_from.date);
-    parts.push(row.joined_from.team ? `пришёл ${d} из ${row.joined_from.team}` : `пришёл ${d}`);
+    parts.push(row.joined_from.team ? `в команде с ${d} (из ${row.joined_from.team})` : `в команде с ${d}`);
   }
   if (row.left_to) {
-    const d = fmtDM(row.left_to.date);
-    parts.push(`выбыл ${d} → ${row.left_to.team ?? 'не в командах'}`);
+    // Дата перехода — первый день вне команды; показываем последний день в ней.
+    const d = fmtDM(prevDayIso(row.left_to.date));
+    parts.push(row.left_to.team ? `до ${d}, далее → ${row.left_to.team}` : `до ${d}, далее вне команд`);
   }
   return parts.join(' · ');
 }
@@ -60,10 +68,10 @@ function moveNote(row: EmployeeLoadOut): string {
 /** Текст подсказки для дня вне команды. */
 function outOfTeamText(row: EmployeeLoadOut, date: string): string {
   if (row.left_to && date >= row.left_to.date) {
-    return `не в команде · с ${fmtDM(row.left_to.date)} — ${row.left_to.team ?? 'не в командах'}`;
+    return `не в команде · с ${fmtDM(row.left_to.date)} — ${row.left_to.team ?? 'вне команд'}`;
   }
   if (row.joined_from && date < row.joined_from.date) {
-    return `не в команде · до ${fmtDM(row.joined_from.date)} — ${row.joined_from.team ?? 'не в командах'}`;
+    return `не в команде · до ${fmtDM(row.joined_from.date)} — ${row.joined_from.team ?? 'вне команд'}`;
   }
   return 'вне команды';
 }

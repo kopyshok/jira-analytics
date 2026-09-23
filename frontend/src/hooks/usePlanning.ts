@@ -59,7 +59,24 @@ export const useUpdateScenario = () => {
       id: string;
       data: { name?: string; team?: string | null; external_qa_hours?: number | null };
     }) => updateScenario(id, data),
-    onSuccess: (_res, vars) => {
+    // Новое имя — сразу в кэш сценария и списков, иначе шапка и выпадающий
+    // список до перезапроса мигают старым именем.
+    onMutate: ({ id, data }) => {
+      const name = data.name;
+      if (name === undefined) return;
+      qc.setQueryData<ScenarioResponse>(['planning', 'scenario', id], (old) =>
+        old ? { ...old, name } : old,
+      );
+      qc.setQueriesData<ScenarioResponse[]>({ queryKey: ['planning', 'scenarios'] }, (old) =>
+        old?.map((s) => (s.id === id ? { ...s, name } : s)),
+      );
+    },
+    onError: (_err, vars) => {
+      qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.id] });
+      qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
+    },
+    onSuccess: (res, vars) => {
+      qc.setQueryData(['planning', 'scenario', vars.id], res);
       qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.id] });
       qc.invalidateQueries({ queryKey: ['planning', 'scenario', vars.id, 'resource'] });
       qc.invalidateQueries({ queryKey: ['planning', 'scenarios'] });
