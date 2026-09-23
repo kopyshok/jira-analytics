@@ -22,6 +22,7 @@ from app.models import (
     SyncState, ScopeProject,
 )
 from app.models.app_setting import AppSetting
+from app.services.backlog_service import switch_off_if_became_service_epic
 from app.repositories.base import BaseRepository
 
 
@@ -837,6 +838,25 @@ class SyncService:
         """Get local issue by Jira issue ID."""
         return self.issue_repo.get_by_field("jira_issue_id", jira_issue_id)
     
+    def _switch_off_new_service_epic(
+        self,
+        issue_id: str,
+        before: tuple[Optional[str], Optional[str], bool],
+        after: tuple[Optional[str], Optional[str], bool],
+    ) -> None:
+        """Задача стала служебным эпиком (Дискавери внутри RFA) — вне плана."""
+
+        def _key(project_id: Optional[str]) -> str:
+            project = self.db.get(Project, project_id) if project_id else None
+            return project.key if project is not None else ""
+
+        switch_off_if_became_service_epic(
+            self.db,
+            issue_id,
+            (_key(before[0]), before[1] or "", before[2]),
+            (_key(after[0]), after[1] or "", after[2]),
+        )
+
     def _upsert_issue(
         self,
         jira_issue: JiraIssueSchema,
@@ -1002,12 +1022,20 @@ class SyncService:
                 continue
             data[attr] = _parse_jira_date(extra.get(fid))
 
-        issue, created = self.issue_repo.upsert_by_field(
-            "jira_issue_id",
-            jira_issue.id,
-            data,
-        )
+        existing = self.issue_repo.get_by_field("jira_issue_id", jira_issue.id)
+        before: Optional[tuple[Optional[str], Optional[str], bool]] = None
+        if existing is not None:
+            before = (existing.project_id, existing.issue_type, existing.parent_id is not None)
+            issue, created = self.issue_repo.update(existing, data), False
+        else:
+            issue, created = self.issue_repo.create(data), True
         _record_plan_changes(self.db, issue, _new_plan_values)
+        if before is not None:
+            # Родитель может быть ещё не в базе (достраивается вторым проходом) —
+            # наличие родителя берём по ключу из Jira.
+            after = (project_id, issue.issue_type, parent_id is not None or bool(jira_issue.fields.parent_key))
+            if before != after:
+                self._switch_off_new_service_epic(issue.id, before, after)
         if created:
             # Все новые задачи идут в «Стек задач к разбору».
             # require_child_verification на родителе — только UI-подсказка при

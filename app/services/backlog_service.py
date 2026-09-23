@@ -568,3 +568,31 @@ def switch_off_backlog_items(db: Session, item_ids: set[str]) -> None:
             ScenarioAllocation.scenario_id.in_(draft_ids.scalar_subquery()),
         ).delete(synchronize_session=False)
     db.flush()
+
+
+def switch_off_if_became_service_epic(
+    db: Session,
+    issue_id: str,
+    before: tuple[str, str, bool],
+    after: tuple[str, str, bool],
+) -> bool:
+    """Задача стала служебным эпиком (переехала под RFA, сменила тип или проект) —
+    снять галочку «В план» и убрать из черновых сценариев.
+
+    ``before`` / ``after`` — (ключ проекта, тип, есть ли родитель) до и после
+    синка. Была служебной и осталась (переезд между RFA) — выбор PM не трогаем.
+    Возвращает True, если что-то выключили.
+    """
+    rules = load_rules(db)
+    if not any(r.require_parent and not r.is_container for r in rules):
+        return False
+    if is_service_epic(rules, *before) or not is_service_epic(rules, *after):
+        return False
+    item_ids = {
+        bid
+        for (bid,) in db.query(BacklogItem.id)
+        .filter(BacklogItem.issue_id == issue_id, BacklogItem.included_in_planning.is_(True))
+        .all()
+    }
+    switch_off_backlog_items(db, item_ids)
+    return bool(item_ids)
