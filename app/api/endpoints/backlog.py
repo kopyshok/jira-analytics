@@ -1078,13 +1078,16 @@ async def update_backlog_item(
             user_id=current_user.id,
         )
         role_hours = {}
+        entities = ["issues", "backlog"]
+    else:
+        entities = ["backlog"]
     for key, value in patch.items():
         setattr(item, key, value)
     for role, value in role_hours.items():
         setattr(item, f"estimate_{role}_hours", value)
     _recompute_total(item)
     db.commit()
-    await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
+    await event_bus.publish({"type": "entity_changed", "entities": entities})
     db.refresh(item)
     return _to_response(item, _approved_scenarios_for(db, item.id))
 

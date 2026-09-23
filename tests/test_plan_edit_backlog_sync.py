@@ -164,13 +164,17 @@ def test_plan_edit_without_backlog_item_is_ok(client, testclient_db_session):
     assert db.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0
 
 
-def test_inline_estimate_goes_to_issue_and_survives_sync(client, testclient_db_session):
+def test_inline_estimate_goes_to_issue_and_survives_sync(client, testclient_db_session, bus):
     db = testclient_db_session
     issue_id, item_id = _seed(db, key="PS-6", planned_dev_hours_jira=500)
 
     r = client.patch(f"/api/v1/backlog/{item_id}", json={"estimate_dev_hours": 700})
     assert r.status_code == 200, r.text
     assert r.json()["estimate_dev_hours"] == 700
+    # Изменилась и сама задача — событие несёт обе сущности.
+    bus.publish.assert_awaited_once_with(
+        {"type": "entity_changed", "entities": ["issues", "backlog"]}
+    )
 
     db.expire_all()
     issue = db.get(Issue, issue_id)
@@ -237,3 +241,62 @@ def test_inline_estimate_with_other_fields_keeps_them(client, testclient_db_sess
     body = r.json()
     assert body["estimate_dev_hours"] == 700
     assert body["involvement_dev"] == 0.8
+
+
+def test_inline_estimate_on_manual_idea_publishes_backlog_only(client, testclient_db_session, bus):
+    db = testclient_db_session
+    item = BacklogItem(title="Идея-2")
+    db.add(item)
+    db.commit()
+
+    client.patch(f"/api/v1/backlog/{item.id}", json={"estimate_dev_hours": 10})
+    bus.publish.assert_awaited_once_with({"type": "entity_changed", "entities": ["backlog"]})
+
+
+def test_plan_edit_on_archived_row_keeps_it_archived(client, testclient_db_session):
+    """Строка в архиве остаётся в архиве и не попадает в черновики сценариев,
+    но копия часов выравнивается по задаче."""
+    from datetime import datetime
+
+    from app.models import PlanningScenario, ScenarioAllocation
+
+    db = testclient_db_session
+    issue_id, item_id = _seed(db, key="PS-10", planned_dev_hours_jira=500)
+    archived_at = datetime(2026, 9, 1)
+    item = db.get(BacklogItem, item_id)
+    item.archived_at = archived_at
+    db.add(PlanningScenario(name="Черновик", status="draft"))
+    db.commit()
+
+    r = client.patch(
+        f"/api/v1/issues/{issue_id}/plan",
+        json={"role_hours": {"dev": 600}, "comment": "x"},
+    )
+    assert r.status_code == 200, r.text
+
+    item = _item(db, item_id)
+    assert item.archived_at == archived_at
+    assert item.estimate_dev_hours == 600
+    assert item.estimate_hours == 600
+    assert db.query(ScenarioAllocation).filter_by(backlog_item_id=item_id).count() == 0
+
+
+def test_plan_edit_after_issue_left_backlog_updates_hours(client, testclient_db_session):
+    """Задача ушла из категории бэклога (строка уходит в архив) — часы в строке
+    всё равно равны действующим часам задачи."""
+    db = testclient_db_session
+    issue_id, item_id = _seed(db, key="PS-11", planned_dev_hours_jira=500)
+    issue = db.get(Issue, issue_id)
+    issue.category = "development"
+    db.commit()
+
+    r = client.patch(
+        f"/api/v1/issues/{issue_id}/plan",
+        json={"role_hours": {"dev": 600}, "comment": "x"},
+    )
+    assert r.status_code == 200, r.text
+
+    item = _item(db, item_id)
+    assert item.archived_at is not None
+    assert item.estimate_dev_hours == 600
+    assert item.estimate_hours == 600

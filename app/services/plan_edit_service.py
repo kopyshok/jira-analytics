@@ -23,13 +23,22 @@ class PlanEditService:
         Строка списка, сценарии и ресурсный план читают копию часов в строке
         бэклога; без этого вызова ручная правка появлялась там только после
         следующего синка. Задача вне бэклога — ничего не создаём.
+
+        Строку в архиве полное выравнивание не трогает: оно вернуло бы её из
+        архива и добавило в черновики сценариев. Часы же в любом случае (и в
+        архиве, и когда задача только что ушла из бэклога) равны действующим
+        часам задачи.
         """
-        has_item = (
-            self.db.query(BacklogItem.id).filter_by(issue_id=issue.id).first()
-            is not None
-        )
-        if has_item:
+        item = self.db.query(BacklogItem).filter_by(issue_id=issue.id).one_or_none()
+        if item is None:
+            return
+        if item.archived_at is None:
             BacklogService(self.db).sync_from_issue(issue)
+        for role in ROLES:
+            setattr(item, f"estimate_{role}_hours", getattr(issue, f"planned_{role}_hours"))
+        item.estimate_hours = sum(
+            getattr(item, f"estimate_{role}_hours") or 0 for role in ROLES
+        ) or None
 
     def edit(
         self,

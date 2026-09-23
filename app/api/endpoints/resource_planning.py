@@ -1110,7 +1110,10 @@ def get_gantt(
                     d += _td(days=1)
                 iv = member_iv.get(e.id) or []
                 member_from = iv[0][0] if iv and iv[0][0] > q_start else None
-                member_to = iv[-1][1] if iv and iv[-1][1] < q_end else None
+                # Отрезки отсортированы по началу, но могут вкладываться друг в
+                # друга — конец участия = самый поздний конец, а не у последнего.
+                iv_end = max((hi for _, hi in iv), default=None)
+                member_to = iv_end if iv_end is not None and iv_end < q_end else None
                 emp_rows = membership.get(e.id, [])
                 left_to = None
                 if member_to is not None:
