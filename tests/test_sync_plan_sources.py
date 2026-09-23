@@ -75,6 +75,16 @@ def test_dispute_default_first_then_choice_then_change(db_session):
     assert issue.planned_dev_hours_jira == 100.0
 
 
+def test_zero_field_is_not_a_candidate(db_session):
+    """«Разработка» = 0, «Оценка 1С» = 56: не спор, действует 56."""
+    svc, proj = _setup(db_session)
+    issue = _upsert(svc, proj, {"customfield_12432": 0, "customfield_14648": 56})
+    assert issue.planned_dev_hours_jira == 56.0
+    assert [c.source for c in candidates_from_json(issue.planned_hours_sources["dev"])] == [
+        "customfield_14648",
+    ]
+
+
 def test_no_fields_filled_clears_sources(db_session):
     svc, proj = _setup(db_session)
     _upsert(svc, proj, {"customfield_12432": 100})
