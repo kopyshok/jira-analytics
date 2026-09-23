@@ -463,6 +463,8 @@ export interface BacklogChild {
   issue_type: string | null;
   status: string | null;
   included_in_planning: boolean;
+  // Служебный эпик (Дискавери) — в сценарий идёт сверх RFA по галочке «В план».
+  is_service_epic?: boolean;
   estimate_hours: number | null;
   estimate_analyst_hours: number | null;
   estimate_dev_hours: number | null;
@@ -541,6 +543,8 @@ export interface BacklogItemResponse {
   // Hierarchy flags for RFA-row expansion in UI.
   planning_mode: 'whole' | 'by_epics';
   included_in_planning: boolean;
+  // Только в ответе списка; одиночная задача всегда false.
+  is_service_epic?: boolean;
   has_parent_in_backlog: boolean;
   has_children_in_backlog: boolean;
   children?: BacklogChild[];
