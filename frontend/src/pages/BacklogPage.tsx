@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
-  App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
+  App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
   ArrowRightOutlined, CloseOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined,
@@ -21,7 +21,7 @@ import { useTeamRegistry } from '../hooks/useTeamRegistry';
 import { useSetIssueSubgroup } from '../hooks/useIssueTree';
 import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
-  useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem, useRefreshFromJira,
+  useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem, useRefreshFromJira, useSetBacklogIncluded,
 } from '../hooks/useBacklog';
 import type { BacklogRefreshProgress } from '../api/backlog';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -50,6 +50,28 @@ function groupByQuarterLabel(items: BacklogItemResponse[]): [string, BacklogItem
   });
 }
 
+/** Только строки «не в плане»: выключенный родитель — со всеми дочками,
+ *  включённый — только с выключенными дочками. */
+function filterOffPlan(rows?: BacklogItemResponse[]): BacklogItemResponse[] | undefined {
+  return rows?.flatMap((r) => {
+    if (!r.included_in_planning) return [r];
+    const kids = (r.children ?? []).filter((c) => !c.included_in_planning);
+    return kids.length ? [{ ...r, children: kids }] : [];
+  });
+}
+
+function countOffPlan(rows?: BacklogItemResponse[]): number {
+  return (rows ?? []).reduce(
+    (n, r) =>
+      n + (r.included_in_planning ? 0 : 1)
+      + (r.children ?? []).filter((c) => !c.included_in_planning).length,
+    0,
+  );
+}
+
+const offPlanRowClass = (r: BacklogItemResponse) =>
+  r.included_in_planning === false ? 'backlog-row-off-plan' : '';
+
 export default function BacklogPage() {
   const { notification } = App.useApp();
   const navigate = useNavigate();
@@ -72,6 +94,8 @@ export default function BacklogPage() {
   const unlink = useUnlinkJira();
   const archive = useArchiveBacklogItem();
   const restore = useRestoreBacklogItem();
+  const setIncluded = useSetBacklogIncluded();
+  const [onlyOffPlan, setOnlyOffPlan] = useState(false);
   const refreshFromJiraMut = useRefreshFromJira();
   const refreshAbortRef = useRef<AbortController | null>(null);
   const [refreshProgress, setRefreshProgress] = useState<BacklogRefreshProgress | null>(null);
@@ -182,6 +206,11 @@ export default function BacklogPage() {
   const activeRows = useMemo(() => adaptChildren(sortByPriority(active.data)), [active.data]);
   const archivedRows = useMemo(() => adaptChildren(sortByPriority(archived.data)), [archived.data]);
   const quarterlyRows = useMemo(() => adaptChildren(sortByPriority(quarterly.data)), [quarterly.data]);
+  const activeShown = onlyOffPlan ? filterOffPlan(activeRows) : activeRows;
+  const quarterlyShown = onlyOffPlan ? filterOffPlan(quarterlyRows) : quarterlyRows;
+  const offPlanCount = countOffPlan(
+    view === 'quarterly' ? quarterlyRows : view === 'active' ? activeRows : undefined,
+  );
 
   const { data: employees = [] } = useEmployees();
   const { data: roles = [] } = useRoles();
@@ -711,6 +740,30 @@ export default function BacklogPage() {
     </Space>
   );
 
+  // Мультикомандную RFA с дочками включить целиком нельзя — только по Эпикам.
+  const inPlanColumn = {
+    title: 'В план',
+    key: 'in_plan',
+    width: 80,
+    align: 'center' as const,
+    className: 'backlog-in-plan-cell',
+    render: (_: unknown, r: BacklogItemResponse) => (
+      <Tooltip title={r.included_in_planning ? 'Попадает в сценарии' : 'Не попадает в сценарии'}>
+        <Switch
+          size="small"
+          checked={r.included_in_planning}
+          loading={setIncluded.isPending && setIncluded.variables?.id === r.id}
+          disabled={!!r.planning_mode_locked && r.has_children_in_backlog && !r.included_in_planning}
+          onChange={(val) =>
+            setIncluded.mutate(
+              { id: r.id, included: val },
+              { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
+            )}
+        />
+      </Tooltip>
+    ),
+  };
+
   const quarterlyColumns = [
     ...baseColumns(false).filter((c) => !('dataIndex' in c && c.dataIndex === 'project_id')),
     {
@@ -749,6 +802,7 @@ export default function BacklogPage() {
         );
       },
     },
+    inPlanColumn,
     {
       title: 'Действия',
       key: 'actions',
@@ -806,12 +860,13 @@ export default function BacklogPage() {
       </Button>
       {groupActiveByQuarter ? (
         (() => {
-          const groups = groupByQuarterLabel(quarterlyRows ?? []);
+          const groups = groupByQuarterLabel(quarterlyShown ?? []);
           if (groups.length === 0) {
             return (
               <Table<BacklogItemResponse>
                 dataSource={[]}
                 columns={quarterlyColumns}
+                rowClassName={offPlanRowClass}
                 rowKey="id"
                 loading={quarterly.isLoading}
                 size="small"
@@ -838,6 +893,7 @@ export default function BacklogPage() {
                   <Table<BacklogItemResponse>
                     dataSource={rows}
                     columns={quarterlyColumns}
+                    rowClassName={offPlanRowClass}
                     rowKey="id"
                     loading={quarterly.isLoading}
                     size="small"
@@ -852,12 +908,13 @@ export default function BacklogPage() {
         })()
       ) : (
         <Table<BacklogItemResponse>
-          dataSource={quarterlyRows}
+          dataSource={quarterlyShown}
           rowKey="id"
           loading={quarterly.isLoading}
           pagination={false}
           size="small"
           scroll={{ x: 1400 }}
+          rowClassName={offPlanRowClass}
           columns={quarterlyColumns}
           expandable={nestedExpandable}
         />
@@ -867,14 +924,16 @@ export default function BacklogPage() {
 
   const activeTable = (
     <Table<BacklogItemResponse>
-      dataSource={activeRows}
+      dataSource={activeShown}
       rowKey="id"
       loading={active.isLoading}
       pagination={false}
       size="small"
       scroll={{ x: 1400 }}
+      rowClassName={offPlanRowClass}
       columns={[
         ...baseColumns(true),
+        inPlanColumn,
         { title: 'Действия', width: 210, fixed: 'right' as const, render: (_, r) => actionsActive(r) },
       ]}
       expandable={nestedExpandable}
@@ -1030,6 +1089,13 @@ export default function BacklogPage() {
 
       <Tabs
         activeKey={view}
+        tabBarExtraContent={
+          view !== 'archived' && (offPlanCount > 0 || onlyOffPlan) ? (
+            <Tag.CheckableTag checked={onlyOffPlan} onChange={setOnlyOffPlan}>
+              Не в плане · {offPlanCount}
+            </Tag.CheckableTag>
+          ) : null
+        }
         onChange={(k) => {
           const next = new URLSearchParams(searchParams);
           next.set('view', k);
