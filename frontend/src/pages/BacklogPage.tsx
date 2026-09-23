@@ -6,6 +6,7 @@ import {
 import {
   ArrowRightOutlined, CloseOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined,
   InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, SettingOutlined, UndoOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import backlogHelp from '../../../docs/help/backlog.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -14,9 +15,11 @@ import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
 import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningParamsModal';
 import InPlanSwitch from '../components/backlog/InPlanSwitch';
+import EstimateDisputePopover from '../components/backlog/EstimateDisputePopover';
 import {
   countOffPlan, filterOffPlan, inertEpicIds, inPlanRole, isOffPlan, type InPlanRow,
 } from '../utils/inPlan';
+import { countDisputed, filterDisputed, hasDispute } from '../utils/estimateDisputes';
 import { statusTagColor } from '../utils/status';
 import { daysSince, formatDateOnly } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
@@ -38,8 +41,25 @@ import { OPO_COLOR, foldOpo } from '../utils/opo';
 import { useOpoCutoff } from '../hooks/useOpoCutoff';
 import BacklogRoleCell from '../components/planning/BacklogRoleCell';
 import type {
-  BacklogItemResponse, BacklogView,
+  BacklogItemResponse, BacklogView, PlanRole,
 } from '../types/api';
+
+type EstimateField = 'estimate_analyst_hours' | 'estimate_dev_hours' | 'estimate_qa_hours' | 'estimate_opo_hours';
+
+const FIELD_ROLE: Record<EstimateField, PlanRole> = {
+  estimate_analyst_hours: 'analyst',
+  estimate_dev_hours: 'dev',
+  estimate_qa_hours: 'qa',
+  estimate_opo_hours: 'opo',
+};
+
+/** Действующие часы по ролям — без переноса ОПЭ в АН/ПР. */
+const roleHours = (r: BacklogItemResponse): Record<PlanRole, number | null> => ({
+  analyst: r.estimate_analyst_hours,
+  dev: r.estimate_dev_hours,
+  qa: r.estimate_qa_hours,
+  opo: r.estimate_opo_hours,
+});
 
 function groupByQuarterLabel(items: BacklogItemResponse[]): [string, BacklogItemResponse[]][] {
   const groups = new Map<string, BacklogItemResponse[]>();
@@ -83,6 +103,7 @@ export default function BacklogPage() {
   );
   const includedPending = useBacklogIncludedPending();
   const [onlyOffPlan, setOnlyOffPlan] = useState(false);
+  const [onlyDisputed, setOnlyDisputed] = useState(false);
   const refreshFromJiraMut = useRefreshFromJira();
   const refreshAbortRef = useRef<AbortController | null>(null);
   const [refreshProgress, setRefreshProgress] = useState<BacklogRefreshProgress | null>(null);
@@ -187,6 +208,8 @@ export default function BacklogPage() {
         assigned_subgroup_id: c.assigned_subgroup_id ?? null,
         subgroup_id: c.subgroup_id ?? null,
         subgroup_source: c.subgroup_source ?? null,
+        disputed_roles: c.disputed_roles ?? [],
+        estimate_candidates: c.estimate_candidates ?? {},
         has_parent_in_backlog: true,
         has_children_in_backlog: false,
       })) as unknown as BacklogItemResponse['children'],
@@ -203,12 +226,16 @@ export default function BacklogPage() {
   const rowRole = (r: InPlanRow) => inPlanRole(r, inertIds.has(r.id));
   const rowOffPlan = (r: InPlanRow) => isOffPlan(rowRole(r), r.included_in_planning);
   const offPlanRowClass = (r: BacklogItemResponse) => (rowOffPlan(r) ? 'backlog-row-off-plan' : '');
-  const activeShown = onlyOffPlan ? filterOffPlan(activeRows, rowOffPlan) : activeRows;
-  const quarterlyShown = onlyOffPlan ? filterOffPlan(quarterlyRows, rowOffPlan) : quarterlyRows;
-  const offPlanCount = countOffPlan(
-    view === 'quarterly' ? quarterlyRows : view === 'active' ? activeRows : undefined,
-    rowOffPlan,
-  );
+  // Метки-фильтры складываются: «Не в плане» и «Только спорные» вместе оставляют пересечение.
+  const withFilters = (rows?: BacklogItemResponse[]) => {
+    const offPlan = onlyOffPlan ? filterOffPlan(rows, rowOffPlan) : rows;
+    return onlyDisputed ? filterDisputed(offPlan) : offPlan;
+  };
+  const activeShown = withFilters(activeRows);
+  const quarterlyShown = withFilters(quarterlyRows);
+  const viewRows = view === 'quarterly' ? quarterlyRows : view === 'active' ? activeRows : undefined;
+  const offPlanCount = countOffPlan(viewRows, rowOffPlan);
+  const disputedCount = countDisputed(viewRows);
 
   const { data: employees = [] } = useEmployees();
   const { data: roles = [] } = useRoles();
@@ -344,6 +371,25 @@ export default function BacklogPage() {
               <Tooltip title={`Работают несколько команд: ${(r.participating_teams ?? []).join(', ')}. Планируется только по Эпикам.`}>
                 <Tag color="gold" style={{ marginInlineEnd: 0 }}>мультикоманда</Tag>
               </Tooltip>
+            )}
+            {/* Все спорные роли задачи — и ОПЭ, чья ячейка после отсечки скрыта. */}
+            {r.issue_id && hasDispute(r) && (
+              <EstimateDisputePopover
+                issueId={r.issue_id}
+                jiraKey={r.jira_key}
+                roles={r.disputed_roles ?? []}
+                candidates={r.estimate_candidates ?? {}}
+                current={roleHours(r)}
+                ariaLabel={`Спорная оценка: ${r.jira_key ?? r.title}`}
+              >
+                <Tag
+                  color="warning"
+                  title="Оценки в полях Jira расходятся — нажмите, чтобы выбрать"
+                  style={{ marginInlineEnd: 0 }}
+                >
+                  спорно
+                </Tag>
+              </EstimateDisputePopover>
             )}
           </Space>
         </Space>
@@ -524,7 +570,26 @@ export default function BacklogPage() {
           involvement?: number | null,
           durationDays?: number | null,
         ) => {
-          const cell = <BacklogRoleCell label={label} hours={hours} total={total} color={color} involvement={involvement} durationDays={durationDays} />;
+          const role = FIELD_ROLE[field];
+          const disputed = !!r.issue_id && (r.disputed_roles ?? []).includes(role);
+          const cellProps = { label, hours, total, color, involvement, durationDays, disputed };
+          if (disputed && r.issue_id) {
+            return (
+              <EstimateDisputePopover
+                key={field}
+                issueId={r.issue_id}
+                jiraKey={r.jira_key}
+                roles={[role]}
+                candidates={r.estimate_candidates ?? {}}
+                current={roleHours(r)}
+                ariaLabel={`${label}: оценки в Jira расходятся, выбрать значение`}
+                triggerStyle={{ flex: 1, display: 'flex' }}
+              >
+                {(open) => <BacklogRoleCell {...cellProps} tooltipHidden={open} />}
+              </EstimateDisputePopover>
+            );
+          }
+          const cell = <BacklogRoleCell {...cellProps} />;
           if (!isEditable) return cell;
           return (
             <Popover
@@ -1088,10 +1153,24 @@ export default function BacklogPage() {
       <Tabs
         activeKey={view}
         tabBarExtraContent={
-          view !== 'archived' && (offPlanCount > 0 || onlyOffPlan) ? (
-            <Tag.CheckableTag checked={onlyOffPlan} onChange={setOnlyOffPlan}>
-              Не в плане · {offPlanCount}
-            </Tag.CheckableTag>
+          view !== 'archived' ? (
+            <Space size={8}>
+              {(disputedCount > 0 || onlyDisputed) && (
+                <Tag.CheckableTag
+                  checked={onlyDisputed}
+                  onChange={setOnlyDisputed}
+                  icon={<WarningOutlined />}
+                  style={onlyDisputed ? undefined : { color: 'var(--warn, #fa8c16)' }}
+                >
+                  Только спорные · {disputedCount}
+                </Tag.CheckableTag>
+              )}
+              {(offPlanCount > 0 || onlyOffPlan) && (
+                <Tag.CheckableTag checked={onlyOffPlan} onChange={setOnlyOffPlan}>
+                  Не в плане · {offPlanCount}
+                </Tag.CheckableTag>
+              )}
+            </Space>
           ) : null
         }
         onChange={(k) => {
