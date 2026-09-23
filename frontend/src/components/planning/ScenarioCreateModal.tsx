@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { App, Form, Input, InputNumber, Modal, Select } from 'antd';
 import { useCreateScenario } from '../../hooks/usePlanning';
 import { useQuarterYear } from '../../hooks/useQuarterYear';
+import { useGlobalTeamFilter } from '../../hooks/useGlobalTeamFilter';
 import { TeamSelector } from './TeamSelector';
 import { trackAction } from '../../lib/usage/track';
 
@@ -29,6 +30,12 @@ function TeamSelectorFormItem(props: { value?: string | null; onChange?: (v: str
   );
 }
 
+/** Авто-название: «2026 Q4 Команда 1С (ERP - Товарный учет)»; без команды — «2026 Q4». */
+function buildScenarioName(year?: number, quarter?: number, team?: string | null): string {
+  const base = `${year ?? ''} Q${quarter ?? ''}`.trim();
+  return team ? `${base} ${team}` : base;
+}
+
 /** Модалка создания draft-сценария: name + year + quarter + team. После успеха
  *  родитель получает id через onClose(id) и переключает выбор. */
 export default function ScenarioCreateModal({ open, onClose }: Props) {
@@ -40,15 +47,37 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
   const values = Form.useWatch([], form) as Partial<FormValues> | undefined;
   const submitDisabled = !values?.name || !values?.year || !values?.quarter || !values?.team;
 
+  const { selectedTeams } = useGlobalTeamFilter();
+  // Ровно одна команда в глобальном фильтре — подставляем её в поле «Команда».
+  const globalTeam = selectedTeams.length === 1 ? selectedTeams[0] : undefined;
+  // Пользователь правил название руками — дальше не перезаписываем.
+  // Ref, а не state: перерисовка не нужна, а setState в эффекте запрещён линтером.
+  const nameTouchedRef = useRef(false);
+
   useEffect(() => {
     if (!open) return;
+    nameTouchedRef.current = false;
     form.resetFields();
+    const y = Number(year);
+    const q = Number(quarter);
     form.setFieldsValue({
-      year: Number(year),
-      quarter: Number(quarter),
-      name: `Q${quarter} ${year} plan`,
+      year: y,
+      quarter: q,
+      team: globalTeam,
+      name: buildScenarioName(y, q, globalTeam),
     });
-  }, [open, year, quarter, form]);
+  }, [open, year, quarter, globalTeam, form]);
+
+  const handleValuesChange = (changed: Partial<FormValues>, all: FormValues) => {
+    if ('name' in changed) {
+      nameTouchedRef.current = true;
+      return;
+    }
+    if (nameTouchedRef.current) return;
+    if ('year' in changed || 'quarter' in changed || 'team' in changed) {
+      form.setFieldValue('name', buildScenarioName(all.year, all.quarter, all.team));
+    }
+  };
 
   const handleSubmit = (values: FormValues) => {
     create.mutate(values, {
@@ -79,13 +108,14 @@ export default function ScenarioCreateModal({ open, onClose }: Props) {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        onValuesChange={handleValuesChange}
       >
         <Form.Item
           name="name"
           label="Название"
           rules={[{ required: true, message: 'Укажите название' }]}
         >
-          <Input placeholder="Например: Q2 2026 план" />
+          <Input placeholder="Например: 2026 Q4 Команда" />
         </Form.Item>
         <Form.Item label="Период" style={{ marginBottom: 0 }}>
           <Form.Item
