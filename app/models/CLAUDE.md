@@ -32,6 +32,9 @@
 - `goals` — comma-joined `customfield_11421`
 - `developer_account_id` / `developer_display_name` — кастомное поле Jira «Разработчик» (тип user, `customfield_14052`)
 - `dev_est_hours` — «DEV est (ч)» (`customfield_12952`), оценка разработки задачи; не путать с `planned_dev_hours` (вкладка плановых трудозатрат RFA/эпика)
+- `planned_hours_sources` — кандидаты оценки по ролям из всех полей Jira настройки роли (`jira_planned_<role>_hours_field_id` — JSON-список `[{field_id, kind: alt|sum, name}]` или старая строка): `{role: [{source, label, value}]}`, `source` — id поля или `"sum"` (сумма слагаемых). Пишет синк; действующее значение по-прежнему в `planned_<role>_hours_jira`. Правила спора — `app/services/plan_sources.py`
+- `planned_hours_choice` — выбор при споре `{role: {source, fingerprint}}`, `source` — id поля, `"sum"` или `"manual"`. Действует, пока отпечаток текущих кандидатов совпадает; устаревший выбор синк удаляет
+- Обе колонки — JSON, на PostgreSQL JSONB (у `json` нет равенства — `SELECT DISTINCT` по задачам падает); `None` хранится как SQL NULL (`none_as_null`)
 
 ### Scope / category config (6)
 
