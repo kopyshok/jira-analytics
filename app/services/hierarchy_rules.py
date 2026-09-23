@@ -7,7 +7,7 @@ created_at ASC)``; if no rule matches, default is ``False``.
 """
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -73,3 +73,41 @@ def is_explicit_leaf(rules: List[HierarchyRule], project_key: str, issue_type: s
         if matches(rule, inp):
             return not rule.is_container
     return False
+
+
+def _first_match(
+    rules: List[HierarchyRule], project_key: str, issue_type: str, has_parent: bool
+) -> Optional[HierarchyRule]:
+    """Первое подошедшее правило (first-match-wins) или None."""
+    inp = EvaluationInput(
+        project_key=project_key or "",
+        issue_type=issue_type or "",
+        has_parent=has_parent,
+    )
+    for rule in rules:
+        if matches(rule, inp):
+            return rule
+    return None
+
+
+def is_service_epic(
+    rules: List[HierarchyRule], project_key: str, issue_type: str, has_parent: bool
+) -> bool:
+    """Служебный эпик: первое подошедшее правило — «только с родителем» и «не контейнер».
+
+    Сейчас это авто-Discovery внутри RFA. Инициативой не считается, но в
+    сценарий может пойти по галочке «В план» — его часы идут сверх родителя.
+    """
+    rule = _first_match(rules, project_key, issue_type, has_parent)
+    return rule is not None and bool(rule.require_parent) and not rule.is_container
+
+
+def is_planning_leaf(
+    rules: List[HierarchyRule], project_key: str, issue_type: str, has_parent: bool
+) -> bool:
+    """Явный лист, который никогда не кандидат в сценарий (OS/PMD и т.п.).
+
+    Служебные эпики сюда не входят: их участие решает галочка «В план».
+    """
+    rule = _first_match(rules, project_key, issue_type, has_parent)
+    return rule is not None and not rule.is_container and not rule.require_parent
