@@ -179,6 +179,7 @@ class ResourcePlanningService:
         end: date,
         scheduled_blocks: List[ScheduledBlock],
         team: Optional[str] = None,
+        borrowed: Optional[set] = None,
     ) -> Dict[str, Dict[date, float]]:
         """Returns {employee_id: {date: available_hours}}.
 
@@ -188,8 +189,12 @@ class ResourcePlanningService:
         ``team`` задан → дни вне периода участия в этой команде тоже нулевые:
         пришедший в середине квартала не получает работу до своей даты входа,
         выбывший — после даты ухода.
+
+        ``borrowed`` — привлечённые из других команд: для них дни вне команды
+        плана — норма, а не простой.
         """
         emp_ids = [e.id for e in employees]
+        borrowed_set = borrowed or set()
         member_spans = (
             tm.member_intervals(self.db, [team], start, end) if team else {}
         )
@@ -268,7 +273,11 @@ class ResourcePlanningService:
             spans = member_spans.get(emp.id, []) if team else []
             d = start
             while d <= end:
-                out_of_team = bool(team) and not tm.day_in_intervals(d, spans)
+                out_of_team = (
+                    bool(team)
+                    and emp.id not in borrowed_set
+                    and not tm.day_in_intervals(d, spans)
+                )
                 if out_of_team or d in absent_days[emp.id] or d in blocked_days[emp.id]:
                     daily[d] = 0.0
                 else:
