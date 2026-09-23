@@ -40,6 +40,7 @@ from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import is_explicit_leaf, is_service_epic, load_rules
 from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
+from app.services.plan_sources import ROLE_SETTING_KEYS, disputes_for
 from app.services.sync_service import SyncService
 
 
@@ -95,6 +96,14 @@ class ScenarioRef(BaseModel):
     name: str
 
 
+class EstimateCandidateSchema(BaseModel):
+    """Значение роли из одного поля Jira (или сумма слагаемых) — для выбора при споре."""
+
+    source: str
+    label: str
+    value: float
+
+
 class BacklogChildSchema(BaseModel):
     id: str              # backlog_item.id (нужен для PATCH /included)
     issue_id: str
@@ -116,6 +125,10 @@ class BacklogChildSchema(BaseModel):
     assigned_subgroup_id: Optional[str] = None
     subgroup_id: Optional[str] = None
     subgroup_source: Optional[str] = None
+    # Спорные оценки: роли, где поля Jira дают разные значения и выбор не сделан,
+    # и кандидаты для выбора по каждой такой роли.
+    disputed_roles: List[str] = []
+    estimate_candidates: dict[str, List[EstimateCandidateSchema]] = {}
 
 
 class ParentContextSchema(BaseModel):
@@ -207,6 +220,10 @@ class BacklogItemResponse(BaseModel):
     assigned_subgroup_id: Optional[str] = None
     subgroup_id: Optional[str] = None
     subgroup_source: Optional[str] = None
+    # Спорные оценки: роли, где поля Jira дают разные значения и выбор не сделан,
+    # и кандидаты для выбора по каждой такой роли.
+    disputed_roles: List[str] = []
+    estimate_candidates: dict[str, List[EstimateCandidateSchema]] = {}
 
     class Config:
         from_attributes = True
@@ -313,6 +330,23 @@ def _quarter_labels_bulk(db: Session, item_ids: list[str]) -> dict[str, str]:
     }
 
 
+def _estimate_disputes(
+    issue: Optional[Issue],
+) -> tuple[list[str], dict[str, list[EstimateCandidateSchema]]]:
+    """Нерешённые споры оценки задачи: (роли, {роль: кандидаты})."""
+    if issue is None or not issue.planned_hours_sources:
+        return [], {}
+    manual_roles = {
+        r for r in ROLE_SETTING_KEYS
+        if getattr(issue, f"planned_{r}_hours_manual") is not None
+    }
+    found = disputes_for(issue.planned_hours_sources, issue.planned_hours_choice, manual_roles)
+    return list(found), {
+        role: [EstimateCandidateSchema(**c.to_dict()) for c in cands]
+        for role, cands in found.items()
+    }
+
+
 def _to_response(
     item: BacklogItem,
     approved_scenarios: Optional[List[ScenarioRef]] = None,
@@ -334,6 +368,7 @@ def _to_response(
         issue and (issue.status_category == "done" or is_cancel_like(issue))
     )
     is_multi_team = issue_is_multi_team(issue)
+    disputed_roles, estimate_candidates = _estimate_disputes(issue)
     return BacklogItemResponse(
         id=item.id,
         title=item.title,
@@ -399,6 +434,8 @@ def _to_response(
         has_parent_in_backlog=has_parent_in_backlog,
         has_children_in_backlog=has_children_in_backlog,
         children=children or [],
+        disputed_roles=disputed_roles,
+        estimate_candidates=estimate_candidates,
     )
 
 
@@ -656,6 +693,7 @@ async def list_backlog_items(
             continue
         child_bi = issue_id_to_item[iid]
         child_issue = child_bi.issue
+        child_disputed, child_candidates = _estimate_disputes(child_issue)
         schema = BacklogChildSchema(
             id=child_bi.id,
             issue_id=iid,
@@ -670,6 +708,8 @@ async def list_backlog_items(
             estimate_dev_hours=child_bi.estimate_dev_hours,
             estimate_qa_hours=child_bi.estimate_qa_hours,
             estimate_opo_hours=child_bi.estimate_opo_hours,
+            disputed_roles=child_disputed,
+            estimate_candidates=child_candidates,
         )
         children_map.setdefault(pid, []).append(schema)
 
