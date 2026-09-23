@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bookingRuns, externalBookingLabel, groupExternalBookings } from './externalBookings';
+import { bookingRuns, externalBookingLabel, groupExternalBookings, phaseCountLabel } from './externalBookings';
 import type { ExternalBookingOut } from '../api/resourcePlanning';
 
 const b = (over: Partial<ExternalBookingOut>): ExternalBookingOut => ({
@@ -25,6 +25,15 @@ describe('externalBookingLabel', () => {
     expect(externalBookingLabel(b({ issue_key: null, phase: 'analyst' }))).toBe(
       'Задача · Анализ · Пряничников',
     );
+  });
+});
+
+describe('phaseCountLabel', () => {
+  it('склоняет «фаза» по числу', () => {
+    expect([1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 111].map(phaseCountLabel)).toEqual([
+      '1 фаза', '2 фазы', '4 фазы', '5 фаз', '11 фаз', '12 фаз', '14 фаз',
+      '21 фаза', '22 фазы', '25 фаз', '111 фаз',
+    ]);
   });
 });
 

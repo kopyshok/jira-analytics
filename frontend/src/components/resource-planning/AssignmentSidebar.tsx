@@ -20,6 +20,7 @@ import {
   setAssignmentInvolvement,
 } from '../../api/resourcePlanning';
 import { useAssignmentCandidates, useExplainAssignment } from '../../hooks/useResourcePlanning';
+import { useRoles } from '../../hooks/useRoles';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { PHASE_LABELS } from '../../utils/gantt';
 import { candidateOptions } from '../../utils/rpCandidates';
@@ -84,6 +85,11 @@ export default function AssignmentSidebar({
     planId || null,
     assignment?.id ?? null,
     open && !!assignment && assignment.phase !== 'qa',
+  );
+  const rolesQuery = useRoles();
+  const roleLabels = useMemo(
+    () => new Map((rolesQuery.data ?? []).map((r) => [r.code, r.label] as const)),
+    [rolesQuery.data],
   );
 
   const sameItemAssignments = useMemo(
@@ -208,7 +214,7 @@ export default function AssignmentSidebar({
 
   // Пока список кандидатов грузится (или не пришёл) — прежний выбор из состава команды.
   const employeeOptions: SelectProps['options'] = candidatesQuery.data?.length
-    ? candidateOptions(candidatesQuery.data)
+    ? candidateOptions(candidatesQuery.data, roleLabels)
     : employees.map((e) => ({
         value: e.id,
         label: e.display_name + membershipSuffix(e),
@@ -278,6 +284,8 @@ export default function AssignmentSidebar({
               optionFilterProp="label"
               onChange={(empId) => handleEmployeeChange(empId)}
               options={employeeOptions}
+              // В закрытом поле — только имя; роль, команда и загрузка — в списке.
+              labelRender={({ label }) => assignment.employee_name ?? label}
             />
           )}
           {membershipWarning && (

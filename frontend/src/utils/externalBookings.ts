@@ -8,6 +8,15 @@ export function externalBookingLabel(b: ExternalBookingOut): string {
     .join(' · ');
 }
 
+/** «1 фаза», «3 фазы», «12 фаз» — счётчик в шапке блока «Привлечённые». */
+export function phaseCountLabel(n: number): string {
+  const d = n % 10;
+  const dd = n % 100;
+  if (d === 1 && dd !== 11) return `${n} фаза`;
+  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return `${n} фазы`;
+  return `${n} фаз`;
+}
+
 export interface ExternalBookingGroup {
   employee_id: string;
   employee_name: string;

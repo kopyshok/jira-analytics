@@ -26,6 +26,7 @@ const TYPE_LABELS: Record<string, string> = {
   PREDECESSOR_VIOLATED: 'Нарушен порядок предшественников',
   LEVELING_DELAY: 'Сдвиг при выравнивании',
   LEVELING_REASSIGN: 'Переназначение',
+  UNPLACED_HOURS: 'Часы не размещены',
 };
 
 const SEVERITY_TYPE: Record<string, 'error' | 'warning' | 'info'> = {
@@ -220,8 +221,9 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
           ? c.employee_name ?? c.employee_id
           : 'Без сотрудника';
       } else {
-        key = c.type;
-        // Незнакомый тип (сервер новее фронта) — без служебного кода в подписи.
+        // Незнакомые типы (сервер новее фронта) — одной группой «Прочее»,
+        // без служебного кода в подписи.
+        key = TYPE_LABELS[c.type] ? c.type : 'misc';
         label = TYPE_LABELS[c.type] ?? 'Прочее';
       }
       if (!map.has(key)) map.set(key, { label, items: [] });

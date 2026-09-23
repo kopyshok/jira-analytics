@@ -364,6 +364,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                   )}
                   {avg > 0 && (
                     <span
+                      title="Средняя загрузка в этом плане; клетки показывают и планы других команд"
                       style={{
                         marginLeft: 'auto',
                         flexShrink: 0,

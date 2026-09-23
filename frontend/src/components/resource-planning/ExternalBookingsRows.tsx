@@ -1,9 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ExternalBookingOut } from '../../api/resourcePlanning';
 import type { ProductionCalendarDayResponse } from '../../types/api';
 import type { GanttTimeline, WorkdayTimeline } from '../../utils/gantt';
 import { dateToLeft, datesToWidth, fmtLocalIso } from '../../utils/gantt';
-import { bookingRuns, externalBookingLabel, groupExternalBookings } from '../../utils/externalBookings';
+import {
+  bookingRuns,
+  externalBookingLabel,
+  groupExternalBookings,
+  phaseCountLabel,
+} from '../../utils/externalBookings';
 
 const ROW_H = 28;
 const BAR_H = 16;
@@ -36,6 +41,7 @@ export default function ExternalBookingsRows({
   leftColWidth,
   trackWidthPx,
 }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
   const rows = useMemo(() => {
     const from = fmtLocalIso(timeline.startDate);
     const to = fmtLocalIso(timeline.endDate);
@@ -56,7 +62,11 @@ export default function ExternalBookingsRows({
 
   return (
     <div style={{ borderBottom: '2px solid #066770' }}>
-      <div
+      {/* Шапка сворачивает блок — как секции групп команды. */}
+      <button
+        type="button"
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((v) => !v)}
         style={{
           position: 'sticky',
           left: 0,
@@ -68,17 +78,25 @@ export default function ExternalBookingsRows({
           gap: 10,
           padding: '6px 14px',
           background: '#0a1628',
+          border: 0,
           borderBottom: '1px solid #1e3a5f',
+          cursor: 'pointer',
+          userSelect: 'none',
+          textAlign: 'left',
+          font: 'inherit',
         }}
       >
+        <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>
+          {collapsed ? '▶' : '▼'}
+        </span>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #e6f0f7)' }}>
           Привлечённые
         </span>
         <span style={{ fontSize: 11, color: 'var(--text-hint, #7a9ab8)' }}>
-          занятость в планах других команд · только просмотр
+          {phaseCountLabel(rows.length)} в планах других команд · только просмотр
         </span>
-      </div>
-      {rows.map(({ b, runs }) => {
+      </button>
+      {!collapsed && rows.map(({ b, runs }) => {
         const label = externalBookingLabel(b);
         const meta = b.provisional ? `${b.team} · предварительно` : b.team;
         return (
@@ -111,7 +129,7 @@ export default function ExternalBookingsRows({
               </span>
               {/* «предварительно» — отдельной строкой: длинное название команды его не съест. */}
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, fontSize: 11, lineHeight: 1.15 }}>
-                <span style={{ color: '#5a7a9a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.team}</span>
+                <span style={{ color: '#7a9ab8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.team}</span>
                 {b.provisional && <span style={{ fontSize: 10, color: '#e0a84a' }}>предварительно</span>}
               </span>
             </div>
