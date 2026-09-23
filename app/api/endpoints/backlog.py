@@ -8,7 +8,7 @@ import asyncio
 import json
 from contextlib import suppress
 from datetime import datetime
-from typing import Awaitable, Callable, List, Optional
+from typing import Awaitable, Callable, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -33,6 +33,7 @@ from app.services.backlog_service import (
     is_cancel_like,
     issue_is_multi_team,
     mode_excluded_backlog_ids,
+    mode_group_ids,
     multi_team_lock_enabled,
     parse_participating_teams,
 )
@@ -104,6 +105,16 @@ class EstimateCandidateSchema(BaseModel):
     value: float
 
 
+# Что значит переключатель «В план» у строки. Считается по всему бэклогу —
+# от фильтра и вкладки списка не зависит:
+# - regular — решает, идёт ли задача в сценарии;
+# - inert — обычный эпик RFA «целиком»: его часы уже в ней, переключатель
+#   ничего не меняет;
+# - by_epics — RFA «по эпикам»: переключатель только про саму RFA;
+# - by_epics_locked — RFA нескольких команд с эпиками: саму не включить.
+InPlanRole = Literal["regular", "inert", "by_epics", "by_epics_locked"]
+
+
 class BacklogChildSchema(BaseModel):
     id: str              # backlog_item.id (нужен для PATCH /included)
     issue_id: str
@@ -114,6 +125,7 @@ class BacklogChildSchema(BaseModel):
     included_in_planning: bool = True
     # Включить «В план» нельзя — то же правило, что у строки-корня.
     include_locked: bool = False
+    in_plan_role: InPlanRole = "regular"
     # Служебный эпик (Дискавери внутри RFA): часы сверх родителя, в план — по галочке.
     is_service_epic: bool = False
     # Плановые часы дочернего Эпика — чтобы строка-ребёнок в таблице показывала
@@ -219,6 +231,7 @@ class BacklogItemResponse(BaseModel):
     # детьми в бэклоге любой команды. В отличие от has_children_in_backlog
     # от фильтра списка не зависит.
     include_locked: bool = False
+    in_plan_role: InPlanRole = "regular"
     has_parent_in_backlog: bool = False
     has_children_in_backlog: bool = False
     children: List[BacklogChildSchema] = []
@@ -378,12 +391,41 @@ def _include_locked_ids(db: Session, items: list[BacklogItem]) -> set[str]:
     return {by_issue[pid] for (pid,) in parent_rows}
 
 
+def _in_plan_roles(
+    db: Session, items: list[BacklogItem], locked_ids: set[str]
+) -> dict[str, InPlanRole]:
+    """Роль переключателя «В план» у элементов — по тем же наборам, что отбор
+    кандидатов в сценарии, по всему бэклогу.
+
+    Список не видит всей группы: родителя чужой команды, с другой вкладки,
+    утверждённого или выполненного, эпиков, спрятанных фильтром. Наборы
+    считаются один раз на весь список, а не по строке.
+    ``locked_ids`` — ``_include_locked_ids`` по этим же элементам.
+    """
+    by_epics, whole_children = mode_group_ids(db)
+
+    def role(item_id: str) -> InPlanRole:
+        # Эпик RFA «целиком» не кандидат при любой галочке — даже если сам
+        # ведёт свою группу.
+        if item_id in whole_children:
+            return "inert"
+        if item_id in locked_ids:
+            return "by_epics_locked"
+        if item_id in by_epics:
+            return "by_epics"
+        return "regular"
+
+    return {it.id: role(it.id) for it in items}
+
+
 def _item_response(db: Session, item: BacklogItem) -> BacklogItemResponse:
-    """Ответ по одному элементу: утверждённые сценарии и блокировка «В план»."""
+    """Ответ по одному элементу: утверждённые сценарии, блокировка и роль «В план»."""
+    locked_ids = _include_locked_ids(db, [item])
     return _to_response(
         item,
         _approved_scenarios_for(db, item.id),
-        include_locked=item.id in _include_locked_ids(db, [item]),
+        include_locked=item.id in locked_ids,
+        in_plan_role=_in_plan_roles(db, [item], locked_ids)[item.id],
     )
 
 
@@ -401,6 +443,7 @@ def _to_response(
     parent_context: Optional[ParentContextSchema] = None,
     is_service_epic: bool = False,
     include_locked: bool = False,
+    in_plan_role: InPlanRole = "regular",
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
@@ -473,6 +516,7 @@ def _to_response(
         planning_mode=item.planning_mode,
         included_in_planning=item.included_in_planning,
         include_locked=include_locked,
+        in_plan_role=in_plan_role,
         has_parent_in_backlog=has_parent_in_backlog,
         has_children_in_backlog=has_children_in_backlog,
         children=children or [],
@@ -728,9 +772,10 @@ async def list_backlog_items(
     # Фильтруем: оставляем только корни (не дочки).
     visible_items = [bi for bi in items if bi.issue_id not in child_issue_ids]
 
-    # Блокировку «В план» решают дети во всём бэклоге, а не в этом списке:
-    # фильтр команды прячет дочек чужой команды.
+    # Блокировку и роль «В план» решает весь бэклог, а не этот список:
+    # фильтр команды прячет дочек чужой команды, вкладка — родителя.
     locked_ids = _include_locked_ids(db, items)
+    roles = _in_plan_roles(db, items, locked_ids)
 
     # Строим Map: parent_issue_id → List[BacklogChildSchema].
     children_map: dict[str, list[BacklogChildSchema]] = {}
@@ -749,6 +794,7 @@ async def list_backlog_items(
             status=child_issue.status if child_issue else None,
             included_in_planning=child_bi.included_in_planning,
             include_locked=child_bi.id in locked_ids,
+            in_plan_role=roles[child_bi.id],
             is_service_epic=child_bi.id in service_ids,
             estimate_hours=child_bi.estimate_hours,
             estimate_analyst_hours=child_bi.estimate_analyst_hours,
@@ -810,6 +856,7 @@ async def list_backlog_items(
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
                 is_service_epic=i.id in service_ids,
                 include_locked=i.id in locked_ids,
+                in_plan_role=roles[i.id],
             )
             for i in visible_items
         ])
@@ -821,6 +868,7 @@ async def list_backlog_items(
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
                 is_service_epic=i.id in service_ids,
                 include_locked=i.id in locked_ids,
+                in_plan_role=roles[i.id],
             )
             for i in visible_items
         ])
@@ -830,6 +878,7 @@ async def list_backlog_items(
             multi_team_lock=lock_enabled, parent_context=_parent_context(i),
             is_service_epic=i.id in service_ids,
             include_locked=i.id in locked_ids,
+            in_plan_role=roles[i.id],
         )
         for i in visible_items
     ])

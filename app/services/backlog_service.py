@@ -250,6 +250,56 @@ def not_in_plan_backlog_ids(db: Session) -> set[str]:
     }
 
 
+def _mode_groups(
+    db: Session, lock_enabled: bool
+) -> tuple[list[tuple[BacklogItem, Issue]], set[str]]:
+    """Группы RFA по режиму планирования — по всему бэклогу, без фильтров списка.
+
+    Возвращает родителей «по эпикам» (режим выбран или навязан
+    мультикомандностью) и BacklogItem.id обычных детей родителей «целиком».
+    Служебные эпики (Дискавери) в дети не входят: их часы идут сверх родителя.
+    """
+    by_epics: list[tuple[BacklogItem, Issue]] = []
+    whole_parent_issue_ids: list[str] = []
+    for item, issue in group_parents(db):
+        if effective_planning_mode(item, issue, lock_enabled) == "by_epics":
+            by_epics.append((item, issue))
+        else:
+            whole_parent_issue_ids.append(issue.id)
+    if not whole_parent_issue_ids:
+        return by_epics, set()
+    rows = (
+        db.query(BacklogItem.id, Project.key, Issue.issue_type)
+        .join(Issue, BacklogItem.issue_id == Issue.id)
+        .outerjoin(Project, Issue.project_id == Project.id)
+        .filter(
+            Issue.parent_id.in_(whole_parent_issue_ids),
+            BacklogItem.archived_at.is_(None),
+        )
+        .all()
+    )
+    rules = load_rules(db)
+    whole_children = {
+        bid
+        for bid, project_key, issue_type in rows
+        if not is_service_epic(
+            rules, project_key=project_key or "", issue_type=issue_type or "", has_parent=True
+        )
+    }
+    return by_epics, whole_children
+
+
+def mode_group_ids(db: Session) -> tuple[set[str], set[str]]:
+    """BacklogItem.id родителей «по эпикам» и обычных детей родителей «целиком».
+
+    Тот же расчёт, что у отбора кандидатов (``mode_excluded_backlog_ids``), —
+    для строки списка: список с фильтром команды или на другой вкладке не
+    видит всей группы.
+    """
+    by_epics, whole_children = _mode_groups(db, multi_team_lock_enabled(db))
+    return {item.id for item, _ in by_epics}, whole_children
+
+
 def mode_excluded_backlog_ids(db: Session) -> set[str]:
     """BacklogItem.id, исключённые из кандидатов режимом планирования группы.
 
@@ -268,34 +318,11 @@ def mode_excluded_backlog_ids(db: Session) -> set[str]:
     ребёнок в активном бэклоге — одиночная задача из планирования не пропадает.
     """
     lock_enabled = multi_team_lock_enabled(db)
-    excluded: set[str] = set()
-    whole_parent_issue_ids: list[str] = []
-    for item, issue in group_parents(db):
-        if effective_planning_mode(item, issue, lock_enabled) == "by_epics":
-            forced = lock_enabled and issue_is_multi_team(issue)
-            if forced or not item.included_in_planning:
-                excluded.add(item.id)
-        else:
-            whole_parent_issue_ids.append(issue.id)
-    if whole_parent_issue_ids:
-        rows = (
-            db.query(BacklogItem.id, Project.key, Issue.issue_type)
-            .join(Issue, BacklogItem.issue_id == Issue.id)
-            .outerjoin(Project, Issue.project_id == Project.id)
-            .filter(
-                Issue.parent_id.in_(whole_parent_issue_ids),
-                BacklogItem.archived_at.is_(None),
-            )
-            .all()
-        )
-        rules = load_rules(db)
-        excluded |= {
-            bid
-            for bid, project_key, issue_type in rows
-            if not is_service_epic(
-                rules, project_key=project_key or "", issue_type=issue_type or "", has_parent=True
-            )
-        }
+    by_epics, excluded = _mode_groups(db, lock_enabled)
+    for item, issue in by_epics:
+        forced = lock_enabled and issue_is_multi_team(issue)
+        if forced or not item.included_in_planning:
+            excluded.add(item.id)
     return excluded
 
 
