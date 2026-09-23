@@ -360,7 +360,12 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
 
             {hoursData && <HoursBreakdownTable data={hoursData} loading={hoursLoading} />}
 
-            <Button style={{ marginTop: 12 }} onClick={() => setEditPlanOpen(true)}>
+            {/* До прихода свежей строки не открываем: иначе её приход перепишет форму правки. */}
+            <Button
+              style={{ marginTop: 12 }}
+              disabled={!freshItem}
+              onClick={() => setEditPlanOpen(true)}
+            >
               ✎ Редактировать план
             </Button>
           </>
