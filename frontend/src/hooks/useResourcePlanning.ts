@@ -7,6 +7,7 @@ import {
   patchConflict, type ConflictOut,
   explainConflict, type ConflictExplainOut,
   explainAssignment, type AssignmentExplainResponseV2,
+  getAssignmentCandidates, type AssignmentCandidateGroup,
   forkPlan, getPlanDiff,
   getPlanQuality,
   createDependency, patchDependency, deleteDependency,
@@ -131,6 +132,22 @@ export function useExplainAssignment(planId: string | null, assignmentId: string
     staleTime: 30_000,
     // Строка могла исчезнуть при пересчёте плана другим пользователем —
     // повтор такого запроса всё равно вернёт 404, только удвоит шум.
+    retry: false,
+  });
+}
+
+/** Кандидаты в исполнители фазы: группы «Из Jira» / «Моя команда» / «Другие команды». */
+export function useAssignmentCandidates(
+  planId: string | null,
+  assignmentId: string | null,
+  enabled: boolean,
+) {
+  return useQuery<AssignmentCandidateGroup[]>({
+    queryKey: ['assignment-candidates', planId, assignmentId],
+    queryFn: () => getAssignmentCandidates(planId!, assignmentId!),
+    enabled: !!planId && !!assignmentId && enabled,
+    staleTime: 30_000,
+    // Как у расшифровки: строка могла исчезнуть при пересчёте — повтор даст тот же 404.
     retry: false,
   });
 }
