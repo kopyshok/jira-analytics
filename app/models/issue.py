@@ -5,6 +5,7 @@ from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, false, true
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import SyncedMixin, generate_uuid
@@ -14,6 +15,13 @@ if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.worklog import Worklog
     from app.models.comment import Comment
+
+# JSON задачи. На PostgreSQL — JSONB: у простого json нет оператора равенства,
+# и SELECT DISTINCT по строкам задач падает. None пишется как SQL NULL,
+# а не как JSON-строка 'null', чтобы «IS NULL» находил пустые значения.
+_ISSUE_JSON = JSON(none_as_null=True).with_variant(
+    postgresql.JSONB(none_as_null=True), "postgresql"
+)
 
 
 class Issue(Base, SyncedMixin):
@@ -108,8 +116,8 @@ class Issue(Base, SyncedMixin):
     #   {role: {"source": field_id|"sum"|"manual", "fingerprint": str}};
     #   действует, пока отпечаток текущих кандидатов совпадает.
     # Действующее значение по-прежнему лежит в planned_<role>_hours_jira.
-    planned_hours_sources: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    planned_hours_choice: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    planned_hours_sources: Mapped[Optional[dict]] = mapped_column(_ISSUE_JSON, nullable=True)
+    planned_hours_choice: Mapped[Optional[dict]] = mapped_column(_ISSUE_JSON, nullable=True)
 
     @property
     def planned_analyst_hours(self) -> Optional[float]:
