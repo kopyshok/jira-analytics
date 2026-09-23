@@ -17,6 +17,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.connectors.jira_client import JiraClient, JiraClientError
+from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, ScenarioAllocation
 from app.repositories.base import BaseRepository
@@ -38,6 +39,7 @@ from app.services.backlog_service import (
 from app.services.category_resolver import CategoryResolver
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.hierarchy_rules import is_explicit_leaf, load_rules
+from app.services.plan_edit_service import PlanEditService, ROLES as PLAN_ROLES
 from app.services.sync_service import SyncService
 
 
@@ -186,6 +188,11 @@ class BacklogItemResponse(BaseModel):
     duration_dev_days_jira: Optional[float] = None
     duration_qa_days_jira: Optional[float] = None
     duration_launch_days_jira: Optional[float] = None
+    # Часы по ролям из Jira (без ручной правки) — для «из Jira» в правке плана.
+    estimate_analyst_hours_jira: Optional[float] = None
+    estimate_dev_hours_jira: Optional[float] = None
+    estimate_qa_hours_jira: Optional[float] = None
+    estimate_opo_hours_jira: Optional[float] = None
     # Hierarchy flags for RFA-row expansion in UI.
     planning_mode: str = "whole"
     included_in_planning: bool = True
@@ -377,6 +384,10 @@ def _to_response(
         duration_dev_days_jira=issue.duration_dev_days if issue else None,
         duration_qa_days_jira=issue.duration_qa_days if issue else None,
         duration_launch_days_jira=issue.duration_launch_days if issue else None,
+        estimate_analyst_hours_jira=issue.planned_analyst_hours_jira if issue else None,
+        estimate_dev_hours_jira=issue.planned_dev_hours_jira if issue else None,
+        estimate_qa_hours_jira=issue.planned_qa_hours_jira if issue else None,
+        estimate_opo_hours_jira=issue.planned_opo_hours_jira if issue else None,
         planning_mode=item.planning_mode,
         included_in_planning=item.included_in_planning,
         has_parent_in_backlog=has_parent_in_backlog,
@@ -1031,8 +1042,14 @@ async def update_backlog_item(
     data: BacklogItemUpdate,
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
+    current_user=Depends(get_current_user),
 ):
-    """Частичное обновление элемента бэклога."""
+    """Частичное обновление элемента бэклога.
+
+    Часы по ролям у Jira-задачи — это её ручное значение (живёт в задаче):
+    пишем через правку плана с записью в журнал, копия в строке пересчитается
+    оттуда. Прямая запись в копию затиралась бы следующим синком.
+    """
     item = (
         db.query(BacklogItem)
         .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
@@ -1046,8 +1063,25 @@ async def update_backlog_item(
     if not patch:
         return _to_response(item, _approved_scenarios_for(db, item.id))
 
+    role_hours = {
+        role: patch.pop(f"estimate_{role}_hours")
+        for role in PLAN_ROLES
+        if f"estimate_{role}_hours" in patch
+    }
+    if role_hours and item.issue_id is not None:
+        # Коммитит и сам выравнивает копию часов и итог в строке. Идёт до
+        # остальных полей: выравнивание перетягивает из задачи и название,
+        # вовлечённость, длительности — правка из этого же запроса не должна
+        # им затереться.
+        PlanEditService(db).edit(
+            item.issue_id, role_hours, "Правка в списке бэклога",
+            user_id=current_user.id,
+        )
+        role_hours = {}
     for key, value in patch.items():
         setattr(item, key, value)
+    for role, value in role_hours.items():
+        setattr(item, f"estimate_{role}_hours", value)
     _recompute_total(item)
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
