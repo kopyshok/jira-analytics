@@ -1,6 +1,6 @@
 import { useRef, useMemo, useState, useEffect } from 'react';
 import type { AssignmentOut, DependencyOut, ExternalBookingOut, ScheduledBlock } from '../../api/resourcePlanning';
-import type { EmployeeResponse } from '../../types/api';
+import type { EmployeeResponse, ProductionCalendarDayResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
 import { buildTimeline, buildWorkdayTimeline, dateToLeft, quarterBounds, PX_PER_DAY } from '../../utils/gantt';
 import type { ViewMode } from './GanttRows';
@@ -16,6 +16,9 @@ import { useRpPreferences } from '../../hooks/useRpPreferences';
 
 const LEFT_COL_DEFAULT = 280;
 const LEFT_COL_TWO_LEVEL = 540;
+// Одна и та же пустая ссылка, пока календарь грузится: новый [] на каждом
+// рендере пересобирал бы шкалу и блок «Привлечённые».
+const NO_CALENDAR: ProductionCalendarDayResponse[] = [];
 
 interface Props {
   assignments: AssignmentOut[];
@@ -111,7 +114,7 @@ export default function GanttChart({
   }, []);
 
   const calendarQuery = useProductionCalendarYear(year);
-  const calendar = calendarQuery.data ?? [];
+  const calendar = calendarQuery.data ?? NO_CALENDAR;
   const { prefs } = useRpPreferences();
 
   // Workday mode forces day scale (week/month labels don't align with workday blocks)
