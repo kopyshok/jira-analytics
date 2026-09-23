@@ -29,6 +29,7 @@ from app.services.plan_sources import (
     ROLE_SETTING_KEYS,
     build_candidates,
     candidates_to_json,
+    fingerprint,
     parse_field_setting,
     resolve_role,
 )
@@ -484,20 +485,29 @@ def _apply_plan_sources(
     действующие Jira-значения {role: часы} для ``_record_plan_changes``.
 
     Спор без действующего выбора даёт первого кандидата по настройке.
+    Выбор, чей отпечаток разошёлся с кандидатами, удаляется: иначе возврат
+    значений в Jira к прежним молча «решил» бы спор старым выбором.
     """
-    choice = issue.planned_hours_choice or {}
+    old_choice = issue.planned_hours_choice or {}
+    choice: dict[str, Any] = {}
     sources: dict[str, list] = {}
     values: dict[str, Optional[float]] = {}
     for role, key in ROLE_SETTING_KEYS.items():
         specs = parse_field_setting(planned_ids.get(key))
         raw = {s.field_id: _to_float(extra.get(s.field_id)) for s in specs}
         cands = build_candidates(specs, raw)
+        role_choice = old_choice.get(role)
+        if role_choice and role_choice.get("fingerprint") == fingerprint(cands):
+            choice[role] = role_choice
         values[role] = resolve_role(cands, choice.get(role)).value
         if cands:
             sources[role] = candidates_to_json(cands)
     new_sources = sources or None
     if issue.planned_hours_sources != new_sources:
         issue.planned_hours_sources = new_sources
+    new_choice = choice or None
+    if issue.planned_hours_choice != new_choice:
+        issue.planned_hours_choice = new_choice
     return values
 
 

@@ -3,7 +3,7 @@ import json
 from unittest.mock import MagicMock
 
 from app.models import AppSetting, Issue, Project
-from app.services.plan_sources import SUM_SOURCE, candidates_from_json, fingerprint
+from app.services.plan_sources import SUM_SOURCE, candidates_from_json, disputes_for, fingerprint
 from app.services.sync_service import SyncService, _to_float
 from tests.test_sync_service import _make_issue_schema_with_extra
 
@@ -98,6 +98,28 @@ def test_zero_field_is_not_a_candidate(db_session):
     assert [c.source for c in candidates_from_json(issue.planned_hours_sources["dev"])] == [
         "customfield_14648",
     ]
+
+
+def test_stale_choice_dropped_so_old_values_reopen_dispute(db_session):
+    """Значения в Jira поменялись — синк удаляет устаревший выбор. Вернулись
+    старые значения — спор снова открыт, а не решён молча прежним выбором."""
+    svc, proj = _setup(db_session)
+    old = {"customfield_12432": 100, "customfield_14648": 120}
+    issue = _upsert(svc, proj, old)
+    cands = candidates_from_json(issue.planned_hours_sources["dev"])
+    issue.planned_hours_choice = {"dev": {"source": "customfield_14648", "fingerprint": fingerprint(cands)}}
+    db_session.commit()
+    issue = _upsert(svc, proj, old)
+    assert issue.planned_dev_hours_jira == 120.0
+    assert issue.planned_hours_choice is not None
+
+    issue = _upsert(svc, proj, {"customfield_12432": 100, "customfield_14648": 130})
+    assert issue.planned_hours_choice is None
+    assert _is_sql_null(db_session, Issue.planned_hours_choice)
+
+    issue = _upsert(svc, proj, old)
+    assert issue.planned_dev_hours_jira == 100.0
+    assert list(disputes_for(issue.planned_hours_sources, issue.planned_hours_choice, set())) == ["dev"]
 
 
 def test_no_fields_filled_clears_sources(db_session):
