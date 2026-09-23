@@ -6,7 +6,7 @@ from app.database import _engine_kwargs
 def test_sqlite_engine_options_include_thread_check():
     kwargs = _engine_kwargs("sqlite:///./data/test.db", echo=False)
 
-    assert kwargs["connect_args"] == {"check_same_thread": False}
+    assert kwargs["connect_args"] == {"check_same_thread": False, "timeout": 30}
     assert kwargs["echo"] is False
 
 
