@@ -29,6 +29,7 @@ from app.services.plan_sources import (
     ROLE_SETTING_KEYS,
     build_candidates,
     candidates_to_json,
+    field_layout,
     fingerprint,
     parse_field_setting,
     resolve_role,
@@ -1341,14 +1342,15 @@ class SyncService:
         return count
 
     def _plan_hours_fields_changed(self, used: dict[str, Optional[str]]) -> bool:
-        """Настройка полей оценки в базе отличается от прочитанной в начале синка.
+        """Поля оценки в базе отличаются от прочитанных в начале синка
+        (сами поля, их вид или порядок; одни названия не в счёт).
 
         Читаем значения колонкой, а не объектом: объект из начала синка мог
         остаться в сессии со старым значением.
         """
         for key in PLAN_HOURS_SETTING_KEYS:
             now = self.db.query(AppSetting.value).filter(AppSetting.key == key).scalar()
-            if parse_field_setting(now) != parse_field_setting(used.get(key)):
+            if field_layout(now) != field_layout(used.get(key)):
                 return True
         return False
 
