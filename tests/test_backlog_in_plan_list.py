@@ -1,4 +1,9 @@
-"""Служебный эпик в списке целевых задач — только дочерней строкой своей RFA."""
+"""Служебный эпик в списке целевых задач.
+
+Родитель-RFA в том же списке — дочерней строкой; родителя в списке нет (чужая
+команда, архив) — корнем с контекстом родителя. Признак «служебный эпик»
+отдаётся в обеих строках, чтобы интерфейс показал метку «Дискавери».
+"""
 from datetime import datetime
 
 import pytest
@@ -51,12 +56,30 @@ def test_service_epic_shown_as_child_row_off_plan(client, testclient_db_session)
     assert ids["i-disc"] not in roots, "Дискавери — не инициатива, корнем не показывается"
     kids = {c["id"]: c for c in roots[ids["i-rfa"]]["children"]}
     assert kids[ids["i-disc"]]["included_in_planning"] is False
+    assert kids[ids["i-disc"]]["is_service_epic"] is True
+    assert roots[ids["i-rfa"]]["is_service_epic"] is False
 
 
-def test_service_epic_hidden_when_parent_not_listed(client, testclient_db_session):
+def test_service_epic_shown_with_parent_context_when_parent_not_listed(client, testclient_db_session):
     ids = _seed(testclient_db_session)
     parent = testclient_db_session.get(BacklogItem, ids["i-rfa"])
     parent.archived_at = datetime.utcnow()
     testclient_db_session.commit()
     rows = client.get("/api/v1/backlog", params={"view": "active"}).json()
-    assert ids["i-disc"] not in _all_ids(rows)
+    roots = {r["id"]: r for r in rows}
+    assert ids["i-disc"] in roots, "без родителя в списке — корнем"
+    row = roots[ids["i-disc"]]
+    assert row["is_service_epic"] is True
+    assert row["parent_context"]["key"] == "RFA-1"
+
+
+def test_service_epic_of_other_team_shown_in_own_team(client, testclient_db_session):
+    """Дискавери своей команды внутри чужой RFA виден в списке своей команды."""
+    db = testclient_db_session
+    ids = _seed(db)
+    db.get(Issue, "i-rfa").team = "T2"
+    db.commit()
+    rows = client.get("/api/v1/backlog", params={"view": "active", "teams": "T1"}).json()
+    roots = {r["id"]: r for r in rows}
+    assert ids["i-disc"] in roots
+    assert roots[ids["i-disc"]]["parent_context"]["team"] == "T2"

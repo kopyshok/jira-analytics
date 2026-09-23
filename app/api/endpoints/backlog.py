@@ -103,6 +103,8 @@ class BacklogChildSchema(BaseModel):
     issue_type: Optional[str] = None
     status: Optional[str] = None
     included_in_planning: bool = True
+    # Служебный эпик (Дискавери внутри RFA): часы сверх родителя, в план — по галочке.
+    is_service_epic: bool = False
     # Плановые часы дочернего Эпика — чтобы строка-ребёнок в таблице показывала
     # свои АН/ПР/ТС/ОПЭ, а не нули.
     estimate_hours: Optional[float] = None
@@ -164,6 +166,8 @@ class BacklogItemResponse(BaseModel):
     # Родитель, которого нет в этом списке (обычно чужая команда) — показываем
     # как контекст, чтобы было видно, из какой RFA растёт задача.
     parent_context: Optional["ParentContextSchema"] = None
+    # Служебный эпик (Дискавери внутри RFA): часы сверх родителя, в план — по галочке.
+    is_service_epic: bool = False
     goals: Optional[str] = None
     quarter_label: Optional[str] = None
     # Parallel staffing overrides (NULL = inherit project default).
@@ -321,6 +325,7 @@ def _to_response(
     # это её значение по умолчанию; списки передают реальное.
     multi_team_lock: bool = True,
     parent_context: Optional[ParentContextSchema] = None,
+    is_service_epic: bool = False,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
@@ -363,6 +368,7 @@ def _to_response(
         is_multi_team=is_multi_team,
         planning_mode_locked=is_multi_team and multi_team_lock,
         parent_context=parent_context,
+        is_service_epic=is_service_epic,
         goals=issue.goals if issue else None,
         quarter_label=quarter_label,
         parallel_count_analyst=item.parallel_count_analyst,
@@ -609,16 +615,9 @@ async def list_backlog_items(
         and it.issue is not None
         and is_service_epic(rules, **_rule_args(it))
     }
+    # Родитель не в этом списке (чужая команда, архив) — служебный эпик идёт
+    # корнем с контекстом родителя: он кандидат в сценарии своей команды.
     items = [it for it in items if it.id in service_ids or not _item_is_leaf(it)]
-    # Служебный эпик без родителя в этом же списке не показываем вовсе.
-    listed_issue_ids = {
-        it.issue_id for it in items if it.issue_id is not None and it.id not in service_ids
-    }
-    items = [
-        it
-        for it in items
-        if it.id not in service_ids or it.issue.parent_id in listed_issue_ids
-    ]
 
     items.sort(
         key=lambda i: (
@@ -666,6 +665,7 @@ async def list_backlog_items(
             issue_type=child_issue.issue_type if child_issue else None,
             status=child_issue.status if child_issue else None,
             included_in_planning=child_bi.included_in_planning,
+            is_service_epic=child_bi.id in service_ids,
             estimate_hours=child_bi.estimate_hours,
             estimate_analyst_hours=child_bi.estimate_analyst_hours,
             estimate_dev_hours=child_bi.estimate_dev_hours,
@@ -722,6 +722,7 @@ async def list_backlog_items(
                 i, _approved_scenarios_for(db, i.id), labels.get(i.id),
                 *_hierarchy_flags(i), _children_for(i),
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
+                is_service_epic=i.id in service_ids,
             )
             for i in visible_items
         ])
@@ -731,6 +732,7 @@ async def list_backlog_items(
             _to_response(
                 i, None, labels.get(i.id), *_hierarchy_flags(i), _children_for(i),
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
+                is_service_epic=i.id in service_ids,
             )
             for i in visible_items
         ])
@@ -738,6 +740,7 @@ async def list_backlog_items(
         _to_response(
             i, None, None, *_hierarchy_flags(i), _children_for(i),
             multi_team_lock=lock_enabled, parent_context=_parent_context(i),
+            is_service_epic=i.id in service_ids,
         )
         for i in visible_items
     ])
