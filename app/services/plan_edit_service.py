@@ -7,7 +7,8 @@ from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Issue, PlanAudit
+from app.models import BacklogItem, Issue, PlanAudit
+from app.services.backlog_service import BacklogService
 
 ROLES = ("analyst", "dev", "qa", "opo")
 
@@ -15,6 +16,20 @@ ROLES = ("analyst", "dev", "qa", "opo")
 class PlanEditService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _sync_backlog(self, issue: Issue) -> None:
+        """Перенести действующие часы задачи в её строку бэклога.
+
+        Строка списка, сценарии и ресурсный план читают копию часов в строке
+        бэклога; без этого вызова ручная правка появлялась там только после
+        следующего синка. Задача вне бэклога — ничего не создаём.
+        """
+        has_item = (
+            self.db.query(BacklogItem.id).filter_by(issue_id=issue.id).first()
+            is not None
+        )
+        if has_item:
+            BacklogService(self.db).sync_from_issue(issue)
 
     def edit(
         self,
@@ -43,6 +58,7 @@ class PlanEditService:
                 source="manual_edit", user_id=user_id, comment=comment,
                 created_at=datetime.utcnow(),
             ))
+        self._sync_backlog(issue)
         self.db.commit()
         return issue
 
@@ -88,6 +104,7 @@ class PlanEditService:
                 comment=f"Откат к записи {audit_id}",
                 created_at=datetime.utcnow(),
             ))
+        self._sync_backlog(issue)
         self.db.commit()
         return issue
 
@@ -137,6 +154,7 @@ class PlanEditService:
                 comment="Конфликт проигнорирован, ручная правка сохранена",
                 created_at=datetime.utcnow(),
             ))
+        self._sync_backlog(issue)
         self.db.commit()
         return issue
 
