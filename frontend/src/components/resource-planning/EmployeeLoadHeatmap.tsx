@@ -38,6 +38,36 @@ function isoDate(s: string): Date {
   return new Date(s + 'T00:00:00');
 }
 
+/** «2026-08-11» → «11.08». */
+function fmtDM(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+}
+
+/** Подпись под фамилией: откуда пришёл / куда выбыл в этом квартале. */
+function moveNote(row: EmployeeLoadOut): string {
+  const parts: string[] = [];
+  if (row.joined_from) {
+    const d = fmtDM(row.joined_from.date);
+    parts.push(row.joined_from.team ? `пришёл ${d} из ${row.joined_from.team}` : `пришёл ${d}`);
+  }
+  if (row.left_to) {
+    const d = fmtDM(row.left_to.date);
+    parts.push(`выбыл ${d} → ${row.left_to.team ?? 'не в командах'}`);
+  }
+  return parts.join(' · ');
+}
+
+/** Текст подсказки для дня вне команды. */
+function outOfTeamText(row: EmployeeLoadOut, date: string): string {
+  if (row.left_to && date >= row.left_to.date) {
+    return `не в команде · с ${fmtDM(row.left_to.date)} — ${row.left_to.team ?? 'не в командах'}`;
+  }
+  if (row.joined_from && date < row.joined_from.date) {
+    return `не в команде · до ${fmtDM(row.joined_from.date)} — ${row.joined_from.team ?? 'не в командах'}`;
+  }
+  return 'вне команды';
+}
+
 /** Цвет клетки рабочего дня по загрузке. */
 function loadColor(pct: number): { bg: string; border?: string } {
   if (pct <= 0) {
@@ -145,11 +175,11 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
 
   if (!data) return null;
 
-  const showTip = (e: React.MouseEvent, date: string, off: Off, pct: number) => {
+  const showTip = (e: React.MouseEvent, row: EmployeeLoadOut, date: string, off: Off, pct: number) => {
     const dt = isoDate(date);
     const head = `${RU_WD[dt.getDay()]}, ${dt.getDate()} ${RU_MONTHS_SHORT[dt.getMonth()]}`;
     let body: string;
-    if (off === 'out_of_team') body = 'вне команды';
+    if (off === 'out_of_team') body = outOfTeamText(row, date);
     else if (off === 'absence') body = 'отпуск / отсутствие';
     else if (off === 'holiday') body = 'праздник';
     else body = pct > 0 ? `${Math.round(pct)}%` : 'нет загрузки';
@@ -223,6 +253,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
           {/* Строки сотрудников; при делении команды — секциями по группам. */}
           {orderedRows.map(({ row, byDate, avg, allEmpty }, ri) => {
             const avgColor = loadColor(avg);
+            const note = moveNote(row);
             const group = groupOf(row.employee_id);
             const prev = ri === 0 ? null : groupOf(orderedRows[ri - 1].row.employee_id);
             const header = grouped && group !== prev ? (
@@ -249,7 +280,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  height: ROW_H,
+                  height: note ? ROW_H + 12 : ROW_H,
                   background: ri % 2 === 0 ? 'rgba(0,201,200,0.03)' : 'transparent',
                 }}
               >
@@ -269,17 +300,33 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                     height: '100%',
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: '#fff',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {row.employee_name ?? row.employee_id}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: '#fff',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {row.employee_name ?? row.employee_id}
+                    </span>
+                    {note && (
+                      <span
+                        title={note}
+                        style={{
+                          fontSize: 10,
+                          color: '#e0a84a',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {note}
+                      </span>
+                    )}
+                  </div>
                   {row.employee_role && (
                     <span style={{ fontSize: 10, color: '#5a8ab8', flexShrink: 0 }}>{row.employee_role}</span>
                   )}
@@ -326,7 +373,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                         return (
                           <div
                             key={cell.date}
-                            onMouseEnter={(e) => showTip(e, cell.date, off, pct)}
+                            onMouseEnter={(e) => showTip(e, row, cell.date, off, pct)}
                             onMouseLeave={() => setTip(null)}
                             onMouseOver={(e) => {
                               (e.currentTarget as HTMLDivElement).style.filter = 'brightness(1.25)';

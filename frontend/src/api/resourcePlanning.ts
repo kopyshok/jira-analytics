@@ -138,6 +138,14 @@ export interface EmployeeLoadDay {
   off?: 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null;
 }
 
+/** Переход сотрудника на границе участия в команде плана внутри квартала. */
+export interface TeamMove {
+  /** Выбыл — первый день вне команды; пришёл — первый день в команде. */
+  date: string;
+  /** Команда по ту сторону границы; null — ни в одной команде. */
+  team: string | null;
+}
+
 export interface EmployeeLoadOut {
   employee_id: string;
   employee_name: string | null;
@@ -147,6 +155,10 @@ export interface EmployeeLoadOut {
   member_from?: string | null;
   /** Последний день участия внутри квартала; null — участие до конца квартала. */
   member_to?: string | null;
+  /** Куда выбыл внутри квартала; null — участие до конца квартала. */
+  left_to?: TeamMove | null;
+  /** Откуда пришёл внутри квартала; null — участие с начала квартала. */
+  joined_from?: TeamMove | null;
 }
 
 export interface ResetCounts {
