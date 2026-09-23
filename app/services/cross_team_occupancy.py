@@ -156,15 +156,22 @@ def external_bookings(
     """Брони сотрудников в опорных планах квартала всех команд, кроме ``team``.
 
     ``team=None`` — берутся опорные планы всех команд (загрузка за квартал).
-    Два запроса на любой объём: опорные планы + их назначения.
+    Кроме планов квартала — опорные планы прошлого квартала: их фазы выползают
+    в этот квартал на месяц запаса и тоже занимают человека. Окно ``start`` —
+    ``end`` отсекает всё, что в него не попадает.
+    Три запроса на любой объём: опорные планы двух кварталов + их назначения.
     """
     ids = [i for i in dict.fromkeys(employee_ids) if i]
     if not ids or not year or not quarter:
         return []
-    refs = reference_plans(db, year, quarter, exclude_team=team)
-    if not refs:
+    prev_year, prev_quarter = (year, quarter - 1) if quarter > 1 else (year - 1, 4)
+    by_plan = {
+        r.plan_id: r
+        for y, q in ((prev_year, prev_quarter), (year, quarter))
+        for r in reference_plans(db, y, q, exclude_team=team).values()
+    }
+    if not by_plan:
         return []
-    by_plan = {r.plan_id: r for r in refs.values()}
     rows = (
         db.execute(
             select(ResourcePlanAssignment)
@@ -276,8 +283,11 @@ def quarter_load_pct(
 ) -> Dict[str, float]:
     """Загрузка за квартал по всем опорным планам, % от «календарь − отсутствия».
 
-    Шкала та же, что у планировщика (6 ч в обычный день). Запросов — константа
-    на любой объём: опорные планы, их назначения, календарь, отсутствия.
+    Знаменатель — доступность планировщика: часы производственного календаря
+    (6 ч только для будней, которых в календаре нет), минус отсутствия.
+    Числитель — брони опорных планов этого квартала и хвосты прошлого, вошедшие
+    в квартал. Запросов — константа на любой объём: опорные планы, их
+    назначения, календарь, отсутствия.
     """
     if not employees:
         return {}

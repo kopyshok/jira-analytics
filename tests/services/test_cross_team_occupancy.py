@@ -162,3 +162,25 @@ def test_quarter_load_pct_counts_all_reference_plans(db_session):
     # Q1 2026 без записей календаря: 64 будних дня × 6 ч = 384 ч.
     assert load[e.id] == round(21 / 384 * 100, 1)
     assert load[m.id] == 0.0
+
+
+def test_previous_quarter_plan_spilling_into_quarter_counts(db_session):
+    """План другой команды на прошлый квартал, выползающий в этот, тоже занимает человека."""
+    e = make_employee(db_session, "Пряничников", "A")
+    sc, plan = make_plan(db_session, "A", year=2025, quarter="Q4")
+    item = add_item(db_session, sc, "Хвост Q4", dev=12)
+    book(db_session, plan, item, e, {"2025-12-31": 6.0, "2026-01-05": 6.0})
+    db_session.commit()
+
+    bookings = cto.external_bookings(
+        db_session, team="B", year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-04-30"),
+    )
+
+    assert cto.daily_totals(bookings) == {e.id: {D("2026-01-05"): 6.0}}
+    assert [b.team for b in bookings] == ["A"]
+    # Своя команда своим прошлым кварталом не «занимает» — это не чужая бронь.
+    assert cto.external_bookings(
+        db_session, team="A", year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-04-30"),
+    ) == []
