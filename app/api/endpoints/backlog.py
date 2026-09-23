@@ -595,8 +595,7 @@ async def list_backlog_items(
     # дочерней строкой своей RFA: у них есть галочка «В план».
     rules = load_rules(db)
 
-    def _rule_args(it: BacklogItem) -> dict:
-        issue = it.issue
+    def _rule_args(issue: Issue) -> dict:
         return {
             "project_key": issue.project.key if issue.project else "",
             "issue_type": issue.issue_type or "",
@@ -606,14 +605,14 @@ async def list_backlog_items(
     def _item_is_leaf(it: BacklogItem) -> bool:
         if it.issue_id is None or it.issue is None:
             return False
-        return is_explicit_leaf(rules, **_rule_args(it))
+        return is_explicit_leaf(rules, **_rule_args(it.issue))
 
     service_ids = {
         it.id
         for it in items
         if it.issue_id is not None
         and it.issue is not None
-        and is_service_epic(rules, **_rule_args(it))
+        and is_service_epic(rules, **_rule_args(it.issue))
     }
     # Родитель не в этом списке (чужая команда, архив) — служебный эпик идёт
     # корнем с контекстом родителя: он кандидат в сценарии своей команды.
