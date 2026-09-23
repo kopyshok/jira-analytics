@@ -47,6 +47,10 @@ API (чистое чтение, без commit):
 - `active_on_clause` / `overlaps_clause` — условия для вставки в чужой запрос
 - `membership_on_column_exists(teams, employee_col, date_col)` / `has_any_membership_on(...)` — EXISTS-корреляция по дате строки (факт/аналитика по `Worklog.started_at`)
 
+## cross_team_occupancy ([cross_team_occupancy.py](cross_team_occupancy.py))
+
+Занятость сотрудников в планах других команд (чистое чтение). Опорный план команды на квартал (`reference_plans`): утверждённый сценарий → `is_baseline` → «Готово» → свежесть (`_plan_sort_key`); нет утверждённого — план свежайшего черновика, `provisional=True`; форки и планы без сценария не участвуют. `external_bookings(team=...)` — брони в опорных планах всех команд, кроме `team` (`team=None` — всех), два запроса на любой объём; фаза без посуточной раскладки размазывается по будням. `subtract_occupancy` вычитается из доступности в `compute_schedule` (раскладка), выравниватель меряет перегрузку по «сырой» ёмкости. `overlap_days` — живой конфликт `CROSS_TEAM_OVERLAP` в `get_gantt` (не хранится, id с префиксом `live:`, PATCH статуса → 409). «Привлечённый» — не состоял в команде плана ни дня квартала (`borrowed_ids`). `quarter_load_pct` — загрузка за квартал для выбора исполнителя. Брони вычитает и `ResourceBaseService` (база и «На бэклог» сценария). «Разработчик» из Jira — [jira_developer.py](jira_developer.py).
+
 ## EmployeeTeamService ([employee_team_service.py](employee_team_service.py))
 
 CRUD для периодизованного `employee_teams`. API: `list_teams`, `add_team`, `remove_team`, `set_primary`, `replace_teams`, `set_joined_at`, `set_left_at`, `transfer`.
