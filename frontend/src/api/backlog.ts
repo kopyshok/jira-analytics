@@ -164,3 +164,6 @@ export const archiveBacklogItem = (id: string) =>
 
 export const restoreBacklogItem = (id: string) =>
   api.post<BacklogItemResponse>(`/backlog/${id}/restore`);
+
+export const setBacklogIncluded = (id: string, included: boolean) =>
+  api.patch<{ id: string; included_in_planning: boolean }>(`/backlog/${id}/included`, { included });

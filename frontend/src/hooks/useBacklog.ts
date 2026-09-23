@@ -11,6 +11,7 @@ import {
   type BacklogRefreshDone,
   archiveBacklogItem,
   restoreBacklogItem,
+  setBacklogIncluded,
 } from '../api/backlog';
 import { getProjects } from '../api/projects';
 import type { BacklogView } from '../types/api';
@@ -110,5 +111,18 @@ export const useRestoreBacklogItem = () => {
   return useMutation({
     mutationFn: restoreBacklogItem,
     onSuccess: () => invalidateAllBacklog(qc),
+  });
+};
+
+/** Галочка «В план»: выключенная задача не попадает в сценарии. */
+export const useSetBacklogIncluded = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, included }: { id: string; included: boolean }) =>
+      setBacklogIncluded(id, included),
+    onSuccess: () => {
+      invalidateAllBacklog(qc);
+      qc.invalidateQueries({ queryKey: ['planning'] });
+    },
   });
 };
