@@ -6,6 +6,7 @@ import calendar as cal_module
 import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from itertools import groupby
 from typing import Dict, List, Optional, Tuple
 
 from dateutil.relativedelta import relativedelta
@@ -730,6 +731,9 @@ class ResourcePlanningService:
                         d_lock += timedelta(days=1)
 
         new_assignments: List[ResourcePlanAssignment] = list(pinned_existing)
+        # {(item_id, phase): роли, на которые не нашлось исполнителя} — для
+        # конфликта о неразмещённых часах.
+        unstaffed: Dict[Tuple[str, str], set] = defaultdict(set)
 
         # Скип фаз/частей которые уже зафиксированы pin'ом
         pinned_phase_keys = {
@@ -864,8 +868,11 @@ class ResourcePlanningService:
                         involvement=opo_involvement,
                         parallel_count=1,
                     )
-                    for emp_id, p_hours in parts:
-                        if not emp_id or p_hours <= 0:
+                    for role, (emp_id, p_hours) in zip(("analyst", "dev"), parts):
+                        if p_hours <= 0:
+                            continue
+                        if not emp_id:
+                            unstaffed[(item.id, "opo")].add(role)
                             continue
                         segments, daily = self._allocate_hours_with_breakdown(
                             emp_id, p_hours, earliest_start, q_end_extended, remaining,
@@ -912,6 +919,7 @@ class ResourcePlanningService:
                 # analyst / dev — обычное allocation для одного сотрудника
                 employee_id = assignments_by_role.get(phase, {}).get(item.id)
                 if not employee_id:
+                    unstaffed[(item.id, phase)].add(phase)
                     continue
 
                 # Phase 3+4: вычисляем календарную длину фазы с учётом
@@ -1307,7 +1315,7 @@ class ResourcePlanningService:
         )
         detected += self._unplaced_conflict_dicts(
             items, new_assignments, alloc_by_item, pinned_phase_keys,
-            assignments_by_role,
+            assignments_by_role, unstaffed, {d["type"] for d in detected},
         )
         detected = aggregate_conflicts(detected, db_session=self.db)
         self._persist_conflicts(plan_id, detected)
@@ -3113,13 +3121,23 @@ class ResourcePlanningService:
         alloc_by_item: Dict[str, ScenarioAllocation],
         skip: set,
         executors: Dict[str, Dict[str, Optional[str]]],
+        unstaffed: Dict[Tuple[str, str], set],
+        team_gaps: set,
     ) -> List[dict]:
-        """UNPLACED_HOURS: фаза разложена не на все свои часы.
+        """UNPLACED_HOURS: у инициативы разложены не все часы фаз — одна запись на неё.
 
-        Часы не влезли в окно (квартал + месяц запаса) или не нашёлся
-        исполнитель — фаза не должна пропадать из плана молча. Фазы,
-        закреплённые пользователем по датам или разбивке (``skip``), не
-        проверяются: их объём он задал сам.
+        Фаза недоразложена, если часы не влезли в окно (квартал + месяц
+        запаса) — в том числе следом за предыдущей фазой, упёршейся в конец
+        окна, — или у неё нет исполнителя (``unstaffed``). Фаза без исполнителя
+        роли, отсутствие которой в команде уже отмечено командным конфликтом
+        (``team_gaps``: «Нет аналитика» / «Нет разработчика»), по каждой задаче
+        не повторяется. Фазы, закреплённые пользователем по датам или разбивке
+        (``skip``), не проверяются: их объём он задал сам.
+
+        Сообщение перечисляет недоразложенные фазы по порядку: «Анализ 16 из
+        40 ч; Разработка 0 из 40 ч — не поместилось в квартал и месяц
+        запаса»; фазы без исполнителя — с пометкой «нет исполнителя».
+        ``metric_value`` — сколько часов не разложено всего.
         """
         placed: Dict[Tuple[str, str], float] = defaultdict(float)
         first_row: Dict[Tuple[str, str], ResourcePlanAssignment] = {}
@@ -3131,8 +3149,14 @@ class ResourcePlanningService:
         def _h(v: float) -> str:
             return f"{round(v, 1):g}"
 
+        # Командный конфликт, который уже говорит, что исполнителя роли нет.
+        gap_of = {"analyst": "NO_ANALYST", "dev": "NO_DEV"}
         out: List[dict] = []
         for item in items:
+            short: List[Tuple[str, str]] = []  # (причина, «Фаза X из Y ч»)
+            missing = 0.0
+            emp_id: Optional[str] = None
+            assignment_id: Optional[str] = None
             for phase in PHASE_ORDER:
                 key = (item.id, phase)
                 if key in skip:
@@ -3141,27 +3165,44 @@ class ResourcePlanningService:
                 got = placed.get(key, 0.0)
                 if need <= 0 or got + 0.01 >= need:
                     continue
+                roles = unstaffed.get(key, set())
+                if roles and all(gap_of[r] in team_gaps for r in roles):
+                    continue
+                reason = (
+                    "нет исполнителя"
+                    if roles
+                    else "не поместилось в квартал и месяц запаса"
+                )
+                short.append(
+                    (reason, f"{PHASE_LABEL.get(phase, phase)} {_h(got)} из {_h(need)} ч")
+                )
+                missing += need - got
                 row = first_row.get(key)
-                emp_id = (
-                    row.employee_id
-                    if row is not None
-                    else executors.get(phase, {}).get(item.id)
-                )
-                no_executor = row is None and phase in ("analyst", "dev") and not emp_id
-                why = "нет исполнителя" if no_executor else "не хватило ёмкости"
-                out.append(
-                    {
-                        "type": "UNPLACED_HOURS",
-                        "severity": "critical",
-                        "detection_key": f"UNPLACED_HOURS:{item.id}:{phase}",
-                        "message": (
-                            f"{PHASE_LABEL.get(phase, phase)}: {why} — "
-                            f"размещено {_h(got)} из {_h(need)} ч"
-                        ),
-                        "metric_value": round(need - got, 2),
-                        "backlog_item_id": item.id,
-                        "assignment_id": row.id if row is not None else None,
-                        "employee_id": emp_id,
-                    }
-                )
+                if assignment_id is None and row is not None:
+                    assignment_id = row.id
+                if emp_id is None:
+                    emp_id = (
+                        row.employee_id
+                        if row is not None
+                        else executors.get(phase, {}).get(item.id)
+                    )
+            if not short:
+                continue
+            # Подряд идущие фазы с одной причиной — одним перечнем.
+            message = "; ".join(
+                "; ".join(text for _, text in run) + f" — {reason}"
+                for reason, run in groupby(short, key=lambda s: s[0])
+            )
+            out.append(
+                {
+                    "type": "UNPLACED_HOURS",
+                    "severity": "critical",
+                    "detection_key": f"UNPLACED_HOURS:{item.id}",
+                    "message": message,
+                    "metric_value": round(missing, 2),
+                    "backlog_item_id": item.id,
+                    "assignment_id": assignment_id,
+                    "employee_id": emp_id,
+                }
+            )
         return out
