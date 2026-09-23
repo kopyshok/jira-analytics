@@ -525,3 +525,23 @@ class BacklogService:
             ScenarioAllocation.scenario_id.in_(draft_scenario_ids),
         ).delete(synchronize_session=False)
         self.db.flush()
+
+
+def switch_off_new_service_epics(db: Session, before: set[str]) -> set[str]:
+    """Задачи, ставшие служебными эпиками после правки правил иерархии, —
+    снять галочку «В план» и убрать из черновых сценариев.
+
+    ``before`` — ``service_epic_backlog_ids`` до правки. Уже бывшие служебными
+    не трогаем: их галочку PM мог поставить сам.
+    """
+    newly = service_epic_backlog_ids(db) - before
+    if not newly:
+        return newly
+    svc = BacklogService(db)
+    for bid in newly:
+        item = db.get(BacklogItem, bid)
+        if item is not None:
+            item.included_in_planning = False
+        svc._remove_draft_allocations(bid)
+    db.flush()
+    return newly

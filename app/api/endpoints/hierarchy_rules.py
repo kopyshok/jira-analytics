@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.hierarchy_rule import HierarchyRule
 from app.repositories.base import BaseRepository
+from app.services.backlog_service import service_epic_backlog_ids, switch_off_new_service_epics
 
 router = APIRouter()
 
@@ -80,8 +81,11 @@ def list_rules(db: Session = Depends(get_db)):
 @router.post("", response_model=HierarchyRuleResponse, status_code=status.HTTP_201_CREATED)
 def create_rule(body: HierarchyRuleCreate, db: Session = Depends(get_db)):
     _check_parent_predicates(body.require_no_parent, body.require_parent)
+    # Снимок служебных эпиков до правки: ставшие служебными выключаем из плана.
+    before = service_epic_backlog_ids(db)
     repo = BaseRepository(HierarchyRule, db)
     rule = repo.create(body.model_dump())
+    switch_off_new_service_epics(db, before)
     db.commit()
     return rule
 
@@ -96,8 +100,11 @@ def update_rule(rule_id: str, body: HierarchyRuleUpdate, db: Session = Depends(g
         changes.get("require_no_parent", rule.require_no_parent),
         changes.get("require_parent", rule.require_parent),
     )
+    before = service_epic_backlog_ids(db)
     for field, value in changes.items():
         setattr(rule, field, value)
+    db.flush()
+    switch_off_new_service_epics(db, before)
     db.commit()
     db.refresh(rule)
     return rule
@@ -108,18 +115,24 @@ def delete_rule(rule_id: str, db: Session = Depends(get_db)):
     rule = db.get(HierarchyRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Правило не найдено")
+    before = service_epic_backlog_ids(db)
     db.delete(rule)
+    db.flush()
+    switch_off_new_service_epics(db, before)
     db.commit()
     return {"status": "deleted"}
 
 
 @router.post("/reorder", response_model=List[HierarchyRuleResponse])
 def reorder_rules(body: ReorderRequest, db: Session = Depends(get_db)):
+    before = service_epic_backlog_ids(db)
     for index, rule_id in enumerate(body.ids):
         rule = db.get(HierarchyRule, rule_id)
         if not rule:
             raise HTTPException(status_code=404, detail=f"Правило {rule_id} не найдено")
         rule.priority = (index + 1) * 10
+    db.flush()
+    switch_off_new_service_epics(db, before)
     db.commit()
     stmt = (
         select(HierarchyRule)
