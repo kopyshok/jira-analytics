@@ -11,7 +11,7 @@
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Optional
+from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
@@ -181,37 +181,8 @@ class ResourceBaseService:
             # Fallback: Пн-Пт = 8 ч, Сб-Вс = 0 ч
             return DEFAULT_HOURS_PER_DAY if d.weekday() < 5 else 0.0
 
-        # --- правила сценария (только subtracts_from_pool=True) ---
-        sub_wt_ids = {
-            w.id
-            for w in self.db.query(MandatoryWorkType)
-            .filter(MandatoryWorkType.subtracts_from_pool == True)  # noqa: E712
-            .all()
-        }
-        if not sub_wt_ids:
-            rules: list[ScenarioRule] = []
-        else:
-            rules = (
-                self.db.query(ScenarioRule)
-                .filter(
-                    ScenarioRule.scenario_id == scenario.id,
-                    ScenarioRule.work_type_id.in_(sub_wt_ids),
-                )
-                .all()
-            )
-
-        # percent_of_norm по роли: role=None — фоллбэк для всех
-        fallback_pct = sum(r.percent_of_norm for r in rules if r.role is None)
-        by_role_pct: dict[str, float] = {}
-        for r in rules:
-            if r.role:
-                by_role_pct[r.role] = by_role_pct.get(r.role, 0.0) + r.percent_of_norm
-
-        def mandatory_pct(role: Optional[str]) -> float:
-            """% нормы, занятый обязательными работами для данной роли."""
-            if role and role in by_role_pct:
-                return by_role_pct[role]
-            return fallback_pct
+        # --- доля нормы после обязательных работ (subtracts_from_pool=True) ---
+        pool_share = self._pool_share(scenario)
 
         # --- итерация по сотрудникам ---
         # Кто из состава ещё числится в других командах этого же квартала.
@@ -256,12 +227,7 @@ class ResourceBaseService:
                     cur += timedelta(days=1)
                     continue
 
-                pct = 1.0 - mandatory_pct(e.role) / 100.0
-                # Зажимаем в [0.0, 1.0] для защиты от некорректных данных правил
-                if pct < 0.0:
-                    pct = 0.0
-                if pct > 1.0:
-                    pct = 1.0
+                pct = pool_share(e.role)
 
                 # Обязательные работы — от полной нормы, брони других команд —
                 # поверх, не ниже нуля.
@@ -311,6 +277,45 @@ class ResourceBaseService:
             role_totals=role_totals,
             external_qa_hours=scenario.external_qa_hours,
         )
+
+    def _pool_share(self, scenario: PlanningScenario) -> Callable[[Optional[str]], float]:
+        """Доля нормы дня, остающаяся на проекты после обязательных работ.
+
+        Считаются только виды работ с ``subtracts_from_pool=True``; правила на
+        роль заменяют общие (role=None). Та же доля режет посуточную базу и
+        ограничивает вычет броней других команд в сводке.
+        """
+        sub_wt_ids = {
+            w.id
+            for w in self.db.query(MandatoryWorkType)
+            .filter(MandatoryWorkType.subtracts_from_pool == True)  # noqa: E712
+            .all()
+        }
+        if not sub_wt_ids:
+            rules: list[ScenarioRule] = []
+        else:
+            rules = (
+                self.db.query(ScenarioRule)
+                .filter(
+                    ScenarioRule.scenario_id == scenario.id,
+                    ScenarioRule.work_type_id.in_(sub_wt_ids),
+                )
+                .all()
+            )
+
+        # percent_of_norm по роли: role=None — фоллбэк для всех
+        fallback_pct = sum(r.percent_of_norm for r in rules if r.role is None)
+        by_role_pct: dict[str, float] = {}
+        for r in rules:
+            if r.role:
+                by_role_pct[r.role] = by_role_pct.get(r.role, 0.0) + r.percent_of_norm
+
+        def share(role: Optional[str]) -> float:
+            pct = by_role_pct[role] if role and role in by_role_pct else fallback_pct
+            # Зажимаем в [0.0, 1.0] для защиты от некорректных данных правил
+            return min(1.0, max(0.0, 1.0 - pct / 100.0))
+
+        return share
 
     def compute_summary(self, scenario: PlanningScenario) -> ResourceSummary:
         """Сводная разбивка: норма-часы → обязательные работы → на бэклог, по ролям."""
@@ -409,6 +414,7 @@ class ResourceBaseService:
             )
         )
         booked_by_emp: dict[str, float] = {}
+        pool_share = self._pool_share(scenario)
 
         # --- валовые часы по сотрудникам (без вычета обязательных) ---
         gross_by_emp: dict[str, float] = {}
@@ -429,6 +435,10 @@ class ResourceBaseService:
             taken = 0.0
             emp_booked = booked.get(e.id, {})
             emp_intervals = intervals.get(e.id, [])
+            # Как в посуточной базе: бронь снимает не больше, чем осталось от
+            # дня после обязательных работ, — иначе «На бэклог» расходится с
+            # суммой базы по дням.
+            share = pool_share(e.role)
             cur = period_start
             while cur < period_end:
                 norm = day_hours(cur)
@@ -436,7 +446,7 @@ class ResourceBaseService:
                     on_absence = any(a.start_date <= cur <= a.end_date for a in abs_ranges)
                     if not on_absence:
                         total += norm
-                        taken += emp_booked.get(cur, 0.0)
+                        taken += min(emp_booked.get(cur, 0.0), norm * share)
                 cur += timedelta(days=1)
 
             gross_by_emp[e.id] = round(total, 2)
