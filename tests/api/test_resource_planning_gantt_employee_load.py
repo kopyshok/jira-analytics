@@ -215,3 +215,19 @@ def test_full_quarter_member_has_no_moves(client, db_session):
     load = _load_row(client, plan_id, emp_id)
     assert load["left_to"] is None
     assert load["joined_from"] is None
+
+
+def test_nested_membership_periods_use_latest_end(client, db_session):
+    """Сервис не даёт периодам пересекаться, но база это не запрещает. Если
+    короткий период вложен в длинный, конец участия — самый поздний конец."""
+    plan_id, emp_id = _seed(db_session, None)
+    _membership(db_session, emp_id).left_at = date(2026, 9, 1)
+    db_session.add(EmployeeTeam(
+        employee_id=emp_id, team=TEAM, is_primary=False,
+        joined_at=date(2026, 8, 1), left_at=date(2026, 8, 10),
+    ))
+    db_session.commit()
+
+    load = _load_row(client, plan_id, emp_id)
+    assert load["member_to"] == "2026-08-31"
+    assert load["left_to"] == {"date": "2026-09-01", "team": None}
