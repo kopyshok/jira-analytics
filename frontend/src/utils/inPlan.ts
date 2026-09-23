@@ -1,31 +1,22 @@
-import type { BacklogItemResponse } from '../types/api';
+import type { BacklogItemResponse, InPlanRole } from '../types/api';
 
-/** Что значит переключатель «В план» для строки целевых задач.
- *  - regular — решает, идёт ли задача в сценарии;
- *  - inert — эпик внутри инициативы «целиком»: его часы уже в ней, переключатель ничего не меняет;
- *  - by_epics — инициатива по эпикам: переключатель только про саму инициативу, эпики — своими;
- *  - by_epics_locked — инициатива нескольких команд: только по эпикам, саму не включить. */
-export type InPlanRole = 'regular' | 'inert' | 'by_epics' | 'by_epics_locked';
+export type { InPlanRole };
 
-type RoleSource = Partial<Pick<
-  BacklogItemResponse,
-  'has_children_in_backlog' | 'planning_mode' | 'planning_mode_locked' | 'include_locked'
->>;
+type RoleSource = Partial<Pick<BacklogItemResponse, 'in_plan_role' | 'planning_mode'>>;
 
 /** Строка списка или её дочерняя строка. */
 export type InPlanRow = RoleSource & { id: string; included_in_planning: boolean };
 
-/** Режим группы с учётом блокировки мультикомандных — как на сервере. */
-const plannedByEpics = (r: RoleSource, mode = r.planning_mode) =>
-  mode === 'by_epics' || !!r.planning_mode_locked;
-
-/** `mode` — локальный (ещё не сохранённый) режим из модалки. */
-export function inPlanRole(r: RoleSource, inert: boolean, mode = r.planning_mode): InPlanRole {
-  if (inert) return 'inert';
-  // Блокировку решает сервер: список с фильтром команды не видит детей чужой команды.
-  if (r.include_locked) return 'by_epics_locked';
-  if (!r.has_children_in_backlog || !plannedByEpics(r, mode)) return 'regular';
-  return 'by_epics';
+/** Роль переключателя «В план» — её считает сервер по всему бэклогу: список
+ *  с фильтром команды или на другой вкладке не видит всей группы.
+ *  `mode` — режим, выбранный в модалке и ещё не сохранённый: до ответа сервера
+ *  роль родителя группы следует ему. */
+export function inPlanRole(r: RoleSource, mode = r.planning_mode): InPlanRole {
+  const role = r.in_plan_role ?? 'regular';
+  // Эпику внутри инициативы «целиком» и инициативе нескольких команд
+  // собственный режим роли не меняет.
+  if (mode === r.planning_mode || role === 'inert' || role === 'by_epics_locked') return role;
+  return mode === 'by_epics' ? 'by_epics' : 'regular';
 }
 
 export function inPlanHint(role: InPlanRole, included: boolean): string {
@@ -44,16 +35,6 @@ export const inPlanDisabled = (role: InPlanRole, included: boolean) =>
  *  и эпик внутри инициативы «целиком» из плана ничего не убирают. */
 export const isOffPlan = (role: InPlanRole, included: boolean) =>
   role === 'regular' && !included;
-
-/** Дочки инициатив «целиком», кроме Дискавери. */
-export function inertEpicIds(rows: BacklogItemResponse[]): Set<string> {
-  const ids = new Set<string>();
-  for (const r of rows) {
-    if (plannedByEpics(r)) continue;
-    for (const c of r.children ?? []) if (!c.is_service_epic) ids.add(c.id);
-  }
-  return ids;
-}
 
 /** Только строки «не в плане»: такой родитель — со всеми дочками,
  *  остальные — только с такими дочками. */

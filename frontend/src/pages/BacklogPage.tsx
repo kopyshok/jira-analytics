@@ -17,7 +17,7 @@ import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningPar
 import InPlanSwitch from '../components/backlog/InPlanSwitch';
 import EstimateDisputePopover from '../components/backlog/EstimateDisputePopover';
 import {
-  countOffPlan, filterOffPlan, inertEpicIds, inPlanRole, isOffPlan, type InPlanRow,
+  countOffPlan, filterOffPlan, inPlanRole, isOffPlan, type InPlanRow,
 } from '../utils/inPlan';
 import { countDisputed, filterDisputed, hasDispute } from '../utils/estimateDisputes';
 import { statusTagColor } from '../utils/status';
@@ -61,6 +61,30 @@ const roleHours = (r: BacklogItemResponse): Record<PlanRole, number | null> => (
   opo: r.estimate_opo_hours,
 });
 
+interface FilterTagProps {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  icon?: React.ReactNode;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}
+
+/** Метка-фильтр над списком. У метки AntD нет роли и фокуса — даём их, как
+ *  у флажка: Tab до метки, Enter или пробел переключают. */
+function FilterTag({ checked, onChange, ...rest }: FilterTagProps) {
+  const a11y: React.HTMLAttributes<HTMLSpanElement> = {
+    role: 'checkbox',
+    'aria-checked': checked,
+    tabIndex: 0,
+    onKeyDown: (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      onChange(!checked);
+    },
+  };
+  return <Tag.CheckableTag {...a11y} {...rest} checked={checked} onChange={onChange} />;
+}
+
 function groupByQuarterLabel(items: BacklogItemResponse[]): [string, BacklogItemResponse[]][] {
   const groups = new Map<string, BacklogItemResponse[]>();
   for (const item of items) {
@@ -97,9 +121,9 @@ export default function BacklogPage() {
   const unlink = useUnlinkJira();
   const archive = useArchiveBacklogItem();
   const restore = useRestoreBacklogItem();
-  // Отказ сервера («нельзя включить») — его текст и есть заголовок.
+  // Отказ сервера («нельзя включить») — его текст в описании.
   const setIncluded = useSetBacklogIncluded(
-    (e) => notification.error({ title: e.message || 'Ошибка' }),
+    (e) => notification.error({ title: 'Не удалось сохранить', description: e.message || undefined }),
   );
   const includedPending = useBacklogIncludedPending();
   const [onlyOffPlan, setOnlyOffPlan] = useState(false);
@@ -198,7 +222,7 @@ export default function BacklogPage() {
         jira_key: c.key,
         jira_status: c.status ?? null,
         included_in_planning: c.included_in_planning,
-        include_locked: c.include_locked,
+        in_plan_role: c.in_plan_role,
         is_service_epic: c.is_service_epic ?? false,
         estimate_hours: c.estimate_hours,
         estimate_analyst_hours: c.estimate_analyst_hours,
@@ -218,13 +242,7 @@ export default function BacklogPage() {
   const activeRows = useMemo(() => adaptChildren(sortByPriority(active.data)), [active.data]);
   const archivedRows = useMemo(() => adaptChildren(sortByPriority(archived.data)), [archived.data]);
   const quarterlyRows = useMemo(() => adaptChildren(sortByPriority(quarterly.data)), [quarterly.data]);
-  // Эпики внутри инициатив «целиком» (кроме Дискавери): их часы уже в родителе.
-  const inertIds = useMemo(
-    () => inertEpicIds([...(active.data ?? []), ...(quarterly.data ?? [])]),
-    [active.data, quarterly.data],
-  );
-  const rowRole = (r: InPlanRow) => inPlanRole(r, inertIds.has(r.id));
-  const rowOffPlan = (r: InPlanRow) => isOffPlan(rowRole(r), r.included_in_planning);
+  const rowOffPlan = (r: InPlanRow) => isOffPlan(inPlanRole(r), r.included_in_planning);
   const offPlanRowClass = (r: BacklogItemResponse) => (rowOffPlan(r) ? 'backlog-row-off-plan' : '');
   // Метки-фильтры складываются: «Не в плане» и «Только спорные» вместе оставляют пересечение.
   const withFilters = (rows?: BacklogItemResponse[]) => {
@@ -817,7 +835,7 @@ export default function BacklogPage() {
     render: (_: unknown, r: BacklogItemResponse) => (
       <InPlanSwitch
         size="small"
-        role={rowRole(r)}
+        role={inPlanRole(r)}
         checked={r.included_in_planning}
         loading={includedPending.has(r.id)}
         ariaLabel={`В план: ${r.jira_key ?? r.title}`}
@@ -1146,7 +1164,6 @@ export default function BacklogPage() {
       <BacklogPlanningParamsModal
         open={paramsOpen}
         item={paramsTarget}
-        inert={!!paramsTarget && inertIds.has(paramsTarget.id)}
         onClose={() => { setParamsOpen(false); setParamsTarget(null); }}
       />
 
@@ -1156,19 +1173,19 @@ export default function BacklogPage() {
           view !== 'archived' ? (
             <Space size={8}>
               {(disputedCount > 0 || onlyDisputed) && (
-                <Tag.CheckableTag
+                <FilterTag
                   checked={onlyDisputed}
                   onChange={setOnlyDisputed}
                   icon={<WarningOutlined />}
                   style={onlyDisputed ? undefined : { color: 'var(--warn, #fa8c16)' }}
                 >
                   Только спорные · {disputedCount}
-                </Tag.CheckableTag>
+                </FilterTag>
               )}
               {(offPlanCount > 0 || onlyOffPlan) && (
-                <Tag.CheckableTag checked={onlyOffPlan} onChange={setOnlyOffPlan}>
+                <FilterTag checked={onlyOffPlan} onChange={setOnlyOffPlan}>
                   Не в плане · {offPlanCount}
-                </Tag.CheckableTag>
+                </FilterTag>
               )}
             </Space>
           ) : null

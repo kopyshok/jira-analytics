@@ -1,87 +1,106 @@
 import { describe, it, expect } from 'vitest';
 import type { BacklogChild, BacklogItemResponse } from '../../types/api';
 import {
-  countOffPlan, filterOffPlan, inertEpicIds, inPlanDisabled, inPlanRole, isOffPlan,
-  type InPlanRow,
+  countOffPlan, filterOffPlan, inPlanDisabled, inPlanHint, inPlanRole, isOffPlan,
+  type InPlanRole, type InPlanRow,
 } from '../inPlan';
 
-const child = (id: string, included: boolean, service = false) =>
-  ({ id, included_in_planning: included, is_service_epic: service }) as BacklogChild;
+const child = (id: string, included: boolean, role: InPlanRole = 'regular') =>
+  ({ id, included_in_planning: included, in_plan_role: role }) as BacklogChild;
 
 const row = (over: Partial<BacklogItemResponse>) =>
   ({
-    id: 'r', included_in_planning: true, planning_mode: 'whole',
+    id: 'r', included_in_planning: true, planning_mode: 'whole', in_plan_role: 'regular',
     has_children_in_backlog: false, children: [], ...over,
   }) as BacklogItemResponse;
 
-describe('inertEpicIds', () => {
-  it('marks ordinary epics of a whole RFA, not Discovery', () => {
-    const rfa = row({ id: 'rfa', has_children_in_backlog: true, children: [child('e1', true), child('d1', false, true)] });
-    expect([...inertEpicIds([rfa])]).toEqual(['e1']);
-  });
-
-  it('ignores RFA planned by epics, including forced multi-team', () => {
-    const byEpics = row({ planning_mode: 'by_epics', children: [child('e1', true)] });
-    const locked = row({ planning_mode_locked: true, children: [child('e2', true)] });
-    expect(inertEpicIds([byEpics, locked]).size).toBe(0);
-  });
-});
-
 describe('inPlanRole', () => {
-  it('by-epics parent with children', () => {
-    expect(inPlanRole(row({ has_children_in_backlog: true, planning_mode: 'by_epics' }), false)).toBe('by_epics');
+  it('takes the role from the server, not from the list', () => {
+    // Родитель чужой команды или на другой вкладке: эпик идёт корнем, без родителя в списке.
+    expect(inPlanRole(row({ in_plan_role: 'inert' }))).toBe('inert');
+    // Эпики спрятаны фильтром команды — инициатива всё равно по эпикам.
+    expect(inPlanRole(row({ planning_mode: 'by_epics', in_plan_role: 'by_epics' }))).toBe('by_epics');
+    expect(inPlanRole(row({ in_plan_role: 'by_epics_locked' }))).toBe('by_epics_locked');
   });
 
-  it('lock comes from the server, not from children in the list', () => {
-    // Фильтр команды спрятал дочек чужой команды — сервер всё равно блокирует.
-    expect(inPlanRole(row({ planning_mode_locked: true, include_locked: true }), false)).toBe('by_epics_locked');
-    // Дети в списке есть, но сервер включить разрешает.
-    expect(
-      inPlanRole(row({ has_children_in_backlog: true, planning_mode_locked: true, include_locked: false }), false),
-    ).toBe('by_epics');
+  it('child row keeps the server role', () => {
+    expect(inPlanRole(child('e1', true, 'inert'))).toBe('inert');
+    expect(inPlanRole(child('d1', false))).toBe('regular');
   });
 
-  it('server lock applies to a child row too', () => {
-    expect(inPlanRole({ include_locked: true }, false)).toBe('by_epics_locked');
+  it('no role is regular', () => {
+    expect(inPlanRole({})).toBe('regular');
   });
 
-  it('by-epics without children in list is regular', () => {
-    expect(inPlanRole(row({ planning_mode: 'by_epics' }), false)).toBe('regular');
+  it('mode chosen in the modal wins until the server answers', () => {
+    expect(inPlanRole(row({ has_children_in_backlog: true }), 'by_epics')).toBe('by_epics');
+    const byEpics = row({ has_children_in_backlog: true, planning_mode: 'by_epics', in_plan_role: 'by_epics' });
+    expect(inPlanRole(byEpics, 'whole')).toBe('regular');
+    expect(inPlanRole(byEpics, 'by_epics')).toBe('by_epics');
   });
 
-  it('local mode from the modal wins', () => {
-    expect(inPlanRole(row({ has_children_in_backlog: true }), false, 'by_epics')).toBe('by_epics');
+  it('own mode does not change an epic of a whole initiative or a locked one', () => {
+    expect(inPlanRole(row({ in_plan_role: 'inert' }), 'by_epics')).toBe('inert');
+    expect(inPlanRole(row({ in_plan_role: 'by_epics_locked' }), 'whole')).toBe('by_epics_locked');
   });
 
   it('locked switch can be turned off but not on', () => {
     expect(inPlanDisabled('by_epics_locked', false)).toBe(true);
     expect(inPlanDisabled('by_epics_locked', true)).toBe(false);
     expect(inPlanDisabled('inert', true)).toBe(true);
+    expect(inPlanDisabled('by_epics', false)).toBe(false);
+  });
+});
+
+describe('inPlanHint', () => {
+  it('switched-off initiative by epics: its epics go to the plan', () => {
+    expect(inPlanHint('by_epics', false)).toBe(
+      'Планируется по эпикам: в сценарий идут её эпики. Включите, чтобы добавить и саму инициативу',
+    );
+  });
+
+  it('regular switched on goes to scenarios', () => {
+    expect(inPlanHint('regular', true)).toBe('Попадает в сценарии');
+  });
+
+  it('regular switched off and switched-on initiative by epics', () => {
+    expect(inPlanHint('regular', false)).toBe('Не попадает в сценарии');
+    expect(inPlanHint('by_epics', true)).toBe('Попадает в сценарии');
+  });
+
+  it('inert and locked explain why the switch does not work', () => {
+    expect(inPlanHint('inert', true)).toBe('Инициатива планируется целиком — часы эпиков уже в ней');
+    expect(inPlanHint('by_epics_locked', false)).toBe('Инициатива нескольких команд планируется только по эпикам');
   });
 });
 
 describe('off-plan filter and count', () => {
   const rfaWhole = row({
     id: 'w', has_children_in_backlog: true,
-    children: [child('e1', false), child('d1', false, true)],
+    children: [child('e1', false, 'inert'), child('d1', false)],
   });
   const rfaByEpics = row({
-    id: 'b', has_children_in_backlog: true, planning_mode: 'by_epics', included_in_planning: false,
+    id: 'b', has_children_in_backlog: true, planning_mode: 'by_epics', in_plan_role: 'by_epics',
+    included_in_planning: false,
     children: [child('e2', false), child('e3', true)],
   });
   const off = row({ id: 'o', included_in_planning: false });
-  const rows = [rfaWhole, rfaByEpics, off];
-  const inert = inertEpicIds(rows);
-  const offPlan = (r: InPlanRow) => isOffPlan(inPlanRole(r, inert.has(r.id)), r.included_in_planning);
+  // Эпик инициативы «целиком», чей родитель в этот список не попал.
+  const inertRoot = row({ id: 'x', included_in_planning: false, in_plan_role: 'inert' });
+  const rows = [rfaWhole, rfaByEpics, off, inertRoot];
+  const offPlan = (r: InPlanRow) => isOffPlan(inPlanRole(r), r.included_in_planning);
 
   it('counts only user choice', () => {
-    // d1 (Дискавери), e2 (эпик по эпикам), o — да; e1 (внутри «целиком») и сама b — нет.
+    // d1 (Дискавери), e2 (эпик по эпикам), o — да; e1 и x (внутри «целиком») и сама b — нет.
     expect(countOffPlan(rows, offPlan)).toBe(3);
   });
 
-  it('server-locked initiative is not off-plan even without children in the list', () => {
-    const locked = row({ id: 'l', planning_mode_locked: true, include_locked: true, included_in_planning: false });
-    expect(countOffPlan([locked], offPlan)).toBe(0);
+  it('locked initiative and initiative by epics with hidden epics are not off-plan', () => {
+    const locked = row({ id: 'l', in_plan_role: 'by_epics_locked', included_in_planning: false });
+    const hidden = row({
+      id: 'h', planning_mode: 'by_epics', in_plan_role: 'by_epics', included_in_planning: false,
+    });
+    expect(countOffPlan([locked, hidden], offPlan)).toBe(0);
   });
 
   it('keeps parents only with off-plan children', () => {
