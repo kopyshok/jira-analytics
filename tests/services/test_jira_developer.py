@@ -45,3 +45,40 @@ def test_tie_broken_by_account(db_session, sample_project):
     db_session.commit()
 
     assert jira_developers_for_items(db_session, [it]) == {it.id: ea.id}
+
+
+def test_only_developers_or_blank_role_are_nominated(db_session, sample_project):
+    """Аналитик в поле «Разработчик» не подставляется; сотрудник без роли — годится."""
+    make_employee(db_session, "Аналитик", "A", role="analyst", jira_account_id="acc-an")
+    blank = make_employee(db_session, "Без роли", "A", role=None, jira_account_id="acc-blank")
+    dev = make_employee(db_session, "Разработчик", "A", role="Разработчик",
+                        jira_account_id="acc-dev")
+
+    r1 = make_issue(db_session, sample_project, "OS-20", developer="acc-an")
+    make_issue(db_session, sample_project, "OS-21", developer="acc-dev", parent=r1)
+    r2 = make_issue(db_session, sample_project, "OS-22", developer="acc-blank")
+    r3 = make_issue(db_session, sample_project, "OS-23")
+    make_issue(db_session, sample_project, "OS-24", developer="acc-an", parent=r3)
+    i1, i2, i3 = _item(db_session, r1), _item(db_session, r2), _item(db_session, r3)
+    db_session.commit()
+
+    got = jira_developers_for_items(db_session, [i1, i2, i3])
+
+    assert got == {i1.id: dev.id, i2.id: blank.id}
+
+
+def test_closed_subtasks_do_not_nominate(db_session, sample_project):
+    """Закрытые и отменённые подзадачи не голосуют за «Разработчика»."""
+    make_employee(db_session, "Закрывший", "A", jira_account_id="acc-a")
+    b = make_employee(db_session, "Открытый", "A", jira_account_id="acc-b")
+    root = make_issue(db_session, sample_project, "OS-30")
+    for key in ("OS-31", "OS-32"):
+        make_issue(db_session, sample_project, key, developer="acc-a",
+                   parent=root).status_category = "done"
+    make_issue(db_session, sample_project, "OS-33", developer="acc-a",
+               parent=root).status = "Отменено"
+    make_issue(db_session, sample_project, "OS-34", developer="acc-b", parent=root)
+    it = _item(db_session, root)
+    db_session.commit()
+
+    assert jira_developers_for_items(db_session, [it]) == {it.id: b.id}
