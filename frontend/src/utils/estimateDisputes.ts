@@ -1,4 +1,5 @@
 import type { BacklogChild, BacklogItemResponse, EstimateCandidate } from '../types/api';
+import { filterOffPlan, type InPlanRow } from './inPlan';
 
 /** Спорная оценка — у роли заполнено несколько полей Jira с разными значениями,
  *  и пользователь ещё не выбрал, какое из них действует. */
@@ -14,6 +15,18 @@ export function filterDisputed(
     const kids = (r.children ?? []).filter(hasDispute);
     return hasDispute(r) || kids.length ? [{ ...r, children: kids }] : [];
   });
+}
+
+/** Метки «Только спорные» и «Не в плане» вместе оставляют задачи, подходящие под обе.
+ *  Сначала спорные: иначе спорный родитель в плане, оставленный ради дочки
+ *  «не в плане» без спора, остался бы в списке один. */
+export function filterBacklogRows(
+  rows: BacklogItemResponse[] | undefined,
+  { onlyDisputed, onlyOffPlan }: { onlyDisputed: boolean; onlyOffPlan: boolean },
+  offPlan: (r: InPlanRow) => boolean,
+): BacklogItemResponse[] | undefined {
+  const disputed = onlyDisputed ? filterDisputed(rows) : rows;
+  return onlyOffPlan ? filterOffPlan(disputed, offPlan) : disputed;
 }
 
 /** Сколько спорных задач: строки и их дочерние строки. */

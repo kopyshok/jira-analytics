@@ -17,9 +17,9 @@ import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningPar
 import InPlanSwitch from '../components/backlog/InPlanSwitch';
 import EstimateDisputePopover from '../components/backlog/EstimateDisputePopover';
 import {
-  countOffPlan, filterOffPlan, inPlanRole, isOffPlan, type InPlanRow,
+  countOffPlan, inPlanRole, isOffPlan, type InPlanRow,
 } from '../utils/inPlan';
-import { countDisputed, filterDisputed, hasDispute } from '../utils/estimateDisputes';
+import { countDisputed, filterBacklogRows, hasDispute } from '../utils/estimateDisputes';
 import { statusTagColor } from '../utils/status';
 import { daysSince, formatDateOnly } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
@@ -245,10 +245,8 @@ export default function BacklogPage() {
   const rowOffPlan = (r: InPlanRow) => isOffPlan(inPlanRole(r), r.included_in_planning);
   const offPlanRowClass = (r: BacklogItemResponse) => (rowOffPlan(r) ? 'backlog-row-off-plan' : '');
   // Метки-фильтры складываются: «Не в плане» и «Только спорные» вместе оставляют пересечение.
-  const withFilters = (rows?: BacklogItemResponse[]) => {
-    const offPlan = onlyOffPlan ? filterOffPlan(rows, rowOffPlan) : rows;
-    return onlyDisputed ? filterDisputed(offPlan) : offPlan;
-  };
+  const withFilters = (rows?: BacklogItemResponse[]) =>
+    filterBacklogRows(rows, { onlyDisputed, onlyOffPlan }, rowOffPlan);
   const activeShown = withFilters(activeRows);
   const quarterlyShown = withFilters(quarterlyRows);
   const viewRows = view === 'quarterly' ? quarterlyRows : view === 'active' ? activeRows : undefined;
@@ -1176,8 +1174,8 @@ export default function BacklogPage() {
                 <FilterTag
                   checked={onlyDisputed}
                   onChange={setOnlyDisputed}
-                  icon={<WarningOutlined />}
-                  style={onlyDisputed ? undefined : { color: 'var(--warn, #fa8c16)' }}
+                  // Оранжевый — только значок: оранжевый текст плохо читается в светлой теме.
+                  icon={<WarningOutlined style={onlyDisputed ? undefined : { color: 'var(--warn, #fa8c16)' }} />}
                 >
                   Только спорные · {disputedCount}
                 </FilterTag>

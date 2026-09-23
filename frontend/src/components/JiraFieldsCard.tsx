@@ -13,6 +13,8 @@ interface FieldDef {
   label: string;
   /** Несколько полей Jira списком (альтернативы и слагаемые). */
   multi?: boolean;
+  /** Роль в подписи выпадающих списков для экранного диктора. */
+  roleTitle?: string;
 }
 
 interface FieldGroup {
@@ -47,12 +49,12 @@ const GROUPS: FieldGroup[] = [
     panelKey: 'planned_hours',
     title: 'Плановые трудозатраты (часы)',
     subtitle: 'На роль можно указать несколько полей. «Альтернатива» — отдельная оценка той же работы: если значения расходятся, оценка помечается спорной, а до выбора действует верхнее поле. «Слагаемые» складываются в одно значение (например, Back + Front) и дальше сравниваются с альтернативами.',
-    hint: 'Новые поля подтянутся при следующей синхронизации.',
+    hint: 'После смены списка полей следующая синхронизация перечитает все задачи из Jira, поэтому займёт больше времени, чем обычно.',
     fields: [
-      { key: 'jira_planned_analyst_hours_field_id', label: 'Анализ (часы)', multi: true },
-      { key: 'jira_planned_dev_hours_field_id',     label: 'Разработка (часы)', multi: true },
-      { key: 'jira_planned_qa_hours_field_id',      label: 'Тестирование (часы)', multi: true },
-      { key: 'jira_planned_opo_hours_field_id',     label: 'ОПЭ (часы)', multi: true },
+      { key: 'jira_planned_analyst_hours_field_id', label: 'Анализ (часы)', multi: true, roleTitle: 'Анализ' },
+      { key: 'jira_planned_dev_hours_field_id',     label: 'Разработка (часы)', multi: true, roleTitle: 'Разработка' },
+      { key: 'jira_planned_qa_hours_field_id',      label: 'Тестирование (часы)', multi: true, roleTitle: 'Тестирование' },
+      { key: 'jira_planned_opo_hours_field_id',     label: 'ОПЭ (часы)', multi: true, roleTitle: 'ОПЭ' },
     ],
   },
   {
@@ -173,6 +175,7 @@ export default function JiraFieldsCard() {
       <PlanFieldListEditor
         // Редактор держит строки у себя — перемонтируем, когда настройки загрузились.
         key={`${f.key}-${loaded}`}
+        roleTitle={f.roleTitle ?? f.label}
         value={values[f.key] ?? ''}
         onChange={v => setValues(prev => ({ ...prev, [f.key]: v }))}
         options={fieldOptions}
@@ -207,6 +210,8 @@ export default function JiraFieldsCard() {
           size="small"
           icon={<SaveOutlined />}
           onClick={handleSaveAll}
+          // Настройки не загрузились — сохранение записало бы пустоту во все поля.
+          disabled={!loaded}
           loading={save.isPending}
         >
           Сохранить

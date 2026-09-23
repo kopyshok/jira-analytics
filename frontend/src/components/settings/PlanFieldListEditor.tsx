@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Segmented, Select, Tooltip, Typography } from 'antd';
 import {
   ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import {
-  fieldIdHint, moveEntry, parsePlanFieldSetting, serializePlanFieldSetting,
+  fieldIdHint, moveEntry, nextPlanFieldSetting, parsePlanFieldSetting,
   type PlanFieldEntry, type PlanFieldKind,
 } from '../../utils/planFieldSources';
 
@@ -15,6 +15,8 @@ export interface JiraFieldOption {
 }
 
 interface Props {
+  /** Роль — для подписи выпадающих списков экранному диктору. */
+  roleTitle: string;
   /** Значение настройки роли: JSON-список или старая строка с одним полем. */
   value: string;
   onChange: (next: string) => void;
@@ -34,7 +36,9 @@ const EMPTY_ROW: PlanFieldEntry = { field_id: '', kind: 'alt' };
 
 /** Список полей Jira для одной роли. Порядок важен: при споре до выбора
  *  действует верхнее поле. Пустые строки живут только здесь, в настройку не пишутся. */
-export default function PlanFieldListEditor({ value, onChange, options, loading, onOpen }: Props) {
+export default function PlanFieldListEditor({ roleTitle, value, onChange, options, loading, onOpen }: Props) {
+  // Загруженное значение: правка без изменений полей возвращает его как есть.
+  const initial = useRef(value);
   const [rows, setRows] = useState<PlanFieldEntry[]>(() => {
     const parsed = parsePlanFieldSetting(value);
     return parsed.length ? parsed : [EMPTY_ROW];
@@ -56,7 +60,7 @@ export default function PlanFieldListEditor({ value, onChange, options, loading,
     // Названия записываем в настройку: по ним подписаны варианты в споре.
     const named = next.map((r) => ((r.name || !nameById.has(r.field_id)) ? r : { ...r, name: nameById.get(r.field_id) }));
     setRows(named);
-    onChange(serializePlanFieldSetting(named));
+    onChange(nextPlanFieldSetting(initial.current, named));
   };
   const patchRow = (i: number, patch: Partial<PlanFieldEntry>) =>
     update(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -74,6 +78,7 @@ export default function PlanFieldListEditor({ value, onChange, options, loading,
               showSearch={{ optionFilterProp: 'label' }}
               allowClear
               placeholder="Выберите поле Jira"
+              aria-label={`Поле Jira для роли ${roleTitle}, строка ${i + 1}`}
               options={options.map((o) => ({ ...o, disabled: taken.has(o.value) }))}
               labelRender={({ value: v }) => fieldLabel(String(v))}
               optionRender={(o) => fieldLabel(String(o.value))}

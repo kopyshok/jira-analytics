@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { App, Button, InputNumber, Popover, Radio, Typography } from 'antd';
 import { useChoosePlanSource } from '../../hooks/useBacklog';
 import type { PlanChoiceBody } from '../../api/issues';
@@ -61,8 +61,15 @@ function RoleChoice({ issueId, role, candidates, current, showTitle, onDone }: {
       >
         {candidates.map((c) => (
           <div key={c.source} style={optionStyle(picked === c.source)} onClick={() => setPicked(c.source)}>
-            <Radio value={c.source}>{c.label}</Radio>
-            <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatChoiceHours(c.value)} ч</Typography.Text>
+            {/* Часы — внутри подписи варианта: диктор читает их вместе с названием поля. */}
+            <Radio
+              value={c.source}
+              style={{ flex: 1 }}
+              styles={{ label: { flex: 1, display: 'flex', justifyContent: 'space-between', gap: 10 } }}
+            >
+              <span>{c.label}</span>
+              <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatChoiceHours(c.value)} ч</Typography.Text>
+            </Radio>
           </div>
         ))}
         <div style={optionStyle(picked === MANUAL_CHOICE)} onClick={() => setPicked(MANUAL_CHOICE)}>
@@ -107,16 +114,31 @@ export default function EstimateDisputePopover({
   children: ReactNode | ((open: boolean) => ReactNode);
 }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const single = roles.length === 1;
   return (
     <Popover
       trigger="click"
       open={open}
       onOpenChange={setOpen}
+      afterOpenChange={(visible) => {
+        if (visible) {
+          // С клавиатуры — сразу к отмеченному варианту, стрелки выбирают другой.
+          popupRef.current?.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.focus();
+          return;
+        }
+        // Фокус остался в закрытом окне (Esc, «Принять») — вернуть его на ячейку.
+        // Щёлкнули мимо, в другое поле, — фокус не отнимаем.
+        const active = document.activeElement;
+        if (!active || active === document.body || popupRef.current?.contains(active)) {
+          triggerRef.current?.focus();
+        }
+      }}
       destroyOnHidden
       title={single ? `${ROLE_TITLE[roles[0]]} — оценки в Jira расходятся` : 'Оценки в Jira расходятся'}
       content={(
-        <div style={{ width: 340, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div ref={popupRef} style={{ width: 340, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {jiraKey ? `${jiraKey}. ` : ''}Выберите верное значение. Выбор действует, пока в Jira не изменится одно из значений.
           </Typography.Text>
@@ -136,6 +158,7 @@ export default function EstimateDisputePopover({
       )}
     >
       <span
+        ref={triggerRef}
         role="button"
         tabIndex={0}
         aria-label={ariaLabel}

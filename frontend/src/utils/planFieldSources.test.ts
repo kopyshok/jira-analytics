@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fieldIdHint, moveEntry, parsePlanFieldSetting, serializePlanFieldSetting,
+  fieldIdHint, moveEntry, nextPlanFieldSetting, parsePlanFieldSetting, serializePlanFieldSetting,
 } from './planFieldSources';
 
 describe('parsePlanFieldSetting', () => {
@@ -69,6 +69,39 @@ describe('serializePlanFieldSetting', () => {
       { field_id: 'cf_2', kind: 'sum' as const, name: 'Оценка Back' },
     ];
     expect(parsePlanFieldSetting(serializePlanFieldSetting(entries))).toEqual(entries);
+  });
+});
+
+describe('nextPlanFieldSetting', () => {
+  const legacy = 'customfield_12431';
+  const named = { field_id: 'customfield_12431', kind: 'alt' as const, name: 'Анализ (ч)' };
+
+  it('те же поля с тем же видом по порядку — исходная строка как есть', () => {
+    // «Добавить поле» и корзина: у старой строки появилось только название.
+    expect(nextPlanFieldSetting(legacy, [named])).toBe(legacy);
+    expect(nextPlanFieldSetting(legacy, [{ field_id: '', kind: 'alt' }, named])).toBe(legacy);
+    // ↑ и ↓: порядок вернулся.
+    const list = JSON.stringify([
+      { field_id: 'cf_1', kind: 'alt' },
+      { field_id: 'cf_2', kind: 'sum', name: 'Оценка Back' },
+    ]);
+    expect(nextPlanFieldSetting(list, [
+      { field_id: 'cf_1', kind: 'alt', name: 'Анализ (ч)' },
+      { field_id: 'cf_2', kind: 'sum', name: 'Оценка Back' },
+    ])).toBe(list);
+    expect(nextPlanFieldSetting('', [{ field_id: '', kind: 'alt' }])).toBe('');
+  });
+
+  it('другой вид, порядок или набор полей — новый список', () => {
+    expect(JSON.parse(nextPlanFieldSetting(legacy, [{ ...named, kind: 'sum' }]))).toEqual([
+      { field_id: 'customfield_12431', kind: 'sum', name: 'Анализ (ч)' },
+    ]);
+    const two = [named, { field_id: 'cf_2', kind: 'alt' as const, name: 'Оценка 1С (ч)' }];
+    const added = nextPlanFieldSetting(legacy, two);
+    expect(parsePlanFieldSetting(added).map((e) => e.field_id)).toEqual(['customfield_12431', 'cf_2']);
+    const swapped = nextPlanFieldSetting(added, moveEntry(two, 0, 1));
+    expect(parsePlanFieldSetting(swapped).map((e) => e.field_id)).toEqual(['cf_2', 'customfield_12431']);
+    expect(nextPlanFieldSetting(legacy, [])).toBe('');
   });
 });
 

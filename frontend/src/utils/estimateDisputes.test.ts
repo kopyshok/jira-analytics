@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { BacklogChild, BacklogItemResponse, EstimateCandidate } from '../types/api';
 import {
-  MANUAL_CHOICE, countDisputed, defaultChoice, filterDisputed, formatChoiceHours, hasDispute,
+  MANUAL_CHOICE, countDisputed, defaultChoice, filterBacklogRows, filterDisputed, formatChoiceHours,
+  hasDispute,
 } from './estimateDisputes';
+import { inPlanRole, isOffPlan, type InPlanRow } from './inPlan';
 
 const child = (id: string, disputed = false) =>
   ({ id, disputed_roles: disputed ? ['dev'] : [] }) as unknown as BacklogChild;
@@ -40,6 +42,46 @@ describe('filterDisputed', () => {
 
   it('пустой список', () => {
     expect(filterDisputed(undefined)).toBeUndefined();
+  });
+});
+
+describe('filterBacklogRows — «Только спорные» вместе с «Не в плане»', () => {
+  const task = (id: string, disputed: boolean, included: boolean, children: BacklogChild[] = []) =>
+    ({
+      id, included_in_planning: included, disputed_roles: disputed ? ['dev'] : [], children,
+    }) as unknown as BacklogItemResponse;
+  const kid = (id: string, disputed: boolean, included: boolean) =>
+    task(id, disputed, included) as unknown as BacklogChild;
+  const offPlan = (r: InPlanRow) => isOffPlan(inPlanRole(r), r.included_in_planning);
+  const ids = (rows: BacklogItemResponse[] | undefined) =>
+    rows?.map((r) => [r.id, (r.children ?? []).map((c) => c.id)]);
+  const both = { onlyDisputed: true, onlyOffPlan: true };
+
+  it('спорный родитель в плане с дочкой «не в плане» без спора — ничего', () => {
+    const rows = [task('p', true, true, [kid('c', false, false)])];
+    expect(filterBacklogRows(rows, both, offPlan)).toEqual([]);
+  });
+
+  it('родитель в плане остаётся ради дочки, подходящей под обе метки', () => {
+    const rows = [task('p', false, true, [kid('c1', true, false), kid('c2', true, true), kid('c3', false, false)])];
+    expect(ids(filterBacklogRows(rows, both, offPlan))).toEqual([['p', ['c1']]]);
+  });
+
+  it('родитель под обеими метками — только со спорными дочками', () => {
+    const rows = [task('p', true, false, [kid('c1', true, true), kid('c2', false, false)])];
+    expect(ids(filterBacklogRows(rows, both, offPlan))).toEqual([['p', ['c1']]]);
+  });
+
+  it('одна метка — как её фильтр, без меток — список как есть', () => {
+    const rows = [
+      task('a', true, true, [kid('a1', false, false)]),
+      task('b', false, false),
+    ];
+    expect(ids(filterBacklogRows(rows, { onlyDisputed: true, onlyOffPlan: false }, offPlan)))
+      .toEqual([['a', []]]);
+    expect(ids(filterBacklogRows(rows, { onlyDisputed: false, onlyOffPlan: true }, offPlan)))
+      .toEqual([['a', ['a1']], ['b', []]]);
+    expect(filterBacklogRows(rows, { onlyDisputed: false, onlyOffPlan: false }, offPlan)).toBe(rows);
   });
 });
 
