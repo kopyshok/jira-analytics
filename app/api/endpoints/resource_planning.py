@@ -2,7 +2,7 @@
 
 import json as _json
 from datetime import date, datetime, timedelta as _timedelta, timezone
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -1024,7 +1024,7 @@ def _occupancy_inputs(
 
 
 def _daily_used(
-    assignments_raw: List[ResourcePlanAssignment],
+    assignments_raw: Sequence[ResourcePlanAssignment],
     avail: Dict[str, Dict[date, float]],
 ) -> Dict[str, Dict[date, float]]:
     """Часы этого плана по дням на каждого сотрудника из ``avail``.
@@ -2811,6 +2811,24 @@ def _expected_start(
     return max(x.end_date for x in prev_rows) + _timedelta(days=1)
 
 
+def _booking_label(b: cto.ExternalBooking) -> str:
+    """«Разработка · план A» — фаза брони в плане другой команды."""
+    return f"{PHASE_RU.get(b.phase, b.phase)} · план {b.team}"
+
+
+def _bookings_on(
+    d: date,
+    employee_id: Optional[str],
+    bookings: Optional[List[cto.ExternalBooking]],
+) -> List[cto.ExternalBooking]:
+    """Брони сотрудника в опорных планах других команд, где на день ``d`` есть часы."""
+    return [
+        b
+        for b in bookings or ()
+        if employee_id and b.employee_id == employee_id and b.daily_hours.get(d, 0.0) > 0.01
+    ]
+
+
 def _classify_day(
     d: date,
     employee_id: Optional[str],
@@ -2820,10 +2838,13 @@ def _classify_day(
     calendar_map: dict,
     used_h: float,
     skip_assignment_id: Optional[str] = None,
+    bookings: Optional[List[cto.ExternalBooking]] = None,
 ) -> Dict[str, object]:
     """Классификация одного дня для daily_breakdown / algorithm_log.
 
-    Возвращает dict {status, absence_reason, blocker_*}.
+    Возвращает dict {status, absence_reason, blocker_*}. ``bookings`` — брони
+    сотрудника в опорных планах других команд: день, который они съели
+    целиком, — «занят» их задачей, а не блокировка.
     """
     cal = calendar_map.get(d)
     if cal and not cal.is_workday:
@@ -2847,6 +2868,17 @@ def _classify_day(
         return {"status": "work"}
     avail_h = avail_map.get(d, 0.0)
     if avail_h <= 0.01:
+        booking = max(
+            _bookings_on(d, employee_id, bookings),
+            key=lambda b: b.daily_hours[d],
+            default=None,
+        )
+        if booking is not None:
+            return {
+                "status": "blocked_by_other",
+                "blocker_item_key": booking.issue_key,
+                "blocker_phase_label": _booking_label(booking),
+            }
         # Доступность 0 без отпуска/праздника — блокировка (ScheduledBlock)
         return {"status": "absence", "absence_reason": "Блокировка"}
     blocker = next(
@@ -2879,6 +2911,7 @@ def _build_algorithm_log(
     avail_map: Dict[date, float],
     absences: list,
     calendar_map: dict,
+    bookings: Optional[List[cto.ExternalBooking]] = None,
 ) -> List[str]:
     """Текст «откуда дата старта» для боковой панели.
 
@@ -2922,6 +2955,7 @@ def _build_algorithm_log(
                 calendar_map,
                 used_h=0.0,
                 skip_assignment_id=a.id,
+                bookings=bookings,
             )
             key = (
                 info["status"],
@@ -3015,12 +3049,15 @@ def _build_daily_breakdown(
     absences: list,
     calendar_map: dict,
     expected_start: Optional[date] = None,
+    bookings: Optional[List[cto.ExternalBooking]] = None,
 ) -> List[DailyBreakdownItem]:
     """Посуточная разбивка фазы.
 
     Если ``expected_start`` < ``a.start_date`` — таблица расширяется влево,
     pre-start строки получают ``is_pre_start=True`` и причину сдвига
-    (отпуск/выходной/праздник/занят/свободен-но-сдвинут).
+    (отпуск/выходной/праздник/занят/свободен-но-сдвинут). ``bookings`` —
+    брони исполнителя в планах других команд: занятый ими день — «занят»,
+    их часы в рабочий день — среди «куда ушёл остаток дня».
     """
     if not a.start_date or not a.end_date:
         return []
@@ -3049,13 +3086,22 @@ def _build_daily_breakdown(
             calendar_map,
             used_h=used_h,
             skip_assignment_id=a.id,
+            bookings=bookings,
         )
         status = info["status"]
         # На рабочем дне фаза могла взять лишь часть часов — остаток ушёл
-        # другим фазам этого сотрудника. Показываем их, чтобы было видно
-        # куда делось «Доступно − Потрачено».
+        # другим фазам этого сотрудника, в том числе в планах других команд.
+        # Показываем их, чтобы было видно куда делось «Доступно − Потрачено».
         co_occupants = (
             _day_co_occupants(d, a.employee_id, others_parsed, a.id)
+            + [
+                DayCoOccupant(
+                    item_key=b.issue_key,
+                    phase_label=_booking_label(b),
+                    hours=round(b.daily_hours[d], 2),
+                )
+                for b in _bookings_on(d, a.employee_id, bookings)
+            ]
             if status == "work"
             else []
         )
@@ -3345,6 +3391,10 @@ def explain_assignment(
         horizon_start = window_start_left
     horizon_end = max((x.end_date for x in all_emp_assignments if x.end_date), default=a.end_date)
     full_avail: Dict[date, float] = {}
+    # Ёмкость без броней других команд — по ней выравниватель и расшифровка
+    # конфликта меряют перегрузку.
+    raw_full_avail: Dict[date, float] = {}
+    other_bookings: List[cto.ExternalBooking] = []
     if a.employee_id and horizon_start and horizon_end:
         # Привлечённому дни вне команды плана — норма, а не «вне команды».
         try:
@@ -3362,20 +3412,21 @@ def explain_assignment(
             team=plan.team,
             borrowed=borrowed_here,
         )
+        raw_full_avail = raw_avail.get(a.employee_id, {})
         # «Доступно» — за вычетом броней других команд: ровно то, что видел
         # планировщик при раскладке.
-        booked = cto.daily_totals(
-            cto.external_bookings(
-                db,
-                team=plan.team,
-                year=plan.year,
-                quarter=cto.quarter_num(plan.quarter),
-                employee_ids=[a.employee_id],
-                start=horizon_start,
-                end=horizon_end,
-            )
+        other_bookings = cto.external_bookings(
+            db,
+            team=plan.team,
+            year=plan.year,
+            quarter=cto.quarter_num(plan.quarter),
+            employee_ids=[a.employee_id],
+            start=horizon_start,
+            end=horizon_end,
         )
-        full_avail = cto.subtract_occupancy(raw_avail, booked).get(a.employee_id, {})
+        full_avail = cto.subtract_occupancy(
+            raw_avail, cto.daily_totals(other_bookings)
+        ).get(a.employee_id, {})
 
     # Calendar map для окна фазы (расширено влево до expected_start для трассы).
     calendar_map: Dict[date, "ProductionCalendarDay"] = {}
@@ -3457,7 +3508,9 @@ def explain_assignment(
         }
         is_overload = c.type.startswith("OVERLOAD_")
         if is_overload and target_date and c.employee_id:
-            avail = float(full_avail.get(target_date, 0.0))
+            # Ёмкость — «сырая», как у выравнивателя и расшифровки конфликта:
+            # иначе одна и та же перегрузка показывала бы разные числа.
+            avail = float(raw_full_avail.get(target_date, 0.0))
             demand_total = 0.0
             contribs: List[dict] = []
             for x in all_emp_assignments:
@@ -3478,7 +3531,7 @@ def explain_assignment(
                     wd = 0
                     d = x.start_date
                     while d <= x.end_date:
-                        if full_avail.get(d, 0.0) > 0.0:
+                        if raw_full_avail.get(d, 0.0) > 0.0:
                             wd += 1
                         d += _timedelta(days=1)
                     if wd <= 0:
@@ -3493,7 +3546,7 @@ def explain_assignment(
                 wd_display = 0
                 d2 = x.start_date
                 while d2 <= x.end_date:
-                    if full_avail.get(d2, 0.0) > 0.0:
+                    if raw_full_avail.get(d2, 0.0) > 0.0:
                         wd_display += 1
                     d2 += _timedelta(days=1)
                 contribs.append({
@@ -3547,12 +3600,14 @@ def explain_assignment(
         "algorithm_log": _build_algorithm_log(
             a, plan, all_emp_assignments, same_item_assignments,
             full_avail, absences_in_window_raw, calendar_map,
+            bookings=other_bookings,
         ),
         "daily_breakdown": [
             item.model_dump(mode="json")
             for item in _build_daily_breakdown(
                 a, full_avail, all_emp_assignments, absences_in_window_raw,
                 calendar_map, expected_start=expected_start_date,
+                bookings=other_bookings,
             )
         ],
         "absences_in_window": [

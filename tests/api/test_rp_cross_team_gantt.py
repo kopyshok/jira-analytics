@@ -296,3 +296,68 @@ def test_live_overlap_in_extra_month_after_quarter(client, db_session, two_teams
     [live] = [c for c in body["conflicts"] if c["is_live"]]
     assert live["assignment_id"] == t["b_row"]
     assert live["window_start"].startswith("2026-04-01")
+
+
+def test_explain_names_other_team_booking_instead_of_block(client, db_session, two_teams):
+    """День, съеденный бронью другой команды, — «занят» её задачей, а не «Блокировка»."""
+    import json
+    from datetime import date
+
+    from app.models import ResourcePlanAssignment
+
+    t = two_teams
+    a_row = db_session.get(ResourcePlanAssignment, t["a_row"])
+    proj = db_session.query(Project).filter_by(key="OS").one()
+    a_row.backlog_item.issue_id = make_issue(db_session, proj, "OS-7").id
+    a_row.daily_hours_json = json.dumps({"2026-01-01": 6.0, "2026-01-05": 2.0})
+    a_row.end_date, a_row.hours_allocated = date(2026, 1, 5), 8.0
+    b_row = db_session.get(ResourcePlanAssignment, t["b_row"])
+    b_row.daily_hours_json = json.dumps({"2026-01-02": 6.0, "2026-01-05": 4.0})
+    b_row.start_date, b_row.end_date, b_row.hours_allocated = (
+        date(2026, 1, 2), date(2026, 1, 5), 10.0,
+    )
+    db_session.commit()
+
+    r = client.get(f"{BASE}/{t['plan_b']}/assignments/{t['b_row']}/explain")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    days = {d["date"]: d for d in body["daily_breakdown"]}
+
+    jan1 = days["2026-01-01"]
+    assert jan1["is_pre_start"] is True
+    assert jan1["status"] == "blocked_by_other"
+    assert jan1["blocker_item_key"] == "OS-7"
+    assert jan1["blocker_phase_label"] == "Разработка · план A"
+    assert jan1["blocker_assignment_id"] is None
+    assert days["2026-01-05"]["status"] == "work"
+    assert days["2026-01-05"]["co_occupants"] == [
+        {"item_key": "OS-7", "phase_label": "Разработка · план A", "hours": 2.0}
+    ]
+    assert any("занят: OS-7 «Разработка · план A»" in line for line in body["algorithm_log"])
+
+
+def test_overload_explanations_agree_for_borrowed(client, db_session, two_teams):
+    """Расшифровка фазы и расшифровка перегрузки дают одни и те же числа."""
+    from datetime import datetime
+
+    from app.models import PlanConflict
+
+    t = two_teams
+    c = PlanConflict(
+        plan_id=t["plan_b"], type="OVERLOAD_HIGH", severity="critical", status="open",
+        employee_id=t["e"], assignment_id=t["b_row"], window_start=datetime(2026, 1, 2),
+        message="перегружен", detection_key=f"OVERLOAD_HIGH:{t['b_row']}:2026-01-02",
+    )
+    db_session.add(c)
+    db_session.commit()
+
+    by_conflict = client.get(f"{BASE}/{t['plan_b']}/conflicts/{c.id}/explain").json()
+    by_phase = client.get(f"{BASE}/{t['plan_b']}/assignments/{t['b_row']}/explain").json()
+    [same] = [x for x in by_phase["conflicts"] if x["id"] == c.id]
+
+    for key in ("available_hours", "demand_hours", "overload_pct"):
+        assert same[key] == by_conflict[key], key
+    assert same["available_hours"] == 6.0
+    # А посуточная таблица показывает, что осталось после брони A.
+    days = {d["date"]: d for d in by_phase["daily_breakdown"]}
+    assert days["2026-01-02"]["available_hours"] == 0.0
