@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App, Button, Checkbox, Col, Divider, InputNumber, Modal, Radio, Row, Space, Tag, Typography } from 'antd';
+import { App, Button, Col, Divider, InputNumber, Modal, Radio, Row, Space, Switch, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUpdateBacklogItem } from '../../hooks/useBacklog';
@@ -236,7 +236,10 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
   const incMut = useMutation({
     mutationFn: (val: boolean) =>
       api.patch(`/backlog/${backlogItemId}/included`, { included: val }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['backlog'] }); },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['backlog'] });
+      void qc.invalidateQueries({ queryKey: ['planning'] });
+    },
     onError: (e) => {
       setIncluded(item?.included_in_planning ?? true);
       notification.error({ title: 'Ошибка', description: (e as Error).message });
@@ -306,6 +309,21 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
           Если поле в Jira пустое — заполни вручную. Ручная правка перетирает Jira-значение
           только пока оно пустое; если Jira потом получит значение, оно его перезапишет.
         </Typography.Paragraph>
+        {/* Мультикомандную RFA с дочками включить целиком нельзя — только по Эпикам. */}
+        <Space style={{ marginBottom: 8 }}>
+          <Switch
+            checked={included}
+            loading={incMut.isPending}
+            disabled={modeLocked && hasChildren && !included}
+            onChange={changeIncluded}
+          />
+          <Typography.Text strong>В план</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {hasChildren && mode === 'by_epics'
+              ? 'Включить саму RFA — для кварталов, не покрытых Эпиками'
+              : 'Выключено — задача не попадает в сценарии'}
+          </Typography.Text>
+        </Space>
         <Divider style={{ margin: '8px 0 16px' }} />
         <Row gutter={24}>
           <Col xs={24} md={12}>
@@ -346,14 +364,6 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
                       : ''}
                     . Такую RFA планируют только по Эпикам — каждая команда берёт свою часть.
                   </Typography.Text>
-                )}
-                {mode === 'by_epics' && !modeLocked && (
-                  <Checkbox
-                    checked={included}
-                    onChange={(e) => changeIncluded(e.target.checked)}
-                  >
-                    Включить саму RFA (для непокрытых кварталов)
-                  </Checkbox>
                 )}
               </Space>
             )}
