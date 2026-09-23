@@ -11,6 +11,7 @@ import type {
   BulkApplyResponse,
   BulkAcceptResponse,
   BulkCascadeResponse,
+  PlanRole,
 } from '../types/api';
 
 export const getIssueTree = (
@@ -194,6 +195,17 @@ export const resolvePlanConflict = (
   role: string,
 ): Promise<{ ok: boolean }> =>
   api.post(`/issues/${issueId}/plan/conflict-resolve`, { action, role });
+
+/** Выбор по спорной оценке: одно из полей Jira (`source`) или своё значение. */
+export type PlanChoiceBody =
+  | { role: PlanRole; source: string }
+  | { role: PlanRole; manual_value: number };
+
+export const choosePlanSource = (
+  issueId: string,
+  body: PlanChoiceBody,
+): Promise<{ plan: Record<PlanRole, number | null> }> =>
+  api.post(`/issues/${issueId}/plan/choice`, body);
 
 export const getPlanConflicts = (issueId: string): Promise<PlanConflict[]> =>
   api.get<PlanConflict[]>(`/issues/${issueId}/plan-conflicts`);
