@@ -95,7 +95,8 @@ export function usePatchConflict(planId: string | null) {
   return useMutation({
     mutationFn: ({ conflictId, status }: { conflictId: string; status: ConflictOut['status'] }) =>
       patchConflict(planId!, conflictId, status),
-    onSuccess: () => {
+    // И после отказа: список мог устареть (конфликт исчез при пересчёте).
+    onSettled: () => {
       if (planId) qc.invalidateQueries({ queryKey: ['gantt', planId] });
     },
   });
