@@ -279,16 +279,23 @@ def mode_excluded_backlog_ids(db: Session) -> set[str]:
             whole_parent_issue_ids.append(issue.id)
     if whole_parent_issue_ids:
         rows = (
-            db.query(BacklogItem.id)
+            db.query(BacklogItem.id, Project.key, Issue.issue_type)
             .join(Issue, BacklogItem.issue_id == Issue.id)
+            .outerjoin(Project, Issue.project_id == Project.id)
             .filter(
                 Issue.parent_id.in_(whole_parent_issue_ids),
                 BacklogItem.archived_at.is_(None),
             )
             .all()
         )
-        service_ids = service_epic_backlog_ids(db)
-        excluded |= {bid for (bid,) in rows if bid not in service_ids}
+        rules = load_rules(db)
+        excluded |= {
+            bid
+            for bid, project_key, issue_type in rows
+            if not is_service_epic(
+                rules, project_key=project_key or "", issue_type=issue_type or "", has_parent=True
+            )
+        }
     return excluded
 
 
@@ -535,13 +542,29 @@ def switch_off_new_service_epics(db: Session, before: set[str]) -> set[str]:
     не трогаем: их галочку PM мог поставить сам.
     """
     newly = service_epic_backlog_ids(db) - before
-    if not newly:
-        return newly
-    svc = BacklogService(db)
-    for bid in newly:
-        item = db.get(BacklogItem, bid)
-        if item is not None:
-            item.included_in_planning = False
-        svc._remove_draft_allocations(bid)
-    db.flush()
+    switch_off_backlog_items(db, newly)
     return newly
+
+
+_IN_CHUNK = 500
+
+
+def switch_off_backlog_items(db: Session, item_ids: set[str]) -> None:
+    """Снять галочку «В план» у элементов и убрать их из черновых сценариев.
+
+    Утверждённые сценарии не трогаем — у них уже зафиксирован состав.
+    """
+    if not item_ids:
+        return
+    ids = list(item_ids)
+    draft_ids = db.query(PlanningScenario.id).filter(PlanningScenario.status == "draft")
+    for start in range(0, len(ids), _IN_CHUNK):
+        chunk = ids[start : start + _IN_CHUNK]
+        db.query(BacklogItem).filter(BacklogItem.id.in_(chunk)).update(
+            {BacklogItem.included_in_planning: False}, synchronize_session="fetch"
+        )
+        db.query(ScenarioAllocation).filter(
+            ScenarioAllocation.backlog_item_id.in_(chunk),
+            ScenarioAllocation.scenario_id.in_(draft_ids.scalar_subquery()),
+        ).delete(synchronize_session=False)
+    db.flush()
