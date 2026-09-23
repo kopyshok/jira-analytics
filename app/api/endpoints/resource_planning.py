@@ -480,6 +480,14 @@ class EmployeeLoadDay(BaseModel):
     off: Optional[str] = None
 
 
+class TeamMoveOut(BaseModel):
+    """Переход сотрудника на границе участия в команде плана внутри квартала."""
+    # Для выбывшего — первый день вне команды; для пришедшего — первый день в ней.
+    date: date
+    # Команда по ту сторону границы; None — ни в одной команде.
+    team: Optional[str] = None
+
+
 class EmployeeLoadOut(BaseModel):
     employee_id: str
     employee_name: Optional[str]
@@ -489,6 +497,10 @@ class EmployeeLoadOut(BaseModel):
     # покрывает соответствующий край квартала целиком.
     member_from: Optional[date] = None
     member_to: Optional[date] = None
+    # Куда выбыл (после последнего дня участия) / откуда пришёл (накануне
+    # первого). None — участие покрывает этот край квартала.
+    left_to: Optional[TeamMoveOut] = None
+    joined_from: Optional[TeamMoveOut] = None
 
 
 class GanttProjection(BaseModel):
@@ -1034,6 +1046,9 @@ def get_gantt(
             avail = svc.build_availability(
                 plan_employees, q_start, q_end, [], team=plan.team
             )
+            # Периоды участия во всех командах — для «куда выбыл / откуда пришёл»;
+            # одним запросом на всех, без N+1.
+            membership = tm.membership_rows(db, [e.id for e in plan_employees])
             # Часы по дням на сотрудника — из реальной раскладки планировщика.
             # Размазывать hours_allocated по длине бара нельзя: планировщик
             # оставляет внутри бара паузы (сотрудник ушёл на другую задачу), и
@@ -1094,14 +1109,31 @@ def get_gantt(
                     days_out.append(EmployeeLoadDay(date=d, pct=round(pct, 1), off=off))
                     d += _td(days=1)
                 iv = member_iv.get(e.id) or []
+                member_from = iv[0][0] if iv and iv[0][0] > q_start else None
+                member_to = iv[-1][1] if iv and iv[-1][1] < q_end else None
+                emp_rows = membership.get(e.id, [])
+                left_to = None
+                if member_to is not None:
+                    first_out = member_to + _td(days=1)
+                    left_to = TeamMoveOut(
+                        date=first_out, team=tm.team_on_day(emp_rows, first_out)
+                    )
+                joined_from = None
+                if member_from is not None:
+                    joined_from = TeamMoveOut(
+                        date=member_from,
+                        team=tm.team_on_day(emp_rows, member_from - _td(days=1)),
+                    )
                 employee_load.append(
                     EmployeeLoadOut(
                         employee_id=e.id,
                         employee_name=e.display_name,
                         employee_role=e.role,
                         days=days_out,
-                        member_from=(iv[0][0] if iv and iv[0][0] > q_start else None),
-                        member_to=(iv[-1][1] if iv and iv[-1][1] < q_end else None),
+                        member_from=member_from,
+                        member_to=member_to,
+                        left_to=left_to,
+                        joined_from=joined_from,
                     )
                 )
 

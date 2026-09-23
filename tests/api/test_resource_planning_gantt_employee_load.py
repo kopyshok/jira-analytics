@@ -154,3 +154,64 @@ def test_legacy_bar_without_daily_spreads_over_working_days(client, db_session):
     per_day = 12.0 / 23  # июль 2026: 23 рабочих дня
     assert pct["2026-07-15"] == pytest.approx(per_day / DAY_HOURS * 100, abs=0.1)
     assert pct["2026-07-04"] == 0.0  # суббота
+
+
+OTHER = "T_OTHER"
+
+
+def _membership(db_session, emp_id) -> EmployeeTeam:
+    return (
+        db_session.query(EmployeeTeam)
+        .filter(EmployeeTeam.employee_id == emp_id, EmployeeTeam.team == TEAM)
+        .one()
+    )
+
+
+def _load_row(client, plan_id, emp_id) -> dict:
+    resp = client.get(f"/api/v1/resource-planning/resource-plans/{plan_id}/gantt")
+    assert resp.status_code == 200, resp.text
+    return next(r for r in resp.json()["employee_load"] if r["employee_id"] == emp_id)
+
+
+def test_leaver_reports_next_team(client, db_session):
+    """Выбыл 20.07 и в тот же день пришёл в другую команду — подвал говорит куда."""
+    plan_id, emp_id = _seed(db_session, None)
+    _membership(db_session, emp_id).left_at = date(2026, 7, 20)
+    db_session.add(EmployeeTeam(
+        employee_id=emp_id, team=OTHER, is_primary=False, joined_at=date(2026, 7, 20),
+    ))
+    db_session.commit()
+
+    load = _load_row(client, plan_id, emp_id)
+    assert load["left_to"] == {"date": "2026-07-20", "team": OTHER}
+    assert load["joined_from"] is None
+
+
+def test_leaver_without_next_team(client, db_session):
+    plan_id, emp_id = _seed(db_session, None)
+    _membership(db_session, emp_id).left_at = date(2026, 7, 20)
+    db_session.commit()
+
+    load = _load_row(client, plan_id, emp_id)
+    assert load["left_to"] == {"date": "2026-07-20", "team": None}
+
+
+def test_joiner_reports_previous_team(client, db_session):
+    """Пришёл 03.08 из другой команды — подвал говорит откуда."""
+    plan_id, emp_id = _seed(db_session, None)
+    _membership(db_session, emp_id).joined_at = date(2026, 8, 3)
+    db_session.add(EmployeeTeam(
+        employee_id=emp_id, team=OTHER, is_primary=False, left_at=date(2026, 8, 3),
+    ))
+    db_session.commit()
+
+    load = _load_row(client, plan_id, emp_id)
+    assert load["joined_from"] == {"date": "2026-08-03", "team": OTHER}
+    assert load["left_to"] is None
+
+
+def test_full_quarter_member_has_no_moves(client, db_session):
+    plan_id, emp_id = _seed(db_session, None)
+    load = _load_row(client, plan_id, emp_id)
+    assert load["left_to"] is None
+    assert load["joined_from"] is None
