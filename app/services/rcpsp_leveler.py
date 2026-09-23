@@ -83,12 +83,21 @@ class RcpspLeveler:
         availability: Dict[str, Dict[date, float]],
         q_end: date,
         role_pools: Optional[Dict[str, List[str]]] = None,
+        placement_availability: Optional[Dict[str, Dict[date, float]]] = None,
     ) -> List[LevelingEvent]:
-        """Главный entrypoint. Мутирует assignments на месте, возвращает событий."""
+        """Главный entrypoint. Мутирует assignments на месте, возвращает событий.
+
+        ``availability`` — ёмкость для поиска перегрузок. ``placement_availability``
+        — куда фазе можно переехать при сдвиге и переназначении (например, за
+        вычетом броней других команд); по умолчанию та же ``availability``.
+        """
         if not assignments:
             return []
         self._escalated_keys = set()
         role_pools = role_pools or {}
+        placement = (
+            availability if placement_availability is None else placement_availability
+        )
         events: List[LevelingEvent] = []
         max_passes = 50  # увеличено с 20: reassign может потребовать больше итераций в сложных графах
         for _ in range(max_passes):
@@ -130,7 +139,7 @@ class RcpspLeveler:
                 target = movable[0]
                 shift = 1
                 while shift <= int(target.slack_days or 0):
-                    if self._try_delay(target, shift, availability, q_end):
+                    if self._try_delay(target, shift, placement, q_end):
                         events.append(
                             LevelingEvent(
                                 assignment_id=target.id,
@@ -181,7 +190,7 @@ class RcpspLeveler:
                     for peer_id in peers_excl_self:
                         original_emp = target.employee_id
                         if self._try_reassign(
-                            target, peer_id, availability, assignments
+                            target, peer_id, placement, assignments
                         ):
                             events.append(
                                 LevelingEvent(

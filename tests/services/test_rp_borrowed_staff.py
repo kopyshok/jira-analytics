@@ -286,3 +286,22 @@ def test_partially_placed_phase_is_reported(db_session):
     assert c.employee_id == own.id
     assert c.metric_value == 84.0
     assert "размещено 516 из 600 ч" in c.message
+
+
+def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
+    """Перегрузку выравниватель снимает сдвигом только на дни без чужих броней."""
+    e = make_employee(db_session, "Пряничников", "A")
+    # План B держит E во вторник 06.01.
+    sc_b, plan_b = make_plan(db_session, "B")
+    item_b = add_item(db_session, sc_b, "Работа B", dev=6)
+    book(db_session, plan_b, item_b, e, {"2026-01-06": 6.0})
+    # В плане A две разработки E закреплены на понедельник 05.01 — перегрузка.
+    sc_a, plan_a = make_plan(db_session, "A", plan_status="draft")
+    for title, prio in (("Первая", 2), ("Вторая", 1)):
+        it = add_item(db_session, sc_a, title, dev=6, priority=prio)
+        book(db_session, plan_a, it, e, {"2026-01-05": 6.0}, pinned_start=True)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_a.id)
+
+    assert _days(_dev_rows(db_session, plan_a.id)) == {"2026-01-05", "2026-01-07"}
