@@ -1,6 +1,7 @@
 """Issue configuration API — tree view, category assignment, analysis flags."""
 
 import json
+import math
 from collections import deque
 from typing import Optional, List, Dict
 
@@ -1282,7 +1283,9 @@ class PlanChoiceRequest(BaseModel):
 
     role: str
     source: Optional[str] = None
-    manual_value: Optional[float] = Field(default=None, ge=0)
+    # Границы проверяет обработчик: стандартный ответ 422 повторяет входное
+    # значение, а NaN/Infinity не кодируются в JSON — вышел бы 500.
+    manual_value: Optional[float] = None
 
 
 @router.post("/{issue_id}/plan/choice")
@@ -1298,6 +1301,10 @@ async def choose_plan_source(
         raise HTTPException(404, "Issue not found")
     if (payload.source is None) == (payload.manual_value is None):
         raise HTTPException(422, "Укажите либо поле Jira, либо своё значение")
+    if payload.manual_value is not None and not (
+        math.isfinite(payload.manual_value) and payload.manual_value >= 0
+    ):
+        raise HTTPException(422, "Своё значение — неотрицательное число часов")
     svc = PlanEditService(db)
     try:
         if payload.source is not None:

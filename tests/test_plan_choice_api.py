@@ -67,6 +67,19 @@ def test_choice_invalid(client, testclient_db_session, body):
     assert c.post("/api/v1/issues/i-pc/plan/choice", json=body).status_code == 422
 
 
+@pytest.mark.parametrize("raw", ["NaN", "Infinity", "-Infinity"])
+def test_choice_manual_non_finite_is_422(client, testclient_db_session, raw):
+    c, _ = client
+    _seed(testclient_db_session)
+    r = c.post(
+        "/api/v1/issues/i-pc/plan/choice",
+        content=f'{{"role": "dev", "manual_value": {raw}}}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 422
+    assert testclient_db_session.get(Issue, "i-pc").planned_dev_hours_manual is None
+
+
 def test_choice_404(client):
     c, _ = client
     r = c.post("/api/v1/issues/missing/plan/choice", json={"role": "dev", "source": "x"})
