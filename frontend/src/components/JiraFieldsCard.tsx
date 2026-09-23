@@ -3,18 +3,24 @@ import { Card, Form, Select, Button, Space, App, Collapse, Typography } from 'an
 import { SaveOutlined } from '@ant-design/icons';
 import { useGenericSetting, useSaveGenericSetting } from '../hooks/useSettings';
 import { useJiraFields } from '../hooks/useSync';
+import PlanFieldListEditor from './settings/PlanFieldListEditor';
+import { parsePlanFieldSetting } from '../utils/planFieldSources';
 
 const { Text } = Typography;
 
 interface FieldDef {
   key: string;
   label: string;
+  /** Несколько полей Jira списком (альтернативы и слагаемые). */
+  multi?: boolean;
 }
 
 interface FieldGroup {
   panelKey: string;
   title: string;
   subtitle?: string;
+  /** Подсказка под полями группы. */
+  hint?: string;
   fields: FieldDef[];
 }
 
@@ -40,11 +46,13 @@ const GROUPS: FieldGroup[] = [
   {
     panelKey: 'planned_hours',
     title: 'Плановые трудозатраты (часы)',
+    subtitle: 'На роль можно указать несколько полей. «Альтернатива» — отдельная оценка той же работы: если значения расходятся, оценка помечается спорной, а до выбора действует верхнее поле. «Слагаемые» складываются в одно значение (например, Back + Front) и дальше сравниваются с альтернативами.',
+    hint: 'Новые поля подтянутся при следующей синхронизации.',
     fields: [
-      { key: 'jira_planned_analyst_hours_field_id', label: 'Анализ (часы)' },
-      { key: 'jira_planned_dev_hours_field_id',     label: 'Разработка (часы)' },
-      { key: 'jira_planned_qa_hours_field_id',      label: 'Тестирование (часы)' },
-      { key: 'jira_planned_opo_hours_field_id',     label: 'ОПЭ (часы)' },
+      { key: 'jira_planned_analyst_hours_field_id', label: 'Анализ (часы)', multi: true },
+      { key: 'jira_planned_dev_hours_field_id',     label: 'Разработка (часы)', multi: true },
+      { key: 'jira_planned_qa_hours_field_id',      label: 'Тестирование (часы)', multi: true },
+      { key: 'jira_planned_opo_hours_field_id',     label: 'ОПЭ (часы)', multi: true },
     ],
   },
   {
@@ -136,9 +144,21 @@ export default function JiraFieldsCard() {
     }
   }, [loaded, settings]);
 
+  // В старой настройке роли поле записано без названия. Подгружаем список полей Jira,
+  // чтобы показать название, а не служебный код поля.
+  const needFieldNames = loaded && ALL_FIELDS.some(
+    f => f.multi && parsePlanFieldSetting(values[f.key]).some(e => !e.name),
+  );
+  const hasJiraFields = !!jiraFields.data;
+  const refetchJiraFields = jiraFields.refetch;
+  useEffect(() => {
+    if (needFieldNames && !hasJiraFields) refetchJiraFields();
+  }, [needFieldNames, hasJiraFields, refetchJiraFields]);
+
   const fieldOptions = (jiraFields.data ?? []).map(f => ({
     value: f.id,
     label: `${f.name} (${f.id})`,
+    name: f.name,
   }));
 
   const handleSaveAll = () => {
@@ -148,7 +168,19 @@ export default function JiraFieldsCard() {
       .catch(e => message.error(e.message));
   };
 
-  const renderField = (f: FieldDef) => (
+  const renderField = (f: FieldDef) => f.multi ? (
+    <Form.Item key={f.key} label={f.label} style={{ marginBottom: 12 }} wrapperCol={{ flex: '1 1 auto' }}>
+      <PlanFieldListEditor
+        // Редактор держит строки у себя — перемонтируем, когда настройки загрузились.
+        key={`${f.key}-${loaded}`}
+        value={values[f.key] ?? ''}
+        onChange={v => setValues(prev => ({ ...prev, [f.key]: v }))}
+        options={fieldOptions}
+        loading={jiraFields.isFetching}
+        onOpen={() => { if (!jiraFields.data) jiraFields.refetch(); }}
+      />
+    </Form.Item>
+  ) : (
     <Form.Item key={f.key} label={f.label} style={{ marginBottom: 4 }}>
       <Select
         value={values[f.key] || undefined}
@@ -197,6 +229,7 @@ export default function JiraFieldsCard() {
               <Space orientation="vertical" size={0} style={{ width: '100%' }}>
                 {g.subtitle && <Text type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>{g.subtitle}</Text>}
                 {g.fields.map(renderField)}
+                {g.hint && <Text type="secondary" style={{ fontSize: 12 }}>{g.hint}</Text>}
               </Space>
             ),
           }))}
