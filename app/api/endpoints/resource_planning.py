@@ -561,6 +561,26 @@ class EmployeeChangePreviewResponse(BaseModel):
     has_conflicts: bool
 
 
+class CandidateOut(BaseModel):
+    """Кандидат в исполнители фазы."""
+
+    employee_id: str
+    display_name: str
+    role: Optional[str] = None
+    team: Optional[str] = None
+    # Загрузка за квартал плана по всем опорным планам команд, %.
+    load_pct: float = 0.0
+    # Границы участия в команде плана внутри квартала; None — край покрыт.
+    member_from: Optional[date] = None
+    member_to: Optional[date] = None
+
+
+class CandidateGroupOut(BaseModel):
+    key: Literal["jira", "team", "other"]
+    label: str
+    employees: List[CandidateOut]
+
+
 class DependencyCreate(BaseModel):
     from_item_id: str
     to_item_id: str
@@ -1380,6 +1400,104 @@ def preview_employee_change(
         overloads=overloads,
         has_conflicts=bool(absences) or bool(overloads),
     )
+
+
+@router.get(
+    "/resource-plans/{plan_id}/assignments/{assignment_id}/candidates",
+    response_model=List[CandidateGroupOut],
+)
+def list_assignment_candidates(
+    plan_id: str,
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Все активные сотрудники тремя группами: «Из Jira», «Моя команда», «Другие команды».
+
+    «Из Jira»: для разработки — поле «Разработчик», для остальных фаз —
+    исполнитель инициативы. «Моя команда» — состав команды плана за квартал.
+    У каждого — загрузка за квартал плана по всем опорным планам команд.
+    Пустые группы не возвращаются.
+    """
+    from app.models import Employee
+    from app.services import cross_team_occupancy as cto
+    from app.services import team_membership as tm
+    from app.services.jira_developer import jira_developers_for_items
+
+    a = db.execute(
+        select(ResourcePlanAssignment)
+        .options(joinedload(ResourcePlanAssignment.backlog_item))
+        .where(
+            ResourcePlanAssignment.id == assignment_id,
+            ResourcePlanAssignment.plan_id == plan_id,
+        )
+    ).scalar_one_or_none()
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+    plan = db.get(ResourcePlan, plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+    try:
+        q_start, q_end = ResourcePlanningService(db)._quarter_bounds(plan)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    q = cto.quarter_num(plan.quarter)
+
+    employees = list(
+        db.execute(select(Employee).where(Employee.is_active == True))  # noqa: E712
+        .scalars()
+        .all()
+    )
+    by_id = {e.id: e for e in employees}
+    member_iv = (
+        tm.member_intervals(db, [plan.team], q_start, q_end) if plan.team else {}
+    )
+
+    jira_id: Optional[str] = None
+    item = a.backlog_item
+    if item is not None:
+        if a.phase == "dev":
+            jira_id = jira_developers_for_items(db, [item]).get(item.id)
+        else:
+            jira_id = item.assignee_employee_id
+    jira_ids = [jira_id] if jira_id in by_id else []
+
+    load = cto.quarter_load_pct(db, plan.year, q, employees) if plan.year and q else {}
+
+    def _out(e: Employee) -> CandidateOut:
+        iv = member_iv.get(e.id) or []
+        # Отрезки могут вкладываться — конец участия = самый поздний конец.
+        iv_end = max((hi for _, hi in iv), default=None)
+        return CandidateOut(
+            employee_id=e.id,
+            display_name=e.display_name,
+            role=e.role,
+            team=e.team,
+            load_pct=load.get(e.id, 0.0),
+            member_from=iv[0][0] if iv and iv[0][0] > q_start else None,
+            member_to=iv_end if iv_end is not None and iv_end < q_end else None,
+        )
+
+    def _name(e: Employee) -> str:
+        return (e.display_name or "").lower()
+
+    rest = sorted((e for e in employees if e.id not in jira_ids), key=_name)
+    groups = [
+        CandidateGroupOut(
+            key="jira", label="Из Jira", employees=[_out(by_id[i]) for i in jira_ids]
+        ),
+        CandidateGroupOut(
+            key="team",
+            label="Моя команда",
+            employees=[_out(e) for e in rest if e.id in member_iv],
+        ),
+        CandidateGroupOut(
+            key="other",
+            label="Другие команды",
+            employees=[_out(e) for e in rest if e.id not in member_iv],
+        ),
+    ]
+    return [g for g in groups if g.employees]
 
 
 class InvolvementUpdate(BaseModel):
