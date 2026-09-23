@@ -2491,8 +2491,16 @@ def explain_conflict(
     )
 
     svc = ResourcePlanningService(db)
+    # Привлечённому дни вне команды плана — норма. Ёмкость остаётся «сырой»
+    # (без броней других команд): перегрузку выравниватель меряет так же.
+    try:
+        cq_start, cq_end = svc._quarter_bounds(plan)
+        borrowed_here = cto.borrowed_ids(db, team, cq_start, cq_end, [c.employee_id])
+    except ValueError:
+        borrowed_here = set()
     availability = svc.build_availability(
-        employees, target_date, target_date, list(blocks), team=team
+        employees, target_date, target_date, list(blocks), team=team,
+        borrowed=borrowed_here,
     )
     avail_map = availability.get(c.employee_id, {})
     available_h = float(avail_map.get(target_date, 0.0))
@@ -2527,6 +2535,7 @@ def explain_conflict(
         emp_horizon_end,
         list(blocks),
         team=team,
+        borrowed=borrowed_here,
     ).get(c.employee_id, {})
 
     demand_total = 0.0
@@ -3166,13 +3175,36 @@ def explain_assignment(
     horizon_end = max((x.end_date for x in all_emp_assignments if x.end_date), default=a.end_date)
     full_avail: Dict[date, float] = {}
     if a.employee_id and horizon_start and horizon_end:
-        full_avail = svc.build_availability(
+        # Привлечённому дни вне команды плана — норма, а не «вне команды».
+        try:
+            eq_start, eq_end = svc._quarter_bounds(plan)
+            borrowed_here = cto.borrowed_ids(
+                db, plan.team, eq_start, eq_end, [a.employee_id]
+            )
+        except ValueError:
+            borrowed_here = set()
+        raw_avail = svc.build_availability(
             [e for e in employees if e.id == a.employee_id],
             horizon_start,
             horizon_end,
             list(blocks),
             team=plan.team,
-        ).get(a.employee_id, {})
+            borrowed=borrowed_here,
+        )
+        # «Доступно» — за вычетом броней других команд: ровно то, что видел
+        # планировщик при раскладке.
+        booked = cto.daily_totals(
+            cto.external_bookings(
+                db,
+                team=plan.team,
+                year=plan.year,
+                quarter=cto.quarter_num(plan.quarter),
+                employee_ids=[a.employee_id],
+                start=horizon_start,
+                end=horizon_end,
+            )
+        )
+        full_avail = cto.subtract_occupancy(raw_avail, booked).get(a.employee_id, {})
 
     # Calendar map для окна фазы (расширено влево до expected_start для трассы).
     calendar_map: Dict[date, "ProductionCalendarDay"] = {}
