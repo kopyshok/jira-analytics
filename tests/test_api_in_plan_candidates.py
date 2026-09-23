@@ -137,3 +137,37 @@ def test_toggle_publishes_backlog_and_planning(client, testclient_db_session, bu
     bus.publish.reset_mock()
     client.patch(f"/api/v1/backlog/{ids['i-disc']}/included", json={"included": True})
     bus.publish.assert_called_once_with({"type": "entity_changed", "entities": ["backlog", "planning"]})
+
+
+def test_turning_off_removes_from_draft_immediately(client, testclient_db_session):
+    """Без чтения раскладок: PATCH сам снимает задачу из черновиков."""
+    ids = _seed_rfa_with_discovery(testclient_db_session)
+    sid = _create_scenario(client)
+    client.patch(f"/api/v1/backlog/{ids['i-disc']}/included", json={"included": True})
+    client.patch(f"/api/v1/backlog/{ids['i-disc']}/included", json={"included": False})
+    testclient_db_session.expire_all()
+    assert (
+        testclient_db_session.query(ScenarioAllocation)
+        .filter_by(scenario_id=sid, backlog_item_id=ids["i-disc"])
+        .count()
+        == 0
+    )
+
+
+def test_multi_team_single_task_can_be_switched_back_on(client, testclient_db_session):
+    """Запрет «мультикомандную RFA целиком» касается только родителя группы.
+
+    Одиночную мультикомандную задачу галочкой «В план» можно вернуть в план.
+    """
+    db = testclient_db_session
+    db.add(Project(id="p1", key="PRJ", jira_project_id="jp1", name="Project"))
+    db.flush()
+    db.add(Issue(id="i-mt", key="PRJ-9", jira_issue_id="jmt", summary="Мультикоманда", issue_type="RFA",
+                 status="Open", project_id="p1", category="initiatives_rfa", team="T1",
+                 participating_teams='["T1", "T2"]'))
+    db.add(BacklogItem(id="bi-mt", issue_id="i-mt", title="Мультикоманда", priority=1))
+    db.commit()
+    assert client.patch("/api/v1/backlog/bi-mt/included", json={"included": False}).status_code == 200
+    r = client.patch("/api/v1/backlog/bi-mt/included", json={"included": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["included_in_planning"] is True
