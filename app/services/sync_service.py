@@ -765,7 +765,7 @@ class SyncService:
     def _update_sync_state(
         self,
         entity_name: str,
-        last_success: datetime,
+        last_success: Optional[datetime],
         cursor: Optional[str] = None,
         error: Optional[str] = None,
         scope: str = "",
@@ -1330,11 +1330,27 @@ class SyncService:
         if linked_count:
             logger.info(f"Synced issue links for {linked_count} issues")
 
-        self._update_sync_state("issues", datetime.utcnow())
+        # Поля оценки поменяли, пока шёл проход: задачи прочитаны по старой
+        # настройке. Курсор не двигаем — следующий синк перечитает все задачи
+        # (иначе эта запись затёрла бы сброс курсора из настроек).
+        fields_changed = self._plan_hours_fields_changed(planned_field_ids)
+        self._update_sync_state("issues", None if fields_changed else datetime.utcnow())
         self.db.commit()
 
         logger.info(f"Issues sync complete: {count} synced, {self.stats.issues_created} created")
         return count
+
+    def _plan_hours_fields_changed(self, used: dict[str, Optional[str]]) -> bool:
+        """Настройка полей оценки в базе отличается от прочитанной в начале синка.
+
+        Читаем значения колонкой, а не объектом: объект из начала синка мог
+        остаться в сессии со старым значением.
+        """
+        for key in PLAN_HOURS_SETTING_KEYS:
+            now = self.db.query(AppSetting.value).filter(AppSetting.key == key).scalar()
+            if parse_field_setting(now) != parse_field_setting(used.get(key)):
+                return True
+        return False
 
     async def clear_stale_developer_field(self) -> dict:
         """Обнулить поле «Разработчик» у задач, где его нет на карточке.

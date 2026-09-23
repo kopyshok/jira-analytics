@@ -211,3 +211,53 @@ async def test_sync_issues_end_to_end_multi_fields(db_session):
     assert issue.planned_dev_hours_jira == 80.5
     assert "qa" not in issue.planned_hours_sources
     assert issue.planned_qa_hours_jira is None
+
+
+def _jira_issue(jira_id: str, key: str, extra: dict):
+    from app.connectors.schemas import JiraIssueSchema
+
+    return JiraIssueSchema.model_validate({
+        "id": jira_id, "key": key,
+        "fields": {
+            "summary": "Инициатива",
+            "issuetype": {"id": "1", "name": "RFA", "subtask": False},
+            "status": {"id": "1", "name": "Open", "statusCategory": {"key": "new"}},
+            "project": {"id": "10500", "key": "E2E", "name": "E2E"},
+            **extra,
+        },
+    })
+
+
+async def _sync_while_admin_saves(db, new_value):
+    """Синк задач, во время которого админ сохраняет поля оценки «Разработки»."""
+    from app.models import SyncState
+
+    db.add(AppSetting(key="jira_planned_dev_hours_field_id", value="customfield_12432"))
+    db.add(Project(jira_project_id="10500", key="E2E", name="E2E"))
+    db.commit()
+
+    async def fake_iter_issues(jql, max_results, fields):  # noqa: ARG001
+        row = db.query(AppSetting).filter_by(key="jira_planned_dev_hours_field_id").one()
+        row.value = new_value
+        db.commit()
+        yield _jira_issue("95101", "E2E-11", {"customfield_12432": 40})
+
+    jira = MagicMock()
+    jira.iter_issues = fake_iter_issues
+    await SyncService(db, jira).sync_issues(project_keys=["E2E"], incremental=True)
+    return db.query(SyncState).filter_by(entity_name="issues", scope="").one()
+
+
+async def test_fields_changed_during_sync_do_not_advance_cursor(db_session):
+    """Поля оценки поменяли посреди синка: задачи прочитаны по старой настройке.
+    Курсор не двигается — следующий синк перечитает все задачи (иначе запись
+    курсора в конце синка затёрла бы сброс из настроек)."""
+    state = await _sync_while_admin_saves(db_session, DEV_SETTING)
+    assert state.last_success_at is None
+
+
+async def test_same_fields_saved_during_sync_advance_cursor(db_session):
+    state = await _sync_while_admin_saves(
+        db_session, '[{"field_id": "customfield_12432", "kind": "alt"}]',
+    )
+    assert state.last_success_at is not None
