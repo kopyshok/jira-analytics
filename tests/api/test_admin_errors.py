@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.core import error_log
 from app.core.security import hash_password
 from app.database import get_db
-from app.main import app
+from app.main import app, settings
 from app.models.user import User, UserRole
 
 
@@ -58,8 +58,11 @@ def test_unhandled_error_lands_in_list(testclient_db_session):
     app.dependency_overrides[get_db] = lambda: testclient_db_session
     client = TestClient(app, raise_server_exceptions=False)
     try:
-        resp = client.get("/api/v1/__selftest_boom")
+        origin = settings.cors_origins[0]
+        resp = client.get("/api/v1/__selftest_boom", headers={"Origin": origin})
         assert resp.status_code == 500
+        # Без CORS-заголовка браузер покажет «Failed to fetch» вместо ошибки.
+        assert resp.headers["access-control-allow-origin"] == origin
         error_id = resp.json()["error_id"]
 
         item = client.get("/api/v1/admin/errors").json()["items"][0]

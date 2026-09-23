@@ -143,9 +143,18 @@ async def unhandled_error_handler(request, exc: Exception) -> JSONResponse:
         "Необработанная ошибка %s %s (номер %s)",
         request.method, request.url.path, entry_id,
     )
+    # Этот обработчик работает снаружи CORSMiddleware — без своих заголовков
+    # браузер режет ответ и фронт видит «Failed to fetch» вместо 500.
+    origin = request.headers.get("origin")
+    headers = (
+        {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true", "Vary": "Origin"}
+        if origin in settings.cors_origins
+        else None
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Внутренняя ошибка сервера", "error_id": entry_id},
+        headers=headers,
     )
 
 
