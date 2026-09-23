@@ -166,3 +166,45 @@ def test_no_live_conflict_when_borrower_fits_next_to_booking(client, db_session,
 
     assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
     assert _day(_row(body, t["e"]), "2026-01-01")["ext_pct"] == 50.0
+
+
+def test_explain_borrowed_assignment_counts_external_bookings(client, two_teams, db_session):
+    import json
+    from datetime import date
+
+    from app.models import ResourcePlanAssignment
+
+    t = two_teams
+    # В плане A оставляем бронь только на 01.01.
+    a_row = db_session.get(ResourcePlanAssignment, t["a_row"])
+    a_row.daily_hours_json = json.dumps({"2026-01-01": 6.0})
+    a_row.end_date = date(2026, 1, 1)
+    a_row.hours_allocated = 6.0
+    db_session.commit()
+
+    r = client.get(f"{BASE}/{t['plan_b']}/assignments/{t['b_row']}/explain")
+    assert r.status_code == 200, r.text
+    days = {d["date"]: d for d in r.json()["daily_breakdown"]}
+
+    assert days["2026-01-01"]["available_hours"] == 0.0  # занят планом A
+    assert days["2026-01-02"]["available_hours"] == 6.0  # свободен, не «вне команды B»
+
+
+def test_explain_overload_of_borrowed_keeps_raw_capacity(client, two_teams, db_session):
+    from datetime import datetime
+
+    from app.models import PlanConflict
+
+    t = two_teams
+    c = PlanConflict(
+        plan_id=t["plan_b"], type="OVERLOAD_HIGH", severity="critical", status="open",
+        employee_id=t["e"], assignment_id=t["b_row"], window_start=datetime(2026, 1, 2),
+        message="перегружен", detection_key=f"OVERLOAD_HIGH:{t['b_row']}:2026-01-02",
+    )
+    db_session.add(c)
+    db_session.commit()
+
+    r = client.get(f"{BASE}/{t['plan_b']}/conflicts/{c.id}/explain")
+    assert r.status_code == 200, r.text
+    # Не «вне команды B» (0 ч) и без вычета брони A — ёмкость дня целиком.
+    assert r.json()["available_hours"] == 6.0
