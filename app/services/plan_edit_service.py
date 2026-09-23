@@ -194,14 +194,15 @@ class PlanEditService:
         issue.planned_hours_choice = choice  # новый dict — иначе JSON-колонка не заметит правку
         setattr(issue, f"planned_{role}_hours_jira", picked.value)
         setattr(issue, f"planned_{role}_hours_manual", None)
-        if before != picked.value:
-            self.db.add(PlanAudit(
-                issue_id=issue.id, role=role,
-                value_before=before, value_after=picked.value,
-                source="dispute_choice", user_id=user_id,
-                comment=f"Спорная оценка: выбрано «{picked.label}»",
-                created_at=datetime.utcnow(),
-            ))
+        # Журнал — при каждом выборе, даже если число не изменилось: иначе
+        # конфликт синка остаётся последней записью роли и висит открытым.
+        self.db.add(PlanAudit(
+            issue_id=issue.id, role=role,
+            value_before=before, value_after=picked.value,
+            source="dispute_choice", user_id=user_id,
+            comment=f"Спорная оценка: выбрано «{picked.label}»",
+            created_at=datetime.utcnow(),
+        ))
         self._sync_backlog(issue)
         self.db.commit()
         return issue
@@ -224,22 +225,30 @@ class PlanEditService:
         candidates = candidates_from_json((issue.planned_hours_sources or {}).get(role))
         if not candidates:
             raise ValueError("У роли нет значений из Jira")
+        before = getattr(issue, f"planned_{role}_hours")
         choice = dict(issue.planned_hours_choice or {})
         choice[role] = {"source": MANUAL_SOURCE, "fingerprint": fingerprint(candidates)}
         issue.planned_hours_choice = choice
-        # edit (часть 1.5) пишет журнал, синкает копию в бэклоге и коммитит.
-        return self.edit(
-            issue_id, {role: value}, "Спорная оценка: введено своё значение",
-            user_id=user_id,
-        )
+        setattr(issue, f"planned_{role}_hours_manual", value)
+        # Журнал — при каждом выборе, даже если число не изменилось (см. choose_source).
+        self.db.add(PlanAudit(
+            issue_id=issue.id, role=role,
+            value_before=before, value_after=value,
+            source="dispute_choice", user_id=user_id,
+            comment="Спорная оценка: введено своё значение",
+            created_at=datetime.utcnow(),
+        ))
+        self._sync_backlog(issue)
+        self.db.commit()
+        return issue
 
     def open_conflicts(self, issue_id: str) -> list[dict]:
         """Открытые (не разрешённые) конфликты per роль.
 
         Для каждой роли смотрим самую свежую audit-запись:
         - если source='jira_sync_conflict' и ниже неё нет 'conflict_accepted'/
-          'conflict_ignored'/'manual_edit'/'manual_revert' для той же роли —
-          конфликт открыт.
+          'conflict_ignored'/'manual_edit'/'manual_revert'/'dispute_choice'
+          для той же роли — конфликт открыт.
         """
         rows = (
             self.db.query(PlanAudit)

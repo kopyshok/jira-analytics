@@ -1,4 +1,6 @@
 """PlanEditService: выбор значения спорной оценки."""
+from datetime import datetime
+
 import pytest
 
 from app.models import BacklogItem, Issue, PlanAudit, Project
@@ -67,6 +69,44 @@ def test_choose_manual_sets_manual_and_resolves(db_session):
     assert issue.planned_hours_choice["dev"]["source"] == MANUAL_SOURCE
     assert disputes_for(issue.planned_hours_sources, issue.planned_hours_choice, {"dev"}) == {}
     assert db_session.get(BacklogItem, "b-ch").estimate_dev_hours == 95.0
+
+
+def _pending_sync_conflict(db):
+    """Синк поменял Jira-значение при ручном — открытый конфликт по роли."""
+    db.add(PlanAudit(
+        issue_id="i-ch", role="dev", value_before=90.0, value_after=100.0,
+        source="jira_sync_conflict", created_at=datetime(2026, 1, 1),
+    ))
+    db.commit()
+
+
+def test_choose_source_logs_even_same_value_and_closes_sync_conflict(db_session):
+    """Поле с тем же числом, что и ручное: журнал всё равно пишется, иначе
+    конфликт синка остаётся последней записью роли и висит открытым,
+    хотя ручного значения уже нет."""
+    _seed(db_session, manual=80.0)
+    _pending_sync_conflict(db_session)
+    svc = PlanEditService(db_session)
+    assert [c["role"] for c in svc.open_conflicts("i-ch")] == ["dev"]
+
+    svc.choose_source("i-ch", "dev", "sum")  # сумма = 80, как ручное
+
+    assert svc.open_conflicts("i-ch") == []
+    audit = db_session.query(PlanAudit).filter_by(issue_id="i-ch", source="dispute_choice").one()
+    assert (audit.value_before, audit.value_after) == (80.0, 80.0)
+
+
+def test_choose_manual_logs_even_same_value_and_closes_sync_conflict(db_session):
+    _seed(db_session, manual=95.0)
+    _pending_sync_conflict(db_session)
+    svc = PlanEditService(db_session)
+
+    svc.choose_manual("i-ch", "dev", 95.0)
+
+    assert svc.open_conflicts("i-ch") == []
+    audit = db_session.query(PlanAudit).filter_by(issue_id="i-ch", source="dispute_choice").one()
+    assert (audit.value_before, audit.value_after) == (95.0, 95.0)
+    assert db_session.get(Issue, "i-ch").planned_dev_hours_manual == 95.0
 
 
 def test_choose_manual_without_candidates_raises(db_session):
