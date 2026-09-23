@@ -208,3 +208,91 @@ def test_explain_overload_of_borrowed_keeps_raw_capacity(client, two_teams, db_s
     assert r.status_code == 200, r.text
     # Не «вне команды B» (0 ч) и без вычета брони A — ёмкость дня целиком.
     assert r.json()["available_hours"] == 6.0
+
+
+LIVE_ID_PREFIX = "live:"
+
+
+def test_conflict_list_includes_live_overlap(client, two_teams):
+    t = two_teams
+    gantt_live = [
+        c for c in _gantt(client, t["plan_b"])["conflicts"] if c["is_live"]
+    ]
+
+    r = client.get(f"{BASE}/{t['plan_b']}/conflicts", params={"group_by": "type"})
+    assert r.status_code == 200, r.text
+    groups = {g["key"]: g["conflicts"] for g in r.json()["groups"]}
+    [live] = groups["CROSS_TEAM_OVERLAP"]
+    assert live["is_live"] is True
+    assert live["id"] == gantt_live[0]["id"]
+    assert live["id"].startswith(LIVE_ID_PREFIX)
+    assert live["assignment_id"] == t["b_row"]
+    assert live["employee_name"] == "Пряничников"
+    assert live["status"] == "open"
+
+    muted = client.get(f"{BASE}/{t['plan_b']}/conflicts", params={"status": "muted"})
+    assert muted.json()["groups"] == []
+
+
+def test_explain_assignment_lists_live_overlap(client, two_teams):
+    t = two_teams
+    r = client.get(f"{BASE}/{t['plan_b']}/assignments/{t['b_row']}/explain")
+    assert r.status_code == 200, r.text
+    [live] = [c for c in r.json()["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"]
+    assert live["is_live"] is True
+    assert live["date"] == "2026-01-01"
+    assert "пересекается с планом A" in live["message"]
+
+
+def test_explain_live_conflict_returns_base_fields(client, two_teams):
+    t = two_teams
+    live_id = next(c["id"] for c in _gantt(client, t["plan_b"])["conflicts"] if c["is_live"])
+
+    r = client.get(f"{BASE}/{t['plan_b']}/conflicts/{live_id}/explain")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == live_id
+    assert body["type"] == "CROSS_TEAM_OVERLAP"
+    assert body["employee_id"] == t["e"]
+    assert body["employee_name"] == "Пряничников"
+    assert body["date"] == "2026-01-01"
+    assert body["contributors"] == []
+
+    gone = client.get(f"{BASE}/{t['plan_b']}/conflicts/live:CROSS_TEAM_OVERLAP:nope/explain")
+    assert gone.status_code == 404
+
+
+def test_live_conflict_status_cannot_change(client, two_teams):
+    t = two_teams
+    live_id = next(c["id"] for c in _gantt(client, t["plan_b"])["conflicts"] if c["is_live"])
+
+    r = client.patch(f"{BASE}/{t['plan_b']}/conflicts/{live_id}", json={"status": "muted"})
+
+    assert r.status_code == 409
+    assert r.json()["detail"] == (
+        "Пересечение с планом другой команды нельзя скрыть — оно пересчитывается само"
+    )
+
+
+def test_live_overlap_in_extra_month_after_quarter(client, db_session, two_teams):
+    """Окно пересечений — как у броней диаграммы: квартал + месяц запаса."""
+    import json
+    from datetime import date
+
+    from app.models import ResourcePlanAssignment
+
+    t = two_teams
+    for rid in (t["a_row"], t["b_row"]):
+        row = db_session.get(ResourcePlanAssignment, rid)
+        row.daily_hours_json = json.dumps({"2026-04-01": 6.0, "2026-04-02": 6.0})
+        row.start_date, row.end_date = date(2026, 4, 1), date(2026, 4, 2)
+    db_session.commit()
+
+    body = _gantt(client, t["plan_b"])
+
+    assert [b["daily_hours"] for b in body["external_bookings"]] == [
+        {"2026-04-01": 6.0, "2026-04-02": 6.0}
+    ]
+    [live] = [c for c in body["conflicts"] if c["is_live"]]
+    assert live["assignment_id"] == t["b_row"]
+    assert live["window_start"].startswith("2026-04-01")

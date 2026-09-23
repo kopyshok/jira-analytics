@@ -921,6 +921,10 @@ def _compute_pert_projection(plan, assignments, db):
     return result
 
 
+# id «живого» конфликта: такие не хранятся в БД и считаются при чтении.
+LIVE_CONFLICT_PREFIX = "live:"
+
+
 def _cross_team_conflicts(
     plan: ResourcePlan,
     assignments_raw: List[ResourcePlanAssignment],
@@ -967,7 +971,7 @@ def _cross_team_conflicts(
             teams = sorted(set().union(*(teams_on.get((eid, d), set()) for d in a_days)))
             out.append(
                 ConflictOut(
-                    id=f"live:CROSS_TEAM_OVERLAP:{a.id}",
+                    id=f"{LIVE_CONFLICT_PREFIX}CROSS_TEAM_OVERLAP:{a.id}",
                     type="CROSS_TEAM_OVERLAP",
                     severity="warning",
                     status="open",
@@ -989,6 +993,128 @@ def _cross_team_conflicts(
                 )
             )
     return out
+
+
+def _occupancy_inputs(
+    db: Session,
+    svc: ResourcePlanningService,
+    plan: ResourcePlan,
+    employees: list,
+    borrowed: set,
+    start: date,
+    end: date,
+) -> tuple[Dict[str, Dict[date, float]], List[cto.ExternalBooking]]:
+    """Ёмкость дня (без броней) и брони других команд — одним заходом на всех.
+
+    Для привлечённых (``borrowed``) дни вне команды плана — норма, не простой.
+    """
+    capacity = svc.build_availability(
+        employees, start, end, [], team=plan.team, borrowed=borrowed
+    )
+    bookings = cto.external_bookings(
+        db,
+        team=plan.team,
+        year=plan.year,
+        quarter=cto.quarter_num(plan.quarter),
+        employee_ids=[e.id for e in employees],
+        start=start,
+        end=end,
+    )
+    return capacity, bookings
+
+
+def _daily_used(
+    assignments_raw: List[ResourcePlanAssignment],
+    avail: Dict[str, Dict[date, float]],
+) -> Dict[str, Dict[date, float]]:
+    """Часы этого плана по дням на каждого сотрудника из ``avail``.
+
+    Берутся из реальной раскладки планировщика. Размазывать hours_allocated по
+    длине бара нельзя: планировщик оставляет внутри бара паузы (сотрудник ушёл
+    на другую задачу), и равномерное распределение рисует фантомную перегрузку
+    в дни, где две соседние фазы формально перекрываются датами.
+    """
+    used: Dict[str, Dict[date, float]] = {eid: {} for eid in avail}
+    for a in assignments_raw:
+        if not a.employee_id or not a.start_date or not a.end_date:
+            continue
+        if a.employee_id not in used:
+            continue
+        daily = _parse_daily_hours(a.daily_hours_json) or {}
+        if daily:
+            for iso, h in daily.items():
+                try:
+                    dd = date.fromisoformat(iso)
+                except (TypeError, ValueError):
+                    continue
+                used[a.employee_id][dd] = used[a.employee_id].get(dd, 0.0) + float(h)
+            continue
+        # Легаси-бары без раскладки: поровну по рабочим дням бара
+        # (по календарным — часы утекают в выходные и день занижается).
+        emp_avail = avail.get(a.employee_id, {})
+        work_days = [
+            d
+            for d in _daterange(a.start_date, a.end_date)
+            if emp_avail.get(d, 0.0) > 0
+        ] or _daterange(a.start_date, a.end_date)
+        per_day = (a.hours_allocated or 0.0) / len(work_days)
+        for d in work_days:
+            used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + per_day
+    return used
+
+
+def _live_conflicts(
+    db: Session,
+    plan: ResourcePlan,
+    assignments_raw: List[ResourcePlanAssignment],
+) -> List[ConflictOut]:
+    """«Живые» пересечения привлечённых этого плана с планами других команд.
+
+    Тот же расчёт, что у диаграммы, — для остальных читателей конфликтов
+    (список, расшифровки). ``assignments_raw`` может быть частью плана:
+    пересечения считаются по сотрудникам из неё, и для одного человека
+    достаточно всех его фаз. Окно — как у броней диаграммы: квартал + месяц
+    запаса. Для назначений нужен подгруженный ``backlog_item``.
+    """
+    from app.models import Employee
+
+    if not plan.team:
+        return []
+    svc = ResourcePlanningService(db)
+    try:
+        q_start, q_end, q_end_ext = svc._quarter_bounds_extended(plan)
+    except ValueError:
+        return []
+    emp_ids = {a.employee_id for a in assignments_raw if a.employee_id}
+    if not emp_ids:
+        return []
+    borrowed = cto.borrowed_ids(db, plan.team, q_start, q_end, emp_ids)
+    if not borrowed:
+        return []
+    employees = (
+        db.execute(
+            select(Employee).where(
+                Employee.id.in_(list(borrowed)),
+                Employee.is_active == True,  # noqa: E712
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not employees:
+        return []
+    capacity, bookings = _occupancy_inputs(
+        db, svc, plan, list(employees), borrowed, q_start, q_end_ext
+    )
+    return _cross_team_conflicts(
+        plan,
+        list(assignments_raw),
+        borrowed,
+        _daily_used(assignments_raw, capacity),
+        capacity,
+        bookings,
+        {e.id: e.display_name for e in employees},
+    )
 
 
 @router.get("/resource-plans/{plan_id}/gantt", response_model=GanttProjection)
@@ -1168,20 +1294,13 @@ def get_gantt(
             else []
         )
         if plan_employees:
-            avail = svc.build_availability(
-                plan_employees, q_start, q_end, [], team=plan.team, borrowed=borrowed
-            )
-            # Брони этих людей в опорных планах других команд — одним заходом
-            # на всех (окно — как у диаграммы: квартал + месяц запаса).
+            # Ёмкость и брони в опорных планах других команд — одним заходом
+            # на всех, на окно диаграммы (квартал + месяц запаса). Подвал
+            # берёт из них дни квартала, «живые» пересечения — всё окно, как
+            # и брони в блоке «Привлечённые».
             q_end_ext = svc._quarter_bounds_extended(plan)[2]
-            bookings = cto.external_bookings(
-                db,
-                team=plan.team,
-                year=plan.year,
-                quarter=cto.quarter_num(plan.quarter),
-                employee_ids=[e.id for e in plan_employees],
-                start=q_start,
-                end=q_end_ext,
+            avail, bookings = _occupancy_inputs(
+                db, svc, plan, list(plan_employees), borrowed, q_start, q_end_ext
             )
             ext_daily = cto.daily_totals(bookings)
             # Периоды участия во всех командах — для «куда выбыл / откуда пришёл»
@@ -1197,36 +1316,7 @@ def get_gantt(
                 if e.id in borrowed
             }
             # Часы по дням на сотрудника — из реальной раскладки планировщика.
-            # Размазывать hours_allocated по длине бара нельзя: планировщик
-            # оставляет внутри бара паузы (сотрудник ушёл на другую задачу), и
-            # равномерное распределение рисует фантомную перегрузку в дни,
-            # где две соседние фазы формально перекрываются датами.
-            used: dict[str, dict] = {e.id: {} for e in plan_employees}
-            for a in assignments_raw:
-                if not a.employee_id or not a.start_date or not a.end_date:
-                    continue
-                if a.employee_id not in used:
-                    continue
-                daily = _parse_daily_hours(a.daily_hours_json) or {}
-                if daily:
-                    for iso, h in daily.items():
-                        try:
-                            dd = date.fromisoformat(iso)
-                        except (TypeError, ValueError):
-                            continue
-                        used[a.employee_id][dd] = used[a.employee_id].get(dd, 0.0) + float(h)
-                    continue
-                # Легаси-бары без раскладки: поровну по рабочим дням бара
-                # (по календарным — часы утекают в выходные и день занижается).
-                emp_avail = avail.get(a.employee_id, {})
-                work_days = [
-                    d
-                    for d in _daterange(a.start_date, a.end_date)
-                    if emp_avail.get(d, 0.0) > 0
-                ] or _daterange(a.start_date, a.end_date)
-                per_day = (a.hours_allocated or 0.0) / len(work_days)
-                for d in work_days:
-                    used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + per_day
+            used = _daily_used(assignments_raw, avail)
             for e in plan_employees:
                 emp_abs = absences_by_emp.get(e.id, [])
                 emp_spans = member_iv.get(e.id) or []
@@ -2275,6 +2365,8 @@ def list_conflicts(
     либо явный статус (`open`, `muted`, ...).
     `group_by='item'` — по инициативам; `'employee'` — по сотрудникам;
     `'type'` — по типу конфликта.
+    Вместе с сохранёнными — «живые» пересечения с планами других команд
+    (`is_live=true`, статус всегда `open`).
     """
     from app.models import BacklogItem, Employee, PlanConflict
 
@@ -2291,7 +2383,25 @@ def list_conflicts(
         q = q.where(PlanConflict.status == status)
     rows = db.execute(q).scalars().all()
 
-    if not rows:
+    live: List[ConflictOut] = []
+    if status in ("active", "all", "open"):
+        plan_rows = (
+            db.execute(
+                select(ResourcePlanAssignment)
+                .options(joinedload(ResourcePlanAssignment.backlog_item))
+                .where(ResourcePlanAssignment.plan_id == plan_id)
+            )
+            .scalars()
+            .unique()
+            .all()
+        )
+        live = [
+            c
+            for c in _live_conflicts(db, plan, list(plan_rows))
+            if not severity or c.severity == severity
+        ]
+
+    if not rows and not live:
         return {"groups": []}
 
     item_titles: dict[str, str] = {}
@@ -2329,6 +2439,7 @@ def list_conflicts(
             "window_end": r.window_end.isoformat() if r.window_end else None,
             "metric_value": r.metric_value,
             "message": r.message,
+            "is_live": False,
         }
 
     grouped: dict[tuple, list[dict]] = {}
@@ -2340,6 +2451,19 @@ def list_conflicts(
         else:
             key = (r.type, r.type)
         grouped.setdefault(key, []).append(_to_payload(r))
+    for c in live:
+        if group_by == "item":
+            key = (c.backlog_item_id, c.backlog_item_title or "—")
+        elif group_by == "employee":
+            key = (c.employee_id, c.employee_name or "—")
+        else:
+            key = (c.type, c.type)
+        grouped.setdefault(key, []).append(
+            c.model_dump(
+                mode="json",
+                exclude={"created_at", "updated_at"},
+            )
+        )
 
     groups = [
         {"key": k[0], "label": k[1], "conflicts": v}
@@ -2365,6 +2489,12 @@ def patch_conflict(
 ):
     from app.models import PlanConflict, BacklogItem
 
+    if conflict_id.startswith(LIVE_CONFLICT_PREFIX):
+        raise HTTPException(
+            409,
+            "Пересечение с планом другой команды нельзя скрыть — "
+            "оно пересчитывается само",
+        )
     valid = {"open", "acknowledged", "muted", "resolved"}
     if data.status not in valid:
         raise HTTPException(422, f"status must be one of {sorted(valid)}")
@@ -2405,6 +2535,43 @@ def patch_conflict(
     return ConflictOut(**snap)
 
 
+def _explain_live_conflict(db: Session, plan_id: str, conflict_id: str) -> dict:
+    """Базовые поля «живого» пересечения — расшифровки часов у него нет."""
+    plan = db.get(ResourcePlan, plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+    plan_rows = (
+        db.execute(
+            select(ResourcePlanAssignment)
+            .options(joinedload(ResourcePlanAssignment.backlog_item))
+            .where(ResourcePlanAssignment.plan_id == plan_id)
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+    c = next(
+        (x for x in _live_conflicts(db, plan, list(plan_rows)) if x.id == conflict_id),
+        None,
+    )
+    if c is None:
+        raise HTTPException(404, "Conflict not found")
+    return {
+        "id": c.id,
+        "type": c.type,
+        "severity": c.severity,
+        "message": c.message,
+        "date": c.window_start.date().isoformat() if c.window_start else None,
+        "employee_id": c.employee_id,
+        "employee_name": c.employee_name,
+        "available_hours": None,
+        "demand_hours": None,
+        "overload_pct": None,
+        "contributors": [],
+        "is_live": True,
+    }
+
+
 @router.get("/resource-plans/{plan_id}/conflicts/{conflict_id}/explain")
 def explain_conflict(
     plan_id: str,
@@ -2419,10 +2586,14 @@ def explain_conflict(
         type, severity, message, date (YYYY-MM-DD), employee_id, employee_name,
         available_hours, demand_hours, overload_pct, contributors[].
 
-    Для не-OVERLOAD_* возвращает базовые поля без contributors.
+    Для не-OVERLOAD_* возвращает базовые поля без contributors, в том числе
+    для «живых» пересечений с планами других команд (id `live:...`).
     """
     from datetime import timedelta as _td
     from app.models import Employee, PlanConflict
+
+    if conflict_id.startswith(LIVE_CONFLICT_PREFIX):
+        return _explain_live_conflict(db, plan_id, conflict_id)
 
     c = db.execute(
         select(PlanConflict).where(
@@ -3282,6 +3453,7 @@ def explain_assignment(
             "demand_hours": None,
             "overload_pct": None,
             "contributors": [],
+            "is_live": False,
         }
         is_overload = c.type.startswith("OVERLOAD_")
         if is_overload and target_date and c.employee_id:
@@ -3346,6 +3518,24 @@ def explain_assignment(
                 "contributors": contribs,
             })
         conflicts_out.append(item)
+
+    # «Живые» пересечения этой фазы с планами других команд: считаются по
+    # всем фазам её исполнителя в плане — так же, как на диаграмме.
+    for live_c in _live_conflicts(db, plan, list(all_emp_assignments)):
+        if live_c.assignment_id != a.id:
+            continue
+        conflicts_out.append({
+            "id": live_c.id,
+            "type": live_c.type,
+            "severity": live_c.severity,
+            "message": live_c.message,
+            "date": live_c.window_start.date().isoformat() if live_c.window_start else None,
+            "available_hours": None,
+            "demand_hours": None,
+            "overload_pct": None,
+            "contributors": [],
+            "is_live": True,
+        })
 
     _phase_calc = _build_phase_calc(a, db)
     _hours_summary = _build_hours_summary(a, full_avail)
