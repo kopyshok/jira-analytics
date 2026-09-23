@@ -112,6 +112,8 @@ class BacklogChildSchema(BaseModel):
     issue_type: Optional[str] = None
     status: Optional[str] = None
     included_in_planning: bool = True
+    # Включить «В план» нельзя — то же правило, что у строки-корня.
+    include_locked: bool = False
     # Служебный эпик (Дискавери внутри RFA): часы сверх родителя, в план — по галочке.
     is_service_epic: bool = False
     # Плановые часы дочернего Эпика — чтобы строка-ребёнок в таблице показывала
@@ -213,6 +215,10 @@ class BacklogItemResponse(BaseModel):
     # Hierarchy flags for RFA-row expansion in UI.
     planning_mode: str = "whole"
     included_in_planning: bool = True
+    # Включить «В план» нельзя (иначе 409): мультикомандная RFA с не архивными
+    # детьми в бэклоге любой команды. В отличие от has_children_in_backlog
+    # от фильтра списка не зависит.
+    include_locked: bool = False
     has_parent_in_backlog: bool = False
     has_children_in_backlog: bool = False
     children: List[BacklogChildSchema] = []
@@ -347,6 +353,40 @@ def _estimate_disputes(
     }
 
 
+def _include_locked_ids(db: Session, items: list[BacklogItem]) -> set[str]:
+    """Элементы, которые нельзя включить «В план».
+
+    Мультикомандная RFA, у которой в бэклоге есть не архивный ребёнок любой
+    команды, планируется только по Эпикам — пока блокировка включена в
+    настройках. Одно правило для признака в строке и для отказа при включении.
+    Детей ищем одним запросом на весь набор, а не по строке.
+    """
+    by_issue = {
+        it.issue_id: it.id
+        for it in items
+        if it.issue_id is not None and issue_is_multi_team(it.issue)
+    }
+    if not by_issue or not multi_team_lock_enabled(db):
+        return set()
+    parent_rows = (
+        db.query(Issue.parent_id)
+        .join(BacklogItem, BacklogItem.issue_id == Issue.id)
+        .filter(Issue.parent_id.in_(list(by_issue)), BacklogItem.archived_at.is_(None))
+        .distinct()
+        .all()
+    )
+    return {by_issue[pid] for (pid,) in parent_rows}
+
+
+def _item_response(db: Session, item: BacklogItem) -> BacklogItemResponse:
+    """Ответ по одному элементу: утверждённые сценарии и блокировка «В план»."""
+    return _to_response(
+        item,
+        _approved_scenarios_for(db, item.id),
+        include_locked=item.id in _include_locked_ids(db, [item]),
+    )
+
+
 def _to_response(
     item: BacklogItem,
     approved_scenarios: Optional[List[ScenarioRef]] = None,
@@ -360,6 +400,7 @@ def _to_response(
     multi_team_lock: bool = True,
     parent_context: Optional[ParentContextSchema] = None,
     is_service_epic: bool = False,
+    include_locked: bool = False,
 ) -> BacklogItemResponse:
     scenarios = approved_scenarios or []
     issue = item.issue
@@ -431,6 +472,7 @@ def _to_response(
         estimate_opo_hours_jira=issue.planned_opo_hours_jira if issue else None,
         planning_mode=item.planning_mode,
         included_in_planning=item.included_in_planning,
+        include_locked=include_locked,
         has_parent_in_backlog=has_parent_in_backlog,
         has_children_in_backlog=has_children_in_backlog,
         children=children or [],
@@ -686,6 +728,10 @@ async def list_backlog_items(
     # Фильтруем: оставляем только корни (не дочки).
     visible_items = [bi for bi in items if bi.issue_id not in child_issue_ids]
 
+    # Блокировку «В план» решают дети во всём бэклоге, а не в этом списке:
+    # фильтр команды прячет дочек чужой команды.
+    locked_ids = _include_locked_ids(db, items)
+
     # Строим Map: parent_issue_id → List[BacklogChildSchema].
     children_map: dict[str, list[BacklogChildSchema]] = {}
     for iid, pid in parent_map.items():
@@ -702,6 +748,7 @@ async def list_backlog_items(
             issue_type=child_issue.issue_type if child_issue else None,
             status=child_issue.status if child_issue else None,
             included_in_planning=child_bi.included_in_planning,
+            include_locked=child_bi.id in locked_ids,
             is_service_epic=child_bi.id in service_ids,
             estimate_hours=child_bi.estimate_hours,
             estimate_analyst_hours=child_bi.estimate_analyst_hours,
@@ -762,6 +809,7 @@ async def list_backlog_items(
                 *_hierarchy_flags(i), _children_for(i),
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
                 is_service_epic=i.id in service_ids,
+                include_locked=i.id in locked_ids,
             )
             for i in visible_items
         ])
@@ -772,6 +820,7 @@ async def list_backlog_items(
                 i, None, labels.get(i.id), *_hierarchy_flags(i), _children_for(i),
                 multi_team_lock=lock_enabled, parent_context=_parent_context(i),
                 is_service_epic=i.id in service_ids,
+                include_locked=i.id in locked_ids,
             )
             for i in visible_items
         ])
@@ -780,6 +829,7 @@ async def list_backlog_items(
             i, None, None, *_hierarchy_flags(i), _children_for(i),
             multi_team_lock=lock_enabled, parent_context=_parent_context(i),
             is_service_epic=i.id in service_ids,
+            include_locked=i.id in locked_ids,
         )
         for i in visible_items
     ])
@@ -1094,7 +1144,7 @@ async def get_backlog_item(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Backlog item not found")
-    return _to_response(item, _approved_scenarios_for(db, item.id))
+    return _item_response(db, item)
 
 
 @router.patch("/{item_id}", response_model=BacklogItemResponse)
@@ -1122,7 +1172,7 @@ async def update_backlog_item(
 
     patch = data.model_dump(exclude_unset=True)
     if not patch:
-        return _to_response(item, _approved_scenarios_for(db, item.id))
+        return _item_response(db, item)
 
     role_hours = {
         role: patch.pop(f"estimate_{role}_hours")
@@ -1150,7 +1200,7 @@ async def update_backlog_item(
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": entities})
     db.refresh(item)
-    return _to_response(item, _approved_scenarios_for(db, item.id))
+    return _item_response(db, item)
 
 
 @router.delete("/{item_id}")
@@ -1276,7 +1326,7 @@ async def link_jira(
         .filter(BacklogItem.id == item_id)
         .first()
     )
-    return _to_response(item, _approved_scenarios_for(db, item.id))
+    return _item_response(db, item)
 
 
 @router.post("/{item_id}/unlink-jira", response_model=BacklogItemResponse)
@@ -1301,7 +1351,7 @@ async def unlink_jira(
     item.issue_id = None
     db.commit()
     db.refresh(item)
-    return _to_response(item, _approved_scenarios_for(db, item.id))
+    return _item_response(db, item)
 
 
 @router.post("/{item_id}/archive", response_model=BacklogItemResponse)
@@ -1366,7 +1416,7 @@ async def archive_backlog_item(
         db.commit()
         await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
         db.refresh(item)
-    return _to_response(item, _approved_scenarios_for(db, item.id))
+    return _item_response(db, item)
 
 
 class PlanningModeRequest(BaseModel):
@@ -1449,17 +1499,7 @@ async def set_included(
     bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
     if bi is None:
         raise HTTPException(404, "BacklogItem not found")
-    if (
-        payload.included
-        and multi_team_lock_enabled(db)
-        and issue_is_multi_team(bi.issue)
-        and bi.issue_id is not None
-        and db.query(BacklogItem.id)
-        .join(Issue, BacklogItem.issue_id == Issue.id)
-        .filter(Issue.parent_id == bi.issue_id, BacklogItem.archived_at.is_(None))
-        .first()
-        is not None
-    ):
+    if payload.included and bi.id in _include_locked_ids(db, [bi]):
         raise HTTPException(
             409,
             "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",
@@ -1515,4 +1555,4 @@ async def restore_backlog_item(
         db.commit()
         await event_bus.publish({"type": "entity_changed", "entities": ["backlog"]})
         db.refresh(item)
-    return _to_response(item, _approved_scenarios_for(db, item.id))
+    return _item_response(db, item)
