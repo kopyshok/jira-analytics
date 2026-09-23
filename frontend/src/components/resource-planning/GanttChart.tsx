@@ -1,5 +1,5 @@
 import { useRef, useMemo, useState, useEffect } from 'react';
-import type { AssignmentOut, DependencyOut, ScheduledBlock } from '../../api/resourcePlanning';
+import type { AssignmentOut, DependencyOut, ExternalBookingOut, ScheduledBlock } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
 import { buildTimeline, buildWorkdayTimeline, dateToLeft, quarterBounds, PX_PER_DAY } from '../../utils/gantt';
@@ -10,6 +10,7 @@ import BlockedZones from './BlockedZones';
 import NonWorkingZones from './NonWorkingZones';
 import TrackGridlines from './TrackGridlines';
 import DependencyArrows from './DependencyArrows';
+import ExternalBookingsRows from './ExternalBookingsRows';
 import { useProductionCalendarYear } from '../../hooks/useProductionCalendar';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 
@@ -43,6 +44,8 @@ interface Props {
   subgroupByEmployee?: Record<string, string>;
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
+  /** Брони привлечённых в опорных планах других команд — блок «Привлечённые». */
+  externalBookings?: ExternalBookingOut[];
 }
 
 export default function GanttChart({
@@ -70,6 +73,7 @@ export default function GanttChart({
   onToggleSection,
   highlightedEmployeeId,
   onEmployeeRowClick,
+  externalBookings,
 }: Props) {
   const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
@@ -300,6 +304,16 @@ export default function GanttChart({
             highlightedEmployeeId={highlightedEmployeeId}
             redrawKey={`${effectiveScale}:${trackWidthPx}`}
           />
+
+          {externalBookings && externalBookings.length > 0 && (
+            <ExternalBookingsRows
+              bookings={externalBookings}
+              timeline={timeline}
+              calendar={calendar}
+              leftColWidth={LEFT_COL}
+              trackWidthPx={trackWidthPx}
+            />
+          )}
 
           <GanttRows
             assignments={assignments}
