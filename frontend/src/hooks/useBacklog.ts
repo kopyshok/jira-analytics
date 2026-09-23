@@ -14,6 +14,7 @@ import {
   setBacklogIncluded,
 } from '../api/backlog';
 import { getProjects } from '../api/projects';
+import { choosePlanSource, type PlanChoiceBody } from '../api/issues';
 import type { BacklogView } from '../types/api';
 
 export const useProjects = () =>
@@ -132,6 +133,23 @@ export const useSetBacklogIncluded = (onError?: (e: Error) => void) => {
       qc.invalidateQueries({ queryKey: ['backlog'] }),
       qc.invalidateQueries({ queryKey: ['planning'] }),
     ]),
+  });
+};
+
+/** Выбор значения по спорной оценке. Ждём свежий список: иначе спорная
+ *  ячейка ещё мгновение висит после «Принять». */
+export const useChoosePlanSource = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ issueId, body }: { issueId: string; body: PlanChoiceBody }) =>
+      choosePlanSource(issueId, body),
+    onSuccess: (_d, { issueId }) => {
+      qc.invalidateQueries({ queryKey: ['planning'] });
+      qc.invalidateQueries({ queryKey: ['hours-breakdown'] });
+      qc.invalidateQueries({ queryKey: ['plan-history', issueId] });
+      qc.invalidateQueries({ queryKey: ['plan-conflicts', issueId] });
+      return qc.invalidateQueries({ queryKey: ['backlog'] });
+    },
   });
 };
 

@@ -455,6 +455,15 @@ export interface BacklogItemScenarioRef {
   name: string;
 }
 
+export type PlanRole = 'analyst' | 'dev' | 'qa' | 'opo';
+
+/** Значение роли из одного поля Jira (или сумма слагаемых) — вариант выбора при спорной оценке. */
+export interface EstimateCandidate {
+  source: string;  // поле Jira или 'sum' — сумма слагаемых
+  label: string;   // название поля; у суммы — названия слагаемых через «+»
+  value: number;
+}
+
 export interface BacklogChild {
   id: string;            // backlog_item.id (нужен для PATCH /included)
   issue_id: string;
@@ -475,6 +484,9 @@ export interface BacklogChild {
   assigned_subgroup_id?: string | null;
   subgroup_id?: string | null;
   subgroup_source?: string | null;
+  // Спорные оценки: роли, где поля Jira дают разные значения, и варианты по ним.
+  disputed_roles?: PlanRole[];
+  estimate_candidates?: Partial<Record<PlanRole, EstimateCandidate[]>>;
 }
 
 export interface BacklogItemResponse {
@@ -557,6 +569,9 @@ export interface BacklogItemResponse {
   assigned_subgroup_id?: string | null;
   subgroup_id?: string | null;
   subgroup_source?: string | null;
+  // Спорные оценки: роли, где поля Jira дают разные значения, и варианты по ним.
+  disputed_roles?: PlanRole[];
+  estimate_candidates?: Partial<Record<PlanRole, EstimateCandidate[]>>;
 }
 
 export interface BacklogRefreshResult {
