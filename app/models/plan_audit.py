@@ -8,6 +8,10 @@
   - manual_revert — откат к Jira-значению или к точке истории
   - conflict_accepted — PM принял Jira-значение, _manual обнулён
   - conflict_ignored — PM проигнорировал, _manual сохранён
+  - dispute_choice — выбор по спорной оценке (поля Jira расходятся): поле Jira
+    (_jira = его значение, _manual обнулён) или своё значение (_manual).
+    Пишется при каждом выборе, даже если число не изменилось, — закрывает
+    открытый jira_sync_conflict роли (см. app/services/plan_sources.py)
 """
 from datetime import datetime
 from typing import Optional
