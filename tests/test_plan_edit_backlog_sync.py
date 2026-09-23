@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.database import get_db
 from app.main import app
 from app.models import BacklogItem, Issue, Project
-from app.services.backlog_service import BACKLOG_CATEGORY
+from app.services.backlog_service import BACKLOG_CATEGORY, BacklogService
 from app.services.event_bus import get_event_bus
 
 
@@ -162,3 +162,78 @@ def test_plan_edit_without_backlog_item_is_ok(client, testclient_db_session):
     )
     assert r.status_code == 200, r.text
     assert db.query(BacklogItem).filter_by(issue_id=issue.id).count() == 0
+
+
+def test_inline_estimate_goes_to_issue_and_survives_sync(client, testclient_db_session):
+    db = testclient_db_session
+    issue_id, item_id = _seed(db, key="PS-6", planned_dev_hours_jira=500)
+
+    r = client.patch(f"/api/v1/backlog/{item_id}", json={"estimate_dev_hours": 700})
+    assert r.status_code == 200, r.text
+    assert r.json()["estimate_dev_hours"] == 700
+
+    db.expire_all()
+    issue = db.get(Issue, issue_id)
+    assert issue.planned_dev_hours_manual == 700
+    assert issue.planned_dev_hours_jira == 500
+
+    # Синк больше не затирает ручную правку копией из Jira.
+    BacklogService(db).sync_from_issue(issue)
+    db.commit()
+    item = _item(db, item_id)
+    assert item.estimate_dev_hours == 700
+    assert item.estimate_hours == 700
+
+
+def test_inline_estimate_null_returns_to_jira(client, testclient_db_session):
+    db = testclient_db_session
+    issue_id, item_id = _seed(
+        db, key="PS-7", planned_dev_hours_jira=500, planned_dev_hours_manual=700,
+    )
+
+    r = client.patch(f"/api/v1/backlog/{item_id}", json={"estimate_dev_hours": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["estimate_dev_hours"] == 500
+    db.expire_all()
+    assert db.get(Issue, issue_id).planned_dev_hours_manual is None
+
+
+def test_inline_estimate_on_manual_idea_writes_directly(client, testclient_db_session):
+    """Ручная идея без Jira-задачи — часы по-прежнему пишутся в саму строку."""
+    db = testclient_db_session
+    item = BacklogItem(title="Идея")
+    db.add(item)
+    db.commit()
+
+    r = client.patch(f"/api/v1/backlog/{item.id}", json={"estimate_dev_hours": 10})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["estimate_dev_hours"] == 10
+    assert body["estimate_hours"] == 10
+
+
+def test_backlog_response_carries_jira_hours(client, testclient_db_session):
+    db = testclient_db_session
+    _, item_id = _seed(
+        db, key="PS-8", planned_dev_hours_jira=500, planned_dev_hours_manual=700,
+    )
+    body = client.get(f"/api/v1/backlog/{item_id}").json()
+    assert body["estimate_dev_hours"] == 700
+    assert body["estimate_dev_hours_jira"] == 500
+    assert body["estimate_analyst_hours_jira"] is None
+
+
+def test_inline_estimate_with_other_fields_keeps_them(client, testclient_db_session):
+    """Часы и вовлечённость одним запросом: выравнивание по задаче не затирает
+    вовлечённость, пришедшую в этом же запросе."""
+    db = testclient_db_session
+    _, item_id = _seed(db, key="PS-9", planned_dev_hours_jira=500, involvement_dev=0.5)
+
+    r = client.patch(
+        f"/api/v1/backlog/{item_id}",
+        json={"estimate_dev_hours": 700, "involvement_dev": 0.8},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["estimate_dev_hours"] == 700
+    assert body["involvement_dev"] == 0.8
