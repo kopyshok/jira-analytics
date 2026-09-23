@@ -190,6 +190,7 @@ export default function BacklogPage() {
         jira_key: c.key,
         jira_status: c.status ?? null,
         included_in_planning: c.included_in_planning,
+        is_service_epic: c.is_service_epic ?? false,
         estimate_hours: c.estimate_hours,
         estimate_analyst_hours: c.estimate_analyst_hours,
         estimate_dev_hours: c.estimate_dev_hours,
@@ -206,6 +207,15 @@ export default function BacklogPage() {
   const activeRows = useMemo(() => adaptChildren(sortByPriority(active.data)), [active.data]);
   const archivedRows = useMemo(() => adaptChildren(sortByPriority(archived.data)), [archived.data]);
   const quarterlyRows = useMemo(() => adaptChildren(sortByPriority(quarterly.data)), [quarterly.data]);
+  // Дочки RFA «целиком» (кроме Дискавери): их часы уже в родителе, галочка ничего не меняет.
+  const inertChildIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of [...(active.data ?? []), ...(quarterly.data ?? [])]) {
+      if (r.planning_mode !== 'whole') continue;
+      for (const c of r.children ?? []) if (!c.is_service_epic) ids.add(c.id);
+    }
+    return ids;
+  }, [active.data, quarterly.data]);
   const activeShown = onlyOffPlan ? filterOffPlan(activeRows) : activeRows;
   const quarterlyShown = onlyOffPlan ? filterOffPlan(quarterlyRows) : quarterlyRows;
   const offPlanCount = countOffPlan(
@@ -336,6 +346,11 @@ export default function BacklogPage() {
                   </Typography.Link>
                 )
                 : <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.jira_key}</Typography.Text>
+            )}
+            {r.is_service_epic && (
+              <Tooltip title="Служебный эпик внутри RFA. В сценарий идёт сверх RFA, только если включён «В план».">
+                <Tag color="geekblue" style={{ marginInlineEnd: 0 }}>Дискавери</Tag>
+              </Tooltip>
             )}
             {r.is_multi_team && (
               <Tooltip title={`Работают несколько команд: ${(r.participating_teams ?? []).join(', ')}. Планируется только по Эпикам.`}>
@@ -747,21 +762,27 @@ export default function BacklogPage() {
     width: 80,
     align: 'center' as const,
     className: 'backlog-in-plan-cell',
-    render: (_: unknown, r: BacklogItemResponse) => (
-      <Tooltip title={r.included_in_planning ? 'Попадает в сценарии' : 'Не попадает в сценарии'}>
-        <Switch
-          size="small"
-          checked={r.included_in_planning}
-          loading={setIncluded.isPending && setIncluded.variables?.id === r.id}
-          disabled={!!r.planning_mode_locked && r.has_children_in_backlog && !r.included_in_planning}
-          onChange={(val) =>
-            setIncluded.mutate(
-              { id: r.id, included: val },
-              { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
-            )}
-        />
-      </Tooltip>
-    ),
+    render: (_: unknown, r: BacklogItemResponse) => {
+      const inert = inertChildIds.has(r.id);
+      const hint = inert
+        ? 'Инициатива планируется целиком — часы эпиков уже в ней'
+        : r.included_in_planning ? 'Попадает в сценарии' : 'Не попадает в сценарии';
+      return (
+        <Tooltip title={hint}>
+          <Switch
+            size="small"
+            checked={r.included_in_planning}
+            loading={setIncluded.isPending && setIncluded.variables?.id === r.id}
+            disabled={inert || (!!r.planning_mode_locked && r.has_children_in_backlog && !r.included_in_planning)}
+            onChange={(val) =>
+              setIncluded.mutate(
+                { id: r.id, included: val },
+                { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
+              )}
+          />
+        </Tooltip>
+      );
+    },
   };
 
   const quarterlyColumns = [
