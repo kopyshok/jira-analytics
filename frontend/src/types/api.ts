@@ -464,6 +464,14 @@ export interface EstimateCandidate {
   value: number;
 }
 
+/** Что значит переключатель «В план» у строки. Считает сервер по всему бэклогу —
+ *  от фильтра и вкладки списка не зависит:
+ *  - regular — решает, идёт ли задача в сценарии;
+ *  - inert — эпик внутри инициативы «целиком»: его часы уже в ней, переключатель ничего не меняет;
+ *  - by_epics — инициатива по эпикам: переключатель только про саму инициативу, эпики — своими;
+ *  - by_epics_locked — инициатива нескольких команд: только по эпикам, саму не включить. */
+export type InPlanRole = 'regular' | 'inert' | 'by_epics' | 'by_epics_locked';
+
 export interface BacklogChild {
   id: string;            // backlog_item.id (нужен для PATCH /included)
   issue_id: string;
@@ -474,6 +482,7 @@ export interface BacklogChild {
   included_in_planning: boolean;
   // Включить «В план» нельзя — то же правило, что у строки-корня.
   include_locked: boolean;
+  in_plan_role: InPlanRole;
   // Служебный эпик (Дискавери) — в сценарий идёт сверх RFA по галочке «В план».
   is_service_epic?: boolean;
   estimate_hours: number | null;
@@ -561,6 +570,7 @@ export interface BacklogItemResponse {
   // с детьми в бэклоге любой команды. В отличие от has_children_in_backlog
   // от фильтра списка не зависит.
   include_locked: boolean;
+  in_plan_role: InPlanRole;
   // Только в ответе списка; одиночная задача всегда false.
   is_service_epic?: boolean;
   has_parent_in_backlog: boolean;

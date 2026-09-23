@@ -17,8 +17,6 @@ import { useOpoCutoff } from '../../hooks/useOpoCutoff';
 interface Props {
   open: boolean;
   item: BacklogItemResponse | null;
-  /** Эпик внутри инициативы «целиком»: «В план» на него не действует. */
-  inert?: boolean;
   onClose: () => void;
 }
 
@@ -162,7 +160,7 @@ function PhaseRow({
   );
 }
 
-export default function BacklogPlanningParamsModal({ open, item, inert = false, onClose }: Props) {
+export default function BacklogPlanningParamsModal({ open, item, onClose }: Props) {
   const { opoOffNow } = useOpoCutoff();
   const { notification } = App.useApp();
   const update = useUpdateBacklogItem();
@@ -238,7 +236,7 @@ export default function BacklogPlanningParamsModal({ open, item, inert = false, 
     onError: (e, { prevMode, prevIncluded }) => {
       setMode(prevMode);
       setIncluded(prevIncluded);
-      notification.error({ title: 'Ошибка', description: (e as Error).message });
+      notification.error({ title: 'Не удалось сохранить', description: (e as Error).message || undefined });
     },
   });
 
@@ -258,19 +256,14 @@ export default function BacklogPlanningParamsModal({ open, item, inert = false, 
     incMut.mutate({ id: backlogItemId, included: val }, {
       onError: (e) => {
         setIncluded(prev);
-        notification.error({ title: e.message || 'Ошибка' });
+        notification.error({ title: 'Не удалось сохранить', description: e.message || undefined });
       },
     });
   };
 
-  // Блокировку включения берём из свежего ответа сервера, а не из снимка строки.
-  const role = inPlanRole(
-    {
-      has_children_in_backlog: hasChildren, planning_mode: mode, planning_mode_locked: modeLocked,
-      include_locked: planSrc?.include_locked,
-    },
-    inert,
-  );
+  // Роль берём из свежего ответа сервера, а не из снимка строки. Режим меняют
+  // только у родителя с дочками в списке — до ответа сервера роль следует выбору.
+  const role = inPlanRole(planSrc ?? {}, hasChildren ? mode : undefined);
 
   const handleSave = () => {
     if (!item) return;
@@ -366,8 +359,8 @@ export default function BacklogPlanningParamsModal({ open, item, inert = false, 
                   optionType="button"
                   disabled={modeLocked}
                 >
-                  <Radio.Button value="whole">RFA целиком</Radio.Button>
-                  <Radio.Button value="by_epics">По Эпикам</Radio.Button>
+                  <Radio.Button value="whole">Инициатива целиком</Radio.Button>
+                  <Radio.Button value="by_epics">По эпикам</Radio.Button>
                 </Radio.Group>
                 {modeLocked && (
                   <Typography.Text type="warning" style={{ fontSize: 12 }}>
@@ -375,7 +368,7 @@ export default function BacklogPlanningParamsModal({ open, item, inert = false, 
                     {item?.participating_teams?.length
                       ? `: ${item.participating_teams.join(', ')}`
                       : ''}
-                    . Такую RFA планируют только по Эпикам — каждая команда берёт свою часть.
+                    . Такую инициативу планируют только по эпикам — каждая команда берёт свою часть.
                   </Typography.Text>
                 )}
               </Space>
