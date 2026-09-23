@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Tooltip } from 'antd';
 import { DARK_THEME } from '../../utils/constants';
 import { useAppTheme } from '../../contexts/ThemeContext';
@@ -10,9 +11,30 @@ interface BacklogRoleCellProps {
   // Optional Jira-sourced fields — shown in tooltip when present.
   involvement?: number | null;   // 0..1 fraction of working day
   durationDays?: number | null;  // calendar duration in days
+  disputed?: boolean;  // поля Jira дают разные оценки — пунктирная обводка и «?»
+  tooltipHidden?: boolean;  // над ячейкой открыт поповер — подсказку не показываем
 }
 
-export default function BacklogRoleCell({ label, hours, total, color, involvement, durationDays }: BacklogRoleCellProps) {
+const WARN = 'var(--warn, #fa8c16)';
+
+const DISPUTE_BADGE: CSSProperties = {
+  position: 'absolute',
+  top: -7,
+  right: -6,
+  width: 15,
+  height: 15,
+  borderRadius: '50%',
+  background: WARN,
+  color: '#000',
+  fontSize: 10,
+  fontWeight: 800,
+  lineHeight: '15px',
+  textAlign: 'center',
+};
+
+export default function BacklogRoleCell({
+  label, hours, total, color, involvement, durationDays, disputed, tooltipHidden,
+}: BacklogRoleCellProps) {
   const pct = total > 0 ? Math.round((hours / total) * 100) : 0;
   const empty = hours === 0;
   // На светлой теме classic-градиент color×aa→color×44 даёт пастельный фон,
@@ -27,7 +49,12 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
   const tooltipLines: string[] = [];
   if (durationDays != null) tooltipLines.push(`${durationDays} дн`);
   if (involvement != null) tooltipLines.push(`${Math.round(involvement * 100)}% занятость`);
-  const tooltipTitle = hasJiraData ? tooltipLines.join(', ') : undefined;
+  const tooltipTitle = (disputed || hasJiraData) ? (
+    <>
+      {disputed && <div>Оценки в полях Jira расходятся — нажмите, чтобы выбрать</div>}
+      {hasJiraData && <div>{tooltipLines.join(', ')}</div>}
+    </>
+  ) : undefined;
 
   const cell = (
     <div
@@ -43,8 +70,12 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
         border: empty ? `1px solid ${color}55` : `1px solid ${color}cc`,
         borderBottom: empty ? `2px solid ${color}77` : `2px solid ${color}`,
         userSelect: 'none',
+        position: disputed ? 'relative' : undefined,
+        outline: disputed ? `2px dashed ${WARN}` : undefined,
+        outlineOffset: disputed ? 1 : undefined,
       }}
     >
+      {disputed && <span aria-hidden style={DISPUTE_BADGE}>?</span>}
       <div
         style={{
           fontSize: 10,
@@ -94,10 +125,10 @@ export default function BacklogRoleCell({ label, hours, total, color, involvemen
     </div>
   );
 
-  if (!hasJiraData) return cell;
+  if (!tooltipTitle) return cell;
 
   return (
-    <Tooltip title={tooltipTitle}>
+    <Tooltip title={tooltipTitle} open={tooltipHidden ? false : undefined}>
       {cell}
     </Tooltip>
   );
