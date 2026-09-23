@@ -181,3 +181,25 @@ def test_manual_pin_to_other_team_gets_hours_without_out_of_team(db_session):
     assert sum(r.hours_allocated or 0 for r in rows) == 12
     assert _days(rows) == {"2026-01-01", "2026-01-02"}
     assert _out_of_team(db_session, plan_b.id) == []
+
+
+def test_opo_dev_part_stays_with_borrowed_jira_developer(db_session, sample_project):
+    """ОПЭ: часть разработчика — у привлечённого «Разработчика» из Jira."""
+    e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
+    make_employee(db_session, "Свой B", "B")
+    an = make_employee(db_session, "Аналитик B", "B", role="analyst")
+    issue = make_issue(db_session, sample_project, "OS-1", developer="acc-e")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    item = add_item(db_session, sc_b, "Работа B", dev=6, issue=issue)
+    item.estimate_opo_hours = 4.0
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    opo = db_session.execute(
+        select(ResourcePlanAssignment).where(
+            ResourcePlanAssignment.plan_id == plan_b.id,
+            ResourcePlanAssignment.phase == "opo",
+        )
+    ).scalars().all()
+    assert {r.employee_id for r in opo} == {an.id, e.id}
