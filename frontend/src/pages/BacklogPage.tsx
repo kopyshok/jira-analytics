@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
-  App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography,
+  App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
 } from 'antd';
 import {
   ArrowRightOutlined, CloseOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined,
@@ -13,6 +13,10 @@ import PageHeader from '../components/shared/PageHeader';
 import BacklogManualModal from '../components/backlog/BacklogManualModal';
 import BacklogLinkJiraModal from '../components/backlog/BacklogLinkJiraModal';
 import BacklogPlanningParamsModal from '../components/backlog/BacklogPlanningParamsModal';
+import InPlanSwitch from '../components/backlog/InPlanSwitch';
+import {
+  countOffPlan, filterOffPlan, inertEpicIds, inPlanRole, isOffPlan, type InPlanRow,
+} from '../utils/inPlan';
 import { statusTagColor } from '../utils/status';
 import { daysSince, formatDateOnly } from '../utils/format';
 import { DARK_THEME } from '../utils/constants';
@@ -22,6 +26,7 @@ import { useSetIssueSubgroup } from '../hooks/useIssueTree';
 import {
   useBacklogItems, useUpdateBacklogItem, useDeleteBacklogItem, useProjects,
   useUnlinkJira, useArchiveBacklogItem, useRestoreBacklogItem, useRefreshFromJira, useSetBacklogIncluded,
+  useBacklogIncludedPending,
 } from '../hooks/useBacklog';
 import type { BacklogRefreshProgress } from '../api/backlog';
 import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
@@ -50,28 +55,6 @@ function groupByQuarterLabel(items: BacklogItemResponse[]): [string, BacklogItem
   });
 }
 
-/** Только строки «не в плане»: выключенный родитель — со всеми дочками,
- *  включённый — только с выключенными дочками. */
-function filterOffPlan(rows?: BacklogItemResponse[]): BacklogItemResponse[] | undefined {
-  return rows?.flatMap((r) => {
-    if (!r.included_in_planning) return [r];
-    const kids = (r.children ?? []).filter((c) => !c.included_in_planning);
-    return kids.length ? [{ ...r, children: kids }] : [];
-  });
-}
-
-function countOffPlan(rows?: BacklogItemResponse[]): number {
-  return (rows ?? []).reduce(
-    (n, r) =>
-      n + (r.included_in_planning ? 0 : 1)
-      + (r.children ?? []).filter((c) => !c.included_in_planning).length,
-    0,
-  );
-}
-
-const offPlanRowClass = (r: BacklogItemResponse) =>
-  r.included_in_planning === false ? 'backlog-row-off-plan' : '';
-
 export default function BacklogPage() {
   const { notification } = App.useApp();
   const navigate = useNavigate();
@@ -94,7 +77,10 @@ export default function BacklogPage() {
   const unlink = useUnlinkJira();
   const archive = useArchiveBacklogItem();
   const restore = useRestoreBacklogItem();
-  const setIncluded = useSetBacklogIncluded();
+  const setIncluded = useSetBacklogIncluded(
+    (e) => notification.error({ title: 'Ошибка', description: e.message }),
+  );
+  const includedPending = useBacklogIncludedPending();
   const [onlyOffPlan, setOnlyOffPlan] = useState(false);
   const refreshFromJiraMut = useRefreshFromJira();
   const refreshAbortRef = useRef<AbortController | null>(null);
@@ -207,19 +193,19 @@ export default function BacklogPage() {
   const activeRows = useMemo(() => adaptChildren(sortByPriority(active.data)), [active.data]);
   const archivedRows = useMemo(() => adaptChildren(sortByPriority(archived.data)), [archived.data]);
   const quarterlyRows = useMemo(() => adaptChildren(sortByPriority(quarterly.data)), [quarterly.data]);
-  // Дочки RFA «целиком» (кроме Дискавери): их часы уже в родителе, галочка ничего не меняет.
-  const inertChildIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const r of [...(active.data ?? []), ...(quarterly.data ?? [])]) {
-      if (r.planning_mode !== 'whole') continue;
-      for (const c of r.children ?? []) if (!c.is_service_epic) ids.add(c.id);
-    }
-    return ids;
-  }, [active.data, quarterly.data]);
-  const activeShown = onlyOffPlan ? filterOffPlan(activeRows) : activeRows;
-  const quarterlyShown = onlyOffPlan ? filterOffPlan(quarterlyRows) : quarterlyRows;
+  // Эпики внутри инициатив «целиком» (кроме Дискавери): их часы уже в родителе.
+  const inertIds = useMemo(
+    () => inertEpicIds([...(active.data ?? []), ...(quarterly.data ?? [])]),
+    [active.data, quarterly.data],
+  );
+  const rowRole = (r: InPlanRow) => inPlanRole(r, inertIds.has(r.id));
+  const rowOffPlan = (r: InPlanRow) => isOffPlan(rowRole(r), r.included_in_planning);
+  const offPlanRowClass = (r: BacklogItemResponse) => (rowOffPlan(r) ? 'backlog-row-off-plan' : '');
+  const activeShown = onlyOffPlan ? filterOffPlan(activeRows, rowOffPlan) : activeRows;
+  const quarterlyShown = onlyOffPlan ? filterOffPlan(quarterlyRows, rowOffPlan) : quarterlyRows;
   const offPlanCount = countOffPlan(
     view === 'quarterly' ? quarterlyRows : view === 'active' ? activeRows : undefined,
+    rowOffPlan,
   );
 
   const { data: employees = [] } = useEmployees();
@@ -755,34 +741,22 @@ export default function BacklogPage() {
     </Space>
   );
 
-  // Мультикомандную RFA с дочками включить целиком нельзя — только по Эпикам.
   const inPlanColumn = {
     title: 'В план',
     key: 'in_plan',
     width: 80,
     align: 'center' as const,
     className: 'backlog-in-plan-cell',
-    render: (_: unknown, r: BacklogItemResponse) => {
-      const inert = inertChildIds.has(r.id);
-      const hint = inert
-        ? 'Инициатива планируется целиком — часы эпиков уже в ней'
-        : r.included_in_planning ? 'Попадает в сценарии' : 'Не попадает в сценарии';
-      return (
-        <Tooltip title={hint}>
-          <Switch
-            size="small"
-            checked={r.included_in_planning}
-            loading={setIncluded.isPending && setIncluded.variables?.id === r.id}
-            disabled={inert || (!!r.planning_mode_locked && r.has_children_in_backlog && !r.included_in_planning)}
-            onChange={(val) =>
-              setIncluded.mutate(
-                { id: r.id, included: val },
-                { onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }) },
-              )}
-          />
-        </Tooltip>
-      );
-    },
+    render: (_: unknown, r: BacklogItemResponse) => (
+      <InPlanSwitch
+        size="small"
+        role={rowRole(r)}
+        checked={r.included_in_planning}
+        loading={includedPending.has(r.id)}
+        ariaLabel={`В план: ${r.jira_key ?? r.title}`}
+        onChange={(val) => setIncluded.mutate({ id: r.id, included: val })}
+      />
+    ),
   };
 
   const quarterlyColumns = [
@@ -1105,6 +1079,7 @@ export default function BacklogPage() {
       <BacklogPlanningParamsModal
         open={paramsOpen}
         item={paramsTarget}
+        inert={!!paramsTarget && inertIds.has(paramsTarget.id)}
         onClose={() => { setParamsOpen(false); setParamsTarget(null); }}
       />
 

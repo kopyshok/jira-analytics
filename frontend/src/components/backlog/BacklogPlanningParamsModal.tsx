@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App, Button, Col, Divider, InputNumber, Modal, Radio, Row, Space, Switch, Tag, Typography } from 'antd';
+import { App, Button, Col, Divider, InputNumber, Modal, Radio, Row, Space, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useUpdateBacklogItem } from '../../hooks/useBacklog';
+import { useSetBacklogIncluded, useUpdateBacklogItem } from '../../hooks/useBacklog';
 import { useHoursBreakdown } from '../../hooks/useHoursBreakdown';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
 import { api } from '../../api/client';
 import HoursBreakdownTable from '../hours/HoursBreakdownTable';
+import InPlanSwitch from './InPlanSwitch';
+import { inPlanHint, inPlanRole } from '../../utils/inPlan';
 import PlanConflictBanner from '../hours/PlanConflictBanner';
 import PlanEditDrawer from '../hours/PlanEditDrawer';
 import type { BacklogItemResponse } from '../../types/api';
@@ -15,6 +17,8 @@ import { useOpoCutoff } from '../../hooks/useOpoCutoff';
 interface Props {
   open: boolean;
   item: BacklogItemResponse | null;
+  /** Эпик внутри инициативы «целиком»: «В план» на него не действует. */
+  inert?: boolean;
   onClose: () => void;
 }
 
@@ -158,7 +162,7 @@ function PhaseRow({
   );
 }
 
-export default function BacklogPlanningParamsModal({ open, item, onClose }: Props) {
+export default function BacklogPlanningParamsModal({ open, item, inert = false, onClose }: Props) {
   const { opoOffNow } = useOpoCutoff();
   const { notification } = App.useApp();
   const update = useUpdateBacklogItem();
@@ -222,40 +226,47 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
     period.quarter,
   );
 
+  // При ошибке возвращаем то, что было на экране до клика, а не снимок
+  // на момент открытия — он устаревает после первой удачной правки.
   const modeMut = useMutation({
-    mutationFn: (next: 'whole' | 'by_epics') =>
+    mutationFn: ({ next }: { next: 'whole' | 'by_epics'; prevMode: 'whole' | 'by_epics'; prevIncluded: boolean }) =>
       api.patch(`/backlog/${backlogItemId}/planning-mode`, { mode: next }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['backlog'] }); },
-    onError: (e) => {
-      setMode((item?.planning_mode as 'whole' | 'by_epics') ?? 'whole');
-      setIncluded(item?.included_in_planning ?? true);
-      notification.error({ title: 'Ошибка', description: (e as Error).message });
-    },
-  });
-
-  const incMut = useMutation({
-    mutationFn: (val: boolean) =>
-      api.patch(`/backlog/${backlogItemId}/included`, { included: val }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['backlog'] });
       void qc.invalidateQueries({ queryKey: ['planning'] });
     },
-    onError: (e) => {
-      setIncluded(item?.included_in_planning ?? true);
+    onError: (e, { prevMode, prevIncluded }) => {
+      setMode(prevMode);
+      setIncluded(prevIncluded);
       notification.error({ title: 'Ошибка', description: (e as Error).message });
     },
   });
 
+  const incMut = useSetBacklogIncluded();
+
   const changeMode = (next: 'whole' | 'by_epics') => {
+    modeMut.mutate({ next, prevMode: mode, prevIncluded: included });
     setMode(next);
     setIncluded(next !== 'by_epics'); // совпадает с дефолтом на бэке
-    modeMut.mutate(next);
   };
 
+  // Пока идёт сохранение, переключатель занят — второй клик невозможен,
+  // поэтому колбэк из mutate не потеряется.
   const changeIncluded = (val: boolean) => {
+    const prev = included;
     setIncluded(val);
-    incMut.mutate(val);
+    incMut.mutate({ id: backlogItemId, included: val }, {
+      onError: (e) => {
+        setIncluded(prev);
+        notification.error({ title: 'Ошибка', description: e.message });
+      },
+    });
   };
+
+  const role = inPlanRole(
+    { has_children_in_backlog: hasChildren, planning_mode: mode, planning_mode_locked: modeLocked },
+    inert,
+  );
 
   const handleSave = () => {
     if (!item) return;
@@ -309,19 +320,17 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
           Если поле в Jira пустое — заполни вручную. Ручная правка перетирает Jira-значение
           только пока оно пустое; если Jira потом получит значение, оно его перезапишет.
         </Typography.Paragraph>
-        {/* Мультикомандную RFA с дочками включить целиком нельзя — только по Эпикам. */}
         <Space style={{ marginBottom: 8 }}>
-          <Switch
+          <InPlanSwitch
+            role={role}
             checked={included}
             loading={incMut.isPending}
-            disabled={modeLocked && hasChildren && !included}
+            ariaLabel="В план"
             onChange={changeIncluded}
           />
           <Typography.Text strong>В план</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {hasChildren && mode === 'by_epics'
-              ? 'Включить саму RFA — для кварталов, не покрытых Эпиками'
-              : 'Выключено — задача не попадает в сценарии'}
+            {inPlanHint(role, included)}
           </Typography.Text>
         </Space>
         <Divider style={{ margin: '8px 0 16px' }} />
