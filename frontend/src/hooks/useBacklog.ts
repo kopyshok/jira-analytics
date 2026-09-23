@@ -127,7 +127,8 @@ export const useSetBacklogIncluded = (onError?: (e: Error) => void) => {
     mutationFn: ({ id, included }: { id: string; included: boolean }) =>
       setBacklogIncluded(id, included),
     // Ждём свежий список: иначе переключатель на миг отскакивает к старому значению.
-    onSuccess: () => Promise.all([
+    // После отказа тоже: сервер мог заблокировать включение, пока список был открыт.
+    onSettled: () => Promise.all([
       qc.invalidateQueries({ queryKey: ['backlog'] }),
       qc.invalidateQueries({ queryKey: ['planning'] }),
     ]),

@@ -258,13 +258,17 @@ export default function BacklogPlanningParamsModal({ open, item, inert = false, 
     incMut.mutate({ id: backlogItemId, included: val }, {
       onError: (e) => {
         setIncluded(prev);
-        notification.error({ title: 'Ошибка', description: e.message });
+        notification.error({ title: e.message || 'Ошибка' });
       },
     });
   };
 
+  // Блокировку включения берём из свежего ответа сервера, а не из снимка строки.
   const role = inPlanRole(
-    { has_children_in_backlog: hasChildren, planning_mode: mode, planning_mode_locked: modeLocked },
+    {
+      has_children_in_backlog: hasChildren, planning_mode: mode, planning_mode_locked: modeLocked,
+      include_locked: planSrc?.include_locked,
+    },
     inert,
   );
 

@@ -463,6 +463,8 @@ export interface BacklogChild {
   issue_type: string | null;
   status: string | null;
   included_in_planning: boolean;
+  // Включить «В план» нельзя — то же правило, что у строки-корня.
+  include_locked: boolean;
   // Служебный эпик (Дискавери) — в сценарий идёт сверх RFA по галочке «В план».
   is_service_epic?: boolean;
   estimate_hours: number | null;
@@ -543,6 +545,10 @@ export interface BacklogItemResponse {
   // Hierarchy flags for RFA-row expansion in UI.
   planning_mode: 'whole' | 'by_epics';
   included_in_planning: boolean;
+  // Включить «В план» нельзя (сервер откажет): инициатива нескольких команд
+  // с детьми в бэклоге любой команды. В отличие от has_children_in_backlog
+  // от фильтра списка не зависит.
+  include_locked: boolean;
   // Только в ответе списка; одиночная задача всегда false.
   is_service_epic?: boolean;
   has_parent_in_backlog: boolean;

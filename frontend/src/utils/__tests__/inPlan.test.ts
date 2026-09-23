@@ -30,7 +30,19 @@ describe('inertEpicIds', () => {
 describe('inPlanRole', () => {
   it('by-epics parent with children', () => {
     expect(inPlanRole(row({ has_children_in_backlog: true, planning_mode: 'by_epics' }), false)).toBe('by_epics');
-    expect(inPlanRole(row({ has_children_in_backlog: true, planning_mode_locked: true }), false)).toBe('by_epics_locked');
+  });
+
+  it('lock comes from the server, not from children in the list', () => {
+    // Фильтр команды спрятал дочек чужой команды — сервер всё равно блокирует.
+    expect(inPlanRole(row({ planning_mode_locked: true, include_locked: true }), false)).toBe('by_epics_locked');
+    // Дети в списке есть, но сервер включить разрешает.
+    expect(
+      inPlanRole(row({ has_children_in_backlog: true, planning_mode_locked: true, include_locked: false }), false),
+    ).toBe('by_epics');
+  });
+
+  it('server lock applies to a child row too', () => {
+    expect(inPlanRole({ include_locked: true }, false)).toBe('by_epics_locked');
   });
 
   it('by-epics without children in list is regular', () => {
@@ -65,6 +77,11 @@ describe('off-plan filter and count', () => {
   it('counts only user choice', () => {
     // d1 (Дискавери), e2 (эпик по эпикам), o — да; e1 (внутри «целиком») и сама b — нет.
     expect(countOffPlan(rows, offPlan)).toBe(3);
+  });
+
+  it('server-locked initiative is not off-plan even without children in the list', () => {
+    const locked = row({ id: 'l', planning_mode_locked: true, include_locked: true, included_in_planning: false });
+    expect(countOffPlan([locked], offPlan)).toBe(0);
   });
 
   it('keeps parents only with off-plan children', () => {
