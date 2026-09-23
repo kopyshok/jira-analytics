@@ -2224,6 +2224,7 @@ async def update_scenario(
     scenario_id: str,
     data: ScenarioUpdate,
     db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Обновить сценарий: имя, команда, внешние часы QA (разрешено и для approved)."""
     scenario = db.get(PlanningScenario, scenario_id)
@@ -2238,7 +2239,9 @@ async def update_scenario(
         scenario.external_qa_hours = patch["external_qa_hours"]
     db.commit()
     db.refresh(scenario)
-    return _to_scenario_resp(scenario)
+    resp = _to_scenario_resp(scenario)
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    return resp
 
 
 @router.delete("/scenarios/{scenario_id}")
