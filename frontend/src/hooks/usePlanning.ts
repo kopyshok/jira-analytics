@@ -156,8 +156,10 @@ export const usePatchAllocation = () => {
         // При включении (False → True) поднимаем строку в начало списка — backend
         // делает то же через sort_order = min−1, но optimistic update должен
         // отразить это мгновенно, иначе строка остаётся на месте до refetch'а.
+        // Тумблер «Поднимать наверх» выключен (lift=false) — сервер порядок не
+        // меняет, и локальный подъём дал бы двойной прыжок: вверх и обратно.
         const wasIncluded = prev.find((a) => a.id === allocId)?.included ?? false;
-        if (data.included === true && !wasIncluded) {
+        if (data.included === true && !wasIncluded && data.lift !== false) {
           const idx = updated.findIndex((a) => a.id === allocId);
           if (idx > 0) {
             const [row] = updated.splice(idx, 1);
