@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import BacklogItem, Issue, PlanAudit
 from app.services.backlog_service import BacklogService
+from app.services.plan_sources import MANUAL_SOURCE, candidates_from_json, fingerprint
 
 ROLES = ("analyst", "dev", "qa", "opo")
 
@@ -166,6 +167,71 @@ class PlanEditService:
         self._sync_backlog(issue)
         self.db.commit()
         return issue
+
+    def choose_source(
+        self,
+        issue_id: str,
+        role: str,
+        source: str,
+        user_id: Optional[str] = None,
+    ) -> Issue:
+        """Спорная оценка: сделать действующим одно из полей Jira.
+
+        Выбор запоминается с отпечатком кандидатов: любое изменение значений
+        в Jira делает его недействительным, и спор открывается снова.
+        Ручное значение роли снимается — пользователь явно выбрал поле Jira.
+        """
+        if role not in ROLES:
+            raise ValueError("Unknown role")
+        issue = self.db.query(Issue).filter_by(id=issue_id).one()
+        candidates = candidates_from_json((issue.planned_hours_sources or {}).get(role))
+        picked = next((c for c in candidates if c.source == source), None)
+        if picked is None:
+            raise ValueError("Такого значения нет среди полей Jira этой задачи")
+        before = getattr(issue, f"planned_{role}_hours")
+        choice = dict(issue.planned_hours_choice or {})
+        choice[role] = {"source": source, "fingerprint": fingerprint(candidates)}
+        issue.planned_hours_choice = choice  # новый dict — иначе JSON-колонка не заметит правку
+        setattr(issue, f"planned_{role}_hours_jira", picked.value)
+        setattr(issue, f"planned_{role}_hours_manual", None)
+        if before != picked.value:
+            self.db.add(PlanAudit(
+                issue_id=issue.id, role=role,
+                value_before=before, value_after=picked.value,
+                source="dispute_choice", user_id=user_id,
+                comment=f"Спорная оценка: выбрано «{picked.label}»",
+                created_at=datetime.utcnow(),
+            ))
+        self._sync_backlog(issue)
+        self.db.commit()
+        return issue
+
+    def choose_manual(
+        self,
+        issue_id: str,
+        role: str,
+        value: float,
+        user_id: Optional[str] = None,
+    ) -> Issue:
+        """Спорная оценка: «Ввести своё» — ручное значение роли.
+
+        Спор считается решённым, пока совпадает отпечаток кандидатов и
+        у роли есть ручное значение.
+        """
+        if role not in ROLES:
+            raise ValueError("Unknown role")
+        issue = self.db.query(Issue).filter_by(id=issue_id).one()
+        candidates = candidates_from_json((issue.planned_hours_sources or {}).get(role))
+        if not candidates:
+            raise ValueError("У роли нет значений из Jira")
+        choice = dict(issue.planned_hours_choice or {})
+        choice[role] = {"source": MANUAL_SOURCE, "fingerprint": fingerprint(candidates)}
+        issue.planned_hours_choice = choice
+        # edit (часть 1.5) пишет журнал, синкает копию в бэклоге и коммитит.
+        return self.edit(
+            issue_id, {role: value}, "Спорная оценка: введено своё значение",
+            user_id=user_id,
+        )
 
     def open_conflicts(self, issue_id: str) -> list[dict]:
         """Открытые (не разрешённые) конфликты per роль.
