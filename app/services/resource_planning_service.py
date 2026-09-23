@@ -27,7 +27,9 @@ from app.models import (
     Team,
 )
 from app.services import opo_policy, team_membership as tm
+from app.services import cross_team_occupancy as cto
 from app.services.allocation_estimates import effective_estimate_hours
+from app.services.jira_developer import jira_developers_for_items
 from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.rcpsp_leveler import RcpspLeveler
 
@@ -544,6 +546,16 @@ class ResourcePlanningService:
         # q_end_extended = q_end + 1 месяц — буфер spillover. Assignments
         # с seg_end > q_end (строгий конец квартала) получают out_of_quarter=True.
         employees = self._load_employees(plan)
+        team_employees = list(employees)
+        # Привлечённые: закреплены вручную или стоят «Разработчиком» в Jira,
+        # но в команде плана не состояли ни дня квартала.
+        jira_dev = jira_developers_for_items(self.db, items)
+        team_ids = {e.id for e in team_employees}
+        borrowed_rows = self._load_borrowed(
+            (set(pinned_map.values()) | set(jira_dev.values())) - team_ids
+        )
+        borrowed = {e.id for e in borrowed_rows}
+        employees = team_employees + borrowed_rows
         if not employees:
             plan.status = "ready"
             plan.computed_at = datetime.utcnow()
@@ -558,9 +570,24 @@ class ResourcePlanningService:
             .all()
         )
 
-        avail = self.build_availability(
-            employees, q_start, q_end_extended, list(blocks), team=plan.team
+        raw_avail = self.build_availability(
+            employees, q_start, q_end_extended, list(blocks),
+            team=plan.team, borrowed=borrowed,
         )
+        # Часы, забронированные на этих людей опорными планами других команд,
+        # раскладка не трогает — в обе стороны (домашняя ↔ привлекающая).
+        external = cto.daily_totals(
+            cto.external_bookings(
+                self.db,
+                team=plan.team,
+                year=plan.year,
+                quarter=cto.quarter_num(plan.quarter),
+                employee_ids=[e.id for e in employees],
+                start=q_start,
+                end=q_end_extended,
+            )
+        )
+        avail = cto.subtract_occupancy(raw_avail, external)
 
         # Календарь рабочих часов БЕЗ сотрудника — для фазы QA (часы-only,
         # без employee_id). Используется чтобы пропускать выходные/праздники
@@ -611,6 +638,8 @@ class ResourcePlanningService:
             emp_group=emp_group,
             item_group=item_group,
             capacity=quarter_capacity,
+            jira_dev=jira_dev,
+            borrowed=borrowed,
         )
 
         # Mutable remaining hours copy
@@ -781,19 +810,27 @@ class ResourcePlanningService:
                     # Гарантируем, что эти части идут на сотрудников из разных пулов
                     # и не совпадают по идентификатору; иначе обе строки бьются
                     # в один и тот же `remaining[emp]` и выглядят как один отрезок.
+                    # Пулы запасного выбора — только своя команда; исполнитель
+                    # анализа/разработки, пришедший из другой команды, остаётся.
                     opo_analyst_pool = [
-                        e.id for e in employees
+                        e.id for e in team_employees
                         if (e.role or "").lower() in ANALYST_ROLES
                     ]
                     opo_dev_pool = [
-                        e.id for e in employees
+                        e.id for e in team_employees
                         if (e.role or "").lower() in DEV_ROLES
                     ]
                     analyst_id = assignments_by_role["analyst"].get(item.id)
                     dev_id = assignments_by_role["dev"].get(item.id)
+                    analyst_ok = bool(analyst_id) and (
+                        analyst_id in opo_analyst_pool or analyst_id in borrowed
+                    )
+                    dev_ok = bool(dev_id) and (
+                        dev_id in opo_dev_pool or dev_id in borrowed
+                    )
 
                     # Аналитика для ОПЭ — только из аналитического пула.
-                    if (not analyst_id or analyst_id not in opo_analyst_pool) and opo_analyst_pool:
+                    if not analyst_ok and opo_analyst_pool:
                         analyst_id = min(
                             opo_analyst_pool,
                             key=lambda eid: -sum(remaining.get(eid, {}).values()),
@@ -802,7 +839,7 @@ class ResourcePlanningService:
                     # Разработчика для ОПЭ — только из dev пула и обязательно
                     # отличного от аналитика.
                     dev_candidates = [x for x in opo_dev_pool if x != analyst_id]
-                    if (not dev_id or dev_id not in opo_dev_pool or dev_id == analyst_id) and dev_candidates:
+                    if (not dev_ok or dev_id == analyst_id) and dev_candidates:
                         dev_id = min(
                             dev_candidates,
                             key=lambda eid: -sum(remaining.get(eid, {}).values()),
@@ -1111,8 +1148,12 @@ class ResourcePlanningService:
 
         # RCPSP-выравнивание перегрузок
         leveler = RcpspLeveler()
-        role_pools = self._build_role_pools(employees)
-        leveling_events = leveler.level(new_assignments, avail, q_end_extended, role_pools)
+        # Переназначать можно только внутри своей команды. Перегрузку
+        # выравниватель меряет по ёмкости без чужих броней: пересечение с
+        # другой командой — отдельный «живой» конфликт в плане привлекающей
+        # команды (см. get_gantt), а не перегрузка в домашнем.
+        role_pools = self._build_role_pools(team_employees)
+        leveling_events = leveler.level(new_assignments, raw_avail, q_end_extended, role_pools)
         # Always recompute CPM — leveling may have shifted dates; cheap O(N) anyway
         self._compute_cpm(new_assignments, q_end_extended)
         # Cache events for Stage B persist_conflicts
@@ -1245,7 +1286,9 @@ class ResourcePlanningService:
         # OVERLOAD-события в диапазоны и проштамповывает шаблонные сообщения.
         from app.services.conflict_aggregator import aggregate_conflicts
 
-        detected = self._build_conflict_dicts(plan, new_assignments, employees, q_end)
+        detected = self._build_conflict_dicts(
+            plan, new_assignments, employees, q_end, borrowed=borrowed
+        )
         detected = aggregate_conflicts(detected, db_session=self.db)
         self._persist_conflicts(plan_id, detected)
 
@@ -1449,6 +1492,26 @@ class ResourcePlanningService:
             self.db.execute(
                 select(Employee).where(
                     Employee.id.in_(list(emp_ids)),
+                    Employee.is_active == True,  # noqa: E712
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    def _load_borrowed(self, ids: set) -> List[Employee]:
+        """Активные сотрудники вне команды плана, попавшие в план.
+
+        Источники — ручное закрепление фазы и «Разработчик» из Jira.
+        """
+        ids = {i for i in ids if i}
+        if not ids:
+            return []
+        rows = (
+            self.db.execute(
+                select(Employee).where(
+                    Employee.id.in_(list(ids)),
                     Employee.is_active == True,  # noqa: E712
                 )
             )
@@ -2748,6 +2811,7 @@ class ResourcePlanningService:
         assignments: List[ResourcePlanAssignment],
         employees: List[Employee],
         q_end: date,
+        borrowed: Optional[set] = None,
     ) -> List[dict]:
         """Собрать единый список dict-конфликтов для _persist_conflicts.
 
@@ -2758,7 +2822,8 @@ class ResourcePlanningService:
         - OVERLOAD_LIGHT/MED/HIGH из _last_leveling_events (action='escalate')
         - LEVELING_DELAY / LEVELING_REASSIGN (info — что leveler сделал)
         - LATE_START (фаза стартует позже целевой даты — slack_days < 0)
-        - OUT_OF_TEAM (дни фазы вне периода участия исполнителя в команде)
+        - OUT_OF_TEAM (дни фазы вне периода участия исполнителя в команде;
+          привлечённых из других команд не касается)
         """
         from datetime import datetime as _dt
 
@@ -2851,10 +2916,12 @@ class ResourcePlanningService:
                 )
 
         # OUT_OF_TEAM — назначение выходит за период участия в команде плана.
+        borrowed = borrowed or set()
         dated = [
             a
             for a in assignments
             if a.employee_id
+            and a.employee_id not in borrowed
             and isinstance(a.start_date, date)
             and isinstance(a.end_date, date)
         ]
