@@ -1277,6 +1277,46 @@ async def resolve_plan_conflict(
     return {"ok": True}
 
 
+class PlanChoiceRequest(BaseModel):
+    """Выбор значения спорной оценки: поле Jira (``source``) или своё (``manual_value``)."""
+
+    role: str
+    source: Optional[str] = None
+    manual_value: Optional[float] = Field(default=None, ge=0)
+
+
+@router.post("/{issue_id}/plan/choice")
+async def choose_plan_source(
+    issue_id: str,
+    payload: PlanChoiceRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
+    if issue is None:
+        raise HTTPException(404, "Issue not found")
+    if (payload.source is None) == (payload.manual_value is None):
+        raise HTTPException(422, "Укажите либо поле Jira, либо своё значение")
+    svc = PlanEditService(db)
+    try:
+        if payload.source is not None:
+            svc.choose_source(issue_id, payload.role, payload.source, user_id=current_user.id)
+        elif payload.manual_value is not None:
+            svc.choose_manual(
+                issue_id, payload.role, payload.manual_value, user_id=current_user.id,
+            )
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    db.refresh(issue)
+    # Снимок до await: после commit атрибуты в TestClient-потоке перечитываются.
+    plan = {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
+    await event_bus.publish(
+        {"type": "entity_changed", "entities": ["issues", "backlog", "planning"]}
+    )
+    return {"plan": plan}
+
+
 @router.get("/{issue_id}/plan-conflicts")
 def get_plan_conflicts(issue_id: str, db: Session = Depends(get_db)):
     issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
