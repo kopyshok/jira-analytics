@@ -9,7 +9,7 @@
 посуточные итоги для пересчёта ролевых ёмкостей при выборе инициатив.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Optional
 
@@ -24,6 +24,7 @@ from app.models import (
     ProductionCalendarDay,
     ScenarioRule,
 )
+from app.services import cross_team_occupancy as cto
 from app.services import team_membership as tm
 
 DEFAULT_HOURS_PER_DAY = 8.0
@@ -65,6 +66,9 @@ class ResourceSummary:
     subgroups: list[dict]                              # [{id, name}] в порядке сортировки
     gross_by_subgroup_role: dict[str, dict[str, float]]      # ключ "" — без группы
     available_by_subgroup_role: dict[str, dict[str, float]]  # ключ "" — без группы
+    # Часы сотрудников команды, забронированные опорными планами других
+    # команд квартала (только дни, учтённые в брутто): роль → часы.
+    booked_by_other_teams_by_role: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -138,6 +142,18 @@ class ResourceBaseService:
             self.db.query(Employee)
             .filter(Employee.id.in_(list(intervals.keys())), Employee.is_active == True)  # noqa: E712
             .all()
+        )
+        # Часы, забронированные на этих людей опорными планами других команд.
+        booked = cto.daily_totals(
+            cto.external_bookings(
+                self.db,
+                team=team,
+                year=year,
+                quarter=q,
+                employee_ids=[e.id for e in employees],
+                start=period_start,
+                end=last_day,
+            )
         )
 
         # --- карта аномалий производственного календаря ---
@@ -247,7 +263,12 @@ class ResourceBaseService:
                 if pct > 1.0:
                     pct = 1.0
 
-                days_out.append(EmployeeDayHours(date=cur, hours=round(norm * pct, 2)))
+                # Обязательные работы — от полной нормы, брони других команд —
+                # поверх, не ниже нуля.
+                taken = booked.get(e.id, {}).get(cur, 0.0)
+                days_out.append(
+                    EmployeeDayHours(date=cur, hours=round(max(0.0, norm * pct - taken), 2))
+                )
                 cur += timedelta(days=1)
 
             total = round(sum(d.hours for d in days_out), 2)
@@ -375,6 +396,20 @@ class ResourceBaseService:
                     calendar_gross_by_role.get(e.role, 0.0) + round(total_cal, 2)
                 )
 
+        # --- брони других команд: учитываются только дни, вошедшие в брутто ---
+        booked = cto.daily_totals(
+            cto.external_bookings(
+                self.db,
+                team=team,
+                year=year,
+                quarter=q,
+                employee_ids=[e.id for e in employees],
+                start=period_start,
+                end=last_day,
+            )
+        )
+        booked_by_emp: dict[str, float] = {}
+
         # --- валовые часы по сотрудникам (без вычета обязательных) ---
         gross_by_emp: dict[str, float] = {}
         emp_role: dict[str, Optional[str]] = {}
@@ -391,6 +426,8 @@ class ResourceBaseService:
                 .all()
             )
             total = 0.0
+            taken = 0.0
+            emp_booked = booked.get(e.id, {})
             emp_intervals = intervals.get(e.id, [])
             cur = period_start
             while cur < period_end:
@@ -399,9 +436,11 @@ class ResourceBaseService:
                     on_absence = any(a.start_date <= cur <= a.end_date for a in abs_ranges)
                     if not on_absence:
                         total += norm
+                        taken += emp_booked.get(cur, 0.0)
                 cur += timedelta(days=1)
 
             gross_by_emp[e.id] = round(total, 2)
+            booked_by_emp[e.id] = round(taken, 2)
             emp_role[e.id] = e.role
             emp_name[e.id] = e.display_name
 
@@ -508,8 +547,22 @@ class ResourceBaseService:
                     )
                 )
 
-        # --- доступные часы = валовые − обязательные (только subtracts_from_pool=True) ---
+        # --- брони других команд по ролям ---
+        # Внешний QA замещает штатных тестировщиков — их брони не в счёт.
+        booked_by_role: dict[str, float] = {}
+        for emp_id, h in booked_by_emp.items():
+            role = emp_role[emp_id]
+            if not role or h <= 0:
+                continue
+            if role == "qa" and scenario.external_qa_hours is not None:
+                continue
+            booked_by_role[role] = round(booked_by_role.get(role, 0.0) + h, 2)
+
+        # --- доступные часы = валовые − обязательные (только subtracts_from_pool=True)
+        #     − брони других команд ---
         available_by_role: dict[str, float] = {}
+        # До вычета броней — для разреза по группам.
+        net_by_role: dict[str, float] = {}
         for role in roles_ordered:
             gross = gross_by_role.get(role, 0.0)
             # Внешний QA — это уже «чистые» часы подрядчика на квартал, заданные
@@ -524,7 +577,10 @@ class ResourceBaseService:
                 for row in wt_rows
                 if row.subtracts_from_pool
             )
-            available_by_role[role] = round(max(0.0, gross - mandatory_total), 2)
+            net_by_role[role] = round(max(0.0, gross - mandatory_total), 2)
+            available_by_role[role] = round(
+                max(0.0, gross - mandatory_total - booked_by_role.get(role, 0.0)), 2
+            )
 
         gross_total = round(sum(gross_by_role.values()), 2)
         available_total = round(sum(available_by_role.values()), 2)
@@ -533,10 +589,13 @@ class ResourceBaseService:
         # Считаем из тех же gross_by_emp, поэтому сумма по группам сходится
         # с итогом по команде по построению. Обязательные работы вычитаются
         # процентом от роли, значит доля группы в роли переносится напрямую.
+        # Брони других команд — не процент: они снимаются с группы того, кого
+        # забронировали, а не делятся по доле.
         subgroups, emp_subgroup = self._team_subgroups(team)
         gross_by_subgroup_role: dict[str, dict[str, float]] = {}
         available_by_subgroup_role: dict[str, dict[str, float]] = {}
         if subgroups:
+            booked_by_subgroup_role: dict[str, dict[str, float]] = {}
             for emp_id, gross in gross_by_emp.items():
                 role = emp_role[emp_id]
                 if not role:
@@ -544,17 +603,22 @@ class ResourceBaseService:
                 # Внешний QA задан вручную на всю команду и группе не принадлежит.
                 if role == "qa" and scenario.external_qa_hours is not None:
                     continue
-                key = emp_subgroup.get(emp_id) or ""
-                bucket = gross_by_subgroup_role.setdefault(key, {})
+                sg_key = emp_subgroup.get(emp_id) or ""
+                bucket = gross_by_subgroup_role.setdefault(sg_key, {})
                 bucket[role] = round(bucket.get(role, 0.0) + gross, 2)
+                taken_bucket = booked_by_subgroup_role.setdefault(sg_key, {})
+                taken_bucket[role] = taken_bucket.get(role, 0.0) + booked_by_emp[emp_id]
 
-            for key, roles in gross_by_subgroup_role.items():
+            for sg_key, roles in gross_by_subgroup_role.items():
                 out: dict[str, float] = {}
                 for role, g in roles.items():
                     team_gross = gross_by_role.get(role, 0.0)
                     share = g / team_gross if team_gross else 0.0
-                    out[role] = round(available_by_role.get(role, 0.0) * share, 2)
-                available_by_subgroup_role[key] = out
+                    taken = booked_by_subgroup_role.get(sg_key, {}).get(role, 0.0)
+                    out[role] = round(
+                        max(0.0, net_by_role.get(role, 0.0) * share - taken), 2
+                    )
+                available_by_subgroup_role[sg_key] = out
 
         return ResourceSummary(
             year=year,
@@ -573,6 +637,7 @@ class ResourceBaseService:
             subgroups=subgroups,
             gross_by_subgroup_role=gross_by_subgroup_role,
             available_by_subgroup_role=available_by_subgroup_role,
+            booked_by_other_teams_by_role=booked_by_role,
         )
 
     def _team_subgroups(self, team: str) -> tuple[list[dict], dict[str, str]]:
