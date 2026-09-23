@@ -78,3 +78,27 @@ def test_generic_settings_allow_ui_and_jira_field_keys(client: TestClient):
     read_field = client.get("/api/v1/settings/generic/jira_team_field_id")
     assert read_field.status_code == 200
     assert read_field.json()["value"] == "customfield_11526"
+
+
+def test_generic_settings_keep_plan_hours_field_list(client: TestClient):
+    """Настройка роли — JSON-список полей: сохраняется и читается как есть."""
+    import json
+
+    from app.services.plan_sources import FieldSpec, parse_field_setting
+
+    value = json.dumps([
+        {"field_id": "customfield_12432", "kind": "alt", "name": "Разработка (ч)"},
+        {"field_id": "customfield_12888", "kind": "sum", "name": "Оценка Back"},
+    ], ensure_ascii=False)
+    r = client.put(
+        "/api/v1/settings/generic",
+        json={"key": "jira_planned_dev_hours_field_id", "value": value},
+    )
+    assert r.status_code == 200, r.text
+
+    got = client.get("/api/v1/settings/generic/jira_planned_dev_hours_field_id").json()["value"]
+    assert got == value
+    assert parse_field_setting(got) == (
+        FieldSpec("customfield_12432", "alt", "Разработка (ч)"),
+        FieldSpec("customfield_12888", "sum", "Оценка Back"),
+    )
