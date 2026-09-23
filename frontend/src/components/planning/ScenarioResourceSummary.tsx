@@ -716,6 +716,34 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
           );
         })()}
       </div>
+      {(() => {
+        // Часы, которые сотрудники команды уже отдали планам других команд
+        // этого квартала: сервер вычел их из «На бэклог».
+        const rank = (role: string) => {
+          const i = summary.roles.indexOf(role);
+          return i < 0 ? summary.roles.length : i;
+        };
+        const booked = Object.entries(summary.booked_by_other_teams_by_role ?? {})
+          .filter(([, h]) => h >= 0.5)
+          .sort(([a], [b]) => rank(a) - rank(b));
+        if (booked.length === 0) return null;
+        return (
+          <div
+            style={{
+              borderTop: `1px solid ${DARK_THEME.border}`,
+              padding: '8px 14px',
+              fontSize: 12,
+              color: DARK_THEME.textMuted,
+            }}
+          >
+            Занято в планах других команд этого квартала:{' '}
+            {booked
+              .map(([role, h]) => `${getRoleLabel(roles, role)} ${Math.round(h).toLocaleString('ru')} ч`)
+              .join(', ')}
+            . Эти часы уже вычтены из «На бэклог».
+          </div>
+        );
+      })()}
       {summary.subgroups.length > 0 && (
         <div style={{ borderTop: `1px solid ${DARK_THEME.border}`, padding: '10px 14px' }}>
           <div style={{ fontSize: 12, color: DARK_THEME.textMuted, marginBottom: 6 }}>

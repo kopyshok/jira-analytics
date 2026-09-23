@@ -22,6 +22,7 @@ const TYPE_LABELS: Record<string, string> = {
   NO_DEV: 'Нет разработчика',
   LATE_START: 'Поздний старт',
   OUT_OF_TEAM: 'Вне команды',
+  CROSS_TEAM_OVERLAP: 'Пересечение с другой командой',
   PREDECESSOR_VIOLATED: 'Нарушен порядок предшественников',
   LEVELING_DELAY: 'Сдвиг при выравнивании',
   LEVELING_REASSIGN: 'Переназначение',
@@ -60,6 +61,8 @@ function ConflictAlert({
 }) {
   const [showDetails, setShowDetails] = useState(false);
   const isOverload = c.type.startsWith('OVERLOAD_');
+  // «Живой» конфликт не хранится — статус у него не меняется, сервер ответит отказом.
+  const isLive = !!c.is_live || c.id.startsWith('live:');
   const explain = useExplainConflict(planId, c.id, showDetails && isOverload);
 
   return (
@@ -88,21 +91,28 @@ function ConflictAlert({
                   {showDetails ? 'Скрыть' : 'Подробности'}
                 </Button>
               )}
-              <Tag color={STATUS_COLOR[c.status]}>{STATUS_LABEL[c.status]}</Tag>
-              <Dropdown
-                menu={{
-                  items: (['acknowledged', 'muted', 'resolved', 'open'] as const)
-                    .filter(s => s !== c.status)
-                    .map(s => ({
-                      key: s,
-                      label: STATUS_LABEL[s],
-                      onClick: () => onStatusChange(c.id, s),
-                    })),
-                }}
-                trigger={['click']}
+              <Tag
+                color={STATUS_COLOR[c.status]}
+                title={isLive ? 'Исчезнет сам, когда пересечение устранят' : undefined}
               >
-                <a><MoreOutlined /></a>
-              </Dropdown>
+                {STATUS_LABEL[c.status]}
+              </Tag>
+              {!isLive && (
+                <Dropdown
+                  menu={{
+                    items: (['acknowledged', 'muted', 'resolved', 'open'] as const)
+                      .filter(s => s !== c.status)
+                      .map(s => ({
+                        key: s,
+                        label: STATUS_LABEL[s],
+                        onClick: () => onStatusChange(c.id, s),
+                      })),
+                  }}
+                  trigger={['click']}
+                >
+                  <a><MoreOutlined /></a>
+                </Dropdown>
+              )}
             </Space>
           </Space>
           {showDetails && isOverload && (
@@ -211,7 +221,8 @@ export default function ConflictPanel({ conflicts, planId, onSelectAssignment }:
           : 'Без сотрудника';
       } else {
         key = c.type;
-        label = TYPE_LABELS[c.type] ?? c.type;
+        // Незнакомый тип (сервер новее фронта) — без служебного кода в подписи.
+        label = TYPE_LABELS[c.type] ?? 'Прочее';
       }
       if (!map.has(key)) map.set(key, { label, items: [] });
       map.get(key)!.items.push(c);
