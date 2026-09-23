@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { App, Button, Checkbox, Col, Divider, InputNumber, Modal, Radio, Row, Space, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUpdateBacklogItem } from '../../hooks/useBacklog';
 import { useHoursBreakdown } from '../../hooks/useHoursBreakdown';
 import { useGlobalPeriod } from '../../hooks/useGlobalPeriod';
@@ -192,6 +192,30 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
   const modeLocked = !!item?.planning_mode_locked;
   const backlogItemId = item?.id ?? '';
 
+  // Проп item — снимок строки на момент открытия. Часы для правки плана берём
+  // из свежего запроса: после сохранения драуэр инвалидирует ['backlog'], и
+  // повторное открытие показывает уже новые значения, а не снимок.
+  const { data: freshItem } = useQuery({
+    queryKey: ['backlog', 'item', backlogItemId],
+    queryFn: () => api.get<BacklogItemResponse>(`/backlog/${backlogItemId}`),
+    enabled: open && !!backlogItemId,
+  });
+  const planSrc = freshItem ?? item;
+  // Стабильные объекты: драуэр переписывает форму при смене значений, и новый
+  // литерал на каждой перерисовке стирал бы несохранённый ввод.
+  const planJira = useMemo(() => ({
+    analyst: planSrc?.estimate_analyst_hours_jira ?? null,
+    dev: planSrc?.estimate_dev_hours_jira ?? null,
+    qa: planSrc?.estimate_qa_hours_jira ?? null,
+    opo: planSrc?.estimate_opo_hours_jira ?? null,
+  }), [planSrc]);
+  const planEffective = useMemo(() => ({
+    analyst: planSrc?.estimate_analyst_hours ?? null,
+    dev: planSrc?.estimate_dev_hours ?? null,
+    qa: planSrc?.estimate_qa_hours ?? null,
+    opo: planSrc?.estimate_opo_hours ?? null,
+  }), [planSrc]);
+
   const { data: hoursData, isLoading: hoursLoading } = useHoursBreakdown(
     issueId,
     period.year,
@@ -349,18 +373,8 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
           onClose={() => setEditPlanOpen(false)}
           issueId={issueId}
           issueKey={item?.jira_key ?? item?.title ?? ''}
-          jiraValues={{
-            analyst: item?.estimate_analyst_hours ?? null,
-            dev: item?.estimate_dev_hours ?? null,
-            qa: item?.estimate_qa_hours ?? null,
-            opo: item?.estimate_opo_hours ?? null,
-          }}
-          effectiveValues={{
-            analyst: item?.estimate_analyst_hours ?? null,
-            dev: item?.estimate_dev_hours ?? null,
-            qa: item?.estimate_qa_hours ?? null,
-            opo: item?.estimate_opo_hours ?? null,
-          }}
+          jiraValues={planJira}
+          effectiveValues={planEffective}
         />
       )}
     </>

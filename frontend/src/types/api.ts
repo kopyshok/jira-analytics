@@ -529,6 +529,11 @@ export interface BacklogItemResponse {
   duration_dev_days_jira: number | null;
   duration_qa_days_jira: number | null;
   duration_launch_days_jira: number | null;
+  // Часы по ролям из Jira без ручной правки (для «из Jira» в правке плана).
+  estimate_analyst_hours_jira: number | null;
+  estimate_dev_hours_jira: number | null;
+  estimate_qa_hours_jira: number | null;
+  estimate_opo_hours_jira: number | null;
   // Parallel staffing overrides (null = inherit from project default, which defaults to 1).
   parallel_count_analyst: number | null;
   parallel_count_dev: number | null;
