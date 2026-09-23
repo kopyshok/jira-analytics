@@ -67,11 +67,12 @@ from app.services.backlog_service import (
     approved_included_backlog_ids,
     descendant_backlog_ids_of_included_ancestors,
     mode_excluded_backlog_ids,
+    not_in_plan_backlog_ids,
 )
 from app.services.category_resolver import CategoryResolver
 from app.services.plan_common import quarter_bounds
 from app.services.subgroup_flow_service import flow_for_team
-from app.services.hierarchy_rules import is_explicit_leaf, load_rules
+from app.services.hierarchy_rules import is_planning_leaf, load_rules
 
 
 router = APIRouter()
@@ -103,12 +104,13 @@ def _backlog_item_is_leaf(item: BacklogItem, rules) -> bool:
     Leaf-задачи (OS/PMD-доработки) не попадают в сценарии — это
     операционная работа, в планирование пускаются только инициативы
     (RFA / ITL / Цель и т.п.).
+    Служебные эпики (Дискавери) листом не считаются — их решает галочка «В план».
     """
     if item.issue_id is None or item.issue is None:
         return False
     issue = item.issue
     project_key = issue.project.key if issue.project else ""
-    return is_explicit_leaf(
+    return is_planning_leaf(
         rules,
         project_key=project_key,
         issue_type=issue.issue_type or "",
@@ -168,7 +170,7 @@ def _filter_leaf_backlog_ids(db: Session, item_ids) -> set:
             .all()
         )
         for item_id, project_key, issue_type, parent_id in rows:
-            if is_explicit_leaf(
+            if is_planning_leaf(
                 rules,
                 project_key=project_key or "",
                 issue_type=issue_type or "",
@@ -631,6 +633,9 @@ async def create_scenario(
     # RFA-родители в режиме «по эпикам» — контекст, не кандидаты.
     mode_excluded = mode_excluded_backlog_ids(db)
     items = [it for it in items if it.id not in mode_excluded]
+    # Снятая галочка «В план» — не кандидат.
+    not_in_plan = not_in_plan_backlog_ids(db)
+    items = [it for it in items if it.id not in not_in_plan]
     for idx, item in enumerate(items, start=1):
         db.add(
             ScenarioAllocation(
@@ -1324,6 +1329,7 @@ async def sync_backlog(
     descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
     approved_included_ids = approved_included_backlog_ids(db)
     mode_excluded = mode_excluded_backlog_ids(db)
+    not_in_plan = not_in_plan_backlog_ids(db)
 
     # Новые allocations добавляем в конец списка — PM сам перетащит куда нужно.
     next_order = (
@@ -1332,7 +1338,7 @@ async def sync_backlog(
         .scalar()
         or 0.0
     ) + 1.0
-    for item_id in (((((current_ids - existing_ids) - leaf_ids) - descendant_ids) - approved_included_ids) - mode_excluded):
+    for item_id in ((((((current_ids - existing_ids) - leaf_ids) - descendant_ids) - approved_included_ids) - mode_excluded) - not_in_plan):
         db.add(
             ScenarioAllocation(
                 scenario_id=scenario_id,
@@ -1343,9 +1349,10 @@ async def sync_backlog(
             )
         )
         next_order += 1.0
-    # Безусловный снос: потомки утверждённых и RFA-родители «по эпикам»
-    # (даже если PM отметил — иначе часы посчитаются дважды).
-    stale_unconditional = existing_ids & (descendant_ids | mode_excluded)
+    # Безусловный снос: потомки утверждённых, RFA-родители «по эпикам» и
+    # задачи со снятой галочкой «В план» (даже если PM отметил — иначе
+    # часы посчитаются дважды / задача вернётся вопреки галочке).
+    stale_unconditional = existing_ids & (descendant_ids | mode_excluded | not_in_plan)
     # Опциональный снос (только если PM не включил): архивированные,
     # задачи чужой команды, физически удалённые из бэклога, инициативы
     # уже включённые в утверждённый сценарий, leaf-типы (если PM поставил
@@ -1419,9 +1426,11 @@ async def list_scenario_allocations(
         approved_included_ids = approved_included_backlog_ids(db)
         # RFA-родители «по эпикам» — контекст, не кандидаты.
         mode_excluded = mode_excluded_backlog_ids(db)
-        missing = (((((current_ids - existing_ids) - leaf_ids) - descendant_ids) - approved_included_ids) - mode_excluded)
-        # Безусловный stale: потомки утверждённых, RFA «по эпикам».
-        stale_unconditional = existing_ids & (descendant_ids | mode_excluded)
+        # Снятая галочка «В план» — не кандидат.
+        not_in_plan = not_in_plan_backlog_ids(db)
+        missing = ((((((current_ids - existing_ids) - leaf_ids) - descendant_ids) - approved_included_ids) - mode_excluded) - not_in_plan)
+        # Безусловный stale: потомки утверждённых, RFA «по эпикам», «не в плане».
+        stale_unconditional = existing_ids & (descendant_ids | mode_excluded | not_in_plan)
         # Опциональный stale (только если PM не включил вручную):
         # архивированные BacklogItem, задачи чужой команды, leaf-типы,
         # инициативы уже включённые в утверждённый сценарий (PM мог
