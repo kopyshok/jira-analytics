@@ -146,3 +146,19 @@ def test_delete_scenario_publishes_planning_and_backlog(testclient_db_session):
     mock_bus.publish.assert_called_once_with(
         {"type": "entity_changed", "entities": ["planning", "backlog"]}
     )
+
+
+def test_rename_scenario_publishes_planning(testclient_db_session):
+    """Переименование сценария видят остальные пользователи."""
+    mock_bus = AsyncMock()
+    item = _seed_backlog_item(testclient_db_session)
+    sc, _ = _seed_scenario_with_allocation(testclient_db_session, item.id)
+    client = _make_client(testclient_db_session, mock_bus)
+    try:
+        r = client.patch(f"/api/v1/planning/scenarios/{sc.id}", json={"name": "Q1 v2"})
+        assert r.status_code == 200, r.text
+    finally:
+        _teardown()
+    mock_bus.publish.assert_called_once_with(
+        {"type": "entity_changed", "entities": ["planning"]}
+    )
