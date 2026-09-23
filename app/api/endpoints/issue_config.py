@@ -1206,11 +1206,12 @@ class PlanRevertRequest(BaseModel):
 
 
 @router.patch("/{issue_id}/plan")
-def patch_plan(
+async def patch_plan(
     issue_id: str,
     payload: PlanEditRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
     if issue is None:
@@ -1223,17 +1224,18 @@ def patch_plan(
     except ValueError as e:
         raise HTTPException(422, str(e))
     db.refresh(issue)
-    return {
-        "plan": {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
-    }
+    plan = {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    return {"plan": plan}
 
 
 @router.post("/{issue_id}/plan/revert")
-def revert_plan(
+async def revert_plan(
     issue_id: str,
     payload: PlanRevertRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
     if issue is None:
@@ -1243,9 +1245,9 @@ def revert_plan(
         user_id=current_user.id,
     )
     db.refresh(issue)
-    return {
-        "plan": {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
-    }
+    plan = {r: getattr(issue, f"planned_{r}_hours") for r in PLAN_ROLES}
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
+    return {"plan": plan}
 
 
 class ConflictResolveRequest(BaseModel):
@@ -1254,11 +1256,12 @@ class ConflictResolveRequest(BaseModel):
 
 
 @router.post("/{issue_id}/plan/conflict-resolve")
-def resolve_plan_conflict(
+async def resolve_plan_conflict(
     issue_id: str,
     payload: ConflictResolveRequest,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     issue = db.query(Issue).filter_by(id=issue_id).one_or_none()
     if issue is None:
@@ -1270,6 +1273,7 @@ def resolve_plan_conflict(
         )
     except ValueError as e:
         raise HTTPException(422, str(e))
+    await event_bus.publish({"type": "entity_changed", "entities": ["issues", "backlog"]})
     return {"ok": True}
 
 
