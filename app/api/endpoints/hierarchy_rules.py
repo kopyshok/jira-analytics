@@ -11,8 +11,13 @@ from app.database import get_db
 from app.models.hierarchy_rule import HierarchyRule
 from app.repositories.base import BaseRepository
 from app.services.backlog_service import service_epic_backlog_ids, switch_off_new_service_epics
+from app.services.event_bus import EventBroadcaster, get_event_bus
 
 router = APIRouter()
+
+# Правило иерархии меняет состав бэклога (листья, служебные эпики),
+# кандидатов сценариев и дерево аналитики — обновить у всех пользователей.
+_RULES_CHANGED = {"type": "entity_changed", "entities": ["backlog", "planning", "analytics"]}
 
 
 # === Schemas ===
@@ -79,7 +84,11 @@ def list_rules(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=HierarchyRuleResponse, status_code=status.HTTP_201_CREATED)
-def create_rule(body: HierarchyRuleCreate, db: Session = Depends(get_db)):
+async def create_rule(
+    body: HierarchyRuleCreate,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
     _check_parent_predicates(body.require_no_parent, body.require_parent)
     # Снимок служебных эпиков до правки: ставшие служебными выключаем из плана.
     before = service_epic_backlog_ids(db)
@@ -87,11 +96,17 @@ def create_rule(body: HierarchyRuleCreate, db: Session = Depends(get_db)):
     rule = repo.create(body.model_dump())
     switch_off_new_service_epics(db, before)
     db.commit()
+    await event_bus.publish(_RULES_CHANGED)
     return rule
 
 
 @router.patch("/{rule_id}", response_model=HierarchyRuleResponse)
-def update_rule(rule_id: str, body: HierarchyRuleUpdate, db: Session = Depends(get_db)):
+async def update_rule(
+    rule_id: str,
+    body: HierarchyRuleUpdate,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
     rule = db.get(HierarchyRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Правило не найдено")
@@ -107,11 +122,16 @@ def update_rule(rule_id: str, body: HierarchyRuleUpdate, db: Session = Depends(g
     switch_off_new_service_epics(db, before)
     db.commit()
     db.refresh(rule)
+    await event_bus.publish(_RULES_CHANGED)
     return rule
 
 
 @router.delete("/{rule_id}")
-def delete_rule(rule_id: str, db: Session = Depends(get_db)):
+async def delete_rule(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
     rule = db.get(HierarchyRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Правило не найдено")
@@ -120,11 +140,16 @@ def delete_rule(rule_id: str, db: Session = Depends(get_db)):
     db.flush()
     switch_off_new_service_epics(db, before)
     db.commit()
+    await event_bus.publish(_RULES_CHANGED)
     return {"status": "deleted"}
 
 
 @router.post("/reorder", response_model=List[HierarchyRuleResponse])
-def reorder_rules(body: ReorderRequest, db: Session = Depends(get_db)):
+async def reorder_rules(
+    body: ReorderRequest,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
     before = service_epic_backlog_ids(db)
     for index, rule_id in enumerate(body.ids):
         rule = db.get(HierarchyRule, rule_id)
@@ -134,6 +159,7 @@ def reorder_rules(body: ReorderRequest, db: Session = Depends(get_db)):
     db.flush()
     switch_off_new_service_epics(db, before)
     db.commit()
+    await event_bus.publish(_RULES_CHANGED)
     stmt = (
         select(HierarchyRule)
         .order_by(HierarchyRule.priority.asc(), HierarchyRule.created_at.asc())
