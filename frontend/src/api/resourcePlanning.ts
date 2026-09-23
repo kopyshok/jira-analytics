@@ -104,6 +104,8 @@ export interface ConflictOut {
   message: string;
   created_at: string;
   updated_at: string;
+  /** «Живой» конфликт (пересечение с другой командой): не хранится, статус не меняется. */
+  is_live?: boolean;
 }
 
 export interface InitiativePertOut {
@@ -136,6 +138,8 @@ export interface EmployeeLoadDay {
   pct: number;
   /** Нерабочий день: 'weekend' | 'holiday' | 'absence'. Отсутствует — рабочий. */
   off?: 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null;
+  /** Доля ёмкости дня, занятая планами других команд, %. */
+  ext_pct?: number;
 }
 
 /** Переход сотрудника на границе участия в команде плана внутри квартала. */
@@ -159,12 +163,32 @@ export interface EmployeeLoadOut {
   left_to?: TeamMove | null;
   /** Откуда пришёл внутри квартала; null — участие с начала квартала. */
   joined_from?: TeamMove | null;
+  /** Привлечён из другой команды (в команде плана не состоял ни дня квартала). */
+  is_borrowed?: boolean;
+  borrowed_from?: string | null;
 }
 
 export interface ResetCounts {
   pinned_dates: number;
   pinned_employees: number;
   edited_predecessors: number;
+}
+
+/** Фаза привлечённого сотрудника в опорном плане другой команды. */
+export interface ExternalBookingOut {
+  assignment_id: string;
+  employee_id: string;
+  employee_name: string | null;
+  team: string;
+  issue_key: string | null;
+  title: string;
+  phase: string;
+  start: string;
+  end: string;
+  /** {"YYYY-MM-DD": часы} внутри окна диаграммы (квартал + месяц запаса). */
+  daily_hours: Record<string, number>;
+  /** Опорный план — черновик сценария (утверждённого у команды нет). */
+  provisional: boolean;
 }
 
 export interface GanttProjection {
@@ -174,6 +198,8 @@ export interface GanttProjection {
   pert_projection: InitiativePertOut[];
   dependencies: DependencyOut[];
   employee_load?: EmployeeLoadOut[];
+  /** Брони привлечённых в опорных планах других команд — блок «Привлечённые». */
+  external_bookings?: ExternalBookingOut[];
   reset_counts: ResetCounts;
 }
 
@@ -492,6 +518,31 @@ export async function previewEmployeeChange(
     { employee_id: employeeId },
   );
 }
+
+/** Кандидат в исполнители фазы. */
+export interface AssignmentCandidate {
+  employee_id: string;
+  display_name: string;
+  role: string | null;
+  team: string | null;
+  /** Загрузка за квартал плана по опорным планам всех команд, %. */
+  load_pct: number;
+  /** Границы участия в команде плана внутри квартала; null — край покрыт. */
+  member_from?: string | null;
+  member_to?: string | null;
+}
+
+export interface AssignmentCandidateGroup {
+  key: 'jira' | 'team' | 'other';
+  label: string;
+  employees: AssignmentCandidate[];
+}
+
+/** Все активные сотрудники группами «Из Jira» / «Моя команда» / «Другие команды». */
+export const getAssignmentCandidates = (planId: string, assignmentId: string) =>
+  api.get<AssignmentCandidateGroup[]>(
+    `/resource-planning/resource-plans/${planId}/assignments/${assignmentId}/candidates`,
+  );
 
 export interface QualityMetric {
   plan_id: string;

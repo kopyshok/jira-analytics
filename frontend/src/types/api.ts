@@ -662,6 +662,8 @@ export interface ResourceSummaryOut {
   available_by_subgroup_role: Record<string, Record<string, number>>;
   /** Переток внутри команды за квартал: ушло к соседям / пришло от них. */
   flow_by_subgroup: SubgroupFlowItem[];
+  /** Часы команды, забронированные планами других команд (уже вычтены из «На бэклог»). */
+  booked_by_other_teams_by_role?: Record<string, number>;
 }
 
 /** Переток одной группы: часы, ушедшие к соседям и пришедшие от них. */

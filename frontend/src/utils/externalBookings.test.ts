@@ -1,0 +1,73 @@
+import { describe, it, expect } from 'vitest';
+import { bookingRuns, externalBookingLabel, groupExternalBookings } from './externalBookings';
+import type { ExternalBookingOut } from '../api/resourcePlanning';
+
+const b = (over: Partial<ExternalBookingOut>): ExternalBookingOut => ({
+  assignment_id: 'a1',
+  employee_id: 'e1',
+  employee_name: 'Пряничников',
+  team: 'Команда 1С',
+  issue_key: 'OS-91393',
+  title: 'Задача',
+  phase: 'dev',
+  start: '2026-01-05',
+  end: '2026-01-06',
+  daily_hours: {},
+  provisional: false,
+  ...over,
+});
+
+describe('externalBookingLabel', () => {
+  it('ключ · фаза · фамилия', () => {
+    expect(externalBookingLabel(b({}))).toBe('OS-91393 · Разработка · Пряничников');
+  });
+  it('без ключа — название задачи', () => {
+    expect(externalBookingLabel(b({ issue_key: null, phase: 'analyst' }))).toBe(
+      'Задача · Анализ · Пряничников',
+    );
+  });
+});
+
+describe('groupExternalBookings', () => {
+  it('по сотруднику, внутри — по дате начала, сотрудники по алфавиту', () => {
+    const groups = groupExternalBookings([
+      b({ assignment_id: 'x2', start: '2026-02-01' }),
+      b({ assignment_id: 'y1', employee_id: 'e2', employee_name: 'Андреев' }),
+      b({ assignment_id: 'x1', start: '2026-01-10' }),
+    ]);
+    expect(groups.map(g => g.employee_id)).toEqual(['e2', 'e1']);
+    expect(groups[1].rows.map(r => r.assignment_id)).toEqual(['x1', 'x2']);
+  });
+});
+
+describe('bookingRuns', () => {
+  // 2026-01-09 — пятница, 01-12 — понедельник, 01-13 — вторник, 01-14 — среда.
+  it('выходные между днями с часами отрезок не рвут', () => {
+    expect(
+      bookingRuns({ '2026-01-09': 4, '2026-01-12': 3 }, '2026-01-01', '2026-03-31'),
+    ).toEqual([{ start: '2026-01-09', end: '2026-01-12', hours: 7 }]);
+  });
+  it('свободный рабочий день — окно между отрезками', () => {
+    expect(
+      bookingRuns({ '2026-01-12': 4, '2026-01-14': 4 }, '2026-01-01', '2026-03-31'),
+    ).toEqual([
+      { start: '2026-01-12', end: '2026-01-12', hours: 4 },
+      { start: '2026-01-14', end: '2026-01-14', hours: 4 },
+    ]);
+  });
+  it('праздник по календарю не считается окном', () => {
+    const isWorkday = (iso: string) => iso !== '2026-01-13';
+    expect(
+      bookingRuns({ '2026-01-12': 4, '2026-01-14': 4 }, '2026-01-01', '2026-03-31', isWorkday),
+    ).toEqual([{ start: '2026-01-12', end: '2026-01-14', hours: 8 }]);
+  });
+  it('дни вне окна диаграммы и нулевые часы отбрасываются', () => {
+    expect(
+      bookingRuns(
+        { '2025-12-31': 6, '2026-01-12': 0, '2026-01-13': 2, '2026-04-01': 6 },
+        '2026-01-01',
+        '2026-03-31',
+      ),
+    ).toEqual([{ start: '2026-01-13', end: '2026-01-13', hours: 2 }]);
+  });
+});
