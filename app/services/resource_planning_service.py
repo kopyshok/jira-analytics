@@ -1502,43 +1502,54 @@ class ResourcePlanningService:
         emp_group: Optional[Dict[str, str]] = None,
         item_group: Optional[Dict[str, str]] = None,
         capacity: Optional[Dict[str, float]] = None,
+        jira_dev: Optional[Dict[str, str]] = None,
+        borrowed: Optional[set] = None,
     ) -> Dict[str, Dict[str, Optional[str]]]:
         """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
         - analyst: исполнитель инициативы (`assignee_employee_id`), независимо от его роли.
                    Если у задачи нет исполнителя — None.
-        - dev:     greedy по минимальной нагрузке в пуле DEV_ROLES (fallback — все).
-                   В команде с группами сначала перебираются свои по группе;
-                   сосед из другой группы берётся, только когда своих уже не
-                   хватает по ёмкости квартала (см. `_pick_in_group`).
+        - dev:     закреп вручную → «Разработчик» из Jira (``jira_dev``, из любой
+                   команды) → greedy по минимальной нагрузке в пуле DEV_ROLES
+                   команды (fallback — вся команда). В команде с группами
+                   сначала перебираются свои по группе; сосед из другой группы
+                   берётся, только когда своих уже не хватает по ёмкости
+                   квартала (см. `_pick_in_group`).
         - qa:      всегда None (часы-only, дату назначаем без сотрудника).
         - opo:     не возвращается — реально создаётся как 2 строки через
                    `_opo_split` в compute_schedule.
 
         ``pinned`` — словарь {(item_id, phase, part_number): employee_id}. Если
         для (item, phase, 1) есть pin — используется он, обычная логика игнорится.
+
+        ``borrowed`` — привлечённые из других команд: в жадные пулы и в подбор
+        аналитика по исполнителю инициативы не попадают, только закреп / Jira.
         """
         pinned = pinned or {}
         alloc_by_item = alloc_by_item or {}
         emp_group = emp_group or {}
         item_group = item_group or {}
         capacity = capacity or {}
+        jira_dev = jira_dev or {}
+        borrowed = borrowed or set()
+        # Жадный подбор и подстановка аналитика — только из своей команды.
+        team_emps = [e for e in employees if e.id not in borrowed]
 
-        by_id: Dict[str, Employee] = {e.id: e for e in employees}
+        by_id: Dict[str, Employee] = {e.id: e for e in team_emps}
         # Резолв по display_name для fallback (если bk.assignee_employee_id NULL,
         # но в связанной Issue есть assignee_display_name — пробуем найти сотрудника).
         by_name: Dict[str, str] = {}
-        for e in employees:
+        for e in team_emps:
             if e.display_name:
                 # При коллизии имён берём первого; production-correct fix —
                 # заполнять BacklogItem.assignee_employee_id при refresh-from-jira.
                 by_name.setdefault(e.display_name.strip().lower(), e.id)
 
-        dev_ids = [e.id for e in employees if (e.role or "").lower() in DEV_ROLES]
+        dev_ids = [e.id for e in team_emps if (e.role or "").lower() in DEV_ROLES]
         if not dev_ids:
-            dev_ids = [e.id for e in employees]
+            dev_ids = [e.id for e in team_emps]
 
-        analyst_ids = [e.id for e in employees if (e.role or "").lower() in ANALYST_ROLES]
+        analyst_ids = [e.id for e in team_emps if (e.role or "").lower() in ANALYST_ROLES]
 
         load: Dict[str, float] = defaultdict(float)
         result: Dict[str, Dict[str, Optional[str]]] = {p: {} for p in PHASE_ORDER}
@@ -1572,6 +1583,8 @@ class ResourcePlanningService:
             # ── dev ────────────────────────────────────────────────────
             dev_hours = self._phase_hours(item, "dev", alloc_by_item)
             dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
+            if not dev_id:
+                dev_id = jira_dev.get(item.id)
             if not dev_id and dev_ids:
                 dev_id = self._pick_in_group(
                     dev_ids, item_group.get(item.id), load, dev_hours,
