@@ -1162,9 +1162,14 @@ class ResourcePlanningService:
         # Переназначать можно только внутри своей команды. Перегрузку
         # выравниватель меряет по ёмкости без чужих броней: пересечение с
         # другой командой — отдельный «живой» конфликт в плане привлекающей
-        # команды (см. get_gantt), а не перегрузка в домашнем.
+        # команды (см. get_gantt), а не перегрузка в домашнем. А вот двигать
+        # фазы (сдвиг, переназначение) — только на часы, свободные от броней
+        # других команд, как и при раскладке.
         role_pools = self._build_role_pools(team_employees)
-        leveling_events = leveler.level(new_assignments, raw_avail, q_end_extended, role_pools)
+        leveling_events = leveler.level(
+            new_assignments, raw_avail, q_end_extended, role_pools,
+            placement_availability=avail,
+        )
         # Always recompute CPM — leveling may have shifted dates; cheap O(N) anyway
         self._compute_cpm(new_assignments, q_end_extended)
         # Cache events for Stage B persist_conflicts
