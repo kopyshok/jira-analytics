@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 
 import type { EmployeeLoadOut } from '../../api/resourcePlanning';
+import { EXT_LOAD_COLOR, splitLoadFill } from '../../utils/heatmapFill';
 
 interface Props {
   rows: EmployeeLoadOut[];
@@ -63,6 +64,11 @@ function moveNote(row: EmployeeLoadOut): string {
     parts.push(row.left_to.team ? `до ${d}, далее → ${row.left_to.team}` : `до ${d}, далее вне команд`);
   }
   return parts.join(' · ');
+}
+
+/** Подпись привлечённого: из какой он команды. */
+function borrowedNote(row: EmployeeLoadOut): string {
+  return row.borrowed_from ? `из ${row.borrowed_from}` : 'из другой команды';
 }
 
 /** Текст подсказки для дня вне команды. */
@@ -151,21 +157,31 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
       const avg = workPcts.length ? Math.round(workPcts.reduce((s, p) => s + p, 0) / workPcts.length) : 0;
       const allEmpty = dates.every((ds) => {
         const d = byDate.get(ds);
-        return !d || d.off || d.pct <= 0;
+        return !d || d.off || (d.pct <= 0 && !((d.ext_pct ?? 0) > 0));
       });
       return { row: r, byDate, avg, allEmpty };
     });
+    const hasExt = rows.some((r) => r.days.some((d) => (d.ext_pct ?? 0) > 0));
 
     const first = isoDate(dates[0]);
     const last = isoDate(dates[dates.length - 1]);
     const periodLabel = `${first.getDate()} ${RU_MONTHS_SHORT[first.getMonth()]} – ${last.getDate()} ${RU_MONTHS_SHORT[last.getMonth()]}`;
-    return { weeks, empRows, periodLabel };
+    return { weeks, empRows, periodLabel, hasExt };
   }, [rows]);
 
-  const grouped = Object.keys(subgroupByEmployee ?? {}).length > 0;
-  const groupOf = (employeeId: string) => subgroupByEmployee?.[employeeId] ?? '';
+  // Привлечённые из других команд — отдельная секция внизу.
+  const BORROWED = 'Привлечённые';
+  const borrowedIds = useMemo(
+    () => new Set(rows.filter((r) => r.is_borrowed).map((r) => r.employee_id)),
+    [rows],
+  );
+  const hasSubgroups = Object.keys(subgroupByEmployee ?? {}).length > 0;
+  const grouped = hasSubgroups || borrowedIds.size > 0;
+  const groupOf = (employeeId: string) =>
+    borrowedIds.has(employeeId) ? BORROWED : (subgroupByEmployee?.[employeeId] ?? '');
+  const sectionTitle = (group: string) => group || (hasSubgroups ? 'Без группы' : 'Команда');
 
-  // Порядок групп из реестра; «Без группы» уходит в конец.
+  // Порядок групп из реестра; «Без группы» — после них, «Привлечённые» — в самом конце.
   const orderedRows = useMemo(() => {
     const empRows = data?.empRows ?? [];
     if (!grouped) return empRows;
@@ -173,23 +189,30 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
     return [...empRows].sort((a, b) => {
       const ga = groupOf(a.row.employee_id);
       const gb = groupOf(b.row.employee_id);
-      const ra = ga ? (rank.get(ga) ?? subgroupOrder.length) : subgroupOrder.length + 1;
-      const rb = gb ? (rank.get(gb) ?? subgroupOrder.length) : subgroupOrder.length + 1;
+      const rankOf = (g: string) =>
+        g === BORROWED
+          ? subgroupOrder.length + 2
+          : g
+            ? (rank.get(g) ?? subgroupOrder.length)
+            : subgroupOrder.length + 1;
+      const ra = rankOf(ga);
+      const rb = rankOf(gb);
       if (ra !== rb) return ra - rb;
       return (a.row.employee_name ?? '').localeCompare(b.row.employee_name ?? '');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, grouped, subgroupByEmployee, subgroupOrder]);
+  }, [data, grouped, subgroupByEmployee, subgroupOrder, borrowedIds]);
 
   if (!data) return null;
 
-  const showTip = (e: React.MouseEvent, row: EmployeeLoadOut, date: string, off: Off, pct: number) => {
+  const showTip = (e: React.MouseEvent, row: EmployeeLoadOut, date: string, off: Off, pct: number, ext = 0) => {
     const dt = isoDate(date);
     const head = `${RU_WD[dt.getDay()]}, ${dt.getDate()} ${RU_MONTHS_SHORT[dt.getMonth()]}`;
     let body: string;
     if (off === 'out_of_team') body = outOfTeamText(row, date);
     else if (off === 'absence') body = 'отпуск / отсутствие';
     else if (off === 'holiday') body = 'праздник';
+    else if (ext > 0) body = `в этом плане ${Math.round(pct)}% · в планах других команд ${Math.round(ext)}%`;
     else body = pct > 0 ? `${Math.round(pct)}%` : 'нет загрузки';
     setTip({ x: e.clientX, y: e.clientY, text: `${head} · ${body}` });
   };
@@ -261,7 +284,8 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
           {/* Строки сотрудников; при делении команды — секциями по группам. */}
           {orderedRows.map(({ row, byDate, avg, allEmpty }, ri) => {
             const avgColor = loadColor(avg);
-            const note = moveNote(row);
+            // У привлечённого вместо «пришёл / выбыл» — из какой он команды.
+            const note = row.is_borrowed ? borrowedNote(row) : moveNote(row);
             const group = groupOf(row.employee_id);
             const prev = ri === 0 ? null : groupOf(orderedRows[ri - 1].row.employee_id);
             const header = grouped && group !== prev ? (
@@ -277,7 +301,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                   color: '#7a9ab8',
                 }}
               >
-                {(group || 'Без группы').toUpperCase()}
+                {sectionTitle(group).toUpperCase()}
               </div>
             ) : null;
             return (
@@ -325,7 +349,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                         title={note}
                         style={{
                           fontSize: 10,
-                          color: '#e0a84a',
+                          color: row.is_borrowed ? '#b39ddb' : '#e0a84a',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -368,20 +392,23 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                         const d = byDate.get(cell.date);
                         const off = d?.off;
                         const pct = d?.pct ?? 0;
+                        const ext = d?.ext_pct ?? 0;
                         let bg: string;
                         let border: string | undefined;
                         if (off === 'out_of_team') bg = OUT_OF_TEAM_FILL;
                         else if (off === 'absence') bg = ABSENCE_FILL;
                         else if (off === 'holiday') bg = HOLIDAY_FILL;
                         else {
-                          const c = loadColor(pct);
-                          bg = c.bg;
-                          border = c.border;
+                          // Снизу — часы в планах других команд, над ними — этот план
+                          // цветом общей загрузки дня.
+                          const c = loadColor(pct + ext);
+                          bg = splitLoadFill(c.bg, pct, ext);
+                          border = ext > 0 ? undefined : c.border;
                         }
                         return (
                           <div
                             key={cell.date}
-                            onMouseEnter={(e) => showTip(e, row, cell.date, off, pct)}
+                            onMouseEnter={(e) => showTip(e, row, cell.date, off, pct, ext)}
                             onMouseLeave={() => setTip(null)}
                             onMouseOver={(e) => {
                               (e.currentTarget as HTMLDivElement).style.filter = 'brightness(1.25)';
@@ -424,6 +451,13 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
           { label: 'свыше 110%', fill: loadColor(125).bg },
           { label: 'отпуск', fill: ABSENCE_FILL },
           { label: 'праздник', fill: HOLIDAY_FILL },
+          // Двухцветная клетка: низ — другие команды, верх — этот план.
+          ...(data.hasExt
+            ? [
+                { label: 'в этом плане', fill: loadColor(80).bg },
+                { label: 'в планах других команд', fill: EXT_LOAD_COLOR },
+              ]
+            : []),
         ].map((it) => (
           <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
             <span
