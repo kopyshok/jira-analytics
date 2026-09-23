@@ -468,6 +468,7 @@ function ResourcePlanningPageInner() {
           employees={employees}
           scale={scale}
           dependencies={gantt.dependencies ?? []}
+          externalBookings={gantt.external_bookings}
           depDrawMode={depDrawMode}
           collapsedItemIds={prefs.collapsed_initiative_ids}
           onToggleCollapse={handleToggleCollapse}
