@@ -8,7 +8,8 @@ import type { BacklogItemResponse } from '../types/api';
 export type InPlanRole = 'regular' | 'inert' | 'by_epics' | 'by_epics_locked';
 
 type RoleSource = Partial<Pick<
-  BacklogItemResponse, 'has_children_in_backlog' | 'planning_mode' | 'planning_mode_locked'
+  BacklogItemResponse,
+  'has_children_in_backlog' | 'planning_mode' | 'planning_mode_locked' | 'include_locked'
 >>;
 
 /** Строка списка или её дочерняя строка. */
@@ -21,8 +22,10 @@ const plannedByEpics = (r: RoleSource, mode = r.planning_mode) =>
 /** `mode` — локальный (ещё не сохранённый) режим из модалки. */
 export function inPlanRole(r: RoleSource, inert: boolean, mode = r.planning_mode): InPlanRole {
   if (inert) return 'inert';
+  // Блокировку решает сервер: список с фильтром команды не видит детей чужой команды.
+  if (r.include_locked) return 'by_epics_locked';
   if (!r.has_children_in_backlog || !plannedByEpics(r, mode)) return 'regular';
-  return r.planning_mode_locked ? 'by_epics_locked' : 'by_epics';
+  return 'by_epics';
 }
 
 export function inPlanHint(role: InPlanRole, included: boolean): string {

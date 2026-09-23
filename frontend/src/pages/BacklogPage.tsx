@@ -77,8 +77,9 @@ export default function BacklogPage() {
   const unlink = useUnlinkJira();
   const archive = useArchiveBacklogItem();
   const restore = useRestoreBacklogItem();
+  // Отказ сервера («нельзя включить») — его текст и есть заголовок.
   const setIncluded = useSetBacklogIncluded(
-    (e) => notification.error({ title: 'Ошибка', description: e.message }),
+    (e) => notification.error({ title: e.message || 'Ошибка' }),
   );
   const includedPending = useBacklogIncludedPending();
   const [onlyOffPlan, setOnlyOffPlan] = useState(false);
@@ -176,6 +177,7 @@ export default function BacklogPage() {
         jira_key: c.key,
         jira_status: c.status ?? null,
         included_in_planning: c.included_in_planning,
+        include_locked: c.include_locked,
         is_service_epic: c.is_service_epic ?? false,
         estimate_hours: c.estimate_hours,
         estimate_analyst_hours: c.estimate_analyst_hours,
