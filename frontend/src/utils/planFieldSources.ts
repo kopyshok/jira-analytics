@@ -48,6 +48,19 @@ export function serializePlanFieldSetting(entries: PlanFieldEntry[]): string {
   return clean.length ? JSON.stringify(clean) : '';
 }
 
+/** Что читает синк: поля и их вид по порядку. Название — только подпись. */
+const fieldLayout = (raw: string) =>
+  JSON.stringify(parsePlanFieldSetting(raw).map((e) => [e.field_id, e.kind]));
+
+/** Значение настройки после правки. Те же поля с тем же видом по порядку —
+ *  исходная строка как есть: правка без изменений («Добавить поле» и корзина,
+ *  ↑ и ↓) не должна переписывать старую строку списком — сервер счёл бы это
+ *  сменой полей и перечитал бы все задачи из Jira. */
+export function nextPlanFieldSetting(initial: string, entries: PlanFieldEntry[]): string {
+  const next = serializePlanFieldSetting(entries);
+  return fieldLayout(next) === fieldLayout(initial) ? initial : next;
+}
+
 export function moveEntry<T>(list: T[], index: number, delta: -1 | 1): T[] {
   const target = index + delta;
   if (target < 0 || target >= list.length) return list;
