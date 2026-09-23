@@ -23,8 +23,8 @@ from typing import Optional, cast
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, aliased
 
-from app.models import AppSetting, BacklogItem, Issue, PlanningScenario, ScenarioAllocation
-from app.services.hierarchy_rules import is_explicit_leaf, load_rules
+from app.models import AppSetting, BacklogItem, Issue, PlanningScenario, Project, ScenarioAllocation
+from app.services.hierarchy_rules import is_planning_leaf, is_service_epic, load_rules
 
 
 BACKLOG_CATEGORY = "initiatives_rfa"
@@ -219,6 +219,37 @@ def group_parents(db: Session) -> list[tuple[BacklogItem, Issue]]:
     return cast(list[tuple[BacklogItem, Issue]], rows)
 
 
+def service_epic_backlog_ids(db: Session) -> set[str]:
+    """BacklogItem.id служебных эпиков (Дискавери внутри RFA) по действующим правилам."""
+    rules = load_rules(db)
+    if not any(r.require_parent and not r.is_container for r in rules):
+        return set()
+    rows = (
+        db.query(BacklogItem.id, Project.key, Issue.issue_type)
+        .join(Issue, BacklogItem.issue_id == Issue.id)
+        .outerjoin(Project, Issue.project_id == Project.id)
+        .filter(Issue.parent_id.isnot(None))
+        .all()
+    )
+    return {
+        bid
+        for bid, project_key, issue_type in rows
+        if is_service_epic(
+            rules, project_key=project_key or "", issue_type=issue_type or "", has_parent=True
+        )
+    }
+
+
+def not_in_plan_backlog_ids(db: Session) -> set[str]:
+    """Элементы бэклога со снятой галочкой «В план» — не кандидаты ни в один сценарий."""
+    return {
+        bid
+        for (bid,) in db.query(BacklogItem.id)
+        .filter(BacklogItem.included_in_planning.is_(False))
+        .all()
+    }
+
+
 def mode_excluded_backlog_ids(db: Session) -> set[str]:
     """BacklogItem.id, исключённые из кандидатов режимом планирования группы.
 
@@ -230,6 +261,8 @@ def mode_excluded_backlog_ids(db: Session) -> set[str]:
        мультикомандностью, там планировать RFA целиком запрещено.
     2. ``whole`` — прямые дети RFA-родителя: часы уже сидят в самой RFA,
        отдельным кандидатом ребёнок идти не должен, иначе двойной счёт.
+       Служебные эпики (Дискавери) не исключаются: их часы идут сверх
+       родителя, участие решает галочка «В план».
 
     Обе проверки работают только для родителей, у которых реально есть
     ребёнок в активном бэклоге — одиночная задача из планирования не пропадает.
@@ -254,7 +287,8 @@ def mode_excluded_backlog_ids(db: Session) -> set[str]:
             )
             .all()
         )
-        excluded |= {bid for (bid,) in rows}
+        service_ids = service_epic_backlog_ids(db)
+        excluded |= {bid for (bid,) in rows if bid not in service_ids}
     return excluded
 
 
@@ -320,6 +354,14 @@ class BacklogService:
         if issue.category in TRACKED_CATEGORIES and not is_cancel_like(issue):
             is_new = existing is None
             was_archived = existing is not None and existing.archived_at is not None
+            # Правила иерархии нужны только когда задача появляется в бэклоге.
+            # Считаем до db.add — чтобы запрос не зацепил недозаполненный элемент.
+            rules: list = []
+            project_key = ""
+            has_parent = issue.parent_id is not None
+            if is_new or was_archived:
+                rules = load_rules(self.db)
+                project_key = issue.project.key if issue.project else ""
             if is_new:
                 existing = BacklogItem(issue_id=issue.id)
                 self.db.add(existing)
@@ -328,6 +370,15 @@ class BacklogService:
                 # Дальше PM управляет приоритетом вручную при планировании;
                 # ресинки (approve / revert-to-draft / refresh) его не трогают.
                 existing.priority = _jira_priority_to_int(issue.priority)
+                # Служебный эпик (Дискавери внутри RFA) по умолчанию не в плане:
+                # его часы идут сверх родителя, PM включает его сам.
+                if is_service_epic(
+                    rules,
+                    project_key=project_key,
+                    issue_type=issue.issue_type or "",
+                    has_parent=has_parent,
+                ):
+                    existing.included_in_planning = False
             existing.title = issue.summary
             existing.project_id = issue.project_id
             existing.estimate_analyst_hours = issue.planned_analyst_hours
@@ -359,14 +410,13 @@ class BacklogService:
             existing.archived_at = None
             self.db.flush()
             if is_new or was_archived:
-                # Leaf-типы (OS/PMD) не пускаем в сценарии.
-                rules = load_rules(self.db)
-                project_key = issue.project.key if issue.project else ""
-                is_leaf = is_explicit_leaf(
+                # Leaf-типы (OS/PMD) не пускаем в сценарии. Служебные эпики —
+                # не leaf: их отсекает галочка «В план» в _ensure_draft_allocations.
+                is_leaf = is_planning_leaf(
                     rules,
                     project_key=project_key,
                     issue_type=issue.issue_type or "",
-                    has_parent=issue.parent_id is not None,
+                    has_parent=has_parent,
                 )
                 if not is_leaf:
                     self._ensure_draft_allocations(existing.id)
@@ -395,7 +445,13 @@ class BacklogService:
         Не доливает allocation, если у связанной задачи есть предок, уже
         включённый в утверждённый сценарий: ребёнок утверждённой инициативы
         не должен повторно предлагаться к выбору.
+
+        Не доливает, если у элемента снята галочка «В план».
         """
+        item = self.db.query(BacklogItem).filter_by(id=item_id).one_or_none()
+        # Галочка «В план» снята — задача не кандидат ни в один черновик.
+        if item is not None and not item.included_in_planning:
+            return
         # Skip if already included in approved scenario — нет смысла предлагать
         # уже зафиксированную в утверждённом плане инициативу повторно.
         if item_id in approved_included_backlog_ids(self.db):
@@ -404,7 +460,6 @@ class BacklogService:
         if item_id in mode_excluded_backlog_ids(self.db):
             return
         # Skip descendants of approved-included ancestors.
-        item = self.db.query(BacklogItem).filter_by(id=item_id).one_or_none()
         if item is not None and item.issue_id is not None:
             issue = self.db.get(Issue, item.issue_id)
             if issue is not None and has_included_ancestor(self.db, issue):
