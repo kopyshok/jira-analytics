@@ -305,3 +305,18 @@ def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
     ResourcePlanningService(db_session).compute_schedule(plan_a.id)
 
     assert _days(_dev_rows(db_session, plan_a.id)) == {"2026-01-05", "2026-01-07"}
+
+
+def test_plan_avoids_previous_quarter_spill_of_other_team(db_session):
+    """План B на прошлый квартал выполз в январь — план A этот хвост обходит."""
+    e = make_employee(db_session, "Пряничников", "A")
+    sc_b, plan_b = make_plan(db_session, "B", year=2025, quarter="Q4")
+    item_b = add_item(db_session, sc_b, "Хвост B", dev=12)
+    book(db_session, plan_b, item_b, e, {"2026-01-01": 6.0, "2026-01-02": 6.0})
+    sc_a, plan_a = make_plan(db_session, "A", plan_status="draft")
+    add_item(db_session, sc_a, "Работа A", dev=12)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_a.id)
+
+    assert _days(_dev_rows(db_session, plan_a.id)) == {"2026-01-05", "2026-01-06"}
