@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.app_setting import AppSetting
+from app.models.sync_state import SyncState
 from app.connectors.jira_client import JiraClient, JiraClientError, JiraAuthError
+from app.services.plan_sources import PLAN_HOURS_SETTING_KEYS, parse_field_setting
 
 router = APIRouter()
 
@@ -138,11 +140,30 @@ async def save_jira_settings(
     )
 
 
+def _check_plan_hours_fields(db: Session, key: str, value: Optional[str]) -> None:
+    """Поля оценки роли: мусорный список не сохраняем, смена полей —
+    перечитать все задачи при следующем синке.
+
+    Синк задач берёт из Jira только изменённые с прошлого раза. Без сброса
+    курсора у старых задач не появились бы значения новых полей и споры.
+    """
+    new_specs = parse_field_setting(value)
+    if value and value.strip().startswith("[") and not new_specs:
+        raise HTTPException(
+            status_code=422, detail="В списке полей оценки нет ни одного поля Jira",
+        )
+    if parse_field_setting(_get_setting(db, key)) != new_specs:
+        for state in db.query(SyncState).filter(SyncState.entity_name == "issues"):
+            state.last_success_at = None
+
+
 @router.put("/generic")
 async def save_generic_setting(body: SettingUpdate, db: Session = Depends(get_db)):
     """Сохранить произвольную настройку (key → value)."""
     if not _is_allowed_generic_key(body.key):
         raise HTTPException(status_code=403, detail="Setting key is not allowed")
+    if body.key in PLAN_HOURS_SETTING_KEYS:
+        _check_plan_hours_fields(db, body.key, body.value)
     _set_setting(db, body.key, body.value)
     db.commit()
     return {"key": body.key, "ok": True}
