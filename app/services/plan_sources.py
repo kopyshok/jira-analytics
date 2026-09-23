@@ -6,7 +6,8 @@
 
 Кандидаты роли: каждое заполненное «альтернативное» поле — отдельный кандидат;
 все заполненные «слагаемые» — один кандидат (их сумма) на позиции первого
-слагаемого в списке. Разные значения кандидатов — спор; по умолчанию действует
+слагаемого в списке. Ноль считается незаполненным полем, если у роли есть
+ненулевое значение. Разные значения кандидатов — спор; по умолчанию действует
 первый кандидат. Выбор пользователя хранится с отпечатком кандидатов и
 действует, пока отпечаток совпадает.
 
@@ -105,24 +106,35 @@ def parse_field_setting(raw: Optional[str]) -> tuple[FieldSpec, ...]:
 def build_candidates(
     specs: Sequence[FieldSpec], values: Mapping[str, Optional[float]]
 ) -> tuple[Candidate, ...]:
-    """Кандидаты роли в порядке настройки. ``values`` — {field_id: число|None}."""
+    """Кандидаты роли в порядке настройки. ``values`` — {field_id: число|None}.
+
+    Ноль — «поле не заполнено», если у роли есть ненулевое значение:
+    «Анализ» = 0 при «Оценке 1С» = 56 — не спор, действует 56; нулевое
+    слагаемое не попадает в подпись суммы. Все заполненные поля нулевые —
+    роль получает 0 без спора.
+    """
+    filled = {
+        s.field_id: float(v) for s in specs if (v := values.get(s.field_id)) is not None
+    }
+    if any(filled.values()):
+        filled = {fid: v for fid, v in filled.items() if v}
     slots: list[Optional[Candidate]] = []
     sum_slot: Optional[int] = None
     sum_total = 0.0
     sum_labels: list[str] = []
     for spec in specs:
-        value = values.get(spec.field_id)
+        if spec.kind == KIND_SUM and sum_slot is None:
+            sum_slot = len(slots)
+            slots.append(None)
+        value = filled.get(spec.field_id)
+        if value is None:
+            continue
         label = spec.name or spec.field_id
         if spec.kind == KIND_SUM:
-            if sum_slot is None:
-                sum_slot = len(slots)
-                slots.append(None)
-            if value is not None:
-                sum_total += value
-                sum_labels.append(label)
-            continue
-        if value is not None:
-            slots.append(Candidate(spec.field_id, label, float(value)))
+            sum_total += value
+            sum_labels.append(label)
+        else:
+            slots.append(Candidate(spec.field_id, label, value))
     if sum_slot is not None and sum_labels:
         slots[sum_slot] = Candidate(
             SUM_SOURCE, " + ".join(sum_labels), round(sum_total, _PRECISION)

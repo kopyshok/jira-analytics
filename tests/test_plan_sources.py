@@ -138,6 +138,34 @@ class TestResolveRole:
         assert resolve_role(cands, None).disputed is False
 
 
+class TestZeroIsNotFilled:
+    """Ноль — «поле не заполнено», если у роли есть ненулевое значение."""
+
+    def test_zero_vs_value_takes_value_without_dispute(self):
+        cands = _cands(DEV, {"customfield_12432": 0, "customfield_14648": 56.0})
+        assert cands == (Candidate("customfield_14648", "Оценка 1С (ч)", 56.0),)
+        res = resolve_role(cands, None)
+        assert res.value == 56.0
+        assert res.disputed is False
+
+    def test_all_zero_gives_zero_without_dispute(self):
+        cands = _cands(DEV, {"customfield_12432": 0, "customfield_14648": 0.0})
+        res = resolve_role(cands, None)
+        assert res.value == 0.0
+        assert res.disputed is False
+
+    def test_zero_sum_part_left_out_of_label(self):
+        cands = _cands(DEV, {"customfield_12888": 30.0, "customfield_12889": 0})
+        assert cands == (Candidate(SUM_SOURCE, "Оценка Back", 30.0),)
+
+    def test_zero_sum_vs_alt_is_not_a_dispute(self):
+        cands = _cands(DEV, {
+            "customfield_12432": 100.0, "customfield_12888": 0, "customfield_12889": 0,
+        })
+        assert cands == (Candidate("customfield_12432", "Разработка (ч)", 100.0),)
+        assert resolve_role(cands, None).disputed is False
+
+
 class TestStorage:
     def test_json_roundtrip(self):
         cands = _cands(DEV, {"customfield_12432": 100.0, "customfield_12888": 30.0})
