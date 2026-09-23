@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import {
   getBacklogItems,
   createBacklogItem,
@@ -114,15 +114,31 @@ export const useRestoreBacklogItem = () => {
   });
 };
 
-/** Галочка «В план»: выключенная задача не попадает в сценарии. */
-export const useSetBacklogIncluded = () => {
+const SET_INCLUDED_KEY = ['backlog', 'set-included'];
+
+/** Галочка «В план»: выключенная задача не попадает в сценарии.
+ *  `onError` — на весь хук: колбэк из `mutate` при нескольких строках
+ *  в полёте срабатывает только у последней. */
+export const useSetBacklogIncluded = (onError?: (e: Error) => void) => {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: SET_INCLUDED_KEY,
+    onError,
     mutationFn: ({ id, included }: { id: string; included: boolean }) =>
       setBacklogIncluded(id, included),
-    onSuccess: () => {
-      invalidateAllBacklog(qc);
-      qc.invalidateQueries({ queryKey: ['planning'] });
-    },
+    // Ждём свежий список: иначе переключатель на миг отскакивает к старому значению.
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['backlog'] }),
+      qc.invalidateQueries({ queryKey: ['planning'] }),
+    ]),
   });
+};
+
+/** Задачи, чья галочка «В план» сейчас сохраняется. */
+export const useBacklogIncludedPending = (): Set<string> => {
+  const ids = useMutationState({
+    filters: { mutationKey: SET_INCLUDED_KEY, status: 'pending' },
+    select: (m) => (m.state.variables as { id: string } | undefined)?.id,
+  });
+  return new Set(ids.filter((id): id is string => !!id));
 };
