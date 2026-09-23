@@ -266,8 +266,9 @@ def test_phase_without_capacity_is_reported_not_dropped(db_session, sample_proje
     assert c.backlog_item_id == item.id
     assert c.severity == "critical"
     assert c.metric_value == 12.0
-    assert "Разработка" in c.message
-    assert "размещено 0 из 12 ч" in c.message
+    assert c.message == (
+        "OS-3 Работа B · Разработка 0 из 12 ч — не поместилось в квартал и месяц запаса"
+    )
 
 
 def test_partially_placed_phase_is_reported(db_session):
@@ -285,7 +286,101 @@ def test_partially_placed_phase_is_reported(db_session):
     [c] = _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")
     assert c.employee_id == own.id
     assert c.metric_value == 84.0
-    assert "размещено 516 из 600 ч" in c.message
+    assert c.message == (
+        "Большая · Разработка 516 из 600 ч — не поместилось в квартал и месяц запаса"
+    )
+
+
+def test_team_without_analysts_gets_no_unplaced_per_item(db_session):
+    """Аналитиков в команде нет — это одна командная запись, а не повтор на каждую задачу."""
+    make_employee(db_session, "Свой B", "B")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    for i in range(3):
+        add_item(db_session, sc_b, f"Задача {i}", analyst=16, dev=16, priority=10 - i)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert len(_conflicts(db_session, plan_b.id, "NO_ANALYST")) == 1
+    assert _conflicts(db_session, plan_b.id, "UNPLACED_HOURS") == []
+
+
+def test_phase_without_executor_reported_when_team_has_that_role(db_session):
+    """Аналитик в плане есть (привлечённый), а у задачи его нет — это видно в конфликте.
+
+    В одной записи — обе причины: анализ без исполнителя, разработка не влезла в окно.
+    """
+    dev = make_employee(db_session, "Свой B", "B")
+    ext_an = make_employee(db_session, "Аналитик A", "A", role="analyst")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    staffed = add_item(db_session, sc_b, "С аналитиком", analyst=12, priority=2)
+    orphan = add_item(db_session, sc_b, "Без аналитика", analyst=16, dev=600, priority=1)
+    book(db_session, plan_b, staffed, ext_an, {"2026-01-01": 6.0}, phase="analyst",
+         pinned_employee=True)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert _conflicts(db_session, plan_b.id, "NO_ANALYST") == []
+    [c] = _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")
+    assert c.backlog_item_id == orphan.id
+    assert c.employee_id == dev.id
+    assert c.metric_value == 100.0
+    assert c.message == (
+        "Без аналитика · Анализ 0 из 16 ч — нет исполнителя; "
+        "Разработка 516 из 600 ч — не поместилось в квартал и месяц запаса"
+    )
+
+
+def test_chain_shortfall_is_one_neutral_conflict_per_initiative(db_session):
+    """Анализ упёрся в конец окна, разработка следом не влезла: одна запись на задачу.
+
+    Ёмкость разработчика тут ни при чём — формулировка нейтральная.
+    """
+    make_employee(db_session, "Аналитик C", "C", role="analyst")
+    make_employee(db_session, "Разработчик C", "C")
+    sc, plan = make_plan(db_session, "C", plan_status="draft")
+    big = add_item(db_session, sc, "Большая", analyst=500, dev=40, priority=10)
+    nxt = add_item(db_session, sc, "Следующая", analyst=40, dev=40, priority=5)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    by_item = {c.backlog_item_id: c for c in _conflicts(db_session, plan.id, "UNPLACED_HOURS")}
+    assert set(by_item) == {big.id, nxt.id}
+    assert by_item[nxt.id].detection_key == f"UNPLACED_HOURS:{nxt.id}"
+    assert by_item[nxt.id].metric_value == 64.0
+    assert by_item[nxt.id].message == (
+        "Следующая · Анализ 16 из 40 ч; Разработка 0 из 40 ч — "
+        "не поместилось в квартал и месяц запаса"
+    )
+    assert by_item[big.id].message == (
+        "Большая · Разработка 12 из 40 ч — не поместилось в квартал и месяц запаса"
+    )
+
+
+def test_unplaced_conflict_disappears_once_hours_fit(db_session):
+    """Пересчёт убирает запись, когда часы влезли, — и запись прежнего вида по фазе."""
+    make_employee(db_session, "Свой B", "B")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    item = add_item(db_session, sc_b, "Большая", dev=600)
+    db_session.add(PlanConflict(
+        plan_id=plan_b.id, type="UNPLACED_HOURS", severity="critical",
+        detection_key=f"UNPLACED_HOURS:{item.id}:dev", message="старая запись",
+        backlog_item_id=item.id,
+    ))
+    db_session.commit()
+    svc = ResourcePlanningService(db_session)
+
+    svc.compute_schedule(plan_b.id)
+    assert [c.detection_key for c in _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")] == [
+        f"UNPLACED_HOURS:{item.id}"
+    ]
+
+    item.estimate_dev_hours = 12.0
+    db_session.commit()
+    svc.compute_schedule(plan_b.id)
+    assert _conflicts(db_session, plan_b.id, "UNPLACED_HOURS") == []
 
 
 def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
