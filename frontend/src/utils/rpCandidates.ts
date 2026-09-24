@@ -1,6 +1,23 @@
-import type { AssignmentCandidate, AssignmentCandidateGroup } from '../api/resourcePlanning';
+import type { QueryKey } from '@tanstack/react-query';
+import type { AssignmentCandidate, AssignmentCandidateGroup, AssignmentOut } from '../api/resourcePlanning';
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
+/** Ключ списка кандидатов фазы: план, строка фазы, её задача и фаза. */
+export const candidatesQueryKey = (
+  planId: string | null,
+  a: Pick<AssignmentOut, 'id' | 'backlog_item_id' | 'phase'> | null,
+) => ['assignment-candidates', planId, a?.id ?? null, a?.backlog_item_id ?? null, a?.phase ?? null] as const;
+
+/** Пока грузится список кандидатов, прежний подставляем, только если он той же фазы
+ *  той же задачи того же плана: пересчёт пересоздаёт строку фазы с новым id, а кандидаты
+ *  у неё те же. Список другой фазы или задачи не подставляем — мелькнула бы чужая
+ *  группа «Из Jira». */
+export function sameCandidatesTarget(prev: QueryKey, next: QueryKey): boolean {
+  const [, plan, , item, phase] = prev;
+  const [, nextPlan, , nextItem, nextPhase] = next;
+  return plan === nextPlan && item === nextItem && phase === nextPhase;
+}
 
 /**
  * «Имя · Роль · Команда · 42%»; у своей команды — без команды, с границами участия.

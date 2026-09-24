@@ -23,7 +23,7 @@ import { useAssignmentCandidates, useExplainAssignment } from '../../hooks/useRe
 import { useRoles } from '../../hooks/useRoles';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
 import { PHASE_LABELS } from '../../utils/gantt';
-import { candidateOptions } from '../../utils/rpCandidates';
+import { candidateOptions, candidatesQueryKey } from '../../utils/rpCandidates';
 import EmployeeAvatar from './EmployeeAvatar';
 import AbsencesSection from './sidebar/AbsencesSection';
 import AlgorithmSection from './sidebar/AlgorithmSection';
@@ -83,7 +83,7 @@ export default function AssignmentSidebar({
   // Кандидаты — все активные сотрудники тремя группами с загрузкой за квартал.
   const candidatesQuery = useAssignmentCandidates(
     planId || null,
-    assignment?.id ?? null,
+    assignment,
     open && !!assignment && assignment.phase !== 'qa',
   );
   const rolesQuery = useRoles();
@@ -156,7 +156,7 @@ export default function AssignmentSidebar({
     await onChanged?.();
     const fresh = qc.getQueryData<GanttProjection>(['gantt', planId]);
     if (fresh?.assignments.some(a => a.id === assignment.id)) {
-      qc.invalidateQueries({ queryKey: ['assignment-candidates', planId, assignment.id] });
+      qc.invalidateQueries({ queryKey: candidatesQueryKey(planId, assignment) });
     }
   };
 
