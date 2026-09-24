@@ -28,7 +28,7 @@ from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.plan_quality_service import PlanQualityService
-from app.services.resource_planning_service import ResourcePlanningService
+from app.services.resource_planning_service import ResourcePlanningService, opo_part
 
 router = APIRouter()
 
@@ -1835,6 +1835,27 @@ async def set_assignment_involvement(
     return {"ok": True}
 
 
+def _rescheduled_row(
+    rows: Sequence[ResourcePlanAssignment],
+    employee_id: Optional[str],
+    part: str,
+) -> Optional[ResourcePlanAssignment]:
+    """Строка, в которую пересчёт превратил правленую (её id сменился).
+
+    ``rows`` — строки той же задачи, фазы и номера части. У ОПЭ их две — у
+    аналитика и у разработчика: нужна та, что у выбранного человека, иначе та
+    же часть по роли исполнителя (``part``, см. opo_part). У остальных фаз
+    строка одна.
+    """
+    for match in (
+        [r for r in rows if r.employee_id == employee_id],
+        [r for r in rows if opo_part(r.employee.role if r.employee else None) == part],
+    ):
+        if match:
+            return match[0]
+    return rows[0] if len(rows) == 1 else None
+
+
 @router.patch(
     "/resource-plans/{plan_id}/assignments/{assignment_id}",
     response_model=AssignmentOut,
@@ -1971,10 +1992,15 @@ async def patch_assignment(
         if ("employee_id" in patch or start_changed) and plan:
             # Запомнить логический ключ ДО compute: employee-only pinned rows
             # удаляются и пересоздаются с новым id, поэтому после пересчёта
-            # ищем по (backlog_item_id, phase, part_number).
+            # ищем по (backlog_item_id, phase, part_number) и исполнителю.
+            from app.models import Employee
+
             target_item_id = a.backlog_item_id
             target_phase = a.phase
             target_part_number = a.part_number
+            target_employee_id = a.employee_id
+            target_emp = db.get(Employee, a.employee_id) if a.employee_id else None
+            target_part = opo_part(target_emp.role if target_emp else None)
             db.flush()  # зафиксировать pinned_employee + новый employee_id
             try:
                 ResourcePlanningService(db).compute_schedule(plan_id)
@@ -1996,13 +2022,19 @@ async def patch_assignment(
             )
             a = db.execute(
                 reread.where(ResourcePlanAssignment.id == assignment_id)
-            ).scalar_one_or_none() or db.execute(
-                reread.where(
-                    ResourcePlanAssignment.backlog_item_id == target_item_id,
-                    ResourcePlanAssignment.phase == target_phase,
-                    ResourcePlanAssignment.part_number == target_part_number,
+            ).scalar_one_or_none() or _rescheduled_row(
+                db.execute(
+                    reread.where(
+                        ResourcePlanAssignment.backlog_item_id == target_item_id,
+                        ResourcePlanAssignment.phase == target_phase,
+                        ResourcePlanAssignment.part_number == target_part_number,
+                    )
                 )
-            ).scalar_one_or_none()
+                .scalars()
+                .all(),
+                target_employee_id,
+                target_part,
+            )
             if not a:
                 raise HTTPException(404, "Assignment vanished after reschedule")
 
