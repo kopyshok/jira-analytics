@@ -532,7 +532,7 @@ class EmployeeLoadOut(BaseModel):
 
 
 class ExternalBookingOut(BaseModel):
-    """Фаза привлечённого сотрудника в опорном плане другой команды."""
+    """Фаза сотрудника плана в опорном плане другой команды."""
 
     assignment_id: str
     employee_id: str
@@ -547,6 +547,13 @@ class ExternalBookingOut(BaseModel):
     daily_hours: Dict[str, float] = {}
     # Опорный план — черновик сценария (утверждённого у команды нет).
     provisional: bool = False
+    # Человек привлечён в ЭТОТ план (в его команде не состоял ни дня квартала).
+    employee_is_borrowed: bool = False
+    # Бронь-привлечение: команда брони взяла человека не из своего состава.
+    is_borrowing: bool = False
+    # Дни брони, где этот план тоже занял человека и вместе выходит больше
+    # его дня: там техкоманда получает «Пересечение с другой командой».
+    overlap_days: List[date] = []
 
 
 class GanttProjection(BaseModel):
@@ -556,8 +563,12 @@ class GanttProjection(BaseModel):
     pert_projection: List[InitiativePertOut]
     dependencies: List[DependencyOut] = []
     employee_load: List[EmployeeLoadOut] = []
-    # Брони привлечённых в опорных планах других команд — блок «Привлечённые».
+    # Брони людей плана (свои и привлечённые) в опорных планах других команд.
     external_bookings: List[ExternalBookingOut] = []
+    # Брони, вычитаемые из доступности плана, изменились после его расчёта:
+    # «Планы других команд изменились — нажмите «Распределить»».
+    stale_due_to_other_teams: bool = False
+    stale_teams: List[str] = []
     # Счётчики для bulk-reset dropdown'а на фронте: сколько фаз
     # затронет каждый режим сброса. Позволяет дизейблить пункты с 0
     # и показывать «Сбросить закреплённые даты (N)».
@@ -1297,6 +1308,7 @@ def get_gantt(
     external_out: list[ExternalBookingOut] = []
     live_conflicts: list[ConflictOut] = []
     employee_load: list[EmployeeLoadOut] = []
+    changed_teams: list[str] = []
     if plan.team:
         from app.models import Employee
         from app.services.resource_planning_service import ResourcePlanningService
@@ -1420,6 +1432,12 @@ def get_gantt(
                     )
                 )
             names = {e.id: e.display_name for e in plan_employees}
+            # Дни, где этот план и брони других команд вместе больше дня
+            # человека, — тем же расчётом, что и живой конфликт техкоманды.
+            overlap_by_emp = {
+                eid: set(cto.overlap_days(used.get(eid, {}), days, avail.get(eid, {})))
+                for eid, days in ext_daily.items()
+            }
             external_out = [
                 ExternalBookingOut(
                     assignment_id=b.assignment_id,
@@ -1433,10 +1451,21 @@ def get_gantt(
                     end=b.end,
                     daily_hours={d.isoformat(): h for d, h in b.daily_hours.items()},
                     provisional=b.provisional,
+                    employee_is_borrowed=b.employee_id in borrowed,
+                    is_borrowing=b.is_borrowing,
+                    overlap_days=sorted(
+                        d
+                        for d in overlap_by_emp.get(b.employee_id, ())
+                        if b.daily_hours.get(d, 0.0) > 0
+                    ),
                 )
                 for b in bookings
-                if b.employee_id in borrowed
             ]
+            # План устарел, если вычитаемые из его доступности брони
+            # поменялись после расчёта. Считается при чтении, не хранится.
+            changed_teams = cto.stale_teams(
+                cto.subtractable(bookings, borrowed), plan.computed_at
+            )
             live_conflicts = _cross_team_conflicts(
                 plan, list(assignments_raw), borrowed, used, avail, bookings, names
             )
@@ -1482,6 +1511,8 @@ def get_gantt(
         dependencies=deps,
         employee_load=employee_load,
         external_bookings=external_out,
+        stale_due_to_other_teams=bool(changed_teams),
+        stale_teams=changed_teams,
         reset_counts=reset_counts,
     )
 
