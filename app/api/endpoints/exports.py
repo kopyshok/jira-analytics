@@ -6,6 +6,7 @@
 """
 
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -29,7 +30,14 @@ PPTX_MIME = (
 
 
 def _attachment_headers(filename: str) -> dict[str, str]:
-    return {"Content-Disposition": f'attachment; filename="{filename}"'}
+    # Заголовки HTTP — только latin-1: русское имя сценария роняло ответ в 500.
+    # ASCII-запасное имя + полное UTF-8 имя по RFC 5987.
+    fallback = filename.encode("ascii", "replace").decode().replace("?", "_")
+    return {
+        "Content-Disposition": (
+            f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(filename)}'
+        )
+    }
 
 
 # === Capacity ===
