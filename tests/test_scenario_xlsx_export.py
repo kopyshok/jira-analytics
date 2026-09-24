@@ -480,6 +480,71 @@ class TestPlannedHoursAssigneeByJiraName:
         assert pm_plan == pytest.approx(100.0)
 
 
+class TestPlannedHoursManualAssignee:
+    """Исполнителя сняли в сценарии вручную — имя исполнителя из Jira роль
+    не подставляет, как и на экране сценария."""
+
+    def test_manual_clear_ignores_jira_assignee_name(self, db_session):
+        from app.models import Issue, Project
+        db_session.add_all([
+            Role(code="analyst", label="Аналитик", color="#722ED1",
+                 is_active=True, counts_in_planning=True),
+            Role(code="project_manager", label="Руководитель проектов",
+                 color="#FA8C16", is_active=True, counts_in_planning=True),
+        ])
+        analyst_emp = Employee(
+            jira_account_id="anl3", display_name="Анна А.", role="analyst",
+            is_active=True,
+        )
+        pm_emp = Employee(
+            jira_account_id="pm3", display_name="Пётр П.", role="project_manager",
+            is_active=True,
+        )
+        proj = Project(jira_project_id="pd", key="DELTA", name="Delta project")
+        db_session.add_all([analyst_emp, pm_emp, proj])
+        db_session.flush()
+        db_session.add_all([
+            EmployeeTeam(employee_id=analyst_emp.id, team="Delta", is_primary=True),
+            EmployeeTeam(employee_id=pm_emp.id, team="Delta", is_primary=True),
+        ])
+        issue = Issue(
+            jira_issue_id="i300", key="DELTA-1", summary="PM in Jira",
+            issue_type="Task", status="Open", project_id=proj.id,
+            assignee_account_id="pm3", assignee_display_name="Пётр П.",
+        )
+        db_session.add(issue)
+        db_session.flush()
+        item = BacklogItem(
+            title="Исполнителя сняли", priority=1,
+            estimate_hours=100, estimate_analyst_hours=100,
+            issue_id=issue.id,
+            assignee_employee_id=None,
+            assignee_manual=True,
+            assignee_jira_account_at_choice="pm3",
+        )
+        scenario = PlanningScenario(
+            name="Delta plan", year=2026, quarter="Q2", team="Delta", status="draft",
+        )
+        db_session.add_all([item, scenario])
+        db_session.flush()
+        db_session.add(ScenarioAllocation(
+            scenario_id=scenario.id, backlog_item_id=item.id,
+            included_flag=True, planned_hours=100.0,
+        ))
+        db_session.flush()
+
+        ws = load_workbook(BytesIO(ScenarioXlsxExporter(db_session, scenario.id).build()))[
+            "Сводка"
+        ]
+
+        plan = {
+            ws.cell(row=r, column=1).value: ws.cell(row=r, column=6).value
+            for r in range(1, ws.max_row + 1)
+        }
+        assert plan["Аналитик"] == pytest.approx(100.0)
+        assert plan["Руководитель проектов"] in (0, 0.0, None)
+
+
 class TestPlannedHoursAssigneeSubstitution:
     """Аналитический объём задачи, назначенной на РП/Консультанта,
     должен попасть в его роль, а не в «Аналитик»."""
