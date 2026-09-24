@@ -254,3 +254,62 @@ def test_pinned_phase_without_free_days_has_empty_layout(db_session):
             PlanConflict.plan_id == plan.id, PlanConflict.type.like("OVERLOAD_%")
         )
     ).scalars().all() == []
+
+
+def _opo_rows(db, plan_id) -> dict:
+    db.expire_all()
+    return {
+        r.employee_id: r
+        for r in db.execute(
+            select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.phase == "opo",
+            )
+        ).scalars()
+    }
+
+
+def _team_without_analysts(db_session):
+    """В команде нет аналитиков: анализ и часть ОПЭ аналитика ведёт
+    исполнитель задачи без роли, часть разработчика — разработчик."""
+    x = make_employee(db_session, "Без роли", "T", role=None)
+    dev = make_employee(db_session, "Разработчик", "T")
+    sc, plan = make_plan(db_session, "T", plan_status="draft")
+    item = add_item(db_session, sc, "Запуск", analyst=6, dev=6, assignee=x)
+    item.estimate_opo_hours = 8.0
+    db_session.commit()
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+    parts = _opo_rows(db_session, plan.id)
+    assert set(parts) == {x.id, dev.id}
+    return x, dev, plan, parts
+
+
+def test_pinned_opo_part_of_no_role_analyst_keeps_developer_part(db_session):
+    """Закреплена дата части ОПЭ человека без роли, который ведёт анализ, —
+    это часть аналитика: часть разработчика остаётся за разработчиком."""
+    x, dev, plan, parts = _team_without_analysts(db_session)
+    pinned = parts[x.id]
+    pinned.pinned_start = True
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    after = _opo_rows(db_session, plan.id)
+    assert set(after) == {x.id, dev.id}
+    assert after[x.id].id == pinned.id
+    assert after[dev.id].hours_allocated == 4.0
+
+
+def test_employee_pin_of_no_role_analyst_opo_part_keeps_developer_part(db_session):
+    """То же для закрепа исполнителя без даты: часть узнаётся по человеку."""
+    x, dev, plan, parts = _team_without_analysts(db_session)
+    parts[x.id].pinned_employee = True
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    after = _opo_rows(db_session, plan.id)
+    assert set(after) == {x.id, dev.id}
+    assert after[x.id].pinned_employee is True
+    assert after[dev.id].pinned_employee is False
+    assert after[dev.id].hours_allocated == 4.0

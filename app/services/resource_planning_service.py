@@ -68,9 +68,31 @@ def opo_part(role: Optional[str]) -> str:
     «dev» — остальные.
 
     У двух частей ОПЭ один номер части, различает их роль исполнителя — так
-    их делят расчёт, правка исполнителя фазы и диаграмма.
+    их делят правка исполнителя фазы и диаграмма; расчёт сначала узнаёт часть
+    по человеку (см. _opo_part_of).
     """
     return "analyst" if (role or "").lower() in ANALYST_ROLES else "dev"
+
+
+def _opo_part_of(
+    employee_id: Optional[str],
+    role: Optional[str],
+    own_analyst: Optional[str],
+    own_dev: Optional[str],
+) -> str:
+    """Часть ОПЭ, закреплённая за человеком: сначала по человеку, потом по роли.
+
+    ``own_analyst`` / ``own_dev`` — исполнители анализа и разработки задачи,
+    которые сами встают на свою часть ОПЭ. Человек — один из них (и не оба
+    сразу) — его часть. Иначе — по роли (opo_part): в команде без аналитиков
+    анализ и часть ОПЭ аналитика ведёт человек без роли, и по роли его часть
+    приняли бы за часть разработчика.
+    """
+    if employee_id == own_analyst and employee_id != own_dev:
+        return "analyst"
+    if employee_id == own_dev and employee_id != own_analyst:
+        return "dev"
+    return opo_part(role)
 
 # Phase 3: маппинг phase → (поле duration_days, поле involvement) в BacklogItem.
 PHASE_DURATION_FIELDS: Dict[str, Tuple[str, str]] = {
@@ -580,10 +602,11 @@ class ResourcePlanningService:
                 .distinct()
             ).all()
         }
-        # Закреп исполнителя части ОПЭ без даты: {задача: {часть: сотрудник}}.
-        # Две части ОПЭ с одним номером различает роль исполнителя (opo_part);
-        # части, закреплённые по дате, остаются строками в pinned_existing.
-        opo_emp_pins: Dict[str, Dict[str, str]] = defaultdict(dict)
+        # Закреп исполнителя части ОПЭ без даты: {задача: [(сотрудник, роль)]}.
+        # Какая это часть (у двух частей ОПЭ один номер), решает расчёт — см.
+        # _opo_part_of; части, закреплённые по дате, остаются строками в
+        # pinned_existing.
+        opo_emp_pins: Dict[str, List[Tuple[str, Optional[str]]]] = defaultdict(list)
         for item_id, emp_id, role in self.db.execute(
             select(
                 ResourcePlanAssignment.backlog_item_id,
@@ -599,7 +622,7 @@ class ResourcePlanningService:
                 ResourcePlanAssignment.pinned_split == False,  # noqa: E712
             )
         ).all():
-            opo_emp_pins[item_id][opo_part(role)] = emp_id
+            opo_emp_pins[item_id].append((emp_id, role))
 
         self.db.execute(
             ResourcePlanAssignment.__table__.delete().where(
@@ -951,8 +974,16 @@ class ResourcePlanningService:
                     dev_ok = bool(dev_id) and (
                         dev_id in opo_dev_pool or dev_id in borrowed
                     )
+                    # Исполнители анализа и разработки, которые сами встают на
+                    # свою часть ОПЭ (годятся для неё или другого нет): по ним
+                    # узнаётся, чья часть закреплена.
+                    own_an = analyst_id if analyst_ok or not opo_analyst_pool else None
+                    own_dev = dev_id if dev_ok or not opo_dev_pool else None
                     # Часть, закреплённая за человеком без даты, — за ним.
-                    emp_pins = opo_emp_pins.get(item.id, {})
+                    emp_pins = {
+                        _opo_part_of(eid, role, own_an, own_dev): eid
+                        for eid, role in opo_emp_pins.get(item.id, [])
+                    }
                     if "analyst" in emp_pins:
                         analyst_id, analyst_ok = emp_pins["analyst"], True
                     if "dev" in emp_pins:
@@ -961,11 +992,15 @@ class ResourcePlanningService:
                     # вторая часть достаётся другому.
                     pinned_part: Optional[str] = None
                     if opo_pinned is not None:
-                        if role_of.get(opo_pinned.employee_id or "", "") in ANALYST_ROLES:
-                            pinned_part = "analyst"
+                        pinned_part = _opo_part_of(
+                            opo_pinned.employee_id,
+                            role_of.get(opo_pinned.employee_id or ""),
+                            own_an,
+                            own_dev,
+                        )
+                        if pinned_part == "analyst":
                             analyst_id, analyst_ok = opo_pinned.employee_id, True
                         else:
-                            pinned_part = "dev"
                             dev_id, dev_ok = opo_pinned.employee_id, True
 
                     # Аналитика для ОПЭ — только из аналитического пула.
