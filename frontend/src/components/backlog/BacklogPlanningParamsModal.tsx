@@ -295,7 +295,7 @@ export default function BacklogPlanningParamsModal({ open, item, onClose }: Prop
           notification.success({ title: 'Параметры сохранены' });
           onClose();
         },
-        onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+        onError: (e) => notification.error({ title: 'Не удалось сохранить', description: (e as Error).message || undefined }),
       },
     );
   };
