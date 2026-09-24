@@ -302,3 +302,53 @@ def test_bulk_clear_all_triggers_recompute(client, db_session, seed_plan_with_pi
     db_session.expire_all()
     plan = db_session.get(ResourcePlan, plan_id)
     assert plan.status == "ready"
+
+
+def _manual_state(db_session, plan_id):
+    """Снимок ручных правок плана: флаги по строкам + число связей."""
+    db_session.expire_all()
+    rows = (
+        db_session.query(ResourcePlanAssignment)
+        .filter_by(plan_id=plan_id)
+        .order_by(ResourcePlanAssignment.id)
+        .all()
+    )
+    flags = [
+        (a.id, a.pinned_start, a.pinned_employee, a.pinned_split, a.predecessors_user_set)
+        for a in rows
+    ]
+    edges = db_session.query(PhasePredecessor).count()
+    return flags, edges
+
+
+@pytest.mark.parametrize(
+    "error,status",
+    [(ValueError("boom"), 409), (RuntimeError("boom"), 500)],
+)
+def test_bulk_clear_failed_recompute_keeps_manual_edits(
+    db_session, seed_plan_with_pins, monkeypatch, error, status
+):
+    """Упавший пересчёт не должен оставлять снятыми ручные правки."""
+    plan_id = seed_plan_with_pins()
+    before = _manual_state(db_session, plan_id)
+    assert any(f[1] or f[2] or f[4] for f in before[0])
+
+    def _fail(self, _plan_id):
+        raise error
+
+    monkeypatch.setattr(ResourcePlanningService, "compute_schedule", _fail)
+
+    def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        resp = TestClient(app, raise_server_exceptions=False).post(
+            f"/api/v1/resource-planning/resource-plans/{plan_id}/bulk-clear",
+            json={"mode": "all"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert resp.status_code == status
+    assert _manual_state(db_session, plan_id) == before

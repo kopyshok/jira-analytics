@@ -1857,10 +1857,7 @@ async def set_assignment_involvement(
 
         setattr(bi, field, data.involvement_pct / 100.0)
         db.flush()
-        try:
-            ResourcePlanningService(db).compute_schedule(plan_id)
-        except ValueError as e:
-            raise HTTPException(409, f"reschedule_failed: {e}")
+        _recompute_or_rollback(db, plan_id, "reschedule_failed")
 
     await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
@@ -2047,10 +2044,7 @@ async def patch_assignment(
                 target_emp.role if target_emp else None
             )
             db.flush()  # зафиксировать pinned_employee + новый employee_id
-            try:
-                ResourcePlanningService(db).compute_schedule(plan_id)
-            except ValueError as e:
-                raise HTTPException(409, f"reschedule_failed: {e}")
+            _recompute_or_rollback(db, plan_id, "reschedule_failed")
             # compute_schedule сам коммитит. Строка, закреплённая по дате,
             # сохраняет id; employee-only-pin строка пересоздаётся — её ищем по
             # логическому ключу. По ключу нельзя искать сразу: у ОПЭ две части
@@ -2298,6 +2292,24 @@ async def clear_manual_edits(
     return {"assignment": _assignment_to_dict(a)}
 
 
+def _recompute_or_rollback(db: Session, plan_id: str, code: str) -> None:
+    """Пересчитать план в одной транзакции с только что сделанными правками.
+
+    Правки вызывающего кода должны быть лишь сброшены в сессию (flush), не
+    закоммичены: ``compute_schedule`` коммитит всё разом в конце. Любая ошибка
+    пересчёта откатывает и правки, и частичный расчёт — план остаётся ровно
+    таким, каким был до запроса. ``ValueError`` превращается в 409 с ``code``.
+    """
+    try:
+        ResourcePlanningService(db).compute_schedule(plan_id)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(409, f"{code}: {e}")
+    except Exception:
+        db.rollback()
+        raise
+
+
 class BulkClearPayload(BaseModel):
     mode: Literal["dates", "employees", "predecessors", "all"]
 
@@ -2391,12 +2403,10 @@ async def bulk_clear_manual_edits(
                     touched.add(a.id)
 
         plan.status = "stale"
-        db.commit()
-
-        try:
-            ResourcePlanningService(db).compute_schedule(plan_id)
-        except ValueError as e:
-            raise HTTPException(409, f"recompute_failed: {e}")
+        # Без commit: снятие правок и пересчёт — одна транзакция. Если пересчёт
+        # упадёт, ручные правки вернутся на место.
+        db.flush()
+        _recompute_or_rollback(db, plan_id, "recompute_failed")
         return {"cleared_count": len(touched), "mode": mode}
 
     result = await run_in_threadpool(work)
