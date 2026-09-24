@@ -382,3 +382,15 @@ def test_overload_explanations_agree_for_borrowed(client, db_session, two_teams)
     # А посуточная таблица показывает, что осталось после брони A.
     days = {d["date"]: d for d in by_phase["daily_breakdown"]}
     assert days["2026-01-02"]["available_hours"] == 0.0
+
+
+def test_explain_home_employee_ignores_borrowing_booking(client, two_teams):
+    """Свой сотрудник: бронь команды, взявшей его к себе, «Доступно» в домашнем
+    плане не уменьшает — ровно так его видел планировщик."""
+    t = two_teams
+    r = client.get(f"{BASE}/{t['plan_a']}/assignments/{t['a_row']}/explain")
+    assert r.status_code == 200, r.text
+    days = {d["date"]: d for d in r.json()["daily_breakdown"]}
+
+    assert days["2026-01-01"]["available_hours"] == 6.0
+    assert days["2026-01-01"]["status"] == "work"
