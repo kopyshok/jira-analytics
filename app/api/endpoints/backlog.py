@@ -366,20 +366,22 @@ def _estimate_disputes(
     }
 
 
-def _include_locked_ids(db: Session, items: list[BacklogItem]) -> set[str]:
+def _include_locked_ids(
+    db: Session, items: list[BacklogItem], lock_enabled: bool
+) -> set[str]:
     """Элементы, которые нельзя включить «В план».
 
     Мультикомандная RFA, у которой в бэклоге есть не архивный ребёнок любой
     команды, планируется только по Эпикам — пока блокировка включена в
-    настройках. Одно правило для признака в строке и для отказа при включении.
-    Детей ищем одним запросом на весь набор, а не по строке.
+    настройках (``lock_enabled``). Одно правило для признака в строке и для
+    отказа при включении. Детей ищем одним запросом на весь набор, а не по строке.
     """
     by_issue = {
         it.issue_id: it.id
         for it in items
         if it.issue_id is not None and issue_is_multi_team(it.issue)
     }
-    if not by_issue or not multi_team_lock_enabled(db):
+    if not by_issue or not lock_enabled:
         return set()
     parent_rows = (
         db.query(Issue.parent_id)
@@ -392,7 +394,7 @@ def _include_locked_ids(db: Session, items: list[BacklogItem]) -> set[str]:
 
 
 def _in_plan_roles(
-    db: Session, items: list[BacklogItem], locked_ids: set[str]
+    db: Session, items: list[BacklogItem], locked_ids: set[str], lock_enabled: bool
 ) -> dict[str, InPlanRole]:
     """Роль переключателя «В план» у элементов — по тем же наборам, что отбор
     кандидатов в сценарии, по всему бэклогу.
@@ -402,11 +404,12 @@ def _in_plan_roles(
     считаются один раз на весь список, а не по строке, и только для задач
     строк и их родителей: есть ли у родителя дети, по-прежнему решает весь
     бэклог, так что роль та же, а весь бэклог на каждый ответ не перебирается.
-    ``locked_ids`` — ``_include_locked_ids`` по этим же элементам.
+    ``locked_ids`` — ``_include_locked_ids`` по этим же элементам и с той же
+    настройкой блокировки ``lock_enabled``.
     """
     scope = {it.issue_id for it in items if it.issue_id is not None}
     scope |= {it.issue.parent_id for it in items if it.issue is not None and it.issue.parent_id}
-    by_epics, whole_children = mode_group_ids(db, multi_team_lock_enabled(db), scope)
+    by_epics, whole_children = mode_group_ids(db, lock_enabled, scope)
 
     def role(item_id: str) -> InPlanRole:
         # Эпик RFA «целиком» не кандидат при любой галочке — даже если сам
@@ -424,12 +427,13 @@ def _in_plan_roles(
 
 def _item_response(db: Session, item: BacklogItem) -> BacklogItemResponse:
     """Ответ по одному элементу: утверждённые сценарии, блокировка и роль «В план»."""
-    locked_ids = _include_locked_ids(db, [item])
+    lock_enabled = multi_team_lock_enabled(db)
+    locked_ids = _include_locked_ids(db, [item], lock_enabled)
     return _to_response(
         item,
         _approved_scenarios_for(db, item.id),
         include_locked=item.id in locked_ids,
-        in_plan_role=_in_plan_roles(db, [item], locked_ids)[item.id],
+        in_plan_role=_in_plan_roles(db, [item], locked_ids, lock_enabled)[item.id],
     )
 
 
@@ -778,8 +782,9 @@ async def list_backlog_items(
 
     # Блокировку и роль «В план» решает весь бэклог, а не этот список:
     # фильтр команды прячет дочек чужой команды, вкладка — родителя.
-    locked_ids = _include_locked_ids(db, items)
-    roles = _in_plan_roles(db, items, locked_ids)
+    lock_enabled = multi_team_lock_enabled(db)
+    locked_ids = _include_locked_ids(db, items, lock_enabled)
+    roles = _in_plan_roles(db, items, locked_ids, lock_enabled)
 
     # Строим Map: parent_issue_id → List[BacklogChildSchema].
     children_map: dict[str, list[BacklogChildSchema]] = {}
@@ -848,8 +853,6 @@ async def list_backlog_items(
             return None
         parent_id = parent_map.get(item.issue_id)
         return parent_context_map.get(parent_id) if parent_id else None
-
-    lock_enabled = multi_team_lock_enabled(db)
 
     if view in ("in_work", "quarterly"):
         labels = _quarter_labels_bulk(db, [i.id for i in visible_items])
@@ -1552,7 +1555,7 @@ async def set_included(
     bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
     if bi is None:
         raise HTTPException(404, "BacklogItem not found")
-    if payload.included and bi.id in _include_locked_ids(db, [bi]):
+    if payload.included and bi.id in _include_locked_ids(db, [bi], multi_team_lock_enabled(db)):
         raise HTTPException(
             409,
             "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",

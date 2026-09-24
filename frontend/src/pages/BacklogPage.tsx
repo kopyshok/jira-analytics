@@ -1175,7 +1175,7 @@ export default function BacklogPage() {
                   checked={onlyDisputed}
                   onChange={setOnlyDisputed}
                   // Оранжевый — только значок: оранжевый текст плохо читается в светлой теме.
-                  icon={<WarningOutlined style={onlyDisputed ? undefined : { color: 'var(--warn, #fa8c16)' }} />}
+                  icon={<WarningOutlined aria-hidden style={onlyDisputed ? undefined : { color: 'var(--warn, #fa8c16)' }} />}
                 >
                   Только спорные · {disputedCount}
                 </FilterTag>
