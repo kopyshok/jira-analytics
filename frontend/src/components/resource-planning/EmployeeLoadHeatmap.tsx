@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 
-import type { EmployeeLoadOut } from '../../api/resourcePlanning';
+import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
+import { dayTooltipLines } from '../../utils/rpBusy';
 import { EXT_LOAD_COLOR, splitLoadFill } from '../../utils/heatmapFill';
 
 interface Props {
@@ -15,6 +16,14 @@ interface Props {
   subgroupByEmployee?: Record<string, string>;
   /** Порядок групп; «Без группы» всегда последняя. */
   subgroupOrder?: string[];
+  /** Фазы плана — подсказка дня: часы и задачи этого плана. */
+  assignments?: AssignmentOut[];
+  /** Брони людей плана в других командах — строки подсказки по командам. */
+  bookings?: ExternalBookingOut[];
+  /** Люди в фильтре «Исполнители» — их имена выделены. */
+  selectedIds?: string[];
+  /** Щелчок по имени — добавить человека в фильтр или убрать. */
+  onEmployeeClick?: (employeeId: string) => void;
 }
 
 const RU_MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -34,6 +43,11 @@ const HOLIDAY_FILL =
 // Дни вне участия в команде — человека в этом периоде в команде просто нет.
 const OUT_OF_TEAM_FILL =
   'repeating-linear-gradient(45deg, rgba(250,173,20,0.5) 0 3px, rgba(250,173,20,0.12) 3px 6px)';
+
+// Стабильные пустые значения по умолчанию.
+const NO_ASSIGNMENTS: AssignmentOut[] = [];
+const NO_BOOKINGS: ExternalBookingOut[] = [];
+const NO_IDS: string[] = [];
 
 function isoDate(s: string): Date {
   return new Date(s + 'T00:00:00');
@@ -111,8 +125,16 @@ interface Week {
   monthLabel: string | null;
 }
 
-export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroupOrder = [] }: Props) {
-  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
+export default function EmployeeLoadHeatmap({
+  rows,
+  subgroupByEmployee,
+  subgroupOrder = [],
+  assignments = NO_ASSIGNMENTS,
+  bookings = NO_BOOKINGS,
+  selectedIds = NO_IDS,
+  onEmployeeClick,
+}: Props) {
+  const [tip, setTip] = useState<{ x: number; y: number; lines: string[] } | null>(null);
 
   const data = useMemo(() => {
     if (rows.length === 0) return null;
@@ -205,16 +227,19 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
 
   if (!data) return null;
 
-  const showTip = (e: React.MouseEvent, row: EmployeeLoadOut, date: string, off: Off, pct: number, ext = 0) => {
+  const showTip = (e: React.MouseEvent, row: EmployeeLoadOut, date: string, off: Off) => {
     const dt = isoDate(date);
     const head = `${RU_WD[dt.getDay()]}, ${dt.getDate()} ${RU_MONTHS_SHORT[dt.getMonth()]}`;
-    let body: string;
-    if (off === 'out_of_team') body = outOfTeamText(row, date);
-    else if (off === 'absence') body = 'отпуск / отсутствие';
-    else if (off === 'holiday') body = 'праздник';
-    else if (ext > 0) body = `в этом плане ${Math.round(pct)}% · в планах других команд ${Math.round(ext)}%`;
-    else body = pct > 0 ? `${Math.round(pct)}%` : 'нет загрузки';
-    setTip({ x: e.clientX, y: e.clientY, text: `${head} · ${body}` });
+    let body: string[];
+    if (off === 'out_of_team') body = [outOfTeamText(row, date)];
+    else if (off === 'absence') body = ['отпуск / отсутствие'];
+    else if (off === 'holiday') body = ['праздник'];
+    else {
+      // По строке на этот план и на каждую другую команду: часы и задачи дня.
+      const lines = dayTooltipLines(row.employee_id, date, assignments, bookings);
+      body = lines.length > 0 ? lines : ['нет загрузки'];
+    }
+    setTip({ x: e.clientX, y: e.clientY, lines: [head, ...body] });
   };
 
   return (
@@ -233,7 +258,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
         <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{data.periodLabel}</div>
       </div>
       <div style={{ fontSize: 11, color: '#5a7a9a', marginBottom: 8 }}>
-        Только рабочие дни. Наведите на день, чтобы увидеть дату и загрузку.
+        Только рабочие дни. Наведите на день — часы по задачам этого плана и других команд; щелчок по имени — фильтр по человеку.
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -334,9 +359,17 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span
+                      onClick={onEmployeeClick ? () => onEmployeeClick(row.employee_id) : undefined}
+                      title={
+                        onEmployeeClick
+                          ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать'
+                          : undefined
+                      }
                       style={{
                         fontSize: 12,
-                        color: '#fff',
+                        color: selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
+                        fontWeight: selectedIds.includes(row.employee_id) ? 700 : undefined,
+                        cursor: onEmployeeClick ? 'pointer' : undefined,
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -409,7 +442,7 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
                         return (
                           <div
                             key={cell.date}
-                            onMouseEnter={(e) => showTip(e, row, cell.date, off, pct, ext)}
+                            onMouseEnter={(e) => showTip(e, row, cell.date, off)}
                             onMouseLeave={() => setTip(null)}
                             onMouseOver={(e) => {
                               (e.currentTarget as HTMLDivElement).style.filter = 'brightness(1.25)';
@@ -487,7 +520,9 @@ export default function EmployeeLoadHeatmap({ rows, subgroupByEmployee, subgroup
             boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
           }}
         >
-          {tip.text}
+          {tip.lines.map((line, i) => (
+            <div key={i} style={i === 0 ? { fontWeight: 600 } : undefined}>{line}</div>
+          ))}
         </div>
       )}
     </div>
