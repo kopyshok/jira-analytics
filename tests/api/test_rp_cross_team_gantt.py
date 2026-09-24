@@ -68,6 +68,27 @@ def test_candidates_grouped_with_load(client, two_teams):
     assert groups["team"]["employees"][0]["load_pct"] == 0.0
 
 
+def test_candidates_skip_people_outside_teams_in_quarter(client, db_session, two_teams):
+    """Боты и выбывшие до квартала в выбор исполнителя не попадают."""
+    from datetime import date
+
+    from app.models.employee_team import EmployeeTeam
+
+    t = two_teams
+    bot = make_employee(db_session, "Automation for Jira", None, member=False)
+    gone = make_employee(db_session, "Ушедший", "C", member=False)
+    db_session.add(EmployeeTeam(employee_id=gone.id, team="C", is_primary=True,
+                                left_at=date(2025, 12, 1)))
+    db_session.commit()
+
+    r = client.get(f"{BASE}/{t['plan_b']}/assignments/{t['b_row']}/candidates")
+    assert r.status_code == 200, r.text
+    ids = {c["employee_id"] for g in r.json() for c in g["employees"]}
+
+    assert ids == {t["e"], t["d"], t["other"]}
+    assert bot.id not in ids and gone.id not in ids
+
+
 def test_candidates_unknown_assignment_is_404(client, two_teams):
     r = client.get(f"{BASE}/{two_teams['plan_b']}/assignments/nope/candidates")
     assert r.status_code == 404
