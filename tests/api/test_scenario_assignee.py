@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
+from app.connectors.schemas import JiraUserSchema
 from app.database import get_db
 from app.main import app
 from app.models import BacklogItem, Issue, ScenarioAllocation
@@ -109,7 +110,10 @@ def test_choosing_jira_assignee_follows_jira_again(client, db_session, row):
     assert item.assignee_jira_account_at_choice is None
 
 
-def test_manual_choice_survives_refresh_until_jira_changes(client, db_session, row, monkeypatch):
+@pytest.fixture
+def fake_jira(db_session, monkeypatch):
+    """«Обновить с Jira» без Jira: исполнитель задачи — настоящая схема ответа
+    Jira с учётной записью из ``fake_jira["account"]`` (None — не назначен)."""
     from app.api.endpoints import backlog as backlog_ep
 
     jira = {"account": "acc-jira"}
@@ -128,18 +132,45 @@ def test_manual_choice_survives_refresh_until_jira_changes(client, db_session, r
     async def fake_refresh(self, keys, extra_field_ids=None, on_issue=None, on_progress=None):
         issues = db_session.query(Issue).filter(Issue.key.in_(keys)).all()
         for issue in issues:
-            fields = SimpleNamespace(
-                assignee=SimpleNamespace(accountId=jira["account"]), _extra={},
+            assignee = (
+                JiraUserSchema(accountId=jira["account"], displayName="x")
+                if jira["account"] else None
             )
+            fields = SimpleNamespace(assignee=assignee, _extra={})
             on_issue(SimpleNamespace(fields=fields), issue)
         return len(issues), len(issues)
 
     monkeypatch.setattr(backlog_ep, "JiraClient", _FakeJira)
     monkeypatch.setattr(backlog_ep, "_discover_field_id", AsyncMock(return_value=None))
     monkeypatch.setattr(backlog_ep.SyncService, "refresh_issues_by_keys", fake_refresh)
+    return jira
+
+
+def _refresh(client):
+    assert client.post("/api/v1/backlog/refresh-from-jira").status_code == 200
+
+
+def test_refresh_links_jira_assignee_to_employee(client, db_session, row, fake_jira):
+    """Обновление из Jira привязывает строку к сотруднику по учётной записи
+    исполнителя. Раньше учётную запись не находило, и каждое обновление
+    отвязывало исполнителя у всех строк."""
+    item = db_session.get(BacklogItem, row.item.id)
+    item.assignee_employee_id = None
+    db_session.commit()
+
+    _refresh(client)
+
+    db_session.expire_all()
+    item = db_session.get(BacklogItem, row.item.id)
+    assert item.assignee_employee_id == row.jira.id
+    assert item.assignee_manual is False
+
+
+def test_manual_choice_survives_refresh_until_jira_changes(client, db_session, row, fake_jira):
+    jira = fake_jira
     _choose(client, row, row.chosen.id)
 
-    assert client.post("/api/v1/backlog/refresh-from-jira").status_code == 200
+    _refresh(client)
     db_session.expire_all()
     assert db_session.get(BacklogItem, row.item.id).assignee_employee_id == row.chosen.id
 
@@ -147,7 +178,7 @@ def test_manual_choice_survives_refresh_until_jira_changes(client, db_session, r
     newcomer = make_employee(db_session, "Новый в Jira", "B", jira_account_id="acc-new")
     db_session.commit()
     jira["account"] = "acc-new"
-    assert client.post("/api/v1/backlog/refresh-from-jira").status_code == 200
+    _refresh(client)
     db_session.expire_all()
     item = db_session.get(BacklogItem, row.item.id)
     assert item.assignee_employee_id == newcomer.id
