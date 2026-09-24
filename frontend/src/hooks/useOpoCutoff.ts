@@ -1,6 +1,6 @@
 import { useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getGenericSetting } from '../api/settings';
+import { api } from '../api/client';
 import { GlobalPeriodContext } from './useGlobalPeriod';
 import { isOpoOff } from '../utils/opo';
 
@@ -10,7 +10,8 @@ export const OPO_CUTOFF_KEY = 'planning_opo_cutoff';
 export function useOpoCutoff() {
   const { data } = useQuery({
     queryKey: [OPO_CUTOFF_KEY],
-    queryFn: () => getGenericSetting(OPO_CUTOFF_KEY),
+    // Не /settings: он только для администратора, остальным отвечает отказом.
+    queryFn: () => api.get<{ key: string; value: string | null }>('/planning/opo-cutoff'),
     staleTime: 5 * 60 * 1000,
   });
   const cutoff = data?.value ?? null;

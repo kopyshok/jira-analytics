@@ -55,7 +55,7 @@ from app.schemas.capacity_diff import (
 )
 from app.schemas.assignee_candidates import CandidateGroupOut
 from app.schemas.scenario_override import AllocationOverrideRequest
-from app.services import team_membership
+from app.services import opo_policy, team_membership
 from app.services.capacity_service import CapacityService
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
@@ -564,6 +564,14 @@ def _require_draft(scenario: Optional[PlanningScenario]) -> None:
                 "Scenario is approved; revert to draft before editing"
             ),
         )
+
+
+@router.get("/opo-cutoff")
+async def get_opo_cutoff(db: Session = Depends(get_db)) -> dict:
+    """Отсечка ОПЭ для любого пользователя: `/settings` — только для админа,
+    а экраны планирования должны знать, выключен ли ОПЭ в квартале."""
+    row = db.query(AppSetting).filter(AppSetting.key == opo_policy.SETTING_KEY).one_or_none()
+    return {"key": opo_policy.SETTING_KEY, "value": row.value if row else None}
 
 
 # === Scenarios CRUD ===
