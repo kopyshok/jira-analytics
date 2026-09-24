@@ -79,11 +79,39 @@ def test_scenario_candidates_unknown_item_is_404(client, row):
     assert r.status_code == 404
 
 
+@pytest.mark.parametrize("field", ["year", "quarter"])
+def test_scenario_candidates_without_quarter_is_400(client, db_session, row, field):
+    setattr(row.sc, field, None)
+    db_session.commit()
+
+    r = client.get(
+        f"{PLANNING}/{row.sc.id}/assignee-candidates",
+        params={"backlog_item_id": row.item.id},
+    )
+
+    assert r.status_code == 400, r.text
+
+
 def _choose(client, row, employee_id):
     return client.patch(
         f"{PLANNING}/{row.sc.id}/allocations/{row.alloc.id}/assignee",
         json={"assignee_employee_id": employee_id},
     )
+
+
+def test_manual_clear_while_jira_has_assignee(client, db_session, row):
+    """Исполнителя сняли, а в Jira он есть: выбор ручной, в строке — пусто,
+    а не исполнитель из Jira."""
+    r = _choose(client, row, None)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["assignee_employee_id"] is None
+    assert r.json()["assignee_display_name"] is None
+    db_session.expire_all()
+    item = db_session.get(BacklogItem, row.item.id)
+    assert item.assignee_employee_id is None
+    assert item.assignee_manual is True
+    assert item.assignee_jira_account_at_choice == "acc-jira"
 
 
 def test_manual_choice_from_other_team_is_remembered(client, db_session, row):
