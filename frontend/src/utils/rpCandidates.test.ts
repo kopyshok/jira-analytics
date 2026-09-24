@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { candidateLabel, candidateOptions } from './rpCandidates';
-import type { AssignmentCandidate } from '../api/resourcePlanning';
+import {
+  candidateLabel, candidateOptions, candidatesQueryKey, sameCandidatesTarget,
+} from './rpCandidates';
+import type { AssignmentCandidate, AssignmentOut } from '../api/resourcePlanning';
 
 const c = (over: Partial<AssignmentCandidate>): AssignmentCandidate => ({
   employee_id: 'e1',
@@ -40,5 +42,21 @@ describe('candidateOptions', () => {
         options: [{ value: 'e1', label: 'Пряничников · Программист · Команда 1С · 42%' }],
       },
     ]);
+  });
+});
+
+describe('sameCandidatesTarget', () => {
+  const key = (plan: string, id: string, item: string, phase: AssignmentOut['phase']) =>
+    candidatesQueryKey(plan, { id, backlog_item_id: item, phase });
+  const shown = key('p1', 'a1', 'i1', 'dev');
+
+  it('пересчёт пересоздал строку фазы с новым id — прежний список годится', () => {
+    expect(sameCandidatesTarget(shown, key('p1', 'a2', 'i1', 'dev'))).toBe(true);
+  });
+
+  it('другая фаза, задача или план — прежний список не подставляется', () => {
+    expect(sameCandidatesTarget(shown, key('p1', 'a3', 'i1', 'analyst'))).toBe(false);
+    expect(sameCandidatesTarget(shown, key('p1', 'a4', 'i2', 'dev'))).toBe(false);
+    expect(sameCandidatesTarget(shown, key('p2', 'a1', 'i1', 'dev'))).toBe(false);
   });
 });

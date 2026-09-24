@@ -7,7 +7,7 @@ import {
   patchConflict, type ConflictOut,
   explainConflict, type ConflictExplainOut,
   explainAssignment, type AssignmentExplainResponseV2,
-  getAssignmentCandidates, type AssignmentCandidateGroup,
+  getAssignmentCandidates, type AssignmentCandidateGroup, type AssignmentOut,
   forkPlan, getPlanDiff,
   getPlanQuality,
   createDependency, patchDependency, deleteDependency,
@@ -15,6 +15,7 @@ import {
   bulkClearAssignments, type BulkClearMode,
 } from '../api/resourcePlanning';
 import { trackAction } from '../lib/usage/track';
+import { candidatesQueryKey, sameCandidatesTarget } from '../utils/rpCandidates';
 
 export const useScheduledBlocks = (team?: string) =>
   useQuery({
@@ -140,20 +141,22 @@ export function useExplainAssignment(planId: string | null, assignmentId: string
 /** Кандидаты в исполнители фазы: группы «Из Jira» / «Моя команда» / «Другие команды». */
 export function useAssignmentCandidates(
   planId: string | null,
-  assignmentId: string | null,
+  assignment: AssignmentOut | null,
   enabled: boolean,
 ) {
+  const queryKey = candidatesQueryKey(planId, assignment);
   return useQuery<AssignmentCandidateGroup[]>({
-    queryKey: ['assignment-candidates', planId, assignmentId],
-    queryFn: () => getAssignmentCandidates(planId!, assignmentId!),
-    enabled: !!planId && !!assignmentId && enabled,
+    queryKey,
+    queryFn: () => getAssignmentCandidates(planId!, assignment!.id),
+    enabled: !!planId && !!assignment && enabled,
     staleTime: 30_000,
     // Как у расшифровки: строка могла исчезнуть при пересчёте — повтор даст тот же 404.
     retry: false,
     // Пересчёт пересоздаёт строку фазы с новым id. Пока грузится список для
-    // нового id, остаётся прежний список этого же плана — без мигания
-    // плоским списком команды. Список другого плана не подставляем.
-    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === planId ? prev : undefined),
+    // нового id, остаётся прежний список той же фазы — без мигания плоским
+    // списком команды. Список другой фазы, задачи или плана не подставляем.
+    placeholderData: (prev, prevQuery) =>
+      (prevQuery && sameCandidatesTarget(prevQuery.queryKey, queryKey) ? prev : undefined),
   });
 }
 
