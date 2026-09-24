@@ -399,10 +399,14 @@ def _in_plan_roles(
 
     Список не видит всей группы: родителя чужой команды, с другой вкладки,
     утверждённого или выполненного, эпиков, спрятанных фильтром. Наборы
-    считаются один раз на весь список, а не по строке.
+    считаются один раз на весь список, а не по строке, и только для задач
+    строк и их родителей: есть ли у родителя дети, по-прежнему решает весь
+    бэклог, так что роль та же, а весь бэклог на каждый ответ не перебирается.
     ``locked_ids`` — ``_include_locked_ids`` по этим же элементам.
     """
-    by_epics, whole_children = mode_group_ids(db)
+    scope = {it.issue_id for it in items if it.issue_id is not None}
+    scope |= {it.issue.parent_id for it in items if it.issue is not None and it.issue.parent_id}
+    by_epics, whole_children = mode_group_ids(db, multi_team_lock_enabled(db), scope)
 
     def role(item_id: str) -> InPlanRole:
         # Эпик RFA «целиком» не кандидат при любой галочке — даже если сам

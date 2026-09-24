@@ -17,11 +17,12 @@ BacklogItem allocations в draft-сценариях удаляются. Утве
 """
 
 import json
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Query, Session, aliased
 
 from app.models import AppSetting, BacklogItem, Issue, PlanningScenario, Project, ScenarioAllocation
 from app.services.hierarchy_rules import is_planning_leaf, is_service_epic, load_rules
@@ -196,26 +197,48 @@ def effective_planning_mode(
     return item.planning_mode or "whole"
 
 
-def group_parents(db: Session) -> list[tuple[BacklogItem, Issue]]:
+_IN_CHUNK = 500
+
+# Дочерние строки в проверке «есть ребёнок» — один раз на модуль: новый
+# псевдоним на каждый вызов заново собирает запрос и стоит миллисекунды
+# на каждый одиночный ответ.
+_ChildIssue = aliased(Issue)
+_ChildItem = aliased(BacklogItem)
+
+
+def _rows_in_chunks(query: Query, column: Any, ids: Iterable[str]) -> list[Any]:
+    """Строки запроса с условием ``column IN ids`` — пачками по ``_IN_CHUNK``."""
+    id_list = list(ids)
+    rows: list[Any] = []
+    for start in range(0, len(id_list), _IN_CHUNK):
+        rows += query.filter(column.in_(id_list[start : start + _IN_CHUNK])).all()
+    return rows
+
+
+def group_parents(
+    db: Session, issue_ids: Optional[Iterable[str]] = None
+) -> list[tuple[BacklogItem, Issue]]:
     """Родители групп: элементы бэклога, у которых есть прямой ребёнок
-    в активном бэклоге. Тот же признак, что ``has_children_in_backlog``."""
-    ChildIssue = aliased(Issue)
-    ChildItem = aliased(BacklogItem)
+    в активном бэклоге. Тот же признак, что ``has_children_in_backlog``.
+
+    ``issue_ids`` — искать родителей только среди этих задач. Ребёнка ищем
+    по-прежнему во всём бэклоге: для этих задач ответ тот же, что без отбора.
+    """
     child_exists = (
-        db.query(ChildItem.id)
-        .join(ChildIssue, ChildItem.issue_id == ChildIssue.id)
+        db.query(_ChildItem.id)
+        .join(_ChildIssue, _ChildItem.issue_id == _ChildIssue.id)
         .filter(
-            ChildIssue.parent_id == Issue.id,
-            ChildItem.archived_at.is_(None),
+            _ChildIssue.parent_id == Issue.id,
+            _ChildItem.archived_at.is_(None),
         )
         .exists()
     )
-    rows = (
+    query = (
         db.query(BacklogItem, Issue)
         .join(Issue, BacklogItem.issue_id == Issue.id)
         .filter(BacklogItem.archived_at.is_(None), child_exists)
-        .all()
     )
+    rows = query.all() if issue_ids is None else _rows_in_chunks(query, Issue.id, issue_ids)
     return cast(list[tuple[BacklogItem, Issue]], rows)
 
 
@@ -251,52 +274,61 @@ def not_in_plan_backlog_ids(db: Session) -> set[str]:
 
 
 def _mode_groups(
-    db: Session, lock_enabled: bool
+    db: Session, lock_enabled: bool, issue_ids: Optional[Iterable[str]] = None
 ) -> tuple[list[tuple[BacklogItem, Issue]], set[str]]:
     """Группы RFA по режиму планирования — по всему бэклогу, без фильтров списка.
 
     Возвращает родителей «по эпикам» (режим выбран или навязан
     мультикомандностью) и BacklogItem.id обычных детей родителей «целиком».
     Служебные эпики (Дискавери) в дети не входят: их часы идут сверх родителя.
+
+    ``issue_ids`` — считать только для этих задач: и родителей, и детей ищем
+    среди них. Есть ли у родителя ребёнок, решает весь бэклог, поэтому для
+    задачи, чей родитель тоже в отборе, ответ тот же, что без отбора.
     """
+    scope = None if issue_ids is None else set(issue_ids)
     by_epics: list[tuple[BacklogItem, Issue]] = []
-    whole_parent_issue_ids: list[str] = []
-    for item, issue in group_parents(db):
+    whole_parent_issue_ids: set[str] = set()
+    for item, issue in group_parents(db, scope):
         if effective_planning_mode(item, issue, lock_enabled) == "by_epics":
             by_epics.append((item, issue))
         else:
-            whole_parent_issue_ids.append(issue.id)
+            whole_parent_issue_ids.add(issue.id)
     if not whole_parent_issue_ids:
         return by_epics, set()
-    rows = (
-        db.query(BacklogItem.id, Project.key, Issue.issue_type)
+    children = (
+        db.query(BacklogItem.id, Issue.parent_id, Project.key, Issue.issue_type)
         .join(Issue, BacklogItem.issue_id == Issue.id)
         .outerjoin(Project, Issue.project_id == Project.id)
-        .filter(
-            Issue.parent_id.in_(whole_parent_issue_ids),
-            BacklogItem.archived_at.is_(None),
-        )
-        .all()
+        .filter(BacklogItem.archived_at.is_(None))
     )
+    if scope is None:
+        rows = _rows_in_chunks(children, Issue.parent_id, whole_parent_issue_ids)
+    else:
+        rows = _rows_in_chunks(children, Issue.id, scope)
     rules = load_rules(db)
     whole_children = {
         bid
-        for bid, project_key, issue_type in rows
-        if not is_service_epic(
+        for bid, parent_id, project_key, issue_type in rows
+        if parent_id in whole_parent_issue_ids
+        and not is_service_epic(
             rules, project_key=project_key or "", issue_type=issue_type or "", has_parent=True
         )
     }
     return by_epics, whole_children
 
 
-def mode_group_ids(db: Session) -> tuple[set[str], set[str]]:
+def mode_group_ids(
+    db: Session, lock_enabled: bool, issue_ids: Optional[Iterable[str]] = None
+) -> tuple[set[str], set[str]]:
     """BacklogItem.id родителей «по эпикам» и обычных детей родителей «целиком».
 
     Тот же расчёт, что у отбора кандидатов (``mode_excluded_backlog_ids``), —
     для строки списка: список с фильтром команды или на другой вкладке не
-    видит всей группы.
+    видит всей группы. ``issue_ids`` — задачи строк и их родителей: ответ по
+    строкам тот же, что по всему бэклогу, но весь бэклог не перебирается.
     """
-    by_epics, whole_children = _mode_groups(db, multi_team_lock_enabled(db))
+    by_epics, whole_children = _mode_groups(db, lock_enabled, issue_ids)
     return {item.id for item, _ in by_epics}, whole_children
 
 
@@ -571,9 +603,6 @@ def switch_off_new_service_epics(db: Session, before: set[str]) -> set[str]:
     newly = service_epic_backlog_ids(db) - before
     switch_off_backlog_items(db, newly)
     return newly
-
-
-_IN_CHUNK = 500
 
 
 def switch_off_backlog_items(db: Session, item_ids: set[str]) -> None:
