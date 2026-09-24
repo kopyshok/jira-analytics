@@ -3491,16 +3491,19 @@ def explain_assignment(
             borrowed=borrowed_here,
         )
         raw_full_avail = raw_avail.get(a.employee_id, {})
-        # «Доступно» — за вычетом броней других команд: ровно то, что видел
-        # планировщик при раскладке.
-        other_bookings = cto.external_bookings(
-            db,
-            team=plan.team,
-            year=plan.year,
-            quarter=cto.quarter_num(plan.quarter),
-            employee_ids=[a.employee_id],
-            start=horizon_start,
-            end=horizon_end,
+        # «Доступно» — за вычетом броней других команд по правилу «сначала
+        # домашняя команда»: ровно то, что видел планировщик при раскладке.
+        other_bookings = cto.subtractable(
+            cto.external_bookings(
+                db,
+                team=plan.team,
+                year=plan.year,
+                quarter=cto.quarter_num(plan.quarter),
+                employee_ids=[a.employee_id],
+                start=horizon_start,
+                end=horizon_end,
+            ),
+            borrowed_here,
         )
         full_avail = cto.subtract_occupancy(
             raw_avail, cto.daily_totals(other_bookings)
