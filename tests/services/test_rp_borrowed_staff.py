@@ -248,6 +248,39 @@ def test_busy_jira_developer_falls_back_to_team_developer(db_session, sample_pro
     assert _conflicts(db_session, plan_b.id, "UNPLACED_HOURS") == []
 
 
+def test_busy_jira_developer_does_not_hide_missing_developers(db_session, sample_project):
+    """«Разработчик» из Jira не попал в план по ёмкости — «Нет разработчика» остаётся."""
+    e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
+    make_employee(db_session, "Аналитик B", "B", role="analyst")
+    _booked_all_window(db_session, "A", e)
+    issue = make_issue(db_session, sample_project, "OS-4", developer="acc-e")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    add_item(db_session, sc_b, "Работа B", dev=12, issue=issue)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert e.id not in {r.employee_id for r in _dev_rows(db_session, plan_b.id)}
+    assert len(_conflicts(db_session, plan_b.id, "NO_DEV")) == 1
+
+
+def test_borrowed_jira_developer_with_work_covers_missing_developers(
+    db_session, sample_project
+):
+    """Привлечённый разработчик получил разработку — роль в плане закрыта."""
+    e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
+    make_employee(db_session, "Аналитик B", "B", role="analyst")
+    issue = make_issue(db_session, sample_project, "OS-5", developer="acc-e")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    add_item(db_session, sc_b, "Работа B", dev=12, issue=issue)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert {r.employee_id for r in _dev_rows(db_session, plan_b.id)} == {e.id}
+    assert _conflicts(db_session, plan_b.id, "NO_DEV") == []
+
+
 def test_phase_without_capacity_is_reported_not_dropped(db_session, sample_project):
     """Ни у кого нет ёмкости — разработка не пропадает молча, а даёт конфликт."""
     e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
