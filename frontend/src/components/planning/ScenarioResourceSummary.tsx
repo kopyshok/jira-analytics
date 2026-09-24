@@ -717,16 +717,22 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
         })()}
       </div>
       {(() => {
-        // Часы, которые сотрудники команды уже отдали планам других команд
-        // этого квартала: сервер вычел их из «На бэклог».
+        // Работа людей команды в планах других команд этого квартала. Где
+        // человек тоже состоит — сервер вычел её из «На бэклог»; команды,
+        // взявшие его к себе, подстраиваются сами — их часы только справочно.
         const rank = (role: string) => {
           const i = summary.roles.indexOf(role);
           return i < 0 ? summary.roles.length : i;
         };
-        const booked = Object.entries(summary.booked_by_other_teams_by_role ?? {})
-          .filter(([, h]) => h >= 0.5)
-          .sort(([a], [b]) => rank(a) - rank(b));
-        if (booked.length === 0) return null;
+        const byRole = (hours?: Record<string, number>) =>
+          Object.entries(hours ?? {})
+            .filter(([, h]) => h >= 0.5)
+            .sort(([a], [b]) => rank(a) - rank(b))
+            .map(([role, h]) => `${getRoleLabel(roles, role)} ${Math.round(h).toLocaleString('ru')} ч`)
+            .join(', ');
+        const booked = byRole(summary.booked_by_other_teams_by_role);
+        const borrowed = byRole(summary.borrowed_by_other_teams_by_role);
+        if (!booked && !borrowed) return null;
         return (
           <div
             style={{
@@ -736,11 +742,12 @@ function ScenarioResourceSummaryBase({ scenarioId, enabled, allocations, employe
               color: DARK_THEME.textMuted,
             }}
           >
-            Занято в планах других команд этого квартала:{' '}
-            {booked
-              .map(([role, h]) => `${getRoleLabel(roles, role)} ${Math.round(h).toLocaleString('ru')} ч`)
-              .join(', ')}
-            . Эти часы уже вычтены из «На бэклог».
+            {booked && (
+              <div>
+                Занято в планах других команд этого квартала: {booked}. Эти часы уже вычтены из «На бэклог».
+              </div>
+            )}
+            {borrowed && <div>Привлечены другими командами: {borrowed} (не вычтено).</div>}
           </div>
         );
       })()}

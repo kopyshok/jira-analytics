@@ -674,6 +674,8 @@ export interface ResourceSummaryOut {
   flow_by_subgroup: SubgroupFlowItem[];
   /** Часы команды, забронированные планами других команд (уже вычтены из «На бэклог»). */
   booked_by_other_teams_by_role?: Record<string, number>;
+  /** Часы людей команды в планах команд, взявших их к себе (не вычтены из «На бэклог»). */
+  borrowed_by_other_teams_by_role?: Record<string, number>;
 }
 
 /** Переток одной группы: часы, ушедшие к соседям и пришедшие от них. */
