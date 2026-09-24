@@ -1006,7 +1006,7 @@ async def _perform_refresh(
                 assignee = getattr(jira_issue.fields, "assignee", None)
                 apply_jira_assignee(
                     item,
-                    getattr(assignee, "accountId", None) if assignee else None,
+                    assignee.jira_account_id if assignee else None,
                     emp_by_account,
                 )
                 # Заказчик
