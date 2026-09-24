@@ -1449,9 +1449,19 @@ def get_gantt(
             names = {e.id: e.display_name for e in plan_employees}
             # Дни, где этот план и брони других команд вместе больше дня
             # человека, — тем же расчётом, что и живой конфликт техкоманды.
+            # У своих людей — только в опорном плане команды: конфликт
+            # техкоманды считается по нему, в других планах отметка ложная.
+            quarter = cto.quarter_num(plan.quarter)
+            ref = (
+                cto.reference_plans(db, plan.year, quarter).get(plan.team)
+                if plan.year and quarter
+                else None
+            )
+            is_reference = ref is not None and ref.plan_id == plan.id
             overlap_by_emp = {
                 eid: set(cto.overlap_days(used.get(eid, {}), days, avail.get(eid, {})))
                 for eid, days in ext_daily.items()
+                if is_reference or eid in borrowed
             }
             external_out = [
                 ExternalBookingOut(

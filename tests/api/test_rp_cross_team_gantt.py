@@ -179,6 +179,31 @@ def test_home_plan_shows_other_team_share_without_conflict(client, two_teams):
     assert _day(row, "2026-01-05")["ext_pct"] == 0.0
 
 
+def test_overlap_marks_only_in_home_reference_plan(client, db_session, two_teams):
+    """Отметка «техкоманда получит конфликт» — только в опорном плане
+    домашней команды: пересечение у техкоманды считается по нему. В другом
+    плане той же команды отметок нет."""
+    from app.models import Employee, ResourcePlan, ResourcePlanAssignment
+
+    t = two_teams
+    ref = db_session.get(ResourcePlan, t["plan_a"])
+    other = ResourcePlan(
+        team="A", quarter="Q1", year=2026, status="stale", scenario_id=ref.scenario_id
+    )
+    db_session.add(other)
+    db_session.flush()
+    book(
+        db_session, other, db_session.get(ResourcePlanAssignment, t["a_row"]).backlog_item,
+        db_session.get(Employee, t["e"]), {"2026-01-01": 6.0, "2026-01-02": 6.0},
+    )
+    db_session.commit()
+
+    [b] = _gantt(client, other.id)["external_bookings"]
+    assert (b["team"], b["overlap_days"]) == ("B", [])
+    [b_ref] = _gantt(client, t["plan_a"])["external_bookings"]
+    assert b_ref["overlap_days"] == ["2026-01-01", "2026-01-02"]
+
+
 def test_no_live_conflict_when_borrower_fits_next_to_booking(client, db_session, two_teams):
     import json
 
