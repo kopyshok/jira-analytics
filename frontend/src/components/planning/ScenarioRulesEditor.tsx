@@ -7,7 +7,7 @@ import { useScenarioRules, usePutScenarioRules, useCopyRulesFromScenario, useSce
 import { useRoles } from '../../hooks/useRoles';
 import { useMandatoryWorkTypes } from '../../hooks/useCapacity';
 import { uid } from '../../utils/uid';
-import type { ScenarioRuleInput } from '../../types/api';
+import type { ScenarioRuleInput, ScenarioRuleOut } from '../../types/api';
 
 interface RuleDraft extends ScenarioRuleInput {
   _key: string;
@@ -23,9 +23,13 @@ interface Props {
   scenarioId: string;
 }
 
+// Один и тот же пустой список, пока правила грузятся: новый `[]` на каждой
+// перерисовке перезапускал эффект ниже, и страница уходила в бесконечный цикл.
+const NO_RULES: ScenarioRuleOut[] = [];
+
 export default function ScenarioRulesEditor({ scenarioId }: Props) {
   const { notification } = App.useApp();
-  const { data: serverRules = [] } = useScenarioRules(scenarioId);
+  const { data: serverRules = NO_RULES } = useScenarioRules(scenarioId);
   const { data: roles = [] } = useRoles();
   const { data: workTypes = [] } = useMandatoryWorkTypes({ isActive: true });
   const put = usePutScenarioRules();
