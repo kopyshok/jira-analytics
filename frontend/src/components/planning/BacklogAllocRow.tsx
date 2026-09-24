@@ -294,9 +294,10 @@ function BacklogAllocRowBase({
             allowClear
             disabled={!isDraft}
             style={{ width: '100%', fontSize: 12 }}
-            // Шире колонки, чтобы подписи кандидатов читались; числом, а не false —
-            // иначе AntD выключает виртуальный список.
-            popupMatchSelectWidth={420}
+            // Шире колонки: подпись с названием команды и загрузкой целиком
+            // помещается почти у всех. Числом, а не false — иначе AntD
+            // выключает виртуальный список.
+            popupMatchSelectWidth={640}
             showSearch={{ optionFilterProp: 'label' }}
             loading={candidates.isFetching}
             notFoundContent={candidates.isFetching ? <Spin size="small" /> : undefined}
