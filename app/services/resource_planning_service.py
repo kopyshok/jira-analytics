@@ -117,7 +117,7 @@ def _resolve_parallel_count_legacy(item: "BacklogItem", phase: str) -> int:
     return 1
 
 
-def _placed_hours(a: ResourcePlanAssignment, unlaid: frozenset | set = frozenset()) -> float:
+def _placed_hours(a: ResourcePlanAssignment, unlaid: set) -> float:
     """Часы строки, реально разложенные по дням; без раскладки — объём строки.
 
     Строка из ``unlaid`` — сдвиг по предшественникам не нашёл ей ни одного
