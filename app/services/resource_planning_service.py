@@ -62,6 +62,16 @@ ANALYST_ROLES = {
 # Роли пула разработки.
 DEV_ROLES = {"разработчик", "developer", "dev", "программист"}
 
+
+def opo_part(role: Optional[str]) -> str:
+    """Часть ОПЭ по роли исполнителя: «analyst» — аналитик, РП, консультант,
+    «dev» — остальные.
+
+    У двух частей ОПЭ один номер части, различает их роль исполнителя — так
+    их делят расчёт, правка исполнителя фазы и диаграмма.
+    """
+    return "analyst" if (role or "").lower() in ANALYST_ROLES else "dev"
+
 # Phase 3: маппинг phase → (поле duration_days, поле involvement) в BacklogItem.
 PHASE_DURATION_FIELDS: Dict[str, Tuple[str, str]] = {
     "analyst": ("duration_analyst_days", "involvement_analyst"),
@@ -538,6 +548,8 @@ class ResourcePlanningService:
         # «pinned_employee + pinned_start → пользователь снимает date-pin →
         # recompute» теряет pinned_employee (раньше выпадал из снапшота из-за
         # фильтра pinned_start == False).
+        # ОПЭ сюда не входит: её части у разных людей, закреп — у своей части
+        # (см. opo_emp_pins ниже).
         pinned_employee_phase_snapshot: set[Tuple[str, str]] = {
             (r[0], r[1])
             for r in self.db.execute(
@@ -548,10 +560,31 @@ class ResourcePlanningService:
                 .where(
                     ResourcePlanAssignment.plan_id == plan_id,
                     ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
+                    ResourcePlanAssignment.phase != "opo",
                 )
                 .distinct()
             ).all()
         }
+        # Закреп исполнителя части ОПЭ без даты: {задача: {часть: сотрудник}}.
+        # Две части ОПЭ с одним номером различает роль исполнителя (opo_part);
+        # части, закреплённые по дате, остаются строками в pinned_existing.
+        opo_emp_pins: Dict[str, Dict[str, str]] = defaultdict(dict)
+        for item_id, emp_id, role in self.db.execute(
+            select(
+                ResourcePlanAssignment.backlog_item_id,
+                ResourcePlanAssignment.employee_id,
+                Employee.role,
+            )
+            .join(Employee, Employee.id == ResourcePlanAssignment.employee_id)
+            .where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.phase == "opo",
+                ResourcePlanAssignment.pinned_employee == True,  # noqa: E712
+                ResourcePlanAssignment.pinned_start == False,  # noqa: E712
+                ResourcePlanAssignment.pinned_split == False,  # noqa: E712
+            )
+        ).all():
+            opo_emp_pins[item_id][opo_part(role)] = emp_id
 
         self.db.execute(
             ResourcePlanAssignment.__table__.delete().where(
@@ -589,9 +622,10 @@ class ResourcePlanningService:
             if it.assignee_manual and it.assignee_employee_id
         }
         team_ids = {e.id for e in team_employees}
+        # Закреплённые — по всем строкам: у двух частей ОПЭ один ключ в pinned_map.
+        pinned_ids = {r[3] for r in pinned_emp_rows}
         borrowed_rows = self._load_borrowed(
-            (set(pinned_map.values()) | set(jira_dev.values()) | manual_executors)
-            - team_ids
+            (pinned_ids | set(jira_dev.values()) | manual_executors) - team_ids
         )
         borrowed = {e.id for e in borrowed_rows}
         employees = team_employees + borrowed_rows
@@ -897,6 +931,12 @@ class ResourcePlanningService:
                     dev_ok = bool(dev_id) and (
                         dev_id in opo_dev_pool or dev_id in borrowed
                     )
+                    # Часть, закреплённая за человеком без даты, — за ним.
+                    emp_pins = opo_emp_pins.get(item.id, {})
+                    if "analyst" in emp_pins:
+                        analyst_id, analyst_ok = emp_pins["analyst"], True
+                    if "dev" in emp_pins:
+                        dev_id, dev_ok = emp_pins["dev"], True
                     # Одна часть закреплена: её человек занимает свою роль,
                     # вторая часть достаётся другому.
                     pinned_part: Optional[str] = None
@@ -972,6 +1012,8 @@ class ResourcePlanningService:
                                 end_date=seg_end,
                                 out_of_quarter=(seg_end > q_end),
                                 daily_hours_json=json.dumps(seg_daily) if seg_daily else None,
+                                # Закреп исполнителя — только у своей части.
+                                pinned_employee=emp_pins.get(role) == emp_id,
                             )
                             new_assignments.append(a)
                         if segments:
