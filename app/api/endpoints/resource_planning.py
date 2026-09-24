@@ -567,6 +567,8 @@ class GanttProjection(BaseModel):
 class AssignmentPatch(BaseModel):
     employee_id: Optional[str] = None
     start_date: Optional[date] = None
+    # Игнорируется: конец фазы и часы по дням считает планировщик. Поле
+    # оставлено, чтобы старые клиенты не получали 422.
     end_date: Optional[date] = None
     hours_allocated: Optional[float] = None
     predecessor_ids: Optional[List[str]] = None
@@ -1929,51 +1931,10 @@ async def patch_assignment(
                 "в одном PATCH — сначала закрепи сотрудника, потом дату.",
             )
 
-        new_start = patch.get("start_date", a.start_date)
-        new_end = patch.get("end_date", a.end_date)
-
-        # Если пользователь сдвигает start_date без явного end_date — расширяем
-        # окно вправо так, чтобы вместить ровно hours_allocated с учётом
-        # involvement, выходных и аномалий календаря. Старое поведение сохраняло
-        # длительность фазы (new_end = end + delta_days), что молча обрезало
-        # плановые часы при day_cap × duration < hours.
-        if (
-            "start_date" in patch
-            and "end_date" not in patch
-            and a.start_date
-            and a.end_date
-            and patch["start_date"]
-            and a.hours_allocated
-            and a.hours_allocated > 0
-        ):
-            plan_for_window = db.get(ResourcePlan, plan_id)
-            backlog_item = a.backlog_item
-            if plan_for_window and backlog_item:
-                svc = ResourcePlanningService(db)
-                svc._load_plan_context(plan_for_window)
-                inv = svc._involvement_for_phase(backlog_item, a.phase) or 1.0
-                _, q_end, q_end_extended = svc._quarter_bounds_extended(plan_for_window)
-                new_end_dt, daily_json = svc._extend_window_for_hours(
-                    start_date=patch["start_date"],
-                    hours=a.hours_allocated,
-                    involvement=inv,
-                    q_end=q_end_extended,
-                    employee_id=patch.get("employee_id", a.employee_id),
-                )
-                patch["end_date"] = new_end_dt
-                # _extend_window_for_hours возвращает "{}" если ни один рабочий день
-                # не влез в окно (например, drag на холидеи). Остальные scheduler-пути
-                # хранят None для «нет расписания» — выравниваем конвенцию.
-                a.daily_hours_json = (
-                    daily_json if daily_json and daily_json != "{}" else None
-                )
-                # Окно расширяем до q_end_extended (буфер spillover), но
-                # флаг out_of_quarter — относительно строгого q_end.
-                a.out_of_quarter = new_end_dt > q_end
-                new_end = new_end_dt
-
-        if new_start and new_end and new_end < new_start:
-            raise HTTPException(422, "end_date must be >= start_date")
+        # Конец фазы и часы по дням считает планировщик: перетаскивание задаёт
+        # только начало, присланный конец не используется.
+        patch.pop("end_date", None)
+        start_changed = "start_date" in patch
 
         # Явный выбор сотрудника — закрепить назначение
         if "employee_id" in patch:
@@ -1987,7 +1948,7 @@ async def patch_assignment(
         if explicit_pin is not None:
             a.pinned_start = bool(explicit_pin)
             a.manual_edit_at = datetime.utcnow()
-        elif "start_date" in patch:
+        elif start_changed:
             # Drag / любое изменение даты без явного pinned_start = фиксация
             # (UI ставит pin неявно через перемещение бара).
             a.pinned_start = True
@@ -2016,11 +1977,12 @@ async def patch_assignment(
         if plan:
             plan.status = "stale"
 
-        # Любая смена сотрудника — полный пересчёт плана. pinned_employee=True
-        # гарантирует, что выбор сохранится; остальные фазы этого сотрудника
-        # пройдут через leveler и сдвинутся, чтобы разрулить перегрузки, обойти
-        # отпуска и не упасть на выходные/праздники нового исполнителя.
-        if "employee_id" in patch and plan:
+        # Смена сотрудника или даты начала — полный пересчёт плана.
+        # pinned_employee / pinned_start сохраняют выбор; часы закреплённой
+        # фазы раскладываются с её даты по свободным дням, остальные фазы
+        # сдвигаются, чтобы разрулить перегрузки, обойти отпуска и не упасть
+        # на выходные/праздники исполнителя.
+        if ("employee_id" in patch or start_changed) and plan:
             # Запомнить логический ключ ДО compute: employee-only pinned rows
             # удаляются и пересоздаются с новым id, поэтому после пересчёта
             # ищем по (backlog_item_id, phase, part_number).
@@ -2032,9 +1994,11 @@ async def patch_assignment(
                 ResourcePlanningService(db).compute_schedule(plan_id)
             except ValueError as e:
                 raise HTTPException(409, f"reschedule_failed: {e}")
-            # compute_schedule сам коммитит. Перечитать назначение по логическому
-            # ключу — id мог смениться при пересоздании employee-only-pin строки.
-            a = db.execute(
+            # compute_schedule сам коммитит. Строка, закреплённая по дате,
+            # сохраняет id; employee-only-pin строка пересоздаётся — её ищем по
+            # логическому ключу. По ключу нельзя искать сразу: у ОПЭ две части
+            # с одним номером.
+            reread = (
                 select(ResourcePlanAssignment)
                 .options(
                     joinedload(ResourcePlanAssignment.backlog_item).joinedload(
@@ -2042,8 +2006,12 @@ async def patch_assignment(
                     )
                 )
                 .options(joinedload(ResourcePlanAssignment.employee))
-                .where(
-                    ResourcePlanAssignment.plan_id == plan_id,
+                .where(ResourcePlanAssignment.plan_id == plan_id)
+            )
+            a = db.execute(
+                reread.where(ResourcePlanAssignment.id == assignment_id)
+            ).scalar_one_or_none() or db.execute(
+                reread.where(
                     ResourcePlanAssignment.backlog_item_id == target_item_id,
                     ResourcePlanAssignment.phase == target_phase,
                     ResourcePlanAssignment.part_number == target_part_number,

@@ -780,6 +780,19 @@ class ResourcePlanningService:
         pinned_phase_keys = {
             (a.backlog_item_id, a.phase) for a in pinned_existing
         }
+        # ОПЭ — две параллельные части у разных людей (аналитик и
+        # разработчик). Закреплена одна — вторая раскладывается как обычно,
+        # а не пропадает вместе с фазой: {задача: закреплённая часть}.
+        opo_pinned_rows: Dict[str, List[ResourcePlanAssignment]] = defaultdict(list)
+        for a in pinned_existing:
+            if a.phase == "opo":
+                opo_pinned_rows[a.backlog_item_id].append(a)
+        opo_half_pinned: Dict[str, ResourcePlanAssignment] = {
+            item_id: rows[0]
+            for item_id, rows in opo_pinned_rows.items()
+            if len(rows) == 1 and rows[0].employee_id
+        }
+        role_of = {e.id: (e.role or "").lower() for e in employees}
 
         for item in items:
             phase_end: Optional[date] = None
@@ -788,8 +801,9 @@ class ResourcePlanningService:
                 if hours <= 0:
                     continue
 
+                opo_pinned = opo_half_pinned.get(item.id) if phase == "opo" else None
                 # Если фаза целиком pinned — её даты как «end» для cascade
-                if (item.id, phase) in pinned_phase_keys:
+                if (item.id, phase) in pinned_phase_keys and opo_pinned is None:
                     phase_pinned = [
                         a for a in pinned_existing
                         if a.backlog_item_id == item.id and a.phase == phase
@@ -884,6 +898,16 @@ class ResourcePlanningService:
                     dev_ok = bool(dev_id) and (
                         dev_id in opo_dev_pool or dev_id in borrowed
                     )
+                    # Одна часть закреплена: её человек занимает свою роль,
+                    # вторая часть достаётся другому.
+                    pinned_part: Optional[str] = None
+                    if opo_pinned is not None:
+                        if role_of.get(opo_pinned.employee_id or "", "") in ANALYST_ROLES:
+                            pinned_part = "analyst"
+                            analyst_id, analyst_ok = opo_pinned.employee_id, True
+                        else:
+                            pinned_part = "dev"
+                            dev_id, dev_ok = opo_pinned.employee_id, True
 
                     # Аналитика для ОПЭ — только из аналитического пула.
                     if not analyst_ok and opo_analyst_pool:
@@ -902,7 +926,9 @@ class ResourcePlanningService:
                         )
 
                     parts = self._opo_split(item, analyst_id, dev_id, alloc_by_item)
-                    last_end: Optional[date] = None
+                    last_end: Optional[date] = (
+                        opo_pinned.end_date if opo_pinned is not None else None
+                    )
                     opo_involvement = self._involvement_for_phase(item, "opo")
                     opo_daily_cap = self._daily_role_capacity(
                         avail_hours=8.0,
@@ -910,7 +936,7 @@ class ResourcePlanningService:
                         parallel_count=1,
                     )
                     for role, (emp_id, p_hours) in zip(("analyst", "dev"), parts):
-                        if p_hours <= 0:
+                        if p_hours <= 0 or role == pinned_part:
                             continue
                         if not emp_id:
                             unstaffed[(item.id, "opo")][role] = p_hours
@@ -1356,11 +1382,16 @@ class ResourcePlanningService:
         detected = self._build_conflict_dicts(
             plan, new_assignments, employees, q_end, borrowed=borrowed
         )
+        # ОПЭ с одной закреплённой частью сверяется, как обычная фаза: вторую
+        # часть раскладывал основной проход.
+        opo_partial = {(item_id, "opo") for item_id in opo_half_pinned}
         detected += self._unplaced_conflict_dicts(
-            items, new_assignments, alloc_by_item, pinned_phase_keys,
+            items, new_assignments, alloc_by_item, pinned_phase_keys - opo_partial,
             assignments_by_role, unstaffed, {d["type"] for d in detected},
             unlaid,
-            pinned_start={(x.backlog_item_id, x.phase) for x in pinned_start_rows},
+            pinned_start={
+                (x.backlog_item_id, x.phase) for x in pinned_start_rows
+            } - opo_partial,
         )
         detected = aggregate_conflicts(detected, db_session=self.db)
         self._persist_conflicts(plan_id, detected)
