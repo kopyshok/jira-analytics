@@ -619,16 +619,21 @@ class ResourcePlanningService:
             team=plan.team, borrowed=borrowed,
         )
         # Часы, забронированные на этих людей опорными планами других команд,
-        # раскладка не трогает — в обе стороны (домашняя ↔ привлекающая).
+        # раскладка не трогает. Сначала домашняя команда: своему сотруднику
+        # вычитаются только брони команд, где он тоже состоит, — команда,
+        # взявшая его к себе, подстраивается сама. Привлечённому — все брони.
         external = cto.daily_totals(
-            cto.external_bookings(
-                self.db,
-                team=plan.team,
-                year=plan.year,
-                quarter=cto.quarter_num(plan.quarter),
-                employee_ids=[e.id for e in employees],
-                start=q_start,
-                end=q_end_extended,
+            cto.subtractable(
+                cto.external_bookings(
+                    self.db,
+                    team=plan.team,
+                    year=plan.year,
+                    quarter=cto.quarter_num(plan.quarter),
+                    employee_ids=[e.id for e in employees],
+                    start=q_start,
+                    end=q_end_extended,
+                ),
+                borrowed,
             )
         )
         avail = cto.subtract_occupancy(raw_avail, external)

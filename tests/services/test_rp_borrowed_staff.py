@@ -14,7 +14,7 @@ from app.models import (
 from app.services import cross_team_occupancy as cto
 from app.services.backlog_service import BacklogService
 from app.services.resource_planning_service import ResourcePlanningService
-from tests.services.xteam_factory import add_item, book, make_employee, make_issue, make_plan
+from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_issue, make_plan
 
 D = date.fromisoformat
 
@@ -149,8 +149,9 @@ def test_jira_developer_borrowed_and_skips_home_bookings(db_session, sample_proj
     assert _out_of_team(db_session, plan_b.id) == []
 
 
-def test_home_plan_avoids_borrower_bookings(db_session):
-    """Обратная сторона: домашняя команда A обходит часы E в опорном плане B."""
+def test_home_plan_does_not_yield_to_borrower_bookings(db_session):
+    """Сначала домашняя команда: B взяла E из A к себе — план A её бронь
+    не обходит, подстраивается B."""
     e = make_employee(db_session, "Пряничников", "A")
     sc_b, plan_b = make_plan(db_session, "B")
     item_b = add_item(db_session, sc_b, "Работа B", dev=12)
@@ -163,7 +164,7 @@ def test_home_plan_avoids_borrower_bookings(db_session):
 
     rows = _dev_rows(db_session, plan_a.id)
     assert {r.employee_id for r in rows} == {e.id}
-    assert _days(rows) == {"2026-01-05", "2026-01-06"}
+    assert _days(rows) == {"2026-01-01", "2026-01-02"}
 
 
 def test_manual_pin_to_other_team_gets_hours_without_out_of_team(db_session):
@@ -293,6 +294,7 @@ def test_phase_without_capacity_is_reported_not_dropped(db_session, sample_proje
     e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-e")
     own = make_employee(db_session, "Свой B", "B")
     _booked_all_window(db_session, "A", e)
+    join_team(db_session, own, "C")  # общий сотрудник: бронь C вычитается
     _booked_all_window(db_session, "C", own)
     issue = make_issue(db_session, sample_project, "OS-3", developer="acc-e")
     sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
@@ -403,7 +405,9 @@ def test_phase_pushed_by_predecessor_past_free_days_is_reported(db_session):
     """Связь сдвинула фазу туда, где у исполнителя нет ни часа, — это не «размещено»."""
     d1 = make_employee(db_session, "Разработчик 1", "B")
     d2 = make_employee(db_session, "Разработчик 2", "B")
-    # Весь апрель (месяц запаса) второй разработчик занят командой C.
+    # Весь апрель (месяц запаса) второй разработчик занят командой C,
+    # где он тоже состоит.
+    join_team(db_session, d2, "C")
     sc_c, plan_c = make_plan(db_session, "C")
     book(db_session, plan_c, add_item(db_session, sc_c, "Работа C", dev=1), d2,
          _weekdays("2026-04-01", "2026-04-30"))
@@ -500,6 +504,7 @@ def test_plan_without_people_reports_it_instead_of_old_conflicts(db_session):
 def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
     """Перегрузку выравниватель снимает сдвигом только на дни без чужих броней."""
     e = make_employee(db_session, "Пряничников", "A")
+    join_team(db_session, e, "B")  # общий сотрудник: бронь B вычитается
     # План B держит E во вторник 06.01.
     sc_b, plan_b = make_plan(db_session, "B")
     item_b = add_item(db_session, sc_b, "Работа B", dev=6)
@@ -519,6 +524,7 @@ def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
 def test_plan_avoids_previous_quarter_spill_of_other_team(db_session):
     """План B на прошлый квартал выполз в январь — план A этот хвост обходит."""
     e = make_employee(db_session, "Пряничников", "A")
+    join_team(db_session, e, "B")  # общий сотрудник: хвост B вычитается
     sc_b, plan_b = make_plan(db_session, "B", year=2025, quarter="Q4")
     item_b = add_item(db_session, sc_b, "Хвост B", dev=12)
     book(db_session, plan_b, item_b, e, {"2026-01-01": 6.0, "2026-01-02": 6.0})
