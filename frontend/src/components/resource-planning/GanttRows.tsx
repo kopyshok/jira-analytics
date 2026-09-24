@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AssignmentOut } from '../../api/resourcePlanning';
+import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import type { GanttTimeline } from '../../utils/gantt';
 import { dateToLeft, datesToWidth, fmtLocalIso, PHASE_COLORS, PHASE_LABELS, getItemColor } from '../../utils/gantt';
 import type { BusyGap } from '../../utils/rpBusy';
+import { OTHER_TEAM_HATCH, workdayChecker } from '../../utils/externalBookings';
+import { peopleSections, personLaneRuns } from '../../utils/rpPeople';
 import EmployeeAvatar from './EmployeeAvatar';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
@@ -47,6 +49,16 @@ interface Props {
   quarterEndDate?: string;
   /** Вырезы полос: {id фазы: рабочие дни без её часов, когда человек занят в другой команде}. */
   busyByAssignment?: Map<string, BusyGap[]>;
+  /** «Задачи» (по умолчанию) или «Исполнители». */
+  layout?: RpLayout;
+  /** Брони людей плана в других командах — полоса «все работы» в виде «Исполнители». */
+  externalBookings?: ExternalBookingOut[];
+  /** Строки подвала: команда, привлечённость и загрузка человека. */
+  employeeLoad?: EmployeeLoadOut[];
+  /** Команда плана — подпись своих в виде «Исполнители». */
+  planTeam?: string | null;
+  /** Рабочий ли день (производственный календарь). */
+  isWorkday?: (iso: string) => boolean;
 }
 
 type SubProps = Omit<Props, 'viewMode'>;
@@ -71,6 +83,7 @@ const PENDING_FROM_BG_OPAQUE = '#423137';
 // Sticky left-column z-index must exceed overlay layers (today marker z=20, OoQ divider z=19).
 const STICKY_CELL_Z = 25;
 const STICKY_INIT_Z = 26;
+const WEEKDAYS = workdayChecker([]);
 
 // Зеркало backend ANALYST_ROLES / DEV_ROLES — нужно для разделения ОПЭ на 2 строки.
 const ANALYST_ROLE_CODES = new Set([
@@ -948,9 +961,8 @@ function TwoLevelRows({
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (onEmployeeRowClick && empId) {
-                        onEmployeeRowClick(isHighlighted ? null : empId);
-                      }
+                      // Щелчок добавляет человека в фильтр «Исполнители» или убирает.
+                      if (onEmployeeRowClick && empId) onEmployeeRowClick(empId);
                     }}
                     style={{
                       display: 'inline-flex',
@@ -1085,6 +1097,150 @@ function TwoLevelRows({
   );
 }
 
+/** Вид «Исполнители»: секция на человека — полоса «все работы» и его фазы этого плана. */
+function PeopleRows({
+  assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
+  conflictAssignmentIds, onAssignmentClick, highlightedEmployeeId, onEmployeeRowClick,
+  quarterEndDate, externalBookings, employeeLoad, planTeam, busyByAssignment, isWorkday,
+}: SubProps) {
+  const appearance = useAppearanceSettings();
+  const { prefs: rpPrefs } = useRpPreferences();
+  const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
+  const sections = useMemo(
+    () => peopleSections(assignments, externalBookings ?? [], employeeLoad ?? [], planTeam ?? null),
+    [assignments, externalBookings, employeeLoad, planTeam],
+  );
+  const from = fmtLocalIso(timeline.startDate);
+  const to = fmtLocalIso(timeline.endDate);
+  const workday = isWorkday ?? WEEKDAYS;
+
+  return (
+    <>
+      {sections.map((s, si) => {
+        const lane = personLaneRuns(s, from, to, workday);
+        const clickable = !!s.employeeId && !!onEmployeeRowClick;
+        return (
+          <div key={s.employeeId ?? '__none__'} style={{ borderTop: si > 0 ? INIT_DIVIDER : 'none' }}>
+            {/* Заголовок секции: имя, команда, загрузка; щелчок — фильтр по человеку. */}
+            <div style={{ display: 'flex', minHeight: ROW_HEIGHT, background: INIT_HEADER_BG, borderBottom: '1px solid #1e3a5f' }}>
+              <div
+                onClick={() => { if (s.employeeId) onEmployeeRowClick?.(s.employeeId); }}
+                title={clickable ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать' : undefined}
+                style={{
+                  width: leftColWidth,
+                  flexShrink: 0,
+                  boxSizing: 'border-box',
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: STICKY_INIT_Z,
+                  background: INIT_HEADER_BG_OPAQUE,
+                  borderRight: '1px solid #1e3a5f',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 12px',
+                  cursor: clickable ? 'pointer' : 'default',
+                }}
+              >
+                {s.employeeId && <EmployeeAvatar name={s.name} role={s.role} size={20} />}
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.name}
+                </span>
+                {s.teamNote && (
+                  <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: s.isBorrowed ? '#b39ddb' : 'var(--text-muted, #8ab0d8)' }}>
+                    {s.teamNote}
+                  </span>
+                )}
+                {s.loadPct !== null && (
+                  <span
+                    title="Средняя загрузка в этом плане по рабочим дням квартала"
+                    style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: 'var(--text-muted, #8ab0d8)' }}
+                  >
+                    {s.loadPct}%
+                  </span>
+                )}
+              </div>
+              <div style={trackStyle(trackWidthPx)} />
+            </div>
+            {/* Полоса «все работы»: фазы этого плана цветом фазы, чужие брони — штриховкой. */}
+            {s.employeeId && (
+              <div style={{ display: 'flex', height: ROW_HEIGHT - 8, borderBottom: '1px solid #0e2540' }}>
+                <ItemTitleCell title="Все работы" jiraKey={null} leftColWidth={leftColWidth} fontWeight={400} />
+                <div style={trackStyle(trackWidthPx)}>
+                  {lane.map((r, ri) => (
+                    <div
+                      key={`${r.kind}-${r.start}-${r.label}-${ri}`}
+                      title={r.label}
+                      style={{
+                        position: 'absolute',
+                        left: `${dateToLeft(r.start, timeline)}%`,
+                        width: `${datesToWidth(r.start, r.end, timeline)}%`,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        height: 12,
+                        boxSizing: 'border-box',
+                        borderRadius: 3,
+                        background: r.kind === 'booking'
+                          ? OTHER_TEAM_HATCH
+                          : (appearance.phase_colors[r.phase] ?? PHASE_COLORS[r.phase]),
+                        border: r.kind === 'booking' ? '1px solid rgba(160,170,190,0.5)' : 'none',
+                        zIndex: r.kind === 'booking' ? 3 : 2,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Фазы человека в этом плане — те же полосы, что в «Задачах», с перетаскиванием. */}
+            {s.rows.map((row) => {
+              const color = appearance.phase_colors[row.phase] ?? PHASE_COLORS[row.phase];
+              return (
+                <div
+                  key={row.key}
+                  data-gantt-row="true"
+                  style={{ display: 'flex', height: ROW_HEIGHT - 4, borderBottom: '1px solid #0e2540' }}
+                >
+                  <ItemTitleCell
+                    title={row.itemTitle}
+                    jiraKey={row.itemKey}
+                    leftColWidth={leftColWidth}
+                    fontWeight={400}
+                    dotColor={color}
+                    assignee={PHASE_LABELS[row.phase]}
+                    hours={row.hours > 0 ? `${Math.round(row.hours)} ч` : ''}
+                  />
+                  <div data-gantt-track="true" style={trackStyle(trackWidthPx)}>
+                    {row.assignments.filter((a) => a.start_date && a.end_date).map((a) => (
+                      <PhaseBar
+                        key={a.id}
+                        assignment={a}
+                        planId={planId}
+                        timeline={timeline}
+                        refKey={`${a.backlog_item_id}-${a.phase}-${a.part_number}`}
+                        rowRefs={rowRefs}
+                        color={color}
+                        employees={employees}
+                        hasConflict={conflictSet.has(a.id)}
+                        onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
+                        unavailableDays={a.unavailable_days}
+                        highlightedEmployeeId={highlightedEmployeeId}
+                        pulseEmp={rpPrefs.pulse_highlighted_employee}
+                        pulseCp={rpPrefs.pulse_critical_path}
+                        quarterEndDate={quarterEndDate}
+                        busyDays={busyByAssignment?.get(a.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, onAssignmentClick }: SubProps) {
   const itemOrder = useMemo(
     () => [...new Set(assignments.map(a => a.backlog_item_id))],
@@ -1196,5 +1352,6 @@ function ResourceTrackRows({ assignments, timeline, leftColWidth, trackWidthPx, 
 export default function GanttRows(props: Props) {
   if (props.viewMode === 'portfolio') return <PortfolioRows {...props} />;
   if (props.viewMode === 'resource-track') return <ResourceTrackRows {...props} />;
+  if (props.layout === 'people') return <PeopleRows {...props} />;
   return <TwoLevelRows {...props} />;
 }
