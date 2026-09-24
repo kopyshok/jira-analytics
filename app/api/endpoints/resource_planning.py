@@ -2391,6 +2391,8 @@ def list_conflicts(
         q = q.where(PlanConflict.status.in_(["open", "acknowledged"]))
     elif status != "all":
         q = q.where(PlanConflict.status == status)
+    # Порядок внутри групп не зависит от того, как строки легли в базу.
+    q = q.order_by(PlanConflict.type, PlanConflict.detection_key)
     rows = db.execute(q).scalars().all()
 
     live: List[ConflictOut] = []

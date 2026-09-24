@@ -17,7 +17,10 @@ class PlanConflict(Base, TimestampMixin):
     """Конфликт плана с persistent статусом.
 
     type: OVERLOAD_LIGHT | OVERLOAD_MED | OVERLOAD_HIGH | QUARTER_OVERFLOW |
-          NO_ANALYST | NO_DEV | SPLIT_REQUIRED | LATE_START | LEVELING_DELAY | LEVELING_REASSIGN
+          NO_ANALYST | NO_DEV | SPLIT_REQUIRED | LATE_START | LEVELING_DELAY |
+          LEVELING_REASSIGN | PREDECESSOR_VIOLATED | OUT_OF_TEAM | UNPLACED_HOURS.
+          CROSS_TEAM_OVERLAP (пересечение с планами других команд) в таблице
+          не хранится: API считает его «живым» при каждом чтении (is_live=true).
     severity: critical | warning | info
     status: open | acknowledged | muted | resolved
     """
