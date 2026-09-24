@@ -392,6 +392,38 @@ def test_chain_shortfall_is_one_neutral_conflict_per_initiative(db_session):
     )
 
 
+def test_phase_pushed_by_predecessor_past_free_days_is_reported(db_session):
+    """Связь сдвинула фазу туда, где у исполнителя нет ни часа, — это не «размещено»."""
+    d1 = make_employee(db_session, "Разработчик 1", "B")
+    d2 = make_employee(db_session, "Разработчик 2", "B")
+    # Весь апрель (месяц запаса) второй разработчик занят командой C.
+    sc_c, plan_c = make_plan(db_session, "C")
+    book(db_session, plan_c, add_item(db_session, sc_c, "Работа C", dev=1), d2,
+         _weekdays("2026-04-01", "2026-04-30"))
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    long_item = add_item(db_session, sc_b, "Длинная", dev=480, priority=10)
+    short_item = add_item(db_session, sc_b, "Короткая", dev=30, priority=5)
+    db_session.commit()
+    svc = ResourcePlanningService(db_session)
+    svc.compute_schedule(plan_b.id)
+    rows = {r.backlog_item_id: r for r in _dev_rows(db_session, plan_b.id)}
+    for item, emp in ((long_item, d1), (short_item, d2)):
+        rows[item.id].employee_id = emp.id
+        rows[item.id].pinned_employee = True
+    db_session.commit()
+    # «Короткая» ждёт «Длинную»: та кончается 22.04, дальше у второго всё занято.
+    svc.set_predecessors(rows[short_item.id].id, [rows[long_item.id].id])
+
+    svc.compute_schedule(plan_b.id)
+
+    [c] = _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")
+    assert c.backlog_item_id == short_item.id
+    assert c.metric_value == 30.0
+    assert c.message == (
+        "Короткая · Разработка 0 из 30 ч — не поместилось в квартал и месяц запаса"
+    )
+
+
 def test_unplaced_conflict_disappears_once_hours_fit(db_session):
     """Пересчёт убирает запись, когда часы влезли, — и запись прежнего вида по фазе."""
     make_employee(db_session, "Свой B", "B")
