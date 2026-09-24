@@ -422,6 +422,16 @@ export default function PlanningPage() {
     !!scenario?.team,
   );
 
+  // Запасной список исполнителя строки — состав команды сценария: если список
+  // кандидатов из всех команд не загрузился, выбрать всё равно есть из кого.
+  const teamAssigneeOptions = useMemo(
+    () => (resourceBase?.employees ?? []).map((emp) => ({
+      label: emp.display_name,
+      value: emp.employee_id,
+    })),
+    [resourceBase?.employees],
+  );
+
   const isDraft = scenario?.status === 'draft';
   const isApproved = scenario?.status === 'approved';
 
@@ -962,6 +972,7 @@ export default function PlanningPage() {
                                   gridTemplate={hasSubgroups ? GRID_WITH_SUBGROUP : GRID}
                                   gridGap={GRID_GAP}
                                   continuationInfo={continuation?.info_by_allocation_id?.[a.id]}
+                                  teamAssigneeOptions={teamAssigneeOptions}
                                   subgroupOptions={hasSubgroups ? subgroupOptions : undefined}
                                   roles={roles}
                                   opoOff={opoOff}
