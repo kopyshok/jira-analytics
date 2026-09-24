@@ -138,6 +138,44 @@ class TestResolveRole:
         assert resolve_role(cands, None).disputed is False
 
 
+class TestFieldOrder:
+    """Порядок полей в настройке задаёт значение по умолчанию, но выбор не сбрасывает."""
+
+    REORDERED = json.dumps([
+        {"field_id": "customfield_12889", "kind": "sum", "name": "Оценка Front"},
+        {"field_id": "customfield_14648", "kind": "alt", "name": "Оценка 1С (ч)"},
+        {"field_id": "customfield_12888", "kind": "sum", "name": "Оценка Back"},
+        {"field_id": "customfield_12432", "kind": "alt", "name": "Разработка (ч)"},
+    ], ensure_ascii=False)
+    VALUES = {
+        "customfield_12432": 100.0, "customfield_14648": 120.0,
+        "customfield_12888": 30.0, "customfield_12889": 50.0,
+    }
+
+    def test_reorder_keeps_choice_and_manual(self):
+        before = _cands(DEV, self.VALUES)
+        after = _cands(self.REORDERED, self.VALUES)
+        assert [c.source for c in after] == [SUM_SOURCE, "customfield_14648", "customfield_12432"]
+
+        picked = {"source": "customfield_12432", "fingerprint": fingerprint(before)}
+        res = resolve_role(after, picked)
+        assert res.value == 100.0
+        assert res.disputed is False
+        manual = {"source": MANUAL_SOURCE, "fingerprint": fingerprint(before)}
+        assert resolve_role(after, manual, has_manual=True).disputed is False
+
+    def test_default_is_first_in_new_order(self):
+        res = resolve_role(_cands(self.REORDERED, self.VALUES), None)
+        assert res.value == 80.0
+        assert res.disputed is True
+
+    def test_fingerprint_changes_with_value_or_candidate_set(self):
+        base = fingerprint(_cands(DEV, self.VALUES))
+        assert fingerprint(_cands(DEV, {**self.VALUES, "customfield_14648": 121.0})) != base
+        assert fingerprint(_cands(DEV, {**self.VALUES, "customfield_14648": None})) != base
+        assert fingerprint(_cands(DEV, {**self.VALUES, "customfield_12889": None})) != base
+
+
 class TestZeroIsNotFilled:
     """Ноль — «поле не заполнено», если у роли есть ненулевое значение."""
 

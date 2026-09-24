@@ -153,9 +153,11 @@ def build_candidates(
 
 
 def fingerprint(candidates: Sequence[Candidate]) -> str:
-    """Отпечаток набора кандидатов: меняется при любом изменении значений в Jira."""
+    """Отпечаток набора кандидатов: меняется при любом изменении значений в Jira
+    или состава заполненных полей. Порядок полей в настройке на него не влияет —
+    перестановка полей не сбрасывает сделанный выбор."""
     payload = json.dumps(
-        [[c.source, round(c.value, _PRECISION)] for c in candidates],
+        sorted([c.source, round(c.value, _PRECISION)] for c in candidates),
         separators=(",", ":"),
     )
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
