@@ -184,3 +184,25 @@ def test_previous_quarter_plan_spilling_into_quarter_counts(db_session):
         db_session, team="A", year=2026, quarter=1, employee_ids=[e.id],
         start=D("2026-01-01"), end=D("2026-04-30"),
     ) == []
+
+
+def test_tail_of_task_carried_into_quarter_plan_counts_once(db_session):
+    """Задачу перенесли в план этого квартала — её хвост из прошлого не считается второй раз."""
+    e = make_employee(db_session, "Пряничников", "A")
+    sc_prev, plan_prev = make_plan(db_session, "A", year=2025, quarter="Q4")
+    carried = add_item(db_session, sc_prev, "Переходящая", dev=12)
+    book(db_session, plan_prev, carried, e, {"2026-01-05": 6.0, "2026-01-06": 6.0})
+    tail = add_item(db_session, sc_prev, "Хвост Q4", dev=6)
+    book(db_session, plan_prev, tail, e, {"2026-01-07": 6.0})
+    _, plan_cur = make_plan(db_session, "A")
+    book(db_session, plan_cur, carried, e, {"2026-01-05": 6.0, "2026-01-06": 6.0})
+    db_session.commit()
+
+    bookings = cto.external_bookings(
+        db_session, team=None, year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-04-30"),
+    )
+
+    assert cto.daily_totals(bookings) == {
+        e.id: {D("2026-01-05"): 6.0, D("2026-01-06"): 6.0, D("2026-01-07"): 6.0}
+    }
