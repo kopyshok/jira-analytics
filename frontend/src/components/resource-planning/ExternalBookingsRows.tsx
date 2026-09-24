@@ -4,20 +4,20 @@ import type { ProductionCalendarDayResponse } from '../../types/api';
 import type { GanttTimeline, WorkdayTimeline } from '../../utils/gantt';
 import { dateToLeft, datesToWidth, fmtLocalIso } from '../../utils/gantt';
 import {
+  OTHER_TEAM_HATCH,
   bookingRuns,
   externalBookingLabel,
   groupExternalBookings,
   phaseCountLabel,
+  workdayChecker,
 } from '../../utils/externalBookings';
 
 const ROW_H = 28;
 const BAR_H = 16;
-// Серая штриховка: чужая работа, только просмотр.
-const HATCH =
-  'repeating-linear-gradient(45deg, rgba(160,170,190,0.55) 0 4px, rgba(160,170,190,0.18) 4px 8px)';
 // Левая колонка перекрывает метку «сегодня» (z=20) при горизонтальном скролле —
 // как у строк задач.
 const STICKY_Z = 25;
+const OVERLAP_HINT = 'пересекается с вашим планом — техкоманда получит конфликт';
 
 interface Props {
   bookings: ExternalBookingOut[];
@@ -25,14 +25,20 @@ interface Props {
   calendar: ProductionCalendarDayResponse[];
   leftColWidth: number;
   trackWidthPx: number;
+  /** Заголовок блока. */
+  title: string;
+  /** Подпись строки; по умолчанию «KEY · Фаза · Имя». */
+  labelOf?: (b: ExternalBookingOut) => string;
+  /** Красная отметка в днях, где этот план тоже занял человека. */
+  showOverlap?: boolean;
 }
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 
 /**
- * Блок «Привлечённые»: фазы привлечённых сотрудников в опорных планах других
- * команд. Только просмотр. Полосы — дни с часами, так что паузы внутри чужой
- * фазы видны как свободные окна.
+ * Брони людей плана в опорных планах других команд: блоки «Привлечённые»
+ * и «Наши люди в других командах». Только просмотр. Полосы — дни с часами,
+ * так что паузы внутри чужой фазы видны как свободные окна.
  */
 export default function ExternalBookingsRows({
   bookings,
@@ -40,18 +46,15 @@ export default function ExternalBookingsRows({
   calendar,
   leftColWidth,
   trackWidthPx,
+  title,
+  labelOf = externalBookingLabel,
+  showOverlap = false,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const rows = useMemo(() => {
     const from = fmtLocalIso(timeline.startDate);
     const to = fmtLocalIso(timeline.endDate);
-    const workday = new Map(calendar.map((c) => [c.date, c.is_workday]));
-    const isWorkday = (iso: string) => {
-      const known = workday.get(iso);
-      if (known !== undefined) return known;
-      const dow = new Date(iso + 'T00:00:00').getDay();
-      return dow !== 0 && dow !== 6;
-    };
+    const isWorkday = workdayChecker(calendar);
     return groupExternalBookings(bookings)
       .flatMap((g) => g.rows)
       .map((b) => ({ b, runs: bookingRuns(b.daily_hours, from, to, isWorkday) }))
@@ -90,14 +93,14 @@ export default function ExternalBookingsRows({
           {collapsed ? '▶' : '▼'}
         </span>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #e6f0f7)' }}>
-          Привлечённые
+          {title}
         </span>
         <span style={{ fontSize: 11, color: 'var(--text-hint, #7a9ab8)' }}>
           {phaseCountLabel(rows.length)} в планах других команд · только просмотр
         </span>
       </button>
       {!collapsed && rows.map(({ b, runs }) => {
-        const label = externalBookingLabel(b);
+        const label = labelOf(b);
         const meta = b.provisional ? `${b.team} · предварительно` : b.team;
         return (
           <div
@@ -146,9 +149,26 @@ export default function ExternalBookingsRows({
                     height: BAR_H,
                     boxSizing: 'border-box',
                     borderRadius: 3,
-                    background: HATCH,
+                    background: OTHER_TEAM_HATCH,
                     border: '1px solid rgba(160,170,190,0.5)',
                     zIndex: 2,
+                  }}
+                />
+              ))}
+              {showOverlap && b.overlap_days.map((d) => (
+                <div
+                  key={`overlap-${d}`}
+                  title={`${ddmm(d)}: ${OVERLAP_HINT}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${dateToLeft(d, timeline)}%`,
+                    width: `${datesToWidth(d, d, timeline)}%`,
+                    top: (ROW_H - BAR_H) / 2 - 2,
+                    height: BAR_H + 4,
+                    boxSizing: 'border-box',
+                    border: '2px solid #ef4444',
+                    borderRadius: 3,
+                    zIndex: 3,
                   }}
                 />
               ))}
