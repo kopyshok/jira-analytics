@@ -125,7 +125,10 @@ export function invalidateForEntity(entity: string, qc: ReturnType<typeof useQue
     case 'resource_planning':
       qc.invalidateQueries({ queryKey: ['gantt'] });
       qc.invalidateQueries({ queryKey: ['resource-plans'] });
-      qc.invalidateQueries({ queryKey: ['assignment-candidates'] });
+      // Только пометить устаревшими: пересчёт пересоздаёт строки фаз с новыми
+      // id, и немедленный перезапрос открытой боковой панели ушёл бы по старому
+      // id раньше обновления диаграммы — 404. Новый id сам запросит свежий список.
+      qc.invalidateQueries({ queryKey: ['assignment-candidates'], refetchType: 'none' });
       qc.invalidateQueries({ queryKey: ['plan-quality'] });
       qc.invalidateQueries({ queryKey: ['plan-diff'] });
       break;

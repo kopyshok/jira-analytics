@@ -20,3 +20,13 @@ describe('invalidateForEntity', () => {
     ]);
   });
 });
+
+describe('invalidateForEntity — кандидаты', () => {
+  it('кандидатов только помечает устаревшими: старый id фазы после пересчёта дал бы 404', () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue(undefined);
+    invalidateForEntity('resource_planning', qc);
+    const call = spy.mock.calls.find(([f]) => f?.queryKey?.[0] === 'assignment-candidates');
+    expect(call?.[0]?.refetchType).toBe('none');
+  });
+});
