@@ -117,13 +117,19 @@ def _resolve_parallel_count_legacy(item: "BacklogItem", phase: str) -> int:
     return 1
 
 
-def _placed_hours(a: ResourcePlanAssignment) -> float:
-    """Часы строки, реально разложенные по дням; без раскладки — объём строки."""
+def _placed_hours(a: ResourcePlanAssignment, unlaid: frozenset | set = frozenset()) -> float:
+    """Часы строки, реально разложенные по дням; без раскладки — объём строки.
+
+    Строка из ``unlaid`` — сдвиг по предшественникам не нашёл ей ни одного
+    дня и снял раскладку — без раскладки не размещена вовсе.
+    """
     if a.daily_hours_json:
         try:
             return sum(float(v) for v in json.loads(a.daily_hours_json).values())
         except (ValueError, TypeError, AttributeError):
             pass
+    if a.id in unlaid:
+        return 0.0
     return float(a.hours_allocated or 0.0)
 
 
@@ -1038,6 +1044,8 @@ class ResourcePlanningService:
         self._ensure_default_predecessors(plan_id, new_assignments)
         self.db.flush()
         preds = self._load_predecessors(plan_id)
+        # Строки, которым сдвиг по предшественникам не нашёл ни дня.
+        unlaid: set = set()
         self._shift_to_obey_predecessors(
             new_assignments,
             preds,
@@ -1047,6 +1055,7 @@ class ResourcePlanningService:
             remaining=remaining,
             preempt_locked=preempt_locked,
             original_avail=original_avail,
+            unlaid=unlaid,
         )
 
         # Pinned_split — только структурный маркер N частей. После shift его
@@ -1267,6 +1276,7 @@ class ResourcePlanningService:
             remaining=remaining,
             preempt_locked=preempt_locked,
             original_avail=original_avail,
+            unlaid=unlaid,
         )
 
         # Защитный clamp дат к рабочим дням: start_date/end_date не должны
@@ -1316,6 +1326,7 @@ class ResourcePlanningService:
         detected += self._unplaced_conflict_dicts(
             items, new_assignments, alloc_by_item, pinned_phase_keys,
             assignments_by_role, unstaffed, {d["type"] for d in detected},
+            unlaid,
         )
         detected = aggregate_conflicts(detected, db_session=self.db)
         self._persist_conflicts(plan_id, detected)
@@ -2102,6 +2113,7 @@ class ResourcePlanningService:
         remaining: Optional[Dict[str, Dict[date, float]]] = None,
         preempt_locked: Optional[Dict[str, set]] = None,
         original_avail: Optional[Dict[str, Dict[date, float]]] = None,
+        unlaid: Optional[set] = None,
     ) -> None:
         """Сдвинуть start/end по графу preds, сохраняя длительность фазы.
 
@@ -2117,6 +2129,10 @@ class ResourcePlanningService:
         зафиксирован пользователем явно — не двигаем. Pinned-split — только
         структурный маркер «фаза разбита на части», даты должны течь по
         графу предшественников.
+
+        ``unlaid`` — id строк, которым после сдвига не нашлось ни одного дня
+        (раскладка снята): их часы не размещены, это видит конфликт
+        «не размещено». Удачная повторная раскладка строку оттуда убирает.
         """
         order = self._topological_order(assignments, preds)
         by_id = {a.id: a for a in assignments if a.id}
@@ -2228,8 +2244,12 @@ class ResourcePlanningService:
                         a.daily_hours_json = json.dumps(
                             {d.isoformat(): h for d, h in qa_daily.items()}
                         )
+                        if unlaid is not None:
+                            unlaid.discard(a.id)
                     else:
                         a.daily_hours_json = None
+                        if unlaid is not None:
+                            unlaid.add(a.id)
                 continue
 
             # Non-QA фаза (analyst/dev/opo): пересобрать раскладку через
@@ -2292,8 +2312,12 @@ class ResourcePlanningService:
                     a.daily_hours_json = json.dumps(
                         {d.isoformat(): h for d, h in new_daily.items()}
                     )
+                    if unlaid is not None:
+                        unlaid.discard(a.id)
                 else:
                     a.daily_hours_json = None
+                    if unlaid is not None:
+                        unlaid.add(a.id)
 
     def split_assignment(
         self,
@@ -3128,12 +3152,14 @@ class ResourcePlanningService:
         executors: Dict[str, Dict[str, Optional[str]]],
         unstaffed: Dict[Tuple[str, str], set],
         team_gaps: set,
+        unlaid: set,
     ) -> List[dict]:
         """UNPLACED_HOURS: у инициативы разложены не все часы фаз — одна запись на неё.
 
         Фаза недоразложена, если часы не влезли в окно (квартал + месяц
         запаса) — в том числе следом за предыдущей фазой, упёршейся в конец
-        окна, — или у неё нет исполнителя (``unstaffed``). Фаза без исполнителя
+        окна, или после сдвига связью туда, где у исполнителя нет дней
+        (``unlaid``), — или у неё нет исполнителя (``unstaffed``). Фаза без исполнителя
         роли, отсутствие которой в команде уже отмечено командным конфликтом
         (``team_gaps``: «Нет аналитика» / «Нет разработчика»), по каждой задаче
         не повторяется. Фазы, закреплённые пользователем по датам или разбивке
@@ -3148,7 +3174,7 @@ class ResourcePlanningService:
         first_row: Dict[Tuple[str, str], ResourcePlanAssignment] = {}
         for a in assignments:
             key = (a.backlog_item_id, a.phase)
-            placed[key] += _placed_hours(a)
+            placed[key] += _placed_hours(a, unlaid)
             first_row.setdefault(key, a)
 
         def _h(v: float) -> str:
