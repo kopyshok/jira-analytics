@@ -2,13 +2,14 @@
 держится, пока в Jira не сменят исполнителя."""
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
-from app.models import ScenarioAllocation
+from app.models import BacklogItem, Issue, ScenarioAllocation
 from app.models.project import Project
 from tests.services.xteam_factory import add_item, make_employee, make_issue, make_plan
 
@@ -75,3 +76,79 @@ def test_scenario_candidates_unknown_item_is_404(client, row):
         f"{PLANNING}/{row.sc.id}/assignee-candidates", params={"backlog_item_id": "nope"}
     )
     assert r.status_code == 404
+
+
+def _choose(client, row, employee_id):
+    return client.patch(
+        f"{PLANNING}/{row.sc.id}/allocations/{row.alloc.id}/assignee",
+        json={"assignee_employee_id": employee_id},
+    )
+
+
+def test_manual_choice_from_other_team_is_remembered(client, db_session, row):
+    r = _choose(client, row, row.chosen.id)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["assignee_employee_id"] == row.chosen.id
+    assert r.json()["assignee_display_name"] == "Выбранный"
+    db_session.expire_all()
+    item = db_session.get(BacklogItem, row.item.id)
+    assert item.assignee_manual is True
+    assert item.assignee_jira_account_at_choice == "acc-jira"
+
+
+def test_choosing_jira_assignee_follows_jira_again(client, db_session, row):
+    _choose(client, row, row.chosen.id)
+
+    r = _choose(client, row, row.jira.id)
+
+    assert r.status_code == 200, r.text
+    db_session.expire_all()
+    item = db_session.get(BacklogItem, row.item.id)
+    assert item.assignee_manual is False
+    assert item.assignee_jira_account_at_choice is None
+
+
+def test_manual_choice_survives_refresh_until_jira_changes(client, db_session, row, monkeypatch):
+    from app.api.endpoints import backlog as backlog_ep
+
+    jira = {"account": "acc-jira"}
+
+    class _FakeJira:
+        @classmethod
+        def from_db(cls, db):
+            return cls()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+    async def fake_refresh(self, keys, extra_field_ids=None, on_issue=None, on_progress=None):
+        issues = db_session.query(Issue).filter(Issue.key.in_(keys)).all()
+        for issue in issues:
+            fields = SimpleNamespace(
+                assignee=SimpleNamespace(accountId=jira["account"]), _extra={},
+            )
+            on_issue(SimpleNamespace(fields=fields), issue)
+        return len(issues), len(issues)
+
+    monkeypatch.setattr(backlog_ep, "JiraClient", _FakeJira)
+    monkeypatch.setattr(backlog_ep, "_discover_field_id", AsyncMock(return_value=None))
+    monkeypatch.setattr(backlog_ep.SyncService, "refresh_issues_by_keys", fake_refresh)
+    _choose(client, row, row.chosen.id)
+
+    assert client.post("/api/v1/backlog/refresh-from-jira").status_code == 200
+    db_session.expire_all()
+    assert db_session.get(BacklogItem, row.item.id).assignee_employee_id == row.chosen.id
+
+    # В Jira сменили исполнителя — ручной выбор больше не действует.
+    newcomer = make_employee(db_session, "Новый в Jira", "B", jira_account_id="acc-new")
+    db_session.commit()
+    jira["account"] = "acc-new"
+    assert client.post("/api/v1/backlog/refresh-from-jira").status_code == 200
+    db_session.expire_all()
+    item = db_session.get(BacklogItem, row.item.id)
+    assert item.assignee_employee_id == newcomer.id
+    assert item.assignee_manual is False

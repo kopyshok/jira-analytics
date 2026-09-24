@@ -17,14 +17,14 @@ BacklogItem allocations в draft-сценариях удаляются. Утве
 """
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any, Optional, cast
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Query, Session, aliased
 
-from app.models import AppSetting, BacklogItem, Issue, PlanningScenario, Project, ScenarioAllocation
+from app.models import AppSetting, BacklogItem, Employee, Issue, PlanningScenario, Project, ScenarioAllocation
 from app.services.hierarchy_rules import is_planning_leaf, is_service_epic, load_rules
 
 
@@ -386,6 +386,27 @@ def has_included_ancestor(db: Session, issue: Issue) -> bool:
             return True
         cur_id = db.query(Issue.parent_id).filter(Issue.id == cur_id).scalar()
     return False
+
+
+def apply_jira_assignee(
+    item: BacklogItem,
+    account_id: Optional[str],
+    emp_by_account: Mapping[str, Employee],
+) -> None:
+    """Исполнитель строки бэклога из Jira — если его не выбрали в сценарии вручную.
+
+    Ручной выбор держится, пока в Jira стоит тот же исполнитель, что и в
+    момент выбора. Сменили исполнителя в Jira — выбор сбрасывается, строка
+    снова следует за Jira.
+    """
+    account_id = account_id or None
+    if item.assignee_manual:
+        if account_id == (item.assignee_jira_account_at_choice or None):
+            return
+        item.assignee_manual = False
+        item.assignee_jira_account_at_choice = None
+    emp = emp_by_account.get(account_id) if account_id else None
+    item.assignee_employee_id = emp.id if emp else None
 
 
 class BacklogService:
