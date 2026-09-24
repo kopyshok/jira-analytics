@@ -34,6 +34,7 @@ const CELL_GAP = 2; // зазор между днями внутри недел�
 const WEEK_GAP = 7; // зазор между неделями
 const LABEL_W = 210;
 const ROW_H = 26;
+const TIP_MAX_W = 420; // ширина подсказки дня: строки длиннее переносятся
 
 // Штриховка отпуска (синеватая) и праздника (тусклая серая).
 const ABSENCE_FILL =
@@ -134,7 +135,7 @@ export default function EmployeeLoadHeatmap({
   selectedIds = NO_IDS,
   onEmployeeClick,
 }: Props) {
-  const [tip, setTip] = useState<{ x: number; y: number; lines: string[] } | null>(null);
+  const [tip, setTip] = useState<{ left?: number; right?: number; top: number; lines: string[] } | null>(null);
 
   const data = useMemo(() => {
     if (rows.length === 0) return null;
@@ -239,7 +240,13 @@ export default function EmployeeLoadHeatmap({
       const lines = dayTooltipLines(row.employee_id, date, assignments, bookings);
       body = lines.length > 0 ? lines : ['нет загрузки'];
     }
-    setTip({ x: e.clientX, y: e.clientY, lines: [head, ...body] });
+    // У правого края экрана подсказка раскрывается влево от курсора, иначе уходит за край.
+    const nearRight = e.clientX > window.innerWidth - TIP_MAX_W;
+    setTip({
+      top: e.clientY + 14,
+      ...(nearRight ? { right: window.innerWidth - e.clientX + 12 } : { left: e.clientX + 12 }),
+      lines: [head, ...body],
+    });
   };
 
   return (
@@ -515,8 +522,9 @@ export default function EmployeeLoadHeatmap({
         <div
           style={{
             position: 'fixed',
-            left: tip.x + 12,
-            top: tip.y + 14,
+            left: tip.left,
+            right: tip.right,
+            top: tip.top,
             zIndex: 1000,
             pointerEvents: 'none',
             background: '#0a1628',
@@ -525,7 +533,8 @@ export default function EmployeeLoadHeatmap({
             padding: '4px 8px',
             fontSize: 11,
             color: '#e6f0fa',
-            whiteSpace: 'nowrap',
+            maxWidth: TIP_MAX_W,
+            whiteSpace: 'normal',
             boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
           }}
         >
