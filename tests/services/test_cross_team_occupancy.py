@@ -6,7 +6,7 @@ from sqlalchemy import delete, update
 
 from app.models import ResourcePlan, ResourcePlanAssignment, ScenarioAllocation
 from app.services import cross_team_occupancy as cto
-from tests.services.xteam_factory import add_item, book, make_employee, make_plan
+from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
 
 D = date.fromisoformat
 
@@ -279,3 +279,107 @@ def test_external_bookings_tie_broken_by_assignment(db_session):
         "00000000-0000-0000-0000-000000000000",
         "ffffffff-0000-0000-0000-000000000000",
     ]
+
+
+def _ext(employee_id, team="B", is_borrowing=False, changed_at=None):
+    """Бронь без базы — для чистых функций."""
+    return cto.ExternalBooking(
+        assignment_id=f"a-{employee_id}-{team}-{is_borrowing}",
+        employee_id=employee_id,
+        team=team,
+        issue_key=None,
+        title="x",
+        phase="dev",
+        start=D("2026-01-05"),
+        end=D("2026-01-05"),
+        daily_hours={D("2026-01-05"): 6.0},
+        provisional=False,
+        is_borrowing=is_borrowing,
+        changed_at=changed_at,
+    )
+
+
+def _booking_of(db_session, employee, team="B", year=2026, quarter="Q1", day="2026-01-05"):
+    """Опорный план команды ``team`` с одной бронью на сотрудника."""
+    sc, plan = make_plan(db_session, team, year=year, quarter=quarter)
+    row = book(db_session, plan, add_item(db_session, sc, f"Работа {team}", dev=6), employee, {day: 6.0})
+    return plan, row
+
+
+def _bookings_for_a(db_session, employee, end="2026-03-31"):
+    return cto.external_bookings(
+        db_session, team="A", year=2026, quarter=1, employee_ids=[employee.id],
+        start=D("2026-01-01"), end=D(end),
+    )
+
+
+def test_booking_of_team_without_the_employee_is_borrowing(db_session):
+    """Команда B взяла к себе E из A — для A это бронь-привлечение."""
+    e = make_employee(db_session, "Шутов", "A")
+    _booking_of(db_session, e)
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e)
+
+    assert b.is_borrowing is True
+
+
+def test_booking_of_shared_member_is_not_borrowing(db_session):
+    """E состоит и в A, и в B — бронь B на E не привлечение."""
+    e = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, e, "B")
+    _booking_of(db_session, e)
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e)
+
+    assert b.is_borrowing is False
+
+
+def test_tail_booking_checks_membership_in_its_own_quarter(db_session):
+    """Хвост плана B прошлого квартала: тогда E в B состоял — не привлечение,
+    хотя в этом квартале он в B уже не состоит."""
+    e = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, e, "B", left_at=D("2026-01-01"))
+    _booking_of(db_session, e, year=2025, quarter="Q4")
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e, end="2026-04-30")
+
+    assert b.is_borrowing is False
+
+
+def test_subtractable_keeps_borrowing_bookings_only_for_borrowed():
+    own_lent = _ext("own", is_borrowing=True)
+    own_shared = _ext("own", team="C")
+    ext_lent = _ext("ext", is_borrowing=True)
+
+    assert cto.subtractable([own_lent, own_shared, ext_lent], {"ext"}) == [own_shared, ext_lent]
+
+
+def test_booking_changed_at_is_latest_of_plan_compute_and_row_edit(db_session):
+    e = make_employee(db_session, "Шутов", "A")
+    plan, row = _booking_of(db_session, e)
+    plan.computed_at = datetime(2026, 1, 2)
+    row.updated_at = datetime(2026, 1, 3)
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e)
+    assert b.changed_at == datetime(2026, 1, 3)
+
+    row.updated_at = datetime(2026, 1, 1)
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e)
+    assert b.changed_at == datetime(2026, 1, 2)
+
+
+def test_stale_teams_lists_teams_changed_after_compute():
+    bookings = [
+        _ext("e", team="B", changed_at=datetime(2026, 1, 5)),
+        _ext("e", team="C", changed_at=datetime(2026, 1, 1)),
+        _ext("e", team="D", changed_at=None),
+    ]
+
+    assert cto.stale_teams(bookings, datetime(2026, 1, 3)) == ["B"]
+    assert cto.stale_teams(bookings, None) == []

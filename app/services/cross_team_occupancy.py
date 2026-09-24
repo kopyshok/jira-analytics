@@ -38,6 +38,8 @@ class ReferencePlan:
     plan_id: str
     team: str
     provisional: bool
+    # Когда план последний раз считался — для признака устаревания чужих планов.
+    computed_at: Optional[datetime] = None
 
 
 def quarter_num(value) -> Optional[int]:
@@ -89,7 +91,7 @@ def reference_plans(
     for team in set(approved) | set(drafts):
         if approved.get(team):
             best = max((p for p, _ in approved[team]), key=_ref_key)
-            out[team] = ReferencePlan(best.id, team, False)
+            out[team] = ReferencePlan(best.id, team, False, best.computed_at)
             continue
         fresh_sc = max(
             (sc for _, sc in drafts[team]),
@@ -98,7 +100,7 @@ def reference_plans(
         best = max(
             (p for p, sc in drafts[team] if sc.id == fresh_sc.id), key=_ref_key
         )
-        out[team] = ReferencePlan(best.id, team, True)
+        out[team] = ReferencePlan(best.id, team, True, best.computed_at)
     return out
 
 
@@ -116,6 +118,11 @@ class ExternalBooking:
     end: date
     daily_hours: Dict[date, float]
     provisional: bool
+    # Бронь-привлечение: в команде брони человек не состоял ни дня квартала
+    # её плана — команда взяла его к себе.
+    is_borrowing: bool = False
+    # Когда бронь последний раз менялась: пересчёт опорного плана или правка строки.
+    changed_at: Optional[datetime] = None
 
 
 def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
@@ -142,6 +149,25 @@ def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
         days = [a.start_date]
     per = float(a.hours_allocated) / len(days)
     return {d: per for d in days}
+
+
+def _member_of(
+    periods: Iterable[tuple[str, Optional[date], Optional[date], bool]],
+    team: str,
+    start: date,
+    end: date,
+) -> bool:
+    """Состоял ли сотрудник в ``team`` хоть день отрезка.
+
+    ``periods`` — его периоды участия из ``tm.membership_rows``:
+    ``(команда, joined_at, left_at, основная)``, ``left_at`` — первый день вне команды.
+    """
+    return any(
+        t == team
+        and (joined is None or joined <= end)
+        and (left is None or left > start)
+        for t, joined, left, _primary in periods
+    )
 
 
 def _in_plan_scenario(stmt: Select) -> Select:
@@ -179,8 +205,11 @@ def external_bookings(
     там она уже занимает человека. Окно ``start`` — ``end`` отсекает всё,
     что в него не попадает. Строки задач, которых уже нет в сценарии плана,
     не считаются нигде.
-    Четыре запроса на любой объём: опорные планы двух кварталов, задачи
-    планов квартала и назначения.
+    У каждой брони — ``is_borrowing`` (человек не состоял в команде брони ни
+    дня квартала её плана: команда его привлекла) и ``changed_at`` (когда
+    бронь последний раз менялась: пересчёт опорного плана или правка строки).
+    Пять запросов на любой объём: опорные планы двух кварталов, задачи
+    планов квартала, назначения и периоды участия их людей.
     """
     ids = [i for i in dict.fromkeys(employee_ids) if i]
     if not ids or not year or not quarter:
@@ -228,6 +257,13 @@ def external_bookings(
         .unique()
         .all()
     )
+    # Состав команды брони сверяется с кварталом её опорного плана: хвост
+    # прошлого квартала — с прошлым кварталом.
+    membership = tm.membership_rows(
+        db, list({a.employee_id for a in rows if a.employee_id})
+    )
+    cur_bounds = quarter_bounds(year, quarter)
+    prev_bounds = quarter_bounds(prev_year, prev_quarter)
     out: List[ExternalBooking] = []
     for a in rows:
         if not a.employee_id or a.start_date is None or a.end_date is None:
@@ -238,6 +274,7 @@ def external_bookings(
         daily = {d: h for d, h in _assignment_daily(a).items() if start <= d <= end}
         if not daily:
             continue
+        lo, hi = prev_bounds if a.plan_id in prev_ids else cur_bounds
         bi = a.backlog_item
         out.append(
             ExternalBooking(
@@ -251,6 +288,13 @@ def external_bookings(
                 end=a.end_date,
                 daily_hours=daily,
                 provisional=ref.provisional,
+                is_borrowing=not _member_of(
+                    membership.get(a.employee_id, ()), ref.team, lo, hi
+                ),
+                changed_at=max(
+                    (t for t in (ref.computed_at, a.updated_at) if t is not None),
+                    default=None,
+                ),
             )
         )
     out.sort(
@@ -268,6 +312,33 @@ def daily_totals(bookings: Iterable[ExternalBooking]) -> Dict[str, Dict[date, fl
         for d, h in b.daily_hours.items():
             acc[b.employee_id][d] += h
     return {eid: dict(days) for eid, days in acc.items()}
+
+
+def subtractable(
+    bookings: Iterable[ExternalBooking], borrowed: set
+) -> List[ExternalBooking]:
+    """Брони, которые вычитаются из доступности плана: сначала домашняя команда.
+
+    Привлечённому в план (``borrowed``) — все брони других команд. Своему
+    сотруднику — только брони команд, где он тоже состоит (общий сотрудник).
+    Бронь-привлечение своего (команда взяла его к себе, не имея в составе)
+    доступность не уменьшает — подстраивается привлекающая команда.
+    """
+    return [b for b in bookings if b.employee_id in borrowed or not b.is_borrowing]
+
+
+def stale_teams(
+    bookings: Iterable[ExternalBooking], computed_at: Optional[datetime]
+) -> List[str]:
+    """Команды, чьи брони изменились после расчёта плана, по алфавиту.
+
+    План ни разу не считался — сравнивать не с чем, список пуст.
+    """
+    if computed_at is None:
+        return []
+    return sorted(
+        {b.team for b in bookings if b.changed_at is not None and b.changed_at > computed_at}
+    )
 
 
 def subtract_occupancy(

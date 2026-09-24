@@ -43,6 +43,26 @@ def make_employee(
     return e
 
 
+def join_team(
+    db,
+    employee: Employee,
+    team: str,
+    joined_at: Optional[date] = None,
+    left_at: Optional[date] = None,
+) -> EmployeeTeam:
+    """Ещё одна (не основная) команда сотрудника — общий сотрудник."""
+    et = EmployeeTeam(
+        employee_id=employee.id,
+        team=team,
+        is_primary=False,
+        joined_at=joined_at,
+        left_at=left_at,
+    )
+    db.add(et)
+    db.flush()
+    return et
+
+
 def make_plan(
     db,
     team: str,
