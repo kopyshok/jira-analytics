@@ -551,6 +551,8 @@ class ResourcePlanningService:
 
         items = self._load_items(plan)
         if not items:
+            # Раскладывать нечего — прежние конфликты больше ни о чём.
+            self._persist_conflicts(plan_id, [])
             plan.status = "ready"
             plan.computed_at = datetime.utcnow()
             self.db.commit()
@@ -575,6 +577,19 @@ class ResourcePlanningService:
         borrowed = {e.id for e in borrowed_rows}
         employees = team_employees + borrowed_rows
         if not employees:
+            # Фазы положить не на кого: план остаётся пустым, а причину
+            # называют командные «Нет аналитика» / «Нет разработчика» вместо
+            # прежних конфликтов.
+            from app.services.conflict_aggregator import aggregate_conflicts
+
+            self._last_leveling_events = []
+            self._persist_conflicts(
+                plan_id,
+                aggregate_conflicts(
+                    self._build_conflict_dicts(plan, pinned_existing, [], q_end),
+                    db_session=self.db,
+                ),
+            )
             plan.status = "ready"
             plan.computed_at = datetime.utcnow()
             self.db.commit()
