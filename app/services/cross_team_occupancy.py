@@ -157,21 +157,38 @@ def external_bookings(
 
     ``team=None`` — берутся опорные планы всех команд (загрузка за квартал).
     Кроме планов квартала — опорные планы прошлого квартала: их фазы выползают
-    в этот квартал на месяц запаса и тоже занимают человека. Окно ``start`` —
-    ``end`` отсекает всё, что в него не попадает.
-    Три запроса на любой объём: опорные планы двух кварталов + их назначения.
+    в этот квартал на месяц запаса и тоже занимают человека. Хвост задачи,
+    которую команда перенесла в свой план этого квартала, не считается:
+    там она уже занимает человека. Окно ``start`` — ``end`` отсекает всё,
+    что в него не попадает.
+    Четыре запроса на любой объём: опорные планы двух кварталов, задачи
+    планов квартала и назначения.
     """
     ids = [i for i in dict.fromkeys(employee_ids) if i]
     if not ids or not year or not quarter:
         return []
     prev_year, prev_quarter = (year, quarter - 1) if quarter > 1 else (year - 1, 4)
-    by_plan = {
-        r.plan_id: r
-        for y, q in ((prev_year, prev_quarter), (year, quarter))
-        for r in reference_plans(db, y, q, exclude_team=team).values()
-    }
+    prev_refs = reference_plans(db, prev_year, prev_quarter, exclude_team=team)
+    cur_refs = reference_plans(db, year, quarter, exclude_team=team)
+    by_plan = {r.plan_id: r for r in (*prev_refs.values(), *cur_refs.values())}
     if not by_plan:
         return []
+    prev_ids = {r.plan_id for r in prev_refs.values()}
+    # (команда, задача) из планов квартала — их хвосты прошлого квартала лишние.
+    carried: set[tuple[str, str]] = set()
+    if prev_ids and cur_refs:
+        team_of = {r.plan_id: r.team for r in cur_refs.values()}
+        carried = {
+            (team_of[plan_id], item_id)
+            for plan_id, item_id in db.execute(
+                select(
+                    ResourcePlanAssignment.plan_id,
+                    ResourcePlanAssignment.backlog_item_id,
+                )
+                .where(ResourcePlanAssignment.plan_id.in_(list(team_of)))
+                .distinct()
+            ).all()
+        }
     rows = (
         db.execute(
             select(ResourcePlanAssignment)
@@ -195,10 +212,12 @@ def external_bookings(
     for a in rows:
         if not a.employee_id or a.start_date is None or a.end_date is None:
             continue
+        ref = by_plan[a.plan_id]
+        if a.plan_id in prev_ids and (ref.team, a.backlog_item_id) in carried:
+            continue
         daily = {d: h for d, h in _assignment_daily(a).items() if start <= d <= end}
         if not daily:
             continue
-        ref = by_plan[a.plan_id]
         bi = a.backlog_item
         out.append(
             ExternalBooking(
