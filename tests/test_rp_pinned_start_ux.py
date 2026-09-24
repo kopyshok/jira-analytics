@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import BacklogItem, Employee, ResourcePlan, ResourcePlanAssignment
+from app.models import BacklogItem, Employee, PlanningScenario, ResourcePlan, ResourcePlanAssignment, ScenarioAllocation
 from app.models.employee_team import EmployeeTeam
 
 
@@ -54,7 +54,19 @@ def assignment(testclient_db_session):
     db.add(item)
     db.flush()
 
-    plan = ResourcePlan(team="PIN_UX", quarter="Q2", year=2026, status="draft")
+    # Перетаскивание пересчитывает план — задача должна быть в его сценарии.
+    scenario = PlanningScenario(
+        name="pin-ux-scenario", quarter="Q2", year=2026, status="draft", team="PIN_UX",
+    )
+    db.add(scenario)
+    db.flush()
+    db.add(ScenarioAllocation(
+        scenario_id=scenario.id, backlog_item_id=item.id, included_flag=True,
+    ))
+
+    plan = ResourcePlan(
+        team="PIN_UX", quarter="Q2", year=2026, status="draft", scenario_id=scenario.id,
+    )
     db.add(plan)
     db.flush()
 

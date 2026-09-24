@@ -1,11 +1,8 @@
-"""PATCH start_date должен расширять end_date так, чтобы вместить hours_allocated.
+"""PATCH start_date: конец фазы и часы по дням считает планировщик.
 
-Старое поведение сохраняло длительность фазы (new_end = end + delta_days),
-что молча обрезало плановые часы при day_cap × duration < hours.
-
-Теперь end_date и daily_hours_json пересчитываются через
-_extend_window_for_hours, чтобы окно фазы вмещало все заявленные часы
-(или дотягивалось до конца квартала).
+Перетаскивание задаёт только дату начала. Сервер ставит закрепление даты,
+пересчитывает план целиком, а часы фазы раскладывает с новой даты по
+свободным дням исполнителя. Присланный клиентом конец не используется.
 """
 
 import uuid
@@ -183,19 +180,8 @@ def test_patch_start_date_extends_end_to_fit_hours(client, db_session, dev_plan)
     assert a.out_of_quarter is False
 
 
-def test_patch_with_explicit_end_date_does_not_auto_extend(
-    client, db_session, dev_plan
-):
-    """Если пользователь явно передал end_date — auto-extend не запускается."""
-    from app.models import ResourcePlanAssignment
-
-    # Снимок daily_hours_json ДО PATCH — если auto-extend-ветка ошибочно
-    # запустится при явном end_date, она перезапишет это значение через
-    # _extend_window_for_hours.
-    a_before = db_session.get(ResourcePlanAssignment, dev_plan["assignment_id"])
-    daily_before = a_before.daily_hours_json
-    db_session.expire_all()
-
+def test_patch_ignores_client_end_date(client, db_session, dev_plan):
+    """Присланный конец не используется: часы раскладываются с новой даты начала."""
     resp = client.patch(
         f"/api/v1/resource-planning/resource-plans/{dev_plan['plan_id']}/assignments/{dev_plan['assignment_id']}",
         json={"start_date": "2026-04-20", "end_date": "2026-04-22"},
@@ -203,12 +189,23 @@ def test_patch_with_explicit_end_date_does_not_auto_extend(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["start_date"] == "2026-04-20"
-    # Явный end_date пользователя сохраняется как есть, auto-extend не вмешивается.
-    assert body["end_date"] == "2026-04-22"
+    assert body["end_date"] == "2026-04-28"
+    assert abs(sum(body["daily_hours"].values()) - 40.0) < 0.01
 
+
+def test_patch_start_date_recomputes_plan(client, db_session, dev_plan):
+    """После перетаскивания план пересчитан — как при смене исполнителя."""
+    from app.models import ResourcePlan
+
+    before = db_session.get(ResourcePlan, dev_plan["plan_id"]).computed_at
+
+    resp = client.patch(
+        f"/api/v1/resource-planning/resource-plans/{dev_plan['plan_id']}/assignments/{dev_plan['assignment_id']}",
+        json={"start_date": "2026-04-20"},
+    )
+
+    assert resp.status_code == 200, resp.text
     db_session.expire_all()
-    a_after = db_session.get(ResourcePlanAssignment, dev_plan["assignment_id"])
-    assert a_after.end_date.isoformat() == "2026-04-22"
-    # daily_hours_json не должен быть переписан хелпером расширения —
-    # сравниваем со снимком до PATCH.
-    assert a_after.daily_hours_json == daily_before
+    plan = db_session.get(ResourcePlan, dev_plan["plan_id"])
+    assert plan.status == "ready"
+    assert plan.computed_at > before

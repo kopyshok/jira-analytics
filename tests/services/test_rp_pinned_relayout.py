@@ -164,3 +164,37 @@ def test_pinned_phase_without_free_days_is_reported(db_session):
     assert c.message == (
         "Работа T · Разработка 0 из 12 ч — не поместилось в свободные дни исполнителя"
     )
+
+
+def test_pinned_opo_part_of_analyst_keeps_developer_part(db_session):
+    """Закреплена часть ОПЭ аналитика — часть разработчика пересчёт не теряет."""
+    an = make_employee(db_session, "Аналитик", "T", role="analyst")
+    dev = make_employee(db_session, "Разработчик", "T")
+    sc, plan = make_plan(db_session, "T", plan_status="draft")
+    item = add_item(db_session, sc, "Запуск")
+    item.estimate_opo_hours = 8.0
+    row = book(db_session, plan, item, an, {"2026-01-12": 4.0}, phase="opo",
+               pinned_start=True)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    db_session.expire_all()
+    parts = {
+        r.employee_id: r
+        for r in db_session.execute(
+            select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.plan_id == plan.id,
+                ResourcePlanAssignment.phase == "opo",
+            )
+        ).scalars()
+    }
+    assert set(parts) == {an.id, dev.id}
+    assert parts[an.id].id == row.id
+    assert _daily(db_session, row.id) == {"2026-01-12": 4.0}
+    assert parts[dev.id].hours_allocated == 4.0
+    assert db_session.execute(
+        select(PlanConflict).where(
+            PlanConflict.plan_id == plan.id, PlanConflict.type == "UNPLACED_HOURS"
+        )
+    ).scalars().all() == []
