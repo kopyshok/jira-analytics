@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Awaitable, Callable, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
@@ -1514,28 +1515,34 @@ async def set_planning_mode(
     """
     if payload.mode not in ("whole", "by_epics"):
         raise HTTPException(422, "mode must be 'whole' or 'by_epics'")
-    bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
-    if bi is None:
-        raise HTTPException(404, "BacklogItem not found")
-    if (
-        payload.mode == "whole"
-        and multi_team_lock_enabled(db)
-        and issue_is_multi_team(bi.issue)
-    ):
-        raise HTTPException(
-            409,
-            "Мультикомандную RFA нельзя планировать целиком — только по Эпикам",
-        )
-    bi.planning_mode = payload.mode
-    # by_epics → родитель по умолчанию контекст; whole → флаг участия не нужен.
-    bi.included_in_planning = payload.mode != "by_epics"
-    db.flush()
-    _reconcile_mode(db, item_id)
-    result_mode = bi.planning_mode
-    result_included = bi.included_in_planning
-    db.commit()
+
+    def work() -> dict:
+        bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
+        if bi is None:
+            raise HTTPException(404, "BacklogItem not found")
+        if (
+            payload.mode == "whole"
+            and multi_team_lock_enabled(db)
+            and issue_is_multi_team(bi.issue)
+        ):
+            raise HTTPException(
+                409,
+                "Мультикомандную RFA нельзя планировать целиком — только по Эпикам",
+            )
+        bi.planning_mode = payload.mode
+        # by_epics → родитель по умолчанию контекст; whole → флаг участия не нужен.
+        bi.included_in_planning = payload.mode != "by_epics"
+        db.flush()
+        _reconcile_mode(db, item_id)
+        result_mode = bi.planning_mode
+        result_included = bi.included_in_planning
+        db.commit()
+        return {"id": item_id, "planning_mode": result_mode, "included_in_planning": result_included}
+
+    # Выравнивание черновиков перебирает весь бэклог — в пуле потоков.
+    result = await run_in_threadpool(work)
     await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
-    return {"id": item_id, "planning_mode": result_mode, "included_in_planning": result_included}
+    return result
 
 
 @router.patch("/{item_id}/included")
@@ -1552,21 +1559,26 @@ async def set_included(
     своей команды. Для RFA «по эпикам» это та же галочка «Включить саму RFA».
     Мультикомандную RFA с детьми включить целиком нельзя — только по Эпикам.
     """
-    bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
-    if bi is None:
-        raise HTTPException(404, "BacklogItem not found")
-    if payload.included and bi.id in _include_locked_ids(db, [bi], multi_team_lock_enabled(db)):
-        raise HTTPException(
-            409,
-            "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",
-        )
-    bi.included_in_planning = payload.included
-    db.flush()
-    _reconcile_mode(db, item_id)
-    result_included = bi.included_in_planning
-    db.commit()
+    def work() -> dict:
+        bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
+        if bi is None:
+            raise HTTPException(404, "BacklogItem not found")
+        if payload.included and bi.id in _include_locked_ids(db, [bi], multi_team_lock_enabled(db)):
+            raise HTTPException(
+                409,
+                "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",
+            )
+        bi.included_in_planning = payload.included
+        db.flush()
+        _reconcile_mode(db, item_id)
+        result_included = bi.included_in_planning
+        db.commit()
+        return {"id": item_id, "included_in_planning": result_included}
+
+    # Выравнивание черновиков перебирает весь бэклог — в пуле потоков.
+    result = await run_in_threadpool(work)
     await event_bus.publish({"type": "entity_changed", "entities": ["backlog", "planning"]})
-    return {"id": item_id, "included_in_planning": result_included}
+    return result
 
 
 @router.post("/{item_id}/restore", response_model=BacklogItemResponse)

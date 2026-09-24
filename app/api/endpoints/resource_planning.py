@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta as _timedelta, timezone
 from typing import Dict, List, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session, joinedload
@@ -30,6 +31,12 @@ from app.services.resource_planning_service import ResourcePlanningService
 router = APIRouter()
 
 
+# Правки с рассылкой события — async-эндпоинты. Тяжёлую работу с базой
+# (пересчёт, копия и удаление плана, смена исполнителя, массовый сброс) они
+# отдают в пул потоков через run_in_threadpool: на цикле событий она держала
+# бы запросы всех остальных пользователей. Пул тот же, что у обычных
+# эндпоинтов, — под него рассчитан пул соединений с базой. Правка одной
+# строки идёт прямо на цикле.
 async def _announce(bus: EventBroadcaster, *, bookings: bool) -> None:
     """Сообщить всем открытым вкладкам о правке плана: диаграмма, список
     планов и кандидаты в исполнители перечитываются.
@@ -850,11 +857,14 @@ async def delete_plan(
     _: User = Depends(get_current_user),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    plan = db.get(ResourcePlan, plan_id)
-    if not plan:
-        raise HTTPException(404)
-    db.delete(plan)
-    db.commit()
+    def work() -> None:
+        plan = db.get(ResourcePlan, plan_id)
+        if not plan:
+            raise HTTPException(404)
+        db.delete(plan)
+        db.commit()
+
+    await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
 
 
@@ -865,24 +875,28 @@ async def compute_plan(
     _: User = Depends(get_current_user),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    plan = db.get(ResourcePlan, plan_id)
-    if not plan:
-        raise HTTPException(404, "ResourcePlan not found")
-    plan.status = "computing"
-    db.commit()
-    svc = ResourcePlanningService(db)
-    try:
-        svc.compute_schedule(plan_id)
-    except Exception:
-        # Не оставлять план в `computing` если расчёт упал — иначе UI
-        # бесконечно показывает «Считается…» и блокирует кнопку.
-        db.rollback()
-        plan2 = db.get(ResourcePlan, plan_id)
-        if plan2 and plan2.status == "computing":
-            plan2.status = "stale"
-            db.commit()
-        raise
-    db.refresh(plan)
+    def work() -> ResourcePlan:
+        plan = db.get(ResourcePlan, plan_id)
+        if not plan:
+            raise HTTPException(404, "ResourcePlan not found")
+        plan.status = "computing"
+        db.commit()
+        svc = ResourcePlanningService(db)
+        try:
+            svc.compute_schedule(plan_id)
+        except Exception:
+            # Не оставлять план в `computing` если расчёт упал — иначе UI
+            # бесконечно показывает «Считается…» и блокирует кнопку.
+            db.rollback()
+            plan2 = db.get(ResourcePlan, plan_id)
+            if plan2 and plan2.status == "computing":
+                plan2.status = "stale"
+                db.commit()
+            raise
+        db.refresh(plan)
+        return plan
+
+    plan = await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
     return plan
 
@@ -1803,29 +1817,32 @@ async def set_assignment_involvement(
     Вовлечённость — свойство инициативы (BacklogItem) per-фаза, поэтому правка
     влияет на все планы/сценарии, где задействована эта задача.
     """
-    a = db.execute(
-        select(ResourcePlanAssignment).where(
-            ResourcePlanAssignment.id == assignment_id,
-            ResourcePlanAssignment.plan_id == plan_id,
-        )
-    ).scalar_one_or_none()
-    if not a:
-        raise HTTPException(404, "Assignment not found")
+    def work() -> None:
+        a = db.execute(
+            select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.id == assignment_id,
+                ResourcePlanAssignment.plan_id == plan_id,
+            )
+        ).scalar_one_or_none()
+        if not a:
+            raise HTTPException(404, "Assignment not found")
 
-    field = _PHASE_INVOLVEMENT_FIELD.get(a.phase)
-    if not field:
-        raise HTTPException(400, f"Фаза {a.phase} не поддерживает вовлечённость")
+        field = _PHASE_INVOLVEMENT_FIELD.get(a.phase)
+        if not field:
+            raise HTTPException(400, f"Фаза {a.phase} не поддерживает вовлечённость")
 
-    bi = db.get(BacklogItem, a.backlog_item_id)
-    if not bi:
-        raise HTTPException(404, "Backlog item not found")
+        bi = db.get(BacklogItem, a.backlog_item_id)
+        if not bi:
+            raise HTTPException(404, "Backlog item not found")
 
-    setattr(bi, field, data.involvement_pct / 100.0)
-    db.flush()
-    try:
-        ResourcePlanningService(db).compute_schedule(plan_id)
-    except ValueError as e:
-        raise HTTPException(409, f"reschedule_failed: {e}")
+        setattr(bi, field, data.involvement_pct / 100.0)
+        db.flush()
+        try:
+            ResourcePlanningService(db).compute_schedule(plan_id)
+        except ValueError as e:
+            raise HTTPException(409, f"reschedule_failed: {e}")
+
+    await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
     return {"ok": True}
 
@@ -1842,274 +1859,278 @@ async def patch_assignment(
     _: User = Depends(get_current_user),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    a = db.execute(
-        select(ResourcePlanAssignment)
-        .options(
-            joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue)
-        )
-        .options(joinedload(ResourcePlanAssignment.employee))
-        .where(
-            ResourcePlanAssignment.id == assignment_id,
-            ResourcePlanAssignment.plan_id == plan_id,
-        )
-    ).scalar_one_or_none()
-    if not a:
-        raise HTTPException(404, "Assignment not found")
-
-    patch = data.model_dump(exclude_unset=True)
-
-    # predecessor_ids — отдельная ветка с проверкой цикла, не пишется в Assignment
-    new_predecessor_ids = patch.pop("predecessor_ids", None)
-    # force — флаг подтверждения смены сотрудника при наличии конфликтов.
-    # Не атрибут модели, обрабатываем отдельно.
-    force = bool(patch.pop("force", False))
-
-    # При смене сотрудника без force — проверить конфликты и вернуть 409.
-    if (
-        "employee_id" in patch
-        and patch["employee_id"]
-        and patch["employee_id"] != a.employee_id
-        and not force
-    ):
-        absences, overloads = _detect_employee_change_conflicts(
-            db, a, patch["employee_id"]
-        )
-        if absences or overloads:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "employee_change_conflicts",
-                    "message": "Новый сотрудник недоступен в окне фазы. Используйте force=true для подтверждения.",
-                    "absences": [ab.model_dump(mode="json") for ab in absences],
-                    "overloads": [o.model_dump(mode="json") for o in overloads],
-                },
-            )
-
-    # No-op фильтр: start_date в патче равен текущему — не считаем это
-    # явным пином. Иначе повторная отправка формы плодит фантомные пины и
-    # двигает end_date с дельтой=0.
-    start_date_is_noop = (
-        "start_date" in patch
-        and patch.get("start_date") == a.start_date
-    )
-    if start_date_is_noop:
-        patch.pop("start_date", None)
-
-    # Force-employee + start_date в одном PATCH несовместимы: pinned_start=True
-    # ставится ДО compute_schedule, а ему передаётся новая дата без правильного
-    # пересчёта pre-deduct'а. Защитный 422 — пусть UI шлёт двумя запросами
-    # (сначала смена сотрудника + пересчёт, потом ручная дата).
-    if (
-        force
-        and "employee_id" in patch
-        and "start_date" in patch
-        and patch.get("start_date") != a.start_date
-    ):
-        raise HTTPException(
-            422,
-            "force=true смена сотрудника не сочетается с ручной датой "
-            "в одном PATCH — сначала закрепи сотрудника, потом дату.",
-        )
-
-    new_start = patch.get("start_date", a.start_date)
-    new_end = patch.get("end_date", a.end_date)
-
-    # Если пользователь сдвигает start_date без явного end_date — расширяем
-    # окно вправо так, чтобы вместить ровно hours_allocated с учётом
-    # involvement, выходных и аномалий календаря. Старое поведение сохраняло
-    # длительность фазы (new_end = end + delta_days), что молча обрезало
-    # плановые часы при day_cap × duration < hours.
-    if (
-        "start_date" in patch
-        and "end_date" not in patch
-        and a.start_date
-        and a.end_date
-        and patch["start_date"]
-        and a.hours_allocated
-        and a.hours_allocated > 0
-    ):
-        plan_for_window = db.get(ResourcePlan, plan_id)
-        backlog_item = a.backlog_item
-        if plan_for_window and backlog_item:
-            svc = ResourcePlanningService(db)
-            svc._load_plan_context(plan_for_window)
-            inv = svc._involvement_for_phase(backlog_item, a.phase) or 1.0
-            _, q_end, q_end_extended = svc._quarter_bounds_extended(plan_for_window)
-            new_end_dt, daily_json = svc._extend_window_for_hours(
-                start_date=patch["start_date"],
-                hours=a.hours_allocated,
-                involvement=inv,
-                q_end=q_end_extended,
-                employee_id=patch.get("employee_id", a.employee_id),
-            )
-            patch["end_date"] = new_end_dt
-            # _extend_window_for_hours возвращает "{}" если ни один рабочий день
-            # не влез в окно (например, drag на холидеи). Остальные scheduler-пути
-            # хранят None для «нет расписания» — выравниваем конвенцию.
-            a.daily_hours_json = (
-                daily_json if daily_json and daily_json != "{}" else None
-            )
-            # Окно расширяем до q_end_extended (буфер spillover), но
-            # флаг out_of_quarter — относительно строгого q_end.
-            a.out_of_quarter = new_end_dt > q_end
-            new_end = new_end_dt
-
-    if new_start and new_end and new_end < new_start:
-        raise HTTPException(422, "end_date must be >= start_date")
-
-    # Явный выбор сотрудника — закрепить назначение
-    if "employee_id" in patch:
-        a.pinned_employee = True
-        a.manual_edit_at = datetime.utcnow()
-
-    # Явный pinned_start в payload имеет приоритет.
-    # pop() ДО цикла setattr — иначе цикл перепишет a.pinned_start значением
-    # из patch (или упадёт на мутации dict во время итерации).
-    explicit_pin = patch.pop("pinned_start", None)
-    if explicit_pin is not None:
-        a.pinned_start = bool(explicit_pin)
-        a.manual_edit_at = datetime.utcnow()
-    elif "start_date" in patch:
-        # Drag / любое изменение даты без явного pinned_start = фиксация
-        # (UI ставит pin неявно через перемещение бара).
-        a.pinned_start = True
-        a.manual_edit_at = datetime.utcnow()
-
-    for k, v in patch.items():
-        setattr(a, k, v)
-
-    if new_predecessor_ids is not None:
-        # Пометить, что пользователь явно отредактировал список
-        # предшественников. _ensure_default_predecessors не будет
-        # перевосстанавливать дефолтную цепочку для этой инициативы.
-        a.predecessors_user_set = True
-        # Атомарно заменить весь набор: цикл проверяется по полному
-        # prospective edge-set ДО любой вставки/удаления. При цикле БД не
-        # меняется (раньше per-call commit оставлял половину рёбер).
-        try:
-            ResourcePlanningService(db).set_predecessors(
-                successor_id=a.id, predecessor_ids=list(new_predecessor_ids)
-            )
-        except ValueError as e:
-            raise HTTPException(400, f"cycle: {e}")
-        a.manual_edit_at = datetime.utcnow()
-
-    plan = db.get(ResourcePlan, plan_id)
-    if plan:
-        plan.status = "stale"
-
-    # Любая смена сотрудника — полный пересчёт плана. pinned_employee=True
-    # гарантирует, что выбор сохранится; остальные фазы этого сотрудника
-    # пройдут через leveler и сдвинутся, чтобы разрулить перегрузки, обойти
-    # отпуска и не упасть на выходные/праздники нового исполнителя.
-    if "employee_id" in patch and plan:
-        # Запомнить логический ключ ДО compute: employee-only pinned rows
-        # удаляются и пересоздаются с новым id, поэтому после пересчёта
-        # ищем по (backlog_item_id, phase, part_number).
-        target_item_id = a.backlog_item_id
-        target_phase = a.phase
-        target_part_number = a.part_number
-        db.flush()  # зафиксировать pinned_employee + новый employee_id
-        try:
-            ResourcePlanningService(db).compute_schedule(plan_id)
-        except ValueError as e:
-            raise HTTPException(409, f"reschedule_failed: {e}")
-        # compute_schedule сам коммитит. Перечитать назначение по логическому
-        # ключу — id мог смениться при пересоздании employee-only-pin строки.
+    def work() -> AssignmentOut:
         a = db.execute(
             select(ResourcePlanAssignment)
             .options(
-                joinedload(ResourcePlanAssignment.backlog_item).joinedload(
-                    BacklogItem.issue
-                )
+                joinedload(ResourcePlanAssignment.backlog_item).joinedload(BacklogItem.issue)
             )
             .options(joinedload(ResourcePlanAssignment.employee))
             .where(
+                ResourcePlanAssignment.id == assignment_id,
                 ResourcePlanAssignment.plan_id == plan_id,
-                ResourcePlanAssignment.backlog_item_id == target_item_id,
-                ResourcePlanAssignment.phase == target_phase,
-                ResourcePlanAssignment.part_number == target_part_number,
             )
         ).scalar_one_or_none()
         if not a:
-            raise HTTPException(404, "Assignment vanished after reschedule")
+            raise HTTPException(404, "Assignment not found")
 
-    # Snapshot values before commit (SQLite session expire caveat)
-    a_id = a.id
-    a_backlog_item_id = a.backlog_item_id
-    a_backlog_item_key = (a.backlog_item.issue.key if a.backlog_item and a.backlog_item.issue else None)
-    a_backlog_item_title = a.backlog_item.title if a.backlog_item else ""
-    a_phase = a.phase
-    a_part_number = a.part_number
-    a_hours_allocated = a.hours_allocated
-    a_start_date = a.start_date
-    a_end_date = a.end_date
-    a_is_on_critical_path = a.is_on_critical_path
-    a_slack_days = a.slack_days
-    a_employee_id = a.employee_id
-    a_employee_role = a.employee.role if a.employee else None
-    a_is_pinned = a.is_pinned
-    a_pinned_employee = a.pinned_employee
-    a_pinned_start = a.pinned_start
-    a_pinned_split = a.pinned_split
-    a_manual_edit_at = a.manual_edit_at
-    a_priority = a.backlog_item.priority if a.backlog_item else None
-    a_scenario_assignee_id = a.backlog_item.assignee_employee_id if a.backlog_item else None
-    a_scenario_assignee_name = (
-        a.backlog_item.assignee.display_name if a.backlog_item and a.backlog_item.assignee else None
-    )
-    a_out_of_quarter = a.out_of_quarter
-    a_daily_hours = _parse_daily_hours(a.daily_hours_json)
+        patch = data.model_dump(exclude_unset=True)
 
-    # Подтянуть predecessor_ids и unavailable_days, чтобы фронт после PATCH
-    # видел актуальное состояние без полного рефетча (нужно для корректного
-    # отображения связей в сайдбаре сразу после смены сотрудника/дат).
-    from app.models.phase_predecessor import PhasePredecessor as _PP
-    a_predecessor_ids = [
-        row[0]
-        for row in db.execute(
-            select(_PP.predecessor_assignment_id).where(
-                _PP.successor_assignment_id == a_id
+        # predecessor_ids — отдельная ветка с проверкой цикла, не пишется в Assignment
+        new_predecessor_ids = patch.pop("predecessor_ids", None)
+        # force — флаг подтверждения смены сотрудника при наличии конфликтов.
+        # Не атрибут модели, обрабатываем отдельно.
+        force = bool(patch.pop("force", False))
+
+        # При смене сотрудника без force — проверить конфликты и вернуть 409.
+        if (
+            "employee_id" in patch
+            and patch["employee_id"]
+            and patch["employee_id"] != a.employee_id
+            and not force
+        ):
+            absences, overloads = _detect_employee_change_conflicts(
+                db, a, patch["employee_id"]
             )
-        ).all()
-    ]
-    a_unavailable_days = _compute_unavailable_days_for_assignment(db, a)
+            if absences or overloads:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "employee_change_conflicts",
+                        "message": "Новый сотрудник недоступен в окне фазы. Используйте force=true для подтверждения.",
+                        "absences": [ab.model_dump(mode="json") for ab in absences],
+                        "overloads": [o.model_dump(mode="json") for o in overloads],
+                    },
+                )
 
-    db.commit()
-    db.refresh(a)
+        # No-op фильтр: start_date в патче равен текущему — не считаем это
+        # явным пином. Иначе повторная отправка формы плодит фантомные пины и
+        # двигает end_date с дельтой=0.
+        start_date_is_noop = (
+            "start_date" in patch
+            and patch.get("start_date") == a.start_date
+        )
+        if start_date_is_noop:
+            patch.pop("start_date", None)
+
+        # Force-employee + start_date в одном PATCH несовместимы: pinned_start=True
+        # ставится ДО compute_schedule, а ему передаётся новая дата без правильного
+        # пересчёта pre-deduct'а. Защитный 422 — пусть UI шлёт двумя запросами
+        # (сначала смена сотрудника + пересчёт, потом ручная дата).
+        if (
+            force
+            and "employee_id" in patch
+            and "start_date" in patch
+            and patch.get("start_date") != a.start_date
+        ):
+            raise HTTPException(
+                422,
+                "force=true смена сотрудника не сочетается с ручной датой "
+                "в одном PATCH — сначала закрепи сотрудника, потом дату.",
+            )
+
+        new_start = patch.get("start_date", a.start_date)
+        new_end = patch.get("end_date", a.end_date)
+
+        # Если пользователь сдвигает start_date без явного end_date — расширяем
+        # окно вправо так, чтобы вместить ровно hours_allocated с учётом
+        # involvement, выходных и аномалий календаря. Старое поведение сохраняло
+        # длительность фазы (new_end = end + delta_days), что молча обрезало
+        # плановые часы при day_cap × duration < hours.
+        if (
+            "start_date" in patch
+            and "end_date" not in patch
+            and a.start_date
+            and a.end_date
+            and patch["start_date"]
+            and a.hours_allocated
+            and a.hours_allocated > 0
+        ):
+            plan_for_window = db.get(ResourcePlan, plan_id)
+            backlog_item = a.backlog_item
+            if plan_for_window and backlog_item:
+                svc = ResourcePlanningService(db)
+                svc._load_plan_context(plan_for_window)
+                inv = svc._involvement_for_phase(backlog_item, a.phase) or 1.0
+                _, q_end, q_end_extended = svc._quarter_bounds_extended(plan_for_window)
+                new_end_dt, daily_json = svc._extend_window_for_hours(
+                    start_date=patch["start_date"],
+                    hours=a.hours_allocated,
+                    involvement=inv,
+                    q_end=q_end_extended,
+                    employee_id=patch.get("employee_id", a.employee_id),
+                )
+                patch["end_date"] = new_end_dt
+                # _extend_window_for_hours возвращает "{}" если ни один рабочий день
+                # не влез в окно (например, drag на холидеи). Остальные scheduler-пути
+                # хранят None для «нет расписания» — выравниваем конвенцию.
+                a.daily_hours_json = (
+                    daily_json if daily_json and daily_json != "{}" else None
+                )
+                # Окно расширяем до q_end_extended (буфер spillover), но
+                # флаг out_of_quarter — относительно строгого q_end.
+                a.out_of_quarter = new_end_dt > q_end
+                new_end = new_end_dt
+
+        if new_start and new_end and new_end < new_start:
+            raise HTTPException(422, "end_date must be >= start_date")
+
+        # Явный выбор сотрудника — закрепить назначение
+        if "employee_id" in patch:
+            a.pinned_employee = True
+            a.manual_edit_at = datetime.utcnow()
+
+        # Явный pinned_start в payload имеет приоритет.
+        # pop() ДО цикла setattr — иначе цикл перепишет a.pinned_start значением
+        # из patch (или упадёт на мутации dict во время итерации).
+        explicit_pin = patch.pop("pinned_start", None)
+        if explicit_pin is not None:
+            a.pinned_start = bool(explicit_pin)
+            a.manual_edit_at = datetime.utcnow()
+        elif "start_date" in patch:
+            # Drag / любое изменение даты без явного pinned_start = фиксация
+            # (UI ставит pin неявно через перемещение бара).
+            a.pinned_start = True
+            a.manual_edit_at = datetime.utcnow()
+
+        for k, v in patch.items():
+            setattr(a, k, v)
+
+        if new_predecessor_ids is not None:
+            # Пометить, что пользователь явно отредактировал список
+            # предшественников. _ensure_default_predecessors не будет
+            # перевосстанавливать дефолтную цепочку для этой инициативы.
+            a.predecessors_user_set = True
+            # Атомарно заменить весь набор: цикл проверяется по полному
+            # prospective edge-set ДО любой вставки/удаления. При цикле БД не
+            # меняется (раньше per-call commit оставлял половину рёбер).
+            try:
+                ResourcePlanningService(db).set_predecessors(
+                    successor_id=a.id, predecessor_ids=list(new_predecessor_ids)
+                )
+            except ValueError as e:
+                raise HTTPException(400, f"cycle: {e}")
+            a.manual_edit_at = datetime.utcnow()
+
+        plan = db.get(ResourcePlan, plan_id)
+        if plan:
+            plan.status = "stale"
+
+        # Любая смена сотрудника — полный пересчёт плана. pinned_employee=True
+        # гарантирует, что выбор сохранится; остальные фазы этого сотрудника
+        # пройдут через leveler и сдвинутся, чтобы разрулить перегрузки, обойти
+        # отпуска и не упасть на выходные/праздники нового исполнителя.
+        if "employee_id" in patch and plan:
+            # Запомнить логический ключ ДО compute: employee-only pinned rows
+            # удаляются и пересоздаются с новым id, поэтому после пересчёта
+            # ищем по (backlog_item_id, phase, part_number).
+            target_item_id = a.backlog_item_id
+            target_phase = a.phase
+            target_part_number = a.part_number
+            db.flush()  # зафиксировать pinned_employee + новый employee_id
+            try:
+                ResourcePlanningService(db).compute_schedule(plan_id)
+            except ValueError as e:
+                raise HTTPException(409, f"reschedule_failed: {e}")
+            # compute_schedule сам коммитит. Перечитать назначение по логическому
+            # ключу — id мог смениться при пересоздании employee-only-pin строки.
+            a = db.execute(
+                select(ResourcePlanAssignment)
+                .options(
+                    joinedload(ResourcePlanAssignment.backlog_item).joinedload(
+                        BacklogItem.issue
+                    )
+                )
+                .options(joinedload(ResourcePlanAssignment.employee))
+                .where(
+                    ResourcePlanAssignment.plan_id == plan_id,
+                    ResourcePlanAssignment.backlog_item_id == target_item_id,
+                    ResourcePlanAssignment.phase == target_phase,
+                    ResourcePlanAssignment.part_number == target_part_number,
+                )
+            ).scalar_one_or_none()
+            if not a:
+                raise HTTPException(404, "Assignment vanished after reschedule")
+
+        # Snapshot values before commit (SQLite session expire caveat)
+        a_id = a.id
+        a_backlog_item_id = a.backlog_item_id
+        a_backlog_item_key = (a.backlog_item.issue.key if a.backlog_item and a.backlog_item.issue else None)
+        a_backlog_item_title = a.backlog_item.title if a.backlog_item else ""
+        a_phase = a.phase
+        a_part_number = a.part_number
+        a_hours_allocated = a.hours_allocated
+        a_start_date = a.start_date
+        a_end_date = a.end_date
+        a_is_on_critical_path = a.is_on_critical_path
+        a_slack_days = a.slack_days
+        a_employee_id = a.employee_id
+        a_employee_role = a.employee.role if a.employee else None
+        a_is_pinned = a.is_pinned
+        a_pinned_employee = a.pinned_employee
+        a_pinned_start = a.pinned_start
+        a_pinned_split = a.pinned_split
+        a_manual_edit_at = a.manual_edit_at
+        a_priority = a.backlog_item.priority if a.backlog_item else None
+        a_scenario_assignee_id = a.backlog_item.assignee_employee_id if a.backlog_item else None
+        a_scenario_assignee_name = (
+            a.backlog_item.assignee.display_name if a.backlog_item and a.backlog_item.assignee else None
+        )
+        a_out_of_quarter = a.out_of_quarter
+        a_daily_hours = _parse_daily_hours(a.daily_hours_json)
+
+        # Подтянуть predecessor_ids и unavailable_days, чтобы фронт после PATCH
+        # видел актуальное состояние без полного рефетча (нужно для корректного
+        # отображения связей в сайдбаре сразу после смены сотрудника/дат).
+        from app.models.phase_predecessor import PhasePredecessor as _PP
+        a_predecessor_ids = [
+            row[0]
+            for row in db.execute(
+                select(_PP.predecessor_assignment_id).where(
+                    _PP.successor_assignment_id == a_id
+                )
+            ).all()
+        ]
+        a_unavailable_days = _compute_unavailable_days_for_assignment(db, a)
+
+        db.commit()
+        db.refresh(a)
+
+        emp_name = a.employee.display_name if a.employee else None
+
+        return AssignmentOut(
+            id=a_id,
+            backlog_item_id=a_backlog_item_id,
+            backlog_item_key=a_backlog_item_key,
+            backlog_item_title=a_backlog_item_title,
+            phase=a_phase,
+            employee_id=a_employee_id,
+            employee_name=emp_name,
+            employee_role=a_employee_role,
+            part_number=a_part_number,
+            hours_allocated=a_hours_allocated,
+            start_date=a_start_date,
+            end_date=a_end_date,
+            is_on_critical_path=a_is_on_critical_path,
+            slack_days=a_slack_days,
+            is_pinned=a_is_pinned,
+            pinned_employee=a_pinned_employee,
+            pinned_start=a_pinned_start,
+            pinned_split=a_pinned_split,
+            manual_edit_at=a_manual_edit_at,
+            priority=a_priority,
+            scenario_assignee_employee_id=a_scenario_assignee_id,
+            scenario_assignee_name=a_scenario_assignee_name,
+            out_of_quarter=a_out_of_quarter,
+            daily_hours=a_daily_hours,
+            worklog_hours_actual=0.0,
+            predecessor_ids=a_predecessor_ids,
+            unavailable_days=a_unavailable_days,
+        )
+
+    out = await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
-
-    emp_name = a.employee.display_name if a.employee else None
-
-    return AssignmentOut(
-        id=a_id,
-        backlog_item_id=a_backlog_item_id,
-        backlog_item_key=a_backlog_item_key,
-        backlog_item_title=a_backlog_item_title,
-        phase=a_phase,
-        employee_id=a_employee_id,
-        employee_name=emp_name,
-        employee_role=a_employee_role,
-        part_number=a_part_number,
-        hours_allocated=a_hours_allocated,
-        start_date=a_start_date,
-        end_date=a_end_date,
-        is_on_critical_path=a_is_on_critical_path,
-        slack_days=a_slack_days,
-        is_pinned=a_is_pinned,
-        pinned_employee=a_pinned_employee,
-        pinned_start=a_pinned_start,
-        pinned_split=a_pinned_split,
-        manual_edit_at=a_manual_edit_at,
-        priority=a_priority,
-        scenario_assignee_employee_id=a_scenario_assignee_id,
-        scenario_assignee_name=a_scenario_assignee_name,
-        out_of_quarter=a_out_of_quarter,
-        daily_hours=a_daily_hours,
-        worklog_hours_actual=0.0,
-        predecessor_ids=a_predecessor_ids,
-        unavailable_days=a_unavailable_days,
-    )
+    return out
 
 
 class SplitRequest(BaseModel):
@@ -2149,21 +2170,25 @@ async def split_assignment(
     _: User = Depends(get_current_user),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    a = db.get(ResourcePlanAssignment, assignment_id)
-    if not a or a.plan_id != plan_id:
-        raise HTTPException(404, "Assignment not found")
-    svc = ResourcePlanningService(db)
-    try:
-        parts, cascaded = svc.split_assignment(
-            assignment_id, payload.parts, payload.cascade
-        )
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    def work() -> dict:
+        a = db.get(ResourcePlanAssignment, assignment_id)
+        if not a or a.plan_id != plan_id:
+            raise HTTPException(404, "Assignment not found")
+        svc = ResourcePlanningService(db)
+        try:
+            parts, cascaded = svc.split_assignment(
+                assignment_id, payload.parts, payload.cascade
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {
+            "parts": [_assignment_to_dict(p) for p in parts],
+            "cascaded": [_assignment_to_dict(c) for c in cascaded],
+        }
+
+    result = await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
-    return {
-        "parts": [_assignment_to_dict(p) for p in parts],
-        "cascaded": [_assignment_to_dict(c) for c in cascaded],
-    }
+    return result
 
 
 @router.post(
@@ -2176,16 +2201,20 @@ async def merge_assignment(
     _: User = Depends(get_current_user),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    a = db.get(ResourcePlanAssignment, assignment_id)
-    if not a or a.plan_id != plan_id:
-        raise HTTPException(404, "Assignment not found")
-    svc = ResourcePlanningService(db)
-    try:
-        merged = svc.merge_assignment(assignment_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    def work() -> dict:
+        a = db.get(ResourcePlanAssignment, assignment_id)
+        if not a or a.plan_id != plan_id:
+            raise HTTPException(404, "Assignment not found")
+        svc = ResourcePlanningService(db)
+        try:
+            merged = svc.merge_assignment(assignment_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"assignment": _assignment_to_dict(merged)}
+
+    result = await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
-    return {"assignment": _assignment_to_dict(merged)}
+    return result
 
 
 @router.delete(
@@ -2268,74 +2297,77 @@ async def bulk_clear_manual_edits(
     """
     from app.models import PhasePredecessor
 
-    plan = db.get(ResourcePlan, plan_id)
-    if not plan:
-        raise HTTPException(404, "ResourcePlan not found")
+    def work() -> dict:
+        plan = db.get(ResourcePlan, plan_id)
+        if not plan:
+            raise HTTPException(404, "ResourcePlan not found")
 
-    assignments = (
-        db.query(ResourcePlanAssignment)
-        .filter(ResourcePlanAssignment.plan_id == plan_id)
-        .all()
-    )
+        assignments = (
+            db.query(ResourcePlanAssignment)
+            .filter(ResourcePlanAssignment.plan_id == plan_id)
+            .all()
+        )
 
-    mode = payload.mode
-    touched: set[str] = set()
+        mode = payload.mode
+        touched: set[str] = set()
 
-    if mode in ("dates", "all"):
-        for a in assignments:
-            if a.pinned_start:
-                a.pinned_start = False
-                touched.add(a.id)
+        if mode in ("dates", "all"):
+            for a in assignments:
+                if a.pinned_start:
+                    a.pinned_start = False
+                    touched.add(a.id)
 
-    if mode in ("employees", "all"):
-        for a in assignments:
-            if a.pinned_employee:
-                a.pinned_employee = False
-                touched.add(a.id)
+        if mode in ("employees", "all"):
+            for a in assignments:
+                if a.pinned_employee:
+                    a.pinned_employee = False
+                    touched.add(a.id)
 
-    if mode in ("predecessors", "all"):
-        successor_ids_user_set = [
-            a.id for a in assignments if a.predecessors_user_set
-        ]
-        if successor_ids_user_set:
-            # synchronize_session=False is safe here: compute_schedule re-queries
-            # PhasePredecessor from scratch via _snapshot_predecessors, so the stale
-            # session cache is never read again.
-            db.query(PhasePredecessor).filter(
-                PhasePredecessor.successor_assignment_id.in_(
-                    successor_ids_user_set
-                )
-            ).delete(synchronize_session=False)
-        for a in assignments:
-            if a.predecessors_user_set:
-                a.predecessors_user_set = False
-                touched.add(a.id)
+        if mode in ("predecessors", "all"):
+            successor_ids_user_set = [
+                a.id for a in assignments if a.predecessors_user_set
+            ]
+            if successor_ids_user_set:
+                # synchronize_session=False is safe here: compute_schedule re-queries
+                # PhasePredecessor from scratch via _snapshot_predecessors, so the stale
+                # session cache is never read again.
+                db.query(PhasePredecessor).filter(
+                    PhasePredecessor.successor_assignment_id.in_(
+                        successor_ids_user_set
+                    )
+                ).delete(synchronize_session=False)
+            for a in assignments:
+                if a.predecessors_user_set:
+                    a.predecessors_user_set = False
+                    touched.add(a.id)
 
-    if mode == "all":
-        for a in assignments:
-            changed = False
-            if a.pinned_split:
-                a.pinned_split = False
-                changed = True
-            if a.daily_hours_json is not None:
-                a.daily_hours_json = None
-                changed = True
-            if a.manual_edit_at is not None:
-                a.manual_edit_at = None
-                changed = True
-            if changed:
-                touched.add(a.id)
+        if mode == "all":
+            for a in assignments:
+                changed = False
+                if a.pinned_split:
+                    a.pinned_split = False
+                    changed = True
+                if a.daily_hours_json is not None:
+                    a.daily_hours_json = None
+                    changed = True
+                if a.manual_edit_at is not None:
+                    a.manual_edit_at = None
+                    changed = True
+                if changed:
+                    touched.add(a.id)
 
-    plan.status = "stale"
-    db.commit()
+        plan.status = "stale"
+        db.commit()
 
-    try:
-        ResourcePlanningService(db).compute_schedule(plan_id)
-    except ValueError as e:
-        raise HTTPException(409, f"recompute_failed: {e}")
+        try:
+            ResourcePlanningService(db).compute_schedule(plan_id)
+        except ValueError as e:
+            raise HTTPException(409, f"recompute_failed: {e}")
+        return {"cleared_count": len(touched), "mode": mode}
 
+    result = await run_in_threadpool(work)
     await _announce(event_bus, bookings=True)
-    return {"cleared_count": len(touched), "mode": mode}
+    return result
 
 
 def _detect_conflicts(plan, assignments, db):
@@ -3717,95 +3749,99 @@ async def fork_plan(
 ):
     from app.models import PlanItemDependency
 
-    src = db.get(ResourcePlan, plan_id)
-    if not src:
-        raise HTTPException(404, "ResourcePlan not found")
+    def work() -> ResourcePlanOut:
+        src = db.get(ResourcePlan, plan_id)
+        if not src:
+            raise HTTPException(404, "ResourcePlan not found")
 
-    new_plan = ResourcePlan(
-        scenario_id=src.scenario_id,
-        team=src.team,
-        quarter=src.quarter,
-        year=src.year,
-        status=src.status,
-        parent_plan_id=src.id,
-        is_baseline=False,
-        label=data.label,
-    )
-    db.add(new_plan)
-    db.flush()
+        new_plan = ResourcePlan(
+            scenario_id=src.scenario_id,
+            team=src.team,
+            quarter=src.quarter,
+            year=src.year,
+            status=src.status,
+            parent_plan_id=src.id,
+            is_baseline=False,
+            label=data.label,
+        )
+        db.add(new_plan)
+        db.flush()
 
-    src_assignments = (
-        db.execute(
-            select(ResourcePlanAssignment).where(
-                ResourcePlanAssignment.plan_id == src.id
+        src_assignments = (
+            db.execute(
+                select(ResourcePlanAssignment).where(
+                    ResourcePlanAssignment.plan_id == src.id
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
-    for a in src_assignments:
-        db.add(
-            ResourcePlanAssignment(
-                plan_id=new_plan.id,
-                backlog_item_id=a.backlog_item_id,
-                phase=a.phase,
-                employee_id=a.employee_id,
-                part_number=a.part_number,
-                hours_allocated=a.hours_allocated,
-                start_date=a.start_date,
-                end_date=a.end_date,
-                is_on_critical_path=a.is_on_critical_path,
-                slack_days=a.slack_days,
-                # Manual-edit state — без этих полей форк терял пины и
-                # редактировал бы расписание с нуля при первом compute.
-                pinned_employee=a.pinned_employee,
-                pinned_start=a.pinned_start,
-                pinned_split=a.pinned_split,
-                predecessors_user_set=a.predecessors_user_set,
-                manual_edit_at=a.manual_edit_at,
-                daily_hours_json=a.daily_hours_json,
-                out_of_quarter=a.out_of_quarter,
+        for a in src_assignments:
+            db.add(
+                ResourcePlanAssignment(
+                    plan_id=new_plan.id,
+                    backlog_item_id=a.backlog_item_id,
+                    phase=a.phase,
+                    employee_id=a.employee_id,
+                    part_number=a.part_number,
+                    hours_allocated=a.hours_allocated,
+                    start_date=a.start_date,
+                    end_date=a.end_date,
+                    is_on_critical_path=a.is_on_critical_path,
+                    slack_days=a.slack_days,
+                    # Manual-edit state — без этих полей форк терял пины и
+                    # редактировал бы расписание с нуля при первом compute.
+                    pinned_employee=a.pinned_employee,
+                    pinned_start=a.pinned_start,
+                    pinned_split=a.pinned_split,
+                    predecessors_user_set=a.predecessors_user_set,
+                    manual_edit_at=a.manual_edit_at,
+                    daily_hours_json=a.daily_hours_json,
+                    out_of_quarter=a.out_of_quarter,
+                )
             )
-        )
 
-    src_deps = (
-        db.execute(
-            select(PlanItemDependency).where(PlanItemDependency.plan_id == src.id)
-        )
-        .scalars()
-        .all()
-    )
-    for d in src_deps:
-        db.add(
-            PlanItemDependency(
-                plan_id=new_plan.id,
-                from_item_id=d.from_item_id,
-                to_item_id=d.to_item_id,
-                dep_type=d.dep_type,
-                lag_days=d.lag_days,
-                source=d.source,
+        src_deps = (
+            db.execute(
+                select(PlanItemDependency).where(PlanItemDependency.plan_id == src.id)
             )
+            .scalars()
+            .all()
         )
+        for d in src_deps:
+            db.add(
+                PlanItemDependency(
+                    plan_id=new_plan.id,
+                    from_item_id=d.from_item_id,
+                    to_item_id=d.to_item_id,
+                    dep_type=d.dep_type,
+                    lag_days=d.lag_days,
+                    source=d.source,
+                )
+            )
 
-    # Conflicts intentionally NOT cloned (forks start clean)
+        # Conflicts intentionally NOT cloned (forks start clean)
 
-    snap = {
-        "id": new_plan.id,
-        "scenario_id": new_plan.scenario_id,
-        "team": new_plan.team,
-        "quarter": new_plan.quarter,
-        "year": new_plan.year,
-        "status": new_plan.status,
-        "computed_at": new_plan.computed_at,
-        "created_at": new_plan.created_at,
-        "parent_plan_id": new_plan.parent_plan_id,
-        "is_baseline": new_plan.is_baseline,
-        "label": new_plan.label,
-    }
-    db.commit()
+        snap = {
+            "id": new_plan.id,
+            "scenario_id": new_plan.scenario_id,
+            "team": new_plan.team,
+            "quarter": new_plan.quarter,
+            "year": new_plan.year,
+            "status": new_plan.status,
+            "computed_at": new_plan.computed_at,
+            "created_at": new_plan.created_at,
+            "parent_plan_id": new_plan.parent_plan_id,
+            "is_baseline": new_plan.is_baseline,
+            "label": new_plan.label,
+        }
+        db.commit()
+        return ResourcePlanOut(**snap)
+
+    out = await run_in_threadpool(work)
     # Копия не бывает опорным планом — брони других команд прежние.
     await _announce(event_bus, bookings=False)
-    return ResourcePlanOut(**snap)
+    return out
 
 
 @router.get(

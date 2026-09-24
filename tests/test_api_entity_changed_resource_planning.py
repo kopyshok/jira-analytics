@@ -3,15 +3,18 @@
 Где меняются часы людей по дням, событие касается и сценариев: «На бэклог»
 других команд вычитает брони опорных планов.
 """
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.endpoints.resource_planning import ResourcePlanOut
 from app.database import get_db
 from app.main import app
-from app.models import PlanConflict
+from app.models import PlanConflict, ResourcePlan
 from app.services.event_bus import get_event_bus
+from app.services.resource_planning_service import ResourcePlanningService
 from tests.services.xteam_factory import add_item, book, make_employee, make_plan
 
 BASE = "/api/v1/resource-planning/resource-plans"
@@ -57,6 +60,37 @@ def test_compute_plan(seeded):
     r, bus = _send(seeded["db"], "POST", f"{BASE}/{seeded['plan']}/compute")
     assert r.status_code == 200, r.text
     bus.publish.assert_called_once_with(WITH_BOOKINGS)
+
+
+def test_compute_runs_off_event_loop(seeded, monkeypatch):
+    """Пересчёт идёт в пуле потоков и не держит запросы других пользователей;
+    событие и ответ — прежние: свежий план после пересчёта."""
+    db = seeded["db"]
+    plan = db.get(ResourcePlan, seeded["plan"])
+    plan.status, plan.computed_at = "stale", None
+    db.commit()
+
+    where = []
+    real = ResourcePlanningService.compute_schedule
+
+    def spy(self, plan_id):
+        try:
+            asyncio.get_running_loop()
+            where.append("event loop")
+        except RuntimeError:
+            where.append("thread pool")
+        return real(self, plan_id)
+
+    monkeypatch.setattr(ResourcePlanningService, "compute_schedule", spy)
+    r, bus = _send(db, "POST", f"{BASE}/{seeded['plan']}/compute")
+    assert r.status_code == 200, r.text
+    assert where == ["thread pool"]
+    bus.publish.assert_called_once_with(WITH_BOOKINGS)
+
+    db.expire_all()
+    fresh = db.get(ResourcePlan, seeded["plan"])
+    assert fresh.status == "ready" and fresh.computed_at is not None
+    assert r.json() == ResourcePlanOut.model_validate(fresh).model_dump(mode="json")
 
 
 def test_missing_plan_publishes_nothing(testclient_db_session):
