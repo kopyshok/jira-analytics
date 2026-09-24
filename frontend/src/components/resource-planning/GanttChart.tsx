@@ -1,5 +1,5 @@
 import { useRef, useMemo, useState, useEffect } from 'react';
-import type { AssignmentOut, DependencyOut, ExternalBookingOut, ScheduledBlock } from '../../api/resourcePlanning';
+import type { AssignmentOut, DependencyOut, EmployeeLoadOut, ExternalBookingOut, ScheduledBlock } from '../../api/resourcePlanning';
 import type { EmployeeResponse, ProductionCalendarDayResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
 import { buildTimeline, buildWorkdayTimeline, dateToLeft, quarterBounds, PX_PER_DAY } from '../../utils/gantt';
@@ -55,6 +55,10 @@ interface Props {
   externalBookings?: ExternalBookingOut[];
   /** «Задачи» — строки по задачам, «Исполнители» — секции по людям. */
   layout?: RpLayout;
+  /** Строки подвала — команда, привлечённость и загрузка людей для вида «Исполнители». */
+  employeeLoad?: EmployeeLoadOut[];
+  /** Команда плана — подпись своих в виде «Исполнители». */
+  planTeam?: string | null;
 }
 
 export default function GanttChart({
@@ -84,6 +88,8 @@ export default function GanttChart({
   onEmployeeRowClick,
   externalBookings,
   layout = 'tasks',
+  employeeLoad,
+  planTeam,
 }: Props) {
   const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
@@ -382,6 +388,11 @@ export default function GanttChart({
             onEmployeeRowClick={onEmployeeRowClick}
             quarterEndDate={qEndIso}
             busyByAssignment={busyByAssignment}
+            layout={layout}
+            externalBookings={bookings}
+            employeeLoad={employeeLoad}
+            planTeam={planTeam}
+            isWorkday={isWorkday}
           />
         </div>
       </div>

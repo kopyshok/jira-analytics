@@ -3,7 +3,7 @@ import { useTeamRegistry } from '../hooks/useTeamRegistry';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import '../utils/gantt.css';
-import { App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
+import { Alert, App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
 // Скрытые режимы Портфель/Ресурсы/Plane остаются в коде (PlaneGantt, GanttRows viewMode union)
 // PM хочет вернуться к ним после доработки; см. project_resource_planning_modes_hidden.md.
 import {
@@ -23,7 +23,7 @@ import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar
 import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
 import AppearanceModal from '../components/resource-planning/AppearanceModal';
 import BulkResetDropdown from '../components/resource-planning/BulkResetDropdown';
-import type { ViewMode } from '../components/resource-planning/GanttRows';
+import type { RpLayout, ViewMode } from '../components/resource-planning/GanttRows';
 import {
   useGanttProjection, useResourcePlans, useComputeResourcePlan,
   useScheduledBlocks, useCreateResourcePlan, useForkPlan,
@@ -38,8 +38,11 @@ import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { usePersistedSearchParam } from '../hooks/usePersistedSearchParam';
 import { buildSectionByItem, sortBySection } from '../utils/rpSections';
 import { sortAssignmentsByScenarioAssignee } from '../utils/sortAssignments';
+import { filterByPeople } from '../utils/rpPeople';
 import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
 import { DARK_THEME } from '../utils/constants';
+
+const NO_PEOPLE: string[] = [];
 
 function ResourcePlanningPageInner() {
   const { message } = App.useApp();
@@ -64,7 +67,10 @@ function ResourcePlanningPageInner() {
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkLabel, setForkLabel] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  const [highlightedEmployeeId, setHighlightedEmployeeId] = useState<string | null>(null);
+  // Фильтр «Исполнители» — на план: при смене плана сбрасывается сам.
+  const [peopleFilterState, setPeopleFilterState] = useState<{ planId: string | null; ids: string[] }>(
+    { planId: null, ids: [] },
+  );
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   useRegisterHelp('Планирование ресурсов', resourcePlanningHelp);
   const appearanceSettings = useAppearanceSettings();
@@ -72,6 +78,20 @@ function ResourcePlanningPageInner() {
   const createDep = useCreateDependency();
   const deleteDep = useDeleteDependency();
   const { prefs, patch: patchPrefs } = useRpPreferences();
+  const layout: RpLayout = prefs.view_mode === 'people' ? 'people' : 'tasks';
+  const peopleFilter = useMemo(
+    () => (peopleFilterState.planId === planId ? peopleFilterState.ids : NO_PEOPLE),
+    [peopleFilterState, planId],
+  );
+  const setPeopleFilter = (ids: string[]) => setPeopleFilterState({ planId, ids });
+  // Щелчок по человеку (фишка фазы, имя в подвале, заголовок секции)
+  // добавляет его в фильтр или убирает.
+  const togglePerson = (id: string | null) => {
+    if (!id) return;
+    setPeopleFilter(peopleFilter.includes(id) ? peopleFilter.filter(x => x !== id) : [...peopleFilter, id]);
+  };
+  // Подсветка и пульсация — когда в фильтре ровно один человек.
+  const highlightedEmployeeId = peopleFilter.length === 1 ? peopleFilter[0] : null;
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
 
@@ -216,6 +236,25 @@ function ResourcePlanningPageInner() {
     [sortedAssignments, sectionByItem, subgroupOrder],
   );
 
+  // Фильтр по людям: только их фазы и их брони в других командах.
+  const shownAssignments = useMemo(
+    () => filterByPeople(displayedAssignments, peopleFilter),
+    [displayedAssignments, peopleFilter],
+  );
+  const shownBookings = useMemo(
+    () => filterByPeople(gantt?.external_bookings ?? [], peopleFilter),
+    [gantt, peopleFilter],
+  );
+  const peopleOptions = useMemo(
+    () => (gantt?.employee_load ?? []).map(r => ({
+      value: r.employee_id,
+      label: r.is_borrowed
+        ? `${r.employee_name ?? '—'} · из ${r.borrowed_from ?? 'другой команды'}`
+        : (r.employee_name ?? '—'),
+    })),
+    [gantt],
+  );
+
   const conflictAssignmentIds = useMemo(
     () => (gantt ? gantt.conflicts.flatMap(c => (c.assignment_id ? [c.assignment_id] : [])) : []),
     [gantt],
@@ -357,6 +396,32 @@ function ResourcePlanningPageInner() {
         )}
 
         <Space size={4} style={{ marginLeft: 'auto' }}>
+          {viewMode === 'two-level' && gantt && (
+            <Segmented
+              size="small"
+              value={layout}
+              onChange={v => patchPrefs({ view_mode: v as RpLayout })}
+              options={[
+                { label: 'Задачи', value: 'tasks' },
+                { label: 'Исполнители', value: 'people' },
+              ]}
+            />
+          )}
+          {viewMode === 'two-level' && gantt && (
+            <Select
+              mode="multiple"
+              size="small"
+              allowClear
+              prefix="Исполнители:"
+              placeholder="все"
+              value={peopleFilter}
+              onChange={setPeopleFilter}
+              options={peopleOptions}
+              maxTagCount="responsive"
+              showSearch={{ optionFilterProp: 'label' }}
+              style={{ minWidth: 220, maxWidth: 360 }}
+            />
+          )}
           {viewMode === 'two-level' && (
             <Segmented
               size="small"
@@ -370,7 +435,7 @@ function ResourcePlanningPageInner() {
               ]}
             />
           )}
-          {viewMode === 'two-level' && (
+          {viewMode === 'two-level' && layout === 'tasks' && (
             <Button
               size="small"
               type={depDrawMode ? 'primary' : 'default'}
@@ -390,7 +455,7 @@ function ResourcePlanningPageInner() {
               <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>Эстафета</span>
             </Space>
           )}
-          {viewMode === 'two-level' && subgroupOrder.length > 0 && (
+          {viewMode === 'two-level' && layout === 'tasks' && subgroupOrder.length > 0 && (
             <Button
               size="small"
               type={groupBySubgroup ? 'primary' : 'default'}
@@ -416,7 +481,7 @@ function ResourcePlanningPageInner() {
           >
             Цвета
           </Button>
-          {viewMode === 'two-level' && gantt && (
+          {viewMode === 'two-level' && layout === 'tasks' && gantt && (
             <Button
               size="small"
               onClick={() => {
@@ -432,6 +497,21 @@ function ResourcePlanningPageInner() {
         </div>
       </div>
 
+      {gantt?.stale_due_to_other_teams && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 8 }}
+          title={`Планы других команд изменились после расчёта${
+            gantt.stale_teams?.length ? ` (${gantt.stale_teams.join(', ')})` : ''
+          } — нажмите «Распределить»`}
+          action={
+            <Button size="small" loading={compute.isPending} onClick={handleCompute}>
+              Распределить
+            </Button>
+          }
+        />
+      )}
       {gantt && viewMode !== 'plane' && (
         <ConflictPanel
           conflicts={gantt.conflicts}
@@ -458,7 +538,7 @@ function ResourcePlanningPageInner() {
       )}
       {gantt && !ganttLoading && planId && viewMode !== 'plane' && (
         <GanttChart
-          assignments={displayedAssignments}
+          assignments={shownAssignments}
           blocks={blocks}
           quarter={gantt.plan.quarter ?? 'Q1'}
           year={gantt.plan.year ?? new Date().getFullYear()}
@@ -468,8 +548,11 @@ function ResourcePlanningPageInner() {
           employees={employees}
           scale={scale}
           dependencies={gantt.dependencies ?? []}
-          externalBookings={gantt.external_bookings}
-          depDrawMode={depDrawMode}
+          externalBookings={shownBookings}
+          layout={layout}
+          employeeLoad={gantt.employee_load}
+          planTeam={gantt.plan.team}
+          depDrawMode={layout === 'tasks' && depDrawMode}
           collapsedItemIds={prefs.collapsed_initiative_ids}
           onToggleCollapse={handleToggleCollapse}
           conflictAssignmentIds={conflictAssignmentIds}
@@ -484,7 +567,7 @@ function ResourcePlanningPageInner() {
               collapsed ? [...prev, name] : prev.filter(n => n !== name),
             )
           }
-          onEmployeeRowClick={setHighlightedEmployeeId}
+          onEmployeeRowClick={togglePerson}
           onCreateDependency={(from, to) => {
             createDep.mutate(
               { planId, fromItemId: from, toItemId: to, depType: 'FS', lagDays: 0 },
@@ -511,6 +594,10 @@ function ResourcePlanningPageInner() {
           rows={gantt.employee_load}
           subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
           subgroupOrder={subgroupOrder}
+          assignments={gantt.assignments}
+          bookings={gantt.external_bookings ?? []}
+          selectedIds={peopleFilter}
+          onEmployeeClick={togglePerson}
         />
       )}
 
