@@ -474,7 +474,9 @@ class ScenarioXlsxExporter:
             ).all()
         }
 
-        base_url_setting = self.db.get(AppSetting, "jira_base_url")
+        base_url_setting = (
+            self.db.query(AppSetting).filter(AppSetting.key == "jira_base_url").one_or_none()
+        )
         jira_base_url = (base_url_setting.value if base_url_setting else "") or ""
 
         # Lookup роли по display_name — повторяет логику /planning endpoint.

@@ -654,3 +654,26 @@ class TestEmpty:
             for r in range(1, ws_ref.max_row + 1) for c in range(1, 9)
         )
         assert "Отсутствий в квартале нет" in all_text
+
+
+def test_jira_key_links_to_base_url(db_session, minimal_scenario):
+    """Ключ задачи — ссылка на Jira: адрес ищется по названию настройки."""
+    from app.models import AppSetting, Issue, Project
+
+    proj = Project(jira_project_id="pl", key="LINK", name="Link project")
+    db_session.add_all([proj, AppSetting(key="jira_base_url", value="https://jira.example")])
+    db_session.flush()
+    issue = Issue(
+        jira_issue_id="il1", key="LINK-1", summary="s",
+        issue_type="Task", status="Open", project_id=proj.id,
+    )
+    db_session.add(issue)
+    db_session.flush()
+    item = db_session.query(BacklogItem).filter_by(title="Build feature").one()
+    item.issue_id = issue.id
+    db_session.flush()
+
+    data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+    cell = load_workbook(BytesIO(data))["Включено"].cell(row=3, column=1)
+    assert cell.value == "LINK-1"
+    assert cell.hyperlink.target == "https://jira.example/browse/LINK-1"
