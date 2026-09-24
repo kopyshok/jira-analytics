@@ -422,14 +422,6 @@ export default function PlanningPage() {
     !!scenario?.team,
   );
 
-  const assigneeOptions = useMemo(
-    () => (resourceBase?.employees ?? []).map((emp) => ({
-      label: emp.display_name,
-      value: emp.employee_id,
-    })),
-    [resourceBase?.employees],
-  );
-
   const isDraft = scenario?.status === 'draft';
   const isApproved = scenario?.status === 'approved';
 
@@ -970,7 +962,6 @@ export default function PlanningPage() {
                                   gridTemplate={hasSubgroups ? GRID_WITH_SUBGROUP : GRID}
                                   gridGap={GRID_GAP}
                                   continuationInfo={continuation?.info_by_allocation_id?.[a.id]}
-                                  assigneeOptions={assigneeOptions}
                                   subgroupOptions={hasSubgroups ? subgroupOptions : undefined}
                                   roles={roles}
                                   opoOff={opoOff}

@@ -13,6 +13,7 @@ import {
   getScenarioAllocations,
   patchAllocation,
   patchAllocationAssignee,
+  getScenarioAssigneeCandidates,
   reorderAllocations,
   getScenarioResource,
   getScenarioRules,
@@ -27,6 +28,7 @@ import {
 import { updateBacklogItem } from '../api/backlog';
 import { setIssueSubgroup } from '../api/issues';
 import type { AllocationResponse, ScenarioResponse, ScenarioRuleOut, ScenarioRuleInput, ResourceSummaryOut } from '../types/api';
+import type { AssignmentCandidateGroup } from '../api/resourcePlanning';
 
 export const useScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
   useQuery({
@@ -352,6 +354,20 @@ export const usePatchAllocationAssignee = () => {
     },
   });
 };
+
+/** Кандидаты в исполнители строки сценария — грузятся, когда список открыт. */
+export function useScenarioAssigneeCandidates(
+  scenarioId: string,
+  backlogItemId: string,
+  enabled: boolean,
+) {
+  return useQuery<AssignmentCandidateGroup[]>({
+    queryKey: ['planning', 'assignee-candidates', scenarioId, backlogItemId],
+    queryFn: () => getScenarioAssigneeCandidates(scenarioId, backlogItemId),
+    enabled: enabled && !!scenarioId && !!backlogItemId,
+    staleTime: 30_000,
+  });
+}
 
 export function useCapacityDiff(scenarioId: string | undefined, enabled: boolean) {
   return useQuery({
