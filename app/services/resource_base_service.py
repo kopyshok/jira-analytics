@@ -67,8 +67,12 @@ class ResourceSummary:
     gross_by_subgroup_role: dict[str, dict[str, float]]      # ключ "" — без группы
     available_by_subgroup_role: dict[str, dict[str, float]]  # ключ "" — без группы
     # Часы сотрудников команды, забронированные опорными планами других
-    # команд квартала (только дни, учтённые в брутто): роль → часы.
+    # команд квартала, где они тоже состоят (только дни, учтённые в брутто):
+    # роль → часы. Вычтены из «На бэклог».
     booked_by_other_teams_by_role: dict[str, float] = field(default_factory=dict)
+    # Часы сотрудников команды в опорных планах команд, которые взяли их к
+    # себе (там они не состоят): роль → часы. Не вычтены — справочно.
+    borrowed_by_other_teams_by_role: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -143,9 +147,12 @@ class ResourceBaseService:
             .filter(Employee.id.in_(list(intervals.keys())), Employee.is_active == True)  # noqa: E712
             .all()
         )
-        # Часы, забронированные на этих людей опорными планами других команд.
+        # Часы, забронированные на этих людей опорными планами других команд,
+        # где они тоже состоят. Брони команд, взявших человека к себе, базу
+        # не уменьшают: сначала домашняя команда, подстраивается привлекающая.
         booked = cto.daily_totals(
-            cto.external_bookings(
+            b
+            for b in cto.external_bookings(
                 self.db,
                 team=team,
                 year=year,
@@ -154,6 +161,7 @@ class ResourceBaseService:
                 start=period_start,
                 end=last_day,
             )
+            if not b.is_borrowing
         )
 
         # --- карта аномалий производственного календаря ---
@@ -402,18 +410,21 @@ class ResourceBaseService:
                 )
 
         # --- брони других команд: учитываются только дни, вошедшие в брутто ---
-        booked = cto.daily_totals(
-            cto.external_bookings(
-                self.db,
-                team=team,
-                year=year,
-                quarter=q,
-                employee_ids=[e.id for e in employees],
-                start=period_start,
-                end=last_day,
-            )
+        # Вычитаются брони команд, где человек тоже состоит; брони команд,
+        # взявших его к себе, — только справочно.
+        bookings = cto.external_bookings(
+            self.db,
+            team=team,
+            year=year,
+            quarter=q,
+            employee_ids=[e.id for e in employees],
+            start=period_start,
+            end=last_day,
         )
+        booked = cto.daily_totals(b for b in bookings if not b.is_borrowing)
+        lent = cto.daily_totals(b for b in bookings if b.is_borrowing)
         booked_by_emp: dict[str, float] = {}
+        lent_by_emp: dict[str, float] = {}
         pool_share = self._pool_share(scenario)
 
         # --- валовые часы по сотрудникам (без вычета обязательных) ---
@@ -433,7 +444,9 @@ class ResourceBaseService:
             )
             total = 0.0
             taken = 0.0
+            lent_hours = 0.0
             emp_booked = booked.get(e.id, {})
+            emp_lent = lent.get(e.id, {})
             emp_intervals = intervals.get(e.id, [])
             # Как в посуточной базе: бронь снимает не больше, чем осталось от
             # дня после обязательных работ, — иначе «На бэклог» расходится с
@@ -447,10 +460,12 @@ class ResourceBaseService:
                     if not on_absence:
                         total += norm
                         taken += min(emp_booked.get(cur, 0.0), norm * share)
+                        lent_hours += min(emp_lent.get(cur, 0.0), norm * share)
                 cur += timedelta(days=1)
 
             gross_by_emp[e.id] = round(total, 2)
             booked_by_emp[e.id] = round(taken, 2)
+            lent_by_emp[e.id] = round(lent_hours, 2)
             emp_role[e.id] = e.role
             emp_name[e.id] = e.display_name
 
@@ -558,15 +573,20 @@ class ResourceBaseService:
                 )
 
         # --- брони других команд по ролям ---
-        # Внешний QA замещает штатных тестировщиков — их брони не в счёт.
-        booked_by_role: dict[str, float] = {}
-        for emp_id, h in booked_by_emp.items():
-            role = emp_role[emp_id]
-            if not role or h <= 0:
-                continue
-            if role == "qa" and scenario.external_qa_hours is not None:
-                continue
-            booked_by_role[role] = round(booked_by_role.get(role, 0.0) + h, 2)
+        def _by_role(hours_by_emp: dict[str, float]) -> dict[str, float]:
+            # Внешний QA замещает штатных тестировщиков — их брони не в счёт.
+            per_role: dict[str, float] = {}
+            for emp_id, h in hours_by_emp.items():
+                role = emp_role[emp_id]
+                if not role or h <= 0:
+                    continue
+                if role == "qa" and scenario.external_qa_hours is not None:
+                    continue
+                per_role[role] = round(per_role.get(role, 0.0) + h, 2)
+            return per_role
+
+        booked_by_role = _by_role(booked_by_emp)
+        lent_by_role = _by_role(lent_by_emp)
 
         # --- доступные часы = валовые − обязательные (только subtracts_from_pool=True)
         #     − брони других команд ---
@@ -648,6 +668,7 @@ class ResourceBaseService:
             gross_by_subgroup_role=gross_by_subgroup_role,
             available_by_subgroup_role=available_by_subgroup_role,
             booked_by_other_teams_by_role=booked_by_role,
+            borrowed_by_other_teams_by_role=lent_by_role,
         )
 
     def _team_subgroups(self, team: str) -> tuple[list[dict], dict[str, str]]:

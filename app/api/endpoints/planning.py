@@ -427,8 +427,11 @@ class ResourceSummaryOut(BaseModel):
     # Переток внутри команды за квартал: сколько часов группы ушло к соседям
     # и сколько пришло от них. Это расход ёмкости, а не помощь извне.
     flow_by_subgroup: List[Dict] = []
-    # Часы команды, забронированные планами других команд (уже вычтены из «На бэклог»).
+    # Часы команды, забронированные планами других команд, где люди тоже
+    # состоят (уже вычтены из «На бэклог»).
     booked_by_other_teams_by_role: Dict[str, float] = {}
+    # Часы команды в планах команд, взявших её людей к себе (не вычтены).
+    borrowed_by_other_teams_by_role: Dict[str, float] = {}
 
 
 # === Helpers ===
@@ -1861,6 +1864,7 @@ async def scenario_resource_summary(
             for f in flow_for_team(db, summary.team, q_start, q_end)
         ] if summary.subgroups else [],
         booked_by_other_teams_by_role=summary.booked_by_other_teams_by_role,
+        borrowed_by_other_teams_by_role=summary.borrowed_by_other_teams_by_role,
     )
 
 
