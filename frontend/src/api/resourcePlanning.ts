@@ -62,6 +62,8 @@ export interface AssignmentOut {
   employee_name: string | null;
   employee_role: string | null;
   part_number: number;
+  /** Часть ОПЭ строки; null — у прочих фаз и старых строк (тогда — по роли). */
+  opo_part?: 'analyst' | 'dev' | null;
   hours_allocated: number | null;
   start_date: string | null;
   end_date: string | null;

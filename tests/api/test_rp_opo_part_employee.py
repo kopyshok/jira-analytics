@@ -97,3 +97,77 @@ def test_opo_part_pin_survives_next_recompute(client, db_session, opo_plan):
 
     after = _opo(db_session, t["plan"])
     assert new in after and after[new].pinned_employee is True
+
+
+def _dev_phase_employee(db_session, plan_id):
+    return db_session.execute(
+        select(ResourcePlanAssignment.employee_id).where(
+            ResourcePlanAssignment.plan_id == plan_id,
+            ResourcePlanAssignment.phase == "dev",
+        )
+    ).scalar_one()
+
+
+def _opo_by_part(db_session, plan_id):
+    db_session.expire_all()
+    return {
+        r.opo_part: r
+        for r in db_session.execute(
+            select(ResourcePlanAssignment).where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.phase == "opo",
+            )
+        ).scalars()
+    }
+
+
+def test_developer_on_analyst_opo_part_stays_on_analyst_part(
+    client, db_session, opo_plan
+):
+    """Разработчик, выбранный на часть ОПЭ аналитика, остаётся на ней: часть
+    разработчика не перескакивает к нему и остаётся за разработчиком задачи."""
+    t = opo_plan
+    item_dev = _dev_phase_employee(db_session, t["plan"])
+    [other_dev] = t["devs"] - {item_dev}
+    parts = _opo_by_part(db_session, t["plan"])
+    assert set(parts) == {"analyst", "dev"}
+
+    r = client.patch(
+        f"{BASE}/{t['plan']}/assignments/{parts['analyst'].id}",
+        json={"employee_id": other_dev},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["employee_id"] == other_dev
+    for _ in range(2):  # и после следующего пересчёта
+        after = _opo_by_part(db_session, t["plan"])
+        assert after["analyst"].employee_id == other_dev
+        assert after["analyst"].pinned_employee is True
+        assert after["analyst"].hours_allocated == 4.0
+        assert after["dev"].employee_id == item_dev
+        assert after["dev"].pinned_employee is False
+        assert after["dev"].hours_allocated == 4.0
+        ResourcePlanningService(db_session).compute_schedule(t["plan"])
+
+
+def test_two_opo_pins_of_same_role_do_not_collide(client, db_session, opo_plan):
+    """Обе части ОПЭ закреплены за разработчиками — обе остаются за ними."""
+    t = opo_plan
+    item_dev = _dev_phase_employee(db_session, t["plan"])
+    [other_dev] = t["devs"] - {item_dev}
+    parts = _opo_by_part(db_session, t["plan"])
+    for part, emp in (("analyst", other_dev), ("dev", item_dev)):
+        r = client.patch(
+            f"{BASE}/{t['plan']}/assignments/{parts[part].id}",
+            json={"employee_id": emp},
+        )
+        assert r.status_code == 200, r.text
+        parts = _opo_by_part(db_session, t["plan"])
+
+    ResourcePlanningService(db_session).compute_schedule(t["plan"])
+
+    after = _opo_by_part(db_session, t["plan"])
+    assert after["analyst"].employee_id == other_dev
+    assert after["dev"].employee_id == item_dev
+    assert after["analyst"].pinned_employee and after["dev"].pinned_employee
+    assert after["analyst"].hours_allocated == after["dev"].hours_allocated == 4.0

@@ -250,6 +250,7 @@ def _assignment_to_out(
         employee_name=emp.display_name if emp else None,
         employee_role=emp.role if emp else None,
         part_number=a.part_number,
+        opo_part=a.opo_part,
         hours_allocated=a.hours_allocated,
         start_date=a.start_date,
         end_date=a.end_date,
@@ -390,6 +391,8 @@ class AssignmentOut(BaseModel):
     employee_name: Optional[str]
     employee_role: Optional[str] = None  # для аватарок-цвета
     part_number: int
+    # Часть ОПЭ строки: «analyst» / «dev»; пусто — у прочих фаз и старых строк.
+    opo_part: Optional[str] = None
     hours_allocated: Optional[float]
     start_date: Optional[date]
     end_date: Optional[date]
@@ -1872,13 +1875,19 @@ def _rescheduled_row(
     """Строка, в которую пересчёт превратил правленую (её id сменился).
 
     ``rows`` — строки той же задачи, фазы и номера части. У ОПЭ их две — у
-    аналитика и у разработчика: нужна та, что у выбранного человека, иначе та
-    же часть по роли исполнителя (``part``, см. opo_part). У остальных фаз
-    строка одна.
+    аналитика и у разработчика: нужна та же часть (``part``) у выбранного
+    человека, иначе та же часть, иначе строка выбранного человека. Часть —
+    сохранённая у строки, у старых строк — по роли исполнителя. У остальных
+    фаз строка одна.
     """
+
+    def part_of(r: ResourcePlanAssignment) -> str:
+        return r.opo_part or opo_part(r.employee.role if r.employee else None)
+
     for match in (
+        [r for r in rows if r.employee_id == employee_id and part_of(r) == part],
+        [r for r in rows if part_of(r) == part],
         [r for r in rows if r.employee_id == employee_id],
-        [r for r in rows if opo_part(r.employee.role if r.employee else None) == part],
     ):
         if match:
             return match[0]
@@ -1973,8 +1982,12 @@ async def patch_assignment(
         patch.pop("end_date", None)
         start_changed = "start_date" in patch
 
-        # Явный выбор сотрудника — закрепить назначение
+        # Явный выбор сотрудника — закрепить назначение. Строка ОПЭ остаётся
+        # на своей части, кого бы ни выбрали; у старой строки без сохранённой
+        # части она узнаётся по прежнему исполнителю.
         if "employee_id" in patch:
+            if a.phase == "opo" and a.opo_part is None:
+                a.opo_part = opo_part(a.employee.role if a.employee else None)
             a.pinned_employee = True
             a.manual_edit_at = datetime.utcnow()
 
@@ -2030,7 +2043,9 @@ async def patch_assignment(
             target_part_number = a.part_number
             target_employee_id = a.employee_id
             target_emp = db.get(Employee, a.employee_id) if a.employee_id else None
-            target_part = opo_part(target_emp.role if target_emp else None)
+            target_part = a.opo_part or opo_part(
+                target_emp.role if target_emp else None
+            )
             db.flush()  # зафиксировать pinned_employee + новый employee_id
             try:
                 ResourcePlanningService(db).compute_schedule(plan_id)
@@ -2075,6 +2090,7 @@ async def patch_assignment(
         a_backlog_item_title = a.backlog_item.title if a.backlog_item else ""
         a_phase = a.phase
         a_part_number = a.part_number
+        a_opo_part = a.opo_part
         a_hours_allocated = a.hours_allocated
         a_start_date = a.start_date
         a_end_date = a.end_date
@@ -2124,6 +2140,7 @@ async def patch_assignment(
             employee_name=emp_name,
             employee_role=a_employee_role,
             part_number=a_part_number,
+            opo_part=a_opo_part,
             hours_allocated=a_hours_allocated,
             start_date=a_start_date,
             end_date=a_end_date,
@@ -3796,6 +3813,7 @@ async def fork_plan(
                     phase=a.phase,
                     employee_id=a.employee_id,
                     part_number=a.part_number,
+                    opo_part=a.opo_part,
                     hours_allocated=a.hours_allocated,
                     start_date=a.start_date,
                     end_date=a.end_date,

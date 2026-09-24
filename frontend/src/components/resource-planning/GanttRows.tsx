@@ -940,11 +940,14 @@ function TwoLevelRows({
                 assignments: AssignmentOut[];
               }> = [];
               if (phase === 'opo') {
+                // Часть хранится у строки; у старых строк — по роли исполнителя.
                 const analystA = phaseAssignments.filter(a =>
-                  ANALYST_ROLE_CODES.has((a.employee_role ?? '').toLowerCase()),
+                  a.opo_part ? a.opo_part === 'analyst'
+                    : ANALYST_ROLE_CODES.has((a.employee_role ?? '').toLowerCase()),
                 );
                 const devA = phaseAssignments.filter(a =>
-                  DEV_ROLE_CODES.has((a.employee_role ?? '').toLowerCase()),
+                  a.opo_part ? a.opo_part === 'dev'
+                    : DEV_ROLE_CODES.has((a.employee_role ?? '').toLowerCase()),
                 );
                 const otherA = phaseAssignments.filter(
                   a => !analystA.includes(a) && !devA.includes(a),

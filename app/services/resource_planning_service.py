@@ -67,9 +67,8 @@ def opo_part(role: Optional[str]) -> str:
     """Часть ОПЭ по роли исполнителя: «analyst» — аналитик, РП, консультант,
     «dev» — остальные.
 
-    У двух частей ОПЭ один номер части, различает их роль исполнителя — так
-    их делят правка исполнителя фазы и диаграмма; расчёт сначала узнаёт часть
-    по человеку (см. _opo_part_of).
+    У двух частей ОПЭ один номер части; часть хранится у строки. Роль — запасной
+    способ для старых строк без сохранённой части (см. _opo_part_of).
     """
     return "analyst" if (role or "").lower() in ANALYST_ROLES else "dev"
 
@@ -602,16 +601,19 @@ class ResourcePlanningService:
                 .distinct()
             ).all()
         }
-        # Закреп исполнителя части ОПЭ без даты: {задача: [(сотрудник, роль)]}.
-        # Какая это часть (у двух частей ОПЭ один номер), решает расчёт — см.
-        # _opo_part_of; части, закреплённые по дате, остаются строками в
-        # pinned_existing.
-        opo_emp_pins: Dict[str, List[Tuple[str, Optional[str]]]] = defaultdict(list)
-        for item_id, emp_id, role in self.db.execute(
+        # Закреп исполнителя части ОПЭ без даты:
+        # {задача: [(сотрудник, роль, сохранённая часть)]}. Часть хранится у
+        # строки; у старых строк без неё её узнаёт расчёт — см. _opo_part_of.
+        # Части, закреплённые по дате, остаются строками в pinned_existing.
+        opo_emp_pins: Dict[
+            str, List[Tuple[str, Optional[str], Optional[str]]]
+        ] = defaultdict(list)
+        for item_id, emp_id, role, stored_part in self.db.execute(
             select(
                 ResourcePlanAssignment.backlog_item_id,
                 ResourcePlanAssignment.employee_id,
                 Employee.role,
+                ResourcePlanAssignment.opo_part,
             )
             .join(Employee, Employee.id == ResourcePlanAssignment.employee_id)
             .where(
@@ -622,7 +624,7 @@ class ResourcePlanningService:
                 ResourcePlanAssignment.pinned_split == False,  # noqa: E712
             )
         ).all():
-            opo_emp_pins[item_id].append((emp_id, role))
+            opo_emp_pins[item_id].append((emp_id, role, stored_part))
 
         self.db.execute(
             ResourcePlanAssignment.__table__.delete().where(
@@ -980,10 +982,16 @@ class ResourcePlanningService:
                     own_an = analyst_id if analyst_ok or not opo_analyst_pool else None
                     own_dev = dev_id if dev_ok or not opo_dev_pool else None
                     # Часть, закреплённая за человеком без даты, — за ним.
-                    emp_pins = {
-                        _opo_part_of(eid, role, own_an, own_dev): eid
-                        for eid, role in opo_emp_pins.get(item.id, [])
-                    }
+                    # Сначала строки с сохранённой частью, затем старые — им
+                    # достаётся часть по человеку, а если она занята — другая.
+                    emp_pins: Dict[str, str] = {}
+                    for eid, role, stored_part in sorted(
+                        opo_emp_pins.get(item.id, []), key=lambda p: p[2] is None
+                    ):
+                        part = stored_part or _opo_part_of(eid, role, own_an, own_dev)
+                        if part in emp_pins:
+                            part = "dev" if part == "analyst" else "analyst"
+                        emp_pins.setdefault(part, eid)
                     if "analyst" in emp_pins:
                         analyst_id, analyst_ok = emp_pins["analyst"], True
                     if "dev" in emp_pins:
@@ -992,7 +1000,7 @@ class ResourcePlanningService:
                     # вторая часть достаётся другому.
                     pinned_part: Optional[str] = None
                     if opo_pinned is not None:
-                        pinned_part = _opo_part_of(
+                        pinned_part = opo_pinned.opo_part or _opo_part_of(
                             opo_pinned.employee_id,
                             role_of.get(opo_pinned.employee_id or ""),
                             own_an,
@@ -1062,6 +1070,7 @@ class ResourcePlanningService:
                                 phase="opo",
                                 employee_id=emp_id,
                                 part_number=part_num,
+                                opo_part=role,
                                 hours_allocated=seg_hours,
                                 start_date=seg_start,
                                 end_date=seg_end,
@@ -2651,6 +2660,7 @@ class ResourcePlanningService:
         item_id = a.backlog_item_id
         phase = a.phase
         employee_id = a.employee_id
+        opo_part_value = a.opo_part
         start = a.start_date
         end = a.end_date
 
@@ -2703,6 +2713,7 @@ class ResourcePlanningService:
                 phase=phase,
                 employee_id=employee_id,
                 part_number=idx,
+                opo_part=opo_part_value,
                 hours_allocated=float(h),
                 start_date=cursor,
                 end_date=seg_end,

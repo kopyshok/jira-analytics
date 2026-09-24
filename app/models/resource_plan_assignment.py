@@ -55,6 +55,10 @@ class ResourcePlanAssignment(Base, TimestampMixin):
         Boolean, nullable=False, default=False, server_default=false()
     )
     daily_hours_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Часть ОПЭ этой строки: «analyst» или «dev» (у двух частей один номер).
+    # Хранится, чтобы выбор исполнителя не переносил строку на другую часть;
+    # пусто — у прочих фаз и у старых строк (тогда часть узнаётся по человеку).
+    opo_part: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     # Пользователь явно отредактировал список предшественников этой фазы
     # (через PATCH /assignments/{id} с predecessor_ids в payload).
     # _ensure_default_predecessors при пересчёте плана пропускает инициативу,
