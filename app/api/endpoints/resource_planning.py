@@ -23,6 +23,7 @@ from app.models import (
 )
 from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
+from app.schemas.assignee_candidates import CandidateGroupOut
 from app.services import cross_team_occupancy as cto
 from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
@@ -622,26 +623,6 @@ class EmployeeChangePreviewResponse(BaseModel):
     absences: List[EmployeeAbsenceConflict] = []
     overloads: List[EmployeeOverloadConflict] = []
     has_conflicts: bool
-
-
-class CandidateOut(BaseModel):
-    """Кандидат в исполнители фазы."""
-
-    employee_id: str
-    display_name: str
-    role: Optional[str] = None
-    team: Optional[str] = None
-    # Загрузка за квартал плана по всем опорным планам команд, %.
-    load_pct: float = 0.0
-    # Границы участия в команде плана внутри квартала; None — край покрыт.
-    member_from: Optional[date] = None
-    member_to: Optional[date] = None
-
-
-class CandidateGroupOut(BaseModel):
-    key: Literal["jira", "team", "other"]
-    label: str
-    employees: List[CandidateOut]
 
 
 class DependencyCreate(BaseModel):
