@@ -1,10 +1,13 @@
-import { memo, useCallback, type CSSProperties } from 'react';
+import { memo, useCallback, useMemo, useState, type CSSProperties } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Checkbox, InputNumber, Select, Tag } from 'antd';
+import { Checkbox, InputNumber, Select, Spin, Tag } from 'antd';
+import type { SelectProps } from 'antd';
 import { HolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { AllocationOverridePopover } from './AllocationOverridePopover';
 import BacklogRoleCell from './BacklogRoleCell';
+import { useScenarioAssigneeCandidates } from '../../hooks/usePlanning';
+import { candidateOptions } from '../../utils/rpCandidates';
 import { effectiveEstimate } from '../../utils/allocationEstimates';
 import { statusTagColor } from '../../utils/status';
 import { getRoleColor } from '../../utils/roles';
@@ -24,7 +27,6 @@ export type BacklogAllocRowProps = {
   gridTemplate: string;
   gridGap: number;
   continuationInfo: ContinuationInfoRow | undefined;
-  assigneeOptions: { label: string; value: string }[];
   /** Группы команды. undefined — у команды нет деления, колонка не рисуется. */
   subgroupOptions?: { label: string; value: string }[];
   roles: Role[];
@@ -51,7 +53,6 @@ function BacklogAllocRowBase({
   gridTemplate,
   gridGap,
   continuationInfo,
-  assigneeOptions,
   subgroupOptions,
   roles,
   opoOff,
@@ -72,6 +73,25 @@ function BacklogAllocRowBase({
       registerRef(a.id, el);
     },
     [setNodeRef, registerRef, a.id],
+  );
+
+  // Кандидаты — все, кто в квартале сценария состоит в какой-либо команде.
+  // Грузятся, только пока список открыт: строк в сценарии много.
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const candidates = useScenarioAssigneeCandidates(scenarioId, a.backlog_item_id, assigneeOpen);
+  const roleLabels = useMemo(
+    () => new Map(roles.map((r) => [r.code, r.label] as const)),
+    [roles],
+  );
+  // Пока список не пришёл — одна опция с текущим исполнителем.
+  const assigneeOptions = useMemo<SelectProps['options']>(
+    () =>
+      candidates.data?.length
+        ? candidateOptions(candidates.data, roleLabels)
+        : a.assignee_employee_id
+          ? [{ value: a.assignee_employee_id, label: a.assignee_display_name ?? '—' }]
+          : [],
+    [candidates.data, roleLabels, a.assignee_employee_id, a.assignee_display_name],
   );
 
   const raw = effectiveEstimate(a);
@@ -274,7 +294,16 @@ function BacklogAllocRowBase({
             allowClear
             disabled={!isDraft}
             style={{ width: '100%', fontSize: 12 }}
+            // Шире колонки, чтобы подписи кандидатов читались; числом, а не false —
+            // иначе AntD выключает виртуальный список.
+            popupMatchSelectWidth={420}
+            showSearch={{ optionFilterProp: 'label' }}
+            loading={candidates.isFetching}
+            notFoundContent={candidates.isFetching ? <Spin size="small" /> : undefined}
             options={assigneeOptions}
+            onOpenChange={setAssigneeOpen}
+            // В закрытом поле — только имя; роль, команда и загрузка — в списке.
+            labelRender={({ label }) => a.assignee_display_name ?? label}
             onChange={(value: string | undefined) => onAssigneeChange(a.id, value ?? null)}
           />
         )}

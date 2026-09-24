@@ -3,6 +3,7 @@ import type {
   AllocationResponse, ScenarioResponse, ResourceBase, ScenarioRuleOut, ScenarioRuleInput,
   CapacityDiffResponse, ScenarioRevision, RevisionDiffResponse,
 } from '../types/api';
+import type { AssignmentCandidateGroup } from './resourcePlanning';
 
 export const getScenarios = (year?: string, quarter?: string, status?: 'draft' | 'approved', teams?: string) =>
   api.get<ScenarioResponse[]>('/planning/scenarios', { year, quarter, status, teams });
@@ -57,6 +58,13 @@ export const patchAllocationAssignee = (
   api.patch<AllocationResponse>(
     `/planning/scenarios/${scenarioId}/allocations/${allocId}/assignee`,
     { assignee_employee_id: assigneeEmployeeId },
+  );
+
+/** Кандидаты в исполнители строки сценария: «Из Jira» / «Моя команда» / «Другие команды». */
+export const getScenarioAssigneeCandidates = (scenarioId: string, backlogItemId: string) =>
+  api.get<AssignmentCandidateGroup[]>(
+    `/planning/scenarios/${scenarioId}/assignee-candidates`,
+    { backlog_item_id: backlogItemId },
   );
 
 export const reorderAllocations = (
