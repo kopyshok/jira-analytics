@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
@@ -25,6 +25,7 @@ from app.models import (
     PlanningScenario,
     ResourcePlan,
     ResourcePlanAssignment,
+    ScenarioAllocation,
 )
 from app.services import team_membership as tm
 from app.services.plan_common import _plan_sort_key, _quarter_variants, quarter_bounds
@@ -143,6 +144,22 @@ def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
     return {d: per for d in days}
 
 
+def _in_plan_scenario(stmt: Select) -> Select:
+    """Только строки задач, которые всё ещё включены в сценарий своего плана.
+
+    Задача, убранная из сценария или выключенная в нём, никого не занимает,
+    даже если её фаза закреплена и план ещё не пересчитан.
+    """
+    return stmt.join(ResourcePlan, ResourcePlan.id == ResourcePlanAssignment.plan_id).join(
+        ScenarioAllocation,
+        and_(
+            ScenarioAllocation.scenario_id == ResourcePlan.scenario_id,
+            ScenarioAllocation.backlog_item_id == ResourcePlanAssignment.backlog_item_id,
+            ScenarioAllocation.included_flag == True,  # noqa: E712
+        ),
+    )
+
+
 def external_bookings(
     db: Session,
     *,
@@ -160,7 +177,8 @@ def external_bookings(
     в этот квартал на месяц запаса и тоже занимают человека. Хвост задачи,
     которую команда перенесла в свой план этого квартала, не считается:
     там она уже занимает человека. Окно ``start`` — ``end`` отсекает всё,
-    что в него не попадает.
+    что в него не попадает. Строки задач, которых уже нет в сценарии плана,
+    не считаются нигде.
     Четыре запроса на любой объём: опорные планы двух кварталов, задачи
     планов квартала и назначения.
     """
@@ -181,9 +199,11 @@ def external_bookings(
         carried = {
             (team_of[plan_id], item_id)
             for plan_id, item_id in db.execute(
-                select(
-                    ResourcePlanAssignment.plan_id,
-                    ResourcePlanAssignment.backlog_item_id,
+                _in_plan_scenario(
+                    select(
+                        ResourcePlanAssignment.plan_id,
+                        ResourcePlanAssignment.backlog_item_id,
+                    )
                 )
                 .where(ResourcePlanAssignment.plan_id.in_(list(team_of)))
                 .distinct()
@@ -191,7 +211,7 @@ def external_bookings(
         }
     rows = (
         db.execute(
-            select(ResourcePlanAssignment)
+            _in_plan_scenario(select(ResourcePlanAssignment))
             .options(
                 joinedload(ResourcePlanAssignment.backlog_item).joinedload(
                     BacklogItem.issue
