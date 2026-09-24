@@ -31,6 +31,7 @@ from app.services.involvement_default_service import effective_for_phase, team_d
 from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import (
     ResourcePlanningService,
+    _resolve_parallel_count_legacy,
     lock_plan,
     opo_part,
 )
@@ -3554,12 +3555,20 @@ def explain_assignment(
                 is_workday = d_iter.weekday() < 5
             full_avail[d_iter] = qa_daily if is_workday else 0.0
             d_iter += _timedelta(days=1)
-    elif a.phase != "qa" and full_avail and _inv_value != 1.0:
-        # Для не-QA фаз full_avail уже построен build_availability как сырой
-        # календарь минус отсутствия. Применяем коэф. вовлечённости поверх,
-        # чтобы детализация показывала ту же ёмкость, которую использует
-        # планировщик (_daily_role_capacity внутри compute_schedule).
-        full_avail = {d: h * _inv_value for d, h in full_avail.items()}
+    elif a.phase != "qa" and full_avail:
+        # Для не-QA фаз full_avail — свободное по календарю (минус отсутствия
+        # и брони других команд). Потолок дня — как у планировщика
+        # (_daily_role_capacity внутри compute_schedule): не больше 8 ч ×
+        # вовлечённость × параллельность и не больше свободного.
+        _day_cap = ResourcePlanningService._daily_role_capacity(
+            avail_hours=8.0,
+            involvement=_inv_raw,
+            parallel_count=(
+                _resolve_parallel_count_legacy(_bi_for_inv, a.phase)
+                if _bi_for_inv else 1
+            ),
+        )
+        full_avail = {d: min(h, _day_cap) for d, h in full_avail.items()}
 
     # Отсутствия сотрудника в окне фазы (расширено влево до expected_start
     # для трассы сдвига).
