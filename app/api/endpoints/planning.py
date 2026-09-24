@@ -26,7 +26,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload
 
-from app.api.endpoints.resource_planning import CandidateGroupOut
 from app.database import get_db
 from app.models import (
     Absence,
@@ -54,6 +53,7 @@ from app.schemas.capacity_diff import (
     EmployeeDiff,
     MonthDiff,
 )
+from app.schemas.assignee_candidates import CandidateGroupOut
 from app.schemas.scenario_override import AllocationOverrideRequest
 from app.services import team_membership
 from app.services.capacity_service import CapacityService
@@ -1804,9 +1804,12 @@ def scenario_assignee_candidates(
 
 
 # === Scenario resource base ===
+# Ресурс сценария считается по броням опорных планов всех команд — тяжёлая
+# работа с базой. Поэтому обычные (не async) функции: FastAPI выполняет их в
+# пуле потоков, и расчёт не держит запросы остальных пользователей.
 
 @router.get("/scenarios/{scenario_id}/resource", response_model=ResourceBaseOut)
-async def scenario_resource(
+def scenario_resource(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):
@@ -1827,7 +1830,7 @@ async def scenario_resource(
 
 
 @router.get("/scenarios/{scenario_id}/resource-summary", response_model=ResourceSummaryOut)
-async def scenario_resource_summary(
+def scenario_resource_summary(
     scenario_id: str,
     db: Session = Depends(get_db),
 ):

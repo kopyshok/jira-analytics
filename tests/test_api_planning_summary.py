@@ -198,3 +198,15 @@ def test_copy_rules_from_scenario_self_returns_400(client, db_session):
         f"?source_scenario_id={target.id}"
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.parametrize("endpoint", ["scenario_resource", "scenario_resource_summary"])
+def test_resource_endpoints_run_off_event_loop(endpoint):
+    """Ресурс сценария считается по броням всех команд — тяжёлая работа с
+    базой. Обычная (не async) функция: FastAPI выполняет её в пуле потоков,
+    и она не держит запросы остальных пользователей."""
+    import inspect
+
+    from app.api.endpoints import planning
+
+    assert not inspect.iscoroutinefunction(getattr(planning, endpoint))
