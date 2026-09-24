@@ -448,6 +448,48 @@ def test_unplaced_conflict_disappears_once_hours_fit(db_session):
     assert _conflicts(db_session, plan_b.id, "UNPLACED_HOURS") == []
 
 
+def _stale_conflict(db, plan):
+    db.add(PlanConflict(
+        plan_id=plan.id, type="UNPLACED_HOURS", severity="critical",
+        detection_key="UNPLACED_HOURS:old", message="старая запись",
+    ))
+
+
+def _all_conflicts(db, plan_id):
+    return db.execute(
+        select(PlanConflict).where(PlanConflict.plan_id == plan_id)
+    ).scalars().all()
+
+
+def test_plan_without_initiatives_drops_old_conflicts(db_session):
+    """Задач в плане не осталось — прежние конфликты при пересчёте уходят."""
+    make_employee(db_session, "Свой B", "B")
+    _, plan_b = make_plan(db_session, "B", plan_status="draft")
+    _stale_conflict(db_session, plan_b)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert _all_conflicts(db_session, plan_b.id) == []
+
+
+def test_plan_without_people_reports_it_instead_of_old_conflicts(db_session):
+    """Задачи есть, а людей в команде нет: план пуст, и это видно командными конфликтами."""
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    add_item(db_session, sc_b, "Работа B", analyst=8, dev=12)
+    _stale_conflict(db_session, plan_b)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert sorted(
+        (c.type, c.message) for c in _all_conflicts(db_session, plan_b.id)
+    ) == [
+        ("NO_ANALYST", "В команде нет аналитиков — расписание фазы анализа невозможно"),
+        ("NO_DEV", "В команде нет разработчиков — расписание фазы разработки невозможно"),
+    ]
+
+
 def test_leveler_does_not_delay_onto_other_team_bookings(db_session):
     """Перегрузку выравниватель снимает сдвигом только на дни без чужих броней."""
     e = make_employee(db_session, "Пряничников", "A")
