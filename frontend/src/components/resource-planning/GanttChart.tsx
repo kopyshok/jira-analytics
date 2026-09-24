@@ -405,6 +405,7 @@ export default function GanttChart({
             onAssignmentClick={onAssignmentClick}
             highlightedEmployeeId={highlightedEmployeeId}
             fadeOthers={fadeOthers}
+            selectedEmployeeIds={selectedEmployeeIds}
             sectionByItem={sectionByItem}
             subgroupByEmployee={subgroupByEmployee}
             collapsedSections={collapsedSections}
