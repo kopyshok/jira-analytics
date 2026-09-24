@@ -3829,6 +3829,7 @@ def create_dependency(
         source="manual",
     )
     db.add(dep)
+    db.flush()  # id связи выдаётся при записи в базу — он нужен ответу
     plan = db.get(ResourcePlan, plan_id)
     if plan:
         plan.status = "stale"
