@@ -212,6 +212,62 @@ function ItemTitleCell({
   );
 }
 
+/**
+ * Строка фазы в виде «Исполнители»: ключ и название в одну строку с обрезкой,
+ * фаза справа. Высота строки здесь меньше, чем в «Задачах», и двухстрочная
+ * ячейка задачи в неё не влезает; полное название — в подсказке.
+ */
+function PersonPhaseCell({
+  title, jiraKey, leftColWidth, dotColor, phaseLabel, hours,
+}: {
+  title: string; jiraKey: string | null; leftColWidth: number;
+  dotColor: string; phaseLabel: string; hours: string;
+}) {
+  const full = [jiraKey, title].filter(Boolean).join(' · ') + (hours ? ` · ${hours}` : '');
+  return (
+    <div
+      title={full}
+      style={{
+        width: leftColWidth,
+        boxSizing: 'border-box',
+        flexShrink: 0,
+        borderRight: '1px solid #1e3a5f',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '0 12px 0 24px',
+        fontSize: 12,
+        color: '#fff',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        position: 'sticky',
+        left: 0,
+        zIndex: STICKY_CELL_Z,
+        background: '#0a1628',
+        boxShadow: '0 1px 0 0 #0e2540',
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: 2, background: dotColor, flexShrink: 0 }} />
+      {jiraKey && (
+        <a
+          href={`${JIRA_BASE}/browse/${jiraKey}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{ flexShrink: 0, fontSize: 11, color: 'var(--text-muted, #7a9ab8)', textDecoration: 'none' }}
+        >
+          {jiraKey}
+        </a>
+      )}
+      <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+      {hours && <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--text-muted, #8ab0d8)' }}>{hours}</span>}
+      <span style={{ flexShrink: 0, width: 84, textAlign: 'right', fontSize: 11, color: 'var(--text-muted, #8ab0d8)' }}>
+        {phaseLabel}
+      </span>
+    </div>
+  );
+}
+
 function PortfolioRows({ assignments, timeline, leftColWidth, trackWidthPx, rowRefs, onAssignmentClick }: SubProps) {
   const byItem = useMemo(() => {
     const map = new Map<string, { title: string; key: string | null; priority: number | null; assignments: AssignmentOut[] }>();
@@ -1261,13 +1317,12 @@ function PeopleRows({
                   data-gantt-row="true"
                   style={{ display: 'flex', height: ROW_HEIGHT - 4, borderBottom: '1px solid #0e2540' }}
                 >
-                  <ItemTitleCell
+                  <PersonPhaseCell
                     title={row.itemTitle}
                     jiraKey={row.itemKey}
                     leftColWidth={leftColWidth}
-                    fontWeight={400}
                     dotColor={color}
-                    assignee={PHASE_LABELS[row.phase]}
+                    phaseLabel={PHASE_LABELS[row.phase]}
                     hours={row.hours > 0 ? `${Math.round(row.hours)} ч` : ''}
                   />
                   <div data-gantt-track="true" style={trackStyle(trackWidthPx)}>
