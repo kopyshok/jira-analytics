@@ -753,7 +753,10 @@ class ResourcePlanningService:
         # занимают дни первыми. pinned_split — только структурный маркер: его
         # часы разложит отдельный проход после сдвига по связям.
         # ``unlaid`` — строки, которым не нашлось ни одного дня: их часы не
-        # размещены, это увидит конфликт «Часы не размещены».
+        # размещены, это увидит конфликт «Часы не размещены». Раскладка у них
+        # пустая ("{}"), а не отсутствует (None): «поровну по дням полосы»
+        # читатели раскладывают только старые строки совсем без раскладки,
+        # иначе все часы не размещённой фазы легли бы в день её начала.
         unlaid: set = set()
         item_rank = {it.id: i for i, it in enumerate(items)}
         pinned_start_rows = sorted(
@@ -779,7 +782,9 @@ class ResourcePlanningService:
                     q_end=q_end_extended,
                 )
                 a.end_date = new_end
-                a.daily_hours_json = daily_json if daily_json != "{}" else None
+                a.daily_hours_json = daily_json
+                if daily_json == "{}":
+                    unlaid.add(a.id)
                 a.out_of_quarter = new_end > q_end
                 continue
             if a.employee_id not in remaining:
@@ -806,7 +811,7 @@ class ResourcePlanningService:
                 )
             else:
                 a.end_date = a.start_date
-                a.daily_hours_json = None
+                a.daily_hours_json = "{}"
                 unlaid.add(a.id)
             # Окно — до q_end_extended (буфер spillover), флаг out_of_quarter —
             # относительно строгого q_end.
@@ -2448,7 +2453,7 @@ class ResourcePlanningService:
                         if unlaid is not None:
                             unlaid.discard(a.id)
                     else:
-                        a.daily_hours_json = None
+                        a.daily_hours_json = "{}"
                         if unlaid is not None:
                             unlaid.add(a.id)
                 continue
@@ -2516,7 +2521,7 @@ class ResourcePlanningService:
                     if unlaid is not None:
                         unlaid.discard(a.id)
                 else:
-                    a.daily_hours_json = None
+                    a.daily_hours_json = "{}"
                     if unlaid is not None:
                         unlaid.add(a.id)
 
@@ -3369,7 +3374,8 @@ class ResourcePlanningService:
         Фазы, закреплённые пользователем разбивкой (``skip``), не
         проверяются: их объём он задал сам. Фаза с закреплённой датой начала
         (``pinned_start``) сверяется с часами своих же строк: с этой даты их
-        не хватило — «не поместилось в свободные дни исполнителя».
+        не хватило — «не поместилось в свободные дни исполнителя» (у
+        тестирования — «в рабочие дни с закреплённой даты»).
 
         Сообщение перечисляет недоразложенные фазы по порядку: «Анализ 16 из
         40 ч; Разработка 0 из 40 ч — не поместилось в квартал и месяц
@@ -3416,7 +3422,12 @@ class ResourcePlanningService:
                 if need <= 0 or got + 0.01 >= need:
                     continue
                 if key in pinned_start:
-                    reason = "не поместилось в свободные дни исполнителя"
+                    # У тестирования исполнителя нет — только рабочие дни.
+                    reason = (
+                        "не поместилось в рабочие дни с закреплённой даты"
+                        if phase == "qa"
+                        else "не поместилось в свободные дни исполнителя"
+                    )
                 elif set(roles) - gap_roles:
                     reason = "нет исполнителя"
                 else:

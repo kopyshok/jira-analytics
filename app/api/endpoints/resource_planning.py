@@ -103,7 +103,12 @@ def _block_to_out(block: ScheduledBlock) -> "ScheduledBlockOut":
 
 
 def _parse_daily_hours(daily_hours_json: Optional[str]) -> Optional[Dict[str, float]]:
-    """Разобрать JSON-строку daily_hours_json в словарь {date_str: hours}."""
+    """Разобрать JSON-строку daily_hours_json в словарь {date_str: hours}.
+
+    None — раскладки нет (старая строка) или она не читается: только такие
+    строки читатели раскладывают «поровну по дням полосы». Пустой словарь —
+    фаза не нашла ни одного свободного дня, часов в днях нет.
+    """
     if not daily_hours_json:
         return None
     try:
@@ -115,6 +120,24 @@ def _parse_daily_hours(daily_hours_json: Optional[str]) -> Optional[Dict[str, fl
 def _daterange(start: date, end: date) -> List[date]:
     """Список календарных дней [start, end] включительно."""
     return [start + _timedelta(days=i) for i in range((end - start).days + 1)]
+
+
+def _hours_on_day(
+    a: ResourcePlanAssignment, day: date, avail_map: Dict[date, float]
+) -> float:
+    """Часы фазы в день ``day`` — как их видит выравниватель: из раскладки
+    планировщика (пустая раскладка — фаза не размещена, ноль); у старой
+    строки без раскладки — поровну по рабочим дням полосы (``avail_map`` > 0).
+    """
+    layout = _parse_daily_hours(a.daily_hours_json)
+    if layout is not None:
+        return float(layout.get(day.isoformat(), 0.0))
+    if not a.start_date or not a.end_date:
+        return 0.0
+    working = sum(
+        1 for d in _daterange(a.start_date, a.end_date) if avail_map.get(d, 0.0) > 0.0
+    )
+    return float(a.hours_allocated or 0.0) / working if working else 0.0
 
 
 def _compute_unavailable_days_for_assignment(
@@ -993,12 +1016,14 @@ def _cross_team_conflicts(
         for a in assignments_raw:
             if a.employee_id != eid or not a.start_date or not a.end_date:
                 continue
-            own_daily = _parse_daily_map(a.daily_hours_json)
+            # Без раскладки (старая строка) — все дни полосы; пустая
+            # раскладка — фаза не размещена и ни с чем не пересекается.
+            own_daily = _parse_daily_hours(a.daily_hours_json)
             a_days = sorted(
                 d
                 for d in days
                 if a.start_date <= d <= a.end_date
-                and (own_daily.get(d, 0.0) > 0 if own_daily else True)
+                and (own_daily is None or own_daily.get(d.isoformat(), 0.0) > 0)
             )
             if not a_days:
                 continue
@@ -1074,8 +1099,9 @@ def _daily_used(
             continue
         if a.employee_id not in used:
             continue
-        daily = _parse_daily_hours(a.daily_hours_json) or {}
-        if daily:
+        # Пустая раскладка — фаза не размещена: часов в днях нет.
+        daily = _parse_daily_hours(a.daily_hours_json)
+        if daily is not None:
             for iso, h in daily.items():
                 try:
                     dd = date.fromisoformat(iso)
@@ -1574,24 +1600,29 @@ def _detect_employee_change_conflicts(
         .all()
     )
     overloads_out: List[EmployeeOverloadConflict] = []
-    # Часы фазы-кандидата по дням
-    cand_daily = _parse_daily_hours(a.daily_hours_json) or {}
-    if not cand_daily and a.hours_allocated and a.start_date and a.end_date:
-        days_count = max(1, (a.end_date - a.start_date).days + 1)
-        per = a.hours_allocated / days_count
-        d = a.start_date
-        while d <= a.end_date:
-            cand_daily[d.isoformat()] = per
-            d += _timedelta(days=1)
-    for other in overlapping:
-        other_daily = _parse_daily_hours(other.daily_hours_json) or {}
-        if not other_daily and other.hours_allocated and other.start_date and other.end_date:
-            days_count = max(1, (other.end_date - other.start_date).days + 1)
-            per = other.hours_allocated / days_count
-            d = other.start_date
-            while d <= other.end_date:
-                other_daily[d.isoformat()] = per
+    # Часы фазы-кандидата по дням. Поровну по полосе — только у старых строк
+    # без раскладки; пустая раскладка — фаза не размещена, часов в днях нет.
+    cand_daily = _parse_daily_hours(a.daily_hours_json)
+    if cand_daily is None:
+        cand_daily = {}
+        if a.hours_allocated and a.start_date and a.end_date:
+            days_count = max(1, (a.end_date - a.start_date).days + 1)
+            per = a.hours_allocated / days_count
+            d = a.start_date
+            while d <= a.end_date:
+                cand_daily[d.isoformat()] = per
                 d += _timedelta(days=1)
+    for other in overlapping:
+        other_daily = _parse_daily_hours(other.daily_hours_json)
+        if other_daily is None:
+            other_daily = {}
+            if other.hours_allocated and other.start_date and other.end_date:
+                days_count = max(1, (other.end_date - other.start_date).days + 1)
+                per = other.hours_allocated / days_count
+                d = other.start_date
+                while d <= other.end_date:
+                    other_daily[d.isoformat()] = per
+                    d += _timedelta(days=1)
         for d_iso, cand_h in cand_daily.items():
             other_h = other_daily.get(d_iso, 0.0)
             total = cand_h + other_h
@@ -2769,17 +2800,17 @@ def explain_conflict(
             continue
         if not (a.start_date <= target_date <= a.end_date):
             continue
-        # Часы делятся равномерно по рабочим дням сегмента — тот же подход
-        # что и в leveler._detect_overload.
+        # Часы в этот день — как у выравнивателя (leveler._detect_overload):
+        # из раскладки, у старых строк без неё — поровну по рабочим дням.
+        per_day = _hours_on_day(a, target_date, full_avail)
+        if per_day <= 0:
+            continue
         working_days = 0
         d = a.start_date
         while d <= a.end_date:
             if full_avail.get(d, 0.0) > 0.0:
                 working_days += 1
             d += _td(days=1)
-        if working_days <= 0:
-            continue
-        per_day = float(a.hours_allocated) / working_days
         demand_total += per_day
         bi = a.backlog_item
         issue = bi.issue if bi else None
@@ -3273,14 +3304,16 @@ def _build_hours_summary(
 ) -> Optional[HoursSummary]:
     if not a.start_date or not a.end_date or a.hours_allocated is None:
         return None
+    # Без раскладки (старая строка) считаем все часы потраченными; пустая
+    # раскладка — фаза не размещена, не потрачено ничего.
+    layout = _parse_daily_hours(a.daily_hours_json)
     daily_used: Dict[date, float] = {}
-    if a.daily_hours_json:
+    if layout is not None:
         try:
-            raw = _json.loads(a.daily_hours_json)
-            daily_used = {date.fromisoformat(k): float(v) for k, v in raw.items()}
-        except (_json.JSONDecodeError, ValueError):
-            pass
-    used = sum(daily_used.values()) if daily_used else float(a.hours_allocated)
+            daily_used = {date.fromisoformat(k): float(v) for k, v in layout.items()}
+        except (ValueError, TypeError):
+            layout = None
+    used = sum(daily_used.values()) if layout is not None else float(a.hours_allocated)
     total = float(a.hours_allocated)
     workdays = 0
     blocked = 0
@@ -3574,25 +3607,7 @@ def explain_assignment(
                     continue
                 if not (x.start_date <= target_date <= x.end_date):
                     continue
-                # Per-day часы: из daily_hours_json или fallback равномерное распределение
-                per_day_actual = 0.0
-                if x.daily_hours_json:
-                    try:
-                        dh = _json.loads(x.daily_hours_json)
-                        per_day_actual = float(dh.get(target_date.isoformat(), 0.0))
-                    except (_json.JSONDecodeError, ValueError):
-                        pass
-                if per_day_actual <= 0:
-                    # fallback (legacy равномерное распределение)
-                    wd = 0
-                    d = x.start_date
-                    while d <= x.end_date:
-                        if raw_full_avail.get(d, 0.0) > 0.0:
-                            wd += 1
-                        d += _timedelta(days=1)
-                    if wd <= 0:
-                        continue
-                    per_day_actual = float(x.hours_allocated) / wd
+                per_day_actual = _hours_on_day(x, target_date, raw_full_avail)
                 if per_day_actual <= 0:
                     continue
                 demand_total += per_day_actual

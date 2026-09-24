@@ -123,17 +123,19 @@ class ExternalBooking:
 
 
 def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
-    """Часы фазы по дням: раскладка планировщика, иначе поровну по будням."""
+    """Часы фазы по дням: раскладка планировщика, иначе поровну по будням.
+
+    «Поровну» — только для старых строк совсем без раскладки. Пустая
+    раскладка — фаза не нашла ни одного свободного дня: часов в днях нет.
+    """
     if a.daily_hours_json:
         try:
             raw = json.loads(a.daily_hours_json)
-            daily = {
+            return {
                 date.fromisoformat(k): float(v) for k, v in raw.items() if float(v) > 0
             }
         except (ValueError, TypeError, AttributeError):
-            daily = {}
-        if daily:
-            return daily
+            pass
     if not a.start_date or not a.end_date or not a.hours_allocated:
         return {}
     days: List[date] = []

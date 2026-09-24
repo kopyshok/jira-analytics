@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from sqlalchemy import delete, update
 
-from app.models import ResourcePlan, ResourcePlanAssignment, ScenarioAllocation
+from app.models import PlanningScenario, ResourcePlan, ResourcePlanAssignment, ScenarioAllocation
 from app.services import cross_team_occupancy as cto
 from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
 
@@ -105,6 +105,31 @@ def test_external_bookings_from_other_team(db_session):
             D("2026-01-05"): 6.0, D("2026-01-06"): 6.0,
             D("2026-01-08"): 3.0, D("2026-01-09"): 3.0, D("2026-01-12"): 3.0,
         }
+    }
+
+
+def test_empty_layout_is_no_booking(db_session):
+    """Пустая раскладка — фаза не нашла ни одного свободного дня: человека она
+    не занимает. «Поровну по будням» — только у старых строк без раскладки."""
+    e, _m = _setup_booked(db_session)
+    plan = db_session.query(ResourcePlan).filter_by(team="A").one()
+    item = add_item(db_session, db_session.get(PlanningScenario, plan.scenario_id), "Не размещена")
+    db_session.add(ResourcePlanAssignment(
+        plan_id=plan.id, backlog_item_id=item.id, phase="dev", employee_id=e.id,
+        part_number=1, hours_allocated=12.0, daily_hours_json="{}",
+        start_date=D("2026-01-13"), end_date=D("2026-01-13"),
+    ))
+    db_session.commit()
+
+    bookings = cto.external_bookings(
+        db_session, team="B", year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-03-31"),
+    )
+
+    assert D("2026-01-13") not in cto.daily_totals(bookings)[e.id]
+    assert item.id not in {
+        db_session.get(ResourcePlanAssignment, b.assignment_id).backlog_item_id
+        for b in bookings
     }
 
 
