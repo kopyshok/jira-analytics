@@ -92,6 +92,31 @@ export function fmtLocalIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * Дата, сдвинутая на dx столбцов шкалы. В режиме «Только рабочие» столбец —
+ * рабочий день: перетаскивание на 3 столбца двигает начало на 3 рабочих дня,
+ * а не на 3 календарных. За краем шкалы — крайний рабочий день.
+ */
+export function shiftByColumns(iso: string, dx: number, tl: GanttTimeline | WorkdayTimeline): string {
+  if (!('workdayIndex' in tl)) {
+    const d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + dx);
+    return fmtLocalIso(d);
+  }
+  const dates = tl.workdayDates;
+  if (dates.length === 0) return iso;
+  // Нерабочий день стоит в столбце следующего рабочего — как в dateToLeft.
+  let idx = tl.workdayIndex.get(iso) ?? dates.findIndex((d) => d >= iso);
+  if (idx === -1) idx = dates.length;
+  return dates[Math.min(dates.length - 1, Math.max(0, idx + dx))];
+}
+
+/** «Начало перенесено на первый свободный день: 12.10» — если сервер поставил начало не туда, куда просили. */
+export function startMovedNotice(requested: string, actual: string | null | undefined): string | null {
+  if (!actual || actual === requested) return null;
+  return `Начало перенесено на первый свободный день: ${actual.slice(8, 10)}.${actual.slice(5, 7)}`;
+}
+
 export function getWeekLabels(tl: GanttTimeline | WorkdayTimeline): Array<{ label: string; leftPct: number; widthPct: number }> {
   const weeks: Array<{ label: string; leftPct: number; widthPct: number }> = [];
   const d = new Date(tl.startDate);

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildWorkdayTimeline, dateToLeft, datesToWidth, findAssignmentByKey } from './gantt';
+import {
+  buildTimeline, buildWorkdayTimeline, dateToLeft, datesToWidth, findAssignmentByKey,
+  shiftByColumns, startMovedNotice,
+} from './gantt';
 
 describe('buildWorkdayTimeline', () => {
   it('skips weekends without production calendar', () => {
@@ -51,6 +54,47 @@ describe('buildWorkdayTimeline', () => {
     const tl = buildWorkdayTimeline(start, end, []);
     // Apr 4 (Sat) to Apr 5 (Sun) = 0 workdays → minimum 0.5
     expect(datesToWidth('2026-04-04', '2026-04-05', tl)).toBe(0.5);
+  });
+});
+
+describe('shiftByColumns', () => {
+  // Апрель 2026: 01.04 — среда, 03.04 — пятница, 04–05.04 — выходные.
+  const days = buildTimeline(new Date(2026, 3, 1), new Date(2026, 3, 30));
+  const workdays = buildWorkdayTimeline(new Date(2026, 3, 1), new Date(2026, 3, 30), []);
+
+  it('в календарной шкале столбец — календарный день', () => {
+    expect(shiftByColumns('2026-04-03', 3, days)).toBe('2026-04-06');
+    expect(shiftByColumns('2026-04-06', -3, days)).toBe('2026-04-03');
+  });
+
+  it('в режиме «Только рабочие» столбец — рабочий день', () => {
+    // Пт 03.04 + 3 столбца = Ср 08.04 (06, 07, 08), а не Пн 06.04.
+    expect(shiftByColumns('2026-04-03', 3, workdays)).toBe('2026-04-08');
+    expect(shiftByColumns('2026-04-08', -3, workdays)).toBe('2026-04-03');
+  });
+
+  it('нерабочий день считается от столбца следующего рабочего', () => {
+    // Сб 04.04 стоит в столбце Пн 06.04.
+    expect(shiftByColumns('2026-04-04', 1, workdays)).toBe('2026-04-07');
+  });
+
+  it('за краем шкалы — крайний рабочий день', () => {
+    expect(shiftByColumns('2026-04-28', 10, workdays)).toBe('2026-04-30');
+    expect(shiftByColumns('2026-04-02', -10, workdays)).toBe('2026-04-01');
+    expect(shiftByColumns('2026-05-15', -1, workdays)).toBe('2026-04-30');
+  });
+});
+
+describe('startMovedNotice', () => {
+  it('сервер поставил начало на другой день — подсказка с датой', () => {
+    expect(startMovedNotice('2026-10-05', '2026-10-12')).toBe(
+      'Начало перенесено на первый свободный день: 12.10',
+    );
+  });
+
+  it('начало там, куда просили, или его нет — без подсказки', () => {
+    expect(startMovedNotice('2026-10-05', '2026-10-05')).toBeNull();
+    expect(startMovedNotice('2026-10-05', null)).toBeNull();
   });
 });
 

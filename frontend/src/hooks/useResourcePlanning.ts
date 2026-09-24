@@ -160,9 +160,13 @@ export function useAssignmentCandidates(
   });
 }
 
+/** Ключ мутации правки фазы: по нему диаграмма знает, что сохранение ещё идёт. */
+export const PATCH_ASSIGNMENT_KEY = ['rp-patch-assignment'];
+
 export function usePatchAssignment() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: PATCH_ASSIGNMENT_KEY,
     mutationFn: ({
       planId,
       assignmentId,
@@ -172,11 +176,14 @@ export function usePatchAssignment() {
       assignmentId: string;
       data: AssignmentPatch;
     }) => patchAssignment(planId, assignmentId, data),
-    onSuccess: (_, { planId, assignmentId }) => {
-      qc.invalidateQueries({ queryKey: ['gantt', planId] });
+    onSuccess: (_, { assignmentId }) => {
       qc.invalidateQueries({ queryKey: ['resource-plans'] });
       trackAction('resource_plan_edited', assignmentId);
     },
+    // Пересчёт пересоздаёт незакреплённые строки с новыми id. Мутация остаётся
+    // «в работе», пока план не перечитан: до этого id на экране устаревшие.
+    // И после отказа — строка могла исчезнуть при чужом пересчёте.
+    onSettled: (_, __, { planId }) => qc.invalidateQueries({ queryKey: ['gantt', planId] }),
   });
 }
 

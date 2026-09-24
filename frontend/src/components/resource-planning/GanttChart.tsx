@@ -1,4 +1,5 @@
 import { useRef, useMemo, useState, useEffect } from 'react';
+import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import type { AssignmentOut, DependencyOut, EmployeeLoadOut, ExternalBookingOut, ScheduledBlock } from '../../api/resourcePlanning';
 import type { EmployeeResponse, ProductionCalendarDayResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
@@ -13,6 +14,7 @@ import DependencyArrows from './DependencyArrows';
 import ExternalBookingsRows from './ExternalBookingsRows';
 import { useProductionCalendarYear } from '../../hooks/useProductionCalendar';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
+import { PATCH_ASSIGNMENT_KEY } from '../../hooks/useResourcePlanning';
 import { ownPeopleBookingLabel, workdayChecker } from '../../utils/externalBookings';
 import { busyGaps, type BusyGap } from '../../utils/rpBusy';
 
@@ -129,6 +131,10 @@ export default function GanttChart({
   const calendarQuery = useProductionCalendarYear(year);
   const calendar = calendarQuery.data ?? NO_CALENDAR;
   const { prefs } = useRpPreferences();
+  // Пока перенос фазы сохраняется и план перечитывается, новые переносы ждут:
+  // пересчёт пересоздаёт строки с новыми id.
+  const patching = useIsMutating({ mutationKey: PATCH_ASSIGNMENT_KEY }) > 0;
+  const refetching = useIsFetching({ queryKey: ['gantt', planId] }) > 0;
   const isWorkday = useMemo(() => workdayChecker(calendar), [calendar]);
   const bookings = externalBookings ?? NO_BOOKINGS;
   // Вырезы на полосах: рабочие дни без часов фазы, когда человек занят в
@@ -393,6 +399,7 @@ export default function GanttChart({
             employeeLoad={employeeLoad}
             planTeam={planTeam}
             isWorkday={isWorkday}
+            dragLocked={patching || refetching}
           />
         </div>
       </div>
