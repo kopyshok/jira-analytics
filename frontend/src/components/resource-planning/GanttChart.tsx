@@ -46,6 +46,8 @@ interface Props {
   onAssignmentClick?: (assignmentId: string) => void;
   hideWeekends?: boolean;
   highlightedEmployeeId?: string | null;
+  /** Люди в фильтре «Исполнители»; пусто — фильтра нет. */
+  selectedEmployeeIds?: string[];
   onEmployeeRowClick?: (employeeId: string | null) => void;
   /** Секции групп команды: {id инициативы: название группы}. */
   sectionByItem?: Record<string, string>;
@@ -87,6 +89,7 @@ export default function GanttChart({
   collapsedSections,
   onToggleSection,
   highlightedEmployeeId,
+  selectedEmployeeIds,
   onEmployeeRowClick,
   externalBookings,
   layout = 'tasks',
@@ -95,6 +98,13 @@ export default function GanttChart({
 }: Props) {
   const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
+  // Свёрнутость блоков «Привлечённые» / «Наши люди в других командах» — здесь,
+  // а не в блоке: строки ниже сдвигаются, и стрелки связей перерисовываются.
+  const [borrowedCollapsed, setBorrowedCollapsed] = useState(false);
+  const [ownPeopleCollapsed, setOwnPeopleCollapsed] = useState(false);
+  // Приглушать чужие полосы и связи — только при подсветке одного человека
+  // без фильтра: с фильтром на экране и так только выбранные люди.
+  const fadeOthers = !!highlightedEmployeeId && !selectedEmployeeIds?.length;
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
@@ -334,17 +344,20 @@ export default function GanttChart({
             <BlockedZones blocks={blocks} timeline={timeline} />
           </div>
 
-          {/* SVG arrows */}
-          <DependencyArrows
-            assignments={assignments}
-            rowRefs={rowRefs}
-            containerRef={innerRef as React.RefObject<HTMLDivElement>}
-            showRelayArrows={showRelayArrows}
-            manualDependencies={dependencies}
-            onDeleteDependency={onDeleteDependency}
-            highlightedEmployeeId={highlightedEmployeeId}
-            redrawKey={`${effectiveScale}:${trackWidthPx}`}
-          />
+          {/* SVG arrows — только в виде «Задачи»: в «Исполнителях» строки
+              идут по людям, и связи между задачами там не читаются. */}
+          {layout === 'tasks' && (
+            <DependencyArrows
+              assignments={assignments}
+              rowRefs={rowRefs}
+              containerRef={innerRef as React.RefObject<HTMLDivElement>}
+              showRelayArrows={showRelayArrows}
+              manualDependencies={dependencies}
+              onDeleteDependency={onDeleteDependency}
+              highlightedEmployeeId={fadeOthers ? highlightedEmployeeId : null}
+              redrawKey={`${effectiveScale}:${trackWidthPx}:${borrowedCollapsed}:${ownPeopleCollapsed}`}
+            />
+          )}
 
           {/* В виде «Исполнители» те же брони лежат на полосе «все работы». */}
           {layout === 'tasks' && (
@@ -355,6 +368,8 @@ export default function GanttChart({
               calendar={calendar}
               leftColWidth={LEFT_COL}
               trackWidthPx={trackWidthPx}
+              collapsed={borrowedCollapsed}
+              onToggle={() => setBorrowedCollapsed((v) => !v)}
             />
           )}
           {layout === 'tasks' && (
@@ -367,6 +382,8 @@ export default function GanttChart({
               calendar={calendar}
               leftColWidth={LEFT_COL}
               trackWidthPx={trackWidthPx}
+              collapsed={ownPeopleCollapsed}
+              onToggle={() => setOwnPeopleCollapsed((v) => !v)}
             />
           )}
 
@@ -387,6 +404,7 @@ export default function GanttChart({
             conflictAssignmentIds={conflictAssignmentIds}
             onAssignmentClick={onAssignmentClick}
             highlightedEmployeeId={highlightedEmployeeId}
+            fadeOthers={fadeOthers}
             sectionByItem={sectionByItem}
             subgroupByEmployee={subgroupByEmployee}
             collapsedSections={collapsedSections}

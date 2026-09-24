@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { ExternalBookingOut } from '../../api/resourcePlanning';
 import type { ProductionCalendarDayResponse } from '../../types/api';
 import type { GanttTimeline, WorkdayTimeline } from '../../utils/gantt';
@@ -31,6 +31,10 @@ interface Props {
   labelOf?: (b: ExternalBookingOut) => string;
   /** Красная отметка в днях, где этот план тоже занял человека. */
   showOverlap?: boolean;
+  /** Блок свёрнут. Состояние у диаграммы: при сворачивании строки ниже
+   *  сдвигаются, и стрелки связей надо перерисовать. */
+  collapsed: boolean;
+  onToggle: () => void;
 }
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
@@ -49,8 +53,9 @@ export default function ExternalBookingsRows({
   title,
   labelOf = externalBookingLabel,
   showOverlap = false,
+  collapsed,
+  onToggle,
 }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
   const rows = useMemo(() => {
     const from = fmtLocalIso(timeline.startDate);
     const to = fmtLocalIso(timeline.endDate);
@@ -69,7 +74,7 @@ export default function ExternalBookingsRows({
       <button
         type="button"
         aria-expanded={!collapsed}
-        onClick={() => setCollapsed((v) => !v)}
+        onClick={onToggle}
         style={{
           position: 'sticky',
           left: 0,
