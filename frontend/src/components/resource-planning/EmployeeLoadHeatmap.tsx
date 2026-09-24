@@ -359,7 +359,16 @@ export default function EmployeeLoadHeatmap({
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span
+                      role={onEmployeeClick ? 'button' : undefined}
+                      tabIndex={onEmployeeClick ? 0 : undefined}
+                      aria-pressed={onEmployeeClick ? selectedIds.includes(row.employee_id) : undefined}
                       onClick={onEmployeeClick ? () => onEmployeeClick(row.employee_id) : undefined}
+                      onKeyDown={onEmployeeClick ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onEmployeeClick(row.employee_id);
+                        }
+                      } : undefined}
                       title={
                         onEmployeeClick
                           ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать'

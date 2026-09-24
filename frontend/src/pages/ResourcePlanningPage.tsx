@@ -42,8 +42,6 @@ import { filterByPeople } from '../utils/rpPeople';
 import { AppearanceProvider, useAppearanceSettings } from '../contexts/AppearanceContext';
 import { DARK_THEME } from '../utils/constants';
 
-const NO_PEOPLE: string[] = [];
-
 function ResourcePlanningPageInner() {
   const { message } = App.useApp();
   const [searchParams] = useSearchParams();
@@ -67,10 +65,14 @@ function ResourcePlanningPageInner() {
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkLabel, setForkLabel] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  // Фильтр «Исполнители» — на план: при смене плана сбрасывается сам.
-  const [peopleFilterState, setPeopleFilterState] = useState<{ planId: string | null; ids: string[] }>(
-    { planId: null, ids: [] },
-  );
+  // Фильтр «Исполнители» — на план: при смене плана сбрасывается, в том числе
+  // при возврате к прежнему плану.
+  const [peopleFilter, setPeopleFilter] = useState<string[]>([]);
+  const [peopleFilterPlanId, setPeopleFilterPlanId] = useState(planId);
+  if (peopleFilterPlanId !== planId) {
+    setPeopleFilterPlanId(planId);
+    setPeopleFilter([]);
+  }
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   useRegisterHelp('Планирование ресурсов', resourcePlanningHelp);
   const appearanceSettings = useAppearanceSettings();
@@ -79,11 +81,6 @@ function ResourcePlanningPageInner() {
   const deleteDep = useDeleteDependency();
   const { prefs, patch: patchPrefs } = useRpPreferences();
   const layout: RpLayout = prefs.view_mode === 'people' ? 'people' : 'tasks';
-  const peopleFilter = useMemo(
-    () => (peopleFilterState.planId === planId ? peopleFilterState.ids : NO_PEOPLE),
-    [peopleFilterState, planId],
-  );
-  const setPeopleFilter = (ids: string[]) => setPeopleFilterState({ planId, ids });
   // Щелчок по человеку (фишка фазы, имя в подвале, заголовок секции)
   // добавляет его в фильтр или убирает.
   const togglePerson = (id: string | null) => {
@@ -507,7 +504,11 @@ function ResourcePlanningPageInner() {
             gantt.stale_teams?.length ? ` (${gantt.stale_teams.join(', ')})` : ''
           } — нажмите «Распределить»`}
           action={
-            <Button size="small" loading={compute.isPending} onClick={handleCompute}>
+            <Button
+              size="small"
+              loading={compute.isPending || gantt.plan.status === 'computing'}
+              onClick={handleCompute}
+            >
               Распределить
             </Button>
           }

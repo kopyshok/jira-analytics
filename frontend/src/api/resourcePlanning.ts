@@ -251,8 +251,8 @@ export interface EmployeeChangePreviewResponse {
 export interface RpPreferences {
   hide_weekends: boolean;
   collapsed_initiative_ids: string[];
-  /** Вид страницы: 'tasks' — по задачам (по умолчанию), 'people' — по исполнителям. */
-  view_mode: string | null;
+  /** Вид страницы: 'tasks' — по задачам (null — тоже), 'people' — по исполнителям. */
+  view_mode: 'tasks' | 'people' | null;
   show_relay: boolean;
   detail_sections_visible: Record<string, boolean>;
   detail_sections_collapsed: Record<string, boolean>;

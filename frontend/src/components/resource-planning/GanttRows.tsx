@@ -40,6 +40,8 @@ interface Props {
   highlightedEmployeeId?: string | null;
   /** Приглушать полосы остальных людей при подсветке (не при фильтре по людям). */
   fadeOthers?: boolean;
+  /** Люди в фильтре «Исполнители»; пусто — фильтра нет. */
+  selectedEmployeeIds?: string[];
   onEmployeeRowClick?: (employeeId: string | null) => void;
   /** Группа команды для каждой инициативы: показывать строки секциями групп.
    *  План остаётся общекомандным — секции только визуальные. */
@@ -1120,6 +1122,7 @@ function PeopleRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   conflictAssignmentIds, onAssignmentClick, highlightedEmployeeId, fadeOthers, onEmployeeRowClick,
   quarterEndDate, externalBookings, employeeLoad, planTeam, busyByAssignment, isWorkday, dragLocked,
+  selectedEmployeeIds,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -1131,19 +1134,53 @@ function PeopleRows({
   const from = fmtLocalIso(timeline.startDate);
   const to = fmtLocalIso(timeline.endDate);
   const workday = isWorkday ?? WEEKDAYS;
+  const selected = selectedEmployeeIds ?? [];
+
+  if (sections.length === 0) {
+    return (
+      <div
+        style={{
+          position: 'sticky',
+          left: 0,
+          zIndex: STICKY_CELL_Z,
+          width: leftColWidth,
+          boxSizing: 'border-box',
+          padding: '16px 12px',
+          fontSize: 13,
+          color: 'var(--text-muted, #8ab0d8)',
+        }}
+      >
+        {selected.length > 0
+          ? 'У выбранных исполнителей нет фаз в этом плане — измените фильтр «Исполнители»'
+          : 'В плане нет фаз'}
+      </div>
+    );
+  }
 
   return (
     <>
       {sections.map((s, si) => {
         const lane = personLaneRuns(s, from, to, workday);
-        const clickable = !!s.employeeId && !!onEmployeeRowClick;
+        const personId = s.employeeId;
+        // Щелчок или Enter/пробел по заголовку — добавить человека в фильтр или убрать.
+        const toggle = personId && onEmployeeRowClick ? () => onEmployeeRowClick(personId) : undefined;
+        const inFilter = !!personId && selected.includes(personId);
         return (
           <div key={s.employeeId ?? '__none__'} style={{ borderTop: si > 0 ? INIT_DIVIDER : 'none' }}>
             {/* Заголовок секции: имя, команда, загрузка; щелчок — фильтр по человеку. */}
             <div style={{ display: 'flex', minHeight: ROW_HEIGHT, background: INIT_HEADER_BG, borderBottom: '1px solid #1e3a5f' }}>
               <div
-                onClick={() => { if (s.employeeId) onEmployeeRowClick?.(s.employeeId); }}
-                title={clickable ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать' : undefined}
+                role={toggle ? 'button' : undefined}
+                tabIndex={toggle ? 0 : undefined}
+                aria-pressed={toggle ? inFilter : undefined}
+                onClick={toggle}
+                onKeyDown={toggle ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle();
+                  }
+                } : undefined}
+                title={toggle ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать' : undefined}
                 style={{
                   width: leftColWidth,
                   flexShrink: 0,
@@ -1157,7 +1194,7 @@ function PeopleRows({
                   alignItems: 'center',
                   gap: 8,
                   padding: '6px 12px',
-                  cursor: clickable ? 'pointer' : 'default',
+                  cursor: toggle ? 'pointer' : 'default',
                 }}
               >
                 {s.employeeId && <EmployeeAvatar name={s.name} role={s.role} size={20} />}
