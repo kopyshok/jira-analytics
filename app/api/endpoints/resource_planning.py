@@ -6,7 +6,7 @@ from typing import Dict, List, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auth_deps import get_current_user
@@ -1661,12 +1661,14 @@ def list_assignment_candidates(
 ):
     """Все активные сотрудники тремя группами: «Из Jira», «Моя команда», «Другие команды».
 
+    Кандидат должен состоять хоть в какой-то команде хотя бы день квартала
+    плана — боты и люди вне команд в выбор не попадают.
     «Из Jira»: для разработки — поле «Разработчик», для остальных фаз —
     исполнитель инициативы. «Моя команда» — состав команды плана за квартал.
     У каждого — загрузка за квартал плана по всем опорным планам команд.
     Пустые группы не возвращаются.
     """
-    from app.models import Employee
+    from app.models import Employee, EmployeeTeam
     from app.services import team_membership as tm
     from app.services.jira_developer import jira_developers_for_items
 
@@ -1690,7 +1692,15 @@ def list_assignment_candidates(
     q = cto.quarter_num(plan.quarter)
 
     employees = list(
-        db.execute(select(Employee).where(Employee.is_active == True))  # noqa: E712
+        db.execute(
+            select(Employee).where(
+                Employee.is_active == True,  # noqa: E712
+                exists().where(
+                    EmployeeTeam.employee_id == Employee.id,
+                    *tm.overlaps_clause(q_start, q_end),
+                ),
+            )
+        )
         .scalars()
         .all()
     )
@@ -1703,7 +1713,7 @@ def list_assignment_candidates(
     item = a.backlog_item
     if item is not None:
         if a.phase == "dev":
-            jira_id = jira_developers_for_items(db, [item]).get(item.id)
+            jira_id = jira_developers_for_items(db, [item], q_start, q_end).get(item.id)
         else:
             jira_id = item.assignee_employee_id
     jira_ids = [jira_id] if jira_id in by_id else []

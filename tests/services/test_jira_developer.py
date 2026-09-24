@@ -1,8 +1,13 @@
 """«Разработчик» из Jira: поле задачи, иначе самый частый в поддереве."""
 
+from datetime import date
+
 from app.models import BacklogItem
+from app.models.employee_team import EmployeeTeam
 from app.services.jira_developer import jira_developers_for_items
 from tests.services.xteam_factory import make_employee, make_issue
+
+Q1 = (date(2026, 1, 1), date(2026, 3, 31))
 
 
 def _item(db, issue=None):
@@ -30,7 +35,7 @@ def test_own_field_then_most_frequent_child(db_session, sample_project):
     i1, i2, i3, i4 = _item(db_session, r1), _item(db_session, r2), _item(db_session, r3), _item(db_session)
     db_session.commit()
 
-    got = jira_developers_for_items(db_session, [i1, i2, i3, i4])
+    got = jira_developers_for_items(db_session, [i1, i2, i3, i4], *Q1)
 
     assert got == {i1.id: e1.id, i2.id: e2.id}
 
@@ -44,7 +49,7 @@ def test_tie_broken_by_account(db_session, sample_project):
     it = _item(db_session, root)
     db_session.commit()
 
-    assert jira_developers_for_items(db_session, [it]) == {it.id: ea.id}
+    assert jira_developers_for_items(db_session, [it], *Q1) == {it.id: ea.id}
 
 
 def test_only_developers_or_blank_role_are_nominated(db_session, sample_project):
@@ -62,7 +67,7 @@ def test_only_developers_or_blank_role_are_nominated(db_session, sample_project)
     i1, i2, i3 = _item(db_session, r1), _item(db_session, r2), _item(db_session, r3)
     db_session.commit()
 
-    got = jira_developers_for_items(db_session, [i1, i2, i3])
+    got = jira_developers_for_items(db_session, [i1, i2, i3], *Q1)
 
     assert got == {i1.id: dev.id, i2.id: blank.id}
 
@@ -81,4 +86,22 @@ def test_closed_subtasks_do_not_nominate(db_session, sample_project):
     it = _item(db_session, root)
     db_session.commit()
 
-    assert jira_developers_for_items(db_session, [it]) == {it.id: b.id}
+    assert jira_developers_for_items(db_session, [it], *Q1) == {it.id: b.id}
+
+
+def test_nobody_outside_teams_in_quarter_is_nominated(db_session, sample_project):
+    """Бот и выбывший до квартала «Разработчиком» не подставляются — только состоящие в команде."""
+    make_employee(db_session, "CEDO_BOT", None, jira_account_id="acc-bot", member=False)
+    gone = make_employee(db_session, "Ушедший", "A", jira_account_id="acc-gone",
+                         member=False)
+    db_session.add(EmployeeTeam(employee_id=gone.id, team="A", is_primary=True,
+                                left_at=date(2025, 12, 1)))
+    dev = make_employee(db_session, "Разработчик", "A", jira_account_id="acc-dev")
+
+    r1 = make_issue(db_session, sample_project, "OS-40", developer="acc-bot")
+    make_issue(db_session, sample_project, "OS-41", developer="acc-dev", parent=r1)
+    r2 = make_issue(db_session, sample_project, "OS-42", developer="acc-gone")
+    i1, i2 = _item(db_session, r1), _item(db_session, r2)
+    db_session.commit()
+
+    assert jira_developers_for_items(db_session, [i1, i2], *Q1) == {i1.id: dev.id}

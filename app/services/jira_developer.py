@@ -5,26 +5,34 @@
 а если оно пустое или человек не подходит — самый частый «Разработчик» среди
 незакрытых задач её поддерева (у RFA разработчики стоят на подзадачах
 эпиков; закрытые и отменённые подзадачи не голосуют). Подходит активный
-сотрудник с ролью разработчика или без роли. Ничья решается по учётной
-записи Jira — ответ не прыгает.
+сотрудник с ролью разработчика или без роли, состоявший хоть в какой-то
+команде в квартале плана (боты и люди вне команд не подходят). Ничья
+решается по учётной записи Jira — ответ не прыгает.
 """
 
 from __future__ import annotations
 
 from collections import Counter
+from datetime import date
 from typing import Dict, Iterable
 
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
-from app.models import BacklogItem, Employee, Issue
+from app.models import BacklogItem, Employee, EmployeeTeam, Issue
+from app.services import team_membership as tm
 from app.services.backlog_service import CANCEL_STATUSES
 from app.services.plan_common import subtree_ids
 
 
 def jira_developers_for_items(
-    db: Session, items: Iterable[BacklogItem]
+    db: Session, items: Iterable[BacklogItem], start: date, end: date
 ) -> Dict[str, str]:
-    """{backlog_item_id: employee_id} — только где «Разработчик» нашёлся."""
+    """{backlog_item_id: employee_id} — только где «Разработчик» нашёлся.
+
+    ``start`` — ``end`` — квартал плана: «Разработчик» должен состоять в
+    какой-либо команде хотя бы один его день.
+    """
     # Сервис планировщика сам импортирует этот модуль — отсюда только лениво.
     from app.services.resource_planning_service import DEV_ROLES
 
@@ -56,6 +64,10 @@ def jira_developers_for_items(
         .filter(
             Employee.jira_account_id.in_(list(set(dev_of.values()))),
             Employee.is_active.is_(True),
+            exists().where(
+                EmployeeTeam.employee_id == Employee.id,
+                *tm.overlaps_clause(start, end),
+            ),
         )
         .all()
         if not (role or "").strip() or role.lower() in DEV_ROLES

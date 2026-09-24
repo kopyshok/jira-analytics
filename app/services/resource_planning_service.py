@@ -569,7 +569,7 @@ class ResourcePlanningService:
         team_employees = list(employees)
         # Привлечённые: закреплены вручную или стоят «Разработчиком» в Jira,
         # но в команде плана не состояли ни дня квартала.
-        jira_dev = jira_developers_for_items(self.db, items)
+        jira_dev = jira_developers_for_items(self.db, items, q_start, q_end)
         team_ids = {e.id for e in team_employees}
         borrowed_rows = self._load_borrowed(
             (set(pinned_map.values()) | set(jira_dev.values())) - team_ids
