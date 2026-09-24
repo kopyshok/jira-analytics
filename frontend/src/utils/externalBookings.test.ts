@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { bookingRuns, externalBookingLabel, groupExternalBookings, phaseCountLabel } from './externalBookings';
+import {
+  bookingRuns, externalBookingLabel, groupExternalBookings, ownPeopleBookingLabel,
+  phaseCountLabel, workdayChecker,
+} from './externalBookings';
 import type { ExternalBookingOut } from '../api/resourcePlanning';
 
 const b = (over: Partial<ExternalBookingOut>): ExternalBookingOut => ({
@@ -14,6 +17,9 @@ const b = (over: Partial<ExternalBookingOut>): ExternalBookingOut => ({
   end: '2026-01-06',
   daily_hours: {},
   provisional: false,
+  employee_is_borrowed: true,
+  is_borrowing: false,
+  overlap_days: [],
   ...over,
 });
 
@@ -78,5 +84,24 @@ describe('bookingRuns', () => {
         '2026-03-31',
       ),
     ).toEqual([{ start: '2026-01-13', end: '2026-01-13', hours: 2 }]);
+  });
+});
+
+describe('ownPeopleBookingLabel', () => {
+  it('имя · ключ · фаза', () => {
+    expect(ownPeopleBookingLabel(b({}))).toBe('Пряничников · OS-91393 · Разработка');
+  });
+});
+
+describe('workdayChecker', () => {
+  it('производственный календарь важнее дня недели', () => {
+    const isWorkday = workdayChecker([
+      { date: '2026-01-05', is_workday: false },
+      { date: '2026-01-10', is_workday: true },
+    ]);
+    expect(isWorkday('2026-01-05')).toBe(false); // праздник в понедельник
+    expect(isWorkday('2026-01-10')).toBe(true); // рабочая суббота
+    expect(isWorkday('2026-01-06')).toBe(true);
+    expect(isWorkday('2026-01-11')).toBe(false);
   });
 });

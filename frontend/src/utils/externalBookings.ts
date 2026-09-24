@@ -8,6 +8,17 @@ export function externalBookingLabel(b: ExternalBookingOut): string {
     .join(' · ');
 }
 
+/** «Шутов · OS-91393 · Разработка» — строка блока «Наши люди в других командах». */
+export function ownPeopleBookingLabel(b: ExternalBookingOut): string {
+  return [b.employee_name ?? '', b.issue_key ?? b.title, PHASE_LABELS[b.phase] ?? b.phase]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Серая штриховка чужой работы — только просмотр. */
+export const OTHER_TEAM_HATCH =
+  'repeating-linear-gradient(45deg, rgba(160,170,190,0.55) 0 4px, rgba(160,170,190,0.18) 4px 8px)';
+
 /** «1 фаза», «3 фазы», «12 фаз» — счётчик в шапке блока «Привлечённые». */
 export function phaseCountLabel(n: number): string {
   const d = n % 10;
@@ -51,8 +62,16 @@ const isWeekday = (iso: string) => {
   return dow !== 0 && dow !== 6;
 };
 
+/** Рабочий ли день: производственный календарь, иначе Пн–Пт. */
+export function workdayChecker(
+  calendar: ReadonlyArray<{ date: string; is_workday: boolean }>,
+): (iso: string) => boolean {
+  const known = new Map(calendar.map((c) => [c.date, c.is_workday] as const));
+  return (iso) => known.get(iso) ?? isWeekday(iso);
+}
+
 /** Следующий календарный день: «2026-01-09» → «2026-01-10». */
-function nextIso(iso: string): string {
+export function nextIso(iso: string): string {
   const d = new Date(iso + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);

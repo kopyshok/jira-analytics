@@ -174,7 +174,7 @@ export interface ResetCounts {
   edited_predecessors: number;
 }
 
-/** Фаза привлечённого сотрудника в опорном плане другой команды. */
+/** Фаза человека из этого плана в опорном плане другой команды. */
 export interface ExternalBookingOut {
   assignment_id: string;
   employee_id: string;
@@ -189,6 +189,12 @@ export interface ExternalBookingOut {
   daily_hours: Record<string, number>;
   /** Опорный план — черновик сценария (утверждённого у команды нет). */
   provisional: boolean;
+  /** Человек привлечён в ЭТОТ план (в его команде не состоял ни дня квартала). */
+  employee_is_borrowed: boolean;
+  /** Бронь-привлечение: команда брони взяла человека не из своего состава. */
+  is_borrowing: boolean;
+  /** Дни брони, где этот план тоже занял человека и вместе выходит больше его дня. */
+  overlap_days: string[];
 }
 
 export interface GanttProjection {
@@ -198,8 +204,12 @@ export interface GanttProjection {
   pert_projection: InitiativePertOut[];
   dependencies: DependencyOut[];
   employee_load?: EmployeeLoadOut[];
-  /** Брони привлечённых в опорных планах других команд — блок «Привлечённые». */
+  /** Брони людей плана (свои и привлечённые) в опорных планах других команд. */
   external_bookings?: ExternalBookingOut[];
+  /** Брони, вычитаемые из доступности плана, изменились после его расчёта. */
+  stale_due_to_other_teams?: boolean;
+  /** Команды, чьи планы изменились после расчёта. */
+  stale_teams?: string[];
   reset_counts: ResetCounts;
 }
 
@@ -242,6 +252,7 @@ export interface EmployeeChangePreviewResponse {
 export interface RpPreferences {
   hide_weekends: boolean;
   collapsed_initiative_ids: string[];
+  /** Вид страницы: 'tasks' — по задачам (по умолчанию), 'people' — по исполнителям. */
   view_mode: string | null;
   show_relay: boolean;
   detail_sections_visible: Record<string, boolean>;
