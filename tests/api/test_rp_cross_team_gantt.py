@@ -141,6 +141,9 @@ def test_borrower_plan_shows_overlap_bookings_and_borrowed_row(client, two_teams
     ]
     assert body["external_bookings"][0]["provisional"] is False
     assert body["external_bookings"][0]["employee_name"] == "Пряничников"
+    assert body["external_bookings"][0]["employee_is_borrowed"] is True
+    assert body["external_bookings"][0]["is_borrowing"] is False
+    assert body["external_bookings"][0]["overlap_days"] == ["2026-01-01", "2026-01-02"]
     assert body["external_bookings"][0]["daily_hours"] == {
         "2026-01-01": 6.0, "2026-01-02": 6.0,
     }
@@ -162,7 +165,13 @@ def test_home_plan_shows_other_team_share_without_conflict(client, two_teams):
     body = _gantt(client, t["plan_a"])
 
     assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
-    assert body["external_bookings"] == []
+    # Домашней команде видно, куда забрали её человека.
+    [b] = body["external_bookings"]
+    assert (b["employee_id"], b["team"]) == (t["e"], "B")
+    assert b["employee_is_borrowed"] is False
+    assert b["is_borrowing"] is True
+    # В эти дни и домашний план занял человека — техкоманда получит конфликт.
+    assert b["overlap_days"] == ["2026-01-01", "2026-01-02"]
     row = _row(body, t["e"])
     assert row["is_borrowed"] is False
     assert row["borrowed_from"] is None
@@ -186,6 +195,7 @@ def test_no_live_conflict_when_borrower_fits_next_to_booking(client, db_session,
     body = _gantt(client, t["plan_b"])
 
     assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
+    assert body["external_bookings"][0]["overlap_days"] == []
     assert _day(_row(body, t["e"]), "2026-01-01")["ext_pct"] == 50.0
 
 
@@ -394,3 +404,50 @@ def test_explain_home_employee_ignores_borrowing_booking(client, two_teams):
 
     assert days["2026-01-01"]["available_hours"] == 6.0
     assert days["2026-01-01"]["status"] == "work"
+
+
+def test_borrower_plan_is_stale_after_home_plan_changed(client, db_session, two_teams):
+    """План B считался раньше, чем поменялась бронь домашней команды A."""
+    from datetime import datetime
+
+    from app.models import ResourcePlan
+
+    t = two_teams
+    db_session.get(ResourcePlan, t["plan_b"]).computed_at = datetime(2026, 1, 1)
+    db_session.commit()
+
+    body = _gantt(client, t["plan_b"])
+
+    assert body["stale_due_to_other_teams"] is True
+    assert body["stale_teams"] == ["A"]
+
+
+def test_plan_computed_after_changes_is_not_stale(client, db_session, two_teams):
+    from datetime import datetime, timedelta
+
+    from app.models import ResourcePlan
+
+    t = two_teams
+    db_session.get(ResourcePlan, t["plan_b"]).computed_at = datetime.utcnow() + timedelta(days=1)
+    db_session.commit()
+
+    body = _gantt(client, t["plan_b"])
+
+    assert body["stale_due_to_other_teams"] is False
+    assert body["stale_teams"] == []
+
+
+def test_borrowing_booking_does_not_make_home_plan_stale(client, db_session, two_teams):
+    """Бронь техкоманды, взявшей человека к себе, домашний план не занимает —
+    и устаревания в нём не даёт."""
+    from datetime import datetime
+
+    from app.models import ResourcePlan
+
+    t = two_teams
+    db_session.get(ResourcePlan, t["plan_a"]).computed_at = datetime(2026, 1, 1)
+    db_session.commit()
+
+    body = _gantt(client, t["plan_a"])
+
+    assert body["stale_due_to_other_teams"] is False
