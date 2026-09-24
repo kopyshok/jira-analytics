@@ -3,12 +3,14 @@ import { useTeamRegistry } from '../hooks/useTeamRegistry';
 import { useSearchParams, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import '../utils/gantt.css';
-import { Alert, App, Button, Empty, Input, Modal, Select, Segmented, Space, Spin, Switch, Tag } from 'antd';
+import { Alert, App, Badge, Button, Empty, Input, Modal, Popover, Select, Segmented, Space, Spin, Switch, Tag, Tooltip } from 'antd';
 // Скрытые режимы Портфель/Ресурсы/Plane остаются в коде (PlaneGantt, GanttRows viewMode union)
 // PM хочет вернуться к ним после доработки; см. project_resource_planning_modes_hidden.md.
 import {
   BgColorsOutlined,
   CalculatorOutlined,
+  ControlOutlined,
+  CopyOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../components/shared/PageHeader';
@@ -376,9 +378,9 @@ function ResourcePlanningPageInner() {
         {gantt?.plan.is_baseline && <Tag color="cyan">Базовый</Tag>}
         <PlanQualityBadge planId={planId} />
         {planId && gantt && (
-          <Button size="small" onClick={() => setForkModalOpen(true)}>
-            Сделать копию
-          </Button>
+          <Tooltip title="Сделать копию плана">
+            <Button size="small" icon={<CopyOutlined />} aria-label="Сделать копию плана" onClick={() => setForkModalOpen(true)} />
+          </Tooltip>
         )}
         {planId && gantt && (
           <BulkResetDropdown planId={planId} counts={gantt.reset_counts} />
@@ -392,7 +394,8 @@ function ResourcePlanningPageInner() {
           </Button>
         )}
 
-        <Space size={4} style={{ marginLeft: 'auto' }}>
+        {/* Вид диаграммы: частые переключатели на виду, редкие — в окне «Вид». */}
+        <Space size={6} style={{ marginLeft: 'auto' }}>
           {viewMode === 'two-level' && gantt && (
             <Segmented
               size="small"
@@ -416,7 +419,7 @@ function ResourcePlanningPageInner() {
               options={peopleOptions}
               maxTagCount="responsive"
               showSearch={{ optionFilterProp: 'label' }}
-              style={{ minWidth: 220, maxWidth: 360 }}
+              style={{ minWidth: 190, maxWidth: 320 }}
             />
           )}
           {viewMode === 'two-level' && (
@@ -432,65 +435,67 @@ function ResourcePlanningPageInner() {
               ]}
             />
           )}
-          {viewMode === 'two-level' && layout === 'tasks' && (
-            <Button
-              size="small"
-              type={depDrawMode ? 'primary' : 'default'}
-              danger={depDrawMode}
-              onClick={() => setDepDrawMode(v => !v)}
-            >
-              {depDrawMode ? 'Связи: ✓' : 'Связи'}
-            </Button>
-          )}
-          {/* Стрелки эстафеты — только в «Задачах»: в «Исполнителях» стрелок нет. */}
-          {viewMode !== 'resource-track' && layout === 'tasks' && (
-            <Space size={4}>
-              <Switch
-                checked={showRelayArrows}
-                onChange={setShowRelayArrows}
-                size="small"
-              />
-              <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>Эстафета</span>
-            </Space>
-          )}
-          {viewMode === 'two-level' && layout === 'tasks' && subgroupOrder.length > 0 && (
-            <Button
-              size="small"
-              type={groupBySubgroup ? 'primary' : 'default'}
-              onClick={() => setGroupBySubgroup(v => !v)}
-            >
-              Группы
-            </Button>
-          )}
-          {viewMode === 'two-level' && (
-            <Space size={4}>
-              <Switch
-                checked={prefs.hide_weekends}
-                onChange={(v) => patchPrefs({ hide_weekends: v })}
-                size="small"
-              />
-              <span style={{ fontSize: 12, color: 'var(--text-muted, #8ab0d8)' }}>Только рабочие</span>
-            </Space>
-          )}
-          <Button
-            size="small"
-            icon={<BgColorsOutlined />}
-            onClick={() => setAppearanceOpen(true)}
+          <Popover
+            trigger="click"
+            placement="bottomRight"
+            content={
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 220 }}>
+                {viewMode === 'two-level' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Switch
+                      checked={prefs.hide_weekends}
+                      onChange={(v) => patchPrefs({ hide_weekends: v })}
+                      size="small"
+                    />
+                    Только рабочие дни
+                  </label>
+                )}
+                {viewMode !== 'resource-track' && layout === 'tasks' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Switch checked={showRelayArrows} onChange={setShowRelayArrows} size="small" />
+                    Стрелки эстафеты
+                  </label>
+                )}
+                {viewMode === 'two-level' && layout === 'tasks' && subgroupOrder.length > 0 && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Switch checked={groupBySubgroup} onChange={setGroupBySubgroup} size="small" />
+                    Разбить по группам
+                  </label>
+                )}
+                {viewMode === 'two-level' && layout === 'tasks' && (
+                  <Button
+                    size="small"
+                    type={depDrawMode ? 'primary' : 'default'}
+                    danger={depDrawMode}
+                    onClick={() => setDepDrawMode(v => !v)}
+                  >
+                    {depDrawMode ? 'Выключить рисование связей' : 'Рисовать связи'}
+                  </Button>
+                )}
+                {viewMode === 'two-level' && layout === 'tasks' && gantt && (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      const allIds = Array.from(new Set(gantt.assignments.map(a => a.backlog_item_id)));
+                      const allCollapsed = (prefs.collapsed_initiative_ids ?? []).length === allIds.length;
+                      patchPrefs({ collapsed_initiative_ids: allCollapsed ? [] : allIds });
+                    }}
+                  >
+                    {(prefs.collapsed_initiative_ids ?? []).length > 0 ? '↥ Развернуть все' : '↧ Свернуть все'}
+                  </Button>
+                )}
+                <Button size="small" icon={<BgColorsOutlined />} onClick={() => setAppearanceOpen(true)}>
+                  Цвета
+                </Button>
+              </div>
+            }
           >
-            Цвета
-          </Button>
-          {viewMode === 'two-level' && layout === 'tasks' && gantt && (
-            <Button
-              size="small"
-              onClick={() => {
-                const allIds = Array.from(new Set(gantt.assignments.map(a => a.backlog_item_id)));
-                const allCollapsed = (prefs.collapsed_initiative_ids ?? []).length === allIds.length;
-                patchPrefs({ collapsed_initiative_ids: allCollapsed ? [] : allIds });
-              }}
-            >
-              {(prefs.collapsed_initiative_ids ?? []).length > 0 ? '↥ Развернуть все' : '↧ Свернуть все'}
-            </Button>
-          )}
+            <Badge dot={prefs.hide_weekends || depDrawMode || groupBySubgroup} offset={[-2, 2]}>
+              <Button size="small" icon={<ControlOutlined />}>
+                Вид
+              </Button>
+            </Badge>
+          </Popover>
         </Space>
         </div>
       </div>
