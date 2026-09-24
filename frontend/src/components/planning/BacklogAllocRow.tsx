@@ -1,7 +1,7 @@
-import { memo, useCallback, useMemo, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Checkbox, InputNumber, Select, Spin, Tag } from 'antd';
+import { App, Checkbox, InputNumber, Select, Spin, Tag } from 'antd';
 import type { SelectProps } from 'antd';
 import { HolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { AllocationOverridePopover } from './AllocationOverridePopover';
@@ -27,6 +27,8 @@ export type BacklogAllocRowProps = {
   gridTemplate: string;
   gridGap: number;
   continuationInfo: ContinuationInfoRow | undefined;
+  /** Состав команды сценария — список исполнителя, если кандидаты из всех команд не загрузились. */
+  teamAssigneeOptions: { label: string; value: string }[];
   /** Группы команды. undefined — у команды нет деления, колонка не рисуется. */
   subgroupOptions?: { label: string; value: string }[];
   roles: Role[];
@@ -53,6 +55,7 @@ function BacklogAllocRowBase({
   gridTemplate,
   gridGap,
   continuationInfo,
+  teamAssigneeOptions,
   subgroupOptions,
   roles,
   opoOff,
@@ -77,22 +80,37 @@ function BacklogAllocRowBase({
 
   // Кандидаты — все, кто в квартале сценария состоит в какой-либо команде.
   // Грузятся, только пока список открыт: строк в сценарии много.
+  const { notification } = App.useApp();
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const candidates = useScenarioAssigneeCandidates(scenarioId, a.backlog_item_id, assigneeOpen);
   const roleLabels = useMemo(
     () => new Map(roles.map((r) => [r.code, r.label] as const)),
     [roles],
   );
-  // Пока список не пришёл — одна опция с текущим исполнителем.
+  // Пока список не пришёл — одна опция с текущим исполнителем; не загрузился —
+  // состав команды сценария, как было до выбора из всех команд.
   const assigneeOptions = useMemo<SelectProps['options']>(
     () =>
       candidates.data?.length
         ? candidateOptions(candidates.data, roleLabels)
-        : a.assignee_employee_id
-          ? [{ value: a.assignee_employee_id, label: a.assignee_display_name ?? '—' }]
-          : [],
-    [candidates.data, roleLabels, a.assignee_employee_id, a.assignee_display_name],
+        : candidates.isError
+          ? teamAssigneeOptions
+          : a.assignee_employee_id
+            ? [{ value: a.assignee_employee_id, label: a.assignee_display_name ?? '—' }]
+            : [],
+    [candidates.data, candidates.isError, roleLabels, teamAssigneeOptions, a.assignee_employee_id, a.assignee_display_name],
   );
+  // Каждая неудачная загрузка списка — одно уведомление (с тем же ключом
+  // повтор заменяет прежнее, а не копит стопку).
+  const candidatesError = candidates.error;
+  useEffect(() => {
+    if (!candidatesError) return;
+    notification.error({
+      key: 'scenario-assignee-candidates',
+      title: 'Не удалось загрузить список исполнителей',
+      description: 'Показан состав команды сценария.',
+    });
+  }, [candidatesError, notification]);
 
   const raw = effectiveEstimate(a);
   // С квартала отсечки часы ОПЭ показываем внутри АН и ПР.
@@ -300,7 +318,13 @@ function BacklogAllocRowBase({
             popupMatchSelectWidth={640}
             showSearch={{ optionFilterProp: 'label' }}
             loading={candidates.isFetching}
-            notFoundContent={candidates.isFetching ? <Spin size="small" /> : undefined}
+            notFoundContent={
+              candidates.isFetching
+                ? <Spin size="small" />
+                : candidates.isError
+                  ? 'Не удалось загрузить список исполнителей'
+                  : undefined
+            }
             options={assigneeOptions}
             onOpenChange={setAssigneeOpen}
             // В закрытом поле — только имя; роль, команда и загрузка — в списке.
