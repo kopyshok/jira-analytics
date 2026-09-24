@@ -15,7 +15,8 @@ const fmtHours = (h: number) => (Math.round(h * 10) / 10).toLocaleString('ru');
 
 /**
  * Рабочие дни внутри полосы, где у фазы нет часов, а человек занят в плане
- * другой команды. Фаза без посуточной раскладки вырезов не получает.
+ * другой команды. Фаза без посуточной раскладки вырезов не получает. Дни
+ * отсутствия и блокировки — тоже: у них своя штриховка, вырез её не перекрывает.
  */
 export function busyGaps(
   a: AssignmentOut,
@@ -26,9 +27,12 @@ export function busyGaps(
   if (!employeeId || !start || !end || !daily) return [];
   const mine = bookings.filter((b) => b.employee_id === employeeId);
   if (mine.length === 0) return [];
+  const away = new Set(
+    (a.unavailable_days ?? []).filter((u) => u.type === 'absence' || u.type === 'block').map((u) => u.date),
+  );
   const out: BusyGap[] = [];
   for (let d = start; d <= end; d = nextIso(d)) {
-    if (!isWorkday(d) || (daily[d] ?? 0) > 0) continue;
+    if (!isWorkday(d) || away.has(d) || (daily[d] ?? 0) > 0) continue;
     const busy = mine.filter((b) => (b.daily_hours[d] ?? 0) > 0);
     if (busy.length === 0) continue;
     out.push({

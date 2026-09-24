@@ -66,6 +66,19 @@ describe('busyGaps', () => {
   it('фаза без посуточной раскладки — без вырезов', () => {
     expect(busyGaps(a({ daily_hours: null }), [b()], weekdays)).toEqual([]);
   });
+  it('день отсутствия или блокировки — не вырез: их штриховка важнее', () => {
+    const absent = a({ unavailable_days: [{ date: '2026-01-06', type: 'absence' }] });
+    expect(busyGaps(absent, [b()], weekdays)).toEqual([
+      { date: '2026-01-07', label: 'занят в плане ERP ТУ · OS-7 Разработка' },
+    ]);
+    const blocked = a({
+      unavailable_days: [
+        { date: '2026-01-06', type: 'block' },
+        { date: '2026-01-07', type: 'block' },
+      ],
+    });
+    expect(busyGaps(blocked, [b()], weekdays)).toEqual([]);
+  });
   it('несколько броней в один день — по строке на каждую', () => {
     const second = b({
       assignment_id: 'x2', team: 'СФО', issue_key: 'OS-9', phase: 'analyst',
