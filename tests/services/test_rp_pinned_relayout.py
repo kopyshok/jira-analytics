@@ -198,3 +198,59 @@ def test_pinned_opo_part_of_analyst_keeps_developer_part(db_session):
             PlanConflict.plan_id == plan.id, PlanConflict.type == "UNPLACED_HOURS"
         )
     ).scalars().all() == []
+
+
+def test_pinned_testing_phase_without_working_days_is_reported(db_session):
+    """Тестирование закреплено на последние выходные окна (квартал и месяц
+    запаса) — рабочих дней для его часов нет: часы не размещены, раскладка
+    пустая (а не «нет раскладки»), и это видно конфликтом."""
+    make_employee(db_session, "Свой", "T")
+    sc, plan = make_plan(db_session, "T", plan_status="draft", quarter="Q4")
+    item = add_item(db_session, sc, "Работа T")
+    item.estimate_qa_hours = 12.0
+    qa = ResourcePlanAssignment(
+        plan_id=plan.id, backlog_item_id=item.id, phase="qa", employee_id=None,
+        part_number=1, hours_allocated=12.0,
+        start_date=D("2027-01-30"), end_date=D("2027-01-30"), pinned_start=True,
+    )
+    db_session.add(qa)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    assert _row(db_session, qa.id).daily_hours_json == "{}"
+    [c] = db_session.execute(
+        select(PlanConflict).where(
+            PlanConflict.plan_id == plan.id, PlanConflict.type == "UNPLACED_HOURS"
+        )
+    ).scalars().all()
+    assert c.backlog_item_id == item.id
+    assert c.metric_value == 12.0
+    assert c.message == (
+        "Работа T · Тестирование 0 из 12 ч — не поместилось в рабочие дни "
+        "с закреплённой даты"
+    )
+
+
+def test_pinned_phase_without_free_days_has_empty_layout(db_session):
+    """Не размещённая закреплённая фаза хранит пустую раскладку: читатели не
+    раскладывают её часы «поровну по дням полосы» как у старых строк."""
+    e = make_employee(db_session, "Свой", "T")
+    join_team(db_session, e, "C")
+    sc_c, plan_c = make_plan(db_session, "C")
+    book(db_session, plan_c, add_item(db_session, sc_c, "Работа C", dev=1), e,
+         _weekdays("2026-01-01", "2026-04-30"))
+    sc, plan = make_plan(db_session, "T", plan_status="draft")
+    row = book(db_session, plan, add_item(db_session, sc, "Работа T", dev=12), e,
+               {"2026-01-05": 6.0, "2026-01-06": 6.0}, pinned_start=True)
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    assert _row(db_session, row.id).daily_hours_json == "{}"
+    # Выравниватель не видит в пустой раскладке перегрузки.
+    assert db_session.execute(
+        select(PlanConflict.type).where(
+            PlanConflict.plan_id == plan.id, PlanConflict.type.like("OVERLOAD_%")
+        )
+    ).scalars().all() == []
