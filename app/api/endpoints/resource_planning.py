@@ -1,13 +1,14 @@
 """Resource Planning API — ScheduledBlocks + ResourcePlan + Gantt projection."""
 
 import json as _json
+from dataclasses import asdict
 from datetime import date, datetime, timedelta as _timedelta, timezone
 from typing import Dict, List, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import exists, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auth_deps import get_current_user
@@ -23,6 +24,7 @@ from app.models import (
 from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
 from app.services import cross_team_occupancy as cto
+from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.plan_quality_service import PlanQualityService
@@ -1725,17 +1727,15 @@ def list_assignment_candidates(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Все активные сотрудники тремя группами: «Из Jira», «Моя команда», «Другие команды».
+    """Все, кто в квартале плана состоит в какой-либо команде, тремя группами:
+    «Из Jira», «Моя команда», «Другие команды» (общая с выбором исполнителя
+    строки сценария функция ``assignee_candidates.candidate_groups``).
 
-    Кандидат должен состоять хоть в какой-то команде хотя бы день квартала
-    плана — боты и люди вне команд в выбор не попадают.
     «Из Jira»: для разработки — поле «Разработчик», для остальных фаз —
-    исполнитель инициативы. «Моя команда» — состав команды плана за квартал.
-    У каждого — загрузка за квартал плана по всем опорным планам команд.
-    Пустые группы не возвращаются.
+    исполнитель строки сценария. «Моя команда» — состав команды плана за
+    квартал. У каждого — загрузка за квартал плана по всем опорным планам
+    команд. Пустые группы не возвращаются.
     """
-    from app.models import Employee, EmployeeTeam
-    from app.services import team_membership as tm
     from app.services.jira_developer import jira_developers_for_items
 
     a = db.execute(
@@ -1755,25 +1755,6 @@ def list_assignment_candidates(
         q_start, q_end = ResourcePlanningService(db)._quarter_bounds(plan)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    q = cto.quarter_num(plan.quarter)
-
-    employees = list(
-        db.execute(
-            select(Employee).where(
-                Employee.is_active == True,  # noqa: E712
-                exists().where(
-                    EmployeeTeam.employee_id == Employee.id,
-                    *tm.overlaps_clause(q_start, q_end),
-                ),
-            )
-        )
-        .scalars()
-        .all()
-    )
-    by_id = {e.id: e for e in employees}
-    member_iv = (
-        tm.member_intervals(db, [plan.team], q_start, q_end) if plan.team else {}
-    )
 
     jira_id: Optional[str] = None
     item = a.backlog_item
@@ -1782,44 +1763,16 @@ def list_assignment_candidates(
             jira_id = jira_developers_for_items(db, [item], q_start, q_end).get(item.id)
         else:
             jira_id = item.assignee_employee_id
-    jira_ids = [jira_id] if jira_id in by_id else []
-
-    load = cto.quarter_load_pct(db, plan.year, q, employees) if plan.year and q else {}
-
-    def _out(e: Employee) -> CandidateOut:
-        iv = member_iv.get(e.id) or []
-        # Отрезки могут вкладываться — конец участия = самый поздний конец.
-        iv_end = max((hi for _, hi in iv), default=None)
-        return CandidateOut(
-            employee_id=e.id,
-            display_name=e.display_name,
-            role=e.role,
-            team=e.team,
-            load_pct=load.get(e.id, 0.0),
-            member_from=iv[0][0] if iv and iv[0][0] > q_start else None,
-            member_to=iv_end if iv_end is not None and iv_end < q_end else None,
-        )
-
-    def _name(e: Employee) -> str:
-        return (e.display_name or "").lower()
-
-    rest = sorted((e for e in employees if e.id not in jira_ids), key=_name)
-    groups = [
-        CandidateGroupOut(
-            key="jira", label="Из Jira", employees=[_out(by_id[i]) for i in jira_ids]
-        ),
-        CandidateGroupOut(
-            key="team",
-            label="Моя команда",
-            employees=[_out(e) for e in rest if e.id in member_iv],
-        ),
-        CandidateGroupOut(
-            key="other",
-            label="Другие команды",
-            employees=[_out(e) for e in rest if e.id not in member_iv],
-        ),
-    ]
-    return [g for g in groups if g.employees]
+    groups = candidate_groups(
+        db,
+        team=plan.team,
+        start=q_start,
+        end=q_end,
+        year=plan.year,
+        quarter=cto.quarter_num(plan.quarter),
+        jira_employee_id=jira_id,
+    )
+    return [asdict(g) for g in groups]
 
 
 class InvolvementUpdate(BaseModel):
