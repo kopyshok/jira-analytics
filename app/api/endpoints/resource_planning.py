@@ -29,7 +29,11 @@ from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.plan_quality_service import PlanQualityService
-from app.services.resource_planning_service import ResourcePlanningService, opo_part
+from app.services.resource_planning_service import (
+    ResourcePlanningService,
+    lock_plan,
+    opo_part,
+)
 
 router = APIRouter()
 
@@ -872,6 +876,7 @@ async def compute_plan(
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     def work() -> ResourcePlan:
+        lock_plan(db, plan_id)
         plan = db.get(ResourcePlan, plan_id)
         if not plan:
             raise HTTPException(404, "ResourcePlan not found")
@@ -1787,6 +1792,7 @@ async def set_assignment_involvement(
     влияет на все планы/сценарии, где задействована эта задача.
     """
     def work() -> None:
+        lock_plan(db, plan_id)
         a = db.execute(
             select(ResourcePlanAssignment).where(
                 ResourcePlanAssignment.id == assignment_id,
@@ -1850,6 +1856,7 @@ async def patch_assignment(
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     def work() -> AssignmentOut:
+        lock_plan(db, plan_id)
         a = db.execute(
             select(ResourcePlanAssignment)
             .options(
@@ -2265,6 +2272,7 @@ async def bulk_clear_manual_edits(
     from app.models import PhasePredecessor
 
     def work() -> dict:
+        lock_plan(db, plan_id)
         plan = db.get(ResourcePlan, plan_id)
         if not plan:
             raise HTTPException(404, "ResourcePlan not found")
