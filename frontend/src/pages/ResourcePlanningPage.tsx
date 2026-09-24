@@ -445,7 +445,8 @@ function ResourcePlanningPageInner() {
               {depDrawMode ? 'Связи: ✓' : 'Связи'}
             </Button>
           )}
-          {viewMode !== 'resource-track' && (
+          {/* Стрелки эстафеты — только в «Задачах»: в «Исполнителях» стрелок нет. */}
+          {viewMode !== 'resource-track' && layout === 'tasks' && (
             <Space size={4}>
               <Switch
                 checked={showRelayArrows}
@@ -559,6 +560,7 @@ function ResourcePlanningPageInner() {
           onAssignmentClick={(id) => setSelectedAssignmentId(id)}
           hideWeekends={prefs.hide_weekends}
           highlightedEmployeeId={highlightedEmployeeId}
+          selectedEmployeeIds={peopleFilter}
           sectionByItem={sectionByItem}
           subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
           collapsedSections={collapsedSections}

@@ -38,6 +38,8 @@ interface Props {
   conflictAssignmentIds?: string[];
   onAssignmentClick?: (assignmentId: string) => void;
   highlightedEmployeeId?: string | null;
+  /** Приглушать полосы остальных людей при подсветке (не при фильтре по людям). */
+  fadeOthers?: boolean;
   onEmployeeRowClick?: (employeeId: string | null) => void;
   /** Группа команды для каждой инициативы: показывать строки секциями групп.
    *  План остаётся общекомандным — секции только визуальные. */
@@ -308,6 +310,8 @@ interface PhaseBarProps {
   onClick?: () => void;
   unavailableDays?: Array<{ date: string; type: 'weekend' | 'holiday' | 'absence' | 'block' }>;
   highlightedEmployeeId?: string | null;
+  /** Приглушать полосу, если она не подсвеченного человека. */
+  fadeOthers?: boolean;
   pulseEmp?: boolean;
   pulseCp?: boolean;
   /** ISO end of strict quarter — bar portion past this date is striped. */
@@ -318,7 +322,7 @@ interface PhaseBarProps {
   dragLocked?: boolean;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp, quarterEndDate, busyDays, dragLocked }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, fadeOthers, pulseEmp, pulseCp, quarterEndDate, busyDays, dragLocked }: PhaseBarProps) {
   const { message } = App.useApp();
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
@@ -395,7 +399,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   const width = datesToWidth(assignment.start_date, assignment.end_date, timeline);
 
   const isMe = !!highlightedEmployeeId && assignment.employee_id === highlightedEmployeeId;
-  const isDimmedByHighlight = !!highlightedEmployeeId && !isMe;
+  const isDimmedByHighlight = !!fadeOthers && !isMe;
   const effectiveDimmed = dimmed || isDimmedByHighlight;
 
   const isOoQ = assignment.out_of_quarter;
@@ -715,7 +719,7 @@ function TwoLevelRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
-  highlightedEmployeeId, onEmployeeRowClick, quarterEndDate, sectionByItem,
+  highlightedEmployeeId, fadeOthers, onEmployeeRowClick, quarterEndDate, sectionByItem,
   collapsedSections, onToggleSection, subgroupByEmployee, busyByAssignment, dragLocked,
 }: SubProps) {
   const appearance = useAppearanceSettings();
@@ -884,7 +888,7 @@ function TwoLevelRows({
                       zIndex: 2,
                       pointerEvents: 'none',
                       background: fillGradient,
-                      opacity: highlightedEmployeeId ? 0.18 : 1,
+                      opacity: fadeOthers ? 0.18 : 1,
                     }}>
                       <svg
                         width="100%"
@@ -962,7 +966,7 @@ function TwoLevelRows({
                   ? `${PHASE_LABELS[phase]} · ${sg.roleLabel}`
                   : PHASE_LABELS[phase];
                 const isHighlighted = !!highlightedEmployeeId && empId === highlightedEmployeeId;
-                const isDimmed = !!highlightedEmployeeId && !isHighlighted;
+                const isDimmed = !!fadeOthers && !isHighlighted;
                 // Исполнитель из другой группы — помощь соседей, помечаем строку.
                 const empGroup = empId ? subgroupByEmployee?.[empId] : undefined;
                 const foreignGroup =
@@ -1059,6 +1063,7 @@ function TwoLevelRows({
                               }).unavailable_days
                             }
                             highlightedEmployeeId={highlightedEmployeeId}
+                            fadeOthers={fadeOthers}
                             pulseEmp={rpPrefs.pulse_highlighted_employee}
                             pulseCp={rpPrefs.pulse_critical_path}
                             quarterEndDate={quarterEndDate}
@@ -1113,7 +1118,7 @@ function TwoLevelRows({
 /** Вид «Исполнители»: секция на человека — полоса «все работы» и его фазы этого плана. */
 function PeopleRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
-  conflictAssignmentIds, onAssignmentClick, highlightedEmployeeId, onEmployeeRowClick,
+  conflictAssignmentIds, onAssignmentClick, highlightedEmployeeId, fadeOthers, onEmployeeRowClick,
   quarterEndDate, externalBookings, employeeLoad, planTeam, busyByAssignment, isWorkday, dragLocked,
 }: SubProps) {
   const appearance = useAppearanceSettings();
@@ -1237,6 +1242,7 @@ function PeopleRows({
                         onClick={onAssignmentClick ? () => onAssignmentClick(a.id) : undefined}
                         unavailableDays={a.unavailable_days}
                         highlightedEmployeeId={highlightedEmployeeId}
+                        fadeOthers={fadeOthers}
                         pulseEmp={rpPrefs.pulse_highlighted_employee}
                         pulseCp={rpPrefs.pulse_critical_path}
                         quarterEndDate={quarterEndDate}
