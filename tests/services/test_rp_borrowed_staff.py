@@ -578,3 +578,26 @@ def test_recompute_drops_pinned_phases_only_of_tasks_out_of_scenario(db_session)
 
     rows = _plan_rows(db_session, plan.id)
     assert [(r.backlog_item_id, r.pinned_start) for r in rows] == [(kept.id, True)]
+
+
+def test_opo_dev_part_shortfall_seen_when_team_has_no_analysts(db_session):
+    """Аналитиков нет: часть ОПЭ аналитика покрыта «Нет аналитика», а нехватка
+    окна у части разработчика видна; влезшая часть разработчика не спорит."""
+    make_employee(db_session, "Свой B", "B")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    fits = add_item(db_session, sc_b, "Запуск", priority=10)
+    fits.estimate_opo_hours = 20.0
+    big = add_item(db_session, sc_b, "Большой запуск", priority=5)
+    big.estimate_opo_hours = 1200.0
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan_b.id)
+
+    assert len(_conflicts(db_session, plan_b.id, "NO_ANALYST")) == 1
+    # Окно разработчика — 516 ч, 10 из них ушли на часть «Запуска».
+    [c] = _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")
+    assert c.backlog_item_id == big.id
+    assert c.metric_value == 94.0
+    assert c.message == (
+        "Большой запуск · ОПЭ 506 из 600 ч — не поместилось в квартал и месяц запаса"
+    )
