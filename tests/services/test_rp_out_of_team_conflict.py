@@ -83,8 +83,9 @@ def sample_plan(db_session):
     return plan, analyst
 
 
-def test_assignment_after_departure_creates_conflict(db_session, sample_plan):
-    """Задача стоит на сотруднике, который выбыл раньше её конца."""
+def test_pinned_phase_does_not_run_past_departure(db_session, sample_plan):
+    """Закреплённая фаза выбывшего не уходит за дату выбытия: дни вне команды
+    не свободны. Недоразложенные часы видны конфликтом «Часы не размещены»."""
     plan, analyst = sample_plan
     svc = ResourcePlanningService(db_session)
     svc.compute_schedule(plan.id)
@@ -103,11 +104,6 @@ def test_assignment_after_departure_creates_conflict(db_session, sample_plan):
         .first()
     )
     assert a is not None
-    assert a.start_date and a.end_date and a.end_date > a.start_date
-
-    # Строка закреплена по датам: пересчёт её не двигает, поэтому она и
-    # остаётся висеть на выбывшем — именно этот случай ловит конфликт.
-    # (Незакреплённые строки планировщик теперь сам не заводит за дату ухода.)
     a.pinned_start = True
     db_session.commit()
 
@@ -127,19 +123,17 @@ def test_assignment_after_departure_creates_conflict(db_session, sample_plan):
 
     svc.compute_schedule(plan.id)
 
+    db_session.refresh(a)
+    assert a.end_date == a.start_date
     conflicts = (
-        db_session.execute(
-            select(PlanConflict).where(
-                PlanConflict.plan_id == plan.id,
-                PlanConflict.type == "OUT_OF_TEAM",
-            )
-        )
+        db_session.execute(select(PlanConflict).where(PlanConflict.plan_id == plan.id))
         .scalars()
         .all()
     )
-    assert conflicts, "ожидался конфликт OUT_OF_TEAM"
-    assert any(c.employee_id == analyst.id for c in conflicts)
-    assert all(c.severity == "critical" for c in conflicts)
+    assert [c for c in conflicts if c.type == "OUT_OF_TEAM"] == []
+    [unplaced] = [c for c in conflicts if c.type == "UNPLACED_HOURS"]
+    assert unplaced.employee_id == analyst.id
+    assert "Анализ 6 из 40 ч — не поместилось в свободные дни исполнителя" in unplaced.message
 
 
 def test_no_conflict_while_employee_stays(db_session, sample_plan):

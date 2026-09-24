@@ -3,9 +3,10 @@
 Если после фиксации даты у фазы (`pinned_start=True`) меняются
 `hours_allocated`, `involvement` или производственный календарь, то
 сохранённый `end_date` может перестать вмещать запланированные часы.
-`compute_schedule` обязан пере-вывести `end_date` + `daily_hours_json`
-через тот же хелпер `_extend_window_for_hours`, что используется в
-drag-pin entry point — старт остаётся зафиксированным.
+`compute_schedule` раскладывает часы закреплённой фазы заново общим
+раскладчиком с закреплённой даты: старт остаётся, конец выводится из
+раскладки. Дневной потолок — как у всех фаз: 8 ч × вовлечённость, но не
+больше дня календаря (6 ч).
 """
 
 import json
@@ -86,8 +87,8 @@ def test_compute_schedule_extends_pinned_start_window(db_session, seed_pinned_de
 
     Стартовый сценарий: pinned dev-фаза 30h, 5 рабочих дней (Mon 20.04..Fri 24.04)
     при involvement=1.0 (cap 6h/день). Затем involvement понижается до 0.6
-    (cap 3.6h/день). На 30h теперь нужно ceil(30 / 3.6) = 9 рабочих дней.
-    От Mon 20.04.2026: 20,21,22,23,24 (5), 27,28,29,30 (9) — конец Thu 30.04.2026.
+    (cap min(6, 8 × 0.6) = 4.8h/день). На 30h нужно 30 / 4.8 = 6.25 → 7 рабочих
+    дней. От Mon 20.04.2026: 20,21,22,23,24 (5), 27,28 (7) — конец Tue 28.04.2026.
 
     Производственный календарь в тесте не сидим — хелпер падает на
     weekday-only логику (Mon-Fri = 6h, Sat/Sun = 0). Начальная раскладка
@@ -140,16 +141,16 @@ def test_compute_schedule_extends_pinned_start_window(db_session, seed_pinned_de
     assert a2 is not None
     assert a2.pinned_start is True, "pinned_start должен оставаться True"
     assert a2.start_date == fixed_start, "start_date НЕ трогаем — он зафиксирован"
-    assert a2.end_date == date(2026, 4, 30), (
-        f"end_date должен расшириться до Thu 30.04.2026; получили {a2.end_date}"
+    assert a2.end_date == date(2026, 4, 28), (
+        f"end_date должен расшириться до Tue 28.04.2026; получили {a2.end_date}"
     )
     assert a2.daily_hours_json is not None
     daily = json.loads(a2.daily_hours_json)
     # Сумма должна равняться hours_allocated.
     assert abs(sum(daily.values()) - 30.0) < 0.01
-    # Старая 5-дневная раскладка должна быть заменена на 9-дневную.
-    assert len(daily) == 9
-    assert "2026-04-30" in daily
+    # Старая 5-дневная раскладка заменена на 7-дневную.
+    assert len(daily) == 7
+    assert "2026-04-28" in daily
     # out_of_quarter: Q2 2026 заканчивается 30.06; 30.04 < 30.06.
     assert a2.out_of_quarter is False
 
@@ -229,8 +230,8 @@ def test_compute_schedule_non_pinned_unaffected(db_session, seed_pinned_dev):
     assert pinned_after.start_date == pinned_start, (
         "Pinned start_date НЕ должен меняться"
     )
-    assert pinned_after.end_date == date(2026, 4, 30), (
-        f"Pinned end_date должен расшириться до 30.04.2026; "
+    assert pinned_after.end_date == date(2026, 4, 28), (
+        f"Pinned end_date должен расшириться до 28.04.2026; "
         f"получили {pinned_after.end_date}"
     )
 

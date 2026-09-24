@@ -696,76 +696,80 @@ class ResourcePlanningService:
             eid: dict(days) for eid, days in avail.items()
         }
 
-        # Преварительно вычесть часы pinned-сегментов из remaining чтобы не
-        # перегрузить тех же сотрудников при пересчёте non-pinned фаз.
-        # pinned_split — только структурный маркер, дата НЕ зафиксирована
-        # (см. _shift_to_obey_predecessors); часы такой строки разложит
-        # отдельный re-distribute проход после шага shift, поэтому здесь её
-        # часы не учитываем — иначе resource дважды списан с тех дней, где
-        # фактической работы не будет.
-        for a in pinned_existing:
-            if not a.pinned_start:
+        # Закреплённая дата — только начало. Часы такой фазы раскладывает тот
+        # же раскладчик, что и остальные фазы, с этой даты по свободным окнам:
+        # календарь, отсутствия, блокировки, дни вне команды, брони других
+        # команд (сначала домашняя команда) и уже разложенные закреплённые
+        # фазы этого плана. Поверх чужой работы фаза не встаёт — полоса
+        # начнётся с первого свободного дня. Старшие по приоритету задачи
+        # занимают дни первыми. pinned_split — только структурный маркер: его
+        # часы разложит отдельный проход после сдвига по связям.
+        # ``unlaid`` — строки, которым не нашлось ни одного дня: их часы не
+        # размещены, это увидит конфликт «Часы не размещены».
+        unlaid: set = set()
+        item_rank = {it.id: i for i, it in enumerate(items)}
+        pinned_start_rows = sorted(
+            (x for x in pinned_existing if x.pinned_start),
+            key=lambda x: (
+                item_rank.get(x.backlog_item_id, len(item_rank)),
+                PHASE_ORDER.index(x.phase) if x.phase in PHASE_ORDER else len(PHASE_ORDER),
+                x.part_number,
+                x.id,
+            ),
+        )
+        for a in pinned_start_rows:
+            if not a.start_date or not a.hours_allocated or a.hours_allocated <= 0:
                 continue
-            # Пере-вывести end_date + daily_hours_json по текущим
-            # hours_allocated / involvement / производственному календарю —
-            # сохранённое окно могло перестать вмещать часы (involvement
-            # упал, hours_allocated вырос, появился праздник). Старт
-            # зафиксирован пользователем — не трогаем; конец = последний
-            # день, в который что-то фактически положили. Делаем ДО
-            # capacity-subtraction, чтобы списать часы с актуального окна.
-            if (
-                a.employee_id
-                and a.start_date
-                and a.hours_allocated
-                and a.hours_allocated > 0
-            ):
-                bi = self.db.get(BacklogItem, a.backlog_item_id)
-                inv = (
-                    self._involvement_for_phase(bi, a.phase) if bi else None
-                ) or 1.0
+            bi = self.db.get(BacklogItem, a.backlog_item_id)
+            inv = self._involvement_for_phase(bi, a.phase) if bi else None
+            if a.employee_id is None:
+                # Тестирование — без сотрудника: часы по рабочим дням календаря.
                 new_end, daily_json = self._extend_window_for_hours(
                     start_date=a.start_date,
-                    hours=a.hours_allocated,
-                    involvement=inv,
+                    hours=float(a.hours_allocated),
+                    involvement=inv or 1.0,
                     q_end=q_end_extended,
-                    employee_id=a.employee_id,
                 )
                 a.end_date = new_end
-                # _extend_window_for_hours возвращает "{}" если ни один
-                # рабочий день не влез — выравниваем конвенцию None как в
-                # drag-pin entry point (Task 2).
-                a.daily_hours_json = (
-                    daily_json if daily_json and daily_json != "{}" else None
-                )
-                # Окно расширяем до q_end_extended (буфер spillover), но
-                # флаг out_of_quarter — относительно строгого q_end.
+                a.daily_hours_json = daily_json if daily_json != "{}" else None
                 a.out_of_quarter = new_end > q_end
-            if (
-                a.employee_id
-                and a.start_date
-                and a.end_date
-                and a.hours_allocated
-                and a.employee_id in remaining
-            ):
-                # Грубо: распределяем поровну по дням сегмента (только в дни с >0 avail)
-                days_in_seg = [
-                    d for d in remaining[a.employee_id]
-                    if a.start_date <= d <= a.end_date
-                    and remaining[a.employee_id][d] > 0
-                ]
-                if days_in_seg:
-                    per_day = a.hours_allocated / len(days_in_seg)
-                    for d in days_in_seg:
-                        remaining[a.employee_id][d] = max(
-                            0.0, remaining[a.employee_id][d] - per_day
-                        )
-                # Pinned preempting-фазы тоже разрывают чужие фазы.
-                if a.phase in PREEMPTING_PHASES:
-                    locked_set = preempt_locked.setdefault(a.employee_id, set())
-                    d_lock = a.start_date
-                    while d_lock <= a.end_date:
-                        locked_set.add(d_lock)
-                        d_lock += timedelta(days=1)
+                continue
+            if a.employee_id not in remaining:
+                continue
+            day_cap = self._daily_role_capacity(
+                avail_hours=8.0,
+                involvement=inv,
+                parallel_count=_resolve_parallel_count_legacy(bi, a.phase) if bi else 1,
+            )
+            _, daily = self._allocate_hours_with_breakdown(
+                a.employee_id,
+                float(a.hours_allocated),
+                a.start_date,
+                q_end_extended,
+                remaining,
+                daily_capacity=day_cap,
+                preempt_locked=preempt_locked,
+                original_capacity=original_avail,
+            )
+            if daily:
+                a.end_date = max(daily)
+                a.daily_hours_json = json.dumps(
+                    {d.isoformat(): h for d, h in sorted(daily.items())}
+                )
+            else:
+                a.end_date = a.start_date
+                a.daily_hours_json = None
+                unlaid.add(a.id)
+            # Окно — до q_end_extended (буфер spillover), флаг out_of_quarter —
+            # относительно строгого q_end.
+            a.out_of_quarter = a.end_date > q_end
+            # Закреплённые preempting-фазы тоже разрывают чужие фазы.
+            if a.phase in PREEMPTING_PHASES:
+                locked_set = preempt_locked.setdefault(a.employee_id, set())
+                d_lock = a.start_date
+                while d_lock <= a.end_date:
+                    locked_set.add(d_lock)
+                    d_lock += timedelta(days=1)
 
         new_assignments: List[ResourcePlanAssignment] = list(pinned_existing)
         # {(item_id, phase): {роль: часы, на которые не нашлось исполнителя}} —
@@ -1075,8 +1079,6 @@ class ResourcePlanningService:
         self._ensure_default_predecessors(plan_id, new_assignments)
         self.db.flush()
         preds = self._load_predecessors(plan_id)
-        # Строки, которым сдвиг по предшественникам не нашёл ни дня.
-        unlaid: set = set()
         self._shift_to_obey_predecessors(
             new_assignments,
             preds,
@@ -1358,6 +1360,7 @@ class ResourcePlanningService:
             items, new_assignments, alloc_by_item, pinned_phase_keys,
             assignments_by_role, unstaffed, {d["type"] for d in detected},
             unlaid,
+            pinned_start={(x.backlog_item_id, x.phase) for x in pinned_start_rows},
         )
         detected = aggregate_conflicts(detected, db_session=self.db)
         self._persist_conflicts(plan_id, detected)
@@ -3184,6 +3187,7 @@ class ResourcePlanningService:
         unstaffed: Dict[Tuple[str, str], Dict[str, float]],
         team_gaps: set,
         unlaid: set,
+        pinned_start: Optional[set] = None,
     ) -> List[dict]:
         """UNPLACED_HOURS: у инициативы разложены не все часы фаз — одна запись на неё.
 
@@ -3195,19 +3199,26 @@ class ResourcePlanningService:
         командным конфликтом (``team_gaps``: «Нет аналитика» / «Нет
         разработчика»), по каждой задаче не повторяются и из нужного
         вычитаются: у ОПЭ без аналитика проверяется часть разработчика.
-        Фазы, закреплённые пользователем по датам или разбивке (``skip``),
-        не проверяются: их объём он задал сам.
+        Фазы, закреплённые пользователем разбивкой (``skip``), не
+        проверяются: их объём он задал сам. Фаза с закреплённой датой начала
+        (``pinned_start``) сверяется с часами своих же строк: с этой даты их
+        не хватило — «не поместилось в свободные дни исполнителя».
 
         Сообщение перечисляет недоразложенные фазы по порядку: «Анализ 16 из
         40 ч; Разработка 0 из 40 ч — не поместилось в квартал и месяц
         запаса»; фазы без исполнителя — с пометкой «нет исполнителя».
         ``metric_value`` — сколько часов не разложено всего.
         """
+        pinned_start = pinned_start or set()
         placed: Dict[Tuple[str, str], float] = defaultdict(float)
+        # Закреплённая по дате фаза должна разложить часы своих же строк.
+        pinned_need: Dict[Tuple[str, str], float] = defaultdict(float)
         first_row: Dict[Tuple[str, str], ResourcePlanAssignment] = {}
         for a in assignments:
             key = (a.backlog_item_id, a.phase)
             placed[key] += _placed_hours(a, unlaid)
+            if key in pinned_start:
+                pinned_need[key] += float(a.hours_allocated or 0.0)
             first_row.setdefault(key, a)
 
         def _h(v: float) -> str:
@@ -3223,20 +3234,26 @@ class ResourcePlanningService:
             assignment_id: Optional[str] = None
             for phase in PHASE_ORDER:
                 key = (item.id, phase)
-                if key in skip:
+                roles: Dict[str, float] = {}
+                gap_roles: set = set()
+                if key in pinned_start:
+                    need = pinned_need[key]
+                elif key in skip:
                     continue
-                need = self._phase_hours(item, phase, alloc_by_item)
+                else:
+                    need = self._phase_hours(item, phase, alloc_by_item)
+                    roles = unstaffed.get(key, {})
+                    gap_roles = {r for r in roles if gap_of[r] in team_gaps}
+                    need -= sum(roles[r] for r in gap_roles)
                 got = placed.get(key, 0.0)
-                roles = unstaffed.get(key, {})
-                gap_roles = {r for r in roles if gap_of[r] in team_gaps}
-                need -= sum(roles[r] for r in gap_roles)
                 if need <= 0 or got + 0.01 >= need:
                     continue
-                reason = (
-                    "нет исполнителя"
-                    if set(roles) - gap_roles
-                    else "не поместилось в квартал и месяц запаса"
-                )
+                if key in pinned_start:
+                    reason = "не поместилось в свободные дни исполнителя"
+                elif set(roles) - gap_roles:
+                    reason = "нет исполнителя"
+                else:
+                    reason = "не поместилось в квартал и месяц запаса"
                 short.append(
                     (reason, f"{PHASE_LABEL.get(phase, phase)} {_h(got)} из {_h(need)} ч")
                 )
