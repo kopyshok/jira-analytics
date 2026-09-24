@@ -6,27 +6,37 @@ import { filterOffPlan, type InPlanRow } from './inPlan';
 export const hasDispute = (r: Pick<BacklogChild, 'disputed_roles'>) =>
   (r.disputed_roles?.length ?? 0) > 0;
 
+/** Строка остаётся, если подходит сама или под ней есть подходящие дочерние строки;
+ *  из дочерних остаются только подходящие. */
+function keepMatching(
+  rows: BacklogItemResponse[] | undefined,
+  match: (r: BacklogItemResponse | BacklogChild) => boolean,
+): BacklogItemResponse[] | undefined {
+  return rows?.flatMap((r) => {
+    const kids = (r.children ?? []).filter(match);
+    return match(r) || kids.length ? [{ ...r, children: kids }] : [];
+  });
+}
+
 /** Только спорные задачи: у строки остаются лишь спорные дочерние строки;
  *  строка без спора остаётся, только если под ней есть спорные. */
 export function filterDisputed(
   rows: BacklogItemResponse[] | undefined,
 ): BacklogItemResponse[] | undefined {
-  return rows?.flatMap((r) => {
-    const kids = (r.children ?? []).filter(hasDispute);
-    return hasDispute(r) || kids.length ? [{ ...r, children: kids }] : [];
-  });
+  return keepMatching(rows, hasDispute);
 }
 
-/** Метки «Только спорные» и «Не в плане» вместе оставляют задачи, подходящие под обе.
- *  Сначала спорные: иначе спорный родитель в плане, оставленный ради дочки
- *  «не в плане» без спора, остался бы в списке один. */
+/** Метки «Только спорные» и «Не в плане» вместе оставляют задачи, подходящие под обе
+ *  сразу: спорные и не в плане. Строка, не подходящая сама, остаётся только ради
+ *  таких дочерних строк. */
 export function filterBacklogRows(
   rows: BacklogItemResponse[] | undefined,
   { onlyDisputed, onlyOffPlan }: { onlyDisputed: boolean; onlyOffPlan: boolean },
   offPlan: (r: InPlanRow) => boolean,
 ): BacklogItemResponse[] | undefined {
-  const disputed = onlyDisputed ? filterDisputed(rows) : rows;
-  return onlyOffPlan ? filterOffPlan(disputed, offPlan) : disputed;
+  if (onlyDisputed && onlyOffPlan) return keepMatching(rows, (r) => hasDispute(r) && offPlan(r));
+  if (onlyDisputed) return filterDisputed(rows);
+  return onlyOffPlan ? filterOffPlan(rows, offPlan) : rows;
 }
 
 /** Сколько спорных задач: строки и их дочерние строки. */

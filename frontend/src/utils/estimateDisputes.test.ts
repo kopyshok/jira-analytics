@@ -67,9 +67,17 @@ describe('filterBacklogRows — «Только спорные» вместе с 
     expect(ids(filterBacklogRows(rows, both, offPlan))).toEqual([['p', ['c1']]]);
   });
 
-  it('родитель под обеими метками — только со спорными дочками', () => {
-    const rows = [task('p', true, false, [kid('c1', true, true), kid('c2', false, false)])];
-    expect(ids(filterBacklogRows(rows, both, offPlan))).toEqual([['p', ['c1']]]);
+  it('родитель «не в плане» без спора со спорной дочкой в плане — ничего', () => {
+    const rows = [task('p', false, false, [kid('c', true, true)])];
+    expect(filterBacklogRows(rows, both, offPlan)).toEqual([]);
+  });
+
+  it('родитель под обеими метками — только с дочками, тоже подходящими под обе', () => {
+    const rows = [
+      task('p', true, false, [kid('c1', true, true), kid('c2', false, false), kid('c3', true, false)]),
+      task('q', true, false, [kid('q1', true, true)]),
+    ];
+    expect(ids(filterBacklogRows(rows, both, offPlan))).toEqual([['p', ['c3']], ['q', []]]);
   });
 
   it('одна метка — как её фильтр, без меток — список как есть', () => {
