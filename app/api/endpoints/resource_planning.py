@@ -22,11 +22,23 @@ from app.models import (
 from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
 from app.services import cross_team_occupancy as cto
+from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.involvement_default_service import effective_for_phase, team_defaults
 from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import ResourcePlanningService
 
 router = APIRouter()
+
+
+async def _announce(bus: EventBroadcaster, *, bookings: bool) -> None:
+    """Сообщить всем открытым вкладкам о правке плана: диаграмма, список
+    планов и кандидаты в исполнители перечитываются.
+
+    ``bookings`` — поменялись часы людей по дням: тогда перечитываются и
+    сценарии — «На бэклог» других команд вычитает брони их опорных планов.
+    """
+    entities = ["resource_planning", "planning"] if bookings else ["resource_planning"]
+    await bus.publish({"type": "entity_changed", "entities": entities})
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────
@@ -804,15 +816,18 @@ def list_plans(
 
 
 @router.post("/resource-plans", response_model=ResourcePlanOut, status_code=201)
-def create_plan(
+async def create_plan(
     data: ResourcePlanCreate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     plan = ResourcePlan(**data.model_dump())
     db.add(plan)
     db.commit()
     db.refresh(plan)
+    # Новый план может стать опорным для команды — брони других меняются.
+    await _announce(event_bus, bookings=True)
     return plan
 
 
@@ -829,23 +844,26 @@ def get_plan(
 
 
 @router.delete("/resource-plans/{plan_id}", status_code=204)
-def delete_plan(
+async def delete_plan(
     plan_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     plan = db.get(ResourcePlan, plan_id)
     if not plan:
         raise HTTPException(404)
     db.delete(plan)
     db.commit()
+    await _announce(event_bus, bookings=True)
 
 
 @router.post("/resource-plans/{plan_id}/compute", response_model=ResourcePlanOut)
-def compute_plan(
+async def compute_plan(
     plan_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     plan = db.get(ResourcePlan, plan_id)
     if not plan:
@@ -865,6 +883,7 @@ def compute_plan(
             db.commit()
         raise
     db.refresh(plan)
+    await _announce(event_bus, bookings=True)
     return plan
 
 
@@ -1771,12 +1790,13 @@ _PHASE_INVOLVEMENT_FIELD = {
 
 
 @router.put("/resource-plans/{plan_id}/assignments/{assignment_id}/involvement")
-def set_assignment_involvement(
+async def set_assignment_involvement(
     plan_id: str,
     assignment_id: str,
     data: InvolvementUpdate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Записать вовлечённость фазы на инициативу и пересчитать план.
 
@@ -1806,6 +1826,7 @@ def set_assignment_involvement(
         ResourcePlanningService(db).compute_schedule(plan_id)
     except ValueError as e:
         raise HTTPException(409, f"reschedule_failed: {e}")
+    await _announce(event_bus, bookings=True)
     return {"ok": True}
 
 
@@ -1813,12 +1834,13 @@ def set_assignment_involvement(
     "/resource-plans/{plan_id}/assignments/{assignment_id}",
     response_model=AssignmentOut,
 )
-def patch_assignment(
+async def patch_assignment(
     plan_id: str,
     assignment_id: str,
     data: AssignmentPatch,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     a = db.execute(
         select(ResourcePlanAssignment)
@@ -2055,6 +2077,7 @@ def patch_assignment(
 
     db.commit()
     db.refresh(a)
+    await _announce(event_bus, bookings=True)
 
     emp_name = a.employee.display_name if a.employee else None
 
@@ -2118,12 +2141,13 @@ def _assignment_to_dict(a: ResourcePlanAssignment) -> dict:
 @router.post(
     "/resource-plans/{plan_id}/assignments/{assignment_id}/split",
 )
-def split_assignment(
+async def split_assignment(
     plan_id: str,
     assignment_id: str,
     payload: SplitRequest,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     a = db.get(ResourcePlanAssignment, assignment_id)
     if not a or a.plan_id != plan_id:
@@ -2135,6 +2159,7 @@ def split_assignment(
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
+    await _announce(event_bus, bookings=True)
     return {
         "parts": [_assignment_to_dict(p) for p in parts],
         "cascaded": [_assignment_to_dict(c) for c in cascaded],
@@ -2144,11 +2169,12 @@ def split_assignment(
 @router.post(
     "/resource-plans/{plan_id}/assignments/{assignment_id}/merge",
 )
-def merge_assignment(
+async def merge_assignment(
     plan_id: str,
     assignment_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     a = db.get(ResourcePlanAssignment, assignment_id)
     if not a or a.plan_id != plan_id:
@@ -2158,13 +2184,14 @@ def merge_assignment(
         merged = svc.merge_assignment(assignment_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    await _announce(event_bus, bookings=True)
     return {"assignment": _assignment_to_dict(merged)}
 
 
 @router.delete(
     "/resource-plans/{plan_id}/assignments/{assignment_id}/manual-edit",
 )
-def clear_manual_edits(
+async def clear_manual_edits(
     plan_id: str,
     assignment_id: str,
     flags: Optional[str] = Query(
@@ -2176,6 +2203,7 @@ def clear_manual_edits(
     ),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     a = db.get(ResourcePlanAssignment, assignment_id)
     if not a or a.plan_id != plan_id:
@@ -2203,6 +2231,8 @@ def clear_manual_edits(
         plan.status = "stale"
     db.commit()
     db.refresh(a)
+    # Сняты только отметки закрепления — часы и даты прежние до пересчёта.
+    await _announce(event_bus, bookings=False)
     return {"assignment": _assignment_to_dict(a)}
 
 
@@ -2211,11 +2241,12 @@ class BulkClearPayload(BaseModel):
 
 
 @router.post("/resource-plans/{plan_id}/bulk-clear")
-def bulk_clear_manual_edits(
+async def bulk_clear_manual_edits(
     plan_id: str,
     payload: BulkClearPayload,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     """Снять ручные правки сразу со ВСЕХ назначений плана.
 
@@ -2303,6 +2334,7 @@ def bulk_clear_manual_edits(
     except ValueError as e:
         raise HTTPException(409, f"recompute_failed: {e}")
 
+    await _announce(event_bus, bookings=True)
     return {"cleared_count": len(touched), "mode": mode}
 
 
@@ -2492,12 +2524,13 @@ class ConflictPatch(BaseModel):
     "/resource-plans/{plan_id}/conflicts/{conflict_id}",
     response_model=ConflictOut,
 )
-def patch_conflict(
+async def patch_conflict(
     plan_id: str,
     conflict_id: str,
     data: ConflictPatch,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     from app.models import PlanConflict, BacklogItem
 
@@ -2544,6 +2577,7 @@ def patch_conflict(
     }
 
     db.commit()
+    await _announce(event_bus, bookings=False)
     return ConflictOut(**snap)
 
 
@@ -3674,11 +3708,12 @@ class ForkRequest(BaseModel):
     response_model=ResourcePlanOut,
     status_code=201,
 )
-def fork_plan(
+async def fork_plan(
     plan_id: str,
     data: ForkRequest,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     from app.models import PlanItemDependency
 
@@ -3768,6 +3803,8 @@ def fork_plan(
         "label": new_plan.label,
     }
     db.commit()
+    # Копия не бывает опорным планом — брони других команд прежние.
+    await _announce(event_bus, bookings=False)
     return ResourcePlanOut(**snap)
 
 
@@ -3806,11 +3843,12 @@ def list_dependencies(
     response_model=DependencyOut,
     status_code=201,
 )
-def create_dependency(
+async def create_dependency(
     plan_id: str,
     data: DependencyCreate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     from app.models import PlanItemDependency
 
@@ -3843,6 +3881,7 @@ def create_dependency(
         source=dep.source,
     )
     db.commit()
+    await _announce(event_bus, bookings=False)
     return snap
 
 
@@ -3850,12 +3889,13 @@ def create_dependency(
     "/resource-plans/{plan_id}/dependencies/{dep_id}",
     response_model=DependencyOut,
 )
-def patch_dependency(
+async def patch_dependency(
     plan_id: str,
     dep_id: str,
     data: DependencyPatch,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     from app.models import PlanItemDependency
 
@@ -3885,6 +3925,7 @@ def patch_dependency(
         source=dep.source,
     )
     db.commit()
+    await _announce(event_bus, bookings=False)
     return snap
 
 
@@ -3892,11 +3933,12 @@ def patch_dependency(
     "/resource-plans/{plan_id}/dependencies/{dep_id}",
     status_code=204,
 )
-def delete_dependency(
+async def delete_dependency(
     plan_id: str,
     dep_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     from app.models import PlanItemDependency
 
@@ -3913,6 +3955,7 @@ def delete_dependency(
     if plan:
         plan.status = "stale"
     db.commit()
+    await _announce(event_bus, bookings=False)
     return None
 
 
