@@ -406,8 +406,31 @@ def test_explain_home_employee_ignores_borrowing_booking(client, two_teams):
     assert days["2026-01-01"]["status"] == "work"
 
 
-def test_borrower_plan_is_stale_after_home_plan_changed(client, db_session, two_teams):
-    """План B считался раньше, чем поменялась бронь домашней команды A."""
+def _compute(db_session, plan_id):
+    from app.services.resource_planning_service import ResourcePlanningService
+
+    ResourcePlanningService(db_session).compute_schedule(plan_id)
+
+
+def _move_booking(db_session, row_id, daily):
+    """Сдвинуть бронь: другие дни с часами."""
+    import json
+    from datetime import date
+
+    from app.models import ResourcePlanAssignment
+
+    row = db_session.get(ResourcePlanAssignment, row_id)
+    row.daily_hours_json = json.dumps(daily)
+    row.start_date, row.end_date = date.fromisoformat(min(daily)), date.fromisoformat(max(daily))
+    row.hours_allocated = sum(daily.values())
+    db_session.commit()
+
+
+def test_plan_computed_before_fingerprints_is_stale_if_bookings_subtracted(
+    client, db_session, two_teams
+):
+    """План B посчитан, когда план ещё не запоминал учтённые брони: какие
+    брони A он учёл, неизвестно — считаем устаревшим."""
     from datetime import datetime
 
     from app.models import ResourcePlan
@@ -422,14 +445,9 @@ def test_borrower_plan_is_stale_after_home_plan_changed(client, db_session, two_
     assert body["stale_teams"] == ["A"]
 
 
-def test_plan_computed_after_changes_is_not_stale(client, db_session, two_teams):
-    from datetime import datetime, timedelta
-
-    from app.models import ResourcePlan
-
+def test_recomputed_plan_is_not_stale(client, db_session, two_teams):
     t = two_teams
-    db_session.get(ResourcePlan, t["plan_b"]).computed_at = datetime.utcnow() + timedelta(days=1)
-    db_session.commit()
+    _compute(db_session, t["plan_b"])
 
     body = _gantt(client, t["plan_b"])
 
@@ -437,9 +455,21 @@ def test_plan_computed_after_changes_is_not_stale(client, db_session, two_teams)
     assert body["stale_teams"] == []
 
 
+def test_borrower_plan_is_stale_after_home_plan_booking_moved(client, db_session, two_teams):
+    """План B посчитан, потом бронь A на Пряничникова сдвинулась."""
+    t = two_teams
+    _compute(db_session, t["plan_b"])
+    _move_booking(db_session, t["a_row"], {"2026-01-02": 6.0, "2026-01-05": 6.0})
+
+    body = _gantt(client, t["plan_b"])
+
+    assert body["stale_due_to_other_teams"] is True
+    assert body["stale_teams"] == ["A"]
+
+
 def test_borrowing_booking_does_not_make_home_plan_stale(client, db_session, two_teams):
     """Бронь техкоманды, взявшей человека к себе, домашний план не занимает —
-    и устаревания в нём не даёт."""
+    и устаревания в нём не даёт: ни у старого расчёта, ни после её сдвига."""
     from datetime import datetime
 
     from app.models import ResourcePlan
@@ -448,6 +478,106 @@ def test_borrowing_booking_does_not_make_home_plan_stale(client, db_session, two
     db_session.get(ResourcePlan, t["plan_a"]).computed_at = datetime(2026, 1, 1)
     db_session.commit()
 
-    body = _gantt(client, t["plan_a"])
+    assert _gantt(client, t["plan_a"])["stale_due_to_other_teams"] is False
 
+    _compute(db_session, t["plan_a"])
+    _move_booking(db_session, t["b_row"], {"2026-01-05": 6.0, "2026-01-06": 6.0})
+
+    assert _gantt(client, t["plan_a"])["stale_due_to_other_teams"] is False
+
+
+@pytest.fixture
+def shared_member(db_session):
+    """Шутов состоит в A и B; у обеих команд по задаче на 12 ч разработки."""
+    from tests.services.xteam_factory import join_team
+
+    s = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, s, "B")
+    sc_a, plan_a = make_plan(db_session, "A")
+    add_item(db_session, sc_a, "Работа A", dev=12)
+    sc_b, plan_b = make_plan(db_session, "B")
+    add_item(db_session, sc_b, "Работа B", dev=12)
+    db_session.commit()
+    return {"sc_b": sc_b, "plan_a": plan_a.id, "plan_b": plan_b.id}
+
+
+def test_shared_member_recomputes_do_not_flag_each_other(client, db_session, shared_member):
+    """Планы вычитают брони друг друга. Пересчёт пересоздаёт строки, но часы
+    человека по дням те же — соседний план не устаревает, и пометки не
+    гоняются между командами по кругу."""
+    t = shared_member
+    for plan_id in (t["plan_a"], t["plan_b"], t["plan_a"]):
+        _compute(db_session, plan_id)
+    for plan_id in (t["plan_a"], t["plan_b"]):
+        assert _gantt(client, plan_id)["stale_due_to_other_teams"] is False, plan_id
+
+    for plan_id in (t["plan_b"], t["plan_a"]):
+        _compute(db_session, plan_id)
+    for plan_id in (t["plan_a"], t["plan_b"]):
+        assert _gantt(client, plan_id)["stale_due_to_other_teams"] is False, plan_id
+
+
+def test_shared_member_real_change_marks_other_plan_stale(client, db_session, shared_member):
+    t = shared_member
+    for plan_id in (t["plan_a"], t["plan_b"], t["plan_a"]):
+        _compute(db_session, plan_id)
+    add_item(db_session, t["sc_b"], "Ещё работа B", dev=6)
+    db_session.commit()
+    _compute(db_session, t["plan_b"])
+
+    body_a = _gantt(client, t["plan_a"])
+
+    assert body_a["stale_due_to_other_teams"] is True
+    assert body_a["stale_teams"] == ["B"]
+    assert _gantt(client, t["plan_b"])["stale_due_to_other_teams"] is False
+
+    _compute(db_session, t["plan_a"])
+
+    assert _gantt(client, t["plan_a"])["stale_due_to_other_teams"] is False
+
+
+def test_recomputed_plan_without_tasks_is_not_stale(client, db_session):
+    """План без задач тоже запоминает брони состава — иначе пометку не
+    снимал бы и пересчёт."""
+    from tests.services.xteam_factory import join_team
+
+    s = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, s, "B")
+    sc_b, plan_b = make_plan(db_session, "B")
+    book(db_session, plan_b, add_item(db_session, sc_b, "Работа B", dev=12), s,
+         {"2026-01-05": 6.0, "2026-01-06": 6.0})
+    _, plan_a = make_plan(db_session, "A")
+    db_session.commit()
+
+    _compute(db_session, plan_a.id)
+
+    assert _gantt(client, plan_a.id)["stale_due_to_other_teams"] is False
+
+
+def test_jira_developer_left_out_of_plan_does_not_make_it_stale(client, db_session):
+    """«Разработчик» из Jira занят весь квартал и в план не попал: его брони
+    диаграмма не показывает — и в учтённые при расчёте они не входят."""
+    from datetime import date, timedelta
+
+    project = Project(jira_project_id="p-y", key="OS", name="1С")
+    db_session.add(project)
+    db_session.flush()
+    e = make_employee(db_session, "Пряничников", "A", jira_account_id="acc-busy")
+    make_employee(db_session, "Свой B", "B")
+    sc_a, plan_a = make_plan(db_session, "A")
+    busy, d = {}, date(2026, 1, 1)
+    while d <= date(2026, 4, 30):
+        if d.weekday() < 5:
+            busy[d.isoformat()] = 6.0
+        d += timedelta(days=1)
+    book(db_session, plan_a, add_item(db_session, sc_a, "Работа A", dev=1), e, busy)
+    issue = make_issue(db_session, project, "OS-2", developer="acc-busy")
+    sc_b, plan_b = make_plan(db_session, "B", plan_status="draft")
+    add_item(db_session, sc_b, "Работа B", dev=12, issue=issue)
+    db_session.commit()
+
+    _compute(db_session, plan_b.id)
+
+    body = _gantt(client, plan_b.id)
+    assert e.id not in {a["employee_id"] for a in body["assignments"]}
     assert body["stale_due_to_other_teams"] is False

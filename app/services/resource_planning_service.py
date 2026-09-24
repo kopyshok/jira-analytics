@@ -566,6 +566,7 @@ class ResourcePlanningService:
             self._persist_conflicts(plan_id, [])
             plan.status = "ready"
             plan.computed_at = datetime.utcnow()
+            plan.external_fingerprint = self._team_fingerprint(plan)
             self.db.commit()
             return
 
@@ -610,6 +611,7 @@ class ResourcePlanningService:
             )
             plan.status = "ready"
             plan.computed_at = datetime.utcnow()
+            plan.external_fingerprint = cto.fingerprint([])
             self.db.commit()
             return
 
@@ -629,20 +631,10 @@ class ResourcePlanningService:
         # раскладка не трогает. Сначала домашняя команда: своему сотруднику
         # вычитаются только брони команд, где он тоже состоит, — команда,
         # взявшая его к себе, подстраивается сама. Привлечённому — все брони.
-        external = cto.daily_totals(
-            cto.subtractable(
-                cto.external_bookings(
-                    self.db,
-                    team=plan.team,
-                    year=plan.year,
-                    quarter=cto.quarter_num(plan.quarter),
-                    employee_ids=[e.id for e in employees],
-                    start=q_start,
-                    end=q_end_extended,
-                ),
-                borrowed,
-            )
+        subtracted = self._subtracted_bookings(
+            plan, employees, borrowed, q_start, q_end_extended
         )
+        external = cto.daily_totals(subtracted)
         avail = cto.subtract_occupancy(raw_avail, external)
 
         # Календарь рабочих часов БЕЗ сотрудника — для фазы QA (часы-only,
@@ -1405,6 +1397,14 @@ class ResourcePlanningService:
 
         plan.status = "ready"
         plan.computed_at = datetime.utcnow()
+        # Запомнить учтённые брони тех, кого покажет диаграмма: состав
+        # команды и привлечённых, получивших в плане фазы. Привлечённый без
+        # фаз (например, занятый «Разработчик» из Jira) в неё не попадает —
+        # его брони в отпечатке дали бы пометку «устарел» сразу после расчёта.
+        staffed = {a.employee_id for a in new_assignments}
+        plan.external_fingerprint = cto.fingerprint(
+            b for b in subtracted if b.employee_id in team_ids or b.employee_id in staffed
+        )
         self.db.commit()
 
     def _allocate_hours_with_breakdown(
@@ -1631,6 +1631,46 @@ class ResourcePlanningService:
             .all()
         )
         return list(rows)
+
+    def _subtracted_bookings(
+        self,
+        plan: ResourcePlan,
+        employees: List[Employee],
+        borrowed: set,
+        start: date,
+        end: date,
+    ) -> List[cto.ExternalBooking]:
+        """Брони людей плана в опорных планах других команд, которые вычитаются
+        из их доступности: сначала домашняя команда (см. `cto.subtractable`)."""
+        return cto.subtractable(
+            cto.external_bookings(
+                self.db,
+                team=plan.team,
+                year=plan.year,
+                quarter=cto.quarter_num(plan.quarter),
+                employee_ids=[e.id for e in employees],
+                start=start,
+                end=end,
+            ),
+            borrowed,
+        )
+
+    def _team_fingerprint(self, plan: ResourcePlan) -> str:
+        """Отпечаток вычитаемых броней состава команды — для плана без задач.
+
+        Диаграмма такого плана сверяет брони состава так же, как у любого
+        другого, — без отпечатка пометку «устарел» не снимал бы и пересчёт.
+        """
+        try:
+            q_start, _, q_end_extended = self._quarter_bounds_extended(plan)
+        except ValueError:
+            # Квартал не разобрать — диаграмма такой план не показывает.
+            return cto.fingerprint([])
+        return cto.fingerprint(
+            self._subtracted_bookings(
+                plan, self._load_employees(plan), set(), q_start, q_end_extended
+            )
+        )
 
     def _quarter_bounds(self, plan: ResourcePlan) -> Tuple[date, date]:
         """Вернуть (начало, конец) квартала плана. ValueError на мусоре."""

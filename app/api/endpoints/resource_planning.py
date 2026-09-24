@@ -1464,9 +1464,11 @@ def get_gantt(
                 for b in bookings
             ]
             # План устарел, если вычитаемые из его доступности брони
-            # поменялись после расчёта. Считается при чтении, не хранится.
+            # разошлись с учтёнными при расчёте (отпечаток по командам).
             changed_teams = cto.stale_teams(
-                cto.subtractable(bookings, borrowed), plan.computed_at
+                plan.external_fingerprint,
+                cto.subtractable(bookings, borrowed),
+                plan.computed_at,
             )
             live_conflicts = _cross_team_conflicts(
                 plan, list(assignments_raw), borrowed, used, avail, bookings, names
