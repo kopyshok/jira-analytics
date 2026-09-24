@@ -468,14 +468,22 @@ def _to_allocation_resp(
     subgroup_by_employee: dict | None = None,
 ) -> AllocationResponse:
     jira_assignee_name = item.issue.assignee_display_name if item.issue else None
-    resolved_role = (
-        item.assignee.role if item.assignee
-        else (
-            employee_role_by_name.get(jira_assignee_name)
-            if employee_role_by_name and jira_assignee_name
-            else None
+    if item.assignee_manual:
+        # Выбран в сценарии вручную — показываем выбранного, а не Jira.
+        assignee_name = item.assignee.display_name if item.assignee else None
+        resolved_role = item.assignee.role if item.assignee else None
+    else:
+        assignee_name = jira_assignee_name or (
+            item.assignee.display_name if item.assignee else None
         )
-    )
+        resolved_role = (
+            item.assignee.role if item.assignee
+            else (
+                employee_role_by_name.get(jira_assignee_name)
+                if employee_role_by_name and jira_assignee_name
+                else None
+            )
+        )
     has_children = bool(
         parents_in_backlog and item.issue_id and item.issue_id in parents_in_backlog
     )
@@ -506,10 +514,7 @@ def _to_allocation_resp(
         impact=item.impact,
         risk=item.risk,
         assignee_employee_id=item.assignee_employee_id,
-        assignee_display_name=(
-            jira_assignee_name if jira_assignee_name
-            else (item.assignee.display_name if item.assignee else None)
-        ),
+        assignee_display_name=assignee_name,
         assignee_role=resolved_role,
         customer=item.customer,
         cost_type=item.cost_type,
@@ -1688,7 +1693,7 @@ async def patch_allocation_assignee(
     db: Session = Depends(get_db),
     event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
-    """Сменить исполнителя на конкретной идее в сценарии."""
+    """Сменить исполнителя строки сценария; ручной выбор держится до смены исполнителя в Jira."""
     alloc = (
         db.query(ScenarioAllocation)
         .filter(
@@ -1712,13 +1717,24 @@ async def patch_allocation_assignee(
     if not backlog_item:
         raise HTTPException(status_code=404, detail="BacklogItem not found")
 
+    issue = backlog_item.issue
+    jira_account = (issue.assignee_account_id or None) if issue is not None else None
     if data.assignee_employee_id is not None:
         emp = db.query(Employee).filter(Employee.id == data.assignee_employee_id).first()
         if not emp:
             raise HTTPException(status_code=404, detail="Employee not found")
         backlog_item.assignee_employee_id = data.assignee_employee_id
+        chosen_account = emp.jira_account_id or None
     else:
         backlog_item.assignee_employee_id = None
+        chosen_account = None
+    # Выбрали того, кто и так исполнитель в Jira, — строка снова следует за
+    # Jira. Иначе выбор ручной: обновление из Jira его не затрёт, пока там
+    # не сменят исполнителя, — запоминаем, кто стоит в Jira сейчас.
+    backlog_item.assignee_manual = chosen_account != jira_account
+    backlog_item.assignee_jira_account_at_choice = (
+        jira_account if backlog_item.assignee_manual else None
+    )
 
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})

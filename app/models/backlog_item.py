@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, true
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -88,6 +88,16 @@ class BacklogItem(Base, TimestampMixin):
         ForeignKey("employees.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    # Исполнитель выбран в сценарии вручную: обновление из Jira его не
+    # затирает, пока в Jira не сменят исполнителя. Кто стоял исполнителем
+    # в Jira в момент выбора — ``assignee_jira_account_at_choice``
+    # (учётная запись Jira; None — в Jira исполнителя не было).
+    assignee_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false(),
+    )
+    assignee_jira_account_at_choice: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True,
     )
     customer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cost_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)

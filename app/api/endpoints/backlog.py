@@ -31,6 +31,7 @@ from app.services.backlog_service import (
     QUARTERLY_TASKS_CATEGORY,
     TRACKED_CATEGORIES,
     BacklogService,
+    apply_jira_assignee,
     is_cancel_like,
     issue_is_multi_team,
     mode_excluded_backlog_ids,
@@ -1001,14 +1002,13 @@ async def _perform_refresh(
                 item = backlog_by_issue.get(issue_row.id)
                 if item is None:
                     return
-                # Исполнитель
+                # Исполнитель — если его не выбрали в сценарии вручную.
                 assignee = getattr(jira_issue.fields, "assignee", None)
-                account_id = getattr(assignee, "accountId", None) if assignee else None
-                if account_id:
-                    emp = emp_by_account.get(account_id)
-                    item.assignee_employee_id = emp.id if emp else None
-                else:
-                    item.assignee_employee_id = None
+                apply_jira_assignee(
+                    item,
+                    getattr(assignee, "accountId", None) if assignee else None,
+                    emp_by_account,
+                )
                 # Заказчик
                 if customer_field_id:
                     raw = (jira_issue.fields._extra or {}).get(customer_field_id)
