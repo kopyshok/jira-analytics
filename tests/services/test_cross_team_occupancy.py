@@ -206,3 +206,24 @@ def test_tail_of_task_carried_into_quarter_plan_counts_once(db_session):
     assert cto.daily_totals(bookings) == {
         e.id: {D("2026-01-05"): 6.0, D("2026-01-06"): 6.0, D("2026-01-07"): 6.0}
     }
+
+
+def test_external_bookings_tie_broken_by_assignment(db_session):
+    """Брони с одинаковыми сотрудником, началом, задачей и фазой — по строке плана."""
+    e = make_employee(db_session, "Пряничников", "A")
+    sc, plan = make_plan(db_session, "A")
+    for row_id in ("ffffffff-0000-0000-0000-000000000000",
+                   "00000000-0000-0000-0000-000000000000"):
+        item = add_item(db_session, sc, "Без ключа", dev=3)
+        book(db_session, plan, item, e, {"2026-01-05": 3.0}, id=row_id)
+    db_session.commit()
+
+    bookings = cto.external_bookings(
+        db_session, team="B", year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-03-31"),
+    )
+
+    assert [b.assignment_id for b in bookings] == [
+        "00000000-0000-0000-0000-000000000000",
+        "ffffffff-0000-0000-0000-000000000000",
+    ]

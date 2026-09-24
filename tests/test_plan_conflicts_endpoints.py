@@ -103,3 +103,25 @@ def test_patch_conflict_unknown_returns_404(client, db_session):
         json={"status": "acknowledged"},
     )
     assert r.status_code == 404
+
+
+def test_list_conflicts_order_does_not_depend_on_storage(client, db_session):
+    """Внутри группы конфликты идут по типу и ключу, а не в порядке записи в базу."""
+    plan = ResourcePlan(team="T", quarter="Q2", year=2026, status="ready")
+    db_session.add(plan)
+    db_session.commit()
+    for key in ("UNPLACED_HOURS:b", "UNPLACED_HOURS:a", "LATE_START:c"):
+        db_session.add(PlanConflict(
+            plan_id=plan.id, type=key.split(":")[0], severity="critical",
+            status="open", message=key, detection_key=key,
+        ))
+        db_session.flush()
+    db_session.commit()
+
+    r = client.get(f"/api/v1/resource-planning/resource-plans/{plan.id}/conflicts")
+    assert r.status_code == 200, r.text
+    [group] = r.json()["groups"]
+
+    assert [c["message"] for c in group["conflicts"]] == [
+        "LATE_START:c", "UNPLACED_HOURS:a", "UNPLACED_HOURS:b",
+    ]

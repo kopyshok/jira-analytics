@@ -233,7 +233,11 @@ def external_bookings(
                 provisional=ref.provisional,
             )
         )
-    out.sort(key=lambda b: (b.employee_id, b.start, b.issue_key or "", b.phase))
+    out.sort(
+        key=lambda b: (
+            b.employee_id, b.start, b.issue_key or "", b.phase, b.assignment_id
+        )
+    )
     return out
 
 
