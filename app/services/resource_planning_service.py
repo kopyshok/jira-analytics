@@ -143,6 +143,20 @@ def _placed_hours(a: ResourcePlanAssignment, unlaid: set) -> float:
     return float(a.hours_allocated or 0.0)
 
 
+def lock_plan(db: Session, plan_id: str) -> None:
+    """Взять строку плана «на запись» до конца транзакции: правки и пересчёты
+    одного плана идут по очереди.
+
+    Два одновременных пересчёта удаляли и вставляли одни и те же назначения —
+    на PostgreSQL взаимная блокировка или задвоенные строки. Вызывать первым
+    запросом транзакции, до чтения назначений плана. SQLite блокировок строк
+    не знает — там запрос идёт без неё.
+    """
+    db.execute(
+        select(ResourcePlan.id).where(ResourcePlan.id == plan_id).with_for_update()
+    ).first()
+
+
 def _iter_days(start: date, end: date):
     """Дни отрезка включительно."""
     cur = start
@@ -456,6 +470,7 @@ class ResourcePlanningService:
           заново — чтобы расписание реагировало на снятие предшественников и
           доступность исполнителя.
         """
+        lock_plan(self.db, plan_id)
         plan = self.db.get(ResourcePlan, plan_id)
         if not plan:
             raise ValueError(f"ResourcePlan {plan_id} not found")
