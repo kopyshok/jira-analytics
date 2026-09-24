@@ -86,17 +86,19 @@ def test_analyst_role_consultant_accepted(db_session):
     assert result["analyst"][item.id] == consultant.id
 
 
-def test_analyst_assigned_regardless_of_role(db_session):
-    """Аналитиком становится исполнитель сценария независимо от его роли."""
+def test_developer_executor_goes_to_development(db_session):
+    """Исполнитель сценария с ролью разработчика встаёт на разработку, а не на анализ."""
     dev = _make_emp(db_session, "Разраб", "developer")
     item = _make_item(
         db_session,
         estimate_analyst_hours=10.0,
+        estimate_dev_hours=10.0,
         assignee_employee_id=dev.id,
     )
     svc = ResourcePlanningService(db_session)
     result = svc._assign_employees([item], [dev])
-    assert result["analyst"][item.id] == dev.id
+    assert result["dev"][item.id] == dev.id
+    assert result["analyst"][item.id] is None
 
 
 def test_analyst_falls_back_to_pool_if_no_assignee(db_session):

@@ -578,12 +578,19 @@ class ResourcePlanningService:
         # с seg_end > q_end (строгий конец квартала) получают out_of_quarter=True.
         employees = self._load_employees(plan)
         team_employees = list(employees)
-        # Привлечённые: закреплены вручную или стоят «Разработчиком» в Jira,
-        # но в команде плана не состояли ни дня квартала.
+        # Привлечённые: закреплены вручную, стоят «Разработчиком» в Jira или
+        # выбраны исполнителем строки в сценарии вручную, но в команде плана
+        # не состояли ни дня квартала.
         jira_dev = jira_developers_for_items(self.db, items, q_start, q_end)
+        manual_executors = {
+            it.assignee_employee_id
+            for it in items
+            if it.assignee_manual and it.assignee_employee_id
+        }
         team_ids = {e.id for e in team_employees}
         borrowed_rows = self._load_borrowed(
-            (set(pinned_map.values()) | set(jira_dev.values())) - team_ids
+            (set(pinned_map.values()) | set(jira_dev.values()) | manual_executors)
+            - team_ids
         )
         borrowed = {e.id for e in borrowed_rows}
         employees = team_employees + borrowed_rows
@@ -1607,7 +1614,8 @@ class ResourcePlanningService:
     def _load_borrowed(self, ids: set) -> List[Employee]:
         """Активные сотрудники вне команды плана, попавшие в план.
 
-        Источники — ручное закрепление фазы и «Разработчик» из Jira.
+        Источники — ручное закрепление фазы, «Разработчик» из Jira и
+        исполнитель, выбранный в сценарии вручную.
         """
         ids = {i for i in ids if i}
         if not ids:
@@ -1674,25 +1682,24 @@ class ResourcePlanningService:
     ) -> Dict[str, Dict[str, Optional[str]]]:
         """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
-        - analyst: исполнитель инициативы (`assignee_employee_id`), независимо от его роли.
-                   Если у задачи нет исполнителя — None.
-        - dev:     закреп вручную → «Разработчик» из Jira (``jira_dev``, из любой
-                   команды), если его ёмкости квартала (``capacity`` — уже за
-                   вычетом броней других команд) хватает на часы разработки →
-                   greedy по минимальной нагрузке в пуле DEV_ROLES
-                   команды (fallback — вся команда). В команде с группами
-                   сначала перебираются свои по группе; сосед из другой группы
-                   берётся, только когда своих уже не хватает по ёмкости
-                   квартала (см. `_pick_in_group`).
-        - qa:      всегда None (часы-only, дату назначаем без сотрудника).
-        - opo:     не возвращается — реально создаётся как 2 строки через
-                   `_opo_split` в compute_schedule.
+        Исполнитель фазы, по убыванию приоритета: закреп вручную (``pinned``:
+        {(item_id, phase, part_number): employee_id}) → исполнитель строки
+        сценария на фазе своей роли (см. `_scenario_executor`) → для разработки
+        «Разработчик» из Jira (``jira_dev``, из любой команды), если его ёмкости
+        квартала (``capacity`` — уже за вычетом броней других команд) хватает
+        на часы разработки → жадный подбор внутри команды: анализ — из пула
+        ANALYST_ROLES, разработка — из DEV_ROLES (fallback — вся команда).
+        В команде с группами сначала перебираются свои по группе; сосед из
+        другой группы берётся, только когда своих уже не хватает по ёмкости
+        квартала (см. `_pick_in_group`). Закреп и исполнителя сценария
+        нехватка времени не отменяет: неразмещённые часы дают конфликт.
+        - qa:  всегда None (часы-only, дату назначаем без сотрудника).
+        - opo: не возвращается — реально создаётся как 2 строки через
+               `_opo_split` в compute_schedule.
 
-        ``pinned`` — словарь {(item_id, phase, part_number): employee_id}. Если
-        для (item, phase, 1) есть pin — используется он, обычная логика игнорится.
-
-        ``borrowed`` — привлечённые из других команд: в жадные пулы и в подбор
-        аналитика по исполнителю инициативы не попадают, только закреп / Jira.
+        ``borrowed`` — привлечённые из других команд: в жадные пулы не
+        попадают; в план — закрепом, как «Разработчик» из Jira или как
+        исполнитель, выбранный в сценарии вручную.
         """
         pinned = pinned or {}
         alloc_by_item = alloc_by_item or {}
@@ -1701,9 +1708,9 @@ class ResourcePlanningService:
         capacity = capacity or {}
         jira_dev = jira_dev or {}
         borrowed = borrowed or set()
-        # Жадный подбор и подстановка аналитика — только из своей команды.
+        # Жадный подбор и подстановка по имени — только из своей команды.
         team_emps = [e for e in employees if e.id not in borrowed]
-
+        all_by_id: Dict[str, Employee] = {e.id: e for e in employees}
         by_id: Dict[str, Employee] = {e.id: e for e in team_emps}
         # Резолв по display_name для fallback (если bk.assignee_employee_id NULL,
         # но в связанной Issue есть assignee_display_name — пробуем найти сотрудника).
@@ -1724,22 +1731,18 @@ class ResourcePlanningService:
         result: Dict[str, Dict[str, Optional[str]]] = {p: {} for p in PHASE_ORDER}
 
         for item in items:
-            # ── analyst — исполнитель из сценария ─────────────────────
-            analyst_id: Optional[str] = None
-            pin_an = pinned.get((item.id, "analyst", 1))
-            if pin_an:
-                analyst_id = pin_an
-            elif item.assignee_employee_id and item.assignee_employee_id in by_id:
-                analyst_id = item.assignee_employee_id
-            elif item.issue_id:
-                # Fallback: резолв по Issue.assignee_display_name
-                issue = item.issue
-                if issue and issue.assignee_display_name:
-                    analyst_id = by_name.get(issue.assignee_display_name.strip().lower())
-            # Если исполнитель не из команды плана (или вообще не задан) —
-            # берём наименее загруженного из пула аналитиков команды, чтобы
-            # фаза «Анализ» всё равно появилась в расписании.
             an_hours = self._phase_hours(item, "analyst", alloc_by_item)
+            dev_hours = self._phase_hours(item, "dev", alloc_by_item)
+            executor_id, executor_phase = self._scenario_executor(
+                item, all_by_id, by_id, by_name, an_hours
+            )
+
+            # ── analyst ────────────────────────────────────────────────
+            analyst_id: Optional[str] = pinned.get((item.id, "analyst", 1))
+            if not analyst_id and executor_phase == "analyst":
+                analyst_id = executor_id
+            # Исполнителя анализа нет — наименее загруженный из пула
+            # аналитиков команды, чтобы фаза «Анализ» всё равно появилась.
             if not analyst_id and analyst_ids:
                 analyst_id = self._pick_in_group(
                     analyst_ids, item_group.get(item.id), load, an_hours,
@@ -1750,8 +1753,9 @@ class ResourcePlanningService:
             result["analyst"][item.id] = analyst_id
 
             # ── dev ────────────────────────────────────────────────────
-            dev_hours = self._phase_hours(item, "dev", alloc_by_item)
             dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
+            if not dev_id and executor_phase == "dev":
+                dev_id = executor_id
             jira_id = jira_dev.get(item.id)
             # Занятый «Разработчик» из Jira не получает работу, которую некуда
             # положить: без этой проверки фаза без единого свободного дня
@@ -1778,6 +1782,41 @@ class ResourcePlanningService:
             # через _opo_split в compute_schedule.
 
         return result
+
+    def _scenario_executor(
+        self,
+        item: BacklogItem,
+        all_by_id: Dict[str, Employee],
+        team_by_id: Dict[str, Employee],
+        by_name: Dict[str, str],
+        an_hours: float,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """(исполнитель строки сценария, фаза, на которую он встаёт) или (None, None).
+
+        Выбранный в сценарии вручную — из любой команды (станет привлечённым).
+        Подтянутый из Jira — только свой: исполнитель инициативы из чужой
+        команды часто заказчик. Своего исполнителя нет — ищем своего по имени
+        исполнителя задачи в Jira. Фаза — по роли: разработчик → разработка;
+        аналитик, РП, консультант → анализ; роли нет или иная → анализ, а
+        если у задачи нет часов анализа — разработка.
+        """
+        eid = item.assignee_employee_id
+        if item.assignee_manual:
+            emp = all_by_id.get(eid) if eid else None
+        else:
+            emp = team_by_id.get(eid) if eid else None
+            issue = item.issue
+            if emp is None and issue is not None and issue.assignee_display_name:
+                name_id = by_name.get(issue.assignee_display_name.strip().lower())
+                emp = team_by_id.get(name_id) if name_id else None
+        if emp is None:
+            return None, None
+        role = (emp.role or "").lower()
+        if role in DEV_ROLES:
+            return emp.id, "dev"
+        if role in ANALYST_ROLES or an_hours > 0:
+            return emp.id, "analyst"
+        return emp.id, "dev"
 
     def _pick_in_group(
         self,
