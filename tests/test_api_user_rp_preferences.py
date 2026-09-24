@@ -111,3 +111,22 @@ def test_preferences_isolated_per_user(db_session, client_factory):
     client_b = client_factory(user_b)
     r = client_b.get("/api/v1/resource-planning/preferences")
     assert r.json()["hide_weekends"] is False
+
+
+def test_patch_changes_only_sent_fields(db_session, client_factory):
+    """Переключатель «Задачи / Исполнители» шлёт одно поле — остальные
+    настройки не сбрасываются к значениям по умолчанию."""
+    user = _make_user(db_session, "u3@example.com")
+    client = client_factory(user)
+    client.patch(
+        "/api/v1/resource-planning/preferences",
+        json={"hide_weekends": True, "fill_intensity_pct": 80},
+    )
+
+    r = client.patch("/api/v1/resource-planning/preferences", json={"view_mode": "people"})
+
+    assert r.status_code == 200, r.text
+    body = client.get("/api/v1/resource-planning/preferences").json()
+    assert body["view_mode"] == "people"
+    assert body["hide_weekends"] is True
+    assert body["fill_intensity_pct"] == 80

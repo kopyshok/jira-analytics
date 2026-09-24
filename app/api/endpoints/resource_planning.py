@@ -711,18 +711,18 @@ def patch_user_rp_preferences(
     if not p:
         p = UserRpPreferences(user_id=current_user.id)
         db.add(p)
-    p.hide_weekends = payload.hide_weekends
-    p.collapsed_initiative_ids = list(payload.collapsed_initiative_ids or [])
-    p.view_mode = payload.view_mode
-    p.show_relay = payload.show_relay
-    p.detail_sections_visible = dict(payload.detail_sections_visible or {})
-    p.detail_sections_collapsed = dict(payload.detail_sections_collapsed or {})
-    p.fill_intensity_pct = max(0, min(100, payload.fill_intensity_pct))
-    p.fill_contrast_pct = max(0, min(100, payload.fill_contrast_pct))
-    p.pulse_highlighted_employee = payload.pulse_highlighted_employee
-    p.pulse_critical_path = payload.pulse_critical_path
-    p.out_of_quarter_months = max(0, min(3, payload.out_of_quarter_months))
-    p.hide_weekend_stripes_week_mode = payload.hide_weekend_stripes_week_mode
+    # Меняем только присланные поля: переключатели шлют по одному полю,
+    # остальное не должно сбрасываться к значениям по умолчанию.
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if key in ("fill_intensity_pct", "fill_contrast_pct"):
+            value = max(0, min(100, value))
+        elif key == "out_of_quarter_months":
+            value = max(0, min(3, value))
+        elif key == "collapsed_initiative_ids":
+            value = list(value or [])
+        elif key in ("detail_sections_visible", "detail_sections_collapsed"):
+            value = dict(value or {})
+        setattr(p, key, value)
     db.commit()
     db.refresh(p)
     return _prefs_to_schema(p)
