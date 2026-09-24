@@ -2856,7 +2856,8 @@ class ResourcePlanningService:
         Включает:
         - QUARTER_OVERFLOW (опэ-фаза заходит за квартал)
         - SPLIT_REQUIRED (part_number > 1)
-        - NO_ANALYST / NO_DEV (нет в команде)
+        - NO_ANALYST / NO_DEV (нет ни в команде, ни среди привлечённых,
+          получивших в плане фазу)
         - OVERLOAD_LIGHT/MED/HIGH из _last_leveling_events (action='escalate')
         - LEVELING_DELAY / LEVELING_REASSIGN (info — что leveler сделал)
         - LATE_START (фаза стартует позже целевой даты — slack_days < 0)
@@ -3000,10 +3001,14 @@ class ResourcePlanningService:
         ANALYST_CODES = {"аналитик", "analyst", "an"}
         DEV_CODES = {"разработчик", "developer", "dev", "rp"}
         if plan.team:
+            # Привлечённый закрывает роль, только если получил в плане работу:
+            # «Разработчик» из Jira, которому не хватило ёмкости, в план не попал.
+            staffed = {a.employee_id for a in assignments}
+            crew = [e for e in employees if e.id not in borrowed or e.id in staffed]
             has_analyst = any(
-                e.role and e.role.lower() in ANALYST_CODES for e in employees
+                e.role and e.role.lower() in ANALYST_CODES for e in crew
             )
-            has_dev = any(e.role and e.role.lower() in DEV_CODES for e in employees)
+            has_dev = any(e.role and e.role.lower() in DEV_CODES for e in crew)
             if not has_analyst:
                 result.append(
                     {
