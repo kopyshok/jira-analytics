@@ -312,12 +312,10 @@ export default function AssignmentSidebar({
           />
         </Descriptions.Item>
         <Descriptions.Item label="Окончание">
-          <DatePicker
-            value={assignment.end_date ? dayjs(assignment.end_date) : null}
-            disabled={saving}
-            allowClear={false}
-            onChange={(d) => d && updateField({ end_date: d.format('YYYY-MM-DD') })}
-          />
+          {/* Конец считает планировщик по свободным дням исполнителя от даты начала. */}
+          <Typography.Text title="Считается по свободным дням исполнителя от даты начала">
+            {assignment.end_date ? dayjs(assignment.end_date).format('DD.MM.YYYY') : '—'}
+          </Typography.Text>
         </Descriptions.Item>
         <Descriptions.Item label="Предшественники">
           <Select
