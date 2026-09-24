@@ -17,6 +17,7 @@ Flow:
 """
 
 import calendar
+from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -25,6 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased, joinedload
 
+from app.api.endpoints.resource_planning import CandidateGroupOut
 from app.database import get_db
 from app.models import (
     Absence,
@@ -69,7 +71,9 @@ from app.services.backlog_service import (
     mode_excluded_backlog_ids,
     not_in_plan_backlog_ids,
 )
+from app.services.assignee_candidates import candidate_groups, jira_assignee_id
 from app.services.category_resolver import CategoryResolver
+from app.services.cross_team_occupancy import quarter_num
 from app.services.plan_common import quarter_bounds
 from app.services.subgroup_flow_service import flow_for_team
 from app.services.hierarchy_rules import is_planning_leaf, load_rules
@@ -1727,6 +1731,57 @@ async def patch_allocation_assignee(
         backlog_item,
         subgroup_by_employee=_subgroup_by_employee(db, scenario.team),
     )
+
+
+@router.get(
+    "/scenarios/{scenario_id}/assignee-candidates",
+    response_model=List[CandidateGroupOut],
+)
+def scenario_assignee_candidates(
+    scenario_id: str,
+    backlog_item_id: str = Query(..., description="Задача бэклога — строка сценария"),
+    db: Session = Depends(get_db),
+):
+    """Кандидаты в исполнители строки сценария.
+
+    Все, кто в квартале сценария состоит в какой-либо команде, группами
+    «Из Jira» (исполнитель задачи в Jira) / «Моя команда» / «Другие команды»,
+    у каждого — загрузка за квартал по опорным планам команд. Пустые группы
+    не возвращаются.
+    """
+    scenario = db.get(PlanningScenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    in_scenario = (
+        db.query(ScenarioAllocation.id)
+        .filter(
+            ScenarioAllocation.scenario_id == scenario_id,
+            ScenarioAllocation.backlog_item_id == backlog_item_id,
+        )
+        .first()
+    )
+    if not in_scenario:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+    quarter = quarter_num(scenario.quarter)
+    if not scenario.year or not quarter:
+        raise HTTPException(status_code=400, detail="Год/квартал у сценария не заданы")
+    start, end = quarter_bounds(scenario.year, quarter)
+    item = (
+        db.query(BacklogItem)
+        .options(joinedload(BacklogItem.issue))
+        .filter(BacklogItem.id == backlog_item_id)
+        .first()
+    )
+    groups = candidate_groups(
+        db,
+        team=scenario.team,
+        start=start,
+        end=end,
+        year=scenario.year,
+        quarter=quarter,
+        jira_employee_id=jira_assignee_id(db, item.issue if item else None),
+    )
+    return [asdict(g) for g in groups]
 
 
 # === Scenario resource base ===
