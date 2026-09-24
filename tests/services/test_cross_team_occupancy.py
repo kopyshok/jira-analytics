@@ -281,21 +281,21 @@ def test_external_bookings_tie_broken_by_assignment(db_session):
     ]
 
 
-def _ext(employee_id, team="B", is_borrowing=False, changed_at=None):
+def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=None):
     """Бронь без базы — для чистых функций."""
+    daily = daily or {D("2026-01-05"): 6.0}
     return cto.ExternalBooking(
-        assignment_id=f"a-{employee_id}-{team}-{is_borrowing}",
+        assignment_id=assignment_id or f"a-{employee_id}-{team}-{is_borrowing}",
         employee_id=employee_id,
         team=team,
         issue_key=None,
         title="x",
         phase="dev",
-        start=D("2026-01-05"),
-        end=D("2026-01-05"),
-        daily_hours={D("2026-01-05"): 6.0},
+        start=min(daily),
+        end=max(daily),
+        daily_hours=daily,
         provisional=False,
         is_borrowing=is_borrowing,
-        changed_at=changed_at,
     )
 
 
@@ -357,29 +357,40 @@ def test_subtractable_keeps_borrowing_bookings_only_for_borrowed():
     assert cto.subtractable([own_lent, own_shared, ext_lent], {"ext"}) == [own_shared, ext_lent]
 
 
-def test_booking_changed_at_is_latest_of_plan_compute_and_row_edit(db_session):
-    e = make_employee(db_session, "Шутов", "A")
-    plan, row = _booking_of(db_session, e)
-    plan.computed_at = datetime(2026, 1, 2)
-    row.updated_at = datetime(2026, 1, 3)
-    db_session.commit()
+def test_fingerprint_depends_only_on_hours_by_day():
+    """Пересчёт чужого плана пересоздаёт строки — отпечаток тот же, пока часы
+    человека по дням не изменились; сдвинулись часы — другой отпечаток."""
+    one_row = [
+        _ext("e", daily={D("2026-01-05"): 6.0, D("2026-01-06"): 6.0}, assignment_id="old")
+    ]
+    new_rows = [
+        _ext("e", daily={D("2026-01-06"): 6.0}, assignment_id="new-2"),
+        _ext("e", daily={D("2026-01-05"): 2.0}, assignment_id="new-1"),
+        _ext("e", daily={D("2026-01-05"): 4.0}, assignment_id="new-3"),
+    ]
+    moved = [_ext("e", daily={D("2026-01-05"): 6.0, D("2026-01-07"): 6.0})]
 
-    [b] = _bookings_for_a(db_session, e)
-    assert b.changed_at == datetime(2026, 1, 3)
-
-    row.updated_at = datetime(2026, 1, 1)
-    db_session.commit()
-
-    [b] = _bookings_for_a(db_session, e)
-    assert b.changed_at == datetime(2026, 1, 2)
+    assert cto.fingerprint(one_row) == cto.fingerprint(new_rows)
+    assert cto.fingerprint(one_row) != cto.fingerprint(moved)
 
 
-def test_stale_teams_lists_teams_changed_after_compute():
-    bookings = [
-        _ext("e", team="B", changed_at=datetime(2026, 1, 5)),
-        _ext("e", team="C", changed_at=datetime(2026, 1, 1)),
-        _ext("e", team="D", changed_at=None),
+def test_stale_teams_compares_fingerprints_by_team():
+    was = cto.fingerprint([_ext("e", team="B"), _ext("e", team="C"), _ext("e", team="E")])
+    now = [
+        _ext("e", team="B", daily={D("2026-01-06"): 6.0}),  # бронь сдвинулась
+        _ext("e", team="C"),  # та же
+        _ext("e", team="D"),  # новая; E человека освободила
     ]
 
-    assert cto.stale_teams(bookings, datetime(2026, 1, 3)) == ["B"]
-    assert cto.stale_teams(bookings, None) == []
+    assert cto.stale_teams(was, now, datetime(2026, 1, 3)) == ["B", "D", "E"]
+    assert cto.stale_teams(cto.fingerprint(now), now, datetime(2026, 1, 3)) == []
+
+
+def test_stale_teams_without_stored_fingerprint():
+    """Посчитан, пока план не запоминал учтённые брони, — устарел, если
+    вычитаемые брони есть. Ни разу не считался — не устаревает."""
+    bookings = [_ext("e", team="B")]
+
+    assert cto.stale_teams(None, bookings, datetime(2026, 1, 3)) == ["B"]
+    assert cto.stale_teams(None, [], datetime(2026, 1, 3)) == []
+    assert cto.stale_teams(None, bookings, None) == []

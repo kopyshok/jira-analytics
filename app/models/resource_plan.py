@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -38,6 +38,10 @@ class ResourcePlan(Base, TimestampMixin):
         String(16), nullable=False, default="draft", server_default="draft"
     )
     computed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Отпечаток броней других команд, вычтенных из доступности при последнем
+    # расчёте, — JSON {команда: sha256}. Диаграмма сверяет с ним текущие
+    # брони: «планы других команд изменились» (cross_team_occupancy.stale_teams).
+    external_fingerprint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     parent_plan_id: Mapped[Optional[str]] = mapped_column(
         String(36),
         ForeignKey("resource_plans.id", ondelete="SET NULL"),

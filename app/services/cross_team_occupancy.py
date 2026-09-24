@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass
@@ -38,8 +39,6 @@ class ReferencePlan:
     plan_id: str
     team: str
     provisional: bool
-    # Когда план последний раз считался — для признака устаревания чужих планов.
-    computed_at: Optional[datetime] = None
 
 
 def quarter_num(value) -> Optional[int]:
@@ -91,7 +90,7 @@ def reference_plans(
     for team in set(approved) | set(drafts):
         if approved.get(team):
             best = max((p for p, _ in approved[team]), key=_ref_key)
-            out[team] = ReferencePlan(best.id, team, False, best.computed_at)
+            out[team] = ReferencePlan(best.id, team, False)
             continue
         fresh_sc = max(
             (sc for _, sc in drafts[team]),
@@ -100,7 +99,7 @@ def reference_plans(
         best = max(
             (p for p, sc in drafts[team] if sc.id == fresh_sc.id), key=_ref_key
         )
-        out[team] = ReferencePlan(best.id, team, True, best.computed_at)
+        out[team] = ReferencePlan(best.id, team, True)
     return out
 
 
@@ -121,8 +120,6 @@ class ExternalBooking:
     # Бронь-привлечение: в команде брони человек не состоял ни дня квартала
     # её плана — команда взяла его к себе.
     is_borrowing: bool = False
-    # Когда бронь последний раз менялась: пересчёт опорного плана или правка строки.
-    changed_at: Optional[datetime] = None
 
 
 def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
@@ -205,9 +202,8 @@ def external_bookings(
     там она уже занимает человека. Окно ``start`` — ``end`` отсекает всё,
     что в него не попадает. Строки задач, которых уже нет в сценарии плана,
     не считаются нигде.
-    У каждой брони — ``is_borrowing`` (человек не состоял в команде брони ни
-    дня квартала её плана: команда его привлекла) и ``changed_at`` (когда
-    бронь последний раз менялась: пересчёт опорного плана или правка строки).
+    У каждой брони — ``is_borrowing``: человек не состоял в команде брони ни
+    дня квартала её плана, команда его привлекла.
     Пять запросов на любой объём: опорные планы двух кварталов, задачи
     планов квартала, назначения и периоды участия их людей.
     """
@@ -291,10 +287,6 @@ def external_bookings(
                 is_borrowing=not _member_of(
                     membership.get(a.employee_id, ()), ref.team, lo, hi
                 ),
-                changed_at=max(
-                    (t for t in (ref.computed_at, a.updated_at) if t is not None),
-                    default=None,
-                ),
             )
         )
     out.sort(
@@ -327,18 +319,61 @@ def subtractable(
     return [b for b in bookings if b.employee_id in borrowed or not b.is_borrowing]
 
 
-def stale_teams(
-    bookings: Iterable[ExternalBooking], computed_at: Optional[datetime]
-) -> List[str]:
-    """Команды, чьи брони изменились после расчёта плана, по алфавиту.
+def _team_hashes(bookings: Iterable[ExternalBooking]) -> Dict[str, str]:
+    """{команда: sha256 её броней} по часам человека в день.
 
-    План ни разу не считался — сравнивать не с чем, список пуст.
+    Строки брони (их id, фазы, дробление на части) в отпечаток не входят:
+    пересчёт чужого плана пересоздаёт строки, и если часы людей по дням те
+    же, отпечаток не меняется.
+    """
+    hours: Dict[str, Dict[tuple, float]] = defaultdict(lambda: defaultdict(float))
+    for b in bookings:
+        for d, h in b.daily_hours.items():
+            hours[b.team][(b.employee_id, d.isoformat())] += h
+    out: Dict[str, str] = {}
+    for team, cells in hours.items():
+        rows = sorted(
+            (eid, day, round(h, 2)) for (eid, day), h in cells.items() if round(h, 2) > 0
+        )
+        if rows:
+            raw = json.dumps(rows, separators=(",", ":")).encode("utf-8")
+            out[team] = hashlib.sha256(raw).hexdigest()
+    return out
+
+
+def fingerprint(bookings: Iterable[ExternalBooking]) -> str:
+    """Отпечаток броней по командам — JSON {команда: sha256}.
+
+    План запоминает его при расчёте по вычтенным из своей доступности
+    броням (``ResourcePlan.external_fingerprint``), диаграмма сверяет с ним
+    текущие — см. `stale_teams`.
+    """
+    return json.dumps(_team_hashes(bookings), sort_keys=True)
+
+
+def stale_teams(
+    stored: Optional[str],
+    bookings: Iterable[ExternalBooking],
+    computed_at: Optional[datetime],
+) -> List[str]:
+    """Команды, чьи вычитаемые брони разошлись с учтёнными при расчёте, по алфавиту.
+
+    ``stored`` — отпечаток, запомненный планом при расчёте (`fingerprint`),
+    ``bookings`` — брони, вычитаемые из доступности плана сейчас. Команда
+    попадает в список, если её брони появились, пропали или сдвинулись.
+    Пересчёт чужого плана с той же раскладкой план не старит — поэтому два
+    плана с общим сотрудником не помечают друг друга без конца.
+    План ни разу не считался — сравнивать не с чем, список пуст. Посчитан,
+    пока планы не запоминали отпечаток (``stored`` пуст), — какие брони он
+    учёл, неизвестно: устарел, если вычитаемые брони вообще есть.
     """
     if computed_at is None:
         return []
-    return sorted(
-        {b.team for b in bookings if b.changed_at is not None and b.changed_at > computed_at}
-    )
+    now = _team_hashes(bookings)
+    if stored is None:
+        return sorted(now)
+    was = json.loads(stored)
+    return sorted(t for t in set(was) | set(now) if was.get(t) != now.get(t))
 
 
 def subtract_occupancy(
