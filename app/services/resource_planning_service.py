@@ -439,7 +439,7 @@ class ResourcePlanningService:
         Семантика pin-флагов:
         - `pinned_start` / `pinned_split` → даты/раскладка зафиксированы:
           строка не удаляется и не пересчитывается, бар остаётся в выбранном
-          окне.
+          окне. Исключение — задача ушла из сценария: её строки удаляются.
         - `pinned_employee` → зафиксирован только сотрудник; строка удаляется
           и пересоздаётся, но `pinned_map` сохраняет выбор исполнителя, а флаг
           восстанавливается на одноимённой фазе после пересчёта. Даты считаются
@@ -450,6 +450,18 @@ class ResourcePlanningService:
         if not plan:
             raise ValueError(f"ResourcePlan {plan_id} not found")
         self._load_plan_context(plan)
+
+        items = self._load_items(plan)
+        # Задача ушла из сценария (сняли «В план», выключили в сценарии) —
+        # её строки, даже закреплённые, больше не план и никого не занимают.
+        # Убираем до снимков ниже: закреп исполнителя ушедшей задачи не
+        # должен тянуть его в план привлечённым.
+        self.db.execute(
+            ResourcePlanAssignment.__table__.delete().where(
+                ResourcePlanAssignment.plan_id == plan_id,
+                ResourcePlanAssignment.backlog_item_id.not_in([bi.id for bi in items]),
+            )
+        )
 
         # Снимок логических ключей рёбер до удаления назначений (CASCADE
         # предшественников). После пересоздания назначений рёбра восстанавливаются
@@ -549,7 +561,6 @@ class ResourcePlanningService:
             )
         )
 
-        items = self._load_items(plan)
         if not items:
             # Раскладывать нечего — прежние конфликты больше ни о чём.
             self._persist_conflicts(plan_id, [])

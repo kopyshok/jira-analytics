@@ -2,7 +2,9 @@
 
 from datetime import date, datetime
 
-from app.models import ResourcePlan, ResourcePlanAssignment
+from sqlalchemy import delete, update
+
+from app.models import ResourcePlan, ResourcePlanAssignment, ScenarioAllocation
 from app.services import cross_team_occupancy as cto
 from tests.services.xteam_factory import add_item, book, make_employee, make_plan
 
@@ -194,7 +196,8 @@ def test_tail_of_task_carried_into_quarter_plan_counts_once(db_session):
     book(db_session, plan_prev, carried, e, {"2026-01-05": 6.0, "2026-01-06": 6.0})
     tail = add_item(db_session, sc_prev, "Хвост Q4", dev=6)
     book(db_session, plan_prev, tail, e, {"2026-01-07": 6.0})
-    _, plan_cur = make_plan(db_session, "A")
+    sc_cur, plan_cur = make_plan(db_session, "A")
+    db_session.add(ScenarioAllocation(scenario_id=sc_cur.id, backlog_item_id=carried.id))
     book(db_session, plan_cur, carried, e, {"2026-01-05": 6.0, "2026-01-06": 6.0})
     db_session.commit()
 
@@ -206,6 +209,55 @@ def test_tail_of_task_carried_into_quarter_plan_counts_once(db_session):
     assert cto.daily_totals(bookings) == {
         e.id: {D("2026-01-05"): 6.0, D("2026-01-06"): 6.0, D("2026-01-07"): 6.0}
     }
+
+
+def test_task_out_of_scenario_no_longer_occupies(db_session):
+    """Задачу убрали из сценария или выключили в нём — её фаза, даже закреплённая,
+    больше не занимает человека, ещё до пересчёта плана."""
+    e = make_employee(db_session, "Пряничников", "A")
+    sc, plan = make_plan(db_session, "T", scenario_status="draft")
+    removed = add_item(db_session, sc, "Снята «В план»", dev=6)
+    book(db_session, plan, removed, e, {"2026-01-05": 6.0},
+         pinned_start=True, pinned_employee=True)
+    switched_off = add_item(db_session, sc, "Выключена в сценарии", dev=6)
+    book(db_session, plan, switched_off, e, {"2026-01-06": 6.0}, pinned_split=True)
+    kept = add_item(db_session, sc, "Осталась", dev=6)
+    book(db_session, plan, kept, e, {"2026-01-07": 6.0})
+    db_session.execute(
+        delete(ScenarioAllocation).where(ScenarioAllocation.backlog_item_id == removed.id)
+    )
+    db_session.execute(
+        update(ScenarioAllocation)
+        .where(ScenarioAllocation.backlog_item_id == switched_off.id)
+        .values(included_flag=False)
+    )
+    db_session.commit()
+
+    bookings = cto.external_bookings(
+        db_session, team="A", year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-04-30"),
+    )
+
+    assert cto.daily_totals(bookings) == {e.id: {D("2026-01-07"): 6.0}}
+
+
+def test_tail_counts_again_once_task_left_quarter_scenario(db_session):
+    """Перенесённую задачу убрали из сценария квартала: её строка в плане квартала
+    не занимает человека, а хвост прошлого квартала снова занимает."""
+    e = make_employee(db_session, "Пряничников", "A")
+    sc_prev, plan_prev = make_plan(db_session, "A", year=2025, quarter="Q4")
+    item = add_item(db_session, sc_prev, "Переходящая", dev=12)
+    book(db_session, plan_prev, item, e, {"2026-01-05": 6.0})
+    _, plan_cur = make_plan(db_session, "A")  # в сценарии квартала задачи уже нет
+    book(db_session, plan_cur, item, e, {"2026-01-12": 6.0}, pinned_start=True)
+    db_session.commit()
+
+    bookings = cto.external_bookings(
+        db_session, team=None, year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-04-30"),
+    )
+
+    assert cto.daily_totals(bookings) == {e.id: {D("2026-01-05"): 6.0}}
 
 
 def test_external_bookings_tie_broken_by_assignment(db_session):

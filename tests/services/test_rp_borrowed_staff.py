@@ -3,9 +3,16 @@
 import json
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from app.models import BacklogItem, PlanConflict, ResourcePlanAssignment
+from app.models import (
+    BacklogItem,
+    PlanConflict,
+    ResourcePlanAssignment,
+    ScenarioAllocation,
+)
+from app.services import cross_team_occupancy as cto
+from app.services.backlog_service import BacklogService
 from app.services.resource_planning_service import ResourcePlanningService
 from tests.services.xteam_factory import add_item, book, make_employee, make_issue, make_plan
 
@@ -522,3 +529,52 @@ def test_plan_avoids_previous_quarter_spill_of_other_team(db_session):
     ResourcePlanningService(db_session).compute_schedule(plan_a.id)
 
     assert _days(_dev_rows(db_session, plan_a.id)) == {"2026-01-05", "2026-01-06"}
+
+
+def _plan_rows(db, plan_id):
+    return db.execute(
+        select(ResourcePlanAssignment).where(ResourcePlanAssignment.plan_id == plan_id)
+    ).scalars().all()
+
+
+def test_task_off_plan_frees_borrowed_after_recompute(db_session):
+    """Сняли «В план» — пересчёт убирает закреплённую фазу задачи, и привлечённый
+    сотрудник больше не занят в плане этой команды."""
+    e = make_employee(db_session, "Пряничников", "A")
+    make_employee(db_session, "Свой T", "T")
+    sc_t, plan_t = make_plan(db_session, "T", scenario_status="draft")
+    item = add_item(db_session, sc_t, "Задача T", dev=12)
+    book(db_session, plan_t, item, e, {"2026-01-05": 6.0, "2026-01-06": 6.0},
+         pinned_start=True, pinned_employee=True)
+    db_session.commit()
+
+    item.included_in_planning = False
+    db_session.flush()
+    BacklogService(db_session)._remove_draft_allocations(item.id)
+    db_session.commit()
+    ResourcePlanningService(db_session).compute_schedule(plan_t.id)
+
+    assert _plan_rows(db_session, plan_t.id) == []
+    assert cto.external_bookings(
+        db_session, team="A", year=2026, quarter=1, employee_ids=[e.id],
+        start=D("2026-01-01"), end=D("2026-04-30"),
+    ) == []
+
+
+def test_recompute_drops_pinned_phases_only_of_tasks_out_of_scenario(db_session):
+    """Закреп задачи, оставшейся в сценарии, пересчёт хранит; закреп ушедшей — убирает."""
+    e = make_employee(db_session, "Свой T", "T")
+    sc, plan = make_plan(db_session, "T", plan_status="draft")
+    kept = add_item(db_session, sc, "Осталась", dev=6, priority=2)
+    book(db_session, plan, kept, e, {"2026-01-05": 6.0}, pinned_start=True)
+    gone = add_item(db_session, sc, "Убрана из сценария", dev=6, priority=1)
+    book(db_session, plan, gone, e, {"2026-01-06": 6.0}, pinned_split=True)
+    db_session.execute(
+        delete(ScenarioAllocation).where(ScenarioAllocation.backlog_item_id == gone.id)
+    )
+    db_session.commit()
+
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    rows = _plan_rows(db_session, plan.id)
+    assert [(r.backlog_item_id, r.pinned_start) for r in rows] == [(kept.id, True)]
