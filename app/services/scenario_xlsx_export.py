@@ -263,11 +263,15 @@ def _resolve_assignee_role(
     item: BacklogItem, ctx: ScenarioExportContext,
 ) -> Optional[str]:
     """Роль исполнителя задачи. Повторяет логику /planning endpoint:
+    0) исполнителя выбрали (или сняли) в сценарии вручную — только его роль,
+       имя исполнителя из Jira не подставляется;
     1) `BacklogItem.assignee.role` (если назначен сотрудник);
     2) lookup `Issue.assignee_display_name` → `role_by_display_name`
        (если в Jira указан исполнитель по имени).
     """
     assignee = getattr(item, "assignee", None)
+    if item.assignee_manual:
+        return assignee.role if assignee is not None else None
     if assignee is not None and assignee.role:
         return assignee.role
     issue = getattr(item, "issue", None)
