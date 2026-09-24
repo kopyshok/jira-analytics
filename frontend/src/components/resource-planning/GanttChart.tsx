@@ -3,7 +3,7 @@ import type { AssignmentOut, DependencyOut, ExternalBookingOut, ScheduledBlock }
 import type { EmployeeResponse, ProductionCalendarDayResponse } from '../../types/api';
 import type { TimelineScale } from '../../utils/gantt';
 import { buildTimeline, buildWorkdayTimeline, dateToLeft, quarterBounds, PX_PER_DAY } from '../../utils/gantt';
-import type { ViewMode } from './GanttRows';
+import type { RpLayout, ViewMode } from './GanttRows';
 import TimelineHeader from './TimelineHeader';
 import GanttRows from './GanttRows';
 import BlockedZones from './BlockedZones';
@@ -13,7 +13,7 @@ import DependencyArrows from './DependencyArrows';
 import ExternalBookingsRows from './ExternalBookingsRows';
 import { useProductionCalendarYear } from '../../hooks/useProductionCalendar';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
-import { workdayChecker } from '../../utils/externalBookings';
+import { ownPeopleBookingLabel, workdayChecker } from '../../utils/externalBookings';
 import { busyGaps, type BusyGap } from '../../utils/rpBusy';
 
 const LEFT_COL_DEFAULT = 280;
@@ -51,8 +51,10 @@ interface Props {
   subgroupByEmployee?: Record<string, string>;
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
-  /** Брони привлечённых в опорных планах других команд — блок «Привлечённые». */
+  /** Брони людей плана в опорных планах других команд (свои и привлечённые). */
   externalBookings?: ExternalBookingOut[];
+  /** «Задачи» — строки по задачам, «Исполнители» — секции по людям. */
+  layout?: RpLayout;
 }
 
 export default function GanttChart({
@@ -81,6 +83,7 @@ export default function GanttChart({
   highlightedEmployeeId,
   onEmployeeRowClick,
   externalBookings,
+  layout = 'tasks',
 }: Props) {
   const LEFT_COL = viewMode === 'two-level' ? LEFT_COL_TWO_LEVEL : LEFT_COL_DEFAULT;
   const [pendingFromItem, setPendingFromItem] = useState<string | null>(null);
@@ -132,6 +135,13 @@ export default function GanttChart({
     }
     return out;
   }, [assignments, bookings, isWorkday]);
+  // «Привлечённые» — наши привлечённые в чужих планах; «Наши люди в других
+  // командах» — свои, которых другие команды взяли к себе.
+  const borrowedBookings = useMemo(() => bookings.filter((b) => b.employee_is_borrowed), [bookings]);
+  const ownPeopleBookings = useMemo(
+    () => bookings.filter((b) => !b.employee_is_borrowed && b.is_borrowing),
+    [bookings],
+  );
 
   // Workday mode forces day scale (week/month labels don't align with workday blocks)
   const effectiveScale: TimelineScale = hideWeekends ? 'day' : scale;
@@ -324,9 +334,23 @@ export default function GanttChart({
             redrawKey={`${effectiveScale}:${trackWidthPx}`}
           />
 
-          {externalBookings && externalBookings.length > 0 && (
+          {/* В виде «Исполнители» те же брони лежат на полосе «все работы». */}
+          {layout === 'tasks' && (
             <ExternalBookingsRows
-              bookings={externalBookings}
+              title="Привлечённые"
+              bookings={borrowedBookings}
+              timeline={timeline}
+              calendar={calendar}
+              leftColWidth={LEFT_COL}
+              trackWidthPx={trackWidthPx}
+            />
+          )}
+          {layout === 'tasks' && (
+            <ExternalBookingsRows
+              title="Наши люди в других командах"
+              bookings={ownPeopleBookings}
+              labelOf={ownPeopleBookingLabel}
+              showOverlap
               timeline={timeline}
               calendar={calendar}
               leftColWidth={LEFT_COL}

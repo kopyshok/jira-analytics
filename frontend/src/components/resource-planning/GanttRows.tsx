@@ -12,6 +12,9 @@ import { computeFillGradientAlphas } from './appearanceGradient';
 
 export type ViewMode = 'portfolio' | 'two-level' | 'resource-track' | 'plane';
 
+/** Раскладка строк основного вида: по задачам или по исполнителям. */
+export type RpLayout = 'tasks' | 'people';
+
 interface Props {
   assignments: AssignmentOut[];
   timeline: GanttTimeline;
