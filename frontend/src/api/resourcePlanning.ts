@@ -216,7 +216,6 @@ export interface GanttProjection {
 export interface AssignmentPatch {
   employee_id?: string | null;
   start_date?: string;
-  end_date?: string;
   hours_allocated?: number;
   predecessor_ids?: string[];
   /** Явное закрепление даты. Опускаем → drag по дате ставит флаг как раньше. */

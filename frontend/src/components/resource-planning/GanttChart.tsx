@@ -13,12 +13,16 @@ import DependencyArrows from './DependencyArrows';
 import ExternalBookingsRows from './ExternalBookingsRows';
 import { useProductionCalendarYear } from '../../hooks/useProductionCalendar';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
+import { workdayChecker } from '../../utils/externalBookings';
+import { busyGaps, type BusyGap } from '../../utils/rpBusy';
 
 const LEFT_COL_DEFAULT = 280;
 const LEFT_COL_TWO_LEVEL = 540;
 // Одна и та же пустая ссылка, пока календарь грузится: новый [] на каждом
 // рендере пересобирал бы шкалу и блок «Привлечённые».
 const NO_CALENDAR: ProductionCalendarDayResponse[] = [];
+// Та же пустая ссылка для броней: иначе вырезы пересчитывались бы на каждом рендере.
+const NO_BOOKINGS: ExternalBookingOut[] = [];
 
 interface Props {
   assignments: AssignmentOut[];
@@ -116,6 +120,18 @@ export default function GanttChart({
   const calendarQuery = useProductionCalendarYear(year);
   const calendar = calendarQuery.data ?? NO_CALENDAR;
   const { prefs } = useRpPreferences();
+  const isWorkday = useMemo(() => workdayChecker(calendar), [calendar]);
+  const bookings = externalBookings ?? NO_BOOKINGS;
+  // Вырезы на полосах: рабочие дни без часов фазы, когда человек занят в
+  // плане другой команды.
+  const busyByAssignment = useMemo(() => {
+    const out = new Map<string, BusyGap[]>();
+    for (const a of assignments) {
+      const gaps = busyGaps(a, bookings, isWorkday);
+      if (gaps.length > 0) out.set(a.id, gaps);
+    }
+    return out;
+  }, [assignments, bookings, isWorkday]);
 
   // Workday mode forces day scale (week/month labels don't align with workday blocks)
   const effectiveScale: TimelineScale = hideWeekends ? 'day' : scale;
@@ -341,6 +357,7 @@ export default function GanttChart({
             onToggleSection={onToggleSection}
             onEmployeeRowClick={onEmployeeRowClick}
             quarterEndDate={qEndIso}
+            busyByAssignment={busyByAssignment}
           />
         </div>
       </div>

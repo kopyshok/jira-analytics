@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AssignmentOut } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import type { GanttTimeline } from '../../utils/gantt';
-import { dateToLeft, datesToWidth, PHASE_COLORS, PHASE_LABELS, getItemColor } from '../../utils/gantt';
+import { dateToLeft, datesToWidth, fmtLocalIso, PHASE_COLORS, PHASE_LABELS, getItemColor } from '../../utils/gantt';
+import type { BusyGap } from '../../utils/rpBusy';
 import EmployeeAvatar from './EmployeeAvatar';
 import { usePatchAssignment } from '../../hooks/useResourcePlanning';
 import { useAppearanceSettings } from '../../contexts/AppearanceContext';
@@ -41,6 +42,8 @@ interface Props {
   /** ISO end of strict quarter (without spillover buffer). Days past this
    *  date are striped to mark out-of-quarter portion of phase bars. */
   quarterEndDate?: string;
+  /** Вырезы полос: {id фазы: рабочие дни без её часов, когда человек занят в другой команде}. */
+  busyByAssignment?: Map<string, BusyGap[]>;
 }
 
 type SubProps = Omit<Props, 'viewMode'>;
@@ -277,7 +280,6 @@ interface PhaseBarProps {
   extraRefKeys?: string[];
   rowRefs: React.MutableRefObject<Map<string, HTMLElement>>;
   color: string;
-  showResize: boolean;
   employees: EmployeeResponse[];
   hasConflict?: boolean;
   dimmed?: boolean;
@@ -288,12 +290,13 @@ interface PhaseBarProps {
   pulseCp?: boolean;
   /** ISO end of strict quarter — bar portion past this date is striped. */
   quarterEndDate?: string;
+  /** Рабочие дни внутри полосы без часов фазы, когда человек занят в другой команде. */
+  busyDays?: BusyGap[];
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, showResize, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp, quarterEndDate }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp, quarterEndDate, busyDays }: PhaseBarProps) {
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
-    mode: 'move' | 'resize-start' | 'resize-end';
     startClientX: number;
     origStart: string;
     origEnd: string;
@@ -302,7 +305,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   const [previewLeft, setPreviewLeft] = useState<number | null>(null);
   const [previewWidth, setPreviewWidth] = useState<number | null>(null);
 
-  const beginDrag = (e: React.MouseEvent, mode: 'move' | 'resize-start' | 'resize-end') => {
+  const beginDrag = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     if (!assignment.start_date || !assignment.end_date) return;
@@ -311,7 +314,6 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
     const trackEl = row.querySelector('[data-gantt-track="true"]') as HTMLElement | null;
     const trackWidth = trackEl ? trackEl.getBoundingClientRect().width : row.getBoundingClientRect().width;
     setDrag({
-      mode,
       startClientX: e.clientX,
       origStart: assignment.start_date,
       origEnd: assignment.end_date,
@@ -319,22 +321,14 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
     });
   };
 
-  const computeNewDates = (dxDays: number) => {
+  // Полоса сдвигается целиком. На сервер уходит только новое начало: конец и
+  // часы по дням планировщик разложит сам по свободным дням исполнителя.
+  const shiftDates = (dxDays: number) => {
     const sd = new Date(drag!.origStart + 'T00:00:00');
     const ed = new Date(drag!.origEnd + 'T00:00:00');
-    if (drag!.mode === 'move') {
-      sd.setDate(sd.getDate() + dxDays);
-      ed.setDate(ed.getDate() + dxDays);
-    } else if (drag!.mode === 'resize-start') {
-      sd.setDate(sd.getDate() + dxDays);
-      if (sd >= ed) sd.setTime(ed.getTime() - 86_400_000);
-    } else {
-      ed.setDate(ed.getDate() + dxDays);
-      if (ed <= sd) ed.setTime(sd.getTime() + 86_400_000);
-    }
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return { newStart: fmt(sd), newEnd: fmt(ed) };
+    sd.setDate(sd.getDate() + dxDays);
+    ed.setDate(ed.getDate() + dxDays);
+    return { newStart: fmtLocalIso(sd), newEnd: fmtLocalIso(ed) };
   };
 
   const onMouseMove = (e: MouseEvent) => {
@@ -343,7 +337,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
     const pxPerDay = drag.rowWidthPx / timeline.totalDays;
     const dxDays = Math.round(dxPx / pxPerDay);
     if (dxDays === 0) return;
-    const { newStart, newEnd } = computeNewDates(dxDays);
+    const { newStart, newEnd } = shiftDates(dxDays);
     setPreviewLeft(dateToLeft(newStart, timeline));
     setPreviewWidth(datesToWidth(newStart, newEnd, timeline));
   };
@@ -354,11 +348,10 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
     const pxPerDay = drag.rowWidthPx / timeline.totalDays;
     const dxDays = Math.round(dxPx / pxPerDay);
     if (dxDays !== 0) {
-      const { newStart, newEnd } = computeNewDates(dxDays);
       patch.mutate({
         planId,
         assignmentId: assignment.id,
-        data: { start_date: newStart, end_date: newEnd },
+        data: { start_date: shiftDates(dxDays).newStart },
       });
     }
     setDrag(null);
@@ -416,7 +409,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
           extraRefKeys?.forEach(k => rowRefs.current.delete(k));
         }
       }}
-      onMouseDown={(e) => beginDrag(e, 'move')}
+      onMouseDown={beginDrag}
       onClick={(e) => {
         if (drag) return;
         if (onClick) {
@@ -502,44 +495,20 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
           }
         />
       )}
+      {busyDays && busyDays.length > 0 && (
+        <BusyOverlay
+          barStart={assignment.start_date}
+          barEnd={assignment.end_date}
+          days={busyDays}
+          timeline={timeline}
+        />
+      )}
     </div>
   );
 
   return (
     <>
       {bar}
-      {showResize && (
-        <>
-          <div
-            onMouseDown={(e) => beginDrag(e, 'resize-start')}
-            style={{
-              position: 'absolute',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              left: `calc(${left}% - 3px)`,
-              width: 6,
-              height: 22,
-              cursor: 'ew-resize',
-              background: 'transparent',
-              zIndex: 4,
-            }}
-          />
-          <div
-            onMouseDown={(e) => beginDrag(e, 'resize-end')}
-            style={{
-              position: 'absolute',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              left: `calc(${left + width}% - 3px)`,
-              width: 6,
-              height: 22,
-              cursor: 'ew-resize',
-              background: 'transparent',
-              zIndex: 4,
-            }}
-          />
-        </>
-      )}
       {previewLeft !== null && previewWidth !== null && (
         <div
           style={{
@@ -600,6 +569,41 @@ function OutOfQuarterOverlay({ barStart, barEnd, ooqStart, ooqEnd, timeline }: O
         zIndex: 3,
       }}
     />
+  );
+}
+
+// Вырез в полосе: рабочий день без часов фазы, когда человек занят в другой команде.
+const BUSY_CUTOUT =
+  'repeating-linear-gradient(45deg, rgba(160,170,190,0.55) 0 4px, rgba(10,22,40,0.92) 4px 8px)';
+
+function BusyOverlay({ barStart, barEnd, days, timeline }: {
+  barStart: string;
+  barEnd: string;
+  days: BusyGap[];
+  timeline: GanttTimeline;
+}) {
+  // Координаты — по шкале (работает и в режиме «Только рабочие»), в процентах от полосы.
+  const barLeft = dateToLeft(barStart, timeline);
+  const barWidth = datesToWidth(barStart, barEnd, timeline);
+  if (barWidth <= 0) return null;
+  return (
+    <>
+      {days.map((d) => (
+        <div
+          key={d.date}
+          title={d.label}
+          style={{
+            position: 'absolute',
+            left: `${((dateToLeft(d.date, timeline) - barLeft) / barWidth) * 100}%`,
+            width: `${(datesToWidth(d.date, d.date, timeline) / barWidth) * 100}%`,
+            top: 0,
+            bottom: 0,
+            background: BUSY_CUTOUT,
+            zIndex: 3,
+          }}
+        />
+      ))}
+    </>
   );
 }
 
@@ -684,7 +688,7 @@ function TwoLevelRows({
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
   highlightedEmployeeId, onEmployeeRowClick, quarterEndDate, sectionByItem,
-  collapsedSections, onToggleSection, subgroupByEmployee,
+  collapsedSections, onToggleSection, subgroupByEmployee, busyByAssignment,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -1015,7 +1019,6 @@ function TwoLevelRows({
                             extraRefKeys={extras}
                             rowRefs={rowRefs}
                             color={color}
-                            showResize={a.phase !== 'qa'}
                             employees={employees}
                             hasConflict={conflictSet.has(a.id)}
                             dimmed={isDimmed}
@@ -1032,6 +1035,7 @@ function TwoLevelRows({
                             pulseEmp={rpPrefs.pulse_highlighted_employee}
                             pulseCp={rpPrefs.pulse_critical_path}
                             quarterEndDate={quarterEndDate}
+                            busyDays={busyByAssignment?.get(a.id)}
                           />
                         );
                       })}
