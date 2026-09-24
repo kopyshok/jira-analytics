@@ -133,3 +133,22 @@ def test_busy_manual_executor_is_kept_and_reported(db_session):
     [c] = _conflicts(db_session, plan_b.id, "UNPLACED_HOURS")
     assert c.backlog_item_id == item.id
     assert c.employee_id == ext.id
+
+
+def test_busy_jira_executor_developer_is_replaced(db_session):
+    """Исполнитель из Jira (не выбранный вручную) с ролью разработчика, у
+    которого не хватает ёмкости квартала, уступает разработку свободному —
+    как «Разработчик» из Jira. Выбранный вручную остаётся (см. выше)."""
+    busy = make_employee(db_session, "Занятый", "B")
+    free = make_employee(db_session, "Свободный", "B")
+    from_jira = _item(db_session, dev=10, assignee=busy)
+    manual = _item(db_session, dev=10, assignee=busy, manual=True)
+    db_session.commit()
+
+    # Ручная строка идёт первой и занимает 10 из 15 ч ёмкости «Занятого».
+    res = ResourcePlanningService(db_session)._assign_employees(
+        [manual, from_jira], [busy, free], capacity={busy.id: 15.0, free.id: 100.0}
+    )
+
+    assert res["dev"][from_jira.id] == free.id
+    assert res["dev"][manual.id] == busy.id
