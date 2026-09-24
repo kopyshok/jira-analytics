@@ -32,6 +32,63 @@ def _override(db):
     app.dependency_overrides[get_db] = lambda: db
 
 
+@pytest.fixture(autouse=True)
+def _no_jira(monkeypatch):
+    """Креды Jira берутся и из конфига машины — тесты в сеть не ходят."""
+    from app.api.endpoints import backlog as backlog_ep
+    from app.connectors.jira_client import JiraClientError
+
+    class _NoJira:
+        @classmethod
+        def from_db(cls, db):
+            raise JiraClientError("no creds")
+
+    monkeypatch.setattr(backlog_ep, "JiraClient", _NoJira)
+
+
+def test_refresh_goes_to_jira_when_token_only_in_server_config(db_session, monkeypatch):
+    """Токена нет в настройках базы, но клиент Jira собирается из конфига —
+    кнопка обязана перечитать задачи из Jira, а не молча пропустить поход."""
+    from unittest.mock import AsyncMock
+
+    from app.api.endpoints import backlog as backlog_ep
+    from app.models import Issue, Project
+
+    class _FakeJira:
+        @classmethod
+        def from_db(cls, db):
+            return cls()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+    refresh = AsyncMock(return_value=(1, 1))
+    monkeypatch.setattr(backlog_ep, "JiraClient", _FakeJira)
+    monkeypatch.setattr(backlog_ep, "_discover_field_id", AsyncMock(return_value=None))
+    monkeypatch.setattr(backlog_ep.SyncService, "refresh_issues_by_keys", refresh)
+
+    proj = Project(id="p-cfg", jira_project_id="p-cfg-jira", key="RFA", name="RFA", is_active=True)
+    db_session.add(proj)
+    db_session.add(Issue(
+        id="i-cfg", jira_issue_id="i-cfg-jira", key="RFA-1", summary="RFA-1",
+        issue_type="RFA", status="Open", project_id=proj.id,
+        assigned_category="initiatives_rfa", category="initiatives_rfa",
+    ))
+    db_session.commit()
+
+    _override(db_session)
+    try:
+        r = TestClient(app).post("/api/v1/backlog/refresh-from-jira")
+        assert r.status_code == 200, r.text
+        assert r.json()["jira_refreshed"] == 1
+    finally:
+        app.dependency_overrides.clear()
+    assert refresh.await_args.args[0] == ["RFA-1"]
+
+
 def test_link_jira_pulls_estimates_from_issue(db_session):
     from app.models import BacklogItem, Category, Issue, Project
 

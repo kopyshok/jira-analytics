@@ -264,12 +264,6 @@ class RefreshResponse(BaseModel):
 
 # === Helpers ===
 
-def _get_setting_value(db: Session, key: str) -> Optional[str]:
-    """Прочитать значение из AppSetting по ключу."""
-    row = db.query(AppSetting).filter(AppSetting.key == key).first()
-    return row.value if row else None
-
-
 async def _discover_field_id(jira, db: Session, setting_key: str, field_name: str) -> Optional[str]:
     """Return Jira custom field ID for field_name, caching result in AppSetting."""
     cached_setting = db.query(AppSetting).filter(AppSetting.key == setting_key).first()
@@ -960,10 +954,13 @@ async def _perform_refresh(
     svc = BacklogService(db)
     jira_refreshed = 0
 
-    jira_configured = all(
-        _get_setting_value(db, key)
-        for key in ("jira_base_url", "jira_email", "jira_api_token")
-    )
+    # Креды — как у всего синка: настройки в базе, иначе конфиг сервера.
+    # Проверка только по базе молча пропускала поход в Jira, если токен
+    # задан в конфиге.
+    try:
+        jira_client: Optional[JiraClient] = JiraClient.from_db(db)
+    except JiraClientError:
+        jira_client = None
 
     # 1) Ключи для Jira — кандидаты, кроме архивных элементов бэклога.
     archived_issue_ids = {
@@ -979,8 +976,8 @@ async def _perform_refresh(
     ]
 
     # 2) Один поход в Jira за всеми нужными полями сразу.
-    if fetch_keys and jira_configured:
-        async with JiraClient.from_db(db) as jira:
+    if fetch_keys and jira_client is not None:
+        async with jira_client as jira:
             customer_field_id = await _discover_field_id(
                 jira, db, "jira_customer_field_id", "Заказчик (user)"
             )
