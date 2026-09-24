@@ -22,7 +22,7 @@ import {
 import { useAssignmentCandidates, useExplainAssignment } from '../../hooks/useResourcePlanning';
 import { useRoles } from '../../hooks/useRoles';
 import { useRpPreferences } from '../../hooks/useRpPreferences';
-import { PHASE_LABELS } from '../../utils/gantt';
+import { PHASE_LABELS, startMovedNotice } from '../../utils/gantt';
 import { candidateOptions, candidatesQueryKey } from '../../utils/rpCandidates';
 import EmployeeAvatar from './EmployeeAvatar';
 import AbsencesSection from './sidebar/AbsencesSection';
@@ -139,10 +139,14 @@ export default function AssignmentSidebar({
   const updateField = async (data: Parameters<typeof patchAssignment>[2]) => {
     setSaving(true);
     try {
-      await patchAssignment(planId, assignment.id, data);
-      onChanged?.();
+      const updated = await patchAssignment(planId, assignment.id, data);
+      const notice = data.start_date ? startMovedNotice(data.start_date, updated.start_date) : null;
+      if (notice) message.info(notice);
+      // Поля заблокированы, пока план не перечитан: пересчёт мог пересоздать
+      // строку с новым id, и следующая правка ушла бы на удалённую строку.
+      await onChanged?.();
     } catch (e) {
-      message.error((e as Error).message || 'Ошибка сохранения');
+      message.error(`Не удалось сохранить: ${(e as Error).message || 'ошибка сервера'}`);
     } finally {
       setSaving(false);
     }
@@ -313,8 +317,12 @@ export default function AssignmentSidebar({
         </Descriptions.Item>
         <Descriptions.Item label="Окончание">
           {/* Конец считает планировщик по свободным дням исполнителя от даты начала. */}
-          <Typography.Text title="Считается по свободным дням исполнителя от даты начала">
+          <Typography.Text>
             {assignment.end_date ? dayjs(assignment.end_date).format('DD.MM.YYYY') : '—'}
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+            Окончание рассчитывается по часам и свободным дням; чтобы сдвинуть — перетащите начало
+            или измените вовлечённость
           </Typography.Text>
         </Descriptions.Item>
         <Descriptions.Item label="Предшественники">

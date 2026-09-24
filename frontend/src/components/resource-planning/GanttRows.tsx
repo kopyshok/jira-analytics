@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { App } from 'antd';
 import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
 import type { GanttTimeline } from '../../utils/gantt';
-import { dateToLeft, datesToWidth, fmtLocalIso, PHASE_COLORS, PHASE_LABELS, getItemColor } from '../../utils/gantt';
+import {
+  dateToLeft, datesToWidth, fmtLocalIso, PHASE_COLORS, PHASE_LABELS, getItemColor,
+  shiftByColumns, startMovedNotice,
+} from '../../utils/gantt';
 import type { BusyGap } from '../../utils/rpBusy';
 import { OTHER_TEAM_HATCH, workdayChecker } from '../../utils/externalBookings';
 import { peopleSections, personLaneRuns } from '../../utils/rpPeople';
@@ -59,6 +63,8 @@ interface Props {
   planTeam?: string | null;
   /** Рабочий ли день (производственный календарь). */
   isWorkday?: (iso: string) => boolean;
+  /** Перенос фазы сохраняется или план перечитывается — новые переносы ждут. */
+  dragLocked?: boolean;
 }
 
 type SubProps = Omit<Props, 'viewMode'>;
@@ -308,22 +314,30 @@ interface PhaseBarProps {
   quarterEndDate?: string;
   /** Рабочие дни внутри полосы без часов фазы, когда человек занят в другой команде. */
   busyDays?: BusyGap[];
+  /** Перенос фазы сохраняется или план перечитывается — новый перенос не начинать. */
+  dragLocked?: boolean;
 }
 
-function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp, quarterEndDate, busyDays }: PhaseBarProps) {
+function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs, color, hasConflict, dimmed, onClick, unavailableDays, highlightedEmployeeId, pulseEmp, pulseCp, quarterEndDate, busyDays, dragLocked }: PhaseBarProps) {
+  const { message } = App.useApp();
   const patch = usePatchAssignment();
   const [drag, setDrag] = useState<null | {
     startClientX: number;
     origStart: string;
-    origEnd: string;
+    /** Ширина полосы, % шкалы: при переносе не меняется. */
+    widthPct: number;
     rowWidthPx: number;
   }>(null);
-  const [previewLeft, setPreviewLeft] = useState<number | null>(null);
-  const [previewWidth, setPreviewWidth] = useState<number | null>(null);
+  // Призрак новой позиции: пока тянут и дальше — до ответа сервера и
+  // перечитывания плана, чтобы полоса не прыгала назад.
+  const [ghost, setGhost] = useState<{ left: number; width: number } | null>(null);
 
   const beginDrag = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    // Пока прежний перенос сохраняется и план перечитывается, id строк могут
+    // смениться — новый перенос ушёл бы на удалённую строку.
+    if (dragLocked) return;
     if (!assignment.start_date || !assignment.end_date) return;
     const row = (e.currentTarget as HTMLElement).closest('[data-gantt-row="true"]') as HTMLElement | null;
     if (!row) return;
@@ -332,47 +346,45 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
     setDrag({
       startClientX: e.clientX,
       origStart: assignment.start_date,
-      origEnd: assignment.end_date,
+      widthPct: datesToWidth(assignment.start_date, assignment.end_date, timeline),
       rowWidthPx: trackWidth,
     });
   };
 
-  // Полоса сдвигается целиком. На сервер уходит только новое начало: конец и
-  // часы по дням планировщик разложит сам по свободным дням исполнителя.
-  const shiftDates = (dxDays: number) => {
-    const sd = new Date(drag!.origStart + 'T00:00:00');
-    const ed = new Date(drag!.origEnd + 'T00:00:00');
-    sd.setDate(sd.getDate() + dxDays);
-    ed.setDate(ed.getDate() + dxDays);
-    return { newStart: fmtLocalIso(sd), newEnd: fmtLocalIso(ed) };
-  };
+  // Сдвиг в столбцах шкалы; в режиме «Только рабочие» столбец — рабочий день.
+  const columnsMoved = (clientX: number) =>
+    Math.round((clientX - drag!.startClientX) / (drag!.rowWidthPx / timeline.totalDays));
 
   const onMouseMove = (e: MouseEvent) => {
     if (!drag) return;
-    const dxPx = e.clientX - drag.startClientX;
-    const pxPerDay = drag.rowWidthPx / timeline.totalDays;
-    const dxDays = Math.round(dxPx / pxPerDay);
-    if (dxDays === 0) return;
-    const { newStart, newEnd } = shiftDates(dxDays);
-    setPreviewLeft(dateToLeft(newStart, timeline));
-    setPreviewWidth(datesToWidth(newStart, newEnd, timeline));
+    const dx = columnsMoved(e.clientX);
+    if (dx === 0) return;
+    const newStart = shiftByColumns(drag.origStart, dx, timeline);
+    setGhost({ left: dateToLeft(newStart, timeline), width: drag.widthPct });
   };
 
+  // Полоса сдвигается целиком. На сервер уходит только новое начало: конец и
+  // часы по дням планировщик разложит сам по свободным дням исполнителя.
   const onMouseUp = (e: MouseEvent) => {
     if (!drag) return;
-    const dxPx = e.clientX - drag.startClientX;
-    const pxPerDay = drag.rowWidthPx / timeline.totalDays;
-    const dxDays = Math.round(dxPx / pxPerDay);
-    if (dxDays !== 0) {
-      patch.mutate({
-        planId,
-        assignmentId: assignment.id,
-        data: { start_date: shiftDates(dxDays).newStart },
-      });
-    }
+    const dx = columnsMoved(e.clientX);
     setDrag(null);
-    setPreviewLeft(null);
-    setPreviewWidth(null);
+    if (dx === 0) {
+      setGhost(null);
+      return;
+    }
+    const requested = shiftByColumns(drag.origStart, dx, timeline);
+    setGhost({ left: dateToLeft(requested, timeline), width: drag.widthPct });
+    // Промис, а не колбэки mutate: после пересчёта строка может смениться,
+    // и полоса размонтируется раньше, чем придёт ответ, — сообщение всё равно нужно.
+    patch
+      .mutateAsync({ planId, assignmentId: assignment.id, data: { start_date: requested } })
+      .then((updated) => {
+        const notice = startMovedNotice(requested, updated.start_date);
+        if (notice) message.info(notice);
+      })
+      .catch((err: Error) => message.error(`Не удалось перенести фазу: ${err.message}`))
+      .finally(() => setGhost(null));
   };
 
   useMemoizedDragListeners(drag, onMouseMove, onMouseUp);
@@ -457,7 +469,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
               : 'none',
         outline: isMe ? '2px solid #00c9c8' : (assignment.is_pinned ? '1px solid #00c9c8' : 'none'),
         zIndex: 2,
-        cursor: assignment.phase === 'qa' ? 'default' : 'grab',
+        cursor: assignment.phase === 'qa' ? 'default' : dragLocked ? 'progress' : 'grab',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -525,12 +537,12 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   return (
     <>
       {bar}
-      {previewLeft !== null && previewWidth !== null && (
+      {ghost && (
         <div
           style={{
             position: 'absolute',
-            left: `${previewLeft}%`,
-            width: `${previewWidth}%`,
+            left: `${ghost.left}%`,
+            width: `${ghost.width}%`,
             top: '50%',
             transform: 'translateY(-50%)',
             height: 22,
@@ -704,7 +716,7 @@ function TwoLevelRows({
   depDrawMode, pendingFromItem, onItemClick,
   collapsedItemIds, onToggleCollapse, conflictAssignmentIds, onAssignmentClick,
   highlightedEmployeeId, onEmployeeRowClick, quarterEndDate, sectionByItem,
-  collapsedSections, onToggleSection, subgroupByEmployee, busyByAssignment,
+  collapsedSections, onToggleSection, subgroupByEmployee, busyByAssignment, dragLocked,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -1051,6 +1063,7 @@ function TwoLevelRows({
                             pulseCp={rpPrefs.pulse_critical_path}
                             quarterEndDate={quarterEndDate}
                             busyDays={busyByAssignment?.get(a.id)}
+                            dragLocked={dragLocked}
                           />
                         );
                       })}
@@ -1101,7 +1114,7 @@ function TwoLevelRows({
 function PeopleRows({
   assignments, timeline, leftColWidth, trackWidthPx, rowRefs, planId, employees,
   conflictAssignmentIds, onAssignmentClick, highlightedEmployeeId, onEmployeeRowClick,
-  quarterEndDate, externalBookings, employeeLoad, planTeam, busyByAssignment, isWorkday,
+  quarterEndDate, externalBookings, employeeLoad, planTeam, busyByAssignment, isWorkday, dragLocked,
 }: SubProps) {
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
@@ -1228,6 +1241,7 @@ function PeopleRows({
                         pulseCp={rpPrefs.pulse_critical_path}
                         quarterEndDate={quarterEndDate}
                         busyDays={busyByAssignment?.get(a.id)}
+                        dragLocked={dragLocked}
                       />
                     ))}
                   </div>
