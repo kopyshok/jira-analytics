@@ -1830,7 +1830,8 @@ class ResourcePlanningService:
 
         Исполнитель фазы, по убыванию приоритета: закреп вручную (``pinned``:
         {(item_id, phase, part_number): employee_id}) → исполнитель строки
-        сценария на фазе своей роли (см. `_scenario_executor`) → для разработки
+        сценария на фазе своей роли (см. `_scenario_executor`; подтянутый из
+        Jira встаёт на разработку, только если хватает ёмкости) → для разработки
         «Разработчик» из Jira (``jira_dev``, из любой команды), если его ёмкости
         квартала (``capacity`` — уже за вычетом броней других команд) хватает
         на часы разработки → жадный подбор внутри команды: анализ — из пула
@@ -1900,7 +1901,19 @@ class ResourcePlanningService:
 
             # ── dev ────────────────────────────────────────────────────
             dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
-            if not dev_id and executor_phase == "dev":
+            # Исполнитель, подтянутый из Jira, как и «Разработчик» из Jira,
+            # берёт разработку, только если ему хватает ёмкости квартала;
+            # выбранный вручную — без замены (нехватка даёт конфликт).
+            if (
+                not dev_id
+                and executor_id
+                and executor_phase == "dev"
+                and (
+                    item.assignee_manual
+                    or load[executor_id] + dev_hours
+                    <= capacity.get(executor_id, float("inf"))
+                )
+            ):
                 dev_id = executor_id
             jira_id = jira_dev.get(item.id)
             # Занятый «Разработчик» из Jira не получает работу, которую некуда
