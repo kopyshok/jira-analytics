@@ -1127,13 +1127,17 @@ function PeopleRows({
   const appearance = useAppearanceSettings();
   const { prefs: rpPrefs } = useRpPreferences();
   const conflictSet = useMemo(() => new Set(conflictAssignmentIds ?? []), [conflictAssignmentIds]);
-  const sections = useMemo(
-    () => peopleSections(assignments, externalBookings ?? [], employeeLoad ?? [], planTeam ?? null),
-    [assignments, externalBookings, employeeLoad, planTeam],
-  );
   const from = fmtLocalIso(timeline.startDate);
   const to = fmtLocalIso(timeline.endDate);
   const workday = isWorkday ?? WEEKDAYS;
+  // Секции и их полосы «все работы» считаются при смене данных или шкалы,
+  // а не на каждый рендер (перенос фазы, подсветка).
+  const sections = useMemo(
+    () =>
+      peopleSections(assignments, externalBookings ?? [], employeeLoad ?? [], planTeam ?? null)
+        .map((s) => ({ ...s, lane: personLaneRuns(s, from, to, workday) })),
+    [assignments, externalBookings, employeeLoad, planTeam, from, to, workday],
+  );
   const selected = selectedEmployeeIds ?? [];
 
   if (sections.length === 0) {
@@ -1160,7 +1164,6 @@ function PeopleRows({
   return (
     <>
       {sections.map((s, si) => {
-        const lane = personLaneRuns(s, from, to, workday);
         const personId = s.employeeId;
         // Щелчок или Enter/пробел по заголовку — добавить человека в фильтр или убрать.
         const toggle = personId && onEmployeeRowClick ? () => onEmployeeRowClick(personId) : undefined;
@@ -1222,7 +1225,7 @@ function PeopleRows({
               <div style={{ display: 'flex', height: ROW_HEIGHT - 8, borderBottom: '1px solid #0e2540' }}>
                 <ItemTitleCell title="Все работы" jiraKey={null} leftColWidth={leftColWidth} fontWeight={400} />
                 <div style={trackStyle(trackWidthPx)}>
-                  {lane.map((r, ri) => (
+                  {s.lane.map((r, ri) => (
                     <div
                       key={`${r.kind}-${r.start}-${r.label}-${ri}`}
                       title={r.label}

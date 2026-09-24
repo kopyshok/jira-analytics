@@ -148,11 +148,20 @@ export default function GanttChart({
   const isWorkday = useMemo(() => workdayChecker(calendar), [calendar]);
   const bookings = externalBookings ?? NO_BOOKINGS;
   // Вырезы на полосах: рабочие дни без часов фазы, когда человек занят в
-  // плане другой команды.
+  // плане другой команды. Брони раскладываются по людям один раз, а не
+  // перебираются целиком на каждую фазу.
   const busyByAssignment = useMemo(() => {
+    const byEmployee = new Map<string, ExternalBookingOut[]>();
+    for (const b of bookings) {
+      const list = byEmployee.get(b.employee_id);
+      if (list) list.push(b);
+      else byEmployee.set(b.employee_id, [b]);
+    }
     const out = new Map<string, BusyGap[]>();
     for (const a of assignments) {
-      const gaps = busyGaps(a, bookings, isWorkday);
+      const mine = a.employee_id ? byEmployee.get(a.employee_id) : undefined;
+      if (!mine) continue;
+      const gaps = busyGaps(a, mine, isWorkday);
       if (gaps.length > 0) out.set(a.id, gaps);
     }
     return out;
