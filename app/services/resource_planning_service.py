@@ -763,9 +763,9 @@ class ResourcePlanningService:
                         d_lock += timedelta(days=1)
 
         new_assignments: List[ResourcePlanAssignment] = list(pinned_existing)
-        # {(item_id, phase): роли, на которые не нашлось исполнителя} — для
-        # конфликта о неразмещённых часах.
-        unstaffed: Dict[Tuple[str, str], set] = defaultdict(set)
+        # {(item_id, phase): {роль: часы, на которые не нашлось исполнителя}} —
+        # для конфликта о неразмещённых часах.
+        unstaffed: Dict[Tuple[str, str], Dict[str, float]] = defaultdict(dict)
 
         # Скип фаз/частей которые уже зафиксированы pin'ом
         pinned_phase_keys = {
@@ -904,7 +904,7 @@ class ResourcePlanningService:
                         if p_hours <= 0:
                             continue
                         if not emp_id:
-                            unstaffed[(item.id, "opo")].add(role)
+                            unstaffed[(item.id, "opo")][role] = p_hours
                             continue
                         segments, daily = self._allocate_hours_with_breakdown(
                             emp_id, p_hours, earliest_start, q_end_extended, remaining,
@@ -951,7 +951,7 @@ class ResourcePlanningService:
                 # analyst / dev — обычное allocation для одного сотрудника
                 employee_id = assignments_by_role.get(phase, {}).get(item.id)
                 if not employee_id:
-                    unstaffed[(item.id, phase)].add(phase)
+                    unstaffed[(item.id, phase)][phase] = hours
                     continue
 
                 # Phase 3+4: вычисляем календарную длину фазы с учётом
@@ -3176,7 +3176,7 @@ class ResourcePlanningService:
         alloc_by_item: Dict[str, ScenarioAllocation],
         skip: set,
         executors: Dict[str, Dict[str, Optional[str]]],
-        unstaffed: Dict[Tuple[str, str], set],
+        unstaffed: Dict[Tuple[str, str], Dict[str, float]],
         team_gaps: set,
         unlaid: set,
     ) -> List[dict]:
@@ -3185,11 +3185,13 @@ class ResourcePlanningService:
         Фаза недоразложена, если часы не влезли в окно (квартал + месяц
         запаса) — в том числе следом за предыдущей фазой, упёршейся в конец
         окна, или после сдвига связью туда, где у исполнителя нет дней
-        (``unlaid``), — или у неё нет исполнителя (``unstaffed``). Фаза без исполнителя
-        роли, отсутствие которой в команде уже отмечено командным конфликтом
-        (``team_gaps``: «Нет аналитика» / «Нет разработчика»), по каждой задаче
-        не повторяется. Фазы, закреплённые пользователем по датам или разбивке
-        (``skip``), не проверяются: их объём он задал сам.
+        (``unlaid``), — или у неё нет исполнителя (``unstaffed``: часы по ролям).
+        Часы без исполнителя роли, отсутствие которой в команде уже отмечено
+        командным конфликтом (``team_gaps``: «Нет аналитика» / «Нет
+        разработчика»), по каждой задаче не повторяются и из нужного
+        вычитаются: у ОПЭ без аналитика проверяется часть разработчика.
+        Фазы, закреплённые пользователем по датам или разбивке (``skip``),
+        не проверяются: их объём он задал сам.
 
         Сообщение перечисляет недоразложенные фазы по порядку: «Анализ 16 из
         40 ч; Разработка 0 из 40 ч — не поместилось в квартал и месяц
@@ -3220,14 +3222,14 @@ class ResourcePlanningService:
                     continue
                 need = self._phase_hours(item, phase, alloc_by_item)
                 got = placed.get(key, 0.0)
+                roles = unstaffed.get(key, {})
+                gap_roles = {r for r in roles if gap_of[r] in team_gaps}
+                need -= sum(roles[r] for r in gap_roles)
                 if need <= 0 or got + 0.01 >= need:
-                    continue
-                roles = unstaffed.get(key, set())
-                if roles and all(gap_of[r] in team_gaps for r in roles):
                     continue
                 reason = (
                     "нет исполнителя"
-                    if roles
+                    if set(roles) - gap_roles
                     else "не поместилось в квартал и месяц запаса"
                 )
                 short.append(
