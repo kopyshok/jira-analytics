@@ -75,7 +75,7 @@ function handleEvent(event: GlobalEvent, qc: ReturnType<typeof useQueryClient>) 
   }
 }
 
-function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClient>) {
+export function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClient>) {
   switch (entity) {
     case 'issues':
       qc.invalidateQueries({ queryKey: ['issues'] });
@@ -121,6 +121,13 @@ function invalidateForEntity(entity: string, qc: ReturnType<typeof useQueryClien
       break;
     case 'projects':
       qc.invalidateQueries({ queryKey: ['scope', 'projects'] });
+      break;
+    case 'resource_planning':
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+      qc.invalidateQueries({ queryKey: ['resource-plans'] });
+      qc.invalidateQueries({ queryKey: ['assignment-candidates'] });
+      qc.invalidateQueries({ queryKey: ['plan-quality'] });
+      qc.invalidateQueries({ queryKey: ['plan-diff'] });
       break;
     default:
       break;
