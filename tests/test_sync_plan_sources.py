@@ -3,7 +3,14 @@ import json
 from unittest.mock import MagicMock
 
 from app.models import AppSetting, Issue, Project
-from app.services.plan_sources import SUM_SOURCE, candidates_from_json, disputes_for, fingerprint
+from app.services.plan_edit_service import PlanEditService
+from app.services.plan_sources import (
+    MANUAL_SOURCE,
+    SUM_SOURCE,
+    candidates_from_json,
+    disputes_for,
+    fingerprint,
+)
 from app.services.sync_service import SyncService, _to_float
 from tests.test_sync_service import _make_issue_schema_with_extra
 
@@ -120,6 +127,48 @@ def test_stale_choice_dropped_so_old_values_reopen_dispute(db_session):
     issue = _upsert(svc, proj, old)
     assert issue.planned_dev_hours_jira == 100.0
     assert list(disputes_for(issue.planned_hours_sources, issue.planned_hours_choice, set())) == ["dev"]
+
+
+def _set_dev_fields(db, *field_ids):
+    """Переставить поля «Разработки» в настройке, сохранив их вид и названия."""
+    by_id = {f["field_id"]: f for f in json.loads(DEV_SETTING)}
+    row = db.query(AppSetting).filter_by(key="jira_planned_dev_hours_field_id").one()
+    row.value = json.dumps([by_id[f] for f in field_ids], ensure_ascii=False)
+    db.commit()
+
+
+def test_reordering_fields_keeps_choice_until_value_changes(db_session):
+    """Поля оценки переставили — выбор по спору остаётся, хотя верхнее поле
+    стало другим. Значение в Jira изменилось — спор снова открыт."""
+    svc, proj = _setup(db_session)
+    extra = {"customfield_12432": 100, "customfield_14648": 120}
+    issue = _upsert(svc, proj, extra)
+    PlanEditService(db_session).choose_source(issue.id, "dev", "customfield_12432")
+
+    _set_dev_fields(db_session, "customfield_14648", "customfield_12888",
+                    "customfield_12889", "customfield_12432")
+    issue = _upsert(svc, proj, extra)
+    assert issue.planned_dev_hours_jira == 100.0
+    assert disputes_for(issue.planned_hours_sources, issue.planned_hours_choice, set()) == {}
+
+    issue = _upsert(svc, proj, {**extra, "customfield_12432": 110})
+    assert issue.planned_dev_hours_jira == 120.0  # по умолчанию — новое верхнее поле
+    assert list(disputes_for(issue.planned_hours_sources, issue.planned_hours_choice, set())) == ["dev"]
+
+
+def test_reordering_fields_keeps_own_value_choice(db_session):
+    """«Ввести своё» тоже переживает перестановку полей."""
+    svc, proj = _setup(db_session)
+    extra = {"customfield_12432": 100, "customfield_14648": 120}
+    issue = _upsert(svc, proj, extra)
+    PlanEditService(db_session).choose_manual(issue.id, "dev", 90.0)
+
+    _set_dev_fields(db_session, "customfield_14648", "customfield_12432",
+                    "customfield_12888", "customfield_12889")
+    issue = _upsert(svc, proj, extra)
+    assert issue.planned_dev_hours_manual == 90.0
+    assert issue.planned_hours_choice["dev"]["source"] == MANUAL_SOURCE
+    assert disputes_for(issue.planned_hours_sources, issue.planned_hours_choice, {"dev"}) == {}
 
 
 def test_no_fields_filled_clears_sources(db_session):
