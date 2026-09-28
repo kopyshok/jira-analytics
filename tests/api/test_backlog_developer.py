@@ -61,3 +61,46 @@ def test_patch_same_person_is_422(client, db_session, idea):
 
 def test_patch_unknown_developer_is_404(client, idea):
     assert _patch(client, idea.id, {"developer_employee_id": "nope"}).status_code == 404
+
+
+def test_other_edit_passes_when_jira_made_assignee_the_developer(client, db_session, idea):
+    """Обновление из Jira сделало исполнителя строки её разработчиком — правка
+    других полей (приоритет, часы) не упирается в проверку «одного человека»."""
+    dev = make_employee(db_session, "Разработчик", "B")
+    idea.assignee_employee_id = dev.id
+    idea.developer_employee_id = dev.id
+    db_session.commit()
+
+    r = _patch(client, idea.id, {"priority": 3})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["priority"] == 3
+
+
+def test_clear_developer(client, db_session, idea):
+    dev = make_employee(db_session, "Разработчик", "B")
+    idea.developer_employee_id = dev.id
+    db_session.commit()
+
+    r = _patch(client, idea.id, {"developer_employee_id": None})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["developer_employee_id"] is None
+    db_session.expire_all()
+    assert db_session.get(BacklogItem, idea.id).developer_employee_id is None
+
+
+def test_assignee_from_other_team_is_manual(client, db_session, idea):
+    """Аналитик, выбранный на бэклоге, — ручной выбор, как и в сценарии:
+    иначе планировщик не поставит человека из чужой команды."""
+    an = make_employee(db_session, "Чужой аналитик", "C", role="analyst")
+    db_session.commit()
+
+    r = _patch(client, idea.id, {"assignee_employee_id": an.id})
+
+    assert r.status_code == 200, r.text
+    db_session.expire_all()
+    item = db_session.get(BacklogItem, idea.id)
+    assert item.assignee_employee_id == an.id
+    assert item.assignee_manual is True
+    assert item.assignee_jira_account_at_choice is None

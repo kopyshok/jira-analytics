@@ -1433,9 +1433,19 @@ class ResourcePlanningService:
         # фазы (сдвиг, переназначение) — только на часы, свободные от броней
         # других команд, как и при раскладке.
         role_pools = self._build_role_pools(team_employees)
+        # Разработчика из колонки «Разработчик» сценария не подменяем: нехватка
+        # времени у него — конфликт. Флаг закрепления не ставим — у него другой
+        # смысл (переживает пересчёт, отметка «закреплено вручную» на диаграмме).
+        locked_devs = {
+            (it.id, "dev"): it.developer_employee_id
+            for it in items
+            if it.developer_employee_id
+            and assignments_by_role["dev"].get(it.id) == it.developer_employee_id
+        }
         leveling_events = leveler.level(
             new_assignments, raw_avail, q_end_extended, role_pools,
             placement_availability=avail,
+            locked=locked_devs,
         )
         # Always recompute CPM — leveling may have shifted dates; cheap O(N) anyway
         self._compute_cpm(new_assignments, q_end_extended)

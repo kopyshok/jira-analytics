@@ -409,6 +409,25 @@ def apply_jira_assignee(
     item.assignee_employee_id = emp.id if emp else None
 
 
+def choose_assignee(item: BacklogItem, emp: Optional[Employee]) -> None:
+    """Исполнитель строки выбран вручную — в сценарии или на бэклоге.
+
+    Выбрали того, кто и так исполнитель в Jira, — строка снова следует за
+    Jira. Иначе выбор ручной: обновление из Jira его не затрёт, пока там не
+    сменят исполнителя, — запоминаем, кто стоит в Jira сейчас. У идеи без
+    задачи Jira следовать не за чем — выбранный всегда ручной.
+    """
+    issue = item.issue
+    jira_account = (issue.assignee_account_id or None) if issue is not None else None
+    item.assignee_employee_id = emp.id if emp else None
+    if issue is None:
+        item.assignee_manual = emp is not None
+    else:
+        chosen_account = (emp.jira_account_id or None) if emp else None
+        item.assignee_manual = chosen_account != jira_account
+    item.assignee_jira_account_at_choice = jira_account if item.assignee_manual else None
+
+
 class BacklogService:
     """Sync BacklogItem records to Issue.category.
 

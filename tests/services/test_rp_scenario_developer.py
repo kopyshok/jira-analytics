@@ -112,3 +112,29 @@ def test_busy_developer_from_other_team_is_borrowed_and_reported(db_session):
     ).scalars().all()
     assert c.backlog_item_id == item.id
     assert c.employee_id == ext.id
+
+
+def test_leveler_may_not_reassign_column_developer(db_session, monkeypatch):
+    """Разработку у разработчика из колонки выравниватель не отдаёт коллеге:
+    расчёт плана передаёт его фазы как заблокированные."""
+    from app.services.rcpsp_leveler import RcpspLeveler
+
+    dev_col = make_employee(db_session, "Из колонки", "B")
+    make_employee(db_session, "Коллега", "B")
+    sc, plan = make_plan(db_session, "B", plan_status="draft")
+    with_col = add_item(db_session, sc, "С разработчиком", dev=8)
+    with_col.developer_employee_id = dev_col.id
+    add_item(db_session, sc, "Без разработчика", dev=8, priority=2)
+    db_session.commit()
+
+    seen = {}
+    original = RcpspLeveler.level
+
+    def _spy(self, *args, **kwargs):
+        seen["locked"] = kwargs.get("locked")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(RcpspLeveler, "level", _spy)
+    ResourcePlanningService(db_session).compute_schedule(plan.id)
+
+    assert seen["locked"] == {(with_col.id, "dev"): dev_col.id}

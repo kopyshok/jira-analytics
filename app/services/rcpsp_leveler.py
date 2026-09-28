@@ -3,6 +3,7 @@
 Стратегии (в порядке убывания предпочтения):
 1. delay_within_slack — сдвиг назначения внутри slack без слома цепи
 2. reassign_to_peer — переназначение на другого сотрудника той же роли
+   (кроме закреплённых и заблокированных через ``locked`` фаз)
 3. escalate — эскалация в конфликт (OVR.LIGHT/MED/HIGH)
 
 Алгоритм работает после _compute_cpm и до _persist_conflicts.
@@ -84,17 +85,25 @@ class RcpspLeveler:
         q_end: date,
         role_pools: Optional[Dict[str, List[str]]] = None,
         placement_availability: Optional[Dict[str, Dict[date, float]]] = None,
+        locked: Optional[Dict[Tuple[str, str], str]] = None,
     ) -> List[LevelingEvent]:
         """Главный entrypoint. Мутирует assignments на месте, возвращает событий.
 
         ``availability`` — ёмкость для поиска перегрузок. ``placement_availability``
         — куда фазе можно переехать при сдвиге и переназначении (например, за
         вычетом броней других команд); по умолчанию та же ``availability``.
+
+        ``locked`` — {(backlog_item_id, phase): employee_id}: фазу, которая стоит
+        у этого сотрудника, нельзя переназначить на коллегу (например, разработчик
+        из колонки сценария — нехватка времени у него даёт конфликт, никого не
+        подменяем). Как и у закреплённого сотрудника, допустимы только сдвиг и
+        эскалация. Фаза у другого сотрудника под блокировку не попадает.
         """
         if not assignments:
             return []
         self._escalated_keys = set()
         role_pools = role_pools or {}
+        locked = locked or {}
         placement = (
             availability if placement_availability is None else placement_availability
         )
@@ -175,9 +184,15 @@ class RcpspLeveler:
             # несовместим с конкретным окном; перебираем от наиболее ограниченного.
             # Закреплённого сотрудника (pinned_employee=True) пользователь выбрал явно —
             # leveler не имеет права его переключать. Такие строки исключаем из пула
-            # целей reassign; для них допустим только delay или escalate.
+            # целей reassign; для них допустим только delay или escalate. Так же —
+            # с заблокированными (``locked``) фазами.
             candidates.sort(key=lambda a: a.slack_days or 0.0)
-            reassign_targets = [c for c in candidates if not c.pinned_employee]
+            reassign_targets = [
+                c
+                for c in candidates
+                if not c.pinned_employee
+                and locked.get((c.backlog_item_id, c.phase)) != c.employee_id
+            ]
             peers_for_target = role_pools.get(target_emp, [])
             peers_excl_self = [p for p in peers_for_target if p != target_emp]
             if not reassign_targets:

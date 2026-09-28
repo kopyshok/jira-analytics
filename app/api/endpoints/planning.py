@@ -67,6 +67,7 @@ from app.services.backlog_service import (
     BACKLOG_CATEGORY,
     BacklogService,
     approved_included_backlog_ids,
+    choose_assignee,
     descendant_backlog_ids_of_included_ancestors,
     mode_excluded_backlog_ids,
     not_in_plan_backlog_ids,
@@ -1747,8 +1748,7 @@ async def patch_allocation_assignee(
     if not backlog_item:
         raise HTTPException(status_code=404, detail="BacklogItem not found")
 
-    issue = backlog_item.issue
-    jira_account = (issue.assignee_account_id or None) if issue is not None else None
+    emp = None
     if data.assignee_employee_id is not None:
         emp = db.query(Employee).filter(Employee.id == data.assignee_employee_id).first()
         if not emp:
@@ -1757,18 +1757,7 @@ async def patch_allocation_assignee(
             raise HTTPException(
                 status_code=422, detail="Этот сотрудник уже разработчик задачи"
             )
-        backlog_item.assignee_employee_id = data.assignee_employee_id
-        chosen_account = emp.jira_account_id or None
-    else:
-        backlog_item.assignee_employee_id = None
-        chosen_account = None
-    # Выбрали того, кто и так исполнитель в Jira, — строка снова следует за
-    # Jira. Иначе выбор ручной: обновление из Jira его не затрёт, пока там
-    # не сменят исполнителя, — запоминаем, кто стоит в Jira сейчас.
-    backlog_item.assignee_manual = chosen_account != jira_account
-    backlog_item.assignee_jira_account_at_choice = (
-        jira_account if backlog_item.assignee_manual else None
-    )
+    choose_assignee(backlog_item, emp)
 
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})

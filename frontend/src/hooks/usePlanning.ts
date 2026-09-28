@@ -352,7 +352,7 @@ export const usePatchAllocationAssignee = () => {
       qc.invalidateQueries({ queryKey: ['backlog'] });
     },
     onError: () => {
-      notification.error({ title: 'Не удалось сменить исполнителя' });
+      notification.error({ title: 'Не удалось сменить аналитика' });
     },
   });
 };
