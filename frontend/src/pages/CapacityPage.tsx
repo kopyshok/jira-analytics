@@ -289,6 +289,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
             onChange={(next: EmployeeRole | null) =>
               updateRole.mutate({ employeeId: r.employee_id, role: next ?? null })
             }
+            data-tour="capacity-role"
           />
           <Select
             mode="multiple"
@@ -401,7 +402,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
-      <Space wrap>
+      <Space wrap data-tour="capacity-toolbar">
         <Select mode="multiple" allowClear placeholder="Фильтр по сотруднику"
           style={{ minWidth: 260 }}
           value={selectedEmpIds}
@@ -420,7 +421,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
           <Switch checked={showInactive} onChange={(v) => { setShowInactive(v); persist('ui_capacity_show_inactive', v ? '1' : '0'); }} />
           <Text>Показывать выключенных</Text>
         </Space>
-        <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>Добавить сотрудника</Button>
+        <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)} data-tour="capacity-add-employee">Добавить сотрудника</Button>
         <Button
           icon={<TeamOutlined />}
           loading={autoDetect.isPending}
@@ -441,6 +442,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
         <Button onClick={() => setCollapsed(new Set())}>Развернуть все</Button>
         <Button href={exportHref} target="_blank" rel="noreferrer">Экспорт в Excel</Button>
       </Space>
+      <div data-tour="capacity-team-table">
       <Table
         dataSource={tree}
         rowKey={(r: TreeRow) => 'isTeam' in r ? r.key : `${r.team ?? '__none__'}::${r.employee_id}`}
@@ -472,6 +474,7 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
           };
         }}
       />
+      </div>
       <Modal
         title="Добавить сотрудника из Jira"
         open={addOpen}
@@ -581,18 +584,20 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
-      <AbsenceHeatmap
-        year={Number(year)}
-        quarter={Number(quarter)}
-        employees={activeEmployees.map(e => ({ id: e.id, display_name: e.display_name }))}
-        absences={(absences ?? []).filter(r => matchesTeam(r.employee_id))}
-      />
+      <div data-tour="capacity-absence-heatmap">
+        <AbsenceHeatmap
+          year={Number(year)}
+          quarter={Number(quarter)}
+          employees={activeEmployees.map(e => ({ id: e.id, display_name: e.display_name }))}
+          absences={(absences ?? []).filter(r => matchesTeam(r.employee_id))}
+        />
+      </div>
       <Space wrap>
         <Button icon={<PlusOutlined />} type="primary" onClick={() => {
           bulkForm.resetFields();
           bulkForm.setFieldsValue({ reason_id: activeReasons[0]?.id });
           setBulkOpen(true);
-        }}>
+        }} data-tour="capacity-absence-bulk">
           Массовое добавление
         </Button>
         <Space>
@@ -601,6 +606,7 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
         </Space>
       </Space>
 
+      <div data-tour="capacity-absence-table">
       <Table
         dataSource={rows}
         rowKey="employee_id"
@@ -648,6 +654,7 @@ function AbsencesTab({ year, quarter }: { year: string; quarter: string }) {
           },
         ]}
       />
+      </div>
 
       {/* Single-entry modal */}
       <Modal
@@ -807,8 +814,8 @@ export default function CapacityPage() {
         }
       />
       <Tabs items={[
-        { key: 'team', label: 'Команда', children: <TeamTab year={year} quarter={quarter} /> },
-        { key: 'absences', label: 'Отсутствия', children: <AbsencesTab year={year} quarter={quarter} /> },
+        { key: 'team', label: <span data-tour="capacity-tab-team">Команда</span>, children: <TeamTab year={year} quarter={quarter} /> },
+        { key: 'absences', label: <span data-tour="capacity-tab-absences">Отсутствия</span>, children: <AbsencesTab year={year} quarter={quarter} /> },
         { key: 'roles', label: 'Роли', children: <RolesTab /> },
         { key: 'work-desks', label: 'Рабочие столы', children: <WorkDesksTab /> },
       ]} />

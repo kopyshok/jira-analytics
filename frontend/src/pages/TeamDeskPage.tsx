@@ -194,7 +194,7 @@ export default function TeamDeskPage() {
 
   // Отборы стоят вплотную к таблице задач: влияют они только на неё.
   const filterBars = data && (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div data-tour="desk-flags" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <FlagFilterBar
         flagCounts={data.flag_counts}
         value={flagFilter}
@@ -239,6 +239,7 @@ export default function TeamDeskPage() {
     <>
       {rubberCard}
       {filterBars}
+      <div data-tour="desk-issues">
       <GroupedIssues
         title="Задачи"
         developers={data?.developers ?? []}
@@ -252,6 +253,7 @@ export default function TeamDeskPage() {
         onDailyRate={setDailyRate}
         {...listProps}
       />
+      </div>
       <Card size="small" title="Задач в работе одновременно">
         <WorkloadBars
           developers={data?.developers ?? []}
@@ -272,6 +274,7 @@ export default function TeamDeskPage() {
         </Typography.Text>
       </div>
 
+      <div data-tour="desk-filters">
       <DeskFilters
         teams={teams}
         onTeamsChange={(value) => change({ teams: value })}
@@ -296,6 +299,7 @@ export default function TeamDeskPage() {
         releases={prefs.releases}
         onReleasesChange={(value) => change({ releases: value })}
       />
+      </div>
 
       {showThresholds && settings.data && (
         <ThresholdsPanel
@@ -308,6 +312,7 @@ export default function TeamDeskPage() {
       )}
 
       <Tabs
+        data-tour="desk-tabs"
         activeKey={layout}
         onChange={(key) => setLayout(key as Layout)}
         items={[

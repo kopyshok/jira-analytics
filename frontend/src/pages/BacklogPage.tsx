@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type HTMLAttributes } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   App, Button, InputNumber, Popconfirm, Popover, Progress, Select, Space, Table, Tabs, Tag, Tooltip, Typography,
@@ -325,6 +325,7 @@ export default function BacklogPage() {
   const baseColumns = (editable: boolean) => [
     {
       title: 'Prio', dataIndex: 'priority', width: 110, fixed: 'left' as const,
+      onHeaderCell: () => ({ 'data-tour': 'backlog-col-prio' } as HTMLAttributes<HTMLElement>),
       render: (v: number | null, r: BacklogItemResponse) =>
         editable ? (
           <InputNumber
@@ -543,6 +544,7 @@ export default function BacklogPage() {
       title: opoOffNow ? 'АН / ПР / ТС' : 'АН / ПР / ТС / ОПЭ',
       key: 'roles',
       width: opoOffNow ? 210 : 280,
+      onHeaderCell: () => ({ 'data-tour': 'backlog-col-roles' } as HTMLAttributes<HTMLElement>),
       render: (_: unknown, r: BacklogItemResponse) => {
         const raw = {
           analyst: r.estimate_analyst_hours ?? 0,
@@ -749,7 +751,7 @@ export default function BacklogPage() {
         </>
       )}
       <Tooltip title="Параметры планирования">
-        <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
+        <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} data-tour="backlog-gear" />
       </Tooltip>
       <Popconfirm
         title="Убрать из активного бэклога?"
@@ -810,7 +812,7 @@ export default function BacklogPage() {
         </Tooltip>
       )}
       <Tooltip title="Параметры планирования">
-        <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
+        <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} data-tour="backlog-gear" />
       </Tooltip>
       <Popconfirm
         title="Удалить идею?"
@@ -830,6 +832,7 @@ export default function BacklogPage() {
     width: 80,
     align: 'center' as const,
     className: 'backlog-in-plan-cell',
+    onHeaderCell: () => ({ 'data-tour': 'backlog-col-inplan' } as HTMLAttributes<HTMLElement>),
     render: (_: unknown, r: BacklogItemResponse) => (
       <InPlanSwitch
         size="small"
@@ -888,7 +891,7 @@ export default function BacklogPage() {
       fixed: 'right' as const,
       render: (_: unknown, r: BacklogItemResponse) => (
         <Tooltip title="Параметры планирования">
-          <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} />
+          <Button icon={<SettingOutlined />} size="small" onClick={() => openParams(r)} data-tour="backlog-gear" />
         </Tooltip>
       ),
     },
@@ -1141,6 +1144,7 @@ export default function BacklogPage() {
               type="primary"
               onClick={openCreate}
               disabled={refreshFromJiraMut.isPending}
+              data-tour="backlog-manual-idea"
             >
               Идея вручную
             </Button>
@@ -1166,6 +1170,7 @@ export default function BacklogPage() {
       />
 
       <Tabs
+        data-tour="backlog-tabs"
         activeKey={view}
         tabBarExtraContent={
           view !== 'archived' ? (

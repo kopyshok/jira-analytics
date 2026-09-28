@@ -649,6 +649,7 @@ export default function PlanningPage() {
         actions={
           <Space>
             <Select
+              data-tour="planning-scenario-select"
               style={{ minWidth: 320 }}
               placeholder="Выберите сценарий"
               value={scenarioId ?? undefined}
@@ -663,11 +664,11 @@ export default function PlanningPage() {
               </Button>
             </Tooltip>
             <Tooltip title="Справочник вовлечённости по ролям">
-              <Button onClick={() => setInvolvementOpen(true)}>
+              <Button onClick={() => setInvolvementOpen(true)} data-tour="planning-involvement">
                 Вовлечённость
               </Button>
             </Tooltip>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} data-tour="planning-new-scenario">
               Новый сценарий
             </Button>
           </Space>
@@ -755,6 +756,7 @@ export default function PlanningPage() {
                     size="small"
                     onClick={handleApprove}
                     loading={approve.isPending}
+                    data-tour="planning-approve"
                   >
                     Утвердить
                   </Button>
@@ -853,6 +855,7 @@ export default function PlanningPage() {
             {(['distribution', 'rules'] as const).map((key) => (
               <div
                 key={key}
+                data-tour={`planning-tab-${key}`}
                 onClick={() => setActiveTab(key)}
                 style={{
                   padding: '8px 16px',
@@ -1002,6 +1005,7 @@ export default function PlanningPage() {
               </Card>
             ) : (
               <Card
+                data-tour="planning-rules-card"
                 title="Правила обязательных работ"
                 styles={{ body: { padding: 14 } }}
                 style={{ background: DARK_THEME.cardBg }}

@@ -116,6 +116,7 @@ export default function AnalyticsPage() {
   const headerActions = (
     <Space wrap>
       <DatePicker.RangePicker
+        data-tour="analytics-period"
         value={localRange}
         onChange={setLocalRange}
         placeholder={['Уточнить с', 'по']}
@@ -129,7 +130,7 @@ export default function AnalyticsPage() {
         onChange={(v) => setWorklogMode(v ? 'inline' : 'drawer')}
       />
       <Tooltip title="Задачи деревом до самого верхнего родителя">
-        <Space size={4}>
+        <Space size={4} data-tour="analytics-hierarchy">
           <span>Иерархия:</span>
           <Switch checked={hierarchy} onChange={setHierarchy} />
         </Space>
@@ -137,6 +138,7 @@ export default function AnalyticsPage() {
       <Button
         icon={<SettingOutlined />}
         onClick={() => setColumnSettingsOpen(true)}
+        data-tour="analytics-settings"
       >
         Настройка отчёта
       </Button>
@@ -203,17 +205,21 @@ export default function AnalyticsPage() {
               onSelect={setSelectedTeam}
             />
             <div>
-              <AnalyticsFilters
-                urlParams={{ employeeId, workType, category, taskQ }}
-                onChange={handleFilterChange}
-              />
-              <AnalyticsTable
-                data={data}
-                selectedTeam={selectedTeam}
-                worklogMode={worklogMode}
-                periodStart={periodStart}
-                periodEnd={periodEnd}
-              />
+              <div data-tour="analytics-filters">
+                <AnalyticsFilters
+                  urlParams={{ employeeId, workType, category, taskQ }}
+                  onChange={handleFilterChange}
+                />
+              </div>
+              <div data-tour="analytics-table">
+                <AnalyticsTable
+                  data={data}
+                  selectedTeam={selectedTeam}
+                  worklogMode={worklogMode}
+                  periodStart={periodStart}
+                  periodEnd={periodEnd}
+                />
+              </div>
             </div>
           </div>
         </>

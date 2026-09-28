@@ -247,6 +247,7 @@ export default function GanttChart({
       </div>
     </div>
     <div
+      data-tour="rp-gantt"
       style={{
         background: '#0a1628',
         border: '1px solid #1e3a5f',

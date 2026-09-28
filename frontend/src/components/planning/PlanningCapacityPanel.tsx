@@ -380,7 +380,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div data-tour="planning-capacity-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* 1. Overall gauge */}
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
