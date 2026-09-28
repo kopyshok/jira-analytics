@@ -17,9 +17,13 @@ const BAR_H = 16;
 // Левая колонка перекрывает метку «сегодня» (z=20) при горизонтальном скролле —
 // как у строк задач.
 const STICKY_Z = 25;
-const OVERLAP_HINT = 'пересекается с вашим планом — техкоманда получит конфликт';
-// Общий сотрудник: конфликта нет, пересечение уходит пересчётом плана.
-const SHARED_OVERLAP_HINT = 'пересекается с вашим планом — нажмите «Распределить»';
+// Бронь домашней для человека команды: подстраивается этот план — пересечение
+// уходит его пересчётом.
+const HOME_OVERLAP_HINT = 'пересекается с вашим планом — нажмите «Распределить»';
+const overlapHint = (b: ExternalBookingOut) =>
+  b.is_borrowing
+    ? `пересекается с вашим планом — ${b.team} получит конфликт`
+    : HOME_OVERLAP_HINT;
 
 interface Props {
   bookings: ExternalBookingOut[];
@@ -165,7 +169,7 @@ export default function ExternalBookingsRows({
               {showOverlap && b.overlap_days.map((d) => (
                 <div
                   key={`overlap-${d}`}
-                  title={`${ddmm(d)}: ${b.is_borrowing ? OVERLAP_HINT : SHARED_OVERLAP_HINT}`}
+                  title={`${ddmm(d)}: ${overlapHint(b)}`}
                   style={{
                     position: 'absolute',
                     left: `${dateToLeft(d, timeline)}%`,

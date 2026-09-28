@@ -117,9 +117,13 @@ class ExternalBooking:
     end: date
     daily_hours: Dict[date, float]
     provisional: bool
-    # Бронь-привлечение: в команде брони человек не состоял ни дня квартала
-    # её плана — команда взяла его к себе.
+    # Бронь-привлечение: команда брони человеку не домашняя в квартале её
+    # плана (см. `_home_teams`) — не состоял в ней или она не основная.
+    # Домашняя команда под такую бронь не подстраивается.
     is_borrowing: bool = False
+    # План, для которого собраны брони, уступает человека всем командам: он
+    # в команде плана состоит, но она у него не основная.
+    yields_here: bool = False
 
 
 def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
@@ -169,6 +173,21 @@ def _member_of(
     )
 
 
+def _home_teams(
+    periods: Iterable[tuple[str, Optional[date], Optional[date], bool]],
+    start: date,
+    end: date,
+) -> set[str]:
+    """Домашние команды сотрудника на отрезке: основная, а без основной — все,
+    где он состоял. Домашняя команда не уступает часы человека остальным."""
+    active = [
+        (t, primary)
+        for t, joined, left, primary in periods
+        if (joined is None or joined <= end) and (left is None or left > start)
+    ]
+    return {t for t, primary in active if primary} or {t for t, _ in active}
+
+
 def _in_plan_scenario(stmt: Select) -> Select:
     """Только строки задач, которые всё ещё включены в сценарий своего плана.
 
@@ -204,8 +223,8 @@ def external_bookings(
     там она уже занимает человека. Окно ``start`` — ``end`` отсекает всё,
     что в него не попадает. Строки задач, которых уже нет в сценарии плана,
     не считаются нигде.
-    У каждой брони — ``is_borrowing``: человек не состоял в команде брони ни
-    дня квартала её плана, команда его привлекла.
+    У каждой брони — ``is_borrowing``: команда брони человеку не домашняя в
+    квартале её плана; и ``yields_here``: команда ``team`` у него не основная.
     Пять запросов на любой объём: опорные планы двух кварталов, задачи
     планов квартала, назначения и периоды участия их людей.
     """
@@ -273,6 +292,7 @@ def external_bookings(
         if not daily:
             continue
         lo, hi = prev_bounds if a.plan_id in prev_ids else cur_bounds
+        periods = membership.get(a.employee_id, ())
         bi = a.backlog_item
         out.append(
             ExternalBooking(
@@ -286,9 +306,10 @@ def external_bookings(
                 end=a.end_date,
                 daily_hours=daily,
                 provisional=ref.provisional,
-                is_borrowing=not _member_of(
-                    membership.get(a.employee_id, ()), ref.team, lo, hi
-                ),
+                is_borrowing=ref.team not in _home_teams(periods, lo, hi),
+                yields_here=team is not None
+                and _member_of(periods, team, *cur_bounds)
+                and team not in _home_teams(periods, *cur_bounds),
             )
         )
     out.sort(
@@ -313,12 +334,17 @@ def subtractable(
 ) -> List[ExternalBooking]:
     """Брони, которые вычитаются из доступности плана: сначала домашняя команда.
 
-    Привлечённому в план (``borrowed``) — все брони других команд. Своему
-    сотруднику — только брони команд, где он тоже состоит (общий сотрудник).
-    Бронь-привлечение своего (команда взяла его к себе, не имея в составе)
-    доступность не уменьшает — подстраивается привлекающая команда.
+    Привлечённому в план (``borrowed``) и тому, у кого команда плана не
+    основная (``yields_here``), — все брони других команд. Своему сотруднику
+    в домашней команде — только брони других его домашних команд (нет
+    основной — все его команды равны). Бронь-привлечение доступность не
+    уменьшает — подстраивается привлекающая команда.
     """
-    return [b for b in bookings if b.employee_id in borrowed or not b.is_borrowing]
+    return [
+        b
+        for b in bookings
+        if b.employee_id in borrowed or b.yields_here or not b.is_borrowing
+    ]
 
 
 def _team_hashes(bookings: Iterable[ExternalBooking]) -> Dict[str, str]:
@@ -424,6 +450,27 @@ def borrowed_ids(
         return set()
     members = set(tm.member_intervals(db, [team], start, end))
     return {e for e in employee_ids if e and e not in members}
+
+
+def guest_ids(
+    db: Session,
+    team: Optional[str],
+    start: date,
+    end: date,
+    employee_ids: Iterable[Optional[str]],
+) -> set[str]:
+    """Кто из перечисленных состоит в ``team`` в периоде, но она у него не
+    основная: план ``team`` уступает его другим командам, как привлечённого."""
+    if not team:
+        return set()
+    ids = [e for e in dict.fromkeys(employee_ids) if e]
+    membership = tm.membership_rows(db, ids)
+    return {
+        e
+        for e in ids
+        if _member_of(membership.get(e, ()), team, start, end)
+        and team not in _home_teams(membership.get(e, ()), start, end)
+    }
 
 
 def quarter_load_pct(

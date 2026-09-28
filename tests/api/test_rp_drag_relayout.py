@@ -23,10 +23,10 @@ def client(db_session):
 
 
 def test_drag_onto_other_team_work_lands_on_free_days(client, db_session):
-    """Шутов состоит в A и B; B занимает его 05–06.01. Фазу плана A тянут
+    """Шутов в B (основная) и в A; B занимает его 05–06.01. Фазу плана A тянут
     на 05.01 — часы ложатся на 07–08.01: поверх чужой работы нельзя."""
-    e = make_employee(db_session, "Шутов", "A")
-    join_team(db_session, e, "B")
+    e = make_employee(db_session, "Шутов", "B")
+    join_team(db_session, e, "A")
     sc_b, plan_b = make_plan(db_session, "B")
     book(db_session, plan_b, add_item(db_session, sc_b, "Работа B", dev=12), e,
          {"2026-01-05": 6.0, "2026-01-06": 6.0})

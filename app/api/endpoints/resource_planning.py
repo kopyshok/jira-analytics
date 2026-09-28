@@ -989,13 +989,14 @@ LIVE_CONFLICT_PREFIX = "live:"
 def _cross_team_conflicts(
     plan: ResourcePlan,
     assignments_raw: List[ResourcePlanAssignment],
-    borrowed: set,
+    yielding: set,
     used: Dict[str, Dict[date, float]],
     capacity: Dict[str, Dict[date, float]],
     bookings: List[cto.ExternalBooking],
     emp_names: Dict[str, str],
 ) -> List[ConflictOut]:
-    """Пересечение с планами других команд — только у привлечённых этого плана.
+    """Пересечение с планами других команд — только у тех, кого этот план
+    уступает (``yielding``): привлечённых и тех, у кого команда плана не основная.
 
     День пересечения: у фазы этого плана есть часы, и вместе с бронями других
     команд они больше ёмкости дня. Одна запись на фазу; в БД не хранится.
@@ -1008,7 +1009,7 @@ def _cross_team_conflicts(
     stamp = plan.computed_at or plan.created_at
 
     out: List[ConflictOut] = []
-    for eid in sorted(borrowed):
+    for eid in sorted(yielding):
         days = set(
             cto.overlap_days(
                 used.get(eid, {}), ext_by_emp.get(eid, {}), capacity.get(eid, {})
@@ -1132,7 +1133,8 @@ def _live_conflicts(
     plan: ResourcePlan,
     assignments_raw: List[ResourcePlanAssignment],
 ) -> List[ConflictOut]:
-    """«Живые» пересечения привлечённых этого плана с планами других команд.
+    """«Живые» пересечения с планами других команд у тех, кого этот план
+    уступает: привлечённых и тех, у кого его команда не основная.
 
     Тот же расчёт, что у диаграммы, — для остальных читателей конфликтов
     (список, расшифровки). ``assignments_raw`` может быть частью плана:
@@ -1153,12 +1155,13 @@ def _live_conflicts(
     if not emp_ids:
         return []
     borrowed = cto.borrowed_ids(db, plan.team, q_start, q_end, emp_ids)
-    if not borrowed:
+    yielding = borrowed | cto.guest_ids(db, plan.team, q_start, q_end, emp_ids)
+    if not yielding:
         return []
     employees = (
         db.execute(
             select(Employee).where(
-                Employee.id.in_(list(borrowed)),
+                Employee.id.in_(list(yielding)),
                 Employee.is_active == True,  # noqa: E712
             )
         )
@@ -1173,7 +1176,7 @@ def _live_conflicts(
     return _cross_team_conflicts(
         plan,
         list(assignments_raw),
-        borrowed,
+        yielding,
         _daily_used(assignments_raw, capacity),
         capacity,
         bookings,
@@ -1450,9 +1453,12 @@ def get_gantt(
                     )
                 )
             names = {e.id: e.display_name for e in plan_employees}
+            # Кого этот план уступает другим командам: привлечённых и тех, у
+            # кого команда плана не основная. У них пересечение — конфликт.
+            yielding = borrowed | {b.employee_id for b in bookings if b.yields_here}
             # Дни, где этот план и брони других команд вместе больше дня
             # человека, — тем же расчётом, что и живой конфликт техкоманды.
-            # У своих людей — только в опорном плане команды: конфликт
+            # У остальных своих — только в опорном плане команды: конфликт
             # техкоманды считается по нему, в других планах отметка ложная.
             quarter = cto.quarter_num(plan.quarter)
             ref = (
@@ -1464,7 +1470,7 @@ def get_gantt(
             overlap_by_emp = {
                 eid: set(cto.overlap_days(used.get(eid, {}), days, avail.get(eid, {})))
                 for eid, days in ext_daily.items()
-                if is_reference or eid in borrowed
+                if is_reference or eid in yielding
             }
             external_out = [
                 ExternalBookingOut(
@@ -1497,7 +1503,7 @@ def get_gantt(
                 plan.computed_at,
             )
             live_conflicts = _cross_team_conflicts(
-                plan, list(assignments_raw), borrowed, used, avail, bookings, names
+                plan, list(assignments_raw), yielding, used, avail, bookings, names
             )
 
     conflicts = _detect_conflicts(plan, assignments_raw, db) + live_conflicts

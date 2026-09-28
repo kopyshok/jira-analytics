@@ -148,20 +148,21 @@ class ResourceBaseService:
             .all()
         )
         # Часы, забронированные на этих людей опорными планами других команд,
-        # где они тоже состоят. Брони команд, взявших человека к себе, базу
-        # не уменьшают: сначала домашняя команда, подстраивается привлекающая.
+        # по правилу «сначала домашняя команда» (см. `cto.subtractable`):
+        # брони команд, которые подстраиваются под эту, базу не уменьшают.
         booked = cto.daily_totals(
-            b
-            for b in cto.external_bookings(
-                self.db,
-                team=team,
-                year=year,
-                quarter=q,
-                employee_ids=[e.id for e in employees],
-                start=period_start,
-                end=last_day,
+            cto.subtractable(
+                cto.external_bookings(
+                    self.db,
+                    team=team,
+                    year=year,
+                    quarter=q,
+                    employee_ids=[e.id for e in employees],
+                    start=period_start,
+                    end=last_day,
+                ),
+                set(),
             )
-            if not b.is_borrowing
         )
 
         # --- карта аномалий производственного календаря ---
@@ -410,8 +411,8 @@ class ResourceBaseService:
                 )
 
         # --- брони других команд: учитываются только дни, вошедшие в брутто ---
-        # Вычитаются брони команд, где человек тоже состоит; брони команд,
-        # взявших его к себе, — только справочно.
+        # Вычитаются брони по правилу «сначала домашняя команда»; брони команд,
+        # которые подстраиваются под эту, — только справочно.
         bookings = cto.external_bookings(
             self.db,
             team=team,
@@ -421,8 +422,10 @@ class ResourceBaseService:
             start=period_start,
             end=last_day,
         )
-        booked = cto.daily_totals(b for b in bookings if not b.is_borrowing)
-        lent = cto.daily_totals(b for b in bookings if b.is_borrowing)
+        subtracted = cto.subtractable(bookings, set())
+        booked = cto.daily_totals(subtracted)
+        kept = {id(b) for b in subtracted}
+        lent = cto.daily_totals(b for b in bookings if id(b) not in kept)
         booked_by_emp: dict[str, float] = {}
         lent_by_emp: dict[str, float] = {}
         pool_share = self._pool_share(scenario)
