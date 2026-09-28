@@ -29,6 +29,7 @@ from app.models import (
     ScenarioAllocation,
 )
 from app.services import team_membership as tm
+from app.services.involvement_default_service import effective_for_phase, teams_defaults
 from app.services.plan_common import _plan_sort_key, _quarter_variants, quarter_bounds
 
 
@@ -124,6 +125,9 @@ class ExternalBooking:
     # План, для которого собраны брони, уступает человека всем командам: он
     # в команде плана состоит, но она у него не основная.
     yields_here: bool = False
+    # Вовлечённость фазы — как её считал планировщик команды брони: своё
+    # значение задачи, иначе справочник команды на квартал плана. None — не задана.
+    involvement: Optional[float] = None
 
 
 def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
@@ -224,9 +228,11 @@ def external_bookings(
     что в него не попадает. Строки задач, которых уже нет в сценарии плана,
     не считаются нигде.
     У каждой брони — ``is_borrowing``: команда брони человеку не домашняя в
-    квартале её плана; и ``yields_here``: команда ``team`` у него не основная.
-    Пять запросов на любой объём: опорные планы двух кварталов, задачи
-    планов квартала, назначения и периоды участия их людей.
+    квартале её плана; ``yields_here``: команда ``team`` у него не основная;
+    ``involvement`` — вовлечённость фазы.
+    Шесть запросов на любой объём: опорные планы двух кварталов, задачи
+    планов квартала, назначения, периоды участия их людей и справочник
+    вовлечённости их команд.
     """
     ids = [i for i in dict.fromkeys(employee_ids) if i]
     if not ids or not year or not quarter:
@@ -281,6 +287,14 @@ def external_bookings(
     )
     cur_bounds = quarter_bounds(year, quarter)
     prev_bounds = quarter_bounds(prev_year, prev_quarter)
+    # Справочник вовлечённости команды брони — на квартал её опорного плана.
+    period_of = {
+        plan_id: (prev_year, prev_quarter) if plan_id in prev_ids else (year, quarter)
+        for plan_id in by_plan
+    }
+    defaults = teams_defaults(
+        db, {(r.team, *period_of[r.plan_id]) for r in by_plan.values()}
+    )
     out: List[ExternalBooking] = []
     for a in rows:
         if not a.employee_id or a.start_date is None or a.end_date is None:
@@ -310,6 +324,11 @@ def external_bookings(
                 yields_here=team is not None
                 and _member_of(periods, team, *cur_bounds)
                 and team not in _home_teams(periods, *cur_bounds),
+                involvement=effective_for_phase(
+                    bi, a.phase, defaults[(ref.team, *period_of[a.plan_id])]
+                )
+                if bi is not None
+                else None,
             )
         )
     out.sort(
@@ -327,6 +346,49 @@ def daily_totals(bookings: Iterable[ExternalBooking]) -> Dict[str, Dict[date, fl
         for d, h in b.daily_hours.items():
             acc[b.employee_id][d] += h
     return {eid: dict(days) for eid, days in acc.items()}
+
+
+def other_work_share(
+    phases: Iterable[tuple[str, Optional[float], Dict[date, float]]],
+) -> Dict[str, Dict[date, float]]:
+    """{сотрудник: {день: доля дня на прочие работы}}.
+
+    ``phases`` — фазы как (сотрудник, вовлечённость, часы по дням).
+    Вовлечённость 90% — это 10% дня на прочие (нормированные) работы. Несколько
+    фаз в день — берётся наименьшая вовлечённость. Вовлечённость не задана —
+    доли нет.
+    """
+    acc: Dict[str, Dict[date, float]] = defaultdict(dict)
+    for employee_id, involvement, daily in phases:
+        if involvement is None:
+            continue
+        share = 1.0 - max(0.0, min(1.0, involvement))
+        for d, h in daily.items():
+            if h > 0 and share > acc[employee_id].get(d, 0.0):
+                acc[employee_id][d] = share
+    return {eid: days for eid, days in acc.items() if days}
+
+
+def occupied_hours(
+    bookings: Iterable[ExternalBooking],
+    capacity: Dict[str, Dict[date, float]],
+) -> Dict[str, Dict[date, float]]:
+    """{сотрудник: {день: часы броней вместе с прочими работами}}.
+
+    В день брони человек занят не только её часами, но и долей прочих работ
+    от ёмкости дня (``capacity``, см. `other_work_share`): другой команде
+    свободен только остаток. Так же следующая фаза своего плана видит остаток
+    дня за вычетом потолка вовлечённости предыдущей.
+    """
+    bookings = list(bookings)
+    share = other_work_share((b.employee_id, b.involvement, b.daily_hours) for b in bookings)
+    return {
+        eid: {
+            d: h + capacity.get(eid, {}).get(d, 0.0) * share.get(eid, {}).get(d, 0.0)
+            for d, h in days.items()
+        }
+        for eid, days in daily_totals(bookings).items()
+    }
 
 
 def subtractable(

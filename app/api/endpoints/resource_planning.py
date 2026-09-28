@@ -537,6 +537,10 @@ class EmployeeLoadDay(BaseModel):
     off: Optional[str] = None
     # Доля ёмкости дня, занятая опорными планами других команд, %.
     ext_pct: float = 0.0
+    # Прочие работы: доля дня вне задач по вовлечённости (90% → 10% дня),
+    # не больше свободного остатка. В % ёмкости и в часах.
+    other_pct: float = 0.0
+    other_hours: float = 0.0
 
 
 class TeamMoveOut(BaseModel):
@@ -999,9 +1003,10 @@ def _cross_team_conflicts(
     уступает (``yielding``): привлечённых и тех, у кого команда плана не основная.
 
     День пересечения: у фазы этого плана есть часы, и вместе с бронями других
-    команд они больше ёмкости дня. Одна запись на фазу; в БД не хранится.
+    команд и их долей прочих работ они больше ёмкости дня. Одна запись на
+    фазу; в БД не хранится.
     """
-    ext_by_emp = cto.daily_totals(bookings)
+    ext_by_emp = cto.occupied_hours(bookings, capacity)
     teams_on: Dict[tuple, set] = {}
     for b in bookings:
         for d in b.daily_hours:
@@ -1104,28 +1109,36 @@ def _daily_used(
             continue
         if a.employee_id not in used:
             continue
-        # Пустая раскладка — фаза не размещена: часов в днях нет.
-        daily = _parse_daily_hours(a.daily_hours_json)
-        if daily is not None:
-            for iso, h in daily.items():
-                try:
-                    dd = date.fromisoformat(iso)
-                except (TypeError, ValueError):
-                    continue
-                used[a.employee_id][dd] = used[a.employee_id].get(dd, 0.0) + float(h)
-            continue
-        # Легаси-бары без раскладки: поровну по рабочим дням бара
-        # (по календарным — часы утекают в выходные и день занижается).
-        emp_avail = avail.get(a.employee_id, {})
-        work_days = [
-            d
-            for d in _daterange(a.start_date, a.end_date)
-            if emp_avail.get(d, 0.0) > 0
-        ] or _daterange(a.start_date, a.end_date)
-        per_day = (a.hours_allocated or 0.0) / len(work_days)
-        for d in work_days:
-            used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + per_day
+        for d, h in _assignment_days(a, avail[a.employee_id]).items():
+            used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + h
     return used
+
+
+def _assignment_days(
+    a: ResourcePlanAssignment, emp_avail: Dict[date, float]
+) -> Dict[date, float]:
+    """Часы фазы с датами по дням: раскладка планировщика, у старых строк без
+    неё — поровну по рабочим дням полосы (``emp_avail`` > 0)."""
+    # Пустая раскладка — фаза не размещена: часов в днях нет.
+    daily = _parse_daily_hours(a.daily_hours_json)
+    if daily is not None:
+        out: Dict[date, float] = {}
+        for iso, h in daily.items():
+            try:
+                dd = date.fromisoformat(iso)
+            except (TypeError, ValueError):
+                continue
+            out[dd] = out.get(dd, 0.0) + float(h)
+        return out
+    # Легаси-бары без раскладки: поровну по рабочим дням бара
+    # (по календарным — часы утекают в выходные и день занижается).
+    work_days = [
+        d
+        for d in _daterange(a.start_date, a.end_date)
+        if emp_avail.get(d, 0.0) > 0
+    ] or _daterange(a.start_date, a.end_date)
+    per_day = (a.hours_allocated or 0.0) / len(work_days)
+    return {d: per_day for d in work_days}
 
 
 def _live_conflicts(
@@ -1385,6 +1398,24 @@ def get_gantt(
             }
             # Часы по дням на сотрудника — из реальной раскладки планировщика.
             used = _daily_used(assignments_raw, avail)
+            # Доля прочих работ по вовлечённости фаз дня — этого плана и броней.
+            inv_defaults = _plan_involvement_defaults(db, plan.id)
+            own_phases = [
+                (
+                    a.employee_id,
+                    effective_for_phase(a.backlog_item, a.phase, inv_defaults),
+                    _assignment_days(a, avail[a.employee_id]),
+                )
+                for a in assignments_raw
+                if a.employee_id in avail
+                and a.backlog_item is not None
+                and a.start_date
+                and a.end_date
+            ]
+            other_share = cto.other_work_share(
+                own_phases
+                + [(b.employee_id, b.involvement, b.daily_hours) for b in bookings]
+            )
             for e in plan_employees:
                 emp_abs = absences_by_emp.get(e.id, [])
                 emp_spans = member_iv.get(e.id) or []
@@ -1396,6 +1427,13 @@ def get_gantt(
                     pct = (u / av * 100.0) if av > 0 else 0.0
                     ext_h = ext_daily.get(e.id, {}).get(d, 0.0)
                     ext_pct = (ext_h / av * 100.0) if av > 0 else 0.0
+                    # Прочие работы — не больше свободного остатка дня: сами
+                    # по себе перегруз не рисуют.
+                    other_h = min(
+                        max(0.0, av - u - ext_h),
+                        av * other_share.get(e.id, {}).get(d, 0.0),
+                    )
+                    other_pct = (other_h / av * 100.0) if av > 0 else 0.0
                     # Признак нерабочего дня (календарь имеет приоритет над отпуском).
                     cal_h = cal_map.get(d, None)
                     if cal_h is None:
@@ -1415,7 +1453,12 @@ def get_gantt(
                         off = None
                     days_out.append(
                         EmployeeLoadDay(
-                            date=d, pct=round(pct, 1), off=off, ext_pct=round(ext_pct, 1)
+                            date=d,
+                            pct=round(pct, 1),
+                            off=off,
+                            ext_pct=round(ext_pct, 1),
+                            other_pct=round(other_pct, 1),
+                            other_hours=round(other_h, 2),
                         )
                     )
                     d += _td(days=1)
@@ -1467,8 +1510,26 @@ def get_gantt(
                 else None
             )
             is_reference = ref is not None and ref.plan_id == plan.id
+            # Прочие работы добавляются той команде, под которую подстраиваются:
+            # у уступающих — брони других команд, у домашней — этот план. Так
+            # отметка в домашнем плане совпадает с конфликтом техкоманды.
+            occupied = cto.occupied_hours(bookings, avail)
+            own_share = cto.other_work_share(own_phases)
             overlap_by_emp = {
-                eid: set(cto.overlap_days(used.get(eid, {}), days, avail.get(eid, {})))
+                eid: set(
+                    cto.overlap_days(
+                        used.get(eid, {}),
+                        occupied[eid]
+                        if eid in yielding
+                        else {
+                            d: h
+                            + avail.get(eid, {}).get(d, 0.0)
+                            * own_share.get(eid, {}).get(d, 0.0)
+                            for d, h in days.items()
+                        },
+                        avail.get(eid, {}),
+                    )
+                )
                 for eid, days in ext_daily.items()
                 if is_reference or eid in yielding
             }
@@ -3558,7 +3619,7 @@ def explain_assignment(
             borrowed_here,
         )
         full_avail = cto.subtract_occupancy(
-            raw_avail, cto.daily_totals(other_bookings)
+            raw_avail, cto.occupied_hours(other_bookings, raw_avail)
         ).get(a.employee_id, {})
 
     # Calendar map для окна фазы (расширено влево до expected_start для трассы).

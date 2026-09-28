@@ -44,14 +44,16 @@ export function busyGaps(
 }
 
 /**
- * Строки подсказки дня в подвале: «этот план N ч: KEY Фаза; …» и по строке
- * на каждую другую команду «<команда> N ч: KEY Фаза; …». Пусто — дня нет.
+ * Строки подсказки дня в подвале: «этот план N ч: KEY Фаза; …», по строке
+ * на каждую другую команду «<команда> N ч: KEY Фаза; …» и «прочие работы
+ * N ч» — доля дня вне задач по вовлечённости. Пусто — дня нет.
  */
 export function dayTooltipLines(
   employeeId: string,
   date: string,
   assignments: AssignmentOut[],
   bookings: ExternalBookingOut[],
+  otherHours = 0,
 ): string[] {
   const lines: string[] = [];
   const own = assignments.filter(
@@ -72,5 +74,6 @@ export function dayTooltipLines(
     const total = list.reduce((s, b) => s + (b.daily_hours[date] ?? 0), 0);
     lines.push(`${team} ${fmtHours(total)} ч: ${list.map(bookingName).join('; ')}`);
   }
+  if (otherHours > 0) lines.push(`прочие работы ${fmtHours(otherHours)} ч`);
   return lines;
 }

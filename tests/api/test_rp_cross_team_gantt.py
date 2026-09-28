@@ -615,6 +615,67 @@ def test_recomputed_plan_without_tasks_is_not_stale(client, db_session):
     assert _gantt(client, plan_b.id)["stale_due_to_other_teams"] is False
 
 
+def test_secondary_plan_takes_only_truly_free_hours(client, db_session):
+    """Основная команда A заняла Шутова на 90%: 5,4 ч задачи и 0,6 ч прочих
+    работ — день занят целиком. Неосновная B раньше добирала эти 0,6 ч; теперь
+    её работа встаёт только в свободные дни, а старая раскладка поверх прочих
+    работ — пересечение с планом A."""
+    import json
+
+    from app.models import ResourcePlanAssignment
+    from tests.services.xteam_factory import join_team
+
+    e = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, e, "B")
+    sc_a, plan_a = make_plan(db_session, "A")
+    item_a = add_item(db_session, sc_a, "Работа A", dev=10.8)
+    item_a.involvement_dev = 0.9
+    book(db_session, plan_a, item_a, e, {"2026-01-01": 5.4, "2026-01-02": 5.4})
+    sc_b, plan_b = make_plan(db_session, "B")
+    item_b = add_item(db_session, sc_b, "Работа B", dev=6)
+    book(db_session, plan_b, item_b, e, {"2026-01-01": 0.6, "2026-01-02": 0.6, "2026-01-05": 4.8})
+    db_session.commit()
+
+    body = _gantt(client, plan_b.id)
+    assert [c["type"] for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == [
+        "CROSS_TEAM_OVERLAP"
+    ]
+    assert body["external_bookings"][0]["overlap_days"] == ["2026-01-01", "2026-01-02"]
+    # Домашний план A отмечает те же дни: B получит там конфликт.
+    [from_b] = _gantt(client, plan_a.id)["external_bookings"]
+    assert from_b["overlap_days"] == ["2026-01-01", "2026-01-02"]
+
+    _compute(db_session, plan_b.id)
+
+    [row] = db_session.query(ResourcePlanAssignment).filter_by(plan_id=plan_b.id).all()
+    assert json.loads(row.daily_hours_json) == {"2026-01-05": 6.0}
+    body = _gantt(client, plan_b.id)
+    assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
+    day = _day(_row(body, e.id), "2026-01-01")
+    assert (day["pct"], day["ext_pct"], day["other_pct"]) == (0.0, 90.0, 10.0)
+
+
+def test_load_counts_other_work_share_of_involvement(client, db_session):
+    """Загрузка по дням: вовлечённость 90% — 5,4 ч задачи и 0,6 ч прочих
+    работ, день занят целиком. В день, где задача взяла 3 ч, прочие работы — те
+    же 10% дня, остальное свободно."""
+    e = make_employee(db_session, "Пряничников", "A")
+    sc, plan = make_plan(db_session, "A")
+    item = add_item(db_session, sc, "Работа A", dev=8.4)
+    item.involvement_dev = 0.9
+    book(db_session, plan, item, e, {"2026-01-05": 5.4, "2026-01-06": 3.0})
+    db_session.commit()
+
+    row = _row(_gantt(client, plan.id), e.id)
+
+    full = _day(row, "2026-01-05")
+    assert (full["pct"], full["other_pct"], full["other_hours"]) == (90.0, 10.0, 0.6)
+    partial = _day(row, "2026-01-06")
+    assert (partial["pct"], partial["other_pct"]) == (50.0, 10.0)
+    free = _day(row, "2026-01-07")
+    assert (free["pct"], free["other_pct"], free["other_hours"]) == (0.0, 0.0, 0.0)
+
+
 def test_jira_developer_left_out_of_plan_does_not_make_it_stale(client, db_session):
     """«Разработчик» из Jira занят весь квартал и в план не попал: его брони
     диаграмма не показывает — и в учтённые при расчёте они не входят."""

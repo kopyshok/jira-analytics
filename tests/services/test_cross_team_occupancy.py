@@ -307,7 +307,7 @@ def test_external_bookings_tie_broken_by_assignment(db_session):
 
 
 def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=None,
-         yields_here=False):
+         yields_here=False, involvement=None):
     """Бронь без базы — для чистых функций."""
     daily = daily or {D("2026-01-05"): 6.0}
     return cto.ExternalBooking(
@@ -323,7 +323,56 @@ def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=No
         provisional=False,
         is_borrowing=is_borrowing,
         yields_here=yields_here,
+        involvement=involvement,
     )
+
+
+def test_booking_carries_phase_involvement(db_session):
+    """Вовлечённость брони: своё значение задачи, иначе справочник её команды
+    на квартал её плана. Ни того, ни другого — не задана."""
+    from app.models import InvolvementDefault
+
+    e = make_employee(db_session, "Пряничников", "A")
+    db_session.add(InvolvementDefault(
+        team="A", role="dev", effective_year=2025, effective_quarter=4, involvement=0.9,
+    ))
+    sc, plan = make_plan(db_session, "A")
+    by_default = add_item(db_session, sc, "По справочнику", dev=5.4)
+    own = add_item(db_session, sc, "Своя", dev=3)
+    own.involvement_dev = 0.5
+    book(db_session, plan, by_default, e, {"2026-01-05": 5.4})
+    book(db_session, plan, own, e, {"2026-01-06": 3.0})
+    book(db_session, plan, own, e, {"2026-01-07": 2.0}, phase="analyst")
+    db_session.commit()
+
+    bookings = _bookings_for_a(db_session, e, team="B")
+
+    assert {(min(b.daily_hours).isoformat(), b.involvement) for b in bookings} == {
+        ("2026-01-05", 0.9), ("2026-01-06", 0.5), ("2026-01-07", None),
+    }
+
+
+def test_occupied_hours_adds_other_work_share():
+    """Вовлечённость 90% — это 10% дня на прочие работы: день с бронью занят
+    на её часы и на эту долю дня. Несколько броней в день — берётся наименьшая
+    вовлечённость. Вовлечённость не задана — только часы."""
+    d1, d2, d3, d4 = D("2026-01-05"), D("2026-01-06"), D("2026-01-07"), D("2026-01-08")
+    bookings = [
+        _ext("e", daily={d1: 7.2, d2: 4.0, d4: 2.0}, involvement=0.9),
+        _ext("e", team="C", daily={d3: 3.0}),
+        _ext("e", team="D", daily={d4: 2.0}, involvement=0.5),
+    ]
+    capacity = {"e": {d1: 8.0, d2: 8.0, d3: 8.0, d4: 8.0}}
+
+    occupied = cto.occupied_hours(bookings, capacity)
+
+    assert {d: round(h, 2) for d, h in occupied["e"].items()} == {
+        d1: 8.0, d2: 4.8, d3: 3.0, d4: 8.0,
+    }
+    share = cto.other_work_share(
+        (b.employee_id, b.involvement, b.daily_hours) for b in bookings
+    )["e"]
+    assert {d: round(v, 2) for d, v in share.items()} == {d1: 0.1, d2: 0.1, d4: 0.5}
 
 
 def _booking_of(db_session, employee, team="B", year=2026, quarter="Q1", day="2026-01-05"):
