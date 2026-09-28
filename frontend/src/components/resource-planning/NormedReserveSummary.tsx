@@ -1,49 +1,51 @@
-import { useEffect, useRef, useState } from 'react';
-import { App, Select, Table } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import type { OtherTeamWorkOut, ReserveOut, ReserveRoleOut, ReserveTypeRow } from '../../api/resourcePlanning';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { App, Select } from 'antd';
+import type { OtherTeamWorkOut, ReserveOut, ReserveTypeRow } from '../../api/resourcePlanning';
 import { useSetWorkTypeOverride } from '../../hooks/useResourcePlanning';
-import { fmtHours, itemsForRow, overuseLabel, resolvedOverrideKeys } from '../../utils/normedReserve';
+import {
+  fmtHours,
+  itemsForRow,
+  overuseLabel,
+  resolvedOverrideKeys,
+  usageCaption,
+  usagePct,
+  usedHours,
+  visibleReserveRows,
+} from '../../utils/normedReserve';
 
 interface Props {
   /** Запас нормированных работ команды плана на квартал. */
   reserve: ReserveOut;
 }
 
-const columns: ColumnsType<ReserveTypeRow> = [
-  { title: 'Вид работ', dataIndex: 'label', key: 'label' },
-  { title: 'Заложено', dataIndex: 'planned_hours', key: 'planned', align: 'right', render: fmtHours },
-  { title: 'Заблокировано', dataIndex: 'blocked_hours', key: 'blocked', align: 'right', render: fmtHours },
-  { title: 'Другие команды', dataIndex: 'other_teams_hours', key: 'other_teams', align: 'right', render: fmtHours },
-  {
-    title: 'Осталось',
-    key: 'remaining',
-    align: 'right',
-    render: (_, row) =>
-      row.overuse_hours > 0.5 ? (
-        <span style={{ color: '#ff6b6b', fontWeight: 600 }}>
-          −{fmtHours(row.overuse_hours)} <span style={{ fontWeight: 400 }}>(перерасход)</span>
-        </span>
-      ) : (
-        fmtHours(row.remaining_hours)
-      ),
-  },
-];
-
 /** Ключ строки таблицы запаса (React `key`) — уникален по задаче+команде+роли. */
 const itemKey = (item: OtherTeamWorkOut) => `${item.backlog_item_id}::${item.team}::${item.role}`;
+
+const thStyle: React.CSSProperties = {
+  textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#7a9ab8',
+  padding: '4px', borderBottom: '1px solid #1e3a5f',
+};
+const tdStyle: React.CSSProperties = {
+  fontSize: 12, color: '#cfe1f5', padding: '6px 4px', verticalAlign: 'top',
+  borderBottom: '1px solid rgba(30,58,95,0.4)',
+};
 
 export default function NormedReserveSummary({ reserve }: Props) {
   const { message } = App.useApp();
   const setOverride = useSetWorkTypeOverride();
+  // Блок при каждом открытии плана свёрнут заново — состояние намеренно не персистится.
+  const [expanded, setExpanded] = useState(false);
+  // Раскрытые строки видов работ (задачи других команд) — ключ «роль::вид работ».
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   // Вид работ хранится на сервере per задача (backlog_item_id), а не per задача+роль — задача с
-  // исполнителями двух ролей показана в двух таблицах, но подмена и блокировка селекта общие.
+  // исполнителями двух ролей показана в двух строках, но подмена и блокировка селекта общие.
   const [pending, setPending] = useState<Set<string>>(new Set());
   // Выбор в селекте виден сразу, пока не подтянется пересчитанная диаграмма.
   const [localOverrides, setLocalOverrides] = useState<Record<string, string | null>>({});
   // Последний запрос на задачу — чтобы более ранний ответ не затёр состояние более нового.
   const requestSeqRef = useRef<Record<string, number>>({});
   const overuseNote = overuseLabel(reserve);
+  const visibleRoles = visibleReserveRows(reserve);
 
   // Диаграмма перечиталась и уже отражает наш выбор — локальная подмена больше не нужна.
   useEffect(() => {
@@ -86,9 +88,18 @@ export default function NormedReserveSummary({ reserve }: Props) {
     }
   };
 
-  const renderRowItems = (role: ReserveRoleOut, row: ReserveTypeRow) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' }}>
-      {itemsForRow(reserve, role.role, row.work_type_id).map((item) => {
+  const toggleRow = (key: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const renderRowItems = (role: string, workTypeId: string) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '6px 0' }}>
+      {itemsForRow(reserve, role, workTypeId).map((item) => {
         const overrideKey = item.backlog_item_id;
         const value =
           overrideKey in localOverrides
@@ -130,43 +141,146 @@ export default function NormedReserveSummary({ reserve }: Props) {
         marginTop: 16,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600, color: '#fff', margin: 0 }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+          background: 'transparent', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
+          font: 'inherit', color: 'inherit', textAlign: 'left',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 11, color: '#7a9ab8' }}>
+            {expanded ? '▾' : '▸'}
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
             Нормированные работы — запас квартала
-          </h3>
-          {overuseNote && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#ff6b6b' }}>{overuseNote}</span>
+          </span>
+        </span>
+        {overuseNote ? (
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#ff6b6b' }}>⚠ {overuseNote}</span>
+        ) : (
+          <span style={{ fontSize: 11, color: '#7a9ab8' }}>перерасхода нет</span>
+        )}
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)', marginBottom: 8 }}>
+            {reserve.scenario_name}
+          </div>
+
+          {visibleRoles.length === 0 ? (
+            <div style={{ fontSize: 12, color: '#7a9ab8' }}>
+              Заблокированных периодов и работы в других командах нет — запас не расходуется
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <colgroup>
+                <col />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 220 }} />
+                <col style={{ width: 110 }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Вид работ</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Заложено</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Занято</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Осталось</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRoles.map((r) => (
+                  <Fragment key={r.role}>
+                    <tr>
+                      <td
+                        colSpan={4}
+                        style={{
+                          fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                          color: '#7a9ab8', padding: '8px 4px 4px',
+                        }}
+                      >
+                        {r.role_label}
+                      </td>
+                    </tr>
+                    {r.rows.map((row: ReserveTypeRow) => {
+                      const rowKey = `${r.role}::${row.work_type_id}`;
+                      const canExpand = row.other_teams_hours > 0;
+                      const isOpen = expandedRows.has(rowKey);
+                      const items = itemsForRow(reserve, r.role, row.work_type_id);
+                      const used = usedHours(row);
+                      const pct = usagePct(row);
+                      const caption = usageCaption(row, items.length);
+                      const isOveruse = row.overuse_hours > 0.5 || row.planned_hours <= 0;
+                      return (
+                        <Fragment key={rowKey}>
+                          <tr>
+                            <td style={tdStyle}>
+                              {canExpand ? (
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-expanded={isOpen}
+                                  onClick={() => toggleRow(rowKey)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      toggleRow(rowKey);
+                                    }
+                                  }}
+                                  style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                >
+                                  <span aria-hidden style={{ display: 'inline-block', width: 10, fontSize: 10, color: '#7a9ab8' }}>
+                                    {isOpen ? '▾' : '▸'}
+                                  </span>
+                                  {row.label}
+                                </span>
+                              ) : (
+                                <span style={{ paddingLeft: 14 }}>{row.label}</span>
+                              )}
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtHours(row.planned_hours)}</td>
+                            <td style={tdStyle}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                  <div style={{ width: `${pct}%`, height: '100%', background: isOveruse ? '#ff6b6b' : '#00c9c8' }} />
+                                </div>
+                                <span style={{ flexShrink: 0, textAlign: 'right', minWidth: 52 }}>{fmtHours(used)}</span>
+                              </div>
+                              {caption && (
+                                <div style={{ fontSize: 10, color: '#7a9ab8', marginTop: 2 }}>{caption}</div>
+                              )}
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: 'right' }}>
+                              {row.overuse_hours > 0.5 ? (
+                                <span style={{ color: '#ff6b6b', fontWeight: 600 }}>
+                                  −{fmtHours(row.overuse_hours)} <span style={{ fontWeight: 400, fontSize: 10 }}>перерасход</span>
+                                </span>
+                              ) : (
+                                fmtHours(row.remaining_hours)
+                              )}
+                            </td>
+                          </tr>
+                          {canExpand && isOpen && (
+                            <tr>
+                              <td colSpan={4} style={{ padding: '0 4px 8px 18px', borderBottom: '1px solid rgba(30,58,95,0.4)' }}>
+                                {renderRowItems(r.role, row.work_type_id)}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{reserve.scenario_name}</div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-        {reserve.roles.map((r) => (
-          <div key={r.role}>
-            <div
-              style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                color: '#7a9ab8', marginBottom: 4,
-              }}
-            >
-              {r.role_label}
-            </div>
-            <Table
-              size="small"
-              pagination={false}
-              rowKey="work_type_id"
-              columns={columns}
-              dataSource={r.rows}
-              expandable={{
-                rowExpandable: (row) => row.other_teams_hours > 0,
-                expandedRowRender: (row) => renderRowItems(r, row),
-              }}
-            />
-          </div>
-        ))}
-      </div>
+      )}
     </div>
   );
 }
