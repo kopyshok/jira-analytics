@@ -1,0 +1,244 @@
+"""Запас нормированных работ команды и раскладка по дням."""
+
+from datetime import datetime, timedelta
+
+from sqlalchemy import event, select
+
+from app.models import (
+    Absence,
+    AbsenceReason,
+    ResourcePlan,
+    ScenarioRule,
+    ScheduledBlock,
+    TeamWorkTypeOverride,
+)
+from app.services import normed_reserve as nr
+from app.services.scheduled_blocks import BlockHit
+from tests.services.normed_factory import D, _erp, _rules, _types, _weekdays
+from tests.services.xteam_factory import book, join_team, make_employee, make_plan
+
+Q = (2026, 1)  # 2026-01-01 … 2026-03-31; календарь без аномалий — 8 ч в будни
+
+
+def test_team_reserve_shared_tech_pool_is_eaten_by_one_person(db_session):
+    types, p, s, _item = _erp(db_session)
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    norm = r.people[p.id].norm
+    assert norm == r.people[s.id].norm == 64 * 8.0
+    tech = next(x for x in r.roles["dev"] if x.work_type_id == types["technical_tasks"].id)
+    assert round(tech.planned, 1) == round(0.10 * 2 * norm, 1)
+    assert round(tech.other_teams, 1) == 180.0
+    assert tech.remaining == 0.0
+    assert round(tech.overuse, 1) == round(180.0 - tech.planned, 1)
+    assert types["technical_tasks"].id not in r.people[s.id].share
+    assert round(r.people[s.id].undated, 1) == round(0.45 * norm, 1)
+    assert [round(w.hours, 1) for w in r.other_team_work] == [180.0]  # 25 × 7,2 в float — 179,99…
+    assert r.other_team_work[0].work_type_id == types["technical_tasks"].id
+    assert r.other_team_work[0].is_manual is False
+
+
+def test_override_moves_other_team_work_to_chosen_type(db_session):
+    types, p, s, item = _erp(db_session)
+    db_session.add(TeamWorkTypeOverride(team="ERP", backlog_item_id=item.id,
+                                        work_type_id=types["support_consult"].id))
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    rows = {x.work_type_id: x for x in r.roles["dev"]}
+    assert rows[types["technical_tasks"].id].other_teams == 0.0
+    assert round(rows[types["support_consult"].id].other_teams, 1) == 180.0
+    assert r.other_team_work[0].is_manual is True
+
+
+def test_home_block_consumes_its_type_for_the_person(db_session):
+    types, p, s, _item = _erp(db_session)
+    db_session.add(ScheduledBlock(team="ERP", start_date=D("2026-01-05"), end_date=D("2026-01-07"),
+                                  reason="Закрытие месяца", work_type_id=types["support_consult"].id))
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    support = next(x for x in r.roles["dev"] if x.work_type_id == types["support_consult"].id)
+    assert support.blocked == 2 * 3 * 8.0  # оба разработчика, три дня
+    assert r.people[p.id].blocked[types["support_consult"].id] == 24.0
+
+
+def test_erp_example_person_quarter_over_norm(db_session):
+    """Пример спеки 5.10: задачи ERP 176 + «Блок» 180 + нормированные 230,4 ч."""
+    _types_, p, _s, _item = _erp(db_session)
+    r = nr.team_reserve(db_session, "ERP", *Q)
+    cap = nr.calendar_hours(db_session, D("2026-01-01"), D("2026-03-31"))
+    ext_days = [D(x) for x in _weekdays("2026-01-12", 25)]
+    other = {d: 7.2 for d in ext_days}
+    residue = {d: 0.1 for d in ext_days}  # вовлечённость «Блока» 90%
+    own = {d: 8.0 for d in [d for d in sorted(cap) if d not in other][:22]}
+
+    load = nr.place_person(cap, own, other, residue, {}, r.people[p.id], r.labels)
+
+    assert round(load.normed, 1) == 230.4
+    # 20 ч — остатки дней «Блока», 17 свободных дней × 8 = 136 ч, 74,4 ч не вмещается.
+    assert round(load.unplaced, 1) == 74.4
+    assert round(load.pct) == 115
+
+
+def test_norm_counts_only_primary_days_without_absences(db_session):
+    types = _types(db_session)
+    x = make_employee(db_session, "Переходящий", "ERP", role="dev", member=False)
+    join_team(db_session, x, "ERP", left_at=D("2026-02-01"), primary=True)
+    join_team(db_session, x, "Другая", joined_at=D("2026-02-01"), primary=True)
+    y = make_employee(db_session, "Постоянный", "ERP", role="dev")
+    reason = AbsenceReason(code="vacation", label="Отпуск", is_planned=True)
+    db_session.add(reason)
+    db_session.flush()
+    db_session.add(Absence(employee_id=x.id, start_date=D("2026-01-12"), end_date=D("2026-01-16"),
+                           reason_id=reason.id))
+    sc, _plan = make_plan(db_session, "ERP")
+    _rules(db_session, sc, types)
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    assert r.people[x.id].norm == (22 - 5) * 8.0  # январь без недели отпуска
+    assert r.people[y.id].norm == 64 * 8.0
+    org = types["organizational"].id
+    assert round(r.people[x.id].share[org], 2) == round(0.10 * (136 + 512) * 136 / (136 + 512), 2)
+
+
+def _count_queries(db, fn) -> int:
+    """SQL-запросы, сделанные внутри fn() через сессию db."""
+    engine = db.get_bind()
+    counter = {"n": 0}
+
+    def _hook(conn, cursor, statement, parameters, context, executemany):
+        counter["n"] += 1
+
+    event.listen(engine, "before_cursor_execute", _hook)
+    try:
+        fn()
+    finally:
+        event.remove(engine, "before_cursor_execute", _hook)
+    return counter["n"]
+
+
+def test_query_count_does_not_grow_with_team_size(db_session):
+    types, _p, _s, item = _erp(db_session)
+    db_session.add(ScheduledBlock(team="ERP", start_date=D("2026-01-05"), end_date=D("2026-01-07"),
+                                  reason="Закрытие месяца", work_type_id=types["support_consult"].id))
+    db_session.commit()
+    small = _count_queries(db_session, lambda: nr.team_reserve(db_session, "ERP", *Q))
+
+    bplan = db_session.execute(select(ResourcePlan).where(ResourcePlan.team == "Блок")).scalar_one()
+    for i in range(5):
+        e = make_employee(db_session, f"Ещё {i}", "ERP", role="dev")
+        join_team(db_session, e, "Блок")
+        book(db_session, bplan, item, e, {d: 4.0 for d in _weekdays("2026-02-02", 5)})
+    db_session.commit()
+    big = _count_queries(db_session, lambda: nr.team_reserve(db_session, "ERP", *Q))
+
+    assert big == small
+
+
+def test_reference_scenario_approved_then_freshest_draft(db_session):
+    approved, _ = make_plan(db_session, "ERP", scenario_updated_at=datetime(2026, 1, 1))
+    make_plan(db_session, "ERP", scenario_status="draft", scenario_updated_at=datetime(2026, 2, 1))
+    make_plan(db_session, "Блок", scenario_status="draft", scenario_updated_at=datetime(2026, 1, 1))
+    fresh, _ = make_plan(db_session, "Блок", scenario_status="draft", scenario_updated_at=datetime(2026, 2, 1))
+    make_plan(db_session, "Блок", scenario_status="draft", scenario_updated_at=datetime(2026, 1, 15))
+    db_session.commit()
+
+    assert nr.reference_scenario(db_session, "ERP", *Q).id == approved.id
+    assert nr.reference_scenario(db_session, "Блок", *Q).id == fresh.id
+
+
+def test_employee_without_role_uses_all_roles_rules(db_session):
+    types = _types(db_session)
+    e = make_employee(db_session, "Без роли", "ERP", role=None)
+    sc, _plan = make_plan(db_session, "ERP")
+    _rules(db_session, sc, types, role="dev")
+    org = types["organizational"].id
+    db_session.add(ScenarioRule(scenario_id=sc.id, role=None, work_type_id=org, percent_of_norm=5))
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    assert {wt: round(h, 2) for wt, h in r.people[e.id].share.items()} == {org: round(0.05 * 512, 2)}
+
+
+def test_role_with_zero_rules_does_not_fall_back_to_all_roles(db_session):
+    types = _types(db_session)
+    qa = make_employee(db_session, "Тестировщик", "ERP", role="qa")
+    dev = make_employee(db_session, "Разработчик", "ERP", role="dev")
+    sc, _plan = make_plan(db_session, "ERP")
+    tech = types["technical_tasks"].id
+    db_session.add(ScenarioRule(scenario_id=sc.id, role=None, work_type_id=tech, percent_of_norm=10))
+    for w in types.values():
+        db_session.add(ScenarioRule(scenario_id=sc.id, role="qa", work_type_id=w.id, percent_of_norm=0))
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    assert r.people[qa.id].undated == 0.0
+    assert sum(x.planned for x in r.roles.get("qa", [])) == 0.0
+    assert round(r.people[dev.id].share[tech], 2) == round(0.10 * 512, 2)
+
+
+def test_text_quarter_works_like_number(db_session):
+    _types_, p, _s, _item = _erp(db_session)
+
+    by_num = nr.team_reserve(db_session, "ERP", 2026, 1)
+
+    for q in ("Q1", "1"):
+        by_text = nr.team_reserve(db_session, "ERP", 2026, q)
+        assert by_text.scenario_id == by_num.scenario_id
+        assert by_text.people[p.id].norm == by_num.people[p.id].norm
+        assert by_text.people[p.id].share == by_num.people[p.id].share
+        assert [w.hours for w in by_text.other_team_work] == [w.hours for w in by_num.other_team_work]
+    assert nr.team_reserve(db_session, "ERP", 2026, "Q9") is None
+
+
+def test_other_team_and_teamless_blocks_do_not_consume_reserve(db_session):
+    types, p, s, _item = _erp(db_session)  # P ещё и в «Блоке» (не основная)
+    support = types["support_consult"].id
+    db_session.add(ScheduledBlock(team="Блок", start_date=D("2026-01-05"), end_date=D("2026-01-07"),
+                                  reason="Закрытие месяца", work_type_id=support))
+    db_session.add(ScheduledBlock(team=None, start_date=D("2026-01-12"), end_date=D("2026-01-12"),
+                                  reason="Субботник", work_type_id=support))
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    row = next(x for x in r.roles["dev"] if x.work_type_id == support)
+    assert row.blocked == 0.0
+    assert r.people[p.id].blocked == {} and r.people[s.id].blocked == {}
+
+
+def test_team_without_rules_has_no_reserve(db_session):
+    make_employee(db_session, "Один", "Пусто", role="dev")
+    make_plan(db_session, "Пусто")
+    db_session.commit()
+
+    assert nr.team_reserve(db_session, "Пусто", *Q) is None
+
+
+def test_place_person_residue_then_free_days_then_unplaced():
+    days = [D("2026-01-05") + timedelta(days=i) for i in range(5)]  # Пн–Пт
+    capacity = {d: 8.0 for d in days}
+    own = {days[0]: 7.2, days[1]: 7.2}
+    residue = {days[0]: 0.1, days[1]: 0.1}
+    reserve = nr.PersonReserve("e", "dev", 40.0, share={"wt": 20.0})
+    blocked = {days[4]: BlockHit("b", "ERP", "wt2", "Закрытие месяца")}
+
+    load = nr.place_person(capacity, own, {}, residue, blocked, reserve, {"wt": "Минорные", "wt2": "Сопровождение"})
+
+    # 8 − 7,2 в двоичной арифметике — 0,7999…8: сравнение с округлением.
+    assert round(load.normed_by_day[days[0]], 2) == 0.8 and round(load.normed_by_day[days[1]], 2) == 0.8
+    assert load.normed_by_day[days[4]] == 8.0
+    # Доля 20 ч: 1,6 ч — остатки Пн/Вт; 18,4 ч — на свободные Ср/Чт (16 ч), 2,4 ч не поместились.
+    assert round(load.normed_by_day[days[2]], 2) == 8.0 and round(load.normed_by_day[days[3]], 2) == 8.0
+    assert round(load.unplaced, 2) == 2.4
+    assert round(load.normed, 2) == 28.0          # 8 заблокировано + 20 доля
+    assert round(load.pct, 1) == round((14.4 + 28.0) / 40 * 100, 1)
+    assert load.normed_by_type == {"Сопровождение": 8.0, "Минорные": 20.0}
