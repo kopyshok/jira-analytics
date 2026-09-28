@@ -107,6 +107,7 @@ def seed() -> None:
                     role=UserRole.admin,
                     default_team=None,
                     is_active=True,
+                    onboarding_raw='{"auto_opened": true}',
                 )
             )
 
