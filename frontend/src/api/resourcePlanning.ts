@@ -8,8 +8,20 @@ export interface ScheduledBlock {
   start_date: string;
   end_date: string;
   reason: string;
+  work_type_id: string | null;
+  /** Подпись вида работ; пусто — период создан до ввода вида работ. */
+  work_type_label?: string | null;
+  /** Подписи ролей периода. */
+  role_labels?: string[];
+  /** Имена сотрудников периода. */
+  employee_names?: string[];
   created_at: string;
 }
+
+export type ScheduledBlockInput = Omit<
+  ScheduledBlock,
+  'id' | 'created_at' | 'work_type_label' | 'role_labels' | 'employee_names'
+> & { work_type_id: string };
 
 export interface ResourcePlan {
   id: string;
@@ -331,10 +343,10 @@ export const clearAssignmentManualEdit = (
 export const getScheduledBlocks = (team?: string) =>
   api.get<ScheduledBlock[]>('/resource-planning/scheduled-blocks', team ? { team } : undefined);
 
-export const createScheduledBlock = (data: Omit<ScheduledBlock, 'id' | 'created_at'>) =>
+export const createScheduledBlock = (data: ScheduledBlockInput) =>
   api.post<ScheduledBlock>('/resource-planning/scheduled-blocks', data);
 
-export const updateScheduledBlock = (id: string, data: Partial<Omit<ScheduledBlock, 'id' | 'created_at'>>) =>
+export const updateScheduledBlock = (id: string, data: Partial<ScheduledBlockInput>) =>
   api.patch<ScheduledBlock>(`/resource-planning/scheduled-blocks/${id}`, data);
 
 export const deleteScheduledBlock = (id: string) =>

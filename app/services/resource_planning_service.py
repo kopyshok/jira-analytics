@@ -22,13 +22,12 @@ from app.models import (
     ProductionCalendarDay,
     ResourcePlan,
     ResourcePlanAssignment,
-    Role,
-    ScheduledBlock,
     ScenarioAllocation,
     Team,
 )
 from app.services import opo_policy, team_membership as tm
 from app.services import cross_team_occupancy as cto
+from app.services import scheduled_blocks as sb
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.jira_developer import jira_developers_for_items
 from app.services.involvement_default_service import effective_for_phase, team_defaults
@@ -242,7 +241,7 @@ class ResourcePlanningService:
         employees: List[Employee],
         start: date,
         end: date,
-        scheduled_blocks: List[ScheduledBlock],
+        blocked: Optional[Dict[str, Dict[date, sb.BlockHit]]] = None,
         team: Optional[str] = None,
         borrowed: Optional[set] = None,
     ) -> Dict[str, Dict[date, float]]:
@@ -250,6 +249,9 @@ class ResourcePlanningService:
 
         available_hours = production calendar hours if working day,
         0.0 if weekend/holiday/absence/blocked period.
+
+        ``blocked`` — заблокированные дни (см. `scheduled_blocks`):
+        {сотрудник: {день: период}}; пусто — без периодов.
 
         ``team`` задан → дни вне периода участия в этой команде тоже нулевые:
         пришедший в середине квартала не получает работу до своей даты входа,
@@ -302,34 +304,7 @@ class ResourcePlanningService:
                 absent_days[a.employee_id].add(d)
                 d += timedelta(days=1)
 
-        # Build role_code → role_id map for block resolution.
-        # ScheduledBlock.roles[].role_id is a UUID FK → roles.id;
-        # Employee.role is a role code. We load the mapping once.
-        role_code_to_id: Dict[str, str] = {}
-        role_id_to_code: Dict[str, str] = {}
-        role_ids_needed: set[str] = set()
-        for b in scheduled_blocks:
-            for r in b.roles:
-                role_ids_needed.add(r.role_id)
-        if role_ids_needed:
-            role_rows = (
-                self.db.execute(select(Role).where(Role.id.in_(role_ids_needed)))
-                .scalars()
-                .all()
-            )
-            for r in role_rows:
-                role_code_to_id[r.code] = r.id
-                role_id_to_code[r.id] = r.code
-
-        # Blocked periods
-        blocked_days: Dict[str, set] = defaultdict(set)
-        for b in scheduled_blocks:
-            targets = self._block_targets(b, employees, role_id_to_code)
-            d = max(b.start_date, start)
-            while d <= min(b.end_date, end):
-                for eid in targets:
-                    blocked_days[eid].add(d)
-                d += timedelta(days=1)
+        blocked_map = blocked or {}
 
         # Build result
         result: Dict[str, Dict[date, float]] = {}
@@ -343,7 +318,11 @@ class ResourcePlanningService:
                     and emp.id not in borrowed_set
                     and not tm.day_in_intervals(d, spans)
                 )
-                if out_of_team or d in absent_days[emp.id] or d in blocked_days[emp.id]:
+                if (
+                    out_of_team
+                    or d in absent_days[emp.id]
+                    or d in blocked_map.get(emp.id, ())
+                ):
                     daily[d] = 0.0
                 else:
                     cal_hours = cal.get(d, None)
@@ -354,34 +333,6 @@ class ResourcePlanningService:
                 d += timedelta(days=1)
             result[emp.id] = daily
         return result
-
-    def _block_targets(
-        self,
-        block: ScheduledBlock,
-        employees: List[Employee],
-        role_id_to_code: Dict[str, str],
-    ) -> List[str]:
-        """Resolve which employee IDs are affected by a ScheduledBlock.
-
-        Block applies to:
-          - all employees with one of `block.roles` codes, AND
-          - any explicitly listed employee in `block.employees`.
-        Если оба списка пусты — блок действует на всю команду
-        (или на всех сотрудников, если `block.team` is None).
-        """
-        if not block.roles and not block.employees:
-            if block.team:
-                return [e.id for e in employees if e.team == block.team]
-            return [e.id for e in employees]
-        targets: set[str] = set()
-        role_ids = {r.role_id for r in block.roles}
-        for r_id in role_ids:
-            code = role_id_to_code.get(r_id, "")
-            targets.update(
-                e.id for e in employees if (e.role or "").lower() == code.lower()
-            )
-        targets.update(e.employee_id for e in block.employees)
-        return list(targets)
 
     def _extend_window_for_hours(
         self,
@@ -689,16 +640,13 @@ class ResourcePlanningService:
             self.db.commit()
             return
 
-        blocks = (
-            self.db.execute(
-                select(ScheduledBlock).where(ScheduledBlock.team == plan.team)
-            )
-            .scalars()
-            .all()
+        # Заблокированные дни: периоды команды плана у её людей и периоды
+        # основной команды каждого человека (закрывают день и в чужих планах).
+        blocked = sb.resolve_blocked_days(
+            self.db, employees, q_start, q_end_extended, plan.team
         )
-
         raw_avail = self.build_availability(
-            employees, q_start, q_end_extended, list(blocks),
+            employees, q_start, q_end_extended, blocked,
             team=plan.team, borrowed=borrowed,
         )
         # Часы, забронированные на этих людей опорными планами других команд,
@@ -1602,9 +1550,15 @@ class ResourcePlanningService:
         # команды и привлечённых, получивших в плане фазы. Привлечённый без
         # фаз (например, занятый «Разработчик» из Jira) в неё не попадает —
         # его брони в отпечатке дали бы пометку «устарел» сразу после расчёта.
+        # Так же — заблокированные дни их основных команд.
         staffed = {a.employee_id for a in new_assignments}
+        shown = team_ids | staffed
         plan.external_fingerprint = cto.fingerprint(
-            b for b in subtracted if b.employee_id in team_ids or b.employee_id in staffed
+            (b for b in subtracted if b.employee_id in shown),
+            sb.cells_by_team(
+                {eid: days for eid, days in blocked.items() if eid in shown},
+                exclude_team=plan.team,
+            ),
         )
         self.db.commit()
 
@@ -1857,7 +1811,8 @@ class ResourcePlanningService:
         )
 
     def _team_fingerprint(self, plan: ResourcePlan) -> str:
-        """Отпечаток вычитаемых броней состава команды — для плана без задач.
+        """Отпечаток вычитаемых броней состава команды и заблокированных дней
+        их основных команд — для плана без задач.
 
         Диаграмма такого плана сверяет брони состава так же, как у любого
         другого, — без отпечатка пометку «устарел» не снимал бы и пересчёт.
@@ -1867,10 +1822,15 @@ class ResourcePlanningService:
         except ValueError:
             # Квартал не разобрать — диаграмма такой план не показывает.
             return cto.fingerprint([])
+        employees = self._load_employees(plan)
+        blocked = sb.resolve_blocked_days(
+            self.db, employees, q_start, q_end_extended, plan.team
+        )
         return cto.fingerprint(
             self._subtracted_bookings(
-                plan, self._load_employees(plan), set(), q_start, q_end_extended
-            )
+                plan, employees, set(), q_start, q_end_extended
+            ),
+            sb.cells_by_team(blocked, exclude_team=plan.team),
         )
 
     def _quarter_bounds(self, plan: ResourcePlan) -> Tuple[date, date]:

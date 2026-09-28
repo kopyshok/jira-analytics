@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth_deps import get_current_user
 from app.database import get_db
@@ -25,6 +25,7 @@ from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
 from app.schemas.assignee_candidates import CandidateGroupOut
 from app.services import cross_team_occupancy as cto
+from app.services import scheduled_blocks as sb
 from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.involvement_default_service import effective_for_phase, team_defaults
@@ -66,6 +67,7 @@ class ScheduledBlockCreate(BaseModel):
     start_date: date
     end_date: date
     reason: str
+    work_type_id: str
 
 
 class ScheduledBlockUpdate(BaseModel):
@@ -75,6 +77,7 @@ class ScheduledBlockUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     reason: Optional[str] = None
+    work_type_id: Optional[str] = None
 
 
 class ScheduledBlockOut(BaseModel):
@@ -85,22 +88,71 @@ class ScheduledBlockOut(BaseModel):
     start_date: date
     end_date: date
     reason: str
+    work_type_id: Optional[str] = None
+    # Подписи для списка: вид работ, роли и сотрудники периода.
+    work_type_label: Optional[str] = None
+    role_labels: List[str] = []
+    employee_names: List[str] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-def _block_to_out(block: ScheduledBlock) -> "ScheduledBlockOut":
-    return ScheduledBlockOut(
-        id=block.id,
-        team=block.team,
-        role_ids=[r.role_id for r in block.roles],
-        employee_ids=[e.employee_id for e in block.employees],
-        start_date=block.start_date,
-        end_date=block.end_date,
-        reason=block.reason,
-        created_at=block.created_at,
+WORK_TYPE_REQUIRED = "Выберите вид нормированных работ"
+
+
+def _check_work_type(db: Session, work_type_id: Optional[str]) -> None:
+    """Вид работ периода: есть в справочнике и уменьшает запас на проекты.
+
+    «Прочие / Чужие» и подобные периоду не подходят — 422.
+    """
+    from app.models import MandatoryWorkType
+
+    wt = db.get(MandatoryWorkType, work_type_id) if work_type_id else None
+    if wt is None or not wt.subtracts_from_pool:
+        raise HTTPException(422, WORK_TYPE_REQUIRED)
+
+
+def _blocks_out(db: Session, blocks: Sequence[ScheduledBlock]) -> List[ScheduledBlockOut]:
+    """Периоды с подписями: три запроса на любой объём списка — роли,
+    сотрудники и виды работ по id. Подписи — в порядке названий."""
+    from app.models import Employee, MandatoryWorkType, Role
+
+    def labels(id_col, label_col, ids: set) -> Dict[str, str]:
+        if not ids:
+            return {}
+        return {i: lbl for i, lbl in db.execute(select(id_col, label_col).where(id_col.in_(ids)))}
+
+    role_label = labels(Role.id, Role.label, {r.role_id for b in blocks for r in b.roles})
+    emp_name = labels(
+        Employee.id, Employee.display_name, {e.employee_id for b in blocks for e in b.employees}
     )
+    wt_label = labels(
+        MandatoryWorkType.id,
+        MandatoryWorkType.label,
+        {b.work_type_id for b in blocks if b.work_type_id},
+    )
+    return [
+        ScheduledBlockOut(
+            id=b.id,
+            team=b.team,
+            role_ids=[r.role_id for r in b.roles],
+            employee_ids=[e.employee_id for e in b.employees],
+            start_date=b.start_date,
+            end_date=b.end_date,
+            reason=b.reason,
+            work_type_id=b.work_type_id,
+            work_type_label=wt_label.get(b.work_type_id) if b.work_type_id else None,
+            role_labels=sorted(
+                role_label[r.role_id] for r in b.roles if r.role_id in role_label
+            ),
+            employee_names=sorted(
+                emp_name[e.employee_id] for e in b.employees if e.employee_id in emp_name
+            ),
+            created_at=b.created_at,
+        )
+        for b in blocks
+    ]
 
 
 def _parse_daily_hours(daily_hours_json: Optional[str]) -> Optional[Dict[str, float]]:
@@ -755,10 +807,14 @@ def list_scheduled_blocks(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    q = select(ScheduledBlock).order_by(ScheduledBlock.start_date)
+    q = (
+        select(ScheduledBlock)
+        .options(selectinload(ScheduledBlock.roles), selectinload(ScheduledBlock.employees))
+        .order_by(ScheduledBlock.start_date)
+    )
     if team:
         q = q.where(ScheduledBlock.team == team)
-    return [_block_to_out(b) for b in db.execute(q).scalars().all()]
+    return _blocks_out(db, db.execute(q).scalars().all())
 
 
 @router.post("/scheduled-blocks", response_model=ScheduledBlockOut, status_code=201)
@@ -769,18 +825,20 @@ def create_scheduled_block(
 ):
     if data.end_date < data.start_date:
         raise HTTPException(422, "end_date must be >= start_date")
+    _check_work_type(db, data.work_type_id)
     block = ScheduledBlock(
         team=data.team,
         start_date=data.start_date,
         end_date=data.end_date,
         reason=data.reason,
+        work_type_id=data.work_type_id,
     )
     block.roles = [ScheduledBlockRole(role_id=r) for r in data.role_ids]
     block.employees = [ScheduledBlockEmployee(employee_id=e) for e in data.employee_ids]
     db.add(block)
     db.commit()
     db.refresh(block)
-    return _block_to_out(block)
+    return _blocks_out(db, [block])[0]
 
 
 @router.patch("/scheduled-blocks/{block_id}", response_model=ScheduledBlockOut)
@@ -794,6 +852,9 @@ def update_scheduled_block(
     if not block:
         raise HTTPException(404, "ScheduledBlock not found")
     patch = data.model_dump(exclude_unset=True)
+    # Вид работ можно сменить, но не снять: явный null — 422.
+    if "work_type_id" in patch:
+        _check_work_type(db, patch["work_type_id"])
     role_ids = patch.pop("role_ids", None)
     employee_ids = patch.pop("employee_ids", None)
     for k, v in patch.items():
@@ -806,7 +867,7 @@ def update_scheduled_block(
         block.employees = [ScheduledBlockEmployee(employee_id=e) for e in employee_ids]
     db.commit()
     db.refresh(block)
-    return _block_to_out(block)
+    return _blocks_out(db, [block])[0]
 
 
 @router.delete("/scheduled-blocks/{block_id}", status_code=204)
@@ -1080,7 +1141,7 @@ def _occupancy_inputs(
     Для привлечённых (``borrowed``) дни вне команды плана — норма, не простой.
     """
     capacity = svc.build_availability(
-        employees, start, end, [], team=plan.team, borrowed=borrowed
+        employees, start, end, None, team=plan.team, borrowed=borrowed
     )
     bookings = cto.external_bookings(
         db,
@@ -1566,12 +1627,18 @@ def get_gantt(
                 )
                 for b in bookings
             ]
-            # План устарел, если вычитаемые из его доступности брони
-            # разошлись с учтёнными при расчёте (отпечаток по командам).
+            # План устарел, если вычитаемые из его доступности брони или
+            # заблокированные дни основных команд его людей разошлись с
+            # учтёнными при расчёте (отпечаток по командам).
+            blocked_cells = sb.cells_by_team(
+                sb.resolve_blocked_days(db, list(plan_employees), q_start, q_end_ext, plan.team),
+                exclude_team=plan.team,
+            )
             changed_teams = cto.stale_teams(
                 plan.external_fingerprint,
                 cto.subtractable(bookings, borrowed),
                 plan.computed_at,
+                blocked_cells,
             )
             live_conflicts = _cross_team_conflicts(
                 plan, list(assignments_raw), yielding, used, avail, bookings, names,
@@ -2849,18 +2916,6 @@ def explain_conflict(
         if owner:
             employees.append(owner)
 
-    blocks = (
-        db.execute(
-            select(ScheduledBlock).where(
-                (ScheduledBlock.team == team) | (ScheduledBlock.team.is_(None))
-            )
-            if team
-            else select(ScheduledBlock)
-        )
-        .scalars()
-        .all()
-    )
-
     svc = ResourcePlanningService(db)
     # Привлечённому дни вне команды плана — норма. Ёмкость остаётся «сырой»
     # (без броней других команд): перегрузку выравниватель меряет так же.
@@ -2870,8 +2925,9 @@ def explain_conflict(
     except ValueError:
         borrowed_here = set()
     availability = svc.build_availability(
-        employees, target_date, target_date, list(blocks), team=team,
-        borrowed=borrowed_here,
+        employees, target_date, target_date,
+        sb.resolve_blocked_days(db, employees, target_date, target_date, team),
+        team=team, borrowed=borrowed_here,
     )
     avail_map = availability.get(c.employee_id, {})
     available_h = float(avail_map.get(target_date, 0.0))
@@ -2900,11 +2956,12 @@ def explain_conflict(
     emp_horizon_end = max(
         (a.end_date for a in assignments if a.end_date), default=target_date
     )
+    owner_only = [e for e in employees if e.id == c.employee_id]
     full_avail = svc.build_availability(
-        [e for e in employees if e.id == c.employee_id],
+        owner_only,
         emp_horizon_start,
         emp_horizon_end,
-        list(blocks),
+        sb.resolve_blocked_days(db, owner_only, emp_horizon_start, emp_horizon_end, team),
         team=team,
         borrowed=borrowed_here,
     ).get(c.employee_id, {})
@@ -3533,18 +3590,6 @@ def explain_assignment(
         if owner:
             employees.append(owner)
 
-    blocks = (
-        db.execute(
-            select(ScheduledBlock).where(
-                (ScheduledBlock.team == team) | (ScheduledBlock.team.is_(None))
-            )
-            if team
-            else select(ScheduledBlock)
-        )
-        .scalars()
-        .all()
-    )
-
     svc = ResourcePlanningService(db)
     phase_label = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
 
@@ -3610,11 +3655,12 @@ def explain_assignment(
         except ValueError:
             borrowed_here = set()
             yields_here = set()
+        owner_only = [e for e in employees if e.id == a.employee_id]
         raw_avail = svc.build_availability(
-            [e for e in employees if e.id == a.employee_id],
+            owner_only,
             horizon_start,
             horizon_end,
-            list(blocks),
+            sb.resolve_blocked_days(db, owner_only, horizon_start, horizon_end, plan.team),
             team=plan.team,
             borrowed=borrowed_here,
         )
