@@ -32,6 +32,7 @@ from app.services.backlog_service import (
     TRACKED_CATEGORIES,
     BacklogService,
     apply_jira_assignee,
+    choose_assignee,
     is_cancel_like,
     issue_is_multi_team,
     mode_excluded_backlog_ids,
@@ -1254,13 +1255,17 @@ async def update_backlog_item(
         if eid is not None and not db.get(Employee, eid):
             raise HTTPException(status_code=404, detail="Employee not found")
     # Один человек не может быть и аналитиком, и разработчиком строки.
-    assignee = patch.get("assignee_employee_id", item.assignee_employee_id)
-    developer = patch.get("developer_employee_id", item.developer_employee_id)
-    if assignee and assignee == developer:
-        raise HTTPException(
-            status_code=422,
-            detail="Один сотрудник не может быть и аналитиком, и разработчиком",
-        )
+    # Проверяем, только когда правят кого-то из них: обновление из Jira могло
+    # сделать исполнителя разработчиком — правка приоритета или часов не должна
+    # на этом падать.
+    if {"assignee_employee_id", "developer_employee_id"} & patch.keys():
+        assignee = patch.get("assignee_employee_id", item.assignee_employee_id)
+        developer = patch.get("developer_employee_id", item.developer_employee_id)
+        if assignee and assignee == developer:
+            raise HTTPException(
+                status_code=422,
+                detail="Один сотрудник не может быть и аналитиком, и разработчиком",
+            )
 
     role_hours = {
         role: patch.pop(f"estimate_{role}_hours")
@@ -1280,6 +1285,10 @@ async def update_backlog_item(
         entities = ["issues", "backlog"]
     else:
         entities = ["backlog"]
+    if "assignee_employee_id" in patch:
+        # Выбор на бэклоге — ручной, как и в сценарии (см. choose_assignee).
+        eid = patch.pop("assignee_employee_id")
+        choose_assignee(item, db.get(Employee, eid) if eid else None)
     for key, value in patch.items():
         setattr(item, key, value)
     for role, value in role_hours.items():

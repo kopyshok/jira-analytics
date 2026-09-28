@@ -65,9 +65,9 @@ import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../uti
 import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
 
-const GRID = '24px 36px 48px minmax(0, 1fr) 150px 150px 180px 260px 90px';
+const GRID = '24px 36px 48px minmax(0, 1fr) 130px 130px 180px 260px 90px';
 // Та же сетка + колонка «Группа» после разработчика — для команд с делением.
-const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(0, 1fr) 150px 150px 140px 180px 260px 90px';
+const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(0, 1fr) 130px 130px 140px 180px 260px 90px';
 const GRID_GAP = 8;
 
 
