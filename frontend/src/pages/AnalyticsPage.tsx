@@ -115,13 +115,16 @@ export default function AnalyticsPage() {
 
   const headerActions = (
     <Space wrap>
-      <DatePicker.RangePicker
-        data-tour="analytics-period"
-        value={localRange}
-        onChange={setLocalRange}
-        placeholder={['Уточнить с', 'по']}
-        allowClear
-      />
+      {/* RangePicker копирует data-* только на первый input — оборачиваем, чтобы
+          экскурсия подсвечивала весь виджет, а не только поле «с». */}
+      <span data-tour="analytics-period" style={{ display: 'inline-flex' }}>
+        <DatePicker.RangePicker
+          value={localRange}
+          onChange={setLocalRange}
+          placeholder={['Уточнить с', 'по']}
+          allowClear
+        />
+      </span>
       <span>Ворклоги:</span>
       <Switch
         checkedChildren="inline"

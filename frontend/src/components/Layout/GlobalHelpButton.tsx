@@ -12,14 +12,14 @@ export default function GlobalHelpButton() {
   const [open, setOpen] = useState(false);
   const { data: unread } = useUnreadReleaseNotes();
   const hasUnread = (unread?.unread_versions.length ?? 0) > 0;
-  // Кнопка disabled только когда И справки нет, И непрочитанных нет.
-  const disabled = !current && !hasUnread;
-
+  // Кнопка всегда активна: без справки по разделу открывается вкладка «Что
+  // нового», а из неё же доступен возврат к «Первым шагам» (см. extra ниже) —
+  // это единственный способ вернуть скрытую панель на странице без справки.
   const title = hasUnread
     ? 'Справка по разделу — есть новые обновления во вкладке «Что нового»'
-    : disabled
-    ? 'Для этого раздела справки пока нет'
-    : 'Справка по разделу';
+    : current
+    ? 'Справка по разделу'
+    : 'Для этого раздела справки пока нет — «Что нового» и «Первые шаги» доступны';
 
   // Дефолт всегда «Справка» (когда контент есть). Лента «Что нового» — вторая
   // вкладка; красная точка на иконке подсказывает что там что-то новое, но
@@ -34,11 +34,8 @@ export default function GlobalHelpButton() {
           size="small"
           icon={<QuestionCircleOutlined />}
           onClick={() => setOpen(true)}
-          disabled={disabled}
           title={title}
-          style={{
-            color: disabled ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.55)',
-          }}
+          style={{ color: 'rgba(255,255,255,0.55)' }}
         />
       </Badge>
       <HelpDrawer
