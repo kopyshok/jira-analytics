@@ -126,16 +126,16 @@ class ScenarioExportContext:
 INCLUDED_HEADERS = [
     "Ключ Jira", "Название", "Приоритет", "Заказчик",
     "Аналитик, ч", "Разработка, ч", "QA, ч", "ОПЭ, ч",
-    "Итого, ч", "План, ч", "Цели",
+    "Итого, ч", "План, ч", "Цели", "Аналитик", "Разработчик",
 ]
-INCLUDED_WIDTHS = [14, 50, 8, 18, 11, 11, 11, 11, 12, 12, 28]
+INCLUDED_WIDTHS = [14, 50, 8, 18, 11, 11, 11, 11, 12, 12, 28, 22, 22]
 
 EXCLUDED_HEADERS = [
     "Ключ Jira", "Название", "Приоритет", "Заказчик",
     "Аналитик, ч", "Разработка, ч", "QA, ч", "ОПЭ, ч",
-    "Итого, ч", "Цели",
+    "Итого, ч", "Цели", "Аналитик", "Разработчик",
 ]
-EXCLUDED_WIDTHS = [14, 50, 8, 18, 11, 11, 11, 11, 12, 28]
+EXCLUDED_WIDTHS = [14, 50, 8, 18, 11, 11, 11, 11, 12, 28, 22, 22]
 
 
 def _demand_by_role(alloc: ScenarioAllocation) -> tuple[float, float, float, float]:
@@ -159,6 +159,18 @@ def _drop_opo(values: list, opo_off: bool) -> list:
     if not opo_off:
         return values
     return values[:7] + values[8:]
+
+
+def _analyst_name(item: BacklogItem) -> str:
+    """Имя в колонке «Аналитик» — как в сценарии: выбранный вручную, иначе
+    исполнитель из Jira, иначе привязанный сотрудник."""
+    assignee = getattr(item, "assignee", None)
+    if item.assignee_manual:
+        return assignee.display_name if assignee else ""
+    issue = getattr(item, "issue", None)
+    if issue is not None and issue.assignee_display_name:
+        return issue.assignee_display_name
+    return assignee.display_name if assignee else ""
 
 
 def _initiative_row_mid(
@@ -188,6 +200,9 @@ def _initiative_row_mid(
     if included:
         base.append(round(alloc.planned_hours or 0.0, 1))
     base.append(goals)
+    developer = getattr(item, "developer", None)
+    base.append(_analyst_name(item))
+    base.append(developer.display_name if developer else "")
     return base
 
 
@@ -418,6 +433,8 @@ class ScenarioXlsxExporter:
                     .joinedload(BacklogItem.project),
                 joinedload(ScenarioAllocation.backlog_item)
                     .joinedload(BacklogItem.assignee),
+                joinedload(ScenarioAllocation.backlog_item)
+                    .joinedload(BacklogItem.developer),
             )
             .filter(ScenarioAllocation.scenario_id == self.scenario_id)
             .all()
@@ -911,7 +928,7 @@ class ScenarioXlsxExporter:
             start_row=total_row_idx, start_column=1,
             end_row=total_row_idx, end_column=4,
         )
-        sum_cols = list(range(5, len(headers)))
+        sum_cols = list(range(5, len(headers) - 2))
         for c_idx in sum_cols:
             if rows:
                 total = sum(
@@ -925,9 +942,10 @@ class ScenarioXlsxExporter:
             c.fill = _Style.HEADER_FILL
             c.number_format = "#,##0.#"
             c.alignment = _Style.RIGHT
-        # Empty cell for "Цели" column to keep the strip continuous
-        c = ws.cell(row=total_row_idx, column=11, value="")
-        c.fill = _Style.HEADER_FILL
+        # Пустые ячейки «Цели»/«Аналитик»/«Разработчик» — заливка для целостности полосы
+        for c_idx in range(len(headers) - 2, len(headers) + 1):
+            c = ws.cell(row=total_row_idx, column=c_idx, value="")
+            c.fill = _Style.HEADER_FILL
 
         # Тонкая линия снизу каждой строки данных
         _stamp_row_borders(ws, [(3, total_row_idx - 1, len(headers))])
@@ -1015,7 +1033,7 @@ class ScenarioXlsxExporter:
             start_row=total_row_idx, start_column=1,
             end_row=total_row_idx, end_column=4,
         )
-        sum_cols = list(range(5, len(headers)))
+        sum_cols = list(range(5, len(headers) - 2))
         for c_idx in sum_cols:
             if rows:
                 total = sum(
@@ -1029,8 +1047,10 @@ class ScenarioXlsxExporter:
             c.fill = _Style.HEADER_FILL
             c.number_format = "#,##0.#"
             c.alignment = _Style.RIGHT
-        c = ws.cell(row=total_row_idx, column=10, value="")
-        c.fill = _Style.HEADER_FILL
+        # Пустые ячейки «Цели»/«Аналитик»/«Разработчик» — заливка для целостности полосы
+        for c_idx in range(len(headers) - 2, len(headers) + 1):
+            c = ws.cell(row=total_row_idx, column=c_idx, value="")
+            c.fill = _Style.HEADER_FILL
 
         # Тонкая линия снизу каждой строки данных
         _stamp_row_borders(ws, [(3, total_row_idx - 1, len(headers))])
