@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.main import app
@@ -16,6 +17,7 @@ from app.models import (
     ResourcePlan,
     TeamOnboardingMark,
 )
+from app.services import onboarding_service as svc
 
 TEAM = "Команда А"
 
@@ -158,6 +160,26 @@ def test_backlog_archived_not_counted(client):
     assert _status(tc)["steps"]["backlog"]["state"] == "pending"
 
 
+def test_backlog_excludes_jira_done_like_archive_tab(client):
+    """Инициатива из Jira в статусе done не должна засчитываться — как во
+    вкладке «Архив» бэклога (см. app/api/endpoints/backlog.py). Проверяем на
+    двух разных командах, чтобы не упереться в защёлку: один раз шаг уже
+    закрылся — назад в pending он не откатится, даже если данные исчезнут."""
+    tc, db = client
+    _project(db)
+
+    active_issue = _issue(db, 50, category="initiatives_rfa", team="Команда В")
+    db.add(BacklogItem(id="bl-ob-active", title="Инициатива", issue_id=active_issue.id, estimate_dev_hours=40))
+    db.commit()
+    assert _status(tc, "Команда В")["steps"]["backlog"]["state"] == "done"
+
+    done_issue = _issue(db, 51, category="initiatives_rfa", team="Команда Г")
+    done_issue.status_category = "done"
+    db.add(BacklogItem(id="bl-ob-done", title="Инициатива", issue_id=done_issue.id, estimate_dev_hours=40))
+    db.commit()
+    assert _status(tc, "Команда Г")["steps"]["backlog"]["state"] == "pending"
+
+
 def test_scenario_and_resource_plan(client):
     tc, db = client
     db.add(PlanningScenario(id="sc-ob-1", name="2026 Q4", team=TEAM, quarter="Q4", year=2026))
@@ -172,6 +194,37 @@ def test_scenario_and_resource_plan(client):
     assert _status(tc)["steps"]["resource_plan"]["state"] == "done"
 
 
+def test_auto_step_relatches_after_manual_reset(client):
+    """Авто-шаг сброшен в pending через PUT — при следующем чтении, пока условие
+    ещё выполняется, он снова защёлкивается как done/auto."""
+    tc, db = client
+    db.add(PlanningScenario(id="sc-relatch-1", name="2026 Q4", team=TEAM, quarter="Q4", year=2026))
+    db.commit()
+    assert _status(tc)["steps"]["scenario_created"]["state"] == "done"
+
+    resp = tc.put("/api/v1/onboarding/team-steps/scenario_created", json={"team": TEAM, "state": "pending"})
+    assert resp.status_code == 200
+
+    step = _status(tc)["steps"]["scenario_created"]
+    assert step["state"] == "done"
+    assert step["source"] == "auto"
+
+
+def test_skipped_auto_step_stays_skipped_when_condition_holds(client):
+    """Авто-шаг явно пропущен — не должен перезащёлкиваться в done, даже если
+    условие выполняется."""
+    tc, db = client
+    db.add(PlanningScenario(id="sc-skip-1", name="2026 Q4", team=TEAM, quarter="Q4", year=2026))
+    db.commit()
+
+    resp = tc.put("/api/v1/onboarding/team-steps/scenario_created", json={"team": TEAM, "state": "skipped"})
+    assert resp.status_code == 200
+
+    step = _status(tc)["steps"]["scenario_created"]
+    assert step["state"] == "skipped"
+    assert step["source"] == "manual"
+
+
 def test_manual_mark_skip_and_reset(client):
     tc, _ = client
     resp = tc.put("/api/v1/onboarding/team-steps/absences", json={"team": TEAM, "state": "done"})
@@ -182,10 +235,12 @@ def test_manual_mark_skip_and_reset(client):
     assert step["marked_by"] == "Test User"
     assert step["marked_at"]
 
-    tc.put("/api/v1/onboarding/team-steps/absences", json={"team": TEAM, "state": "pending"})
+    resp = tc.put("/api/v1/onboarding/team-steps/absences", json={"team": TEAM, "state": "pending"})
+    assert resp.status_code == 200
     assert _status(tc)["steps"]["absences"]["state"] == "pending"
 
-    tc.put("/api/v1/onboarding/team-steps/backlog", json={"team": TEAM, "state": "skipped"})
+    resp = tc.put("/api/v1/onboarding/team-steps/backlog", json={"team": TEAM, "state": "skipped"})
+    assert resp.status_code == 200
     assert _status(tc)["steps"]["backlog"]["state"] == "skipped"
 
 
@@ -203,7 +258,8 @@ def test_unknown_step_404(client):
 
 def test_marks_are_per_team(client):
     tc, _ = client
-    tc.put("/api/v1/onboarding/team-steps/absences", json={"team": TEAM, "state": "done"})
+    resp = tc.put("/api/v1/onboarding/team-steps/absences", json={"team": TEAM, "state": "done"})
+    assert resp.status_code == 200
     assert _status(tc, "Команда Б")["steps"]["absences"]["state"] == "pending"
 
 
@@ -214,13 +270,60 @@ def test_me_partial_update(client):
     resp = tc.put("/api/v1/onboarding/me", json={"auto_opened": True})
     assert resp.status_code == 200
     resp = tc.put("/api/v1/onboarding/me", json={"completed_tours": ["dashboard"]})
+    assert resp.status_code == 200
     assert resp.json() == {"completed_tours": ["dashboard"], "auto_opened": True, "hidden": False}
     assert _status(tc)["me"]["completed_tours"] == ["dashboard"]
 
 
-def test_latch_race_is_ignored(client):
-    """Строка защёлки уже есть (записал параллельный запрос) — чтение не падает."""
+def test_latch_race_is_ignored(client, monkeypatch):
+    """Пока считаем условие шага, параллельный запрос успевает сам вставить и
+    закоммитить свою авто-отметку по этому же шагу — наш ``_latch`` должен
+    просто откатиться на IntegrityError, а не уронить запрос."""
     tc, db = client
-    db.add(TeamOnboardingMark(team=TEAM, step="scenario_created", state="done", source="auto"))
+    db.add(PlanningScenario(id="sc-race-1", name="2026 Q4", team=TEAM, quarter="Q4", year=2026))
     db.commit()
-    assert _status(tc)["steps"]["scenario_created"]["state"] == "done"
+
+    def racing(db_inner, team):
+        # Отдельная сессия на том же соединении: в тестовом SQLite используется
+        # StaticPool с одним соединением на процесс, поэтому запись отдельной
+        # сессии сразу видна остальным — этим имитируем параллельный запрос.
+        other = Session(bind=db_inner.get_bind())
+        try:
+            other.add(TeamOnboardingMark(team=team, step="scenario_created", state="done", source="auto"))
+            other.commit()
+        finally:
+            other.close()
+        return True
+
+    monkeypatch.setitem(svc.AUTO_STEPS, "scenario_created", racing)
+    steps = svc.team_steps(db, TEAM)
+    assert steps["scenario_created"]["state"] == "done"
+
+
+def test_status_survives_concurrent_manual_mark_delete(client, monkeypatch):
+    """Пока идёт проверка условий других шагов, параллельный запрос удаляет
+    ручную отметку («Вернуть» по другому шагу). До фикса марки грузились один
+    раз в начале team_steps, а `_latch` своим commit протухал уже загруженные
+    объекты (expire_on_commit) — обращение к удалённой строке падало с
+    ObjectDeletedError. Ответ должен строиться по свежему чтению без падения."""
+    tc, db = client
+    db.add(TeamOnboardingMark(
+        team=TEAM, step="absences", state="done", source="manual", marked_at=datetime.utcnow(),
+    ))
+    db.commit()
+
+    def deletes_other_mark_and_latches(db_inner, team):
+        other = Session(bind=db_inner.get_bind())
+        try:
+            other.query(TeamOnboardingMark).filter(
+                TeamOnboardingMark.team == team, TeamOnboardingMark.step == "absences"
+            ).delete()
+            other.commit()
+        finally:
+            other.close()
+        return True
+
+    monkeypatch.setitem(svc.AUTO_STEPS, "team_roles", deletes_other_mark_and_latches)
+    steps = svc.team_steps(db, TEAM)
+    assert steps["absences"]["state"] == "pending"
+    assert steps["team_roles"]["state"] == "done"
