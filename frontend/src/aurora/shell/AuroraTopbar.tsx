@@ -9,6 +9,7 @@ import GlobalHelpButton from '../../components/Layout/GlobalHelpButton';
 import SyncIndicator from '../../components/Layout/SyncIndicator';
 import { Avatar } from '../primitives/Avatar';
 import ThemeSelect from '../../components/Layout/ThemeSelect';
+import OnboardingButton from '../../onboarding/OnboardingButton';
 
 export function AuroraTopbar() {
   const { user, logout } = useAuth();
@@ -27,9 +28,10 @@ export function AuroraTopbar() {
         <SyncIndicator />
         {user && (
           <>
-            <GlobalTeamFilterButton />
-            <GlobalPeriodPicker />
-            <GlobalHelpButton />
+            <span data-tour="header-team" style={{ display: 'inline-flex' }}><GlobalTeamFilterButton /></span>
+            <span data-tour="header-period" style={{ display: 'inline-flex' }}><GlobalPeriodPicker /></span>
+            <OnboardingButton />
+            <span data-tour="header-help" style={{ display: 'inline-flex' }}><GlobalHelpButton /></span>
             <ThemeSelect width={170} />
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Avatar name={user.display_name} size={30} />

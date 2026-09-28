@@ -4,9 +4,11 @@ import { QuestionCircleOutlined } from '@ant-design/icons';
 import HelpDrawer from '../shared/HelpDrawer';
 import { useHelpContext } from '../../contexts/HelpContext';
 import { useUnreadReleaseNotes } from '../../hooks/useReleaseNotes';
+import { useOnboarding } from '../../onboarding/OnboardingContext';
 
 export default function GlobalHelpButton() {
   const { current } = useHelpContext();
+  const { openPanel } = useOnboarding();
   const [open, setOpen] = useState(false);
   const { data: unread } = useUnreadReleaseNotes();
   const hasUnread = (unread?.unread_versions.length ?? 0) > 0;
@@ -46,6 +48,11 @@ export default function GlobalHelpButton() {
         content={current?.content ?? ''}
         imageBase="/help-assets/"
         defaultTab={defaultTab}
+        extra={
+          <Button size="small" onClick={() => { setOpen(false); openPanel(); }}>
+            Первые шаги
+          </Button>
+        }
       />
     </>
   );
