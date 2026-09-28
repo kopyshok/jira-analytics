@@ -519,6 +519,8 @@ export interface BacklogItemResponse {
   approved_scenarios: BacklogItemScenarioRef[];
   assignee_employee_id: string | null;
   assignee_display_name: string | null;
+  developer_employee_id: string | null;
+  developer_display_name: string | null;
   customer: string | null;
   jira_status: string | null;
   jira_status_category: string | null;
@@ -710,6 +712,8 @@ export interface AllocationResponse {
   assignee_employee_id: string | null;
   assignee_display_name: string | null;
   assignee_role: string | null;
+  developer_employee_id: string | null;
+  developer_display_name: string | null;
   customer: string | null;
   cost_type: string | null;
   source_category: string | null;
