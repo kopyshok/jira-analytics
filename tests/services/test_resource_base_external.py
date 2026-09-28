@@ -7,16 +7,27 @@ from app.services.resource_base_service import ResourceBaseService
 from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
 
 
-def _setup(db_session):
-    """E состоит в A и в B (общий сотрудник); B бронирует его на 05.01."""
-    e = make_employee(db_session, "Пряничников", "A")
-    join_team(db_session, e, "B")
+def _setup(db_session, primary="B"):
+    """E состоит в A и в B (общий сотрудник, основная — ``primary``); B
+    бронирует его на 05.01. Сценарий — команды A."""
+    e = make_employee(db_session, "Пряничников", primary)
+    join_team(db_session, e, "A" if primary == "B" else "B")
     sc_b, plan_b = make_plan(db_session, "B")
     item_b = add_item(db_session, sc_b, "Работа B", dev=6)
     book(db_session, plan_b, item_b, e, {"2026-01-05": 6.0})
     sc_a, _ = make_plan(db_session, "A", scenario_status="draft")
     db_session.commit()
     return e, sc_a
+
+
+def test_primary_team_base_keeps_hours_booked_by_secondary_team(db_session):
+    """A — основная команда E: бронь B базу A не уменьшает, показана справочно."""
+    e, sc_a = _setup(db_session, primary="A")
+
+    s = ResourceBaseService(db_session).compute_summary(sc_a)
+
+    assert s.booked_by_other_teams_by_role == {}
+    assert s.borrowed_by_other_teams_by_role == {"developer": 6.0}
 
 
 def test_daily_base_minus_other_team_bookings(db_session):

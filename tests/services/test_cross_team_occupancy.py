@@ -306,7 +306,8 @@ def test_external_bookings_tie_broken_by_assignment(db_session):
     ]
 
 
-def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=None):
+def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=None,
+         yields_here=False):
     """Бронь без базы — для чистых функций."""
     daily = daily or {D("2026-01-05"): 6.0}
     return cto.ExternalBooking(
@@ -321,6 +322,7 @@ def _ext(employee_id, team="B", is_borrowing=False, daily=None, assignment_id=No
         daily_hours=daily,
         provisional=False,
         is_borrowing=is_borrowing,
+        yields_here=yields_here,
     )
 
 
@@ -331,9 +333,9 @@ def _booking_of(db_session, employee, team="B", year=2026, quarter="Q1", day="20
     return plan, row
 
 
-def _bookings_for_a(db_session, employee, end="2026-03-31"):
+def _bookings_for_a(db_session, employee, end="2026-03-31", team="A"):
     return cto.external_bookings(
-        db_session, team="A", year=2026, quarter=1, employee_ids=[employee.id],
+        db_session, team=team, year=2026, quarter=1, employee_ids=[employee.id],
         start=D("2026-01-01"), end=D(end),
     )
 
@@ -349,8 +351,9 @@ def test_booking_of_team_without_the_employee_is_borrowing(db_session):
     assert b.is_borrowing is True
 
 
-def test_booking_of_shared_member_is_not_borrowing(db_session):
-    """E состоит и в A, и в B — бронь B на E не привлечение."""
+def test_booking_of_secondary_team_is_borrowing(db_session):
+    """E в A (основная) и в B: основная команда главнее — бронь B для A
+    такое же привлечение, как у команды без E в составе."""
     e = make_employee(db_session, "Шутов", "A")
     join_team(db_session, e, "B")
     _booking_of(db_session, e)
@@ -358,14 +361,40 @@ def test_booking_of_shared_member_is_not_borrowing(db_session):
 
     [b] = _bookings_for_a(db_session, e)
 
-    assert b.is_borrowing is False
+    assert (b.is_borrowing, b.yields_here) == (True, False)
+
+
+def test_booking_of_primary_team_is_home_for_secondary_plan(db_session):
+    """Для плана B, где E не в основной команде, бронь основной A — домашняя,
+    а сам план B уступает E всем командам."""
+    e = make_employee(db_session, "Шутов", "A")
+    join_team(db_session, e, "B")
+    _booking_of(db_session, e, team="A")
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e, team="B")
+
+    assert (b.is_borrowing, b.yields_here) == (False, True)
+
+
+def test_member_teams_without_primary_are_equal(db_session):
+    e = make_employee(db_session, "Шутов", "A", member=False)
+    join_team(db_session, e, "A")
+    join_team(db_session, e, "B")
+    _booking_of(db_session, e)
+    db_session.commit()
+
+    [b] = _bookings_for_a(db_session, e)
+
+    assert (b.is_borrowing, b.yields_here) == (False, False)
 
 
 def test_tail_booking_checks_membership_in_its_own_quarter(db_session):
-    """Хвост плана B прошлого квартала: тогда E в B состоял — не привлечение,
-    хотя в этом квартале он в B уже не состоит."""
-    e = make_employee(db_session, "Шутов", "A")
-    join_team(db_session, e, "B", left_at=D("2026-01-01"))
+    """Хвост плана B прошлого квартала: тогда B была основной — не привлечение,
+    хотя в этом квартале E уже основной в A, а в B не состоит."""
+    e = make_employee(db_session, "Шутов", "A", member=False)
+    join_team(db_session, e, "A", joined_at=D("2026-01-01"), primary=True)
+    join_team(db_session, e, "B", left_at=D("2026-01-01"), primary=True)
     _booking_of(db_session, e, year=2025, quarter="Q4")
     db_session.commit()
 
@@ -380,6 +409,13 @@ def test_subtractable_keeps_borrowing_bookings_only_for_borrowed():
     ext_lent = _ext("ext", is_borrowing=True)
 
     assert cto.subtractable([own_lent, own_shared, ext_lent], {"ext"}) == [own_shared, ext_lent]
+
+
+def test_subtractable_takes_every_booking_where_plan_yields():
+    """План не в основной команде человека уступает его всем командам."""
+    guest_lent = _ext("guest", is_borrowing=True, yields_here=True)
+
+    assert cto.subtractable([guest_lent], set()) == [guest_lent]
 
 
 def test_fingerprint_depends_only_on_hours_by_day():
