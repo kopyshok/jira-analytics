@@ -616,18 +616,20 @@ def test_recomputed_plan_without_tasks_is_not_stale(client, db_session):
 
 
 def test_secondary_plan_takes_only_truly_free_hours(client, db_session):
-    """Основная команда A заняла Шутова на 90%: 5,4 ч задачи и 0,6 ч прочих
-    работ — день занят целиком. Неосновная B раньше добирала эти 0,6 ч; теперь
-    её работа встаёт только в свободные дни, а старая раскладка поверх прочих
-    работ — пересечение с планом A."""
+    """Основная команда A заняла Шутова на 90%: 5,4 ч задачи и 0,6 ч
+    нормированных работ — день занят целиком. Неосновная B раньше добирала эти
+    0,6 ч; теперь её работа встаёт только в свободные дни, а старая раскладка
+    поверх нормированных работ — пересечение с планом A."""
     import json
 
     from app.models import ResourcePlanAssignment
+    from tests.services.normed_factory import _rules, _types
     from tests.services.xteam_factory import join_team
 
     e = make_employee(db_session, "Шутов", "A")
     join_team(db_session, e, "B")
     sc_a, plan_a = make_plan(db_session, "A")
+    _rules(db_session, sc_a, _types(db_session), role=None)
     item_a = add_item(db_session, sc_a, "Работа A", dev=10.8)
     item_a.involvement_dev = 0.9
     book(db_session, plan_a, item_a, e, {"2026-01-01": 5.4, "2026-01-02": 5.4})
@@ -652,15 +654,19 @@ def test_secondary_plan_takes_only_truly_free_hours(client, db_session):
     body = _gantt(client, plan_b.id)
     assert [c for c in body["conflicts"] if c["type"] == "CROSS_TEAM_OVERLAP"] == []
     day = _day(_row(body, e.id), "2026-01-01")
-    assert (day["pct"], day["ext_pct"], day["other_pct"]) == (0.0, 90.0, 10.0)
+    assert (day["pct"], day["ext_pct"], day["normed_pct"]) == (0.0, 90.0, 10.0)
 
 
 def test_load_counts_other_work_share_of_involvement(client, db_session):
-    """Загрузка по дням: вовлечённость 90% — 5,4 ч задачи и 0,6 ч прочих
-    работ, день занят целиком. В день, где задача взяла 3 ч, прочие работы — те
-    же 10% дня, остальное свободно."""
+    """Загрузка по дням: вовлечённость 90% — 5,4 ч задачи и 0,6 ч
+    нормированных работ, день занят целиком. В день, где задача взяла 3 ч, —
+    те же 10% дня плюс доля остатка запаса на свободные 2,4 ч; остаток запаса
+    ложится на свободное время пропорционально и сам перегруз не рисует."""
+    from tests.services.normed_factory import _rules, _types
+
     e = make_employee(db_session, "Пряничников", "A")
     sc, plan = make_plan(db_session, "A")
+    _rules(db_session, sc, _types(db_session), role=None)
     item = add_item(db_session, sc, "Работа A", dev=8.4)
     item.involvement_dev = 0.9
     book(db_session, plan, item, e, {"2026-01-05": 5.4, "2026-01-06": 3.0})
@@ -669,17 +675,20 @@ def test_load_counts_other_work_share_of_involvement(client, db_session):
     row = _row(_gantt(client, plan.id), e.id)
 
     full = _day(row, "2026-01-05")
-    assert (full["pct"], full["other_pct"], full["other_hours"]) == (90.0, 10.0, 0.6)
-    partial = _day(row, "2026-01-06")
-    assert (partial["pct"], partial["other_pct"]) == (50.0, 10.0)
+    assert (full["pct"], full["normed_pct"], full["normed_hours"]) == (90.0, 10.0, 0.6)
     free = _day(row, "2026-01-07")
-    assert (free["pct"], free["other_pct"], free["other_hours"]) == (0.0, 0.0, 0.0)
+    assert free["pct"] == 0.0 and 0.0 < free["normed_pct"] < 100.0
+    partial = _day(row, "2026-01-06")
+    assert partial["pct"] == 50.0
+    # 0,6 ч остатка дня по вовлечённости + доля свободных 2,4 ч из 6.
+    assert abs(partial["normed_hours"] - (0.6 + free["normed_hours"] * 2.4 / 6)) < 0.02
 
 
 def test_secondary_plan_leaves_daily_other_work_on_free_days(client, db_session):
-    """Прочие работы у человека каждый рабочий день: в дни, когда основная
-    команда A его не заняла, неосновная B берёт не весь день, а за вычетом
-    его доли прочих работ по справочнику A (разработчик — 90%)."""
+    """В дни, когда основная команда A его не заняла, неосновная B берёт не весь
+    день, а по вовлечённости из справочника A (разработчик — 90%). Нормированные
+    работы на диаграмме — только из запаса A; у A нет правил, запаса нет, и
+    остаток дня слой не заполняет."""
     import json
 
     from app.models import InvolvementDefault, ResourcePlanAssignment
@@ -703,9 +712,10 @@ def test_secondary_plan_leaves_daily_other_work_on_free_days(client, db_session)
     }
     load = _row(_gantt(client, plan_b.id), e.id)
     day = _day(load, "2026-01-01")
-    assert (day["pct"], day["other_pct"]) == (90.0, 10.0)
+    # У A нет правил нормированных работ — запаса нет, слой пуст.
+    assert (day["pct"], day["normed_pct"]) == (90.0, 0.0)
     free = _day(load, "2026-01-05")
-    assert (free["pct"], free["ext_pct"], free["other_pct"]) == (0.0, 0.0, 10.0)
+    assert (free["pct"], free["ext_pct"], free["normed_pct"]) == (0.0, 0.0, 0.0)
 
 
 def test_jira_developer_left_out_of_plan_does_not_make_it_stale(client, db_session):

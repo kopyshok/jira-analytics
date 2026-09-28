@@ -154,10 +154,30 @@ export interface EmployeeLoadDay {
   off?: 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null;
   /** Доля ёмкости дня, занятая планами других команд, %. */
   ext_pct?: number;
-  /** Прочие работы — доля дня вне задач по вовлечённости (90% → 10% дня), %. */
-  other_pct?: number;
+  /** Нормированные работы дня: заблокированный период, остаток дня после
+   *  вовлечённости и доля запаса на свободное время. Доля ёмкости дня, %. */
+  normed_pct?: number;
   /** То же в часах. */
-  other_hours?: number;
+  normed_hours?: number;
+  /** Заблокированный день: «причина · вид работ». */
+  blocked?: string | null;
+}
+
+/** Часы нормированных работ по виду — для подсказки у имени и сводки. */
+export interface NormedTypeHours {
+  label: string;
+  hours: number;
+}
+
+/** Загрузка человека за квартал, часы; одинакова в плане любой команды. */
+export interface EmployeeQuarterLoad {
+  capacity_hours: number;
+  own_hours: number;
+  other_teams_hours: number;
+  normed_hours: number;
+  unplaced_hours: number;
+  pct: number;
+  normed_by_type: NormedTypeHours[];
 }
 
 /** Переход сотрудника на границе участия в команде плана внутри квартала. */
@@ -184,6 +204,8 @@ export interface EmployeeLoadOut {
   /** Привлечён из другой команды (в команде плана не состоял ни дня квартала). */
   is_borrowed?: boolean;
   borrowed_from?: string | null;
+  /** Загрузка за квартал: запас нормированных работ основной команды человека. */
+  quarter?: EmployeeQuarterLoad | null;
 }
 
 export interface ResetCounts {
@@ -216,6 +238,48 @@ export interface ExternalBookingOut {
   overlap_days: string[];
 }
 
+/** Запас вида работ роли и его расход с датой, часы. */
+export interface ReserveTypeRow {
+  work_type_id: string;
+  label: string;
+  planned_hours: number;
+  blocked_hours: number;
+  other_teams_hours: number;
+  remaining_hours: number;
+  overuse_hours: number;
+}
+
+export interface ReserveRoleOut {
+  role: string;
+  role_label: string;
+  rows: ReserveTypeRow[];
+}
+
+/** Работа людей команды плана над задачей другой команды за квартал. */
+export interface OtherTeamWorkOut {
+  backlog_item_id: string;
+  issue_key: string | null;
+  title: string;
+  team: string;
+  hours: number;
+  work_type_id: string;
+  is_manual: boolean;
+}
+
+export interface WorkTypeOption {
+  id: string;
+  label: string;
+}
+
+/** Запас нормированных работ команды плана на квартал. */
+export interface ReserveOut {
+  team: string;
+  scenario_name: string;
+  roles: ReserveRoleOut[];
+  other_team_work: OtherTeamWorkOut[];
+  work_types: WorkTypeOption[];
+}
+
 export interface GanttProjection {
   plan: ResourcePlan;
   assignments: AssignmentOut[];
@@ -229,6 +293,8 @@ export interface GanttProjection {
   stale_due_to_other_teams?: boolean;
   /** Команды, чьи планы изменились после расчёта. */
   stale_teams?: string[];
+  /** Запас нормированных работ команды плана на квартал; null — запаса нет. */
+  reserve?: ReserveOut | null;
   reset_counts: ResetCounts;
 }
 
@@ -599,3 +665,14 @@ export const patchDependency = (
 
 export const deleteDependency = (planId: string, depId: string) =>
   api.del(`/resource-planning/resource-plans/${planId}/dependencies/${depId}`);
+
+export interface WorkTypeOverrideInput {
+  team: string;
+  backlog_item_id: string;
+  /** null — вернуть вид по умолчанию («Технические задачи»). */
+  work_type_id: string | null;
+}
+
+/** Чем команда считает работу своих людей над задачей другой команды. */
+export const putWorkTypeOverride = (data: WorkTypeOverrideInput) =>
+  api.put('/resource-planning/work-type-overrides', data);

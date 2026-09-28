@@ -15,16 +15,20 @@ from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models import (
     BacklogItem,
+    MandatoryWorkType,
     ResourcePlan,
     ResourcePlanAssignment,
+    Role,
     ScheduledBlock,
     ScheduledBlockEmployee,
     ScheduledBlockRole,
+    TeamWorkTypeOverride,
 )
 from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
 from app.schemas.assignee_candidates import CandidateGroupOut
 from app.services import cross_team_occupancy as cto
+from app.services import normed_reserve as nr
 from app.services import scheduled_blocks as sb
 from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
@@ -589,10 +593,68 @@ class EmployeeLoadDay(BaseModel):
     off: Optional[str] = None
     # Доля ёмкости дня, занятая опорными планами других команд, %.
     ext_pct: float = 0.0
-    # Прочие работы: доля дня вне задач по вовлечённости (90% → 10% дня),
-    # не больше свободного остатка. В % ёмкости и в часах.
-    other_pct: float = 0.0
-    other_hours: float = 0.0
+    # Нормированные работы дня: заблокированный период, остаток дня после
+    # вовлечённости и доля запаса на свободное время. В % ёмкости и в часах.
+    normed_pct: float = 0.0
+    normed_hours: float = 0.0
+    # Заблокированный день: «причина · вид работ».
+    blocked: Optional[str] = None
+
+
+class NormedTypeHours(BaseModel):
+    label: str
+    hours: float
+
+
+class EmployeeQuarterLoad(BaseModel):
+    """Загрузка человека за квартал, часы; одинакова в плане любой команды."""
+    capacity_hours: float
+    own_hours: float
+    other_teams_hours: float
+    normed_hours: float
+    unplaced_hours: float
+    pct: float
+    normed_by_type: List[NormedTypeHours] = []
+
+
+class ReserveTypeRow(BaseModel):
+    work_type_id: str
+    label: str
+    planned_hours: float
+    blocked_hours: float
+    other_teams_hours: float
+    remaining_hours: float
+    overuse_hours: float
+
+
+class ReserveRoleOut(BaseModel):
+    role: str
+    role_label: str
+    rows: List[ReserveTypeRow]
+
+
+class OtherTeamWorkOut(BaseModel):
+    backlog_item_id: str
+    issue_key: Optional[str] = None
+    title: str
+    team: str
+    hours: float
+    work_type_id: str
+    is_manual: bool
+
+
+class WorkTypeOption(BaseModel):
+    id: str
+    label: str
+
+
+class ReserveOut(BaseModel):
+    """Запас нормированных работ команды плана на квартал."""
+    team: str
+    scenario_name: str
+    roles: List[ReserveRoleOut]
+    other_team_work: List[OtherTeamWorkOut]
+    work_types: List[WorkTypeOption]
 
 
 class TeamMoveOut(BaseModel):
@@ -619,6 +681,8 @@ class EmployeeLoadOut(BaseModel):
     # Привлечён из другой команды: в команде плана не состоял ни дня квартала.
     is_borrowed: bool = False
     borrowed_from: Optional[str] = None
+    # Загрузка за квартал с нормированными работами; None — у плана нет года.
+    quarter: Optional[EmployeeQuarterLoad] = None
 
 
 class ExternalBookingOut(BaseModel):
@@ -659,6 +723,8 @@ class GanttProjection(BaseModel):
     # «Планы других команд изменились — нажмите «Распределить»».
     stale_due_to_other_teams: bool = False
     stale_teams: List[str] = []
+    # Запас нормированных работ команды плана; None — у команды нет правил.
+    reserve: Optional[ReserveOut] = None
     # Счётчики для bulk-reset dropdown'а на фронте: сколько фаз
     # затронет каждый режим сброса. Позволяет дизейблить пункты с 0
     # и показывать «Сбросить закреплённые даты (N)».
@@ -881,6 +947,55 @@ def delete_scheduled_block(
         raise HTTPException(404, "ScheduledBlock not found")
     db.delete(block)
     db.commit()
+
+
+# ── Вид работ у задач других команд ────────────────────────────────────────
+
+
+class WorkTypeOverrideIn(BaseModel):
+    team: str
+    backlog_item_id: str
+    # None — вернуть вид по умолчанию («Технические задачи»).
+    work_type_id: Optional[str] = None
+
+
+@router.put("/work-type-overrides", status_code=204)
+async def put_work_type_override(
+    data: WorkTypeOverrideIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Чем команда ``team`` считает работу своих людей над задачей другой
+    команды: вид нормированных работ, чей запас она расходует."""
+    team = data.team.strip()
+    if not team:
+        raise HTTPException(422, "Укажите команду")
+    if db.get(BacklogItem, data.backlog_item_id) is None:
+        raise HTTPException(404, "Задача не найдена")
+    if data.work_type_id is not None:
+        _check_work_type(db, data.work_type_id)
+    row = db.execute(
+        select(TeamWorkTypeOverride).where(
+            TeamWorkTypeOverride.team == team,
+            TeamWorkTypeOverride.backlog_item_id == data.backlog_item_id,
+        )
+    ).scalar_one_or_none()
+    if data.work_type_id is None:
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(
+            TeamWorkTypeOverride(
+                team=team,
+                backlog_item_id=data.backlog_item_id,
+                work_type_id=data.work_type_id,
+            )
+        )
+    else:
+        row.work_type_id = data.work_type_id
+    db.commit()
+    await _announce(event_bus, bookings=False)
 
 
 # ── ResourcePlans ──────────────────────────────────────────────────────────
@@ -1124,6 +1239,130 @@ def _cross_team_conflicts(
                     is_live=True,
                 )
             )
+    return out
+
+
+def _role_labels(db: Session) -> Dict[str, tuple]:
+    """{код роли: (порядок, подпись)} из реестра ролей — одним запросом."""
+    return {
+        code: (order, label)
+        for code, label, order in db.execute(select(Role.code, Role.label, Role.sort_order))
+    }
+
+
+def _role_label(roles: Dict[str, tuple], role: str) -> str:
+    return roles[role][1] if role in roles else (role or "Без роли")
+
+
+def _reserve_out(reserve: nr.TeamReserve, roles: Dict[str, tuple]) -> ReserveOut:
+    """Сводка запаса команды плана: роли по порядку реестра, виды — по справочнику."""
+    return ReserveOut(
+        team=reserve.team,
+        scenario_name=reserve.scenario_name,
+        roles=[
+            ReserveRoleOut(
+                role=role,
+                role_label=_role_label(roles, role),
+                rows=[
+                    ReserveTypeRow(
+                        work_type_id=r.work_type_id,
+                        label=r.label,
+                        planned_hours=round(r.planned, 1),
+                        blocked_hours=round(r.blocked, 1),
+                        other_teams_hours=round(r.other_teams, 1),
+                        remaining_hours=round(r.remaining, 1),
+                        overuse_hours=round(r.overuse, 1),
+                    )
+                    for r in rows
+                ],
+            )
+            for role, rows in sorted(
+                reserve.roles.items(),
+                key=lambda kv: (roles.get(kv[0], (999,))[0], _role_label(roles, kv[0])),
+            )
+        ],
+        other_team_work=[
+            OtherTeamWorkOut(
+                backlog_item_id=w.backlog_item_id,
+                issue_key=w.issue_key,
+                title=w.title,
+                team=w.team,
+                hours=round(w.hours, 1),
+                work_type_id=w.work_type_id,
+                is_manual=w.is_manual,
+            )
+            for w in reserve.other_team_work
+        ],
+        work_types=[WorkTypeOption(id=k, label=v) for k, v in reserve.labels.items()],
+    )
+
+
+# Меньше получаса — округления, не предупреждение.
+NORMED_WARNING_MIN_HOURS = 0.5
+
+
+def _normed_warnings(
+    plan: ResourcePlan,
+    reserve: nr.TeamReserve,
+    loads: Dict[str, nr.PersonLoad],
+    names: Dict[str, str],
+    roles: Dict[str, tuple],
+) -> List[ConflictOut]:
+    """Живые предупреждения запаса команды плана: перерасход вида работ роли
+    и люди, у которых нормированные работы не вмещаются в квартал."""
+    stamp = plan.computed_at or plan.created_at
+
+    def live(
+        id_: str, type_: str, value: float, message: str, eid: Optional[str] = None
+    ) -> ConflictOut:
+        return ConflictOut(
+            id=f"{LIVE_CONFLICT_PREFIX}{type_}:{id_}",
+            type=type_,
+            severity="warning",
+            status="open",
+            backlog_item_id=None,
+            backlog_item_title=None,
+            employee_id=eid,
+            employee_name=names.get(eid) if eid else None,
+            assignment_id=None,
+            window_start=None,
+            window_end=None,
+            metric_value=round(value, 1),
+            message=message,
+            created_at=stamp,
+            updated_at=stamp,
+            is_live=True,
+        )
+
+    out: List[ConflictOut] = []
+    for role, rows in reserve.roles.items():
+        for r in rows:
+            if r.overuse <= NORMED_WARNING_MIN_HOURS:
+                continue
+            parts = []
+            if r.other_teams > 0:
+                parts.append(f"другие команды заняли {r.other_teams:.0f} ч")
+            if r.blocked > 0:
+                parts.append(f"заблокировано {r.blocked:.0f} ч")
+            out.append(live(
+                f"{role}:{r.work_type_id}",
+                "NORMED_OVERUSE",
+                r.overuse,
+                f"{_role_label(roles, role)} · {r.label}: заложено {r.planned:.0f} ч, "
+                + ", ".join(parts),
+            ))
+    for eid in sorted(reserve.people):
+        load = loads.get(eid)
+        if load is None or load.unplaced <= NORMED_WARNING_MIN_HOURS:
+            continue
+        name = names.get(eid) or "Сотрудник"
+        out.append(live(
+            eid,
+            "NORMED_UNPLACED",
+            load.unplaced,
+            f"{name}: не вмещается {load.unplaced:.0f} ч нормированных работ",
+            eid=eid,
+        ))
     return out
 
 
@@ -1407,6 +1646,7 @@ def get_gantt(
     live_conflicts: list[ConflictOut] = []
     employee_load: list[EmployeeLoadOut] = []
     changed_teams: list[str] = []
+    reserve_out: Optional[ReserveOut] = None
     if plan.team:
         from app.models import Employee
         from app.services.resource_planning_service import ResourcePlanningService
@@ -1462,7 +1702,8 @@ def get_gantt(
             }
             # Часы по дням на сотрудника — из реальной раскладки планировщика.
             used = _daily_used(assignments_raw, avail)
-            # Доля прочих работ по вовлечённости фаз дня — этого плана и броней.
+            # Доля дня вне задачи по вовлечённости фаз дня — этого плана и
+            # броней: остаток дня с задачей, который берут нормированные работы.
             inv_defaults = _plan_involvement_defaults(db, plan.id)
             own_phases = [
                 (
@@ -1480,15 +1721,65 @@ def get_gantt(
                 own_phases
                 + [(b.employee_id, b.involvement, b.daily_hours) for b in bookings]
             )
+            quarter = cto.quarter_num(plan.quarter)
             # Прочие работы есть каждый рабочий день: в день без задач (и у
             # задач без вовлечённости) — доля человека по справочнику его
-            # домашней команды.
-            base_share = cto.base_other_share(
-                db, plan_employees, plan.year, cto.quarter_num(plan.quarter)
+            # домашней команды. Нужна отметкам и конфликтам пересечений.
+            base_share = cto.base_other_share(db, plan_employees, plan.year, quarter)
+            # Заблокированные дни людей плана на всё окно — для отпечатка плана.
+            blocked_hits = sb.resolve_blocked_days(
+                db, list(plan_employees), q_start, q_end_ext, plan.team
             )
+            # Нормированные работы — запас основных команд людей плана (см.
+            # app/services/normed_reserve.py). Раскладка — по всему кварталу
+            # человека: цифры не зависят от плана, в котором на него смотрят.
+            # Запас считается раз на основную команду, не на человека.
+            loads: Dict[str, nr.PersonLoad] = {}
+            reserves: Dict[str, Optional[nr.TeamReserve]] = {}
+            labels: Dict[str, str] = {}
+            if plan.year and quarter:
+                # Норма дня — по той же шкале, что ёмкость дня в подвале:
+                # календарь минус отсутствия, без команды и периодов.
+                full_cap = {
+                    eid: {d: h for d, h in days.items() if h > 0}
+                    for eid, days in svc.build_availability(
+                        list(plan_employees), q_start, q_end
+                    ).items()
+                }
+                home_teams = {
+                    t
+                    for rows_ in membership.values()
+                    for t, joined, left, primary in rows_
+                    if primary
+                    and (joined is None or joined <= q_end)
+                    and (left is None or left > q_start)
+                }
+                reserves = {
+                    t: nr.team_reserve(db, t, plan.year, quarter) for t in sorted(home_teams)
+                }
+                labels = next((r.labels for r in reserves.values() if r), {}) or {
+                    w.id: w.label for w in db.execute(select(MandatoryWorkType)).scalars()
+                }
+                # Показываются периоды основной команды и общие — как вне
+                # плана: периоды неосновной команды закрывают день только в её
+                # планах, и показ не должен зависеть от плана.
+                shown_hits = sb.resolve_blocked_days(
+                    db, list(plan_employees), q_start, q_end, None
+                )
+                for emp in plan_employees:
+                    loads[emp.id] = nr.place_person(
+                        full_cap[emp.id],
+                        used.get(emp.id, {}),
+                        ext_daily.get(emp.id, {}),
+                        other_share.get(emp.id, {}),
+                        shown_hits.get(emp.id, {}),
+                        nr.merge_person(reserves.values(), emp.id),
+                        labels,
+                    )
             for e in plan_employees:
                 emp_abs = absences_by_emp.get(e.id, [])
                 emp_spans = member_iv.get(e.id) or []
+                load = loads.get(e.id)
                 days_out: list[EmployeeLoadDay] = []
                 d = q_start
                 while d <= q_end:
@@ -1497,14 +1788,15 @@ def get_gantt(
                     pct = (u / av * 100.0) if av > 0 else 0.0
                     ext_h = ext_daily.get(e.id, {}).get(d, 0.0)
                     ext_pct = (ext_h / av * 100.0) if av > 0 else 0.0
-                    # Прочие работы — не больше свободного остатка дня: сами
-                    # по себе перегруз не рисуют.
-                    other_h = min(
-                        max(0.0, av - u - ext_h),
-                        av
-                        * other_share.get(e.id, {}).get(d, base_share.get(e.id, 0.0)),
+                    # Нормированные работы — только в дни, когда человек в плане.
+                    normed_h = load.normed_by_day.get(d, 0.0) if load and av > 0 else 0.0
+                    hit = load.blocked.get(d) if load and av > 0 else None
+                    wt_label = labels.get(hit.work_type_id or "") if hit else None
+                    blocked_label = (
+                        (f"{hit.reason} · {wt_label}" if wt_label else hit.reason)
+                        if hit
+                        else None
                     )
-                    other_pct = (other_h / av * 100.0) if av > 0 else 0.0
                     # Признак нерабочего дня (календарь имеет приоритет над отпуском).
                     cal_h = cal_map.get(d, None)
                     if cal_h is None:
@@ -1528,8 +1820,9 @@ def get_gantt(
                             pct=round(pct, 1),
                             off=off,
                             ext_pct=round(ext_pct, 1),
-                            other_pct=round(other_pct, 1),
-                            other_hours=round(other_h, 2),
+                            normed_pct=round(normed_h / av * 100.0, 1) if av > 0 else 0.0,
+                            normed_hours=round(normed_h, 2),
+                            blocked=blocked_label,
                         )
                     )
                     d += _td(days=1)
@@ -1564,6 +1857,24 @@ def get_gantt(
                         joined_from=joined_from,
                         is_borrowed=e.id in borrowed,
                         borrowed_from=home_team.get(e.id),
+                        quarter=(
+                            EmployeeQuarterLoad(
+                                capacity_hours=round(load.capacity, 1),
+                                own_hours=round(load.own, 1),
+                                other_teams_hours=round(load.other_teams, 1),
+                                normed_hours=round(load.normed, 1),
+                                unplaced_hours=round(load.unplaced, 1),
+                                pct=round(load.pct, 1),
+                                normed_by_type=[
+                                    NormedTypeHours(label=k, hours=round(v, 1))
+                                    for k, v in sorted(
+                                        load.normed_by_type.items(), key=lambda kv: -kv[1]
+                                    )
+                                ],
+                            )
+                            if load
+                            else None
+                        ),
                     )
                 )
             names = {e.id: e.display_name for e in plan_employees}
@@ -1574,7 +1885,6 @@ def get_gantt(
             # человека, — тем же расчётом, что и живой конфликт техкоманды.
             # У остальных своих — только в опорном плане команды: конфликт
             # техкоманды считается по нему, в других планах отметка ложная.
-            quarter = cto.quarter_num(plan.quarter)
             ref = (
                 cto.reference_plans(db, plan.year, quarter).get(plan.team)
                 if plan.year and quarter
@@ -1630,10 +1940,7 @@ def get_gantt(
             # План устарел, если вычитаемые из его доступности брони или
             # заблокированные дни основных команд его людей разошлись с
             # учтёнными при расчёте (отпечаток по командам).
-            blocked_cells = sb.cells_by_team(
-                sb.resolve_blocked_days(db, list(plan_employees), q_start, q_end_ext, plan.team),
-                exclude_team=plan.team,
-            )
+            blocked_cells = sb.cells_by_team(blocked_hits, exclude_team=plan.team)
             changed_teams = cto.stale_teams(
                 plan.external_fingerprint,
                 cto.subtractable(bookings, borrowed),
@@ -1644,6 +1951,17 @@ def get_gantt(
                 plan, list(assignments_raw), yielding, used, avail, bookings, names,
                 base_share,
             )
+            # Сводка запаса и его предупреждения — для команды плана.
+            if plan.team in reserves:
+                plan_reserve = reserves[plan.team]
+            elif plan.year and quarter:
+                plan_reserve = nr.team_reserve(db, plan.team, plan.year, quarter)
+            else:
+                plan_reserve = None
+            if plan_reserve is not None:
+                roles = _role_labels(db)
+                reserve_out = _reserve_out(plan_reserve, roles)
+                live_conflicts += _normed_warnings(plan, plan_reserve, loads, names, roles)
 
     conflicts = _detect_conflicts(plan, assignments_raw, db) + live_conflicts
     pert_projection = _compute_pert_projection(plan, assignments_raw, db)
@@ -1688,6 +2006,7 @@ def get_gantt(
         external_bookings=external_out,
         stale_due_to_other_teams=bool(changed_teams),
         stale_teams=changed_teams,
+        reserve=reserve_out,
         reset_counts=reset_counts,
     )
 
