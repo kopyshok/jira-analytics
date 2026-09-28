@@ -880,19 +880,6 @@ class ResourcePlanningService:
                     continue
 
                 opo_pinned = opo_half_pinned.get(item.id) if phase == "opo" else None
-                # Если фаза целиком pinned — её даты как «end» для cascade
-                if (item.id, phase) in pinned_phase_keys and opo_pinned is None:
-                    phase_pinned = [
-                        a for a in pinned_existing
-                        if a.backlog_item_id == item.id and a.phase == phase
-                    ]
-                    pe = max(
-                        (a.end_date for a in phase_pinned if a.end_date),
-                        default=phase_end,
-                    )
-                    if pe:
-                        phase_end = pe
-                    continue
 
                 earliest_start = max(
                     q_start,
@@ -908,6 +895,78 @@ class ResourcePlanningService:
                     and (item.id, phase) not in phases_with_inbound_pred
                 ):
                     earliest_start = q_start
+
+                # Если фаза целиком pinned — её даты как «end» для cascade
+                if (item.id, phase) in pinned_phase_keys and opo_pinned is None:
+                    phase_pinned = sorted(
+                        (
+                            a for a in pinned_existing
+                            if a.backlog_item_id == item.id and a.phase == phase
+                        ),
+                        key=lambda x: x.part_number,
+                    )
+                    # Раздробленная фаза раскладывается здесь, в очереди
+                    # приоритета своей задачи, часть за частью. Раньше её
+                    # раскладывал только проход после всех задач — на остатки
+                    # ёмкости, и задача уезжала за младшие (OS-91446).
+                    # Закреплённые по дате части уже разложены выше.
+                    cursor = earliest_start
+                    for a in phase_pinned:
+                        if a.pinned_split and not a.pinned_start and a.hours_allocated:
+                            inv = self._involvement_for_phase(item, phase)
+                            if a.employee_id is None:
+                                # Тестирование — без сотрудника: по календарю.
+                                new_end, daily_json = self._extend_window_for_hours(
+                                    start_date=cursor,
+                                    hours=float(a.hours_allocated),
+                                    involvement=inv or 1.0,
+                                    q_end=q_end_extended,
+                                )
+                                a.daily_hours_json = daily_json
+                                if daily_json == "{}":
+                                    unlaid.add(a.id)
+                                else:
+                                    a.start_date = date.fromisoformat(
+                                        min(json.loads(daily_json))
+                                    )
+                                    a.end_date = new_end
+                                    a.out_of_quarter = new_end > q_end
+                            elif a.employee_id in remaining:
+                                _, daily = self._allocate_hours_with_breakdown(
+                                    a.employee_id,
+                                    float(a.hours_allocated),
+                                    cursor,
+                                    q_end_extended,
+                                    remaining,
+                                    daily_capacity=self._daily_role_capacity(
+                                        avail_hours=8.0,
+                                        involvement=inv,
+                                        parallel_count=_resolve_parallel_count_legacy(
+                                            item, phase
+                                        ),
+                                    ),
+                                    preempt_locked=preempt_locked,
+                                    original_capacity=original_avail,
+                                )
+                                if daily:
+                                    a.start_date = min(daily)
+                                    a.end_date = max(daily)
+                                    a.daily_hours_json = json.dumps(
+                                        {d.isoformat(): h for d, h in sorted(daily.items())}
+                                    )
+                                    a.out_of_quarter = a.end_date > q_end
+                                else:
+                                    a.daily_hours_json = "{}"
+                                    unlaid.add(a.id)
+                        if a.end_date:
+                            cursor = max(cursor, a.end_date + timedelta(days=1))
+                    pe = max(
+                        (a.end_date for a in phase_pinned if a.end_date),
+                        default=phase_end,
+                    )
+                    if pe:
+                        phase_end = pe
+                    continue
 
                 if phase == "qa":
                     # QA — часы-only, без сотрудника. Раскладываем часы по
