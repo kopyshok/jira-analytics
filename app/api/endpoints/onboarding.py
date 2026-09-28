@@ -2,7 +2,7 @@
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth_deps import get_current_user
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 class StepStatePayload(BaseModel):
-    team: str
+    team: str = Field(min_length=1, max_length=200)
     state: Literal["done", "skipped", "pending"]
 
 
@@ -26,7 +26,7 @@ class MePayload(BaseModel):
 
 @router.get("/status")
 def get_status(
-    team: Optional[str] = Query(None),
+    team: Optional[str] = Query(None, max_length=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

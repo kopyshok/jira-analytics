@@ -7,9 +7,9 @@
 пользователь.
 """
 from datetime import date, datetime
-from typing import Callable, Optional
+from typing import Callable
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,7 @@ from app.models import (
     User,
 )
 from app.services import team_membership
+from app.services.backlog_service import CANCEL_STATUSES, QUARTERLY_TASKS_CATEGORY
 
 CATEGORIZATION_MAX_STACK_SHARE = 0.10
 
@@ -36,14 +37,21 @@ def _tree_counts(db: Session, team: str) -> dict:
     return get_tree_counts(project_keys=keys or None, teams=team, db=db).model_dump()
 
 
+def _counts_issues_loaded(counts: dict) -> bool:
+    return sum(counts.values()) > 0
+
+
+def _counts_categorization(counts: dict) -> bool:
+    total = sum(counts.values())
+    return total > 0 and counts["stack"] / total <= CATEGORIZATION_MAX_STACK_SHARE
+
+
 def _issues_loaded(db: Session, team: str) -> bool:
-    return sum(_tree_counts(db, team).values()) > 0
+    return _counts_issues_loaded(_tree_counts(db, team))
 
 
 def _categorization(db: Session, team: str) -> bool:
-    counts = _tree_counts(db, team)
-    total = sum(counts.values())
-    return total > 0 and counts["stack"] / total <= CATEGORIZATION_MAX_STACK_SHARE
+    return _counts_categorization(_tree_counts(db, team))
 
 
 def _team_roles(db: Session, team: str) -> bool:
@@ -59,6 +67,12 @@ def _team_roles(db: Session, team: str) -> bool:
 
 
 def _backlog(db: Session, team: str) -> bool:
+    """Есть ли в бэклоге команды хоть одна не архивная инициатива с оценкой.
+
+    «Не архивная» — как во вкладке «Архив» бэклога (app/api/endpoints/backlog.py):
+    не отправлена в архив вручную, не отменена/отклонена в Jira, не выполнена
+    (квартальные задачи в архив по статусу done не уходят).
+    """
     estimates = (
         BacklogItem.estimate_hours,
         BacklogItem.estimate_analyst_hours,
@@ -66,11 +80,23 @@ def _backlog(db: Session, team: str) -> bool:
         BacklogItem.estimate_qa_hours,
         BacklogItem.estimate_opo_hours,
     )
+    jira_archived = and_(
+        BacklogItem.issue_id.isnot(None),
+        or_(
+            Issue.status.in_(list(CANCEL_STATUSES)),
+            and_(
+                func.coalesce(Issue.status_category, "") == "done",
+                func.coalesce(Issue.category, "") != QUARTERLY_TASKS_CATEGORY,
+                func.coalesce(Issue.assigned_category, "") != QUARTERLY_TASKS_CATEGORY,
+            ),
+        ),
+    )
     row = (
         db.query(BacklogItem.id)
         .outerjoin(Issue, BacklogItem.issue_id == Issue.id)
         .filter(
             BacklogItem.archived_at.is_(None),
+            ~jira_archived,
             or_(
                 Issue.team == team,
                 and_(BacklogItem.issue_id.is_(None), BacklogItem.team == team),
@@ -109,34 +135,55 @@ ALL_STEPS = (
     "scenario_created", "scenario_rules", "scenario_involvement", "resource_plan",
 )
 
+assert set(ALL_STEPS) == set(AUTO_STEPS) | set(MANUAL_STEPS), "ALL_STEPS разошёлся со списком авто/ручных шагов"
 
-def _latch(db: Session, team: str, step: str) -> Optional[TeamOnboardingMark]:
-    """Записать авто-отметку. Параллельный запрос мог успеть раньше — тогда берём его строку."""
-    mark = TeamOnboardingMark(team=team, step=step, state="done", source="auto")
-    db.add(mark)
+
+def _latch(db: Session, team: str, step: str) -> None:
+    """Записать авто-отметку. Параллельный запрос мог успеть раньше — тогда просто
+    откатываемся: марки для ответа читаются заново после всех защёлок и уже
+    подхватят чужую строку.
+    """
+    db.add(TeamOnboardingMark(team=team, step=step, state="done", source="auto"))
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        return (
-            db.query(TeamOnboardingMark)
-            .filter(TeamOnboardingMark.team == team, TeamOnboardingMark.step == step)
-            .first()
-        )
-    return mark
 
 
 def team_steps(db: Session, team: str) -> dict[str, dict]:
     """Состояние всех шагов команды: done | skipped | pending."""
+    closed_steps = {
+        step for (step,) in db.query(TeamOnboardingMark.step).filter(TeamOnboardingMark.team == team).all()
+    }
+
+    # issues_loaded и categorization оба читают дерево категорий — считаем один раз.
+    counts_cache: dict[str, dict] = {}
+
+    def counts() -> dict:
+        if "value" not in counts_cache:
+            counts_cache["value"] = _tree_counts(db, team)
+        return counts_cache["value"]
+
+    for step, check in AUTO_STEPS.items():
+        if step in closed_steps:
+            continue
+        if step == "issues_loaded":
+            ok = _counts_issues_loaded(counts())
+        elif step == "categorization":
+            ok = _counts_categorization(counts())
+        else:
+            ok = check(db, team)
+        if ok:
+            _latch(db, team, step)
+
+    # Марки грузим один раз и только сейчас, после всех защёлок: объекты,
+    # загруженные до commit/rollback в _latch (expire_on_commit), протухают —
+    # обращение к ним упало бы с ObjectDeletedError, если параллельный запрос
+    # успел удалить/заменить строку.
     marks = {
         m.step: m
         for m in db.query(TeamOnboardingMark).filter(TeamOnboardingMark.team == team).all()
     }
-    for step, check in AUTO_STEPS.items():
-        if step not in marks and check(db, team):
-            latched = _latch(db, team, step)
-            if latched is not None:
-                marks[step] = latched
 
     user_ids = {m.marked_by_user_id for m in marks.values() if m.marked_by_user_id}
     names: dict[str, str] = (
@@ -156,16 +203,29 @@ def team_steps(db: Session, team: str) -> dict[str, dict]:
 
 
 def set_team_step(db: Session, team: str, step: str, state: str, user_id: str) -> None:
-    """Ручная отметка / пропуск / возврат (``pending`` удаляет отметку)."""
-    db.query(TeamOnboardingMark).filter(
-        TeamOnboardingMark.team == team, TeamOnboardingMark.step == step
-    ).delete()
-    if state != "pending":
-        db.add(TeamOnboardingMark(
-            team=team, step=step, state=state, source="manual",
-            marked_by_user_id=user_id, marked_at=datetime.utcnow(),
-        ))
-    db.commit()
+    """Ручная отметка / пропуск / возврат (``pending`` удаляет отметку).
+
+    На PostgreSQL два параллельных запроса на одну (команда, шаг) могут оба
+    не найти строку на удаление и попытаться вставить новую — второй commit
+    упадёт на уникальном индексе (то же самое при гонке с авто-защёлкой).
+    Один повтор устраняет реальную гонку.
+    """
+    for attempt in range(2):
+        db.query(TeamOnboardingMark).filter(
+            TeamOnboardingMark.team == team, TeamOnboardingMark.step == step
+        ).delete()
+        if state != "pending":
+            db.add(TeamOnboardingMark(
+                team=team, step=step, state=state, source="manual",
+                marked_by_user_id=user_id, marked_at=datetime.utcnow(),
+            ))
+        try:
+            db.commit()
+            return
+        except IntegrityError:
+            db.rollback()
+            if attempt == 1:
+                raise
 
 
 def me_state(user: User) -> dict:
