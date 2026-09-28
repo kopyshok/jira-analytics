@@ -33,6 +33,7 @@ from app.api.endpoints import (
     team_desk as team_desk_endpoints,
     mandatory_work_types,
     mapping,
+    onboarding as onboarding_endpoints,
     planning,
     production_calendar,
     projects,
@@ -113,6 +114,9 @@ api_router.include_router(
 )
 api_router.include_router(
     mapping.router, prefix="/mapping", tags=["mapping"], dependencies=_auth_dep,
+)
+api_router.include_router(
+    onboarding_endpoints.router, prefix="/onboarding", tags=["onboarding"], dependencies=_auth_dep,
 )
 api_router.include_router(
     capacity.router, prefix="/capacity", tags=["capacity"], dependencies=_auth_dep,
