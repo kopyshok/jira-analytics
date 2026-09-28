@@ -13,6 +13,7 @@ import {
   createDependency, patchDependency, deleteDependency,
   type DependencyOut,
   bulkClearAssignments, type BulkClearMode,
+  putWorkTypeOverride, type WorkTypeOverrideInput,
 } from '../api/resourcePlanning';
 import { trackAction } from '../lib/usage/track';
 import { candidatesQueryKey, sameCandidatesTarget } from '../utils/rpCandidates';
@@ -261,5 +262,16 @@ export function useDeleteDependency() {
     onSuccess: (_, { planId }) => {
       qc.invalidateQueries({ queryKey: ['gantt', planId] });
     },
+  });
+}
+
+/** Вид работ, которым команда плана считает работу своих людей над задачей
+ *  другой команды. Затрагивает запас и разбивку по дням — инвалидирует все
+ *  открытые диаграммы. */
+export function useSetWorkTypeOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: WorkTypeOverrideInput) => putWorkTypeOverride(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['gantt'] }),
   });
 }

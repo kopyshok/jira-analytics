@@ -1,8 +1,9 @@
 import { Fragment, useMemo, useState } from 'react';
 
-import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
+import type { AssignmentOut, EmployeeLoadOut, EmployeeQuarterLoad, ExternalBookingOut } from '../../api/resourcePlanning';
 import { dayTooltipLines } from '../../utils/rpBusy';
-import { EXT_LOAD_COLOR, OTHER_WORK_COLOR, quarterLoad, splitLoadFill } from '../../utils/heatmapFill';
+import { EXT_LOAD_COLOR, NORMED_WORK_COLOR, splitLoadFill } from '../../utils/heatmapFill';
+import { fmtHours } from '../../utils/normedReserve';
 
 interface Props {
   rows: EmployeeLoadOut[];
@@ -97,6 +98,17 @@ function outOfTeamText(row: EmployeeLoadOut, date: string): string {
   return 'вне команды';
 }
 
+/** Подсказка у имени: разбивка загрузки за квартал. */
+function quarterTooltip(q: EmployeeQuarterLoad): string {
+  const lines = [
+    `Задачи плана ${fmtHours(q.own_hours)} · Другие команды ${fmtHours(q.other_teams_hours)} · Нормированные работы ${fmtHours(q.normed_hours)}`,
+  ];
+  for (const t of q.normed_by_type) lines.push(`  ${t.label} — ${fmtHours(t.hours)}`);
+  if (q.unplaced_hours > 0.5) lines.push(`Не вмещается ${fmtHours(q.unplaced_hours)}`);
+  lines.push(`Норма квартала ${fmtHours(q.capacity_hours)}`);
+  return lines.join('\n');
+}
+
 /** Цвет клетки рабочего дня по загрузке. */
 function loadColor(pct: number): { bg: string; border?: string } {
   if (pct <= 0) {
@@ -170,22 +182,19 @@ export default function EmployeeLoadHeatmap({
 
     const empRows = rows.map((r) => {
       const byDate = new Map(r.days.map((d) => [d.date, d] as const));
-      // Общая загрузка — по всем рабочим дням квартала, включая свободные:
-      // этот план, другие команды и прочие работы.
-      const load = quarterLoad(dates.flatMap((ds) => byDate.get(ds) ?? []));
       const allEmpty = dates.every((ds) => {
         const d = byDate.get(ds);
-        return !d || d.off || (d.pct <= 0 && !((d.ext_pct ?? 0) > 0) && !((d.other_pct ?? 0) > 0));
+        return !d || d.off || (d.pct <= 0 && !((d.ext_pct ?? 0) > 0) && !((d.normed_pct ?? 0) > 0));
       });
-      return { row: r, byDate, load, allEmpty };
+      return { row: r, byDate, allEmpty };
     });
     const hasExt = rows.some((r) => r.days.some((d) => (d.ext_pct ?? 0) > 0));
-    const hasOther = rows.some((r) => r.days.some((d) => (d.other_pct ?? 0) > 0));
+    const hasNormed = rows.some((r) => r.days.some((d) => (d.normed_pct ?? 0) > 0));
 
     const first = isoDate(dates[0]);
     const last = isoDate(dates[dates.length - 1]);
     const periodLabel = `${first.getDate()} ${RU_MONTHS_SHORT[first.getMonth()]} – ${last.getDate()} ${RU_MONTHS_SHORT[last.getMonth()]}`;
-    return { weeks, empRows, periodLabel, hasExt, hasOther };
+    return { weeks, empRows, periodLabel, hasExt, hasNormed };
   }, [rows]);
 
   // Привлечённые из других команд — отдельная секция внизу.
@@ -233,8 +242,10 @@ export default function EmployeeLoadHeatmap({
     else if (off === 'holiday') body = ['праздник'];
     else {
       // По строке на этот план и на каждую другую команду: часы и задачи дня.
-      const other = row.days.find((d) => d.date === date)?.other_hours ?? 0;
-      const lines = dayTooltipLines(row.employee_id, date, assignments, bookings, other);
+      const day = row.days.find((d) => d.date === date);
+      const lines = dayTooltipLines(
+        row.employee_id, date, assignments, bookings, day?.normed_hours ?? 0, day?.blocked,
+      );
       body = lines.length > 0 ? lines : ['нет загрузки'];
     }
     // У правого края экрана подсказка раскрывается влево от курсора, иначе уходит за край.
@@ -262,7 +273,7 @@ export default function EmployeeLoadHeatmap({
         <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{data.periodLabel}</div>
       </div>
       <div style={{ fontSize: 11, color: '#5a7a9a', marginBottom: 8 }}>
-        Только рабочие дни. Прочие работы — нормированные, каждый рабочий день: доля дня вне задач по вовлечённости. Процент у имени — общая загрузка за квартал. Наведите на день — часы по задачам этого плана и других команд; щелчок по имени — фильтр по человеку.
+        Только рабочие дни. Нормированные работы — запас квартала из сценария основной команды: заблокированные периоды, остаток дня после вовлечённости и остальное — на свободные дни. Процент у имени — загрузка за квартал с задачами других команд и нормированными работами. Наведите на день — часы; на процент у имени — разбивка; щелчок по имени — фильтр по человеку.
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -311,9 +322,11 @@ export default function EmployeeLoadHeatmap({
           </div>
 
           {/* Строки сотрудников; при делении команды — секциями по группам. */}
-          {orderedRows.map(({ row, byDate, load, allEmpty }, ri) => {
-            const avg = load.total;
-            const avgColor = loadColor(avg);
+          {orderedRows.map(({ row, byDate, allEmpty }, ri) => {
+            const avg = Math.round(row.quarter?.pct ?? 0);
+            // Порог перегруза квартала — 100% (у клеток дня, где перегруз бывает
+            // обычным делом на один день, шкала другая — см. loadColor).
+            const avgColor = avg > 100 ? { bg: 'hsl(4 78% 52%)' } : loadColor(avg);
             // У привлечённого вместо «пришёл / выбыл» — из какой он команды.
             const note = row.is_borrowed ? borrowedNote(row) : moveNote(row);
             const group = groupOf(row.employee_id);
@@ -411,11 +424,7 @@ export default function EmployeeLoadHeatmap({
                   )}
                   {avg > 0 && (
                     <span
-                      title={`Загрузка за квартал: ${avg}%
-этот план — ${load.own}%
-другие команды — ${load.ext}%
-прочие работы — ${load.other}%
-свободно — ${load.free}%`}
+                      title={row.quarter ? quarterTooltip(row.quarter) : undefined}
                       style={{
                         marginLeft: 'auto',
                         flexShrink: 0,
@@ -445,7 +454,7 @@ export default function EmployeeLoadHeatmap({
                         const off = d?.off;
                         const pct = d?.pct ?? 0;
                         const ext = d?.ext_pct ?? 0;
-                        const other = d?.other_pct ?? 0;
+                        const normed = d?.normed_pct ?? 0;
                         let bg: string;
                         let border: string | undefined;
                         if (off === 'out_of_team') bg = OUT_OF_TEAM_FILL;
@@ -453,10 +462,11 @@ export default function EmployeeLoadHeatmap({
                         else if (off === 'holiday') bg = HOLIDAY_FILL;
                         else {
                           // Снизу — часы в планах других команд, над ними — этот план
-                          // цветом общей загрузки дня, выше — прочие работы.
-                          const c = loadColor(pct + ext + other);
-                          bg = splitLoadFill(c.bg, pct, ext, other);
-                          border = ext > 0 || other > 0 ? undefined : c.border;
+                          // цветом общей загрузки дня, выше — нормированные работы
+                          // (заблокированный день уже даёт normed 100%).
+                          const c = loadColor(pct + ext + normed);
+                          bg = splitLoadFill(c.bg, pct, ext, normed);
+                          border = ext > 0 || normed > 0 ? undefined : c.border;
                         }
                         return (
                           <div
@@ -511,7 +521,7 @@ export default function EmployeeLoadHeatmap({
                 { label: 'в планах других команд', fill: EXT_LOAD_COLOR },
               ]
             : []),
-          ...(data.hasOther ? [{ label: 'прочие работы', fill: OTHER_WORK_COLOR }] : []),
+          ...(data.hasNormed ? [{ label: 'нормированные работы', fill: NORMED_WORK_COLOR }] : []),
         ].map((it) => (
           <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
             <span

@@ -23,6 +23,7 @@ import ConflictPanel from '../components/resource-planning/ConflictPanel';
 import ScheduledBlocksModal from '../components/resource-planning/ScheduledBlocksModal';
 import AssignmentSidebar from '../components/resource-planning/AssignmentSidebar';
 import EmployeeLoadHeatmap from '../components/resource-planning/EmployeeLoadHeatmap';
+import NormedReserveSummary from '../components/resource-planning/NormedReserveSummary';
 import AppearanceModal from '../components/resource-planning/AppearanceModal';
 import BulkResetDropdown from '../components/resource-planning/BulkResetDropdown';
 import type { RpLayout, ViewMode } from '../components/resource-planning/GanttRows';
@@ -603,6 +604,10 @@ function ResourcePlanningPageInner() {
             );
           }}
         />
+      )}
+
+      {gantt?.reserve && gantt.plan.team && viewMode === 'two-level' && (
+        <NormedReserveSummary reserve={gantt.reserve} />
       )}
 
       {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
