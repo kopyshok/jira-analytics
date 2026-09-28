@@ -636,20 +636,24 @@ class ResourcePlanningService:
         # с seg_end > q_end (строгий конец квартала) получают out_of_quarter=True.
         employees = self._load_employees(plan)
         team_employees = list(employees)
-        # Привлечённые: закреплены вручную, стоят «Разработчиком» в Jira или
-        # выбраны исполнителем строки в сценарии вручную, но в команде плана
-        # не состояли ни дня квартала.
+        # Привлечённые: закреплены вручную, стоят «Разработчиком» в Jira,
+        # выбраны исполнителем строки в сценарии вручную или стоят в колонке
+        # «Разработчик» сценария, но в команде плана не состояли ни дня квартала.
         jira_dev = jira_developers_for_items(self.db, items, q_start, q_end)
         manual_executors = {
             it.assignee_employee_id
             for it in items
             if it.assignee_manual and it.assignee_employee_id
         }
+        manual_developers = {
+            it.developer_employee_id for it in items if it.developer_employee_id
+        }
         team_ids = {e.id for e in team_employees}
         # Закреплённые — по всем строкам: у двух частей ОПЭ один ключ в pinned_map.
         pinned_ids = {r[3] for r in pinned_emp_rows}
         borrowed_rows = self._load_borrowed(
-            (pinned_ids | set(jira_dev.values()) | manual_executors) - team_ids
+            (pinned_ids | set(jira_dev.values()) | manual_executors | manual_developers)
+            - team_ids
         )
         borrowed = {e.id for e in borrowed_rows}
         employees = team_employees + borrowed_rows
@@ -1810,8 +1814,9 @@ class ResourcePlanningService:
     def _load_borrowed(self, ids: set) -> List[Employee]:
         """Активные сотрудники вне команды плана, попавшие в план.
 
-        Источники — ручное закрепление фазы, «Разработчик» из Jira и
-        исполнитель, выбранный в сценарии вручную.
+        Источники — ручное закрепление фазы, «Разработчик» из Jira,
+        исполнитель, выбранный в сценарии вручную, и разработчик из колонки
+        сценария.
         """
         ids = {i for i in ids if i}
         if not ids:
@@ -1925,24 +1930,29 @@ class ResourcePlanningService:
         """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
         Исполнитель фазы, по убыванию приоритета: закреп вручную (``pinned``:
-        {(item_id, phase, part_number): employee_id}) → исполнитель строки
-        сценария на фазе своей роли (см. `_scenario_executor`; подтянутый из
-        Jira встаёт на разработку, только если хватает ёмкости) → для разработки
-        «Разработчик» из Jira (``jira_dev``, из любой команды), если его ёмкости
-        квартала (``capacity`` — уже за вычетом броней других команд) хватает
-        на часы разработки → жадный подбор внутри команды: анализ — из пула
-        ANALYST_ROLES, разработка — из DEV_ROLES (fallback — вся команда).
-        В команде с группами сначала перебираются свои по группе; сосед из
-        другой группы берётся, только когда своих уже не хватает по ёмкости
-        квартала (см. `_pick_in_group`). Закреп и исполнителя сценария
-        нехватка времени не отменяет: неразмещённые часы дают конфликт.
+        {(item_id, phase, part_number): employee_id}) → разработчик из колонки
+        сценария (для разработки; без проверки ёмкости; исполнитель строки
+        тогда идёт на анализ, а совпавший с разработчиком — никуда) →
+        исполнитель строки сценария на фазе своей роли (см.
+        `_scenario_executor`; подтянутый из Jira встаёт на разработку, только
+        если хватает ёмкости) → для разработки «Разработчик» из Jira
+        (``jira_dev``, из любой команды), если его ёмкости квартала
+        (``capacity`` — уже за вычетом броней других команд) хватает на часы
+        разработки → жадный подбор внутри команды: анализ — из пула
+        ANALYST_ROLES без разработчика строки, разработка — из DEV_ROLES
+        (fallback — вся команда). В команде с группами сначала перебираются
+        свои по группе; сосед из другой группы берётся, только когда своих уже
+        не хватает по ёмкости квартала (см. `_pick_in_group`). Закреп,
+        разработчика из колонки и исполнителя сценария нехватка времени не
+        отменяет: неразмещённые часы дают конфликт.
         - qa:  всегда None (часы-only, дату назначаем без сотрудника).
         - opo: не возвращается — реально создаётся как 2 строки через
                `_opo_split` в compute_schedule.
 
         ``borrowed`` — привлечённые из других команд: в жадные пулы не
-        попадают; в план — закрепом, как «Разработчик» из Jira или как
-        исполнитель, выбранный в сценарии вручную.
+        попадают; в план — закрепом, как «Разработчик» из Jira, как
+        исполнитель, выбранный в сценарии вручную, или как разработчик из
+        колонки сценария.
         """
         pinned = pinned or {}
         alloc_by_item = alloc_by_item or {}
@@ -1979,6 +1989,18 @@ class ResourcePlanningService:
             executor_id, executor_phase = self._scenario_executor(
                 item, all_by_id, by_id, by_name, an_hours
             )
+            # Разработчик из колонки сценария (выбран вручную). Тогда
+            # исполнитель строки идёт на анализ, какая бы ни была роль; один
+            # человек не ведёт обе фазы — совпал с разработчиком, анализ
+            # подбирается из пула.
+            dev_col = item.developer_employee_id
+            if dev_col not in all_by_id:
+                dev_col = None
+            if dev_col:
+                if executor_id == dev_col:
+                    executor_id, executor_phase = None, None
+                elif executor_id:
+                    executor_phase = "analyst"
 
             # ── analyst ────────────────────────────────────────────────
             analyst_id: Optional[str] = pinned.get((item.id, "analyst", 1))
@@ -1986,9 +2008,11 @@ class ResourcePlanningService:
                 analyst_id = executor_id
             # Исполнителя анализа нет — наименее загруженный из пула
             # аналитиков команды, чтобы фаза «Анализ» всё равно появилась.
+            # Разработчика строки в пул не берём.
             if not analyst_id and analyst_ids:
                 analyst_id = self._pick_in_group(
-                    analyst_ids, item_group.get(item.id), load, an_hours,
+                    [x for x in analyst_ids if x != dev_col],
+                    item_group.get(item.id), load, an_hours,
                     emp_group, capacity,
                 )
             if analyst_id:
@@ -1997,6 +2021,10 @@ class ResourcePlanningService:
 
             # ── dev ────────────────────────────────────────────────────
             dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
+            # Разработчик из колонки ставится без проверки ёмкости:
+            # нехватка времени — конфликт, как у ручного исполнителя.
+            if not dev_id and dev_col:
+                dev_id = dev_col
             # Исполнитель, подтянутый из Jira, как и «Разработчик» из Jira,
             # берёт разработку, только если ему хватает ёмкости квартала;
             # выбранный вручную — без замены (нехватка даёт конфликт).
