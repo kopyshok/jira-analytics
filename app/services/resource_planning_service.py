@@ -1197,7 +1197,7 @@ class ResourcePlanningService:
                         # чтобы остался единый бар; штриховка покажет пропуски внутри.
                         merged_start = segments[0][0] if segments else extra_segs[0][0]
                         merged_end = extra_segs[-1][1]
-                        merged_h = allocated_h + sum(s[2] for s in extra_segs)
+                        merged_h = round(allocated_h + sum(s[2] for s in extra_segs), 2)
                         segments = [(merged_start, merged_end, merged_h, 1)]
                         phase_daily.update(extra_daily)
 
@@ -1614,7 +1614,9 @@ class ResourcePlanningService:
             if cap > 0:
                 if seg_start is None:
                     seg_start = d
-                used = min(cap, remaining_h)
+                # Сотые: дроби вроде 8 × 0,7 = 5,6 копят погрешность, и фаза
+                # в 80 ч сохранялась как 79,99999999999997.
+                used = round(min(cap, remaining_h), 2)
                 # День занят этой фазой целиком — другие фазы того же сотрудника
                 # не могут садиться на этот день параллельно (relay/serialization).
                 # Исключение: ПОСЛЕДНИЙ день фазы. Если фаза взяла только часть
@@ -1624,8 +1626,8 @@ class ResourcePlanningService:
                 # в порядке убывания priority, поэтому младшие задачи увидят
                 # leftover только после того, как старшие закончили распределение.
                 emp_days[d] = 0.0
-                remaining_h -= used
-                seg_hours += used
+                remaining_h = round(remaining_h - used, 2)
+                seg_hours = round(seg_hours + used, 2)
                 daily_used[d] = used
                 seg_end = d
                 if remaining_h <= 0.01:
@@ -2993,7 +2995,7 @@ class ResourcePlanningService:
         )
         if len(siblings) <= 1:
             return a
-        total_h = sum((s.hours_allocated or 0.0) for s in siblings)
+        total_h = round(sum((s.hours_allocated or 0.0) for s in siblings), 2)
         first = siblings[0]
         last = siblings[-1]
         sibling_ids = {s.id for s in siblings}

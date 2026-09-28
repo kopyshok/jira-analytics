@@ -260,6 +260,22 @@ def test_allocate_returns_daily_breakdown():
     assert date(2026, 4, 3) not in daily
 
 
+def test_allocate_hours_without_float_tail():
+    """80 ч при потолке 5,6 ч/день (вовлечённость 70%) — фаза ровно 80 ч,
+    а не 79,99999999999999: иначе хвост всплывает в окне «Разбить фазу»."""
+    svc = ResourcePlanningService(MagicMock())
+    start = date(2026, 4, 1)
+    remaining = {"emp": {start + timedelta(days=i): 8.0 for i in range(30)}}
+
+    segs, daily = svc._allocate_hours_with_breakdown(
+        "emp", 80.0, start, start + timedelta(days=29), remaining,
+        daily_capacity=8.0 * 0.7,
+    )
+
+    assert [s[2] for s in segs] == [80.0]
+    assert all(h == round(h, 2) for h in daily.values())
+
+
 def test_daily_hours_json_written_to_assignment(db_session) -> None:
     """compute_schedule writes daily_hours_json on each analyst assignment."""
     import json
