@@ -9,10 +9,11 @@ import { useGlobalTeamFilter } from '../hooks/useGlobalTeamFilter';
 import { useUnreadReleaseNotes } from '../hooks/useReleaseNotes';
 import { Ctx, type OnboardingCtx } from './OnboardingContext';
 
-// Авто-открытие панели — не чаще одного раза за сессию (module-level, как
+// Кому панель уже открыта автоматически в этой вкладке (module-level, как
 // shownInSession в WhatsNewGate.tsx): сервер защёлкивает auto_opened, но до
-// ответа PUT ещё один рендер не должен открыть панель снова.
-const autoOpenSessionGuard = new Set<string>();
+// ответа PUT ещё один рендер не должен открыть панель снова. Ключ — пользователь:
+// после смены учётки в той же вкладке новому пользователю панель откроется.
+const autoOpenedFor = new Set<string>();
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -71,8 +72,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   // образцу WhatsNewGate.tsx.
   const { data: unread } = useUnreadReleaseNotes();
   const whatsNewPending = !unread || unread.unread_versions.length > 0;
-  if (status && !status.me.auto_opened && !status.me.hidden && !whatsNewPending && !autoOpenSessionGuard.has('done')) {
-    autoOpenSessionGuard.add('done');
+  if (status && !status.me.auto_opened && !status.me.hidden && !whatsNewPending && user && !autoOpenedFor.has(user.id)) {
+    autoOpenedFor.add(user.id);
     Promise.resolve().then(() => {
       setPanelOpen(true);
       void updateMe({ auto_opened: true });
