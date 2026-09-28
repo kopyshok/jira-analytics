@@ -62,6 +62,10 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
       : `${own.state === 'skipped' ? 'Пропущено' : 'Отмечено'}: ${own.marked_by ?? '—'}, ${formatDateOnly(own.marked_at)}`
     : null;
 
+  // Выполненный авто-подпункт без кнопок — без пустой строки под ним.
+  const hasActions = !!step.tourId || !!step.route
+    || (!step.children && (state !== 'done' || own?.source === 'manual'));
+
   return (
     <div style={{ display: 'flex', gap: 10, padding: nested ? '6px 0' : '10px 0' }} data-testid={`onboarding-step-${step.id}`}>
       <div style={{ paddingTop: 2 }}><StatusIcon state={state} index={index} /></div>
@@ -69,6 +73,7 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
         <Typography.Text strong={!nested} delete={state === 'skipped'}>{step.title}</Typography.Text>
         {!closed && <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{step.hint}</Typography.Text></div>}
         {note && <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{note}</Typography.Text></div>}
+        {hasActions && (
         <Space size={4} wrap style={{ marginTop: 6 }}>
           {step.tourId && (
             <Button size="small" type="primary" ghost onClick={() => startTour(step.tourId as string)} data-testid={`tour-start-${step.tourId}`}>
@@ -88,6 +93,7 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
             <Button size="small" type="text" loading={busyAction === 'pending'} onClick={() => act('pending')}>Вернуть</Button>
           )}
         </Space>
+        )}
         {step.children?.map(c => <StepRow key={c.id} step={c} nested />)}
       </div>
     </div>
