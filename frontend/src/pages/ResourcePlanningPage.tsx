@@ -341,6 +341,7 @@ function ResourcePlanningPageInner() {
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <Select
+          data-tour="rp-scenario-select"
           loading={plansLoading || createPlan.isPending}
           placeholder="Выберите утверждённый сценарий"
           value={currentScenarioId}
@@ -358,6 +359,7 @@ function ResourcePlanningPageInner() {
             type="primary"
             loading={compute.isPending || gantt?.plan.status === 'computing'}
             onClick={handleCompute}
+            data-tour="rp-distribute"
           >
             Распределить
           </Button>
@@ -491,7 +493,7 @@ function ResourcePlanningPageInner() {
             }
           >
             <Badge dot={prefs.hide_weekends || depDrawMode || groupBySubgroup} offset={[-2, 2]}>
-              <Button size="small" icon={<ControlOutlined />}>
+              <Button size="small" icon={<ControlOutlined />} data-tour="rp-view">
                 Вид
               </Button>
             </Badge>
@@ -598,6 +600,7 @@ function ResourcePlanningPageInner() {
       )}
 
       {gantt?.employee_load && gantt.employee_load.length > 0 && viewMode === 'two-level' && (
+        <div data-tour="rp-load">
         <EmployeeLoadHeatmap
           rows={gantt.employee_load}
           subgroupByEmployee={subgroupOrder.length > 0 ? subgroupByEmployee : undefined}
@@ -607,6 +610,7 @@ function ResourcePlanningPageInner() {
           selectedIds={peopleFilter}
           onEmployeeClick={togglePerson}
         />
+        </div>
       )}
 
       <AssignmentSidebar

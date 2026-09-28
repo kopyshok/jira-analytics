@@ -917,7 +917,11 @@ export default function CategoriesEditorPage() {
     ];
     return base.map(col => ({
       ...col,
-      onHeaderCell: () => ({ width: col.width, onResize: handleResize(col.key) }),
+      onHeaderCell: () => ({
+        width: col.width,
+        onResize: handleResize(col.key),
+        ...(col.key === 'category' ? { 'data-tour': 'categories-col-category' } : {}),
+      }),
     }));
   }, [
     widths, jiraBaseUrl,
@@ -1026,12 +1030,12 @@ export default function CategoriesEditorPage() {
             Выберите задачи, назначьте категорию и сохраните черновик.
           </Text>
         </Space>
-        <Tag color={counts.stack > 0 ? 'gold' : 'cyan'} className="category-triage-attention">
+        <Tag color={counts.stack > 0 ? 'gold' : 'cyan'} className="category-triage-attention" data-tour="categories-waiting">
           {counts.stack} ждут разбора
         </Tag>
       </section>
 
-      <div className="category-queue-summary" aria-label="Очереди разбора задач">
+      <div className="category-queue-summary" aria-label="Очереди разбора задач" data-tour="categories-queues">
         {queueItems.map(item => (
           <button
             key={item.key}
@@ -1098,12 +1102,13 @@ export default function CategoriesEditorPage() {
             icon={<CheckOutlined />}
             disabled={applicableSelectedIds.length === 0}
             onClick={() => setBulkModalOpen(true)}
+            data-tour="categories-bulk"
           >
             Категория для отмеченных ({applicableSelectedIds.length})
           </Button>
         </Space>
       </div>
-      <div className="category-table-wrap">
+      <div className="category-table-wrap" data-tour="categories-table">
         <Table<TreeNodeWithChildren>
           className="category-issue-table"
           dataSource={stackData}

@@ -27,25 +27,25 @@ export default function DashboardPage() {
   return (
     <div>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24}>
+        <Col xs={24} data-tour="dash-projects">
           <ProjectsWidget data={projects} loading={projLoading} />
         </Col>
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24}>
+        <Col xs={24} data-tour="dash-normed">
           <NormWorkWidget data={normWork} loading={normLoading} />
         </Col>
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24}>
+        <Col xs={24} data-tour="dash-worklogs">
           <CategoryWidget data={categories} loading={catLoading} />
         </Col>
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24}>
+        <Col xs={24} data-tour="dash-balance">
           <HoursBalanceWidget />
         </Col>
       </Row>
