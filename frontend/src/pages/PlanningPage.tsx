@@ -8,7 +8,7 @@ import {
 } from 'antd';
 import {
   BarChartOutlined, CheckCircleOutlined, CheckSquareTwoTone, ClockCircleOutlined,
-  DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
+  CodeOutlined, DeleteOutlined, DiffOutlined, FlagFilled, HistoryOutlined,
   PlusOutlined, RollbackOutlined, ShopOutlined, SwapOutlined, UserOutlined,
 } from '@ant-design/icons';
 import BacklogAllocRow from '../components/planning/BacklogAllocRow';
@@ -41,6 +41,7 @@ import {
   useScenarioResourceSummary,
   useUpdateScenario,
   usePatchAllocationAssignee,
+  usePatchAllocationDeveloper,
   useSetAllocationSubgroup,
   useReorderAllocations,
   useCapacityDiff,
@@ -64,9 +65,9 @@ import { computeDeficitByRole, demandByAssigneeRole, demandByRole } from '../uti
 import { effectiveEstimate } from '../utils/allocationEstimates';
 import type { AllocationResponse } from '../types/api';
 
-const GRID = '24px 36px 48px minmax(0, 1fr) 150px 180px 260px 90px';
-// Та же сетка + колонка «Группа» после исполнителя — для команд с делением.
-const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(0, 1fr) 150px 140px 180px 260px 90px';
+const GRID = '24px 36px 48px minmax(0, 1fr) 150px 150px 180px 260px 90px';
+// Та же сетка + колонка «Группа» после разработчика — для команд с делением.
+const GRID_WITH_SUBGROUP = '24px 36px 48px minmax(0, 1fr) 150px 150px 140px 180px 260px 90px';
 const GRID_GAP = 8;
 
 
@@ -278,6 +279,7 @@ export default function PlanningPage() {
   const appearanceValue = appearance.data ?? DEFAULT_APPEARANCE;
   const liftIncluded = appearanceValue.scenario_lift_included;
   const { mutate: patchAssignee } = usePatchAllocationAssignee();
+  const { mutate: patchDeveloper } = usePatchAllocationDeveloper();
   const { mutate: patchBacklogPriority } = usePatchBacklogPriority();
   const updateScenario = useUpdateScenario();
   const deleteScenario = useDeleteScenario();
@@ -503,6 +505,14 @@ export default function PlanningPage() {
       patchAssignee({ scenarioId, allocId, assigneeEmployeeId: employeeId });
     },
     [patchAssignee, scenarioId],
+  );
+
+  const handleDeveloperChange = useCallback(
+    (allocId: string, employeeId: string | null) => {
+      if (!scenarioId) return;
+      patchDeveloper({ scenarioId, allocId, developerEmployeeId: employeeId });
+    },
+    [patchDeveloper, scenarioId],
   );
 
   // === Группы внутри команды =============================================
@@ -916,7 +926,11 @@ export default function PlanningPage() {
                   <span>Идея</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <UserOutlined className="icon-bob" style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
-                    Исполнитель
+                    Аналитик
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <CodeOutlined style={{ color: DARK_THEME.cyanPrimary, fontSize: 14 }} />
+                    Разработчик
                   </span>
                   {hasSubgroups && <span>Группа</span>}
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -982,6 +996,7 @@ export default function PlanningPage() {
                                   onToggle={toggleAllocation}
                                   onPriorityChange={handlePriorityChange}
                                   onAssigneeChange={handleAssigneeChange}
+                                  onDeveloperChange={handleDeveloperChange}
                                   onSubgroupChange={handleSubgroupChange}
                                   onOpenBreakdown={handleOpenBreakdown}
                                 />

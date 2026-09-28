@@ -412,7 +412,7 @@ export default function BacklogPage() {
       ),
     },
     {
-      title: 'Исполнитель',
+      title: 'Аналитик',
       key: 'assignee',
       width: 140,
       render: (_: unknown, r: BacklogItemResponse) => {
@@ -426,11 +426,40 @@ export default function BacklogPage() {
             variant="borderless"
             value={r.assignee_employee_id ?? undefined}
             style={{ width: '100%', fontSize: 12 }}
-            options={activeEmployees.map((e) => ({ label: e.display_name, value: e.id }))}
+            // Один человек — одна фаза: разработчик задачи здесь неактивен.
+            options={activeEmployees.map((e) =>
+              e.id === r.developer_employee_id
+                ? { label: `${e.display_name} — уже разработчик этой задачи`, value: e.id, disabled: true }
+                : { label: e.display_name, value: e.id },
+            )}
             onChange={(val) => patch(r.id, { assignee_employee_id: val ?? null })}
           />
         );
       },
+    },
+    {
+      title: 'Разработчик',
+      key: 'developer',
+      width: 140,
+      // Заполняется только вручную, в любой строке — то же значение, что в сценариях.
+      render: (_: unknown, r: BacklogItemResponse) => (
+        <Select
+          size="small"
+          allowClear
+          variant="borderless"
+          value={r.developer_employee_id ?? undefined}
+          style={{ width: '100%', fontSize: 12 }}
+          showSearch={{ optionFilterProp: 'label' }}
+          options={activeEmployees.map((e) =>
+            e.id === r.assignee_employee_id
+              ? { label: `${e.display_name} — уже аналитик этой задачи`, value: e.id, disabled: true }
+              : { label: e.display_name, value: e.id },
+          )}
+          // В закрытом поле — имя с сервера: неактивного сотрудника нет в списке.
+          labelRender={({ label }) => r.developer_display_name ?? label}
+          onChange={(val) => patch(r.id, { developer_employee_id: val ?? null })}
+        />
+      ),
     },
     {
       title: 'Заказчик',
