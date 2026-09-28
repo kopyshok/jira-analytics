@@ -998,15 +998,17 @@ def _cross_team_conflicts(
     capacity: Dict[str, Dict[date, float]],
     bookings: List[cto.ExternalBooking],
     emp_names: Dict[str, str],
+    base_share: Dict[str, float],
 ) -> List[ConflictOut]:
     """Пересечение с планами других команд — только у тех, кого этот план
     уступает (``yielding``): привлечённых и тех, у кого команда плана не основная.
 
     День пересечения: у фазы этого плана есть часы, и вместе с бронями других
-    команд и их долей прочих работ они больше ёмкости дня. Одна запись на
-    фазу; в БД не хранится.
+    команд и их долей прочих работ (у броней без вовлечённости — долей
+    человека ``base_share``) они больше ёмкости дня. Одна запись на фазу; в БД
+    не хранится.
     """
-    ext_by_emp = cto.occupied_hours(bookings, capacity)
+    ext_by_emp = cto.occupied_hours(bookings, capacity, base_share)
     teams_on: Dict[tuple, set] = {}
     for b in bookings:
         for d in b.daily_hours:
@@ -1194,6 +1196,7 @@ def _live_conflicts(
         capacity,
         bookings,
         {e.id: e.display_name for e in employees},
+        cto.base_other_share(db, employees, plan.year, cto.quarter_num(plan.quarter)),
     )
 
 
@@ -1416,6 +1419,12 @@ def get_gantt(
                 own_phases
                 + [(b.employee_id, b.involvement, b.daily_hours) for b in bookings]
             )
+            # Прочие работы есть каждый рабочий день: в день без задач (и у
+            # задач без вовлечённости) — доля человека по справочнику его
+            # домашней команды.
+            base_share = cto.base_other_share(
+                db, plan_employees, plan.year, cto.quarter_num(plan.quarter)
+            )
             for e in plan_employees:
                 emp_abs = absences_by_emp.get(e.id, [])
                 emp_spans = member_iv.get(e.id) or []
@@ -1431,7 +1440,8 @@ def get_gantt(
                     # по себе перегруз не рисуют.
                     other_h = min(
                         max(0.0, av - u - ext_h),
-                        av * other_share.get(e.id, {}).get(d, 0.0),
+                        av
+                        * other_share.get(e.id, {}).get(d, base_share.get(e.id, 0.0)),
                     )
                     other_pct = (other_h / av * 100.0) if av > 0 else 0.0
                     # Признак нерабочего дня (календарь имеет приоритет над отпуском).
@@ -1513,7 +1523,7 @@ def get_gantt(
             # Прочие работы добавляются той команде, под которую подстраиваются:
             # у уступающих — брони других команд, у домашней — этот план. Так
             # отметка в домашнем плане совпадает с конфликтом техкоманды.
-            occupied = cto.occupied_hours(bookings, avail)
+            occupied = cto.occupied_hours(bookings, avail, base_share)
             own_share = cto.other_work_share(own_phases)
             overlap_by_emp = {
                 eid: set(
@@ -1524,7 +1534,7 @@ def get_gantt(
                         else {
                             d: h
                             + avail.get(eid, {}).get(d, 0.0)
-                            * own_share.get(eid, {}).get(d, 0.0)
+                            * own_share.get(eid, {}).get(d, base_share.get(eid, 0.0))
                             for d, h in days.items()
                         },
                         avail.get(eid, {}),
@@ -1564,7 +1574,8 @@ def get_gantt(
                 plan.computed_at,
             )
             live_conflicts = _cross_team_conflicts(
-                plan, list(assignments_raw), yielding, used, avail, bookings, names
+                plan, list(assignments_raw), yielding, used, avail, bookings, names,
+                base_share,
             )
 
     conflicts = _detect_conflicts(plan, assignments_raw, db) + live_conflicts
@@ -3593,8 +3604,12 @@ def explain_assignment(
             borrowed_here = cto.borrowed_ids(
                 db, plan.team, eq_start, eq_end, [a.employee_id]
             )
+            yields_here = borrowed_here | cto.guest_ids(
+                db, plan.team, eq_start, eq_end, [a.employee_id]
+            )
         except ValueError:
             borrowed_here = set()
+            yields_here = set()
         raw_avail = svc.build_availability(
             [e for e in employees if e.id == a.employee_id],
             horizon_start,
@@ -3618,8 +3633,16 @@ def explain_assignment(
             ),
             borrowed_here,
         )
+        # Прочие работы каждый день — как у планировщика: доля человека
+        # вычитается, если план его уступает.
+        base_here = cto.base_other_share(
+            db,
+            [e for e in employees if e.id in yields_here],
+            plan.year,
+            cto.quarter_num(plan.quarter),
+        )
         full_avail = cto.subtract_occupancy(
-            raw_avail, cto.occupied_hours(other_bookings, raw_avail)
+            raw_avail, cto.busy_hours(other_bookings, raw_avail, base_here)
         ).get(a.employee_id, {})
 
     # Calendar map для окна фазы (расширено влево до expected_start для трассы).

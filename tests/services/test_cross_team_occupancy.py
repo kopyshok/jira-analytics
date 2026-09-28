@@ -375,6 +375,48 @@ def test_occupied_hours_adds_other_work_share():
     assert {d: round(v, 2) for d, v in share.items()} == {d1: 0.1, d2: 0.1, d4: 0.5}
 
 
+def test_other_work_every_day_by_person_share():
+    """Прочие работы у человека каждый рабочий день: в дни без броней и у
+    броней без вовлечённости — по его доле; явные 100% у брони — без них."""
+    d1, d2, d3, d4 = D("2026-01-05"), D("2026-01-06"), D("2026-01-07"), D("2026-01-08")
+    bookings = [
+        _ext("e", daily={d1: 7.2}, involvement=0.9),
+        _ext("e", team="C", daily={d2: 3.0}),
+        _ext("e", team="D", daily={d4: 5.0}, involvement=1.0),
+    ]
+    capacity = {"e": {d1: 8.0, d2: 8.0, d3: 8.0, d4: 8.0}, "x": {d1: 8.0}}
+    base = {"e": 0.3}
+
+    busy = cto.busy_hours(bookings, capacity, base)
+
+    assert {d: round(h, 2) for d, h in busy["e"].items()} == {
+        d1: 8.0, d2: 5.4, d3: 2.4, d4: 5.0,
+    }
+    assert busy["x"] == {d1: 0.0}
+    assert set(cto.occupied_hours(bookings, capacity, base)["e"]) == {d1, d2, d4}
+
+
+def test_base_other_share_from_home_team_directory(db_session):
+    """Доля прочих работ человека — по справочнику вовлечённости его основной
+    команды для его роли; РП и консультант — как аналитик."""
+    from app.models import InvolvementDefault
+
+    for role, value in (("dev", 0.9), ("analyst", 0.7)):
+        db_session.add(InvolvementDefault(
+            team="A", role=role, effective_year=2026, effective_quarter=1, involvement=value,
+        ))
+    dev = make_employee(db_session, "Пряничников", "A", role="dev")
+    join_team(db_session, dev, "B")
+    rp = make_employee(db_session, "Копышков", "A", role="rp")
+    in_b = make_employee(db_session, "Свой B", "B", role="dev")
+    other = make_employee(db_session, "Прочий", "A", role="other")
+    db_session.commit()
+
+    share = cto.base_other_share(db_session, [dev, rp, in_b, other], 2026, 1)
+
+    assert {k: round(v, 2) for k, v in share.items()} == {dev.id: 0.1, rp.id: 0.3}
+
+
 def _booking_of(db_session, employee, team="B", year=2026, quarter="Q1", day="2026-01-05"):
     """Опорный план команды ``team`` с одной бронью на сотрудника."""
     sc, plan = make_plan(db_session, team, year=year, quarter=quarter)

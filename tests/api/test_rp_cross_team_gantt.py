@@ -676,6 +676,38 @@ def test_load_counts_other_work_share_of_involvement(client, db_session):
     assert (free["pct"], free["other_pct"], free["other_hours"]) == (0.0, 0.0, 0.0)
 
 
+def test_secondary_plan_leaves_daily_other_work_on_free_days(client, db_session):
+    """Прочие работы у человека каждый рабочий день: в дни, когда основная
+    команда A его не заняла, неосновная B берёт не весь день, а за вычетом
+    его доли прочих работ по справочнику A (разработчик — 90%)."""
+    import json
+
+    from app.models import InvolvementDefault, ResourcePlanAssignment
+    from tests.services.xteam_factory import join_team
+
+    db_session.add(InvolvementDefault(
+        team="A", role="dev", effective_year=2026, effective_quarter=1, involvement=0.9,
+    ))
+    e = make_employee(db_session, "Шутов", "A", role="dev")
+    join_team(db_session, e, "B")
+    make_plan(db_session, "A")
+    sc_b, plan_b = make_plan(db_session, "B")
+    add_item(db_session, sc_b, "Работа B", dev=10.8)
+    db_session.commit()
+
+    _compute(db_session, plan_b.id)
+
+    [row] = db_session.query(ResourcePlanAssignment).filter_by(plan_id=plan_b.id).all()
+    assert {k: round(v, 2) for k, v in json.loads(row.daily_hours_json).items()} == {
+        "2026-01-01": 5.4, "2026-01-02": 5.4,
+    }
+    load = _row(_gantt(client, plan_b.id), e.id)
+    day = _day(load, "2026-01-01")
+    assert (day["pct"], day["other_pct"]) == (90.0, 10.0)
+    free = _day(load, "2026-01-05")
+    assert (free["pct"], free["ext_pct"], free["other_pct"]) == (0.0, 0.0, 10.0)
+
+
 def test_jira_developer_left_out_of_plan_does_not_make_it_stale(client, db_session):
     """«Разработчик» из Jira занят весь квартал и в план не попал: его брони
     диаграмма не показывает — и в учтённые при расчёте они не входят."""
