@@ -52,3 +52,22 @@ def test_month_close_blocks_get_support_work_type(tmp_path):
 
     _alembic(url, "downgrade", "pq07_assignment_opo_part")
     _alembic(url, "upgrade", "head")
+
+
+def test_upgrade_skips_table_created_by_create_all(tmp_path):
+    """Dev-база получает таблицу от create_all в тестах раньше миграции."""
+    from app.models import TeamWorkTypeOverride
+
+    url = f"sqlite:///{(tmp_path / 'nw01b.db').as_posix()}"
+    _alembic(url, "upgrade", "pq07_assignment_opo_part")
+    engine = sa.create_engine(url)
+    TeamWorkTypeOverride.__table__.create(engine)
+    engine.dispose()
+
+    _alembic(url, "upgrade", "head")
+
+    engine = sa.create_engine(url)
+    with engine.connect() as c:
+        cols = {x["name"] for x in sa.inspect(c).get_columns("scheduled_blocks")}
+    engine.dispose()
+    assert "work_type_id" in cols
