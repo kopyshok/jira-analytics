@@ -26,6 +26,7 @@ _ALLOC_COMPARE_FIELDS = (
     "title",
     "assignee_employee_id",
     "assignee_role_at_approval",
+    "developer_employee_id",
     "priority",
 )
 

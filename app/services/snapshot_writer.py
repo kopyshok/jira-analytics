@@ -477,8 +477,9 @@ class SnapshotWriter:
         Для каждой ScenarioAllocation с included_flag=True данного сценария
         копирует все поля BacklogItem (title, issue_id, project_id, customer,
         cost_type, impact, risk, priority, estimate_*_hours, opo_analyst_ratio,
-        assignee_employee_id) и поля allocation (allocation_id, backlog_item_id,
-        sort_order, included_flag, involvement_coefficient).
+        assignee_employee_id, developer_employee_id) и поля allocation
+        (allocation_id, backlog_item_id, sort_order, included_flag,
+        involvement_coefficient).
 
         assignee_role_at_approval резолвится одним батчевым запросом по всем
         assignee_employee_id.
@@ -542,6 +543,7 @@ class SnapshotWriter:
                     assignee_role_at_approval=role_by_employee_id.get(
                         bi.assignee_employee_id
                     ) if bi.assignee_employee_id else None,
+                    developer_employee_id=bi.developer_employee_id,
                 )
             )
 

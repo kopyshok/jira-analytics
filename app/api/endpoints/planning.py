@@ -19,7 +19,7 @@ Flow:
 import calendar
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -74,6 +74,7 @@ from app.services.backlog_service import (
 from app.services.assignee_candidates import candidate_groups, jira_assignee_id
 from app.services.category_resolver import CategoryResolver
 from app.services.cross_team_occupancy import quarter_num
+from app.services.jira_developer import jira_developers_for_items
 from app.services.plan_common import quarter_bounds
 from app.services.subgroup_flow_service import flow_for_team
 from app.services.hierarchy_rules import is_planning_leaf, load_rules
@@ -347,6 +348,9 @@ class AllocationResponse(BaseModel):
     assignee_employee_id: Optional[str] = None
     assignee_display_name: Optional[str] = None
     assignee_role: Optional[str] = None
+    # Разработчик строки — только ручной выбор (Jira не пишет).
+    developer_employee_id: Optional[str] = None
+    developer_display_name: Optional[str] = None
     customer: Optional[str] = None
     cost_type: Optional[str] = None
     source_category: Optional[str] = None  # 'initiatives_rfa' | 'quarterly_tasks'
@@ -360,6 +364,10 @@ class AllocationResponse(BaseModel):
 
 class AllocationAssigneePatch(BaseModel):
     assignee_employee_id: Optional[str] = None
+
+
+class AllocationDeveloperPatch(BaseModel):
+    developer_employee_id: Optional[str] = None
 
 
 class AllocationsReorderBody(BaseModel):
@@ -516,6 +524,8 @@ def _to_allocation_resp(
         assignee_employee_id=item.assignee_employee_id,
         assignee_display_name=assignee_name,
         assignee_role=resolved_role,
+        developer_employee_id=item.developer_employee_id,
+        developer_display_name=item.developer.display_name if item.developer else None,
         customer=item.customer,
         cost_type=item.cost_type,
         source_category=item.issue.category if item.issue else None,
@@ -1505,7 +1515,11 @@ async def list_scenario_allocations(
     query = (
         db.query(ScenarioAllocation, BacklogItem)
         .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(ScenarioAllocation.scenario_id == scenario_id)
     )
 
@@ -1681,7 +1695,11 @@ async def patch_allocation(
     # Re-load with issue join for response.
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == alloc.backlog_item_id)
         .first()
     )
@@ -1718,7 +1736,11 @@ async def patch_allocation_assignee(
 
     backlog_item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == alloc.backlog_item_id)
         .first()
     )
@@ -1731,6 +1753,10 @@ async def patch_allocation_assignee(
         emp = db.query(Employee).filter(Employee.id == data.assignee_employee_id).first()
         if not emp:
             raise HTTPException(status_code=404, detail="Employee not found")
+        if data.assignee_employee_id == backlog_item.developer_employee_id:
+            raise HTTPException(
+                status_code=422, detail="Этот сотрудник уже разработчик задачи"
+            )
         backlog_item.assignee_employee_id = data.assignee_employee_id
         chosen_account = emp.jira_account_id or None
     else:
@@ -1749,7 +1775,70 @@ async def patch_allocation_assignee(
     # Reload with relationships after commit.
     backlog_item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
+        .filter(BacklogItem.id == backlog_item.id)
+        .first()
+    )
+    return _to_allocation_resp(
+        alloc,
+        backlog_item,
+        subgroup_by_employee=_subgroup_by_employee(db, scenario.team),
+    )
+
+
+@router.patch(
+    "/scenarios/{scenario_id}/allocations/{alloc_id}/developer",
+    response_model=AllocationResponse,
+)
+async def patch_allocation_developer(
+    scenario_id: str,
+    alloc_id: str,
+    data: AllocationDeveloperPatch,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Сменить разработчика строки сценария. Выбор только ручной; один человек
+    не может быть и аналитиком, и разработчиком строки."""
+    alloc = (
+        db.query(ScenarioAllocation)
+        .filter(
+            ScenarioAllocation.id == alloc_id,
+            ScenarioAllocation.scenario_id == scenario_id,
+        )
+        .first()
+    )
+    if not alloc:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+
+    scenario = db.get(PlanningScenario, scenario_id)
+    _require_draft(scenario)
+
+    backlog_item = db.get(BacklogItem, alloc.backlog_item_id)
+    if not backlog_item:
+        raise HTTPException(status_code=404, detail="BacklogItem not found")
+    if data.developer_employee_id is not None:
+        if not db.get(Employee, data.developer_employee_id):
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if data.developer_employee_id == backlog_item.assignee_employee_id:
+            raise HTTPException(
+                status_code=422, detail="Этот сотрудник уже аналитик задачи"
+            )
+    backlog_item.developer_employee_id = data.developer_employee_id
+
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    # Reload with relationships after commit.
+    backlog_item = (
+        db.query(BacklogItem)
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == backlog_item.id)
         .first()
     )
@@ -1767,13 +1856,17 @@ async def patch_allocation_assignee(
 def scenario_assignee_candidates(
     scenario_id: str,
     backlog_item_id: str = Query(..., description="Задача бэклога — строка сценария"),
+    phase: Literal["analyst", "dev"] = Query(
+        "analyst", description="Колонка: аналитик или разработчик"
+    ),
     db: Session = Depends(get_db),
 ):
-    """Кандидаты в исполнители строки сценария.
+    """Кандидаты в аналитики или разработчики строки сценария.
 
     Все, кто в квартале сценария состоит в какой-либо команде, группами
-    «Из Jira» (исполнитель задачи в Jira) / «Моя команда» / «Другие команды»,
-    у каждого — загрузка за квартал по опорным планам команд. Пустые группы
+    «Из Jira» / «Моя команда» / «Другие команды», у каждого — загрузка за
+    квартал по опорным планам команд. «Из Jira» — исполнитель задачи в Jira
+    (``phase=analyst``) или её «Разработчик» (``phase=dev``). Пустые группы
     не возвращаются.
     """
     scenario = db.get(PlanningScenario, scenario_id)
@@ -1799,6 +1892,13 @@ def scenario_assignee_candidates(
         .filter(BacklogItem.id == backlog_item_id)
         .first()
     )
+    if phase == "dev":
+        # «Из Jira» для разработчика — поле «Разработчик» задачи или её подзадач.
+        jira_id = (
+            jira_developers_for_items(db, [item], start, end).get(item.id) if item else None
+        )
+    else:
+        jira_id = jira_assignee_id(db, item.issue if item else None)
     groups = candidate_groups(
         db,
         team=scenario.team,
@@ -1806,7 +1906,7 @@ def scenario_assignee_candidates(
         end=end,
         year=scenario.year,
         quarter=quarter,
-        jira_employee_id=jira_assignee_id(db, item.issue if item else None),
+        jira_employee_id=jira_id,
     )
     return [asdict(g) for g in groups]
 
