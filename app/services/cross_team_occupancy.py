@@ -482,42 +482,60 @@ def subtractable(
     ]
 
 
-def _team_hashes(bookings: Iterable[ExternalBooking]) -> Dict[str, str]:
-    """{команда: sha256 её броней} по часам человека в день.
+def _team_hashes(
+    bookings: Iterable[ExternalBooking],
+    blocked_cells: Optional[Dict[str, List[tuple]]] = None,
+) -> Dict[str, str]:
+    """{команда: sha256 её броней и заблокированных дней её периодов}.
 
-    Строки брони (их id, фазы, дробление на части) в отпечаток не входят:
-    пересчёт чужого плана пересоздаёт строки, и если часы людей по дням те
-    же, отпечаток не меняется.
+    Брони — по часам человека в день. Строки брони (их id, фазы, дробление
+    на части) в отпечаток не входят: пересчёт чужого плана пересоздаёт
+    строки, и если часы людей по дням те же, отпечаток не меняется.
+    ``blocked_cells`` — {команда: [(сотрудник, день ISO)]}, заблокированные
+    дни периодов основных команд людей плана (`scheduled_blocks.cells_by_team`).
+    Команда без заблокированных дней хэшируется как раньше — старые
+    отпечатки планов без периодов чужих команд не устаревают.
     """
     hours: Dict[str, Dict[tuple, float]] = defaultdict(lambda: defaultdict(float))
     for b in bookings:
         for d, h in b.daily_hours.items():
             hours[b.team][(b.employee_id, d.isoformat())] += h
+    cells_of = blocked_cells or {}
     out: Dict[str, str] = {}
-    for team, cells in hours.items():
+    for team in set(hours) | set(cells_of):
         rows = sorted(
-            (eid, day, round(h, 2)) for (eid, day), h in cells.items() if round(h, 2) > 0
+            (eid, day, round(h, 2))
+            for (eid, day), h in hours.get(team, {}).items()
+            if round(h, 2) > 0
         )
-        if rows:
-            raw = json.dumps(rows, separators=(",", ":")).encode("utf-8")
-            out[team] = hashlib.sha256(raw).hexdigest()
+        cells = sorted(list(c) for c in cells_of.get(team, ()))
+        if not rows and not cells:
+            continue
+        payload = rows if not cells else {"blocked": cells, "hours": rows}
+        raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        out[team] = hashlib.sha256(raw).hexdigest()
     return out
 
 
-def fingerprint(bookings: Iterable[ExternalBooking]) -> str:
+def fingerprint(
+    bookings: Iterable[ExternalBooking],
+    blocked_cells: Optional[Dict[str, List[tuple]]] = None,
+) -> str:
     """Отпечаток броней по командам — JSON {команда: sha256}.
 
     План запоминает его при расчёте по вычтенным из своей доступности
     броням (``ResourcePlan.external_fingerprint``), диаграмма сверяет с ним
-    текущие — см. `stale_teams`.
+    текущие — см. `stale_teams`. ``blocked_cells`` — заблокированные дни
+    периодов основных команд людей плана (см. `_team_hashes`).
     """
-    return json.dumps(_team_hashes(bookings), sort_keys=True)
+    return json.dumps(_team_hashes(bookings, blocked_cells), sort_keys=True)
 
 
 def stale_teams(
     stored: Optional[str],
     bookings: Iterable[ExternalBooking],
     computed_at: Optional[datetime],
+    blocked_cells: Optional[Dict[str, List[tuple]]] = None,
 ) -> List[str]:
     """Команды, чьи вычитаемые брони разошлись с учтёнными при расчёте, по алфавиту.
 
@@ -529,10 +547,12 @@ def stale_teams(
     План ни разу не считался — сравнивать не с чем, список пуст. Посчитан,
     пока планы не запоминали отпечаток (``stored`` пуст), — какие брони он
     учёл, неизвестно: устарел, если вычитаемые брони вообще есть.
+    ``blocked_cells`` — заблокированные дни периодов основных команд людей
+    плана сейчас: изменился период основной команды — она тоже в списке.
     """
     if computed_at is None:
         return []
-    now = _team_hashes(bookings)
+    now = _team_hashes(bookings, blocked_cells)
     if stored is None:
         return sorted(now)
     was = json.loads(stored)
@@ -639,7 +659,7 @@ def quarter_load_pct(
             end=end,
         )
     )
-    avail = ResourcePlanningService(db).build_availability(employees, start, end, [])
+    avail = ResourcePlanningService(db).build_availability(employees, start, end)
     out: Dict[str, float] = {}
     for e in employees:
         cap = sum(avail.get(e.id, {}).values())

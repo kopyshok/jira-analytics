@@ -8,13 +8,15 @@
 Приоритет: вся команда < роль < сотрудник. Для человека, команды периода,
 месяца и вида работ действуют только периоды самого точного уровня, который
 у него есть в этом месяце. Периоды без вида — своя группа. Периоды разных
-команд друг друга не перекрывают.
+команд друг друга не перекрывают. В один день — один период: период команды
+раньше периода без команды.
 
 Чистое чтение, без commit.
 """
 
 from __future__ import annotations
 
+import calendar
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -66,6 +68,10 @@ def resolve_blocked_days(
     emps = [e for e in employees if e is not None]
     if not emps or start > end:
         return {}
+    # Приоритет решается в пределах месяца: окно расширяем до целых месяцев,
+    # иначе окно в день видит не те периоды, что квартал. Итог — по [start, end].
+    m_start = start.replace(day=1)
+    m_end = date(end.year, end.month, calendar.monthrange(end.year, end.month)[1])
     membership = tm.membership_rows(db, [e.id for e in emps])
     teams = {t for rows in membership.values() for t, _j, _l, primary in rows if primary}
     if plan_team:
@@ -77,7 +83,7 @@ def resolve_blocked_days(
         db.execute(
             select(ScheduledBlock)
             .options(selectinload(ScheduledBlock.roles), selectinload(ScheduledBlock.employees))
-            .where(or_(*conds), ScheduledBlock.start_date <= end, ScheduledBlock.end_date >= start)
+            .where(or_(*conds), ScheduledBlock.start_date <= m_end, ScheduledBlock.end_date >= m_start)
             .order_by(ScheduledBlock.start_date, ScheduledBlock.id)
         )
         .scalars()
@@ -111,8 +117,8 @@ def resolve_blocked_days(
                 level = TEAM_LEVEL
             else:
                 continue
-            d = max(b.start_date, start)
-            last = min(b.end_date, end)
+            d = max(b.start_date, m_start)
+            last = min(b.end_date, m_end)
             while d <= last:
                 if b.team is None or _active(
                     periods, b.team, d, primary_only=b.team != plan_team
@@ -120,10 +126,13 @@ def resolve_blocked_days(
                     groups[(b.team, d.year, d.month, b.work_type_id)].append((level, d, b))
                 d += timedelta(days=1)
         hits: Dict[date, BlockHit] = {}
-        for items in groups.values():
+        # Один период на день: период команды раньше периода без команды —
+        # иначе свой период команды прячется и его расход запаса теряется.
+        for key in sorted(groups, key=lambda k: k[0] is None):
+            items = groups[key]
             top = max(level for level, _d, _b in items)
             for level, d, b in items:
-                if level == top and d not in hits:
+                if level == top and start <= d <= end and d not in hits:
                     hits[d] = BlockHit(b.id, b.team, b.work_type_id, b.reason)
         if hits:
             out[e.id] = hits

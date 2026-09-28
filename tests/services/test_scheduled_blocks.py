@@ -50,6 +50,37 @@ def test_employee_block_overrides_role_block_within_month(db_session):
     assert hits[petrov.id][D("2026-10-05")].work_type_id == wt.id
 
 
+def test_employee_beats_role_in_month_for_any_window(db_session):
+    """Окно в день или в часть месяца даёт те же дни, что и квартал."""
+    wt = _wt(db_session)
+    analyst = _role(db_session, "analyst")
+    ivanov = make_employee(db_session, "Иванов", "ERP", role="analyst")
+    petrov = make_employee(db_session, "Петров", "ERP", role="analyst")
+    _block(db_session, "ERP", "2026-10-05", "2026-10-07", wt, roles=[analyst])
+    _block(db_session, "ERP", "2026-10-08", "2026-10-09", wt, employees=[ivanov])
+
+    one_day = resolve_blocked_days(db_session, [ivanov, petrov], D("2026-10-06"), D("2026-10-06"), "ERP")
+    first_week = resolve_blocked_days(db_session, [ivanov, petrov], D("2026-10-01"), D("2026-10-07"), "ERP")
+
+    assert ivanov.id not in one_day
+    assert sorted(one_day[petrov.id]) == [D("2026-10-06")]
+    assert ivanov.id not in first_week
+    assert sorted(first_week[petrov.id]) == [D("2026-10-05"), D("2026-10-06"), D("2026-10-07")]
+
+
+def test_team_block_beats_block_without_team_on_same_day(db_session):
+    wt = _wt(db_session)
+    e = make_employee(db_session, "Шутов", "ERP", role="dev")
+    general = _block(db_session, None, "2026-10-05", "2026-10-06", reason="Субботник")
+    own = _block(db_session, "ERP", "2026-10-06", "2026-10-06", wt)
+
+    hits = resolve_blocked_days(db_session, [e], D("2026-10-01"), D("2026-10-31"), "ERP")
+
+    assert hits[e.id][D("2026-10-05")].block_id == general.id
+    assert hits[e.id][D("2026-10-06")].block_id == own.id
+    assert hits[e.id][D("2026-10-06")].team == "ERP"
+
+
 def test_role_block_beats_team_block_but_other_types_stay(db_session):
     wt, other = _wt(db_session), _wt(db_session, "organizational")
     dev = _role(db_session, "dev")

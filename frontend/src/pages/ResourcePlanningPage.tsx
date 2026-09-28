@@ -152,6 +152,14 @@ function ResourcePlanningPageInner() {
         member_to: r.member_to,
       }))
     : employees;
+  // Состав команды для выбора сотрудников заблокированного периода — без привлечённых.
+  const blockMembers = useMemo(
+    () => (gantt?.employee_load ?? [])
+      .filter(r => !r.is_borrowed)
+      .map(r => ({ id: r.employee_id, name: r.employee_name ?? '' }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [gantt],
+  );
   const compute = useComputeResourcePlan();
   const createPlan = useCreateResourcePlan();
 
@@ -621,7 +629,12 @@ function ResourcePlanningPageInner() {
         }
       />
 
-      <ScheduledBlocksModal open={blocksOpen} onClose={() => setBlocksOpen(false)} team={team || undefined} />
+      <ScheduledBlocksModal
+        open={blocksOpen}
+        onClose={() => setBlocksOpen(false)}
+        team={team || undefined}
+        members={blockMembers}
+      />
 
       <Modal
         open={forkModalOpen}
