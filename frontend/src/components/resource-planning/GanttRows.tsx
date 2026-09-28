@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { App } from 'antd';
 import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
 import type { EmployeeResponse } from '../../types/api';
@@ -393,10 +393,14 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
   // Призрак новой позиции: пока тянут и дальше — до ответа сервера и
   // перечитывания плана, чтобы полоса не прыгала назад.
   const [ghost, setGhost] = useState<{ left: number; width: number } | null>(null);
+  // Полосу сдвинули: щелчок после отпускания кнопки панель не открывает.
+  // Состояние переноса тут не годится — оно сбрасывается раньше щелчка.
+  const movedRef = useRef(false);
 
   const beginDrag = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    movedRef.current = false;
     // Пока прежний перенос сохраняется и план перечитывается, id строк могут
     // смениться — новый перенос ушёл бы на удалённую строку.
     if (dragLocked) return;
@@ -435,6 +439,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
       setGhost(null);
       return;
     }
+    movedRef.current = true;
     const requested = shiftByColumns(drag.origStart, dx, timeline);
     setGhost({ left: dateToLeft(requested, timeline), width: drag.widthPct });
     // Промис, а не колбэки mutate: после пересчёта строка может смениться,
@@ -501,7 +506,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
       }}
       onMouseDown={beginDrag}
       onClick={(e) => {
-        if (drag) return;
+        if (movedRef.current) return;
         if (onClick) {
           e.stopPropagation();
           onClick();
