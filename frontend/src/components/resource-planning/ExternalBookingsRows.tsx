@@ -18,6 +18,8 @@ const BAR_H = 16;
 // как у строк задач.
 const STICKY_Z = 25;
 const OVERLAP_HINT = 'пересекается с вашим планом — техкоманда получит конфликт';
+// Общий сотрудник: конфликта нет, пересечение уходит пересчётом плана.
+const SHARED_OVERLAP_HINT = 'пересекается с вашим планом — нажмите «Распределить»';
 
 interface Props {
   bookings: ExternalBookingOut[];
@@ -163,7 +165,7 @@ export default function ExternalBookingsRows({
               {showOverlap && b.overlap_days.map((d) => (
                 <div
                   key={`overlap-${d}`}
-                  title={`${ddmm(d)}: ${OVERLAP_HINT}`}
+                  title={`${ddmm(d)}: ${b.is_borrowing ? OVERLAP_HINT : SHARED_OVERLAP_HINT}`}
                   style={{
                     position: 'absolute',
                     left: `${dateToLeft(d, timeline)}%`,
