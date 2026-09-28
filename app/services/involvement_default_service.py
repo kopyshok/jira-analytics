@@ -74,6 +74,33 @@ def team_defaults(
     return out
 
 
+def teams_defaults(
+    db: Session, keys: set[tuple[str, int, int]],
+) -> dict[tuple[str, int, int], dict[str, float]]:
+    """``team_defaults`` сразу для нескольких (команда, год, квартал) — одним запросом."""
+    if not keys:
+        return {}
+    rows = (
+        db.query(InvolvementDefault)
+        .filter(InvolvementDefault.team.in_({team for team, _, _ in keys}))
+        .order_by(
+            InvolvementDefault.effective_year, InvolvementDefault.effective_quarter
+        )
+        .all()
+    )
+    out: dict[tuple[str, int, int], dict[str, float]] = {}
+    for team, year, quarter in keys:
+        # По возрастанию начала действия: последняя подходящая запись роли побеждает.
+        out[(team, year, quarter)] = {
+            r.role: r.involvement
+            for r in rows
+            if r.team == team
+            and r.role in INVOLVEMENT_ROLES
+            and (r.effective_year, r.effective_quarter) <= (year, quarter)
+        }
+    return out
+
+
 # Фаза плана → поле вовлечённости в BacklogItem.
 PHASE_FIELD = {
     "analyst": "involvement_analyst",

@@ -142,6 +142,10 @@ export interface EmployeeLoadDay {
   off?: 'weekend' | 'holiday' | 'absence' | 'out_of_team' | null;
   /** Доля ёмкости дня, занятая планами других команд, %. */
   ext_pct?: number;
+  /** Прочие работы — доля дня вне задач по вовлечённости (90% → 10% дня), %. */
+  other_pct?: number;
+  /** То же в часах. */
+  other_hours?: number;
 }
 
 /** Переход сотрудника на границе участия в команде плана внутри квартала. */

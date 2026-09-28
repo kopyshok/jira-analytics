@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from 'react';
 
 import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
 import { dayTooltipLines } from '../../utils/rpBusy';
-import { EXT_LOAD_COLOR, splitLoadFill } from '../../utils/heatmapFill';
+import { EXT_LOAD_COLOR, OTHER_WORK_COLOR, splitLoadFill } from '../../utils/heatmapFill';
 
 interface Props {
   rows: EmployeeLoadOut[];
@@ -172,10 +172,11 @@ export default function EmployeeLoadHeatmap({
       const byDate = new Map(r.days.map((d) => [d.date, d] as const));
       // Среднее — по всем рабочим дням квартала, включая свободные: иначе
       // бейдж показывает интенсивность в занятые дни, а не утилизацию.
+      // В дни работы по этому плану — вместе с прочими работами.
       const workPcts: number[] = [];
       for (const ds of dates) {
         const d = byDate.get(ds);
-        if (d && !d.off) workPcts.push(d.pct);
+        if (d && !d.off) workPcts.push(d.pct + (d.pct > 0 ? (d.other_pct ?? 0) : 0));
       }
       const avg = workPcts.length ? Math.round(workPcts.reduce((s, p) => s + p, 0) / workPcts.length) : 0;
       const allEmpty = dates.every((ds) => {
@@ -185,11 +186,12 @@ export default function EmployeeLoadHeatmap({
       return { row: r, byDate, avg, allEmpty };
     });
     const hasExt = rows.some((r) => r.days.some((d) => (d.ext_pct ?? 0) > 0));
+    const hasOther = rows.some((r) => r.days.some((d) => (d.other_pct ?? 0) > 0));
 
     const first = isoDate(dates[0]);
     const last = isoDate(dates[dates.length - 1]);
     const periodLabel = `${first.getDate()} ${RU_MONTHS_SHORT[first.getMonth()]} – ${last.getDate()} ${RU_MONTHS_SHORT[last.getMonth()]}`;
-    return { weeks, empRows, periodLabel, hasExt };
+    return { weeks, empRows, periodLabel, hasExt, hasOther };
   }, [rows]);
 
   // Привлечённые из других команд — отдельная секция внизу.
@@ -237,7 +239,8 @@ export default function EmployeeLoadHeatmap({
     else if (off === 'holiday') body = ['праздник'];
     else {
       // По строке на этот план и на каждую другую команду: часы и задачи дня.
-      const lines = dayTooltipLines(row.employee_id, date, assignments, bookings);
+      const other = row.days.find((d) => d.date === date)?.other_hours ?? 0;
+      const lines = dayTooltipLines(row.employee_id, date, assignments, bookings, other);
       body = lines.length > 0 ? lines : ['нет загрузки'];
     }
     // У правого края экрана подсказка раскрывается влево от курсора, иначе уходит за край.
@@ -265,7 +268,7 @@ export default function EmployeeLoadHeatmap({
         <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{data.periodLabel}</div>
       </div>
       <div style={{ fontSize: 11, color: '#5a7a9a', marginBottom: 8 }}>
-        Только рабочие дни. Наведите на день — часы по задачам этого плана и других команд; щелчок по имени — фильтр по человеку.
+        Только рабочие дни. Прочие работы — доля дня вне задач по вовлечённости. Наведите на день — часы по задачам этого плана и других команд; щелчок по имени — фильтр по человеку.
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -413,7 +416,7 @@ export default function EmployeeLoadHeatmap({
                   )}
                   {avg > 0 && (
                     <span
-                      title="Средняя загрузка в этом плане; клетки показывают и планы других команд"
+                      title="Средняя загрузка в этом плане вместе с прочими работами; клетки показывают и планы других команд"
                       style={{
                         marginLeft: 'auto',
                         flexShrink: 0,
@@ -443,6 +446,7 @@ export default function EmployeeLoadHeatmap({
                         const off = d?.off;
                         const pct = d?.pct ?? 0;
                         const ext = d?.ext_pct ?? 0;
+                        const other = d?.other_pct ?? 0;
                         let bg: string;
                         let border: string | undefined;
                         if (off === 'out_of_team') bg = OUT_OF_TEAM_FILL;
@@ -450,10 +454,10 @@ export default function EmployeeLoadHeatmap({
                         else if (off === 'holiday') bg = HOLIDAY_FILL;
                         else {
                           // Снизу — часы в планах других команд, над ними — этот план
-                          // цветом общей загрузки дня.
-                          const c = loadColor(pct + ext);
-                          bg = splitLoadFill(c.bg, pct, ext);
-                          border = ext > 0 ? undefined : c.border;
+                          // цветом общей загрузки дня, выше — прочие работы.
+                          const c = loadColor(pct + ext + other);
+                          bg = splitLoadFill(c.bg, pct, ext, other);
+                          border = ext > 0 || other > 0 ? undefined : c.border;
                         }
                         return (
                           <div
@@ -508,6 +512,7 @@ export default function EmployeeLoadHeatmap({
                 { label: 'в планах других команд', fill: EXT_LOAD_COLOR },
               ]
             : []),
+          ...(data.hasOther ? [{ label: 'прочие работы', fill: OTHER_WORK_COLOR }] : []),
         ].map((it) => (
           <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
             <span
