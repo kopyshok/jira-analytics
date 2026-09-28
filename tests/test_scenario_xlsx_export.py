@@ -204,7 +204,7 @@ class TestSummaryByEmployee:
 INCLUDED_HEADERS_MID = [
     "Ключ Jira", "Название", "Приоритет", "Заказчик",
     "Аналитик, ч", "Разработка, ч", "QA, ч", "ОПЭ, ч",
-    "Итого, ч", "План, ч", "Цели",
+    "Итого, ч", "План, ч", "Цели", "Аналитик", "Разработчик",
 ]
 
 
@@ -222,7 +222,7 @@ class TestIncludedSheet:
         data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
         wb = load_workbook(BytesIO(data))
         ws = wb["Включено"]
-        header = [ws.cell(row=2, column=c).value for c in range(1, 12)]
+        header = [ws.cell(row=2, column=c).value for c in range(1, 14)]
         assert header == INCLUDED_HEADERS_MID
 
     def test_data_row_for_build_feature(self, db_session, minimal_scenario):
@@ -243,6 +243,29 @@ class TestIncludedSheet:
         assert "ИТОГО" in str(ws.cell(row=last, column=1).value or "")
         assert ws.cell(row=last, column=9).value == pytest.approx(80.0)
 
+    def test_analyst_and_developer_columns(self, db_session, minimal_scenario):
+        """Аналитик и разработчик строки попадают в свои колонки; итоговая
+        строка не пытается суммировать текстовые колонки."""
+        item = db_session.query(BacklogItem).filter_by(title="Build feature").one()
+        alice = db_session.query(Employee).filter_by(display_name="Alice").one()
+        dave = db_session.query(Employee).filter_by(display_name="Dave").one()
+        item.assignee_employee_id = alice.id
+        item.assignee_manual = True
+        item.developer_employee_id = dave.id
+        db_session.flush()
+
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Включено"]
+
+        assert ws.cell(row=3, column=12).value == "Alice"
+        assert ws.cell(row=3, column=13).value == "Dave"
+
+        last = ws.max_row
+        assert ws.cell(row=last, column=9).value == pytest.approx(80.0)
+        assert not ws.cell(row=last, column=12).value
+        assert not ws.cell(row=last, column=13).value
+
     def test_autofilter_set(self, db_session, minimal_scenario):
         data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
         wb = load_workbook(BytesIO(data))
@@ -259,7 +282,7 @@ class TestIncludedSheet:
 EXCLUDED_HEADERS_EXPECTED = [
     "Ключ Jira", "Название", "Приоритет", "Заказчик",
     "Аналитик, ч", "Разработка, ч", "QA, ч", "ОПЭ, ч",
-    "Итого, ч", "Цели",
+    "Итого, ч", "Цели", "Аналитик", "Разработчик",
 ]
 
 
@@ -276,7 +299,7 @@ class TestExcludedSheet:
         data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
         wb = load_workbook(BytesIO(data))
         ws = wb["Не вошло"]
-        header = [ws.cell(row=2, column=c).value for c in range(1, 11)]
+        header = [ws.cell(row=2, column=c).value for c in range(1, 13)]
         assert header == EXCLUDED_HEADERS_EXPECTED
 
     def test_excluded_row_present(self, db_session, minimal_scenario):
@@ -291,6 +314,24 @@ class TestExcludedSheet:
         ws = wb["Не вошло"]
         cell = ws.cell(row=3, column=2)
         assert cell.fill.fgColor.value.upper().endswith("FAFAFA")
+
+    def test_developer_column_and_totals_row_survives(self, db_session, minimal_scenario):
+        """Разработчик строки — в своей колонке; итоговая строка не падает
+        на текстовых колонках «Аналитик»/«Разработчик»."""
+        item = db_session.query(BacklogItem).filter_by(title="Skipped feature").one()
+        dave = db_session.query(Employee).filter_by(display_name="Dave").one()
+        item.developer_employee_id = dave.id
+        db_session.flush()
+
+        data = ScenarioXlsxExporter(db_session, minimal_scenario.scenario_id).build()
+        wb = load_workbook(BytesIO(data))
+        ws = wb["Не вошло"]
+
+        assert ws.cell(row=3, column=12).value == "Dave"
+        last = ws.max_row
+        assert ws.cell(row=last, column=9).value == pytest.approx(200.0)
+        assert not ws.cell(row=last, column=11).value
+        assert not ws.cell(row=last, column=12).value
 
 
 class TestReferenceSheet:
