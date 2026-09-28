@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Alert, Button, Drawer, Progress, Select, Space, Typography } from 'antd';
+import { App, Alert, Button, Drawer, Progress, Select, Space, Typography } from 'antd';
 import { CheckCircleFilled, MinusCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router';
 import { formatDateOnly } from '../utils/format';
+import type { OnboardingStatus } from '../api/onboarding';
 import { useOnboarding } from './OnboardingContext';
 import { INTRO_STEPS, SETUP_STEPS, isClosed, type SetupStep } from './steps';
 
@@ -10,26 +11,49 @@ type RowState = 'done' | 'skipped' | 'pending';
 
 function StatusIcon({ state, index }: { state: RowState; index?: number }) {
   if (state === 'done') return <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />;
-  if (state === 'skipped') return <MinusCircleOutlined style={{ color: 'var(--text-3)', fontSize: 18 }} />;
+  if (state === 'skipped') return <MinusCircleOutlined style={{ color: 'var(--text-muted)', fontSize: 18 }} />;
   return (
     <span style={{
       display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: '50%',
-      border: '1px solid var(--text-3)', fontSize: 11, color: 'var(--text-2)',
+      border: '1px solid var(--text-muted)', fontSize: 11, color: 'var(--text-2)',
     }}>{index ?? ''}</span>
   );
 }
 
+/** Состояния всех листьев шага: у листа — своё, у группы — состояния всех подпунктов. */
+function leafStates(step: SetupStep, status: OnboardingStatus | undefined): RowState[] {
+  if (step.children) return step.children.flatMap(c => leafStates(c, status));
+  return [status?.steps[step.id]?.state ?? 'pending'];
+}
+
+/** Группа закрыта, только когда закрыты все подпункты: пропущена — если пропущены
+ * все, иначе выполнена (значит, хотя бы один подпункт отмечен, а не пропущен). */
+function groupState(step: SetupStep, status: OnboardingStatus | undefined): RowState {
+  const states = leafStates(step, status);
+  if (states.some(s => s === 'pending')) return 'pending';
+  return states.every(s => s === 'skipped') ? 'skipped' : 'done';
+}
+
 function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nested?: boolean }) {
   const { status, startTour, closePanel, setStepState } = useOnboarding();
+  const { message } = App.useApp();
   const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
+  // «Проверил» и «Пропустить» — разные действия, каждое со своим busy, иначе
+  // клик по одной кнопке подсвечивает загрузкой и вторую.
+  const [busyAction, setBusyAction] = useState<RowState | null>(null);
   const closed = isClosed(step, status);
   const own = step.children ? undefined : status?.steps[step.id];
-  const state: RowState = step.children ? (closed ? 'done' : 'pending') : (own?.state ?? 'pending');
+  const state: RowState = step.children ? groupState(step, status) : (own?.state ?? 'pending');
 
   const act = async (next: RowState) => {
-    setBusy(true);
-    try { await setStepState(step.id, next); } finally { setBusy(false); }
+    setBusyAction(next);
+    try {
+      await setStepState(step.id, next);
+    } catch {
+      message.error('Не удалось сохранить отметку');
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const note = own && own.state !== 'pending' && own.marked_at
@@ -55,13 +79,13 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
             <Button size="small" onClick={() => { closePanel(); navigate(step.route as string); }}>Перейти</Button>
           )}
           {!step.children && state === 'pending' && step.manual && (
-            <Button size="small" loading={busy} onClick={() => act('done')}>Проверил</Button>
+            <Button size="small" loading={busyAction === 'done'} onClick={() => act('done')}>Проверил</Button>
           )}
           {!step.children && state === 'pending' && (
-            <Button size="small" type="text" loading={busy} onClick={() => act('skipped')}>Пропустить</Button>
+            <Button size="small" type="text" loading={busyAction === 'skipped'} onClick={() => act('skipped')}>Пропустить</Button>
           )}
           {!step.children && (state === 'skipped' || (state === 'done' && own?.source === 'manual')) && (
-            <Button size="small" type="text" loading={busy} onClick={() => act('pending')}>Вернуть</Button>
+            <Button size="small" type="text" loading={busyAction === 'pending'} onClick={() => act('pending')}>Вернуть</Button>
           )}
         </Space>
         {step.children?.map(c => <StepRow key={c.id} step={c} nested />)}
@@ -72,6 +96,7 @@ function StepRow({ step, index, nested }: { step: SetupStep; index?: number; nes
 
 export default function OnboardingDrawer() {
   const { team, teamOptions, setTeam, status, panelOpen, closePanel, startTour, updateMe } = useOnboarding();
+  const { message } = App.useApp();
   const [showDoneSetup, setShowDoneSetup] = useState(false);
   const tours = new Set(status?.me.completed_tours ?? []);
   const setupDone = SETUP_STEPS.filter(s => isClosed(s, status)).length;
@@ -85,7 +110,14 @@ export default function OnboardingDrawer() {
       placement="right"
       styles={{ wrapper: { width: 'min(520px, 92vw)' } }}
       footer={
-        <Button type="link" size="small" onClick={() => { void updateMe({ hidden: true }); closePanel(); }}>
+        <Button
+          type="link"
+          size="small"
+          onClick={() => {
+            void updateMe({ hidden: true }).catch(() => message.error('Не удалось сохранить настройку'));
+            closePanel();
+          }}
+        >
           Больше не показывать (вернуть — кнопкой «Первые шаги» в справке)
         </Button>
       }

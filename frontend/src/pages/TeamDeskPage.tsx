@@ -372,25 +372,27 @@ export default function TeamDeskPage() {
       {data && layout === 'grouped' && rubberCard}
       {data && layout === 'grouped' && filterBars}
       {data && layout === 'grouped' && (
-        <GroupedIssues
-          title="Задачи по разработчикам"
-          developers={data.developers}
-          issues={data.issues}
-          overrunPct={overrunPct}
-          jiraBaseUrl={jiraBaseUrl}
-          scale="centered"
-          flagFilter={flagFilter}
-          statusFilter={statusFilter}
-          // Разработчик здесь выбирается только кликом по счётчику статуса —
-          // карточек в этой раскладке нет.
-          onlyDeveloper={selectedDev}
-          queueScope={queueScope}
-          onDailyRate={setDailyRate}
-          statuses={shownStatuses}
-          statusGroups={statusGroups}
-          onStatusFilter={pickStatus}
-          {...listProps}
-        />
+        <div data-tour="desk-issues">
+          <GroupedIssues
+            title="Задачи по разработчикам"
+            developers={data.developers}
+            issues={data.issues}
+            overrunPct={overrunPct}
+            jiraBaseUrl={jiraBaseUrl}
+            scale="centered"
+            flagFilter={flagFilter}
+            statusFilter={statusFilter}
+            // Разработчик здесь выбирается только кликом по счётчику статуса —
+            // карточек в этой раскладке нет.
+            onlyDeveloper={selectedDev}
+            queueScope={queueScope}
+            onDailyRate={setDailyRate}
+            statuses={shownStatuses}
+            statusGroups={statusGroups}
+            onStatusFilter={pickStatus}
+            {...listProps}
+          />
+        </div>
       )}
 
 

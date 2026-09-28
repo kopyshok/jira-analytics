@@ -18,7 +18,7 @@ export default function OnboardingButton() {
       aria-label="Первые шаги"
       data-testid="onboarding-button"
       data-tour="header-onboarding"
-      style={{ color: 'rgba(255,255,255,0.55)' }}
+      style={{ color: 'var(--text-2)' }}
     >
       {done}/{total}
     </Button>

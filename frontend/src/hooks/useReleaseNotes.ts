@@ -6,11 +6,12 @@ const KEY_UNREAD = ['release-notes', 'unread'] as const;
 const KEY_ALL = ['release-notes', 'all'] as const;
 const KEY_DRAFTS = ['release-notes', 'drafts'] as const;
 
-export function useUnreadReleaseNotes() {
+export function useUnreadReleaseNotes(enabled: boolean = true) {
   return useQuery({
     queryKey: KEY_UNREAD,
     queryFn: () => releaseNotesApi.getUnread(),
     staleTime: 60_000,
+    enabled,
   });
 }
 
