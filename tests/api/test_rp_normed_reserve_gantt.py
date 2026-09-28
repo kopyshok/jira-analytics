@@ -112,7 +112,9 @@ def test_gantt_shows_quarter_load_reserve_and_warnings(client, db_session):
     assert (tech["planned_hours"], tech["other_teams_hours"]) == (102.4, 180.0)
     assert (tech["remaining_hours"], tech["overuse_hours"]) == (0.0, 77.6)
     [work] = reserve["other_team_work"]
-    assert (work["team"], work["hours"], work["is_manual"]) == ("Блок", 180.0, False)
+    assert (work["team"], work["role"], work["hours"], work["is_manual"]) == (
+        "Блок", "dev", 180.0, False,
+    )
     assert work["work_type_id"] == types["technical_tasks"].id
 
     live = {c["type"]: c for c in body["conflicts"] if c["type"].startswith("NORMED_")}

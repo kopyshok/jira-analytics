@@ -25,11 +25,16 @@ export const useScheduledBlocks = (team?: string) =>
     staleTime: 30_000,
   });
 
+// Период меняет и «Кого закрывает» (список периодов), и запас/загрузку по дням
+// в диаграммах — инвалидируем оба. Событие с бэкенда придёт параллельно.
 export const useCreateScheduledBlock = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createScheduledBlock,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-blocks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scheduled-blocks'] });
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+    },
   });
 };
 
@@ -38,7 +43,10 @@ export const useUpdateScheduledBlock = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updateScheduledBlock>[1] }) =>
       updateScheduledBlock(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-blocks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scheduled-blocks'] });
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+    },
   });
 };
 
@@ -46,7 +54,10 @@ export const useDeleteScheduledBlock = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: deleteScheduledBlock,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-blocks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scheduled-blocks'] });
+      qc.invalidateQueries({ queryKey: ['gantt'] });
+    },
   });
 };
 

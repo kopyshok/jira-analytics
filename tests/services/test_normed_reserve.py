@@ -242,3 +242,111 @@ def test_place_person_residue_then_free_days_then_unplaced():
     assert round(load.normed, 2) == 28.0          # 8 заблокировано + 20 доля
     assert round(load.pct, 1) == round((14.4 + 28.0) / 40 * 100, 1)
     assert load.normed_by_type == {"Сопровождение": 8.0, "Минорные": 20.0}
+
+
+def test_place_person_fills_days_without_tasks_first():
+    """Остаток доли — сначала поровну на дни без задач (сокращённый день берёт
+    меньше пропорционально своим часам); остаток свободного времени дней с
+    задачами (своих или других команд) — только если дней без задач не хватило."""
+    mon, tue, wed, thu, fri = [D("2026-01-05") + timedelta(days=i) for i in range(5)]
+    capacity = {mon: 8.0, tue: 8.0, wed: 8.0, thu: 8.0, fri: 4.0}  # пятница — сокращённый день
+    own = {mon: 4.0}
+    other = {tue: 2.0}
+    residue = {mon: 0.1, tue: 0.1}  # вовлечённость 90%: 0,8 ч остатка дня
+
+    def place(share):
+        reserve = nr.PersonReserve("e", "dev", 36.0, share={"wt": share})
+        return nr.place_person(capacity, own, other, residue, {}, reserve, {"wt": "Минорные"})
+
+    # 10 ч: 1,6 ч — остатки Пн/Вт; 8,4 ч — на Ср/Чт/Пт (20 ч) пропорционально часам.
+    load = place(10.0)
+    by_day = {d: round(h, 2) for d, h in load.normed_by_day.items()}
+    assert (by_day[mon], by_day[tue]) == (0.8, 0.8)
+    assert (by_day[wed], by_day[thu], by_day[fri]) == (3.36, 3.36, 1.68)
+    assert load.unplaced == 0.0
+
+    # 25,8 ч: дни без задач заняты целиком (20 ч), 4,2 ч — на свободное время
+    # дней с задачами (Пн 3,2 ч, Вт 5,2 ч) пропорционально, по половине.
+    load = place(25.8)
+    by_day = {d: round(h, 2) for d, h in load.normed_by_day.items()}
+    assert (by_day[wed], by_day[thu], by_day[fri]) == (8.0, 8.0, 4.0)
+    assert (by_day[mon], by_day[tue]) == (2.4, 3.4)
+    assert round(load.unplaced, 2) == 0.0
+
+    # 40 ч: всё свободное занято, 10 ч не вмещается.
+    load = place(40.0)
+    by_day = {d: round(h, 2) for d, h in load.normed_by_day.items()}
+    assert (by_day[mon], by_day[tue]) == (4.0, 6.0)
+    assert round(load.unplaced, 2) == 10.0
+
+
+def test_place_person_no_free_days_spreads_share_over_residue_then_leftovers():
+    """Каждый день занят задачей (своей или чужой команды) — дней без задач нет.
+    Доля запаса сначала добирает остаток дня после вовлечённости на каждом
+    дне, затем — оставшееся свободное время дней с задачами пропорционально;
+    что не поместилось — unplaced."""
+    mon, tue, wed = [D("2026-01-05") + timedelta(days=i) for i in range(3)]
+    capacity = {mon: 8.0, tue: 8.0, wed: 8.0}
+    own = {mon: 5.0, tue: 6.0}
+    other = {wed: 7.0}
+    residue = {mon: 0.1, tue: 0.1, wed: 0.1}  # вовлечённость 90% на всех днях
+    reserve = nr.PersonReserve("e", "dev", 24.0, share={"wt": 8.0})
+
+    load = nr.place_person(capacity, own, other, residue, {}, reserve, {"wt": "Минорные"})
+
+    # Остаток вовлечённости — 0,8 ч (10% от 8 ч) на каждый день, свободного хватает.
+    # Свободное время после остатка: Пн 2,2 ч, Вт 1,2 ч, Ср 0,2 ч (итого 3,6 ч).
+    # Из оставшихся 5,6 ч доли на них уходит всё свободное (3,6 ч), 2,0 ч не поместились.
+    by_day = {d: round(h, 2) for d, h in load.normed_by_day.items()}
+    assert by_day == {mon: 3.0, tue: 2.0, wed: 1.0}
+    assert round(load.unplaced, 2) == 2.0
+    assert round(load.normed, 2) == 8.0  # блока нет, вся доля запаса — 8 ч
+    assert round(load.pct, 1) == round((11.0 + 7.0 + 8.0) / 24.0 * 100, 1)
+
+
+def test_place_person_all_days_blocked_share_is_fully_unplaced():
+    """Все дни квартала заблокированы: норма дня целиком уходит в блок, для
+    доли запаса свободного времени не остаётся — вся доля не помещается."""
+    mon, tue = [D("2026-01-05") + timedelta(days=i) for i in range(2)]
+    capacity = {mon: 8.0, tue: 8.0}
+    reserve = nr.PersonReserve("e", "dev", 16.0, share={"wt1": 10.0})
+    blocked = {
+        mon: BlockHit("b", "ERP", "wt2", "Закрытие месяца"),
+        tue: BlockHit("b", "ERP", "wt2", "Закрытие месяца"),
+    }
+
+    load = nr.place_person(
+        capacity, {}, {}, {}, blocked, reserve, {"wt1": "Минорные", "wt2": "Сопровождение"}
+    )
+
+    assert load.normed_by_day == {mon: 8.0, tue: 8.0}
+    assert load.unplaced == 10.0
+    assert load.normed == 26.0  # 16 ч блока + 10 ч доли
+    assert round(load.pct, 1) == round((16.0 + 10.0) / 16.0 * 100, 1)
+    assert load.normed_by_type == {"Сопровождение": 16.0, "Минорные": 10.0}
+
+
+def test_other_team_work_is_listed_per_role(db_session):
+    """Строка «другие команды» роли раскрывается задачами её людей: одна задача
+    другой команды у двух ролей — две строки. Вид работ — один выбор команды на
+    задачу, общий для всех ролей."""
+    types, _p, _s, item = _erp(db_session)
+    an = make_employee(db_session, "Аналитик", "ERP", role="analyst")
+    join_team(db_session, an, "Блок")
+    bplan = db_session.execute(select(ResourcePlan).where(ResourcePlan.team == "Блок")).scalar_one()
+    book(db_session, bplan, item, an, {d: 4.0 for d in _weekdays("2026-02-02", 5)}, phase="analyst")
+    support = types["support_consult"].id
+    db_session.add(TeamWorkTypeOverride(team="ERP", backlog_item_id=item.id, work_type_id=support))
+    db_session.commit()
+
+    r = nr.team_reserve(db_session, "ERP", *Q)
+
+    assert [(w.role, round(w.hours, 1)) for w in r.other_team_work] == [
+        ("dev", 180.0), ("analyst", 20.0),
+    ]
+    for w in r.other_team_work:
+        assert (w.backlog_item_id, w.team, w.work_type_id, w.is_manual) == (
+            item.id, "Блок", support, True,
+        )
+    # Роль строки — тот же ключ, что у роли в сводке запаса.
+    assert round(next(x for x in r.roles["analyst"] if x.work_type_id == support).other_teams, 1) == 20.0

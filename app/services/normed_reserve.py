@@ -159,12 +159,17 @@ class PersonReserve:
 
 @dataclass
 class OtherTeamWork:
-    """Работа людей команды над задачей другой команды за квартал."""
+    """Работа людей одной роли команды над задачей другой команды за квартал.
+
+    ``role`` — код роли, как ключ в ``TeamReserve.roles`` (без роли — «»).
+    Вид работ — выбор команды для задачи, общий для всех ролей.
+    """
 
     backlog_item_id: str
     issue_key: Optional[str]
     title: str
     team: str
+    role: str
     hours: float
     work_type_id: str
     is_manual: bool
@@ -292,11 +297,12 @@ def team_reserve(
         b_wt = overrides.get(b.backlog_item_id or "") or default_wt
         if hours <= 0 or b_wt is None:
             continue
-        row(people[b.employee_id].role or "", b_wt).other_teams += hours
-        key = (b.backlog_item_id, b.team)
+        role = people[b.employee_id].role or ""
+        row(role, b_wt).other_teams += hours
+        key = (b.backlog_item_id, b.team, role)
         if key not in work:
             work[key] = OtherTeamWork(
-                b.backlog_item_id or "", b.issue_key, b.title, b.team, 0.0, b_wt, manual
+                b.backlog_item_id or "", b.issue_key, b.title, b.team, role, 0.0, b_wt, manual
             )
         work[key].hours += hours
 
@@ -385,8 +391,10 @@ def place_person(
     `cross_team_occupancy.other_work_share`), ``blocked`` — заблокированные
     дни. Заблокированный день — вся норма дня. В день с задачей — остаток
     дня после вовлечённости, пока хватает доли человека. Остаток доли —
-    на свободное время дней пропорционально свободным часам. Не поместилось —
-    ``unplaced``.
+    сначала на дни без задач (ни своих, ни других команд) пропорционально их
+    свободным часам, то есть поровну по дню, а сокращённому дню меньше; не
+    хватило — на свободное время дней с задачами, тоже пропорционально. Не
+    поместилось — ``unplaced``.
     """
     normed = {d: 0.0 for d in capacity}
     by_type: Dict[str, float] = defaultdict(float)
@@ -399,28 +407,32 @@ def place_person(
         for wt, h in reserve.share.items():
             by_type[labels.get(wt, wt)] += h
     remaining = undated
+    busy = {d: own.get(d, 0.0) + other_teams.get(d, 0.0) for d in capacity}
     for d in sorted(capacity):
         if remaining <= 0:
             break
-        if d in blocked:
+        if d in blocked or busy[d] <= 0:
             continue
-        busy = own.get(d, 0.0) + other_teams.get(d, 0.0)
-        if busy <= 0:
-            continue
-        r = min(max(0.0, capacity[d] - busy), capacity[d] * residue_share.get(d, 0.0), remaining)
+        r = min(max(0.0, capacity[d] - busy[d]), capacity[d] * residue_share.get(d, 0.0), remaining)
         normed[d] += r
         remaining -= r
-    free = {
-        d: max(0.0, capacity[d] - own.get(d, 0.0) - other_teams.get(d, 0.0) - normed[d])
-        for d in capacity
-        if d not in blocked
-    }
-    total_free = sum(free.values())
-    if remaining > 0 and total_free > 0:
-        k = min(1.0, remaining / total_free)
+
+    def spread(free: Dict[date, float], rest: float) -> float:
+        """Разложить ``rest`` по свободным часам ``free`` пропорционально; вернуть,
+        что не поместилось."""
+        total = sum(free.values())
+        if rest <= 0 or total <= 0:
+            return rest
+        k = min(1.0, rest / total)
         for d, f in free.items():
             normed[d] += f * k
-        remaining = max(0.0, remaining - total_free)
+        return max(0.0, rest - total)
+
+    free = {
+        d: max(0.0, capacity[d] - busy[d] - normed[d]) for d in capacity if d not in blocked
+    }
+    remaining = spread({d: f for d, f in free.items() if busy[d] <= 0}, remaining)
+    remaining = spread({d: f for d, f in free.items() if busy[d] > 0}, remaining)
     return PersonLoad(
         normed_by_day=normed,
         blocked={d: h for d, h in blocked.items() if d in capacity},

@@ -660,8 +660,8 @@ def test_secondary_plan_takes_only_truly_free_hours(client, db_session):
 def test_load_counts_other_work_share_of_involvement(client, db_session):
     """Загрузка по дням: вовлечённость 90% — 5,4 ч задачи и 0,6 ч
     нормированных работ, день занят целиком. В день, где задача взяла 3 ч, —
-    те же 10% дня плюс доля остатка запаса на свободные 2,4 ч; остаток запаса
-    ложится на свободное время пропорционально и сам перегруз не рисует."""
+    те же 10% дня; остаток запаса ложится сначала на дни без задач и сам
+    перегруз не рисует."""
     from tests.services.normed_factory import _rules, _types
 
     e = make_employee(db_session, "Пряничников", "A")
@@ -680,8 +680,12 @@ def test_load_counts_other_work_share_of_involvement(client, db_session):
     assert free["pct"] == 0.0 and 0.0 < free["normed_pct"] < 100.0
     partial = _day(row, "2026-01-06")
     assert partial["pct"] == 50.0
-    # 0,6 ч остатка дня по вовлечённости + доля свободных 2,4 ч из 6.
-    assert abs(partial["normed_hours"] - (0.6 + free["normed_hours"] * 2.4 / 6)) < 0.02
+    # Только 0,6 ч остатка дня по вовлечённости: остаток запаса (55% нормы)
+    # целиком помещается в дни без задач, свободные 2,4 ч дня с задачей он
+    # берёт лишь при нехватке (спека, раздел 3). Раньше сюда шла ещё и доля
+    # запаса пропорционально свободным часам.
+    assert partial["normed_hours"] == 0.6
+    assert row["quarter"]["unplaced_hours"] == 0.0
 
 
 def test_secondary_plan_leaves_daily_other_work_on_free_days(client, db_session):

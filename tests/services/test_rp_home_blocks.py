@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
-from app.models import MandatoryWorkType, ResourcePlanAssignment, ScheduledBlock
+from app.models import MandatoryWorkType, PlanConflict, ResourcePlanAssignment, ScheduledBlock
 from app.services import cross_team_occupancy as cto
 from app.services.resource_planning_service import ResourcePlanningService
-from tests.services.xteam_factory import add_item, join_team, make_employee, make_plan
+from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
 
 D = date.fromisoformat
 
@@ -148,3 +148,72 @@ def test_plan_without_items_remembers_home_blocks(db_session):
     ResourcePlanningService(db_session).compute_schedule(plan.id)
 
     assert _gantt_stale(db_session, plan.id) == []
+
+
+def _get(db, url):
+    def _get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        r = TestClient(app).get(url)
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _guest_in_blok(db):
+    """Пряничников: основная ERP (период 12–14.01), в «Блоке» — гость (состоит,
+    но не основная). Бронь в плане «Блока» захватывает дни периода ERP."""
+    wt = _work_type(db)
+    e = make_employee(db, "Пряничников", "ERP", role="dev")
+    join_team(db, e, "Блок")
+    db.add(ScheduledBlock(team="ERP", start_date=D("2026-01-12"), end_date=D("2026-01-14"),
+                          reason="Закрытие месяца", work_type_id=wt.id))
+    sc, plan = make_plan(db, "Блок")
+    item = add_item(db, sc, "Задача Блока", dev=12)
+    a = book(db, plan, item, e, {"2026-01-09": 4.0, "2026-01-13": 4.0, "2026-01-15": 4.0})
+    return e, plan, a
+
+
+def test_conflict_explain_treats_home_block_as_unavailable(db_session):
+    """Расшифровка перегрузки гостя в плане другой команды: день периода его
+    основной команды — доступно 0 ч, обычный день — полная ёмкость."""
+    e, plan, _a = _guest_in_blok(db_session)
+    conflicts = {}
+    for iso in ("2026-01-13", "2026-01-15"):
+        c = PlanConflict(plan_id=plan.id, type="OVERLOAD_HIGH", severity="critical",
+                         employee_id=e.id, window_start=datetime.fromisoformat(iso),
+                         window_end=datetime.fromisoformat(iso),
+                         detection_key=f"OVERLOAD_HIGH:{e.id}:{iso}", message="Перегрузка")
+        db_session.add(c)
+        conflicts[iso] = c
+    db_session.commit()
+
+    base = f"/api/v1/resource-planning/resource-plans/{plan.id}/conflicts"
+    blocked = _get(db_session, f"{base}/{conflicts['2026-01-13'].id}/explain")
+    free = _get(db_session, f"{base}/{conflicts['2026-01-15'].id}/explain")
+
+    assert blocked["available_hours"] == 0.0
+    assert blocked["overload_pct"] is None  # ёмкости нет — процента нет
+    assert blocked["demand_hours"] == 4.0
+    assert free["available_hours"] > 0.0
+
+
+def test_assignment_explain_treats_home_block_as_unavailable(db_session):
+    """Посуточная расшифровка фазы гостя: дни периода основной команды —
+    доступно 0 ч, «Блокировка»; соседние будни доступны."""
+    _e, plan, a = _guest_in_blok(db_session)
+    db_session.commit()
+
+    body = _get(db_session,
+                f"/api/v1/resource-planning/resource-plans/{plan.id}/assignments/{a.id}/explain")
+
+    days = {d["date"]: d for d in body["daily_breakdown"]}
+    for iso in ("2026-01-12", "2026-01-14"):
+        assert days[iso]["available_hours"] == 0.0
+        assert (days[iso]["status"], days[iso]["absence_reason"]) == ("absence", "Блокировка")
+    assert days["2026-01-13"]["available_hours"] == 0.0
+    for iso in ("2026-01-09", "2026-01-15"):
+        assert days[iso]["available_hours"] > 0.0

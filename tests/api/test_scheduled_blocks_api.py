@@ -68,19 +68,27 @@ def test_block_crud_with_work_type_and_labels(client, db_session):
     assert patched.json()["work_type_id"] == wt.id
 
 
-def test_old_block_without_work_type_is_listed_and_editable(client, db_session):
-    """Период без вида (до выпуска) виден в списке; правка других полей его не требует."""
+def test_old_block_without_work_type_is_listed_and_needs_type_on_edit(client, db_session):
+    """Период без вида (до выпуска) виден в списке; изменить его можно, только
+    указав вид работ (спека 4.1: вид обязателен при создании и изменении)."""
+    wt = MandatoryWorkType(code="organizational", label="Орг. вопросы", subtracts_from_pool=True)
     block = ScheduledBlock(team="ERP", start_date=date(2026, 10, 5), end_date=date(2026, 10, 7),
                            reason="Тренинг")
-    db_session.add(block)
+    db_session.add_all([wt, block])
     db_session.commit()
 
     [row] = client.get(BASE, params={"team": "ERP"}).json()
     assert row["work_type_id"] is None
     assert row["work_type_label"] is None
     r = client.patch(f"{BASE}/{block.id}", json={"reason": "Обучение"})
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == "Выберите вид нормированных работ"
+    db_session.expire_all()
+    assert db_session.get(ScheduledBlock, block.id).reason == "Тренинг"
+
+    r = client.patch(f"{BASE}/{block.id}", json={"reason": "Обучение", "work_type_id": wt.id})
     assert r.status_code == 200, r.text
-    assert r.json()["reason"] == "Обучение"
+    assert (r.json()["reason"], r.json()["work_type_id"]) == ("Обучение", wt.id)
 
 
 def test_list_labels_in_constant_queries(client, db_session, engine):

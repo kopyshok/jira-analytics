@@ -10,10 +10,11 @@ function invalidatedKeys(entity: string) {
 }
 
 describe('invalidateForEntity', () => {
-  it('правка ресурсного плана обновляет диаграмму, список планов, кандидатов, качество и сравнение', () => {
+  it('правка ресурсного плана обновляет диаграмму, список планов, заблокированные периоды, кандидатов, качество и сравнение', () => {
     expect(invalidatedKeys('resource_planning')).toEqual([
       ['gantt'],
       ['resource-plans'],
+      ['scheduled-blocks'],
       ['assignment-candidates'],
       ['plan-quality'],
       ['plan-diff'],

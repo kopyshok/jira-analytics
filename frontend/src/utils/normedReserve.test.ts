@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { fmtHours, overuseCount, overuseLabel } from './normedReserve';
-import type { ReserveOut } from '../api/resourcePlanning';
+import { fmtHours, itemsForRow, overuseCount, overuseLabel, resolvedOverrideKeys } from './normedReserve';
+import type { OtherTeamWorkOut, ReserveOut } from '../api/resourcePlanning';
+
+const otherTeamWork: OtherTeamWorkOut[] = [
+  {
+    backlog_item_id: 'bi1', issue_key: 'ERP-1', title: 'Задача 1', team: 'Продажи',
+    role: 'dev', hours: 100, work_type_id: 'wt1', is_manual: false,
+  },
+  {
+    backlog_item_id: 'bi2', issue_key: 'ERP-2', title: 'Задача 2', team: 'Продажи',
+    role: 'dev', hours: 80, work_type_id: 'wt1', is_manual: true,
+  },
+  {
+    backlog_item_id: 'bi3', issue_key: 'ERP-3', title: 'Задача 3', team: 'Продажи',
+    role: 'dev', hours: 15, work_type_id: 'wt2', is_manual: false,
+  },
+  {
+    backlog_item_id: 'bi4', issue_key: 'ERP-4', title: 'Задача 4', team: 'Продажи',
+    role: 'analyst', hours: 40, work_type_id: 'wt1', is_manual: false,
+  },
+];
 
 const reserve: ReserveOut = {
   team: 'ERP',
@@ -23,7 +42,7 @@ const reserve: ReserveOut = {
       ],
     },
   ],
-  other_team_work: [],
+  other_team_work: otherTeamWork,
   work_types: [],
 };
 
@@ -59,5 +78,49 @@ describe('fmtHours', () => {
   it('округляет до десятых и подписывает часы', () => {
     expect(fmtHours(101.6)).toBe('101,6 ч');
     expect(fmtHours(0)).toBe('0 ч');
+  });
+});
+
+describe('itemsForRow', () => {
+  it('берёт задачи только этой роли и вида работ', () => {
+    expect(itemsForRow(reserve, 'dev', 'wt1')).toEqual([otherTeamWork[0], otherTeamWork[1]]);
+    expect(itemsForRow(reserve, 'dev', 'wt2')).toEqual([otherTeamWork[2]]);
+  });
+  it('не путает роли с одинаковым видом работ', () => {
+    expect(itemsForRow(reserve, 'analyst', 'wt1')).toEqual([otherTeamWork[3]]);
+  });
+  it('нет совпадений — пустой список', () => {
+    expect(itemsForRow(reserve, 'qa', 'wt1')).toEqual([]);
+  });
+});
+
+describe('resolvedOverrideKeys', () => {
+  it('подтверждённая подмена — ключ попадает в список', () => {
+    // bi2 — ручной выбор wt1, локальная подмена тоже wt1 (сервер подтвердил).
+    expect(resolvedOverrideKeys(otherTeamWork, { bi2: 'wt1' })).toEqual(['bi2']);
+  });
+
+  it('подмена ещё не подтверждена — ключ остаётся', () => {
+    expect(resolvedOverrideKeys(otherTeamWork, { bi2: 'wt2' })).toEqual([]);
+  });
+
+  it('задача с двумя ролями — одно совпадение снимает подмену независимо от строки', () => {
+    // Одна и та же задача (bi5) исполняется двумя ролями — сервер хранит один вид работ на задачу.
+    const twoRoles: OtherTeamWorkOut[] = [
+      { backlog_item_id: 'bi5', issue_key: 'ERP-5', title: 'Задача 5', team: 'Продажи', role: 'dev', hours: 10, work_type_id: 'wt1', is_manual: true },
+      { backlog_item_id: 'bi5', issue_key: 'ERP-5', title: 'Задача 5', team: 'Продажи', role: 'analyst', hours: 5, work_type_id: 'wt1', is_manual: true },
+    ];
+    expect(resolvedOverrideKeys(twoRoles, { bi5: 'wt1' })).toEqual(['bi5']);
+  });
+
+  it('задачи без подмены в списке нет', () => {
+    expect(resolvedOverrideKeys(otherTeamWork, {})).toEqual([]);
+  });
+
+  it('сброс на «Технические задачи» (null) — подтверждается когда is_manual снят', () => {
+    const cleared: OtherTeamWorkOut[] = [
+      { backlog_item_id: 'bi2', issue_key: 'ERP-2', title: 'Задача 2', team: 'Продажи', role: 'dev', hours: 80, work_type_id: 'wt1', is_manual: false },
+    ];
+    expect(resolvedOverrideKeys(cleared, { bi2: null })).toEqual(['bi2']);
   });
 });
