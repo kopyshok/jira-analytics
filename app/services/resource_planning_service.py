@@ -709,7 +709,20 @@ class ResourcePlanningService:
         subtracted = self._subtracted_bookings(
             plan, employees, borrowed, q_start, q_end_extended
         )
-        external = cto.occupied_hours(subtracted, raw_avail)
+        # Прочие работы у человека каждый рабочий день. Тем, кого план уступает
+        # (привлечённым и тем, у кого команда плана не основная), их доля по
+        # справочнику домашней команды вычитается и в дни без броней: день
+        # целиком другой команде не отдаётся.
+        yielding = borrowed | cto.guest_ids(
+            self.db, plan.team, q_start, q_end, [e.id for e in employees]
+        )
+        base_share = cto.base_other_share(
+            self.db,
+            [e for e in employees if e.id in yielding],
+            plan.year,
+            cto.quarter_num(plan.quarter),
+        )
+        external = cto.busy_hours(subtracted, raw_avail, base_share)
         avail = cto.subtract_occupancy(raw_avail, external)
 
         # Календарь рабочих часов БЕЗ сотрудника — для фазы QA (часы-only,

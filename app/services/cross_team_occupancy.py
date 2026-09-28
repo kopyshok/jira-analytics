@@ -351,12 +351,12 @@ def daily_totals(bookings: Iterable[ExternalBooking]) -> Dict[str, Dict[date, fl
 def other_work_share(
     phases: Iterable[tuple[str, Optional[float], Dict[date, float]]],
 ) -> Dict[str, Dict[date, float]]:
-    """{сотрудник: {день: доля дня на прочие работы}}.
+    """{сотрудник: {день: доля дня на прочие работы}} по фазам дня.
 
     ``phases`` — фазы как (сотрудник, вовлечённость, часы по дням).
     Вовлечённость 90% — это 10% дня на прочие (нормированные) работы. Несколько
-    фаз в день — берётся наименьшая вовлечённость. Вовлечённость не задана —
-    доли нет.
+    фаз в день — берётся наименьшая вовлечённость. Фаза без вовлечённости
+    доли не задаёт: такой день берёт долю человека (см. `base_other_share`).
     """
     acc: Dict[str, Dict[date, float]] = defaultdict(dict)
     for employee_id, involvement, daily in phases:
@@ -364,30 +364,100 @@ def other_work_share(
             continue
         share = 1.0 - max(0.0, min(1.0, involvement))
         for d, h in daily.items():
-            if h > 0 and share > acc[employee_id].get(d, 0.0):
+            if h > 0 and share > acc[employee_id].get(d, -1.0):
                 acc[employee_id][d] = share
     return {eid: days for eid, days in acc.items() if days}
+
+
+def base_other_share(
+    db: Session,
+    employees: Iterable[Employee],
+    year: Optional[int],
+    quarter: Optional[int],
+) -> Dict[str, float]:
+    """{сотрудник: доля дня на прочие работы в день без задач}.
+
+    Прочие нормированные работы у человека каждый рабочий день. Их доля —
+    по справочнику вовлечённости его домашней команды (основной, а без неё —
+    всех его команд; берётся наименьшая вовлечённость) для его роли:
+    разработчик — «Разработка», аналитик, РП и консультант — «Анализ».
+    Нет значения — доли нет. Три запроса на любой объём.
+    """
+    # Сервис планировщика сам импортирует этот модуль — отсюда только лениво.
+    from app.services.resource_planning_service import ANALYST_ROLES, DEV_ROLES
+
+    if not year or not quarter:
+        return {}
+    phase_of = {}
+    for e in employees:
+        role = (e.role or "").lower()
+        phase = "dev" if role in DEV_ROLES else "analyst" if role in ANALYST_ROLES else None
+        if phase:
+            phase_of[e.id] = phase
+    if not phase_of:
+        return {}
+    lo, hi = quarter_bounds(year, quarter)
+    membership = tm.membership_rows(db, list(phase_of))
+    homes = {eid: _home_teams(membership.get(eid, ()), lo, hi) for eid in phase_of}
+    defaults = teams_defaults(
+        db, {(t, year, quarter) for teams in homes.values() for t in teams}
+    )
+    out: Dict[str, float] = {}
+    for eid, phase in phase_of.items():
+        invs = [
+            defaults[(t, year, quarter)][phase]
+            for t in homes[eid]
+            if phase in defaults[(t, year, quarter)]
+        ]
+        if invs:
+            out[eid] = 1.0 - max(0.0, min(1.0, min(invs)))
+    return out
 
 
 def occupied_hours(
     bookings: Iterable[ExternalBooking],
     capacity: Dict[str, Dict[date, float]],
+    base_share: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Dict[date, float]]:
-    """{сотрудник: {день: часы броней вместе с прочими работами}}.
+    """{сотрудник: {день брони: часы броней вместе с прочими работами}}.
 
     В день брони человек занят не только её часами, но и долей прочих работ
-    от ёмкости дня (``capacity``, см. `other_work_share`): другой команде
-    свободен только остаток. Так же следующая фаза своего плана видит остаток
-    дня за вычетом потолка вовлечённости предыдущей.
+    от ёмкости дня (``capacity``, см. `other_work_share`; у броней без
+    вовлечённости — доля человека ``base_share``): другой команде свободен
+    только остаток. Так же следующая фаза своего плана видит остаток дня за
+    вычетом потолка вовлечённости предыдущей.
     """
     bookings = list(bookings)
+    base = base_share or {}
     share = other_work_share((b.employee_id, b.involvement, b.daily_hours) for b in bookings)
     return {
         eid: {
-            d: h + capacity.get(eid, {}).get(d, 0.0) * share.get(eid, {}).get(d, 0.0)
+            d: h
+            + capacity.get(eid, {}).get(d, 0.0)
+            * share.get(eid, {}).get(d, base.get(eid, 0.0))
             for d, h in days.items()
         }
         for eid, days in daily_totals(bookings).items()
+    }
+
+
+def busy_hours(
+    bookings: Iterable[ExternalBooking],
+    capacity: Dict[str, Dict[date, float]],
+    base_share: Dict[str, float],
+) -> Dict[str, Dict[date, float]]:
+    """{сотрудник: {день: занято бронями и прочими работами}} на все дни ``capacity``.
+
+    В дни броней — `occupied_hours`, в остальные — прочие работы по доле
+    человека ``base_share``: они есть каждый рабочий день.
+    """
+    occupied = occupied_hours(bookings, capacity, base_share)
+    return {
+        eid: {
+            d: occupied.get(eid, {}).get(d, h * base_share.get(eid, 0.0))
+            for d, h in days.items()
+        }
+        for eid, days in capacity.items()
     }
 
 
