@@ -127,9 +127,9 @@ def test_split_phase_keeps_priority_order(db_session):
             f"Первая часть анализа старшей задачи должна начаться {q_start}, "
             f"а стоит {parts[0].start_date} — ушла за младшую задачу"
         )
-        # Вторая часть — сразу за первой, а не за младшей задачей. Остаток
-        # последнего дня первой части младшая задача забрать может.
-        expected = _next_working_day(parts[0].end_date)
+        # Вторая часть — сразу за первой, а не за младшей задачей: у того же
+        # человека она продолжает первую с остатка её последнего дня.
+        expected = parts[0].end_date
         assert parts[1].start_date == expected, (
             f"Вторая часть должна начаться {expected}, а стоит "
             f"{parts[1].start_date}"
