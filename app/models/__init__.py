@@ -47,6 +47,7 @@ from app.models.user import User, UserRole  # noqa: F401
 from app.models.scheduled_block import ScheduledBlock
 from app.models.scheduled_block_role import ScheduledBlockRole
 from app.models.scheduled_block_employee import ScheduledBlockEmployee
+from app.models.team_work_type_override import TeamWorkTypeOverride
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.release_note import ReleaseNote
@@ -123,6 +124,7 @@ __all__ = [
     "ScheduledBlock",
     "ScheduledBlockRole",
     "ScheduledBlockEmployee",
+    "TeamWorkTypeOverride",
     "ResourcePlan",
     "ResourcePlanAssignment",
     "ReleaseNote",

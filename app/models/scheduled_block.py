@@ -3,7 +3,7 @@
 from datetime import date
 from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Date, String
+from sqlalchemy import Date, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import TimestampMixin, generate_uuid
@@ -30,6 +30,11 @@ class ScheduledBlock(Base, TimestampMixin):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Вид нормированных работ: период расходует запас этого вида.
+    # None — старый период без вида: закрывает день, запас не тратит.
+    work_type_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("mandatory_work_types.id"), nullable=True
+    )
 
     roles: Mapped[List["ScheduledBlockRole"]] = relationship(
         "ScheduledBlockRole",

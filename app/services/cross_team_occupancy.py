@@ -128,6 +128,8 @@ class ExternalBooking:
     # Вовлечённость фазы — как её считал планировщик команды брони: своё
     # значение задачи, иначе справочник команды на квартал плана. None — не задана.
     involvement: Optional[float] = None
+    # Задача брони: по ней основная команда человека выбирает вид работ.
+    backlog_item_id: Optional[str] = None
 
 
 def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
@@ -329,6 +331,7 @@ def external_bookings(
                 )
                 if bi is not None
                 else None,
+                backlog_item_id=a.backlog_item_id,
             )
         )
     out.sort(
