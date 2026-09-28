@@ -15,6 +15,8 @@ interface Props {
   imageBase?: string;
   /** Если есть непрочитанные релизы — открыть вкладку «Что нового» по умолчанию. */
   defaultTab?: 'help' | 'whats-new';
+  /** Элемент в шапке панели справа от заголовка. */
+  extra?: ReactNode;
 }
 
 /**
@@ -23,7 +25,7 @@ interface Props {
  * resolveятся относительно imageBase.
  */
 export default function HelpDrawer({
-  open, onClose, title, content, imageBase = '/docs/help/', defaultTab = 'help',
+  open, onClose, title, content, imageBase = '/docs/help/', defaultTab = 'help', extra,
 }: Props) {
   const components = useMemo(() => ({
     h1: ({ children }: { children?: ReactNode }) => (
@@ -91,6 +93,7 @@ export default function HelpDrawer({
       open={open}
       onClose={onClose}
       placement="right"
+      extra={extra}
       destroyOnClose
       styles={{
         body: { padding: '20px 28px' },
