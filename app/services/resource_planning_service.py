@@ -163,6 +163,39 @@ def _placed_hours(a: ResourcePlanAssignment, unlaid: set) -> float:
     return float(a.hours_allocated or 0.0)
 
 
+def _is_continuation(
+    pred: ResourcePlanAssignment, succ: ResourcePlanAssignment
+) -> bool:
+    """Связь «часть → следующая часть» одной фазы одной задачи у одного человека.
+
+    Такая часть — продолжение предыдущей: берёт остаток дня, в который та
+    кончилась. Раньше она ждала следующего дня, остаток забирала младшая
+    задача и шла параллельно раздробленной фазе. Тестирование (без
+    сотрудника) продолжением не бывает.
+    """
+    return (
+        pred.employee_id is not None
+        and pred.employee_id == succ.employee_id
+        and pred.backlog_item_id == succ.backlog_item_id
+        and pred.phase == succ.phase
+        and (pred.part_number or 1) < (succ.part_number or 1)
+    )
+
+
+def _earliest_after(
+    pred: ResourcePlanAssignment, succ: ResourcePlanAssignment
+) -> date:
+    """Самый ранний старт ``succ`` по связи с ``pred`` (у ``pred`` есть конец).
+
+    Продолжение — в день конца предшественника, остальные связи — со
+    следующего дня.
+    """
+    assert pred.end_date is not None
+    if _is_continuation(pred, succ):
+        return pred.end_date
+    return pred.end_date + timedelta(days=1)
+
+
 def lock_plan(db: Session, plan_id: str) -> None:
     """Взять строку плана «на запись» до конца транзакции: правки и пересчёты
     одного плана идут по очереди.
@@ -879,21 +912,26 @@ class ResourcePlanningService:
                     # раскладывал только проход после всех задач — на остатки
                     # ёмкости, и задача уезжала за младшие (OS-91446).
                     # Закреплённые по дате части уже разложены выше.
-                    cursor = earliest_start
+                    # Следующая часть у того же человека — продолжение: с
+                    # остатка дня, в который кончилась предыдущая.
+                    done_parts: List[ResourcePlanAssignment] = []
                     for a in phase_pinned:
                         if a.pinned_split and not a.pinned_start and a.hours_allocated:
                             # Часть ждёт свои части-предшественники, а не всю
                             # предыдущую фазу: ветки раздробленных фаз идут
                             # параллельно (разработка 1 — за анализом 1).
-                            pred_ends = [
-                                pinned_by_id[pid].end_date
+                            pred_starts = [
+                                _earliest_after(pinned_by_id[pid], a)
                                 for pid in pinned_preds.get(a.id, [])
                                 if pid in laid_pinned and pinned_by_id[pid].end_date
                             ]
                             part_start = (
-                                max(q_start, max(pred_ends) + timedelta(days=1))
-                                if pred_ends
-                                else cursor
+                                max(q_start, max(pred_starts))
+                                if pred_starts
+                                else max(
+                                    [earliest_start]
+                                    + [_earliest_after(p, a) for p in done_parts]
+                                )
                             )
                             inv = self._involvement_for_phase(item, phase)
                             if a.employee_id is None:
@@ -943,7 +981,7 @@ class ResourcePlanningService:
                                     a.daily_hours_json = "{}"
                                     unlaid.add(a.id)
                         if a.end_date:
-                            cursor = max(cursor, a.end_date + timedelta(days=1))
+                            done_parts.append(a)
                     pe = max(
                         (a.end_date for a in phase_pinned if a.end_date),
                         default=phase_end,
@@ -1268,8 +1306,9 @@ class ResourcePlanningService:
         # Pinned_split — только структурный маркер N частей. После shift его
         # start_date может попасть на выходной/отпуск; перераскладываем часы
         # через allocator. earliest_start считаем тем же образом, что в основном
-        # цикле: max(pred ends)+1, либо q_start для user_touched инициатив без
-        # входящих рёбер. pinned_start (явная заморозка даты) — обходим.
+        # цикле: по концам предшественников (_earliest_after), либо q_start для
+        # user_touched инициатив без входящих рёбер. pinned_start (явная
+        # заморозка даты) — обходим.
         by_id_for_split = {x.id: x for x in new_assignments if x.id}
         # Идём в топологическом порядке, чтобы part2 видела обновлённый
         # end_date part1, а qa в том же item — обновлённый end последней
@@ -1283,13 +1322,13 @@ class ResourcePlanningService:
             if a.employee_id not in remaining:
                 continue
             pred_ids = preds.get(a.id, [])
-            pred_ends = [
-                by_id_for_split[pid].end_date
+            pred_starts = [
+                _earliest_after(by_id_for_split[pid], a)
                 for pid in pred_ids
                 if pid in by_id_for_split and by_id_for_split[pid].end_date
             ]
-            if pred_ends:
-                earliest = max(max(pred_ends) + timedelta(days=1), q_start)
+            if pred_starts:
+                earliest = max(max(pred_starts), q_start)
             elif (
                 a.backlog_item_id in user_touched_items_snapshot
                 and (a.backlog_item_id, a.phase) not in phases_with_inbound_pred
@@ -2473,14 +2512,14 @@ class ResourcePlanningService:
                 # Без предшественников — оставляем allocator-выбор. Не двигаем
                 # к q_start, чтобы не ломать порядок приоритетов.
                 continue
-            ends = [
-                by_id[pid].end_date
+            starts = [
+                _earliest_after(by_id[pid], a)
                 for pid in pred_ids
                 if pid in by_id and by_id[pid].end_date
             ]
-            if not ends:
+            if not starts:
                 continue
-            new_start = max(ends) + timedelta(days=1)
+            new_start = max(starts)
             if new_start == a.start_date:
                 # Для QA при delta=0 всё равно проверяем дрифт
                 # daily_hours_json vs hours_allocated: после cascade-split
@@ -3286,7 +3325,9 @@ class ResourcePlanningService:
                     }
                 )
 
-        # PREDECESSOR_VIOLATED — succ.start_date <= max(pred.end_date).
+        # PREDECESSOR_VIOLATED — succ стартует раньше, чем позволяют связи:
+        # до следующего дня после конца предшественника, а продолжение части
+        # у того же человека — до дня его конца (см. _earliest_after).
         # Включает кейс «pinned_start выигрывает над связью» — иначе пользователь
         # не видит, что закреплённая дата нарушает граф.
         preds_map = self._load_predecessors(plan.id)
@@ -3297,15 +3338,14 @@ class ResourcePlanningService:
             pred_ids = preds_map.get(a.id, [])
             if not pred_ids:
                 continue
-            pred_ends = [
-                by_id[pid].end_date
+            pred_starts = [
+                _earliest_after(by_id[pid], a)
                 for pid in pred_ids
                 if pid in by_id and by_id[pid].end_date
             ]
-            if not pred_ends:
+            if not pred_starts:
                 continue
-            latest_pred_end = max(pred_ends)
-            if a.start_date <= latest_pred_end:
+            if a.start_date < max(pred_starts):
                 result.append(
                     {
                         "type": "PREDECESSOR_VIOLATED",
