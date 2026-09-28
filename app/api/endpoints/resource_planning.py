@@ -638,6 +638,9 @@ class OtherTeamWorkOut(BaseModel):
     issue_key: Optional[str] = None
     title: str
     team: str
+    # Код роли людей команды — как ``ReserveRoleOut.role``: строка
+    # «другие команды» роли раскрывается её задачами.
+    role: str
     hours: float
     work_type_id: str
     is_manual: bool
@@ -883,11 +886,14 @@ def list_scheduled_blocks(
     return _blocks_out(db, db.execute(q).scalars().all())
 
 
+# Период меняет загрузку по дням, запас нормированных работ, предупреждения и
+# свежесть планов других команд — правки рассылают событие, как правки плана.
 @router.post("/scheduled-blocks", response_model=ScheduledBlockOut, status_code=201)
-def create_scheduled_block(
+async def create_scheduled_block(
     data: ScheduledBlockCreate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     if data.end_date < data.start_date:
         raise HTTPException(422, "end_date must be >= start_date")
@@ -904,23 +910,26 @@ def create_scheduled_block(
     db.add(block)
     db.commit()
     db.refresh(block)
-    return _blocks_out(db, [block])[0]
+    out = _blocks_out(db, [block])[0]
+    await _announce(event_bus, bookings=False)
+    return out
 
 
 @router.patch("/scheduled-blocks/{block_id}", response_model=ScheduledBlockOut)
-def update_scheduled_block(
+async def update_scheduled_block(
     block_id: str,
     data: ScheduledBlockUpdate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     block = db.get(ScheduledBlock, block_id)
     if not block:
         raise HTTPException(404, "ScheduledBlock not found")
     patch = data.model_dump(exclude_unset=True)
-    # Вид работ можно сменить, но не снять: явный null — 422.
-    if "work_type_id" in patch:
-        _check_work_type(db, patch["work_type_id"])
+    # После правки у периода должен быть вид работ (спека 4.1): сменить можно,
+    # снять нельзя, и старый период без вида без него не сохраняется — 422.
+    _check_work_type(db, patch.get("work_type_id", block.work_type_id))
     role_ids = patch.pop("role_ids", None)
     employee_ids = patch.pop("employee_ids", None)
     for k, v in patch.items():
@@ -933,20 +942,24 @@ def update_scheduled_block(
         block.employees = [ScheduledBlockEmployee(employee_id=e) for e in employee_ids]
     db.commit()
     db.refresh(block)
-    return _blocks_out(db, [block])[0]
+    out = _blocks_out(db, [block])[0]
+    await _announce(event_bus, bookings=False)
+    return out
 
 
 @router.delete("/scheduled-blocks/{block_id}", status_code=204)
-def delete_scheduled_block(
+async def delete_scheduled_block(
     block_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     block = db.get(ScheduledBlock, block_id)
     if not block:
         raise HTTPException(404, "ScheduledBlock not found")
     db.delete(block)
     db.commit()
+    await _announce(event_bus, bookings=False)
 
 
 # ── Вид работ у задач других команд ────────────────────────────────────────
@@ -1287,6 +1300,7 @@ def _reserve_out(reserve: nr.TeamReserve, roles: Dict[str, tuple]) -> ReserveOut
                 issue_key=w.issue_key,
                 title=w.title,
                 team=w.team,
+                role=w.role,
                 hours=round(w.hours, 1),
                 work_type_id=w.work_type_id,
                 is_manual=w.is_manual,

@@ -261,6 +261,8 @@ export interface OtherTeamWorkOut {
   issue_key: string | null;
   title: string;
   team: string;
+  /** Роль исполнителя — как у ReserveRoleOut.role; строка раскрывается в таблице этой роли. */
+  role: string;
   hours: number;
   work_type_id: string;
   is_manual: boolean;

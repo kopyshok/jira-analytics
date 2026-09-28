@@ -4,6 +4,8 @@
  - /capacity/employee-overrides
 """
 
+from datetime import date
+
 from fastapi.testclient import TestClient
 import pytest
 from sqlalchemy import create_engine
@@ -13,10 +15,13 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.database import Base, get_db
 from app.models import (
+    BacklogItem,
     Employee,
     MandatoryWorkType,
     Role,
     RoleCapacityRule,
+    ScheduledBlock,
+    TeamWorkTypeOverride,
 )
 
 
@@ -120,6 +125,34 @@ class TestMandatoryWorkTypesCRUD:
         res = client.delete(f"/api/v1/mandatory-work-types/{wt.id}")
         assert res.status_code == 409
         assert "referenced" in res.json()["detail"]
+
+    @pytest.mark.parametrize("used_by", ["block", "override"])
+    def test_delete_blocked_when_used_by_block_or_other_team_task(
+        self, client, wt, db_session, used_by
+    ):
+        """Вид работ у заблокированного периода или выбранный командой у задачи
+        другой команды не удаляется: на PostgreSQL это ошибка внешнего ключа."""
+        if used_by == "block":
+            db_session.add(ScheduledBlock(team="ERP", start_date=date(2026, 10, 5),
+                                          end_date=date(2026, 10, 7), reason="Закрытие месяца",
+                                          work_type_id=wt.id))
+        else:
+            item = BacklogItem(title="OS-1")
+            db_session.add(item)
+            db_session.flush()
+            db_session.add(TeamWorkTypeOverride(team="ERP", backlog_item_id=item.id,
+                                                work_type_id=wt.id))
+        db_session.commit()
+
+        res = client.delete(f"/api/v1/mandatory-work-types/{wt.id}")
+
+        assert res.status_code == 409, res.text
+        assert res.json()["detail"] == (
+            "Вид работ используется в заблокированных периодах или в выборе вида "
+            "у задач других команд"
+        )
+        db_session.expire_all()
+        assert db_session.get(MandatoryWorkType, wt.id) is not None
 
     def test_delete_ok_when_unused(self, client, wt):
         res = client.delete(f"/api/v1/mandatory-work-types/{wt.id}")
