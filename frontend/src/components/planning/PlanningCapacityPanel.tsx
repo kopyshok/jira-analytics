@@ -8,8 +8,7 @@ import { getRoleColor } from '../../utils/roles';
 import type { AllocationResponse, ResourceBase, ResourceEmployee, ResourceSummaryOut } from '../../types/api';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
-import { demandByAssigneeRole } from '../../utils/planning';
-import { effectiveEstimate } from '../../utils/allocationEstimates';
+import { demandByAssigneeRole, demandByEmployee as demandByEmployeeOf } from '../../utils/planning';
 
 const CORE_ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
 type CoreRoleKey = (typeof CORE_ROLE_KEYS)[number];
@@ -55,55 +54,13 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
     },
   });
 
-  // Персональная нагрузка ответственного: каждому ассайни — часы только его
-  // типа работ (аналитик/dev/qa). РП, project_manager и Консультант
-  // «закрывают» аналитическую часть. Часы dev/qa других типов работ
-  // одной и той же задачи в персональный счёт не попадают — они уходят в
-  // соответствующие ролевые пулы (см. demandByRole ниже).
-  const demandByEmployee = useMemo(() => {
-    const result: Record<string, number> = {};
-    for (const alloc of allocations) {
-      if (!alloc.included) continue;
-      let emp = alloc.assignee_employee_id
-        ? resourceBase?.employees.find((e) => e.employee_id === alloc.assignee_employee_id)
-        : undefined;
-      // Фолбэк: если у задачи нет связки employee_id, но есть display_name
-      // (бывает, когда бэклог подтянул задачу из Jira без смапленного Employee),
-      // ищем сотрудника по имени в команде сценария. Сопоставление толерантное:
-      // сравниваем множества слов — порядок и лишние слова не мешают
-      // («Копышков Николай» ↔ «Копышков Николай Сергеевич»).
-      if (!emp && alloc.assignee_display_name) {
-        const tokens = (s: string) =>
-          new Set(s.toLowerCase().split(/\s+/).filter((t) => t.length >= 3));
-        const need = tokens(alloc.assignee_display_name);
-        if (need.size > 0) {
-          emp = resourceBase?.employees.find((e) => {
-            const have = tokens(e.display_name);
-            let hit = 0;
-            for (const t of need) if (have.has(t)) hit += 1;
-            return hit >= Math.min(2, need.size);
-          });
-        }
-      }
-      if (!emp?.role) continue;
-      const eff = effectiveEstimate(alloc);
-      const r = alloc.opo_analyst_ratio ?? 0.5;
-      const role = emp.role;
-      const personalLoad =
-        role === 'analyst' ||
-        role === 'RP' ||
-        role === 'project_manager' ||
-        role === 'consultant'
-          ? eff.analyst + eff.opo * r
-          : role === 'dev'
-            ? eff.dev + eff.opo * (1 - r)
-            : role === 'qa'
-              ? eff.qa
-              : 0;
-      result[emp.employee_id] = (result[emp.employee_id] ?? 0) + personalLoad;
-    }
-    return result;
-  }, [allocations, resourceBase]);
+  // Персональная нагрузка: разработчику из колонки — часы разработки,
+  // исполнителю — часы его типа работ (см. demandByEmployee). Остальное
+  // уходит в ролевые пулы (см. demandByRole ниже).
+  const demandByEmployee = useMemo(
+    () => demandByEmployeeOf(allocations, resourceBase?.employees ?? []),
+    [allocations, resourceBase],
+  );
 
   // Потребность по ролям: часы каждого типа работ всегда падают в свой пул
   // (analyst / dev / qa) независимо от ответственного. Используем общую

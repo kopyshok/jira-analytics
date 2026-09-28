@@ -43,6 +43,71 @@ export function demandByRole(allocations: AllocationResponse[]): Record<string, 
 
 type EmployeeLike = { employee_id: string; role: string | null; display_name: string };
 
+const ANALYST_LIKE_ROLES = new Set(['analyst', 'RP', 'project_manager', 'consultant']);
+
+/**
+ * Персональная нагрузка по сотрудникам: {employee_id: часы}.
+ *
+ * Разработчик из колонки «Разработчик» получает часы разработки. Исполнитель
+ * строки («Аналитик») — часы своего типа работ по роли: аналитик, РП и
+ * консультант «закрывают» анализ, разработчик — разработку, тестировщик —
+ * тестирование. Колонка «Разработчик» заполнена — исполнитель встаёт на
+ * анализ при любой роли, а совпавший с разработчиком получает только
+ * разработку (как в ресурсном плане). Остальные часы уходят в ролевые пулы.
+ */
+export function demandByEmployee(
+  allocations: AllocationResponse[],
+  employees: EmployeeLike[],
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  const add = (id: string, hours: number) => {
+    result[id] = (result[id] ?? 0) + hours;
+  };
+  for (const alloc of allocations) {
+    if (!alloc.included) continue;
+    const eff = effectiveEstimate(alloc);
+    const r = alloc.opo_analyst_ratio ?? 0.5;
+    const analystPortion = eff.analyst + eff.opo * r;
+    const devPortion = eff.dev + eff.opo * (1 - r);
+    const devId = alloc.developer_employee_id;
+    if (devId) add(devId, devPortion);
+
+    let emp = alloc.assignee_employee_id
+      ? employees.find((e) => e.employee_id === alloc.assignee_employee_id)
+      : undefined;
+    // Фолбэк: если у задачи нет связки employee_id, но есть display_name
+    // (бывает, когда бэклог подтянул задачу из Jira без смапленного Employee),
+    // ищем сотрудника по имени в команде сценария. Сопоставление толерантное:
+    // сравниваем множества слов — порядок и лишние слова не мешают
+    // («Копышков Николай» ↔ «Копышков Николай Сергеевич»).
+    if (!emp && alloc.assignee_display_name) {
+      const tokens = (s: string) =>
+        new Set(s.toLowerCase().split(/\s+/).filter((t) => t.length >= 3));
+      const need = tokens(alloc.assignee_display_name);
+      if (need.size > 0) {
+        emp = employees.find((e) => {
+          const have = tokens(e.display_name);
+          let hit = 0;
+          for (const t of need) if (have.has(t)) hit += 1;
+          return hit >= Math.min(2, need.size);
+        });
+      }
+    }
+    if (!emp?.role || emp.employee_id === devId) continue;
+    const role = emp.role;
+    const personalLoad =
+      devId || ANALYST_LIKE_ROLES.has(role)
+        ? analystPortion
+        : role === 'dev'
+          ? devPortion
+          : role === 'qa'
+            ? eff.qa
+            : 0;
+    add(emp.employee_id, personalLoad);
+  }
+  return result;
+}
+
 /**
  * Считает потребность по ролям с учётом исполнителя.
  *
