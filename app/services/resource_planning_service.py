@@ -858,6 +858,13 @@ class ResourcePlanningService:
         pinned_phase_keys = {
             (a.backlog_item_id, a.phase) for a in pinned_existing
         }
+        # В плане остались только закреплённые строки, их связи в базе целы:
+        # по ним часть раздробленной фазы найдёт свои части-предшественники.
+        # Учитываются только уже разложенные в этом пересчёте — у остальных
+        # даты прошлого расчёта.
+        pinned_by_id = {a.id: a for a in pinned_existing}
+        pinned_preds = self._load_predecessors(plan_id)
+        laid_pinned = {a.id for a in pinned_start_rows}
         # ОПЭ — две параллельные части у разных людей (аналитик и
         # разработчик). Закреплена одна — вторая раскладывается как обычно,
         # а не пропадает вместе с фазой: {задача: закреплённая часть}.
@@ -913,11 +920,24 @@ class ResourcePlanningService:
                     cursor = earliest_start
                     for a in phase_pinned:
                         if a.pinned_split and not a.pinned_start and a.hours_allocated:
+                            # Часть ждёт свои части-предшественники, а не всю
+                            # предыдущую фазу: ветки раздробленных фаз идут
+                            # параллельно (разработка 1 — за анализом 1).
+                            pred_ends = [
+                                pinned_by_id[pid].end_date
+                                for pid in pinned_preds.get(a.id, [])
+                                if pid in laid_pinned and pinned_by_id[pid].end_date
+                            ]
+                            part_start = (
+                                max(q_start, max(pred_ends) + timedelta(days=1))
+                                if pred_ends
+                                else cursor
+                            )
                             inv = self._involvement_for_phase(item, phase)
                             if a.employee_id is None:
                                 # Тестирование — без сотрудника: по календарю.
                                 new_end, daily_json = self._extend_window_for_hours(
-                                    start_date=cursor,
+                                    start_date=part_start,
                                     hours=float(a.hours_allocated),
                                     involvement=inv or 1.0,
                                     q_end=q_end_extended,
@@ -931,11 +951,12 @@ class ResourcePlanningService:
                                     )
                                     a.end_date = new_end
                                     a.out_of_quarter = new_end > q_end
+                                    laid_pinned.add(a.id)
                             elif a.employee_id in remaining:
                                 _, daily = self._allocate_hours_with_breakdown(
                                     a.employee_id,
                                     float(a.hours_allocated),
-                                    cursor,
+                                    part_start,
                                     q_end_extended,
                                     remaining,
                                     daily_capacity=self._daily_role_capacity(
@@ -955,6 +976,7 @@ class ResourcePlanningService:
                                         {d.isoformat(): h for d, h in sorted(daily.items())}
                                     )
                                     a.out_of_quarter = a.end_date > q_end
+                                    laid_pinned.add(a.id)
                                 else:
                                     a.daily_hours_json = "{}"
                                     unlaid.add(a.id)
@@ -2353,8 +2375,15 @@ class ResourcePlanningService:
                 if prev_phase_rows:
                     # «Последняя» строка предыдущей фазы — с максимальным part_number.
                     pred = max(prev_phase_rows, key=lambda x: x.part_number or 1)
+                    prev_ids = {x.id for x in prev_phase_rows}
                     for succ in cur_rows:
                         if not succ.id or not pred.id:
+                            continue
+                        # Строка уже связана с предыдущей фазой — например,
+                        # часть K разбитой фазы со своей частью K (параллельные
+                        # ветки). Последнюю часть не навязываем: иначе первая
+                        # часть разработки ждала бы весь анализ.
+                        if any((succ.id, pid) in existing_pairs for pid in prev_ids):
                             continue
                         pair = (succ.id, pred.id)
                         if pair in existing_pairs:
@@ -2848,8 +2877,10 @@ class ResourcePlanningService:
     ) -> List[ResourcePlanAssignment]:
         """Пропорционально разбить downstream-фазы того же item.
 
-        Каждая часть K новой downstream-фазы зависит от части K source-фазы
-        (PhasePredecessor) и от части K-1 той же фазы (последовательность).
+        Каждая часть K новой downstream-фазы зависит от части K предыдущей
+        разбитой фазы (PhasePredecessor) и от части K-1 той же фазы — ветки
+        идут параллельно: анализ K → разработка K → тестирование K. ОПЭ не
+        ветвится: все её части ждут последнюю часть предыдущей фазы.
         """
         from app.models.phase_predecessor import PhasePredecessor
 
@@ -2868,6 +2899,9 @@ class ResourcePlanningService:
         # плане.
         source_plan_id = source_parts[0].plan_id if source_parts else None
         cascaded: List[ResourcePlanAssignment] = []
+        # Части предыдущей разбитой фазы: тестирование K цепляется к
+        # разработке K, а не к анализу K.
+        upstream = source_parts
         for phase in downstream:
             existing_q = select(ResourcePlanAssignment).where(
                 ResourcePlanAssignment.backlog_item_id == item_id,
@@ -2903,8 +2937,9 @@ class ResourcePlanningService:
                 total_days = 0
             cursor = start
             prev_id: Optional[str] = None
+            phase_parts: List[ResourcePlanAssignment] = []
             for idx, (h, src) in enumerate(
-                zip(hours_parts, source_parts), start=1
+                zip(hours_parts, upstream), start=1
             ):
                 ratio = h / total_h if total_h > 0 else 1.0 / len(hours_parts)
                 seg_days = max(1, int(round(total_days * ratio)))
@@ -2929,11 +2964,15 @@ class ResourcePlanningService:
                 self.db.add(p)
                 self.db.flush()
                 cascaded.append(p)
-                # ребро на одноимённый кусок source-фазы
+                phase_parts.append(p)
+                # ребро на одноимённый кусок предыдущей разбитой фазы; ОПЭ —
+                # эксплуатация задачи целиком, её части ждут последнюю часть.
                 self.db.add(
                     PhasePredecessor(
                         successor_assignment_id=p.id,
-                        predecessor_assignment_id=src.id,
+                        predecessor_assignment_id=(
+                            upstream[-1].id if phase == "opo" else src.id
+                        ),
                     )
                 )
                 if prev_id:
@@ -2946,6 +2985,7 @@ class ResourcePlanningService:
                 prev_id = p.id
                 if seg_end:
                     cursor = seg_end + timedelta(days=1)
+            upstream = phase_parts
         return cascaded
 
     def merge_assignment(self, assignment_id: str) -> ResourcePlanAssignment:
