@@ -514,6 +514,7 @@ def test_write_allocation_snapshot_copies_included_items(
         estimate_opo_hours=10.0,
         opo_analyst_ratio=0.6,
         assignee_employee_id="e-1",
+        developer_employee_id="e-2",
     )
     # bi-2 not included
     bi2 = BacklogItem(
@@ -567,6 +568,7 @@ def test_write_allocation_snapshot_copies_included_items(
     assert row.opo_analyst_ratio == 0.6
     assert row.assignee_employee_id == "e-1"
     assert row.assignee_role_at_approval == "analyst"  # looked up from Employee
+    assert row.developer_employee_id == "e-2"
     assert row.sort_order == 1.0
     assert row.included_flag is True
     assert row.involvement_coefficient == 0.8

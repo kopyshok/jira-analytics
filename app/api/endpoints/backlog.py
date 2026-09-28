@@ -92,6 +92,10 @@ class BacklogItemUpdate(BaseModel):
     duration_dev_days: Optional[float] = Field(default=None, ge=0)
     duration_qa_days: Optional[float] = Field(default=None, ge=0)
     duration_launch_days: Optional[float] = Field(default=None, ge=0)
+    # Аналитика на бэклоге правят только у идей без задачи Jira (у задачи он
+    # из Jira). Разработчик — в любой строке, только вручную.
+    assignee_employee_id: Optional[str] = None
+    developer_employee_id: Optional[str] = None
 
 
 class ScenarioRef(BaseModel):
@@ -177,6 +181,8 @@ class BacklogItemResponse(BaseModel):
     approved_scenarios: List[ScenarioRef] = []
     assignee_employee_id: Optional[str] = None
     assignee_display_name: Optional[str] = None
+    developer_employee_id: Optional[str] = None
+    developer_display_name: Optional[str] = None
     customer: Optional[str] = None
     cost_type: Optional[str] = None
     # Denormalized Jira status of the linked issue (null for manual items).
@@ -481,6 +487,8 @@ def _to_response(
             issue.assignee_display_name if (issue and issue.assignee_display_name) else
             (item.assignee.display_name if item.assignee else None)
         ),
+        developer_employee_id=item.developer_employee_id,
+        developer_display_name=item.developer.display_name if item.developer else None,
         customer=item.customer,
         cost_type=item.cost_type,
         jira_status=issue.status if issue else None,
@@ -586,6 +594,7 @@ async def list_backlog_items(
         .options(
             joinedload(BacklogItem.issue).joinedload(Issue.project),
             joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
         )
     )
     if project_id is not None:
@@ -902,7 +911,11 @@ async def create_backlog_item(
     db.refresh(item)
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item.id)
         .first()
     )
@@ -1192,7 +1205,11 @@ async def get_backlog_item(
     """Получить один элемент бэклога по id."""
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1217,7 +1234,11 @@ async def update_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1227,6 +1248,19 @@ async def update_backlog_item(
     patch = data.model_dump(exclude_unset=True)
     if not patch:
         return _item_response(db, item)
+
+    for key in ("assignee_employee_id", "developer_employee_id"):
+        eid = patch.get(key)
+        if eid is not None and not db.get(Employee, eid):
+            raise HTTPException(status_code=404, detail="Employee not found")
+    # Один человек не может быть и аналитиком, и разработчиком строки.
+    assignee = patch.get("assignee_employee_id", item.assignee_employee_id)
+    developer = patch.get("developer_employee_id", item.developer_employee_id)
+    if assignee and assignee == developer:
+        raise HTTPException(
+            status_code=422,
+            detail="Один сотрудник не может быть и аналитиком, и разработчиком",
+        )
 
     role_hours = {
         role: patch.pop(f"estimate_{role}_hours")
@@ -1376,7 +1410,11 @@ async def link_jira(
     # Reload with joined issue for response.
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1395,7 +1433,11 @@ async def unlink_jira(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1421,7 +1463,11 @@ async def archive_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1592,7 +1638,11 @@ async def restore_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
