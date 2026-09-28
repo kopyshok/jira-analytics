@@ -55,6 +55,9 @@ class User(Base, TimestampMixin):
     team_desk_filter_raw: Mapped[str] = mapped_column(
         "team_desk_filter", Text, nullable=False, default="{}", server_default="{}"
     )
+    onboarding_raw: Mapped[str] = mapped_column(
+        "onboarding", Text, nullable=False, default="{}", server_default="{}"
+    )
 
     @property
     def selected_teams(self) -> list[str]:
@@ -132,3 +135,14 @@ class User(Base, TimestampMixin):
     @team_desk_filter.setter
     def team_desk_filter(self, value: dict) -> None:
         self.team_desk_filter_raw = json.dumps(value or {}, ensure_ascii=False)
+
+    @property
+    def onboarding(self) -> dict:
+        try:
+            return json.loads(self.onboarding_raw or "{}")
+        except (TypeError, ValueError):
+            return {}
+
+    @onboarding.setter
+    def onboarding(self, value: dict) -> None:
+        self.onboarding_raw = json.dumps(value or {}, ensure_ascii=False)
