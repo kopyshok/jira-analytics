@@ -6,8 +6,21 @@ export interface EmployeeTeamItem {
   joined_at?: string | null;
   /** Первый день ВНЕ команды. null — состоит сейчас. */
   left_at?: string | null;
-  /** Группа внутри команды. null — команда не делится или не приписан. */
+  /** Группа, если сегодня сотрудник целиком в одной группе; иначе null. */
   subgroup_id?: string | null;
+  /** Текущее распределение: «Ломбард 60% · РФМ 40%». null — группы нет. */
+  subgroup_label?: string | null;
+}
+
+export interface SubgroupShareItem {
+  subgroup_id: string;
+  percent: number;
+}
+
+export interface SubgroupShareRecord {
+  /** null — «с начала участия». */
+  valid_from: string | null;
+  shares: SubgroupShareItem[];
 }
 
 export type EmployeeRole = string;  // now driven by roles registry

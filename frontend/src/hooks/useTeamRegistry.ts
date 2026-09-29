@@ -2,12 +2,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addSubgroup,
   deleteSubgroup,
+  deleteSubgroupShare,
+  getSubgroupShares,
   getTeamRegistry,
+  putSubgroupShare,
   renameSubgroup,
   setEmployeeSubgroup,
   setTeamHasSubgroups,
   type TeamRegistryRow,
 } from '../api/teams';
+import type { SubgroupShareItem } from '../types/api';
 
 const KEY = ['teams', 'registry'] as const;
 
@@ -82,5 +86,42 @@ export const useSetEmployeeSubgroup = () => {
       qc.invalidateQueries({ queryKey: ['capacity'] });
       qc.invalidateQueries({ queryKey: ['planning'] });
     },
+  });
+};
+
+export const useSubgroupShares = (employeeId: string | null, team: string | null) =>
+  useQuery({
+    queryKey: ['subgroup-shares', employeeId, team],
+    queryFn: () => getSubgroupShares(employeeId!, team!),
+    enabled: !!employeeId && !!team,
+  });
+
+// Распределение меняет группу задач, ресурс сценария и витрины.
+const invalidateShares = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['subgroup-shares'] });
+  qc.invalidateQueries({ queryKey: ['employees'] });
+  qc.invalidateQueries({ queryKey: ['employee', 'teams'] });
+  qc.invalidateQueries({ queryKey: ['capacity'] });
+  qc.invalidateQueries({ queryKey: ['planning'] });
+  qc.invalidateQueries({ queryKey: ['gantt'] });
+  qc.invalidateQueries({ queryKey: ['resource-plans'] });
+  qc.invalidateQueries({ queryKey: ['dashboard', 'hours-balance'] });
+};
+
+export const usePutSubgroupShare = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { employeeId: string; team: string; valid_from: string | null; shares: SubgroupShareItem[] }) =>
+      putSubgroupShare(v.employeeId, { team: v.team, valid_from: v.valid_from, shares: v.shares }),
+    onSuccess: () => invalidateShares(qc),
+  });
+};
+
+export const useDeleteSubgroupShare = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { employeeId: string; team: string; valid_from: string | null }) =>
+      deleteSubgroupShare(v.employeeId, v.team, v.valid_from),
+    onSuccess: () => invalidateShares(qc),
   });
 };

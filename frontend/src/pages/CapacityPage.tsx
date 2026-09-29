@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTeamRegistry, useSetEmployeeSubgroup } from '../hooks/useTeamRegistry';
-import { Tabs, Table, Button, Space, App, Checkbox, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, InputNumber } from 'antd';
+import { Tabs, Table, Button, Space, App, Checkbox, DatePicker, Select, Form, Modal, AutoComplete, Typography, Switch, Tag, InputNumber, Alert } from 'antd';
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
 import capacityHelp from '../../../docs/help/capacity.md?raw';
 import { useRegisterHelp } from '../contexts/HelpContext';
@@ -29,7 +29,7 @@ const { Text } = Typography;
 
 function TeamTab({ year, quarter }: { year: string; quarter: string }) {
   const { notification } = App.useApp();
-  const { queryParams } = useGlobalTeamFilter();
+  const { queryParams, selectedTeams } = useGlobalTeamFilter();
   const [showInactive, setShowInactive] = useState(false);
   const { data, isLoading } = useTeamCapacity(year, quarter, queryParams.teams, showInactive);
   const { data: teamRegistry = [] } = useTeamRegistry();
@@ -54,6 +54,29 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
     (employeesFull.data ?? []).forEach(e => m.set(e.id, e.role ?? null));
     return m;
   }, [employeesFull.data]);
+
+  // Команды с делением в области видимости фильтра шапки (без фильтра — все).
+  const dividedTeams = useMemo(
+    () => teamRegistry.filter(t => t.has_subgroups).map(t => t.name),
+    [teamRegistry],
+  );
+  const targetDividedTeams = selectedTeams.length
+    ? dividedTeams.filter(t => selectedTeams.includes(t))
+    : dividedTeams;
+  const ungrouped = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { id: string; name: string }[] = [];
+    (employeesFull.data ?? []).forEach(e => {
+      if (!e.is_active || seen.has(e.id)) return;
+      const hit = (e.teams ?? []).some(t =>
+        !t.left_at && targetDividedTeams.includes(t.team) && !t.subgroup_label);
+      if (hit) {
+        seen.add(e.id);
+        out.push({ id: e.id, name: e.display_name });
+      }
+    });
+    return out;
+  }, [employeesFull.data, targetDividedTeams]);
 
   const { data: roles = [] } = useRoles();
   const roleOptions = roles.filter(r => r.is_active).map(r => ({ value: r.code, label: r.label }));
@@ -350,14 +373,25 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
             const teamName = r.team ?? null;
             const registryRow = teamRegistry.find((t) => t.name === teamName);
             if (!teamName || !registryRow?.has_subgroups) return null;
-            const current = teams.find((t) => t.team === teamName)?.subgroup_id ?? null;
+            const membership = teams.find((t) => t.team === teamName) ?? null;
+            if (membership?.subgroup_label) {
+              return (
+                <a
+                  style={{ fontSize: 12 }}
+                  title="Перевод и деление — в карточке сотрудника"
+                  onClick={() => setDrawerEmployeeId(r.employee_id)}
+                >
+                  {membership.subgroup_label}
+                </a>
+              );
+            }
             return (
               <Select
                 allowClear
                 size="small"
                 style={{ width: 180 }}
                 placeholder="Группа"
-                value={current}
+                value={membership?.subgroup_id ?? null}
                 options={registryRow.subgroups.map((g) => ({ value: g.id, label: g.name }))}
                 onChange={(next: string | null) =>
                   setEmployeeSubgroup.mutate({
@@ -441,6 +475,25 @@ function TeamTab({ year, quarter }: { year: string; quarter: string }) {
         <Button onClick={() => setCollapsed(new Set())}>Развернуть все</Button>
         <Button href={exportHref} target="_blank" rel="noreferrer">Экспорт в Excel</Button>
       </Space>
+      {ungrouped.length > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          title={`Без группы: ${ungrouped.length} чел.`}
+          description={
+            <>
+              В команде с делением на группы у каждого сотрудника должна быть группа. Иначе сценарий
+              нельзя утвердить. Поправьте карточку или сделайте сотрудника неактивным:{' '}
+              {ungrouped.map((u, i) => (
+                <span key={u.id}>
+                  {i > 0 && ', '}
+                  <a onClick={() => setDrawerEmployeeId(u.id)}>{u.name}</a>
+                </span>
+              ))}
+            </>
+          }
+        />
+      )}
       <Table
         dataSource={tree}
         rowKey={(r: TreeRow) => 'isTeam' in r ? r.key : `${r.team ?? '__none__'}::${r.employee_id}`}
