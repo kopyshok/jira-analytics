@@ -4,6 +4,8 @@
 и стопка разбора начнут расходиться.
 """
 
+from datetime import date, datetime
+
 import pytest
 
 from app.models import Employee, EmployeeTeam, Issue, Project, Team, TeamSubgroup
@@ -117,3 +119,40 @@ def test_single_team_scope(db_session, setup):
 
     assert mine.effective_subgroup_id == setup["calc"].id
     assert theirs.effective_subgroup_id is None
+
+
+def test_guess_on_date_materialized(db_session, setup):
+    """Пересчёт угадывает группу на дату так же, как лесенка построчно."""
+    moved = Employee(jira_account_id="acc-moved", display_name="Переведённый")
+    shared = Employee(jira_account_id="acc-shared", display_name="Общий")
+    db_session.add_all([moved, shared])
+    db_session.flush()
+    db_session.add_all([
+        EmployeeTeam(employee_id=moved.id, team=TEAM, is_primary=True),
+        EmployeeTeam(employee_id=shared.id, team=TEAM, is_primary=True),
+        share(moved.id, TEAM, setup["calc"].id),
+        share(moved.id, TEAM, setup["integ"].id, valid_from=date(2026, 11, 15)),
+        share(shared.id, TEAM, setup["calc"].id, 60),
+        share(shared.id, TEAM, setup["integ"].id, 40),
+    ])
+    db_session.commit()
+    closed = _issue(
+        db_session, "OS-20", assignee_account_id="acc-moved",
+        status_category="done", resolved_at=datetime(2026, 11, 1, 12, 0),
+    )
+    open_ = _issue(db_session, "OS-21", assignee_account_id="acc-moved")
+    split = _issue(db_session, "OS-22", assignee_account_id="acc-shared")
+
+    resolver = SubgroupResolver(db_session, today=date(2026, 12, 1))
+    expected = {
+        i.id: resolver.resolve_for_issue(i).subgroup_id for i in (closed, open_, split)
+    }
+    resolver.recompute_effective()
+    db_session.expire_all()
+
+    assert closed.effective_subgroup_id == setup["calc"].id
+    assert open_.effective_subgroup_id == setup["integ"].id
+    assert split.effective_subgroup_id is None
+    assert {
+        i.id: i.effective_subgroup_id for i in (closed, open_, split)
+    } == expected

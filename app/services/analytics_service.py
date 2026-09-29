@@ -955,8 +955,10 @@ class AnalyticsService:
             )
             employees_q = employees_q.filter(Employee.id.in_(emp_ids))
         # Нормированные работы привязаны к человеку, поэтому режутся по его
-        # приписке к группе, а не по группе задачи.
-        in_subgroups = sgf.employee_ids(self.db, subgroups, teams)
+        # доле в группе за период, а не по группе задачи.
+        in_subgroups = sgf.employee_ids(
+            self.db, subgroups, teams, period_start, period_end
+        )
         if in_subgroups is not None:
             employees_q = employees_q.filter(Employee.id.in_(in_subgroups))
         employees: list[Employee] = employees_q.all()

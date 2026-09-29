@@ -945,10 +945,13 @@ def report_with_approvals(
             "approved": True, "approved_by": appr.approved_by, "approved_at": appr.approved_at.isoformat(),
         }
 
-    # КЭ — показатель человека, поэтому группа берётся по его приписке.
-    # Фильтруем здесь, а не в ``build_report``: так же режутся строки
-    # утверждённого квартала, приехавшие из снимка.
-    in_subgroups = sgf.employee_ids(db, subgroups, teams)
+    # КЭ — показатель человека, поэтому группа берётся по его доле в группе
+    # за период отчёта; показатели общего сотрудника не делятся. Фильтруем
+    # здесь, а не в ``build_report``: так же режутся строки утверждённого
+    # квартала, приехавшие из снимка.
+    in_subgroups = sgf.employee_ids(
+        db, subgroups, teams, *period_bounds(year, month, months)
+    )
     if in_subgroups is not None:
         rows = [r for r in rows if r.get("employee_id") in in_subgroups]
         skipped = [s for s in skipped if s.get("employee_id") in in_subgroups]
