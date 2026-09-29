@@ -248,6 +248,17 @@ export class Director {
 
   private async aim(locator: Locator, to: Locator | undefined, aside: boolean): Promise<void> {
     await locator.scrollIntoViewIfNeeded();
+    // Некоторые страницы шире окна (ресурсный план — на ~150 px): прокрутка к элементу
+    // сдвигает вбок всю страницу, и боковое меню уезжает из кадра. Возвращаем её на место.
+    await this.page.evaluate(() => {
+      if (window.scrollX) window.scrollTo({ left: 0, top: window.scrollY });
+      // Сдвиг бывает и у обёртки страницы (overflow: hidden прокручивается программно) —
+      // возвращаем на место всех предков бокового меню; прокрутки внутри таблиц и
+      // диаграмм не трогаем: они не предки меню.
+      for (let el = document.querySelector('.side-item'); el; el = el.parentElement) {
+        if (el.scrollLeft) el.scrollLeft = 0;
+      }
+    });
     const box = await boxOf(locator);
     if (to) {
       const end = await boxOf(to);

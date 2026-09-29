@@ -20,27 +20,25 @@
 
 ## Видео
 
-[Как построить ресурсный план](video:resource-plan-build)
+[Как построить ресурсный план и прочитать его](video:resource-plan-build)
 
-[Как смотреть план: задачи, исполнители, масштаб](video:rp-views)
+[Как разобрать перегрузки в плане](video:rp-conflicts)
 
-[Что показывает карточка фазы](video:rp-phase-card)
+[Как сменить исполнителя, дату и вовлечённость фазы](video:rp-executor)
 
-[Как перенести фазу мышкой](video:rp-phase-drag)
-
-[Как перенести фазу вручную](video:resource-plan-phase)
-
-[Как сменить исполнителя фазы](video:rp-executor)
-
-[Как изменить вовлечённость на фазе](video:rp-involvement)
-
-[Как разбить фазу на части](video:rp-split)
-
-[Как связать и отвязать фазы](video:rp-predecessors)
-
-[Как разобрать конфликты плана](video:rp-conflicts)
+[Как разбить фазу на двоих](video:rp-split)
 
 [Как заблокировать период](video:rp-blocked-periods)
+
+[Как видеть группы и людей из других команд](video:rp-groups-cross-team)
+
+[Как сбросить ручные правки](video:rp-reset)
+
+[Как внести отпуск и увидеть сдвиг плана](video:absence-add)
+
+[Как назначить разработчика в сценарии](video:scenario-developer)
+
+[Как задать параметры планирования](video:backlog-planning-params)
 
 ---
 

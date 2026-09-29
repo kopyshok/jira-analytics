@@ -71,6 +71,7 @@ function EmployeeCard({
   const sign = emp.balance_hours > 0 ? '+' : '';
   return (
     <div
+      data-testid="dash-balance-card"
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -262,21 +263,24 @@ export default function HoursBalanceWidget() {
       }
       extra={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Select
-            value={sortKey}
-            onChange={(v) => setSortKey(v as SortKey)}
-            size="small"
-            style={{ width: 220 }}
-            options={[
-              { value: 'abs_desc', label: 'По отклонению' },
-              { value: 'balance_desc', label: 'Больше переработали' },
-              { value: 'balance_asc', label: 'Больше недоработали' },
-              { value: 'name', label: 'По имени' },
-              { value: 'role', label: 'По роли' },
-            ]}
-          />
+          <span data-testid="dash-balance-sort">
+            <Select
+              value={sortKey}
+              onChange={(v) => setSortKey(v as SortKey)}
+              size="small"
+              style={{ width: 220 }}
+              options={[
+                { value: 'abs_desc', label: 'По отклонению' },
+                { value: 'balance_desc', label: 'Больше переработали' },
+                { value: 'balance_asc', label: 'Больше недоработали' },
+                { value: 'name', label: 'По имени' },
+                { value: 'role', label: 'По роли' },
+              ]}
+            />
+          </span>
           <Tooltip title="Настроить лаг рабочих дней">
             <Button
+              data-testid="dash-balance-lag-gear"
               type="text"
               size="small"
               icon={<SettingOutlined />}

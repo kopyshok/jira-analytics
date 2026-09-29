@@ -144,13 +144,13 @@ export default function ScheduledBlocksModal({ open, onClose, team, members = []
       width={820}
     >
       <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
-        <Form.Item name="dates" rules={[{ required: true, message: 'Выберите даты' }]}>
+        <Form.Item name="dates" rules={[{ required: true, message: 'Выберите даты' }]} data-testid="rp-block-dates">
           <DatePicker.RangePicker size="small" format="DD.MM.YYYY" />
         </Form.Item>
-        <Form.Item name="work_type_id" rules={[{ required: true, message: 'Выберите вид работ' }]}>
+        <Form.Item name="work_type_id" rules={[{ required: true, message: 'Выберите вид работ' }]} data-testid="rp-block-work-type">
           <Select size="small" placeholder="Вид работ" style={{ width: 180 }} options={workTypeOptionsForForm} />
         </Form.Item>
-        <Form.Item name="role_ids">
+        <Form.Item name="role_ids" data-testid="rp-block-roles">
           <Select
             size="small"
             mode="multiple"
@@ -160,7 +160,7 @@ export default function ScheduledBlocksModal({ open, onClose, team, members = []
             options={roles.map((r: { id: string; label: string }) => ({ label: r.label, value: r.id }))}
           />
         </Form.Item>
-        <Form.Item name="employee_ids">
+        <Form.Item name="employee_ids" data-testid="rp-block-employees">
           <Select
             size="small"
             mode="multiple"
@@ -171,10 +171,10 @@ export default function ScheduledBlocksModal({ open, onClose, team, members = []
             options={employeeOptions}
           />
         </Form.Item>
-        <Form.Item name="reason" rules={[{ required: true, message: 'Укажите причину' }]}>
+        <Form.Item name="reason" rules={[{ required: true, message: 'Укажите причину' }]} data-testid="rp-block-reason">
           <Input size="small" placeholder="Причина" style={{ width: 160 }} />
         </Form.Item>
-        <Form.Item>
+        <Form.Item data-testid="rp-block-submit">
           <Button size="small" type="primary" htmlType="submit" icon={editingId ? undefined : <PlusOutlined />}>
             {editingId ? 'Сохранить' : 'Добавить'}
           </Button>

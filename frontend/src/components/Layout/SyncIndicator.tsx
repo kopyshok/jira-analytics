@@ -38,6 +38,7 @@ export default function SyncIndicator() {
 
   return (
     <div
+      data-testid="sync-indicator"
       style={{
         display: 'inline-flex',
         alignItems: 'center',

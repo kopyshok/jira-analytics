@@ -34,7 +34,7 @@ export default function AnalyticsKpiTiles({ totals }: Props) {
     ? (totals.fact_hours / totals.plan_hours) * 100
     : null;
   return (
-    <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+    <div style={{ display: 'flex', gap: 12, marginBottom: 16 }} data-tour="analytics-kpi">
       <div style={TILE}>
         <div style={LABEL}>Σ Часов факт</div>
         <div style={VALUE}>{totals.fact_hours.toFixed(1)}</div>

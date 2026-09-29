@@ -117,7 +117,7 @@ function MonthCalendar({
             : base;
           return (
             <Tooltip key={i} title={tip}>
-              <div style={{
+              <div data-testid="balance-calendar-day" style={{
                 height: 24, background: bg,
                 border: `1px solid ${border}`, borderRadius: 3,
                 fontSize: 9, color: tone,

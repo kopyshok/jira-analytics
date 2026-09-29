@@ -824,7 +824,7 @@ export default function CapacityPage() {
   const [overrideOn, setOverrideOn] = useState(false);
   const [localYear, setLocalYear] = useState<string>(String(globalPeriod.year));
   const [localQuarter, setLocalQuarter] = useState<string>(String(globalPeriod.quarter));
-  useRegisterHelp('Capacity сотрудников', capacityHelp);
+  useRegisterHelp('Ресурсы команды', capacityHelp);
 
   const year = overrideOn ? localYear : String(globalPeriod.year);
   const quarter = overrideOn ? localQuarter : String(globalPeriod.quarter);

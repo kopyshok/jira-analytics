@@ -45,6 +45,7 @@ export default function SubgroupSectionHeader({ name, items, collapsed, roles, o
 
   return (
     <div
+      data-tour="planning-subgroup-section"
       onClick={onToggle}
       style={{
         display: 'flex',

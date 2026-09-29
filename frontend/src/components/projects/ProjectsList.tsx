@@ -79,6 +79,8 @@ export const ProjectsList: React.FC<Props> = ({
           {([1, 2, 3, 4] as const).map((q) => (
             <Tag
               key={q}
+              data-testid="projects-quarter-tag"
+              data-quarter={q}
               color={filters.quarter === q ? 'cyan' : undefined}
               style={{ cursor: 'pointer', userSelect: 'none', marginRight: 0, fontSize: 12 }}
               onClick={() => patch({ quarter: q })}

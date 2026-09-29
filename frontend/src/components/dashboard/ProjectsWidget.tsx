@@ -326,6 +326,7 @@ function ProjectRow({
 
   return (
     <div
+      data-testid="dash-project-row"
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -408,7 +409,7 @@ function KpiTiles({ data }: { data: DashboardProjectsResponse }) {
       {tiles.map((t, idx) => {
         const isHelp = t.label === 'ПОМОЩЬ ИЗВНЕ' && data.total_alien_fact_hours > 0;
         return (
-          <div key={t.label} style={{
+          <div key={t.label} data-testid="dash-kpi-tile" style={{
             background: isHelp ? 'rgba(132,204,22,0.06)' : DARK_THEME.cardBg,
             border: isHelp ? '1px solid rgba(132,204,22,0.25)' : `1px solid ${DARK_THEME.border}`,
             borderRadius: 8,
@@ -515,7 +516,7 @@ function SettingsPopover({ prefs, setPrefs }: { prefs: Prefs; setPrefs: (p: Pref
 
   return (
     <Popover content={content} title="Настройка вида" trigger="click" placement="bottomRight">
-      <Button type="text" icon={<SettingOutlined />} aria-label="Настройка вида" />
+      <Button data-testid="dash-projects-gear" type="text" icon={<SettingOutlined />} aria-label="Настройка вида" />
     </Popover>
   );
 }

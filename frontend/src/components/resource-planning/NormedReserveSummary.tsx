@@ -142,6 +142,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
 
   return (
     <div
+      data-testid="rp-reserve-summary"
       style={{
         background: '#0f2340',
         border: '1px solid #1e3a5f',
@@ -152,6 +153,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
     >
       <button
         type="button"
+        data-testid="rp-reserve-toggle"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         style={{

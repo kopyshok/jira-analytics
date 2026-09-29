@@ -182,6 +182,7 @@ function EmployeeBlock({ emp, role, t }: { emp: NormWorkEmployee; role: NormWork
   return (
     <div style={{ paddingBottom: 12, borderBottom: '1px solid rgba(28,51,88,.5)', marginBottom: 12 }}>
       <div
+        data-testid="dash-norm-employee"
         role="button"
         tabIndex={0}
         onClick={handleOpenAnalytics}

@@ -61,7 +61,7 @@ export const SETUP_STEPS: SetupStep[] = [
     hint: 'Наполняются автоматически из Jira — задачи, отнесённые при категоризации к «Инициативы (на потом)», — и вручную кнопкой «Идея вручную» для идей, которых ещё нет в Jira. Дальше: приоритеты, оценки по ролям, параметры планирования (шестерёнка).',
     route: '/backlog?view=active',
     tourId: 'backlog',
-    videoId: 'backlog-idea-add',
+    videoId: 'backlog-quarter-selection',
   },
   {
     id: 'scenario',
@@ -77,12 +77,14 @@ export const SETUP_STEPS: SetupStep[] = [
         title: 'Нормированные работы проверены',
         hint: 'Вкладка «Правила»: доля времени ролей на сопровождение, встречи, техдолг.',
         manual: true,
+        videoId: 'scenario-rules',
       },
       {
         id: 'scenario_involvement',
         title: 'Вовлечённость проверена',
         hint: 'Кнопка «Вовлечённость»: значения по ролям на квартал.',
         manual: true,
+        videoId: 'scenario-rules',
       },
     ],
   },
