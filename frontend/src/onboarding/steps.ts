@@ -44,6 +44,7 @@ export const SETUP_STEPS: SetupStep[] = [
     hint: 'Проверьте участников и заполните роль у каждого — от роли зависят сценарии и правила загрузки. Дата вступления в команду — в карточке сотрудника.',
     route: '/capacity',
     tourId: 'capacity-team',
+    videoId: 'team-member-add',
   },
   {
     id: 'absences',
@@ -60,6 +61,7 @@ export const SETUP_STEPS: SetupStep[] = [
     hint: 'Наполняются автоматически из Jira — задачи, отнесённые при категоризации к «Инициативы (на потом)», — и вручную кнопкой «Идея вручную» для идей, которых ещё нет в Jira. Дальше: приоритеты, оценки по ролям, параметры планирования (шестерёнка).',
     route: '/backlog?view=active',
     tourId: 'backlog',
+    videoId: 'backlog-idea-add',
   },
   {
     id: 'scenario',
@@ -67,6 +69,7 @@ export const SETUP_STEPS: SetupStep[] = [
     hint: 'Сценарий собирает инициативы квартала под ресурс команды.',
     route: '/planning',
     tourId: 'planning',
+    videoId: 'scenario-create',
     children: [
       { id: 'scenario_created', title: 'Сценарий создан', hint: 'Кнопка «Новый сценарий».' },
       {
@@ -89,6 +92,7 @@ export const SETUP_STEPS: SetupStep[] = [
     hint: 'Выберите утверждённый сценарий и нажмите «Распределить»: сервис разложит фазы по исполнителям и дням.',
     route: '/resource-planning',
     tourId: 'resource-planning',
+    videoId: 'resource-plan-build',
   },
 ];
 
