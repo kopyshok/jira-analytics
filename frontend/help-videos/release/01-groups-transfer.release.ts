@@ -6,7 +6,7 @@
 import { expect, test } from '@playwright/test';
 import { Director } from '../director.ts';
 import { CHAPTERS } from './chapters.ts';
-import { chapterTitle, hideVersion, releaseFrame, saveClip } from './common.ts';
+import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 /** Сотрудник команды с группами, которого делим и переводим (демо-база). */
 const PERSON = 'Ольховская Раиса';
@@ -64,7 +64,6 @@ test.beforeAll(async ({ playwright }, testInfo) => {
 test('01-groups-transfer', async ({ page }) => {
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open('/capacity', chapterTitle(1, CHAPTERS[0]));
 
   const row = page.locator('tbody tr.capacity-emp-row', { hasText: PERSON });

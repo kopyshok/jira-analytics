@@ -65,7 +65,7 @@ export function outroHtml(release: string, more: string[], fixes: number): strin
   </body></html>`;
 }
 
-function plural(n: number, one: string, few: string, many: string): string {
+export function plural(n: number, one: string, few: string, many: string): string {
   const d10 = n % 10;
   const d100 = n % 100;
   if (d10 === 1 && d100 !== 11) return one;

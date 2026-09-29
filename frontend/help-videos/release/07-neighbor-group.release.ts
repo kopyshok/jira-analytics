@@ -6,7 +6,7 @@
 import { expect, test } from '@playwright/test';
 import { Director } from '../director.ts';
 import { CHAPTERS } from './chapters.ts';
-import { chapterTitle, hideVersion, releaseFrame, saveClip } from './common.ts';
+import { chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 type Team = { name: string; has_subgroups: boolean; subgroups: { id: string; name: string }[] };
 type Scenario = { id: string; year: number | null; quarter: string | null };
@@ -156,7 +156,6 @@ test('07-neighbor-group', async ({ page }) => {
 
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(7, CHAPTERS[6]));
 
   const bar = page.getByTestId(`rp-bar-${a.backlog_item_id}-${a.phase}-${a.part_number}`);

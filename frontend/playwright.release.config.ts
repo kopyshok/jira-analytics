@@ -9,6 +9,4 @@ export default defineConfig({
   ...base,
   testDir: './help-videos/release',
   testMatch: '*.release.ts',
-  // Главы идут по порядку в одной копии базы: 01 → 09.
-  timeout: 240_000,
 });

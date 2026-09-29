@@ -5,7 +5,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import dayjs from 'dayjs';
 import { Director } from '../director.ts';
 import { CHAPTERS } from './chapters.ts';
-import { apiUrl, chapterTitle, hideVersion, releaseFrame, saveClip } from './common.ts';
+import { apiUrl, chapterTitle, releaseFrame, saveClip } from './common.ts';
 
 const TEAM = 'Команда Альфа';
 const REASON = 'Дежурство';
@@ -153,7 +153,6 @@ test('05-blocked-periods', async ({ page }) => {
 
   const d = new Director(page);
   await d.install();
-  await hideVersion(page);
   await d.open(`/resource-planning?plan_id=${planId}`, chapterTitle(5, CHAPTERS[4]));
   await expect(page.locator('.ant-tag', { hasText: /^Готово$/ })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('[data-testid^="rp-bar-"]').first()).toBeVisible({ timeout: 60_000 });
