@@ -155,7 +155,7 @@ def test_resource_summary_endpoint_returns_booked_hours(db_session):
 
 
 def test_summary_booking_cut_matches_daily_base(db_session):
-    """Бронь больше остатка дня после обязательных работ — сводка режет столько же, сколько база."""
+    """Сводка режет бронь так же, как база по дням (гостю правила сценария не режут день)."""
     from app.models import MandatoryWorkType, ScenarioRule
 
     e, sc_a = _setup(db_session)  # бронь B: 6 ч на 05.01
@@ -172,9 +172,9 @@ def test_summary_booking_cut_matches_daily_base(db_session):
     s = svc.compute_summary(sc_a)
 
     emp = next(x for x in base.employees if x.employee_id == e.id)
-    # Норма 8 ч, половина — обязательные работы: на бэклог 4 ч; бронь съедает только их.
-    assert {d.date: d.hours for d in emp.days}[date(2026, 1, 5)] == 0.0
-    assert s.booked_by_other_teams_by_role == {"developer": 4.0}
+    # E — гость A: правило A (50%) к нему не применяется; бронь B снимает 6 ч из 8.
+    assert {d.date: d.hours for d in emp.days}[date(2026, 1, 5)] == 2.0
+    assert s.booked_by_other_teams_by_role == {"developer": 6.0}
     assert s.available_by_role["developer"] == emp.total_hours
 
 
@@ -228,3 +228,70 @@ def test_resource_summary_endpoint_returns_borrowed_hours(db_session):
     assert r.status_code == 200, r.text
     assert r.json()["borrowed_by_other_teams_by_role"] == {"developer": 6.0}
     assert r.json()["booked_by_other_teams_by_role"] == {}
+
+
+def _guest_scenario(db_session, block_rule_pct=None):
+    """P: основная ERP (правила 55%), вторая — «Блок». Сценарий «Блока» — P гость.
+    В «Блоке» есть свой разработчик Иванов. ``block_rule_pct`` — правило «Блока»
+    для разработчиков (орг. вопросы)."""
+    from app.models import ScenarioRule
+    from tests.services.normed_factory import _rules, _types
+
+    types = _types(db_session)
+    p = make_employee(db_session, "Пряничников", "ERP", role="dev")
+    make_employee(db_session, "Шутов", "ERP", role="dev")
+    join_team(db_session, p, "Блок")
+    ivanov = make_employee(db_session, "Иванов", "Блок", role="dev")
+    erp_sc, _ = make_plan(db_session, "ERP")
+    _rules(db_session, erp_sc, types)
+    blk_sc, _ = make_plan(db_session, "Блок", scenario_status="draft")
+    if block_rule_pct is not None:
+        db_session.add(ScenarioRule(scenario_id=blk_sc.id, role="dev",
+                                    work_type_id=types["organizational"].id,
+                                    percent_of_norm=block_rule_pct))
+    db_session.commit()
+    return p, ivanov, erp_sc, blk_sc
+
+
+QUARTER_NORM = 64 * 8.0  # I кв. 2026 без записей календаря
+
+
+def test_guest_loses_home_normed_works_except_cross_team_type(db_session):
+    p, ivanov, _erp, blk = _guest_scenario(db_session)
+
+    s = ResourceBaseService(db_session).compute_summary(blk)
+
+    home_normed = 0.45 * QUARTER_NORM
+    assert round(s.primary_normed_by_role["dev"], 1) == round(home_normed, 1)
+    assert round(s.available_by_role["dev"], 1) == round(2 * QUARTER_NORM - home_normed, 1)
+    assert [x["display_name"] for x in s.primary_normed_people] == ["Пряничников"]
+
+
+def test_guest_exempt_from_own_rules_of_secondary_team(db_session):
+    """Правило «Блока» 20% режет только своего разработчика, не гостя."""
+    p, ivanov, _erp, blk = _guest_scenario(db_session, block_rule_pct=20.0)
+    svc = ResourceBaseService(db_session)
+
+    base = {x.employee_id: x.total_hours for x in svc.compute(blk).employees}
+
+    assert round(base[ivanov.id], 1) == round(0.8 * QUARTER_NORM, 1)
+    assert round(base[p.id], 1) == round(0.55 * QUARTER_NORM, 1)
+
+
+def test_guest_daily_base_matches_summary(db_session):
+    p, ivanov, _erp, blk = _guest_scenario(db_session, block_rule_pct=20.0)
+    svc = ResourceBaseService(db_session)
+
+    total = sum(x.total_hours for x in svc.compute(blk).employees)
+    s = svc.compute_summary(blk)
+
+    assert round(total, 1) == round(s.available_by_role["dev"], 1)
+
+
+def test_home_team_scenario_unchanged(db_session):
+    p, _ivanov, erp, _blk = _guest_scenario(db_session)
+
+    s = ResourceBaseService(db_session).compute_summary(erp)
+
+    assert s.primary_normed_by_role == {}
+    assert round(s.available_by_role["dev"], 1) == round(2 * 0.45 * QUARTER_NORM, 1)
