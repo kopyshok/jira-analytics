@@ -25,6 +25,9 @@ class EmployeeDiff(BaseModel):
     months: list[MonthDiff]
     # Дата выбытия из команды сценария, если человек ушёл после утверждения.
     left_team_at: date | None = None
+    # Распределение по группам на момент утверждения и сейчас, если изменилось.
+    subgroup_before: str | None = None
+    subgroup_after: str | None = None
 
 
 class CapacityDiffResponse(BaseModel):

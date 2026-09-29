@@ -4,17 +4,18 @@
 кто в какой группе был на момент утверждения.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base
+from app.database import Base, get_db
+from app.main import app
 from app.models import (
     Employee,
-    EmployeeSubgroupShare,
     EmployeeTeam,
     PlanningScenario,
     ScenarioRevision,
@@ -38,6 +39,18 @@ def db_session():
     finally:
         session.close()
         engine.dispose()
+
+
+@pytest.fixture
+def client(db_session):
+    def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -103,9 +116,9 @@ def test_snapshot_freezes_subgroup(db_session: Session, ctx):
 def test_snapshot_survives_employee_move(db_session: Session, ctx):
     row = db_session.query(EmployeeTeam).filter_by(employee_id="e-1").one()
     row.subgroup_id = "sg-2"
-    db_session.query(EmployeeSubgroupShare).filter_by(employee_id="e-1").update(
-        {"subgroup_id": "sg-2"}
-    )
+    # Перевод оформлен датированной записью (как сделал бы SubgroupShareService),
+    # а не переписыванием базовой строки распределения.
+    db_session.add(share("e-1", "T1", "sg-2", valid_from=date(2026, 5, 15)))
     db_session.commit()
 
     frozen = (
@@ -115,6 +128,107 @@ def test_snapshot_survives_employee_move(db_session: Session, ctx):
     )
 
     assert frozen.subgroup_name == "Расчёты"
+
+
+def test_snapshot_records_split_distribution(db_session: Session):
+    """Сотрудник разделён между группами весь квартал — подпись с долями."""
+    team = Team(id="t-2", name="T2", has_subgroups=True)
+    db_session.add(team)
+    db_session.flush()
+    calc = TeamSubgroup(id="sg-3", team_id="t-2", name="Расчёты", sort_order=1)
+    integ = TeamSubgroup(id="sg-4", team_id="t-2", name="Интеграции", sort_order=2)
+    db_session.add_all([calc, integ])
+    db_session.add(
+        Employee(
+            id="e-3", jira_account_id="j3", display_name="Сидоров С.",
+            role="dev", is_active=True,
+        )
+    )
+    db_session.add(
+        EmployeeTeam(id="et-3", employee_id="e-3", team="T2", is_primary=True)
+    )
+    db_session.add_all([
+        share("e-3", "T2", "sg-3", percent=60),
+        share("e-3", "T2", "sg-4", percent=40),
+    ])
+    sc = PlanningScenario(
+        id="s-2", name="Q2", year=2026, quarter="Q2", team="T2", status="draft"
+    )
+    db_session.add(sc)
+    rev = ScenarioRevision(
+        id="r-3", scenario_id="s-2", revision_number=1, approved_at=datetime.utcnow()
+    )
+    db_session.add(rev)
+    db_session.commit()
+
+    SnapshotWriter(db_session).write_team_snapshot(revision=rev, scenario=sc)
+    db_session.commit()
+
+    row = (
+        db_session.query(ScenarioTeamSnapshot)
+        .filter_by(revision_id="r-3", employee_id="e-3")
+        .one()
+    )
+    assert row.subgroup_name == "Расчёты 60% · Интеграции 40%"
+
+
+def test_capacity_diff_shows_group_divergence_after_transfer(client, db_session, ctx):
+    """Перевод после утверждения не меняет сценарий, но виден плашкой расхождения."""
+    sc = ctx["scenario"]
+    sc.status = "approved"
+    db_session.add(share("e-1", "T1", "sg-2", valid_from=date(2026, 5, 15)))
+    db_session.commit()
+
+    resp = client.get(f"/api/v1/planning/scenarios/{sc.id}/capacity-diff")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_changes"] is True
+    diff = next(e for e in data["changed_employees"] if e["employee_id"] == "e-1")
+    assert diff["subgroup_before"] == "Расчёты"
+    assert diff["subgroup_after"] == "Расчёты до 15.05 · Интеграции с 15.05"
+
+
+def test_capacity_diff_no_group_divergence_when_division_added_after_approval(
+    client, db_session
+):
+    """Деление включили после утверждения — снимок без групп, расхождения нет."""
+    team = Team(id="t-3", name="T3", has_subgroups=False)
+    db_session.add(team)
+    db_session.add(
+        Employee(
+            id="e-4", jira_account_id="j4", display_name="Кузнецов К.",
+            role="dev", is_active=True,
+        )
+    )
+    db_session.add(
+        EmployeeTeam(id="et-4", employee_id="e-4", team="T3", is_primary=True)
+    )
+    sc = PlanningScenario(
+        id="s-3", name="Q2", year=2026, quarter="Q2", team="T3", status="approved"
+    )
+    db_session.add(sc)
+    rev = ScenarioRevision(
+        id="r-4", scenario_id="s-3", revision_number=1, approved_at=datetime.utcnow()
+    )
+    db_session.add(rev)
+    db_session.commit()
+
+    SnapshotWriter(db_session).write_team_snapshot(revision=rev, scenario=sc)
+    db_session.commit()
+
+    # Деление включили и перевели сотрудника уже после утверждения.
+    team.has_subgroups = True
+    sg = TeamSubgroup(id="sg-5", team_id="t-3", name="Группа", sort_order=1)
+    db_session.add(sg)
+    db_session.flush()
+    db_session.add(share("e-4", "T3", "sg-5"))
+    db_session.commit()
+
+    resp = client.get(f"/api/v1/planning/scenarios/{sc.id}/capacity-diff")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_changes"] is False
+    assert data["changed_employees"] == []
 
 
 def test_team_without_subgroups_leaves_snapshot_empty(db_session: Session, ctx):

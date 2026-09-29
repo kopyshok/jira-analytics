@@ -45,6 +45,7 @@ from app.models import (
     ScenarioRevision,
     ScenarioRevisionItem,
     ScenarioRule,
+    ScenarioTeamSnapshot,
 )
 from app.schemas.capacity_diff import (
     AbsenceChange,
@@ -1033,6 +1034,15 @@ async def get_capacity_diff(
     if not revision:
         return CapacityDiffResponse(has_changes=False, changed_employees=[])
 
+    # Quarter date range
+    q_num = int(str(scenario.quarter).replace("Q", ""))
+    q_months = QUARTER_MONTHS[q_num]
+    import calendar as cal_mod
+    from datetime import date as date_t
+    quarter_start = date_t(scenario.year, q_months[0], 1)
+    quarter_end = date_t(scenario.year, q_months[-1],
+                         cal_mod.monthrange(scenario.year, q_months[-1])[1])
+
     # Load absence snapshots
     snaps = (
         db.query(ScenarioAbsenceSnapshot)
@@ -1047,21 +1057,32 @@ async def get_capacity_diff(
         .all()
     }
 
-    emp_ids = list(
+    snap_emp_ids = (
         {s.employee_id for s in snaps if s.employee_id}
         | {k[0] for k in cap_snaps if k[0]}
     )
+
+    # Распределение по группам: снимок утверждения vs сейчас. Сравниваем, только
+    # если деление было на момент утверждения — иначе все люди команды
+    # оказались бы «изменёнными».
+    team_snaps = {
+        s.employee_id: s.subgroup_name
+        for s in db.query(ScenarioTeamSnapshot)
+        .filter(ScenarioTeamSnapshot.revision_id == revision.id)
+        .all()
+        if s.employee_id
+    }
+    group_changes: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    if scenario.team and any(team_snaps.values()):
+        current_labels = ss.quarter_labels(db, scenario.team, quarter_start, quarter_end)
+        for emp_id, before in team_snaps.items():
+            after = current_labels.get(emp_id)
+            if before != after:
+                group_changes[emp_id] = (before, after)
+
+    emp_ids = list(snap_emp_ids | set(group_changes))
     if not emp_ids:
         return CapacityDiffResponse(has_changes=False, changed_employees=[])
-
-    # Quarter date range
-    q_num = int(str(scenario.quarter).replace("Q", ""))
-    q_months = QUARTER_MONTHS[q_num]
-    import calendar as cal_mod
-    from datetime import date as date_t
-    quarter_start = date_t(scenario.year, q_months[0], 1)
-    quarter_end = date_t(scenario.year, q_months[-1],
-                         cal_mod.monthrange(scenario.year, q_months[-1])[1])
 
     # Current absences
     current_absences = (
@@ -1177,13 +1198,16 @@ async def get_capacity_diff(
                 ))
 
         left_at = left_dates.get(emp_id)
-        if month_diffs or left_at:
+        if month_diffs or left_at or emp_id in group_changes:
             emp = employees.get(emp_id)
+            before, after = group_changes.get(emp_id, (None, None))
             changed_employees.append(EmployeeDiff(
                 employee_id=emp_id,
                 employee_name=emp.display_name if emp else emp_id,
                 months=month_diffs,
                 left_team_at=left_at,
+                subgroup_before=before,
+                subgroup_after=after,
             ))
 
     return CapacityDiffResponse(
