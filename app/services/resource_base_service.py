@@ -23,6 +23,7 @@ from app.models import (
     MandatoryWorkType,
     PlanningScenario,
     ProductionCalendarDay,
+    Role,
     ScenarioRule,
 )
 from app.services import cross_team_occupancy as cto
@@ -416,11 +417,19 @@ class ResourceBaseService:
         # --- сотрудники команды (все, кто пересёкся с кварталом) ---
         last_day = period_end - timedelta(days=1)
         intervals = tm.member_intervals(self.db, [team], period_start, last_day)
-        employees = (
-            self.db.query(Employee)
+        # Роли с выключенным «В планировании» не входят ни в один итог — как в
+        # карточке «Ресурс команды»; иначе таблица и разрез по группам больше неё.
+        outside_planning = {
+            code for (code,) in self.db.query(Role.code).filter(
+                Role.counts_in_planning == False  # noqa: E712
+            )
+        }
+        employees = [
+            e for e in self.db.query(Employee)
             .filter(Employee.id.in_(list(intervals.keys())), Employee.is_active == True)  # noqa: E712
             .all()
-        )
+            if e.role not in outside_planning
+        ]
 
         # --- производственный календарь ---
         cal_overrides: dict[date, float] = {
