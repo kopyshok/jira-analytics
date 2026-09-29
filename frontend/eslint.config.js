@@ -29,7 +29,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['playwright.config.ts', 'e2e/**/*.ts'],
+    files: ['playwright.config.ts', 'playwright.videos.config.ts', 'e2e/**/*.ts', 'help-videos/**/*.ts'],
     languageOptions: {
       ecmaVersion: 2023,
       globals: {

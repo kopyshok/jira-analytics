@@ -1,0 +1,23 @@
+// Вход демо-пользователем до съёмки: ролик начинается сразу с нужной
+// страницы, экран входа в кадр не попадает. Сессия (cookie) сохраняется в файл,
+// который конфигурация подставляет каждому снимаемому окну.
+import { request, type FullConfig } from '@playwright/test';
+
+const DEMO_EMAIL = 'demo@example.com';
+const DEMO_PASSWORD = 'demo12345';
+
+export default async function globalSetup(config: FullConfig) {
+  const backendUrl = String(config.metadata.backendUrl);
+  const statePath = config.projects[0].use.storageState;
+  if (typeof statePath !== 'string') throw new Error('storageState должен быть путём к файлу');
+
+  const api = await request.newContext();
+  const res = await api.post(`${backendUrl}/api/v1/auth/login`, {
+    data: { email: DEMO_EMAIL, password: DEMO_PASSWORD },
+  });
+  if (!res.ok()) {
+    throw new Error(`Вход демо-пользователем не удался: ${res.status()} ${await res.text()}`);
+  }
+  await api.storageState({ path: statePath });
+  await api.dispose();
+}
