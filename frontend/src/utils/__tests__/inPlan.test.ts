@@ -70,7 +70,7 @@ describe('inPlanHint', () => {
 
   it('inert and locked explain why the switch does not work', () => {
     expect(inPlanHint('inert', true)).toBe('Инициатива планируется целиком — часы эпиков уже в ней');
-    expect(inPlanHint('by_epics_locked', false)).toBe('Инициатива нескольких команд планируется только по эпикам');
+    expect(inPlanHint('by_epics_locked', false)).toBe('Инициатива нескольких команд планируется только по эпикам — без эпиков в сценарий не попадает');
   });
 });
 
