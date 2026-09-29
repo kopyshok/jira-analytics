@@ -6,6 +6,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   useInvolvementDefaults,
   useCreateInvolvementDefault,
+  useUpdateInvolvementDefault,
   useDeleteInvolvementDefault,
 } from '../../hooks/useInvolvementDefaults';
 import {
@@ -20,7 +21,7 @@ import { useMandatoryWorkTypes } from '../../hooks/useCapacity';
 import {
   formatInvolvement, formatNormed, formatQuarter, roleNormedPercents, sumPercent,
 } from '../../utils/personalSettings';
-import type { PersonalSetting, PersonalSettingInput, ScenarioRuleOut } from '../../types/api';
+import type { InvolvementDefault, PersonalSetting, PersonalSettingInput, ScenarioRuleOut } from '../../types/api';
 
 const ROLE_LABELS: Record<string, string> = {
   analyst: 'Анализ',
@@ -176,7 +177,6 @@ function PersonalSettingModal({
               onChange={(v) => setYear(v ?? year)}
               min={2000}
               max={2100}
-              disabled={isEdit}
               style={{ width: 110 }}
             />
           </div>
@@ -188,7 +188,6 @@ function PersonalSettingModal({
               value={quarter}
               onChange={setQuarter}
               options={QUARTER_OPTIONS}
-              disabled={isEdit}
             />
           </div>
           <div>
@@ -264,16 +263,52 @@ export default function InvolvementDefaultsDrawer({
     ? allRows.filter((r) => r.role !== 'opo')
     : allRows;
   const create = useCreateInvolvementDefault();
+  const update = useUpdateInvolvementDefault();
   const del = useDeleteInvolvementDefault();
 
   const now = new Date();
+  const [editingRow, setEditingRow] = useState<InvolvementDefault | null>(null);
   const [role, setRole] = useState('analyst');
   const [year, setYear] = useState<number>(now.getFullYear());
   const [quarter, setQuarter] = useState<number>(1);
   const [valuePct, setValuePct] = useState<number | null>(80);
 
-  const handleAdd = () => {
+  const resetTeamRuleForm = () => {
+    setEditingRow(null);
+    setRole('analyst');
+    setYear(now.getFullYear());
+    setQuarter(1);
+    setValuePct(80);
+  };
+
+  const handleEditStart = (row: InvolvementDefault) => {
+    setEditingRow(row);
+    setRole(row.role);
+    setYear(row.effective_year);
+    setQuarter(row.effective_quarter);
+    setValuePct(Math.round(row.involvement * 100));
+  };
+
+  const handleSave = () => {
     if (!team || valuePct == null) return;
+    if (editingRow) {
+      const body: Partial<{
+        role: string; effective_year: number; effective_quarter: number; involvement: number;
+      }> = {};
+      if (role !== editingRow.role) body.role = role;
+      if (year !== editingRow.effective_year) body.effective_year = year;
+      if (quarter !== editingRow.effective_quarter) body.effective_quarter = quarter;
+      const fraction = valuePct / 100;
+      if (fraction !== editingRow.involvement) body.involvement = fraction;
+      update.mutate(
+        { id: editingRow.id, body },
+        {
+          onSuccess: resetTeamRuleForm,
+          onError: (e) => notification.error({ title: 'Ошибка', description: (e as Error).message }),
+        },
+      );
+      return;
+    }
     create.mutate(
       { team, role, effective_year: year, effective_quarter: quarter, involvement: valuePct / 100 },
       {
@@ -290,15 +325,27 @@ export default function InvolvementDefaultsDrawer({
       render: (_: unknown, row: { effective_quarter: number; effective_year: number }) =>
         `Q${row.effective_quarter} ${row.effective_year}`,
     },
-    { title: 'Вовлечённость', dataIndex: 'involvement' },
+    {
+      title: 'Вовлечённость',
+      dataIndex: 'involvement',
+      render: (v: number) => formatInvolvement(v),
+    },
     {
       title: '',
       key: 'act',
-      width: 48,
-      render: (_: unknown, row: { id: string }) => (
-        <Popconfirm title="Удалить?" onConfirm={() => del.mutate(row.id)}>
-          <Button size="small" danger icon={<DeleteOutlined />} aria-label="Удалить запись" />
-        </Popconfirm>
+      width: 80,
+      render: (_: unknown, row: InvolvementDefault) => (
+        <Space size={4}>
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => handleEditStart(row)}
+            aria-label="Изменить запись"
+          />
+          <Popconfirm title="Удалить?" onConfirm={() => del.mutate(row.id)}>
+            <Button size="small" danger icon={<DeleteOutlined />} aria-label="Удалить запись" />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -389,10 +436,15 @@ export default function InvolvementDefaultsDrawer({
     },
   ];
 
+  const handleDrawerClose = () => {
+    resetTeamRuleForm();
+    onClose();
+  };
+
   return (
     <Drawer
       open={open}
-      onClose={onClose}
+      onClose={handleDrawerClose}
       styles={{ wrapper: { width: 640 } }}
       title="Вовлечённость и нормированные работы"
     >
@@ -417,9 +469,15 @@ export default function InvolvementDefaultsDrawer({
                   suffix="%"
                   placeholder="0–100"
                 />
-                <Button type="primary" icon={<PlusOutlined />} loading={create.isPending} onClick={handleAdd}>
-                  Добавить
+                <Button
+                  type="primary"
+                  icon={editingRow ? undefined : <PlusOutlined />}
+                  loading={editingRow ? update.isPending : create.isPending}
+                  onClick={handleSave}
+                >
+                  {editingRow ? 'Сохранить' : 'Добавить'}
                 </Button>
+                {editingRow && <Button onClick={resetTeamRuleForm}>Отмена</Button>}
               </Space>
               <Table
                 rowKey="id"
@@ -428,6 +486,7 @@ export default function InvolvementDefaultsDrawer({
                 dataSource={data}
                 columns={columns}
                 pagination={false}
+                rowClassName={(row: InvolvementDefault) => (editingRow?.id === row.id ? 'involvement-row-editing' : '')}
               />
             </Space>
           </div>
