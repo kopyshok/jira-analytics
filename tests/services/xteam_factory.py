@@ -49,12 +49,13 @@ def join_team(
     team: str,
     joined_at: Optional[date] = None,
     left_at: Optional[date] = None,
+    primary: bool = False,
 ) -> EmployeeTeam:
-    """Ещё одна (не основная) команда сотрудника — общий сотрудник."""
+    """Ещё одна команда сотрудника — общий сотрудник; по умолчанию не основная."""
     et = EmployeeTeam(
         employee_id=employee.id,
         team=team,
-        is_primary=False,
+        is_primary=primary,
         joined_at=joined_at,
         left_at=left_at,
     )

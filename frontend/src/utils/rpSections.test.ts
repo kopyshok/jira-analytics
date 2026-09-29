@@ -30,15 +30,14 @@ const a = (over: Partial<AssignmentOut>): AssignmentOut =>
 const names = new Map([['g1', 'Группа 1'], ['g2', 'Группа 2']]);
 
 describe('buildSectionByItem', () => {
-  it('берёт группу работы, иначе группу исполнителя из сценария, иначе пусто', () => {
+  it('берёт группу по subgroup_id назначения (сервер уже разложил фолбэк на исполнителя), иначе пусто', () => {
     const map = buildSectionByItem(
       [
         a({ backlog_item_id: 'i1', subgroup_id: 'g1' }),
-        a({ backlog_item_id: 'i2', scenario_assignee_employee_id: 'e1' }),
+        a({ backlog_item_id: 'i2', subgroup_id: 'g2', scenario_assignee_employee_id: 'e1' }),
         a({ backlog_item_id: 'i3' }),
       ],
       names,
-      { e1: 'Группа 2' },
     );
     expect(map).toEqual({ i1: 'Группа 1', i2: 'Группа 2', i3: '' });
   });

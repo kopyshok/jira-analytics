@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.api.endpoints.resource_planning import ResourcePlanOut
 from app.database import get_db
 from app.main import app
-from app.models import PlanConflict, ResourcePlan
+from app.models import MandatoryWorkType, PlanConflict, ResourcePlan
 from app.services.event_bus import get_event_bus
 from app.services.resource_planning_service import ResourcePlanningService
 from tests.services.xteam_factory import add_item, book, make_employee, make_plan
@@ -187,3 +187,36 @@ def test_dependencies(seeded):
     r, bus = _send(db, "DELETE", f"{url}/{dep_id}")
     assert r.status_code == 204, r.text
     bus.publish.assert_called_once_with(PLAN_ONLY)
+
+
+def test_scheduled_blocks(testclient_db_session):
+    """Заблокированный период меняет загрузку по дням, запас, предупреждения и
+    свежесть планов других команд — все его правки рассылают событие."""
+    db = testclient_db_session
+    wt = MandatoryWorkType(code="support_consult", label="Сопровождение", subtracts_from_pool=True)
+    db.add(wt)
+    db.commit()
+    url = "/api/v1/resource-planning/scheduled-blocks"
+    body = {"team": "T", "start_date": "2026-01-12", "end_date": "2026-01-14",
+            "reason": "Закрытие месяца", "work_type_id": wt.id}
+
+    r, bus = _send(db, "POST", url, json=body)
+    assert r.status_code == 201, r.text
+    bus.publish.assert_called_once_with(PLAN_ONLY)
+    block_id = r.json()["id"]
+
+    r, bus = _send(db, "PATCH", f"{url}/{block_id}", json={"end_date": "2026-01-15"})
+    assert r.status_code == 200, r.text
+    bus.publish.assert_called_once_with(PLAN_ONLY)
+
+    r, bus = _send(db, "PATCH", f"{url}/{block_id}", json={"work_type_id": None})
+    assert r.status_code == 422, r.text
+    bus.publish.assert_not_called()
+
+    r, bus = _send(db, "DELETE", f"{url}/{block_id}")
+    assert r.status_code == 204, r.text
+    bus.publish.assert_called_once_with(PLAN_ONLY)
+
+    r, bus = _send(db, "DELETE", f"{url}/{block_id}")
+    assert r.status_code == 404, r.text
+    bus.publish.assert_not_called()

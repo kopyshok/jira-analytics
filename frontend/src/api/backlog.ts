@@ -45,6 +45,7 @@ export const updateBacklogItem = (id: string, data: Partial<{
   impact: BacklogImpactRisk;
   risk: BacklogImpactRisk;
   assignee_employee_id: string | null;
+  developer_employee_id: string | null;
   customer: string | null;
   parallel_count_analyst: number | null;
   parallel_count_dev: number | null;

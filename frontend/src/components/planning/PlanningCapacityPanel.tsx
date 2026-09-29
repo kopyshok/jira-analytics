@@ -8,8 +8,7 @@ import { getRoleColor } from '../../utils/roles';
 import type { AllocationResponse, ResourceBase, ResourceEmployee, ResourceSummaryOut } from '../../types/api';
 import RoleCapacityBar from './RoleCapacityBar';
 import { patchEmployee } from '../../api/employees';
-import { demandByAssigneeRole } from '../../utils/planning';
-import { effectiveEstimate } from '../../utils/allocationEstimates';
+import { demandByAssigneeRole, demandByEmployee as demandByEmployeeOf } from '../../utils/planning';
 
 const CORE_ROLE_KEYS = ['analyst', 'dev', 'qa'] as const;
 type CoreRoleKey = (typeof CORE_ROLE_KEYS)[number];
@@ -55,55 +54,13 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
     },
   });
 
-  // Персональная нагрузка ответственного: каждому ассайни — часы только его
-  // типа работ (аналитик/dev/qa). РП, project_manager и Консультант
-  // «закрывают» аналитическую часть. Часы dev/qa других типов работ
-  // одной и той же задачи в персональный счёт не попадают — они уходят в
-  // соответствующие ролевые пулы (см. demandByRole ниже).
-  const demandByEmployee = useMemo(() => {
-    const result: Record<string, number> = {};
-    for (const alloc of allocations) {
-      if (!alloc.included) continue;
-      let emp = alloc.assignee_employee_id
-        ? resourceBase?.employees.find((e) => e.employee_id === alloc.assignee_employee_id)
-        : undefined;
-      // Фолбэк: если у задачи нет связки employee_id, но есть display_name
-      // (бывает, когда бэклог подтянул задачу из Jira без смапленного Employee),
-      // ищем сотрудника по имени в команде сценария. Сопоставление толерантное:
-      // сравниваем множества слов — порядок и лишние слова не мешают
-      // («Копышков Николай» ↔ «Копышков Николай Сергеевич»).
-      if (!emp && alloc.assignee_display_name) {
-        const tokens = (s: string) =>
-          new Set(s.toLowerCase().split(/\s+/).filter((t) => t.length >= 3));
-        const need = tokens(alloc.assignee_display_name);
-        if (need.size > 0) {
-          emp = resourceBase?.employees.find((e) => {
-            const have = tokens(e.display_name);
-            let hit = 0;
-            for (const t of need) if (have.has(t)) hit += 1;
-            return hit >= Math.min(2, need.size);
-          });
-        }
-      }
-      if (!emp?.role) continue;
-      const eff = effectiveEstimate(alloc);
-      const r = alloc.opo_analyst_ratio ?? 0.5;
-      const role = emp.role;
-      const personalLoad =
-        role === 'analyst' ||
-        role === 'RP' ||
-        role === 'project_manager' ||
-        role === 'consultant'
-          ? eff.analyst + eff.opo * r
-          : role === 'dev'
-            ? eff.dev + eff.opo * (1 - r)
-            : role === 'qa'
-              ? eff.qa
-              : 0;
-      result[emp.employee_id] = (result[emp.employee_id] ?? 0) + personalLoad;
-    }
-    return result;
-  }, [allocations, resourceBase]);
+  // Персональная нагрузка: разработчику из колонки — часы разработки,
+  // исполнителю — часы его типа работ (см. demandByEmployee). Остальное
+  // уходит в ролевые пулы (см. demandByRole ниже).
+  const demandByEmployee = useMemo(
+    () => demandByEmployeeOf(allocations, resourceBase?.employees ?? []),
+    [allocations, resourceBase],
+  );
 
   // Потребность по ролям: часы каждого типа работ всегда падают в свой пул
   // (analyst / dev / qa) независимо от ответственного. Используем общую
@@ -134,6 +91,19 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
     }
     for (const [key, list] of Object.entries(byGroup)) {
       out[key] = demandByAssigneeRole(list, resourceBase.employees);
+    }
+    return out;
+  }, [hasSubgroups, allocations, resourceBase]);
+
+  // Потребность по сотрудникам внутри каждой группы: та же утилита, что для
+  // персональной нагрузки, но на идеях этой группы — для бара сотрудника в секции.
+  const demandByEmployeeGroup = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    if (!hasSubgroups || !resourceBase?.employees) return out;
+    const byGroup: Record<string, AllocationResponse[]> = {};
+    for (const a of allocations) (byGroup[a.subgroup_id ?? ''] ??= []).push(a);
+    for (const [key, list] of Object.entries(byGroup)) {
+      out[key] = demandByEmployeeOf(list, resourceBase.employees);
     }
     return out;
   }, [hasSubgroups, allocations, resourceBase]);
@@ -202,20 +172,23 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
   }
 
   // Секции групп: сотрудники группы + её ёмкость по ролям. «Без группы» —
-  // последней и только если в ней кто-то есть.
+  // последней и только если в ней кто-то есть часами или спросом (иначе
+  // спрос без группы пропадал бы из виду — сотрудников там может не быть).
+  const hasUngroupedDemand = Object.values(demandBySubgroupRole[''] ?? {}).some((v) => v > 0);
   const groupSections = hasSubgroups
     ? [
         ...subgroups.map((g) => ({
           id: g.id,
           name: g.name,
-          employees: resourceBase.employees.filter((e) => (e.subgroup_id ?? '') === g.id),
+          employees: resourceBase.employees.filter((e) => (e.subgroup_hours ?? {})[g.id] !== undefined),
         })),
-        ...(resourceBase.employees.some((e) => !e.subgroup_id)
+        ...(resourceBase.employees.some((e) => (e.subgroup_hours ?? {})[''] !== undefined)
+          || hasUngroupedDemand
           ? [
               {
                 id: '',
                 name: 'Без группы',
-                employees: resourceBase.employees.filter((e) => !e.subgroup_id),
+                employees: resourceBase.employees.filter((e) => (e.subgroup_hours ?? {})[''] !== undefined),
               },
             ]
           : []),
@@ -227,6 +200,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
     right: string,
     collapsed: boolean,
     onToggle: () => void,
+    danger?: boolean,
   ) => (
     <div
       onClick={onToggle}
@@ -246,7 +220,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
       ) : (
         <DownOutlined style={{ fontSize: 10, color: DARK_THEME.textMuted }} />
       )}
-      <span style={{ fontSize: 13, fontWeight: 600, color: DARK_THEME.textPrimary }}>{name}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: danger ? DARK_THEME.danger : DARK_THEME.textPrimary }}>{name}</span>
       <span style={{ flex: 1 }} />
       <span style={{ fontSize: 12, fontFamily: FONTS.mono, color: DARK_THEME.textMuted }}>{right}</span>
     </div>
@@ -296,16 +270,22 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
       return d !== 0 ? d : a.display_name.localeCompare(b.display_name, 'ru');
     });
 
-  const renderEmployee = (e: ResourceEmployee) => {
+  const renderEmployee = (e: ResourceEmployee, sectionId?: string) => {
+            const sectionLabel = sectionId !== undefined ? e.subgroup_labels?.[sectionId] : undefined;
             const knownRole = e.role && roles.some(r => r.code === e.role && r.is_active) ? e.role : null;
             const roleColor = knownRole ? getRoleColor(roles, knownRole) : DARK_THEME.textDim;
             const roleShort = knownRole ? getRoleShort(knownRole) : '—';
             const mandPct = knownRole ? (mandatoryPctByRole[knownRole] ?? 0) : 0;
 
-            // Норма-часы (до вычета обяз. работ). Если mandPct=0 — норма равна total_hours.
-            const normHours = mandPct > 0 && e.total_hours > 0
-              ? Math.round(e.total_hours / (1 - mandPct / 100))
-              : Math.round(e.total_hours);
+            // В секции группы — только часы сотрудника в этой группе (по доле и дням).
+            const hours = sectionId !== undefined
+              ? (e.subgroup_hours?.[sectionId] ?? e.total_hours)
+              : e.total_hours;
+
+            // Норма-часы (до вычета обяз. работ). Если mandPct=0 — норма равна часам.
+            const normHours = mandPct > 0 && hours > 0
+              ? Math.round(hours / (1 - mandPct / 100))
+              : Math.round(hours);
 
             return (
               <div key={e.employee_id}>
@@ -333,6 +313,11 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                         <Tag color={e.is_overcommitted ? 'red' : 'blue'}>общий</Tag>
                       </Tooltip>
                     )}
+                    {!!sectionLabel && (
+                      <Tooltip title="Часть времени сотрудника в этой группе">
+                        <Tag>{/^\d/.test(sectionLabel) ? `общий ${sectionLabel}` : `в группе ${sectionLabel}`}</Tag>
+                      </Tooltip>
+                    )}
                     {!knownRole && (
                       <Select
                         size="small"
@@ -349,7 +334,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: 14, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
-                      {Math.round(e.total_hours)} ч
+                      {Math.round(hours)} ч
                     </span>
                     <div style={{ fontSize: 12, color: DARK_THEME.textHint }}>
                       норма {normHours} ч{mandPct > 0 ? ` · −${mandPct}%` : ''}
@@ -358,8 +343,10 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                 </div>
                 {/* Demand / capacity bar */}
                 {(() => {
-                  const empDemand = demandByEmployee[e.employee_id] ?? 0;
-                  const empCapacity = e.total_hours;
+                  const empDemand = sectionId !== undefined
+                    ? (demandByEmployeeGroup[sectionId]?.[e.employee_id] ?? 0)
+                    : (demandByEmployee[e.employee_id] ?? 0);
+                  const empCapacity = hours;
                   const pct = empCapacity > 0 ? Math.min((empDemand / empCapacity) * 100, 100) : 0;
                   const over = empDemand > empCapacity && empCapacity > 0;
                   return (
@@ -442,6 +429,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                   `${Math.round(demTotal)} / ${Math.round(capTotal)} ч`,
                   collapsed,
                   () => toggleIn(setCollapsedRoleGroups, sec.id),
+                  sec.id === '',
                 )}
                 {!collapsed && roleBars(capacity, demand, sec.employees)}
               </div>
@@ -473,16 +461,17 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                       `${sec.employees.length} чел.`,
                       collapsed,
                       () => toggleIn(setCollapsedEmpGroups, sec.id),
+                      sec.id === '',
                     )}
                     {!collapsed && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: '8px 14px' }}>
-                        {sortedEmployees(sec.employees).map(renderEmployee)}
+                        {sortedEmployees(sec.employees).map((e) => renderEmployee(e, sec.id))}
                       </div>
                     )}
                   </div>
                 );
               })
-            : sortedEmployees(resourceBase.employees).map(renderEmployee)}
+            : sortedEmployees(resourceBase.employees).map((e) => renderEmployee(e))}
           {resourceBase.employees.length === 0 && (
             <div style={{ color: DARK_THEME.textMuted, fontSize: 12, padding: 8 }}>
               Нет сотрудников в команде.

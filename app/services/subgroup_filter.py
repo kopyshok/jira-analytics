@@ -1,8 +1,8 @@
 """Фильтр по группам внутри команды — общий для всех витрин.
 
 Второй уровень глобального фильтра приезжает списком идентификаторов групп.
-Факт режется по группе задачи, всё «на человека» — по приписке сотрудника,
-поэтому здесь два разных выражения, а не одно.
+Факт режется по группе задачи, всё «на человека» — по распределению сотрудника
+за период, поэтому здесь два разных выражения, а не одно.
 
 Отдельное значение ``__none__`` — «Без группы»: задачи и сотрудники, которых
 к группе не приписали. Без него сумма по группам не сходилась бы с командой,
@@ -13,12 +13,15 @@
 деления ведёт себя ровно как до правки.
 """
 
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import EmployeeTeam, Issue, Team, TeamSubgroup
+from app.services import subgroup_shares as ss
+from app.services import team_membership as tm
 
 NO_SUBGROUP_TOKEN = "__none__"
 
@@ -49,31 +52,66 @@ def issue_clause(subgroups: Optional[list[str]]):
 
 
 def employee_ids(
-    db: Session, subgroups: Optional[list[str]], teams: Optional[list[str]] = None
+    db: Session,
+    subgroups: Optional[list[str]],
+    teams: Optional[list[str]] = None,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
 ) -> Optional[set[str]]:
-    """Сотрудники, приписанные к выбранным группам. ``None`` — фильтр не задан.
+    """Сотрудники, у которых была доля в выбранных группах за период. ``None`` — фильтр не задан.
 
-    ``teams`` нужен только для «Без группы»: неприписанного человека ищем
-    среди участников выбранных команд, а не по всей базе.
+    Период по умолчанию — сегодня; перевёрнутый период (конец раньше начала)
+    сужается до одного дня начала. Доля учитывается только в дни участия
+    сотрудника в команде. Общий сотрудник попадает в каждую свою группу
+    целиком — его показатели не делятся. ``teams`` нужен только для
+    «Без группы»: неприписанного человека ищем среди участников выбранных
+    команд, а не по всей базе.
     """
     if not subgroups:
         return None
     ids, has_none = _split(subgroups)
+    start = start or date.today()
+    end = max(end or start, start)
+    wanted = set(ids)
+
+    # Команды выбранных групп — доли читаются только в них.
+    group_teams = (
+        [
+            name
+            for (name,) in db.query(Team.name)
+            .join(TeamSubgroup, TeamSubgroup.team_id == Team.id)
+            .filter(TeamSubgroup.id.in_(ids))
+            .distinct()
+        ]
+        if ids
+        else []
+    )
+    none_teams = (
+        (teams or [t for (t,) in db.query(EmployeeTeam.team).distinct()]) if has_none else []
+    )
+    needed_teams = list(set(group_teams) | set(none_teams))
+    if not needed_teams:
+        return set()
+
+    # Состав и распределения всех нужных команд — одним проходом каждое,
+    # а не запросом на команду.
+    by_team = tm.intervals_by_team(db, needed_teams, start, end)
+    all_emp_ids = {emp_id for per_team in by_team.values() for emp_id in per_team}
+    records = ss.load_all(db, all_emp_ids)
 
     out: set[str] = set()
-    if ids:
-        rows = (
-            db.query(EmployeeTeam.employee_id)
-            .filter(EmployeeTeam.subgroup_id.in_(ids))
-            .distinct()
-            .all()
-        )
-        out |= {emp_id for (emp_id,) in rows}
+    for team in group_teams:
+        for emp_id, spans in by_team.get(team, {}).items():
+            recs = records.get((emp_id, team), [])
+            if any(ss.groups_between(recs, lo, hi) & wanted for lo, hi in spans):
+                out.add(emp_id)
     if has_none:
-        q = db.query(EmployeeTeam.employee_id).filter(EmployeeTeam.subgroup_id.is_(None))
-        if teams:
-            q = q.filter(EmployeeTeam.team.in_(teams))
-        out |= {emp_id for (emp_id,) in q.distinct().all()}
+        for team in none_teams:
+            for emp_id, spans in by_team.get(team, {}).items():
+                recs = records.get((emp_id, team), [])
+                # Записи только начинаются, поэтому достаточно первого дня участия.
+                if ss.record_on(recs, spans[0][0]) is None:
+                    out.add(emp_id)
     return out
 
 

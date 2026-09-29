@@ -136,6 +136,34 @@ def test_diff_allocations(db: Session, two_revs_with_snapshots):
     assert alloc["changed"][0]["estimate_analyst_hours"] == {"before": 10.0, "after": 15.0}
 
 
+def test_diff_allocations_developer_changed(db: Session):
+    """Сменили разработчика строки между ревизиями — строка в changed."""
+    db.add(PlanningScenario(
+        id="s-d", name="Q2", year=2026, quarter="Q2", team="T", status="approved"
+    ))
+    db.add_all([
+        ScenarioRevision(
+            id="rd-1", scenario_id="s-d", revision_number=1, approved_at=datetime(2026, 4, 1),
+        ),
+        ScenarioRevision(
+            id="rd-2", scenario_id="s-d", revision_number=2,
+            approved_at=datetime(2026, 4, 15), parent_revision_id="rd-1",
+        ),
+    ])
+    db.add(ScenarioAllocationSnapshot(
+        revision_id="rd-1", allocation_id="a", title="A", developer_employee_id="e-1",
+    ))
+    db.add(ScenarioAllocationSnapshot(
+        revision_id="rd-2", allocation_id="a", title="A", developer_employee_id="e-2",
+    ))
+    db.commit()
+
+    diff = SnapshotDiffer(db).diff(revision_id="rd-2", against_revision_id="rd-1")
+
+    [changed] = diff["allocations"]["changed"]
+    assert changed["developer_employee_id"] == {"before": "e-1", "after": "e-2"}
+
+
 def test_diff_team(db: Session, two_revs_with_snapshots):
     differ = SnapshotDiffer(db)
     diff = differ.diff(revision_id="r-2", against_revision_id="r-1")

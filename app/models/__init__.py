@@ -3,6 +3,7 @@
 from app.models.base import TimestampMixin, SyncedMixin, generate_uuid
 from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
+from app.models.employee_subgroup_share import EmployeeSubgroupShare
 from app.models.project import Project
 from app.models.issue import Issue
 from app.models.issue_link import IssueLink
@@ -20,6 +21,7 @@ from app.models.mandatory_work_type import MandatoryWorkType
 from app.models.role_capacity_rule import RoleCapacityRule
 from app.models.employee_capacity_override import EmployeeCapacityOverride
 from app.models.involvement_default import InvolvementDefault
+from app.models.employee_personal_setting import EmployeePersonalNormed, EmployeePersonalSetting
 from app.models.backlog_item import BacklogItem
 from app.models.planning_scenario import PlanningScenario
 from app.models.project_ai_summary import ProjectAISummary
@@ -47,6 +49,7 @@ from app.models.user import User, UserRole  # noqa: F401
 from app.models.scheduled_block import ScheduledBlock
 from app.models.scheduled_block_role import ScheduledBlockRole
 from app.models.scheduled_block_employee import ScheduledBlockEmployee
+from app.models.team_work_type_override import TeamWorkTypeOverride
 from app.models.resource_plan import ResourcePlan
 from app.models.resource_plan_assignment import ResourcePlanAssignment
 from app.models.release_note import ReleaseNote
@@ -79,6 +82,7 @@ __all__ = [
     "generate_uuid",
     "Employee",
     "EmployeeTeam",
+    "EmployeeSubgroupShare",
     "Project",
     "Issue",
     "IssueLink",
@@ -96,6 +100,8 @@ __all__ = [
     "RoleCapacityRule",
     "EmployeeCapacityOverride",
     "InvolvementDefault",
+    "EmployeePersonalSetting",
+    "EmployeePersonalNormed",
     "BacklogItem",
     "PlanningScenario",
     "ProjectAISummary",
@@ -124,6 +130,7 @@ __all__ = [
     "ScheduledBlock",
     "ScheduledBlockRole",
     "ScheduledBlockEmployee",
+    "TeamWorkTypeOverride",
     "ResourcePlan",
     "ResourcePlanAssignment",
     "ReleaseNote",

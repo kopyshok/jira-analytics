@@ -17,6 +17,7 @@ const STATUS_LABELS: Record<DailyBreakdownItem['status'], string> = {
   holiday: 'Праздник',
   weekend: 'Выходной',
   blocked_by_other: 'Занят другой задачей',
+  blocked: 'Заблокировано',
   pre_start_idle: 'Свободен (сдвиг)',
 };
 
@@ -102,6 +103,9 @@ export default function DailyBreakdownSection({
                   render: (_: unknown, row: DailyBreakdownItem) => {
                     if (row.status === 'blocked_by_other') {
                       return `${row.blocker_item_key ?? ''} · ${row.blocker_phase_label ?? ''}`.replace(/^ · | · $/, '');
+                    }
+                    if (row.status === 'blocked') {
+                      return row.block_reason ?? '';
                     }
                     if (row.status === 'absence' && row.absence_reason) {
                       return row.absence_reason;

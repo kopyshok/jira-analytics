@@ -7,7 +7,7 @@ import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from itertools import groupby
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from dateutil.relativedelta import relativedelta
 
@@ -18,20 +18,19 @@ from app.models import (
     Absence,
     BacklogItem,
     Employee,
-    EmployeeTeam,
     ProductionCalendarDay,
     ResourcePlan,
     ResourcePlanAssignment,
-    Role,
-    ScheduledBlock,
     ScenarioAllocation,
-    Team,
 )
 from app.services import opo_policy, team_membership as tm
 from app.services import cross_team_occupancy as cto
+from app.services import scheduled_blocks as sb
+from app.services import subgroup_shares as ss
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.jira_developer import jira_developers_for_items
 from app.services.involvement_default_service import effective_for_phase, team_defaults
+from app.services.personal_settings import personal_for
 from app.services.plan_common import PHASE_LABEL
 from app.services.rcpsp_leveler import RcpspLeveler
 
@@ -164,6 +163,39 @@ def _placed_hours(a: ResourcePlanAssignment, unlaid: set) -> float:
     return float(a.hours_allocated or 0.0)
 
 
+def _is_continuation(
+    pred: ResourcePlanAssignment, succ: ResourcePlanAssignment
+) -> bool:
+    """Связь «часть → следующая часть» одной фазы одной задачи у одного человека.
+
+    Такая часть — продолжение предыдущей: берёт остаток дня, в который та
+    кончилась. Раньше она ждала следующего дня, остаток забирала младшая
+    задача и шла параллельно раздробленной фазе. Тестирование (без
+    сотрудника) продолжением не бывает.
+    """
+    return (
+        pred.employee_id is not None
+        and pred.employee_id == succ.employee_id
+        and pred.backlog_item_id == succ.backlog_item_id
+        and pred.phase == succ.phase
+        and (pred.part_number or 1) < (succ.part_number or 1)
+    )
+
+
+def _earliest_after(
+    pred: ResourcePlanAssignment, succ: ResourcePlanAssignment
+) -> date:
+    """Самый ранний старт ``succ`` по связи с ``pred`` (у ``pred`` есть конец).
+
+    Продолжение — в день конца предшественника, остальные связи — со
+    следующего дня.
+    """
+    assert pred.end_date is not None
+    if _is_continuation(pred, succ):
+        return pred.end_date
+    return pred.end_date + timedelta(days=1)
+
+
 def lock_plan(db: Session, plan_id: str) -> None:
     """Взять строку плана «на запись» до конца транзакции: правки и пересчёты
     одного плана идут по очереди.
@@ -215,6 +247,9 @@ class ResourcePlanningService:
         # Вовлечённость по ролям из справочника команды: подставляется там,
         # где у задачи своё значение не задано.
         self._involvement_defaults: Dict[str, float] = {}
+        # Личная вовлечённость людей плана на квартал плана: сотрудник → значение.
+        # Главнее задачи и справочника (см. app/services/personal_settings.py).
+        self._personal_involvement: Dict[str, float] = {}
 
     @staticmethod
     def _daily_role_capacity(
@@ -233,16 +268,25 @@ class ResourcePlanningService:
         inv = 1.0 if involvement is None else max(0.0, min(1.0, involvement))
         return avail_hours * inv * max(1, parallel_count)
 
-    def _involvement_for_phase(self, item: BacklogItem, phase: str) -> Optional[float]:
-        """Коэф вовлечённости фазы: своё значение задачи, иначе справочник команды."""
-        return effective_for_phase(item, phase, self._involvement_defaults)
+    def _involvement_for_phase(
+        self, item: BacklogItem, phase: str, employee_id: Optional[str] = None,
+    ) -> Optional[float]:
+        """Коэф вовлечённости фазы: личная вовлечённость исполнителя
+        ``employee_id`` на квартал плана, иначе своё значение задачи, иначе
+        справочник команды. Фаза без исполнителя (тестирование) — без личной."""
+        return effective_for_phase(
+            item,
+            phase,
+            self._involvement_defaults,
+            self._personal_involvement.get(employee_id) if employee_id else None,
+        )
 
     def build_availability(
         self,
         employees: List[Employee],
         start: date,
         end: date,
-        scheduled_blocks: List[ScheduledBlock],
+        blocked: Optional[Dict[str, Dict[date, sb.BlockHit]]] = None,
         team: Optional[str] = None,
         borrowed: Optional[set] = None,
     ) -> Dict[str, Dict[date, float]]:
@@ -250,6 +294,9 @@ class ResourcePlanningService:
 
         available_hours = production calendar hours if working day,
         0.0 if weekend/holiday/absence/blocked period.
+
+        ``blocked`` — заблокированные дни (см. `scheduled_blocks`):
+        {сотрудник: {день: период}}; пусто — без периодов.
 
         ``team`` задан → дни вне периода участия в этой команде тоже нулевые:
         пришедший в середине квартала не получает работу до своей даты входа,
@@ -302,34 +349,7 @@ class ResourcePlanningService:
                 absent_days[a.employee_id].add(d)
                 d += timedelta(days=1)
 
-        # Build role_code → role_id map for block resolution.
-        # ScheduledBlock.roles[].role_id is a UUID FK → roles.id;
-        # Employee.role is a role code. We load the mapping once.
-        role_code_to_id: Dict[str, str] = {}
-        role_id_to_code: Dict[str, str] = {}
-        role_ids_needed: set[str] = set()
-        for b in scheduled_blocks:
-            for r in b.roles:
-                role_ids_needed.add(r.role_id)
-        if role_ids_needed:
-            role_rows = (
-                self.db.execute(select(Role).where(Role.id.in_(role_ids_needed)))
-                .scalars()
-                .all()
-            )
-            for r in role_rows:
-                role_code_to_id[r.code] = r.id
-                role_id_to_code[r.id] = r.code
-
-        # Blocked periods
-        blocked_days: Dict[str, set] = defaultdict(set)
-        for b in scheduled_blocks:
-            targets = self._block_targets(b, employees, role_id_to_code)
-            d = max(b.start_date, start)
-            while d <= min(b.end_date, end):
-                for eid in targets:
-                    blocked_days[eid].add(d)
-                d += timedelta(days=1)
+        blocked_map = blocked or {}
 
         # Build result
         result: Dict[str, Dict[date, float]] = {}
@@ -343,7 +363,11 @@ class ResourcePlanningService:
                     and emp.id not in borrowed_set
                     and not tm.day_in_intervals(d, spans)
                 )
-                if out_of_team or d in absent_days[emp.id] or d in blocked_days[emp.id]:
+                if (
+                    out_of_team
+                    or d in absent_days[emp.id]
+                    or d in blocked_map.get(emp.id, ())
+                ):
                     daily[d] = 0.0
                 else:
                     cal_hours = cal.get(d, None)
@@ -354,34 +378,6 @@ class ResourcePlanningService:
                 d += timedelta(days=1)
             result[emp.id] = daily
         return result
-
-    def _block_targets(
-        self,
-        block: ScheduledBlock,
-        employees: List[Employee],
-        role_id_to_code: Dict[str, str],
-    ) -> List[str]:
-        """Resolve which employee IDs are affected by a ScheduledBlock.
-
-        Block applies to:
-          - all employees with one of `block.roles` codes, AND
-          - any explicitly listed employee in `block.employees`.
-        Если оба списка пусты — блок действует на всю команду
-        (или на всех сотрудников, если `block.team` is None).
-        """
-        if not block.roles and not block.employees:
-            if block.team:
-                return [e.id for e in employees if e.team == block.team]
-            return [e.id for e in employees]
-        targets: set[str] = set()
-        role_ids = {r.role_id for r in block.roles}
-        for r_id in role_ids:
-            code = role_id_to_code.get(r_id, "")
-            targets.update(
-                e.id for e in employees if (e.role or "").lower() == code.lower()
-            )
-        targets.update(e.employee_id for e in block.employees)
-        return list(targets)
 
     def _extend_window_for_hours(
         self,
@@ -652,23 +648,37 @@ class ResourcePlanningService:
         # с seg_end > q_end (строгий конец квартала) получают out_of_quarter=True.
         employees = self._load_employees(plan)
         team_employees = list(employees)
-        # Привлечённые: закреплены вручную, стоят «Разработчиком» в Jira или
-        # выбраны исполнителем строки в сценарии вручную, но в команде плана
-        # не состояли ни дня квартала.
+        # Привлечённые: закреплены вручную, стоят «Разработчиком» в Jira,
+        # выбраны исполнителем строки в сценарии вручную или стоят в колонке
+        # «Разработчик» сценария, но в команде плана не состояли ни дня квартала.
         jira_dev = jira_developers_for_items(self.db, items, q_start, q_end)
         manual_executors = {
             it.assignee_employee_id
             for it in items
             if it.assignee_manual and it.assignee_employee_id
         }
+        manual_developers = {
+            it.developer_employee_id for it in items if it.developer_employee_id
+        }
         team_ids = {e.id for e in team_employees}
         # Закреплённые — по всем строкам: у двух частей ОПЭ один ключ в pinned_map.
         pinned_ids = {r[3] for r in pinned_emp_rows}
         borrowed_rows = self._load_borrowed(
-            (pinned_ids | set(jira_dev.values()) | manual_executors) - team_ids
+            (pinned_ids | set(jira_dev.values()) | manual_executors | manual_developers)
+            - team_ids
         )
         borrowed = {e.id for e in borrowed_rows}
         employees = team_employees + borrowed_rows
+        # Личная вовлечённость людей плана на квартал плана — одним чтением.
+        plan_quarter = cto.quarter_num(plan.quarter)
+        if plan.year and plan_quarter:
+            self._personal_involvement = {
+                eid: s.involvement
+                for eid, s in personal_for(
+                    self.db, [e.id for e in employees], plan.year, plan_quarter
+                ).items()
+                if s.involvement is not None
+            }
         if not employees:
             # Фазы положить не на кого: план остаётся пустым, а причину
             # называют командные «Нет аналитика» / «Нет разработчика» вместо
@@ -689,26 +699,37 @@ class ResourcePlanningService:
             self.db.commit()
             return
 
-        blocks = (
-            self.db.execute(
-                select(ScheduledBlock).where(ScheduledBlock.team == plan.team)
-            )
-            .scalars()
-            .all()
+        # Заблокированные дни: периоды команды плана у её людей и периоды
+        # основной команды каждого человека (закрывают день и в чужих планах).
+        blocked = sb.resolve_blocked_days(
+            self.db, employees, q_start, q_end_extended, plan.team
         )
-
         raw_avail = self.build_availability(
-            employees, q_start, q_end_extended, list(blocks),
+            employees, q_start, q_end_extended, blocked,
             team=plan.team, borrowed=borrowed,
         )
         # Часы, забронированные на этих людей опорными планами других команд,
-        # раскладка не трогает. Сначала домашняя команда: своему сотруднику
-        # вычитаются только брони команд, где он тоже состоит, — команда,
-        # взявшая его к себе, подстраивается сама. Привлечённому — все брони.
+        # раскладка не трогает — как и долю прочих работ по вовлечённости
+        # брони (90% → ещё 10% дня занято). Сначала домашняя команда: своему
+        # сотруднику вычитаются только брони команд, где он тоже состоит, —
+        # команда, взявшая его к себе, подстраивается сама. Привлечённому — все.
         subtracted = self._subtracted_bookings(
             plan, employees, borrowed, q_start, q_end_extended
         )
-        external = cto.daily_totals(subtracted)
+        # Прочие работы у человека каждый рабочий день. Тем, кого план уступает
+        # (привлечённым и тем, у кого команда плана не основная), их доля по
+        # справочнику домашней команды вычитается и в дни без броней: день
+        # целиком другой команде не отдаётся.
+        yielding = borrowed | cto.guest_ids(
+            self.db, plan.team, q_start, q_end, [e.id for e in employees]
+        )
+        base_share = cto.base_other_share(
+            self.db,
+            [e for e in employees if e.id in yielding],
+            plan.year,
+            cto.quarter_num(plan.quarter),
+        )
+        external = cto.busy_hours(subtracted, raw_avail, base_share)
         avail = cto.subtract_occupancy(raw_avail, external)
 
         # Календарь рабочих часов БЕЗ сотрудника — для фазы QA (часы-only,
@@ -746,7 +767,9 @@ class ResourcePlanningService:
         # младшей задачи — фаза разрывается на видимые куски.
         preempt_locked: Dict[str, set] = {eid: set() for eid in avail.keys()}
 
-        emp_group, item_group = self._subgroup_context(plan, employees, items)
+        emp_group, item_group = self._subgroup_context(
+            plan, employees, items, q_start, q_end
+        )
         # Потолок «свои не влезают» — ёмкость сотрудника внутри квартала.
         quarter_capacity = {
             eid: sum(h for d, h in days.items() if q_start <= d <= q_end)
@@ -797,7 +820,7 @@ class ResourcePlanningService:
             if not a.start_date or not a.hours_allocated or a.hours_allocated <= 0:
                 continue
             bi = self.db.get(BacklogItem, a.backlog_item_id)
-            inv = self._involvement_for_phase(bi, a.phase) if bi else None
+            inv = self._involvement_for_phase(bi, a.phase, a.employee_id) if bi else None
             if a.employee_id is None:
                 # Тестирование — без сотрудника: часы по рабочим дням календаря.
                 new_end, daily_json = self._extend_window_for_hours(
@@ -858,6 +881,13 @@ class ResourcePlanningService:
         pinned_phase_keys = {
             (a.backlog_item_id, a.phase) for a in pinned_existing
         }
+        # В плане остались только закреплённые строки, их связи в базе целы:
+        # по ним часть раздробленной фазы найдёт свои части-предшественники.
+        # Учитываются только уже разложенные в этом пересчёте — у остальных
+        # даты прошлого расчёта.
+        pinned_by_id = {a.id: a for a in pinned_existing}
+        pinned_preds = self._load_predecessors(plan_id)
+        laid_pinned = {a.id for a in pinned_start_rows}
         # ОПЭ — две параллельные части у разных людей (аналитик и
         # разработчик). Закреплена одна — вторая раскладывается как обычно,
         # а не пропадает вместе с фазой: {задача: закреплённая часть}.
@@ -880,19 +910,6 @@ class ResourcePlanningService:
                     continue
 
                 opo_pinned = opo_half_pinned.get(item.id) if phase == "opo" else None
-                # Если фаза целиком pinned — её даты как «end» для cascade
-                if (item.id, phase) in pinned_phase_keys and opo_pinned is None:
-                    phase_pinned = [
-                        a for a in pinned_existing
-                        if a.backlog_item_id == item.id and a.phase == phase
-                    ]
-                    pe = max(
-                        (a.end_date for a in phase_pinned if a.end_date),
-                        default=phase_end,
-                    )
-                    if pe:
-                        phase_end = pe
-                    continue
 
                 earliest_start = max(
                     q_start,
@@ -908,6 +925,98 @@ class ResourcePlanningService:
                     and (item.id, phase) not in phases_with_inbound_pred
                 ):
                     earliest_start = q_start
+
+                # Если фаза целиком pinned — её даты как «end» для cascade
+                if (item.id, phase) in pinned_phase_keys and opo_pinned is None:
+                    phase_pinned = sorted(
+                        (
+                            a for a in pinned_existing
+                            if a.backlog_item_id == item.id and a.phase == phase
+                        ),
+                        key=lambda x: x.part_number,
+                    )
+                    # Раздробленная фаза раскладывается здесь, в очереди
+                    # приоритета своей задачи, часть за частью. Раньше её
+                    # раскладывал только проход после всех задач — на остатки
+                    # ёмкости, и задача уезжала за младшие (OS-91446).
+                    # Закреплённые по дате части уже разложены выше.
+                    # Следующая часть у того же человека — продолжение: с
+                    # остатка дня, в который кончилась предыдущая.
+                    done_parts: List[ResourcePlanAssignment] = []
+                    for a in phase_pinned:
+                        if a.pinned_split and not a.pinned_start and a.hours_allocated:
+                            # Часть ждёт свои части-предшественники, а не всю
+                            # предыдущую фазу: ветки раздробленных фаз идут
+                            # параллельно (разработка 1 — за анализом 1).
+                            pred_starts = [
+                                _earliest_after(pinned_by_id[pid], a)
+                                for pid in pinned_preds.get(a.id, [])
+                                if pid in laid_pinned and pinned_by_id[pid].end_date
+                            ]
+                            part_start = (
+                                max(q_start, max(pred_starts))
+                                if pred_starts
+                                else max(
+                                    [earliest_start]
+                                    + [_earliest_after(p, a) for p in done_parts]
+                                )
+                            )
+                            inv = self._involvement_for_phase(item, phase, a.employee_id)
+                            if a.employee_id is None:
+                                # Тестирование — без сотрудника: по календарю.
+                                new_end, daily_json = self._extend_window_for_hours(
+                                    start_date=part_start,
+                                    hours=float(a.hours_allocated),
+                                    involvement=inv or 1.0,
+                                    q_end=q_end_extended,
+                                )
+                                a.daily_hours_json = daily_json
+                                if daily_json == "{}":
+                                    unlaid.add(a.id)
+                                else:
+                                    a.start_date = date.fromisoformat(
+                                        min(json.loads(daily_json))
+                                    )
+                                    a.end_date = new_end
+                                    a.out_of_quarter = new_end > q_end
+                                    laid_pinned.add(a.id)
+                            elif a.employee_id in remaining:
+                                _, daily = self._allocate_hours_with_breakdown(
+                                    a.employee_id,
+                                    float(a.hours_allocated),
+                                    part_start,
+                                    q_end_extended,
+                                    remaining,
+                                    daily_capacity=self._daily_role_capacity(
+                                        avail_hours=8.0,
+                                        involvement=inv,
+                                        parallel_count=_resolve_parallel_count_legacy(
+                                            item, phase
+                                        ),
+                                    ),
+                                    preempt_locked=preempt_locked,
+                                    original_capacity=original_avail,
+                                )
+                                if daily:
+                                    a.start_date = min(daily)
+                                    a.end_date = max(daily)
+                                    a.daily_hours_json = json.dumps(
+                                        {d.isoformat(): h for d, h in sorted(daily.items())}
+                                    )
+                                    a.out_of_quarter = a.end_date > q_end
+                                    laid_pinned.add(a.id)
+                                else:
+                                    a.daily_hours_json = "{}"
+                                    unlaid.add(a.id)
+                        if a.end_date:
+                            done_parts.append(a)
+                    pe = max(
+                        (a.end_date for a in phase_pinned if a.end_date),
+                        default=phase_end,
+                    )
+                    if pe:
+                        phase_end = pe
+                    continue
 
                 if phase == "qa":
                     # QA — часы-only, без сотрудника. Раскладываем часы по
@@ -1031,18 +1140,18 @@ class ResourcePlanningService:
                     last_end: Optional[date] = (
                         opo_pinned.end_date if opo_pinned is not None else None
                     )
-                    opo_involvement = self._involvement_for_phase(item, "opo")
-                    opo_daily_cap = self._daily_role_capacity(
-                        avail_hours=8.0,
-                        involvement=opo_involvement,
-                        parallel_count=1,
-                    )
                     for role, (emp_id, p_hours) in zip(("analyst", "dev"), parts):
                         if p_hours <= 0 or role == pinned_part:
                             continue
                         if not emp_id:
                             unstaffed[(item.id, "opo")][role] = p_hours
                             continue
+                        # Потолок дня — по вовлечённости исполнителя своей части.
+                        opo_daily_cap = self._daily_role_capacity(
+                            avail_hours=8.0,
+                            involvement=self._involvement_for_phase(item, "opo", emp_id),
+                            parallel_count=1,
+                        )
                         segments, daily = self._allocate_hours_with_breakdown(
                             emp_id, p_hours, earliest_start, q_end_extended, remaining,
                             daily_capacity=opo_daily_cap,
@@ -1103,7 +1212,7 @@ class ResourcePlanningService:
                 cal_days = max(1.0, cal_days / max(1, parallel_n))
 
                 # Дневная ёмкость фазы для сотрудника (involvement × parallel).
-                phase_involvement = self._involvement_for_phase(item, phase)
+                phase_involvement = self._involvement_for_phase(item, phase, employee_id)
                 phase_daily_cap = self._daily_role_capacity(
                     avail_hours=8.0,
                     involvement=phase_involvement,
@@ -1154,7 +1263,7 @@ class ResourcePlanningService:
                         # чтобы остался единый бар; штриховка покажет пропуски внутри.
                         merged_start = segments[0][0] if segments else extra_segs[0][0]
                         merged_end = extra_segs[-1][1]
-                        merged_h = allocated_h + sum(s[2] for s in extra_segs)
+                        merged_h = round(allocated_h + sum(s[2] for s in extra_segs), 2)
                         segments = [(merged_start, merged_end, merged_h, 1)]
                         phase_daily.update(extra_daily)
 
@@ -1225,8 +1334,9 @@ class ResourcePlanningService:
         # Pinned_split — только структурный маркер N частей. После shift его
         # start_date может попасть на выходной/отпуск; перераскладываем часы
         # через allocator. earliest_start считаем тем же образом, что в основном
-        # цикле: max(pred ends)+1, либо q_start для user_touched инициатив без
-        # входящих рёбер. pinned_start (явная заморозка даты) — обходим.
+        # цикле: по концам предшественников (_earliest_after), либо q_start для
+        # user_touched инициатив без входящих рёбер. pinned_start (явная
+        # заморозка даты) — обходим.
         by_id_for_split = {x.id: x for x in new_assignments if x.id}
         # Идём в топологическом порядке, чтобы part2 видела обновлённый
         # end_date part1, а qa в том же item — обновлённый end последней
@@ -1240,13 +1350,13 @@ class ResourcePlanningService:
             if a.employee_id not in remaining:
                 continue
             pred_ids = preds.get(a.id, [])
-            pred_ends = [
-                by_id_for_split[pid].end_date
+            pred_starts = [
+                _earliest_after(by_id_for_split[pid], a)
                 for pid in pred_ids
                 if pid in by_id_for_split and by_id_for_split[pid].end_date
             ]
-            if pred_ends:
-                earliest = max(max(pred_ends) + timedelta(days=1), q_start)
+            if pred_starts:
+                earliest = max(max(pred_starts), q_start)
             elif (
                 a.backlog_item_id in user_touched_items_snapshot
                 and (a.backlog_item_id, a.phase) not in phases_with_inbound_pred
@@ -1271,7 +1381,7 @@ class ResourcePlanningService:
                 else None
             )
             split_inv = (
-                self._involvement_for_phase(split_item, a.phase)
+                self._involvement_for_phase(split_item, a.phase, a.employee_id)
                 if split_item
                 else None
             )
@@ -1347,9 +1457,19 @@ class ResourcePlanningService:
         # фазы (сдвиг, переназначение) — только на часы, свободные от броней
         # других команд, как и при раскладке.
         role_pools = self._build_role_pools(team_employees)
+        # Разработчика из колонки «Разработчик» сценария не подменяем: нехватка
+        # времени у него — конфликт. Флаг закрепления не ставим — у него другой
+        # смысл (переживает пересчёт, отметка «закреплено вручную» на диаграмме).
+        locked_devs = {
+            (it.id, "dev"): it.developer_employee_id
+            for it in items
+            if it.developer_employee_id
+            and assignments_by_role["dev"].get(it.id) == it.developer_employee_id
+        }
         leveling_events = leveler.level(
             new_assignments, raw_avail, q_end_extended, role_pools,
             placement_availability=avail,
+            locked=locked_devs,
         )
         # Always recompute CPM — leveling may have shifted dates; cheap O(N) anyway
         self._compute_cpm(new_assignments, q_end_extended)
@@ -1507,9 +1627,15 @@ class ResourcePlanningService:
         # команды и привлечённых, получивших в плане фазы. Привлечённый без
         # фаз (например, занятый «Разработчик» из Jira) в неё не попадает —
         # его брони в отпечатке дали бы пометку «устарел» сразу после расчёта.
+        # Так же — заблокированные дни их основных команд.
         staffed = {a.employee_id for a in new_assignments}
+        shown = team_ids | staffed
         plan.external_fingerprint = cto.fingerprint(
-            b for b in subtracted if b.employee_id in team_ids or b.employee_id in staffed
+            (b for b in subtracted if b.employee_id in shown),
+            sb.cells_by_team(
+                {eid: days for eid, days in blocked.items() if eid in shown},
+                exclude_team=plan.team,
+            ),
         )
         self.db.commit()
 
@@ -1565,7 +1691,9 @@ class ResourcePlanningService:
             if cap > 0:
                 if seg_start is None:
                     seg_start = d
-                used = min(cap, remaining_h)
+                # Сотые: дроби вроде 8 × 0,7 = 5,6 копят погрешность, и фаза
+                # в 80 ч сохранялась как 79,99999999999997.
+                used = round(min(cap, remaining_h), 2)
                 # День занят этой фазой целиком — другие фазы того же сотрудника
                 # не могут садиться на этот день параллельно (relay/serialization).
                 # Исключение: ПОСЛЕДНИЙ день фазы. Если фаза взяла только часть
@@ -1575,8 +1703,8 @@ class ResourcePlanningService:
                 # в порядке убывания priority, поэтому младшие задачи увидят
                 # leftover только после того, как старшие закончили распределение.
                 emp_days[d] = 0.0
-                remaining_h -= used
-                seg_hours += used
+                remaining_h = round(remaining_h - used, 2)
+                seg_hours = round(seg_hours + used, 2)
                 daily_used[d] = used
                 seg_end = d
                 if remaining_h <= 0.01:
@@ -1693,6 +1821,8 @@ class ResourcePlanningService:
         self._involvement_defaults = team_defaults(
             self.db, plan.team, plan.year, quarter or None,
         )
+        # Личная вовлечённость — после загрузки людей плана (compute_schedule).
+        self._personal_involvement = {}
 
     def _load_employees(self, plan: ResourcePlan) -> List[Employee]:
         """Загрузить активных сотрудников, состоявших в команде в окне плана.
@@ -1720,8 +1850,9 @@ class ResourcePlanningService:
     def _load_borrowed(self, ids: set) -> List[Employee]:
         """Активные сотрудники вне команды плана, попавшие в план.
 
-        Источники — ручное закрепление фазы, «Разработчик» из Jira и
-        исполнитель, выбранный в сценарии вручную.
+        Источники — ручное закрепление фазы, «Разработчик» из Jira,
+        исполнитель, выбранный в сценарии вручную, и разработчик из колонки
+        сценария.
         """
         ids = {i for i in ids if i}
         if not ids:
@@ -1762,7 +1893,8 @@ class ResourcePlanningService:
         )
 
     def _team_fingerprint(self, plan: ResourcePlan) -> str:
-        """Отпечаток вычитаемых броней состава команды — для плана без задач.
+        """Отпечаток вычитаемых броней состава команды и заблокированных дней
+        их основных команд — для плана без задач.
 
         Диаграмма такого плана сверяет брони состава так же, как у любого
         другого, — без отпечатка пометку «устарел» не снимал бы и пересчёт.
@@ -1772,10 +1904,15 @@ class ResourcePlanningService:
         except ValueError:
             # Квартал не разобрать — диаграмма такой план не показывает.
             return cto.fingerprint([])
+        employees = self._load_employees(plan)
+        blocked = sb.resolve_blocked_days(
+            self.db, employees, q_start, q_end_extended, plan.team
+        )
         return cto.fingerprint(
             self._subtracted_bookings(
-                plan, self._load_employees(plan), set(), q_start, q_end_extended
-            )
+                plan, employees, set(), q_start, q_end_extended
+            ),
+            sb.cells_by_team(blocked, exclude_team=plan.team),
         )
 
     def _quarter_bounds(self, plan: ResourcePlan) -> Tuple[date, date]:
@@ -1820,7 +1957,7 @@ class ResourcePlanningService:
         employees: List[Employee],
         pinned: Optional[Dict[Tuple[str, str, int], str]] = None,
         alloc_by_item: Optional[Dict[str, ScenarioAllocation]] = None,
-        emp_group: Optional[Dict[str, str]] = None,
+        emp_group: Optional[Dict[str, Set[str]]] = None,
         item_group: Optional[Dict[str, str]] = None,
         capacity: Optional[Dict[str, float]] = None,
         jira_dev: Optional[Dict[str, str]] = None,
@@ -1829,24 +1966,29 @@ class ResourcePlanningService:
         """{phase: {item_id: employee_id|None}} с учётом ролей и закреплений.
 
         Исполнитель фазы, по убыванию приоритета: закреп вручную (``pinned``:
-        {(item_id, phase, part_number): employee_id}) → исполнитель строки
-        сценария на фазе своей роли (см. `_scenario_executor`; подтянутый из
-        Jira встаёт на разработку, только если хватает ёмкости) → для разработки
-        «Разработчик» из Jira (``jira_dev``, из любой команды), если его ёмкости
-        квартала (``capacity`` — уже за вычетом броней других команд) хватает
-        на часы разработки → жадный подбор внутри команды: анализ — из пула
-        ANALYST_ROLES, разработка — из DEV_ROLES (fallback — вся команда).
-        В команде с группами сначала перебираются свои по группе; сосед из
-        другой группы берётся, только когда своих уже не хватает по ёмкости
-        квартала (см. `_pick_in_group`). Закреп и исполнителя сценария
-        нехватка времени не отменяет: неразмещённые часы дают конфликт.
+        {(item_id, phase, part_number): employee_id}) → разработчик из колонки
+        сценария (для разработки; без проверки ёмкости; исполнитель строки
+        тогда идёт на анализ, а совпавший с разработчиком — никуда) →
+        исполнитель строки сценария на фазе своей роли (см.
+        `_scenario_executor`; подтянутый из Jira встаёт на разработку, только
+        если хватает ёмкости) → для разработки «Разработчик» из Jira
+        (``jira_dev``, из любой команды), если его ёмкости квартала
+        (``capacity`` — уже за вычетом броней других команд) хватает на часы
+        разработки → жадный подбор внутри команды: анализ — из пула
+        ANALYST_ROLES без разработчика строки, разработка — из DEV_ROLES
+        (fallback — вся команда). В команде с группами сначала перебираются
+        свои по группе; сосед из другой группы берётся, только когда своих уже
+        не хватает по ёмкости квартала (см. `_pick_in_group`). Закреп,
+        разработчика из колонки и исполнителя сценария нехватка времени не
+        отменяет: неразмещённые часы дают конфликт.
         - qa:  всегда None (часы-only, дату назначаем без сотрудника).
         - opo: не возвращается — реально создаётся как 2 строки через
                `_opo_split` в compute_schedule.
 
         ``borrowed`` — привлечённые из других команд: в жадные пулы не
-        попадают; в план — закрепом, как «Разработчик» из Jira или как
-        исполнитель, выбранный в сценарии вручную.
+        попадают; в план — закрепом, как «Разработчик» из Jira, как
+        исполнитель, выбранный в сценарии вручную, или как разработчик из
+        колонки сценария.
         """
         pinned = pinned or {}
         alloc_by_item = alloc_by_item or {}
@@ -1883,6 +2025,18 @@ class ResourcePlanningService:
             executor_id, executor_phase = self._scenario_executor(
                 item, all_by_id, by_id, by_name, an_hours
             )
+            # Разработчик из колонки сценария (выбран вручную). Тогда
+            # исполнитель строки идёт на анализ, какая бы ни была роль; один
+            # человек не ведёт обе фазы — совпал с разработчиком, анализ
+            # подбирается из пула.
+            dev_col = item.developer_employee_id
+            if dev_col not in all_by_id:
+                dev_col = None
+            if dev_col:
+                if executor_id == dev_col:
+                    executor_id, executor_phase = None, None
+                elif executor_id:
+                    executor_phase = "analyst"
 
             # ── analyst ────────────────────────────────────────────────
             analyst_id: Optional[str] = pinned.get((item.id, "analyst", 1))
@@ -1890,9 +2044,11 @@ class ResourcePlanningService:
                 analyst_id = executor_id
             # Исполнителя анализа нет — наименее загруженный из пула
             # аналитиков команды, чтобы фаза «Анализ» всё равно появилась.
+            # Разработчика строки в пул не берём.
             if not analyst_id and analyst_ids:
                 analyst_id = self._pick_in_group(
-                    analyst_ids, item_group.get(item.id), load, an_hours,
+                    [x for x in analyst_ids if x != dev_col],
+                    item_group.get(item.id), load, an_hours,
                     emp_group, capacity,
                 )
             if analyst_id:
@@ -1901,6 +2057,10 @@ class ResourcePlanningService:
 
             # ── dev ────────────────────────────────────────────────────
             dev_id: Optional[str] = pinned.get((item.id, "dev", 1))
+            # Разработчик из колонки ставится без проверки ёмкости:
+            # нехватка времени — конфликт, как у ручного исполнителя.
+            if not dev_id and dev_col:
+                dev_id = dev_col
             # Исполнитель, подтянутый из Jira, как и «Разработчик» из Jira,
             # берёт разработку, только если ему хватает ёмкости квартала;
             # выбранный вручную — без замены (нехватка даёт конфликт).
@@ -1983,13 +2143,15 @@ class ResourcePlanningService:
         group: Optional[str],
         load: Dict[str, float],
         hours: float,
-        emp_group: Dict[str, str],
+        emp_group: Dict[str, Set[str]],
         capacity: Dict[str, float],
     ) -> Optional[str]:
         """Кандидат из пула: свои по группе вперёд, соседи — если свои не влезают.
 
         Команда без деления (пустые карты групп) ведёт себя как раньше —
-        greedy по минимальной нагрузке.
+        greedy по минимальной нагрузке. «Свой» для группы — любой, у кого в
+        квартале плана есть в ней доля (общий сотрудник свой сразу для
+        нескольких групп, переведённый внутри квартала — для старой и новой).
 
         Своего берём, пока квартальная ёмкость самого свободного из группы
         вмещает часы фазы. Как только не вмещает — зовём самого свободного
@@ -2001,7 +2163,7 @@ class ResourcePlanningService:
         best = min(pool, key=lambda eid: load[eid])
         if not group or not emp_group:
             return best
-        own = [eid for eid in pool if emp_group.get(eid) == group]
+        own = [eid for eid in pool if group in emp_group.get(eid, ())]
         if not own:
             return best
         best_own = min(own, key=lambda eid: load[eid])
@@ -2022,34 +2184,38 @@ class ResourcePlanningService:
         plan: ResourcePlan,
         employees: List[Employee],
         items: List[BacklogItem],
-    ) -> Tuple[Dict[str, str], Dict[str, str]]:
-        """({employee_id: группа}, {item_id: группа}) для команды с делением.
+        q_start: date,
+        q_end: date,
+    ) -> Tuple[Dict[str, Set[str]], Dict[str, str]]:
+        """({сотрудник: его группы в квартале}, {item_id: группа}) для команды с делением.
 
-        Команда без деления → две пустые карты: подбор исполнителей не меняется.
-        Группа инициативы — своя, иначе группа её главного исполнителя из
-        сценария (та же лесенка, что на экранах Сценариев и Гантта).
+        «Свои» для группы — все, у кого в квартале плана есть в ней доля: общий
+        сотрудник свой для всех своих групп, переведённый внутри квартала — для
+        обеих. Доля — ориентир, не лимит, поэтому ёмкость не режется по группам.
+        Группа инициативы без своей — группа главного исполнителя на опорный
+        день (сегодня, прижатый к кварталу); у поделённого — нет.
         """
-        team = self.db.query(Team).filter(Team.name == plan.team).one_or_none()
-        if not team or not team.has_subgroups:
+        if not ss.team_subgroups(self.db, plan.team):
             return {}, {}
-
-        emp_group: Dict[str, str] = {}
-        if employees:
-            rows = self.db.execute(
-                select(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id).where(
-                    EmployeeTeam.team == plan.team,
-                    EmployeeTeam.employee_id.in_([e.id for e in employees]),
-                    EmployeeTeam.subgroup_id.isnot(None),
-                )
-            ).all()
-            for eid, gid in rows:
-                emp_group[eid] = gid
-
+        team = plan.team or ""
+        records = ss.load_team(self.db, team, [e.id for e in employees])
+        # Группы считаем по дням реального членства в команде плана внутри
+        # квартала. У кого членства в этом периоде нет (привлечён без записи
+        # EmployeeTeam) — своих групп нет, обычный подбор greedy.
+        emp_group: Dict[str, Set[str]] = {
+            eid: set(weights)
+            for eid, weights in ss.member_group_weights(
+                self.db, team, records, q_start, q_end
+            ).items()
+        }
         item_group: Dict[str, str] = {}
         for it in items:
-            gid = getattr(it.issue, "effective_subgroup_id", None) if it.issue else None
-            if not gid and it.assignee_employee_id:
-                gid = emp_group.get(it.assignee_employee_id)
+            gid = ss.work_group(
+                getattr(it.issue, "effective_subgroup_id", None) if it.issue else None,
+                records.get(it.assignee_employee_id or "", []),
+                q_start,
+                q_end,
+            )
             if gid:
                 item_group[it.id] = gid
         return emp_group, item_group
@@ -2294,8 +2460,15 @@ class ResourcePlanningService:
                 if prev_phase_rows:
                     # «Последняя» строка предыдущей фазы — с максимальным part_number.
                     pred = max(prev_phase_rows, key=lambda x: x.part_number or 1)
+                    prev_ids = {x.id for x in prev_phase_rows}
                     for succ in cur_rows:
                         if not succ.id or not pred.id:
+                            continue
+                        # Строка уже связана с предыдущей фазой — например,
+                        # часть K разбитой фазы со своей частью K (параллельные
+                        # ветки). Последнюю часть не навязываем: иначе первая
+                        # часть разработки ждала бы весь анализ.
+                        if any((succ.id, pid) in existing_pairs for pid in prev_ids):
                             continue
                         pair = (succ.id, pred.id)
                         if pair in existing_pairs:
@@ -2409,14 +2582,14 @@ class ResourcePlanningService:
                 # Без предшественников — оставляем allocator-выбор. Не двигаем
                 # к q_start, чтобы не ломать порядок приоритетов.
                 continue
-            ends = [
-                by_id[pid].end_date
+            starts = [
+                _earliest_after(by_id[pid], a)
                 for pid in pred_ids
                 if pid in by_id and by_id[pid].end_date
             ]
-            if not ends:
+            if not starts:
                 continue
-            new_start = max(ends) + timedelta(days=1)
+            new_start = max(starts)
             if new_start == a.start_date:
                 # Для QA при delta=0 всё равно проверяем дрифт
                 # daily_hours_json vs hours_allocated: после cascade-split
@@ -2552,7 +2725,11 @@ class ResourcePlanningService:
                     emp_days[d_old] = min(orig_days[d_old], current + float(h_used))
 
                 item_obj = self.db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
-                inv = self._involvement_for_phase(item_obj, a.phase) if item_obj else None
+                inv = (
+                    self._involvement_for_phase(item_obj, a.phase, a.employee_id)
+                    if item_obj
+                    else None
+                )
                 parallel_n = _resolve_parallel_count_legacy(item_obj, a.phase) if item_obj else 1
                 phase_cap = self._daily_role_capacity(
                     avail_hours=8.0,
@@ -2789,8 +2966,10 @@ class ResourcePlanningService:
     ) -> List[ResourcePlanAssignment]:
         """Пропорционально разбить downstream-фазы того же item.
 
-        Каждая часть K новой downstream-фазы зависит от части K source-фазы
-        (PhasePredecessor) и от части K-1 той же фазы (последовательность).
+        Каждая часть K новой downstream-фазы зависит от части K предыдущей
+        разбитой фазы (PhasePredecessor) и от части K-1 той же фазы — ветки
+        идут параллельно: анализ K → разработка K → тестирование K. ОПЭ не
+        ветвится: все её части ждут последнюю часть предыдущей фазы.
         """
         from app.models.phase_predecessor import PhasePredecessor
 
@@ -2809,6 +2988,9 @@ class ResourcePlanningService:
         # плане.
         source_plan_id = source_parts[0].plan_id if source_parts else None
         cascaded: List[ResourcePlanAssignment] = []
+        # Части предыдущей разбитой фазы: тестирование K цепляется к
+        # разработке K, а не к анализу K.
+        upstream = source_parts
         for phase in downstream:
             existing_q = select(ResourcePlanAssignment).where(
                 ResourcePlanAssignment.backlog_item_id == item_id,
@@ -2844,8 +3026,9 @@ class ResourcePlanningService:
                 total_days = 0
             cursor = start
             prev_id: Optional[str] = None
+            phase_parts: List[ResourcePlanAssignment] = []
             for idx, (h, src) in enumerate(
-                zip(hours_parts, source_parts), start=1
+                zip(hours_parts, upstream), start=1
             ):
                 ratio = h / total_h if total_h > 0 else 1.0 / len(hours_parts)
                 seg_days = max(1, int(round(total_days * ratio)))
@@ -2870,11 +3053,15 @@ class ResourcePlanningService:
                 self.db.add(p)
                 self.db.flush()
                 cascaded.append(p)
-                # ребро на одноимённый кусок source-фазы
+                phase_parts.append(p)
+                # ребро на одноимённый кусок предыдущей разбитой фазы; ОПЭ —
+                # эксплуатация задачи целиком, её части ждут последнюю часть.
                 self.db.add(
                     PhasePredecessor(
                         successor_assignment_id=p.id,
-                        predecessor_assignment_id=src.id,
+                        predecessor_assignment_id=(
+                            upstream[-1].id if phase == "opo" else src.id
+                        ),
                     )
                 )
                 if prev_id:
@@ -2887,6 +3074,7 @@ class ResourcePlanningService:
                 prev_id = p.id
                 if seg_end:
                     cursor = seg_end + timedelta(days=1)
+            upstream = phase_parts
         return cascaded
 
     def merge_assignment(self, assignment_id: str) -> ResourcePlanAssignment:
@@ -2920,7 +3108,7 @@ class ResourcePlanningService:
         )
         if len(siblings) <= 1:
             return a
-        total_h = sum((s.hours_allocated or 0.0) for s in siblings)
+        total_h = round(sum((s.hours_allocated or 0.0) for s in siblings), 2)
         first = siblings[0]
         last = siblings[-1]
         sibling_ids = {s.id for s in siblings}
@@ -3211,7 +3399,9 @@ class ResourcePlanningService:
                     }
                 )
 
-        # PREDECESSOR_VIOLATED — succ.start_date <= max(pred.end_date).
+        # PREDECESSOR_VIOLATED — succ стартует раньше, чем позволяют связи:
+        # до следующего дня после конца предшественника, а продолжение части
+        # у того же человека — до дня его конца (см. _earliest_after).
         # Включает кейс «pinned_start выигрывает над связью» — иначе пользователь
         # не видит, что закреплённая дата нарушает граф.
         preds_map = self._load_predecessors(plan.id)
@@ -3222,15 +3412,14 @@ class ResourcePlanningService:
             pred_ids = preds_map.get(a.id, [])
             if not pred_ids:
                 continue
-            pred_ends = [
-                by_id[pid].end_date
+            pred_starts = [
+                _earliest_after(by_id[pid], a)
                 for pid in pred_ids
                 if pid in by_id and by_id[pid].end_date
             ]
-            if not pred_ends:
+            if not pred_starts:
                 continue
-            latest_pred_end = max(pred_ends)
-            if a.start_date <= latest_pred_end:
+            if a.start_date < max(pred_starts):
                 result.append(
                     {
                         "type": "PREDECESSOR_VIOLATED",

@@ -51,8 +51,8 @@ interface Props {
   onEmployeeRowClick?: (employeeId: string | null) => void;
   /** Секции групп команды: {id инициативы: название группы}. */
   sectionByItem?: Record<string, string>;
-  /** Группа сотрудника внутри команды: для метки «из другой группы». */
-  subgroupByEmployee?: Record<string, string>;
+  /** Группы сотрудника внутри команды: для метки «из другой группы». */
+  subgroupByEmployee?: Record<string, string[]>;
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
   /** Брони людей плана в опорных планах других команд (свои и привлечённые). */
@@ -167,10 +167,11 @@ export default function GanttChart({
     return out;
   }, [assignments, bookings, isWorkday]);
   // «Привлечённые» — наши привлечённые в чужих планах; «Наши люди в других
-  // командах» — свои, которых другие команды взяли к себе.
+  // командах» — свои в планах других команд: и взятые к себе, и общие
+  // сотрудники, которые состоят в обеих командах.
   const borrowedBookings = useMemo(() => bookings.filter((b) => b.employee_is_borrowed), [bookings]);
   const ownPeopleBookings = useMemo(
-    () => bookings.filter((b) => !b.employee_is_borrowed && b.is_borrowing),
+    () => bookings.filter((b) => !b.employee_is_borrowed),
     [bookings],
   );
 

@@ -32,6 +32,8 @@ from app.services.backlog_service import (
     TRACKED_CATEGORIES,
     BacklogService,
     apply_jira_assignee,
+    choose_assignee,
+    descendant_backlog_ids_of_included_ancestors,
     is_cancel_like,
     issue_is_multi_team,
     mode_excluded_backlog_ids,
@@ -92,6 +94,10 @@ class BacklogItemUpdate(BaseModel):
     duration_dev_days: Optional[float] = Field(default=None, ge=0)
     duration_qa_days: Optional[float] = Field(default=None, ge=0)
     duration_launch_days: Optional[float] = Field(default=None, ge=0)
+    # Аналитика на бэклоге правят только у идей без задачи Jira (у задачи он
+    # из Jira). Разработчик — в любой строке, только вручную.
+    assignee_employee_id: Optional[str] = None
+    developer_employee_id: Optional[str] = None
 
 
 class ScenarioRef(BaseModel):
@@ -177,6 +183,8 @@ class BacklogItemResponse(BaseModel):
     approved_scenarios: List[ScenarioRef] = []
     assignee_employee_id: Optional[str] = None
     assignee_display_name: Optional[str] = None
+    developer_employee_id: Optional[str] = None
+    developer_display_name: Optional[str] = None
     customer: Optional[str] = None
     cost_type: Optional[str] = None
     # Denormalized Jira status of the linked issue (null for manual items).
@@ -362,31 +370,19 @@ def _estimate_disputes(
     }
 
 
-def _include_locked_ids(
-    db: Session, items: list[BacklogItem], lock_enabled: bool
-) -> set[str]:
+def _include_locked_ids(items: list[BacklogItem], lock_enabled: bool) -> set[str]:
     """Элементы, которые нельзя включить «В план».
 
-    Мультикомандная RFA, у которой в бэклоге есть не архивный ребёнок любой
-    команды, планируется только по Эпикам — пока блокировка включена в
-    настройках (``lock_enabled``). Одно правило для признака в строке и для
-    отказа при включении. Детей ищем одним запросом на весь набор, а не по строке.
+    Мультикомандная RFA планируется только по Эпикам — пока блокировка
+    включена в настройках (``lock_enabled``). Без эпиков она в сценарий не
+    идёт вовсе: сначала команды заводят свои. Одно правило для признака
+    в строке и для отказа при включении.
     """
-    by_issue = {
-        it.issue_id: it.id
-        for it in items
-        if it.issue_id is not None and issue_is_multi_team(it.issue)
-    }
-    if not by_issue or not lock_enabled:
+    if not lock_enabled:
         return set()
-    parent_rows = (
-        db.query(Issue.parent_id)
-        .join(BacklogItem, BacklogItem.issue_id == Issue.id)
-        .filter(Issue.parent_id.in_(list(by_issue)), BacklogItem.archived_at.is_(None))
-        .distinct()
-        .all()
-    )
-    return {by_issue[pid] for (pid,) in parent_rows}
+    return {
+        it.id for it in items if it.issue_id is not None and issue_is_multi_team(it.issue)
+    }
 
 
 def _in_plan_roles(
@@ -424,7 +420,7 @@ def _in_plan_roles(
 def _item_response(db: Session, item: BacklogItem) -> BacklogItemResponse:
     """Ответ по одному элементу: утверждённые сценарии, блокировка и роль «В план»."""
     lock_enabled = multi_team_lock_enabled(db)
-    locked_ids = _include_locked_ids(db, [item], lock_enabled)
+    locked_ids = _include_locked_ids([item], lock_enabled)
     return _to_response(
         item,
         _approved_scenarios_for(db, item.id),
@@ -481,6 +477,8 @@ def _to_response(
             issue.assignee_display_name if (issue and issue.assignee_display_name) else
             (item.assignee.display_name if item.assignee else None)
         ),
+        developer_employee_id=item.developer_employee_id,
+        developer_display_name=item.developer.display_name if item.developer else None,
         customer=item.customer,
         cost_type=item.cost_type,
         jira_status=issue.status if issue else None,
@@ -586,6 +584,7 @@ async def list_backlog_items(
         .options(
             joinedload(BacklogItem.issue).joinedload(Issue.project),
             joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
         )
     )
     if project_id is not None:
@@ -708,6 +707,12 @@ async def list_backlog_items(
 
     items = query.all()
 
+    if view == "active":
+        # Дети утверждённой инициативы уже в плане через неё — как и в
+        # кандидатах сценария, отдельной строкой в Бэклоге их не держим.
+        descendant_ids = descendant_backlog_ids_of_included_ancestors(db)
+        items = [i for i in items if i.id not in descendant_ids]
+
     # Группа внутри команды: инициатива живёт на всю команду, поэтому решают
     # работы под ней. Инициатива без единой проставленной группы и ручная идея
     # остаются видны — прятать незаполненное нельзя.
@@ -779,7 +784,7 @@ async def list_backlog_items(
     # Блокировку и роль «В план» решает весь бэклог, а не этот список:
     # фильтр команды прячет дочек чужой команды, вкладка — родителя.
     lock_enabled = multi_team_lock_enabled(db)
-    locked_ids = _include_locked_ids(db, items, lock_enabled)
+    locked_ids = _include_locked_ids(items, lock_enabled)
     roles = _in_plan_roles(db, items, locked_ids, lock_enabled)
 
     # Строим Map: parent_issue_id → List[BacklogChildSchema].
@@ -902,7 +907,11 @@ async def create_backlog_item(
     db.refresh(item)
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item.id)
         .first()
     )
@@ -1192,7 +1201,11 @@ async def get_backlog_item(
     """Получить один элемент бэклога по id."""
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1217,7 +1230,11 @@ async def update_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1227,6 +1244,23 @@ async def update_backlog_item(
     patch = data.model_dump(exclude_unset=True)
     if not patch:
         return _item_response(db, item)
+
+    for key in ("assignee_employee_id", "developer_employee_id"):
+        eid = patch.get(key)
+        if eid is not None and not db.get(Employee, eid):
+            raise HTTPException(status_code=404, detail="Employee not found")
+    # Один человек не может быть и аналитиком, и разработчиком строки.
+    # Проверяем, только когда правят кого-то из них: обновление из Jira могло
+    # сделать исполнителя разработчиком — правка приоритета или часов не должна
+    # на этом падать.
+    if {"assignee_employee_id", "developer_employee_id"} & patch.keys():
+        assignee = patch.get("assignee_employee_id", item.assignee_employee_id)
+        developer = patch.get("developer_employee_id", item.developer_employee_id)
+        if assignee and assignee == developer:
+            raise HTTPException(
+                status_code=422,
+                detail="Один сотрудник не может быть и аналитиком, и разработчиком",
+            )
 
     role_hours = {
         role: patch.pop(f"estimate_{role}_hours")
@@ -1246,6 +1280,10 @@ async def update_backlog_item(
         entities = ["issues", "backlog"]
     else:
         entities = ["backlog"]
+    if "assignee_employee_id" in patch:
+        # Выбор на бэклоге — ручной, как и в сценарии (см. choose_assignee).
+        eid = patch.pop("assignee_employee_id")
+        choose_assignee(item, db.get(Employee, eid) if eid else None)
     for key, value in patch.items():
         setattr(item, key, value)
     for role, value in role_hours.items():
@@ -1376,7 +1414,11 @@ async def link_jira(
     # Reload with joined issue for response.
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1395,7 +1437,11 @@ async def unlink_jira(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1421,7 +1467,11 @@ async def archive_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )
@@ -1560,7 +1610,7 @@ async def set_included(
         bi = db.query(BacklogItem).filter_by(id=item_id).one_or_none()
         if bi is None:
             raise HTTPException(404, "BacklogItem not found")
-        if payload.included and bi.id in _include_locked_ids(db, [bi], multi_team_lock_enabled(db)):
+        if payload.included and bi.id in _include_locked_ids([bi], multi_team_lock_enabled(db)):
             raise HTTPException(
                 409,
                 "Мультикомандную RFA нельзя включить в сценарий — планируйте по Эпикам",
@@ -1592,7 +1642,11 @@ async def restore_backlog_item(
     """
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == item_id)
         .first()
     )

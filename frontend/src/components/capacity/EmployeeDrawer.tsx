@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Drawer, Spin, Tag, DatePicker, Typography, Space, App, Avatar, Button, Switch } from 'antd';
-import { UserOutlined, SwapOutlined } from '@ant-design/icons';
+import { Drawer, Spin, Tag, DatePicker, Typography, Space, App, Avatar, Button, Switch, Popconfirm } from 'antd';
+import { UserOutlined, SwapOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { getEmployees, getEmployeeTeams } from '../../api/employees';
@@ -10,10 +10,83 @@ import {
   useUpdateMembershipLeftAt,
   useSetEmployeeActive,
 } from '../../hooks/useCapacity';
+import {
+  useTeamRegistry,
+  useSubgroupShares,
+  useDeleteSubgroupShare,
+} from '../../hooks/useTeamRegistry';
 import { DARK_THEME } from '../../utils/constants';
 import TransferTeamModal from './TransferTeamModal';
+import SubgroupShareModal from './SubgroupShareModal';
 
 const { Text } = Typography;
+
+function MembershipGroups({ employeeId, team, subgroups, joinedAt }: {
+  employeeId: string;
+  team: string;
+  subgroups: { id: string; name: string }[];
+  /** Дата вступления в команду — для проверки, что история покрывает её начало. */
+  joinedAt: string | null;
+}) {
+  const { message } = App.useApp();
+  const { data: history = [] } = useSubgroupShares(employeeId, team);
+  const del = useDeleteSubgroupShare();
+  const [mode, setMode] = useState<'transfer' | 'split' | null>(null);
+  const name = (id: string) => subgroups.find((g) => g.id === id)?.name ?? '—';
+
+  // История начинается позже вступления в команду — первые дни без группы.
+  const firstFrom = history[0]?.valid_from ?? null;
+  const gapBeforeFirst = firstFrom && (!joinedAt || joinedAt < firstFrom);
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <Text style={{ color: DARK_THEME.textSecondary, fontSize: 12 }}>Группы</Text>
+      {history.length === 0 && (
+        <div><Tag color="red">без группы — поправьте карточку</Tag></div>
+      )}
+      {gapBeforeFirst && (
+        <div>
+          <Tag color="red">без группы до {dayjs(firstFrom).format('DD.MM.YYYY')} — поправьте карточку</Tag>
+        </div>
+      )}
+      {history.map((r) => (
+        <div key={r.valid_from ?? 'base'} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+          <span style={{ color: DARK_THEME.textMuted, minWidth: 110 }}>
+            {r.valid_from ? `с ${dayjs(r.valid_from).format('DD.MM.YYYY')}` : 'с начала участия'}
+          </span>
+          <span style={{ color: DARK_THEME.textPrimary }}>
+            {r.shares.map((s) => `${name(s.subgroup_id)}${s.percent < 100 ? ` ${s.percent}%` : ''}`).join(' · ')}
+          </span>
+          <Popconfirm
+            title="Удалить запись?"
+            description="Удаляйте только ошибочные записи — история перевода нужна для прошлых кварталов."
+            onConfirm={() =>
+              del.mutateAsync({ employeeId, team, valid_from: r.valid_from })
+                .then(() => message.success('Запись удалена'))
+                .catch(() => message.error('Не удалось удалить'))
+            }
+          >
+            <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </div>
+      ))}
+      <Space size="small" style={{ marginTop: 6 }}>
+        <Button size="small" onClick={() => setMode('transfer')}>Перевести в группу</Button>
+        <Button size="small" onClick={() => setMode('split')}>Разделить между группами</Button>
+      </Space>
+      {mode && (
+        <SubgroupShareModal
+          key={mode}
+          employeeId={employeeId} team={team} subgroups={subgroups}
+          mode={mode}
+          fromStartAllowed={!history.some((r) => r.valid_from === null)}
+          firstRecord={history.length === 0}
+          onClose={() => setMode(null)}
+        />
+      )}
+    </div>
+  );
+}
 
 interface Props {
   employeeId: string | null;
@@ -45,6 +118,8 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
     staleTime: 60_000,
     enabled: !!employeeId,
   });
+
+  const { data: teamRegistry = [] } = useTeamRegistry();
 
   const activeMut = useSetEmployeeActive();
   const joinedMut = useUpdateMembershipJoinedAt();
@@ -229,6 +304,14 @@ export default function EmployeeDrawer({ employeeId, onClose }: Props) {
                           }
                         />
                       </Space>
+                      {teamRegistry.find((t) => t.name === m.team)?.has_subgroups && (
+                        <MembershipGroups
+                          employeeId={employeeId!}
+                          team={m.team}
+                          subgroups={teamRegistry.find((t) => t.name === m.team)!.subgroups}
+                          joinedAt={m.joined_at ?? null}
+                        />
+                      )}
                     </div>
                   );
                 })}

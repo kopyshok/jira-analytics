@@ -29,6 +29,8 @@ from app.models import (
     ScenarioAllocation,
 )
 from app.services import team_membership as tm
+from app.services.involvement_default_service import effective_for_phase, teams_defaults
+from app.services.personal_settings import personal_for
 from app.services.plan_common import _plan_sort_key, _quarter_variants, quarter_bounds
 
 
@@ -117,9 +119,19 @@ class ExternalBooking:
     end: date
     daily_hours: Dict[date, float]
     provisional: bool
-    # Бронь-привлечение: в команде брони человек не состоял ни дня квартала
-    # её плана — команда взяла его к себе.
+    # Бронь-привлечение: команда брони человеку не домашняя в квартале её
+    # плана (см. `_home_teams`) — не состоял в ней или она не основная.
+    # Домашняя команда под такую бронь не подстраивается.
     is_borrowing: bool = False
+    # План, для которого собраны брони, уступает человека всем командам: он
+    # в команде плана состоит, но она у него не основная.
+    yields_here: bool = False
+    # Вовлечённость фазы — как её считал планировщик команды брони: личная
+    # вовлечённость человека, иначе своё значение задачи, иначе справочник
+    # команды — на квартал плана брони. None — не задана.
+    involvement: Optional[float] = None
+    # Задача брони: по ней основная команда человека выбирает вид работ.
+    backlog_item_id: Optional[str] = None
 
 
 def _assignment_daily(a: ResourcePlanAssignment) -> Dict[date, float]:
@@ -169,6 +181,21 @@ def _member_of(
     )
 
 
+def _home_teams(
+    periods: Iterable[tuple[str, Optional[date], Optional[date], bool]],
+    start: date,
+    end: date,
+) -> set[str]:
+    """Домашние команды сотрудника на отрезке: основная, а без основной — все,
+    где он состоял. Домашняя команда не уступает часы человека остальным."""
+    active = [
+        (t, primary)
+        for t, joined, left, primary in periods
+        if (joined is None or joined <= end) and (left is None or left > start)
+    ]
+    return {t for t, primary in active if primary} or {t for t, _ in active}
+
+
 def _in_plan_scenario(stmt: Select) -> Select:
     """Только строки задач, которые всё ещё включены в сценарий своего плана.
 
@@ -204,10 +231,12 @@ def external_bookings(
     там она уже занимает человека. Окно ``start`` — ``end`` отсекает всё,
     что в него не попадает. Строки задач, которых уже нет в сценарии плана,
     не считаются нигде.
-    У каждой брони — ``is_borrowing``: человек не состоял в команде брони ни
-    дня квартала её плана, команда его привлекла.
-    Пять запросов на любой объём: опорные планы двух кварталов, задачи
-    планов квартала, назначения и периоды участия их людей.
+    У каждой брони — ``is_borrowing``: команда брони человеку не домашняя в
+    квартале её плана; ``yields_here``: команда ``team`` у него не основная;
+    ``involvement`` — вовлечённость фазы.
+    Константа запросов на любой объём: опорные планы двух кварталов, задачи
+    планов квартала, назначения, периоды участия их людей, справочник
+    вовлечённости их команд и личные настройки людей (чтение на квартал).
     """
     ids = [i for i in dict.fromkeys(employee_ids) if i]
     if not ids or not year or not quarter:
@@ -262,6 +291,21 @@ def external_bookings(
     )
     cur_bounds = quarter_bounds(year, quarter)
     prev_bounds = quarter_bounds(prev_year, prev_quarter)
+    # Справочник вовлечённости команды брони — на квартал её опорного плана.
+    period_of = {
+        plan_id: (prev_year, prev_quarter) if plan_id in prev_ids else (year, quarter)
+        for plan_id in by_plan
+    }
+    defaults = teams_defaults(
+        db, {(r.team, *period_of[r.plan_id]) for r in by_plan.values()}
+    )
+    # Личная вовлечённость человека — тоже на квартал опорного плана брони:
+    # одно чтение на квартал, не на человека.
+    booked_ids = list({a.employee_id for a in rows if a.employee_id})
+    personal = {
+        period: personal_for(db, booked_ids, *period)
+        for period in {period_of[a.plan_id] for a in rows}
+    }
     out: List[ExternalBooking] = []
     for a in rows:
         if not a.employee_id or a.start_date is None or a.end_date is None:
@@ -273,7 +317,9 @@ def external_bookings(
         if not daily:
             continue
         lo, hi = prev_bounds if a.plan_id in prev_ids else cur_bounds
+        periods = membership.get(a.employee_id, ())
         bi = a.backlog_item
+        own = personal[period_of[a.plan_id]].get(a.employee_id)
         out.append(
             ExternalBooking(
                 assignment_id=a.id,
@@ -286,9 +332,19 @@ def external_bookings(
                 end=a.end_date,
                 daily_hours=daily,
                 provisional=ref.provisional,
-                is_borrowing=not _member_of(
-                    membership.get(a.employee_id, ()), ref.team, lo, hi
-                ),
+                is_borrowing=ref.team not in _home_teams(periods, lo, hi),
+                yields_here=team is not None
+                and _member_of(periods, team, *cur_bounds)
+                and team not in _home_teams(periods, *cur_bounds),
+                involvement=effective_for_phase(
+                    bi,
+                    a.phase,
+                    defaults[(ref.team, *period_of[a.plan_id])],
+                    own.involvement if own is not None else None,
+                )
+                if bi is not None
+                else None,
+                backlog_item_id=a.backlog_item_id,
             )
         )
     out.sort(
@@ -308,55 +364,199 @@ def daily_totals(bookings: Iterable[ExternalBooking]) -> Dict[str, Dict[date, fl
     return {eid: dict(days) for eid, days in acc.items()}
 
 
+def other_work_share(
+    phases: Iterable[tuple[str, Optional[float], Dict[date, float]]],
+) -> Dict[str, Dict[date, float]]:
+    """{сотрудник: {день: доля дня на прочие работы}} по фазам дня.
+
+    ``phases`` — фазы как (сотрудник, вовлечённость, часы по дням).
+    Вовлечённость 90% — это 10% дня на прочие (нормированные) работы. Несколько
+    фаз в день — берётся наименьшая вовлечённость. Фаза без вовлечённости
+    доли не задаёт: такой день берёт долю человека (см. `base_other_share`).
+    """
+    acc: Dict[str, Dict[date, float]] = defaultdict(dict)
+    for employee_id, involvement, daily in phases:
+        if involvement is None:
+            continue
+        share = 1.0 - max(0.0, min(1.0, involvement))
+        for d, h in daily.items():
+            if h > 0 and share > acc[employee_id].get(d, -1.0):
+                acc[employee_id][d] = share
+    return {eid: days for eid, days in acc.items() if days}
+
+
+def base_other_share(
+    db: Session,
+    employees: Iterable[Employee],
+    year: Optional[int],
+    quarter: Optional[int],
+) -> Dict[str, float]:
+    """{сотрудник: доля дня на прочие работы в день без задач}.
+
+    Прочие нормированные работы у человека каждый рабочий день. Их доля —
+    по справочнику вовлечённости его домашней команды (основной, а без неё —
+    всех его команд; берётся наименьшая вовлечённость) для его роли:
+    разработчик — «Разработка», аналитик, РП и консультант — «Анализ».
+    Личная вовлечённость человека на квартал главнее справочника — при любой
+    роли. Нет значения — доли нет. Константа запросов на любой объём.
+    """
+    # Сервис планировщика сам импортирует этот модуль — отсюда только лениво.
+    from app.services.resource_planning_service import ANALYST_ROLES, DEV_ROLES
+
+    if not year or not quarter:
+        return {}
+    employees = list(employees)
+    out: Dict[str, float] = {
+        eid: 1.0 - max(0.0, min(1.0, s.involvement))
+        for eid, s in personal_for(db, [e.id for e in employees], year, quarter).items()
+        if s.involvement is not None
+    }
+    phase_of = {}
+    for e in employees:
+        if e.id in out:
+            continue
+        role = (e.role or "").lower()
+        phase = "dev" if role in DEV_ROLES else "analyst" if role in ANALYST_ROLES else None
+        if phase:
+            phase_of[e.id] = phase
+    if not phase_of:
+        return out
+    lo, hi = quarter_bounds(year, quarter)
+    membership = tm.membership_rows(db, list(phase_of))
+    homes = {eid: _home_teams(membership.get(eid, ()), lo, hi) for eid in phase_of}
+    defaults = teams_defaults(
+        db, {(t, year, quarter) for teams in homes.values() for t in teams}
+    )
+    for eid, phase in phase_of.items():
+        invs = [
+            defaults[(t, year, quarter)][phase]
+            for t in homes[eid]
+            if phase in defaults[(t, year, quarter)]
+        ]
+        if invs:
+            out[eid] = 1.0 - max(0.0, min(1.0, min(invs)))
+    return out
+
+
+def occupied_hours(
+    bookings: Iterable[ExternalBooking],
+    capacity: Dict[str, Dict[date, float]],
+    base_share: Optional[Dict[str, float]] = None,
+) -> Dict[str, Dict[date, float]]:
+    """{сотрудник: {день брони: часы броней вместе с прочими работами}}.
+
+    В день брони человек занят не только её часами, но и долей прочих работ
+    от ёмкости дня (``capacity``, см. `other_work_share`; у броней без
+    вовлечённости — доля человека ``base_share``): другой команде свободен
+    только остаток. Так же следующая фаза своего плана видит остаток дня за
+    вычетом потолка вовлечённости предыдущей.
+    """
+    bookings = list(bookings)
+    base = base_share or {}
+    share = other_work_share((b.employee_id, b.involvement, b.daily_hours) for b in bookings)
+    return {
+        eid: {
+            d: h
+            + capacity.get(eid, {}).get(d, 0.0)
+            * share.get(eid, {}).get(d, base.get(eid, 0.0))
+            for d, h in days.items()
+        }
+        for eid, days in daily_totals(bookings).items()
+    }
+
+
+def busy_hours(
+    bookings: Iterable[ExternalBooking],
+    capacity: Dict[str, Dict[date, float]],
+    base_share: Dict[str, float],
+) -> Dict[str, Dict[date, float]]:
+    """{сотрудник: {день: занято бронями и прочими работами}} на все дни ``capacity``.
+
+    В дни броней — `occupied_hours`, в остальные — прочие работы по доле
+    человека ``base_share``: они есть каждый рабочий день.
+    """
+    occupied = occupied_hours(bookings, capacity, base_share)
+    return {
+        eid: {
+            d: occupied.get(eid, {}).get(d, h * base_share.get(eid, 0.0))
+            for d, h in days.items()
+        }
+        for eid, days in capacity.items()
+    }
+
+
 def subtractable(
     bookings: Iterable[ExternalBooking], borrowed: set
 ) -> List[ExternalBooking]:
     """Брони, которые вычитаются из доступности плана: сначала домашняя команда.
 
-    Привлечённому в план (``borrowed``) — все брони других команд. Своему
-    сотруднику — только брони команд, где он тоже состоит (общий сотрудник).
-    Бронь-привлечение своего (команда взяла его к себе, не имея в составе)
-    доступность не уменьшает — подстраивается привлекающая команда.
+    Привлечённому в план (``borrowed``) и тому, у кого команда плана не
+    основная (``yields_here``), — все брони других команд. Своему сотруднику
+    в домашней команде — только брони других его домашних команд (нет
+    основной — все его команды равны). Бронь-привлечение доступность не
+    уменьшает — подстраивается привлекающая команда.
     """
-    return [b for b in bookings if b.employee_id in borrowed or not b.is_borrowing]
+    return [
+        b
+        for b in bookings
+        if b.employee_id in borrowed or b.yields_here or not b.is_borrowing
+    ]
 
 
-def _team_hashes(bookings: Iterable[ExternalBooking]) -> Dict[str, str]:
-    """{команда: sha256 её броней} по часам человека в день.
+def _team_hashes(
+    bookings: Iterable[ExternalBooking],
+    blocked_cells: Optional[Dict[str, List[tuple]]] = None,
+) -> Dict[str, str]:
+    """{команда: sha256 её броней и заблокированных дней её периодов}.
 
-    Строки брони (их id, фазы, дробление на части) в отпечаток не входят:
-    пересчёт чужого плана пересоздаёт строки, и если часы людей по дням те
-    же, отпечаток не меняется.
+    Брони — по часам человека в день. Строки брони (их id, фазы, дробление
+    на части) в отпечаток не входят: пересчёт чужого плана пересоздаёт
+    строки, и если часы людей по дням те же, отпечаток не меняется.
+    ``blocked_cells`` — {команда: [(сотрудник, день ISO)]}, заблокированные
+    дни периодов основных команд людей плана (`scheduled_blocks.cells_by_team`).
+    Команда без заблокированных дней хэшируется как раньше — старые
+    отпечатки планов без периодов чужих команд не устаревают.
     """
     hours: Dict[str, Dict[tuple, float]] = defaultdict(lambda: defaultdict(float))
     for b in bookings:
         for d, h in b.daily_hours.items():
             hours[b.team][(b.employee_id, d.isoformat())] += h
+    cells_of = blocked_cells or {}
     out: Dict[str, str] = {}
-    for team, cells in hours.items():
+    for team in set(hours) | set(cells_of):
         rows = sorted(
-            (eid, day, round(h, 2)) for (eid, day), h in cells.items() if round(h, 2) > 0
+            (eid, day, round(h, 2))
+            for (eid, day), h in hours.get(team, {}).items()
+            if round(h, 2) > 0
         )
-        if rows:
-            raw = json.dumps(rows, separators=(",", ":")).encode("utf-8")
-            out[team] = hashlib.sha256(raw).hexdigest()
+        cells = sorted(list(c) for c in cells_of.get(team, ()))
+        if not rows and not cells:
+            continue
+        payload = rows if not cells else {"blocked": cells, "hours": rows}
+        raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        out[team] = hashlib.sha256(raw).hexdigest()
     return out
 
 
-def fingerprint(bookings: Iterable[ExternalBooking]) -> str:
+def fingerprint(
+    bookings: Iterable[ExternalBooking],
+    blocked_cells: Optional[Dict[str, List[tuple]]] = None,
+) -> str:
     """Отпечаток броней по командам — JSON {команда: sha256}.
 
     План запоминает его при расчёте по вычтенным из своей доступности
     броням (``ResourcePlan.external_fingerprint``), диаграмма сверяет с ним
-    текущие — см. `stale_teams`.
+    текущие — см. `stale_teams`. ``blocked_cells`` — заблокированные дни
+    периодов основных команд людей плана (см. `_team_hashes`).
     """
-    return json.dumps(_team_hashes(bookings), sort_keys=True)
+    return json.dumps(_team_hashes(bookings, blocked_cells), sort_keys=True)
 
 
 def stale_teams(
     stored: Optional[str],
     bookings: Iterable[ExternalBooking],
     computed_at: Optional[datetime],
+    blocked_cells: Optional[Dict[str, List[tuple]]] = None,
 ) -> List[str]:
     """Команды, чьи вычитаемые брони разошлись с учтёнными при расчёте, по алфавиту.
 
@@ -368,10 +568,12 @@ def stale_teams(
     План ни разу не считался — сравнивать не с чем, список пуст. Посчитан,
     пока планы не запоминали отпечаток (``stored`` пуст), — какие брони он
     учёл, неизвестно: устарел, если вычитаемые брони вообще есть.
+    ``blocked_cells`` — заблокированные дни периодов основных команд людей
+    плана сейчас: изменился период основной команды — она тоже в списке.
     """
     if computed_at is None:
         return []
-    now = _team_hashes(bookings)
+    now = _team_hashes(bookings, blocked_cells)
     if stored is None:
         return sorted(now)
     was = json.loads(stored)
@@ -426,6 +628,27 @@ def borrowed_ids(
     return {e for e in employee_ids if e and e not in members}
 
 
+def guest_ids(
+    db: Session,
+    team: Optional[str],
+    start: date,
+    end: date,
+    employee_ids: Iterable[Optional[str]],
+) -> set[str]:
+    """Кто из перечисленных состоит в ``team`` в периоде, но она у него не
+    основная: план ``team`` уступает его другим командам, как привлечённого."""
+    if not team:
+        return set()
+    ids = [e for e in dict.fromkeys(employee_ids) if e]
+    membership = tm.membership_rows(db, ids)
+    return {
+        e
+        for e in ids
+        if _member_of(membership.get(e, ()), team, start, end)
+        and team not in _home_teams(membership.get(e, ()), start, end)
+    }
+
+
 def quarter_load_pct(
     db: Session,
     year: int,
@@ -457,7 +680,7 @@ def quarter_load_pct(
             end=end,
         )
     )
-    avail = ResourcePlanningService(db).build_availability(employees, start, end, [])
+    avail = ResourcePlanningService(db).build_availability(employees, start, end)
     out: Dict[str, float] = {}
     for e in employees:
         cap = sum(avail.get(e.id, {}).values())

@@ -44,5 +44,6 @@ class ScenarioAllocationSnapshot(Base, TimestampMixin):
     opo_analyst_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     assignee_employee_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     assignee_role_at_approval: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    developer_employee_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
 
     revision: Mapped["ScenarioRevision"] = relationship(back_populates="allocation_snapshots")

@@ -43,6 +43,19 @@ describe('candidateOptions', () => {
       },
     ]);
   });
+  it('занятый в соседней колонке — неактивен, с подсказкой', () => {
+    const opts = candidateOptions([
+      { key: 'other', label: 'Другие команды', employees: [c({}), c({ employee_id: 'e2', display_name: 'Иванов' })] },
+    ], ROLES, { id: 'e1', hint: 'уже аналитик этой задачи' });
+    expect(opts[0].options).toEqual([
+      {
+        value: 'e1',
+        label: 'Пряничников · Программист · Команда 1С · 42% — уже аналитик этой задачи',
+        disabled: true,
+      },
+      { value: 'e2', label: 'Иванов · Программист · Команда 1С · 42%' },
+    ]);
+  });
 });
 
 describe('sameCandidatesTarget', () => {

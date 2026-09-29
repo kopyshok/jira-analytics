@@ -20,6 +20,7 @@ from app.models import (
 from app.services.analytics_service import AnalyticsService
 from app.services.export_service import ExportService
 from app.services.subgroup_resolver import SubgroupResolver
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 DAY = datetime(2026, 8, 5, 10, 0)
@@ -38,7 +39,8 @@ def data(db_session):
     emp = Employee(jira_account_id="acc-a", display_name="Алексеев", is_active=True, role="dev")
     db_session.add(emp)
     db_session.flush()
-    db_session.add(EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True, subgroup_id=calc.id))
+    db_session.add(EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True))
+    db_session.add(share(emp.id, TEAM, calc.id))
 
     issue = Issue(
         jira_issue_id="OS-1", key="OS-1", summary="Задача", issue_type="Task",

@@ -19,7 +19,7 @@ Flow:
 import calendar
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -33,7 +33,6 @@ from app.models import (
     AppSetting,
     BacklogItem,
     Employee,
-    EmployeeTeam,
     HierarchyRule,
     Issue,
     PlanningScenario,
@@ -46,6 +45,7 @@ from app.models import (
     ScenarioRevision,
     ScenarioRevisionItem,
     ScenarioRule,
+    ScenarioTeamSnapshot,
 )
 from app.schemas.capacity_diff import (
     AbsenceChange,
@@ -56,6 +56,7 @@ from app.schemas.capacity_diff import (
 from app.schemas.assignee_candidates import CandidateGroupOut
 from app.schemas.scenario_override import AllocationOverrideRequest
 from app.services import opo_policy, team_membership
+from app.services import subgroup_shares as ss
 from app.services.capacity_service import CapacityService
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
@@ -67,6 +68,7 @@ from app.services.backlog_service import (
     BACKLOG_CATEGORY,
     BacklogService,
     approved_included_backlog_ids,
+    choose_assignee,
     descendant_backlog_ids_of_included_ancestors,
     mode_excluded_backlog_ids,
     not_in_plan_backlog_ids,
@@ -74,6 +76,7 @@ from app.services.backlog_service import (
 from app.services.assignee_candidates import candidate_groups, jira_assignee_id
 from app.services.category_resolver import CategoryResolver
 from app.services.cross_team_occupancy import quarter_num
+from app.services.jira_developer import jira_developers_for_items
 from app.services.plan_common import quarter_bounds
 from app.services.subgroup_flow_service import flow_for_team
 from app.services.hierarchy_rules import is_planning_leaf, load_rules
@@ -347,6 +350,9 @@ class AllocationResponse(BaseModel):
     assignee_employee_id: Optional[str] = None
     assignee_display_name: Optional[str] = None
     assignee_role: Optional[str] = None
+    # Разработчик строки — только ручной выбор (Jira не пишет).
+    developer_employee_id: Optional[str] = None
+    developer_display_name: Optional[str] = None
     customer: Optional[str] = None
     cost_type: Optional[str] = None
     source_category: Optional[str] = None  # 'initiatives_rfa' | 'quarterly_tasks'
@@ -360,6 +366,10 @@ class AllocationResponse(BaseModel):
 
 class AllocationAssigneePatch(BaseModel):
     assignee_employee_id: Optional[str] = None
+
+
+class AllocationDeveloperPatch(BaseModel):
+    developer_employee_id: Optional[str] = None
 
 
 class AllocationsReorderBody(BaseModel):
@@ -386,6 +396,10 @@ class ResourceBaseEmployeeOut(BaseModel):
     committed_hours_all_teams: float = 0.0
     is_overcommitted: bool = False
     subgroup_id: Optional[str] = None
+    # Часы по группам (ключ "" — дни без группы) и подписи участия в группе
+    # за квартал («60%», «с 15.11»). Пусто — у команды нет деления.
+    subgroup_hours: Dict[str, float] = {}
+    subgroup_labels: Dict[str, str] = {}
 
 
 class ResourceBaseOut(BaseModel):
@@ -432,6 +446,9 @@ class ResourceSummaryOut(BaseModel):
     booked_by_other_teams_by_role: Dict[str, float] = {}
     # Часы команды в планах команд, взявших её людей к себе (не вычтены).
     borrowed_by_other_teams_by_role: Dict[str, float] = {}
+    # Активные сотрудники без группы хоть в один день участия в квартале:
+    # [{employee_id, display_name}]. Пока список не пуст, утвердить нельзя.
+    ungrouped_employees: List[Dict] = []
 
 
 # === Helpers ===
@@ -448,16 +465,33 @@ def _to_scenario_resp(s: PlanningScenario) -> ScenarioResponse:
     )
 
 
-def _subgroup_by_employee(db: Session, team: Optional[str]) -> dict:
-    """Группа сотрудника внутри команды. Пусто — у команды нет деления."""
-    if not team:
+def _scenario_bounds(scenario: PlanningScenario) -> Optional[tuple[date, date]]:
+    """Первый и последний день квартала сценария. None — год/квартал не заданы."""
+    q = quarter_num(scenario.quarter)
+    if not (scenario.year and q):
+        return None
+    return quarter_bounds(scenario.year, q)
+
+
+def _subgroup_by_employee(db: Session, scenario: PlanningScenario) -> dict:
+    """Группа сотрудника на опорный день квартала — для идей без задачи.
+
+    Опорный день — сегодня, прижатый к границам квартала сценария. Поделённый
+    между группами группы не получает: его идея остаётся «Без группы».
+    Пусто — у команды нет деления.
+    """
+    team = scenario.team
+    if not team or not ss.team_subgroups(db, team):
         return {}
-    rows = (
-        db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
-        .filter(EmployeeTeam.team == team, EmployeeTeam.subgroup_id.isnot(None))
-        .all()
-    )
-    return {emp_id: sg_id for emp_id, sg_id in rows}
+    bounds = _scenario_bounds(scenario)
+    today = date.today()
+    day = today if bounds is None else min(max(today, bounds[0]), bounds[1])
+    out = {}
+    for emp_id, records in ss.load_team(db, team).items():
+        group = ss.single_group_on(records, day)
+        if group:
+            out[emp_id] = group
+    return out
 
 
 def _to_allocation_resp(
@@ -516,6 +550,8 @@ def _to_allocation_resp(
         assignee_employee_id=item.assignee_employee_id,
         assignee_display_name=assignee_name,
         assignee_role=resolved_role,
+        developer_employee_id=item.developer_employee_id,
+        developer_display_name=item.developer.display_name if item.developer else None,
         customer=item.customer,
         cost_type=item.cost_type,
         source_category=item.issue.category if item.issue else None,
@@ -546,6 +582,8 @@ def _resource_to_response(base) -> ResourceBaseOut:
                 committed_hours_all_teams=getattr(e, "committed_hours_all_teams", 0.0),
                 is_overcommitted=bool(getattr(e, "is_overcommitted", False)),
                 subgroup_id=getattr(e, "subgroup_id", None),
+                subgroup_hours=getattr(e, "subgroup_hours", {}) or {},
+                subgroup_labels=getattr(e, "subgroup_labels", {}) or {},
             )
             for e in base.employees
         ],
@@ -707,6 +745,24 @@ async def approve_scenario(
     """
     scenario = db.get(PlanningScenario, scenario_id)
     _require_draft(scenario)
+
+    # В команде с делением у каждого активного сотрудника должна быть группа
+    # на все дни участия в квартале — иначе ресурс групп не сходится.
+    # Проверка — до любой записи.
+    bounds = _scenario_bounds(scenario)
+    if scenario.team and bounds:
+        missing = ss.ungrouped_members(db, scenario.team, *bounds)
+        if missing:
+            names = [
+                n
+                for (n,) in db.query(Employee.display_name)
+                .filter(Employee.id.in_(missing))
+                .order_by(Employee.display_name)
+            ]
+            raise HTTPException(
+                status_code=409,
+                detail="Нельзя утвердить: у сотрудников нет группы — " + ", ".join(names),
+            )
 
     now = datetime.utcnow()
 
@@ -978,6 +1034,15 @@ async def get_capacity_diff(
     if not revision:
         return CapacityDiffResponse(has_changes=False, changed_employees=[])
 
+    # Quarter date range
+    q_num = int(str(scenario.quarter).replace("Q", ""))
+    q_months = QUARTER_MONTHS[q_num]
+    import calendar as cal_mod
+    from datetime import date as date_t
+    quarter_start = date_t(scenario.year, q_months[0], 1)
+    quarter_end = date_t(scenario.year, q_months[-1],
+                         cal_mod.monthrange(scenario.year, q_months[-1])[1])
+
     # Load absence snapshots
     snaps = (
         db.query(ScenarioAbsenceSnapshot)
@@ -992,21 +1057,32 @@ async def get_capacity_diff(
         .all()
     }
 
-    emp_ids = list(
+    snap_emp_ids = (
         {s.employee_id for s in snaps if s.employee_id}
         | {k[0] for k in cap_snaps if k[0]}
     )
+
+    # Распределение по группам: снимок утверждения vs сейчас. Сравниваем, только
+    # если деление было на момент утверждения — иначе все люди команды
+    # оказались бы «изменёнными».
+    team_snaps = {
+        s.employee_id: s.subgroup_name
+        for s in db.query(ScenarioTeamSnapshot)
+        .filter(ScenarioTeamSnapshot.revision_id == revision.id)
+        .all()
+        if s.employee_id
+    }
+    group_changes: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    if scenario.team and any(team_snaps.values()):
+        current_labels = ss.quarter_labels(db, scenario.team, quarter_start, quarter_end)
+        for emp_id, before in team_snaps.items():
+            after = current_labels.get(emp_id)
+            if before != after:
+                group_changes[emp_id] = (before, after)
+
+    emp_ids = list(snap_emp_ids | set(group_changes))
     if not emp_ids:
         return CapacityDiffResponse(has_changes=False, changed_employees=[])
-
-    # Quarter date range
-    q_num = int(str(scenario.quarter).replace("Q", ""))
-    q_months = QUARTER_MONTHS[q_num]
-    import calendar as cal_mod
-    from datetime import date as date_t
-    quarter_start = date_t(scenario.year, q_months[0], 1)
-    quarter_end = date_t(scenario.year, q_months[-1],
-                         cal_mod.monthrange(scenario.year, q_months[-1])[1])
 
     # Current absences
     current_absences = (
@@ -1122,13 +1198,16 @@ async def get_capacity_diff(
                 ))
 
         left_at = left_dates.get(emp_id)
-        if month_diffs or left_at:
+        if month_diffs or left_at or emp_id in group_changes:
             emp = employees.get(emp_id)
+            before, after = group_changes.get(emp_id, (None, None))
             changed_employees.append(EmployeeDiff(
                 employee_id=emp_id,
                 employee_name=emp.display_name if emp else emp_id,
                 months=month_diffs,
                 left_team_at=left_at,
+                subgroup_before=before,
+                subgroup_after=after,
             ))
 
     return CapacityDiffResponse(
@@ -1505,7 +1584,11 @@ async def list_scenario_allocations(
     query = (
         db.query(ScenarioAllocation, BacklogItem)
         .join(BacklogItem, ScenarioAllocation.backlog_item_id == BacklogItem.id)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(ScenarioAllocation.scenario_id == scenario_id)
     )
 
@@ -1561,7 +1644,7 @@ async def list_scenario_allocations(
     else:
         parents_in_backlog = set()
 
-    subgroup_by_employee = _subgroup_by_employee(db, scenario.team)
+    subgroup_by_employee = _subgroup_by_employee(db, scenario)
 
     return [
         _to_allocation_resp(
@@ -1681,12 +1764,16 @@ async def patch_allocation(
     # Re-load with issue join for response.
     item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == alloc.backlog_item_id)
         .first()
     )
     return _to_allocation_resp(
-        alloc, item, subgroup_by_employee=_subgroup_by_employee(db, scenario.team)
+        alloc, item, subgroup_by_employee=_subgroup_by_employee(db, scenario)
     )
 
 
@@ -1718,45 +1805,104 @@ async def patch_allocation_assignee(
 
     backlog_item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == alloc.backlog_item_id)
         .first()
     )
     if not backlog_item:
         raise HTTPException(status_code=404, detail="BacklogItem not found")
 
-    issue = backlog_item.issue
-    jira_account = (issue.assignee_account_id or None) if issue is not None else None
+    emp = None
     if data.assignee_employee_id is not None:
         emp = db.query(Employee).filter(Employee.id == data.assignee_employee_id).first()
         if not emp:
             raise HTTPException(status_code=404, detail="Employee not found")
-        backlog_item.assignee_employee_id = data.assignee_employee_id
-        chosen_account = emp.jira_account_id or None
-    else:
-        backlog_item.assignee_employee_id = None
-        chosen_account = None
-    # Выбрали того, кто и так исполнитель в Jira, — строка снова следует за
-    # Jira. Иначе выбор ручной: обновление из Jira его не затрёт, пока там
-    # не сменят исполнителя, — запоминаем, кто стоит в Jira сейчас.
-    backlog_item.assignee_manual = chosen_account != jira_account
-    backlog_item.assignee_jira_account_at_choice = (
-        jira_account if backlog_item.assignee_manual else None
-    )
+        if data.assignee_employee_id == backlog_item.developer_employee_id:
+            raise HTTPException(
+                status_code=422, detail="Этот сотрудник уже разработчик задачи"
+            )
+    choose_assignee(backlog_item, emp)
 
     db.commit()
     await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
     # Reload with relationships after commit.
     backlog_item = (
         db.query(BacklogItem)
-        .options(joinedload(BacklogItem.issue), joinedload(BacklogItem.assignee))
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
         .filter(BacklogItem.id == backlog_item.id)
         .first()
     )
     return _to_allocation_resp(
         alloc,
         backlog_item,
-        subgroup_by_employee=_subgroup_by_employee(db, scenario.team),
+        subgroup_by_employee=_subgroup_by_employee(db, scenario),
+    )
+
+
+@router.patch(
+    "/scenarios/{scenario_id}/allocations/{alloc_id}/developer",
+    response_model=AllocationResponse,
+)
+async def patch_allocation_developer(
+    scenario_id: str,
+    alloc_id: str,
+    data: AllocationDeveloperPatch,
+    db: Session = Depends(get_db),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Сменить разработчика строки сценария. Выбор только ручной; один человек
+    не может быть и аналитиком, и разработчиком строки."""
+    alloc = (
+        db.query(ScenarioAllocation)
+        .filter(
+            ScenarioAllocation.id == alloc_id,
+            ScenarioAllocation.scenario_id == scenario_id,
+        )
+        .first()
+    )
+    if not alloc:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+
+    scenario = db.get(PlanningScenario, scenario_id)
+    _require_draft(scenario)
+
+    backlog_item = db.get(BacklogItem, alloc.backlog_item_id)
+    if not backlog_item:
+        raise HTTPException(status_code=404, detail="BacklogItem not found")
+    if data.developer_employee_id is not None:
+        if not db.get(Employee, data.developer_employee_id):
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if data.developer_employee_id == backlog_item.assignee_employee_id:
+            raise HTTPException(
+                status_code=422, detail="Этот сотрудник уже аналитик задачи"
+            )
+    backlog_item.developer_employee_id = data.developer_employee_id
+
+    db.commit()
+    await event_bus.publish({"type": "entity_changed", "entities": ["planning"]})
+    # Reload with relationships after commit.
+    backlog_item = (
+        db.query(BacklogItem)
+        .options(
+            joinedload(BacklogItem.issue),
+            joinedload(BacklogItem.assignee),
+            joinedload(BacklogItem.developer),
+        )
+        .filter(BacklogItem.id == backlog_item.id)
+        .first()
+    )
+    return _to_allocation_resp(
+        alloc,
+        backlog_item,
+        subgroup_by_employee=_subgroup_by_employee(db, scenario),
     )
 
 
@@ -1767,13 +1913,17 @@ async def patch_allocation_assignee(
 def scenario_assignee_candidates(
     scenario_id: str,
     backlog_item_id: str = Query(..., description="Задача бэклога — строка сценария"),
+    phase: Literal["analyst", "dev"] = Query(
+        "analyst", description="Колонка: аналитик или разработчик"
+    ),
     db: Session = Depends(get_db),
 ):
-    """Кандидаты в исполнители строки сценария.
+    """Кандидаты в аналитики или разработчики строки сценария.
 
     Все, кто в квартале сценария состоит в какой-либо команде, группами
-    «Из Jira» (исполнитель задачи в Jira) / «Моя команда» / «Другие команды»,
-    у каждого — загрузка за квартал по опорным планам команд. Пустые группы
+    «Из Jira» / «Моя команда» / «Другие команды», у каждого — загрузка за
+    квартал по опорным планам команд. «Из Jira» — исполнитель задачи в Jira
+    (``phase=analyst``) или её «Разработчик» (``phase=dev``). Пустые группы
     не возвращаются.
     """
     scenario = db.get(PlanningScenario, scenario_id)
@@ -1799,6 +1949,13 @@ def scenario_assignee_candidates(
         .filter(BacklogItem.id == backlog_item_id)
         .first()
     )
+    if phase == "dev":
+        # «Из Jira» для разработчика — поле «Разработчик» задачи или её подзадач.
+        jira_id = (
+            jira_developers_for_items(db, [item], start, end).get(item.id) if item else None
+        )
+    else:
+        jira_id = jira_assignee_id(db, item.issue if item else None)
     groups = candidate_groups(
         db,
         team=scenario.team,
@@ -1806,7 +1963,7 @@ def scenario_assignee_candidates(
         end=end,
         year=scenario.year,
         quarter=quarter,
-        jira_employee_id=jira_assignee_id(db, item.issue if item else None),
+        jira_employee_id=jira_id,
     )
     return [asdict(g) for g in groups]
 
@@ -1892,6 +2049,7 @@ def scenario_resource_summary(
         ] if summary.subgroups else [],
         booked_by_other_teams_by_role=summary.booked_by_other_teams_by_role,
         borrowed_by_other_teams_by_role=summary.borrowed_by_other_teams_by_role,
+        ungrouped_employees=summary.ungrouped_employees,
     )
 
 

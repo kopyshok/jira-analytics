@@ -9,25 +9,36 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth_deps import get_current_user
 from app.database import get_db
 from app.models import (
     BacklogItem,
+    MandatoryWorkType,
     ResourcePlan,
     ResourcePlanAssignment,
+    Role,
     ScheduledBlock,
     ScheduledBlockEmployee,
     ScheduledBlockRole,
+    TeamWorkTypeOverride,
 )
 from app.models.user import User
 from app.models.user_rp_preferences import UserRpPreferences
 from app.schemas.assignee_candidates import CandidateGroupOut
 from app.services import cross_team_occupancy as cto
+from app.services import normed_reserve as nr
+from app.services import scheduled_blocks as sb
+from app.services import subgroup_shares as ss
 from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
-from app.services.involvement_default_service import effective_for_phase, team_defaults
+from app.services.involvement_default_service import (
+    PHASE_FIELD,
+    effective_for_phase,
+    team_defaults,
+)
+from app.services.personal_settings import personal_for
 from app.services.plan_quality_service import PlanQualityService
 from app.services.resource_planning_service import (
     ResourcePlanningService,
@@ -66,6 +77,7 @@ class ScheduledBlockCreate(BaseModel):
     start_date: date
     end_date: date
     reason: str
+    work_type_id: str
 
 
 class ScheduledBlockUpdate(BaseModel):
@@ -75,6 +87,7 @@ class ScheduledBlockUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     reason: Optional[str] = None
+    work_type_id: Optional[str] = None
 
 
 class ScheduledBlockOut(BaseModel):
@@ -85,22 +98,71 @@ class ScheduledBlockOut(BaseModel):
     start_date: date
     end_date: date
     reason: str
+    work_type_id: Optional[str] = None
+    # Подписи для списка: вид работ, роли и сотрудники периода.
+    work_type_label: Optional[str] = None
+    role_labels: List[str] = []
+    employee_names: List[str] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-def _block_to_out(block: ScheduledBlock) -> "ScheduledBlockOut":
-    return ScheduledBlockOut(
-        id=block.id,
-        team=block.team,
-        role_ids=[r.role_id for r in block.roles],
-        employee_ids=[e.employee_id for e in block.employees],
-        start_date=block.start_date,
-        end_date=block.end_date,
-        reason=block.reason,
-        created_at=block.created_at,
+WORK_TYPE_REQUIRED = "Выберите вид нормированных работ"
+
+
+def _check_work_type(db: Session, work_type_id: Optional[str]) -> None:
+    """Вид работ периода: есть в справочнике и уменьшает запас на проекты.
+
+    «Прочие / Чужие» и подобные периоду не подходят — 422.
+    """
+    from app.models import MandatoryWorkType
+
+    wt = db.get(MandatoryWorkType, work_type_id) if work_type_id else None
+    if wt is None or not wt.subtracts_from_pool:
+        raise HTTPException(422, WORK_TYPE_REQUIRED)
+
+
+def _blocks_out(db: Session, blocks: Sequence[ScheduledBlock]) -> List[ScheduledBlockOut]:
+    """Периоды с подписями: три запроса на любой объём списка — роли,
+    сотрудники и виды работ по id. Подписи — в порядке названий."""
+    from app.models import Employee, MandatoryWorkType, Role
+
+    def labels(id_col, label_col, ids: set) -> Dict[str, str]:
+        if not ids:
+            return {}
+        return {i: lbl for i, lbl in db.execute(select(id_col, label_col).where(id_col.in_(ids)))}
+
+    role_label = labels(Role.id, Role.label, {r.role_id for b in blocks for r in b.roles})
+    emp_name = labels(
+        Employee.id, Employee.display_name, {e.employee_id for b in blocks for e in b.employees}
     )
+    wt_label = labels(
+        MandatoryWorkType.id,
+        MandatoryWorkType.label,
+        {b.work_type_id for b in blocks if b.work_type_id},
+    )
+    return [
+        ScheduledBlockOut(
+            id=b.id,
+            team=b.team,
+            role_ids=[r.role_id for r in b.roles],
+            employee_ids=[e.employee_id for e in b.employees],
+            start_date=b.start_date,
+            end_date=b.end_date,
+            reason=b.reason,
+            work_type_id=b.work_type_id,
+            work_type_label=wt_label.get(b.work_type_id) if b.work_type_id else None,
+            role_labels=sorted(
+                role_label[r.role_id] for r in b.roles if r.role_id in role_label
+            ),
+            employee_names=sorted(
+                emp_name[e.employee_id] for e in b.employees if e.employee_id in emp_name
+            ),
+            created_at=b.created_at,
+        )
+        for b in blocks
+    ]
 
 
 def _parse_daily_hours(daily_hours_json: Optional[str]) -> Optional[Dict[str, float]]:
@@ -144,7 +206,8 @@ def _hours_on_day(
 def _compute_unavailable_days_for_assignment(
     db: Session, a: "ResourcePlanAssignment"
 ) -> List["UnavailableDay"]:
-    """Посчитать недоступные дни для одной фазы (выходные/праздники/отпуска/блокировки ОПЭ).
+    """Посчитать недоступные дни для одной фазы (выходные/праздники/отпуска/
+    блокировки ОПЭ и заблокированные периоды).
 
     Использует ту же логику, что и батч-функция в get_gantt, но точечным
     запросом — для случаев, когда нужно вернуть актуальное состояние одного
@@ -202,6 +265,14 @@ def _compute_unavailable_days_for_assignment(
             and not (p.end_date < a.start_date or p.start_date > a.end_date)
         ]
 
+    emp_blocked = (
+        sb.resolve_blocked_days(db, [a.employee], a.start_date, a.end_date, a.plan.team).get(
+            a.employee.id, {}
+        )
+        if a.employee
+        else {}
+    )
+
     out: List[UnavailableDay] = []
     d = a.start_date
     while d <= a.end_date:
@@ -221,6 +292,8 @@ def _compute_unavailable_days_for_assignment(
             ss <= d <= se for _sid, ss, se in emp_preempts
         ):
             kind = "block"
+        if kind is None and d in emp_blocked:
+            kind = "block"
         if kind:
             out.append(UnavailableDay(date=d, type=kind))
         d += _timedelta(days=1)
@@ -235,8 +308,14 @@ def _assignment_to_out(
     chunk_index: Optional[int] = None,
     chunks_total: Optional[int] = None,
     worklog_hours_actual: float = 0.0,
+    other_subgroup: bool = False,
+    subgroup_id: Optional[str] = None,
 ) -> "AssignmentOut":
-    """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut."""
+    """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut.
+
+    ``subgroup_id`` — группа работы, уже определённая по правилу диаграммы
+    (``_plan_subgroups``); без неё — группа самой задачи.
+    """
     bi = a.backlog_item
     issue = bi.issue if bi else None
     emp = a.employee
@@ -273,8 +352,87 @@ def _assignment_to_out(
         out_of_quarter=a.out_of_quarter,
         daily_hours=_parse_daily_hours(a.daily_hours_json),
         worklog_hours_actual=worklog_hours_actual,
-        subgroup_id=getattr(issue, "effective_subgroup_id", None) if issue else None,
+        subgroup_id=subgroup_id
+        or (getattr(issue, "effective_subgroup_id", None) if issue else None),
+        other_subgroup=other_subgroup,
     )
+
+
+def _plan_subgroups(
+    db: Session, plan: ResourcePlan, assignments: Sequence[ResourcePlanAssignment]
+) -> tuple[Dict[str, str], Dict[str, List[str]]]:
+    """Группы на диаграмме плана команды с делением.
+
+    Возвращает ({assignment_id: группа работы}, {сотрудник: его группы}).
+
+    Группа работы — своя группа задачи, без неё — группа главного исполнителя
+    из сценария на опорный день (``ss.work_group`` — то же правило, что у
+    планировщика). Группы сотрудника — те, где у него есть доля в дни участия
+    в команде внутри квартала плана, по убыванию «доля × дни»; при равенстве —
+    в порядке реестра. Команда без деления — оба словаря пустые.
+    """
+    team = plan.team
+    groups = ss.team_subgroups(db, team)
+    if not team or not groups:
+        return {}, {}
+    try:
+        q_start, q_end = ResourcePlanningService(db)._quarter_bounds(plan)
+    except ValueError:
+        # Квартал не разбирается — диаграмма ниже ответит 422.
+        return {}, {}
+    records = ss.load_team(db, team)
+    work: Dict[str, str] = {}
+    for a in assignments:
+        bi = a.backlog_item
+        issue = bi.issue if bi else None
+        gid = ss.work_group(
+            getattr(issue, "effective_subgroup_id", None) if issue else None,
+            records.get((bi.assignee_employee_id if bi else None) or "", []),
+            q_start,
+            q_end,
+        )
+        if gid:
+            work[a.id] = gid
+    order = {gid: i for i, (gid, _) in enumerate(groups)}
+    by_employee = {
+        eid: sorted(weights, key=lambda g: (-weights[g], order.get(g, len(order))))
+        for eid, weights in ss.member_group_weights(
+            db, team, records, q_start, q_end
+        ).items()
+    }
+    return work, by_employee
+
+
+def _other_subgroup_ids(
+    db: Session,
+    plan: ResourcePlan,
+    assignments: Sequence[ResourcePlanAssignment],
+    work_groups: Optional[Dict[str, str]] = None,
+) -> set[str]:
+    """Назначения, где группа работы не входит в группы исполнителя за даты назначения.
+
+    Группа работы — по правилу диаграммы (``_plan_subgroups``); ``work_groups``
+    передаёт уже посчитанную. Нет ни одной записи распределения на даты
+    назначения — метки нет: сравнивать не с чем (например, исполнитель ещё не
+    заведён в команду).
+    """
+    if not plan.team or not ss.team_subgroups(db, plan.team):
+        return set()
+    if work_groups is None:
+        work_groups = _plan_subgroups(db, plan, assignments)[0]
+    records = ss.load_team(
+        db, plan.team, {a.employee_id for a in assignments if a.employee_id}
+    )
+    out: set[str] = set()
+    for a in assignments:
+        group = work_groups.get(a.id)
+        recs = records.get(a.employee_id) if a.employee_id else None
+        if not group or not recs or not a.start_date or not a.end_date:
+            continue
+        groups = ss.groups_between(recs, a.start_date, a.end_date)
+        if groups and group not in groups:
+            out.add(a.id)
+    return out
 
 
 def _compute_worklog_hours_actual(
@@ -420,10 +578,14 @@ class AssignmentOut(BaseModel):
     out_of_quarter: bool = False
     daily_hours: Optional[Dict[str, float]] = None  # {"YYYY-MM-DD": hours}
     worklog_hours_actual: float = 0.0  # Task 23 — фактически отработанные часы из Worklog
-    # Группа внутри команды, к которой отнесена работа (Issue.effective_subgroup_id).
-    # Фронт режет график на секции групп; если у задачи группы нет, подставляет
-    # группу главного исполнителя из сценария.
+    # Группа внутри команды, к которой отнесена работа: своя группа задачи, а
+    # в выдаче диаграммы без неё — группа главного исполнителя из сценария на
+    # опорный день (правило планировщика). Фронт режет график на секции групп.
     subgroup_id: Optional[str] = None
+    # Исполнитель работает на группу, где у него нет доли в дни назначения
+    # (задача старой группы после перевода или сосед, взятый на подмогу).
+    # Заполняется только в выдаче диаграммы; в ответе правки и разборе — всегда false.
+    other_subgroup: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -446,12 +608,15 @@ class DailyBreakdownItem(BaseModel):
         "holiday",
         "weekend",
         "blocked_by_other",
+        "blocked",
         "pre_start_idle",
     ]
     blocker_assignment_id: Optional[str] = None
     blocker_item_key: Optional[str] = None
     blocker_phase_label: Optional[str] = None
     absence_reason: Optional[str] = None
+    # Причина заблокированного периода (status == "blocked").
+    block_reason: Optional[str] = None
     is_pre_start: bool = False
     # Куда ушёл остаток дня: другие фазы того же сотрудника с часами в этот день.
     co_occupants: List[DayCoOccupant] = []
@@ -464,12 +629,17 @@ class AbsenceWindowItem(BaseModel):
     is_holiday: bool = False
 
 
+# Откуда взята вовлечённость фазы — см. PhaseCalcDetails.involvement_source.
+InvolvementSource = Literal["employee", "task", "team"]
+
+
 class PhaseCalcDetails(BaseModel):
     duration_days_jira: Optional[int] = None
     involvement_pct: Optional[int] = None
-    # Откуда взята вовлечённость: "task" — задана у задачи, "team" — из
+    # Откуда взята вовлечённость: "employee" — личная вовлечённость
+    # исполнителя на квартал плана, "task" — задана у задачи, "team" — из
     # справочника команды, None — не задана нигде (считаем как 100%).
-    involvement_source: Optional[str] = None
+    involvement_source: Optional[InvolvementSource] = None
     parallel_count: int = 1
     role_pct: Optional[int] = None
     daily_capacity_hours: float
@@ -537,6 +707,71 @@ class EmployeeLoadDay(BaseModel):
     off: Optional[str] = None
     # Доля ёмкости дня, занятая опорными планами других команд, %.
     ext_pct: float = 0.0
+    # Нормированные работы дня: заблокированный период, остаток дня после
+    # вовлечённости и доля запаса на свободное время. В % ёмкости и в часах.
+    normed_pct: float = 0.0
+    normed_hours: float = 0.0
+    # Заблокированный день: «причина · вид работ».
+    blocked: Optional[str] = None
+
+
+class NormedTypeHours(BaseModel):
+    label: str
+    hours: float
+
+
+class EmployeeQuarterLoad(BaseModel):
+    """Загрузка человека за квартал, часы; одинакова в плане любой команды."""
+    capacity_hours: float
+    own_hours: float
+    other_teams_hours: float
+    normed_hours: float
+    unplaced_hours: float
+    pct: float
+    normed_by_type: List[NormedTypeHours] = []
+
+
+class ReserveTypeRow(BaseModel):
+    work_type_id: str
+    label: str
+    planned_hours: float
+    blocked_hours: float
+    other_teams_hours: float
+    remaining_hours: float
+    overuse_hours: float
+
+
+class ReserveRoleOut(BaseModel):
+    role: str
+    role_label: str
+    rows: List[ReserveTypeRow]
+
+
+class OtherTeamWorkOut(BaseModel):
+    backlog_item_id: str
+    issue_key: Optional[str] = None
+    title: str
+    team: str
+    # Код роли людей команды — как ``ReserveRoleOut.role``: строка
+    # «другие команды» роли раскрывается её задачами.
+    role: str
+    hours: float
+    work_type_id: str
+    is_manual: bool
+
+
+class WorkTypeOption(BaseModel):
+    id: str
+    label: str
+
+
+class ReserveOut(BaseModel):
+    """Запас нормированных работ команды плана на квартал."""
+    team: str
+    scenario_name: str
+    roles: List[ReserveRoleOut]
+    other_team_work: List[OtherTeamWorkOut]
+    work_types: List[WorkTypeOption]
 
 
 class TeamMoveOut(BaseModel):
@@ -563,6 +798,8 @@ class EmployeeLoadOut(BaseModel):
     # Привлечён из другой команды: в команде плана не состоял ни дня квартала.
     is_borrowed: bool = False
     borrowed_from: Optional[str] = None
+    # Загрузка за квартал с нормированными работами; None — у плана нет года.
+    quarter: Optional[EmployeeQuarterLoad] = None
 
 
 class ExternalBookingOut(BaseModel):
@@ -597,12 +834,18 @@ class GanttProjection(BaseModel):
     pert_projection: List[InitiativePertOut]
     dependencies: List[DependencyOut] = []
     employee_load: List[EmployeeLoadOut] = []
+    # Сотрудник команды плана → группы, где у него есть доля в дни участия
+    # внутри квартала плана, по убыванию «доля × дни» (при равенстве — порядок
+    # реестра). Команда без деления — пусто.
+    employee_subgroups: Dict[str, List[str]] = {}
     # Брони людей плана (свои и привлечённые) в опорных планах других команд.
     external_bookings: List[ExternalBookingOut] = []
     # Брони, вычитаемые из доступности плана, изменились после его расчёта:
     # «Планы других команд изменились — нажмите «Распределить»».
     stale_due_to_other_teams: bool = False
     stale_teams: List[str] = []
+    # Запас нормированных работ команды плана; None — у команды нет правил.
+    reserve: Optional[ReserveOut] = None
     # Счётчики для bulk-reset dropdown'а на фронте: сколько фаз
     # затронет каждый режим сброса. Позволяет дизейблить пункты с 0
     # и показывать «Сбросить закреплённые даты (N)».
@@ -751,45 +994,60 @@ def list_scheduled_blocks(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    q = select(ScheduledBlock).order_by(ScheduledBlock.start_date)
+    q = (
+        select(ScheduledBlock)
+        .options(selectinload(ScheduledBlock.roles), selectinload(ScheduledBlock.employees))
+        .order_by(ScheduledBlock.start_date)
+    )
     if team:
         q = q.where(ScheduledBlock.team == team)
-    return [_block_to_out(b) for b in db.execute(q).scalars().all()]
+    return _blocks_out(db, db.execute(q).scalars().all())
 
 
+# Период меняет загрузку по дням, запас нормированных работ, предупреждения и
+# свежесть планов других команд — правки рассылают событие, как правки плана.
 @router.post("/scheduled-blocks", response_model=ScheduledBlockOut, status_code=201)
-def create_scheduled_block(
+async def create_scheduled_block(
     data: ScheduledBlockCreate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     if data.end_date < data.start_date:
         raise HTTPException(422, "end_date must be >= start_date")
+    _check_work_type(db, data.work_type_id)
     block = ScheduledBlock(
         team=data.team,
         start_date=data.start_date,
         end_date=data.end_date,
         reason=data.reason,
+        work_type_id=data.work_type_id,
     )
     block.roles = [ScheduledBlockRole(role_id=r) for r in data.role_ids]
     block.employees = [ScheduledBlockEmployee(employee_id=e) for e in data.employee_ids]
     db.add(block)
     db.commit()
     db.refresh(block)
-    return _block_to_out(block)
+    out = _blocks_out(db, [block])[0]
+    await _announce(event_bus, bookings=False)
+    return out
 
 
 @router.patch("/scheduled-blocks/{block_id}", response_model=ScheduledBlockOut)
-def update_scheduled_block(
+async def update_scheduled_block(
     block_id: str,
     data: ScheduledBlockUpdate,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     block = db.get(ScheduledBlock, block_id)
     if not block:
         raise HTTPException(404, "ScheduledBlock not found")
     patch = data.model_dump(exclude_unset=True)
+    # После правки у периода должен быть вид работ (спека 4.1): сменить можно,
+    # снять нельзя, и старый период без вида без него не сохраняется — 422.
+    _check_work_type(db, patch.get("work_type_id", block.work_type_id))
     role_ids = patch.pop("role_ids", None)
     employee_ids = patch.pop("employee_ids", None)
     for k, v in patch.items():
@@ -802,20 +1060,73 @@ def update_scheduled_block(
         block.employees = [ScheduledBlockEmployee(employee_id=e) for e in employee_ids]
     db.commit()
     db.refresh(block)
-    return _block_to_out(block)
+    out = _blocks_out(db, [block])[0]
+    await _announce(event_bus, bookings=False)
+    return out
 
 
 @router.delete("/scheduled-blocks/{block_id}", status_code=204)
-def delete_scheduled_block(
+async def delete_scheduled_block(
     block_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
 ):
     block = db.get(ScheduledBlock, block_id)
     if not block:
         raise HTTPException(404, "ScheduledBlock not found")
     db.delete(block)
     db.commit()
+    await _announce(event_bus, bookings=False)
+
+
+# ── Вид работ у задач других команд ────────────────────────────────────────
+
+
+class WorkTypeOverrideIn(BaseModel):
+    team: str
+    backlog_item_id: str
+    # None — вернуть вид по умолчанию («Технические задачи»).
+    work_type_id: Optional[str] = None
+
+
+@router.put("/work-type-overrides", status_code=204)
+async def put_work_type_override(
+    data: WorkTypeOverrideIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+    event_bus: EventBroadcaster = Depends(get_event_bus),
+):
+    """Чем команда ``team`` считает работу своих людей над задачей другой
+    команды: вид нормированных работ, чей запас она расходует."""
+    team = data.team.strip()
+    if not team:
+        raise HTTPException(422, "Укажите команду")
+    if db.get(BacklogItem, data.backlog_item_id) is None:
+        raise HTTPException(404, "Задача не найдена")
+    if data.work_type_id is not None:
+        _check_work_type(db, data.work_type_id)
+    row = db.execute(
+        select(TeamWorkTypeOverride).where(
+            TeamWorkTypeOverride.team == team,
+            TeamWorkTypeOverride.backlog_item_id == data.backlog_item_id,
+        )
+    ).scalar_one_or_none()
+    if data.work_type_id is None:
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(
+            TeamWorkTypeOverride(
+                team=team,
+                backlog_item_id=data.backlog_item_id,
+                work_type_id=data.work_type_id,
+            )
+        )
+    else:
+        row.work_type_id = data.work_type_id
+    db.commit()
+    await _announce(event_bus, bookings=False)
 
 
 # ── ResourcePlans ──────────────────────────────────────────────────────────
@@ -989,18 +1300,22 @@ LIVE_CONFLICT_PREFIX = "live:"
 def _cross_team_conflicts(
     plan: ResourcePlan,
     assignments_raw: List[ResourcePlanAssignment],
-    borrowed: set,
+    yielding: set,
     used: Dict[str, Dict[date, float]],
     capacity: Dict[str, Dict[date, float]],
     bookings: List[cto.ExternalBooking],
     emp_names: Dict[str, str],
+    base_share: Dict[str, float],
 ) -> List[ConflictOut]:
-    """Пересечение с планами других команд — только у привлечённых этого плана.
+    """Пересечение с планами других команд — только у тех, кого этот план
+    уступает (``yielding``): привлечённых и тех, у кого команда плана не основная.
 
     День пересечения: у фазы этого плана есть часы, и вместе с бронями других
-    команд они больше ёмкости дня. Одна запись на фазу; в БД не хранится.
+    команд и их долей прочих работ (у броней без вовлечённости — долей
+    человека ``base_share``) они больше ёмкости дня. Одна запись на фазу; в БД
+    не хранится.
     """
-    ext_by_emp = cto.daily_totals(bookings)
+    ext_by_emp = cto.occupied_hours(bookings, capacity, base_share)
     teams_on: Dict[tuple, set] = {}
     for b in bookings:
         for d in b.daily_hours:
@@ -1008,7 +1323,7 @@ def _cross_team_conflicts(
     stamp = plan.computed_at or plan.created_at
 
     out: List[ConflictOut] = []
-    for eid in sorted(borrowed):
+    for eid in sorted(yielding):
         days = set(
             cto.overlap_days(
                 used.get(eid, {}), ext_by_emp.get(eid, {}), capacity.get(eid, {})
@@ -1058,6 +1373,131 @@ def _cross_team_conflicts(
     return out
 
 
+def _role_labels(db: Session) -> Dict[str, tuple]:
+    """{код роли: (порядок, подпись)} из реестра ролей — одним запросом."""
+    return {
+        code: (order, label)
+        for code, label, order in db.execute(select(Role.code, Role.label, Role.sort_order))
+    }
+
+
+def _role_label(roles: Dict[str, tuple], role: str) -> str:
+    return roles[role][1] if role in roles else (role or "Без роли")
+
+
+def _reserve_out(reserve: nr.TeamReserve, roles: Dict[str, tuple]) -> ReserveOut:
+    """Сводка запаса команды плана: роли по порядку реестра, виды — по справочнику."""
+    return ReserveOut(
+        team=reserve.team,
+        scenario_name=reserve.scenario_name,
+        roles=[
+            ReserveRoleOut(
+                role=role,
+                role_label=_role_label(roles, role),
+                rows=[
+                    ReserveTypeRow(
+                        work_type_id=r.work_type_id,
+                        label=r.label,
+                        planned_hours=round(r.planned, 1),
+                        blocked_hours=round(r.blocked, 1),
+                        other_teams_hours=round(r.other_teams, 1),
+                        remaining_hours=round(r.remaining, 1),
+                        overuse_hours=round(r.overuse, 1),
+                    )
+                    for r in rows
+                ],
+            )
+            for role, rows in sorted(
+                reserve.roles.items(),
+                key=lambda kv: (roles.get(kv[0], (999,))[0], _role_label(roles, kv[0])),
+            )
+        ],
+        other_team_work=[
+            OtherTeamWorkOut(
+                backlog_item_id=w.backlog_item_id,
+                issue_key=w.issue_key,
+                title=w.title,
+                team=w.team,
+                role=w.role,
+                hours=round(w.hours, 1),
+                work_type_id=w.work_type_id,
+                is_manual=w.is_manual,
+            )
+            for w in reserve.other_team_work
+        ],
+        work_types=[WorkTypeOption(id=k, label=v) for k, v in reserve.labels.items()],
+    )
+
+
+# Меньше получаса — округления, не предупреждение.
+NORMED_WARNING_MIN_HOURS = 0.5
+
+
+def _normed_warnings(
+    plan: ResourcePlan,
+    reserve: nr.TeamReserve,
+    loads: Dict[str, nr.PersonLoad],
+    names: Dict[str, str],
+    roles: Dict[str, tuple],
+) -> List[ConflictOut]:
+    """Живые предупреждения запаса команды плана: перерасход вида работ роли
+    и люди, у которых нормированные работы не вмещаются в квартал."""
+    stamp = plan.computed_at or plan.created_at
+
+    def live(
+        id_: str, type_: str, value: float, message: str, eid: Optional[str] = None
+    ) -> ConflictOut:
+        return ConflictOut(
+            id=f"{LIVE_CONFLICT_PREFIX}{type_}:{id_}",
+            type=type_,
+            severity="warning",
+            status="open",
+            backlog_item_id=None,
+            backlog_item_title=None,
+            employee_id=eid,
+            employee_name=names.get(eid) if eid else None,
+            assignment_id=None,
+            window_start=None,
+            window_end=None,
+            metric_value=round(value, 1),
+            message=message,
+            created_at=stamp,
+            updated_at=stamp,
+            is_live=True,
+        )
+
+    out: List[ConflictOut] = []
+    for role, rows in reserve.roles.items():
+        for r in rows:
+            if r.overuse <= NORMED_WARNING_MIN_HOURS:
+                continue
+            parts = []
+            if r.other_teams > 0:
+                parts.append(f"другие команды заняли {r.other_teams:.0f} ч")
+            if r.blocked > 0:
+                parts.append(f"заблокировано {r.blocked:.0f} ч")
+            out.append(live(
+                f"{role}:{r.work_type_id}",
+                "NORMED_OVERUSE",
+                r.overuse,
+                f"{_role_label(roles, role)} · {r.label}: заложено {r.planned:.0f} ч, "
+                + ", ".join(parts),
+            ))
+    for eid in sorted(reserve.people):
+        load = loads.get(eid)
+        if load is None or load.unplaced <= NORMED_WARNING_MIN_HOURS:
+            continue
+        name = names.get(eid) or "Сотрудник"
+        out.append(live(
+            eid,
+            "NORMED_UNPLACED",
+            load.unplaced,
+            f"{name}: не вмещается {load.unplaced:.0f} ч нормированных работ",
+            eid=eid,
+        ))
+    return out
+
+
 def _occupancy_inputs(
     db: Session,
     svc: ResourcePlanningService,
@@ -1072,7 +1512,7 @@ def _occupancy_inputs(
     Для привлечённых (``borrowed``) дни вне команды плана — норма, не простой.
     """
     capacity = svc.build_availability(
-        employees, start, end, [], team=plan.team, borrowed=borrowed
+        employees, start, end, None, team=plan.team, borrowed=borrowed
     )
     bookings = cto.external_bookings(
         db,
@@ -1103,28 +1543,36 @@ def _daily_used(
             continue
         if a.employee_id not in used:
             continue
-        # Пустая раскладка — фаза не размещена: часов в днях нет.
-        daily = _parse_daily_hours(a.daily_hours_json)
-        if daily is not None:
-            for iso, h in daily.items():
-                try:
-                    dd = date.fromisoformat(iso)
-                except (TypeError, ValueError):
-                    continue
-                used[a.employee_id][dd] = used[a.employee_id].get(dd, 0.0) + float(h)
-            continue
-        # Легаси-бары без раскладки: поровну по рабочим дням бара
-        # (по календарным — часы утекают в выходные и день занижается).
-        emp_avail = avail.get(a.employee_id, {})
-        work_days = [
-            d
-            for d in _daterange(a.start_date, a.end_date)
-            if emp_avail.get(d, 0.0) > 0
-        ] or _daterange(a.start_date, a.end_date)
-        per_day = (a.hours_allocated or 0.0) / len(work_days)
-        for d in work_days:
-            used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + per_day
+        for d, h in _assignment_days(a, avail[a.employee_id]).items():
+            used[a.employee_id][d] = used[a.employee_id].get(d, 0.0) + h
     return used
+
+
+def _assignment_days(
+    a: ResourcePlanAssignment, emp_avail: Dict[date, float]
+) -> Dict[date, float]:
+    """Часы фазы с датами по дням: раскладка планировщика, у старых строк без
+    неё — поровну по рабочим дням полосы (``emp_avail`` > 0)."""
+    # Пустая раскладка — фаза не размещена: часов в днях нет.
+    daily = _parse_daily_hours(a.daily_hours_json)
+    if daily is not None:
+        out: Dict[date, float] = {}
+        for iso, h in daily.items():
+            try:
+                dd = date.fromisoformat(iso)
+            except (TypeError, ValueError):
+                continue
+            out[dd] = out.get(dd, 0.0) + float(h)
+        return out
+    # Легаси-бары без раскладки: поровну по рабочим дням бара
+    # (по календарным — часы утекают в выходные и день занижается).
+    work_days = [
+        d
+        for d in _daterange(a.start_date, a.end_date)
+        if emp_avail.get(d, 0.0) > 0
+    ] or _daterange(a.start_date, a.end_date)
+    per_day = (a.hours_allocated or 0.0) / len(work_days)
+    return {d: per_day for d in work_days}
 
 
 def _live_conflicts(
@@ -1132,7 +1580,8 @@ def _live_conflicts(
     plan: ResourcePlan,
     assignments_raw: List[ResourcePlanAssignment],
 ) -> List[ConflictOut]:
-    """«Живые» пересечения привлечённых этого плана с планами других команд.
+    """«Живые» пересечения с планами других команд у тех, кого этот план
+    уступает: привлечённых и тех, у кого его команда не основная.
 
     Тот же расчёт, что у диаграммы, — для остальных читателей конфликтов
     (список, расшифровки). ``assignments_raw`` может быть частью плана:
@@ -1153,12 +1602,13 @@ def _live_conflicts(
     if not emp_ids:
         return []
     borrowed = cto.borrowed_ids(db, plan.team, q_start, q_end, emp_ids)
-    if not borrowed:
+    yielding = borrowed | cto.guest_ids(db, plan.team, q_start, q_end, emp_ids)
+    if not yielding:
         return []
     employees = (
         db.execute(
             select(Employee).where(
-                Employee.id.in_(list(borrowed)),
+                Employee.id.in_(list(yielding)),
                 Employee.is_active == True,  # noqa: E712
             )
         )
@@ -1173,11 +1623,12 @@ def _live_conflicts(
     return _cross_team_conflicts(
         plan,
         list(assignments_raw),
-        borrowed,
+        yielding,
         _daily_used(assignments_raw, capacity),
         capacity,
         bookings,
         {e.id: e.display_name for e in employees},
+        cto.base_other_share(db, employees, plan.year, cto.quarter_num(plan.quarter)),
     )
 
 
@@ -1274,12 +1725,28 @@ def get_gantt(
                 (x.id, x.start_date, x.end_date)
             )
 
+    # Заблокированные периодами дни исполнителей — те же, что у планировщика.
+    starts = [a.start_date for a in assignments_raw if a.start_date]
+    ends = [a.end_date for a in assignments_raw if a.end_date]
+    blocked_by_emp = (
+        sb.resolve_blocked_days(
+            db,
+            {a.employee.id: a.employee for a in assignments_raw if a.employee}.values(),
+            min(starts),
+            max(ends),
+            plan.team,
+        )
+        if starts and ends
+        else {}
+    )
+
     def _unavailable_days(a: ResourcePlanAssignment) -> list[UnavailableDay]:
         if not a.start_date or not a.end_date:
             return []
         out: list[UnavailableDay] = []
         d = a.start_date
         emp_absences = absences_by_emp.get(a.employee_id, [])
+        emp_blocked = blocked_by_emp.get(a.employee_id or "", {})
         emp_preempts = [
             (sid, ss, se) for sid, ss, se in preempt_windows_by_emp.get(a.employee_id, [])
             if sid != a.id and not (se < a.start_date or ss > a.end_date)
@@ -1303,12 +1770,16 @@ def get_gantt(
                 ss <= d <= se for _sid, ss, se in emp_preempts
             ):
                 kind = "block"
+            if kind is None and d in emp_blocked:
+                kind = "block"
             if kind:
                 out.append(UnavailableDay(date=d, type=kind))
             d += _td(days=1)
         return out
 
     worklog_map = _compute_worklog_hours_actual(db, assignments_raw)
+    work_groups, employee_subgroups = _plan_subgroups(db, plan, assignments_raw)
+    other_subgroup_ids = _other_subgroup_ids(db, plan, assignments_raw, work_groups)
 
     assignments = [
         _assignment_to_out(
@@ -1318,6 +1789,8 @@ def get_gantt(
             chunk_index=(a.part_number - 1) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             worklog_hours_actual=worklog_map.get(a.id, 0.0),
+            other_subgroup=a.id in other_subgroup_ids,
+            subgroup_id=work_groups.get(a.id),
         )
         for a in assignments_raw
     ]
@@ -1327,6 +1800,7 @@ def get_gantt(
     live_conflicts: list[ConflictOut] = []
     employee_load: list[EmployeeLoadOut] = []
     changed_teams: list[str] = []
+    reserve_out: Optional[ReserveOut] = None
     if plan.team:
         from app.models import Employee
         from app.services.resource_planning_service import ResourcePlanningService
@@ -1382,9 +1856,100 @@ def get_gantt(
             }
             # Часы по дням на сотрудника — из реальной раскладки планировщика.
             used = _daily_used(assignments_raw, avail)
+            # Доля дня вне задачи по вовлечённости фаз дня — этого плана и
+            # броней: остаток дня с задачей, который берут нормированные работы.
+            # Вовлечённость — как у планировщика: личная исполнителя главнее.
+            inv_defaults = _plan_involvement_defaults(db, plan.id)
+            quarter = cto.quarter_num(plan.quarter)
+            personal_inv = (
+                {
+                    eid: s.involvement
+                    for eid, s in personal_for(
+                        db, [e.id for e in plan_employees], plan.year, quarter
+                    ).items()
+                }
+                if plan.year and quarter
+                else {}
+            )
+            own_phases = [
+                (
+                    a.employee_id,
+                    effective_for_phase(
+                        a.backlog_item,
+                        a.phase,
+                        inv_defaults,
+                        personal_inv.get(a.employee_id),
+                    ),
+                    _assignment_days(a, avail[a.employee_id]),
+                )
+                for a in assignments_raw
+                if a.employee_id in avail
+                and a.backlog_item is not None
+                and a.start_date
+                and a.end_date
+            ]
+            other_share = cto.other_work_share(
+                own_phases
+                + [(b.employee_id, b.involvement, b.daily_hours) for b in bookings]
+            )
+            # Прочие работы есть каждый рабочий день: в день без задач (и у
+            # задач без вовлечённости) — доля человека по справочнику его
+            # домашней команды. Нужна отметкам и конфликтам пересечений.
+            base_share = cto.base_other_share(db, plan_employees, plan.year, quarter)
+            # Заблокированные дни людей плана на всё окно — для отпечатка плана.
+            blocked_hits = sb.resolve_blocked_days(
+                db, list(plan_employees), q_start, q_end_ext, plan.team
+            )
+            # Нормированные работы — запас основных команд людей плана (см.
+            # app/services/normed_reserve.py). Раскладка — по всему кварталу
+            # человека: цифры не зависят от плана, в котором на него смотрят.
+            # Запас считается раз на основную команду, не на человека.
+            loads: Dict[str, nr.PersonLoad] = {}
+            reserves: Dict[str, Optional[nr.TeamReserve]] = {}
+            labels: Dict[str, str] = {}
+            if plan.year and quarter:
+                # Норма дня — по той же шкале, что ёмкость дня в подвале:
+                # календарь минус отсутствия, без команды и периодов.
+                full_cap = {
+                    eid: {d: h for d, h in days.items() if h > 0}
+                    for eid, days in svc.build_availability(
+                        list(plan_employees), q_start, q_end
+                    ).items()
+                }
+                home_teams = {
+                    t
+                    for rows_ in membership.values()
+                    for t, joined, left, primary in rows_
+                    if primary
+                    and (joined is None or joined <= q_end)
+                    and (left is None or left > q_start)
+                }
+                reserves = {
+                    t: nr.team_reserve(db, t, plan.year, quarter) for t in sorted(home_teams)
+                }
+                labels = next((r.labels for r in reserves.values() if r), {}) or {
+                    w.id: w.label for w in db.execute(select(MandatoryWorkType)).scalars()
+                }
+                # Показываются периоды основной команды и общие — как вне
+                # плана: периоды неосновной команды закрывают день только в её
+                # планах, и показ не должен зависеть от плана.
+                shown_hits = sb.resolve_blocked_days(
+                    db, list(plan_employees), q_start, q_end, None
+                )
+                for emp in plan_employees:
+                    loads[emp.id] = nr.place_person(
+                        full_cap[emp.id],
+                        used.get(emp.id, {}),
+                        ext_daily.get(emp.id, {}),
+                        other_share.get(emp.id, {}),
+                        shown_hits.get(emp.id, {}),
+                        nr.merge_person(reserves.values(), emp.id),
+                        labels,
+                    )
             for e in plan_employees:
                 emp_abs = absences_by_emp.get(e.id, [])
                 emp_spans = member_iv.get(e.id) or []
+                load = loads.get(e.id)
                 days_out: list[EmployeeLoadDay] = []
                 d = q_start
                 while d <= q_end:
@@ -1393,6 +1958,15 @@ def get_gantt(
                     pct = (u / av * 100.0) if av > 0 else 0.0
                     ext_h = ext_daily.get(e.id, {}).get(d, 0.0)
                     ext_pct = (ext_h / av * 100.0) if av > 0 else 0.0
+                    # Нормированные работы — только в дни, когда человек в плане.
+                    normed_h = load.normed_by_day.get(d, 0.0) if load and av > 0 else 0.0
+                    hit = load.blocked.get(d) if load and av > 0 else None
+                    wt_label = labels.get(hit.work_type_id or "") if hit else None
+                    blocked_label = (
+                        (f"{hit.reason} · {wt_label}" if wt_label else hit.reason)
+                        if hit
+                        else None
+                    )
                     # Признак нерабочего дня (календарь имеет приоритет над отпуском).
                     cal_h = cal_map.get(d, None)
                     if cal_h is None:
@@ -1412,7 +1986,13 @@ def get_gantt(
                         off = None
                     days_out.append(
                         EmployeeLoadDay(
-                            date=d, pct=round(pct, 1), off=off, ext_pct=round(ext_pct, 1)
+                            date=d,
+                            pct=round(pct, 1),
+                            off=off,
+                            ext_pct=round(ext_pct, 1),
+                            normed_pct=round(normed_h / av * 100.0, 1) if av > 0 else 0.0,
+                            normed_hours=round(normed_h, 2),
+                            blocked=blocked_label,
                         )
                     )
                     d += _td(days=1)
@@ -1447,24 +2027,62 @@ def get_gantt(
                         joined_from=joined_from,
                         is_borrowed=e.id in borrowed,
                         borrowed_from=home_team.get(e.id),
+                        quarter=(
+                            EmployeeQuarterLoad(
+                                capacity_hours=round(load.capacity, 1),
+                                own_hours=round(load.own, 1),
+                                other_teams_hours=round(load.other_teams, 1),
+                                normed_hours=round(load.normed, 1),
+                                unplaced_hours=round(load.unplaced, 1),
+                                pct=round(load.pct, 1),
+                                normed_by_type=[
+                                    NormedTypeHours(label=k, hours=round(v, 1))
+                                    for k, v in sorted(
+                                        load.normed_by_type.items(), key=lambda kv: -kv[1]
+                                    )
+                                ],
+                            )
+                            if load
+                            else None
+                        ),
                     )
                 )
             names = {e.id: e.display_name for e in plan_employees}
+            # Кого этот план уступает другим командам: привлечённых и тех, у
+            # кого команда плана не основная. У них пересечение — конфликт.
+            yielding = borrowed | {b.employee_id for b in bookings if b.yields_here}
             # Дни, где этот план и брони других команд вместе больше дня
             # человека, — тем же расчётом, что и живой конфликт техкоманды.
-            # У своих людей — только в опорном плане команды: конфликт
+            # У остальных своих — только в опорном плане команды: конфликт
             # техкоманды считается по нему, в других планах отметка ложная.
-            quarter = cto.quarter_num(plan.quarter)
             ref = (
                 cto.reference_plans(db, plan.year, quarter).get(plan.team)
                 if plan.year and quarter
                 else None
             )
             is_reference = ref is not None and ref.plan_id == plan.id
+            # Прочие работы добавляются той команде, под которую подстраиваются:
+            # у уступающих — брони других команд, у домашней — этот план. Так
+            # отметка в домашнем плане совпадает с конфликтом техкоманды.
+            occupied = cto.occupied_hours(bookings, avail, base_share)
+            own_share = cto.other_work_share(own_phases)
             overlap_by_emp = {
-                eid: set(cto.overlap_days(used.get(eid, {}), days, avail.get(eid, {})))
+                eid: set(
+                    cto.overlap_days(
+                        used.get(eid, {}),
+                        occupied[eid]
+                        if eid in yielding
+                        else {
+                            d: h
+                            + avail.get(eid, {}).get(d, 0.0)
+                            * own_share.get(eid, {}).get(d, base_share.get(eid, 0.0))
+                            for d, h in days.items()
+                        },
+                        avail.get(eid, {}),
+                    )
+                )
                 for eid, days in ext_daily.items()
-                if is_reference or eid in borrowed
+                if is_reference or eid in yielding
             }
             external_out = [
                 ExternalBookingOut(
@@ -1489,16 +2107,31 @@ def get_gantt(
                 )
                 for b in bookings
             ]
-            # План устарел, если вычитаемые из его доступности брони
-            # разошлись с учтёнными при расчёте (отпечаток по командам).
+            # План устарел, если вычитаемые из его доступности брони или
+            # заблокированные дни основных команд его людей разошлись с
+            # учтёнными при расчёте (отпечаток по командам).
+            blocked_cells = sb.cells_by_team(blocked_hits, exclude_team=plan.team)
             changed_teams = cto.stale_teams(
                 plan.external_fingerprint,
                 cto.subtractable(bookings, borrowed),
                 plan.computed_at,
+                blocked_cells,
             )
             live_conflicts = _cross_team_conflicts(
-                plan, list(assignments_raw), borrowed, used, avail, bookings, names
+                plan, list(assignments_raw), yielding, used, avail, bookings, names,
+                base_share,
             )
+            # Сводка запаса и его предупреждения — для команды плана.
+            if plan.team in reserves:
+                plan_reserve = reserves[plan.team]
+            elif plan.year and quarter:
+                plan_reserve = nr.team_reserve(db, plan.team, plan.year, quarter)
+            else:
+                plan_reserve = None
+            if plan_reserve is not None:
+                roles = _role_labels(db)
+                reserve_out = _reserve_out(plan_reserve, roles)
+                live_conflicts += _normed_warnings(plan, plan_reserve, loads, names, roles)
 
     conflicts = _detect_conflicts(plan, assignments_raw, db) + live_conflicts
     pert_projection = _compute_pert_projection(plan, assignments_raw, db)
@@ -1540,9 +2173,11 @@ def get_gantt(
         pert_projection=pert_projection,
         dependencies=deps,
         employee_load=employee_load,
+        employee_subgroups=employee_subgroups,
         external_bookings=external_out,
         stale_due_to_other_teams=bool(changed_teams),
         stale_teams=changed_teams,
+        reserve=reserve_out,
         reset_counts=reset_counts,
     )
 
@@ -2771,18 +3406,6 @@ def explain_conflict(
         if owner:
             employees.append(owner)
 
-    blocks = (
-        db.execute(
-            select(ScheduledBlock).where(
-                (ScheduledBlock.team == team) | (ScheduledBlock.team.is_(None))
-            )
-            if team
-            else select(ScheduledBlock)
-        )
-        .scalars()
-        .all()
-    )
-
     svc = ResourcePlanningService(db)
     # Привлечённому дни вне команды плана — норма. Ёмкость остаётся «сырой»
     # (без броней других команд): перегрузку выравниватель меряет так же.
@@ -2792,8 +3415,9 @@ def explain_conflict(
     except ValueError:
         borrowed_here = set()
     availability = svc.build_availability(
-        employees, target_date, target_date, list(blocks), team=team,
-        borrowed=borrowed_here,
+        employees, target_date, target_date,
+        sb.resolve_blocked_days(db, employees, target_date, target_date, team),
+        team=team, borrowed=borrowed_here,
     )
     avail_map = availability.get(c.employee_id, {})
     available_h = float(avail_map.get(target_date, 0.0))
@@ -2822,11 +3446,12 @@ def explain_conflict(
     emp_horizon_end = max(
         (a.end_date for a in assignments if a.end_date), default=target_date
     )
+    owner_only = [e for e in employees if e.id == c.employee_id]
     full_avail = svc.build_availability(
-        [e for e in employees if e.id == c.employee_id],
+        owner_only,
         emp_horizon_start,
         emp_horizon_end,
-        list(blocks),
+        sb.resolve_blocked_days(db, owner_only, emp_horizon_start, emp_horizon_end, team),
         team=team,
         borrowed=borrowed_here,
     ).get(c.employee_id, {})
@@ -2961,12 +3586,14 @@ def _classify_day(
     used_h: float,
     skip_assignment_id: Optional[str] = None,
     bookings: Optional[List[cto.ExternalBooking]] = None,
+    blocked: Optional[Dict[date, sb.BlockHit]] = None,
 ) -> Dict[str, object]:
     """Классификация одного дня для daily_breakdown / algorithm_log.
 
-    Возвращает dict {status, absence_reason, blocker_*}. ``bookings`` — брони
-    сотрудника в опорных планах других команд: день, который они съели
-    целиком, — «занят» их задачей, а не блокировка.
+    Возвращает dict {status, absence_reason, block_reason, blocker_*}.
+    ``bookings`` — брони сотрудника в опорных планах других команд: день,
+    который они съели целиком, — «занят» их задачей, а не блокировка.
+    ``blocked`` — заблокированные периодами дни исполнителя в этом плане.
     """
     cal = calendar_map.get(d)
     if cal and not cal.is_workday:
@@ -2988,6 +3615,9 @@ def _classify_day(
         }
     if used_h > 0:
         return {"status": "work"}
+    hit = (blocked or {}).get(d)
+    if hit is not None:
+        return {"status": "blocked", "block_reason": hit.reason}
     avail_h = avail_map.get(d, 0.0)
     if avail_h <= 0.01:
         booking = max(
@@ -3034,6 +3664,7 @@ def _build_algorithm_log(
     absences: list,
     calendar_map: dict,
     bookings: Optional[List[cto.ExternalBooking]] = None,
+    blocked: Optional[Dict[date, sb.BlockHit]] = None,
 ) -> List[str]:
     """Текст «откуда дата старта» для боковой панели.
 
@@ -3078,10 +3709,12 @@ def _build_algorithm_log(
                 used_h=0.0,
                 skip_assignment_id=a.id,
                 bookings=bookings,
+                blocked=blocked,
             )
             key = (
                 info["status"],
                 info.get("absence_reason"),
+                info.get("block_reason"),
                 info.get("blocker_item_key"),
                 info.get("blocker_phase_label"),
             )
@@ -3100,6 +3733,8 @@ def _build_algorithm_log(
                 status = info["status"]
                 if status == "absence":
                     log.append(f"  · {rng} — отсутствие ({info.get('absence_reason')}).")
+                elif status == "blocked":
+                    log.append(f"  · {rng} — заблокировано ({info.get('block_reason')}).")
                 elif status == "holiday":
                     log.append(f"  · {rng} — праздник.")
                 elif status == "weekend":
@@ -3172,6 +3807,7 @@ def _build_daily_breakdown(
     calendar_map: dict,
     expected_start: Optional[date] = None,
     bookings: Optional[List[cto.ExternalBooking]] = None,
+    blocked: Optional[Dict[date, sb.BlockHit]] = None,
 ) -> List[DailyBreakdownItem]:
     """Посуточная разбивка фазы.
 
@@ -3209,6 +3845,7 @@ def _build_daily_breakdown(
             used_h=used_h,
             skip_assignment_id=a.id,
             bookings=bookings,
+            blocked=blocked,
         )
         status = info["status"]
         # На рабочем дне фаза могла взять лишь часть часов — остаток ушёл
@@ -3236,6 +3873,7 @@ def _build_daily_breakdown(
             blocker_item_key=info.get("blocker_item_key"),
             blocker_phase_label=info.get("blocker_phase_label"),
             absence_reason=info.get("absence_reason"),
+            block_reason=info.get("block_reason"),
             is_pre_start=is_pre,
             co_occupants=co_occupants,
         ))
@@ -3283,18 +3921,44 @@ def _plan_involvement_defaults(db: Session, plan_id: Optional[str]) -> Dict[str,
     return team_defaults(db, plan.team, plan.year, quarter or None)
 
 
+def _personal_involvement(
+    db: Session, plan_id: Optional[str], employee_id: Optional[str],
+) -> Optional[float]:
+    """Личная вовлечённость исполнителя на квартал плана; None — не задана."""
+    if not plan_id or not employee_id:
+        return None
+    plan = db.get(ResourcePlan, plan_id)
+    quarter = cto.quarter_num(plan.quarter) if plan is not None else None
+    if plan is None or not plan.year or not quarter:
+        return None
+    s = personal_for(db, [employee_id], plan.year, quarter).get(employee_id)
+    return s.involvement if s is not None else None
+
+
 def _effective_involvement(
     db: Session, a: "ResourcePlanAssignment", bi: "BacklogItem",
-) -> Optional[float]:
-    """Вовлечённость фазы так же, как её считает планировщик."""
-    return effective_for_phase(bi, a.phase, _plan_involvement_defaults(db, a.plan_id))
+) -> tuple[Optional[float], Optional[InvolvementSource]]:
+    """Вовлечённость фазы так же, как её считает планировщик, и её источник:
+    "employee" — личная исполнителя, "task" — своё значение задачи, "team" —
+    справочник команды; (None, None) — не задана нигде."""
+    personal = _personal_involvement(db, a.plan_id, a.employee_id)
+    inv = effective_for_phase(
+        bi, a.phase, _plan_involvement_defaults(db, a.plan_id), personal
+    )
+    if inv is None:
+        return None, None
+    if personal is not None:
+        return inv, "employee"
+    return inv, "task" if getattr(bi, PHASE_FIELD[a.phase]) is not None else "team"
 
 
 def _build_phase_calc(
     a: "ResourcePlanAssignment",
-    db: Session,
+    bi: Optional["BacklogItem"],
+    inv: Optional[float],
+    inv_source: Optional[InvolvementSource],
 ) -> Optional[PhaseCalcDetails]:
-    bi = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
+    """Расчёт фазы; ``inv``/``inv_source`` — из `_effective_involvement`."""
     if not bi:
         return None
     phase = a.phase
@@ -3319,17 +3983,14 @@ def _build_phase_calc(
     if dur_field is None or inv_field is None:
         return None
     duration = getattr(bi, dur_field, None)
-    own_inv = getattr(bi, inv_field, None)
-    inv = _effective_involvement(db, a, bi)
     parallel = getattr(bi, par_field, None) if par_field else None
-    inv_pct = int(inv * 100) if inv else None
-    daily_cap = 8.0 * (inv or 1.0) * (parallel or 1)
+    # 0% — это 0%, а не «не задана»: планировщик даёт такой фазе 0 ч в день.
+    inv_pct = int(inv * 100) if inv is not None else None
+    daily_cap = 8.0 * (1.0 if inv is None else inv) * (parallel or 1)
     return PhaseCalcDetails(
         duration_days_jira=int(duration) if duration else None,
         involvement_pct=inv_pct,
-        involvement_source=(
-            "task" if own_inv is not None else ("team" if inv is not None else None)
-        ),
+        involvement_source=inv_source,
         parallel_count=int(parallel or 1),
         role_pct=None,
         daily_capacity_hours=round(daily_cap, 2),
@@ -3455,18 +4116,6 @@ def explain_assignment(
         if owner:
             employees.append(owner)
 
-    blocks = (
-        db.execute(
-            select(ScheduledBlock).where(
-                (ScheduledBlock.team == team) | (ScheduledBlock.team.is_(None))
-            )
-            if team
-            else select(ScheduledBlock)
-        )
-        .scalars()
-        .all()
-    )
-
     svc = ResourcePlanningService(db)
     phase_label = {"analyst": "Анализ", "dev": "Разработка", "qa": "Тестирование", "opo": "ОПЭ"}
 
@@ -3519,6 +4168,7 @@ def explain_assignment(
     # конфликта меряют перегрузку.
     raw_full_avail: Dict[date, float] = {}
     other_bookings: List[cto.ExternalBooking] = []
+    owner_blocked: Dict[date, sb.BlockHit] = {}
     if a.employee_id and horizon_start and horizon_end:
         # Привлечённому дни вне команды плана — норма, а не «вне команды».
         try:
@@ -3526,13 +4176,20 @@ def explain_assignment(
             borrowed_here = cto.borrowed_ids(
                 db, plan.team, eq_start, eq_end, [a.employee_id]
             )
+            yields_here = borrowed_here | cto.guest_ids(
+                db, plan.team, eq_start, eq_end, [a.employee_id]
+            )
         except ValueError:
             borrowed_here = set()
+            yields_here = set()
+        owner_only = [e for e in employees if e.id == a.employee_id]
+        owner_hits = sb.resolve_blocked_days(db, owner_only, horizon_start, horizon_end, plan.team)
+        owner_blocked = owner_hits.get(a.employee_id, {})
         raw_avail = svc.build_availability(
-            [e for e in employees if e.id == a.employee_id],
+            owner_only,
             horizon_start,
             horizon_end,
-            list(blocks),
+            owner_hits,
             team=plan.team,
             borrowed=borrowed_here,
         )
@@ -3551,8 +4208,16 @@ def explain_assignment(
             ),
             borrowed_here,
         )
+        # Прочие работы каждый день — как у планировщика: доля человека
+        # вычитается, если план его уступает.
+        base_here = cto.base_other_share(
+            db,
+            [e for e in employees if e.id in yields_here],
+            plan.year,
+            cto.quarter_num(plan.quarter),
+        )
         full_avail = cto.subtract_occupancy(
-            raw_avail, cto.daily_totals(other_bookings)
+            raw_avail, cto.busy_hours(other_bookings, raw_avail, base_here)
         ).get(a.employee_id, {})
 
     # Calendar map для окна фазы (расширено влево до expected_start для трассы).
@@ -3575,8 +4240,11 @@ def explain_assignment(
     # «Доступно» в детализации = календарь × involvement, чтобы единообразно
     # для всех фаз (Анализ/Разработка/Тестирование/ОПЭ) показывать сколько
     # часов реально может уйти на этот проект, а не голый календарь.
+    # Считается один раз: та же вовлечённость — в блоке расчёта фазы ниже.
     _bi_for_inv = db.get(BacklogItem, a.backlog_item_id) if a.backlog_item_id else None
-    _inv_raw = _effective_involvement(db, a, _bi_for_inv) if _bi_for_inv else None
+    _inv_raw, _inv_source = (
+        _effective_involvement(db, a, _bi_for_inv) if _bi_for_inv else (None, None)
+    )
     _inv_value = float(_inv_raw) if _inv_raw is not None else 1.0
 
     # QA — внешний ресурс без сотрудника. Доступность по дням = 8ч × involvement_qa
@@ -3707,7 +4375,7 @@ def explain_assignment(
             "is_live": True,
         })
 
-    _phase_calc = _build_phase_calc(a, db)
+    _phase_calc = _build_phase_calc(a, _bi_for_inv, _inv_raw, _inv_source)
     _hours_summary = _build_hours_summary(a, full_avail)
 
     return {
@@ -3717,14 +4385,14 @@ def explain_assignment(
         "algorithm_log": _build_algorithm_log(
             a, plan, all_emp_assignments, same_item_assignments,
             full_avail, absences_in_window_raw, calendar_map,
-            bookings=other_bookings,
+            bookings=other_bookings, blocked=owner_blocked,
         ),
         "daily_breakdown": [
             item.model_dump(mode="json")
             for item in _build_daily_breakdown(
                 a, full_avail, all_emp_assignments, absences_in_window_raw,
                 calendar_map, expected_start=expected_start_date,
-                bookings=other_bookings,
+                bookings=other_bookings, blocked=owner_blocked,
             )
         ],
         "absences_in_window": [

@@ -9,8 +9,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (
     EmployeeCapacityOverride,
+    EmployeePersonalNormed,
     MandatoryWorkType,
     RoleCapacityRule,
+    ScheduledBlock,
+    TeamWorkTypeOverride,
 )
 
 router = APIRouter()
@@ -130,6 +133,29 @@ def delete_work_type(wt_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=409,
             detail="Work type is referenced by rules/overrides; deactivate it instead.",
+        )
+    # Ссылки из ресурсного плана: на PostgreSQL удаление упало бы на внешнем ключе.
+    in_plans = (
+        db.query(ScheduledBlock.id).filter(ScheduledBlock.work_type_id == wt_id).first()
+        or db.query(TeamWorkTypeOverride.id)
+        .filter(TeamWorkTypeOverride.work_type_id == wt_id)
+        .first()
+    )
+    if in_plans is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Вид работ используется в заблокированных периодах или в выборе вида "
+            "у задач других команд",
+        )
+    in_personal = (
+        db.query(EmployeePersonalNormed.id)
+        .filter(EmployeePersonalNormed.work_type_id == wt_id)
+        .first()
+    )
+    if in_personal is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Вид работ используется в личных нормированных работах сотрудников",
         )
     db.delete(wt)
     db.commit()

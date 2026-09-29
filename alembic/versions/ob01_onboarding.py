@@ -1,7 +1,7 @@
 """«Первые шаги»: отметки шагов команды и личное состояние пользователя
 
 Revision ID: ob01_onboarding
-Revises: pq07_assignment_opo_part
+Revises: sg02_drop_employee_team_subgroup
 Create Date: 2026-09-28
 
 Таблица могла быть создана раньше (create_all в тестах на локальной базе) —
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "ob01_onboarding"
-down_revision: Union[str, None] = "pq07_assignment_opo_part"
+down_revision: Union[str, None] = "sg02_drop_employee_team_subgroup"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,19 +1,22 @@
 import { Fragment, useMemo, useState } from 'react';
 
-import type { AssignmentOut, EmployeeLoadOut, ExternalBookingOut } from '../../api/resourcePlanning';
+import type { AssignmentOut, EmployeeLoadOut, EmployeeQuarterLoad, ExternalBookingOut } from '../../api/resourcePlanning';
 import { dayTooltipLines } from '../../utils/rpBusy';
-import { EXT_LOAD_COLOR, splitLoadFill } from '../../utils/heatmapFill';
+import { EXT_LOAD_COLOR, NORMED_WORK_COLOR, splitLoadFill } from '../../utils/heatmapFill';
+import { fmtHours } from '../../utils/normedReserve';
 
 interface Props {
   rows: EmployeeLoadOut[];
   /**
-   * Сотрудник -> имя группы внутри команды. Пусто — команда не делится,
-   * строки идут сплошным списком, как раньше.
+   * Сотрудник -> его группы внутри команды (первая — главная). Пусто —
+   * команда не делится, строки идут сплошным списком, как раньше.
    *
    * План остаётся общекомандным сознательно: занятость человека считается
-   * сквозь все группы, иначе перегруз в соседней группе не виден.
+   * сквозь все группы, иначе перегруз в соседней группе не виден. Строка
+   * человека — одна, под его главной группой; при делении между группами
+   * рядом с именем показывается пометка «общий».
    */
-  subgroupByEmployee?: Record<string, string>;
+  subgroupByEmployee?: Record<string, string[]>;
   /** Порядок групп; «Без группы» всегда последняя. */
   subgroupOrder?: string[];
   /** Фазы плана — подсказка дня: часы и задачи этого плана. */
@@ -97,6 +100,17 @@ function outOfTeamText(row: EmployeeLoadOut, date: string): string {
   return 'вне команды';
 }
 
+/** Подсказка у имени: разбивка загрузки за квартал. */
+function quarterTooltip(q: EmployeeQuarterLoad): string {
+  const lines = [
+    `Задачи плана ${fmtHours(q.own_hours)} · Другие команды ${fmtHours(q.other_teams_hours)} · Нормированные работы ${fmtHours(q.normed_hours)}`,
+  ];
+  for (const t of q.normed_by_type) lines.push(`  ${t.label} — ${fmtHours(t.hours)}`);
+  if (q.unplaced_hours > 0.5) lines.push(`Не вмещается ${fmtHours(q.unplaced_hours)}`);
+  lines.push(`Норма квартала ${fmtHours(q.capacity_hours)}`);
+  return lines.join('\n');
+}
+
 /** Цвет клетки рабочего дня по загрузке. */
 function loadColor(pct: number): { bg: string; border?: string } {
   if (pct <= 0) {
@@ -170,26 +184,19 @@ export default function EmployeeLoadHeatmap({
 
     const empRows = rows.map((r) => {
       const byDate = new Map(r.days.map((d) => [d.date, d] as const));
-      // Среднее — по всем рабочим дням квартала, включая свободные: иначе
-      // бейдж показывает интенсивность в занятые дни, а не утилизацию.
-      const workPcts: number[] = [];
-      for (const ds of dates) {
-        const d = byDate.get(ds);
-        if (d && !d.off) workPcts.push(d.pct);
-      }
-      const avg = workPcts.length ? Math.round(workPcts.reduce((s, p) => s + p, 0) / workPcts.length) : 0;
       const allEmpty = dates.every((ds) => {
         const d = byDate.get(ds);
-        return !d || d.off || (d.pct <= 0 && !((d.ext_pct ?? 0) > 0));
+        return !d || d.off || (d.pct <= 0 && !((d.ext_pct ?? 0) > 0) && !((d.normed_pct ?? 0) > 0));
       });
-      return { row: r, byDate, avg, allEmpty };
+      return { row: r, byDate, allEmpty };
     });
     const hasExt = rows.some((r) => r.days.some((d) => (d.ext_pct ?? 0) > 0));
+    const hasNormed = rows.some((r) => r.days.some((d) => (d.normed_pct ?? 0) > 0));
 
     const first = isoDate(dates[0]);
     const last = isoDate(dates[dates.length - 1]);
     const periodLabel = `${first.getDate()} ${RU_MONTHS_SHORT[first.getMonth()]} – ${last.getDate()} ${RU_MONTHS_SHORT[last.getMonth()]}`;
-    return { weeks, empRows, periodLabel, hasExt };
+    return { weeks, empRows, periodLabel, hasExt, hasNormed };
   }, [rows]);
 
   // Привлечённые из других команд — отдельная секция внизу.
@@ -200,8 +207,9 @@ export default function EmployeeLoadHeatmap({
   );
   const hasSubgroups = Object.keys(subgroupByEmployee ?? {}).length > 0;
   const grouped = hasSubgroups || borrowedIds.size > 0;
+  // Главная группа — первая в списке (сервер отдаёт по убыванию доли).
   const groupOf = (employeeId: string) =>
-    borrowedIds.has(employeeId) ? BORROWED : (subgroupByEmployee?.[employeeId] ?? '');
+    borrowedIds.has(employeeId) ? BORROWED : (subgroupByEmployee?.[employeeId]?.[0] ?? '');
   const sectionTitle = (group: string) => group || (hasSubgroups ? 'Без группы' : 'Команда');
 
   // Порядок групп из реестра; «Без группы» — после них, «Привлечённые» — в самом конце.
@@ -237,7 +245,10 @@ export default function EmployeeLoadHeatmap({
     else if (off === 'holiday') body = ['праздник'];
     else {
       // По строке на этот план и на каждую другую команду: часы и задачи дня.
-      const lines = dayTooltipLines(row.employee_id, date, assignments, bookings);
+      const day = row.days.find((d) => d.date === date);
+      const lines = dayTooltipLines(
+        row.employee_id, date, assignments, bookings, day?.normed_hours ?? 0, day?.blocked,
+      );
       body = lines.length > 0 ? lines : ['нет загрузки'];
     }
     // У правого края экрана подсказка раскрывается влево от курсора, иначе уходит за край.
@@ -265,7 +276,7 @@ export default function EmployeeLoadHeatmap({
         <div style={{ fontSize: 11, color: 'var(--text-muted, #7a9ab8)' }}>{data.periodLabel}</div>
       </div>
       <div style={{ fontSize: 11, color: '#5a7a9a', marginBottom: 8 }}>
-        Только рабочие дни. Наведите на день — часы по задачам этого плана и других команд; щелчок по имени — фильтр по человеку.
+        Только рабочие дни. Нормированные работы — запас квартала из сценария основной команды: заблокированные периоды, остаток дня после вовлечённости и остальное — на свободные дни. Процент у имени — загрузка за квартал с задачами других команд и нормированными работами. Наведите на день — часы; на процент у имени — разбивка; щелчок по имени — фильтр по человеку.
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -314,10 +325,15 @@ export default function EmployeeLoadHeatmap({
           </div>
 
           {/* Строки сотрудников; при делении команды — секциями по группам. */}
-          {orderedRows.map(({ row, byDate, avg, allEmpty }, ri) => {
-            const avgColor = loadColor(avg);
+          {orderedRows.map(({ row, byDate, allEmpty }, ri) => {
+            const avg = Math.round(row.quarter?.pct ?? 0);
+            // Порог перегруза квартала — 100% (у клеток дня, где перегруз бывает
+            // обычным делом на один день, шкала другая — см. loadColor).
+            const avgColor = avg > 100 ? { bg: 'hsl(4 78% 52%)' } : loadColor(avg);
             // У привлечённого вместо «пришёл / выбыл» — из какой он команды.
             const note = row.is_borrowed ? borrowedNote(row) : moveNote(row);
+            // Больше одной группы — пометка «общий», строка всё равно одна.
+            const employeeGroups = subgroupByEmployee?.[row.employee_id] ?? [];
             const group = groupOf(row.employee_id);
             const prev = ri === 0 ? null : groupOf(orderedRows[ri - 1].row.employee_id);
             const header = grouped && group !== prev ? (
@@ -365,34 +381,53 @@ export default function EmployeeLoadHeatmap({
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                    <span
-                      role={onEmployeeClick ? 'button' : undefined}
-                      tabIndex={onEmployeeClick ? 0 : undefined}
-                      aria-pressed={onEmployeeClick ? selectedIds.includes(row.employee_id) : undefined}
-                      onClick={onEmployeeClick ? () => onEmployeeClick(row.employee_id) : undefined}
-                      onKeyDown={onEmployeeClick ? (e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          onEmployeeClick(row.employee_id);
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                      <span
+                        role={onEmployeeClick ? 'button' : undefined}
+                        tabIndex={onEmployeeClick ? 0 : undefined}
+                        aria-pressed={onEmployeeClick ? selectedIds.includes(row.employee_id) : undefined}
+                        onClick={onEmployeeClick ? () => onEmployeeClick(row.employee_id) : undefined}
+                        onKeyDown={onEmployeeClick ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onEmployeeClick(row.employee_id);
+                          }
+                        } : undefined}
+                        title={
+                          onEmployeeClick
+                            ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать'
+                            : undefined
                         }
-                      } : undefined}
-                      title={
-                        onEmployeeClick
-                          ? 'Щёлкните, чтобы добавить человека в фильтр «Исполнители» или убрать'
-                          : undefined
-                      }
-                      style={{
-                        fontSize: 12,
-                        color: selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
-                        fontWeight: selectedIds.includes(row.employee_id) ? 700 : undefined,
-                        cursor: onEmployeeClick ? 'pointer' : undefined,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {row.employee_name ?? row.employee_id}
-                    </span>
+                        style={{
+                          fontSize: 12,
+                          color: selectedIds.includes(row.employee_id) ? '#00c9c8' : '#fff',
+                          fontWeight: selectedIds.includes(row.employee_id) ? 700 : undefined,
+                          cursor: onEmployeeClick ? 'pointer' : undefined,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {row.employee_name ?? row.employee_id}
+                      </span>
+                      {employeeGroups.length > 1 && (
+                        <span
+                          title={`Работает в группах: ${employeeGroups.join(', ')}`}
+                          style={{
+                            flexShrink: 0,
+                            fontSize: 9,
+                            lineHeight: '13px',
+                            padding: '0 4px',
+                            borderRadius: 3,
+                            color: '#b39ddb',
+                            background: 'rgba(179,157,219,0.16)',
+                            border: '1px solid rgba(179,157,219,0.4)',
+                          }}
+                        >
+                          общий
+                        </span>
+                      )}
+                    </div>
                     {note && (
                       <span
                         title={note}
@@ -413,7 +448,7 @@ export default function EmployeeLoadHeatmap({
                   )}
                   {avg > 0 && (
                     <span
-                      title="Средняя загрузка в этом плане; клетки показывают и планы других команд"
+                      title={row.quarter ? quarterTooltip(row.quarter) : undefined}
                       style={{
                         marginLeft: 'auto',
                         flexShrink: 0,
@@ -443,6 +478,7 @@ export default function EmployeeLoadHeatmap({
                         const off = d?.off;
                         const pct = d?.pct ?? 0;
                         const ext = d?.ext_pct ?? 0;
+                        const normed = d?.normed_pct ?? 0;
                         let bg: string;
                         let border: string | undefined;
                         if (off === 'out_of_team') bg = OUT_OF_TEAM_FILL;
@@ -450,10 +486,11 @@ export default function EmployeeLoadHeatmap({
                         else if (off === 'holiday') bg = HOLIDAY_FILL;
                         else {
                           // Снизу — часы в планах других команд, над ними — этот план
-                          // цветом общей загрузки дня.
-                          const c = loadColor(pct + ext);
-                          bg = splitLoadFill(c.bg, pct, ext);
-                          border = ext > 0 ? undefined : c.border;
+                          // цветом общей загрузки дня, выше — нормированные работы
+                          // (заблокированный день уже даёт normed 100%).
+                          const c = loadColor(pct + ext + normed);
+                          bg = splitLoadFill(c.bg, pct, ext, normed);
+                          border = ext > 0 || normed > 0 ? undefined : c.border;
                         }
                         return (
                           <div
@@ -508,6 +545,7 @@ export default function EmployeeLoadHeatmap({
                 { label: 'в планах других команд', fill: EXT_LOAD_COLOR },
               ]
             : []),
+          ...(data.hasNormed ? [{ label: 'нормированные работы', fill: NORMED_WORK_COLOR }] : []),
         ].map((it) => (
           <span key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ab3cc' }}>
             <span

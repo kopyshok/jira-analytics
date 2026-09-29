@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.services import subgroup_shares as ss
 from app.services import team_membership as tm
 from app.models import (
     Absence,
@@ -105,7 +106,7 @@ class SnapshotWriter:
         if not scenario.team:
             return
         employees = self._team_employees(scenario)
-        subgroups = self._subgroup_names(scenario.team)
+        subgroups = self._subgroup_labels(scenario)
         for emp in employees:
             self.db.add(
                 ScenarioTeamSnapshot(
@@ -120,26 +121,17 @@ class SnapshotWriter:
                 )
             )
 
-    def _subgroup_names(self, team: str) -> dict[str, str]:
-        """Сотрудник -> имя группы внутри команды.
+    def _subgroup_labels(self, scenario: PlanningScenario) -> dict[str, str]:
+        """Сотрудник → распределение по группам за квартал сценария.
 
-        Пустой словарь, если у команды выключен признак деления: тогда в
-        снапшоте групп нет и ревизия выглядит как раньше.
+        «Ломбард» — весь квартал в одной группе (так выглядят и старые снимки),
+        «Ломбард 60% · РФМ 40%» или «Ломбард до 15.11 · РФМ с 15.11» — иначе.
+        Пусто, если у команды нет деления.
         """
-        from app.models import EmployeeTeam, Team, TeamSubgroup
-
-        registry = self.db.query(Team).filter(Team.name == team).first()
-        if registry is None or not registry.has_subgroups:
+        if not (scenario.team and scenario.year and scenario.quarter):
             return {}
-        names = {g.id: g.name for g in registry.subgroups}
-        rows = (
-            self.db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
-            .filter(EmployeeTeam.team == team, EmployeeTeam.subgroup_id.isnot(None))
-            .all()
-        )
-        return {
-            emp_id: names[sg_id] for emp_id, sg_id in rows if sg_id in names
-        }
+        start, end = _quarter_bounds(scenario.year, scenario.quarter)
+        return ss.quarter_labels(self.db, scenario.team, start, end)
 
     def write_calendar_snapshot(
         self, revision: ScenarioRevision, scenario: PlanningScenario
@@ -477,8 +469,9 @@ class SnapshotWriter:
         Для каждой ScenarioAllocation с included_flag=True данного сценария
         копирует все поля BacklogItem (title, issue_id, project_id, customer,
         cost_type, impact, risk, priority, estimate_*_hours, opo_analyst_ratio,
-        assignee_employee_id) и поля allocation (allocation_id, backlog_item_id,
-        sort_order, included_flag, involvement_coefficient).
+        assignee_employee_id, developer_employee_id) и поля allocation
+        (allocation_id, backlog_item_id, sort_order, included_flag,
+        involvement_coefficient).
 
         assignee_role_at_approval резолвится одним батчевым запросом по всем
         assignee_employee_id.
@@ -542,6 +535,7 @@ class SnapshotWriter:
                     assignee_role_at_approval=role_by_employee_id.get(
                         bi.assignee_employee_id
                     ) if bi.assignee_employee_id else None,
+                    developer_employee_id=bi.developer_employee_id,
                 )
             )
 

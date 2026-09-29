@@ -335,6 +335,11 @@ const invalidateMembership = (
   qc.invalidateQueries({ queryKey: ['capacity'] });
   qc.invalidateQueries({ queryKey: ['planning'] });
   qc.invalidateQueries({ queryKey: ['dashboard', 'hours-balance'] });
+  // Перевод может нести группу — задевает ресурс сценария и Гантт планирования.
+  qc.invalidateQueries({ queryKey: ['gantt'] });
+  qc.invalidateQueries({ queryKey: ['resource-plans'] });
+  qc.invalidateQueries({ queryKey: ['subgroup-shares'] });
+  qc.invalidateQueries({ queryKey: ['teams', 'ungrouped'] });
 };
 
 export const useUpdateMembershipJoinedAt = () => {
@@ -357,9 +362,9 @@ export const useUpdateMembershipLeftAt = () => {
 
 export const useTransferEmployeeTeam = () => {
   const qc = useQueryClient();
-  return useMutation<unknown, Error, { employeeId: string; from_team: string; to_team: string; on: string }>({
-    mutationFn: ({ employeeId, from_team, to_team, on }) =>
-      transferEmployeeTeam(employeeId, { from_team, to_team, on }),
+  return useMutation<unknown, Error, { employeeId: string; from_team: string; to_team: string; on: string; subgroup_id?: string | null }>({
+    mutationFn: ({ employeeId, from_team, to_team, on, subgroup_id }) =>
+      transferEmployeeTeam(employeeId, { from_team, to_team, on, subgroup_id }),
     onSettled: (_d, _e, vars) => invalidateMembership(qc, vars.employeeId),
   });
 };

@@ -42,14 +42,21 @@ export function candidateLabel(
   return label;
 }
 
-/** Группы опций для AntD Select. */
+/** Группы опций для AntD Select. ``busy`` — кто уже занят в соседней колонке
+ *  строки: неактивен, с подсказкой. */
 export function candidateOptions(
   groups: AssignmentCandidateGroup[],
   roleLabels: ReadonlyMap<string, string>,
+  busy?: { id: string | null | undefined; hint: string },
 ) {
   return groups.map((g) => ({
     label: g.label,
     title: g.label,
-    options: g.employees.map((e) => ({ value: e.employee_id, label: candidateLabel(e, g.key, roleLabels) })),
+    options: g.employees.map((e) => {
+      const label = candidateLabel(e, g.key, roleLabels);
+      return busy?.id && e.employee_id === busy.id
+        ? { value: e.employee_id, label: `${label} — ${busy.hint}`, disabled: true }
+        : { value: e.employee_id, label };
+    }),
   }));
 }

@@ -27,6 +27,8 @@ const TYPE_LABELS: Record<string, string> = {
   LEVELING_DELAY: 'Сдвиг при выравнивании',
   LEVELING_REASSIGN: 'Переназначение',
   UNPLACED_HOURS: 'Часы не размещены',
+  NORMED_OVERUSE: 'Перерасход нормированных работ',
+  NORMED_UNPLACED: 'Квартал не вмещается',
 };
 
 const SEVERITY_TYPE: Record<string, 'error' | 'warning' | 'info'> = {
@@ -94,7 +96,7 @@ function ConflictAlert({
               )}
               <Tag
                 color={STATUS_COLOR[c.status]}
-                title={isLive ? 'Исчезнет сам, когда пересечение устранят' : undefined}
+                title={isLive ? 'Исчезнет сам, когда причину устранят' : undefined}
               >
                 {STATUS_LABEL[c.status]}
               </Tag>

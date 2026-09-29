@@ -34,6 +34,7 @@ from app.api.endpoints import (
     mandatory_work_types,
     mapping,
     onboarding as onboarding_endpoints,
+    personal_settings as personal_settings_endpoints,
     planning,
     production_calendar,
     projects,
@@ -130,6 +131,12 @@ api_router.include_router(
 api_router.include_router(
     involvement_defaults_endpoints.router,
     prefix="/planning/involvement-defaults",
+    tags=["planning"],
+    dependencies=_auth_dep,
+)
+api_router.include_router(
+    personal_settings_endpoints.router,
+    prefix="/planning/personal-settings",
     tags=["planning"],
     dependencies=_auth_dep,
 )

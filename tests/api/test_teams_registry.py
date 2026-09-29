@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
-from app.models import Employee, EmployeeTeam
+from app.models import Employee, EmployeeSubgroupShare, EmployeeTeam
 
 
 @pytest.fixture
@@ -84,12 +84,20 @@ def test_delete_subgroup_clears_employee_assignment(client, seeded):
     )
     assert resp.status_code == 204
 
+    def _shares() -> int:
+        db.expire_all()
+        return (
+            db.query(EmployeeSubgroupShare)
+            .filter(EmployeeSubgroupShare.employee_id == "emp-tr-1")
+            .count()
+        )
+
+    assert _shares() == 1
+
     resp = tc.delete(f"/api/v1/teams/subgroups/{group_id}")
     assert resp.status_code == 204
 
-    db.expire_all()
-    row = db.query(EmployeeTeam).filter(EmployeeTeam.employee_id == "emp-tr-1").one()
-    assert row.subgroup_id is None
+    assert _shares() == 0
 
 
 def test_plain_team_list_unchanged(client, seeded):

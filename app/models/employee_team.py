@@ -27,6 +27,8 @@ class EmployeeTeam(Base):
     сотрудник/команда может быть несколько (ушёл — вернулся), пересекаться
     они не должны.
 
+    Группа внутри команды — в ``EmployeeSubgroupShare`` (история с датами).
+
     Инварианты enforce'ятся в EmployeeTeamService, а не в БД (SQLite не
     поддерживает partial unique index):
     - периоды одной пары сотрудник/команда не пересекаются;
@@ -46,14 +48,6 @@ class EmployeeTeam(Base):
     )
     team: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Группа внутри команды (реестр team_subgroups). Проставляется только
-    # у команд с включённым признаком деления; иначе всегда None.
-    subgroup_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey("team_subgroups.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     joined_at: Mapped[_date | None] = mapped_column(Date, nullable=True)
     left_at: Mapped[_date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

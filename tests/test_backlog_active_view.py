@@ -299,3 +299,51 @@ def test_archived_item_has_quarter_label(testclient_db_session):
         assert item["quarter_label"] == "2 кв. 2026"
     finally:
         _teardown()
+
+
+def test_active_view_hides_children_of_approved_initiative(testclient_db_session):
+    """RFA целиком утверждена в сценарии — её дочерние задачи уже в плане
+    через родителя и не должны висеть в Бэклоге отдельными строками.
+    Regression: OS-92054 под утверждённой RFA-4833 оставалась в Бэклоге."""
+    from app.models import BacklogItem, Issue, PlanningScenario, Project, ScenarioAllocation
+
+    db = testclient_db_session
+    proj = Project(
+        id="p-apc", jira_project_id="p-apc-jira", key="APC", name="APC", is_active=True
+    )
+    rfa = Issue(
+        id="i-apc-rfa", jira_issue_id="i-apc-rfa-jira", key="APC-1",
+        summary="Approved RFA", issue_type="RFA", status="Анализ",
+        status_category="indeterminate", project_id=proj.id,
+    )
+    child = Issue(
+        id="i-apc-child", jira_issue_id="i-apc-child-jira", key="APC-2",
+        summary="Child epic", issue_type="Epic", status="Новая",
+        status_category="new", project_id=proj.id, parent_id=rfa.id,
+    )
+    db.add_all([
+        proj, rfa, child,
+        BacklogItem(id="bi-apc-rfa", title="Approved RFA", issue_id=rfa.id),
+        BacklogItem(id="bi-apc-child", title="Child epic", issue_id=child.id),
+        PlanningScenario(
+            id="sc-apc", name="Q4", quarter="Q4", year=2026, status="approved", team="T1",
+        ),
+    ])
+    db.flush()
+    db.add(ScenarioAllocation(
+        id="sa-apc", scenario_id="sc-apc", backlog_item_id="bi-apc-rfa",
+        included_flag=True, sort_order=0,
+    ))
+    db.commit()
+
+    client = _make_client(db)
+    try:
+        resp = client.get("/api/v1/backlog?view=active")
+        assert resp.status_code == 200, resp.text
+        ids = [i["id"] for i in resp.json()]
+        assert "bi-apc-rfa" not in ids
+        assert "bi-apc-child" not in ids, (
+            "Child of an approved initiative must not stay in Бэклог"
+        )
+    finally:
+        _teardown()

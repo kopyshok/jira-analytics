@@ -60,11 +60,26 @@ export const patchAllocationAssignee = (
     { assignee_employee_id: assigneeEmployeeId },
   );
 
-/** Кандидаты в исполнители строки сценария: «Из Jira» / «Моя команда» / «Другие команды». */
-export const getScenarioAssigneeCandidates = (scenarioId: string, backlogItemId: string) =>
+export const patchAllocationDeveloper = (
+  scenarioId: string,
+  allocId: string,
+  developerEmployeeId: string | null,
+): Promise<AllocationResponse> =>
+  api.patch<AllocationResponse>(
+    `/planning/scenarios/${scenarioId}/allocations/${allocId}/developer`,
+    { developer_employee_id: developerEmployeeId },
+  );
+
+/** Кандидаты строки сценария: «Из Jira» / «Моя команда» / «Другие команды».
+ *  phase='dev' — для колонки «Разработчик» («Из Jira» — поле «Разработчик»). */
+export const getScenarioAssigneeCandidates = (
+  scenarioId: string,
+  backlogItemId: string,
+  phase: 'analyst' | 'dev' = 'analyst',
+) =>
   api.get<AssignmentCandidateGroup[]>(
     `/planning/scenarios/${scenarioId}/assignee-candidates`,
-    { backlog_item_id: backlogItemId },
+    { backlog_item_id: backlogItemId, phase },
   );
 
 export const reorderAllocations = (

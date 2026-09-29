@@ -30,6 +30,11 @@ export default function PhaseCalcSection({ data, collapsed, onToggleCollapse }: 
                     общая по команде
                   </Typography.Text>
                 )}
+                {data.involvement_source === 'employee' && (
+                  <Typography.Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>
+                    личная настройка сотрудника
+                  </Typography.Text>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Параллельных исполнителей">
                 {data.parallel_count}
