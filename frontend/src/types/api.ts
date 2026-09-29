@@ -640,6 +640,10 @@ export interface ResourceEmployee {
   is_overcommitted?: boolean;
   /** Группа внутри команды. null — у команды нет деления. */
   subgroup_id?: string | null;
+  /** Часы по группам за квартал; ключ '' — дни без группы. */
+  subgroup_hours?: Record<string, number>;
+  /** Подписи участия в группе: «60%», «с 15.11», «до 15.11». */
+  subgroup_labels?: Record<string, string>;
 }
 
 export interface ResourceBase {
@@ -691,6 +695,8 @@ export interface ResourceSummaryOut {
   booked_by_other_teams_by_role?: Record<string, number>;
   /** Часы людей команды в планах команд, взявших их к себе (не вычтены из «На бэклог»). */
   borrowed_by_other_teams_by_role?: Record<string, number>;
+  /** Активные участники без группы хоть в один день квартала — утвердить нельзя. */
+  ungrouped_employees?: { employee_id: string; display_name: string }[];
 }
 
 /** Переток одной группы: часы, ушедшие к соседям и пришедшие от них. */
@@ -778,6 +784,9 @@ export interface EmployeeDiff {
   months: MonthDiff[];
   /** Дата выбытия из команды сценария, если человек ушёл после утверждения. */
   left_team_at?: string | null;
+  /** Подпись распределения по группам до/после утверждения; null — без группы. Есть, только если распределение изменилось. */
+  subgroup_before?: string | null;
+  subgroup_after?: string | null;
 }
 
 export interface CapacityDiffResponse {
