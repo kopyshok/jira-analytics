@@ -46,9 +46,10 @@ interface Props {
   /** Группа команды для каждой инициативы: показывать строки секциями групп.
    *  План остаётся общекомандным — секции только визуальные. */
   sectionByItem?: Record<string, string>;
-  /** Группа сотрудника внутри команды: строка помечается, если исполнитель
-   *  не из группы инициативы (плавающий разработчик соседней группы). */
-  subgroupByEmployee?: Record<string, string>;
+  /** Сотрудник → его группы внутри команды (сервер отдаёт список, первая —
+   *  главная). Строка помечается, если группа секции не входит в список —
+   *  человек занят соседней группой, где у него в квартале доли нет. */
+  subgroupByEmployee?: Record<string, string[]>;
   /** Свёрнутые секции групп (названия). */
   collapsedSections?: string[];
   onToggleSection?: (name: string, collapsed: boolean) => void;
@@ -1036,9 +1037,13 @@ function TwoLevelRows({
                 const isHighlighted = !!highlightedEmployeeId && empId === highlightedEmployeeId;
                 const isDimmed = !!fadeOthers && !isHighlighted;
                 // Исполнитель из другой группы — помощь соседей, помечаем строку.
-                const empGroup = empId ? subgroupByEmployee?.[empId] : undefined;
+                // Смотрим на весь список групп человека за квартал, а не только
+                // на сегодняшнюю: у общих и переведённых групп несколько.
+                const empGroups = empId ? subgroupByEmployee?.[empId] : undefined;
                 const foreignGroup =
-                  !!section && !!empGroup && empGroup !== section ? empGroup : null;
+                  !!section && !!empGroups?.length && !empGroups.includes(section)
+                    ? empGroups[0]
+                    : null;
                 const assigneeNode = phase === 'qa' ? (
                   <span style={{ color: '#4a6a90' }}>—</span>
                 ) : (

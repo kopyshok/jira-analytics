@@ -172,7 +172,9 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
   }
 
   // Секции групп: сотрудники группы + её ёмкость по ролям. «Без группы» —
-  // последней и только если в ней кто-то есть.
+  // последней и только если в ней кто-то есть часами или спросом (иначе
+  // спрос без группы пропадал бы из виду — сотрудников там может не быть).
+  const hasUngroupedDemand = Object.values(demandBySubgroupRole[''] ?? {}).some((v) => v > 0);
   const groupSections = hasSubgroups
     ? [
         ...subgroups.map((g) => ({
@@ -181,6 +183,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
           employees: resourceBase.employees.filter((e) => (e.subgroup_hours ?? {})[g.id] !== undefined),
         })),
         ...(resourceBase.employees.some((e) => (e.subgroup_hours ?? {})[''] !== undefined)
+          || hasUngroupedDemand
           ? [
               {
                 id: '',

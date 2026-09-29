@@ -291,6 +291,10 @@ export interface GanttProjection {
   pert_projection: InitiativePertOut[];
   dependencies: DependencyOut[];
   employee_load?: EmployeeLoadOut[];
+  /** Сотрудник команды плана → группы, где у него есть доля в дни участия
+   *  внутри квартала плана, по убыванию «доля × дни» (первая — главная).
+   *  Команда без деления — пусто. */
+  employee_subgroups?: Record<string, string[]>;
   /** Брони людей плана (свои и привлечённые) в опорных планах других команд. */
   external_bookings?: ExternalBookingOut[];
   /** Брони, вычитаемые из доступности плана, изменились после его расчёта. */

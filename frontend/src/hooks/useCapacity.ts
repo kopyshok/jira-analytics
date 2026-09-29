@@ -339,6 +339,7 @@ const invalidateMembership = (
   qc.invalidateQueries({ queryKey: ['gantt'] });
   qc.invalidateQueries({ queryKey: ['resource-plans'] });
   qc.invalidateQueries({ queryKey: ['subgroup-shares'] });
+  qc.invalidateQueries({ queryKey: ['teams', 'ungrouped'] });
 };
 
 export const useUpdateMembershipJoinedAt = () => {

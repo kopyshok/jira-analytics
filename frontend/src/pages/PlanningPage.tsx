@@ -28,6 +28,7 @@ import ScenarioRevisionHistoryDrawer from '../components/planning/ScenarioRevisi
 import InvolvementDefaultsDrawer from '../components/planning/InvolvementDefaultsDrawer';
 import { useOpoCutoff } from '../hooks/useOpoCutoff';
 import HoursBreakdownDrawer from '../components/hours/HoursBreakdownDrawer';
+import EmployeeDrawer from '../components/capacity/EmployeeDrawer';
 import { useScenarioContinuationInfo } from '../hooks/useScenarioContinuationInfo';
 import {
   useScenarios,
@@ -229,6 +230,7 @@ export default function PlanningPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [involvementOpen, setInvolvementOpen] = useState(false);
+  const [ungroupedDrawerId, setUngroupedDrawerId] = useState<string | null>(null);
   useRegisterHelp('Планирование сценариев', planningHelp);
   // Компактный режим — всегда включён; тумблер выпилен по запросу PM.
   const compact = true;
@@ -911,14 +913,19 @@ export default function PlanningPage() {
             ))}
           </div>
 
-          {ungrouped.length > 0 && (
+          {isDraft && ungrouped.length > 0 && (
             <Alert
               type="error"
               showIcon
               title={`Без группы: ${ungrouped.length} чел. — сценарий нельзя утвердить`}
               description={
                 <>
-                  {ungrouped.map((u) => u.display_name).join(', ')}
+                  {ungrouped.map((u, i) => (
+                    <span key={u.employee_id}>
+                      {i > 0 && ', '}
+                      <a onClick={() => setUngroupedDrawerId(u.employee_id)}>{u.display_name}</a>
+                    </span>
+                  ))}
                   {' — '}
                   <a onClick={() => navigate('/capacity')}>Открыть «Ресурсы»</a>
                 </>
@@ -1133,6 +1140,10 @@ export default function PlanningPage() {
         scenarioId={scenarioId}
       />
       <ApproveCelebration visible={celebrate} />
+      <EmployeeDrawer
+        employeeId={ungroupedDrawerId}
+        onClose={() => setUngroupedDrawerId(null)}
+      />
       <HoursBreakdownDrawer
         open={breakdown.open}
         onClose={() => setBreakdown((b) => ({ ...b, open: false }))}

@@ -28,6 +28,20 @@ export const setEmployeeSubgroup = (
 export const getSubgroupShares = (employeeId: string, team: string) =>
   api.get<SubgroupShareRecord[]>(`/teams/employees/${employeeId}/subgroup-shares`, { team });
 
+export interface UngroupedEmployee {
+  employee_id: string;
+  display_name: string;
+  team: string;
+}
+
+/** Сотрудники без группы в квартале — для плашки в «Ресурсах» и «Сценариях». */
+export const getUngroupedEmployees = (teams: string[], year: number, quarter: number) =>
+  api.get<UngroupedEmployee[]>('/teams/ungrouped', {
+    ...(teams.length ? { teams: teams.join(',') } : {}),
+    year: String(year),
+    quarter: String(quarter),
+  });
+
 export const putSubgroupShare = (
   employeeId: string,
   body: { team: string; valid_from: string | null; shares: SubgroupShareItem[] },
