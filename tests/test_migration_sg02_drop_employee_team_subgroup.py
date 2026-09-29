@@ -59,15 +59,21 @@ def test_drop_and_restore(tmp_path):
     assert "subgroup_id" not in _columns(url)
 
 
-def test_downgrade_restores_base_group(tmp_path):
-    """Откат возвращает в колонку базовую группу «100 % с начала участия»."""
+def test_downgrade_restores_group_active_today(tmp_path):
+    """Откат возвращает в колонку группу, действующую сегодня.
+
+    Целиком в одной группе — она; поделён — группа с наибольшей долей;
+    сегодня записи ещё нет (все с будущей даты) — наибольшая доля первой записи.
+    """
     url = f"sqlite:///{(tmp_path / 'sg02c.db').as_posix()}"
     _alembic(url, "upgrade", REV)
     engine = sa.create_engine(url)
     with engine.begin() as c:
         c.execute(sa.text(
             "INSERT INTO employees (id, jira_account_id, display_name, is_active, created_at, updated_at) "
-            "VALUES ('e1', 'a1', 'Иванов', 1, :n, :n), ('e2', 'a2', 'Петров', 1, :n, :n)"
+            "VALUES ('e1', 'a1', 'Иванов', 1, :n, :n), ('e2', 'a2', 'Петров', 1, :n, :n), "
+            "('e3', 'a3', 'Сидоров', 1, :n, :n), ('e4', 'a4', 'Козлов', 1, :n, :n), "
+            "('e5', 'a5', 'Без записей', 1, :n, :n)"
         ), {"n": NOW})
         c.execute(sa.text(
             "INSERT INTO teams (id, name, has_subgroups, created_at, updated_at) "
@@ -79,15 +85,26 @@ def test_downgrade_restores_base_group(tmp_path):
         ), {"n": NOW})
         c.execute(sa.text(
             "INSERT INTO employee_teams (id, employee_id, team, is_primary, created_at) "
-            "VALUES ('m1', 'e1', 'T', 1, :n), ('m2', 'e2', 'T', 1, :n)"
+            "VALUES ('m1', 'e1', 'T', 1, :n), ('m2', 'e2', 'T', 1, :n), "
+            "('m3', 'e3', 'T', 1, :n), ('m3b', 'e3', 'T', 1, :n), "
+            "('m4', 'e4', 'T', 1, :n), ('m5', 'e5', 'T', 1, :n)"
         ), {"n": NOW})
-        # e1 — база «A 100 %»; e2 поделён с начала участия — колонке нечего взять.
         c.execute(sa.text(
             "INSERT INTO employee_subgroup_shares "
             "(id, employee_id, team, valid_from, subgroup_id, percent, created_at, updated_at) "
-            "VALUES ('s1', 'e1', 'T', NULL, 'g1', 100, :n, :n), "
-            "('s2', 'e2', 'T', NULL, 'g1', 60, :n, :n), "
-            "('s3', 'e2', 'T', NULL, 'g2', 40, :n, :n)"
+            "VALUES "
+            # e1 — «A 100 %» с начала участия.
+            "('s1', 'e1', 'T', NULL, 'g1', 100, :n, :n), "
+            # e2 поделён 40/60 с начала участия — берём группу с 60 %.
+            "('s2', 'e2', 'T', NULL, 'g1', 40, :n, :n), "
+            "('s3', 'e2', 'T', NULL, 'g2', 60, :n, :n), "
+            # e3 переведён в B в прошлом — сегодня он в B (обе строки участия).
+            "('s4', 'e3', 'T', NULL, 'g1', 100, :n, :n), "
+            "('s5', 'e3', 'T', '2020-01-01', 'g2', 100, :n, :n), "
+            # e4 — только записи с будущих дат: берём наибольшую долю первой.
+            "('s6', 'e4', 'T', '2099-01-01', 'g1', 30, :n, :n), "
+            "('s7', 'e4', 'T', '2099-01-01', 'g2', 70, :n, :n), "
+            "('s8', 'e4', 'T', '2100-01-01', 'g1', 100, :n, :n)"
         ), {"n": NOW})
     engine.dispose()
 
@@ -95,9 +112,11 @@ def test_downgrade_restores_base_group(tmp_path):
 
     engine = sa.create_engine(url)
     with engine.connect() as c:
-        rows = dict(c.execute(sa.text("SELECT employee_id, subgroup_id FROM employee_teams")).all())
+        rows = c.execute(sa.text("SELECT id, subgroup_id FROM employee_teams")).all()
     engine.dispose()
-    assert rows == {"e1": "g1", "e2": None}
+    assert dict(rows) == {
+        "m1": "g1", "m2": "g2", "m3": "g2", "m3b": "g2", "m4": "g2", "m5": None,
+    }
 
 
 def test_upgrade_tolerates_missing_column(tmp_path):

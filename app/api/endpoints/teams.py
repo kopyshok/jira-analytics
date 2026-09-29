@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_deps import require_admin
 from app.database import get_db
-from app.models import EmployeeTeam, Issue, Team
+from app.models import Employee, EmployeeTeam, Issue, Team
 from app.schemas.team import (
     EmployeeSubgroupIn,
     SubgroupIn,
@@ -26,8 +26,10 @@ from app.schemas.team import (
     SubgroupShareRecordOut,
     TeamOut,
     TeamPatch,
+    UngroupedEmployeeOut,
 )
 from app.services import subgroup_shares as ss
+from app.services.plan_common import quarter_bounds
 from app.services.subgroup_share_service import SubgroupShareService
 from app.services.team_registry_service import TeamRegistryService
 
@@ -66,6 +68,56 @@ def list_registry(db: Session = Depends(get_db)) -> List[TeamOut]:
     """Реестр команд. Перед выдачей подтягивает имена, появившиеся в данных."""
     TeamRegistryService(db).sync_names()
     return [_to_out(t) for t in db.query(Team).order_by(Team.name).all()]
+
+
+@router.get("/ungrouped", response_model=List[UngroupedEmployeeOut])
+def list_ungrouped(
+    teams: Optional[str] = Query(None, description="Команды через запятую; пусто — все с делением"),
+    year: Optional[int] = Query(None, ge=1, le=9999),
+    quarter: Optional[int] = Query(None, ge=1, le=4),
+    db: Session = Depends(get_db),
+) -> List[UngroupedEmployeeOut]:
+    """Сотрудники без группы в квартале — для плашки в «Ресурсах».
+
+    То же правило, что у сводки ресурса сценария и запрета утверждения
+    (``ss.ungrouped_members``): активный участник команды с делением, у кого
+    нет записи распределения на первый день участия в квартале. Без года или
+    квартала — текущий квартал. Команды без деления пропускаются.
+    """
+    today = date.today()
+    if year is None or quarter is None:
+        year, quarter = today.year, (today.month - 1) // 3 + 1
+    q_start, q_end = quarter_bounds(year, quarter)
+    requested = [t.strip() for t in (teams or "").split(",") if t.strip()]
+    if not requested:
+        requested = [
+            name
+            for (name,) in db.query(Team.name).filter(Team.has_subgroups.is_(True))
+        ]
+    missing = {
+        team: ss.ungrouped_members(db, team, q_start, q_end) for team in set(requested)
+    }
+    ids = {emp_id for emp_ids in missing.values() for emp_id in emp_ids}
+    names: dict[str, str] = (
+        {
+            emp_id: name
+            for emp_id, name in db.query(Employee.id, Employee.display_name).filter(
+                Employee.id.in_(ids)
+            )
+        }
+        if ids
+        else {}
+    )
+    return sorted(
+        (
+            UngroupedEmployeeOut(
+                employee_id=emp_id, display_name=names.get(emp_id) or emp_id, team=team
+            )
+            for team, emp_ids in missing.items()
+            for emp_id in emp_ids
+        ),
+        key=lambda e: (e.team, e.display_name, e.employee_id),
+    )
 
 
 @router.patch("/registry/{name}", response_model=TeamOut, dependencies=_admin_only)

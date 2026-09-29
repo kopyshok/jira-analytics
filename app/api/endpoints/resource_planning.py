@@ -309,8 +309,13 @@ def _assignment_to_out(
     chunks_total: Optional[int] = None,
     worklog_hours_actual: float = 0.0,
     other_subgroup: bool = False,
+    subgroup_id: Optional[str] = None,
 ) -> "AssignmentOut":
-    """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut."""
+    """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut.
+
+    ``subgroup_id`` — группа работы, уже определённая по правилу диаграммы
+    (``_plan_subgroups``); без неё — группа самой задачи.
+    """
     bi = a.backlog_item
     issue = bi.issue if bi else None
     emp = a.employee
@@ -347,28 +352,80 @@ def _assignment_to_out(
         out_of_quarter=a.out_of_quarter,
         daily_hours=_parse_daily_hours(a.daily_hours_json),
         worklog_hours_actual=worklog_hours_actual,
-        subgroup_id=getattr(issue, "effective_subgroup_id", None) if issue else None,
+        subgroup_id=subgroup_id
+        or (getattr(issue, "effective_subgroup_id", None) if issue else None),
         other_subgroup=other_subgroup,
     )
 
 
-def _other_subgroup_ids(
+def _plan_subgroups(
     db: Session, plan: ResourcePlan, assignments: Sequence[ResourcePlanAssignment]
-) -> set[str]:
-    """Назначения, где группа задачи не входит в группы исполнителя за даты назначения.
+) -> tuple[Dict[str, str], Dict[str, List[str]]]:
+    """Группы на диаграмме плана команды с делением.
 
-    Нет ни одной записи распределения на даты назначения — метки нет:
-    сравнивать не с чем (например, исполнитель ещё не заведён в команду).
+    Возвращает ({assignment_id: группа работы}, {сотрудник: его группы}).
+
+    Группа работы — своя группа задачи, без неё — группа главного исполнителя
+    из сценария на опорный день (``ss.work_group`` — то же правило, что у
+    планировщика). Группы сотрудника — те, где у него есть доля в дни участия
+    в команде внутри квартала плана, по убыванию «доля × дни»; при равенстве —
+    в порядке реестра. Команда без деления — оба словаря пустые.
+    """
+    team = plan.team
+    groups = ss.team_subgroups(db, team)
+    if not team or not groups:
+        return {}, {}
+    try:
+        q_start, q_end = ResourcePlanningService(db)._quarter_bounds(plan)
+    except ValueError:
+        # Квартал не разбирается — диаграмма ниже ответит 422.
+        return {}, {}
+    records = ss.load_team(db, team)
+    work: Dict[str, str] = {}
+    for a in assignments:
+        bi = a.backlog_item
+        issue = bi.issue if bi else None
+        gid = ss.work_group(
+            getattr(issue, "effective_subgroup_id", None) if issue else None,
+            records.get((bi.assignee_employee_id if bi else None) or "", []),
+            q_start,
+            q_end,
+        )
+        if gid:
+            work[a.id] = gid
+    order = {gid: i for i, (gid, _) in enumerate(groups)}
+    by_employee = {
+        eid: sorted(weights, key=lambda g: (-weights[g], order.get(g, len(order))))
+        for eid, weights in ss.member_group_weights(
+            db, team, records, q_start, q_end
+        ).items()
+    }
+    return work, by_employee
+
+
+def _other_subgroup_ids(
+    db: Session,
+    plan: ResourcePlan,
+    assignments: Sequence[ResourcePlanAssignment],
+    work_groups: Optional[Dict[str, str]] = None,
+) -> set[str]:
+    """Назначения, где группа работы не входит в группы исполнителя за даты назначения.
+
+    Группа работы — по правилу диаграммы (``_plan_subgroups``); ``work_groups``
+    передаёт уже посчитанную. Нет ни одной записи распределения на даты
+    назначения — метки нет: сравнивать не с чем (например, исполнитель ещё не
+    заведён в команду).
     """
     if not plan.team or not ss.team_subgroups(db, plan.team):
         return set()
+    if work_groups is None:
+        work_groups = _plan_subgroups(db, plan, assignments)[0]
     records = ss.load_team(
         db, plan.team, {a.employee_id for a in assignments if a.employee_id}
     )
     out: set[str] = set()
     for a in assignments:
-        issue = a.backlog_item.issue if a.backlog_item else None
-        group = getattr(issue, "effective_subgroup_id", None) if issue else None
+        group = work_groups.get(a.id)
         recs = records.get(a.employee_id) if a.employee_id else None
         if not group or not recs or not a.start_date or not a.end_date:
             continue
@@ -521,9 +578,9 @@ class AssignmentOut(BaseModel):
     out_of_quarter: bool = False
     daily_hours: Optional[Dict[str, float]] = None  # {"YYYY-MM-DD": hours}
     worklog_hours_actual: float = 0.0  # Task 23 — фактически отработанные часы из Worklog
-    # Группа внутри команды, к которой отнесена работа (Issue.effective_subgroup_id).
-    # Фронт режет график на секции групп; если у задачи группы нет, подставляет
-    # группу главного исполнителя из сценария.
+    # Группа внутри команды, к которой отнесена работа: своя группа задачи, а
+    # в выдаче диаграммы без неё — группа главного исполнителя из сценария на
+    # опорный день (правило планировщика). Фронт режет график на секции групп.
     subgroup_id: Optional[str] = None
     # Исполнитель работает на группу, где у него нет доли в дни назначения
     # (задача старой группы после перевода или сосед, взятый на подмогу).
@@ -777,6 +834,10 @@ class GanttProjection(BaseModel):
     pert_projection: List[InitiativePertOut]
     dependencies: List[DependencyOut] = []
     employee_load: List[EmployeeLoadOut] = []
+    # Сотрудник команды плана → группы, где у него есть доля в дни участия
+    # внутри квартала плана, по убыванию «доля × дни» (при равенстве — порядок
+    # реестра). Команда без деления — пусто.
+    employee_subgroups: Dict[str, List[str]] = {}
     # Брони людей плана (свои и привлечённые) в опорных планах других команд.
     external_bookings: List[ExternalBookingOut] = []
     # Брони, вычитаемые из доступности плана, изменились после его расчёта:
@@ -1717,7 +1778,8 @@ def get_gantt(
         return out
 
     worklog_map = _compute_worklog_hours_actual(db, assignments_raw)
-    other_subgroup_ids = _other_subgroup_ids(db, plan, assignments_raw)
+    work_groups, employee_subgroups = _plan_subgroups(db, plan, assignments_raw)
+    other_subgroup_ids = _other_subgroup_ids(db, plan, assignments_raw, work_groups)
 
     assignments = [
         _assignment_to_out(
@@ -1728,6 +1790,7 @@ def get_gantt(
             chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             worklog_hours_actual=worklog_map.get(a.id, 0.0),
             other_subgroup=a.id in other_subgroup_ids,
+            subgroup_id=work_groups.get(a.id),
         )
         for a in assignments_raw
     ]
@@ -2110,6 +2173,7 @@ def get_gantt(
         pert_projection=pert_projection,
         dependencies=deps,
         employee_load=employee_load,
+        employee_subgroups=employee_subgroups,
         external_bookings=external_out,
         stale_due_to_other_teams=bool(changed_teams),
         stale_teams=changed_teams,

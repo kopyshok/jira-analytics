@@ -2197,28 +2197,25 @@ class ResourcePlanningService:
         """
         if not ss.team_subgroups(self.db, plan.team):
             return {}, {}
-        records = ss.load_team(self.db, plan.team, [e.id for e in employees])
+        team = plan.team or ""
+        records = ss.load_team(self.db, team, [e.id for e in employees])
         # Группы считаем по дням реального членства в команде плана внутри
-        # квартала — иначе привлечённому из другой команды или тому, кто
-        # ушёл и вернулся, попадут дни, когда он тут не состоял. У кого
-        # членства в этом периоде нет (привлечён без записи EmployeeTeam) —
-        # своих групп нет, обычный подбор greedy.
-        intervals = tm.member_intervals(self.db, [plan.team], q_start, q_end)
-        emp_group: Dict[str, Set[str]] = {}
-        for eid, recs in records.items():
-            spans = intervals.get(eid)
-            if not spans:
-                continue
-            lo, hi = ss.membership_bounds(spans)
-            groups = ss.groups_between(recs, lo, hi)
-            if groups:
-                emp_group[eid] = groups
-        ref_day = min(max(date.today(), q_start), q_end)
+        # квартала. У кого членства в этом периоде нет (привлечён без записи
+        # EmployeeTeam) — своих групп нет, обычный подбор greedy.
+        emp_group: Dict[str, Set[str]] = {
+            eid: set(weights)
+            for eid, weights in ss.member_group_weights(
+                self.db, team, records, q_start, q_end
+            ).items()
+        }
         item_group: Dict[str, str] = {}
         for it in items:
-            gid = getattr(it.issue, "effective_subgroup_id", None) if it.issue else None
-            if not gid and it.assignee_employee_id:
-                gid = ss.single_group_on(records.get(it.assignee_employee_id, []), ref_day)
+            gid = ss.work_group(
+                getattr(it.issue, "effective_subgroup_id", None) if it.issue else None,
+                records.get(it.assignee_employee_id or "", []),
+                q_start,
+                q_end,
+            )
             if gid:
                 item_group[it.id] = gid
         return emp_group, item_group

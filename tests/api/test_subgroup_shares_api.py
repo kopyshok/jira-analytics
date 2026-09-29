@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.database import get_db
 from app.main import app
-from app.models import Employee, EmployeeTeam, Team, TeamSubgroup
+from app.models import Employee, EmployeeSubgroupShare, EmployeeTeam, Team, TeamSubgroup
 from app.services import subgroup_shares as ss
 
 A, B = "g-a", "g-b"
@@ -155,3 +155,94 @@ def test_list_employees_with_teams_carries_distribution(client):
     t = next(i for i in emp["teams"] if i["team"] == "T")
     assert t["subgroup_id"] is None
     assert t["subgroup_label"] == "Ломбард 60% · РФМ 40%"
+
+
+def _seed_ungrouped(db):
+    """T (деление): e1 в A, e2 без записи, e3 в B лишь с 01.11.2026, e4 уволен;
+    U (деление): e6 без записи; Old (без деления): e5 без записи."""
+    _seed(db)
+    db.add(Team(id="t2", name="U", has_subgroups=True))
+    db.flush()
+    db.add(TeamSubgroup(id="g-u", team_id="t2", name="U-группа", sort_order=1))
+    db.add_all([
+        Employee(id="e2", jira_account_id="acc-2", display_name="Петров", is_active=True),
+        Employee(id="e3", jira_account_id="acc-3", display_name="Абрамов", is_active=True),
+        Employee(id="e4", jira_account_id="acc-4", display_name="Уволенный", is_active=False),
+        Employee(id="e5", jira_account_id="acc-5", display_name="Старый", is_active=True),
+        Employee(id="e6", jira_account_id="acc-6", display_name="Юрьев", is_active=True),
+    ])
+    db.flush()
+    db.add_all([
+        EmployeeTeam(employee_id="e2", team="T", is_primary=True),
+        EmployeeTeam(employee_id="e3", team="T", is_primary=True),
+        EmployeeTeam(employee_id="e4", team="T", is_primary=True),
+        EmployeeTeam(employee_id="e5", team="Old", is_primary=True),
+        EmployeeTeam(employee_id="e6", team="U", is_primary=True),
+    ])
+    db.flush()
+    db.add_all([
+        EmployeeSubgroupShare(employee_id="e1", team="T", valid_from=None, subgroup_id=A, percent=100),
+        EmployeeSubgroupShare(
+            employee_id="e3", team="T", valid_from=date(2026, 11, 1), subgroup_id=B, percent=100
+        ),
+    ])
+    db.commit()
+
+
+def test_ungrouped_lists_members_without_group_in_quarter(client):
+    """«Без группы» — то же правило, что у сводки ресурса и утверждения
+    сценария: нет записи на первый день участия в квартале."""
+    tc, db = client
+    _seed_ungrouped(db)
+
+    r = tc.get("/api/v1/teams/ungrouped", params={"teams": "T", "year": 2026, "quarter": 4})
+    assert r.status_code == 200, r.text
+    assert r.json() == [
+        {"employee_id": "e3", "display_name": "Абрамов", "team": "T"},
+        {"employee_id": "e2", "display_name": "Петров", "team": "T"},
+    ]
+    assert r.json() == [
+        {"employee_id": e, "display_name": n, "team": "T"}
+        for e, n in sorted(
+            ((e, db.get(Employee, e).display_name) for e in
+             ss.ungrouped_members(db, "T", date(2026, 10, 1), date(2026, 12, 31))),
+            key=lambda x: x[1],
+        )
+    ]
+
+
+def test_ungrouped_without_teams_takes_all_divided_teams(client):
+    """Без списка команд — все команды с делением; сортировка: команда, имя.
+    Команда без деления в ответ не попадает, даже если назвать её явно."""
+    tc, db = client
+    _seed_ungrouped(db)
+
+    r = tc.get("/api/v1/teams/ungrouped", params={"year": 2027, "quarter": 1})
+    assert r.status_code == 200, r.text
+    assert r.json() == [
+        {"employee_id": "e2", "display_name": "Петров", "team": "T"},
+        {"employee_id": "e6", "display_name": "Юрьев", "team": "U"},
+    ]
+    r = tc.get("/api/v1/teams/ungrouped", params={"teams": "U, Old", "year": 2027, "quarter": 1})
+    assert r.json() == [{"employee_id": "e6", "display_name": "Юрьев", "team": "U"}]
+
+
+def test_ungrouped_defaults_to_current_quarter(client):
+    tc, db = client
+    _seed_ungrouped(db)
+    today = date.today()
+
+    r = tc.get("/api/v1/teams/ungrouped", params={"teams": "T"})
+    assert r.status_code == 200, r.text
+    explicit = tc.get(
+        "/api/v1/teams/ungrouped",
+        params={"teams": "T", "year": today.year, "quarter": (today.month - 1) // 3 + 1},
+    )
+    assert r.json() == explicit.json()
+
+
+def test_ungrouped_rejects_bad_quarter(client):
+    tc, db = client
+    _seed_ungrouped(db)
+    r = tc.get("/api/v1/teams/ungrouped", params={"year": 2026, "quarter": 5})
+    assert r.status_code == 422

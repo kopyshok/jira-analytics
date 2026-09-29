@@ -47,3 +47,11 @@ class SubgroupShareRecordIn(BaseModel):
 class SubgroupShareRecordOut(BaseModel):
     valid_from: Optional[date] = None
     shares: List[SubgroupShareItem]
+
+
+class UngroupedEmployeeOut(BaseModel):
+    """Активный участник команды с делением без группы в квартале."""
+
+    employee_id: str
+    display_name: str
+    team: str

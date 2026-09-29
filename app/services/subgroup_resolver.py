@@ -19,7 +19,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Employee, Issue, Team
+from app.models import Employee, EmployeeTeam, Issue, Team
 from app.services import subgroup_shares as ss
 
 
@@ -63,9 +63,15 @@ class SubgroupResolver:
         account_of: dict[str, Optional[str]] = {
             e: a for e, a in self.db.query(Employee.id, Employee.jira_account_id)
         }
+        # Запись распределения без единой строки участия в этой команде —
+        # хвост участия, удалённого как ошибка ввода: по ней не угадываем.
+        members = {
+            (e, t)
+            for e, t in self.db.query(EmployeeTeam.employee_id, EmployeeTeam.team).distinct()
+        }
         for (emp_id, team_name), records in ss.load_all(self.db).items():
             account_id = account_of.get(emp_id)
-            if account_id:
+            if account_id and (emp_id, team_name) in members:
                 self._records[(account_id, team_name)] = records
 
     def _valid(self, subgroup_id: Optional[str], team: str) -> bool:
