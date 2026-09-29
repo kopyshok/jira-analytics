@@ -318,3 +318,35 @@ def test_resource_summary_endpoint_returns_primary_normed(db_session):
     body = r.json()
     assert round(body["primary_normed_by_role"]["dev"], 1) == round(0.45 * QUARTER_NORM, 1)
     assert [x["display_name"] for x in body["primary_normed_people"]] == ["Пряничников"]
+
+
+def test_guest_blocked_home_period_closes_day_in_secondary_scenario(db_session):
+    """Период основной команды закрывает день гостя и в сценарии неосновной."""
+    from app.models import MandatoryWorkType, ScheduledBlock
+
+    p, _ivanov, _erp, blk = _guest_scenario(db_session)
+    support = db_session.query(MandatoryWorkType).filter_by(code="support_consult").one()
+    db_session.add(ScheduledBlock(team="ERP", start_date=date(2026, 1, 5), end_date=date(2026, 1, 7),
+                                  reason="Закрытие месяца", work_type_id=support.id))
+    db_session.commit()
+
+    base = ResourceBaseService(db_session).compute(blk)
+
+    emp = next(x for x in base.employees if x.employee_id == p.id)
+    by_day = {d.date: d.hours for d in emp.days}
+    assert [by_day[date(2026, 1, d)] for d in (5, 6, 7)] == [0.0, 0.0, 0.0]
+
+
+def test_guest_joined_mid_quarter_loses_only_normed_on_member_days(db_session):
+    """Запас основной — квартальный и раскладывается по всему кварталу; команда,
+    куда гость пришёл в середине квартала, вычитает только его дни у себя."""
+    p, _ivanov, _erp, blk = _guest_scenario(db_session)
+    db_session.query(EmployeeTeam).filter_by(employee_id=p.id, team="Блок").one().joined_at = date(2026, 2, 2)
+    db_session.commit()
+    svc = ResourceBaseService(db_session)
+
+    s = svc.compute_summary(blk)
+    emp = next(x for x in svc.compute(blk).employees if x.employee_id == p.id)
+
+    assert 0 < s.primary_normed_by_role["dev"] < 0.45 * QUARTER_NORM
+    assert round(emp.total_hours, 1) == round(s.gross_by_role["dev"] - QUARTER_NORM - s.primary_normed_by_role["dev"], 1)

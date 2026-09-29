@@ -272,9 +272,8 @@ class ResourceBaseService:
 
                 # Обязательные работы — от полной нормы, брони других команд —
                 # поверх, не ниже нуля.
-                taken = booked.get(e.id, {}).get(cur, 0.0) + guest_normed.get(
-                    e.id, {}
-                ).get(cur, 0.0)
+                taken = booked.get(e.id, {}).get(cur, 0.0)
+                taken += guest_normed.get(e.id, {}).get(cur, 0.0)
                 hours = round(max(0.0, norm * pct - taken), 2)
                 days_out.append(EmployeeDayHours(date=cur, hours=hours))
                 if has_groups:
