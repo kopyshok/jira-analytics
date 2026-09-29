@@ -30,6 +30,7 @@ from app.schemas.assignee_candidates import CandidateGroupOut
 from app.services import cross_team_occupancy as cto
 from app.services import normed_reserve as nr
 from app.services import scheduled_blocks as sb
+from app.services import subgroup_shares as ss
 from app.services.assignee_candidates import candidate_groups
 from app.services.event_bus import EventBroadcaster, get_event_bus
 from app.services.involvement_default_service import (
@@ -307,6 +308,7 @@ def _assignment_to_out(
     chunk_index: Optional[int] = None,
     chunks_total: Optional[int] = None,
     worklog_hours_actual: float = 0.0,
+    other_subgroup: bool = False,
 ) -> "AssignmentOut":
     """Конвертировать ORM-объект ResourcePlanAssignment в AssignmentOut."""
     bi = a.backlog_item
@@ -346,7 +348,34 @@ def _assignment_to_out(
         daily_hours=_parse_daily_hours(a.daily_hours_json),
         worklog_hours_actual=worklog_hours_actual,
         subgroup_id=getattr(issue, "effective_subgroup_id", None) if issue else None,
+        other_subgroup=other_subgroup,
     )
+
+
+def _other_subgroup_ids(
+    db: Session, plan: ResourcePlan, assignments: Sequence[ResourcePlanAssignment]
+) -> set[str]:
+    """Назначения, где группа задачи не входит в группы исполнителя за даты назначения.
+
+    Нет ни одной записи распределения на даты назначения — метки нет:
+    сравнивать не с чем (например, исполнитель ещё не заведён в команду).
+    """
+    if not plan.team or not ss.team_subgroups(db, plan.team):
+        return set()
+    records = ss.load_team(
+        db, plan.team, {a.employee_id for a in assignments if a.employee_id}
+    )
+    out: set[str] = set()
+    for a in assignments:
+        issue = a.backlog_item.issue if a.backlog_item else None
+        group = getattr(issue, "effective_subgroup_id", None) if issue else None
+        recs = records.get(a.employee_id) if a.employee_id else None
+        if not group or not recs or not a.start_date or not a.end_date:
+            continue
+        groups = ss.groups_between(recs, a.start_date, a.end_date)
+        if groups and group not in groups:
+            out.add(a.id)
+    return out
 
 
 def _compute_worklog_hours_actual(
@@ -496,6 +525,10 @@ class AssignmentOut(BaseModel):
     # Фронт режет график на секции групп; если у задачи группы нет, подставляет
     # группу главного исполнителя из сценария.
     subgroup_id: Optional[str] = None
+    # Исполнитель работает на группу, где у него нет доли в дни назначения
+    # (задача старой группы после перевода или сосед, взятый на подмогу).
+    # Заполняется только в выдаче диаграммы; в ответе правки и разборе — всегда false.
+    other_subgroup: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -1684,6 +1717,7 @@ def get_gantt(
         return out
 
     worklog_map = _compute_worklog_hours_actual(db, assignments_raw)
+    other_subgroup_ids = _other_subgroup_ids(db, plan, assignments_raw)
 
     assignments = [
         _assignment_to_out(
@@ -1693,6 +1727,7 @@ def get_gantt(
             chunk_index=(a.part_number - 1) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             chunks_total=phase_counts.get((a.backlog_item_id, a.phase)) if phase_counts.get((a.backlog_item_id, a.phase), 1) > 1 else None,
             worklog_hours_actual=worklog_map.get(a.id, 0.0),
+            other_subgroup=a.id in other_subgroup_ids,
         )
         for a in assignments_raw
     ]
