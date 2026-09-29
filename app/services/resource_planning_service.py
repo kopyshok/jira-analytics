@@ -7,7 +7,7 @@ import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from itertools import groupby
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from dateutil.relativedelta import relativedelta
 
@@ -18,16 +18,15 @@ from app.models import (
     Absence,
     BacklogItem,
     Employee,
-    EmployeeTeam,
     ProductionCalendarDay,
     ResourcePlan,
     ResourcePlanAssignment,
     ScenarioAllocation,
-    Team,
 )
 from app.services import opo_policy, team_membership as tm
 from app.services import cross_team_occupancy as cto
 from app.services import scheduled_blocks as sb
+from app.services import subgroup_shares as ss
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.jira_developer import jira_developers_for_items
 from app.services.involvement_default_service import effective_for_phase, team_defaults
@@ -768,7 +767,9 @@ class ResourcePlanningService:
         # младшей задачи — фаза разрывается на видимые куски.
         preempt_locked: Dict[str, set] = {eid: set() for eid in avail.keys()}
 
-        emp_group, item_group = self._subgroup_context(plan, employees, items)
+        emp_group, item_group = self._subgroup_context(
+            plan, employees, items, q_start, q_end
+        )
         # Потолок «свои не влезают» — ёмкость сотрудника внутри квартала.
         quarter_capacity = {
             eid: sum(h for d, h in days.items() if q_start <= d <= q_end)
@@ -1956,7 +1957,7 @@ class ResourcePlanningService:
         employees: List[Employee],
         pinned: Optional[Dict[Tuple[str, str, int], str]] = None,
         alloc_by_item: Optional[Dict[str, ScenarioAllocation]] = None,
-        emp_group: Optional[Dict[str, str]] = None,
+        emp_group: Optional[Dict[str, Set[str]]] = None,
         item_group: Optional[Dict[str, str]] = None,
         capacity: Optional[Dict[str, float]] = None,
         jira_dev: Optional[Dict[str, str]] = None,
@@ -2142,13 +2143,15 @@ class ResourcePlanningService:
         group: Optional[str],
         load: Dict[str, float],
         hours: float,
-        emp_group: Dict[str, str],
+        emp_group: Dict[str, Set[str]],
         capacity: Dict[str, float],
     ) -> Optional[str]:
         """Кандидат из пула: свои по группе вперёд, соседи — если свои не влезают.
 
         Команда без деления (пустые карты групп) ведёт себя как раньше —
-        greedy по минимальной нагрузке.
+        greedy по минимальной нагрузке. «Свой» для группы — любой, у кого в
+        квартале плана есть в ней доля (общий сотрудник свой сразу для
+        нескольких групп, переведённый внутри квартала — для старой и новой).
 
         Своего берём, пока квартальная ёмкость самого свободного из группы
         вмещает часы фазы. Как только не вмещает — зовём самого свободного
@@ -2160,7 +2163,7 @@ class ResourcePlanningService:
         best = min(pool, key=lambda eid: load[eid])
         if not group or not emp_group:
             return best
-        own = [eid for eid in pool if emp_group.get(eid) == group]
+        own = [eid for eid in pool if group in emp_group.get(eid, ())]
         if not own:
             return best
         best_own = min(own, key=lambda eid: load[eid])
@@ -2181,34 +2184,41 @@ class ResourcePlanningService:
         plan: ResourcePlan,
         employees: List[Employee],
         items: List[BacklogItem],
-    ) -> Tuple[Dict[str, str], Dict[str, str]]:
-        """({employee_id: группа}, {item_id: группа}) для команды с делением.
+        q_start: date,
+        q_end: date,
+    ) -> Tuple[Dict[str, Set[str]], Dict[str, str]]:
+        """({сотрудник: его группы в квартале}, {item_id: группа}) для команды с делением.
 
-        Команда без деления → две пустые карты: подбор исполнителей не меняется.
-        Группа инициативы — своя, иначе группа её главного исполнителя из
-        сценария (та же лесенка, что на экранах Сценариев и Гантта).
+        «Свои» для группы — все, у кого в квартале плана есть в ней доля: общий
+        сотрудник свой для всех своих групп, переведённый внутри квартала — для
+        обеих. Доля — ориентир, не лимит, поэтому ёмкость не режется по группам.
+        Группа инициативы без своей — группа главного исполнителя на опорный
+        день (сегодня, прижатый к кварталу); у поделённого — нет.
         """
-        team = self.db.query(Team).filter(Team.name == plan.team).one_or_none()
-        if not team or not team.has_subgroups:
+        if not ss.team_subgroups(self.db, plan.team):
             return {}, {}
-
-        emp_group: Dict[str, str] = {}
-        if employees:
-            rows = self.db.execute(
-                select(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id).where(
-                    EmployeeTeam.team == plan.team,
-                    EmployeeTeam.employee_id.in_([e.id for e in employees]),
-                    EmployeeTeam.subgroup_id.isnot(None),
-                )
-            ).all()
-            for eid, gid in rows:
-                emp_group[eid] = gid
-
+        records = ss.load_team(self.db, plan.team, [e.id for e in employees])
+        # Группы считаем по дням реального членства в команде плана внутри
+        # квартала — иначе привлечённому из другой команды или тому, кто
+        # ушёл и вернулся, попадут дни, когда он тут не состоял. У кого
+        # членства в этом периоде нет (привлечён без записи EmployeeTeam) —
+        # своих групп нет, обычный подбор greedy.
+        intervals = tm.member_intervals(self.db, [plan.team], q_start, q_end)
+        emp_group: Dict[str, Set[str]] = {}
+        for eid, recs in records.items():
+            spans = intervals.get(eid)
+            if not spans:
+                continue
+            lo, hi = ss.membership_bounds(spans)
+            groups = ss.groups_between(recs, lo, hi)
+            if groups:
+                emp_group[eid] = groups
+        ref_day = min(max(date.today(), q_start), q_end)
         item_group: Dict[str, str] = {}
         for it in items:
             gid = getattr(it.issue, "effective_subgroup_id", None) if it.issue else None
             if not gid and it.assignee_employee_id:
-                gid = emp_group.get(it.assignee_employee_id)
+                gid = ss.single_group_on(records.get(it.assignee_employee_id, []), ref_day)
             if gid:
                 item_group[it.id] = gid
         return emp_group, item_group
