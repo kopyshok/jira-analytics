@@ -33,7 +33,6 @@ from app.models import (
     AppSetting,
     BacklogItem,
     Employee,
-    EmployeeTeam,
     HierarchyRule,
     Issue,
     PlanningScenario,
@@ -56,6 +55,7 @@ from app.schemas.capacity_diff import (
 from app.schemas.assignee_candidates import CandidateGroupOut
 from app.schemas.scenario_override import AllocationOverrideRequest
 from app.services import opo_policy, team_membership
+from app.services import subgroup_shares as ss
 from app.services.capacity_service import CapacityService
 from app.services.allocation_estimates import effective_estimate_hours
 from app.services.continuation_service import ContinuationService
@@ -395,6 +395,10 @@ class ResourceBaseEmployeeOut(BaseModel):
     committed_hours_all_teams: float = 0.0
     is_overcommitted: bool = False
     subgroup_id: Optional[str] = None
+    # Часы по группам (ключ "" — дни без группы) и подписи участия в группе
+    # за квартал («60%», «с 15.11»). Пусто — у команды нет деления.
+    subgroup_hours: Dict[str, float] = {}
+    subgroup_labels: Dict[str, str] = {}
 
 
 class ResourceBaseOut(BaseModel):
@@ -441,6 +445,9 @@ class ResourceSummaryOut(BaseModel):
     booked_by_other_teams_by_role: Dict[str, float] = {}
     # Часы команды в планах команд, взявших её людей к себе (не вычтены).
     borrowed_by_other_teams_by_role: Dict[str, float] = {}
+    # Активные сотрудники без группы хоть в один день участия в квартале:
+    # [{employee_id, display_name}]. Пока список не пуст, утвердить нельзя.
+    ungrouped_employees: List[Dict] = []
 
 
 # === Helpers ===
@@ -457,16 +464,33 @@ def _to_scenario_resp(s: PlanningScenario) -> ScenarioResponse:
     )
 
 
-def _subgroup_by_employee(db: Session, team: Optional[str]) -> dict:
-    """Группа сотрудника внутри команды. Пусто — у команды нет деления."""
-    if not team:
+def _scenario_bounds(scenario: PlanningScenario) -> Optional[tuple[date, date]]:
+    """Первый и последний день квартала сценария. None — год/квартал не заданы."""
+    q = quarter_num(scenario.quarter)
+    if not (scenario.year and q):
+        return None
+    return quarter_bounds(scenario.year, q)
+
+
+def _subgroup_by_employee(db: Session, scenario: PlanningScenario) -> dict:
+    """Группа сотрудника на опорный день квартала — для идей без задачи.
+
+    Опорный день — сегодня, прижатый к границам квартала сценария. Поделённый
+    между группами группы не получает: его идея остаётся «Без группы».
+    Пусто — у команды нет деления.
+    """
+    team = scenario.team
+    if not team or not ss.team_subgroups(db, team):
         return {}
-    rows = (
-        db.query(EmployeeTeam.employee_id, EmployeeTeam.subgroup_id)
-        .filter(EmployeeTeam.team == team, EmployeeTeam.subgroup_id.isnot(None))
-        .all()
-    )
-    return {emp_id: sg_id for emp_id, sg_id in rows}
+    bounds = _scenario_bounds(scenario)
+    today = date.today()
+    day = today if bounds is None else min(max(today, bounds[0]), bounds[1])
+    out = {}
+    for emp_id, records in ss.load_team(db, team).items():
+        group = ss.single_group_on(records, day)
+        if group:
+            out[emp_id] = group
+    return out
 
 
 def _to_allocation_resp(
@@ -557,6 +581,8 @@ def _resource_to_response(base) -> ResourceBaseOut:
                 committed_hours_all_teams=getattr(e, "committed_hours_all_teams", 0.0),
                 is_overcommitted=bool(getattr(e, "is_overcommitted", False)),
                 subgroup_id=getattr(e, "subgroup_id", None),
+                subgroup_hours=getattr(e, "subgroup_hours", {}) or {},
+                subgroup_labels=getattr(e, "subgroup_labels", {}) or {},
             )
             for e in base.employees
         ],
@@ -718,6 +744,24 @@ async def approve_scenario(
     """
     scenario = db.get(PlanningScenario, scenario_id)
     _require_draft(scenario)
+
+    # В команде с делением у каждого активного сотрудника должна быть группа
+    # на все дни участия в квартале — иначе ресурс групп не сходится.
+    # Проверка — до любой записи.
+    bounds = _scenario_bounds(scenario)
+    if scenario.team and bounds:
+        missing = ss.ungrouped_members(db, scenario.team, *bounds)
+        if missing:
+            names = [
+                n
+                for (n,) in db.query(Employee.display_name)
+                .filter(Employee.id.in_(missing))
+                .order_by(Employee.display_name)
+            ]
+            raise HTTPException(
+                status_code=409,
+                detail="Нельзя утвердить: у сотрудников нет группы — " + ", ".join(names),
+            )
 
     now = datetime.utcnow()
 
@@ -1576,7 +1620,7 @@ async def list_scenario_allocations(
     else:
         parents_in_backlog = set()
 
-    subgroup_by_employee = _subgroup_by_employee(db, scenario.team)
+    subgroup_by_employee = _subgroup_by_employee(db, scenario)
 
     return [
         _to_allocation_resp(
@@ -1705,7 +1749,7 @@ async def patch_allocation(
         .first()
     )
     return _to_allocation_resp(
-        alloc, item, subgroup_by_employee=_subgroup_by_employee(db, scenario.team)
+        alloc, item, subgroup_by_employee=_subgroup_by_employee(db, scenario)
     )
 
 
@@ -1775,7 +1819,7 @@ async def patch_allocation_assignee(
     return _to_allocation_resp(
         alloc,
         backlog_item,
-        subgroup_by_employee=_subgroup_by_employee(db, scenario.team),
+        subgroup_by_employee=_subgroup_by_employee(db, scenario),
     )
 
 
@@ -1834,7 +1878,7 @@ async def patch_allocation_developer(
     return _to_allocation_resp(
         alloc,
         backlog_item,
-        subgroup_by_employee=_subgroup_by_employee(db, scenario.team),
+        subgroup_by_employee=_subgroup_by_employee(db, scenario),
     )
 
 
@@ -1981,6 +2025,7 @@ def scenario_resource_summary(
         ] if summary.subgroups else [],
         booked_by_other_teams_by_role=summary.booked_by_other_teams_by_role,
         borrowed_by_other_teams_by_role=summary.borrowed_by_other_teams_by_role,
+        ungrouped_employees=summary.ungrouped_employees,
     )
 
 

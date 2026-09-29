@@ -179,10 +179,14 @@ def group_label(records: Records, group_id: str, start: date, end: date) -> str:
             spans[-1][1] = hi
         else:
             spans.append([lo, hi, pct])
+    # Если в периоде у группы был хоть один неполный отрезок, процент пишем и
+    # на полных отрезках тоже — иначе «40% до 16.02, с 16.02» читается как
+    # «а после 16.02 доля пропала», хотя это просто 100%.
+    has_partial = any(pct < 100 for _, _, pct in spans)
     parts = []
     for lo, hi, pct in spans:
         bits = []
-        if pct < 100:
+        if pct < 100 or has_partial:
             bits.append(f"{pct}%")
         if lo > start:
             bits.append(f"с {_fmt(lo)}")

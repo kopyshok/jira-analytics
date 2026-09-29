@@ -86,6 +86,50 @@ def test_subgroup_capacity_loses_only_booked_member_hours(db_session):
     assert s.available_by_subgroup_role["sg-y"]["developer"] == gross_y
 
 
+def test_subgroup_split_50_50_booking_costs_each_group_half(db_session):
+    """Сотрудник поделён 50/50 между группами — бронь другой команды режет
+    доступное каждой группы поровну."""
+    db_session.add(Team(id="t-a2", name="A", has_subgroups=True))
+    db_session.flush()
+    db_session.add_all([
+        TeamSubgroup(id="sg-p", team_id="t-a2", name="P", sort_order=1),
+        TeamSubgroup(id="sg-q", team_id="t-a2", name="Q", sort_order=2),
+    ])
+    e, sc_a = _setup(db_session)  # бронь B: 6 ч на 05.01
+    db_session.add(share(e.id, "A", "sg-p", 50))
+    db_session.add(share(e.id, "A", "sg-q", 50))
+    db_session.commit()
+
+    s = ResourceBaseService(db_session).compute_summary(sc_a)
+
+    gross_p = s.gross_by_subgroup_role["sg-p"]["developer"]
+    gross_q = s.gross_by_subgroup_role["sg-q"]["developer"]
+    assert s.available_by_subgroup_role["sg-p"]["developer"] == round(gross_p - 3.0, 2)
+    assert s.available_by_subgroup_role["sg-q"]["developer"] == round(gross_q - 3.0, 2)
+
+
+def test_subgroup_transfer_after_booking_charges_old_group_only(db_session):
+    """Перевод вступает в силу на следующий день после брони — бронь снимается
+    только со старой группы, не делится между старой и новой."""
+    db_session.add(Team(id="t-a3", name="A", has_subgroups=True))
+    db_session.flush()
+    db_session.add_all([
+        TeamSubgroup(id="sg-old", team_id="t-a3", name="Old", sort_order=1),
+        TeamSubgroup(id="sg-new", team_id="t-a3", name="New", sort_order=2),
+    ])
+    e, sc_a = _setup(db_session)  # бронь B: 6 ч на 05.01
+    db_session.add(share(e.id, "A", "sg-old"))
+    db_session.add(share(e.id, "A", "sg-new", valid_from=date(2026, 1, 6)))
+    db_session.commit()
+
+    s = ResourceBaseService(db_session).compute_summary(sc_a)
+
+    gross_old = s.gross_by_subgroup_role["sg-old"]["developer"]
+    gross_new = s.gross_by_subgroup_role["sg-new"]["developer"]
+    assert s.available_by_subgroup_role["sg-old"]["developer"] == round(gross_old - 6.0, 2)
+    assert s.available_by_subgroup_role["sg-new"]["developer"] == gross_new
+
+
 def test_resource_summary_endpoint_returns_booked_hours(db_session):
     from fastapi.testclient import TestClient
 

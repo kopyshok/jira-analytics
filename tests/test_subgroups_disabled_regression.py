@@ -20,7 +20,6 @@ from app.models import (
     Project,
     Team,
 )
-from app.services.capacity_service import CapacityService
 from app.services.resource_base_service import ResourceBaseService
 from app.services.subgroup_resolver import SubgroupResolver
 
@@ -51,12 +50,23 @@ def plain_team(db_session):
     db_session.commit()
 
 
-def test_capacity_identical_without_subgroups(db_session, plain_team):
-    svc = CapacityService(db_session)
-    before = svc.team_role_capacity(2026, 1, team_filter=[TEAM])
+def test_resource_base_has_no_subgroup_data_without_division(db_session, plain_team):
+    """Команда без деления: у сотрудников нет разбивки по группам, блокировки нет."""
+    scenario = PlanningScenario(
+        id="sc-plain", name="Q1", quarter="Q1", year=2026, team=TEAM, status="draft"
+    )
+    db_session.add(scenario)
+    db_session.commit()
 
-    assert svc.team_role_capacity_by_subgroup(2026, 1, TEAM) == {}
-    assert svc.team_role_capacity(2026, 1, team_filter=[TEAM]) == before
+    svc = ResourceBaseService(db_session)
+    base = svc.compute(scenario)
+    summary = svc.compute_summary(scenario)
+
+    assert base.employees
+    for emp in base.employees:
+        assert emp.subgroup_hours == {}
+        assert emp.subgroup_labels == {}
+    assert summary.ungrouped_employees == []
 
 
 def test_resource_summary_has_empty_breakdown(db_session, plain_team):
