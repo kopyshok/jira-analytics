@@ -102,6 +102,7 @@ export default function AbsenceHeatmap({ year, quarter, employees, absences }: P
             key={`mh-${g.month}`}
             style={{
               width: g.days.length * (cell + 1),
+              flexShrink: 0,
               fontSize: 11,
               fontWeight: 600,
               color: palette.monthLabel,
