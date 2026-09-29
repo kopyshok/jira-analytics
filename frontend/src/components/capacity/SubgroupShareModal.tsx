@@ -68,8 +68,17 @@ export default function SubgroupShareModal({
           onChange={setOn}
           format="DD.MM.YYYY"
           placeholder={fromStartAllowed ? 'С начала участия в команде' : 'Выберите дату'}
+          allowClear={fromStartAllowed}
+          status={!on && !fromStartAllowed ? 'error' : undefined}
           style={{ width: '100%' }}
         />
+        {!fromStartAllowed && (
+          <Text type={on ? 'secondary' : 'danger'} style={{ fontSize: 12 }}>
+            Запись «с начала участия» уже есть, поэтому нужна дата перевода. Чтобы
+            исправить первую группу, удалите её запись корзиной в карточке и
+            переведите заново без даты.
+          </Text>
+        )}
         {mode === 'transfer' ? (
           <>
             <Text type="secondary">Новая группа</Text>
