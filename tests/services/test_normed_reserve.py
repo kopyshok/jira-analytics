@@ -458,3 +458,47 @@ def test_query_count_with_personal_settings_does_not_grow(db_session):
     big = _count_queries(db_session, lambda: nr.team_reserve(db_session, "ERP", *Q))
 
     assert big == small
+
+
+def _guest_setup(db):
+    """P — разработчик ERP (правила 55%, из них «Технические задачи» 10%),
+    состоит и в «Блоке», где команда не основная. Броней нет."""
+    types = _types(db)
+    p = make_employee(db, "Пряничников", "ERP", role="dev")
+    s = make_employee(db, "Шутов", "ERP", role="dev")
+    join_team(db, p, "Блок")
+    sc, _plan = make_plan(db, "ERP")
+    _rules(db, sc, types)
+    db.commit()
+    return types, p, s
+
+
+def test_guest_normed_excludes_cross_team_type(db_session):
+    """Остаток «Технических задач» — время для других команд: в нормированные
+    работы гостя он не входит (45% из 55%)."""
+    types, p, _s = _guest_setup(db_session)
+
+    by_day = nr.guest_normed_by_day(db_session, [p], [], *Q, D("2026-01-01"), D("2026-03-31"))
+
+    assert round(sum(by_day[p.id].values()), 1) == round(0.45 * 64 * 8.0, 1)
+    assert all(d.weekday() < 5 for d in by_day[p.id])
+
+
+def test_guest_normed_blocked_day_is_whole_day(db_session):
+    types, p, _s = _guest_setup(db_session)
+    db_session.add(ScheduledBlock(team="ERP", start_date=D("2026-01-05"), end_date=D("2026-01-07"),
+                                  reason="Закрытие месяца", work_type_id=types["support_consult"].id))
+    db_session.commit()
+
+    by_day = nr.guest_normed_by_day(db_session, [p], [], *Q, D("2026-01-01"), D("2026-03-31"))
+
+    assert [by_day[p.id][D(d)] for d in ("2026-01-05", "2026-01-06", "2026-01-07")] == [8.0, 8.0, 8.0]
+
+
+def test_guest_normed_empty_without_home_reserve(db_session):
+    """У основной команды нет правил — нормированных работ нет, как и раньше."""
+    p = make_employee(db_session, "Пряничников", "ERP", role="dev")
+    join_team(db_session, p, "Блок")
+    db_session.commit()
+
+    assert nr.guest_normed_by_day(db_session, [p], [], *Q, D("2026-01-01"), D("2026-03-31")) == {}

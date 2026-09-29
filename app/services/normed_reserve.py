@@ -465,3 +465,64 @@ def place_person(
         unplaced=remaining,
         normed_by_type=dict(by_type),
     )
+
+
+def guest_normed_by_day(
+    db: Session,
+    guests: List[Employee],
+    bookings: Iterable[cto.ExternalBooking],
+    year: int,
+    quarter: int,
+    start: date,
+    end: date,
+) -> Dict[str, Dict[date, float]]:
+    """{гость: {день: часы}} — нормированные работы основной команды гостя
+    сценария, без вида работы в других командах («Технические задачи»):
+    остаток этого вида — время, которое берут неосновные команды.
+
+    Гость — состоит в команде сценария, но она у него не основная. Запас —
+    основных команд квартала (`team_reserve`, личные проценты уже в нём),
+    раскладка — `place_person`, как в «Загрузке по дням»: норма дня —
+    календарь минус отсутствия; занятость — ``bookings`` (вычитаемые брони
+    гостя); доля дня вне задачи — по вовлечённости броней; заблокированные
+    дни — периоды основной команды и общие. Нет запаса — гостя в ответе нет.
+    """
+    if not guests:
+        return {}
+    ids = [e.id for e in guests]
+    membership = tm.membership_rows(db, ids)
+    homes = sorted({
+        t
+        for rows in membership.values()
+        for t, joined, left, primary in rows
+        if primary and (joined is None or joined <= end) and (left is None or left > start)
+    })
+    reserves = [team_reserve(db, t, year, quarter) for t in homes]
+    labels = next((r.labels for r in reserves if r is not None), None)
+    if labels is None:
+        return {}
+    cross = {
+        w.id
+        for w in db.execute(
+            select(MandatoryWorkType).where(MandatoryWorkType.code == CROSS_TEAM_WORK_TYPE_CODE)
+        ).scalars()
+    }
+    booked = list(bookings)
+    busy = cto.daily_totals(booked)
+    residue = cto.other_work_share((b.employee_id, b.involvement, b.daily_hours) for b in booked)
+    hits = sb.resolve_blocked_days(db, guests, start, end, None)
+    calendar = calendar_hours(db, start, end)
+    absent = absent_days(db, ids, start, end)
+    out: Dict[str, Dict[date, float]] = {}
+    for e in guests:
+        person = merge_person(reserves, e.id)
+        if person is None:
+            continue
+        for wt in cross:
+            person.share.pop(wt, None)
+        cap = {d: h for d, h in calendar.items() if d not in absent.get(e.id, set())}
+        load = place_person(
+            cap, {}, busy.get(e.id, {}), residue.get(e.id, {}), hits.get(e.id, {}), person, labels
+        )
+        out[e.id] = {d: h for d, h in load.normed_by_day.items() if h > 0}
+    return out
