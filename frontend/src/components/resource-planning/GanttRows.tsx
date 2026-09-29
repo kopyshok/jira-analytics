@@ -499,6 +499,7 @@ function PhaseBar({ assignment, planId, timeline, refKey, extraRefKeys, rowRefs,
           extraRefKeys?.forEach(k => rowRefs.current.delete(k));
         }
       }}
+      data-testid={`rp-bar-${refKey}`}
       onMouseDown={beginDrag}
       onClick={(e) => {
         if (drag) return;
