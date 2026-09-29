@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.services.subgroup_flow_service import flow_for_team
 from app.services.subgroup_resolver import SubgroupResolver
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 OTHER_TEAM = "Команда 2"
@@ -42,6 +43,10 @@ def data(db_session):
         EmployeeTeam(employee_id=a.id, team=TEAM, is_primary=True, subgroup_id=calc.id),
         EmployeeTeam(employee_id=b.id, team=TEAM, is_primary=True, subgroup_id=integ.id),
         EmployeeTeam(employee_id=alien.id, team=OTHER_TEAM, is_primary=True),
+    ])
+    db_session.add_all([
+        share(a.id, TEAM, calc.id),
+        share(b.id, TEAM, integ.id),
     ])
 
     def issue(key, subgroup):

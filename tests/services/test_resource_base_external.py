@@ -5,6 +5,7 @@ from datetime import date
 from app.models import EmployeeTeam, Team, TeamSubgroup
 from app.services.resource_base_service import ResourceBaseService
 from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
+from tests.subgroup_fixtures import share
 
 
 def _setup(db_session, primary="B"):
@@ -74,6 +75,7 @@ def test_subgroup_capacity_loses_only_booked_member_hours(db_session):
     g = make_employee(db_session, "Сосед", "A")
     for emp, sg in ((e, "sg-x"), (g, "sg-y")):
         db_session.query(EmployeeTeam).filter_by(employee_id=emp.id, team="A").one().subgroup_id = sg
+        db_session.add(share(emp.id, "A", sg))
     db_session.commit()
 
     s = ResourceBaseService(db_session).compute_summary(sc_a)

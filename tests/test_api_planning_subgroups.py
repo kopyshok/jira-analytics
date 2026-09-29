@@ -22,6 +22,7 @@ from app.models import (
     Team,
     TeamSubgroup,
 )
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 
@@ -83,6 +84,8 @@ def _seed(db, *, has_subgroups: bool) -> str:
             subgroup_id="sg-1" if has_subgroups else None,
         )
     )
+    if has_subgroups:
+        db.add(share("e-1", TEAM, "sg-1"))
     db.add(Project(id="p-1", jira_project_id="1", key="RFA", name="RFA"))
     db.add(
         Issue(

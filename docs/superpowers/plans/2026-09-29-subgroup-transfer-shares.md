@@ -708,7 +708,7 @@ def share(
 
 - [ ] **Step 7: Фикстуры — добавить строку распределения к каждой приписке**
 
-Найти все места: `grep -rn "subgroup_id=" tests | grep -v "assigned_subgroup_id\|effective_subgroup_id"` в файлах, где создаётся `EmployeeTeam(...)`:
+Найти все места: `grep -rnE "subgroup_id\s*=" tests | grep -v "assigned_subgroup_id\|effective_subgroup_id"` в файлах, где создаётся `EmployeeTeam(...)`:
 
 `tests/api/test_issue_subgroup.py`, `tests/services/test_subgroup_effective.py`, `tests/services/test_subgroup_filter.py`, `tests/services/test_subgroup_resolver.py`, `tests/services/test_team_registry_service.py`, `tests/test_api_planning_subgroups.py`, `tests/test_capacity_subgroup.py`, `tests/test_dashboard_subgroups.py`, `tests/test_export_subgroups.py`, `tests/test_people_views_subgroups.py`, `tests/test_projects_backlog_subgroups.py`, `tests/test_resource_summary_subgroups.py`, `tests/test_rp_subgroup_assignment.py`, `tests/test_scenario_subgroup_snapshot.py`, `tests/test_subgroup_flow.py`.
 

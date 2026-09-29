@@ -14,6 +14,7 @@ from app.models import (
     Team,
     TeamSubgroup,
 )
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 
@@ -53,6 +54,7 @@ def seeded(testclient_db_session):
             employee_id="e-1", team=TEAM, is_primary=True, subgroup_id="sg-2"
         )
     )
+    db.add(share("e-1", TEAM, "sg-2"))
     issue = Issue(
         id="i-1",
         jira_issue_id="10001",

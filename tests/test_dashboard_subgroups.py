@@ -21,6 +21,7 @@ from app.models import (
 from app.services.analytics_service import AnalyticsService
 from app.services.subgroup_filter import NO_SUBGROUP_TOKEN
 from app.services.subgroup_resolver import SubgroupResolver
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 YEAR, QUARTER = 2026, 3
@@ -53,6 +54,10 @@ def data(db_session):
             employee_id=b.id, team=TEAM, is_primary=True, subgroup_id=integ.id,
             joined_at=date(2020, 1, 1),
         ),
+    ])
+    db_session.add_all([
+        share(a.id, TEAM, calc.id),
+        share(b.id, TEAM, integ.id),
     ])
 
     def issue(key, subgroup):

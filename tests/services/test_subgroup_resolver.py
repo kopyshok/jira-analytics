@@ -4,6 +4,7 @@ import pytest
 
 from app.models import Employee, EmployeeTeam, Issue, Project, Team, TeamSubgroup
 from app.services.subgroup_resolver import SubgroupResolver, SubgroupSource
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 
@@ -25,6 +26,7 @@ def setup(db_session):
             employee_id=emp.id, team=TEAM, is_primary=True, subgroup_id=integ.id
         )
     )
+    db_session.add(share(emp.id, TEAM, integ.id))
     db_session.commit()
     return {"team": team, "calc": calc, "integ": integ, "emp": emp}
 

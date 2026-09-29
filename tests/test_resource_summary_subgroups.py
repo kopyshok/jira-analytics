@@ -15,6 +15,7 @@ from app.models import (
     TeamSubgroup,
 )
 from app.services.resource_base_service import ResourceBaseService
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 MONDAYS = (date(2026, 1, 5), date(2026, 1, 12), date(2026, 1, 19))
@@ -44,6 +45,8 @@ def _dev(db, eid, subgroup_id=None, role="dev"):
             employee_id=eid, team=TEAM, is_primary=True, subgroup_id=subgroup_id
         )
     )
+    if subgroup_id:
+        db.add(share(eid, TEAM, subgroup_id))
 
 
 def _scenario(db, sid="sc-1", external_qa=None):
