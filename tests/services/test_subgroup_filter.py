@@ -4,6 +4,7 @@ import pytest
 
 from app.models import Employee, EmployeeTeam, Team, TeamSubgroup
 from app.services import subgroup_filter as sf
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 
@@ -23,6 +24,10 @@ def groups(db_session):
     db_session.add_all([
         EmployeeTeam(employee_id=emp.id, team=TEAM, is_primary=True, subgroup_id=calc.id),
         EmployeeTeam(employee_id=other.id, team=TEAM, is_primary=True, subgroup_id=integ.id),
+    ])
+    db_session.add_all([
+        share(emp.id, TEAM, calc.id),
+        share(other.id, TEAM, integ.id),
     ])
     db_session.commit()
     return {"calc": calc, "integ": integ, "emp": emp, "other": other}

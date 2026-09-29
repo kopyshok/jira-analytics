@@ -5,6 +5,7 @@ from app.models import BacklogItem, Employee
 from app.models.employee_team import EmployeeTeam
 from app.models.team import Team, TeamSubgroup
 from app.services.resource_planning_service import ResourcePlanningService
+from tests.subgroup_fixtures import share
 
 
 def _subgroup(db_session, key: str, team_name: str = "T1") -> str:
@@ -39,14 +40,17 @@ def _emp(db_session, name: str, subgroup: str | None, team: str = "T1") -> Emplo
     db_session.add(e)
     db_session.commit()
     db_session.refresh(e)
+    subgroup_id = _subgroup(db_session, subgroup, team) if subgroup else None
     db_session.add(
         EmployeeTeam(
             employee_id=e.id,
             team=team,
             is_primary=True,
-            subgroup_id=_subgroup(db_session, subgroup, team) if subgroup else None,
+            subgroup_id=subgroup_id,
         )
     )
+    if subgroup_id:
+        db_session.add(share(e.id, team, subgroup_id))
     db_session.commit()
     return e
 

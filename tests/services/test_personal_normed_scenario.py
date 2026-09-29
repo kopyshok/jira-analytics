@@ -8,6 +8,7 @@ from app.models import EmployeeTeam, MandatoryWorkType, PlanningScenario, Scenar
 from app.services.resource_base_service import ResourceBaseService
 from tests.services.normed_factory import _erp, _personal
 from tests.services.xteam_factory import add_item, book, join_team, make_employee, make_plan
+from tests.subgroup_fixtures import share
 
 NORM = 64 * 8.0  # I кв. 2026 без записей календаря
 
@@ -24,6 +25,7 @@ def _groups(db, people):
         db.add(TeamSubgroup(id=sg, team_id="t-erp", name=sg, sort_order=i))
         db.flush()
         db.query(EmployeeTeam).filter_by(employee_id=emp.id, team="ERP").one().subgroup_id = sg
+        db.add(share(emp.id, "ERP", sg))
 
 
 def test_spec_example_zero_personal_normed(db_session):

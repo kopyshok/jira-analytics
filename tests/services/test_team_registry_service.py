@@ -2,6 +2,7 @@
 
 from app.models import Employee, EmployeeTeam, Issue, Project, Team, TeamSubgroup
 from app.services.team_registry_service import TeamRegistryService
+from tests.subgroup_fixtures import share
 
 
 def test_team_defaults_to_no_subgroups(db_session):
@@ -47,6 +48,7 @@ def test_membership_carries_subgroup(db_session):
             employee_id=emp.id, team=team.name, is_primary=True, subgroup_id=group.id
         )
     )
+    db_session.add(share(emp.id, team.name, group.id))
     db_session.commit()
 
     row = db_session.query(EmployeeTeam).one()

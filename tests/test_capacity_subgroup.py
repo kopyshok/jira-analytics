@@ -15,6 +15,7 @@ from app.models import (
     TeamSubgroup,
 )
 from app.services.capacity_service import CapacityService
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 
@@ -85,6 +86,8 @@ def _dev(db_session, emp_id, account, team_name, subgroup_id=None):
             subgroup_id=subgroup_id,
         )
     )
+    if subgroup_id:
+        db_session.add(share(emp_id, team_name, subgroup_id))
 
 
 def test_capacity_splits_by_subgroup(db_session, productive_setup, full_calendar_q2):

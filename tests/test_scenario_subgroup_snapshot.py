@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.models import (
     Employee,
+    EmployeeSubgroupShare,
     EmployeeTeam,
     PlanningScenario,
     ScenarioRevision,
@@ -22,6 +23,7 @@ from app.models import (
     TeamSubgroup,
 )
 from app.services.snapshot_writer import SnapshotWriter
+from tests.subgroup_fixtures import share
 
 
 @pytest.fixture
@@ -71,6 +73,10 @@ def ctx(db_session: Session):
             ),
         ]
     )
+    db_session.add_all([
+        share("e-1", "T1", "sg-1"),
+        share("e-2", "T1", "sg-2"),
+    ])
     sc = PlanningScenario(
         id="s-1", name="Q2", year=2026, quarter="Q2", team="T1", status="draft"
     )
@@ -97,6 +103,9 @@ def test_snapshot_freezes_subgroup(db_session: Session, ctx):
 def test_snapshot_survives_employee_move(db_session: Session, ctx):
     row = db_session.query(EmployeeTeam).filter_by(employee_id="e-1").one()
     row.subgroup_id = "sg-2"
+    db_session.query(EmployeeSubgroupShare).filter_by(employee_id="e-1").update(
+        {"subgroup_id": "sg-2"}
+    )
     db_session.commit()
 
     frozen = (

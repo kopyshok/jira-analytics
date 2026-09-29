@@ -3,6 +3,7 @@
 from app.models.base import TimestampMixin, SyncedMixin, generate_uuid
 from app.models.employee import Employee
 from app.models.employee_team import EmployeeTeam
+from app.models.employee_subgroup_share import EmployeeSubgroupShare
 from app.models.project import Project
 from app.models.issue import Issue
 from app.models.issue_link import IssueLink
@@ -80,6 +81,7 @@ __all__ = [
     "generate_uuid",
     "Employee",
     "EmployeeTeam",
+    "EmployeeSubgroupShare",
     "Project",
     "Issue",
     "IssueLink",

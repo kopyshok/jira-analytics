@@ -7,6 +7,7 @@ import pytest
 from app.models import Employee, EmployeeTeam, Team, TeamSubgroup
 from app.services.kpi.kpi_service import report_with_approvals
 from app.services.subgroup_filter import NO_SUBGROUP_TOKEN, employee_ids
+from tests.subgroup_fixtures import share
 
 TEAM = "Команда 1С (Бухгалтерия)"
 
@@ -39,6 +40,8 @@ def people(db_session):
                 joined_at=date(2020, 1, 1),
             )
         )
+        if group:
+            db_session.add(share(emp.id, TEAM, group.id))
         made[code] = emp
     db_session.commit()
     return {"calc": calc, "integ": integ, **made}
