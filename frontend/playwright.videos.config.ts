@@ -19,7 +19,8 @@ export default defineConfig({
   testDir: './help-videos',
   testMatch: '*.video.ts',
   outputDir: `./test-results/help-videos-${backendPort}`,
-  timeout: 120_000,
+  // Ролик до 90 с + пережатие записи.
+  timeout: 300_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
