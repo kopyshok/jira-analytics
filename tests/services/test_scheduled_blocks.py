@@ -141,3 +141,33 @@ def test_cells_by_team_skips_own_and_global(db_session):
     hits = resolve_blocked_days(db_session, [e], D("2026-10-01"), D("2026-10-31"), "Блок")
 
     assert cells_by_team(hits, exclude_team="Блок") == {"ERP": [(e.id, "2026-10-05")]}
+
+
+def test_not_applied_lists_people_with_more_specific_period_in_month(db_session):
+    """Период на всю команду не закрывает тех, у кого в этом месяце есть период
+    того же вида по роли или лично — список показывает кого и в каком месяце."""
+    from app.services.scheduled_blocks import EMPLOYEE_LEVEL, ROLE_LEVEL, not_applied
+
+    wt = _wt(db_session)
+    other_wt = _wt(db_session, code="training")
+    analyst = _role(db_session, "analyst")
+    ivanov = make_employee(db_session, "Иванов", "ERP", role="analyst")
+    petrov = make_employee(db_session, "Петров", "ERP", role="analyst")
+    sidorov = make_employee(db_session, "Сидоров", "ERP", role="dev")
+    role_oct = _block(db_session, "ERP", "2026-10-05", "2026-10-07", wt, roles=[analyst])
+    _block(db_session, "ERP", "2026-10-20", "2026-10-21", wt, employees=[ivanov])
+    team_oct_nov = _block(db_session, "ERP", "2026-10-01", "2026-11-30", wt)
+    team_other = _block(db_session, "ERP", "2026-10-01", "2026-10-31", other_wt)
+
+    na = not_applied(db_session, [role_oct, team_oct_nov, team_other])
+
+    got = sorted((x.employee_id, x.month, x.by_level) for x in na[team_oct_nov.id])
+    assert got == sorted([
+        (ivanov.id, D("2026-10-01"), EMPLOYEE_LEVEL),
+        (petrov.id, D("2026-10-01"), ROLE_LEVEL),
+    ])
+    assert sidorov.id not in {x.employee_id for x in na[team_oct_nov.id]}
+    # Период роли не действует на Иванова в октябре: у него свой период.
+    assert [(x.employee_id, x.month) for x in na[role_oct.id]] == [(ivanov.id, D("2026-10-01"))]
+    # Другой вид работ ничего не перекрывает.
+    assert team_other.id not in na
