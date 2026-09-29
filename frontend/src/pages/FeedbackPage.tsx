@@ -6,11 +6,14 @@ import { feedbackApi, type FeedbackItem } from '../api/feedback';
 import FeedbackList from '../components/feedback/FeedbackList';
 import FeedbackDrawer from '../components/feedback/FeedbackDrawer';
 import FeedbackDetailDrawer from '../components/feedback/FeedbackDetailDrawer';
+import { useRegisterHelp } from '../contexts/HelpContext';
+import feedbackHelp from '../../../docs/help/feedback.md?raw';
 
 export default function FeedbackPage() {
   const [tab, setTab] = useState<'my' | 'ideas'>('my');
   const [submitOpen, setSubmitOpen] = useState(false);
   const [detail, setDetail] = useState<FeedbackItem | null>(null);
+  useRegisterHelp('Обратная связь', feedbackHelp);
 
   const myQ = useQuery({
     queryKey: ['feedback', 'my'],
