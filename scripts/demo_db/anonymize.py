@@ -1,0 +1,819 @@
+"""Обезличивание копии рабочей базы для демо-роликов.
+
+Работает на сыром sqlite-соединении по отражённой схеме (sqlite_master / PRAGMA table_info),
+поэтому покрывает и колонки, которых нет в моделях текущей ветки.
+
+Порядок:
+1. Удалить таблицы целиком (кэши ИИ, обратная связь, статистика, история синхронизаций, столы).
+2. Собрать исходные значения из структурных источников: люди, команды, группы, проекты,
+   заказчики, направления, спринты, релизы, адрес Jira.
+3. Словарь «настоящее → вымышленное» (детерминированный, вымышленное не содержит настоящих строк).
+4. Колоночные правила: заменить целиком / очистить свободный текст / секреты.
+5. Финальный проход по всем текстовым колонкам всех таблиц: замена исходных строк словаря
+   (самые длинные первыми, включая \\uXXXX-формы внутри JSON), фамилий отдельным словом
+   в любой падежной форме и ключей задач KEY-123.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sqlite3
+import time
+import zlib
+from dataclasses import dataclass, field
+from itertools import count
+from typing import Any, Callable, Iterable, Optional
+from urllib.parse import urlsplit
+
+from . import fake_data
+from .leak_check import norm, trie_pattern, word_pattern
+
+# Удаляются целиком: тексты ИИ, обратная связь, статистика использования, история
+# синхронизаций с текстами ошибок, публичные рабочие столы (токены).
+DELETE_TABLES = (
+    "confluence_page_cache", "feedback_items", "project_ai_summaries", "work_type_report_snapshots",
+    "executive_dashboard_snapshots", "issue_classifications", "usage_events", "usage_daily",
+    "sync_run", "work_desks",
+)
+
+SECRET_SETTING_RE = re.compile(
+    r"token|password|secret|api_key|apikey|credential|jira_email|confluence|prompt|login|username|sync_lock",
+    re.IGNORECASE,
+)
+JIRA_URL_SETTING = "jira_base_url"
+DEMO_JIRA_URL = "https://jira.example.com"
+DEMO_JIRA_HOST = "jira.example.com"
+
+TEXT_TYPE_MARKERS = ("CHAR", "TEXT", "CLOB", "JSON")
+PUBLIC_EMAIL_DOMAINS = frozenset({
+    "example.com", "gmail.com", "mail.ru", "yandex.ru", "ya.ru", "bk.ru", "list.ru", "inbox.ru",
+    "rambler.ru", "outlook.com", "hotmail.com", "icloud.com",
+})
+# Хосты аватарок в ссылках (сами ссылки чистятся, это страховка проверки).
+AVATAR_HOSTS = ("gravatar.com", "avatar-management")
+
+# Колонки с именем человека рядом с учёткой Jira (учётка — главный признак личности).
+ISSUE_PEOPLE = ("assignee", "reporter", "developer")
+# Снимки сценариев: имя сотрудника рядом с employee_id.
+SNAPSHOT_NAME_COLUMNS = (
+    ("scenario_team_snapshots", "display_name"),
+    ("scenario_capacity_snapshots", "employee_name"),
+    ("scenario_norm_snapshots", "employee_name"),
+    ("scenario_absence_snapshots", "employee_name"),
+)
+# JSON со списками команд (список или объект с ключом "teams").
+TEAM_JSON_COLUMNS = (
+    ("issues", "participating_teams"),
+    ("users", "selected_teams"),
+    ("users", "team_desk_filter"),
+    ("executive_dashboard_snapshots", "team_set_json"),
+    ("work_type_report_snapshots", "team_set_json"),
+)
+
+_ISSUE_KEY_RE = re.compile(r"^([A-Z][A-Z0-9_]*)-\d+$")
+_NAME_SPLIT_RE = re.compile(r"[\s\-‐–—,.;()«»\"']+")
+_PATRONYMIC_RE = re.compile(r"(вич|вна|чна|ьич)$")
+_CODE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_\-]{0,15}$")
+_QUARTER_TAG_RE = re.compile(r"^\s*\d\s*кв\s*\d{2,4}\s*$", re.IGNORECASE)
+
+Rule = Callable[[Any, dict], Any]
+
+
+@dataclass
+class Sensitive:
+    """Исходные чувствительные строки — вход проверки утечек."""
+
+    strings: frozenset[str]  # нормализованные (norm), ищутся подстрокой: ФИО, e-mail, команды, …
+    project_keys: frozenset[str]  # настоящие ключи проектов: ищутся как KEY-123
+    words: frozenset[str] = frozenset()  # падежные формы фамилий: ищутся отдельным словом
+    primary_team: str = ""  # вымышленное имя основной команды
+    stats: dict[str, int] = field(default_factory=dict)
+
+
+def name_parts(name: str) -> tuple[Optional[str], list[str]]:
+    """(ФИО для словаря или None, фамилии-кандидаты) в нормализованном виде.
+
+    Порядок «Фамилия Имя» / «Имя Фамилия» в данных разный, поэтому фамилией считается
+    любое слово от 5 букв, кроме известных имён и отчеств (не первым словом).
+    Одиночное короткое слово или просто имя («тест», «Ольга») в словарь не идёт —
+    иначе замена испортит обычные слова; такие значения заменяются колоночными правилами.
+    """
+    full = norm(name)
+    tokens = [t for t in _NAME_SPLIT_RE.split(full) if t]
+    surnames = [
+        t for i, t in enumerate(tokens)
+        if len(t) >= 5 and t not in fake_data.COMMON_FIRST_NAMES
+        and not (i > 0 and _PATRONYMIC_RE.search(t))
+    ]
+    if len(tokens) >= 2 or (len(full) >= 5 and full not in fake_data.COMMON_FIRST_NAMES):
+        return full, surnames
+    return None, surnames
+
+
+def surname_forms(token: str) -> set[str]:
+    """Падежные формы фамилии (нормализованной): Боков → бокова, бокову, боковым, …
+
+    Фамилия ищется отдельным словом во всех формах единственного числа, а не подстрокой:
+    иначе «Новиков» находится в «черновиков», а «Боков» — в «боковая панель». Формы
+    множественного числа (о семье) не берутся: «Черновых» совпадает с «черновых сценариях».
+    """
+    t = token
+    if not re.fullmatch(r"[а-я]+", t):
+        return {t}  # латиница и составные — без склонения
+    if t.endswith(("ова", "ева", "ина", "ына")):
+        stem, ends = t[:-1], ("а", "ой", "у", "ою")
+    elif t.endswith(("ов", "ев", "ин", "ын")):
+        stem, ends = t, ("", "а", "у", "ым", "ом", "е")
+    elif t.endswith("ая"):
+        stem, ends = t[:-2], ("ая", "ой", "ую", "ою")
+    elif t.endswith(("ий", "ый", "ой")):
+        stem, ends = t[:-2], (t[-2:], "ого", "ому", "им", "ым", "ом")
+    elif t.endswith("а"):
+        stem, ends = t[:-1], ("а", "ы", "и", "е", "у", "ой", "ою")
+    elif t.endswith("я"):
+        stem, ends = t[:-1], ("я", "и", "ю", "ей", "ею", "е")
+    elif t.endswith("ь"):
+        stem, ends = t[:-1], ("ь", "я", "ю", "ем", "е", "и")
+    elif t[-1] in "оеиуюыэ":
+        return {t}  # несклоняемые: Шевченко
+    else:
+        stem, ends = t, ("", "а", "у", "ом", "ым", "е")
+    return {stem + e for e in ends}
+
+
+def _is_placeholder(name: Any) -> bool:
+    """Служебная подпись приложения в снимке без сотрудника, например «(внешний QA)»."""
+    return isinstance(name, str) and name.strip().startswith("(") and name.strip().endswith(")")
+
+
+def _person_key(name: str) -> str:
+    """Ключ личности по имени: первые два слова без учёта порядка («Иванов Иван» = «Иван Иванов»)."""
+    return " ".join(sorted(norm(name).split()[:2]))
+
+
+def _escaped(text: str) -> str:
+    return json.dumps(text, ensure_ascii=True)[1:-1]
+
+
+def _str(value: Any) -> Optional[str]:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _q(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+class _Anonymizer:
+    def __init__(self, conn: sqlite3.Connection, primary_team: str, password_hash: str) -> None:
+        self.conn = conn
+        self.primary_team = primary_team
+        self.password_hash = password_hash
+        self.cols = self._reflect()
+        # Люди: личность = индекс; к ней привязаны учётки, варианты написания ФИО, e-mail.
+        self.person_by_acc: dict[str, int] = {}
+        self.person_by_key: dict[str, int] = {}
+        self.person_by_email: dict[str, int] = {}
+        self.person_surfaces: list[set[str]] = []
+        self.fake_person: list[str] = []
+        self.acc_map: dict[str, str] = {}
+        self.email_map: dict[str, str] = {}
+        self.emp_acc: dict[str, Optional[str]] = {}
+        self.customers: list[str] = []
+        # Команды, проекты и прочие справочники с настоящими названиями.
+        self.teams: list[str] = []
+        self.subgroups: list[str] = []
+        self.project_keys: list[str] = []
+        self.project_names: dict[str, str] = {}
+        self.directions: list[str] = []
+        self.sprints: list[str] = []
+        self.releases: list[str] = []
+        self.themes: list[str] = []
+        self.hosts: set[str] = set()
+        self.jira_host = ""
+        self.category_codes: set[str] = set()
+        self.backlog_issue: dict[str, Optional[str]] = {}
+        # Заполняются в build_fakes().
+        self.maps: dict[str, dict[str, str]] = {}
+        self.titles: list[str] = []
+        self.sensitive: set[str] = set()
+        self.surname_words: set[str] = set()
+
+    # --- схема и чтение ----------------------------------------------------------------
+
+    def _reflect(self) -> dict[str, dict[str, tuple[str, bool]]]:
+        tables = [r[0] for r in self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        )]
+        return {
+            t: {r[1]: ((r[2] or "").upper(), bool(r[3])) for r in self.conn.execute(f"PRAGMA table_info({_q(t)})")}
+            for t in tables
+        }
+
+    def _has(self, table: str, *cols: str) -> bool:
+        return table in self.cols and all(c in self.cols[table] for c in cols)
+
+    def _rows(self, table: str, cols: str) -> list[tuple]:
+        names = cols.split()
+        if not self._has(table, *names):
+            return []
+        select = ", ".join(_q(n) for n in names)
+        return self.conn.execute(f"SELECT DISTINCT {select} FROM {_q(table)} ORDER BY {select}").fetchall()
+
+    def _values(self, table: str, col: str) -> list[str]:
+        return [v for (v,) in self._rows(table, col) if _str(v)]
+
+    # --- 1. удаление --------------------------------------------------------------------
+
+    def delete_tables(self) -> None:
+        for table in DELETE_TABLES:
+            if table in self.cols:
+                n = self.conn.execute(f"DELETE FROM {_q(table)}").rowcount
+                print(f"  удалено {table}: {n}", flush=True)
+        if self._has("sync_schedule", "last_run_id"):
+            self.conn.execute("UPDATE sync_schedule SET last_run_id = NULL")
+        self.conn.commit()
+
+    # --- 2. сбор исходных значений ------------------------------------------------------
+
+    def _person(self, acc: Any, name: Any) -> Optional[int]:
+        acc, name = _str(acc), _str(name)
+        if not acc and not name:
+            return None
+        p = self.person_by_acc.get(acc) if acc else None
+        key = _person_key(name) if name else None
+        if p is None and key:
+            p = self.person_by_key.get(key)
+        if p is None:
+            p = len(self.person_surfaces)
+            self.person_surfaces.append(set())
+        if acc:
+            self.person_by_acc.setdefault(acc, p)
+            self.acc_map.setdefault(acc, f"acc-{len(self.acc_map) + 1}")
+        if name and key:
+            self.person_by_key.setdefault(key, p)
+            self.person_surfaces[p].add(name)
+        return p
+
+    def _email(self, email: Any, person: Optional[int]) -> None:
+        email = _str(email)
+        if not email:
+            return
+        low = email.lower()
+        self.email_map.setdefault(low, f"user{len(self.email_map) + 1}@example.com")
+        if person is not None:
+            self.person_by_email.setdefault(low, person)
+
+    @staticmethod
+    def _add_unique(target: list[str], values: Iterable[Any]) -> None:
+        seen = set(target)
+        for v in values:
+            if isinstance(v, str) and v.strip() and v not in seen:
+                seen.add(v)
+                target.append(v)
+
+    @staticmethod
+    def _json_teams(value: Any) -> list[str]:
+        try:
+            obj = json.loads(value)
+        except (TypeError, ValueError):
+            return []
+        if isinstance(obj, dict):
+            obj = obj.get("teams")
+        return [t for t in obj if isinstance(t, str)] if isinstance(obj, list) else []
+
+    def collect(self) -> None:
+        # Люди: сотрудники первыми (у них учётка), затем поля ФИО задач, пользователи, снимки.
+        employees = self._rows("employees", "display_name jira_account_id id email")
+        for name, acc, emp_id, email in employees:
+            p = self._person(acc, name)
+            self.emp_acc[emp_id] = _str(acc)
+            self._email(email, p)
+        for role in ISSUE_PEOPLE:
+            for acc, name in self._rows("issues", f"{role}_account_id {role}_display_name"):
+                self._person(acc, name)
+        for email, name in self._rows("users", "email display_name"):
+            p = self.person_by_email.get((_str(email) or "").lower())
+            if p is not None and _str(name):
+                self.person_surfaces[p].add(_str(name))
+                self.person_by_key.setdefault(_person_key(name), p)
+            else:
+                p = self._person(None, name)
+            self._email(email, p)
+        for table, col in SNAPSHOT_NAME_COLUMNS:
+            for emp_id, name in self._rows(table, f"employee_id {col}"):
+                if emp_id is None and _is_placeholder(name):
+                    continue
+                self._person(self.emp_acc.get(emp_id), name)
+        for name in self._values("kpi_approvals", "approved_by"):
+            self._person(None, name)
+        for acc in self._values("backlog_items", "assignee_jira_account_at_choice"):
+            self._person(acc, None)
+        self._add_unique(self.customers, sorted(
+            set(self._values("backlog_items", "customer")) | set(self._values("scenario_allocation_snapshots", "customer"))
+        ))
+
+        # Команды: основная первой, затем справочник команд, затем прочие имена из колонок
+        # team/default_team и JSON (каждая группа по алфавиту).
+        registry = set(self._values("teams", "name"))
+        teams: set[str] = set(registry)
+        for table, cols in self.cols.items():
+            for col in ("team", "default_team"):
+                if col in cols:
+                    teams.update(self._values(table, col))
+        for table, col in TEAM_JSON_COLUMNS:
+            for value in self._values(table, col):
+                teams.update(self._json_teams(value))
+        for value in self._values("resource_plans", "external_fingerprint"):
+            try:
+                obj = json.loads(value)
+            except ValueError:
+                continue
+            if isinstance(obj, dict):
+                teams.update(k for k in obj if isinstance(k, str))
+        for key, value in self._rows("app_settings", "key value"):
+            if isinstance(key, str) and key.startswith("ui_") and "team" in key and _str(value):
+                teams.update(t.strip() for t in value.split(",") if t.strip())
+        teams = {t for t in teams if t.strip()}
+        self._add_unique(self.teams, [self.primary_team] + sorted(registry) + sorted(teams - registry))
+
+        self._add_unique(self.subgroups, self._values("team_subgroups", "name"))
+        self._add_unique(self.subgroups, self._values("scenario_team_snapshots", "subgroup_name"))
+
+        # Проекты: ключи из справочников и из ключей задач.
+        keys: set[str] = set()
+        for table, col in (("projects", "key"), ("scope_projects", "jira_project_key"),
+                           ("hierarchy_rule", "project_key"), ("scope_roots", "project_key")):
+            keys.update(v.strip() for v in self._values(table, col))
+        for table, col in (("issues", "key"), ("issues", "category_context_key"),
+                           ("scope_roots", "jira_issue_key"), ("category_overrides", "jira_issue_key")):
+            for v in self._values(table, col):
+                m = _ISSUE_KEY_RE.match(v.strip())
+                if m:
+                    keys.add(m.group(1))
+        self.project_keys = sorted(keys)
+        for key, name in self._rows("projects", "key name"):
+            if _str(key) and _str(name):
+                self.project_names[key.strip()] = name
+
+        self._add_unique(self.directions, self._values("issues", "direction"))
+        sprints = set(self._values("issues", "sprint"))
+        for value in self._values("issues", "sprints"):
+            try:
+                obj = json.loads(value)
+            except ValueError:
+                continue
+            if isinstance(obj, list):
+                sprints.update(s for s in obj if isinstance(s, str) and s.strip())
+        self._add_unique(self.sprints, sorted(sprints))
+        self._add_unique(self.releases, self._values("issues", "release"))
+        self._add_unique(self.themes, [
+            r[0] for r in self.conn.execute("SELECT id FROM themes ORDER BY sort_order, name")
+        ] if self._has("themes", "id", "sort_order", "name") else [])
+
+        url = self.conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (JIRA_URL_SETTING,)
+        ).fetchone() if self._has("app_settings", "key", "value") else None
+        host = (urlsplit(url[0]).hostname or "").lower() if url and _str(url[0]) else ""
+        if host:
+            self.jira_host = host
+            self.hosts.add(host)
+            labels = host.split(".")
+            org = labels[0] if host.endswith(".atlassian.net") else (labels[-2] if len(labels) >= 2 else "")
+            if len(org) >= 4:
+                self.hosts.add(org)
+        for email in self.email_map:
+            domain = email.rsplit("@", 1)[-1]
+            if domain and domain not in PUBLIC_EMAIL_DOMAINS:
+                self.hosts.add(domain)
+                labels = domain.split(".")
+                if len(labels) >= 2 and len(labels[-2]) >= 4:
+                    self.hosts.add(labels[-2])
+
+        self.category_codes = set(self._values("categories", "code"))
+        self.backlog_issue = dict(self._rows("backlog_items", "id issue_id"))
+
+    # --- 3. словарь «настоящее → вымышленное» -------------------------------------------
+
+    def _sensitive_tokens(self) -> tuple[set[str], set[str]]:
+        """(строки для поиска подстрокой, формы фамилий для поиска словом)."""
+        tokens: set[str] = set()
+        words: set[str] = set()
+        for name in [n for surfaces in self.person_surfaces for n in surfaces] + self.customers:
+            full, surnames = name_parts(name)
+            if full:
+                tokens.add(full)
+            for surname in surnames:
+                words.update(surname_forms(surname))
+        tokens.update(norm(e) for e in self.email_map)
+        tokens.update(norm(a) for a in self.acc_map if len(a) >= 8)
+        tokens.update(norm(t) for t in self.teams + self.subgroups if len(norm(t)) >= 4)
+        tokens.update(norm(n) for n in self.project_names.values() if len(norm(n)) >= 4)
+        tokens.update(norm(d) for d in self.directions if len(norm(d)) >= 5)
+        tokens.update(self.hosts)
+        tokens.add("atlassian.net")
+        tokens.update(AVATAR_HOSTS)
+        return tokens, words
+
+    def build_fakes(self) -> tuple[dict[str, str], dict[str, str]]:
+        """Словари финального прохода: (подстроки → вымышленное, формы фамилий → вымышленная фамилия)."""
+        self.sensitive, self.surname_words = self._sensitive_tokens()
+        # Вымышленное проверяется строже, чем база: формы фамилий — даже внутри слов.
+        sens_re = re.compile(trie_pattern(self.sensitive | self.surname_words) or r"(?!)")
+
+        def is_safe(text: str) -> bool:
+            return not sens_re.search(norm(text))
+
+        names = fake_data.person_names(is_safe)
+        self.fake_person = [next(names) for _ in self.person_surfaces]
+        team_names = fake_data.team_names(is_safe)
+        self.maps["team"] = {t: next(team_names) for t in self.teams}
+        self.maps["subgroup"] = dict(zip(self.subgroups, fake_data.numbered("Группа", is_safe)))
+        self.maps["customer"] = dict(zip(self.customers, fake_data.numbered("Заказчик", is_safe)))
+        self.maps["direction"] = dict(zip(self.directions, fake_data.numbered("Направление", is_safe)))
+        self.maps["sprint"] = dict(zip(self.sprints, fake_data.numbered("Спринт", is_safe)))
+        self.maps["release"] = dict(zip(self.releases, fake_data.numbered("Релиз", is_safe)))
+        self.maps["theme"] = dict(zip(self.themes, fake_data.numbered("Тема", is_safe)))
+        labels = (f"PR{fake_data.latin_label(i)}" for i in count())
+        real = set(self.project_keys)
+        free = (k for k in labels if k not in real and is_safe(k))
+        self.maps["key"] = {k: next(free) for k in self.project_keys}
+        self.maps["project_name"] = {
+            k: f"Проект {fake_data.ru_label(i)}" for i, k in enumerate(self.project_keys)
+        }
+        self.titles = fake_data.issue_titles(is_safe)
+
+        for label, fakes in [
+            ("ФИО", self.fake_person), ("e-mail", self.email_map.values()), ("учётки", self.acc_map.values()),
+            *[(k, v.values()) for k, v in self.maps.items()],
+        ]:
+            bad = [f for f in fakes if not is_safe(f)]
+            if bad:
+                raise RuntimeError(f"вымышленные значения ({label}) совпали с настоящими: {bad[:5]}")
+
+        # Словарь финального прохода: ключи — norm(исходное), в т.ч. \\uXXXX-формы для JSON.
+        repl: dict[str, str] = {}
+
+        def add(original: str, fake: str) -> None:
+            key = norm(original)
+            if key in self.sensitive:
+                repl.setdefault(key, fake)
+                if not original.strip().isascii():
+                    repl.setdefault(norm(_escaped(original.strip())), _escaped(fake))
+
+        for p, surfaces in enumerate(self.person_surfaces):
+            for name in sorted(surfaces):
+                add(name, self.fake_person[p])
+        for kind in ("team", "subgroup", "direction"):
+            for original, fake in self.maps[kind].items():
+                add(original, fake)
+        for key, name in self.project_names.items():
+            add(name, self.maps["project_name"][key])
+        for original, fake in self.maps["customer"].items():
+            add(original, fake)
+        for original, fake in self.email_map.items():
+            add(original, fake)
+        for original, fake in self.acc_map.items():
+            add(original, fake)
+        # Адрес Jira → jira.example.com, прочие домены → example.com, имя организации → example.
+        for host in sorted(self.hosts | {"atlassian.net", *AVATAR_HOSTS}):
+            fake_host = DEMO_JIRA_HOST if host == self.jira_host else "example.com" if "." in host else "example"
+            repl.setdefault(host, fake_host)
+        # Фамилии отдельным словом (любая падежная форма) → вымышленная фамилия того же человека.
+        word_repl: dict[str, str] = {}
+        for p, surfaces in enumerate(self.person_surfaces):
+            fake_surname = self.fake_person[p].split()[0]
+            for name in sorted(surfaces):
+                for token in name_parts(name)[1]:
+                    for form in surname_forms(token):
+                        word_repl.setdefault(form, fake_surname)
+        for original, fake in self.maps["customer"].items():
+            for token in name_parts(original)[1]:
+                for form in surname_forms(token):
+                    word_repl.setdefault(form, fake)
+
+        missing = (self.sensitive - set(repl)) | (self.surname_words - set(word_repl))
+        if missing:
+            raise RuntimeError(f"нет замены для чувствительных строк: {sorted(missing)[:5]}")
+        return repl, word_repl
+
+    # --- 4. колоночные правила ----------------------------------------------------------
+
+    def fake_name(self, acc: Any, name: Any) -> Any:
+        if not _str(name):
+            return name
+        p = self.person_by_acc.get(_str(acc)) if _str(acc) else None
+        if p is None:
+            p = self.person_by_key.get(_person_key(name))
+        if p is None:
+            raise KeyError(f"ФИО не попало в словарь: {name!r}")
+        return self.fake_person[p]
+
+    def title_for(self, key: Any) -> str:
+        return self.titles[zlib.crc32(str(key).encode()) % len(self.titles)]
+
+    def _rules(self) -> dict[str, dict[str, Rule]]:
+        maps = self.maps
+        keys = self.maps["key"]
+        key_alt = "|".join(sorted(map(re.escape, keys), key=len, reverse=True))
+        issue_key_re = re.compile(rf"\b({key_alt})-(\d+)\b") if keys else None
+        bare_key_re = re.compile(rf"\b({key_alt})\b") if keys else None
+        quoted_key_re = re.compile(rf'"({key_alt})"') if keys else None
+
+        def clear(table: str, col: str) -> Rule:
+            notnull = self.cols.get(table, {}).get(col, ("", False))[1]
+
+            def rule(v: Any, _r: dict) -> Any:
+                if v is None or not notnull:
+                    return None
+                return "[]" if str(v).startswith("[") else "{}" if str(v).startswith("{") else ""
+            return rule
+
+        def mapped(kind: str) -> Rule:
+            return lambda v, _r: maps[kind].get(v, v) if isinstance(v, str) else v
+
+        def const(value: str) -> Rule:
+            return lambda v, _r: value if _str(v) else v
+
+        def acc(v: Any, _r: dict) -> Any:
+            return self.acc_map.get(_str(v), v) if _str(v) else v
+
+        def email(v: Any, _r: dict) -> Any:
+            return self.email_map.get(_str(v).lower(), v) if _str(v) else v
+
+        def person(acc_col: Optional[str]) -> Rule:
+            return lambda v, r: self.fake_name(r.get(acc_col) if acc_col else None, v)
+
+        def snapshot_person(v: Any, r: dict) -> Any:
+            if r.get("employee_id") is None and _is_placeholder(v):
+                return v
+            return self.fake_name(self.emp_acc.get(r.get("employee_id")), v)
+
+        def user_name(v: Any, r: dict) -> Any:
+            p = self.person_by_email.get((_str(r.get("email")) or "").lower())
+            return self.fake_person[p] if p is not None and _str(v) else self.fake_name(None, v)
+
+        def issue_key(v: Any, _r: dict) -> Any:
+            if not isinstance(v, str) or issue_key_re is None:
+                return v
+            return issue_key_re.sub(lambda m: f"{keys[m.group(1)]}-{m.group(2)}", v)
+
+        def bare_keys(v: Any, _r: dict) -> Any:
+            if not isinstance(v, str) or bare_key_re is None:
+                return v
+            return bare_key_re.sub(lambda m: keys[m.group(1)], v)
+
+        def quoted_keys(v: Any, _r: dict) -> Any:
+            if not isinstance(v, str) or quoted_key_re is None:
+                return v
+            return quoted_key_re.sub(lambda m: f'"{keys[m.group(1)]}"', v)
+
+        def project_key(v: Any, _r: dict) -> Any:
+            return keys.get(v.strip(), v) if isinstance(v, str) else v
+
+        def project_name(v: Any, r: dict) -> Any:
+            return maps["project_name"].get(_str(r.get("key")) or "", v)
+
+        def json_dump(obj: Any, original: str) -> str:
+            return json.dumps(obj, ensure_ascii="\\u" in original)
+
+        def team_json(v: Any, _r: dict) -> Any:
+            try:
+                obj = json.loads(v)
+            except (TypeError, ValueError):
+                return v
+            if isinstance(obj, list):
+                return json_dump([maps["team"].get(t, t) if isinstance(t, str) else t for t in obj], v)
+            if isinstance(obj, dict) and isinstance(obj.get("teams"), list):
+                obj["teams"] = [maps["team"].get(t, t) if isinstance(t, str) else t for t in obj["teams"]]
+                return json_dump(obj, v)
+            return v
+
+        def team_keys_json(v: Any, _r: dict) -> Any:
+            try:
+                obj = json.loads(v)
+            except (TypeError, ValueError):
+                return v
+            if not isinstance(obj, dict):
+                return v
+            return json_dump({maps["team"].get(k, k): val for k, val in obj.items()}, v)
+
+        def sprint_json(v: Any, _r: dict) -> Any:
+            try:
+                obj = json.loads(v)
+            except (TypeError, ValueError):
+                return v
+            if not isinstance(obj, list):
+                return v
+            return json.dumps([maps["sprint"].get(s, s) for s in obj], ensure_ascii=False)
+
+        def issue_title(v: Any, r: dict) -> Any:
+            return self.title_for(r["id"]) if _str(v) else v
+
+        def linked_title(v: Any, r: dict) -> Any:
+            issue_id = r.get("issue_id") or self.backlog_issue.get(r.get("backlog_item_id"))
+            return self.title_for(issue_id or r.get("backlog_item_id") or r["id"]) if _str(v) else v
+
+        def code_or_clear(table: str, col: str) -> Rule:
+            wipe = clear(table, col)
+            return lambda v, r: v if not _str(v) or _CODE_RE.match(v.strip()) else wipe(v, r)
+
+        def quarter_tags_or_clear(table: str, col: str) -> Rule:
+            wipe = clear(table, col)
+            return lambda v, r: v if not _str(v) or all(
+                _QUARTER_TAG_RE.match(p) for p in v.split(",")) else wipe(v, r)
+
+        def category_or_clear(table: str, col: str) -> Rule:
+            wipe = clear(table, col)
+            return lambda v, r: v if not _str(v) or v in self.category_codes else wipe(v, r)
+
+        used_names: dict[str, int] = {}
+
+        def scenario_name(v: Any, r: dict) -> Any:
+            parts = [str(r.get("year") or ""), r.get("quarter") or "", maps["team"].get(r.get("team"), "")]
+            base = " ".join(p for p in parts if p) or "Сценарий"
+            used_names[base] = used_names.get(base, 0) + 1
+            return base if used_names[base] == 1 else f"{base} ({used_names[base]})"
+
+        def theme_name(v: Any, r: dict) -> Any:
+            return maps["theme"].get(r["id"], v)
+
+        wipe_setting = clear("app_settings", "value")
+
+        def setting(v: Any, r: dict) -> Any:
+            key = r.get("key") or ""
+            if key == JIRA_URL_SETTING:
+                return DEMO_JIRA_URL if _str(v) else v
+            if SECRET_SETTING_RE.search(key):
+                return wipe_setting(v, r)
+            return v
+
+        rules: dict[str, dict[str, Rule]] = {
+            "employees": {
+                "jira_account_id": acc, "display_name": person("jira_account_id"), "email": email,
+                "avatar_url": clear("employees", "avatar_url"), "department": clear("employees", "department"),
+            },
+            "users": {
+                "email": email, "display_name": user_name, "password_hash": const(self.password_hash),
+                "selected_teams": team_json, "team_desk_filter": team_json,
+            },
+            "issues": {
+                "key": issue_key, "category_context_key": issue_key, "summary": issue_title,
+                "description": clear("issues", "description"), "goal_text": clear("issues", "goal_text"),
+                "current_behavior": clear("issues", "current_behavior"),
+                "impact": clear("issues", "impact"), "risk": clear("issues", "risk"),
+                "environment": code_or_clear("issues", "environment"),
+                "goals": quarter_tags_or_clear("issues", "goals"),
+                "category_context": category_or_clear("issues", "category_context"),
+                "direction": mapped("direction"), "sprint": mapped("sprint"), "sprints": sprint_json,
+                "release": mapped("release"), "participating_teams": team_json,
+                **{f"{role}_account_id": acc for role in ISSUE_PEOPLE},
+                **{f"{role}_display_name": person(f"{role}_account_id") for role in ISSUE_PEOPLE},
+            },
+            "worklogs": {"comment_text": clear("worklogs", "comment_text")},
+            "comments": {"body": clear("comments", "body")},
+            "category_overrides": {
+                "jira_issue_key": issue_key, "comment": clear("category_overrides", "comment"),
+            },
+            "scope_roots": {"jira_issue_key": issue_key, "project_key": project_key},
+            "scope_projects": {"jira_project_key": project_key},
+            "hierarchy_rule": {"project_key": project_key, "description": bare_keys},
+            "projects": {"key": project_key, "name": project_name, "description": clear("projects", "description")},
+            "backlog_items": {
+                "title": linked_title, "customer": mapped("customer"),
+                "impact": clear("backlog_items", "impact"), "risk": clear("backlog_items", "risk"),
+                "assignee_jira_account_at_choice": acc,
+            },
+            "scenario_allocation_snapshots": {
+                "title": linked_title, "customer": mapped("customer"),
+                "impact": clear("scenario_allocation_snapshots", "impact"),
+                "risk": clear("scenario_allocation_snapshots", "risk"),
+            },
+            "scenario_revision_items": {"backlog_item_name": linked_title},
+            "scenario_revisions": {"note": clear("scenario_revisions", "note")},
+            **{table: {col: snapshot_person} for table, col in SNAPSHOT_NAME_COLUMNS},
+            "plan_conflicts": {"message": clear("plan_conflicts", "message")},
+            "plan_audit": {"comment": clear("plan_audit", "comment")},
+            "team_desk_marks": {"comment": clear("team_desk_marks", "comment")},
+            "planning_scenarios": {"name": scenario_name},
+            "resource_plans": {"external_fingerprint": team_keys_json},
+            "scheduled_blocks": {"reason": const("Плановая блокировка")},
+            "kpi_approvals": {"approved_by": person(None), "payload_json": quoted_keys},
+            "kpi_metrics": {"numerator_json": quoted_keys, "denominator_json": quoted_keys},
+            "teams": {"name": mapped("team")},
+            "team_subgroups": {"name": mapped("subgroup")},
+            "themes": {
+                "name": theme_name, "description": clear("themes", "description"),
+                "aliases_json": clear("themes", "aliases_json"), "embedding": clear("themes", "embedding"),
+                "embedding_model_version": clear("themes", "embedding_model_version"),
+                "embedding_updated_at": clear("themes", "embedding_updated_at"),
+            },
+            "sync_state": {
+                "last_error": clear("sync_state", "last_error"), "scope": bare_keys, "cursor_value": bare_keys,
+            },
+            "app_settings": {"value": setting},
+            "work_type_report_layouts": {"name": const("Раскладка")},
+            **{table: {"team_set_json": team_json} for table in ("executive_dashboard_snapshots",
+                                                                 "work_type_report_snapshots")},
+        }
+        rules["scenario_team_snapshots"]["subgroup_name"] = mapped("subgroup")
+        # Любая колонка team / default_team — имя команды (в т.ч. в таблицах, неизвестных ветке).
+        for table, cols in self.cols.items():
+            for col in ("team", "default_team"):
+                if col in cols:
+                    rules.setdefault(table, {})[col] = mapped("team")
+        return rules
+
+    def apply_rules(self) -> None:
+        for table, rules in self._rules().items():
+            cols = [c for c in rules if self._has(table, c)]
+            if not cols:
+                continue
+            started = time.monotonic()
+            names = list(self.cols[table])
+            updates = []
+            for row in self.conn.execute(f"SELECT rowid, * FROM {_q(table)}"):
+                r = dict(zip(names, row[1:]))
+                new = [rules[c](r[c], r) for c in cols]
+                if any(n != r[c] for n, c in zip(new, cols)):
+                    updates.append((*new, row[0]))
+            sets = ", ".join(f"{_q(c)} = ?" for c in cols)
+            self.conn.executemany(f"UPDATE {_q(table)} SET {sets} WHERE rowid = ?", updates)
+            self.conn.commit()
+            print(f"  {table}: {len(updates)} строк ({time.monotonic() - started:.1f} с)", flush=True)
+
+    # --- 5. финальный проход ------------------------------------------------------------
+
+    def final_pass(self, repl: dict[str, str], word_repl: dict[str, str]) -> dict[str, int]:
+        pattern = re.compile(trie_pattern(repl, loose=True) or r"(?!)", re.IGNORECASE)
+        words = re.compile(word_pattern(word_repl, loose=True) or r"(?!)", re.IGNORECASE)
+        keys = self.maps["key"]
+        key_alt = "|".join(sorted(map(re.escape, keys), key=len, reverse=True))
+        key_re = re.compile(rf"\b({key_alt})-(\d+)\b") if keys else re.compile(r"(?!)")
+
+        def scrub(text: str) -> str:
+            text = pattern.sub(lambda m: repl.get(norm(m.group(0)), m.group(0)), text)
+            text = words.sub(lambda m: word_repl.get(norm(m.group(0)), m.group(0)), text)
+            return key_re.sub(lambda m: f"{keys[m.group(1)]}-{m.group(2)}", text)
+
+        changed: dict[str, int] = {}
+        for table, cols in self.cols.items():
+            if table == "alembic_version":
+                continue
+            text_cols = [c for c, (t, _) in cols.items() if not t or any(m in t for m in TEXT_TYPE_MARKERS)]
+            if not text_cols:
+                continue
+            select = ", ".join(_q(c) for c in text_cols)
+            updates = []
+            for row in self.conn.execute(f"SELECT rowid, {select} FROM {_q(table)}"):
+                values = row[1:]
+                joined = "\x00".join(v for v in values if isinstance(v, str))
+                if not joined or not (pattern.search(joined) or words.search(joined) or key_re.search(joined)):
+                    continue
+                new = [scrub(v) if isinstance(v, str) else v for v in values]
+                if new != list(values):
+                    updates.append((*new, row[0]))
+                    for c, a, b in zip(text_cols, values, new):
+                        if a != b:
+                            changed[f"{table}.{c}"] = changed.get(f"{table}.{c}", 0) + 1
+            if updates:
+                sets = ", ".join(f"{_q(c)} = ?" for c in text_cols)
+                self.conn.executemany(f"UPDATE {_q(table)} SET {sets} WHERE rowid = ?", updates)
+                self.conn.commit()
+        return changed
+
+
+def anonymize(conn: sqlite3.Connection, *, primary_team: str, password_hash: str = "!") -> Sensitive:
+    """Обезличить базу на месте. Возвращает исходные чувствительные строки для проверки утечек.
+
+    password_hash — хэш, который получат все пользователи ("!" — вход невозможен).
+    """
+    conn.execute("PRAGMA foreign_keys = OFF")
+    a = _Anonymizer(conn, primary_team, password_hash)
+    print("Удаление таблиц…", flush=True)
+    a.delete_tables()
+    a.cols = a._reflect()
+    print("Сбор исходных значений…", flush=True)
+    a.collect()
+    repl, word_repl = a.build_fakes()
+    print(f"Словарь: {len(a.person_surfaces)} людей, {len(a.teams)} команд, {len(a.project_keys)} проектов, "
+          f"{len(repl)} строк и {len(word_repl)} форм фамилий для замены, "
+          f"{len(a.titles)} вариантов названий задач", flush=True)
+    print("Колоночные правила…", flush=True)
+    a.apply_rules()
+    print("Финальный проход по всем текстовым колонкам…", flush=True)
+    changed = a.final_pass(repl, word_repl)
+    for col, n in sorted(changed.items()):
+        print(f"  {col}: {n}", flush=True)
+    issues = conn.execute("SELECT count(*) FROM issues").fetchone()[0] if a._has("issues", "id") else 0
+    return Sensitive(
+        strings=frozenset(a.sensitive),
+        project_keys=frozenset(a.project_keys),
+        words=frozenset(a.surname_words),
+        primary_team=a.maps["team"].get(primary_team, ""),
+        stats={
+            "people": len(a.person_surfaces), "accounts": len(a.acc_map), "emails": len(a.email_map),
+            "teams": len(a.teams), "subgroups": len(a.subgroups), "projects": len(a.project_keys),
+            "customers": len(a.customers), "issues": issues,
+        },
+    )
