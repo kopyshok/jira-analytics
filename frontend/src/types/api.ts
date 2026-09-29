@@ -606,6 +606,8 @@ export interface BacklogRefreshResult {
   archived: number;
   restored: number;
   jira_refreshed: number;
+  /** Jira не подключена: обновлены только данные сервиса. */
+  jira_unavailable?: boolean;
 }
 
 // === Planning ===

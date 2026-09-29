@@ -307,7 +307,9 @@ export default function BacklogPage() {
     refreshFromJiraMut.mutate(
       { onProgress: (e) => setRefreshProgress(e), signal: ctl.signal, keys },
       {
-        onSuccess: () => notification.success({ title: 'Данные обновлены из Jira' }),
+        onSuccess: (res) => (res.jira_unavailable
+          ? notification.warning({ title: 'Jira не подключена — обновлены только данные сервиса' })
+          : notification.success({ title: 'Данные обновлены из Jira' })),
         onError: (e) => {
           if ((e as Error).name === 'AbortError') return;
           notification.error({ title: 'Ошибка', description: (e as Error).message });
