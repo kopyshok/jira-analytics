@@ -113,7 +113,7 @@ export default function NormedReserveSummary({ reserve }: Props) {
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.issue_key && (
                 <>
-                  <IssueKey issueKey={item.issue_key} jiraBaseUrl={jiraBaseUrl} />
+                  <IssueKey issueKey={item.issue_key} jiraBaseUrl={jiraBaseUrl} style={{ fontSize: 'inherit', lineHeight: 'inherit' }} />
                   {' · '}
                 </>
               )}

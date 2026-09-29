@@ -14,7 +14,8 @@ import {
   workdayChecker,
 } from '../../utils/externalBookings';
 
-const ROW_H = 28;
+// Две строки подписи: «имя · ключ · фаза» и название задачи.
+const ROW_H = 36;
 const BAR_H = 16;
 // Левая колонка перекрывает метку «сегодня» (z=20) при горизонтальном скролле —
 // как у строк задач.
@@ -44,6 +45,9 @@ interface Props {
   collapsed: boolean;
   onToggle: () => void;
 }
+
+// Ключ — размером с подпись вокруг, иначе вторая строка уезжает вниз.
+const KEY_STYLE = { fontSize: 'inherit', lineHeight: 'inherit' };
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 
@@ -144,13 +148,13 @@ export default function ExternalBookingsRows({
                 whiteSpace: 'nowrap',
               }}
             >
-              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.15 }}>
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.3 }}>
                 <span style={{ color: '#9ab3cc', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {/* Ключ в подписи — ссылка в Jira. */}
                   {label.split(' · ').map((part, i) => (
                     <Fragment key={i}>
                       {i > 0 && ' · '}
-                      {part === b.issue_key ? <IssueKey issueKey={part} jiraBaseUrl={jiraBaseUrl} /> : part}
+                      {part === b.issue_key ? <IssueKey issueKey={part} jiraBaseUrl={jiraBaseUrl} style={KEY_STYLE} /> : part}
                     </Fragment>
                   ))}
                 </span>
