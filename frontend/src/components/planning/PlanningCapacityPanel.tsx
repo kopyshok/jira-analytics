@@ -274,10 +274,15 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
             const roleShort = knownRole ? getRoleShort(knownRole) : '—';
             const mandPct = knownRole ? (mandatoryPctByRole[knownRole] ?? 0) : 0;
 
-            // Норма-часы (до вычета обяз. работ). Если mandPct=0 — норма равна total_hours.
-            const normHours = mandPct > 0 && e.total_hours > 0
-              ? Math.round(e.total_hours / (1 - mandPct / 100))
-              : Math.round(e.total_hours);
+            // В секции группы — только часы сотрудника в этой группе (по доле и дням).
+            const hours = sectionId !== undefined
+              ? (e.subgroup_hours?.[sectionId] ?? e.total_hours)
+              : e.total_hours;
+
+            // Норма-часы (до вычета обяз. работ). Если mandPct=0 — норма равна часам.
+            const normHours = mandPct > 0 && hours > 0
+              ? Math.round(hours / (1 - mandPct / 100))
+              : Math.round(hours);
 
             return (
               <div key={e.employee_id}>
@@ -326,7 +331,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: 14, color: DARK_THEME.textMuted, fontFamily: FONTS.mono }}>
-                      {Math.round(e.total_hours)} ч
+                      {Math.round(hours)} ч
                     </span>
                     <div style={{ fontSize: 12, color: DARK_THEME.textHint }}>
                       норма {normHours} ч{mandPct > 0 ? ` · −${mandPct}%` : ''}
@@ -338,9 +343,7 @@ function PlanningCapacityPanelBase({ resourceBase, summary, allocations, quarter
                   const empDemand = sectionId !== undefined
                     ? (demandByEmployeeGroup[sectionId]?.[e.employee_id] ?? 0)
                     : (demandByEmployee[e.employee_id] ?? 0);
-                  const empCapacity = sectionId !== undefined
-                    ? (e.subgroup_hours?.[sectionId] ?? e.total_hours)
-                    : e.total_hours;
+                  const empCapacity = hours;
                   const pct = empCapacity > 0 ? Math.min((empDemand / empCapacity) * 100, 100) : 0;
                   const over = empDemand > empCapacity && empCapacity > 0;
                   return (
